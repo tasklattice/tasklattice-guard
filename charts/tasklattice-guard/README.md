@@ -4,6 +4,11 @@ This chart installs the TaskLattice Guard control plane and its NeMo Guardrails
 production runtime. The default policy runs locally without an active LiteLLM
 Integration or an external model.
 
+Release builds also package this chart inside the runtime image at
+`/opt/tasklattice/helm/tasklattice-guard.tgz`. The image exposes that location
+through `MODEL_GUARDRAILS_HELM_CHART`. The embedded chart uses the Git release
+version for both its chart version and `appVersion`.
+
 ## Install
 
 Kubernetes requires lowercase namespace names; the TALI namespace is `tali`.

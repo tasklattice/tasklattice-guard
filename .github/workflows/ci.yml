@@ -32,8 +32,21 @@ jobs:
           --set-string auth.apiKey=ci-test-key
           > /tmp/tasklattice-guard.yaml
 
-      - name: Package chart
-        run: helm package charts/tasklattice-guard --destination /tmp
+      - name: Package chart for runtime image
+        run: bash scripts/package-runtime-chart.sh 0.0.0-ci
+
+      - name: Verify packaged chart
+        shell: bash
+        run: |
+          set -euo pipefail
+          chart="dist/runtime-chart/tasklattice-guard.tgz"
+          metadata="$(helm show chart "$chart")"
+          grep -Fx "version: 0.0.0-ci" <<<"$metadata"
+          grep -Fx "appVersion: 0.0.0-ci" <<<"$metadata"
+          helm template tasklattice-guard "$chart" \
+            --namespace tali \
+            --set-string auth.apiKey=ci-test-key \
+            > /tmp/tasklattice-guard-packaged.yaml
 
   ui:
     runs-on: ubuntu-latest

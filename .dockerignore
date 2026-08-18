@@ -7,3 +7,6 @@ tests
 data
 web/node_modules
 web/dist
+**/dist
+!dist/runtime-chart
+!dist/runtime-chart/**

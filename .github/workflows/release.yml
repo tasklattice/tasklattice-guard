@@ -59,6 +59,19 @@ jobs:
       - name: Check out tagged source
         uses: actions/checkout@v7.0.1
 
+      - name: Set up Helm
+        uses: azure/setup-helm@v5.0.1
+        with:
+          version: v3.18.4
+
+      - name: Package Helm chart for runtime image
+        shell: bash
+        run: |
+          set -euo pipefail
+          registry="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}"
+          TASKLATTICE_GUARD_IMAGE_REPOSITORY="${registry}/tasklattice-guard" \
+            bash scripts/package-runtime-chart.sh "${{ needs.version.outputs.value }}"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4.2.0
 
@@ -173,11 +186,10 @@ jobs:
           set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
           registry="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}"
-          mkdir -p dist
-          helm package charts/tasklattice-guard \
-            --destination dist \
-            --version "$version" \
-            --app-version "$version"
+          TASKLATTICE_GUARD_IMAGE_REPOSITORY="${registry}/tasklattice-guard" \
+            bash scripts/package-runtime-chart.sh "$version"
+          cp dist/runtime-chart/tasklattice-guard.tgz \
+            "dist/tasklattice-guard-${version}.tgz"
           helm push "dist/tasklattice-guard-${version}.tgz" "oci://${registry}/charts"
           (cd dist && sha256sum "tasklattice-guard-${version}.tgz" > SHA256SUMS)
 

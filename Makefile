@@ -1,4 +1,6 @@
-DEV_IMAGE := ghcr.io/tasklattice/tasklattice-guard:dev
+DEV_IMAGE_REPOSITORY := ghcr.io/tasklattice/tasklattice-guard
+DEV_IMAGE := $(DEV_IMAGE_REPOSITORY):dev
+DEV_CHART_VERSION ?= 0.0.0-dev
 DEV_NAMESPACE := tali
 HELM_RELEASE := tasklattice-guard
 HELM_CHART := charts/tasklattice-guard
@@ -17,7 +19,7 @@ NVIDIA_JAILBREAK_NIM_SERVER_ENDPOINT ?= /v1/security/nvidia/nemoguard-jailbreak-
 PLAYGROUND_CHAT_BASE_URL ?= https://api.deepseek.com
 PLAYGROUND_CHAT_MODEL ?= deepseek-v4-flash
 
-.PHONY: sync test web-dev web-build run image helm-lint helm-template helm-install helm-test helm-uninstall deploy-local
+.PHONY: sync test web-dev web-build run image helm-package helm-lint helm-template helm-install helm-test helm-uninstall deploy-local
 
 sync:
 	uv sync --all-extras --frozen
@@ -36,8 +38,11 @@ web-build:
 run:
 	uv run $(LOCAL_ENV_FILE) python -m uvicorn app.main:app --host 0.0.0.0 --port $(PORT)
 
-image:
+image: helm-package
 	docker build --tag $(DEV_IMAGE) .
+
+helm-package:
+	TASKLATTICE_GUARD_IMAGE_REPOSITORY=$(DEV_IMAGE_REPOSITORY) bash scripts/package-runtime-chart.sh $(DEV_CHART_VERSION)
 
 helm-lint:
 	helm lint $(HELM_CHART) --strict

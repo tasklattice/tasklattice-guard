@@ -39,6 +39,7 @@ ENV PATH="/opt/tasklattice/venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     MODEL_GUARDRAILS_DATABASE_PATH=/var/lib/tasklattice/model-guardrails/tasklattice-guard-policy-schema-v3.db \
+    MODEL_GUARDRAILS_HELM_CHART=/opt/tasklattice/helm/tasklattice-guard.tgz \
     MODEL_GUARDRAILS_UI_DIST_PATH=/opt/tasklattice/model-guardrails/web/dist
 
 WORKDIR /opt/tasklattice/model-guardrails
@@ -53,6 +54,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 
 COPY --link --from=python-dependencies /opt/tasklattice/venv /opt/tasklattice/venv
 COPY --link README.md THIRD_PARTY_NOTICES.md ./
+COPY --link dist/runtime-chart/tasklattice-guard.tgz /opt/tasklattice/helm/tasklattice-guard.tgz
 COPY --link app ./app
 COPY --link --from=ui-build /build/web/dist ./web/dist
 
