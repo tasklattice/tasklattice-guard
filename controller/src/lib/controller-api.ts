@@ -243,17 +243,18 @@ export type AuditEvent = {
   occurredAt: string;
 };
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+export async function requestController<T>(path: string, init?: RequestInit): Promise<T> {
+  const formData = typeof FormData !== "undefined" && init?.body instanceof FormData;
   const response = await fetch(path, {
     credentials: "same-origin",
     ...init,
-    headers: init?.body ? { "content-type": "application/json", ...init.headers } : init?.headers,
+    headers: init?.body && !formData ? { "content-type": "application/json", ...init.headers } : init?.headers,
   });
   if (response.status === 204) return undefined as T;
   const payload = await response.json().catch(() => ({})) as { error?: { message?: string; detail?: unknown }; detail?: unknown; message?: string };
   if (!response.ok) {
     if (response.status === 401) window.dispatchEvent(new CustomEvent("tasklattice:unauthorized"));
-    throw new Error(formatApiError(payload.error?.detail ?? payload.detail ?? payload.error?.message ?? payload.message, response.status));
+    throw new Error(formatApiError(payload.error?.detail ?? payload.error?.message ?? payload.detail ?? payload.message, response.status));
   }
   return payload as T;
 }
@@ -261,18 +262,22 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 function formatApiError(detail: unknown, status: number): string {
   if (typeof detail === "string" && detail.trim()) return detail;
   if (Array.isArray(detail)) {
-    const messages = detail.flatMap((item) => {
-      if (!item || typeof item !== "object") return [];
+    const messages = detail.map((item) => {
+      if (typeof item === "string") return item;
+      if (!item || typeof item !== "object") return "";
       const issue = item as { loc?: unknown; msg?: unknown; message?: unknown };
       const message = typeof issue.msg === "string" ? issue.msg : typeof issue.message === "string" ? issue.message : "";
-      const location = Array.isArray(issue.loc) ? issue.loc.filter((part) => part !== "body").map(String).join(".") : "";
-      return message ? [`${location ? `${location}: ` : ""}${message}`] : [];
-    });
+      const location = Array.isArray(issue.loc)
+        ? issue.loc.filter((part) => part !== "body").map(String).join(".")
+        : "";
+      return message ? `${location ? `${location}: ` : ""}${message}` : "";
+    }).filter(Boolean);
     if (messages.length) return messages.join("; ");
   }
   if (detail && typeof detail === "object") {
-    const issue = detail as { message?: unknown };
-    if (typeof issue.message === "string") return issue.message;
+    const issue = detail as { msg?: unknown; message?: unknown };
+    if (typeof issue.msg === "string" && issue.msg) return issue.msg;
+    if (typeof issue.message === "string" && issue.message) return issue.message;
   }
   return `Request failed with status ${status}.`;
 }
@@ -284,34 +289,34 @@ export const getControllerSystemStatus = async () => {
   if (response.status === 200 || response.status === 503) return response.json() as Promise<SystemStatus>;
   throw new Error(`System status failed with status ${response.status}.`);
 };
-export const listControllerGuardrails = () => request<Collection<Guardrail>>("/api/v1/guardrails");
-export const getControllerGuardrail = (id: string) => request<GuardrailDetail>(`/api/v1/guardrails/${encodeURIComponent(id)}`);
-export const createControllerGuardrail = (input: Pick<Guardrail, "name" | "description" | "draftConfig" | "runtimeProfile">) => request<Guardrail>("/api/v1/guardrails", json("POST", input));
-export const previewControllerGuardrailPlan = (input: Pick<Guardrail, "name" | "description" | "draftConfig" | "runtimeProfile">) => request<GuardrailPlanPreview>("/api/v1/guardrail-plan-previews", json("POST", input));
-export const updateControllerGuardrail = (id: string, input: Partial<Pick<Guardrail, "name" | "description" | "draftConfig" | "runtimeProfile">>) => request<Guardrail>(`/api/v1/guardrails/${encodeURIComponent(id)}`, json("PATCH", input));
-export const publishControllerGuardrail = (id: string) => request<{ status: string; version: number }>(`/api/v1/guardrails/${encodeURIComponent(id)}/publish`, json("POST"));
-export const rollbackControllerGuardrail = (id: string, version: number) => request<GuardrailVersion>(`/api/v1/guardrails/${encodeURIComponent(id)}/rollback/${version}`, json("POST"));
-export const getControllerGuardrailDeletionImpact = (id: string) => request<DeletionImpact>(`/api/v1/guardrails/${encodeURIComponent(id)}/deletion-impact`);
-export const deleteControllerGuardrail = (id: string, input: { reason: string; confirmRecentTraffic: boolean; confirmationName?: string | undefined }) => request<void>(`/api/v1/guardrails/${encodeURIComponent(id)}`, json("DELETE", input));
+export const listControllerGuardrails = () => requestController<Collection<Guardrail>>("/api/v1/guardrails");
+export const getControllerGuardrail = (id: string) => requestController<GuardrailDetail>(`/api/v1/guardrails/${encodeURIComponent(id)}`);
+export const createControllerGuardrail = (input: Pick<Guardrail, "name" | "description" | "draftConfig" | "runtimeProfile">) => requestController<Guardrail>("/api/v1/guardrails", json("POST", input));
+export const previewControllerGuardrailPlan = (input: Pick<Guardrail, "name" | "description" | "draftConfig" | "runtimeProfile">) => requestController<GuardrailPlanPreview>("/api/v1/guardrail-plan-previews", json("POST", input));
+export const updateControllerGuardrail = (id: string, input: Partial<Pick<Guardrail, "name" | "description" | "draftConfig" | "runtimeProfile">>) => requestController<Guardrail>(`/api/v1/guardrails/${encodeURIComponent(id)}`, json("PATCH", input));
+export const publishControllerGuardrail = (id: string) => requestController<{ status: string; version: number }>(`/api/v1/guardrails/${encodeURIComponent(id)}/publish`, json("POST"));
+export const rollbackControllerGuardrail = (id: string, version: number) => requestController<GuardrailVersion>(`/api/v1/guardrails/${encodeURIComponent(id)}/rollback/${version}`, json("POST"));
+export const getControllerGuardrailDeletionImpact = (id: string) => requestController<DeletionImpact>(`/api/v1/guardrails/${encodeURIComponent(id)}/deletion-impact`);
+export const deleteControllerGuardrail = (id: string, input: { reason: string; confirmRecentTraffic: boolean; confirmationName?: string | undefined }) => requestController<void>(`/api/v1/guardrails/${encodeURIComponent(id)}`, json("DELETE", input));
 
-export const listControllerIntegrations = () => request<Collection<Integration>>("/api/v1/integrations");
-export const createControllerIntegration = (input: { name: string; adapter: string }) => request<Integration>("/api/v1/integrations", json("POST", input));
-export const getControllerIntegrationDeletionImpact = (id: string) => request<DeletionImpact>(`/api/v1/integrations/${encodeURIComponent(id)}/deletion-impact`);
-export const deleteControllerIntegration = (id: string, input: { reason: string; confirmRecentTraffic: boolean; confirmationName?: string | undefined }) => request<void>(`/api/v1/integrations/${encodeURIComponent(id)}`, json("DELETE", input));
+export const listControllerIntegrations = () => requestController<Collection<Integration>>("/api/v1/integrations");
+export const createControllerIntegration = (input: { name: string; adapter: string }) => requestController<Integration>("/api/v1/integrations", json("POST", input));
+export const getControllerIntegrationDeletionImpact = (id: string) => requestController<DeletionImpact>(`/api/v1/integrations/${encodeURIComponent(id)}/deletion-impact`);
+export const deleteControllerIntegration = (id: string, input: { reason: string; confirmRecentTraffic: boolean; confirmationName?: string | undefined }) => requestController<void>(`/api/v1/integrations/${encodeURIComponent(id)}`, json("DELETE", input));
 
-export const listControllerDeployments = () => request<Collection<Deployment>>("/api/v1/deployments");
-export const createControllerDeployment = (input: Pick<Deployment, "name" | "guardrailId" | "poolId" | "trafficScope" | "enabled"> & { integrationId: string }) => request<Deployment>("/api/v1/deployments", json("POST", input));
-export const getControllerDeploymentDeletionImpact = (id: string) => request<DeletionImpact>(`/api/v1/deployments/${encodeURIComponent(id)}/deletion-impact`);
-export const deleteControllerDeployment = (id: string, input: { reason: string; confirmRecentTraffic: boolean; confirmationName?: string | undefined }) => request<void>(`/api/v1/deployments/${encodeURIComponent(id)}`, json("DELETE", input));
-export const setControllerDeploymentEnabled = (id: string, enabled: boolean) => request<Deployment>(`/api/v1/deployments/${encodeURIComponent(id)}`, json("PATCH", { enabled }));
-export const updateControllerDeploymentTrafficScope = (id: string, trafficScope: Record<string, unknown>) => request<Deployment>(`/api/v1/deployments/${encodeURIComponent(id)}/traffic-scope`, json("PUT", { trafficScope }));
-export const reorderControllerDeployments = (integrationId: string, deploymentIds: string[]) => request<Collection<Deployment>>(`/api/v1/integrations/${encodeURIComponent(integrationId)}/deployment-order`, json("PUT", { deploymentIds }));
-export const listRunnerPools = () => request<Collection<RunnerPool>>("/api/v1/runner-pools");
-export const updateRunnerPool = (id: string, input: Pick<RunnerPool, "desiredReplicas" | "safeRpsPerRunner" | "maxConcurrencyPerRunner">) => request<RunnerPool>(`/api/v1/runner-pools/${encodeURIComponent(id)}`, json("PATCH", input));
-export const removeRunnerInstance = (runnerId: string) => request<void>(`/api/v1/runner-instances/${encodeURIComponent(runnerId)}`, json("DELETE"));
+export const listControllerDeployments = () => requestController<Collection<Deployment>>("/api/v1/deployments");
+export const createControllerDeployment = (input: Pick<Deployment, "name" | "guardrailId" | "poolId" | "trafficScope" | "enabled"> & { integrationId: string }) => requestController<Deployment>("/api/v1/deployments", json("POST", input));
+export const getControllerDeploymentDeletionImpact = (id: string) => requestController<DeletionImpact>(`/api/v1/deployments/${encodeURIComponent(id)}/deletion-impact`);
+export const deleteControllerDeployment = (id: string, input: { reason: string; confirmRecentTraffic: boolean; confirmationName?: string | undefined }) => requestController<void>(`/api/v1/deployments/${encodeURIComponent(id)}`, json("DELETE", input));
+export const setControllerDeploymentEnabled = (id: string, enabled: boolean) => requestController<Deployment>(`/api/v1/deployments/${encodeURIComponent(id)}`, json("PATCH", { enabled }));
+export const updateControllerDeploymentTrafficScope = (id: string, trafficScope: Record<string, unknown>) => requestController<Deployment>(`/api/v1/deployments/${encodeURIComponent(id)}/traffic-scope`, json("PUT", { trafficScope }));
+export const reorderControllerDeployments = (integrationId: string, deploymentIds: string[]) => requestController<Collection<Deployment>>(`/api/v1/integrations/${encodeURIComponent(integrationId)}/deployment-order`, json("PUT", { deploymentIds }));
+export const listRunnerPools = () => requestController<Collection<RunnerPool>>("/api/v1/runner-pools");
+export const updateRunnerPool = (id: string, input: Pick<RunnerPool, "desiredReplicas" | "safeRpsPerRunner" | "maxConcurrencyPerRunner">) => requestController<RunnerPool>(`/api/v1/runner-pools/${encodeURIComponent(id)}`, json("PATCH", input));
+export const removeRunnerInstance = (runnerId: string) => requestController<void>(`/api/v1/runner-instances/${encodeURIComponent(runnerId)}`, json("DELETE"));
 export const listRuntimeEvents = (limit = 100, filters: { guardrailId?: string; deploymentId?: string; integrationId?: string; since?: string; before?: string } = {}) => {
   const query = new URLSearchParams({ limit: String(Math.min(10_000, Math.max(1, limit))) });
   for (const [key, value] of Object.entries(filters)) if (value) query.set(key, value);
-  return request<Collection<RuntimeEvent>>(`/api/v1/runtime-events?${query.toString()}`);
+  return requestController<Collection<RuntimeEvent>>(`/api/v1/runtime-events?${query.toString()}`);
 };
-export const listAuditEvents = (limit = 100) => request<Collection<AuditEvent>>(`/api/v1/audit-events?limit=${Math.min(500, Math.max(1, limit))}`);
+export const listAuditEvents = (limit = 100) => requestController<Collection<AuditEvent>>(`/api/v1/audit-events?limit=${Math.min(500, Math.max(1, limit))}`);

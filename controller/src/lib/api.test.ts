@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { analyzeGuardrailIntent, excludeGuardrailTestCase, getDeploymentDeletionImpact, getIntentAnalysisStatus, updateGuardrail } from "./api";
+import { analyzeComplianceDocuments, analyzeGuardrailIntent, excludeGuardrailTestCase, getDeploymentDeletionImpact, getIntentAnalysisStatus, updateGuardrail } from "./api";
 
 describe("API error responses", () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -89,6 +89,18 @@ describe("API error responses", () => {
       }),
       headers: { "content-type": "application/json" },
     });
+  });
+
+  it("lets the browser set the multipart boundary for document uploads", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ requirements: [] }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const file = new File(["policy text"], "policy.txt", { type: "text/plain" });
+    await analyzeComplianceDocuments([file], "en");
+
+    const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(request.body).toBeInstanceOf(FormData);
+    expect(request.headers).toBeUndefined();
   });
 
   it("turns an outdated Controller deletion-impact response into a recoverable error", async () => {
