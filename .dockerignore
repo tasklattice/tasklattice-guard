@@ -1,6 +1,9 @@
 .git
 .venv
 .pytest_cache
+.kube-home
+.kube-cache
+.kubeconfig-kind
 **/__pycache__
 tests
 .env

@@ -11,6 +11,9 @@ dist/
 *.egg-info/
 .DS_Store
 .env
+.kube-home/
+.kube-cache/
+.kubeconfig-kind
 data/
 web/node_modules/
 web/dist/
