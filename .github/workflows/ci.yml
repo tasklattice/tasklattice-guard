@@ -35,6 +35,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          chart="dist/runtime-chart/tasklattice-guard.tgz"
+          metadata="$(helm show chart "$chart")"
+          grep -Fx "version: 0.0.0-ci" <<<"$metadata"
+          grep -Fx "appVersion: 0.0.0-ci" <<<"$metadata"
+          helm template tasklattice-guard "$chart" \
+            --namespace tali \
+            --set-string auth.apiKey=ci-test-key \
+            > /tmp/tasklattice-guard-packaged.yaml
+
+      - name: Verify packaged chart
+        shell: bash
+        run: |
+          set -euo pipefail
           chart="dist/runtime-chart/tali-guard.tgz"
           metadata="$(helm show chart "$chart")"
           grep -Fx "name: tali-guard" <<<"$metadata"

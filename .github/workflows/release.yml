@@ -85,8 +85,7 @@ jobs:
         run: |
           set -euo pipefail
           registry="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}"
-          TALI_GUARD_CONTROLLER_IMAGE_REPOSITORY="${registry}/tali-guard-controller" \
-            TALI_GUARD_RUNNER_IMAGE_REPOSITORY="${registry}/tali-guard-runner" \
+          TASKLATTICE_GUARD_IMAGE_REPOSITORY="${registry}/tasklattice-guard" \
             bash scripts/package-runtime-chart.sh "${{ needs.version.outputs.value }}"
 
       - name: Set up Docker Buildx
@@ -210,13 +209,12 @@ jobs:
           set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
           registry="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}"
-          TALI_GUARD_CONTROLLER_IMAGE_REPOSITORY="${registry}/tali-guard-controller" \
-            TALI_GUARD_RUNNER_IMAGE_REPOSITORY="${registry}/tali-guard-runner" \
+          TASKLATTICE_GUARD_IMAGE_REPOSITORY="${registry}/tasklattice-guard" \
             bash scripts/package-runtime-chart.sh "$version"
-          cp dist/runtime-chart/tali-guard.tgz \
-            "dist/tali-guard-${version}.tgz"
-          helm push "dist/tali-guard-${version}.tgz" "oci://${registry}/charts"
-          (cd dist && sha256sum "tali-guard-${version}.tgz" > SHA256SUMS)
+          cp dist/runtime-chart/tasklattice-guard.tgz \
+            "dist/tasklattice-guard-${version}.tgz"
+          helm push "dist/tasklattice-guard-${version}.tgz" "oci://${registry}/charts"
+          (cd dist && sha256sum "tasklattice-guard-${version}.tgz" > SHA256SUMS)
 
       - name: Create or update GitHub Release
         shell: bash
