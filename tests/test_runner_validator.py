@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import json
-
 import pytest
 
 from runner.compiler import DefaultRunnerCompiler
-from runner.generated import runner_control_pb2 as protocol
+from runner import generated as protocol
+from runner.protocol_codec import plan_to_proto, validation_test_to_proto
 from runner.validator import DefaultRunnerValidator
 
 
@@ -77,9 +76,15 @@ async def test_default_runner_validates_cases_through_the_real_nemo_runtime() ->
             guardrail_id="guardrail-1",
             candidate_version=1,
             source_draft_revision=1,
-            plan_json=json.dumps(plan),
+            plan=plan_to_proto(plan),
             runtime_profile="auto",
-            test_cases_json=json.dumps(cases),
+            test_cases=[validation_test_to_proto({
+                **case,
+                "trustedInstruction": "",
+                "targetSource": "user_input",
+                "groundingSources": [],
+                "caseType": "scenario",
+            }) for case in cases],
         )
     )
 

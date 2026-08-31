@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package tasklattice.guard.control.v1;
+
+// Boolean operator applied to all members of one traffic-scope group.
+enum TrafficCombinator {
+  TRAFFIC_COMBINATOR_UNSPECIFIED = 0;
+  TRAFFIC_COMBINATOR_AND = 1;
+  TRAFFIC_COMBINATOR_OR = 2;
+}
+
+// Comparison operation supported by Runner traffic selection.
+enum TrafficOperator {
+  TRAFFIC_OPERATOR_UNSPECIFIED = 0;
+  TRAFFIC_OPERATOR_EQUALS = 1;
+  TRAFFIC_OPERATOR_CONTAINS = 2;
+  TRAFFIC_OPERATOR_STARTS_WITH = 3;
+  TRAFFIC_OPERATOR_GLOB = 4;
+}
+
+// One typed predicate evaluated against Integration request metadata.
+message TrafficCondition {
+  // Registered request attribute source, for example header, path, or model.
+  string field = 1;
+  // Source-specific lookup key; empty for scalar fields such as path or model.
+  string key = 2;
+  TrafficOperator operator = 3;
+  // Literal comparison operand; GLOB uses Runner's documented glob syntax.
+  string value = 4;
+}
+
+// Conditions and nested groups are intentionally separate: AND/OR evaluation
+// is commutative, so the protocol does not encode presentation ordering.
+message TrafficScope {
+  // Boolean operator applied across both conditions and nested groups.
+  TrafficCombinator combinator = 1;
+  repeated TrafficCondition conditions = 2;
+  repeated TrafficScope groups = 3;
+}

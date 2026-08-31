@@ -3,11 +3,21 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol
 
+from .enforcement_action_generated import (
+    ENFORCEMENT_ACTIONS,
+    ENFORCEMENT_ACTION_CONFLICT_ORDER,
+    EnforcementAction,
+)
+
 
 GuardrailPhase = Literal["input", "output"]
 RailType = Literal["input", "output", "retrieval", "dialog", "execution"]
+# Raw evaluator evidence. It does not directly determine how an interaction is
+# handled; routing and policy resolution produce the decision below.
 EvaluatorVerdict = Literal["safe", "unsafe", "uncertain", "error"]
 RouteDecision = Literal["complete", "enforce", "escalate", "fail_open", "fail_closed"]
+# Coarse runtime outcome aligned with allow/block/transform rail semantics.
+# EnforcementAction is the separate, more specific post-decision directive.
 PolicyDecision = Literal["allow", "transform", "block"]
 PolicyModule = Literal[
     "data_protection",
@@ -42,28 +52,6 @@ FragmentStatus = Literal["pass", "intervene", "needs_context", "uncovered", "err
 CoverageStatus = Literal["complete", "partial", "none"]
 EnforcementMode = Literal["enforce", "detect"]
 EvidenceScope = Literal["interventions", "full"]
-EnforcementAction = Literal[
-    "pass",
-    "redact",
-    "rewrite",
-    "regenerate",
-    "redirect",
-    "reject",
-    "fallback",
-    "clarify",
-]
-ENFORCEMENT_ACTIONS: frozenset[EnforcementAction] = frozenset(
-    {
-        "pass",
-        "redact",
-        "rewrite",
-        "regenerate",
-        "redirect",
-        "reject",
-        "fallback",
-        "clarify",
-    }
-)
 SafetyLevel = Literal["balanced", "strict"]
 OutputDeliveryMode = Literal["interruptible", "window_buffered", "full_buffered"]
 EscalationMode = Literal["never", "on_uncertain", "always"]

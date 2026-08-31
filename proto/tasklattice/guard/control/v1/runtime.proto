@@ -1,0 +1,131 @@
+syntax = "proto3";
+
+package tasklattice.guard.control.v1;
+
+import "common.proto";
+import "enforcement_action.proto";
+
+// Immutable Controller-produced plan compiled and executed by Runner.
+message GuardrailPlan {
+  // Stable Controller resource identifier.
+  string guardrail_id = 1;
+  // Immutable, monotonically increasing version within guardrail_id.
+  int32 guardrail_version = 2;
+  // Compiler contract version expected to understand this plan shape.
+  string compiler_version = 3;
+  SafetyLevel safety_level = 4;
+  OutputDeliveryMode output_delivery = 5;
+  // Evaluator requirements referenced by modules below.
+  repeated GuardrailPlanStep steps = 6;
+  // Dependency-aware execution graph; module IDs and dependencies are plan-local.
+  repeated GuardrailPlanModule modules = 7;
+  repeated AutomatedReasoningPolicy reasoning_policies = 8;
+  // Complete immutable policy snapshots needed to compile without Controller access.
+  repeated PolicyVersion policy_versions = 9;
+  repeated GuardrailPolicyBinding policy_bindings = 10;
+}
+
+// Evaluator requirement for one risk, stage, and set of runtime phases.
+message GuardrailPlanStep {
+  string id = 1;
+  string risk = 2;
+  EvaluationStage stage = 3;
+  repeated GuardrailPhase phases = 4;
+  EnforcementAction on_unsafe = 5;
+  EscalationMode escalation = 6;
+  // Normalized decision threshold in [0, 1]; absence selects the evaluator default.
+  optional double threshold = 7;
+  // Ordered plan parameters. Keys are unique within this step.
+  repeated StringPair parameters = 8;
+}
+
+// Dependency-aware execution group within an immutable Guardrail Plan.
+message GuardrailPlanModule {
+  string id = 1;
+  PolicyModule module = 2;
+  GuardrailPhase phase = 3;
+  repeated string step_ids = 4;
+  // Module IDs that must complete before this module becomes runnable.
+  repeated string depends_on = 5;
+  ContentView input_view = 6;
+  // When true, a failure is eligible to prevent release according to failure_mode.
+  bool required_for_release = 7;
+  // End-to-end module deadline in milliseconds; must be greater than zero.
+  int32 timeout_ms = 8;
+  // Decision used when this module cannot produce its required result.
+  FailureMode failure_mode = 9;
+}
+
+// Version-pinned reasoning policy and its decision threshold.
+message AutomatedReasoningPolicy {
+  string id = 1;
+  string policy_id = 2;
+  string policy_version = 3;
+  // Minimum normalized confidence in [0, 1] required to apply the result.
+  double confidence_threshold = 4;
+}
+
+// Source file embedded in an immutable programmable-policy version.
+message PolicySource {
+  string path = 1;
+  string content = 2;
+}
+
+// Resolved execution contract binding a policy flow to one NeMo rail.
+message PolicyRailBinding {
+  RailType rail_type = 1;
+  string flow_name = 2;
+  PolicyExecutionMode execution_mode = 3;
+  EnforcementAction on_unsafe = 4;
+  // Scheduler concurrency group; absence means no explicit parallel grouping.
+  optional string parallel_group = 5;
+  // Ordering/conflict priority for mutating flows; larger values run later and win.
+  optional int32 priority = 6;
+  // Per-flow deadline in milliseconds; must be greater than zero.
+  int32 timeout_ms = 7;
+  // Decision used when this flow cannot produce its required result.
+  FailureMode failure_mode = 8;
+  // Whether failure of this binding is significant to the enclosing policy result.
+  bool required = 9;
+  // Flow names that must complete before this binding becomes runnable.
+  repeated string depends_on = 10;
+}
+
+// Version-pinned registered Action required by a policy version.
+message PolicyActionReference {
+  string name = 1;
+  string version = 2;
+}
+
+// Immutable programmable-policy snapshot embedded in a Guardrail Plan.
+message PolicyVersion {
+  string policy_id = 1;
+  string version = 2;
+  string name = 3;
+  string source = 4;
+  string colang_version = 5;
+  repeated PolicySource sources = 6;
+  repeated StringPair parameter_schema = 7;
+  repeated PolicyRailBinding rail_bindings = 8;
+  repeated PolicyActionReference action_references = 9;
+  repeated string model_dependencies = 10;
+  repeated string prompt_dependencies = 11;
+  repeated StringPair execution_contract = 12;
+  repeated StringPair test_cases = 13;
+  // Lowercase SHA-256 hex digest of the canonical immutable policy snapshot.
+  string checksum = 14;
+}
+
+// Product configuration binding one policy version into a Guardrail Plan.
+message GuardrailPolicyBinding {
+  string policy_id = 1;
+  string policy_version = 2;
+  // Optional binding-wide override; absence preserves each policy rule's action.
+  optional EnforcementAction action = 3;
+  // Ordered values validated against PolicyVersion.parameter_schema.
+  repeated StringPair parameter_values = 4;
+  repeated string enabled_rule_ids = 5;
+  // Rule ID to EnforcementAction name; keys must be present in enabled_rule_ids.
+  repeated StringPair rule_actions = 6;
+  repeated RailType enabled_rails = 7;
+}

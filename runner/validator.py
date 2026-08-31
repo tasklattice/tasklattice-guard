@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import math
 import time
 from dataclasses import asdict
@@ -24,7 +23,14 @@ from runner.toolkit.runtime.contracts import (
 )
 
 from .compiler import DefaultRunnerCompiler
-from .generated import runner_control_pb2 as protocol
+from . import generated as protocol
+from .protocol_codec import (
+    action_bindings_from_proto,
+    dependencies_from_proto,
+    plan_from_proto,
+    prompts_from_proto,
+    validation_test_from_proto,
+)
 from .serialization import config_from_dict, plan_from_dict
 
 
@@ -44,11 +50,11 @@ class DefaultRunnerValidator:
                 guardrail_id=request.guardrail_id,
                 guardrail_version=request.candidate_version,
                 generation=0,
-                plan_json=request.plan_json,
+                plan=request.plan,
                 runtime_profile=request.runtime_profile,
             ),
         )
-        plan = plan_from_dict(json.loads(artifact.plan_json))
+        plan = plan_from_dict(plan_from_proto(artifact.plan))
         config = _config_from_artifact(artifact)
         store = _CandidateStore(plan, config)
         registry = NeMoRuntimeRegistry(
@@ -59,8 +65,8 @@ class DefaultRunnerValidator:
         )
         runtime = NeMoRuntime(registry)
         try:
-            cases = json.loads(request.test_cases_json or "[]")
-            if not isinstance(cases, list) or not cases:
+            cases = [validation_test_from_proto(item) for item in request.test_cases]
+            if not cases:
                 raise ValueError("Validation requires at least one Test Case.")
             results = await asyncio.gather(
                 *(self._evaluate(runtime, plan, item) for item in cases)
@@ -182,18 +188,19 @@ class _CandidateStore:
 
 
 def _config_from_artifact(artifact: protocol.Artifact) -> NeMoConfigSnapshot:
-    prompts = json.loads(artifact.prompts_json or "[]")
+    prompts = prompts_from_proto(artifact.prompts)
+    plan = plan_from_proto(artifact.plan)
     return config_from_dict({
         "guardrail_id": artifact.guardrail_id,
         "guardrail_version": artifact.guardrail_version,
         "compiler_version": artifact.compiler_version,
         "runtime_profile": artifact.runtime_profile,
-        "output_delivery": json.loads(artifact.plan_json).get("output_delivery", "full_buffered"),
+        "output_delivery": plan.get("output_delivery", "full_buffered"),
         "config_yaml": artifact.config_yaml,
         "colang_content": artifact.colang_content,
         "prompts_yaml": yaml.safe_dump({"prompts": prompts}, allow_unicode=True, sort_keys=False) if prompts else "",
-        "action_bindings": json.loads(artifact.action_bindings_json or "[]"),
-        "dependency_manifest": json.loads(artifact.dependency_manifest_json or "[]"),
+        "action_bindings": action_bindings_from_proto(artifact.action_bindings),
+        "dependency_manifest": dependencies_from_proto(artifact.dependency_manifest),
         "runtime_engine": "iorails" if artifact.runtime_profile == "iorails_native" else "llmrails",
         "colang_version": "2.x" if artifact.runtime_profile == "llmrails_colang2_programmable" else "1.0",
     })

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import importlib.metadata
-import json
 import logging
 import time
 import uuid
@@ -14,9 +13,10 @@ from . import __version__
 from .artifact_store import ArtifactStore
 from .compiler import DefaultRunnerCompiler
 from .config import RunnerSettings
-from .generated import runner_control_pb2 as protocol
+from . import generated as protocol
 from .generated import runner_control_pb2_grpc as services
 from .metrics import RunnerMetrics
+from .protocol_codec import validation_case_result_to_proto, validation_metrics_to_proto
 from .validator import DefaultRunnerValidator
 
 
@@ -219,9 +219,13 @@ class RunnerControlClient:
                 runner_id=self._settings.runner_id,
                 run_id=request.run_id,
                 accepted=True,
-                status=status,
-                metrics_json=json.dumps(metrics, sort_keys=True, separators=(",", ":")),
-                results_json=json.dumps(results, sort_keys=True, separators=(",", ":")),
+                status=(
+                    protocol.VALIDATION_STATUS_PASSED
+                    if status == "passed"
+                    else protocol.VALIDATION_STATUS_FAILED
+                ),
+                metrics=validation_metrics_to_proto(metrics),
+                results=[validation_case_result_to_proto(item) for item in results],
             )
         except Exception as error:
             logger.exception("Guardrail Validation %s failed.", request.run_id)
@@ -230,7 +234,7 @@ class RunnerControlClient:
                 run_id=request.run_id,
                 accepted=False,
                 reason=str(error),
-                status="failed",
+                status=protocol.VALIDATION_STATUS_FAILED,
             )
         finally:
             self._metrics.job("validation", False)

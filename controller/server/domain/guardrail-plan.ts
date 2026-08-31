@@ -1,12 +1,15 @@
 import type { PolicyDto } from "../policy-catalog/catalog.js";
 import type { ProgrammablePolicySnapshot } from "../policy-studio/model.js";
 import { flowRuleId } from "../policy-studio/model.js";
+import {
+  enforcementActions,
+  type EnforcementAction,
+} from "../../shared/enforcement-action.generated.js";
 
-export const enforcementActions = [
-  "pass", "redact", "rewrite", "regenerate", "redirect", "reject", "fallback", "clarify",
-] as const;
-
-export type EnforcementAction = typeof enforcementActions[number];
+// Preserve the domain module's public API while sourcing the closed wire
+// vocabulary from the generated, cross-language contract.
+export { enforcementActions };
+export type { EnforcementAction };
 export type GuardrailRail = "input" | "output" | "retrieval" | "dialog" | "execution";
 
 export type GuardrailPolicyBindingConfig = {

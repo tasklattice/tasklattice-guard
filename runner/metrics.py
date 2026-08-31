@@ -24,7 +24,7 @@ from prometheus_client import (
 from runner.toolkit.runtime.contracts import PlanResolution, ProtectionDecision
 
 from . import __version__
-from .generated import runner_control_pb2 as protocol
+from . import generated as protocol
 from .observability import current_exemplar, current_trace_id
 
 

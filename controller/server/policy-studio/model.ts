@@ -1,7 +1,7 @@
 import { z } from "zod";
+import { enforcementActions } from "../../shared/enforcement-action.generated.js";
 
 export const policyRailTypes = ["input", "output"] as const;
-export const policyDecisions = ["pass", "redact", "rewrite", "regenerate", "redirect", "reject", "fallback", "clarify"] as const;
 
 const sourceSchema = z.object({
   path: z.string().trim().min(1).max(512),
@@ -20,7 +20,9 @@ const railBindingSchema = z.object({
   rail_type: z.enum(policyRailTypes),
   flow_name: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/),
   execution_mode: z.enum(["detect", "mutate"]),
-  on_unsafe: z.enum(policyDecisions),
+  // on_unsafe is an EnforcementAction directive, not a PolicyDecision. The
+  // values come from the shared Controller/Runner wire contract.
+  on_unsafe: z.enum(enforcementActions),
   parallel_group: z.string().trim().min(1).max(120).nullable().default(null),
   priority: z.number().int().nullable().default(null),
   timeout_ms: z.number().int().positive().max(120_000).default(2_000),

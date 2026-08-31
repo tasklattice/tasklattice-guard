@@ -22,9 +22,13 @@ _runtime_version.ValidateProtobufRuntimeVersion(
 _sym_db = _symbol_database.Default()
 
 
+from . import artifact_pb2 as artifact__pb2
+from . import integration_pb2 as integration__pb2
+from . import routing_pb2 as routing__pb2
+from . import validation_pb2 as validation__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x14runner_control.proto\x12\x1ctasklattice.guard.control.v1\"\xaf\x03\n\rRunnerMessage\x12\x12\n\nmessage_id\x18\x01 \x01(\t\x12\x17\n\x0fsent_at_unix_ms\x18\x02 \x01(\x03\x12H\n\x0cregistration\x18\n \x01(\x0b\x32\x30.tasklattice.guard.control.v1.RunnerRegistrationH\x00\x12\x42\n\theartbeat\x18\x0b \x01(\x0b\x32-.tasklattice.guard.control.v1.RunnerHeartbeatH\x00\x12G\n\x0f\x61rtifact_result\x18\x0c \x01(\x0b\x32,.tasklattice.guard.control.v1.ArtifactResultH\x00\x12\x45\n\x0e\x63ompile_result\x18\r \x01(\x0b\x32+.tasklattice.guard.control.v1.CompileResultH\x00\x12K\n\x11validation_result\x18\x0e \x01(\x0b\x32..tasklattice.guard.control.v1.ValidationResultH\x00\x42\x06\n\x04\x62ody\"\xbf\x03\n\x11\x43ontrollerMessage\x12\x12\n\nmessage_id\x18\x01 \x01(\t\x12\x17\n\x0fsent_at_unix_ms\x18\x02 \x01(\x03\x12S\n\x15registration_accepted\x18\n \x01(\x0b\x32\x32.tasklattice.guard.control.v1.RegistrationAcceptedH\x00\x12\x43\n\rdesired_state\x18\x0b \x01(\x0b\x32*.tasklattice.guard.control.v1.DesiredStateH\x00\x12G\n\x0f\x63ompile_request\x18\x0c \x01(\x0b\x32,.tasklattice.guard.control.v1.CompileRequestH\x00\x12\x43\n\rdrain_request\x18\r \x01(\x0b\x32*.tasklattice.guard.control.v1.DrainRequestH\x00\x12M\n\x12validation_request\x18\x0e \x01(\x0b\x32/.tasklattice.guard.control.v1.ValidationRequestH\x00\x42\x06\n\x04\x62ody\"\xc3\x02\n\x12RunnerRegistration\x12\x11\n\trunner_id\x18\x01 \x01(\t\x12\x0f\n\x07\x62oot_id\x18\x02 \x01(\t\x12\x0f\n\x07pool_id\x18\x03 \x01(\t\x12\x16\n\x0erunner_version\x18\x04 \x01(\t\x12\x14\n\x0cnemo_version\x18\x05 \x01(\t\x12\x17\n\x0fmax_concurrency\x18\x06 \x01(\x05\x12\x18\n\x10\x63ompiler_capable\x18\x07 \x01(\x08\x12L\n\x06labels\x18\x08 \x03(\x0b\x32<.tasklattice.guard.control.v1.RunnerRegistration.LabelsEntry\x12\x1a\n\x12\x61pplied_generation\x18\t \x01(\x03\x1a-\n\x0bLabelsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"V\n\x14RegistrationAccepted\x12\x1a\n\x12\x64\x65sired_generation\x18\x01 \x01(\x03\x12\"\n\x1aheartbeat_interval_seconds\x18\x02 \x01(\x05\"\x9b\x01\n\x0fRunnerHeartbeat\x12\x11\n\trunner_id\x18\x01 \x01(\t\x12\x0f\n\x07\x62oot_id\x18\x02 \x01(\t\x12\x10\n\x08sequence\x18\x03 \x01(\x03\x12\x1a\n\x12\x61pplied_generation\x18\x04 \x01(\x03\x12\x36\n\x04load\x18\x05 \x01(\x0b\x32(.tasklattice.guard.control.v1.RunnerLoad\"\xb8\x02\n\nRunnerLoad\x12\x10\n\x08inflight\x18\x01 \x01(\x05\x12\x17\n\x0fmax_concurrency\x18\x02 \x01(\x05\x12\x13\n\x0bqueue_depth\x18\x03 \x01(\x05\x12\x16\n\x0erequests_delta\x18\x04 \x01(\x03\x12\x14\n\x0c\x65rrors_delta\x18\x05 \x01(\x03\x12\x16\n\x0etimeouts_delta\x18\x06 \x01(\x03\x12\x16\n\x0elatency_p95_ms\x18\x07 \x01(\x01\x12\x17\n\x0f\x63pu_utilization\x18\x08 \x01(\x01\x12\x1a\n\x12memory_utilization\x18\t \x01(\x01\x12\x19\n\x11\x61\x63tive_guardrails\x18\n \x01(\x05\x12\x1b\n\x13\x63ompile_queue_depth\x18\x0b \x01(\x05\x12\x1f\n\x17observation_interval_ms\x18\x0c \x01(\x03\"\xd4\x03\n\x0c\x44\x65siredState\x12\x12\n\ngeneration\x18\x01 \x01(\x03\x12\x39\n\tartifacts\x18\x02 \x03(\x0b\x32&.tasklattice.guard.control.v1.Artifact\x12\x1e\n\x16\x64isabled_guardrail_ids\x18\x03 \x03(\t\x12 \n\x18\x64isabled_integration_ids\x18\x04 \x03(\t\x12\x42\n\x0b\x64\x65ployments\x18\x05 \x03(\x0b\x32-.tasklattice.guard.control.v1.DeploymentRoute\x12\x46\n\x0cintegrations\x18\x06 \x03(\x0b\x32\x30.tasklattice.guard.control.v1.IntegrationRuntime\x12h\n\x18guardrail_logging_levels\x18\x07 \x03(\x0b\x32\x46.tasklattice.guard.control.v1.DesiredState.GuardrailLoggingLevelsEntry\x1a=\n\x1bGuardrailLoggingLevelsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"\x9c\x01\n\x0f\x44\x65ploymentRoute\x12\x15\n\rdeployment_id\x18\x01 \x01(\t\x12\x14\n\x0cguardrail_id\x18\x02 \x01(\t\x12\x13\n\x0b\x61rtifact_id\x18\x03 \x01(\t\x12\x16\n\x0eintegration_id\x18\x04 \x01(\t\x12\x13\n\x0broute_order\x18\x05 \x01(\x05\x12\x1a\n\x12traffic_scope_json\x18\x06 \x01(\t\"X\n\x12IntegrationRuntime\x12\x16\n\x0eintegration_id\x18\x01 \x01(\t\x12\x0f\n\x07\x61\x64\x61pter\x18\x02 \x01(\t\x12\x19\n\x11verification_json\x18\x03 \x01(\t\"\xe8\x02\n\x08\x41rtifact\x12\x13\n\x0b\x61rtifact_id\x18\x01 \x01(\t\x12\x14\n\x0cguardrail_id\x18\x02 \x01(\t\x12\x19\n\x11guardrail_version\x18\x03 \x01(\x05\x12\x12\n\ngeneration\x18\x04 \x01(\x03\x12\x18\n\x10\x63ompiler_version\x18\x05 \x01(\t\x12\x14\n\x0cnemo_version\x18\x06 \x01(\t\x12\x17\n\x0fruntime_profile\x18\x07 \x01(\t\x12\x11\n\tplan_json\x18\x08 \x01(\t\x12\x13\n\x0b\x63onfig_yaml\x18\t \x01(\t\x12\x16\n\x0e\x63olang_content\x18\n \x01(\t\x12\x14\n\x0cprompts_json\x18\x0b \x01(\t\x12\x1c\n\x14\x61\x63tion_bindings_json\x18\x0c \x01(\t\x12 \n\x18\x64\x65pendency_manifest_json\x18\r \x01(\t\x12\x10\n\x08\x63hecksum\x18\x0e \x01(\t\x12\x11\n\tsignature\x18\x0f \x01(\t\"n\n\x0e\x41rtifactResult\x12\x11\n\trunner_id\x18\x01 \x01(\t\x12\x13\n\x0b\x61rtifact_id\x18\x02 \x01(\t\x12\x12\n\ngeneration\x18\x03 \x01(\x03\x12\x10\n\x08\x61\x63\x63\x65pted\x18\x04 \x01(\x08\x12\x0e\n\x06reason\x18\x05 \x01(\t\"\x95\x01\n\x0e\x43ompileRequest\x12\x12\n\ncompile_id\x18\x01 \x01(\t\x12\x14\n\x0cguardrail_id\x18\x02 \x01(\t\x12\x19\n\x11guardrail_version\x18\x03 \x01(\x05\x12\x12\n\ngeneration\x18\x04 \x01(\x03\x12\x11\n\tplan_json\x18\x05 \x01(\t\x12\x17\n\x0fruntime_profile\x18\x06 \x01(\t\"\x92\x01\n\rCompileResult\x12\x11\n\trunner_id\x18\x01 \x01(\t\x12\x12\n\ncompile_id\x18\x02 \x01(\t\x12\x10\n\x08\x61\x63\x63\x65pted\x18\x03 \x01(\x08\x12\x0e\n\x06reason\x18\x04 \x01(\t\x12\x38\n\x08\x61rtifact\x18\x05 \x01(\x0b\x32&.tasklattice.guard.control.v1.Artifact\"\xb8\x01\n\x11ValidationRequest\x12\x0e\n\x06run_id\x18\x01 \x01(\t\x12\x14\n\x0cguardrail_id\x18\x02 \x01(\t\x12\x19\n\x11\x63\x61ndidate_version\x18\x03 \x01(\x05\x12\x1d\n\x15source_draft_revision\x18\x04 \x01(\x05\x12\x11\n\tplan_json\x18\x05 \x01(\t\x12\x17\n\x0fruntime_profile\x18\x06 \x01(\t\x12\x17\n\x0ftest_cases_json\x18\x07 \x01(\t\"\x93\x01\n\x10ValidationResult\x12\x11\n\trunner_id\x18\x01 \x01(\t\x12\x0e\n\x06run_id\x18\x02 \x01(\t\x12\x10\n\x08\x61\x63\x63\x65pted\x18\x03 \x01(\x08\x12\x0e\n\x06reason\x18\x04 \x01(\t\x12\x0e\n\x06status\x18\x05 \x01(\t\x12\x14\n\x0cmetrics_json\x18\x06 \x01(\t\x12\x14\n\x0cresults_json\x18\x07 \x01(\t\"8\n\x0c\x44rainRequest\x12\x0e\n\x06reason\x18\x01 \x01(\t\x12\x18\n\x10\x64\x65\x61\x64line_unix_ms\x18\x02 \x01(\x03\x32|\n\rRunnerControl\x12k\n\x07\x43onnect\x12+.tasklattice.guard.control.v1.RunnerMessage\x1a/.tasklattice.guard.control.v1.ControllerMessage(\x01\x30\x01\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x14runner_control.proto\x12\x1ctasklattice.guard.control.v1\x1a\x0e\x61rtifact.proto\x1a\x11integration.proto\x1a\rrouting.proto\x1a\x10validation.proto\"\xaf\x03\n\rRunnerMessage\x12\x12\n\nmessage_id\x18\x01 \x01(\t\x12\x17\n\x0fsent_at_unix_ms\x18\x02 \x01(\x03\x12H\n\x0cregistration\x18\n \x01(\x0b\x32\x30.tasklattice.guard.control.v1.RunnerRegistrationH\x00\x12\x42\n\theartbeat\x18\x0b \x01(\x0b\x32-.tasklattice.guard.control.v1.RunnerHeartbeatH\x00\x12G\n\x0f\x61rtifact_result\x18\x0c \x01(\x0b\x32,.tasklattice.guard.control.v1.ArtifactResultH\x00\x12\x45\n\x0e\x63ompile_result\x18\r \x01(\x0b\x32+.tasklattice.guard.control.v1.CompileResultH\x00\x12K\n\x11validation_result\x18\x0e \x01(\x0b\x32..tasklattice.guard.control.v1.ValidationResultH\x00\x42\x06\n\x04\x62ody\"\xbf\x03\n\x11\x43ontrollerMessage\x12\x12\n\nmessage_id\x18\x01 \x01(\t\x12\x17\n\x0fsent_at_unix_ms\x18\x02 \x01(\x03\x12S\n\x15registration_accepted\x18\n \x01(\x0b\x32\x32.tasklattice.guard.control.v1.RegistrationAcceptedH\x00\x12\x43\n\rdesired_state\x18\x0b \x01(\x0b\x32*.tasklattice.guard.control.v1.DesiredStateH\x00\x12G\n\x0f\x63ompile_request\x18\x0c \x01(\x0b\x32,.tasklattice.guard.control.v1.CompileRequestH\x00\x12\x43\n\rdrain_request\x18\r \x01(\x0b\x32*.tasklattice.guard.control.v1.DrainRequestH\x00\x12M\n\x12validation_request\x18\x0e \x01(\x0b\x32/.tasklattice.guard.control.v1.ValidationRequestH\x00\x42\x06\n\x04\x62ody\"\xc3\x02\n\x12RunnerRegistration\x12\x11\n\trunner_id\x18\x01 \x01(\t\x12\x0f\n\x07\x62oot_id\x18\x02 \x01(\t\x12\x0f\n\x07pool_id\x18\x03 \x01(\t\x12\x16\n\x0erunner_version\x18\x04 \x01(\t\x12\x14\n\x0cnemo_version\x18\x05 \x01(\t\x12\x17\n\x0fmax_concurrency\x18\x06 \x01(\x05\x12\x18\n\x10\x63ompiler_capable\x18\x07 \x01(\x08\x12L\n\x06labels\x18\x08 \x03(\x0b\x32<.tasklattice.guard.control.v1.RunnerRegistration.LabelsEntry\x12\x1a\n\x12\x61pplied_generation\x18\t \x01(\x03\x1a-\n\x0bLabelsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"V\n\x14RegistrationAccepted\x12\x1a\n\x12\x64\x65sired_generation\x18\x01 \x01(\x03\x12\"\n\x1aheartbeat_interval_seconds\x18\x02 \x01(\x05\"\x9b\x01\n\x0fRunnerHeartbeat\x12\x11\n\trunner_id\x18\x01 \x01(\t\x12\x0f\n\x07\x62oot_id\x18\x02 \x01(\t\x12\x10\n\x08sequence\x18\x03 \x01(\x03\x12\x1a\n\x12\x61pplied_generation\x18\x04 \x01(\x03\x12\x36\n\x04load\x18\x05 \x01(\x0b\x32(.tasklattice.guard.control.v1.RunnerLoad\"\xb8\x02\n\nRunnerLoad\x12\x10\n\x08inflight\x18\x01 \x01(\x05\x12\x17\n\x0fmax_concurrency\x18\x02 \x01(\x05\x12\x13\n\x0bqueue_depth\x18\x03 \x01(\x05\x12\x16\n\x0erequests_delta\x18\x04 \x01(\x03\x12\x14\n\x0c\x65rrors_delta\x18\x05 \x01(\x03\x12\x16\n\x0etimeouts_delta\x18\x06 \x01(\x03\x12\x16\n\x0elatency_p95_ms\x18\x07 \x01(\x01\x12\x17\n\x0f\x63pu_utilization\x18\x08 \x01(\x01\x12\x1a\n\x12memory_utilization\x18\t \x01(\x01\x12\x19\n\x11\x61\x63tive_guardrails\x18\n \x01(\x05\x12\x1b\n\x13\x63ompile_queue_depth\x18\x0b \x01(\x05\x12\x1f\n\x17observation_interval_ms\x18\x0c \x01(\x03\"\xd4\x03\n\x0c\x44\x65siredState\x12\x12\n\ngeneration\x18\x01 \x01(\x03\x12\x39\n\tartifacts\x18\x02 \x03(\x0b\x32&.tasklattice.guard.control.v1.Artifact\x12\x1e\n\x16\x64isabled_guardrail_ids\x18\x03 \x03(\t\x12 \n\x18\x64isabled_integration_ids\x18\x04 \x03(\t\x12\x42\n\x0b\x64\x65ployments\x18\x05 \x03(\x0b\x32-.tasklattice.guard.control.v1.DeploymentRoute\x12\x46\n\x0cintegrations\x18\x06 \x03(\x0b\x32\x30.tasklattice.guard.control.v1.IntegrationRuntime\x12h\n\x18guardrail_logging_levels\x18\x07 \x03(\x0b\x32\x46.tasklattice.guard.control.v1.DesiredState.GuardrailLoggingLevelsEntry\x1a=\n\x1bGuardrailLoggingLevelsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"\xc3\x01\n\x0f\x44\x65ploymentRoute\x12\x15\n\rdeployment_id\x18\x01 \x01(\t\x12\x14\n\x0cguardrail_id\x18\x02 \x01(\t\x12\x13\n\x0b\x61rtifact_id\x18\x03 \x01(\t\x12\x16\n\x0eintegration_id\x18\x04 \x01(\t\x12\x13\n\x0broute_order\x18\x05 \x01(\x05\x12\x41\n\rtraffic_scope\x18\x06 \x01(\x0b\x32*.tasklattice.guard.control.v1.TrafficScope\"\x8a\x01\n\x12IntegrationRuntime\x12\x16\n\x0eintegration_id\x18\x01 \x01(\t\x12\x0f\n\x07\x61\x64\x61pter\x18\x02 \x01(\t\x12K\n\x0cverification\x18\x03 \x01(\x0b\x32\x35.tasklattice.guard.control.v1.IntegrationVerification\"n\n\x0e\x41rtifactResult\x12\x11\n\trunner_id\x18\x01 \x01(\t\x12\x13\n\x0b\x61rtifact_id\x18\x02 \x01(\t\x12\x12\n\ngeneration\x18\x03 \x01(\x03\x12\x10\n\x08\x61\x63\x63\x65pted\x18\x04 \x01(\x08\x12\x0e\n\x06reason\x18\x05 \x01(\t\"8\n\x0c\x44rainRequest\x12\x0e\n\x06reason\x18\x01 \x01(\t\x12\x18\n\x10\x64\x65\x61\x64line_unix_ms\x18\x02 \x01(\x03\x32|\n\rRunnerControl\x12k\n\x07\x43onnect\x12+.tasklattice.guard.control.v1.RunnerMessage\x1a/.tasklattice.guard.control.v1.ControllerMessage(\x01\x30\x01\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -35,42 +39,32 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_RUNNERREGISTRATION_LABELSENTRY']._serialized_options = b'8\001'
   _globals['_DESIREDSTATE_GUARDRAILLOGGINGLEVELSENTRY']._loaded_options = None
   _globals['_DESIREDSTATE_GUARDRAILLOGGINGLEVELSENTRY']._serialized_options = b'8\001'
-  _globals['_RUNNERMESSAGE']._serialized_start=55
-  _globals['_RUNNERMESSAGE']._serialized_end=486
-  _globals['_CONTROLLERMESSAGE']._serialized_start=489
-  _globals['_CONTROLLERMESSAGE']._serialized_end=936
-  _globals['_RUNNERREGISTRATION']._serialized_start=939
-  _globals['_RUNNERREGISTRATION']._serialized_end=1262
-  _globals['_RUNNERREGISTRATION_LABELSENTRY']._serialized_start=1217
-  _globals['_RUNNERREGISTRATION_LABELSENTRY']._serialized_end=1262
-  _globals['_REGISTRATIONACCEPTED']._serialized_start=1264
-  _globals['_REGISTRATIONACCEPTED']._serialized_end=1350
-  _globals['_RUNNERHEARTBEAT']._serialized_start=1353
-  _globals['_RUNNERHEARTBEAT']._serialized_end=1508
-  _globals['_RUNNERLOAD']._serialized_start=1511
-  _globals['_RUNNERLOAD']._serialized_end=1823
-  _globals['_DESIREDSTATE']._serialized_start=1826
-  _globals['_DESIREDSTATE']._serialized_end=2294
-  _globals['_DESIREDSTATE_GUARDRAILLOGGINGLEVELSENTRY']._serialized_start=2233
-  _globals['_DESIREDSTATE_GUARDRAILLOGGINGLEVELSENTRY']._serialized_end=2294
-  _globals['_DEPLOYMENTROUTE']._serialized_start=2297
-  _globals['_DEPLOYMENTROUTE']._serialized_end=2453
-  _globals['_INTEGRATIONRUNTIME']._serialized_start=2455
-  _globals['_INTEGRATIONRUNTIME']._serialized_end=2543
-  _globals['_ARTIFACT']._serialized_start=2546
-  _globals['_ARTIFACT']._serialized_end=2906
-  _globals['_ARTIFACTRESULT']._serialized_start=2908
-  _globals['_ARTIFACTRESULT']._serialized_end=3018
-  _globals['_COMPILEREQUEST']._serialized_start=3021
-  _globals['_COMPILEREQUEST']._serialized_end=3170
-  _globals['_COMPILERESULT']._serialized_start=3173
-  _globals['_COMPILERESULT']._serialized_end=3319
-  _globals['_VALIDATIONREQUEST']._serialized_start=3322
-  _globals['_VALIDATIONREQUEST']._serialized_end=3506
-  _globals['_VALIDATIONRESULT']._serialized_start=3509
-  _globals['_VALIDATIONRESULT']._serialized_end=3656
-  _globals['_DRAINREQUEST']._serialized_start=3658
-  _globals['_DRAINREQUEST']._serialized_end=3714
-  _globals['_RUNNERCONTROL']._serialized_start=3716
-  _globals['_RUNNERCONTROL']._serialized_end=3840
+  _globals['_RUNNERMESSAGE']._serialized_start=123
+  _globals['_RUNNERMESSAGE']._serialized_end=554
+  _globals['_CONTROLLERMESSAGE']._serialized_start=557
+  _globals['_CONTROLLERMESSAGE']._serialized_end=1004
+  _globals['_RUNNERREGISTRATION']._serialized_start=1007
+  _globals['_RUNNERREGISTRATION']._serialized_end=1330
+  _globals['_RUNNERREGISTRATION_LABELSENTRY']._serialized_start=1285
+  _globals['_RUNNERREGISTRATION_LABELSENTRY']._serialized_end=1330
+  _globals['_REGISTRATIONACCEPTED']._serialized_start=1332
+  _globals['_REGISTRATIONACCEPTED']._serialized_end=1418
+  _globals['_RUNNERHEARTBEAT']._serialized_start=1421
+  _globals['_RUNNERHEARTBEAT']._serialized_end=1576
+  _globals['_RUNNERLOAD']._serialized_start=1579
+  _globals['_RUNNERLOAD']._serialized_end=1891
+  _globals['_DESIREDSTATE']._serialized_start=1894
+  _globals['_DESIREDSTATE']._serialized_end=2362
+  _globals['_DESIREDSTATE_GUARDRAILLOGGINGLEVELSENTRY']._serialized_start=2301
+  _globals['_DESIREDSTATE_GUARDRAILLOGGINGLEVELSENTRY']._serialized_end=2362
+  _globals['_DEPLOYMENTROUTE']._serialized_start=2365
+  _globals['_DEPLOYMENTROUTE']._serialized_end=2560
+  _globals['_INTEGRATIONRUNTIME']._serialized_start=2563
+  _globals['_INTEGRATIONRUNTIME']._serialized_end=2701
+  _globals['_ARTIFACTRESULT']._serialized_start=2703
+  _globals['_ARTIFACTRESULT']._serialized_end=2813
+  _globals['_DRAINREQUEST']._serialized_start=2815
+  _globals['_DRAINREQUEST']._serialized_end=2871
+  _globals['_RUNNERCONTROL']._serialized_start=2873
+  _globals['_RUNNERCONTROL']._serialized_end=2997
 # @@protoc_insertion_point(module_scope)

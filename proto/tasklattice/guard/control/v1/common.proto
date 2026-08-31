@@ -1,0 +1,172 @@
+syntax = "proto3";
+
+package tasklattice.guard.control.v1;
+
+// Every *_UNSPECIFIED enum value in this file is a wire/default sentinel, not
+// a business decision. Boundary codecs must reject it when the field is
+// required. ValidationStage.NONE is defined separately because "not reached"
+// is a valid observed outcome.
+
+// A stable key/value entry. Repeated pairs are used where order is meaningful;
+// maps are reserved for unordered lookup data.
+message StringPair {
+  string key = 1;
+  string value = 2;
+}
+
+// Runtime direction in which a Guardrail evaluates content.
+enum GuardrailPhase {
+  GUARDRAIL_PHASE_UNSPECIFIED = 0;
+  GUARDRAIL_PHASE_INPUT = 1;
+  GUARDRAIL_PHASE_OUTPUT = 2;
+}
+
+// NeMo rail surface to which a programmable policy binding applies.
+enum RailType {
+  RAIL_TYPE_UNSPECIFIED = 0;
+  RAIL_TYPE_INPUT = 1;
+  RAIL_TYPE_OUTPUT = 2;
+  RAIL_TYPE_RETRIEVAL = 3;
+  RAIL_TYPE_DIALOG = 4;
+  RAIL_TYPE_EXECUTION = 5;
+}
+
+// Product safety preset used when compiling a Guardrail Plan.
+enum SafetyLevel {
+  SAFETY_LEVEL_UNSPECIFIED = 0;
+  SAFETY_LEVEL_BALANCED = 1;
+  SAFETY_LEVEL_STRICT = 2;
+}
+
+// Buffering contract that controls when evaluated model output may be delivered.
+enum OutputDeliveryMode {
+  OUTPUT_DELIVERY_MODE_UNSPECIFIED = 0;
+  OUTPUT_DELIVERY_MODE_INTERRUPTIBLE = 1;
+  OUTPUT_DELIVERY_MODE_WINDOW_BUFFERED = 2;
+  OUTPUT_DELIVERY_MODE_FULL_BUFFERED = 3;
+}
+
+// Cost/latency tier of an evaluator; implementations may vary within a tier.
+enum EvaluationStage {
+  EVALUATION_STAGE_UNSPECIFIED = 0;
+  EVALUATION_STAGE_DETERMINISTIC = 1;
+  EVALUATION_STAGE_FAST_SEMANTIC = 2;
+  EVALUATION_STAGE_DEEP_JUDGE = 3;
+}
+
+// Policy for invoking a deeper evaluator after an earlier result.
+enum EscalationMode {
+  ESCALATION_MODE_UNSPECIFIED = 0;
+  ESCALATION_MODE_NEVER = 1;
+  ESCALATION_MODE_ON_UNCERTAIN = 2;
+  ESCALATION_MODE_ALWAYS = 3;
+}
+
+// Product-level policy domain used to group plan modules.
+enum PolicyModule {
+  POLICY_MODULE_UNSPECIFIED = 0;
+  POLICY_MODULE_DATA_PROTECTION = 1;
+  POLICY_MODULE_INTERACTION_SAFETY = 2;
+  POLICY_MODULE_BUSINESS_ASSURANCE = 3;
+}
+
+// Version of content presented to a plan module after earlier transformations.
+enum ContentView {
+  CONTENT_VIEW_UNSPECIFIED = 0;
+  CONTENT_VIEW_ORIGINAL = 1;
+  CONTENT_VIEW_MASKED = 2;
+  CONTENT_VIEW_PREVIOUS_OUTPUT = 3;
+  CONTENT_VIEW_COMPLETE_OUTPUT = 4;
+}
+
+// Decision taken when required evaluation infrastructure cannot produce a verdict.
+enum FailureMode {
+  FAILURE_MODE_UNSPECIFIED = 0;
+  FAILURE_MODE_FAIL_OPEN = 1;
+  FAILURE_MODE_FAIL_CLOSED = 2;
+}
+
+// Whether a policy only detects findings or may also mutate content.
+enum PolicyExecutionMode {
+  POLICY_EXECUTION_MODE_UNSPECIFIED = 0;
+  POLICY_EXECUTION_MODE_DETECT = 1;
+  POLICY_EXECUTION_MODE_MUTATE = 2;
+}
+
+// Normalized evaluator result before conflict resolution and enforcement.
+enum EvaluatorVerdict {
+  EVALUATOR_VERDICT_UNSPECIFIED = 0;
+  EVALUATOR_VERDICT_SAFE = 1;
+  EVALUATOR_VERDICT_UNSAFE = 2;
+  EVALUATOR_VERDICT_UNCERTAIN = 3;
+  EVALUATOR_VERDICT_ERROR = 4;
+}
+
+// Coordinator decision after evaluating one stage of the execution route.
+enum RouteDecision {
+  ROUTE_DECISION_UNSPECIFIED = 0;
+  ROUTE_DECISION_COMPLETE = 1;
+  ROUTE_DECISION_ENFORCE = 2;
+  ROUTE_DECISION_ESCALATE = 3;
+  ROUTE_DECISION_FAIL_OPEN = 4;
+  ROUTE_DECISION_FAIL_CLOSED = 5;
+}
+
+// Scoring dimension produced by a grounding evaluator.
+enum GroundingFilterType {
+  GROUNDING_FILTER_TYPE_UNSPECIFIED = 0;
+  GROUNDING_FILTER_TYPE_GROUNDING = 1;
+  GROUNDING_FILTER_TYPE_RELEVANCE = 2;
+}
+
+// Normalized evidence support for one generated claim.
+enum ClaimSupport {
+  CLAIM_SUPPORT_UNSPECIFIED = 0;
+  CLAIM_SUPPORT_SUPPORTED = 1;
+  CLAIM_SUPPORT_UNSUPPORTED = 2;
+  CLAIM_SUPPORT_UNCERTAIN = 3;
+}
+
+// Normalized outcome of translating and checking a reasoning policy.
+enum AutomatedReasoningResult {
+  AUTOMATED_REASONING_RESULT_UNSPECIFIED = 0;
+  AUTOMATED_REASONING_RESULT_VALID = 1;
+  AUTOMATED_REASONING_RESULT_INVALID = 2;
+  AUTOMATED_REASONING_RESULT_SATISFIABLE = 3;
+  AUTOMATED_REASONING_RESULT_IMPOSSIBLE = 4;
+  AUTOMATED_REASONING_RESULT_TRANSLATION_AMBIGUOUS = 5;
+  AUTOMATED_REASONING_RESULT_TOO_COMPLEX = 6;
+  AUTOMATED_REASONING_RESULT_NO_TRANSLATIONS = 7;
+}
+
+// Semantic origin of content supplied to a validation case.
+enum TargetSource {
+  TARGET_SOURCE_UNSPECIFIED = 0;
+  TARGET_SOURCE_USER_INPUT = 1;
+  TARGET_SOURCE_RETRIEVED_CONTENT = 2;
+  TARGET_SOURCE_TOOL_OUTPUT = 3;
+  TARGET_SOURCE_MODEL_OUTPUT = 4;
+}
+
+// Business outcome of an executed validation run.
+enum ValidationStatus {
+  VALIDATION_STATUS_UNSPECIFIED = 0;
+  VALIDATION_STATUS_PASSED = 1;
+  VALIDATION_STATUS_FAILED = 2;
+}
+
+// Expected or observed content decision for one validation case.
+enum ValidationDecision {
+  VALIDATION_DECISION_UNSPECIFIED = 0;
+  VALIDATION_DECISION_ALLOW = 1;
+  VALIDATION_DECISION_BLOCK = 2;
+  VALIDATION_DECISION_TRANSFORM = 3;
+  VALIDATION_DECISION_INTERVENE = 4;
+}
+
+// Infrastructure failure expected or observed during one validation case.
+enum ValidationFailure {
+  VALIDATION_FAILURE_UNSPECIFIED = 0;
+  VALIDATION_FAILURE_TIMEOUT = 1;
+  VALIDATION_FAILURE_PROVIDER_FAILURE = 2;
+}

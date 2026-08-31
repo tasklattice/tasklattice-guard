@@ -55,7 +55,8 @@ Runner's internal protection contract and maps decisions back to `NONE`,
 | --- | --- | --- |
 | `controller/` | Controller | React/TanStack UI, Hono API, Better Auth, Drizzle schema/migrations, reconciliation |
 | `runner/` | Runner | FastAPI host, control client, telemetry, artifact store, NeMo compiler/runtime toolkit |
-| `proto/` | Shared contract | Versioned Controller/Runner gRPC protocol |
+| `proto/` | Shared transport contract | Versioned, strongly typed Controller/Runner gRPC protocol |
+| `scripts/` | Contract generation | Deterministic language binding generation and stale-output checks for Proto contracts |
 | `charts/` | Deployment | Images, dependencies, Secrets, Services and workload topology |
 
 The Runner-only NeMo code is nested under `runner/toolkit/`; it is not a third
@@ -84,6 +85,47 @@ serves a protection request.
 Runner initiates a long-lived gRPC connection to Controller. Production uses a
 Runner token plus mutual TLS. A stream begins with registration, followed by
 heartbeat/load reports, artifact ACK/NACK messages, and compile results.
+
+The checked-in files under `proto/tasklattice/guard/control/v1/` are the single
+source of truth for every value transported between Controller and Runner. The
+protocol is split by domain while keeping one versioned package:
+
+- `runner_control.proto` owns the stream service and message envelopes.
+- `runtime.proto` owns the immutable Guardrail Plan and policy bindings.
+- `artifact.proto` owns compilation requests/results and signed artifacts.
+- `evaluation.proto` owns findings and runtime trace evidence.
+- `routing.proto` and `integration.proto` own traffic selection and runtime
+  authentication projections.
+- `validation.proto` owns validation requests, cases, metrics, and results.
+- `common.proto` owns enums reused across those domains.
+- `enforcement_action.proto` owns the closed post-evaluation vocabulary used by
+  the protocol, UI, HTTP DTOs, and Python runtime. Its declaration order is the
+  product display order, its numeric values are conflict priorities, and its
+  comments are the canonical semantic descriptions.
+
+Business objects are typed messages and enums; the stream does not embed JSON
+documents. Registry identifiers such as adapter names and runtime profiles
+remain strings so a new Provider or model implementation can be plugged in
+without changing the protocol. `config_yaml` and `colang_content` are compiled
+NeMo artifacts, not alternate business-object encodings, and therefore remain
+opaque text payloads.
+
+Protocol comments are part of the contract and are emitted into generated
+language documentation. Every top-level message, enum, and service must explain
+its domain role. Every optional field must define what absence means, and fields
+carrying time, units, ranges, deltas, generations, signatures, or result-state
+semantics must document those constraints. Descriptor-based tests enforce this
+minimum; obvious identifiers may remain self-describing.
+
+Generated Python bindings live under `runner/generated/`. Generated TypeScript
+types live under `controller/server/generated/control-protocol/`. Application
+code imports those outputs and translates domain objects only in the two
+protocol boundary codecs; it must not hand-maintain a second wire interface.
+The lowercase TypeScript and Python `EnforcementAction` helpers are also
+generated directly from the Proto descriptor; they are not a second contract.
+Run `make proto-generate` after changing a contract and `make proto-check` in CI
+to reject stale generated code. This release intentionally has no legacy wire
+fields or dual-read/dual-write compatibility path.
 
 Controller sends desired generations, signed artifacts, compile commands, and
 drain commands. A Runner verifies checksum and Ed25519 signature, stages and

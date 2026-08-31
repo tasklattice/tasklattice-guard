@@ -1,11 +1,11 @@
 import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
+import { dirname } from "node:path";
 
 import {
   Server,
   ServerCredentials,
   type ServerDuplexStream,
-  type ServiceDefinition,
   status,
   loadPackageDefinition,
 } from "@grpc/grpc-js";
@@ -13,12 +13,29 @@ import { loadSync } from "@grpc/proto-loader";
 
 import type { ControllerConfig } from "../config.js";
 import type { RunnerLoad } from "../db/schema.js";
-import type { ValidationCaseResult, ValidationMetrics } from "../domain/models.js";
+import type { CompileResult__Output } from "../generated/control-protocol/tasklattice/guard/control/v1/CompileResult.js";
+import type { ControllerMessage } from "../generated/control-protocol/tasklattice/guard/control/v1/ControllerMessage.js";
+import type { RunnerHeartbeat__Output } from "../generated/control-protocol/tasklattice/guard/control/v1/RunnerHeartbeat.js";
+import type { RunnerMessage__Output } from "../generated/control-protocol/tasklattice/guard/control/v1/RunnerMessage.js";
+import type { RunnerControlHandlers } from "../generated/control-protocol/tasklattice/guard/control/v1/RunnerControl.js";
+import type { ValidationResult__Output } from "../generated/control-protocol/tasklattice/guard/control/v1/ValidationResult.js";
+import type { ProtoGrpcType } from "../generated/control-protocol/runner_control.js";
 import type { ControllerMetrics } from "../metrics.js";
 import type { ControlPlaneService } from "../services/control-plane.js";
+import {
+  artifactFromWire,
+  artifactToWire,
+  integrationVerificationToWire,
+  planToWire,
+  trafficScopeToWire,
+  validationCaseFromWire,
+  validationMetricsFromWire,
+  validationStatusFromWire,
+  validationTestToWire,
+} from "./protocol-codec.js";
 
-type WireMessage = Record<string, unknown>;
-type RunnerStream = ServerDuplexStream<WireMessage, WireMessage>;
+type RunnerStream = ServerDuplexStream<RunnerMessage__Output, ControllerMessage>;
+type ControllerBody = Omit<ControllerMessage, "messageId" | "sentAtUnixMs">;
 
 type Connection = {
   stream: RunnerStream;
@@ -28,44 +45,6 @@ type Connection = {
   compilerCapable: boolean;
   appliedGeneration: number;
   lastReconcileGeneration: number;
-};
-
-type Registration = {
-  runnerId: string;
-  bootId: string;
-  poolId: string;
-  runnerVersion: string;
-  nemoVersion: string;
-  maxConcurrency: number;
-  compilerCapable: boolean;
-  labels?: Record<string, string>;
-  appliedGeneration: string | number;
-};
-
-type Heartbeat = {
-  runnerId: string;
-  bootId: string;
-  sequence: string | number;
-  appliedGeneration: string | number;
-  load?: Partial<Record<keyof RunnerLoad, string | number>>;
-};
-
-type CompileResult = {
-  runnerId: string;
-  compileId: string;
-  accepted: boolean;
-  reason?: string;
-  artifact?: Record<string, unknown>;
-};
-
-type ValidationResult = {
-  runnerId: string;
-  runId: string;
-  accepted: boolean;
-  reason?: string;
-  status?: string;
-  metricsJson?: string;
-  resultsJson?: string;
 };
 
 export class RunnerControlServer {
@@ -79,18 +58,18 @@ export class RunnerControlServer {
     private readonly metrics: ControllerMetrics,
   ) {
     const definition = loadSync(config.protoPath, {
+      includeDirs: [dirname(config.protoPath)],
       keepCase: false,
       longs: String,
       enums: String,
       defaults: true,
       oneofs: true,
     });
-    const descriptor = loadPackageDefinition(definition) as unknown as {
-      tasklattice: { guard: { control: { v1: { RunnerControl: { service: ServiceDefinition } } } } };
+    const descriptor = loadPackageDefinition(definition) as unknown as ProtoGrpcType;
+    const handlers: RunnerControlHandlers = {
+      Connect: (stream: RunnerStream) => this.connect(stream),
     };
-    this.grpc.addService(descriptor.tasklattice.guard.control.v1.RunnerControl.service, {
-      connect: (stream: RunnerStream) => this.connect(stream),
-    });
+    this.grpc.addService(descriptor.tasklattice.guard.control.v1.RunnerControl.service, handlers);
   }
 
   async start(): Promise<void> {
@@ -163,8 +142,8 @@ export class RunnerControlServer {
     }
     let connection: Connection | null = null;
     let messageChain = Promise.resolve();
-    stream.on("data", (message: WireMessage) => {
-      const messageType = wireMessageType(message);
+    stream.on("data", (message: RunnerMessage__Output) => {
+      const messageType = message.body ?? "unknown";
       messageChain = messageChain.then(async () => {
         const registered = await this.handleMessage(stream, message, connection);
         if (registered) connection = registered;
@@ -191,12 +170,12 @@ export class RunnerControlServer {
 
   private async handleMessage(
     stream: RunnerStream,
-    message: WireMessage,
+    message: RunnerMessage__Output,
     current: Connection | null,
   ): Promise<Connection | null> {
     if (message.registration) {
       if (current) throw new Error("Runner registered more than once on one stream.");
-      const registration = message.registration as Registration;
+      const registration = message.registration;
       const desiredGeneration = await this.service.registerRunner({
         runnerId: registration.runnerId,
         bootId: registration.bootId,
@@ -232,7 +211,7 @@ export class RunnerControlServer {
     }
     if (!current) throw new Error("Runner must register before sending control messages.");
     if (message.heartbeat) {
-      const heartbeat = message.heartbeat as Heartbeat;
+      const heartbeat = message.heartbeat;
       if (heartbeat.runnerId !== current.runnerId || heartbeat.bootId !== current.bootId) {
         throw new Error("Heartbeat identity does not match the registered stream.");
       }
@@ -254,12 +233,12 @@ export class RunnerControlServer {
       const desired = await this.service.desiredGeneration();
       if (number(heartbeat.appliedGeneration) !== desired) await this.reconcile(current);
     } else if (message.compileResult) {
-      const result = message.compileResult as CompileResult;
+      const result = message.compileResult;
       this.metrics.observeJob("compile", result.accepted);
       await this.handleCompileResult(result);
       await this.reconcileAll();
     } else if (message.validationResult) {
-      const result = message.validationResult as ValidationResult;
+      const result = message.validationResult;
       if (result.runnerId !== current.runnerId) throw new Error("Validation result identity does not match the registered stream.");
       this.metrics.observeJob("validation", result.accepted);
       await this.handleValidationResult(result);
@@ -274,35 +253,37 @@ export class RunnerControlServer {
     return null;
   }
 
-  private async handleCompileResult(result: CompileResult): Promise<void> {
-    const artifact = result.artifact ?? {};
+  private async handleCompileResult(result: CompileResult__Output): Promise<void> {
+    const artifact = result.artifact;
     if (!result.accepted) {
       await this.service.rejectCompile({
         compileId: result.compileId,
-        guardrailId: string(artifact.guardrailId),
-        guardrailVersion: number(artifact.guardrailVersion),
+        guardrailId: artifact?.guardrailId ?? "",
+        guardrailVersion: artifact?.guardrailVersion ?? 0,
         reason: result.reason || "GuardRails 0 rejected the Guardrail plan.",
       });
       return;
     }
+    if (!artifact) throw new Error("Accepted compile result is missing its Artifact.");
+    const content = artifactFromWire(artifact);
     await this.service.acceptCompiledArtifact({
       compileId: result.compileId,
-      guardrailId: string(artifact.guardrailId),
-      guardrailVersion: number(artifact.guardrailVersion),
-      generation: number(artifact.generation),
-      compilerVersion: string(artifact.compilerVersion),
-      nemoVersion: string(artifact.nemoVersion),
-      runtimeProfile: string(artifact.runtimeProfile),
-      plan: jsonObject(artifact.planJson),
-      configYaml: string(artifact.configYaml),
-      colangContent: string(artifact.colangContent),
-      prompts: jsonArray(artifact.promptsJson),
-      actionBindings: jsonArray(artifact.actionBindingsJson),
-      dependencyManifest: jsonArray(artifact.dependencyManifestJson),
+      guardrailId: string(content.guardrailId),
+      guardrailVersion: number(content.guardrailVersion),
+      generation: number(content.generation),
+      compilerVersion: string(content.compilerVersion),
+      nemoVersion: string(content.nemoVersion),
+      runtimeProfile: string(content.runtimeProfile),
+      plan: record(content.plan),
+      configYaml: string(content.configYaml),
+      colangContent: string(content.colangContent),
+      prompts: array(content.prompts),
+      actionBindings: array(content.actionBindings),
+      dependencyManifest: array(content.dependencyManifest),
     });
   }
 
-  private async handleValidationResult(result: ValidationResult): Promise<void> {
+  private async handleValidationResult(result: ValidationResult__Output): Promise<void> {
     if (!result.accepted) {
       await this.service.rejectValidation({
         runId: result.runId,
@@ -310,11 +291,12 @@ export class RunnerControlServer {
       });
       return;
     }
-    const metrics = validationMetrics(result.metricsJson);
-    const results = validationResults(result.resultsJson);
+    if (!result.metrics) throw new Error("Accepted Validation result is missing metrics.");
+    const metrics = validationMetricsFromWire(result.metrics);
+    const results = result.results.map(validationCaseFromWire);
     await this.service.completeValidation({
       runId: result.runId,
-      status: result.status === "passed" ? "passed" : "failed",
+      status: validationStatusFromWire(result.status),
       metrics,
       results,
       ...(result.reason ? { reason: result.reason } : {}),
@@ -336,23 +318,7 @@ export class RunnerControlServer {
       this.write(connection.stream, {
       desiredState: {
         generation: String(desired.generation),
-        artifacts: desired.artifacts.map((artifact) => ({
-          artifactId: artifact.id,
-          guardrailId: artifact.guardrailId,
-          guardrailVersion: artifact.guardrailVersion,
-          generation: String(artifact.generation),
-          compilerVersion: artifact.compilerVersion,
-          nemoVersion: artifact.nemoVersion,
-          runtimeProfile: artifact.runtimeProfile,
-          planJson: JSON.stringify(artifact.plan),
-          configYaml: artifact.configYaml,
-          colangContent: artifact.colangContent,
-          promptsJson: JSON.stringify(artifact.prompts),
-          actionBindingsJson: JSON.stringify(artifact.actionBindings),
-          dependencyManifestJson: JSON.stringify(artifact.dependencyManifest),
-          checksum: artifact.checksum,
-          signature: artifact.signature,
-        })),
+        artifacts: desired.artifacts.map((artifact) => artifactToWire(artifact)),
         disabledGuardrailIds: desired.disabledGuardrailIds,
         disabledIntegrationIds: desired.disabledIntegrationIds,
         deployments: desired.deployments.map((deployment) => ({
@@ -361,12 +327,12 @@ export class RunnerControlServer {
           artifactId: deployment.artifactId,
           integrationId: deployment.integrationId ?? "",
           routeOrder: deployment.routeOrder,
-          trafficScopeJson: JSON.stringify(deployment.trafficScope),
+          trafficScope: trafficScopeToWire(deployment.trafficScope),
         })),
         integrations: desired.integrations.map((integration) => ({
           integrationId: integration.integrationId,
           adapter: integration.adapter,
-          verificationJson: JSON.stringify(integration.verification),
+          verification: integrationVerificationToWire(integration.verification),
         })),
         guardrailLoggingLevels: desired.guardrailLoggingLevels,
       },
@@ -391,7 +357,7 @@ export class RunnerControlServer {
           guardrailId: string(payload.guardrailId),
           guardrailVersion: number(payload.guardrailVersion),
           generation: String(number(payload.generation)),
-          planJson: JSON.stringify(payload.plan ?? {}),
+          plan: planToWire(payload.plan ?? {}),
           runtimeProfile: string(payload.runtimeProfile),
         },
       });
@@ -414,9 +380,9 @@ export class RunnerControlServer {
           guardrailId: string(payload.guardrailId),
           candidateVersion: number(payload.candidateVersion),
           sourceDraftRevision: number(payload.sourceDraftRevision),
-          planJson: JSON.stringify(payload.plan ?? {}),
+          plan: planToWire(payload.plan ?? {}),
           runtimeProfile: string(payload.runtimeProfile),
-          testCasesJson: JSON.stringify(payload.testCases ?? []),
+          testCases: array(payload.testCases).map(validationTestToWire),
         },
       });
       await this.service.markValidationRunning(event.id);
@@ -432,7 +398,7 @@ export class RunnerControlServer {
     await Promise.all(events.map((event) => this.service.markOutboxProcessed(event.id)));
   }
 
-  private write(stream: RunnerStream, body: WireMessage): void {
+  private write(stream: RunnerStream, body: ControllerBody): void {
     stream.write({ messageId: randomUUID(), sentAtUnixMs: String(Date.now()), ...body });
     this.metrics.observeControlMessage("sent", wireMessageType(body));
   }
@@ -455,7 +421,7 @@ export class RunnerControlServer {
   }
 }
 
-function normalizeLoad(load: Heartbeat["load"]): RunnerLoad {
+function normalizeLoad(load: RunnerHeartbeat__Output["load"]): RunnerLoad {
   return {
     inflight: number(load?.inflight),
     maxConcurrency: number(load?.maxConcurrency),
@@ -472,11 +438,10 @@ function normalizeLoad(load: Heartbeat["load"]): RunnerLoad {
   };
 }
 
-function wireMessageType(message: WireMessage): string {
+function wireMessageType(message: ControllerBody): string {
   return [
-    "registration", "heartbeat", "artifactResult", "compileResult", "validationResult",
     "registrationAccepted", "desiredState", "compileRequest", "validationRequest", "drainRequest",
-  ].find((key) => message[key] !== undefined) ?? "unknown";
+  ].find((key) => key in message) ?? "unknown";
 }
 
 function number(value: unknown): number {
@@ -488,76 +453,8 @@ function string(value: unknown): string {
   return typeof value === "string" ? value : String(value ?? "");
 }
 
-function jsonObject(value: unknown): Record<string, unknown> {
-  const parsed = JSON.parse(string(value) || "{}") as unknown;
-  if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") throw new Error("Expected a JSON object.");
-  return parsed as Record<string, unknown>;
+function record(value: unknown): Record<string, unknown> {
+  if (!value || Array.isArray(value) || typeof value !== "object") throw new Error("Expected an object.");
+  return value as Record<string, unknown>;
 }
-
-function jsonArray(value: unknown): unknown[] {
-  const parsed = JSON.parse(string(value) || "[]") as unknown;
-  if (!Array.isArray(parsed)) throw new Error("Expected a JSON array.");
-  return parsed;
-}
-
-function validationMetrics(value: unknown): ValidationMetrics {
-  const parsed = jsonObject(value);
-  return {
-    total: number(parsed.total),
-    passed: number(parsed.passed),
-    complianceRate: number(parsed.complianceRate),
-    falsePositiveRate: number(parsed.falsePositiveRate),
-    falseNegativeRate: number(parsed.falseNegativeRate),
-    deepEscalationRate: number(parsed.deepEscalationRate),
-    p95LatencyMs: number(parsed.p95LatencyMs),
-  };
-}
-
-function validationResults(value: unknown): ValidationCaseResult[] {
-  return jsonArray(value).map((item) => {
-    if (!item || Array.isArray(item) || typeof item !== "object") throw new Error("Validation result entries must be JSON objects.");
-    const row = item as Record<string, unknown>;
-    const phase = string(row.phase);
-    return {
-      caseId: string(row.caseId),
-      name: string(row.name),
-      policyId: string(row.policyId),
-      expectedDecision: string(row.expectedDecision),
-      actualDecision: string(row.actualDecision),
-      passed: Boolean(row.passed),
-      stageReached: string(row.stageReached),
-      latencyMs: number(row.latencyMs),
-      reason: string(row.reason),
-      phase: phase === "output" ? "output" : "input",
-      inputContent: string(row.inputContent),
-      action: string(row.action),
-      outputContent: string(row.outputContent),
-      findings: records(row.findings),
-      trace: records(row.trace),
-      trustedInstruction: string(row.trustedInstruction),
-      targetSource: string(row.targetSource),
-      query: string(row.query),
-      groundingSources: strings(row.groundingSources),
-      expectedReasoningResult: nullableString(row.expectedReasoningResult),
-      actualReasoningResult: nullableString(row.actualReasoningResult),
-      caseType: string(row.caseType),
-      required: Boolean(row.required),
-      expectedFailure: nullableString(row.expectedFailure),
-      actualFailure: nullableString(row.actualFailure),
-      concurrencyGroup: nullableString(row.concurrencyGroup),
-      sourcePolicyId: nullableString(row.sourcePolicyId),
-      sourcePolicyVersion: nullableString(row.sourcePolicyVersion),
-      sourceCaseId: nullableString(row.sourceCaseId),
-      coveredRuleIds: strings(row.coveredRuleIds),
-      matchedRuleIds: strings(row.matchedRuleIds),
-    };
-  });
-}
-
-function records(value: unknown): Array<Record<string, unknown>> {
-  return Array.isArray(value)
-    ? value.filter((item): item is Record<string, unknown> => Boolean(item) && !Array.isArray(item) && typeof item === "object")
-    : [];
-}
-function strings(value: unknown): string[] { return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []; }
-function nullableString(value: unknown): string | null { const result = string(value); return result || null; }
+function array(value: unknown): unknown[] { return Array.isArray(value) ? value : []; }

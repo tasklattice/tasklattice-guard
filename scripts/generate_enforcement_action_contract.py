@@ -1,0 +1,283 @@
+#!/usr/bin/env python3
+"""Generate Controller and Runner helpers from the canonical Proto enum.
+
+``enforcement_action.proto`` is the only human-maintained cross-component
+definition. Generated helpers retain lowercase domain strings, descriptions,
+display order, and conflict precedence without introducing another contract.
+"""
+
+from __future__ import annotations
+
+import argparse
+import difflib
+import re
+import subprocess
+import sys
+import tempfile
+from dataclasses import dataclass
+from pathlib import Path
+
+from google.protobuf import descriptor_pb2
+
+
+ROOT = Path(__file__).resolve().parent.parent
+PROTO_DIR = ROOT / "proto" / "tasklattice" / "guard" / "control" / "v1"
+PROTO_PATH = PROTO_DIR / "enforcement_action.proto"
+TS_OUTPUT = ROOT / "controller" / "shared" / "enforcement-action.generated.ts"
+PYTHON_OUTPUT = (
+    ROOT / "runner" / "toolkit" / "runtime" / "enforcement_action_generated.py"
+)
+@dataclass(frozen=True, slots=True)
+class ActionDefinition:
+    value: str
+    description: str
+    conflict_priority: int
+
+
+def _load_contract() -> tuple[str, list[ActionDefinition]]:
+    with tempfile.TemporaryDirectory() as raw:
+        descriptor_path = Path(raw) / "enforcement_action.pb"
+        subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "grpc_tools.protoc",
+                "-I",
+                str(PROTO_DIR),
+                "--include_source_info",
+                f"--descriptor_set_out={descriptor_path}",
+                str(PROTO_PATH),
+            ],
+            cwd=ROOT,
+            check=True,
+        )
+        descriptor_set = descriptor_pb2.FileDescriptorSet.FromString(
+            descriptor_path.read_bytes()
+        )
+
+    file_descriptor = next(
+        item for item in descriptor_set.file if item.name == PROTO_PATH.name
+    )
+    enum_index, enum = next(
+        (index, item)
+        for index, item in enumerate(file_descriptor.enum_type)
+        if item.name == "EnforcementAction"
+    )
+    comments = {
+        tuple(location.path): " ".join(location.leading_comments.split())
+        for location in file_descriptor.source_code_info.location
+        if location.leading_comments.strip()
+    }
+    description = comments.get((5, enum_index), "")
+    if not description:
+        raise ValueError("EnforcementAction must have a leading Proto comment.")
+
+    prefix = "ENFORCEMENT_ACTION_"
+    actions: list[ActionDefinition] = []
+    for value_index, variant in enumerate(enum.value):
+        if variant.name == f"{prefix}UNSPECIFIED":
+            if variant.number != 0:
+                raise ValueError("EnforcementAction UNSPECIFIED must remain zero.")
+            continue
+        if not variant.name.startswith(prefix) or variant.number <= 0:
+            raise ValueError(f"Invalid EnforcementAction enum value {variant.name}.")
+        value = variant.name.removeprefix(prefix).lower()
+        if not re.fullmatch(r"[a-z][a-z0-9_]*", value):
+            raise ValueError(f"Invalid EnforcementAction domain value {value!r}.")
+        action_description = comments.get((5, enum_index, 2, value_index), "")
+        if not action_description:
+            raise ValueError(f"{variant.name} must have a leading Proto comment.")
+        actions.append(ActionDefinition(
+            value=value,
+            description=action_description,
+            conflict_priority=variant.number,
+        ))
+
+    if not actions:
+        raise ValueError("EnforcementAction must contain at least one action.")
+
+    values = [action.value for action in actions]
+    priorities = [action.conflict_priority for action in actions]
+    if len(values) != len(set(values)):
+        raise ValueError("EnforcementAction values must be unique.")
+    if len(priorities) != len(set(priorities)):
+        raise ValueError("EnforcementAction conflict priorities must be unique.")
+    conflict_actions = sorted(
+        actions, key=lambda action: action.conflict_priority, reverse=True
+    )
+    if conflict_actions[-1].value != "pass":
+        raise ValueError("pass must remain the weakest conflict action.")
+    return description, actions
+
+
+def _ts_string(value: str) -> str:
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
+
+
+def _render_typescript(description: str, actions: list[ActionDefinition]) -> str:
+    conflict_actions = sorted(
+        actions, key=lambda action: action.conflict_priority, reverse=True
+    )
+    values = ",\n  ".join(_ts_string(action.value) for action in actions)
+    conflict_values = ",\n  ".join(
+        _ts_string(action.value) for action in conflict_actions
+    )
+    descriptions = "\n".join(
+        f"  {action.value}: {_ts_string(action.description)}," for action in actions
+    )
+    priorities = "\n".join(
+        f"  {action.value}: {action.conflict_priority}," for action in actions
+    )
+    return f'''/**
+ * @generated by scripts/generate_enforcement_action_contract.py
+ * Source: proto/tasklattice/guard/control/v1/enforcement_action.proto
+ *
+ * {description}
+ * Do not edit this file directly.
+ */
+
+/**
+ * Closed wire values in stable product display order. This is a
+ * post-evaluation directive, not a NeMo Action or verdict.
+ */
+export const enforcementActions = Object.freeze([
+  {values},
+] as const);
+
+export type EnforcementAction = typeof enforcementActions[number];
+
+/** Stable order for UI controls and documentation; it has no conflict semantics. */
+export const enforcementActionDisplayOrder = enforcementActions;
+
+/** Canonical precedence used when independent evaluators request different actions. */
+export const enforcementActionConflictOrder = Object.freeze([
+  {conflict_values},
+] as const satisfies readonly EnforcementAction[]);
+
+/** Human-readable contract semantics; UI translations may provide localized labels. */
+export const enforcementActionDescriptions = Object.freeze({{
+{descriptions}
+}} as const satisfies Readonly<Record<EnforcementAction, string>>);
+
+/** Numeric form of the conflict order for logs, sorting, and contract inspection. */
+export const enforcementActionConflictPriorities = Object.freeze({{
+{priorities}
+}} as const satisfies Readonly<Record<EnforcementAction, number>>);
+'''
+
+
+def _python_string(value: str) -> str:
+    return repr(value)
+
+
+def _render_python(description: str, actions: list[ActionDefinition]) -> str:
+    conflict_actions = sorted(
+        actions, key=lambda action: action.conflict_priority, reverse=True
+    )
+    literal_values = ",\n    ".join(
+        _python_string(action.value) for action in actions
+    )
+    display_values = "\n".join(
+        f"    {_python_string(action.value)}," for action in actions
+    )
+    conflict_values = "\n".join(
+        f"    {_python_string(action.value)}," for action in conflict_actions
+    )
+    descriptions = "\n".join(
+        f"        {_python_string(action.value)}: {_python_string(action.description)},"
+        for action in actions
+    )
+    priorities = "\n".join(
+        f"        {_python_string(action.value)}: {action.conflict_priority},"
+        for action in actions
+    )
+    return f'''# @generated by scripts/generate_enforcement_action_contract.py
+# Source: proto/tasklattice/guard/control/v1/enforcement_action.proto
+#
+# {description}
+# Do not edit this file directly.
+
+from __future__ import annotations
+
+from types import MappingProxyType
+from typing import Final, Literal, Mapping
+
+
+# Closed wire values for a post-evaluation directive. This type is distinct
+# from EvaluatorVerdict, PolicyDecision, and the Python Actions invoked by NeMo.
+EnforcementAction = Literal[
+    {literal_values},
+]
+
+# Stable product display order; it has no conflict-resolution semantics.
+ENFORCEMENT_ACTION_DISPLAY_ORDER: Final[tuple[EnforcementAction, ...]] = (
+{display_values}
+)
+
+# Canonical precedence used when independent evaluators request different actions.
+ENFORCEMENT_ACTION_CONFLICT_ORDER: Final[tuple[EnforcementAction, ...]] = (
+{conflict_values}
+)
+ENFORCEMENT_ACTIONS: Final[frozenset[EnforcementAction]] = frozenset(
+    ENFORCEMENT_ACTION_DISPLAY_ORDER
+)
+
+# Human-readable contract semantics. UI translations remain presentation data.
+ENFORCEMENT_ACTION_DESCRIPTIONS: Final[Mapping[EnforcementAction, str]] = (
+    MappingProxyType({{
+{descriptions}
+    }})
+)
+
+# Numeric precedence is useful for telemetry without making array order implicit.
+ENFORCEMENT_ACTION_CONFLICT_PRIORITIES: Final[Mapping[EnforcementAction, int]] = (
+    MappingProxyType({{
+{priorities}
+    }})
+)
+'''
+
+
+def _write_or_check(path: Path, expected: str, *, check: bool) -> bool:
+    current = path.read_text(encoding="utf-8") if path.exists() else ""
+    if current == expected:
+        return True
+    if check:
+        diff = difflib.unified_diff(
+            current.splitlines(),
+            expected.splitlines(),
+            fromfile=str(path.relative_to(ROOT)),
+            tofile=f"{path.relative_to(ROOT)} (generated)",
+            lineterm="",
+        )
+        print("\n".join(diff))
+        return False
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(expected, encoding="utf-8")
+    print(f"generated {path.relative_to(ROOT)}")
+    return True
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="fail when checked-in bindings do not match the canonical schema",
+    )
+    args = parser.parse_args()
+    description, actions = _load_contract()
+    outputs = {
+        TS_OUTPUT: _render_typescript(description, actions),
+        PYTHON_OUTPUT: _render_python(description, actions),
+    }
+    valid = all(
+        _write_or_check(path, content, check=args.check)
+        for path, content in outputs.items()
+    )
+    return 0 if valid else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

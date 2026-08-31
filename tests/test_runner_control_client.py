@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from runner.control_client import RunnerControlClient
-from runner.generated import runner_control_pb2 as protocol
+from runner import generated as protocol
 
 
 class Store:

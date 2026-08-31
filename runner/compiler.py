@@ -11,8 +11,16 @@ import yaml
 from runner.toolkit.compiler.nemo_compiler import NeMoConfigCompiler
 from runner.toolkit.nemo.builtin_policies import prompt_catalog_yaml
 
-from .generated import runner_control_pb2 as protocol
+from . import generated as protocol
 from .config import RunnerSettings
+from .protocol_codec import (
+    action_bindings_to_proto,
+    artifact_content,
+    dependencies_to_proto,
+    plan_from_proto,
+    plan_to_proto,
+    prompts_to_proto,
+)
 from .serialization import plan_from_dict
 
 
@@ -41,7 +49,7 @@ class DefaultRunnerCompiler:
         self._nemo_version = importlib.metadata.version("nemoguardrails")
 
     def compile(self, request: protocol.CompileRequest) -> protocol.Artifact:
-        payload = json.loads(request.plan_json)
+        payload = plan_from_proto(request.plan)
         payload.update({
             "guardrail_id": request.guardrail_id,
             "guardrail_version": request.guardrail_version,
@@ -56,36 +64,24 @@ class DefaultRunnerCompiler:
         prompts = (yaml.safe_load(snapshot.prompts_yaml) or {}).get("prompts", [])
         action_bindings = [asdict(item) for item in snapshot.action_bindings]
         dependencies = [list(item) for item in snapshot.dependency_manifest]
-        artifact_payload: dict[str, Any] = {
-            "guardrailId": request.guardrail_id,
-            "guardrailVersion": request.guardrail_version,
-            "generation": request.generation,
-            "compilerVersion": snapshot.compiler_version,
-            "nemoVersion": self._nemo_version,
-            "runtimeProfile": snapshot.runtime_profile,
-            "plan": payload,
-            "configYaml": snapshot.config_yaml,
-            "colangContent": snapshot.colang_content,
-            "prompts": prompts,
-            "actionBindings": action_bindings,
-            "dependencyManifest": dependencies,
-        }
-        checksum = hashlib.sha256(_stable_json(artifact_payload).encode()).hexdigest()
-        return protocol.Artifact(
+        artifact = protocol.Artifact(
             guardrail_id=request.guardrail_id,
             guardrail_version=request.guardrail_version,
             generation=request.generation,
             compiler_version=snapshot.compiler_version,
             nemo_version=self._nemo_version,
             runtime_profile=snapshot.runtime_profile,
-            plan_json=json.dumps(payload, sort_keys=True, separators=(",", ":")),
+            plan=plan_to_proto(payload),
             config_yaml=snapshot.config_yaml,
             colang_content=snapshot.colang_content,
-            prompts_json=json.dumps(prompts, sort_keys=True, separators=(",", ":")),
-            action_bindings_json=json.dumps(action_bindings, sort_keys=True, separators=(",", ":")),
-            dependency_manifest_json=json.dumps(dependencies, sort_keys=True, separators=(",", ":")),
-            checksum=checksum,
+            prompts=prompts_to_proto(prompts),
+            action_bindings=action_bindings_to_proto(action_bindings),
+            dependency_manifest=dependencies_to_proto(dependencies),
         )
+        artifact.checksum = hashlib.sha256(
+            _stable_json(artifact_content(artifact)).encode()
+        ).hexdigest()
+        return artifact
 
 
 def _stable_json(value: Any) -> str:

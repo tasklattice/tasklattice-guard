@@ -1,0 +1,193 @@
+syntax = "proto3";
+
+package tasklattice.guard.control.v1;
+
+import "common.proto";
+import "enforcement_action.proto";
+
+// Score and threshold evidence for one grounding or relevance check.
+message GroundingFilterAssessment {
+  GroundingFilterType type = 1;
+  // Normalized evaluator score in [0, 1].
+  double score = 2;
+  // Detection boundary in [0, 1] applied to score.
+  double threshold = 3;
+  // Evaluator's thresholded outcome, retained to avoid consumer reimplementation.
+  bool detected = 4;
+}
+
+// Evidence linking one generated claim to source content.
+message GroundingClaimEvidence {
+  string id = 1;
+  string claim = 2;
+  ClaimSupport support = 3;
+  // Normalized support confidence in [0, 1].
+  double confidence = 4;
+  repeated string source_block_ids = 5;
+  string rationale = 6;
+}
+
+// One reasoning rule cited by an automated-reasoning finding.
+message AutomatedReasoningRuleEvidence {
+  string id = 1;
+  string expression = 2;
+  string description = 3;
+}
+
+// Concrete variable assignment demonstrating a reasoning outcome.
+message AutomatedReasoningScenario {
+  repeated StringPair variable_values = 1;
+}
+
+// Structured translation from natural-language policy and claims.
+message AutomatedReasoningTranslation {
+  repeated string premises = 1;
+  repeated string claims = 2;
+  repeated string untranslated = 3;
+}
+
+// Normalized automated-reasoning evidence for one checked claim set.
+message AutomatedReasoningFinding {
+  string id = 1;
+  AutomatedReasoningResult result = 2;
+  // Normalized confidence in [0, 1] for the translated reasoning result.
+  double confidence = 3;
+  // Structured translation when the evaluator reached translation successfully.
+  optional AutomatedReasoningTranslation translation = 4;
+  repeated AutomatedReasoningRuleEvidence supporting_rules = 5;
+  repeated AutomatedReasoningRuleEvidence contradicting_rules = 6;
+  // Witness assignment under which the claims are true, when one was produced.
+  optional AutomatedReasoningScenario claims_true_scenario = 7;
+  // Counterexample assignment under which the claims are false, when one was produced.
+  optional AutomatedReasoningScenario claims_false_scenario = 8;
+  string message = 9;
+}
+
+// Native model/provider output retained alongside the normalized verdict.
+message ProviderEvidence {
+  // Configured Provider registry ID, not a transport vendor enum.
+  string provider_id = 1;
+  // Exact model identifier sent to the Provider endpoint.
+  string model = 2;
+  // Provider-native verdict before mapping to EvaluatorVerdict.
+  string native_verdict = 3;
+  // Provider-native taxonomy/category when one was returned.
+  optional string native_category = 4;
+  // Mapping quality such as direct, parent, or partial; absence means unreported.
+  optional string mapping_quality = 5;
+}
+
+// Normalized finding emitted by any local or model-backed evaluator.
+message RiskFinding {
+  string risk = 1;
+  string taxonomy_id = 2;
+  EvaluatorVerdict verdict = 3;
+  // Normalized confidence in [0, 1]; absence means the evaluator did not report one.
+  optional double confidence = 4;
+  // Bounded operator-readable evidence; it must not be interpreted as a machine code.
+  string evidence = 5;
+  EnforcementAction recommended_action = 6;
+  // Reviewed replacement content for redact/rewrite; absent when none was produced.
+  optional string replacement = 7;
+  // Policy provenance; absent for evaluators invoked directly by a built-in plan step.
+  optional string policy_id = 8;
+  // Rule provenance within policy_id; absent when the finding is policy-wide.
+  optional string rule_id = 9;
+  repeated GroundingFilterAssessment grounding = 10;
+  repeated GroundingClaimEvidence claims = 11;
+  repeated AutomatedReasoningFinding reasoning = 12;
+  repeated ProviderEvidence provider_evidence = 13;
+}
+
+// Stable execution trace envelope. Provider-specific diagnostic text stays in
+// evidence/detail while scheduling and model timing remain strongly typed.
+message RuntimeTraceStep {
+  string id = 1;
+  // Extensible trace-node category; consumers must tolerate unknown values.
+  string kind = 2;
+  string name = 3;
+  // Extensible execution status; structured verdict/route fields carry decisions.
+  string status = 4;
+  string detail = 5;
+  // Wall-clock duration of this trace node in milliseconds.
+  int32 duration_ms = 6;
+  // Parent trace-node ID; absence identifies a root node.
+  optional string parent_id = 7;
+  // Bounded evidence captured for this node; absence means none was retained.
+  optional string evidence = 8;
+  // Trace stages include transport/model lifecycle stages in addition to the
+  // three plan evaluation stages, so this remains an extensible identifier.
+  optional string stage = 9;
+  // Normalized evaluator verdict when this node performed evaluation.
+  optional EvaluatorVerdict verdict = 10;
+  // Coordinator route when this node made a routing decision.
+  optional RouteDecision route = 11;
+  // Risk registry ID when this node is risk-specific.
+  optional string risk = 12;
+  // Normalized confidence in [0, 1], when reported by this node.
+  optional double confidence = 13;
+  // Content-block correlation ID when evaluation used a structured content view.
+  optional string content_block_id = 14;
+  // GuardrailPlanModule.id when this node belongs to a plan module.
+  optional string module_id = 15;
+  // Guardrail identity when this node is scoped to one Guardrail.
+  optional string guardrail_id = 16;
+  // Immutable Guardrail version associated with this trace node.
+  optional int32 guardrail_version = 17;
+  // Policy provenance when this node executes a programmable policy.
+  optional string policy_id = 18;
+  // Policy version; present only together with policy_id.
+  optional string policy_version = 19;
+  // NeMo rail surface when this node executes a rail binding.
+  optional RailType rail_type = 20;
+  // Compiled policy flow name when this node executes a flow.
+  optional string flow_name = 21;
+  // Registered Action name when this node invokes an Action.
+  optional string action_name = 22;
+  // Registered Action version; present only together with action_name.
+  optional string action_version = 23;
+  // Extensible node-specific outcome; not a substitute for verdict or route.
+  optional string outcome = 24;
+  // Configured node deadline in milliseconds, when a deadline applies.
+  optional int32 timeout_ms = 25;
+  // True when this node ended because its configured deadline expired.
+  bool timed_out = 26;
+  // Scheduler concurrency group when this node ran in an explicit parallel group.
+  optional string parallel_group = 27;
+  // Runtime engine registry ID, for example iorails or llmrails.
+  optional string engine = 28;
+  // Extensible runtime registry identifier active for this node.
+  optional string runtime_profile = 29;
+  // Artifact/config checksum active while this node executed.
+  optional string config_checksum = 30;
+  // Provider-reported or measured aggregate latency in milliseconds.
+  int32 provider_latency_ms = 31;
+  // Sum of individual Provider/model call durations; may exceed wall time under concurrency.
+  int32 provider_work_ms = 32;
+  // Union wall time spent waiting on Provider/model calls in milliseconds.
+  int32 model_wait_ms = 33;
+  // Provider registry ID when this node made a remote/local model call.
+  optional string provider_name = 34;
+  // Exact model identifier used for the call.
+  optional string model_name = 35;
+  // Extensible model operation identifier, such as classify or generate.
+  optional string model_operation = 36;
+  // Bounded normalized/native model result summary, when retained.
+  optional string model_result = 37;
+  // Stable technical error category; absence means no model error was observed.
+  optional string error_type = 38;
+  // Milliseconds from model-call start to first token; absent for non-streaming calls.
+  optional int32 model_time_to_first_token_ms = 39;
+  // Provider-reported input token count, or zero when unavailable.
+  int32 model_input_tokens = 40;
+  // Provider-reported output token count, or zero when unavailable.
+  int32 model_output_tokens = 41;
+  // Number of retries after the initial model attempt.
+  int32 model_retries = 42;
+  // Total retry backoff time in milliseconds.
+  int32 model_backoff_ms = 43;
+  // Milliseconds from the request trace origin to the first model-call start.
+  optional int32 started_offset_ms = 44;
+  // Milliseconds from the request trace origin to the last model-call finish.
+  optional int32 finished_offset_ms = 45;
+}

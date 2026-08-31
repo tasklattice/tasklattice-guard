@@ -21,8 +21,13 @@ from runner.toolkit.runtime.contracts import (
     RuntimeTraceStep,
 )
 
+from . import generated as protocol
+from .protocol_codec import (
+    artifact_content,
+    integration_verification_from_proto,
+    traffic_scope_from_proto,
+)
 from .serialization import config_from_dict, plan_from_dict
-from .generated import runner_control_pb2 as protocol
 
 
 @dataclass(frozen=True, slots=True)
@@ -180,15 +185,12 @@ class ArtifactStore:
         if not integration:
             return False
         expected_digests: list[str] = []
-        legacy_digest = integration.get("credentialSha256")
-        if isinstance(legacy_digest, str):
-            expected_digests.append(legacy_digest)
         credentials = integration.get("credentials")
         if isinstance(credentials, list):
             for item in credentials:
                 if not isinstance(item, dict):
                     continue
-                if item.get("revokedAt") is not None or item.get("revoked_at") is not None:
+                if item.get("revokedAt") is not None:
                     continue
                 digest = item.get("sha256")
                 if isinstance(digest, str):
@@ -228,7 +230,7 @@ class ArtifactStore:
                 artifact_id=item.artifact_id,
                 integration_id=item.integration_id or None,
                 route_order=item.route_order,
-                traffic_scope=json.loads(item.traffic_scope_json or "{}"),
+                traffic_scope=traffic_scope_from_proto(item.traffic_scope),
             )
             for item in desired_state.deployments
         )
@@ -237,9 +239,7 @@ class ArtifactStore:
             raise ValueError("Desired state references unavailable Artifacts: " + ", ".join(sorted(missing)))
         integrations: dict[str, dict[str, Any]] = {}
         for item in desired_state.integrations:
-            verification = json.loads(item.verification_json or "{}")
-            if not isinstance(verification, dict):
-                raise ValueError(f"Integration {item.integration_id} verification must be an object.")
+            verification = integration_verification_from_proto(item.verification)
             integrations[item.integration_id] = {**verification, "_adapter": item.adapter}
         registry = self._registry
         if registry is None:
@@ -257,7 +257,8 @@ class ArtifactStore:
         registry.reload()
 
     def _artifact_from_message(self, message: Any) -> RuntimeArtifact:
-        plan_payload = json.loads(message.plan_json)
+        content = artifact_content(message)
+        plan_payload = content["plan"]
         config_payload = {
             "guardrail_id": message.guardrail_id,
             "guardrail_version": message.guardrail_version,
@@ -266,26 +267,13 @@ class ArtifactStore:
             "output_delivery": plan_payload.get("output_delivery", "full_buffered"),
             "config_yaml": message.config_yaml,
             "colang_content": message.colang_content,
-            "prompts_yaml": _prompts_yaml(message.prompts_json),
-            "action_bindings": json.loads(message.action_bindings_json or "[]"),
-            "dependency_manifest": json.loads(message.dependency_manifest_json or "[]"),
+            "prompts_yaml": _prompts_yaml(content["prompts"]),
+            "action_bindings": content["actionBindings"],
+            "dependency_manifest": content["dependencyManifest"],
             "runtime_engine": "iorails" if message.runtime_profile == "iorails_native" else "llmrails",
             "colang_version": "2.x" if message.runtime_profile == "llmrails_colang2_programmable" else "1.0",
         }
-        canonical = _stable_json({
-            "guardrailId": message.guardrail_id,
-            "guardrailVersion": message.guardrail_version,
-            "generation": int(message.generation),
-            "compilerVersion": message.compiler_version,
-            "nemoVersion": message.nemo_version,
-            "runtimeProfile": message.runtime_profile,
-            "plan": plan_payload,
-            "configYaml": message.config_yaml,
-            "colangContent": message.colang_content,
-            "prompts": json.loads(message.prompts_json or "[]"),
-            "actionBindings": config_payload["action_bindings"],
-            "dependencyManifest": config_payload["dependency_manifest"],
-        })
+        canonical = _stable_json(content)
         checksum = hashlib.sha256(canonical.encode()).hexdigest()
         if not hmac.compare_digest(checksum, message.checksum):
             raise ValueError(f"Artifact {message.artifact_id} checksum does not match its content.")
@@ -326,8 +314,7 @@ class ArtifactStore:
         return desired_state
 
 
-def _prompts_yaml(raw: str) -> str:
-    prompts = json.loads(raw or "[]")
+def _prompts_yaml(prompts: list[dict[str, Any]]) -> str:
     if not prompts:
         return ""
     import yaml

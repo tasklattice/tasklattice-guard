@@ -2,16 +2,24 @@ syntax = "proto3";
 
 package tasklattice.guard.control.v1;
 
+import "artifact.proto";
+import "integration.proto";
+import "routing.proto";
+import "validation.proto";
+
 // RunnerControl is the only state-distribution channel between the control
-// plane and data plane. Runners initiate the stream so they can live behind a
-// private network or NAT. Messages are desired-state notifications; the
-// database remains authoritative and reconnecting runners always reconcile.
+// plane and data plane. Every business payload is a typed imported message;
+// the stream envelope contains no embedded JSON documents.
 service RunnerControl {
   rpc Connect(stream RunnerMessage) returns (stream ControllerMessage);
 }
 
+// Runner-to-Controller stream envelope. Registration must be the first body;
+// every later body belongs to the registered runner and boot identity.
 message RunnerMessage {
+  // Sender-generated correlation/deduplication identifier for this envelope.
   string message_id = 1;
+  // UTC Unix epoch time in milliseconds when the envelope was created.
   int64 sent_at_unix_ms = 2;
   oneof body {
     RunnerRegistration registration = 10;
@@ -22,8 +30,11 @@ message RunnerMessage {
   }
 }
 
+// Controller-to-Runner stream envelope containing commands and desired state.
 message ControllerMessage {
+  // Sender-generated correlation/deduplication identifier for this envelope.
   string message_id = 1;
+  // UTC Unix epoch time in milliseconds when the envelope was created.
   int64 sent_at_unix_ms = 2;
   oneof body {
     RegistrationAccepted registration_accepted = 10;
@@ -34,54 +45,77 @@ message ControllerMessage {
   }
 }
 
+// Process identity and capabilities announced once when opening a stream.
 message RunnerRegistration {
+  // Stable logical instance identifier, normally derived from StatefulSet identity.
   string runner_id = 1;
+  // Unique process-start identifier used to reject messages from an older boot.
   string boot_id = 2;
+  // Logical Runner pool whose desired state this stream receives.
   string pool_id = 3;
   string runner_version = 4;
+  // NeMo Guardrails runtime version loaded by this process.
   string nemo_version = 5;
+  // Admission-slot capacity advertised by this Runner; must be greater than zero.
   int32 max_concurrency = 6;
+  // True only when the Runner may execute CompileRequest and ValidationRequest.
   bool compiler_capable = 7;
   map<string, string> labels = 8;
+  // Last atomically activated desired-state generation, or zero before first sync.
   int64 applied_generation = 9;
 }
 
+// Registration acknowledgement and heartbeat contract returned by Controller.
 message RegistrationAccepted {
+  // Current authoritative Controller generation for the registered pool.
   int64 desired_generation = 1;
+  // Maximum interval in seconds between Runner heartbeats.
   int32 heartbeat_interval_seconds = 2;
 }
 
+// Monotonic liveness, convergence, and load observation for one Runner boot.
 message RunnerHeartbeat {
   string runner_id = 1;
   string boot_id = 2;
+  // Strictly increasing within one boot; stale or duplicate values are ignored.
   int64 sequence = 3;
+  // Last atomically activated desired-state generation at observation time.
   int64 applied_generation = 4;
   RunnerLoad load = 5;
 }
 
+// Delta counters and point-in-time pressure measurements for a fixed interval.
 message RunnerLoad {
   // Aggregate requests currently holding admission slots across active
   // Guardrail runtimes. This is not the HTTP socket/in-flight count.
   int32 inflight = 1;
-  // Aggregate admission-slot capacity for the same active runtime set.
+  // Admission-slot denominator used with inflight; must be greater than zero.
   int32 max_concurrency = 2;
-  // Requests waiting to acquire an admission slot.
+  // Requests waiting for an admission slot at observation time.
   int32 queue_depth = 3;
+  // Requests completed during observation_interval_ms; resets each interval.
   int64 requests_delta = 4;
+  // Technical errors during observation_interval_ms; policy blocks are excluded.
   int64 errors_delta = 5;
+  // Request timeouts during observation_interval_ms.
   int64 timeouts_delta = 6;
+  // Request latency p95 in milliseconds for this observation interval.
   double latency_p95_ms = 7;
+  // Process CPU utilization ratio in [0, 1].
   double cpu_utilization = 8;
+  // Process memory utilization ratio in [0, 1].
   double memory_utilization = 9;
   int32 active_guardrails = 10;
   int32 compile_queue_depth = 11;
-  // Actual duration covered by the delta counters. This prevents reconnects,
-  // immediate reconciliation heartbeats, and scheduling delay from skewing RPS.
+  // Exact duration in milliseconds covered by the delta counters.
   int64 observation_interval_ms = 12;
 }
 
+// Complete generation snapshot a Runner verifies, prewarms, and activates atomically.
 message DesiredState {
+  // Authoritative snapshot generation; activation is atomic across all fields.
   int64 generation = 1;
+  // Complete artifact set required by this pool at generation.
   repeated Artifact artifacts = 2;
   repeated string disabled_guardrail_ids = 3;
   repeated string disabled_integration_ids = 4;
@@ -90,85 +124,42 @@ message DesiredState {
   map<string, string> guardrail_logging_levels = 7;
 }
 
+// Ordered traffic route from one Integration to one immutable artifact.
 message DeploymentRoute {
   string deployment_id = 1;
   string guardrail_id = 2;
   string artifact_id = 3;
   string integration_id = 4;
+  // Ascending precedence within an Integration; the first matching route wins.
   int32 route_order = 5;
-  string traffic_scope_json = 6;
+  TrafficScope traffic_scope = 6;
 }
 
+// Runtime-only Integration projection; it contains no plaintext credential.
 message IntegrationRuntime {
   string integration_id = 1;
+  // Adapter IDs are an extensible registry, not a closed enum.
   string adapter = 2;
-  string verification_json = 3;
+  IntegrationVerification verification = 3;
 }
 
-message Artifact {
-  string artifact_id = 1;
-  string guardrail_id = 2;
-  int32 guardrail_version = 3;
-  int64 generation = 4;
-  string compiler_version = 5;
-  string nemo_version = 6;
-  string runtime_profile = 7;
-  string plan_json = 8;
-  string config_yaml = 9;
-  string colang_content = 10;
-  string prompts_json = 11;
-  string action_bindings_json = 12;
-  string dependency_manifest_json = 13;
-  string checksum = 14;
-  string signature = 15;
-}
-
+// ACK/NACK for verifying, prewarming, and activating an artifact generation.
+// A NACK preserves the Runner's last-known-good active generation.
 message ArtifactResult {
   string runner_id = 1;
   string artifact_id = 2;
+  // Desired-state generation whose artifact was verified and staged.
   int64 generation = 3;
+  // True only after verification and prewarming have completed successfully.
   bool accepted = 4;
+  // Human-readable NACK detail; empty for an ACK.
   string reason = 5;
 }
 
-message CompileRequest {
-  string compile_id = 1;
-  string guardrail_id = 2;
-  int32 guardrail_version = 3;
-  int64 generation = 4;
-  string plan_json = 5;
-  string runtime_profile = 6;
-}
-
-message CompileResult {
-  string runner_id = 1;
-  string compile_id = 2;
-  bool accepted = 3;
-  string reason = 4;
-  Artifact artifact = 5;
-}
-
-message ValidationRequest {
-  string run_id = 1;
-  string guardrail_id = 2;
-  int32 candidate_version = 3;
-  int32 source_draft_revision = 4;
-  string plan_json = 5;
-  string runtime_profile = 6;
-  string test_cases_json = 7;
-}
-
-message ValidationResult {
-  string runner_id = 1;
-  string run_id = 2;
-  bool accepted = 3;
-  string reason = 4;
-  string status = 5;
-  string metrics_json = 6;
-  string results_json = 7;
-}
-
+// Graceful shutdown command with an absolute admission deadline.
 message DrainRequest {
+  // Operator-visible explanation for the drain.
   string reason = 1;
+  // UTC Unix epoch deadline in milliseconds after which new work must be rejected.
   int64 deadline_unix_ms = 2;
 }
