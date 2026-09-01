@@ -1,9 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Activity, Cable, CircleHelp, FlaskConical, History, LayoutDashboard, LibraryBig, ListChecks, Rocket, ScrollText, Server, ShieldCheck } from "lucide-react";
+import { Activity, Cable, ChevronUp, CircleHelp, FlaskConical, History, LayoutDashboard, LibraryBig, ListChecks, Rocket, ScrollText, Server, Settings, ShieldCheck } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { AccountMenu } from "@/components/account-menu";
 import {
   Sidebar,
   SidebarContent,
@@ -16,6 +16,9 @@ import {
   SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
   SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar";
@@ -57,8 +60,13 @@ const navigation = [
 
 export function ControlPlaneSidebar() {
   const { t } = useTranslation();
-  const { isMobile, setOpenMobile, state } = useSidebar();
+  const { isMobile, setOpen, setOpenMobile, state } = useSidebar();
   const pathname = useRouterState({ select: (routerState) => routerState.location.pathname });
+  const settingsActive = pathname.startsWith("/settings/");
+  const [settingsOpen, setSettingsOpen] = useState(settingsActive);
+  useEffect(() => {
+    if (settingsActive) setSettingsOpen(true);
+  }, [settingsActive]);
   const guardrails = useQuery({ queryKey: ["controller", "guardrails"], queryFn: listControllerGuardrails });
   const deployments = useQuery({ queryKey: ["controller", "deployments"], queryFn: listControllerDeployments });
   const integrations = useQuery({ queryKey: ["controller", "integrations"], queryFn: listControllerIntegrations });
@@ -102,7 +110,7 @@ export function ControlPlaneSidebar() {
                           asChild
                           isActive={active}
                           tooltip={label}
-                          className="h-10 rounded-lg px-2.5 text-[13px] text-sidebar-foreground/80 data-active:bg-accent data-active:font-medium data-active:text-accent-foreground group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:size-10! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0!"
+                          className="h-11 rounded-lg px-2.5 text-[13px] text-sidebar-foreground/80 data-active:bg-accent data-active:font-medium data-active:text-accent-foreground group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:size-11! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0!"
                         >
                           <Link
                             to={item.to}
@@ -130,7 +138,7 @@ export function ControlPlaneSidebar() {
                   asChild
                   isActive={pathname === "/help"}
                   tooltip={t("nav.helpCenter")}
-                  className="h-10 rounded-lg px-2.5 text-[13px] text-sidebar-foreground/80 data-active:bg-accent data-active:font-medium data-active:text-accent-foreground group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:size-10! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0!"
+                  className="h-11 rounded-lg px-2.5 text-[13px] text-sidebar-foreground/80 data-active:bg-accent data-active:font-medium data-active:text-accent-foreground group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:size-11! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0!"
                 >
                   <Link
                     to="/help"
@@ -148,7 +156,45 @@ export function ControlPlaneSidebar() {
       </SidebarContent>
 
       <SidebarFooter className="gap-1.5 border-t border-sidebar-border p-2.5">
-        <AccountMenu collapsed={!isMobile && state === "collapsed"} onNavigate={() => setOpenMobile(false)} />
+        <SidebarMenu>
+          <SidebarMenuItem className="flex flex-col">
+            <SidebarMenuButton
+              type="button"
+              tooltip={t("nav.settings")}
+              aria-expanded={settingsOpen}
+              aria-controls="settings-navigation"
+              className="h-11 rounded-lg px-2.5 text-[13px] text-sidebar-foreground/80 focus-visible:ring-1 focus-visible:ring-inset hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:size-11! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0!"
+              onClick={() => {
+                if (!isMobile && state === "collapsed") {
+                  setOpen(true);
+                  setSettingsOpen(true);
+                  return;
+                }
+                setSettingsOpen((open) => !open);
+              }}
+            >
+              <Settings className="size-4.5" strokeWidth={settingsActive ? 2.2 : 1.8} />
+              <span className="group-data-[collapsible=icon]:hidden">{t("nav.settings")}</span>
+              <ChevronUp className={`ml-auto size-4 transition-transform group-data-[collapsible=icon]:hidden ${settingsOpen ? "rotate-180" : ""}`} />
+            </SidebarMenuButton>
+            {settingsOpen ? (
+              <SidebarMenuSub id="settings-navigation" className="order-first mb-1 pt-0 pb-1">
+                <SidebarMenuSubItem>
+                  <SidebarMenuSubButton
+                    asChild
+                    isActive={pathname === "/settings/status"}
+                    className="h-11 text-[13px] focus-visible:ring-1 focus-visible:ring-inset"
+                  >
+                    <Link to="/settings/status" onClick={() => setOpenMobile(false)}>
+                      <Activity />
+                      <span>{t("nav.status")}</span>
+                    </Link>
+                  </SidebarMenuSubButton>
+                </SidebarMenuSubItem>
+              </SidebarMenuSub>
+            ) : null}
+          </SidebarMenuItem>
+        </SidebarMenu>
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>

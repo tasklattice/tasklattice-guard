@@ -2220,7 +2220,6 @@ export class ControlPlaneService {
   }
 
   private async validateGuardrailDraft(purpose: string, draft: GuardrailDraftConfig): Promise<ProgrammablePolicySnapshot[]> {
-    if (!purpose.trim()) throw new ValidationError("A Guardrail requires a clear purpose.");
     try {
       const programmablePolicies = await this.resolveProgrammablePolicies(draft);
       buildGuardrailPlan({

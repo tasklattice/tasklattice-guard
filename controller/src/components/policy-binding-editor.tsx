@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState, type ComponentProps } from "react";
 import { ChevronDown, ShieldCheck } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
@@ -92,8 +92,16 @@ export function PolicyBindingEditor({
             {value.map((binding) => {
               const policy = policies.find((item) => item.id === binding.policy_id);
               if (!policy) return null;
+              const validation = getPolicyBindingValidation(binding, policy);
+              const validationLabel = validation.missingRequiredParameters.length
+                ? t("guardrailWizard.missingRequiredFieldCount", { count: validation.missingRequiredParameters.length })
+                : validation.missingReasoningPolicy
+                  ? t("guardrailWizard.reasoningConfigurationRequired")
+                  : validation.missingRules
+                    ? t("guardrailWizard.noEnabledRules")
+                    : null;
               return (
-                <details key={binding.policy_id} className="group">
+                <AutoOpenDetails key={binding.policy_id} className="group" autoOpen={Boolean(validationLabel)}>
                   <summary
                     aria-label={t("guardrailWizard.boundPolicyDetails", { name: policy.name })}
                     className="flex min-h-14 cursor-pointer list-none items-center gap-3 px-4 py-3 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [&::-webkit-details-marker]:hidden"
@@ -105,7 +113,11 @@ export function PolicyBindingEditor({
                     }}
                   >
                     <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><ShieldCheck className="size-4" /></span>
-                    <span className="min-w-0 flex-1"><strong className="block truncate text-sm">{policy.name}</strong><span className="font-mono text-xs text-muted-foreground">{binding.policy_id}@{binding.policy_version}</span></span>
+                    <span className="min-w-0 flex-1">
+                      <strong className="block truncate text-sm">{policy.name}</strong>
+                      <span className="font-mono text-xs text-muted-foreground">{binding.policy_id}@{binding.policy_version}</span>
+                      {validationLabel ? <span className="mt-1 block text-xs font-medium text-destructive">{validationLabel}</span> : null}
+                    </span>
                     <Badge variant="outline">{t("guardrailWizard.enabledRuleCount", { count: binding.enabled_rule_ids.length })}</Badge>
                     <ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
                   </summary>
@@ -194,7 +206,7 @@ export function PolicyBindingEditor({
                       </div>
                     </section>
                   </div>
-                </details>
+                </AutoOpenDetails>
               );
             })}
           </div>
@@ -217,6 +229,26 @@ export function defaultPolicyBinding(policy: Policy): GuardrailPolicyBinding {
     enabled_rails: policy.rails,
     reasoning_policy: policy.id === "builtin-automated-reasoning" ? { policy_id: "", policy_version: "", confidence_threshold: 0.8 } : null,
   };
+}
+
+export function getPolicyBindingValidation(binding: GuardrailPolicyBinding, policy: Policy) {
+  const missingRequiredParameters = policy.parameters.filter((parameter) => (
+    parameter.required && !(binding.parameter_values[parameter.name] ?? parameter.default ?? "").trim()
+  ));
+  return {
+    missingRequiredParameters,
+    missingReasoningPolicy: binding.policy_id === "builtin-automated-reasoning"
+      && !(binding.reasoning_policy?.policy_id.trim() && binding.reasoning_policy.policy_version.trim()),
+    missingRules: binding.enabled_rule_ids.length === 0,
+  };
+}
+
+function AutoOpenDetails({ autoOpen, ...props }: Omit<ComponentProps<"details">, "open"> & { autoOpen: boolean }) {
+  const [open, setOpen] = useState(autoOpen);
+  useEffect(() => {
+    if (autoOpen) setOpen(true);
+  }, [autoOpen]);
+  return <details {...props} open={open} onToggle={(event) => setOpen(event.currentTarget.open)} />;
 }
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {

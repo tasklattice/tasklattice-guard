@@ -21,6 +21,9 @@ vi.mock("react-i18next", () => ({
         "guardrailWizard.boundPoliciesDescription": "Pinned Policy bindings.",
         "guardrailWizard.boundPolicyDetails": "Review Rule details for {{name}}",
         "guardrailWizard.enabledRuleCount": "{{count}} Rules",
+        "guardrailWizard.missingRequiredFieldCount": "Required fields remaining: {{count}}",
+        "guardrailWizard.reasoningConfigurationRequired": "Reasoning configuration required",
+        "guardrailWizard.noEnabledRules": "No Rules enabled",
         "guardrailWizard.policyAction": "Policy action",
         "guardrailWizard.usePolicyBehavior": "Use Policy behavior",
         "guardrailWizard.enabledRails": "Enabled Rails",
@@ -93,6 +96,16 @@ const policy = {
   output_delivery: "window_buffered",
 } satisfies Policy;
 
+const requiredPolicy = {
+  ...policy,
+  id: "aviation-operations-security",
+  name: "Aviation Operations Security",
+  parameters: [
+    { name: "brand_name", label: "Your Airline / Brand Name", kind: "text", required: true, placeholder: "e.g. Acme Airlines", description: "" },
+    { name: "competitors", label: "Competitors", kind: "textarea", required: true, placeholder: "One competitor per line", description: "Reviewed competitors." },
+  ],
+} satisfies Policy;
+
 function Harness({ policies = [policy] }: { policies?: Policy[] }) {
   const [bindings, setBindings] = useState<GuardrailPolicyBinding[]>([]);
   return <PolicyBindingEditor policies={policies} value={bindings} onChange={setBindings} />;
@@ -147,5 +160,25 @@ describe("PolicyBindingEditor", () => {
     expect(screen.getByRole("option", { name: /Prompt injection Policy/ })).toBeTruthy();
     expect(screen.queryByRole("option", { name: /Customer data Policy/ })).toBeNull();
     expect(screen.getByText(/OWASP LLM 2025/)).toBeTruthy();
+  });
+
+  it("opens a newly selected Policy when required configuration is missing", () => {
+    render(<Harness policies={[requiredPolicy]} />);
+
+    fireEvent.focus(screen.getByRole("combobox", { name: "Select Policies" }));
+    fireEvent.click(screen.getByRole("option", { name: /Aviation Operations Security/ }));
+
+    const details = document.querySelector("details");
+    expect(details).not.toBeNull();
+    expect(details!.open).toBe(true);
+    expect(screen.getByText("Required fields remaining: 2")).toBeTruthy();
+    expect(screen.getByPlaceholderText("e.g. Acme Airlines")).toBeTruthy();
+    expect(screen.getByPlaceholderText("One competitor per line")).toBeTruthy();
+
+    fireEvent.change(screen.getByPlaceholderText("e.g. Acme Airlines"), { target: { value: "TaskLattice Air" } });
+    fireEvent.change(screen.getByPlaceholderText("One competitor per line"), { target: { value: "Example Air" } });
+
+    expect(screen.queryByText("Required fields remaining: 2")).toBeNull();
+    expect(details!.open).toBe(true);
   });
 });

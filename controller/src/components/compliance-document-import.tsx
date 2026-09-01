@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 
 const MAX_FILES = 3;
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
+const MAX_TOTAL_BYTES = 10 * 1024 * 1024;
 const SUPPORTED_EXTENSIONS = [".doc", ".docx", ".txt"];
 
 export function ComplianceDocumentImport({
@@ -76,6 +77,10 @@ export function ComplianceDocumentImport({
     }
     if (next.length > MAX_FILES) {
       setSelectionError(t("guardrailWizard.documentLimit", { count: MAX_FILES }));
+      return;
+    }
+    if (next.reduce((total, file) => total + file.size, 0) > MAX_TOTAL_BYTES) {
+      setSelectionError(t("guardrailWizard.documentTotalTooLarge"));
       return;
     }
     setFiles(next);
@@ -140,27 +145,33 @@ export function ComplianceDocumentImport({
         ) : null}
 
         {files.length ? (
-          <div className="divide-y rounded-lg border" aria-label={t("guardrailWizard.documentSelectedFiles")}>
-            {files.map((file) => (
-              <div key={`${file.name}-${file.size}-${file.lastModified}`} className="flex min-w-0 items-center gap-3 px-3 py-2.5">
-                <FileText className="size-4 shrink-0 text-muted-foreground" />
-                <span className="min-w-0 flex-1">
-                  <strong className="block truncate text-xs font-medium">{file.name}</strong>
-                  <span className="mt-0.5 block text-[11px] text-muted-foreground">{formatBytes(file.size, i18n.language)}</span>
-                </span>
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="ghost"
-                  className="size-11"
-                  disabled={analyze.isPending}
-                  aria-label={t("guardrailWizard.documentRemove", { name: file.name })}
-                  onClick={() => removeFile(file)}
-                >
-                  <Trash2 />
-                </Button>
-              </div>
-            ))}
+          <div className="overflow-hidden rounded-lg border" aria-label={t("guardrailWizard.documentSelectedFiles")}>
+            <div className="flex items-center justify-between gap-3 border-b bg-muted/20 px-3 py-2">
+              <strong className="text-xs font-medium">{t("guardrailWizard.documentSelectedCount", { count: files.length })}</strong>
+              <span className="text-[11px] text-muted-foreground">{formatBytes(files.reduce((total, file) => total + file.size, 0), i18n.language)} / 10 MB</span>
+            </div>
+            <div className="divide-y">
+              {files.map((file) => (
+                <div key={`${file.name}-${file.size}-${file.lastModified}`} className="flex min-w-0 items-center gap-3 px-3 py-2.5">
+                  <FileText className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="min-w-0 flex-1">
+                    <strong className="block truncate text-xs font-medium">{file.name}</strong>
+                    <span className="mt-0.5 block text-[11px] text-muted-foreground">{formatBytes(file.size, i18n.language)}</span>
+                  </span>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="size-11"
+                    disabled={analyze.isPending}
+                    aria-label={t("guardrailWizard.documentRemove", { name: file.name })}
+                    onClick={() => removeFile(file)}
+                  >
+                    <Trash2 />
+                  </Button>
+                </div>
+              ))}
+            </div>
           </div>
         ) : null}
 
@@ -172,7 +183,7 @@ export function ComplianceDocumentImport({
             <p className="text-xs leading-5 text-muted-foreground">{t("guardrailWizard.documentPrivacy", { analyst })}</p>
             <Button type="button" className="min-h-11" disabled={!available || analyze.isPending} onClick={() => analyze.mutate()}>
               {analyze.isPending ? <LoaderCircle className="animate-spin" /> : <Sparkles />}
-              {t(analyze.isPending ? "guardrailWizard.documentAnalyzing" : "guardrailWizard.documentAnalyze")}
+              {t(analyze.isPending ? "guardrailWizard.documentAnalyzing" : "guardrailWizard.documentAnalyze", { count: files.length })}
             </Button>
           </div>
         ) : null}
@@ -238,5 +249,6 @@ export function ComplianceDocumentImport({
 
 function formatBytes(value: number, locale: string) {
   if (value < 1024) return `${value} B`;
+  if (value >= 1024 * 1024) return `${new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(value / (1024 * 1024))} MB`;
   return `${new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(value / 1024)} KB`;
 }

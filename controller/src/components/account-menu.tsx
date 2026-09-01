@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 
 export function UserAvatar({ name, size = "default" }: { name: string; size?: "default" | "large" }) {
   return (
-    <Avatar className={cn(size === "large" ? "size-10" : "size-8", "rounded-full ring-1 ring-sidebar-border")}>
+    <Avatar className={cn(size === "large" ? "size-10" : "size-8", "rounded-full ring-1 ring-border")}>
       <AvatarFallback className="rounded-full bg-primary text-[11px] font-bold text-primary-foreground">
         {userInitials(name)}
       </AvatarFallback>
@@ -25,7 +25,15 @@ export function UserAvatar({ name, size = "default" }: { name: string; size?: "d
   );
 }
 
-export function AccountMenu({ collapsed = false, onNavigate }: { collapsed?: boolean; onNavigate?: () => void }) {
+export function AccountMenu({
+  collapsed = false,
+  onNavigate,
+  placement = "sidebar",
+}: {
+  collapsed?: boolean;
+  onNavigate?: () => void;
+  placement?: "sidebar" | "header";
+}) {
   const { t } = useTranslation();
   const { user, logout, logoutPending } = useAuth();
   const displayName = user?.display_name || t("account.fallbackName");
@@ -45,12 +53,15 @@ export function AccountMenu({ collapsed = false, onNavigate }: { collapsed?: boo
           type="button"
           aria-label={t("sidebar.accountMenuFor", { name: displayName })}
           className={cn(
-            "group flex items-center rounded-lg outline-none transition-colors hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring data-[state=open]:bg-sidebar-accent",
-            collapsed ? "mx-auto size-11 justify-center" : "h-11 w-full gap-2.5 px-2",
+            "group flex h-11 items-center outline-none transition-colors focus-visible:ring-2",
+            placement === "header"
+              ? "size-11 justify-center rounded-full p-1.5 text-foreground hover:bg-muted focus-visible:ring-ring/40 data-[state=open]:bg-muted data-[state=open]:ring-1 data-[state=open]:ring-border"
+              : "rounded-lg text-sidebar-foreground hover:bg-sidebar-accent focus-visible:ring-sidebar-ring data-[state=open]:bg-sidebar-accent",
+            collapsed ? "mx-auto size-11 justify-center" : placement === "header" ? "" : "w-full gap-2.5 px-2",
           )}
         >
           <UserAvatar name={displayName} />
-          {!collapsed ? (
+          {!collapsed && placement !== "header" ? (
             <>
               <span className="min-w-0 flex-1 text-left">
                 <strong className="block truncate text-xs font-semibold text-sidebar-foreground">{displayName}</strong>
@@ -62,9 +73,9 @@ export function AccountMenu({ collapsed = false, onNavigate }: { collapsed?: boo
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
-        align={collapsed ? "start" : "center"}
-        side={collapsed ? "right" : "top"}
-        className="w-64"
+        align={placement === "header" ? "end" : collapsed ? "start" : "center"}
+        side={placement === "header" ? "bottom" : collapsed ? "right" : "top"}
+        className="w-64 rounded-lg"
       >
         <DropdownMenuLabel className="flex items-center gap-3 py-2 font-normal">
           <UserAvatar name={displayName} size="large" />
@@ -74,14 +85,14 @@ export function AccountMenu({ collapsed = false, onNavigate }: { collapsed?: boo
           </span>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem asChild>
+        <DropdownMenuItem asChild className="min-h-11 rounded-md">
           <Link to="/account" onClick={onNavigate}>
             <CircleUserRound />
             {t("account.title")}
           </Link>
         </DropdownMenuItem>
         {user?.role === "admin" ? (
-          <DropdownMenuItem asChild>
+          <DropdownMenuItem asChild className="min-h-11 rounded-md">
             <Link to="/access" onClick={onNavigate}>
               <UsersRound />
               {t("auth.manageUsers")}
@@ -89,7 +100,7 @@ export function AccountMenu({ collapsed = false, onNavigate }: { collapsed?: boo
           </DropdownMenuItem>
         ) : null}
         <DropdownMenuSeparator />
-        <DropdownMenuItem variant="destructive" disabled={logoutPending} onSelect={() => void signOut()}>
+        <DropdownMenuItem className="min-h-11 rounded-md" variant="destructive" disabled={logoutPending} onSelect={() => void signOut()}>
           <LogOut />
           {t(logoutPending ? "auth.signingOut" : "auth.signOut")}
         </DropdownMenuItem>

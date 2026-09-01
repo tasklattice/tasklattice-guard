@@ -94,14 +94,39 @@ helm-install: images
 		provider_configured=false; \
 		model_credentials=false; \
 		control_plane_key=""; \
+		control_plane_inline_api_key=""; \
+		control_plane_provider="$(CONTROL_PLANE_AI_PROVIDER)"; \
+		control_plane_base_url="$(CONTROL_PLANE_AI_BASE_URL)"; \
+		control_plane_model="$(CONTROL_PLANE_AI_MODEL)"; \
 		automated_reasoning_endpoint=""; \
+		if [ -f .env ]; then \
+			configured_provider=$$(sed -n 's/^MODEL_GUARDRAILS_CONTROL_PLANE_AI_PROVIDER=//p' .env | tail -n 1); \
+			configured_base_url=$$(sed -n 's/^MODEL_GUARDRAILS_CONTROL_PLANE_AI_BASE_URL=//p' .env | tail -n 1); \
+			configured_model=$$(sed -n 's/^MODEL_GUARDRAILS_CONTROL_PLANE_AI_MODEL=//p' .env | tail -n 1); \
+			[ -z "$$configured_provider" ] || control_plane_provider="$$configured_provider"; \
+			[ -z "$$configured_base_url" ] || control_plane_base_url="$$configured_base_url"; \
+			[ -z "$$configured_model" ] || control_plane_model="$$configured_model"; \
+		fi; \
 		if [ -f .env ] && grep -Eq '^(QWEN_GUARD_API_KEY|LLAMA_GUARD_API_KEY|QWEN_CONTROL_API_KEY)=.+$$' .env; then \
 			model_credentials=true; \
 		fi; \
-		if [ -f .env ] && grep -Eq '^QWEN_CONTROL_API_KEY=.+$$' .env; then \
-			control_plane_key=QWEN_CONTROL_API_KEY; \
-		elif [ -f .env ] && grep -Eq '^MODEL_GUARDRAILS_CONTROL_PLANE_AI_API_KEY=.+$$' .env; then \
+		if [ -f .env ] && grep -Eq '^MODEL_GUARDRAILS_CONTROL_PLANE_AI_API_KEY=.+$$' .env; then \
 			control_plane_key=MODEL_GUARDRAILS_CONTROL_PLANE_AI_API_KEY; \
+		elif [ -f .env ] && grep -Eq '^QWEN_CONTROL_API_KEY=.+$$' .env; then \
+			control_plane_key=QWEN_CONTROL_API_KEY; \
+		elif [ -f .env ] && grep -Eq '^MODEL_GUARDRAILS_CONTROL_PLANE_AI_API_KEY_ENV_VAR=.+$$' .env; then \
+			legacy_key_setting=$$(sed -n 's/^MODEL_GUARDRAILS_CONTROL_PLANE_AI_API_KEY_ENV_VAR=//p' .env | tail -n 1); \
+			if printf '%s' "$$legacy_key_setting" | grep -Eq '^[A-Za-z_][A-Za-z0-9_]*$$'; then \
+				control_plane_key="$$legacy_key_setting"; \
+				if ! grep -Eq "^$${control_plane_key}=.+$$" .env; then \
+					echo "Control-plane credential $$control_plane_key is missing or empty in .env" >&2; \
+					exit 1; \
+				fi; \
+			else \
+				control_plane_key=MODEL_GUARDRAILS_CONTROL_PLANE_AI_API_KEY; \
+				control_plane_inline_api_key="$$legacy_key_setting"; \
+				echo "Migrating legacy inline control-plane credential from MODEL_GUARDRAILS_CONTROL_PLANE_AI_API_KEY_ENV_VAR"; \
+			fi; \
 		fi; \
 		if [ -f .env ] && grep -Eq '^MODEL_GUARDRAILS_MODEL_RUNTIMES_JSON=\[.+\]$$' .env; then \
 			model_runtime_json=$$(sed -n 's/^MODEL_GUARDRAILS_MODEL_RUNTIMES_JSON=//p' .env | tail -n 1); \
@@ -128,19 +153,28 @@ helm-install: images
 			echo "Configuring Runner Automated Reasoning endpoint from .env"; \
 		fi; \
 		if [ -n "$$control_plane_key" ]; then \
+			if [ -z "$$control_plane_base_url" ] || [ -z "$$control_plane_model" ]; then \
+				echo "Control-plane Base URL and Model are required when its credential is configured" >&2; \
+				exit 1; \
+			fi; \
 			provider_configured=true; \
 			helm_args="$$helm_args \
-				--set-string controlPlaneAgent.provider.name=$(CONTROL_PLANE_AI_PROVIDER) \
-				--set-string controlPlaneAgent.provider.baseUrl=$(CONTROL_PLANE_AI_BASE_URL) \
-				--set-string controlPlaneAgent.provider.model=$(CONTROL_PLANE_AI_MODEL) \
+				--set-string controlPlaneAgent.provider.name=$$control_plane_provider \
+				--set-string controlPlaneAgent.provider.baseUrl=$$control_plane_base_url \
+				--set-string controlPlaneAgent.provider.model=$$control_plane_model \
 				--set-string controlPlaneAgent.provider.existingSecret=$(LOCAL_PROVIDER_SECRET) \
 				--set-string controlPlaneAgent.provider.secretKey=$$control_plane_key"; \
-			echo "Configuring Controller model from .env: provider=$(CONTROL_PLANE_AI_PROVIDER) model=$(CONTROL_PLANE_AI_MODEL) capabilities=intent_translation,document_analysis,playground"; \
+			echo "Configuring Controller model from .env: provider=$$control_plane_provider model=$$control_plane_model capabilities=intent_translation,document_analysis,playground"; \
 		fi; \
 		if [ "$$provider_configured" = true ]; then \
 			provider_env=$$(mktemp); \
 			trap 'rm -f "$$provider_env"' EXIT; \
-			grep -E '^(QWEN_GUARD_API_KEY|LLAMA_GUARD_API_KEY|QWEN_CONTROL_API_KEY|MODEL_GUARDRAILS_CONTROL_PLANE_AI_API_KEY|MODEL_GUARDRAILS_AUTOMATED_REASONING_API_KEY)=' .env >"$$provider_env"; \
+			grep -E '^(QWEN_GUARD_API_KEY|LLAMA_GUARD_API_KEY|QWEN_CONTROL_API_KEY|MODEL_GUARDRAILS_CONTROL_PLANE_AI_API_KEY|MODEL_GUARDRAILS_AUTOMATED_REASONING_API_KEY)=' .env >"$$provider_env" || true; \
+			if [ -n "$$control_plane_inline_api_key" ]; then \
+				printf '%s=%s\n' "$$control_plane_key" "$$control_plane_inline_api_key" >>"$$provider_env"; \
+			elif [ -n "$$control_plane_key" ] && ! grep -Eq "^$${control_plane_key}=" "$$provider_env"; then \
+				grep -E "^$${control_plane_key}=" .env >>"$$provider_env"; \
+			fi; \
 			kubectl --context $(HELM_CONTEXT) create namespace $(HELM_NAMESPACE) --dry-run=client -o yaml \
 				| kubectl --context $(HELM_CONTEXT) apply -f - >/dev/null; \
 			kubectl --context $(HELM_CONTEXT) --namespace $(HELM_NAMESPACE) create secret generic $(LOCAL_PROVIDER_SECRET) \

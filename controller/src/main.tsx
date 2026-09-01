@@ -20,6 +20,7 @@ import { AccountPage } from "@/routes/account";
 import { HelpPage } from "@/routes/help";
 import { RunnersPage } from "@/routes/runners";
 import { ActivityPage } from "@/routes/activity";
+import { StatusPage } from "@/routes/status";
 import { AuthProvider } from "@/lib/auth";
 import "@/i18n";
 import "@/styles.css";
@@ -52,6 +53,7 @@ const logsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/logs", 
 const activityRoute = createRoute({ getParentRoute: () => rootRoute, path: "/activity", component: ActivityPage });
 const usersRoute = createRoute({ getParentRoute: () => rootRoute, path: "/access", component: UsersPage });
 const accountRoute = createRoute({ getParentRoute: () => rootRoute, path: "/account", component: AccountPage });
+const statusRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/status", component: StatusPage });
 const helpRoute = createRoute({ getParentRoute: () => rootRoute, path: "/help", component: HelpPage });
 const routeTree = rootRoute.addChildren([
   indexRoute,
@@ -70,6 +72,7 @@ const routeTree = rootRoute.addChildren([
   activityRoute,
   usersRoute,
   accountRoute,
+  statusRoute,
   helpRoute,
 ]);
 const router = createRouter({ routeTree, history: createBrowserHistory() });

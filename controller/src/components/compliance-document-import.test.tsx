@@ -29,10 +29,12 @@ vi.mock("react-i18next", () => ({
         "guardrailWizard.documentRemove": "Remove {{name}}",
         "guardrailWizard.documentUnsupported": "{{name}} is not supported.",
         "guardrailWizard.documentTooLarge": "{{name}} is too large.",
+        "guardrailWizard.documentTotalTooLarge": "The selected documents exceed the 10 MB combined limit.",
         "guardrailWizard.documentLimit": "Select no more than {{count}} documents.",
+        "guardrailWizard.documentSelectedCount": "{{count}} documents selected",
         "guardrailWizard.documentPrivacy": "Extracted text is sent to {{analyst}}; original files are not stored.",
-        "guardrailWizard.documentAnalyze": "Analyze documents",
-        "guardrailWizard.documentAnalyzing": "Analyzing documents…",
+        "guardrailWizard.documentAnalyze": "Analyze {{count}} documents",
+        "guardrailWizard.documentAnalyzing": "Analyzing {{count}} documents…",
         "guardrailWizard.documentDraftReady": "Compliance draft ready for review",
         "guardrailWizard.documentDraftSummary": "{{requirements}} requirements · {{policies}} Policies",
         "guardrailWizard.documentDraft": "Draft",
@@ -42,7 +44,7 @@ vi.mock("react-i18next", () => ({
         "guardrailWizard.documentRequirements": "Extracted requirements ({{count}})",
         "guardrailWizard.documentReviewNotes": "Confirm before applying",
         "guardrailWizard.documentApplyDescription": "Apply this review draft.",
-        "guardrailWizard.documentApply": "Apply reviewed draft",
+        "guardrailWizard.documentApply": "Apply proposal",
         "guardrailWizard.documentEffects.block": "Block",
       };
       return Object.entries(values ?? {}).reduce((label, [name, value]) => label.replace(`{{${name}}}`, String(value)), labels[key] ?? key);
@@ -103,17 +105,22 @@ describe("Compliance document import", () => {
   beforeEach(() => analyzeMock.mockReset());
   afterEach(cleanup);
 
-  it("selects a supported file, reviews cited extraction, and explicitly applies it", async () => {
+  it("queues multiple supported files, analyzes them together, and explicitly applies the proposal", async () => {
     analyzeMock.mockResolvedValue(analysis);
     const { onApply } = renderImport();
     const file = new File(["Customer data policy content"], "customer-policy.txt", { type: "text/plain" });
+    const supplement = new File(["Additional retention requirements"], "retention-policy.txt", { type: "text/plain" });
     const input = document.querySelector<HTMLInputElement>('input[type="file"]');
 
     expect(input).not.toBeNull();
-    fireEvent.change(input!, { target: { files: [file] } });
+    fireEvent.change(input!, { target: { files: [file, supplement] } });
     expect(screen.getByText("customer-policy.txt")).toBeTruthy();
+    expect(screen.getByText("retention-policy.txt")).toBeTruthy();
+    expect(screen.getByText("2 documents selected")).toBeTruthy();
     expect(screen.getByText(/DeepSeek · deepseek-chat/)).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Analyze documents" }));
+    fireEvent.click(screen.getByRole("button", { name: "Analyze 2 documents" }));
+
+    await waitFor(() => expect(analyzeMock).toHaveBeenCalledWith([file, supplement], "en"));
 
     await waitFor(() => expect(screen.getByText("Compliance draft ready for review")).toBeTruthy());
     expect(screen.getByText("Protect credentials")).toBeTruthy();
@@ -121,7 +128,7 @@ describe("Compliance document import", () => {
     expect(screen.getByText("document-1:lines-1-2")).toBeTruthy();
     expect(onApply).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: "Apply reviewed draft" }));
+    fireEvent.click(screen.getByRole("button", { name: "Apply proposal" }));
     expect(onApply).toHaveBeenCalledWith(analysis);
     expect(screen.getAllByText("Applied").length).toBeGreaterThan(0);
   });
