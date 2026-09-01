@@ -18,7 +18,7 @@ export interface PolicyVersion {
   'parameterSchema'?: (_tasklattice_guard_control_v1_StringPair)[];
   'railBindings'?: (_tasklattice_guard_control_v1_PolicyRailBinding)[];
   'actionReferences'?: (_tasklattice_guard_control_v1_PolicyActionReference)[];
-  'modelDependencies'?: (string)[];
+  'evaluationContracts'?: (string)[];
   'promptDependencies'?: (string)[];
   'executionContract'?: (_tasklattice_guard_control_v1_StringPair)[];
   'testCases'?: (_tasklattice_guard_control_v1_StringPair)[];
@@ -41,7 +41,7 @@ export interface PolicyVersion__Output {
   'parameterSchema': (_tasklattice_guard_control_v1_StringPair__Output)[];
   'railBindings': (_tasklattice_guard_control_v1_PolicyRailBinding__Output)[];
   'actionReferences': (_tasklattice_guard_control_v1_PolicyActionReference__Output)[];
-  'modelDependencies': (string)[];
+  'evaluationContracts': (string)[];
   'promptDependencies': (string)[];
   'executionContract': (_tasklattice_guard_control_v1_StringPair__Output)[];
   'testCases': (_tasklattice_guard_control_v1_StringPair__Output)[];

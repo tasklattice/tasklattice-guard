@@ -16,6 +16,7 @@ import type { ControllerMessage as _tasklattice_guard_control_v1_ControllerMessa
 import type { DeploymentRoute as _tasklattice_guard_control_v1_DeploymentRoute, DeploymentRoute__Output as _tasklattice_guard_control_v1_DeploymentRoute__Output } from './tasklattice/guard/control/v1/DeploymentRoute.js';
 import type { DesiredState as _tasklattice_guard_control_v1_DesiredState, DesiredState__Output as _tasklattice_guard_control_v1_DesiredState__Output } from './tasklattice/guard/control/v1/DesiredState.js';
 import type { DrainRequest as _tasklattice_guard_control_v1_DrainRequest, DrainRequest__Output as _tasklattice_guard_control_v1_DrainRequest__Output } from './tasklattice/guard/control/v1/DrainRequest.js';
+import type { EvaluationTrigger as _tasklattice_guard_control_v1_EvaluationTrigger, EvaluationTrigger__Output as _tasklattice_guard_control_v1_EvaluationTrigger__Output } from './tasklattice/guard/control/v1/EvaluationTrigger.js';
 import type { GroundingClaimEvidence as _tasklattice_guard_control_v1_GroundingClaimEvidence, GroundingClaimEvidence__Output as _tasklattice_guard_control_v1_GroundingClaimEvidence__Output } from './tasklattice/guard/control/v1/GroundingClaimEvidence.js';
 import type { GroundingFilterAssessment as _tasklattice_guard_control_v1_GroundingFilterAssessment, GroundingFilterAssessment__Output as _tasklattice_guard_control_v1_GroundingFilterAssessment__Output } from './tasklattice/guard/control/v1/GroundingFilterAssessment.js';
 import type { GuardrailPlan as _tasklattice_guard_control_v1_GuardrailPlan, GuardrailPlan__Output as _tasklattice_guard_control_v1_GuardrailPlan__Output } from './tasklattice/guard/control/v1/GuardrailPlan.js';
@@ -76,8 +77,8 @@ export interface ProtoGrpcType {
           DesiredState: MessageTypeDefinition<_tasklattice_guard_control_v1_DesiredState, _tasklattice_guard_control_v1_DesiredState__Output>
           DrainRequest: MessageTypeDefinition<_tasklattice_guard_control_v1_DrainRequest, _tasklattice_guard_control_v1_DrainRequest__Output>
           EnforcementAction: EnumTypeDefinition
-          EscalationMode: EnumTypeDefinition
-          EvaluationStage: EnumTypeDefinition
+          EvaluationTrigger: MessageTypeDefinition<_tasklattice_guard_control_v1_EvaluationTrigger, _tasklattice_guard_control_v1_EvaluationTrigger__Output>
+          EvaluationTriggerType: EnumTypeDefinition
           EvaluatorVerdict: EnumTypeDefinition
           FailureMode: EnumTypeDefinition
           GroundingClaimEvidence: MessageTypeDefinition<_tasklattice_guard_control_v1_GroundingClaimEvidence, _tasklattice_guard_control_v1_GroundingClaimEvidence__Output>
@@ -128,7 +129,6 @@ export interface ProtoGrpcType {
           ValidationMetrics: MessageTypeDefinition<_tasklattice_guard_control_v1_ValidationMetrics, _tasklattice_guard_control_v1_ValidationMetrics__Output>
           ValidationRequest: MessageTypeDefinition<_tasklattice_guard_control_v1_ValidationRequest, _tasklattice_guard_control_v1_ValidationRequest__Output>
           ValidationResult: MessageTypeDefinition<_tasklattice_guard_control_v1_ValidationResult, _tasklattice_guard_control_v1_ValidationResult__Output>
-          ValidationStage: EnumTypeDefinition
           ValidationStatus: EnumTypeDefinition
           ValidationTestCase: MessageTypeDefinition<_tasklattice_guard_control_v1_ValidationTestCase, _tasklattice_guard_control_v1_ValidationTestCase__Output>
         }

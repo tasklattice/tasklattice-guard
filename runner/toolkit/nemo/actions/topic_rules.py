@@ -4,6 +4,7 @@ import re
 import unicodedata
 
 from ...runtime.contracts import RiskFinding
+from ...safety.taxonomy import taxonomy_for_evaluator
 from .contracts import ActionRequest, ActionResult, action_result
 from .names import ACTION_TOPIC_RULES
 
@@ -13,7 +14,7 @@ class TopicRulesActionProvider:
 
     name = ACTION_TOPIC_RULES
     version = "1.0.0"
-    risks = frozenset({"topic_control"})
+    capabilities = frozenset({"topic_control"})
     rails = frozenset({"input", "output"})
 
     async def execute(self, request: ActionRequest) -> ActionResult:
@@ -33,6 +34,7 @@ class TopicRulesActionProvider:
                 findings=(
                     RiskFinding(
                         risk="topic_control",
+                        taxonomy_id=taxonomy_for_evaluator("topic_control"),
                         verdict="unsafe",
                         confidence=0.98,
                         evidence=f"Matched an explicitly restricted topic: {evidence}.",
@@ -62,6 +64,7 @@ class TopicRulesActionProvider:
             findings=(
                 RiskFinding(
                     risk="topic_control",
+                    taxonomy_id=taxonomy_for_evaluator("topic_control"),
                     verdict="uncertain",
                     confidence=0.5,
                     evidence=reason,

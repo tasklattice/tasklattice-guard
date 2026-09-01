@@ -59,16 +59,20 @@ def _policy(payload: dict[str, object]) -> PolicySpec:
         parameters=tuple(
             PolicyParameterSpec(**item) for item in payload.get("parameters", ())
         ),
-        rules=tuple(_rule(item) for item in payload.get("rules", ())),
+        rules=tuple(_rule(str(payload["id"]), item) for item in payload.get("rules", ())),
         test_cases=tuple(_test_case(item) for item in payload.get("test_cases", ())),
         safety_level=str(payload.get("safety_level", "balanced")),
         output_delivery=str(payload.get("output_delivery", "window_buffered")),
     )
 
 
-def _rule(payload: dict[str, object]) -> PolicyRuleSpec:
+def _rule(policy_id: str, payload: dict[str, object]) -> PolicyRuleSpec:
     values = dict(payload)
-    values["stages"] = tuple(values.get("stages", ()))
+    if not values.get("taxonomy_ids"):
+        raise RuntimeError(
+            f"Policy {policy_id!r} Rule {values.get('id')!r} must declare taxonomy_ids."
+        )
+    values["rails"] = tuple(values.get("rails", ()))
     values["implementation"] = PolicyImplementationRef(
         **values["implementation"]
     )
@@ -79,6 +83,7 @@ def _rule(payload: dict[str, object]) -> PolicyRuleSpec:
         "always_block",
         "exceptions",
         "phrase_patterns",
+        "taxonomy_ids",
     ):
         values[field] = tuple(
             tuple(item) if isinstance(item, list) else item

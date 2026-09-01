@@ -31,7 +31,7 @@ describe("Default Guardrail baseline", () => {
     expect(selectedPolicies.flatMap((policy) => policy.rules.map((rule) => rule.effect))).toEqual(expect.arrayContaining(["redact", "reject"]));
   });
 
-  it("compiles to a deterministic input-only Runner plan with inherited validation cases", () => {
+  it("compiles to a local input-only evaluation plan with inherited validation cases", () => {
     const draft = defaultGuardrailDraft(policies);
     const plan = buildGuardrailPlan({
       guardrailId: DEFAULT_GUARDRAIL_ID,
@@ -40,10 +40,14 @@ describe("Default Guardrail baseline", () => {
       draft,
       policies,
     });
-    const steps = plan.steps as Array<{ risk: string; stage: string; phases: string[]; parameters: Array<[string, string]> }>;
+    const steps = plan.steps as Array<{ capability: string; contract_ref: string; phases: string[]; parameters: Array<[string, string]> }>;
 
     expect(steps).toHaveLength(1);
-    expect(steps[0]).toMatchObject({ risk: "builtin_content_filter", stage: "deterministic", phases: ["input"] });
+    expect(steps[0]).toMatchObject({
+      capability: "builtin_content_filter",
+      contract_ref: "tali.guard.content-filter.rules.v1",
+      phases: ["input"],
+    });
     expect(steps[0]?.parameters).toEqual(expect.arrayContaining([
       ["policy_ids", "advanced-au-pii-protection\nbaseline-pii-protection\nprompt-injection-protection"],
     ]));

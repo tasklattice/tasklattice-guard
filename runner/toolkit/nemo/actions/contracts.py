@@ -1,147 +1,42 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Literal, Protocol
+from typing import Protocol
 
-from ...runtime.content_views import content_view
-from ...runtime.contracts import (
-    ContentPatch,
-    ContentViewSnapshot,
-    EnforcementMode,
-    EnforcementAction,
-    EvidenceScope,
-    EvaluatorVerdict,
-    GuardContentBlock,
-    GuardrailPhase,
-    GuardrailPlanSnapshot,
-    NeMoActionBinding,
-    RiskFinding,
-    RequestContext,
-    RuntimeTraceStep,
+from ...runtime.contracts import GuardrailPhase
+from ..evaluators.contracts import (
+    EvaluationRequest,
+    EvaluationResult,
+    EvaluationUsage,
+    ModelCallResult,
+    ModelCallUsage,
+    evaluation_result,
+    evaluation_view,
 )
 
 
-@dataclass(frozen=True, slots=True)
-class ActionRequest:
-    content: str
-    rail_type: GuardrailPhase
-    guardrail_id: str
-    guardrail_version: int
-    policy_id: str | None
-    policy_version: int | None
-    trusted_context: tuple[tuple[str, str], ...]
-    content_blocks: tuple[GuardContentBlock, ...]
-    deadline: float
-    parameters: tuple[tuple[str, str], ...]
-    risk: str
-    proposed_action: EnforcementAction
-    plan: GuardrailPlanSnapshot
-    binding: NeMoActionBinding
-    context_messages: tuple[dict[str, object], ...] = ()
-    target_source: str = "user_input"
-    mode: EnforcementMode = "enforce"
-    evidence_scope: EvidenceScope = "interventions"
-    content_view: ContentViewSnapshot | None = None
-    active_block_id: str | None = None
-    request_context: RequestContext | None = None
-    request_started_at: float = 0.0
-
-
-ModelCallResult = Literal[
-    "success",
-    "timeout",
-    "rate_limited",
-    "client_error",
-    "server_error",
-    "transport_error",
-    "invalid_response",
-    "configuration_error",
-    "unknown_error",
-]
-
-
-@dataclass(frozen=True, slots=True)
-class ModelCallUsage:
-    """Privacy-safe facts for one external model/provider RPC."""
-
-    provider: str
-    model: str
-    operation: str
-    result: ModelCallResult
-    duration_ms: int
-    started_offset_ms: int = 0
-    finished_offset_ms: int = 0
-    time_to_first_token_ms: int | None = None
-    input_tokens: int = 0
-    output_tokens: int = 0
-    retries: int = 0
-    backoff_ms: int = 0
-    error_type: str = "none"
-
-
-@dataclass(frozen=True, slots=True)
-class ActionUsage:
-    provider_latency_ms: int = 0
-    model_invocations: int = 0
-    input_characters: int = 0
-    model_calls: tuple[ModelCallUsage, ...] = ()
-
-
-@dataclass(frozen=True, slots=True)
-class ActionResult:
-    verdict: EvaluatorVerdict
-    content: str
-    findings: tuple[RiskFinding, ...] = ()
-    patches: tuple[ContentPatch, ...] = ()
-    confidence: float | None = None
-    proposed_action: EnforcementAction = "pass"
-    evidence: str = ""
-    reason: str | None = None
-    trace: tuple[RuntimeTraceStep, ...] = ()
-    usage: ActionUsage = ActionUsage()
+ActionRequest = EvaluationRequest
+ActionResult = EvaluationResult
+ActionUsage = EvaluationUsage
+action_result = evaluation_result
+action_view = evaluation_view
 
 
 class ActionProvider(Protocol):
     name: str
     version: str
-    risks: frozenset[str]
+    capabilities: frozenset[str]
     rails: frozenset[GuardrailPhase]
 
     async def execute(self, request: ActionRequest) -> ActionResult: ...
 
 
-def action_view(request: ActionRequest) -> ContentViewSnapshot:
-    """Return the immutable content view supplied to a NeMo Action."""
-    if request.content_view is not None:
-        return request.content_view
-    if not request.content_blocks:
-        raise ValueError("A NeMo Action request must include a content view.")
-    active_block_id = request.active_block_id or request.content_blocks[0].id
-    return content_view(request.content_blocks, active_block_id)
-
-
-def action_result(
-    request: ActionRequest,
-    verdict: EvaluatorVerdict,
-    content: str,
-    *,
-    findings: tuple[RiskFinding, ...] = (),
-    patches: tuple[ContentPatch, ...] = (),
-    reason: str | None = None,
-    trace: tuple[RuntimeTraceStep, ...] = (),
-    usage: ActionUsage = ActionUsage(),
-) -> ActionResult:
-    """Build the single result contract returned by every NeMo Action provider."""
-    confidence = next((item.confidence for item in findings), None)
-    return ActionResult(
-        verdict=verdict,
-        content=content,
-        findings=findings,
-        patches=patches,
-        confidence=confidence,
-        proposed_action=request.proposed_action,
-        evidence=reason or "",
-        reason=reason,
-        trace=trace,
-        usage=usage,
-    )
+__all__ = [
+    "ActionProvider",
+    "ActionRequest",
+    "ActionResult",
+    "ActionUsage",
+    "ModelCallResult",
+    "ModelCallUsage",
+    "action_result",
+    "action_view",
+]

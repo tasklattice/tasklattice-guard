@@ -99,7 +99,7 @@ P95 spike -> latency ownership -> exemplar/slow-trace table
 ```
 
 No model-call data is a meaningful result when the selected GuardRail uses
-only deterministic Actions. It must not be rendered as artificial zero model
+only local Actions. It must not be rendered as artificial zero model
 latency. The model-wait ratio is zero only while resolved GuardRail traffic
 exists and no model wait was observed; it is `N/A` when there is no traffic.
 

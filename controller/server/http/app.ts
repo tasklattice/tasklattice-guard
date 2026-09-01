@@ -12,7 +12,7 @@ import type { ControllerAuth } from "../auth.js";
 import type { ControllerConfig } from "../config.js";
 import type { IntentAnalyzer } from "../control-plane-ai/intent-analyzer.js";
 import { ControllerError, NotFoundError, ValidationError } from "../domain/errors.js";
-import { enforcementActions, protectionIds } from "../domain/guardrail-plan.js";
+import { enforcementActions } from "../domain/guardrail-plan.js";
 import type { RunnerControlServer } from "../control-channel/control-server.js";
 import type { ControlPlaneService } from "../services/control-plane.js";
 import type { ControllerMetrics } from "../metrics.js";
@@ -45,7 +45,6 @@ const guardrailPolicyBindingInput = z.object({
   }).nullable().default(null),
 });
 const guardrailDraftInput = z.object({
-  protections: z.array(z.enum(protectionIds)).optional(),
   purposeDetails: z.object({
     audience: z.string().trim().max(500).default(""),
     tasks: z.string().trim().max(2_000).default(""),

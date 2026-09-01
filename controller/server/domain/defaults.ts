@@ -27,7 +27,7 @@ const DEFAULT_POLICY_SELECTIONS = [
 /**
  * Build the reserved baseline from the Runner-owned Policy catalog.
  *
- * Every selected Rule is input-only and deterministic. Rule-level effects are
+ * Every selected Rule is input-only and local. Rule-level effects are
  * deliberately preserved: PII is redacted while credential and injection
  * matches are rejected. The baseline therefore never needs an external model.
  */
@@ -38,7 +38,7 @@ export function defaultGuardrailDraft(policies: readonly PolicyDto[]): Guardrail
     if (!policy) throw new Error(`Default Guardrail Policy ${selection.id} is missing from the Runner catalog.`);
     const selectedRuleIds: readonly string[] | null = selection.ruleIds;
     const inputRules = policy.rules.filter((rule) => (
-      rule.stages.includes("input") && (selectedRuleIds === null || selectedRuleIds.includes(rule.id))
+      rule.rails.includes("input") && (selectedRuleIds === null || selectedRuleIds.includes(rule.id))
     ));
     if (!inputRules.length) throw new Error(`Default Guardrail Policy ${selection.id} has no selected input Rules.`);
     if (selectedRuleIds !== null && inputRules.length !== selectedRuleIds.length) {

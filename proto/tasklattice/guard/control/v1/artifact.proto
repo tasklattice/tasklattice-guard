@@ -20,11 +20,11 @@ message PromptDefinition {
 // Fully resolved runtime action invocation emitted by the compiler.
 message ActionBinding {
   string id = 1;
-  string risk = 2;
-  EvaluationStage stage = 3;
+  string capability = 2;
+  string contract_ref = 3;
   repeated GuardrailPhase phases = 4;
   EnforcementAction on_unsafe = 5;
-  EscalationMode escalation = 6;
+  EvaluationTrigger trigger = 6;
   // End-to-end action deadline in milliseconds; must be greater than zero.
   int32 timeout_ms = 7;
   repeated StringPair parameters = 8;

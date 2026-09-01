@@ -24,7 +24,7 @@ describe("Policy catalog", () => {
     const policy = PolicyCatalog.load(assetDirectory).get("pattern-matching");
 
     expect(policy).toBeDefined();
-    expect(policy?.stages).toEqual(["input", "output"]);
+    expect(policy?.rails).toEqual(["input", "output"]);
     expect(policy?.effects).toEqual(["redact"]);
     expect(policy?.forms).toEqual(["regex"]);
     expect(policy?.test_count).toBe(policy?.test_cases.length);

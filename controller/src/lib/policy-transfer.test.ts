@@ -33,7 +33,7 @@ const policy: ProgrammablePolicy = {
       depends_on: [],
     }],
     action_references: [],
-    model_dependencies: [],
+    evaluation_contracts: [],
     prompt_dependencies: [],
     execution_contract: [],
     test_cases: [],

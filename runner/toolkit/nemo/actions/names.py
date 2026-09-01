@@ -1,5 +1,5 @@
 ACTION_SECRETS = "GuardSecretsAction"
-ACTION_PII = "GuardPiiAction"
+ACTION_EVALUATE = "GuardEvaluateAction"
 ACTION_CONTENT_FILTER = "GuardContentFilterAction"
 ACTION_TOPIC_RULES = "GuardTopicRulesAction"
 ACTION_PROMPT_SECURITY = "GuardPromptSecurityAction"

@@ -1,7 +1,6 @@
 // Original file: validation.proto
 
 import type { ValidationDecision as _tasklattice_guard_control_v1_ValidationDecision, ValidationDecision__Output as _tasklattice_guard_control_v1_ValidationDecision__Output } from '../../../../tasklattice/guard/control/v1/ValidationDecision.js';
-import type { ValidationStage as _tasklattice_guard_control_v1_ValidationStage, ValidationStage__Output as _tasklattice_guard_control_v1_ValidationStage__Output } from '../../../../tasklattice/guard/control/v1/ValidationStage.js';
 import type { GuardrailPhase as _tasklattice_guard_control_v1_GuardrailPhase, GuardrailPhase__Output as _tasklattice_guard_control_v1_GuardrailPhase__Output } from '../../../../tasklattice/guard/control/v1/GuardrailPhase.js';
 import type { EnforcementAction as _tasklattice_guard_control_v1_EnforcementAction, EnforcementAction__Output as _tasklattice_guard_control_v1_EnforcementAction__Output } from '../../../../tasklattice/guard/control/v1/EnforcementAction.js';
 import type { RiskFinding as _tasklattice_guard_control_v1_RiskFinding, RiskFinding__Output as _tasklattice_guard_control_v1_RiskFinding__Output } from '../../../../tasklattice/guard/control/v1/RiskFinding.js';
@@ -23,10 +22,7 @@ export interface ValidationCaseResult {
    * True when required business and expected-failure assertions matched.
    */
   'passed'?: (boolean);
-  /**
-   * Furthest evaluator stage reached, including NONE for routing short-circuits.
-   */
-  'stageReached'?: (_tasklattice_guard_control_v1_ValidationStage);
+  'evaluatorIds'?: (string)[];
   /**
    * End-to-end case execution latency in milliseconds.
    */
@@ -84,6 +80,9 @@ export interface ValidationCaseResult {
   'sourceCaseId'?: (string);
   'coveredRuleIds'?: (string)[];
   'matchedRuleIds'?: (string)[];
+  'evaluationContracts'?: (string)[];
+  'escalated'?: (boolean);
+  'modelInvocations'?: (number);
   '_expectedReasoningResult'?: "expectedReasoningResult";
   '_actualReasoningResult'?: "actualReasoningResult";
   '_expectedFailure'?: "expectedFailure";
@@ -107,10 +106,7 @@ export interface ValidationCaseResult__Output {
    * True when required business and expected-failure assertions matched.
    */
   'passed': (boolean);
-  /**
-   * Furthest evaluator stage reached, including NONE for routing short-circuits.
-   */
-  'stageReached': (_tasklattice_guard_control_v1_ValidationStage__Output);
+  'evaluatorIds': (string)[];
   /**
    * End-to-end case execution latency in milliseconds.
    */
@@ -168,6 +164,9 @@ export interface ValidationCaseResult__Output {
   'sourceCaseId'?: (string);
   'coveredRuleIds': (string)[];
   'matchedRuleIds': (string)[];
+  'evaluationContracts': (string)[];
+  'escalated': (boolean);
+  'modelInvocations': (number);
   '_expectedReasoningResult'?: "expectedReasoningResult";
   '_actualReasoningResult'?: "actualReasoningResult";
   '_expectedFailure'?: "expectedFailure";

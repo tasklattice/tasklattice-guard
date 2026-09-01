@@ -18,6 +18,8 @@ from ..runtime.contracts import (
     AppliedIntervention,
     ContentPatch,
     DecisionFragment,
+    ENFORCEMENT_ACTIONS,
+    ENFORCEMENT_ACTION_CONFLICT_ORDER,
     EngineRequest,
     ProtectionDecision,
     RuntimeTraceStep,
@@ -27,18 +29,20 @@ from ..runtime.contracts import (
     ModuleAssessment,
     NeMoActionBinding,
     NeMoConfigSnapshot,
+    ProviderEvidence,
     RiskFinding,
     RuntimeCoverage,
     flow_rule_id,
 )
 from .action_registry import (
     ACTION_CUSTOMER_IDENTIFIER,
-    ACTION_PII,
+    ACTION_EVALUATE,
     ACTION_RECORD_NATIVE,
     ACTION_RECORD_POLICY,
     ACTION_RESOLVE,
     ActionProviders,
 )
+from ..evaluation.contracts import CONTRACT_PII_EXACT
 from .actions.contracts import ActionRequest, ActionResult, ModelCallUsage
 from .actions.model_call import (
     ModelCallObserver,
@@ -47,6 +51,7 @@ from .actions.model_call import (
 )
 from .artifacts import config_checksum
 from .registry import NeMoRuntimeRegistry
+from ..safety.taxonomy import taxonomy, taxonomy_for_evaluator
 
 
 _CURRENT_SCOPE: ContextVar["_ExecutionScope | None"] = ContextVar(
@@ -54,16 +59,6 @@ _CURRENT_SCOPE: ContextVar["_ExecutionScope | None"] = ContextVar(
     default=None,
 )
 _TRACER = trace.get_tracer("tasklattice.guard-runner.actions")
-_ACTION_PRIORITY = (
-    "reject",
-    "clarify",
-    "fallback",
-    "regenerate",
-    "rewrite",
-    "redirect",
-    "redact",
-    "pass",
-)
 
 
 @dataclass(slots=True)
@@ -175,8 +170,8 @@ class NeMoActionBridge:
         if binding is None:
             missing = NeMoActionBinding(
                 id=binding_id,
-                risk="unknown",
-                stage="deterministic",
+                capability="unknown",
+                contract_ref="tali.guard.unknown.v1",
                 phases=(self._request().phase,),
                 on_unsafe="reject",
                 action_name=action_name,
@@ -211,8 +206,8 @@ class NeMoActionBridge:
                 "guardrail.action.version": action_version,
                 "guardrail.action.binding_id": binding.id,
                 "guardrail.module.id": module.id if module is not None else "__unmapped__",
-                "guardrail.action.stage": binding.stage,
-                "guardrail.risk": binding.risk,
+                "guardrail.evaluation.contract": binding.contract_ref,
+                "guardrail.capability": binding.capability,
                 "guardrail.policy.id": binding.policy_id or "__none__",
                 "guardrail.action.timeout_ms": binding.timeout_ms,
                 "integration.id": integration_id or "__internal__",
@@ -220,9 +215,14 @@ class NeMoActionBridge:
         ) as span:
             try:
                 provider = self._providers[(action_name, action_version)]
-                supported_risks = getattr(provider, "risks", frozenset())
+                supported_capabilities = getattr(
+                    provider, "capabilities", frozenset()
+                )
                 supported_rails = getattr(provider, "rails", frozenset())
-                if supported_risks and binding.risk not in supported_risks:
+                if (
+                    supported_capabilities
+                    and binding.capability not in supported_capabilities
+                ):
                     raise LookupError("provider does not support the pinned Policy")
                 if supported_rails and request.phase not in supported_rails:
                     raise LookupError("provider does not support the active Rail")
@@ -335,7 +335,11 @@ class NeMoActionBridge:
                 or "A required NeMo Action failed closed."
             )
         elif actions:
-            action = next(value for value in _ACTION_PRIORITY if value in set(actions))
+            action = next(
+                value
+                for value in ENFORCEMENT_ACTION_CONFLICT_ORDER
+                if value in set(actions)
+            )
             reason = next(
                 (
                     item.result.reason
@@ -394,14 +398,18 @@ class NeMoActionBridge:
             (
                 item
                 for item in self._plan.steps
-                if item.risk == risk and request.phase in item.phases
+                if item.capability == risk and request.phase in item.phases
             ),
             None,
         )
         binding = NeMoActionBinding(
             id=step.id if step is not None else f"{risk}:nemo-native",
-            risk=risk,
-            stage=step.stage if step is not None else "fast_semantic",
+            capability=risk,
+            contract_ref=(
+                step.contract_ref
+                if step is not None
+                else f"tali.guard.{risk.replace('_', '-')}.native.v1"
+            ),
             phases=(request.phase,),
             on_unsafe=step.on_unsafe if step is not None else "reject",
             parameters=step.parameters if step is not None else (),
@@ -414,8 +422,9 @@ class NeMoActionBridge:
         findings = () if safe else (
             RiskFinding(
                 risk=risk,
+                taxonomy_id=taxonomy_for_evaluator(risk),
                 verdict="unsafe",
-                confidence=0.9,
+                confidence=None,
                 evidence=reason,
                 recommended_action=binding.on_unsafe,
             ),
@@ -470,8 +479,8 @@ class NeMoActionBridge:
         if binding is None:
             binding = NeMoActionBinding(
                 id=f"unknown-policy-flow:{flow_name}",
-                risk="unknown_policy",
-                stage="deterministic",
+                capability="unknown_policy",
+                contract_ref="tali.guard.unknown-policy.v1",
                 phases=(request.phase,),
                 on_unsafe="reject",
             )
@@ -489,7 +498,8 @@ class NeMoActionBridge:
         )
         findings = () if safe else (
             RiskFinding(
-                risk=binding.risk,
+                risk=binding.capability,
+                taxonomy_id=taxonomy_for_evaluator(binding.capability),
                 verdict="unsafe",
                 confidence=1.0,
                 evidence=reason,
@@ -515,8 +525,8 @@ class NeMoActionBridge:
             (
                 step
                 for step in self._plan.steps
-                if step.risk == "pii"
-                and step.stage == "deterministic"
+                if step.capability == "pii"
+                and step.contract_ref == CONTRACT_PII_EXACT
                 and phase in step.phases
             ),
             None,
@@ -527,22 +537,22 @@ class NeMoActionBridge:
                 if plan_step is not None
                 else "pii:native-sensitive-data"
             ),
-            risk="pii",
-            stage="deterministic",
+            capability="pii",
+            contract_ref=CONTRACT_PII_EXACT,
             phases=(phase,),
             on_unsafe=plan_step.on_unsafe if plan_step is not None else "redact",
             timeout_ms=750,
             parameters=plan_step.parameters if plan_step is not None else (),
-            action_name=ACTION_PII,
+            action_name=ACTION_EVALUATE,
             action_version="1.0.0",
         )
         started = time.perf_counter()
-        if plan_step is None or (ACTION_PII, "1.0.0") not in self._providers:
+        if plan_step is None or (ACTION_EVALUATE, "1.0.0") not in self._providers:
             result = ActionResult("error", text, reason="PII action is unavailable.")
         else:
             try:
                 async with asyncio.timeout(binding.timeout_ms / 1_000):
-                    result = await self._providers[(ACTION_PII, "1.0.0")].execute(
+                    result = await self._providers[(ACTION_EVALUATE, "1.0.0")].execute(
                         self._action_request(text, binding)
                     )
             except asyncio.CancelledError:
@@ -614,7 +624,7 @@ class NeMoActionBridge:
             content_blocks=view.blocks,
             deadline=time.monotonic() + binding.timeout_ms / 1_000,
             parameters=binding.parameters,
-            risk=binding.risk,
+            capability=binding.capability,
             proposed_action=binding.on_unsafe,
             plan=self._plan,
             binding=binding,
@@ -690,8 +700,8 @@ class NeMoActionBridge:
             context.setdefault("tasklattice_action_results", []).append(
                 {
                     "step_id": binding.id,
-                    "risk": binding.risk,
-                    "stage": binding.stage,
+                    "capability": binding.capability,
+                    "contract_ref": binding.contract_ref,
                     "verdict": result.verdict,
                     "action": binding.on_unsafe,
                     "latency_ms": latency_ms,
@@ -723,8 +733,8 @@ class NeMoActionBridge:
         decision = "block" if blocked else "transform" if modified else "allow"
         return {
             "step_id": binding.id,
-            "risk": binding.risk,
-            "stage": binding.stage,
+            "capability": binding.capability,
+            "contract_ref": binding.contract_ref,
             "verdict": result.verdict,
             "content": content,
             "reason": result.reason,
@@ -1160,7 +1170,10 @@ def _colang1_runtime_result(
         raise RuntimeError(
             f"NeMo Action result does not match binding {binding.id!r}."
         )
-    if payload.get("risk") != binding.risk or payload.get("stage") != binding.stage:
+    if (
+        payload.get("capability") != binding.capability
+        or payload.get("contract_ref") != binding.contract_ref
+    ):
         raise RuntimeError(
             f"NeMo Action result metadata does not match binding {binding.id!r}."
         )
@@ -1184,7 +1197,7 @@ def _colang1_runtime_result(
             f"NeMo Action {binding.id!r} returned an inconsistent decision."
         )
     action = str(payload.get("action", ""))
-    if action not in _ACTION_PRIORITY:
+    if action not in ENFORCEMENT_ACTIONS:
         raise RuntimeError(f"NeMo Action {binding.id!r} returned an invalid action.")
     findings_raw = payload.get("findings", [])
     if not isinstance(findings_raw, list):
@@ -1223,18 +1236,26 @@ def _risk_finding_from_payload(
     action = str(payload.get("recommended_action", ""))
     if verdict not in {"safe", "unsafe", "uncertain", "error"}:
         raise RuntimeError(f"NeMo Action {binding.id!r} returned an invalid finding verdict.")
-    if action not in _ACTION_PRIORITY:
+    if action not in ENFORCEMENT_ACTIONS:
         raise RuntimeError(f"NeMo Action {binding.id!r} returned an invalid finding action.")
-    try:
-        confidence = float(payload.get("confidence", 0.0))
-    except (TypeError, ValueError) as error:
+    taxonomy_id = payload.get("taxonomy_id")
+    if not isinstance(taxonomy_id, str) or not taxonomy().contains(taxonomy_id):
         raise RuntimeError(
-            f"NeMo Action {binding.id!r} returned invalid finding confidence."
-        ) from error
-    if not 0 <= confidence <= 1:
-        raise RuntimeError(
-            f"NeMo Action {binding.id!r} returned out-of-range finding confidence."
+            f"NeMo Action {binding.id!r} returned an invalid TALI Taxonomy ID."
         )
+    raw_confidence = payload.get("confidence")
+    confidence: float | None = None
+    if raw_confidence is not None:
+        try:
+            confidence = float(raw_confidence)
+        except (TypeError, ValueError) as error:
+            raise RuntimeError(
+                f"NeMo Action {binding.id!r} returned invalid finding confidence."
+            ) from error
+        if not 0 <= confidence <= 1:
+            raise RuntimeError(
+                f"NeMo Action {binding.id!r} returned out-of-range finding confidence."
+            )
     replacement = payload.get("replacement")
     if replacement is not None and not isinstance(replacement, str):
         raise RuntimeError(
@@ -1250,10 +1271,46 @@ def _risk_finding_from_payload(
         raise RuntimeError(
             f"NeMo Action {binding.id!r} returned an invalid Rule identity."
         )
+    provider_evidence_raw = payload.get("provider_evidence", [])
+    if not isinstance(provider_evidence_raw, (list, tuple)):
+        raise RuntimeError(
+            f"NeMo Action {binding.id!r} returned invalid Provider evidence."
+        )
+    provider_evidence: list[ProviderEvidence] = []
+    for item in provider_evidence_raw:
+        if not isinstance(item, dict):
+            raise RuntimeError(
+                f"NeMo Action {binding.id!r} returned invalid Provider evidence."
+            )
+        required = (item.get("provider_id"), item.get("model"), item.get("native_verdict"))
+        if not all(isinstance(value, str) and value for value in required):
+            raise RuntimeError(
+                f"NeMo Action {binding.id!r} returned incomplete Provider evidence."
+            )
+        native_category = item.get("native_category")
+        mapping_quality = item.get("mapping_quality")
+        if native_category is not None and not isinstance(native_category, str):
+            raise RuntimeError(
+                f"NeMo Action {binding.id!r} returned invalid native category evidence."
+            )
+        if mapping_quality is not None and not isinstance(mapping_quality, str):
+            raise RuntimeError(
+                f"NeMo Action {binding.id!r} returned invalid mapping-quality evidence."
+            )
+        provider_evidence.append(
+            ProviderEvidence(
+                provider_id=required[0],
+                model=required[1],
+                native_verdict=required[2],
+                native_category=native_category,
+                mapping_quality=mapping_quality,
+            )
+        )
     return RiskFinding(
         # The immutable binding, not Action-supplied telemetry, owns the risk
         # identity used by policy aggregation and enterprise audit.
-        risk=binding.risk,
+        risk=binding.capability,
+        taxonomy_id=taxonomy_id,
         verdict=verdict,  # type: ignore[arg-type]
         confidence=confidence,
         evidence=str(payload.get("evidence", "")),
@@ -1261,6 +1318,7 @@ def _risk_finding_from_payload(
         replacement=replacement,
         policy_id=policy_id,
         rule_id=rule_id,
+        provider_evidence=tuple(provider_evidence),
     )
 
 
@@ -1433,8 +1491,9 @@ def _decision(
             *findings,
             RiskFinding(
                 risk=native_risk,
+                taxonomy_id=taxonomy_for_evaluator(native_risk),
                 verdict="unsafe",
-                confidence=0.9,
+                confidence=None,
                 evidence=reason,
                 recommended_action=native_action,
             ),
@@ -1494,7 +1553,7 @@ def _decision(
             text_characters=len(request.text),
             rail_invocations=max(
                 len(activated),
-                len({item.binding.risk for item in runtime_results}),
+                len({item.binding.capability for item in runtime_results}),
             ),
             # Count versioned policy Actions only. NeMo's internal bot/stop
             # actions are implementation details, not billable evaluators.
@@ -1593,7 +1652,11 @@ def _trace(
         )
         binding = bindings_by_id.get(binding_ids[0]) if binding_ids else None
         result = results_by_id.get(binding.id) if binding is not None else None
-        risk = binding.risk if binding is not None else _native_risk(rail.name)
+        capability = (
+            binding.capability
+            if binding is not None
+            else _native_risk(rail.name)
+        )
         error = result is not None and result.result.verdict == "error"
         unsafe = result is not None and result.result.verdict == "unsafe"
         uncertain = result is not None and result.result.verdict == "uncertain"
@@ -1629,7 +1692,7 @@ def _trace(
                 parent_id=root_id,
                 verdict=verdict,
                 route=route,
-                risk=risk,
+                capability=capability,
                 rail_type=rail_type,
                 **common(),
             )
@@ -1645,7 +1708,7 @@ def _trace(
         if binding is not None and binding.policy_id is not None:
             policy_id = (
                 f"nemo:policy:{binding.policy_id}:"
-                f"{binding.policy_version}:{binding.flow_name or binding.risk}"
+                f"{binding.policy_version}:{binding.flow_name or binding.capability}"
             )
             trace.append(
                 RuntimeTraceStep(
@@ -1659,7 +1722,7 @@ def _trace(
                     parent_id=rail_id,
                     verdict=verdict,
                     route=route,
-                    risk=binding.risk,
+                    capability=binding.capability,
                     policy_id=binding.policy_id,
                     policy_version=binding.policy_version,
                     rail_type=request.phase,
@@ -1684,7 +1747,7 @@ def _trace(
         else:
             native_policy = _native_policy_rail(
                 request.plan,
-                risk,
+                capability,
                 request.phase,
             )
             if native_policy is None:
@@ -1705,7 +1768,7 @@ def _trace(
                     parent_id=rail_id,
                     verdict=verdict,
                     route=route,
-                    risk=risk,
+                    capability=capability,
                     policy_id=selected.policy_id,
                     policy_version=selected.policy_version,
                     rail_type=request.phase,
@@ -1725,7 +1788,7 @@ def _trace(
             selected = tuple(selected_items)
             terminal = selected[-1]
             binding = terminal.binding
-            risk = binding.risk
+            capability = binding.capability
             policy_rail = _policy_rail_binding(
                 request.plan,
                 binding,
@@ -1744,7 +1807,7 @@ def _trace(
                 "error" if error else "blocked" if unsafe else
                 "needs_context" if uncertain else "passed"
             )
-            rail_id = f"nemo:rail:{request.phase}:{risk}:{group_index}"
+            rail_id = f"nemo:rail:{request.phase}:{capability}:{group_index}"
             for item in selected:
                 rail_ids[item.binding.id] = rail_id
             trace.append(
@@ -1770,7 +1833,7 @@ def _trace(
                         else "fail_open" if error else "enforce" if unsafe else
                         "escalate" if uncertain else "complete"
                     ),
-                    risk=risk,
+                    capability=capability,
                     rail_type=request.phase,
                     flow_name=flow_name,
                     parallel_group=parallel_group,
@@ -1782,7 +1845,7 @@ def _trace(
             if binding.policy_id is not None:
                 policy_id = (
                     f"nemo:policy:{binding.policy_id}:"
-                    f"{binding.policy_version}:{flow_name or risk}"
+                    f"{binding.policy_version}:{flow_name or capability}"
                 )
                 for item in selected:
                     policy_ids[item.binding.id] = policy_id
@@ -1796,7 +1859,7 @@ def _trace(
                         detail="Executed the immutable Policy Flow binding.",
                         duration_ms=sum(item.latency_ms for item in selected),
                         parent_id=rail_id,
-                        risk=risk,
+                        capability=capability,
                         policy_id=binding.policy_id,
                         policy_version=binding.policy_version,
                         rail_type=request.phase,
@@ -1838,6 +1901,9 @@ def _trace(
         error_types = tuple(dict.fromkeys(
             call.error_type for call in model_calls if call.error_type != "none"
         ))
+        profile_refs = tuple(dict.fromkeys(
+            call.profile_ref for call in model_calls if call.profile_ref
+        ))
         trace.append(
             RuntimeTraceStep(
                 id=f"nemo:action:{binding.id}",
@@ -1853,7 +1919,7 @@ def _trace(
                     or rail_ids.get(binding.id)
                     or root_id
                 ),
-                stage=binding.stage,
+                contract_ref=binding.contract_ref,
                 verdict=item.result.verdict,
                 route=(
                     "enforce" if item.result.verdict == "unsafe" else
@@ -1864,7 +1930,13 @@ def _trace(
                     "escalate" if item.result.verdict == "uncertain" else
                     "complete"
                 ),
-                risk=binding.risk,
+                capability=binding.capability,
+                evaluator_id=(
+                    _one_or_mixed(providers)
+                    if model_calls
+                    else binding.action_name
+                ),
+                profile_ref=_one_or_mixed(profile_refs),
                 module_id=module.id if module is not None else "__unmapped__",
                 policy_id=binding.policy_id,
                 policy_version=binding.policy_version,
@@ -1974,7 +2046,7 @@ def _binding_policy_rule_identity(
             binding.policy_id,
             flow_rule_id(phase, flow_name) if flow_name is not None else None,
         )
-    native = _native_policy_rail(plan, binding.risk, phase)
+    native = _native_policy_rail(plan, binding.capability, phase)
     if native is None:
         return None, None
     selected, _version, rail = native
@@ -2009,19 +2081,25 @@ def _native_policy_rail(plan, risk, phase):
 def _assessments(request, results, trace, all_findings=(), *, force_error=False):
     assessments = []
     for module in request.plan.modules_for(request.phase):
-        risks = {
-            step.risk
+        capabilities = {
+            step.capability
             for step in request.plan.steps
             if step.id in module.step_ids
         }
-        selected = tuple(item for item in results if item.binding.risk in risks)
+        selected = tuple(
+            item for item in results
+            if item.binding.capability in capabilities
+        )
         terminal = _terminal_runtime_results(selected)
         native_unsafe = any(
-            item.kind == "rail" and item.risk in risks and item.verdict == "unsafe"
+            item.kind == "rail"
+            and item.capability in capabilities
+            and item.verdict == "unsafe"
             for item in trace
         )
         observed = bool(selected) or any(
-            item.kind in {"rail", "policy", "action"} and item.risk in risks
+            item.kind in {"rail", "policy", "action"}
+            and item.capability in capabilities
             for item in trace
         )
         status = (
@@ -2039,7 +2117,7 @@ def _assessments(request, results, trace, all_findings=(), *, force_error=False)
             dict.fromkeys(
                 (
                     *(f for item in selected for f in item.result.findings),
-                    *(f for f in all_findings if f.risk in risks),
+                    *(f for f in all_findings if f.risk in capabilities),
                 )
             )
         )
@@ -2066,7 +2144,7 @@ def _assessments(request, results, trace, all_findings=(), *, force_error=False)
         module_trace = tuple(
             item
             for item in trace
-            if item.risk in risks or item.kind == "runtime"
+            if item.capability in capabilities or item.kind == "runtime"
         )
         assessments.append(
             ModuleAssessment(
@@ -2090,9 +2168,9 @@ def _assessments(request, results, trace, all_findings=(), *, force_error=False)
                         sum(
                             item.latency_ms
                             for item in selected
-                            if item.binding.risk == risk
+                            if item.binding.capability == capability
                         )
-                        for risk in risks
+                        for capability in capabilities
                     ),
                     default=0,
                 ),
@@ -2250,7 +2328,7 @@ def _validated_decision_payload(payload: dict[str, Any]) -> dict[str, str]:
     content = payload.get("content")
     if decision not in {"allow", "transform", "block"}:
         raise RuntimeError("NeMo returned an invalid policy decision.")
-    if action not in _ACTION_PRIORITY:
+    if action not in ENFORCEMENT_ACTIONS:
         raise RuntimeError("NeMo returned an invalid enforcement action.")
     if not isinstance(content, str):
         raise RuntimeError("NeMo returned invalid decision content.")
@@ -2330,7 +2408,10 @@ def _compiled_policy_flow_name(binding: NeMoActionBinding) -> str:
 
 def _action_for_risk(plan, risk, phase):
     step = next(
-        (item for item in plan.steps if item.risk == risk and phase in item.phases),
+        (
+            item for item in plan.steps
+            if item.capability == risk and phase in item.phases
+        ),
         None,
     )
     return step.on_unsafe if step is not None else "reject"
@@ -2338,7 +2419,10 @@ def _action_for_risk(plan, risk, phase):
 
 def _strongest(actions):
     values = set(actions)
-    return next((item for item in _ACTION_PRIORITY if item in values), "pass")
+    return next(
+        (item for item in ENFORCEMENT_ACTION_CONFLICT_ORDER if item in values),
+        "pass",
+    )
 
 
 def _resolved_content(text, action, unsafe):
@@ -2414,7 +2498,7 @@ def _native_model_trace_steps(
         plan_step = next(
             (
                 item for item in request.plan.steps
-                if item.risk == risk and request.phase in item.phases
+                if item.capability == risk and request.phase in item.phases
             ),
             None,
         )
@@ -2445,10 +2529,10 @@ def _native_model_trace_steps(
             ),
             duration_ms=call.duration_ms,
             parent_id=parent_id,
-            stage="model",
+            contract_ref=(plan_step.contract_ref if plan_step is not None else None),
             verdict="error" if failed else "safe",
             route=(failure_mode if failed else "complete"),
-            risk=risk,
+            capability=risk,
             module_id=module.id if module is not None else "__unknown__",
             guardrail_id=request.plan.guardrail_id,
             guardrail_version=request.plan.guardrail_version,
@@ -2461,7 +2545,7 @@ def _native_model_trace_steps(
             rail_type=request.phase,
             action_name=f"nemo_{risk}",
             outcome=call.result,
-            timeout_ms=plan_step.timeout_ms if plan_step is not None else None,
+            timeout_ms=module.timeout_ms if module is not None else None,
             timed_out=call.result == "timeout",
             provider_latency_ms=call.duration_ms,
             provider_work_ms=call.duration_ms,
@@ -2534,7 +2618,7 @@ def _one_or_mixed(values: tuple[str, ...]) -> str | None:
 
 
 def _result_group_key(item: _RuntimeResult) -> tuple[str, ...]:
-    """Collapse built-in escalation stages, but never distinct Policy Flows."""
+    """Collapse one capability graph, but never distinct Policy Flows."""
     binding = item.binding
     if binding.policy_id is not None:
         return (
@@ -2543,7 +2627,7 @@ def _result_group_key(item: _RuntimeResult) -> tuple[str, ...]:
             str(binding.policy_version or ""),
             binding.flow_name or binding.id,
         )
-    return ("risk", binding.risk)
+    return ("capability", binding.capability)
 
 
 def _runtime_action(item):

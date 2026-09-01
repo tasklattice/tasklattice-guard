@@ -24,12 +24,11 @@ export function planToWire(value: unknown): GuardrailPlan {
     outputDelivery: wireEnum("OUTPUT_DELIVERY_MODE", plan.output_delivery),
     steps: records(plan.steps).map((step) => ({
       id: string(step.id),
-      risk: string(step.risk),
-      stage: wireEnum("EVALUATION_STAGE", step.stage),
+      capability: string(step.capability),
+      contractRef: string(step.contract_ref),
       phases: strings(step.phases).map((phase) => wireEnum("GUARDRAIL_PHASE", phase)),
       onUnsafe: wireEnum("ENFORCEMENT_ACTION", step.on_unsafe),
-      escalation: wireEnum("ESCALATION_MODE", step.escalation),
-      ...(step.threshold === undefined || step.threshold === null ? {} : { threshold: number(step.threshold) }),
+      trigger: triggerToWire(step.trigger),
       parameters: pairsToWire(step.parameters),
     })),
     modules: records(plan.modules).map((module) => ({
@@ -72,7 +71,7 @@ export function planToWire(value: unknown): GuardrailPlan {
       actionReferences: records(policy.action_references).map((reference) => ({
         name: string(reference.name), version: string(reference.version),
       })),
-      modelDependencies: strings(policy.model_dependencies),
+      evaluationContracts: strings(policy.evaluation_contracts),
       promptDependencies: strings(policy.prompt_dependencies),
       executionContract: pairsToWire(policy.execution_contract),
       testCases: pairsToWire(policy.test_cases),
@@ -100,12 +99,11 @@ export function planFromWire(plan: GuardrailPlan__Output): Record<string, unknow
     output_delivery: domainEnum("OUTPUT_DELIVERY_MODE", plan.outputDelivery),
     steps: plan.steps.map((step) => ({
       id: step.id,
-      risk: step.risk,
-      stage: domainEnum("EVALUATION_STAGE", step.stage),
+      capability: step.capability,
+      contract_ref: step.contractRef,
       phases: step.phases.map((phase) => domainEnum("GUARDRAIL_PHASE", phase)),
       on_unsafe: domainEnum("ENFORCEMENT_ACTION", step.onUnsafe),
-      escalation: domainEnum("ESCALATION_MODE", step.escalation),
-      ...(step.threshold === undefined ? {} : { threshold: step.threshold }),
+      trigger: triggerFromWire(step.trigger),
       parameters: pairsFromWire(step.parameters),
     })),
     modules: plan.modules.map((module) => ({
@@ -146,7 +144,7 @@ export function planFromWire(plan: GuardrailPlan__Output): Record<string, unknow
         depends_on: [...binding.dependsOn],
       })),
       action_references: policy.actionReferences.map((reference) => ({ name: reference.name, version: reference.version })),
-      model_dependencies: [...policy.modelDependencies],
+      evaluation_contracts: [...policy.evaluationContracts],
       prompt_dependencies: [...policy.promptDependencies],
       execution_contract: pairsFromWire(policy.executionContract),
       test_cases: pairsFromWire(policy.testCases),
@@ -265,7 +263,7 @@ export function validationMetricsFromWire(value: ValidationMetrics__Output): Val
     complianceRate: value.complianceRate,
     falsePositiveRate: value.falsePositiveRate,
     falseNegativeRate: value.falseNegativeRate,
-    deepEscalationRate: value.deepEscalationRate,
+    escalationRate: value.escalationRate,
     p95LatencyMs: value.p95LatencyMs,
   };
 }
@@ -278,7 +276,7 @@ export function validationCaseFromWire(value: ValidationCaseResult__Output): Val
     expectedDecision: domainEnum("VALIDATION_DECISION", value.expectedDecision),
     actualDecision: domainEnum("VALIDATION_DECISION", value.actualDecision),
     passed: value.passed,
-    stageReached: domainEnum("VALIDATION_STAGE", value.stageReached),
+    evaluatorIds: [...value.evaluatorIds],
     latencyMs: value.latencyMs,
     reason: value.reason,
     phase: domainEnum("GUARDRAIL_PHASE", value.phase) === "output" ? "output" : "input",
@@ -303,6 +301,9 @@ export function validationCaseFromWire(value: ValidationCaseResult__Output): Val
     sourceCaseId: value.sourceCaseId ?? null,
     coveredRuleIds: [...value.coveredRuleIds],
     matchedRuleIds: [...value.matchedRuleIds],
+    evaluationContracts: [...value.evaluationContracts],
+    escalated: value.escalated,
+    modelInvocations: value.modelInvocations,
   };
 }
 
@@ -331,11 +332,11 @@ function promptFromWire(prompt: PromptDefinition__Output): Record<string, unknow
 function actionBindingToWire(binding: Record<string, unknown>): ActionBinding {
   return {
     id: string(binding.id),
-    risk: string(binding.risk),
-    stage: wireEnum("EVALUATION_STAGE", binding.stage),
+    capability: string(binding.capability),
+    contractRef: string(binding.contract_ref),
     phases: strings(binding.phases).map((phase) => wireEnum("GUARDRAIL_PHASE", phase)),
     onUnsafe: wireEnum("ENFORCEMENT_ACTION", binding.on_unsafe),
-    escalation: wireEnum("ESCALATION_MODE", binding.escalation),
+    trigger: triggerToWire(binding.trigger),
     timeoutMs: number(binding.timeout_ms),
     parameters: pairsToWire(binding.parameters),
     ...(optionalString(binding.policy_id) === null ? {} : { policyId: string(binding.policy_id) }),
@@ -354,11 +355,11 @@ function actionBindingToWire(binding: Record<string, unknown>): ActionBinding {
 function actionBindingFromWire(binding: ActionBinding__Output): Record<string, unknown> {
   return {
     id: binding.id,
-    risk: binding.risk,
-    stage: domainEnum("EVALUATION_STAGE", binding.stage),
+    capability: binding.capability,
+    contract_ref: binding.contractRef,
     phases: binding.phases.map((phase) => domainEnum("GUARDRAIL_PHASE", phase)),
     on_unsafe: domainEnum("ENFORCEMENT_ACTION", binding.onUnsafe),
-    escalation: domainEnum("ESCALATION_MODE", binding.escalation),
+    trigger: triggerFromWire(binding.trigger),
     timeout_ms: binding.timeoutMs,
     parameters: pairsFromWire(binding.parameters),
     ...(binding.policyId === undefined ? {} : { policy_id: binding.policyId }),
@@ -371,6 +372,24 @@ function actionBindingFromWire(binding: ActionBinding__Output): Record<string, u
     failure_mode: domainEnum("FAILURE_MODE", binding.failureMode),
     depends_on: [...binding.dependsOn],
     ...(binding.resultVar === undefined ? {} : { result_var: binding.resultVar }),
+  };
+}
+
+function triggerToWire(value: unknown): NonNullable<ActionBinding["trigger"]> {
+  const trigger = record(value);
+  return {
+    type: wireEnum("EVALUATION_TRIGGER_TYPE", trigger.type),
+    ...(optionalString(trigger.step_ref) === null ? {} : { stepRef: string(trigger.step_ref) }),
+    verdicts: strings(trigger.verdicts).map((verdict) => wireEnum("EVALUATOR_VERDICT", verdict)),
+  };
+}
+
+function triggerFromWire(value: ActionBinding__Output["trigger"]): Record<string, unknown> {
+  if (value === null) return { type: "always" };
+  return {
+    type: domainEnum("EVALUATION_TRIGGER_TYPE", value.type),
+    ...(value.stepRef === undefined ? {} : { step_ref: value.stepRef }),
+    verdicts: value.verdicts.map((verdict) => domainEnum("EVALUATOR_VERDICT", verdict)),
   };
 }
 

@@ -1,7 +1,7 @@
 // Original file: common.proto
 
 /**
- * Coordinator decision after evaluating one stage of the execution route.
+ * Coordinator decision after evaluating one step of the execution route.
  */
 export const RouteDecision = {
   ROUTE_DECISION_UNSPECIFIED: 'ROUTE_DECISION_UNSPECIFIED',
@@ -13,7 +13,7 @@ export const RouteDecision = {
 } as const;
 
 /**
- * Coordinator decision after evaluating one stage of the execution route.
+ * Coordinator decision after evaluating one step of the execution route.
  */
 export type RouteDecision =
   | 'ROUTE_DECISION_UNSPECIFIED'
@@ -30,6 +30,6 @@ export type RouteDecision =
   | 5
 
 /**
- * Coordinator decision after evaluating one stage of the execution route.
+ * Coordinator decision after evaluating one step of the execution route.
  */
 export type RouteDecision__Output = typeof RouteDecision[keyof typeof RouteDecision]

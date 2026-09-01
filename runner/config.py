@@ -3,8 +3,15 @@ from __future__ import annotations
 import os
 import socket
 import base64
+import json
 from dataclasses import dataclass
 from pathlib import Path
+
+from runner.toolkit.safety.providers import (
+    EvaluatorBindingConfig,
+    ModelRuntimeConfig,
+    resolve_evaluator_model_providers,
+)
 
 
 def _boolean(name: str, default: bool) -> bool:
@@ -48,12 +55,8 @@ class RunnerSettings:
     telemetry_endpoint: str
     telemetry_batch_size: int
     call_context_redis_url: str | None
-    nvidia_base_url: str | None
-    content_safety_model: str | None
-    topic_control_model: str | None
-    jailbreak_model: str | None
-    grounding_model: str | None
-    nvidia_api_key_env_var: str
+    model_runtimes: tuple[ModelRuntimeConfig, ...]
+    evaluator_bindings: tuple[EvaluatorBindingConfig, ...]
     automated_reasoning_endpoint_url: str | None
     automated_reasoning_api_key_env_var: str
     runtime_log_encryption_key: bytes | None
@@ -91,42 +94,22 @@ class RunnerSettings:
             )
         if all(tls_values) and not metrics_token:
             raise ValueError("GUARD_METRICS_TOKEN is required with production control-channel mTLS.")
-        nvidia_base_url = os.environ.get("MODEL_GUARDRAILS_NVIDIA_BASE_URL", "").strip()
-        content_safety_model = os.environ.get(
-            "MODEL_GUARDRAILS_CONTENT_SAFETY_MODEL", ""
-        ).strip()
-        topic_control_model = os.environ.get(
-            "MODEL_GUARDRAILS_TOPIC_CONTROL_MODEL", ""
-        ).strip()
-        jailbreak_model = os.environ.get(
-            "MODEL_GUARDRAILS_JAILBREAK_MODEL", ""
-        ).strip()
-        grounding_model = os.environ.get(
-            "MODEL_GUARDRAILS_GROUNDING_MODEL", ""
-        ).strip()
-        nvidia_api_key_env_var = os.environ.get(
-            "MODEL_GUARDRAILS_NVIDIA_API_KEY_ENV_VAR",
-            "MODEL_GUARDRAILS_NVIDIA_API_KEY",
-        ).strip() or "MODEL_GUARDRAILS_NVIDIA_API_KEY"
-        configured_models = tuple(
-            item
-            for item in (
-                content_safety_model,
-                topic_control_model,
-                jailbreak_model,
-                grounding_model,
-            )
-            if item
+        model_runtimes = _model_runtimes(
+            os.environ.get("MODEL_GUARDRAILS_MODEL_RUNTIMES_JSON", "")
         )
-        if configured_models and not nvidia_base_url:
-            raise ValueError(
-                "MODEL_GUARDRAILS_NVIDIA_BASE_URL is required when an NVIDIA "
-                "guardrail model is configured."
-            )
-        if configured_models and not os.environ.get(nvidia_api_key_env_var, "").strip():
-            raise ValueError(
-                f"{nvidia_api_key_env_var} is required when an NVIDIA guardrail model is configured."
-            )
+        evaluator_bindings = _evaluator_bindings(
+            os.environ.get("MODEL_GUARDRAILS_EVALUATOR_BINDINGS_JSON", "")
+        )
+        # Validate every binding/profile reference before the runtime starts.
+        resolve_evaluator_model_providers(model_runtimes, evaluator_bindings)
+        for runtime in model_runtimes:
+            if runtime.api_key_env_var and not os.environ.get(
+                runtime.api_key_env_var, ""
+            ).strip():
+                raise ValueError(
+                    f"{runtime.api_key_env_var} is required by Model Runtime "
+                    f"{runtime.id!r}."
+                )
         runtime_log_key_value = os.environ.get(
             "MODEL_GUARDRAILS_RUNTIME_LOG_ENCRYPTION_KEY", ""
         ).strip()
@@ -183,12 +166,8 @@ class RunnerSettings:
             call_context_redis_url=(
                 os.environ.get("GUARD_RUNNER_CALL_CONTEXT_REDIS_URL", "").strip() or None
             ),
-            nvidia_base_url=nvidia_base_url.rstrip("/") or None,
-            content_safety_model=content_safety_model or None,
-            topic_control_model=topic_control_model or None,
-            jailbreak_model=jailbreak_model or None,
-            grounding_model=grounding_model or None,
-            nvidia_api_key_env_var=nvidia_api_key_env_var,
+            model_runtimes=model_runtimes,
+            evaluator_bindings=evaluator_bindings,
             automated_reasoning_endpoint_url=automated_reasoning_endpoint_url or None,
             automated_reasoning_api_key_env_var=automated_reasoning_api_key_env_var,
             runtime_log_encryption_key=runtime_log_encryption_key,
@@ -207,3 +186,75 @@ class RunnerSettings:
             ),
             pyroscope_sample_rate=_positive_int("GUARD_PYROSCOPE_SAMPLE_RATE", 100),
         )
+
+
+def _model_runtimes(value: str) -> tuple[ModelRuntimeConfig, ...]:
+    payload = _configuration_array(value, "MODEL_GUARDRAILS_MODEL_RUNTIMES_JSON")
+    runtimes: list[ModelRuntimeConfig] = []
+    for index, item in enumerate(payload):
+        try:
+            runtimes.append(ModelRuntimeConfig(
+                id=str(item["id"]),
+                client=str(item.get("client", "openai_chat")),
+                base_url=str(item["base_url"]).rstrip("/"),
+                model=str(item["model"]),
+                api_key_env_var=(
+                    str(item["api_key_env_var"])
+                    if item.get("api_key_env_var")
+                    else None
+                ),
+                timeout_seconds=float(item.get("timeout_seconds", 20.0)),
+                max_tokens=int(item.get("max_tokens", 128)),
+            ))
+        except (KeyError, TypeError, ValueError) as error:
+            raise ValueError(f"Model Runtime at index {index} is invalid: {error}") from error
+    ids = tuple(item.id for item in runtimes)
+    if len(ids) != len(set(ids)):
+        raise ValueError("Model Runtime IDs must be unique.")
+    return tuple(runtimes)
+
+
+def _evaluator_bindings(value: str) -> tuple[EvaluatorBindingConfig, ...]:
+    payload = _configuration_array(
+        value, "MODEL_GUARDRAILS_EVALUATOR_BINDINGS_JSON"
+    )
+    bindings: list[EvaluatorBindingConfig] = []
+    for index, item in enumerate(payload):
+        try:
+            bindings.append(EvaluatorBindingConfig(
+                id=str(item["id"]),
+                contract_ref=str(item["contract_ref"]),
+                profile_ref=str(item["profile_ref"]),
+                model_ref=str(item["model_ref"]),
+                priority=int(item.get("priority", 100)),
+            ))
+        except (KeyError, TypeError, ValueError) as error:
+            raise ValueError(
+                f"Evaluator Binding at index {index} is invalid: {error}"
+            ) from error
+    ids = tuple(item.id for item in bindings)
+    if len(ids) != len(set(ids)):
+        raise ValueError("Evaluator Binding IDs must be unique.")
+    keys = tuple((item.contract_ref, item.priority) for item in bindings)
+    if len(keys) != len(set(keys)):
+        raise ValueError(
+            "Evaluator Binding contract priorities must be unique."
+        )
+    return tuple(sorted(bindings, key=lambda item: (item.priority, item.id)))
+
+
+def _configuration_array(value: str, name: str) -> list[dict[str, object]]:
+    if not value.strip():
+        return []
+    try:
+        payload = json.loads(value)
+    except json.JSONDecodeError as error:
+        raise ValueError(f"{name} must be valid JSON.") from error
+    if not isinstance(payload, list):
+        raise ValueError(f"{name} must be a JSON array.")
+    records: list[dict[str, object]] = []
+    for index, item in enumerate(payload):
+        if not isinstance(item, dict):
+            raise ValueError(f"{name} entry {index} must be an object.")
+        records.append(item)
+    return records

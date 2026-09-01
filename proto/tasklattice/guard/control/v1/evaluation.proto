@@ -115,15 +115,14 @@ message RuntimeTraceStep {
   optional string parent_id = 7;
   // Bounded evidence captured for this node; absence means none was retained.
   optional string evidence = 8;
-  // Trace stages include transport/model lifecycle stages in addition to the
-  // three plan evaluation stages, so this remains an extensible identifier.
-  optional string stage = 9;
+  // Stable evaluation contract active for this node, when applicable.
+  optional string contract_ref = 9;
   // Normalized evaluator verdict when this node performed evaluation.
   optional EvaluatorVerdict verdict = 10;
   // Coordinator route when this node made a routing decision.
   optional RouteDecision route = 11;
-  // Risk registry ID when this node is risk-specific.
-  optional string risk = 12;
+  // Product capability ID when this node is capability-specific.
+  optional string capability = 12;
   // Normalized confidence in [0, 1], when reported by this node.
   optional double confidence = 13;
   // Content-block correlation ID when evaluation used a structured content view.
@@ -190,4 +189,8 @@ message RuntimeTraceStep {
   optional int32 started_offset_ms = 44;
   // Milliseconds from the request trace origin to the last model-call finish.
   optional int32 finished_offset_ms = 45;
+  // Concrete evaluator implementation invoked for this node.
+  optional string evaluator_id = 46;
+  // Versioned implementation profile used by a model-backed evaluator.
+  optional string profile_ref = 47;
 }

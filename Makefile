@@ -14,15 +14,9 @@ HELM_CONTEXT ?= orbstack
 HELM_TIMEOUT ?= 180s
 HELM_ROLLOUT_REVISION ?= $(shell date -u +%Y%m%d%H%M%S)
 LOCAL_PROVIDER_SECRET ?= tali-guard-provider-keys
-CONTROL_PLANE_AI_PROVIDER ?= DeepSeek
-CONTROL_PLANE_AI_BASE_URL ?= https://api.deepseek.com
-CONTROL_PLANE_AI_MODEL ?= deepseek-v4-flash
-NVIDIA_PROVIDER ?= NVIDIA
-NVIDIA_BASE_URL ?= https://integrate.api.nvidia.com/v1
-NVIDIA_CONTENT_SAFETY_MODEL ?= nvidia/llama-3.1-nemotron-safety-guard-8b-v3
-NVIDIA_TOPIC_CONTROL_MODEL ?= nvidia/llama-3.1-nemoguard-8b-topic-control
-NVIDIA_JAILBREAK_MODEL ?= nvidia/nvidia-nemotron-nano-9b-v2
-NVIDIA_GROUNDING_MODEL ?=
+CONTROL_PLANE_AI_PROVIDER ?= Qwen
+CONTROL_PLANE_AI_BASE_URL ?= http://qwen-control.models.svc.cluster.local/v1
+CONTROL_PLANE_AI_MODEL ?= Qwen/Qwen3.5-9B
 HELM_REQUIRED_VALUES := --set database.url=postgresql://guard:guard@postgres:5432/guard --set security.artifactSigning.existingSecret=guard-artifact-signing --set security.controlTls.existingSecret=guard-control-tls --set security.bootstrapAdmin.existingSecret=guard-bootstrap-admin --set runner.callContextRedisUrl=redis://redis:6379/0
 
 .PHONY: helm-package
@@ -92,37 +86,36 @@ helm-template:
 
 # Rebuilds the moving :dev tags and changes a Helm-managed Pod annotation so
 # Controller and every Runner pool always roll to the latest local image. When
-# .env contains provider credentials, DeepSeek is wired into Controller
-# authoring and NVIDIA Guard Models are wired into every Runner pool.
+# .env contains provider credentials, the configured control-plane model and
+# Model Runtimes and Evaluator Bindings are wired into the data plane.
 helm-install: images
 	@set -eu; \
 		helm_args=""; \
 		provider_configured=false; \
-		nvidia_key=""; \
+		model_credentials=false; \
 		control_plane_key=""; \
 		automated_reasoning_endpoint=""; \
-		if [ -f .env ] && grep -Eq '^NVAPI_API_KEY=.+$$' .env; then \
-			nvidia_key=NVAPI_API_KEY; \
-		elif [ -f .env ] && grep -Eq '^MODEL_GUARDRAILS_NVIDIA_API_KEY=.+$$' .env; then \
-			nvidia_key=MODEL_GUARDRAILS_NVIDIA_API_KEY; \
+		if [ -f .env ] && grep -Eq '^(QWEN_GUARD_API_KEY|LLAMA_GUARD_API_KEY|QWEN_CONTROL_API_KEY)=.+$$' .env; then \
+			model_credentials=true; \
 		fi; \
-		if [ -f .env ] && grep -Eq '^DEEPSEEK_API_KEY=.+$$' .env; then \
-			control_plane_key=DEEPSEEK_API_KEY; \
+		if [ -f .env ] && grep -Eq '^QWEN_CONTROL_API_KEY=.+$$' .env; then \
+			control_plane_key=QWEN_CONTROL_API_KEY; \
 		elif [ -f .env ] && grep -Eq '^MODEL_GUARDRAILS_CONTROL_PLANE_AI_API_KEY=.+$$' .env; then \
 			control_plane_key=MODEL_GUARDRAILS_CONTROL_PLANE_AI_API_KEY; \
 		fi; \
-		if [ -n "$$nvidia_key" ]; then \
-			provider_configured=true; \
-			helm_args="$$helm_args \
-				--set-string evaluators.nvidia.provider=$(NVIDIA_PROVIDER) \
-				--set-string evaluators.nvidia.baseUrl=$(NVIDIA_BASE_URL) \
-				--set-string evaluators.nvidia.contentSafetyModel=$(NVIDIA_CONTENT_SAFETY_MODEL) \
-				--set-string evaluators.nvidia.topicControlModel=$(NVIDIA_TOPIC_CONTROL_MODEL) \
-				--set-string evaluators.nvidia.jailbreakModel=$(NVIDIA_JAILBREAK_MODEL) \
-				--set-string evaluators.nvidia.groundingModel=$(NVIDIA_GROUNDING_MODEL) \
-				--set-string evaluators.nvidia.existingSecret=$(LOCAL_PROVIDER_SECRET) \
-				--set-string evaluators.nvidia.secretKey=$$nvidia_key"; \
-			echo "Configuring NVIDIA Guardrail runtime models from .env: content_safety=$(NVIDIA_CONTENT_SAFETY_MODEL) topic_control=$(NVIDIA_TOPIC_CONTROL_MODEL) jailbreak=$(NVIDIA_JAILBREAK_MODEL)"; \
+		if [ -f .env ] && grep -Eq '^MODEL_GUARDRAILS_MODEL_RUNTIMES_JSON=\[.+\]$$' .env; then \
+			model_runtime_json=$$(sed -n 's/^MODEL_GUARDRAILS_MODEL_RUNTIMES_JSON=//p' .env | tail -n 1); \
+			helm_args="$$helm_args --set-json models.runtimes=$$model_runtime_json"; \
+			if [ "$$model_credentials" = true ]; then \
+				provider_configured=true; \
+				helm_args="$$helm_args --set-string models.credentials.existingSecret=$(LOCAL_PROVIDER_SECRET)"; \
+			fi; \
+			echo "Configuring Model Runtimes from .env"; \
+		fi; \
+		if [ -f .env ] && grep -Eq '^MODEL_GUARDRAILS_EVALUATOR_BINDINGS_JSON=\[.+\]$$' .env; then \
+			evaluator_binding_json=$$(sed -n 's/^MODEL_GUARDRAILS_EVALUATOR_BINDINGS_JSON=//p' .env | tail -n 1); \
+			helm_args="$$helm_args --set-json evaluators.bindings=$$evaluator_binding_json"; \
+			echo "Configuring Evaluator Bindings from .env"; \
 		fi; \
 		if [ -f .env ] && grep -Eq '^MODEL_GUARDRAILS_AUTOMATED_REASONING_ENDPOINT_URL=https?://.+' .env \
 			&& grep -Eq '^MODEL_GUARDRAILS_AUTOMATED_REASONING_API_KEY=.+' .env; then \
@@ -137,17 +130,17 @@ helm-install: images
 		if [ -n "$$control_plane_key" ]; then \
 			provider_configured=true; \
 			helm_args="$$helm_args \
-				--set-string controlPlaneAgent.deepseek.provider=$(CONTROL_PLANE_AI_PROVIDER) \
-				--set-string controlPlaneAgent.deepseek.baseUrl=$(CONTROL_PLANE_AI_BASE_URL) \
-				--set-string controlPlaneAgent.deepseek.model=$(CONTROL_PLANE_AI_MODEL) \
-				--set-string controlPlaneAgent.deepseek.existingSecret=$(LOCAL_PROVIDER_SECRET) \
-				--set-string controlPlaneAgent.deepseek.secretKey=$$control_plane_key"; \
+				--set-string controlPlaneAgent.provider.name=$(CONTROL_PLANE_AI_PROVIDER) \
+				--set-string controlPlaneAgent.provider.baseUrl=$(CONTROL_PLANE_AI_BASE_URL) \
+				--set-string controlPlaneAgent.provider.model=$(CONTROL_PLANE_AI_MODEL) \
+				--set-string controlPlaneAgent.provider.existingSecret=$(LOCAL_PROVIDER_SECRET) \
+				--set-string controlPlaneAgent.provider.secretKey=$$control_plane_key"; \
 			echo "Configuring Controller model from .env: provider=$(CONTROL_PLANE_AI_PROVIDER) model=$(CONTROL_PLANE_AI_MODEL) capabilities=intent_translation,document_analysis,playground"; \
 		fi; \
 		if [ "$$provider_configured" = true ]; then \
 			provider_env=$$(mktemp); \
 			trap 'rm -f "$$provider_env"' EXIT; \
-			grep -E '^(NVAPI_API_KEY|MODEL_GUARDRAILS_NVIDIA_API_KEY|DEEPSEEK_API_KEY|MODEL_GUARDRAILS_CONTROL_PLANE_AI_API_KEY|MODEL_GUARDRAILS_AUTOMATED_REASONING_API_KEY)=' .env >"$$provider_env"; \
+			grep -E '^(QWEN_GUARD_API_KEY|LLAMA_GUARD_API_KEY|QWEN_CONTROL_API_KEY|MODEL_GUARDRAILS_CONTROL_PLANE_AI_API_KEY|MODEL_GUARDRAILS_AUTOMATED_REASONING_API_KEY)=' .env >"$$provider_env"; \
 			kubectl --context $(HELM_CONTEXT) create namespace $(HELM_NAMESPACE) --dry-run=client -o yaml \
 				| kubectl --context $(HELM_CONTEXT) apply -f - >/dev/null; \
 			kubectl --context $(HELM_CONTEXT) --namespace $(HELM_NAMESPACE) create secret generic $(LOCAL_PROVIDER_SECRET) \

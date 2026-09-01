@@ -88,6 +88,9 @@ unavailable until Controller returns.
 
 ## Guardrail lifecycle
 
+The authoritative state vocabulary, lifecycle diagrams, and derived UI status
+rules are documented in [State ownership and lifecycles](docs/architecture.md#state-ownership-and-lifecycles).
+
 1. An administrator creates a product-level Guardrail draft in Controller.
 2. Controller converts selected protections into a canonical immutable plan.
 3. Publishing requires a healthy GuardRails 0 Runner.
@@ -184,6 +187,19 @@ in as `admin` / `admin`; the corresponding internal Better Auth email is
 make test
 ```
 
+Controller/Runner messages are defined once under
+`proto/tasklattice/guard/control/v1/`. After changing a protocol file, regenerate
+the checked-in Python and TypeScript bindings and verify them with:
+
+```bash
+make proto-generate
+make proto-check
+```
+
+The protocol contains typed business messages rather than JSON documents. See
+[`docs/architecture.md`](docs/architecture.md#control-protocol) for contract
+ownership and extension rules.
+
 ## Kubernetes deployment
 
 The self-contained OrbStack profile builds both images and installs Controller,
@@ -197,11 +213,12 @@ make helm-install
 Use `make helm-install-debug` for the same OrbStack deployment with the
 `values-debug.yaml` overlay and all performance diagnostics enabled.
 
-If `.env` contains `DEEPSEEK_API_KEY` and/or `NVAPI_API_KEY`, the same command
-securely connects the Controller authoring model and the Runner NVIDIA Content
-Safety, Topic Control, and Jailbreak model evaluators. All three Runner models
-share one OpenAI-compatible Provider endpoint and Secret; the command prints
-their exact model names before upgrading the release.
+If `.env` contains the configured Qwen/Llama Provider credentials, the same
+command securely connects the Controller authoring model and Runner Model
+Runtimes. Evaluation Contracts are mapped through explicit Evaluator Bindings
+and Profiles, so Qwen3Guard can be primary while Llama Guard is used only as a
+fallback for contracts it actually supports. Model endpoints remain replaceable
+and are not compiled into Policy templates or Guardrail artifacts.
 
 Production keeps PostgreSQL and secrets externally managed. Image definitions,
 dependency contracts, direct Helm commands, and the production, Debug, and

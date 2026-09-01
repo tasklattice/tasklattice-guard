@@ -1,7 +1,7 @@
 """TaskLattice policy providers exposed exclusively as NeMo Actions."""
 from .content_filter import ContentFilterActionProvider
+from .evaluate import EvaluationActionProvider, EvaluationRoute
 from .indirect_prompt_injection import IndirectPromptInjectionActionProvider
-from .pii import PiiActionProvider
 from .prompt_leakage import PromptLeakageActionProvider
 from .prompt_security import PromptSecurityActionProvider
 from .secrets import SecretsActionProvider
@@ -13,7 +13,6 @@ def local_action_providers(
 ) -> tuple[
     ContentFilterActionProvider,
     SecretsActionProvider,
-    PiiActionProvider,
     TopicRulesActionProvider,
     PromptSecurityActionProvider,
     IndirectPromptInjectionActionProvider,
@@ -23,7 +22,6 @@ def local_action_providers(
     return (
         ContentFilterActionProvider(),
         SecretsActionProvider(),
-        PiiActionProvider(),
         TopicRulesActionProvider(),
         prompt_security or PromptSecurityActionProvider(),
         IndirectPromptInjectionActionProvider(),
@@ -33,8 +31,9 @@ def local_action_providers(
 
 __all__ = [
     "ContentFilterActionProvider",
+    "EvaluationActionProvider",
+    "EvaluationRoute",
     "IndirectPromptInjectionActionProvider",
-    "PiiActionProvider",
     "PromptSecurityActionProvider",
     "PromptLeakageActionProvider",
     "SecretsActionProvider",

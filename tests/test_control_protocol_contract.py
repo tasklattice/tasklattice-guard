@@ -226,7 +226,7 @@ def test_validation_case_has_a_lossless_typed_round_trip() -> None:
     assert validation_test_from_proto(validation_test_to_proto(case)) == case
 
 
-def test_validation_result_represents_no_stage_without_an_unspecified_sentinel() -> None:
+def test_validation_result_represents_no_evaluator_without_a_sentinel() -> None:
     result = validation_case_result_to_proto({
         "caseId": "case-1",
         "name": "No evaluator selected",
@@ -234,7 +234,7 @@ def test_validation_result_represents_no_stage_without_an_unspecified_sentinel()
         "expectedDecision": "allow",
         "actualDecision": "allow",
         "passed": True,
-        "stageReached": "none",
+        "evaluatorIds": [],
         "latencyMs": 1,
         "reason": "",
         "phase": "input",
@@ -251,33 +251,42 @@ def test_validation_result_represents_no_stage_without_an_unspecified_sentinel()
         "required": True,
         "coveredRuleIds": [],
         "matchedRuleIds": [],
+        "evaluationContracts": [],
+        "escalated": False,
+        "modelInvocations": 0,
     })
 
-    assert result.stage_reached == protocol.VALIDATION_STAGE_NONE
+    assert list(result.evaluator_ids) == []
+    assert list(result.evaluation_contracts) == []
+    assert result.escalated is False
+    assert result.model_invocations == 0
 
 
 def _plan() -> dict[str, object]:
     return {
         "guardrail_id": "guardrail-1",
         "guardrail_version": 3,
-        "compiler_version": "tasklattice-controller-plan-v2",
+        "compiler_version": "tasklattice-controller-plan-v3",
         "safety_level": "strict",
         "output_delivery": "full_buffered",
         "steps": [{
-            "id": "pii:fast-semantic",
-            "risk": "pii",
-            "stage": "fast_semantic",
+            "id": "pii:semantic",
+            "capability": "pii",
+            "contract_ref": "tali.guard.pii.semantic.v1",
             "phases": ["input", "output"],
             "on_unsafe": "redact",
-            "escalation": "on_uncertain",
-            "threshold": 0.85,
+            "trigger": {
+                "type": "on_result",
+                "step_ref": "pii:exact",
+                "verdicts": ["uncertain"],
+            },
             "parameters": [["entity_types", "passport,phone"]],
         }],
         "modules": [{
             "id": "data_protection:input",
             "module": "data_protection",
             "phase": "input",
-            "step_ids": ["pii:fast-semantic"],
+            "step_ids": ["pii:semantic"],
             "depends_on": [],
             "input_view": "original",
             "required_for_release": True,
@@ -311,7 +320,7 @@ def _plan() -> dict[str, object]:
                 "depends_on": [],
             }],
             "action_references": [{"name": "detect_passport", "version": "1.0.0"}],
-            "model_dependencies": ["qwen3guard-gen-8b"],
+            "evaluation_contracts": ["tali.guard.pii.semantic.v1"],
             "prompt_dependencies": ["passport-prompt"],
             "execution_contract": [["native_risk", "pii"]],
             "test_cases": [["safe", "allow"]],

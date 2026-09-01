@@ -1,3 +1,18 @@
+import type { EnforcementAction } from "../../shared/enforcement-action.generated";
+import type {
+  GuardrailReadinessState,
+  IntegrationSetupState,
+  ValidationRunDisplayState,
+} from "../../shared/lifecycle";
+
+export {
+  enforcementActionConflictOrder,
+  enforcementActionDescriptions,
+  enforcementActionDisplayOrder,
+  enforcementActions,
+} from "../../shared/enforcement-action.generated";
+export type { EnforcementAction };
+
 export type SafetyLevel = "balanced" | "strict";
 export type OutputDelivery = "interruptible" | "window_buffered" | "full_buffered";
 export type TargetSource = "user_input" | "retrieved_content" | "tool_output" | "model_output";
@@ -34,8 +49,6 @@ export type AutomatedReasoningFinding = {
 
 export type Collection<T> = { items: T[]; count: number };
 
-export type EnforcementAction = "pass" | "redact" | "rewrite" | "regenerate" | "redirect" | "reject" | "fallback" | "clarify";
-
 export type GuardrailPolicyBinding = {
   policy_id: string;
   policy_version: string;
@@ -57,20 +70,28 @@ export type ValidationMetrics = {
   compliance_rate: number;
   false_positive_rate: number;
   false_negative_rate: number;
-  deep_escalation_rate: number;
+  escalation_rate: number;
   p95_latency_ms: number;
 };
 
 export type RuntimeFinding = {
   risk: string;
+  taxonomy_id: string;
   verdict: string;
-  confidence: number;
+  confidence: number | null;
   evidence: string;
   recommended_action: string;
   replacement?: string | null;
   grounding?: GroundingFilterAssessment[];
   claims?: GroundingClaimEvidence[];
   reasoning?: AutomatedReasoningFinding[];
+  provider_evidence?: Array<{
+    provider_id: string;
+    model: string;
+    native_verdict: string;
+    native_category?: string | null;
+    mapping_quality?: string | null;
+  }>;
 };
 
 export type RuntimeTraceStep = {
@@ -81,10 +102,10 @@ export type RuntimeTraceStep = {
   detail: string;
   duration_ms: number;
   parent_id?: string | null;
-  stage?: string | null;
+  contract_ref?: string | null;
   verdict?: string | null;
   route?: string | null;
-  risk?: string | null;
+  capability?: string | null;
   confidence?: number | null;
   policy_id?: string | null;
   policy_version?: string | null;
@@ -103,7 +124,7 @@ export type TestCaseResult = {
   expected_decision: string;
   actual_decision: string;
   passed: boolean;
-  stage_reached: string;
+  evaluator_ids: string[];
   latency_ms: number;
   reason: string;
   phase: "input" | "output";
@@ -128,6 +149,9 @@ export type TestCaseResult = {
   source_case_id: string | null;
   covered_rule_ids: string[];
   matched_rule_ids: string[];
+  evaluation_contracts: string[];
+  escalated: boolean;
+  model_invocations: number;
 };
 
 export type ValidationRun = {
@@ -155,7 +179,8 @@ export type PlaygroundCheckFinding = {
   severity: "high" | "medium" | "low";
   title: string;
   detail: string;
-  confidence: number;
+  confidence: number | null;
+  taxonomy_id: string;
   recommended_action: string;
   policy_id: string | null;
   rule_id: string | null;
@@ -290,13 +315,21 @@ export type DeploymentTraceFinding = {
   phase: string;
   severity: "critical" | "high" | "medium" | "low";
   risk: string;
+  taxonomy_id: string;
   verdict: string;
-  confidence: number;
+  confidence: number | null;
   recommended_action: string;
   policy_id: string | null;
   rule_id: string | null;
   detail: string;
   protocol?: string | null;
+  provider_evidence?: Array<{
+    provider_id: string;
+    model: string;
+    native_verdict: string;
+    native_category: string | null;
+    mapping_quality: string | null;
+  }>;
 };
 
 export type RuntimeFindingSummary = {
@@ -328,8 +361,8 @@ export type DeploymentTraceStep = {
   phase: string;
   kind: "rail" | "action" | string;
   name: string;
-  risk: string | null;
-  stage: string | null;
+  capability: string | null;
+  contract_ref: string | null;
   outcome: string;
   latency_ms: number;
   timed_out: boolean;
@@ -423,7 +456,7 @@ export type Guardrail = {
   safety_level: SafetyLevel;
   output_delivery: OutputDelivery;
   updated_at: string;
-  status: "needs_validation" | "ready" | "protected";
+  status: GuardrailReadinessState;
   latest_validation_run: ValidationRun | null;
   deployment_count: number;
   test_case_count: number;
@@ -540,7 +573,7 @@ export type PolicyRule = {
   description: string;
   form: "regex" | "keyword" | "category" | "code_block" | "competitor_intent" | "colang_flow";
   effect: string;
-  stages: NativeRailType[];
+  rails: NativeRailType[];
   implementation: PolicyRuleImplementation;
   expression: string | null;
   context_expression: string | null;
@@ -560,7 +593,7 @@ export type PolicyTestCase = {
   id: string;
   name: string;
   description: string;
-  stage: NativeRailType;
+  phase: NativeRailType;
   content: string;
   expected_decision: "allow" | "block" | "transform" | "intervene";
   covered_rule_ids: string[];
@@ -589,7 +622,7 @@ export type Policy = {
   version: string;
   tags: PolicyTag[];
   parameters: PolicyParameter[];
-  stages: NativeRailType[];
+  rails: NativeRailType[];
   effects: string[];
   forms: PolicyRule["form"][];
   rules: PolicyRule[];
@@ -617,7 +650,7 @@ export type PolicyRailBinding = {
   rail_type: PolicyRailType;
   flow_name: string;
   execution_mode: "detect" | "mutate";
-  on_unsafe: "pass" | "redact" | "rewrite" | "regenerate" | "redirect" | "reject" | "fallback" | "clarify";
+  on_unsafe: EnforcementAction;
   parallel_group: string | null;
   priority: number | null;
   timeout_ms: number;
@@ -652,7 +685,7 @@ export type ProgrammablePolicyDraft = {
   parameter_schema: PolicyDraftParameter[];
   rail_bindings: PolicyRailBinding[];
   action_references: PolicyActionReference[];
-  model_dependencies: string[];
+  evaluation_contracts: string[];
   prompt_dependencies: string[];
   execution_contract: Array<[string, string]>;
   test_cases: PolicyDraftTestCase[];
@@ -705,7 +738,7 @@ export type PolicyDraftValidationRun = {
   id?: string;
   policy_id?: string;
   draft_revision?: number;
-  status: "not_run" | "queued" | "running" | "passed" | "failed";
+  status: ValidationRunDisplayState;
   results?: Array<{
     name: string;
     case_type: PolicyDraftTestCase["case_type"];
@@ -742,7 +775,7 @@ export type GuardrailCompilePreview = {
 
 export type IntegrationAdapterId = "litellm-generic-guardrail" | "generic-http-guard" | "a2a-guard";
 export type IntegrationProtocol = "litellm" | "http" | "a2a";
-export type IntegrationSetupStatus = "applying" | "awaiting_callback" | "verified" | "disabled";
+export type IntegrationSetupStatus = IntegrationSetupState;
 
 export type IntegrationSetup = {
   api_base_url: string;
@@ -906,9 +939,7 @@ export type SystemStatus = {
   enabled_integrations: number;
   total_integrations: number;
   capabilities: {
-    deterministic: boolean;
-    fast_semantic: boolean;
-    specialized_evaluators: string[];
+    evaluators: string[];
     generic_runtime_llm: false;
     automated_reasoning: boolean;
   };

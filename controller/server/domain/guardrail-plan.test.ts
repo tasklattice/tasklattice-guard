@@ -5,13 +5,19 @@ import { buildGuardrailPlan } from "./guardrail-plan.js";
 import { PolicyCatalog } from "../policy-catalog/catalog.js";
 
 describe("Controller Guardrail plan", () => {
-  it("turns product protections into a deterministic immutable Runner contract", () => {
+  it("turns product Policy bindings into an immutable evaluator contract graph", () => {
     const plan = buildGuardrailPlan({
       guardrailId: "guardrail-1",
       guardrailVersion: 3,
       draft: {
-        protections: ["secrets", "pii", "prompt_injection"],
         purposeDetails: { audience: "", tasks: "", protect: "", outOfScope: "" },
+        allowedTopics: [],
+        restrictedTopics: [],
+        policyBindings: [
+          nativeBinding("builtin-secrets"),
+          nativeBinding("builtin-pii"),
+          nativeBinding("builtin-prompt-injection"),
+        ],
         safetyLevel: "strict",
         outputDelivery: "full_buffered",
       },
@@ -20,16 +26,34 @@ describe("Controller Guardrail plan", () => {
     expect(plan).toMatchObject({
       guardrail_id: "guardrail-1",
       guardrail_version: 3,
-      compiler_version: "tasklattice-controller-plan-v2",
+      compiler_version: "tasklattice-controller-plan-v3",
       safety_level: "strict",
     });
     expect(plan.steps).toEqual(expect.arrayContaining([
-      expect.objectContaining({ risk: "secrets", stage: "deterministic", on_unsafe: "reject" }),
-      expect.objectContaining({ risk: "prompt_injection", stage: "fast_semantic", on_unsafe: "reject" }),
+      expect.objectContaining({ capability: "secrets", contract_ref: "tali.guard.secrets.exact.v1", on_unsafe: "reject", trigger: { type: "always" } }),
+      expect.objectContaining({ capability: "pii", contract_ref: "tali.guard.pii.exact.v1", trigger: { type: "always" } }),
+      expect.objectContaining({ capability: "pii", contract_ref: "tali.guard.pii.semantic.v1", trigger: { type: "on_result", step_ref: "pii:exact", verdicts: ["safe", "uncertain"] } }),
+      expect.objectContaining({ capability: "prompt_injection", contract_ref: "tali.guard.prompt-injection.v1", on_unsafe: "reject" }),
     ]));
     expect(plan.modules).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: "data_protection:input", failure_mode: "fail_closed" }),
+      expect.objectContaining({ id: "data_protection:input", failure_mode: "fail_closed", timeout_ms: 30_000 }),
       expect.objectContaining({ id: "interaction_safety:input", failure_mode: "fail_closed" }),
+    ]));
+
+    const balanced = buildGuardrailPlan({
+      guardrailId: "guardrail-balanced",
+      guardrailVersion: 1,
+      draft: {
+        allowedTopics: [], restrictedTopics: [],
+        policyBindings: [nativeBinding("builtin-pii")],
+        safetyLevel: "balanced", outputDelivery: "full_buffered",
+      },
+    });
+    expect(balanced.steps).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        contract_ref: "tali.guard.pii.semantic.v1",
+        trigger: { type: "on_result", step_ref: "pii:exact", verdicts: ["uncertain"] },
+      }),
     ]));
   });
 
@@ -69,7 +93,8 @@ describe("Controller Guardrail plan", () => {
       enabled_rails: ["input"],
     })]);
     expect(plan.steps).toEqual([expect.objectContaining({
-      risk: "builtin_content_filter",
+      capability: "builtin_content_filter",
+      contract_ref: "tali.guard.content-filter.rules.v1",
       phases: ["input"],
       on_unsafe: "reject",
       parameters: expect.arrayContaining([
@@ -79,7 +104,7 @@ describe("Controller Guardrail plan", () => {
       ]),
     })]);
     expect(plan.steps).toEqual(expect.arrayContaining([expect.objectContaining({
-      risk: "builtin_content_filter",
+      capability: "builtin_content_filter",
       parameters: expect.arrayContaining([["custom_rules_json", "[]"]]),
     })]));
   });
@@ -139,7 +164,7 @@ describe("Controller Guardrail plan", () => {
 
     expect(plan.steps).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        risk: "builtin_content_filter",
+        capability: "builtin_content_filter",
         parameters: expect.arrayContaining([
           ["custom_rules_json", JSON.stringify([
             { id: "mask-mama", phases: ["input"], detector: "keyword", keywords: ["mama"], action: "redact", replacement: "niulai" },
@@ -150,3 +175,16 @@ describe("Controller Guardrail plan", () => {
     ]));
   });
 });
+
+function nativeBinding(policyId: string) {
+  return {
+    policyId,
+    policyVersion: "1.0.0",
+    action: null,
+    parameterValues: {},
+    enabledRuleIds: [policyId],
+    ruleActions: {},
+    enabledRails: [],
+    reasoningPolicy: null,
+  };
+}

@@ -19,17 +19,18 @@ import {
 const plan = {
   guardrail_id: "guardrail-1",
   guardrail_version: 3,
-  compiler_version: "tasklattice-controller-plan-v2",
+  compiler_version: "tasklattice-controller-plan-v3",
   safety_level: "strict",
   output_delivery: "full_buffered",
   steps: [{
-    id: "pii:fast-semantic", risk: "pii", stage: "fast_semantic", phases: ["input", "output"],
-    on_unsafe: "redact", escalation: "on_uncertain", threshold: 0.85,
+    id: "pii:semantic", capability: "pii", contract_ref: "tali.guard.pii.semantic.v1",
+    phases: ["input", "output"], on_unsafe: "redact",
+    trigger: { type: "on_result", step_ref: "pii:exact", verdicts: ["uncertain"] },
     parameters: [["entity_types", "passport,phone"]],
   }],
   modules: [{
     id: "data_protection:input", module: "data_protection", phase: "input",
-    step_ids: ["pii:fast-semantic"], depends_on: [], input_view: "original",
+    step_ids: ["pii:semantic"], depends_on: [], input_view: "original",
     required_for_release: true, timeout_ms: 750, failure_mode: "fail_closed",
   }],
   reasoning_policies: [{
@@ -45,7 +46,7 @@ const plan = {
       required: true, depends_on: [],
     }],
     action_references: [{ name: "detect_passport", version: "1.0.0" }],
-    model_dependencies: ["qwen3guard-gen-8b"], prompt_dependencies: ["passport-prompt"],
+    evaluation_contracts: ["tali.guard.pii.semantic.v1"], prompt_dependencies: ["passport-prompt"],
     execution_contract: [["native_risk", "pii"]], test_cases: [["safe", "allow"]], checksum: "policy-checksum",
   }],
   policy_bindings: [{
@@ -94,14 +95,15 @@ describe("Controller/Runner control protocol", () => {
       plan, configYaml: "models: []", colangContent: "define flow passport",
       prompts: [{ task: "passport_check", content: "Check {{ user_input }}", output_parser: "json", max_tokens: 64 }],
       actionBindings: [{
-        id: "pii:fast-semantic", risk: "pii", stage: "fast_semantic", phases: ["input", "output"],
-        on_unsafe: "redact", escalation: "on_uncertain", timeout_ms: 500,
+        id: "pii:semantic", capability: "pii", contract_ref: "tali.guard.pii.semantic.v1",
+        phases: ["input", "output"], on_unsafe: "redact",
+        trigger: { type: "on_result", step_ref: "pii:exact", verdicts: ["uncertain"] }, timeout_ms: 500,
         parameters: [["entity_types", "passport"]], policy_id: "passport-policy", policy_version: "1.0.0",
         flow_name: "passport input", action_name: "detect_passport", action_version: "1.0.0",
         parallel_group: "data-protection", execution_mode: "mutate", failure_mode: "fail_closed",
         depends_on: [], result_var: "passport_result",
       }],
-      dependencyManifest: [["model", "qwen3guard-gen-8b", "1"]],
+      dependencyManifest: [["evaluation_contract", "tali.guard.pii.semantic.v1", "1"]],
     };
     const wire = artifactToWire({ id: "artifact-1", ...content, checksum: "checksum", signature: "signature" });
 

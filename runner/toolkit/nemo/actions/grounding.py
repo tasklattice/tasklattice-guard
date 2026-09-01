@@ -11,6 +11,7 @@ from ...runtime.contracts import (
     GroundingFilterAssessment,
     RiskFinding,
 )
+from ...safety.taxonomy import taxonomy_for_evaluator
 from .contracts import ActionRequest, ActionResult, action_result, action_view
 from .model_call import action_usage, observe_model_call
 from .names import ACTION_GROUNDING
@@ -27,7 +28,7 @@ class GroundingActionProvider:
     name = ACTION_GROUNDING
     version = "1.0.0"
     rails = frozenset({"output"})
-    risks = frozenset({"contextual_grounding"})
+    capabilities = frozenset({"contextual_grounding"})
 
     def __init__(
         self,
@@ -78,7 +79,8 @@ class GroundingActionProvider:
                 request.content,
                 findings=(
                     RiskFinding(
-                        risk=request.risk,
+                        risk=request.capability,
+                        taxonomy_id=taxonomy_for_evaluator(request.capability),
                         verdict="uncertain",
                         confidence=0.0,
                         evidence=reason,
@@ -196,7 +198,8 @@ class GroundingActionProvider:
             else "The response is grounded in the supplied sources and relevant to the query."
         )
         finding = RiskFinding(
-            risk=request.risk,
+            risk=request.capability,
+            taxonomy_id=taxonomy_for_evaluator(request.capability),
             verdict=verdict,
             confidence=min(grounding_score, relevance_score),
             evidence=reason,

@@ -724,7 +724,7 @@ class RunnerMetrics:
                     continue
                 triggers.add((
                     step.module_id or "__unknown__",
-                    step.risk or "unknown",
+                    step.capability or "unknown",
                     step.policy_id or "__builtin__",
                     decision.action or "pass",
                     step.verdict,
@@ -958,7 +958,7 @@ def _failure_labels(step) -> dict[str, str]:
         }
     return {
         "module_id": step.module_id or "__unknown__",
-        "stage": step.stage or step.kind or "unknown",
+        "stage": step.kind or "unknown",
         "action": step.action_name or step.name or "__unknown__",
         "policy_id": step.policy_id or "__builtin__",
         "failure_mode": (

@@ -535,8 +535,8 @@ def equivalence_report(measurements: Sequence[Mapping[str, Any]]) -> list[dict[s
             for item in items
         }
         signature_sets = [tuple(value) for value in target_signatures.values()]
-        deterministic = all(len(value) == 1 for value in signature_sets)
-        equivalent = deterministic and len(set(signature_sets)) == 1
+        repeatable = all(len(value) == 1 for value in signature_sets)
+        equivalent = repeatable and len(set(signature_sets)) == 1
         no_errors = all(int(item["error_count"]) == 0 for item in items)
         report.append(
             {
@@ -544,10 +544,10 @@ def equivalence_report(measurements: Sequence[Mapping[str, Any]]) -> list[dict[s
                 "size": size_label,
                 "concurrency": sorted({int(item["concurrency"]) for item in items}),
                 "targets": target_signatures,
-                "within_target_deterministic": deterministic,
+                "within_target_repeatable": repeatable,
                 "across_target_equivalent": equivalent,
                 "no_errors": no_errors,
-                "passed": deterministic and equivalent and no_errors,
+                "passed": repeatable and equivalent and no_errors,
             }
         )
     return report

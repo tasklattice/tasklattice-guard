@@ -33,10 +33,9 @@ export interface RuntimeTraceStep {
    */
   'evidence'?: (string);
   /**
-   * Trace stages include transport/model lifecycle stages in addition to the
-   * three plan evaluation stages, so this remains an extensible identifier.
+   * Stable evaluation contract active for this node, when applicable.
    */
-  'stage'?: (string);
+  'contractRef'?: (string);
   /**
    * Normalized evaluator verdict when this node performed evaluation.
    */
@@ -46,9 +45,9 @@ export interface RuntimeTraceStep {
    */
   'route'?: (_tasklattice_guard_control_v1_RouteDecision);
   /**
-   * Risk registry ID when this node is risk-specific.
+   * Product capability ID when this node is capability-specific.
    */
-  'risk'?: (string);
+  'capability'?: (string);
   /**
    * Normalized confidence in [0, 1], when reported by this node.
    */
@@ -181,12 +180,20 @@ export interface RuntimeTraceStep {
    * Milliseconds from the request trace origin to the last model-call finish.
    */
   'finishedOffsetMs'?: (number);
+  /**
+   * Concrete evaluator implementation invoked for this node.
+   */
+  'evaluatorId'?: (string);
+  /**
+   * Versioned implementation profile used by a model-backed evaluator.
+   */
+  'profileRef'?: (string);
   '_parentId'?: "parentId";
   '_evidence'?: "evidence";
-  '_stage'?: "stage";
+  '_contractRef'?: "contractRef";
   '_verdict'?: "verdict";
   '_route'?: "route";
-  '_risk'?: "risk";
+  '_capability'?: "capability";
   '_confidence'?: "confidence";
   '_contentBlockId'?: "contentBlockId";
   '_moduleId'?: "moduleId";
@@ -212,6 +219,8 @@ export interface RuntimeTraceStep {
   '_modelTimeToFirstTokenMs'?: "modelTimeToFirstTokenMs";
   '_startedOffsetMs'?: "startedOffsetMs";
   '_finishedOffsetMs'?: "finishedOffsetMs";
+  '_evaluatorId'?: "evaluatorId";
+  '_profileRef'?: "profileRef";
 }
 
 /**
@@ -243,10 +252,9 @@ export interface RuntimeTraceStep__Output {
    */
   'evidence'?: (string);
   /**
-   * Trace stages include transport/model lifecycle stages in addition to the
-   * three plan evaluation stages, so this remains an extensible identifier.
+   * Stable evaluation contract active for this node, when applicable.
    */
-  'stage'?: (string);
+  'contractRef'?: (string);
   /**
    * Normalized evaluator verdict when this node performed evaluation.
    */
@@ -256,9 +264,9 @@ export interface RuntimeTraceStep__Output {
    */
   'route'?: (_tasklattice_guard_control_v1_RouteDecision__Output);
   /**
-   * Risk registry ID when this node is risk-specific.
+   * Product capability ID when this node is capability-specific.
    */
-  'risk'?: (string);
+  'capability'?: (string);
   /**
    * Normalized confidence in [0, 1], when reported by this node.
    */
@@ -391,12 +399,20 @@ export interface RuntimeTraceStep__Output {
    * Milliseconds from the request trace origin to the last model-call finish.
    */
   'finishedOffsetMs'?: (number);
+  /**
+   * Concrete evaluator implementation invoked for this node.
+   */
+  'evaluatorId'?: (string);
+  /**
+   * Versioned implementation profile used by a model-backed evaluator.
+   */
+  'profileRef'?: (string);
   '_parentId'?: "parentId";
   '_evidence'?: "evidence";
-  '_stage'?: "stage";
+  '_contractRef'?: "contractRef";
   '_verdict'?: "verdict";
   '_route'?: "route";
-  '_risk'?: "risk";
+  '_capability'?: "capability";
   '_confidence'?: "confidence";
   '_contentBlockId'?: "contentBlockId";
   '_moduleId'?: "moduleId";
@@ -422,4 +438,6 @@ export interface RuntimeTraceStep__Output {
   '_modelTimeToFirstTokenMs'?: "modelTimeToFirstTokenMs";
   '_startedOffsetMs'?: "startedOffsetMs";
   '_finishedOffsetMs'?: "finishedOffsetMs";
+  '_evaluatorId'?: "evaluatorId";
+  '_profileRef'?: "profileRef";
 }

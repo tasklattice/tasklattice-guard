@@ -41,6 +41,7 @@ import type { CompiledArtifactInput, DeletionImpact, RuntimeEventInput, Validati
 import { emptyValidationMetrics, generatedTestCases } from "../domain/validation.js";
 import { PolicyCatalog } from "../policy-catalog/catalog.js";
 import { registeredAction } from "../action-catalog/catalog.js";
+import type { ValidationTerminalState } from "../../shared/lifecycle.js";
 import {
   flowRuleId,
   programmablePolicyDraftSchema,
@@ -53,7 +54,7 @@ import {
   appendIntegrationCredential,
   issueIntegrationCredential,
   publicIntegrationCredentials,
-  revokeIntegrationCredentialDigest,
+  revokeIntegrationCredential,
 } from "./integration-credentials.js";
 
 type RunnerRegistration = {
@@ -347,7 +348,7 @@ export class ControlPlaneService {
       draftRevision: guardrail.draftRevision,
       candidateVersion,
       runtimeProfile: guardrail.runtimeProfile,
-      compilerVersion: String(plan.compiler_version ?? "tasklattice-controller-plan-v2"),
+      compilerVersion: String(plan.compiler_version ?? "tasklattice-controller-plan-v3"),
       plan,
     };
   }
@@ -371,14 +372,14 @@ export class ControlPlaneService {
     const modules = Array.isArray(plan.modules) ? plan.modules as Array<Record<string, unknown>> : [];
     const rails = steps.flatMap((step) => {
       const phases = Array.isArray(step.phases) ? step.phases.filter((phase): phase is string => typeof phase === "string") : [];
-      return phases.map((phase) => ({ rail_type: phase, flow: String(step.id ?? step.risk ?? "runtime-step") }));
+      return phases.map((phase) => ({ rail_type: phase, flow: String(step.id ?? step.capability ?? "runtime-step") }));
     });
     const actions = steps.map((step) => {
-      const stepId = String(step.id ?? step.risk ?? "runtime-step");
+      const stepId = String(step.id ?? step.capability ?? "runtime-step");
       const module = modules.find((candidate) => Array.isArray(candidate.step_ids) && candidate.step_ids.includes(stepId));
       return {
-        name: String(step.risk ?? stepId),
-        version: "controller-plan-v2",
+        name: String(step.capability ?? stepId),
+        version: "controller-plan-v3",
         flow: stepId,
         timeout_ms: typeof module?.timeout_ms === "number" ? module.timeout_ms : 0,
         failure_mode: typeof module?.failure_mode === "string" ? module.failure_mode : "fail_closed",
@@ -389,7 +390,7 @@ export class ControlPlaneService {
       candidate_version: 1,
       engine: "GuardRails 0 · NeMo",
       colang_version: input.runtimeProfile === "llmrails_colang1_standard" ? "1.0" : input.runtimeProfile === "llmrails_colang2_programmable" ? "2.x" : "auto",
-      compiler_version: String(plan.compiler_version ?? "tasklattice-controller-plan-v2"),
+      compiler_version: String(plan.compiler_version ?? "tasklattice-controller-plan-v3"),
       checksum: createHash("sha256").update(stableJson({ draftConfig, runtimeProfile: input.runtimeProfile })).digest("hex"),
       rails,
       parallel_groups: modules.map((module) => String(module.id ?? "")).filter(Boolean),
@@ -956,7 +957,7 @@ export class ControlPlaneService {
 
   async completeValidation(input: {
     runId: string;
-    status: "passed" | "failed";
+    status: ValidationTerminalState;
     metrics: ValidationMetrics;
     results: ValidationCaseResult[];
     reason?: string | undefined;
@@ -1369,7 +1370,7 @@ export class ControlPlaneService {
       const [integration] = await tx.select().from(integrations)
         .where(and(eq(integrations.id, input.id), isNull(integrations.deletedAt))).for("update");
       if (!integration) throw new NotFoundError("Integration", input.id);
-      const activeCredentials = activeIntegrationCredentials(integration.verification, integration.createdAt);
+      const activeCredentials = activeIntegrationCredentials(integration.verification);
       if (!activeCredentials.some((credential) => credential.id === input.credentialId)) {
         throw new NotFoundError("Integration credential", input.credentialId);
       }
@@ -1379,7 +1380,7 @@ export class ControlPlaneService {
           "last_integration_credential",
         );
       }
-      const verification = revokeIntegrationCredentialDigest(integration.verification, input.credentialId, new Date());
+      const verification = revokeIntegrationCredential(integration.verification, input.credentialId, new Date());
       if (!verification) throw new NotFoundError("Integration credential", input.credentialId);
       const updated = await tx.update(integrations).set({ verification, updatedAt: new Date() })
         .where(and(eq(integrations.id, input.id), isNull(integrations.deletedAt))).returning({ id: integrations.id });
@@ -2293,7 +2294,7 @@ export class ControlPlaneService {
       status: integration.status,
       createdAt: integration.createdAt,
       updatedAt: integration.updatedAt,
-      credentials: publicIntegrationCredentials(integration.verification, integration.createdAt),
+      credentials: publicIntegrationCredentials(integration.verification),
       setup: integrationSetup(this.config.runtimeServiceUrl, integration.id, integration.adapter),
     };
   }
@@ -2513,7 +2514,7 @@ function programmablePolicyPayload(
     description: `Runs ${binding.flow_name} on the ${binding.rail_type} Rail and applies ${binding.on_unsafe} when the Flow reports unsafe content.`,
     form: "colang_flow" as const,
     effect: binding.on_unsafe,
-    stages: [binding.rail_type],
+    rails: [binding.rail_type],
     implementation: {
       engine: "nemo-guardrails",
       form: "colang_flow" as const,
@@ -2535,7 +2536,7 @@ function programmablePolicyPayload(
     id: item.id || `draft/${index + 1}`,
     name: item.name,
     description: item.description || `Validates the published behavior for ${item.rail_type} traffic.`,
-    stage: item.rail_type,
+    phase: item.rail_type,
     content: item.content,
     expected_decision: item.expected_decision,
     covered_rule_ids: item.covered_rule_ids,
@@ -2576,7 +2577,7 @@ function programmablePolicyPayload(
       })),
     ],
     parameters: record.draft.parameter_schema,
-    stages: railTypes,
+    rails: railTypes,
     effects,
     forms: ["colang_flow" as const],
     rules,
@@ -2630,12 +2631,12 @@ function programmablePolicyPlan(
   const phases = [...new Set(snapshot.rail_bindings.map((item) => item.rail_type))];
   const action = snapshot.rail_bindings[0]?.on_unsafe ?? "reject";
   const steps = nativeRisk ? [{
-    id: `${nativeRisk}:deep-judge`,
-    risk: nativeRisk,
-    stage: "deep_judge",
+    id: `${nativeRisk}:primary`,
+    capability: nativeRisk,
+    contract_ref: snapshot.evaluation_contracts[0] ?? `tali.guard.${nativeRisk.replaceAll("_", "-")}.v1`,
     phases,
     on_unsafe: action,
-    escalation: "never",
+    trigger: { type: "always" },
     parameters: [],
   }] : [];
   const modules = steps.length ? phases.map((phase) => ({
@@ -2652,7 +2653,7 @@ function programmablePolicyPlan(
   return {
     guardrail_id: `policy-preview-${policyId}`,
     guardrail_version: revision,
-    compiler_version: "tasklattice-controller-plan-v2",
+    compiler_version: "tasklattice-controller-plan-v3",
     safety_level: "balanced",
     output_delivery: contract.output_delivery ?? "window_buffered",
     purpose: description || `Evaluate ${policyName}.`,
@@ -2669,7 +2670,7 @@ function programmablePolicyPlan(
       parameter_schema: snapshot.parameter_schema.map((item) => [item.name, item.kind]),
       rail_bindings: snapshot.rail_bindings,
       action_references: snapshot.action_references,
-      model_dependencies: snapshot.model_dependencies,
+      evaluation_contracts: snapshot.evaluation_contracts,
       prompt_dependencies: snapshot.prompt_dependencies,
       execution_contract: snapshot.execution_contract,
       test_cases: snapshot.test_cases.map((item) => [item.name, item.expected_decision]),

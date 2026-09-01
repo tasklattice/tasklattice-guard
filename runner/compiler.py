@@ -28,22 +28,8 @@ class DefaultRunnerCompiler:
     """The authoritative NeMo compiler hosted by the mandatory Default Runner."""
 
     def __init__(self, settings: RunnerSettings | None = None) -> None:
-        models: list[dict[str, object]] = []
-        if settings and settings.nvidia_base_url:
-            for model_type, model in (
-                ("content_safety", settings.content_safety_model),
-                ("topic_control", settings.topic_control_model),
-            ):
-                if model:
-                    models.append({
-                        "type": model_type,
-                        "engine": "nim",
-                        "model": model,
-                        "api_key_env_var": settings.nvidia_api_key_env_var,
-                        "parameters": {"base_url": settings.nvidia_base_url},
-                    })
+        del settings
         self._compiler = NeMoConfigCompiler(
-            models=tuple(models),
             builtin_prompts_yaml=prompt_catalog_yaml(),
         )
         self._nemo_version = importlib.metadata.version("nemoguardrails")

@@ -5,6 +5,7 @@ import pytest
 
 from runner.toolkit.policy_library import PolicyTag, PolicyTagNamespace, policies
 from runner.toolkit.policy_library.registry import PolicyLibraryRegistry
+from runner.toolkit.nemo.actions.content_filter import BuiltinContentFilter
 
 
 def test_policy_library_uses_reviewed_facets_and_nemo_rail_terms() -> None:
@@ -29,3 +30,17 @@ def test_policy_library_rejects_retired_facets(namespace: str) -> None:
 
     with pytest.raises(ValueError, match="unsupported tag namespace"):
         PolicyLibraryRegistry((replace(policy, tags=(retired_tag,)),))
+
+
+def test_local_content_filter_executes_policy_rails_without_a_model() -> None:
+    result = BuiltinContentFilter().evaluate(
+        text="The phrase internal-only is prohibited.",
+        phase="input",
+        policies=("keyword-blocking",),
+        policy_parameters={"keyword-blocking": {"blocked_words": "internal-only"}},
+        enabled_rules={"keyword-blocking": ("keyword/blocked-words",)},
+    )
+
+    assert result.verdict == "unsafe"
+    assert result.findings[0].rule_id == "keyword/blocked-words"
+    assert result.findings[0].recommended_action == "reject"

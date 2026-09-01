@@ -34,16 +34,8 @@ export type GuardrailPurposeDetails = {
   outOfScope: string;
 };
 
-export const protectionIds = ["secrets", "pii", "builtin_content_filter", "prompt_injection", "jailbreak"] as const;
-export type ProtectionId = typeof protectionIds[number];
-
-/**
- * Controller-owned product draft. `protections` remains optional only so an
- * existing pre-control-plane-split row can be migrated without data loss.
- * New writes always persist the full policy binding contract.
- */
+/** Controller-owned product draft expressed only as Policy bindings. */
 export type GuardrailDraftConfig = {
-  protections?: ProtectionId[] | undefined;
   purposeDetails: GuardrailPurposeDetails;
   allowedTopics: string[];
   restrictedTopics: string[];
@@ -62,55 +54,82 @@ export type GuardrailDraftConfig = {
 };
 
 type RuntimeCapability = {
-  risk: string;
+  capability: string;
   policyId: string;
   defaultPhases: Array<"input" | "output">;
   defaultAction: EnforcementAction;
-  stages: Array<"deterministic" | "fast_semantic" | "deep_judge">;
+  evaluations: RuntimeEvaluation[];
   module: "data_protection" | "interaction_safety" | "business_assurance";
 };
 
+type RuntimeEvaluation = {
+  idSuffix: string;
+  contractRef: string;
+  potentiallyRemote: boolean;
+  after?: { idSuffix: string; verdicts: Array<"safe" | "unsafe" | "uncertain" | "error"> };
+};
+
+const contracts = {
+  secretsExact: "tali.guard.secrets.exact.v1",
+  piiExact: "tali.guard.pii.exact.v1",
+  piiSemantic: "tali.guard.pii.semantic.v1",
+  contentFilter: "tali.guard.content-filter.rules.v1",
+  promptInjection: "tali.guard.prompt-injection.v1",
+  indirectPromptInjection: "tali.guard.indirect-prompt-injection.v1",
+  jailbreak: "tali.guard.jailbreak.v1",
+  systemPromptLeakage: "tali.guard.system-prompt-leakage.v1",
+  contentSafety: "tali.guard.content-safety.v1",
+  topicRules: "tali.guard.topic-control.rules.v1",
+  topicSemantic: "tali.guard.topic-control.semantic.v1",
+  companyPolicy: "tali.guard.company-policy.v1",
+  contextualGrounding: "tali.guard.contextual-grounding.v1",
+  automatedReasoning: "tali.guard.automated-reasoning.v1",
+} as const;
+
+const always = (idSuffix: string, contractRef: string, potentiallyRemote = false): RuntimeEvaluation => ({
+  idSuffix, contractRef, potentiallyRemote,
+});
+const afterUncertain = (idSuffix: string, contractRef: string, previous: string, potentiallyRemote = true): RuntimeEvaluation => ({
+  idSuffix, contractRef, potentiallyRemote, after: { idSuffix: previous, verdicts: ["uncertain"] },
+});
+
 const capabilities: RuntimeCapability[] = [
-  capability("secrets", "builtin-secrets", ["input", "output"], "reject", ["deterministic"], "data_protection"),
-  capability("pii", "builtin-pii", ["input", "output"], "redact", ["deterministic", "fast_semantic"], "data_protection"),
-  capability("prompt_injection", "builtin-prompt-injection", ["input"], "reject", ["fast_semantic", "deep_judge"], "interaction_safety"),
-  capability("indirect_prompt_injection", "builtin-indirect-prompt-injection", ["input"], "reject", ["deterministic"], "interaction_safety"),
-  capability("jailbreak", "builtin-jailbreak", ["input"], "reject", ["fast_semantic", "deep_judge"], "interaction_safety"),
-  capability("system_prompt_leakage", "builtin-system-prompt-leakage", ["output"], "reject", ["deterministic"], "data_protection"),
-  capability("content_safety", "builtin-content-safety", ["input", "output"], "reject", ["fast_semantic"], "interaction_safety"),
-  capability("topic_control", "builtin-topic-safety", ["input", "output"], "redirect", ["deterministic", "deep_judge"], "business_assurance"),
-  capability("company_policy", "builtin-company-policy", ["input", "output"], "reject", ["deep_judge"], "business_assurance"),
-  capability("contextual_grounding", "builtin-contextual-grounding", ["output"], "regenerate", ["deep_judge"], "business_assurance"),
-  capability("automated_reasoning", "builtin-automated-reasoning", ["output"], "rewrite", ["deep_judge"], "business_assurance"),
+  capability("secrets", "builtin-secrets", ["input", "output"], "reject", [always("exact", contracts.secretsExact)], "data_protection"),
+  capability("pii", "builtin-pii", ["input", "output"], "redact", [always("exact", contracts.piiExact), afterUncertain("semantic", contracts.piiSemantic, "exact")], "data_protection"),
+  capability("prompt_injection", "builtin-prompt-injection", ["input"], "reject", [always("primary", contracts.promptInjection)], "interaction_safety"),
+  capability("indirect_prompt_injection", "builtin-indirect-prompt-injection", ["input"], "reject", [always("exact", contracts.indirectPromptInjection)], "interaction_safety"),
+  capability("jailbreak", "builtin-jailbreak", ["input"], "reject", [always("primary", contracts.jailbreak, true)], "interaction_safety"),
+  capability("system_prompt_leakage", "builtin-system-prompt-leakage", ["output"], "reject", [always("exact", contracts.systemPromptLeakage)], "data_protection"),
+  capability("content_safety", "builtin-content-safety", ["input", "output"], "reject", [always("primary", contracts.contentSafety, true)], "interaction_safety"),
+  capability("topic_control", "builtin-topic-safety", ["input", "output"], "redirect", [always("rules", contracts.topicRules), afterUncertain("semantic", contracts.topicSemantic, "rules")], "business_assurance"),
+  capability("company_policy", "builtin-company-policy", ["input", "output"], "reject", [always("primary", contracts.companyPolicy, true)], "business_assurance"),
+  capability("contextual_grounding", "builtin-contextual-grounding", ["output"], "regenerate", [always("primary", contracts.contextualGrounding, true)], "business_assurance"),
+  capability("automated_reasoning", "builtin-automated-reasoning", ["output"], "rewrite", [always("primary", contracts.automatedReasoning, true)], "business_assurance"),
 ];
 
 const capabilityByPolicyId = new Map(capabilities.map((item) => [item.policyId, item]));
-const capabilityByRisk = new Map(capabilities.map((item) => [item.risk, item]));
-const moduleTimeout = { data_protection: 750, interaction_safety: 2_500, business_assurance: 5_000 } as const;
+const capabilityById = new Map(capabilities.map((item) => [item.capability, item]));
+const moduleTimeout = { data_protection: 750, interaction_safety: 30_000, business_assurance: 5_000 } as const;
 
 type PlanStep = {
   id: string;
-  risk: string;
-  stage: "deterministic" | "fast_semantic" | "deep_judge";
+  capability: string;
+  contract_ref: string;
   phases: Array<"input" | "output">;
   on_unsafe: EnforcementAction;
-  escalation: "never" | "on_uncertain" | "always";
-  threshold?: number;
+  trigger: { type: "always" } | { type: "on_result"; step_ref: string; verdicts: Array<"safe" | "unsafe" | "uncertain" | "error"> };
   parameters: Array<[string, string]>;
 };
 
 export function normalizeGuardrailDraft(value: unknown): GuardrailDraftConfig {
   const source = record(value);
-  const legacy = stringArray(source.protections).filter((item): item is ProtectionId => protectionIds.includes(item as ProtectionId));
-  const policyBindings = Array.isArray(source.policyBindings)
-    ? source.policyBindings.map(normalizeBinding)
-    : legacy.map(legacyBinding);
   return {
-    ...(legacy.length ? { protections: legacy } : {}),
     purposeDetails: normalizePurposeDetails(source.purposeDetails),
     allowedTopics: stringArray(source.allowedTopics),
     restrictedTopics: stringArray(source.restrictedTopics),
-    policyBindings,
+    policyBindings: Array.isArray(source.policyBindings)
+      ? source.policyBindings.map(normalizeBinding)
+      : [],
     safetyLevel: source.safetyLevel === "strict" ? "strict" : "balanced",
     outputDelivery: source.outputDelivery === "interruptible" || source.outputDelivery === "window_buffered"
       ? source.outputDelivery
@@ -131,31 +150,20 @@ export function buildGuardrailPlan(input: {
   const draft = normalizeGuardrailDraft(input.draft);
   const policyById = new Map((input.policies ?? []).map((item) => [item.id, item]));
   const programmableByKey = new Map((input.programmablePolicies ?? []).map((item) => [`${item.policy_id}@${item.version}`, item]));
-  const bindings = draft.policyBindings.length ? draft.policyBindings : (draft.protections ?? []).map(legacyBinding);
+  const bindings = draft.policyBindings;
   if (!bindings.length) throw new Error("Select at least one Policy before compiling a Guardrail.");
 
   const resolved = new Map<string, { capability: RuntimeCapability; binding: GuardrailPolicyBindingConfig }>();
   const declarative: Array<{ binding: GuardrailPolicyBindingConfig; policy: PolicyDto }> = [];
   const programmable: Array<{ binding: GuardrailPolicyBindingConfig; policy: ProgrammablePolicySnapshot }> = [];
   for (const binding of bindings) {
-    if (binding.policyId.startsWith("controller-protection:")) {
-      const legacyRisk = binding.policyId.slice("controller-protection:".length);
-      if (legacyRisk === "builtin_content_filter") {
-        const contentFilter: RuntimeCapability = {
-          risk: legacyRisk, policyId: "", defaultPhases: ["input", "output"],
-          defaultAction: "reject", stages: ["deterministic"], module: "interaction_safety",
-        };
-        resolved.set(legacyRisk, { capability: contentFilter, binding });
-        continue;
-      }
-    }
     const programmablePolicy = programmableByKey.get(`${binding.policyId}@${binding.policyVersion}`);
     if (programmablePolicy) {
       validateProgrammableBinding(binding, programmablePolicy);
       programmable.push({ binding, policy: programmablePolicy });
       const nativeRisk = Object.fromEntries(programmablePolicy.execution_contract).native_risk;
-      const native = nativeRisk ? capabilityByRisk.get(nativeRisk) : undefined;
-      if (native) resolved.set(native.risk, { capability: native, binding });
+      const native = nativeRisk ? capabilityById.get(nativeRisk) : undefined;
+      if (native) resolved.set(native.capability, { capability: native, binding });
       continue;
     }
     const catalogPolicy = policyById.get(binding.policyId);
@@ -165,7 +173,7 @@ export function buildGuardrailPlan(input: {
     }
     const native = capabilityByPolicyId.get(binding.policyId);
     if (native) {
-      resolved.set(native.risk, { capability: native, binding });
+      resolved.set(native.capability, { capability: native, binding });
       continue;
     }
     const policy = catalogPolicy;
@@ -175,28 +183,32 @@ export function buildGuardrailPlan(input: {
   }
   if (declarative.length) {
     const contentFilter: RuntimeCapability = {
-      risk: "builtin_content_filter", policyId: "", defaultPhases: ["input", "output"],
-      defaultAction: "reject", stages: ["deterministic"], module: "interaction_safety",
+      capability: "builtin_content_filter", policyId: "", defaultPhases: ["input", "output"],
+      defaultAction: "reject", evaluations: [always("rules", contracts.contentFilter)], module: "interaction_safety",
     };
-    resolved.set(contentFilter.risk, { capability: contentFilter, binding: declarative[0]!.binding });
+    resolved.set(contentFilter.capability, { capability: contentFilter, binding: declarative[0]!.binding });
   }
 
   const steps: PlanStep[] = [];
   for (const { capability: definition, binding } of resolved.values()) {
     const phases = phasesFor(definition, binding, declarative);
-    // Deep judges require an explicitly configured provider. The same plan can
-    // still run its local/fast stage when that optional provider is absent.
-    const stages = definition.stages.filter((stage) => stage !== "deep_judge" || definition.stages.length === 1);
-    const parameters = parametersFor(definition.risk, binding, draft, input.purpose ?? "", declarative);
-    for (const stage of stages) {
+    const parameters = parametersFor(definition.capability, binding, draft, input.purpose ?? "", declarative);
+    for (const evaluation of definition.evaluations) {
       steps.push({
-        id: `${definition.risk}:${stage.replaceAll("_", "-")}`,
-        risk: definition.risk,
-        stage,
+        id: `${definition.capability}:${evaluation.idSuffix}`,
+        capability: definition.capability,
+        contract_ref: evaluation.contractRef,
         phases,
         on_unsafe: binding.action ?? definition.defaultAction,
-        escalation: "never",
-        ...(stage === "fast_semantic" ? { threshold: 0.85 } : {}),
+        trigger: evaluation.after
+          ? {
+              type: "on_result",
+              step_ref: `${definition.capability}:${evaluation.after.idSuffix}`,
+              verdicts: draft.safetyLevel === "strict"
+                ? Array.from(new Set(["safe" as const, ...evaluation.after.verdicts]))
+                : evaluation.after.verdicts,
+            }
+          : { type: "always" },
         parameters,
       });
     }
@@ -204,11 +216,16 @@ export function buildGuardrailPlan(input: {
 
   const modules = (["input", "output"] as const).flatMap((phase) =>
     (["data_protection", "interaction_safety", "business_assurance"] as const).flatMap((module) => {
-      const stepIds = steps.filter((step) => step.phases.includes(phase) && moduleForRisk(step.risk) === module).map((step) => step.id);
+      const stepIds = steps.filter((step) => step.phases.includes(phase) && moduleForCapability(step.capability) === module).map((step) => step.id);
       if (!stepIds.length) return [];
+      const containsRemoteContract = Array.from(resolved.values()).some(({ capability }) =>
+        capability.module === module && capability.evaluations.some((evaluation) => evaluation.potentiallyRemote)
+      );
       return [{
         id: `${module}:${phase}`, module, phase, step_ids: stepIds, depends_on: [], input_view: "original",
-        required_for_release: true, timeout_ms: moduleTimeout[module], failure_mode: "fail_closed",
+        required_for_release: true,
+        timeout_ms: containsRemoteContract ? 30_000 : moduleTimeout[module],
+        failure_mode: "fail_closed",
       }];
     }),
   );
@@ -221,7 +238,7 @@ export function buildGuardrailPlan(input: {
   return {
     guardrail_id: input.guardrailId,
     guardrail_version: input.guardrailVersion,
-    compiler_version: "tasklattice-controller-plan-v2",
+    compiler_version: "tasklattice-controller-plan-v3",
     safety_level: draft.safetyLevel,
     output_delivery: draft.outputDelivery,
     steps,
@@ -237,7 +254,7 @@ export function buildGuardrailPlan(input: {
       parameter_schema: policy.parameter_schema.map((item) => [item.name, item.kind]),
       rail_bindings: policy.rail_bindings,
       action_references: policy.action_references,
-      model_dependencies: policy.model_dependencies,
+      evaluation_contracts: policy.evaluation_contracts,
       prompt_dependencies: policy.prompt_dependencies,
       execution_contract: policy.execution_contract,
       test_cases: policy.test_cases.map((item) => [item.name, item.expected_decision]),
@@ -256,13 +273,13 @@ export function buildGuardrailPlan(input: {
 }
 
 function parametersFor(
-  risk: string,
+  capabilityId: string,
   binding: GuardrailPolicyBindingConfig,
   draft: GuardrailDraftConfig,
   purpose: string,
   declarative: Array<{ binding: GuardrailPolicyBindingConfig; policy: PolicyDto }>,
 ): Array<[string, string]> {
-  if (risk === "builtin_content_filter") {
+  if (capabilityId === "builtin_content_filter") {
     return [
       ["policy_versions_json", JSON.stringify(Object.fromEntries(declarative.map((item) => [item.binding.policyId, item.policy.version])))],
       ["policy_ids", declarative.map((item) => item.binding.policyId).join("\n")],
@@ -272,7 +289,7 @@ function parametersFor(
       ["custom_rules_json", JSON.stringify(draft.customContentRules ?? [])],
     ];
   }
-  if (risk === "topic_control" || risk === "company_policy") {
+  if (capabilityId === "topic_control" || capabilityId === "company_policy") {
     return [
       ["purpose", purpose],
       ["purpose_audience", draft.purposeDetails.audience],
@@ -283,10 +300,10 @@ function parametersFor(
       ["restricted_topics", draft.restrictedTopics.join("\n")],
     ];
   }
-  if (risk === "contextual_grounding") {
+  if (capabilityId === "contextual_grounding") {
     return [["grounding_threshold", binding.parameterValues.grounding_threshold ?? "0.7"], ["relevance_threshold", binding.parameterValues.relevance_threshold ?? "0.7"]];
   }
-  if (risk === "automated_reasoning" && binding.reasoningPolicy) {
+  if (capabilityId === "automated_reasoning" && binding.reasoningPolicy) {
     return [["policy_snapshot_id", `automated-reasoning:${binding.reasoningPolicy.policyId}:${binding.reasoningPolicy.policyVersion}`]];
   }
   return [];
@@ -297,10 +314,10 @@ function phasesFor(
   binding: GuardrailPolicyBindingConfig,
   declarative: Array<{ binding: GuardrailPolicyBindingConfig; policy: PolicyDto }>,
 ): Array<"input" | "output"> {
-  if (capability.risk === "builtin_content_filter") {
+  if (capability.capability === "builtin_content_filter") {
     const selected = new Set(declarative.flatMap(({ binding: item, policy }) => {
-      const enabled = item.enabledRails.length ? item.enabledRails : policy.stages;
-      return policy.stages.filter((phase) => enabled.includes(phase));
+      const enabled = item.enabledRails.length ? item.enabledRails : policy.rails;
+      return policy.rails.filter((phase) => enabled.includes(phase));
     }));
     return (["input", "output"] as const).filter((phase) => selected.has(phase));
   }
@@ -381,18 +398,6 @@ function validateProgrammableBinding(binding: GuardrailPolicyBindingConfig, poli
   }
 }
 
-function legacyBinding(risk: ProtectionId): GuardrailPolicyBindingConfig {
-  const native = capabilityByRisk.get(risk);
-  const action: EnforcementAction = risk === "pii" ? "redact" : "reject";
-  return {
-    policyId: native?.policyId || `controller-protection:${risk}`,
-    policyVersion: "tasklattice-controller-plan-v1",
-    action,
-    parameterValues: {}, enabledRuleIds: [risk], ruleActions: { [risk]: action },
-    enabledRails: native?.defaultPhases ?? ["input", "output"], reasoningPolicy: null,
-  };
-}
-
 function normalizeBinding(value: unknown): GuardrailPolicyBindingConfig {
   const source = record(value);
   const reasoning = record(source.reasoningPolicy);
@@ -412,12 +417,12 @@ function normalizeBinding(value: unknown): GuardrailPolicyBindingConfig {
 }
 
 function capability(
-  risk: string, policyId: string, defaultPhases: Array<"input" | "output">,
-  defaultAction: EnforcementAction, stages: RuntimeCapability["stages"], module: RuntimeCapability["module"],
-): RuntimeCapability { return { risk, policyId, defaultPhases, defaultAction, stages, module }; }
+  capabilityId: string, policyId: string, defaultPhases: Array<"input" | "output">,
+  defaultAction: EnforcementAction, evaluations: RuntimeEvaluation[], module: RuntimeCapability["module"],
+): RuntimeCapability { return { capability: capabilityId, policyId, defaultPhases, defaultAction, evaluations, module }; }
 
-function moduleForRisk(risk: string): RuntimeCapability["module"] {
-  return risk === "builtin_content_filter" ? "interaction_safety" : capabilityByRisk.get(risk)?.module ?? "interaction_safety";
+function moduleForCapability(capabilityId: string): RuntimeCapability["module"] {
+  return capabilityId === "builtin_content_filter" ? "interaction_safety" : capabilityById.get(capabilityId)?.module ?? "interaction_safety";
 }
 function record(value: unknown): Record<string, unknown> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
 function string(value: unknown): string { return typeof value === "string" ? value : ""; }

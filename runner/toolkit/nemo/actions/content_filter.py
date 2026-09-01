@@ -163,7 +163,7 @@ class _ContentFilterResult:
 
 
 class BuiltinContentFilter:
-    """Execute local Policy Rules through one deterministic NeMo Action."""
+    """Execute local Policy Rules through one NeMo Action."""
 
     def evaluate(
         self,
@@ -197,7 +197,7 @@ class BuiltinContentFilter:
                         content=text,
                         reason=f"Built-in Policy {name!r} is unavailable.",
                     )
-                if phase not in definition.stages:
+                if phase not in definition.rails:
                     continue
                 configured = configured_by_policy.get(name, shared_parameters)
                 detections.extend(
@@ -241,6 +241,7 @@ class BuiltinContentFilter:
         findings = tuple(
             RiskFinding(
                 risk="builtin_content_filter",
+                taxonomy_id=taxonomy_id,
                 verdict="unsafe",
                 confidence=item.confidence,
                 evidence=(
@@ -253,6 +254,7 @@ class BuiltinContentFilter:
                 rule_id=item.rule,
             )
             for item in detections
+            for taxonomy_id in _taxonomy_ids(item.policy, item.rule)
         )
         blocked = any(item.action == "reject" for item in detections)
         return _ContentFilterResult(
@@ -278,7 +280,7 @@ class BuiltinContentFilter:
     ) -> list[_Detection]:
         detections: list[_Detection] = []
         for rule in definition.rules:
-            if phase not in rule.stages:
+            if phase not in rule.rails:
                 continue
             if enabled_rules is not None and rule.id not in enabled_rules:
                 continue
@@ -815,7 +817,7 @@ class ContentFilterActionProvider:
 
     name = ACTION_CONTENT_FILTER
     version = "1.0.0"
-    risks = frozenset({"builtin_content_filter"})
+    capabilities = frozenset({"builtin_content_filter"})
     rails = frozenset({"input", "output"})
 
     def __init__(self, content_filter: BuiltinContentFilter | None = None) -> None:
@@ -870,6 +872,17 @@ class ContentFilterActionProvider:
             reason=result.reason,
             trace=result.trace,
         )
+
+
+def _taxonomy_ids(policy_id: str, rule_id: str) -> tuple[str, ...]:
+    definition = policy(policy_id)
+    if definition is not None:
+        rule = next((item for item in definition.rules if item.id == rule_id), None)
+        if rule is not None and rule.taxonomy_ids:
+            return rule.taxonomy_ids
+    raise RuntimeError(
+        f"Policy {policy_id!r} Rule {rule_id!r} has no TALI Taxonomy category."
+    )
 
 
 def _json_mapping(value: str) -> dict[str, Any]:

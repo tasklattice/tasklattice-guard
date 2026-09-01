@@ -41,8 +41,9 @@ export function isTimedOut(event: controllerApi.RuntimeEvent): boolean {
 export function runtimeFindings(event: controllerApi.RuntimeEvent): DeploymentTraceFinding[] {
   return arrayOfRecords(event.metadata.findings).map((finding, index) => {
     const verdict = stringValue(finding.verdict) ?? "unknown";
-    const confidence = numberValue(finding.confidence) ?? 0;
+    const confidence = numberValue(finding.confidence);
     const risk = stringValue(finding.risk) ?? "unknown";
+    const taxonomyId = stringValue(finding.taxonomyId) ?? "TALI-BUSINESS-POLICY";
     return {
       id: stringValue(finding.id) ?? `${event.id}:finding:${index + 1}`,
       trace_id: event.requestId,
@@ -54,12 +55,20 @@ export function runtimeFindings(event: controllerApi.RuntimeEvent): DeploymentTr
       phase: event.direction === "incoming" ? "input" : "output",
       severity: findingSeverity(verdict, confidence),
       risk,
+      taxonomy_id: taxonomyId,
       verdict,
       confidence,
       recommended_action: stringValue(finding.recommendedAction) ?? stringValue(event.metadata.action) ?? event.decision,
       policy_id: stringValue(finding.policyId),
       rule_id: stringValue(finding.ruleId),
-      detail: `Runner reported a ${verdict} ${risk.replaceAll("_", " ")} finding. Raw protected content was not retained.`,
+      provider_evidence: arrayOfRecords(finding.providerEvidence).map((item) => ({
+        provider_id: stringValue(item.provider_id) ?? "unknown",
+        model: stringValue(item.model) ?? "unknown",
+        native_verdict: stringValue(item.native_verdict) ?? "unknown",
+        native_category: stringValue(item.native_category),
+        mapping_quality: stringValue(item.mapping_quality),
+      })),
+      detail: `Runner reported a ${verdict} ${taxonomyId} finding. Raw protected content was not retained.`,
       protocol: stringValue(event.metadata.protocol),
     };
   });
@@ -78,8 +87,8 @@ export function runtimeTraceSteps(event: controllerApi.RuntimeEvent): Deployment
     phase: event.direction === "incoming" ? "input" : "output",
     kind: stringValue(step.kind) ?? "action",
     name: stringValue(step.name) ?? "Runtime step",
-    risk: stringValue(step.risk),
-    stage: stringValue(step.stage),
+    capability: stringValue(step.capability),
+    contract_ref: stringValue(step.contractRef),
     outcome: stringValue(step.outcome) ?? stringValue(step.status) ?? "unknown",
     latency_ms: numberValue(step.durationMs) ?? 0,
     timed_out: step.timedOut === true,
@@ -97,10 +106,10 @@ export function runtimeTraceSteps(event: controllerApi.RuntimeEvent): Deployment
   }));
 }
 
-function findingSeverity(verdict: string, confidence: number): DeploymentTraceFinding["severity"] {
+function findingSeverity(verdict: string, confidence: number | null): DeploymentTraceFinding["severity"] {
   if (verdict === "error") return "critical";
-  if (verdict === "unsafe" && confidence >= 0.9) return "high";
-  if (verdict === "unsafe" || confidence >= 0.7) return "medium";
+  if (verdict === "unsafe" && confidence !== null && confidence >= 0.9) return "high";
+  if (verdict === "unsafe" || (confidence !== null && confidence >= 0.7)) return "medium";
   return "low";
 }
 

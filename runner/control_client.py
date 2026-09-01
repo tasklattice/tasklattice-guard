@@ -9,6 +9,8 @@ from pathlib import Path
 
 import grpc
 
+from runner.toolkit.nemo.action_registry import ActionProviders
+
 from . import __version__
 from .artifact_store import ArtifactStore
 from .compiler import DefaultRunnerCompiler
@@ -29,6 +31,7 @@ class RunnerControlClient:
         settings: RunnerSettings,
         store: ArtifactStore,
         metrics: RunnerMetrics,
+        providers: ActionProviders | None = None,
     ) -> None:
         self._settings = settings
         self._store = store
@@ -44,7 +47,11 @@ class RunnerControlClient:
         self._heartbeat_interval = 10
         self._sequence = 0
         self._compiler = DefaultRunnerCompiler(settings) if settings.compiler_capable else None
-        self._validator = DefaultRunnerValidator(self._compiler) if self._compiler else None
+        self._validator = (
+            DefaultRunnerValidator(self._compiler, providers)
+            if self._compiler
+            else None
+        )
 
     @property
     def connected(self) -> bool:

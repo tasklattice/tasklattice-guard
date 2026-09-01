@@ -4,6 +4,7 @@ import re
 import unicodedata
 
 from ...runtime.contracts import RiskFinding
+from ...safety.taxonomy import taxonomy_for_evaluator
 from .contracts import ActionRequest, ActionResult, action_result
 from .names import ACTION_PROMPT_LEAKAGE
 
@@ -27,7 +28,7 @@ class PromptLeakageActionProvider:
 
     name = ACTION_PROMPT_LEAKAGE
     version = "1.0.0"
-    risks = frozenset({"system_prompt_leakage"})
+    capabilities = frozenset({"system_prompt_leakage"})
     rails = frozenset({"output"})
 
     async def execute(self, request: ActionRequest) -> ActionResult:
@@ -72,7 +73,8 @@ class PromptLeakageActionProvider:
             request.content,
             findings=(
                 RiskFinding(
-                    risk=request.risk,
+                    risk=request.capability,
+                    taxonomy_id=taxonomy_for_evaluator(request.capability),
                     verdict="unsafe",
                     confidence=1.0 if detector == "canary_match" else 0.99,
                     evidence=reason,

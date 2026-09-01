@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 
 from ...runtime.contracts import RiskFinding
+from ...safety.taxonomy import taxonomy_for_evaluator
 from .contracts import ActionRequest, ActionResult, action_result
 from .names import ACTION_SECRETS
 
@@ -21,7 +22,7 @@ class SecretsActionProvider:
 
     name = ACTION_SECRETS
     version = "1.0.0"
-    risks = frozenset({"secrets"})
+    capabilities = frozenset({"secrets"})
     rails = frozenset({"input", "output"})
 
     async def execute(self, request: ActionRequest) -> ActionResult:
@@ -40,6 +41,7 @@ class SecretsActionProvider:
             findings=(
                 RiskFinding(
                     risk="secrets",
+                    taxonomy_id=taxonomy_for_evaluator("secrets"),
                     verdict="unsafe",
                     confidence=0.99,
                     evidence="High-confidence credential pattern detected.",

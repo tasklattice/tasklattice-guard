@@ -6,6 +6,7 @@ import re
 import unicodedata
 
 from ...runtime.contracts import RiskFinding
+from ...safety.taxonomy import taxonomy_for_evaluator
 from .contracts import ActionRequest, ActionResult, action_result
 from .names import ACTION_INDIRECT_PROMPT_INJECTION
 
@@ -76,7 +77,7 @@ class IndirectPromptInjectionActionProvider:
 
     name = ACTION_INDIRECT_PROMPT_INJECTION
     version = "1.0.0"
-    risks = frozenset({"indirect_prompt_injection"})
+    capabilities = frozenset({"indirect_prompt_injection"})
     rails = frozenset({"input"})
 
     async def execute(self, request: ActionRequest) -> ActionResult:
@@ -118,7 +119,8 @@ class IndirectPromptInjectionActionProvider:
             request.content,
             findings=(
                 RiskFinding(
-                    risk=request.risk,
+                    risk=request.capability,
+                    taxonomy_id=taxonomy_for_evaluator(request.capability),
                     verdict="unsafe",
                     confidence=0.99 if not encoded else 0.97,
                     evidence=reason,

@@ -12,7 +12,7 @@ from nemoguardrails import RailsConfig
 from ..policy_library import policy as library_policy
 from ..nemo.action_registry import (
     ACTION_CONTENT_FILTER,
-    ACTION_PII,
+    ACTION_EVALUATE,
     ACTION_PROMPT_SECURITY,
     ACTION_RECORD_NATIVE,
     ACTION_RECORD_POLICY,
@@ -35,7 +35,7 @@ from ..runtime.contracts import (
 from .domain import PolicyDraft, PlanCompilationError, RailBinding
 
 
-NEMO_COMPILER_VERSION = "tasklattice-nemo-config-v8"
+NEMO_COMPILER_VERSION = "tasklattice-nemo-config-v11"
 
 ExecutionSurface = Literal["standalone_check", "owned_generation"]
 
@@ -46,14 +46,14 @@ _NATIVE_IORAILS_FLOWS = {
 }
 
 _COLANG1_STANDARD_ACTIONS = {
+    ACTION_EVALUATE,
     ACTION_SECRETS,
-    ACTION_PII,
     ACTION_CONTENT_FILTER,
     ACTION_TOPIC_RULES,
     ACTION_PROMPT_SECURITY,
     ACTION_TOPIC_JUDGE,
 }
-_COLANG1_COMPLEX_RISKS = {"contextual_grounding", "automated_reasoning"}
+_COLANG1_COMPLEX_CAPABILITIES = {"contextual_grounding", "automated_reasoning"}
 _ALLOWED_RUNTIME_MODEL_TYPES = frozenset({"content_safety", "topic_control"})
 
 
@@ -98,33 +98,33 @@ class NeMoConfigCompiler:
         required_models: set[str] = set()
         required_features: set[str] = set()
 
-        risks = tuple(dict.fromkeys(step.risk for step in plan.steps))
+        capabilities = tuple(dict.fromkeys(step.capability for step in plan.steps))
         for phase in ("input", "output"):
             native_detection: list[str] = []
             native_mutation: list[str] = []
-            for risk in risks:
+            for capability in capabilities:
                 steps = tuple(
                     step
                     for step in plan.steps
-                    if step.risk == risk and phase in step.phases
+                    if step.capability == capability and phase in step.phases
                 )
                 if not steps:
                     continue
 
-                # A NeMo library flow represents one terminal check.  Never
-                # collapse a multi-step risk (for example fast -> deep) into
-                # that flow or the escalation step would silently disappear.
+                # A NeMo library flow represents one terminal check. Never
+                # collapse an evaluation graph into that flow or dependent
+                # contracts would silently disappear.
                 native = (
-                    self._native_flow(risk, phase, steps[0].on_unsafe)
+                    self._native_flow(capability, phase, steps[0].on_unsafe)
                     if len(steps) == 1
                     else None
                 )
                 if native is not None:
                     target = native_mutation if native.startswith("mask ") else native_detection
                     target.append(native)
-                    if risk == "content_safety":
+                    if capability == "content_safety":
                         required_models.add("content_safety")
-                    elif risk == "topic_control":
+                    elif capability == "topic_control":
                         required_models.add("topic_control")
                     continue
 
@@ -364,14 +364,12 @@ class NeMoConfigCompiler:
 
     def _native_flow(
         self,
-        risk: str,
+        capability: str,
         phase: GuardrailPhase,
         action: str,
     ) -> str | None:
-        if risk == "content_safety" and action == "reject":
-            return f"content safety check {phase} $model=content_safety"
         if (
-            risk == "topic_control"
+            capability == "topic_control"
             and action == "reject"
             and phase == "input"
             and "topic_control" in self._model_types
@@ -391,7 +389,9 @@ class NeMoConfigCompiler:
             and "content_safety" in required_models
         ]
         if "topic_control" in required_models:
-            topic_step = next(step for step in plan.steps if step.risk == "topic_control")
+            topic_step = next(
+                step for step in plan.steps if step.capability == "topic_control"
+            )
             parameters = dict(topic_step.parameters)
             prompts.append(
                 {
@@ -534,7 +534,7 @@ def _is_colang1_standard_compatible(
     if custom_bindings:
         # User-authored Policies are validated and namespaced as Colang 2.x.
         return False
-    if any(step.risk in _COLANG1_COMPLEX_RISKS for step in plan.steps):
+    if any(step.capability in _COLANG1_COMPLEX_CAPABILITIES for step in plan.steps):
         return False
     if any(module.depends_on for module in plan.modules):
         return False
@@ -544,12 +544,12 @@ def _is_colang1_standard_compatible(
     ):
         return False
 
-    steps_by_risk_phase: dict[tuple[str, GuardrailPhase], list[object]] = {}
+    steps_by_capability_phase: dict[tuple[str, GuardrailPhase], list[object]] = {}
     for step in plan.steps:
         for phase in step.phases:
-            steps_by_risk_phase.setdefault((step.risk, phase), []).append(step)
-    if any(len(items) != 1 for items in steps_by_risk_phase.values()):
-        # Escalation and multi-stage chains need ordered result-aware routing.
+            steps_by_capability_phase.setdefault((step.capability, phase), []).append(step)
+    if any(len(items) != 1 for items in steps_by_capability_phase.values()):
+        # Contract dependency graphs need ordered, result-aware routing.
         return False
     if any(
         binding.action_name not in _COLANG1_STANDARD_ACTIONS
@@ -588,7 +588,7 @@ def _binding_can_modify(binding: NeMoActionBinding) -> bool:
         # outcome to a clarification, which is a content modification even when
         # the configured unsafe action itself is reject.
         return True
-    if binding.risk != "builtin_content_filter":
+    if binding.capability != "builtin_content_filter":
         return False
 
     # A Policy can contain a mix of reject and redact Rules even though its
@@ -729,8 +729,8 @@ def _timeout_for(
     if module is None:
         return 2_000
     step = next(item for item in plan.steps if item.id == step_id)
-    serial_steps = sum(
-        1
+    serial_steps = tuple(
+        candidate
         for candidate_id in module.step_ids
         if (
             (candidate := next(
@@ -738,14 +738,33 @@ def _timeout_for(
                 None,
             ))
             is not None
-            and candidate.risk == step.risk
+            and candidate.capability == step.capability
             and phase in candidate.phases
         )
     )
-    # Risks in a module run concurrently, while escalation steps for one risk
-    # run serially. Dividing the module budget prevents a risk chain from
-    # silently multiplying the declared latency bound.
-    return max(1, module.timeout_ms // max(1, serial_steps))
+    if len(serial_steps) <= 1:
+        return module.timeout_ms
+
+    # Independent capabilities run concurrently. Within one capability, a
+    # contract that gates another contract receives a small bounded budget;
+    # terminal evaluators receive the remaining declared module deadline.
+    prerequisites = tuple(
+        candidate
+        for candidate in serial_steps
+        if any(item.trigger.step_ref == candidate.id for item in serial_steps)
+    )
+    terminals = tuple(candidate for candidate in serial_steps if candidate not in prerequisites)
+    prerequisite_budget = min(
+        750,
+        max(1, module.timeout_ms // len(serial_steps)),
+    )
+    if step in prerequisites:
+        return prerequisite_budget
+    remaining = max(
+        1,
+        module.timeout_ms - prerequisite_budget * len(prerequisites),
+    )
+    return max(1, remaining // max(1, len(terminals)))
 
 
 def _colang_v2(
@@ -785,19 +804,19 @@ def _colang_v2(
         phase_custom = tuple(
             item for item in custom_bindings if phase in item.phases
         )
-        risks = tuple(dict.fromkeys(
-            tuple(_native_risk(flow) for flow in native_flows[phase])
-            + tuple(item.risk for item in phase_bindings)
+        capabilities = tuple(dict.fromkeys(
+            tuple(_native_capability(flow) for flow in native_flows[phase])
+            + tuple(item.capability for item in phase_bindings)
         ))
-        risks = tuple(risk for risk in risks if risk)
-        if not risks and not phase_custom:
+        capabilities = tuple(item for item in capabilities if item)
+        if not capabilities and not phase_custom:
             continue
 
         lines.extend((f"flow tasklattice {phase} rails $text",))
         message_var = "$user_message" if phase == "input" else "$bot_message"
         lines.extend((f"  global {message_var}", f"  {message_var} = $text"))
 
-        modules = _phase_modules(plan, phase, risks) if risks else ()
+        modules = _phase_modules(plan, phase, capabilities) if capabilities else ()
         detection_custom = tuple(
             item for item in phase_custom if item.execution_mode == "detect"
         )
@@ -826,27 +845,35 @@ def _colang_v2(
             )
         lines.extend((f"  $decision = await {ACTION_RESOLVE}(text=$text)", ""))
 
-        risk_to_native = {
-            _native_risk(flow): flow for flow in native_flows[phase]
+        capability_to_native = {
+            _native_capability(flow): flow for flow in native_flows[phase]
         }
         for module in modules:
-            module_risks = tuple(
-                risk for risk in risks if _module_for_risk(plan, phase, risk) == module.id
+            module_capabilities = tuple(
+                capability
+                for capability in capabilities
+                if _module_for_capability(plan, phase, capability) == module.id
             )
             lines.append(f"flow {_module_flow_name(phase, module.id)} $text")
             lines.extend(
                 _await_parallel(
-                    tuple(_risk_flow_name(phase, risk) for risk in module_risks),
+                    tuple(
+                        _capability_flow_name(phase, capability)
+                        for capability in module_capabilities
+                    ),
                     "$text",
                     indent="  ",
                 )
             )
             lines.append("")
 
-            for risk in module_risks:
-                flow_name = _risk_flow_name(phase, risk)
-                native = risk_to_native.get(risk)
-                selected = tuple(item for item in phase_bindings if item.risk == risk)
+            for capability in module_capabilities:
+                flow_name = _capability_flow_name(phase, capability)
+                native = capability_to_native.get(capability)
+                selected = tuple(
+                    item for item in phase_bindings
+                    if item.capability == capability
+                )
                 lines.append(f"flow {flow_name} $text")
                 if native:
                     lines.extend(_native_flow_lines(native, phase))
@@ -859,32 +886,35 @@ def _colang_v2(
 
 def _binding_flow_lines(bindings: tuple[NeMoActionBinding, ...]) -> list[str]:
     lines: list[str] = []
-    previous = "$result"
-    for index, binding in enumerate(bindings):
+    by_id = {binding.id: binding for binding in bindings}
+    result_vars = {
+        binding.id: f"$tl_result_{_flow_identifier(binding.id)}_{_binding_suffix(binding)}"
+        for binding in bindings
+    }
+    for binding in bindings:
         if not binding.action_name:
             raise PlanCompilationError(
                 f"NeMo Action binding {binding.id!r} has no fixed Action name."
             )
+        result_var = result_vars[binding.id]
         call = (
-            f"$result = await {binding.action_name}("
+            f"{result_var} = await {binding.action_name}("
             f'text=$text, binding_id="{binding.id}")'
         )
-        if index == 0:
+        if binding.trigger.type == "always":
             lines.append(f"  {call}")
             continue
-        condition = {
-            "always": (
-                f'{previous}["verdict"] == "safe" or '
-                f'{previous}["verdict"] == "uncertain"'
-            ),
-            "on_uncertain": f'{previous}["verdict"] == "uncertain"',
-            # A later binding with no route into it is retained in the
-            # immutable manifest, but must not produce invalid `if false`
-            # Colang 2.x syntax or execute accidentally.
-            "never": None,
-        }[binding.escalation]
-        if condition is None:
-            continue
+        source_id = binding.trigger.step_ref
+        if source_id not in by_id or source_id not in result_vars:
+            raise PlanCompilationError(
+                f"Evaluation binding {binding.id!r} references unavailable "
+                f"trigger step {source_id!r}."
+            )
+        source = result_vars[source_id]
+        condition = " or ".join(
+            f'{source}["verdict"] == "{verdict}"'
+            for verdict in binding.trigger.verdicts
+        )
         lines.extend((f"  if {condition}", f"    {call}"))
     return lines
 
@@ -943,20 +973,20 @@ def _await_parallel(
 def _phase_modules(
     plan: GuardrailPlanSnapshot,
     phase: GuardrailPhase,
-    risks: tuple[str, ...],
+    capabilities: tuple[str, ...],
 ) -> tuple[GuardrailPlanModule, ...]:
     modules = list(plan.modules_for(phase))
     unassigned = tuple(
-        risk
-        for risk in risks
+        capability
+        for capability in capabilities
         if not any(
-            _module_contains_risk(plan, item.id, risk)
+            _module_contains_capability(plan, item.id, capability)
             for item in modules
         )
     )
     if unassigned:
         raise PlanCompilationError(
-            "NeMo policy risks must belong to a Policy module: "
+            "NeMo capabilities must belong to a Policy module: "
             + ", ".join(unassigned)
             + "."
         )
@@ -979,34 +1009,34 @@ def _module_waves(
     return tuple(waves)
 
 
-def _module_for_risk(
+def _module_for_capability(
     plan: GuardrailPlanSnapshot,
     phase: GuardrailPhase,
-    risk: str,
+    capability: str,
 ) -> str:
     try:
         return next(
             module.id
             for module in plan.modules_for(phase)
-            if _module_contains_risk(plan, module.id, risk)
+            if _module_contains_capability(plan, module.id, capability)
         )
     except StopIteration as error:
         raise PlanCompilationError(
-            f"NeMo policy risk {risk!r} has no {phase} Policy module."
+            f"NeMo capability {capability!r} has no {phase} Policy module."
         ) from error
 
 
-def _module_contains_risk(
+def _module_contains_capability(
     plan: GuardrailPlanSnapshot,
     module_id: str,
-    risk: str,
+    capability: str,
 ) -> bool:
     module = next((item for item in plan.modules if item.id == module_id), None)
     if module is None:
         return False
     steps = {step.id: step for step in plan.steps}
     return any(
-        step_id in steps and steps[step_id].risk == risk
+        step_id in steps and steps[step_id].capability == capability
         for step_id in module.step_ids
     )
 
@@ -1015,15 +1045,15 @@ def _module_flow_name(phase: GuardrailPhase, module_id: str) -> str:
     return f"tasklattice_module_{phase}_{_flow_identifier(module_id)}"
 
 
-def _risk_flow_name(phase: GuardrailPhase, risk: str) -> str:
-    return f"tasklattice_risk_{phase}_{_flow_identifier(risk)}"
+def _capability_flow_name(phase: GuardrailPhase, capability: str) -> str:
+    return f"tasklattice_capability_{phase}_{_flow_identifier(capability)}"
 
 
 def _flow_identifier(value: str) -> str:
     return "_".join(re.sub(r"[^a-zA-Z0-9]+", " ", value).split()).lower()
 
 
-def _native_risk(flow: str) -> str | None:
+def _native_capability(flow: str) -> str | None:
     if flow.startswith("content safety check"):
         return "content_safety"
     if flow.startswith("topic safety check"):
@@ -1049,23 +1079,23 @@ def _builtin_action_binding(
         if (
             version is not None
             and version.source == "built-in"
-            and dict(version.execution_contract).get("native_risk") == step.risk
+            and dict(version.execution_contract).get("native_risk") == step.capability
         ):
             policy_id = selected.policy_id
             policy_version = selected.policy_version
             break
     return NeMoActionBinding(
         id=step_id,
-        risk=step.risk,
-        stage=step.stage,
+        capability=step.capability,
+        contract_ref=step.contract_ref,
         phases=phases,
         on_unsafe=step.on_unsafe,
-        escalation=step.escalation,
+        trigger=step.trigger,
         timeout_ms=max(_timeout_for(plan, step_id, phase) for phase in phases),
         parameters=step.parameters,
         policy_id=policy_id,
         policy_version=policy_version,
-        action_name=action_name_for(step.risk, step.stage),
+        action_name=action_name_for(step.capability, step.contract_ref),
         action_version="1.0.0",
     )
 
@@ -1122,8 +1152,12 @@ def _custom_action_bindings(
             bindings.append(
                 NeMoActionBinding(
                     id=binding_id,
-                    risk=version.policy_id,
-                    stage="deterministic",
+                    capability=version.policy_id,
+                    contract_ref=(
+                        version.evaluation_contracts[0]
+                        if version.evaluation_contracts
+                        else f"tali.policy.{version.policy_id}.v{version.version}"
+                    ),
                     phases=(rail.rail_type,),
                     on_unsafe=(
                         rule_actions.get(rule_id)
@@ -1305,11 +1339,14 @@ def _dependency_manifest(
         if version.source != "built-in":
             # Custom Colang source may call more than the primary Action stored
             # on its rail binding, so every declared reference is a runtime
-            # dependency. Built-in Policy definitions list all possible stage
+            # dependency. Built-in Policy definitions list all possible Action
             # implementations; only the plan-selected binding is required.
             for action in version.action_references:
                 entries.add(("action", action.name, action.version))
-        entries.update(("model", item, "pinned") for item in version.model_dependencies)
+        entries.update(
+            ("evaluation_contract", item, "required")
+            for item in version.evaluation_contracts
+        )
         entries.update(("prompt", item, "pinned") for item in version.prompt_dependencies)
     for binding in bindings:
         if binding.action_name and binding.action_version:

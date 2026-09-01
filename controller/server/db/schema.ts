@@ -16,6 +16,13 @@ import { sql } from "drizzle-orm";
 import type { GuardrailDraftConfig } from "../domain/guardrail-plan.js";
 import type { ValidationCaseResult, ValidationMetrics } from "../domain/models.js";
 import type { PolicyValidationResult, ProgrammablePolicyDraft, ProgrammablePolicySnapshot } from "../policy-studio/model.js";
+import type {
+  GuardrailLifecycleState,
+  GuardrailVersionState,
+  IntegrationLifecycleState,
+  RunnerStatus,
+  ValidationRunState,
+} from "../../shared/lifecycle.js";
 
 const createdAt = timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 const updatedAt = timestamp("updated_at", { withTimezone: true }).notNull().defaultNow();
@@ -123,7 +130,7 @@ export const policyValidationRuns = pgTable("policy_validation_run", {
   id: text("id").primaryKey(),
   policyId: text("policy_id").notNull().references(() => policyRecords.id, { onDelete: "cascade" }),
   draftRevision: integer("draft_revision").notNull(),
-  status: text("status").notNull().default("queued"),
+  status: text("status").$type<ValidationRunState>().notNull().default("queued"),
   results: jsonb("results").$type<PolicyValidationResult[]>().notNull().default([]),
   failureReason: text("failure_reason"),
   createdBy: text("created_by").notNull().references(() => user.id),
@@ -140,7 +147,7 @@ export const guardrails = pgTable("guardrail", {
   excludedTestCaseIds: jsonb("excluded_test_case_ids").$type<string[]>().notNull().default([]),
   loggingLevel: text("logging_level").notNull().default("info"),
   runtimeProfile: text("runtime_profile").notNull().default("auto"),
-  status: text("status").notNull().default("draft"),
+  status: text("status").$type<GuardrailLifecycleState>().notNull().default("draft"),
   desiredGeneration: bigint("desired_generation", { mode: "number" }).notNull().default(0),
   activeVersion: integer("active_version"),
   activeArtifactId: text("active_artifact_id"),
@@ -156,7 +163,7 @@ export const guardrailVersions = pgTable("guardrail_version", {
   version: integer("version").notNull(),
   generation: bigint("generation", { mode: "number" }).notNull(),
   sourceDraftRevision: integer("source_draft_revision").notNull().default(1),
-  status: text("status").notNull().default("compiling"),
+  status: text("status").$type<GuardrailVersionState>().notNull().default("compiling"),
   runtimeProfile: text("runtime_profile").notNull(),
   plan: jsonb("plan").$type<Record<string, unknown>>().notNull(),
   artifactId: text("artifact_id"),
@@ -201,14 +208,14 @@ export const validationRuns = pgTable("guardrail_validation_run", {
   guardrailId: text("guardrail_id").notNull().references(() => guardrails.id),
   guardrailVersion: integer("guardrail_version"),
   sourceDraftRevision: integer("source_draft_revision").notNull(),
-  status: text("status").notNull().default("queued"),
+  status: text("status").$type<ValidationRunState>().notNull().default("queued"),
   metrics: jsonb("metrics").$type<ValidationMetrics>().notNull().default({
     total: 0,
     passed: 0,
     complianceRate: 0,
     falsePositiveRate: 0,
     falseNegativeRate: 0,
-    deepEscalationRate: 0,
+    escalationRate: 0,
     p95LatencyMs: 0,
   }),
   results: jsonb("results").$type<ValidationCaseResult[]>().notNull().default([]),
@@ -245,7 +252,7 @@ export const integrations = pgTable("integration", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   adapter: text("adapter").notNull(),
-  status: text("status").notNull().default("active"),
+  status: text("status").$type<IntegrationLifecycleState>().notNull().default("active"),
   verification: jsonb("verification").$type<Record<string, unknown>>().notNull().default({}),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
   deletedBy: text("deleted_by").references(() => user.id),
@@ -296,7 +303,7 @@ export const runnerInstances = pgTable("runner_instance", {
   runnerId: text("runner_id").primaryKey(),
   bootId: text("boot_id").notNull(),
   poolId: text("pool_id").notNull().references(() => runnerPools.id),
-  status: text("status").notNull().default("registered"),
+  status: text("status").$type<RunnerStatus>().notNull().default("offline"),
   runnerVersion: text("runner_version").notNull(),
   nemoVersion: text("nemo_version").notNull(),
   compilerCapable: boolean("compiler_capable").notNull().default(false),

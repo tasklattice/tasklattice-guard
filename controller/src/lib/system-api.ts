@@ -16,14 +16,9 @@ export async function getSystemStatus(): Promise<SystemStatus> {
     enabled_integrations: integrations.items.filter((item) => item.status === "active").length,
     total_integrations: integrations.items.length,
     capabilities: {
-      deterministic: true,
-      fast_semantic: true,
-      specialized_evaluators: unique([
-        "secrets", "pii", "builtin_content_filter", "prompt_injection", "jailbreak",
-        ...status.modelConnections.dataPlane.models.map((item) => item.capability),
-      ]),
+      evaluators: unique(status.modelConnections.dataPlane.models.map((item) => item.id)),
       generic_runtime_llm: false,
-      automated_reasoning: status.modelConnections.dataPlane.models.some((item) => item.capability === "automatedReasoning"),
+      automated_reasoning: status.modelConnections.dataPlane.models.some((item) => item.id === "automated-reasoning"),
     },
   };
 }

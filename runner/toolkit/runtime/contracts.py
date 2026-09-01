@@ -54,7 +54,7 @@ EnforcementMode = Literal["enforce", "detect"]
 EvidenceScope = Literal["interventions", "full"]
 SafetyLevel = Literal["balanced", "strict"]
 OutputDeliveryMode = Literal["interruptible", "window_buffered", "full_buffered"]
-EscalationMode = Literal["never", "on_uncertain", "always"]
+EvaluationTriggerType = Literal["always", "on_result"]
 MatcherKind = Literal["header", "jwt_claim", "field"]
 NeMoRuntimeEngine = Literal["iorails", "llmrails"]
 NeMoRuntimeProfile = Literal[
@@ -81,10 +81,10 @@ class RuntimeTraceStep:
     duration_ms: int = 0
     parent_id: str | None = None
     evidence: str | None = None
-    stage: str | None = None
+    contract_ref: str | None = None
     verdict: EvaluatorVerdict | None = None
     route: RouteDecision | None = None
-    risk: str | None = None
+    capability: str | None = None
     confidence: float | None = None
     content_block_id: str | None = None
     module_id: str | None = None
@@ -118,6 +118,8 @@ class RuntimeTraceStep:
     model_backoff_ms: int = 0
     started_offset_ms: int | None = None
     finished_offset_ms: int | None = None
+    evaluator_id: str | None = None
+    profile_ref: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -222,14 +224,30 @@ class ProtectionRequest:
 
 
 @dataclass(frozen=True, slots=True)
+class EvaluationTrigger:
+    type: EvaluationTriggerType = "always"
+    step_ref: str | None = None
+    verdicts: tuple[EvaluatorVerdict, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.type == "always":
+            if self.step_ref is not None or self.verdicts:
+                raise ValueError("An always trigger cannot reference a prior result.")
+            return
+        if not self.step_ref or not self.verdicts:
+            raise ValueError("An on_result trigger requires step_ref and verdicts.")
+        if len(set(self.verdicts)) != len(self.verdicts):
+            raise ValueError("Evaluation trigger verdicts must be unique.")
+
+
+@dataclass(frozen=True, slots=True)
 class GuardrailPlanStep:
     id: str
-    risk: str
-    stage: str
+    capability: str
+    contract_ref: str
     phases: tuple[GuardrailPhase, ...]
     on_unsafe: EnforcementAction
-    escalation: EscalationMode = "never"
-    threshold: float | None = None
+    trigger: EvaluationTrigger = EvaluationTrigger()
     parameters: tuple[tuple[str, str], ...] = ()
 
     def parameter(self, name: str) -> str | None:
@@ -310,7 +328,7 @@ class PolicyVersionSnapshot:
     parameter_schema: tuple[tuple[str, str], ...]
     rail_bindings: tuple[PolicyRailBindingSnapshot, ...]
     action_references: tuple[PolicyActionReferenceSnapshot, ...]
-    model_dependencies: tuple[str, ...]
+    evaluation_contracts: tuple[str, ...]
     prompt_dependencies: tuple[str, ...]
     execution_contract: tuple[tuple[str, str], ...]
     test_cases: tuple[tuple[str, str], ...]
@@ -344,12 +362,13 @@ class GuardrailPlanSnapshot:
     def steps_for(
         self,
         phase: GuardrailPhase,
-        stage: str | None = None,
+        contract_ref: str | None = None,
     ) -> tuple[GuardrailPlanStep, ...]:
         return tuple(
             step
             for step in self.steps
-            if phase in step.phases and (stage is None or step.stage == stage)
+            if phase in step.phases
+            and (contract_ref is None or step.contract_ref == contract_ref)
         )
 
     def modules_for(self, phase: GuardrailPhase) -> tuple[GuardrailPlanModule, ...]:
@@ -367,11 +386,11 @@ class NeMoActionBinding:
     """One version-pinned TaskLattice evaluator exposed as a NeMo action."""
 
     id: str
-    risk: str
-    stage: str
+    capability: str
+    contract_ref: str
     phases: tuple[GuardrailPhase, ...]
     on_unsafe: EnforcementAction
-    escalation: EscalationMode = "never"
+    trigger: EvaluationTrigger = EvaluationTrigger()
     timeout_ms: int = 2_000
     parameters: tuple[tuple[str, str], ...] = ()
     policy_id: str | None = None
@@ -413,12 +432,13 @@ class NeMoConfigSnapshot:
     def bindings_for(
         self,
         phase: GuardrailPhase,
-        risk: str | None = None,
+        capability: str | None = None,
     ) -> tuple[NeMoActionBinding, ...]:
         return tuple(
             binding
             for binding in self.action_bindings
-            if phase in binding.phases and (risk is None or binding.risk == risk)
+            if phase in binding.phases
+            and (capability is None or binding.capability == capability)
         )
 
 
@@ -475,10 +495,24 @@ class AutomatedReasoningFinding:
 
 
 @dataclass(frozen=True, slots=True)
+class ProviderEvidence:
+    """Model-native evidence retained without making it the product taxonomy."""
+
+    provider_id: str
+    model: str
+    native_verdict: str
+    native_category: str | None = None
+    mapping_quality: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class RiskFinding:
+    """One canonical TALI category finding produced by an evaluator."""
+
     risk: str
+    taxonomy_id: str
     verdict: EvaluatorVerdict
-    confidence: float
+    confidence: float | None
     evidence: str
     recommended_action: EnforcementAction
     replacement: str | None = None
@@ -487,6 +521,7 @@ class RiskFinding:
     grounding: tuple[GroundingFilterAssessment, ...] = ()
     claims: tuple[GroundingClaimEvidence, ...] = ()
     reasoning: tuple[AutomatedReasoningFinding, ...] = ()
+    provider_evidence: tuple[ProviderEvidence, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

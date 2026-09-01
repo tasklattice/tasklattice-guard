@@ -60,28 +60,38 @@ controller:
 # intent/document analysis and supplies the model response between explicit
 # input/output checks on GuardRails 0; it is never used for integration traffic.
 controlPlaneAgent:
-  deepseek:
-    provider: DeepSeek
-    baseUrl: https://api.deepseek.com
-    model: deepseek-v4-flash
+  provider:
+    name: Qwen
+    baseUrl: ""
+    model: ""
     apiKey: ""
     existingSecret: ""
     secretKey: api-key
 
-# Optional specialized NVIDIA evaluators used only by Runner. Model names are
-# visible as routing metadata, but no remote evaluator is enabled until an
-# endpoint and credential are configured.
-evaluators:
-  nvidia:
-    provider: NVIDIA
-    baseUrl: ""
-    contentSafetyModel: nvidia/llama-3.1-nemotron-safety-guard-8b-v3
-    topicControlModel: nvidia/llama-3.1-nemoguard-8b-topic-control
-    jailbreakModel: nvidia/nvidia-nemotron-nano-9b-v2
-    groundingModel: ""
-    apiKey: ""
+models:
+  # Physical endpoints are reusable and contain no Guardrails capability logic.
+  runtimes: []
+  # Example:
+  # - id: qwen3guard
+  #   client: openai_chat
+  #   base_url: http://qwen3guard.models.svc.cluster.local/v1
+  #   model: Qwen/Qwen3Guard-Gen-8B
+  #   api_key_env_var: QWEN_GUARD_API_KEY
+  credentials:
+    # Secret keys must match api_key_env_var values in models.runtimes.
     existingSecret: ""
-    secretKey: api-key
+    values: {}
+
+evaluators:
+  # Logical evaluator bindings map product contracts and parsing profiles onto
+  # replaceable Model Runtimes. Multiple bindings may share one runtime.
+  bindings: []
+  # Example:
+  # - id: qwen-content-safety
+  #   contract_ref: tali.guard.content-safety.v1
+  #   profile_ref: tali.qwen3guard.v1
+  #   model_ref: qwen3guard
+  #   priority: 10
   automatedReasoning:
     endpointUrl: ""
     apiKey: ""

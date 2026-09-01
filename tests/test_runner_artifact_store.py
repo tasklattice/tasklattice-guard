@@ -155,20 +155,22 @@ def _artifact() -> protocol.Artifact:
     plan = {
         "guardrail_id": "guardrail-1",
         "guardrail_version": 1,
-        "compiler_version": "tasklattice-controller-plan-v1",
+        "compiler_version": "tasklattice-controller-plan-v3",
         "safety_level": "balanced",
         "output_delivery": "full_buffered",
         "steps": [{
-            "id": "secrets:deterministic", "risk": "secrets", "stage": "deterministic",
-            "phases": ["input", "output"], "on_unsafe": "redact", "escalation": "never", "parameters": [],
+            "id": "secrets:exact", "capability": "secrets",
+            "contract_ref": "tali.guard.secrets.exact.v1",
+            "phases": ["input", "output"], "on_unsafe": "redact",
+            "trigger": {"type": "always", "verdicts": []}, "parameters": [],
         }],
         "modules": [{
             "id": "data_protection:input", "module": "data_protection", "phase": "input",
-            "step_ids": ["secrets:deterministic"], "depends_on": [], "input_view": "original",
+            "step_ids": ["secrets:exact"], "depends_on": [], "input_view": "original",
             "required_for_release": True, "timeout_ms": 750, "failure_mode": "fail_closed",
         }, {
             "id": "data_protection:output", "module": "data_protection", "phase": "output",
-            "step_ids": ["secrets:deterministic"], "depends_on": [], "input_view": "original",
+            "step_ids": ["secrets:exact"], "depends_on": [], "input_view": "original",
             "required_for_release": True, "timeout_ms": 750, "failure_mode": "fail_closed",
         }],
         "reasoning_policies": [], "policy_versions": [], "policy_bindings": [],

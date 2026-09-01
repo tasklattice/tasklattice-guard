@@ -8,8 +8,14 @@ from typing import Any
 
 import yaml
 
-from runner.toolkit.nemo.action_registry import action_providers
-from runner.toolkit.nemo.actions import local_action_providers
+from runner.toolkit.nemo.action_registry import ActionProviders, action_providers
+from runner.toolkit.nemo.actions import (
+    EvaluationActionProvider,
+    EvaluationRoute,
+    local_action_providers,
+)
+from runner.toolkit.nemo.evaluators.pii import PiiEvaluator
+from runner.toolkit.evaluation.contracts import CONTRACT_PII_EXACT
 from runner.toolkit.nemo.registry import NeMoRuntimeRegistry
 from runner.toolkit.nemo.runtime import NeMoRuntime
 from runner.toolkit.runtime.content_views import content_view
@@ -37,8 +43,13 @@ from .serialization import config_from_dict, plan_from_dict
 class DefaultRunnerValidator:
     """Compile a draft and run its reviewed cases through the real NeMo runtime."""
 
-    def __init__(self, compiler: DefaultRunnerCompiler) -> None:
+    def __init__(
+        self,
+        compiler: DefaultRunnerCompiler,
+        providers: ActionProviders | None = None,
+    ) -> None:
         self._compiler = compiler
+        self._providers = providers or _local_validation_providers()
 
     async def validate(
         self, request: protocol.ValidationRequest
@@ -59,7 +70,7 @@ class DefaultRunnerValidator:
         store = _CandidateStore(plan, config)
         registry = NeMoRuntimeRegistry(
             store,
-            action_providers(*local_action_providers()),
+            self._providers,
             max_entries=1,
             max_concurrency_per_guardrail=8,
         )
@@ -128,6 +139,23 @@ class DefaultRunnerValidator:
         )
         actual_reasoning = _reasoning_result(findings)
         expected_reasoning = _optional_string(case.get("expectedReasoningResult"))
+        evaluation_contracts = sorted({
+            _string(item.get("contract_ref"))
+            for item in trace
+            if item.get("contract_ref") and item.get("status") != "skipped"
+        })
+        evaluator_ids = sorted({
+            _string(item.get("evaluator_id") or item.get("action_name"))
+            for item in trace
+            if item.get("kind") in {"evaluator", "action"}
+            and (item.get("evaluator_id") or item.get("action_name"))
+            and item.get("status") != "skipped"
+        })
+        escalated = any(
+            step.trigger.type == "on_result"
+            and step.contract_ref in evaluation_contracts
+            for step in plan.steps
+        )
         passed = (
             (decision.decision != "allow" if expected == "intervene" else decision.decision == expected)
             and (expected_failure is None or expected_failure == actual_failure)
@@ -141,7 +169,7 @@ class DefaultRunnerValidator:
             "expectedDecision": expected,
             "actualDecision": decision.decision,
             "passed": passed,
-            "stageReached": _stage_reached(trace),
+            "evaluatorIds": evaluator_ids,
             "latencyMs": latency,
             "reason": decision.reason or "",
             "phase": phase,
@@ -166,7 +194,20 @@ class DefaultRunnerValidator:
             "sourceCaseId": _optional_string(case.get("sourceCaseId")),
             "coveredRuleIds": sorted(covered),
             "matchedRuleIds": matched,
+            "evaluationContracts": evaluation_contracts,
+            "escalated": escalated,
+            "modelInvocations": (
+                decision.usage.model_invocations if decision.usage is not None else 0
+            ),
         }
+
+
+def _local_validation_providers() -> ActionProviders:
+    local = local_action_providers()
+    evaluation = EvaluationActionProvider((
+        EvaluationRoute("pii", CONTRACT_PII_EXACT, PiiEvaluator()),
+    ))
+    return action_providers(*local, evaluation)
 
 
 class _CandidateStore:
@@ -242,7 +283,7 @@ def _metrics(results: list[dict[str, Any]]) -> dict[str, Any]:
     passed = sum(bool(item["passed"]) for item in results)
     false_positive = sum(item["expectedDecision"] == "allow" and item["actualDecision"] != "allow" for item in results)
     false_negative = sum(item["expectedDecision"] != "allow" and item["actualDecision"] == "allow" for item in results)
-    deep = sum(item["stageReached"] == "deep_judge" for item in results)
+    escalated = sum(bool(item["escalated"]) for item in results)
     latencies = sorted(int(item["latencyMs"]) for item in results) or [0]
     return {
         "total": total,
@@ -250,17 +291,9 @@ def _metrics(results: list[dict[str, Any]]) -> dict[str, Any]:
         "complianceRate": _percent(passed, total),
         "falsePositiveRate": _percent(false_positive, total),
         "falseNegativeRate": _percent(false_negative, total),
-        "deepEscalationRate": _percent(deep, total),
+        "escalationRate": _percent(escalated, total),
         "p95LatencyMs": latencies[max(0, math.ceil(len(latencies) * 0.95) - 1)],
     }
-
-
-def _stage_reached(trace: list[dict[str, Any]]) -> str:
-    reached = "none"
-    for stage in ("deterministic", "fast_semantic", "deep_judge"):
-        if any(item.get("stage") == stage and item.get("status") != "skipped" for item in trace):
-            reached = stage
-    return reached
 
 
 def _reasoning_result(findings: list[dict[str, Any]]) -> str | None:

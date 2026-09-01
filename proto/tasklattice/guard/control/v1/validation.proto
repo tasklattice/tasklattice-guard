@@ -7,15 +7,6 @@ import "enforcement_action.proto";
 import "evaluation.proto";
 import "runtime.proto";
 
-// How far a validation case actually progressed. NONE is a valid observed
-// outcome, unlike an unspecified Guardrail Plan evaluation stage.
-enum ValidationStage {
-  VALIDATION_STAGE_NONE = 0;
-  VALIDATION_STAGE_DETERMINISTIC = 1;
-  VALIDATION_STAGE_FAST_SEMANTIC = 2;
-  VALIDATION_STAGE_DEEP_JUDGE = 3;
-}
-
 // Immutable validation input and expected business/infrastructure outcome.
 message ValidationTestCase {
   // Stable case identifier within the validation request.
@@ -64,8 +55,8 @@ message ValidationMetrics {
   double false_positive_rate = 4;
   // Unsafe cases incorrectly allowed, normalized to [0, 1].
   double false_negative_rate = 5;
-  // Cases reaching the deep-judge stage divided by total, in [0, 1].
-  double deep_escalation_rate = 6;
+  // Cases that executed a trigger-dependent evaluation step divided by total.
+  double escalation_rate = 6;
   // End-to-end case latency p95 in milliseconds.
   int32 p95_latency_ms = 7;
 }
@@ -79,8 +70,7 @@ message ValidationCaseResult {
   ValidationDecision actual_decision = 5;
   // True when required business and expected-failure assertions matched.
   bool passed = 6;
-  // Furthest evaluator stage reached, including NONE for routing short-circuits.
-  ValidationStage stage_reached = 7;
+  repeated string evaluator_ids = 7;
   // End-to-end case execution latency in milliseconds.
   int32 latency_ms = 8;
   // Human-readable diagnostic detail; consumers must not parse it as a code.
@@ -116,6 +106,9 @@ message ValidationCaseResult {
   optional string source_case_id = 29;
   repeated string covered_rule_ids = 30;
   repeated string matched_rule_ids = 31;
+  repeated string evaluation_contracts = 32;
+  bool escalated = 33;
+  int32 model_invocations = 34;
 }
 
 // Command to execute an immutable candidate plan against its test cases.

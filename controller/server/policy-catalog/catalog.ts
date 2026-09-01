@@ -45,7 +45,7 @@ const ruleSchema = z.object({
   description: z.string(),
   form: ruleFormSchema,
   effect: z.string().min(1),
-  stages: z.array(railTypeSchema),
+  rails: z.array(railTypeSchema),
   implementation: implementationSchema,
   expression: z.string().nullable().default(null),
   context_expression: z.string().nullable().default(null),
@@ -59,12 +59,13 @@ const ruleSchema = z.object({
   always_block: z.array(stringPairSchema).default([]),
   exceptions: z.array(z.string()).default([]),
   phrase_patterns: z.array(z.string()).default([]),
+  taxonomy_ids: z.array(z.string().regex(/^TALI(?:-[A-Z0-9]+)+$/)).default([]),
 });
 const testCaseSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
   description: z.string(),
-  stage: railTypeSchema,
+  phase: railTypeSchema,
   content: z.string(),
   expected_decision: z.enum(["allow", "block", "transform", "intervene"]),
   covered_rule_ids: z.array(z.string()).default([]),
@@ -102,7 +103,7 @@ export type PolicyDto = {
   version: string;
   tags: PolicyTag[];
   parameters: PolicyParameter[];
-  stages: Array<z.output<typeof railTypeSchema>>;
+  rails: Array<z.output<typeof railTypeSchema>>;
   effects: string[];
   forms: Array<z.output<typeof ruleFormSchema>>;
   rules: PolicyRule[];
@@ -117,7 +118,7 @@ export const POLICY_CATALOG_FILE_NAMES = [
   "local_content_filters.json",
 ] as const;
 
-const STAGE_ORDER: PolicyDto["stages"] = ["input", "retrieval", "dialog", "execution", "output"];
+const RAIL_ORDER: PolicyDto["rails"] = ["input", "retrieval", "dialog", "execution", "output"];
 
 // Keep the Controller's discovery metadata compatible with the canonical
 // Runner toolkit catalog. These tags are centrally reviewed metadata, not an
@@ -196,7 +197,7 @@ function normalizePolicy(policy: PolicyAsset): PolicyDto {
     tags.set(tag.id, tag);
   }
 
-  const configuredStages = new Set(policy.rules.flatMap((rule) => rule.stages));
+  const configuredRails = new Set(policy.rules.flatMap((rule) => rule.rails));
   const effects = [...new Set(policy.rules.map((rule) => rule.effect))].sort();
   const forms = [...new Set(policy.rules.map((rule) => rule.form))].sort();
   return {
@@ -208,7 +209,7 @@ function normalizePolicy(policy: PolicyAsset): PolicyDto {
     version: policy.version,
     tags: [...tags.values()],
     parameters: policy.parameters,
-    stages: STAGE_ORDER.filter((stage) => configuredStages.has(stage)),
+    rails: RAIL_ORDER.filter((rail) => configuredRails.has(rail)),
     effects,
     forms,
     rules: policy.rules,

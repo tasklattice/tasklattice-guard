@@ -4,9 +4,10 @@ from functools import lru_cache
 
 from .domain import PolicySpec
 from .loader import load_builtin_policies
+from ..safety.taxonomy import taxonomy
 
 
-_SUPPORTED_STAGES = frozenset(
+_SUPPORTED_RAILS = frozenset(
     {"input", "retrieval", "dialog", "execution", "output"}
 )
 _SUPPORTED_TEST_DECISIONS = frozenset(
@@ -74,6 +75,7 @@ class PolicyLibraryRegistry:
             raise ValueError(f"Policy {item.id!r} repeats a parameter name.")
 
         rule_ids: set[str] = set()
+        taxonomy_registry = taxonomy()
         for rule in item.rules:
             _required(rule.id, f"Policy {item.id!r} Rule ID")
             _required(rule.name, f"Policy {item.id!r} Rule {rule.id!r} name")
@@ -82,11 +84,27 @@ class PolicyLibraryRegistry:
                     f"Policy {item.id!r} contains duplicate Rule {rule.id!r}."
                 )
             rule_ids.add(rule.id)
-            if not rule.stages or any(
-                stage not in _SUPPORTED_STAGES for stage in rule.stages
+            if not rule.taxonomy_ids:
+                raise ValueError(
+                    f"Policy {item.id!r} Rule {rule.id!r} has no TALI Taxonomy category."
+                )
+            unknown_taxonomy_ids = tuple(
+                category_id
+                for category_id in rule.taxonomy_ids
+                if not taxonomy_registry.contains(category_id)
+            )
+            if unknown_taxonomy_ids:
+                raise ValueError(
+                    f"Policy {item.id!r} Rule {rule.id!r} references unknown "
+                    "TALI Taxonomy categories: "
+                    + ", ".join(unknown_taxonomy_ids)
+                    + "."
+                )
+            if not rule.rails or any(
+                rail not in _SUPPORTED_RAILS for rail in rule.rails
             ):
                 raise ValueError(
-                    f"Policy {item.id!r} Rule {rule.id!r} has invalid stages."
+                    f"Policy {item.id!r} Rule {rule.id!r} has invalid rails."
                 )
 
         case_ids: set[str] = set()
@@ -105,9 +123,9 @@ class PolicyLibraryRegistry:
                     f"Policy {item.id!r} repeats Test Case {case.id!r}."
                 )
             case_ids.add(case.id)
-            if case.stage not in _SUPPORTED_STAGES:
+            if case.phase not in _SUPPORTED_RAILS:
                 raise ValueError(
-                    f"Policy {item.id!r} Test Case {case.id!r} has an invalid stage."
+                    f"Policy {item.id!r} Test Case {case.id!r} has an invalid phase."
                 )
             if case.expected_decision not in _SUPPORTED_TEST_DECISIONS:
                 raise ValueError(

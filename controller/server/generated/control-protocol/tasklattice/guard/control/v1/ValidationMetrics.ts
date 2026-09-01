@@ -26,9 +26,9 @@ export interface ValidationMetrics {
    */
   'falseNegativeRate'?: (number | string);
   /**
-   * Cases reaching the deep-judge stage divided by total, in [0, 1].
+   * Cases that executed a trigger-dependent evaluation step divided by total.
    */
-  'deepEscalationRate'?: (number | string);
+  'escalationRate'?: (number | string);
   /**
    * End-to-end case latency p95 in milliseconds.
    */
@@ -60,9 +60,9 @@ export interface ValidationMetrics__Output {
    */
   'falseNegativeRate': (number);
   /**
-   * Cases reaching the deep-judge stage divided by total, in [0, 1].
+   * Cases that executed a trigger-dependent evaluation step divided by total.
    */
-  'deepEscalationRate': (number);
+  'escalationRate': (number);
   /**
    * End-to-end case latency p95 in milliseconds.
    */

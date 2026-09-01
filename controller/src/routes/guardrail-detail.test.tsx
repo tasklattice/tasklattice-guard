@@ -282,7 +282,7 @@ describe("Guardrail detail information hierarchy", () => {
         source_draft_version: 2,
         status: "passed",
         created_at: "2026-08-14T08:00:00Z",
-        metrics: { total: 5, passed: 5, compliance_rate: 100, false_positive_rate: 0, false_negative_rate: 0, deep_escalation_rate: 0, p95_latency_ms: 20 },
+        metrics: { total: 5, passed: 5, compliance_rate: 100, false_positive_rate: 0, false_negative_rate: 0, escalation_rate: 0, p95_latency_ms: 20 },
         results: [],
         excluded_case_ids: [],
       },

@@ -1,3 +1,10 @@
+import {
+  enforcementActionConflictOrder,
+  enforcementActionDescriptions,
+  enforcementActionDisplayOrder,
+  type EnforcementAction,
+} from "../../shared/enforcement-action.generated";
+
 export type HelpAudience = "user" | "developer" | "operator";
 export type HelpLocale = "en" | "zh-CN";
 export type HelpLinkTo = "/policy-library" | "/guardrails" | "/validation" | "/deployments" | "/integrations" | "/evidence" | "/playground";
@@ -70,6 +77,29 @@ export type HelpSearchResults = {
   guides: Array<{ guide: HelpGuide; articles: HelpArticle[] }>;
   glossary: GlossaryEntry[];
 };
+
+// Localized presentation text is intentionally separate from the wire
+// contract, while Record<EnforcementAction, ...> makes additions fail typecheck
+// until Help documents every newly introduced directive.
+const ZH_ENFORCEMENT_ACTION_DESCRIPTIONS = Object.freeze({
+  reject: "阻断当前阶段。输入阶段不调用模型；输出阶段不交付原始响应。",
+  clarify: "要求用户补充或澄清信息后再继续，适合意图不确定但不应直接放行的情况。",
+  fallback: "使用预先批准的兜底响应或降级路径。",
+  regenerate: "要求拥有模型调用生命周期的上游重新生成；独立检查 API 返回该指令，由调用方执行。",
+  rewrite: "使用评估器返回的完整替代内容替换当前内容。",
+  redirect: "把交互引导到安全主题、流程或替代响应；通常需要提供替换内容。",
+  redact: "用经过审查的占位符或替换片段遮盖敏感内容，然后继续。",
+  pass: "记录发现但不执行内容干预；仅在明确接受该风险时使用。",
+} as const satisfies Readonly<Record<EnforcementAction, string>>);
+
+function enforcementActionTerms(
+  descriptions: Readonly<Record<EnforcementAction, string>>,
+): HelpTermRow[] {
+  return enforcementActionDisplayOrder.map((name) => ({
+    name,
+    description: descriptions[name],
+  }));
+}
 
 export function getHelpContent(locale: HelpLocale): HelpContent {
   return locale === "zh-CN" ? ZH_CONTENT : EN_CONTENT;
@@ -231,19 +261,10 @@ const ZH_CONTENT: HelpContent = {
         },
         {
           id: "developer-actions",
-          title: "“不安全时”八种 Action 的含义",
-          summary: "Action 表示检测到不安全内容后期望调用方或运行时采取的干预。多项结果冲突时使用最强动作。",
-          terms: [
-            { name: "reject", description: "阻断当前阶段。输入阶段不调用模型；输出阶段不交付原始响应。" },
-            { name: "redact", description: "用经过审查的占位符或替换片段遮盖敏感内容，然后继续。" },
-            { name: "rewrite", description: "用 Action 返回的完整替代内容替换当前内容。" },
-            { name: "regenerate", description: "要求拥有模型调用生命周期的上游重新生成；独立检查 API 返回该动作，由调用方执行。" },
-            { name: "redirect", description: "把交互引导到安全主题、流程或替代响应；通常需要 Action 提供替换内容。" },
-            { name: "fallback", description: "使用预先批准的兜底响应或降级路径。" },
-            { name: "clarify", description: "要求用户补充或澄清信息后再继续，适合意图不确定但不应直接放行的情况。" },
-            { name: "pass", description: "记录发现但不执行内容干预；仅在明确接受该风险时使用。" },
-          ],
-          note: "冲突优先级：reject → clarify → fallback → regenerate → rewrite → redirect → redact → pass。TaskLattice 是决策服务；regenerate、redirect、fallback、clarify 等动作是否真正改变交互，取决于调用方是否正确执行返回的 action/texts。",
+          title: `“不安全时”的 ${enforcementActionConflictOrder.length} 种检测后处理`,
+          summary: "检测后处理（Enforcement Action）表示 Policy 决策后希望运行时或调用方采取的干预，不是 NeMo Action。多项结果冲突时使用优先级最高的处理。",
+          terms: enforcementActionTerms(ZH_ENFORCEMENT_ACTION_DESCRIPTIONS),
+          note: `冲突优先级：${enforcementActionConflictOrder.join(" → ")}。TaskLattice 是决策服务；regenerate、redirect、fallback、clarify 等动作是否真正改变交互，取决于调用方是否正确执行返回的 action/texts。`,
         },
         {
           id: "developer-release-transfer",
@@ -346,7 +367,8 @@ ZH_CONTENT.glossary = [
   ["rail", "Rail", ["input rail", "output rail"], "NeMo 在模型前或模型后执行安全逻辑的阶段。", "Input Rail 能在模型调用前阻断；Output Rail 能在交付前转换或阻断响应。", ["developer", "operator"]],
   ["flow", "Flow", ["Colang Flow", "flow name"], "Colang 中命名的编排单元，把事件、Actions 和决策组织成一个 Rail 行为。", "Policy Studio 的 Flow 名称必须与源码声明一致。", ["developer"]],
   ["colang", "Colang", ["Colang 1", "Colang 2"], "NVIDIA NeMo Guardrails 的对话与安全编排语言。", "TaskLattice 编译器为简单内建计划选择 Colang 1；自定义 Policy 自动使用 Colang 2，开发者无需选择。", ["developer", "operator"]],
-  ["action", "Action", ["Provider", "Python Action"], "由 NeMo Flow 调用的版本化能力，执行检测、专用模型判断或内容变换。", "只允许调用 Action Catalog 中已注册的版本，避免把任意代码上传到 Policy。", ["developer", "operator"]],
+  ["action", "Action", ["Provider", "Python Action", "NeMo Action"], "由 NeMo Flow 调用的版本化能力，执行检测、专用模型判断或内容变换。", "它不同于检测完成后的 Enforcement Action；只允许调用 Action Catalog 中已注册的版本。", ["developer", "operator"]],
+  ["enforcement-action", "检测后处理", ["Enforcement Action", "响应指令", "不安全时"], "Policy 决策后要求运行时或调用方采取的具体处理，例如脱敏、阻断或重新生成。", "它不是评估器 verdict，也不是 NeMo 调用的 Python Action；部分生命周期指令由集成调用方执行。", ["user", "developer", "operator"]],
   ["action-reference", "Action Reference", ["Action 依赖"], "Policy 对 Action 名称和精确版本的引用。", "发布前检查可用性、Rail 兼容性和契约，保证以后可复现。", ["developer"]],
   ["parameter", "Binding Parameter", ["绑定参数", "parameter"], "Policy 暴露、由 Guardrail 绑定时解析的审查值。", "参数属于配置版本，不应从不可信的生产请求临时覆盖。", ["user", "developer"]],
   ["validation-run", "Validation Run", ["验证记录"], "当前草稿的 Test Cases 通过真实运行时执行后形成的不可变结果。", "只有当前 revision 的必需用例全部通过，才能发布。", ["user", "developer", "operator"]],
@@ -382,7 +404,7 @@ const EN_CONTENT: HelpContent = {
     { name: "Deployment", description: "Uses Traffic Scope to select a published Guardrail Version for that Integration." },
     { name: "Guardrail Version", description: "Pins Policies, Rules, parameters, and compiled output as the release and rollback unit." },
     { name: "NeMo Rail / Flow", description: "Orchestrates checks before the model or before its output is delivered." },
-    { name: "Action", description: "Runs deterministic checks, specialized evaluators, or content transformations." },
+    { name: "Action", description: "Runs local checks, specialized evaluators, or content transformations." },
     { name: "Decision & Evidence", description: "Returns allow, transform, or block and records privacy-conscious evidence." },
   ],
   choosePath: "Choose your path",
@@ -483,19 +505,10 @@ const EN_CONTENT: HelpContent = {
         },
         {
           id: "developer-actions",
-          title: "The eight unsafe actions",
-          summary: "Actions describe the intervention expected after unsafe content is found. Conflicts resolve to the strongest action.",
-          terms: [
-            { name: "reject", description: "Block the phase. Do not call the model for input or deliver original output." },
-            { name: "redact", description: "Mask sensitive spans with reviewed replacements and continue." },
-            { name: "rewrite", description: "Replace current content with the full replacement returned by the Action." },
-            { name: "regenerate", description: "Ask the upstream model lifecycle owner to generate again." },
-            { name: "redirect", description: "Guide the interaction to a safe topic, flow, or replacement response." },
-            { name: "fallback", description: "Use an approved fallback response or degraded path." },
-            { name: "clarify", description: "Ask for more information before continuing." },
-            { name: "pass", description: "Record the finding without intervening in content." },
-          ],
-          note: "Priority: reject → clarify → fallback → regenerate → rewrite → redirect → redact → pass. TaskLattice is a decision service; callers must implement action/texts for lifecycle actions such as regenerate or fallback.",
+          title: `The ${enforcementActionConflictOrder.length} post-evaluation directives`,
+          summary: "An Enforcement Action is the intervention requested after a Policy decision; it is not a NeMo Action. Conflicts resolve to the highest-priority directive.",
+          terms: enforcementActionTerms(enforcementActionDescriptions),
+          note: `Priority: ${enforcementActionConflictOrder.join(" → ")}. TaskLattice is a decision service; callers must implement action/texts for lifecycle actions such as regenerate or fallback.`,
         },
         {
           id: "developer-release-transfer",
@@ -599,7 +612,8 @@ EN_CONTENT.glossary = ZH_CONTENT.glossary.map((entry) => {
     rail: { definition: "A NeMo phase that runs safety logic before the model or before output delivery.", background: "Input can stop model invocation; Output can transform or block delivery." },
     flow: { definition: "A named Colang orchestration unit that coordinates events, Actions, and decisions.", background: "The Policy Studio Flow name must match source declaration exactly." },
     colang: { definition: "NVIDIA NeMo Guardrails' orchestration language.", background: "The compiler selects Colang 1 for supported simple plans; custom Policies use Colang 2 automatically." },
-    action: { definition: "A versioned capability invoked by a NeMo Flow for detection, specialized evaluation, or transformation.", background: "Only registered Action Catalog versions are allowed; arbitrary Python is not uploaded into a Policy." },
+    action: { definition: "A versioned capability invoked by a NeMo Flow for detection, specialized evaluation, or transformation.", background: "It is distinct from the post-evaluation Enforcement Action; only registered Action Catalog versions are allowed." },
+    "enforcement-action": { definition: "The specific response requested after a Policy decision, such as redaction, rejection, or regeneration.", background: "It is neither an evaluator verdict nor a Python Action invoked by NeMo; some lifecycle directives are applied by the integrating caller." },
     "action-reference": { definition: "A Policy reference to an Action name and exact version.", background: "Publication checks availability, Rail compatibility, and contracts for reproducibility." },
     parameter: { definition: "A reviewed Policy value resolved when a Guardrail pins its version.", background: "Parameters are versioned configuration and should not be overridden by untrusted runtime input." },
     "validation-run": { definition: "An immutable result from executing the current draft's Test Cases through the real runtime.", background: "All required cases for the current revision must pass before publication." },

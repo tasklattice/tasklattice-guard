@@ -71,7 +71,7 @@ export function parsePolicyPackage(raw: string): PolicyImport {
   if (draft.colang_version !== "2.x") {
     throw new PolicyPackageError("unsupportedColang", "Imported custom Policies must use the Colang 2.x programmable runtime.");
   }
-  for (const field of ["sources", "rail_bindings", "parameter_schema", "action_references", "model_dependencies", "prompt_dependencies", "execution_contract", "test_cases"] as const) {
+  for (const field of ["sources", "rail_bindings", "parameter_schema", "action_references", "evaluation_contracts", "prompt_dependencies", "execution_contract", "test_cases"] as const) {
     if (!Array.isArray(draft[field])) {
       throw new PolicyPackageError("invalidDraft", `The Policy package draft field ${field} is invalid.`);
     }

@@ -33,7 +33,8 @@ describe("Guardrail Validation contract", () => {
   it("reports rates and p95 from actual case results", () => {
     const base = {
       caseId: "", name: "", policyId: "", expectedDecision: "allow", actualDecision: "allow",
-      passed: true, stageReached: "deterministic", latencyMs: 10, reason: "", phase: "input",
+      passed: true, evaluatorIds: ["local-rules"], evaluationContracts: ["tali.guard.content-filter.rules.v1"],
+      escalated: false, modelInvocations: 0, latencyMs: 10, reason: "", phase: "input",
       inputContent: "", action: null, outputContent: "", findings: [], trace: [], trustedInstruction: "",
       targetSource: "user_input", query: "", groundingSources: [], expectedReasoningResult: null,
       actualReasoningResult: null, caseType: "scenario", required: true, expectedFailure: null,
@@ -42,11 +43,11 @@ describe("Guardrail Validation contract", () => {
     } as const;
     const metrics = validationMetrics([
       { ...base, caseId: "one", latencyMs: 10 },
-      { ...base, caseId: "two", expectedDecision: "block", actualDecision: "allow", passed: false, stageReached: "deep_judge", latencyMs: 100 },
+      { ...base, caseId: "two", expectedDecision: "block", actualDecision: "allow", passed: false, escalated: true, modelInvocations: 1, latencyMs: 100 },
     ]);
     expect(metrics).toEqual({
       total: 2, passed: 1, complianceRate: 50, falsePositiveRate: 0,
-      falseNegativeRate: 50, deepEscalationRate: 50, p95LatencyMs: 100,
+      falseNegativeRate: 50, escalationRate: 50, p95LatencyMs: 100,
     });
   });
 });

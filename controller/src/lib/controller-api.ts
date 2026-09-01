@@ -1,3 +1,12 @@
+import type { EnforcementAction } from "../../shared/enforcement-action.generated";
+import type {
+  GuardrailLifecycleState,
+  GuardrailVersionState,
+  IntegrationLifecycleState,
+  RunnerStatus,
+  ValidationRunState,
+} from "../../shared/lifecycle";
+
 export type Collection<T> = { items: T[]; count?: number };
 
 export type SystemStatus = {
@@ -9,13 +18,12 @@ export type SystemStatus = {
     controlPlane: { provider: string; model: string };
     dataPlane: {
       provider: string;
-      models: Array<{ capability: "contentSafety" | "topicControl" | "jailbreak" | "grounding" | "automatedReasoning"; model: string }>;
+      models: Array<{ id: string; model: string }>;
     };
   };
 };
 
 export type GuardrailDraftConfig = {
-  protections?: Array<"secrets" | "pii" | "builtin_content_filter" | "prompt_injection" | "jailbreak">;
   purposeDetails: {
     audience: string;
     tasks: string;
@@ -27,10 +35,10 @@ export type GuardrailDraftConfig = {
   policyBindings: Array<{
     policyId: string;
     policyVersion: string;
-    action: "pass" | "redact" | "rewrite" | "regenerate" | "redirect" | "reject" | "fallback" | "clarify" | null;
+    action: EnforcementAction | null;
     parameterValues: Record<string, string>;
     enabledRuleIds: string[];
-    ruleActions: Record<string, "pass" | "redact" | "rewrite" | "regenerate" | "redirect" | "reject" | "fallback" | "clarify">;
+    ruleActions: Record<string, EnforcementAction>;
     enabledRails: Array<"input" | "output" | "retrieval" | "dialog" | "execution">;
     reasoningPolicy: { policyId: string; policyVersion: string; confidenceThreshold: number } | null;
   }>;
@@ -53,7 +61,7 @@ export type Guardrail = {
   description: string;
   draftConfig: GuardrailDraftConfig;
   runtimeProfile: string;
-  status: "draft" | "active" | "disabled";
+  status: GuardrailLifecycleState;
   desiredGeneration: number;
   draftRevision: number;
   excludedTestCaseIds: string[];
@@ -73,7 +81,7 @@ export type GuardrailVersion = {
   version: number;
   generation: number;
   sourceDraftRevision: number;
-  status: "compiling" | "ready" | "failed";
+  status: GuardrailVersionState;
   runtimeProfile: string;
   plan: Record<string, unknown>;
   artifactId: string | null;
@@ -120,7 +128,7 @@ export type Integration = {
   id: string;
   name: string;
   adapter: string;
-  status: "active" | "disabled";
+  status: IntegrationLifecycleState;
   createdAt: string;
   updatedAt: string;
   credential?: string;
@@ -147,14 +155,14 @@ export type ValidationRun = {
   guardrailId: string;
   guardrailVersion: number | null;
   sourceDraftRevision: number;
-  status: "queued" | "running" | "passed" | "failed";
+  status: ValidationRunState;
   metrics: {
     total: number;
     passed: number;
     complianceRate: number;
     falsePositiveRate: number;
     falseNegativeRate: number;
-    deepEscalationRate: number;
+    escalationRate: number;
     p95LatencyMs: number;
   };
   results: Array<Record<string, unknown>>;
@@ -183,7 +191,7 @@ export type RunnerInstance = {
   runnerId: string;
   bootId: string;
   poolId: string;
-  status: "registered" | "syncing" | "ready" | "busy" | "saturated" | "offline";
+  status: RunnerStatus;
   runnerVersion: string;
   nemoVersion: string;
   compilerCapable: boolean;

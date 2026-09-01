@@ -440,7 +440,7 @@ function RuleRow({ rule }: { rule: PolicyRule }) {
         <p className="leading-5 text-muted-foreground">{rule.description || t("policyLibrary.noRuleDescription")}</p>
         <dl className="mt-3 grid gap-3 sm:grid-cols-3">
           <Fact label={t("policyLibrary.ruleForm")} value={t(`policyLibrary.forms.${rule.form}`)} />
-          <Fact label={t("policyLibrary.railTypesLabel")} value={rule.stages.map((railType) => t(`policyLibrary.railTypes.${railType}`)).join(", ")} />
+          <Fact label={t("policyLibrary.railTypesLabel")} value={rule.rails.map((railType) => t(`policyLibrary.railTypes.${railType}`)).join(", ")} />
           <Fact label={t("policyLibrary.effectLabel")} value={t(`policyLibrary.effects.${rule.effect}`, { defaultValue: rule.effect })} />
         </dl>
       </div>
@@ -490,7 +490,7 @@ function Implementation({ policy }: { policy: Policy }) {
       <h3 className="text-sm font-semibold">{t("policyLibrary.implementationTitle")}</h3>
       <p className="mt-1 text-xs leading-5 text-muted-foreground">{t("policyLibrary.implementationDescription")}</p>
       <dl className="mt-4 grid gap-3 rounded-lg border bg-muted/15 p-4 sm:grid-cols-2">
-        <Fact label={t("policyLibrary.railTypesLabel")} value={policy.stages.map((railType) => t(`policyLibrary.railTypes.${railType}`)).join(", ")} />
+        <Fact label={t("policyLibrary.railTypesLabel")} value={policy.rails.map((railType) => t(`policyLibrary.railTypes.${railType}`)).join(", ")} />
         <Fact label={t("policyLibrary.ruleForms")} value={policy.forms.map((form) => t(`policyLibrary.forms.${form}`)).join(", ")} />
       </dl>
       <div className="mt-4 divide-y overflow-hidden rounded-lg border">

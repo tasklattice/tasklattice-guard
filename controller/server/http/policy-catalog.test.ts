@@ -56,7 +56,8 @@ describe("Policy catalog HTTP compatibility", () => {
     await expect(actions.json()).resolves.toMatchObject({
       count: 12,
       items: expect.arrayContaining([
-        expect.objectContaining({ name: "GuardPiiAction", version: "1.0.0", supported_rails: ["input", "output"] }),
+        expect.objectContaining({ name: "GuardEvaluateAction", network_access: true, timeout_ms: 30_000 }),
+        expect.objectContaining({ name: "GuardEvaluateAction", version: "1.0.0", supported_rails: ["input", "output"] }),
         expect.objectContaining({ name: "GuardGroundingAction", network_access: true }),
         expect.objectContaining({ name: "GuardReasoningAction", timeout_ms: 30_000 }),
       ]),

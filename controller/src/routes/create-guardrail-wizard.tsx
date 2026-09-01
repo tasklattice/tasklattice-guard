@@ -588,7 +588,7 @@ function PolicyCategoryPicker({
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Badge variant="outline" className="font-mono text-[11px]">v{policy.version}</Badge>
                     <Badge variant="outline">{t("policyLibrary.ruleCount", { count: policy.rules.length })}</Badge>
-                    <Badge variant="outline">{policy.stages.join(" / ")}</Badge>
+                    <Badge variant="outline">{policy.rails.join(" / ")}</Badge>
                     {!bindable ? <Badge variant="outline">{t("guardrailWizard.publishPolicyFirst")}</Badge> : null}
                   </div>
                 </button>

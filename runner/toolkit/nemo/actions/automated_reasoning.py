@@ -15,6 +15,7 @@ from ...runtime.contracts import (
     AutomatedReasoningTranslation,
     RiskFinding,
 )
+from ...safety.taxonomy import taxonomy_for_evaluator
 from .contracts import ActionRequest, ActionResult, ActionUsage, action_result, action_view
 from .model_call import action_usage, observe_model_call
 from .names import ACTION_AUTOMATED_REASONING
@@ -120,7 +121,7 @@ class ReasoningActionProvider:
     name = ACTION_AUTOMATED_REASONING
     version = "1.0.0"
     rails = frozenset({"output"})
-    risks = frozenset({"automated_reasoning"})
+    capabilities = frozenset({"automated_reasoning"})
 
     def __init__(self, provider: AutomatedReasoningProvider) -> None:
         self._provider = provider
@@ -196,7 +197,8 @@ class ReasoningActionProvider:
             _result_message(result),
         )
         risk_finding = RiskFinding(
-            risk=request.risk,
+            risk=request.capability,
+            taxonomy_id=taxonomy_for_evaluator(request.capability),
             verdict="unsafe" if detected else "safe",
             confidence=min(item.confidence for item in ordered),
             evidence=message,

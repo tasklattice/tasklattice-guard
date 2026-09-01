@@ -62,7 +62,7 @@ def create_app(settings: RunnerSettings | None = None) -> FastAPI:
         configured.runner_id,
         metrics,
     )
-    control = RunnerControlClient(configured, store, metrics)
+    control = RunnerControlClient(configured, store, metrics, providers)
     metrics.set_control_state(synchronized=control.synchronized)
     draft_previews = DraftPreviewRuntime(
         DefaultRunnerCompiler(configured),

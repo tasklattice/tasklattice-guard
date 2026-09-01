@@ -292,7 +292,7 @@ function mapVersionDetail(value: controllerApi.GuardrailVersion, guardrail: cont
     timeout_ms: numberValue(binding.timeout_ms) ?? 0,
     failure_mode: stringValue(binding.failure_mode) ?? "fail_closed",
   })) : steps.map((step) => ({
-    name: stringValue(step.risk) ?? "controller-plan-step",
+    name: stringValue(step.capability) ?? "controller-plan-step",
     version: null,
     flow: stringValue(step.id),
     phases: arrayOfStrings(step.phases).filter((phase): phase is "input" | "output" => phase === "input" || phase === "output"),
@@ -307,7 +307,7 @@ function mapVersionDetail(value: controllerApi.GuardrailVersion, guardrail: cont
     colang_version: colangVersion(value.runtimeProfile),
     rails: steps.flatMap((step) => arrayOfStrings(step.phases).map((phase) => ({
       rail_type: phase === "output" ? "output" as const : "input" as const,
-      flow: stringValue(step.id) ?? stringValue(step.risk) ?? "controller-plan-step",
+      flow: stringValue(step.id) ?? stringValue(step.capability) ?? "controller-plan-step",
     }))),
     actions,
     models: dependencies.filter((item) => item.kind === "model").map((item) => item.name),
@@ -589,7 +589,7 @@ function mapValidationRun(value: controllerApi.ValidationRun): ValidationRun {
       compliance_rate: value.metrics.complianceRate,
       false_positive_rate: value.metrics.falsePositiveRate,
       false_negative_rate: value.metrics.falseNegativeRate,
-      deep_escalation_rate: value.metrics.deepEscalationRate,
+      escalation_rate: value.metrics.escalationRate,
       p95_latency_ms: value.metrics.p95LatencyMs,
     },
     results: value.results.map(mapValidationResult),
@@ -607,7 +607,7 @@ function mapValidationResult(value: Record<string, unknown>): ValidationRun["res
     expected_decision: stringValue(value.expectedDecision) ?? "",
     actual_decision: stringValue(value.actualDecision) ?? "error",
     passed: Boolean(value.passed),
-    stage_reached: stringValue(value.stageReached) ?? "none",
+    evaluator_ids: arrayOfStrings(value.evaluatorIds),
     latency_ms: numberValue(value.latencyMs) ?? 0,
     reason: stringValue(value.reason) ?? "",
     phase,
@@ -632,6 +632,9 @@ function mapValidationResult(value: Record<string, unknown>): ValidationRun["res
     source_case_id: stringValue(value.sourceCaseId),
     covered_rule_ids: arrayOfStrings(value.coveredRuleIds),
     matched_rule_ids: arrayOfStrings(value.matchedRuleIds),
+    evaluation_contracts: arrayOfStrings(value.evaluationContracts),
+    escalated: Boolean(value.escalated),
+    model_invocations: numberValue(value.modelInvocations) ?? 0,
   };
 }
 

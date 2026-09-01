@@ -7,6 +7,7 @@ from .context import CallContextStore
 from .contracts import (
     AppliedIntervention,
     ContentBlockResult,
+    ENFORCEMENT_ACTION_CONFLICT_ORDER,
     EnforcementAction,
     EngineRequest,
     ProtectionDecision,
@@ -249,18 +250,11 @@ def _context_blocks(
 def _strongest_action(
     actions: tuple[EnforcementAction, ...],
 ) -> EnforcementAction:
-    priority: tuple[EnforcementAction, ...] = (
-        "reject",
-        "clarify",
-        "fallback",
-        "regenerate",
-        "rewrite",
-        "redirect",
-        "redact",
+    values = set(actions)
+    return next(
+        (action for action in ENFORCEMENT_ACTION_CONFLICT_ORDER if action in values),
         "pass",
     )
-    values = set(actions)
-    return next((action for action in priority if action in values), "pass")
 
 
 def _coverage(items: list[RuntimeCoverage]) -> RuntimeCoverage | None:

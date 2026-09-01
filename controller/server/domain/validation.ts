@@ -42,19 +42,19 @@ export function generatedTestCases(
     if (!policy) return [];
     const enabledRules = new Set(binding.enabledRuleIds);
     return policy.test_cases.flatMap((item) => {
-      if (item.stage !== "input" && item.stage !== "output") return [];
+      if (item.phase !== "input" && item.phase !== "output") return [];
       if (item.covered_rule_ids.length && !item.covered_rule_ids.some((id) => enabledRules.has(id))) return [];
       return [{
         id: generatedCaseId(policy.id, item.id),
         guardrailId,
         name: materialize(item.name, binding.parameterValues),
         policyId: policy.id,
-        phase: item.stage,
+        phase: item.phase,
         content: materialize(item.content, binding.parameterValues),
         expectedDecision: item.expected_decision,
         origin: "generated" as const,
         trustedInstruction: "",
-        targetSource: item.stage === "output" ? "model_output" as const : "user_input" as const,
+        targetSource: item.phase === "output" ? "model_output" as const : "user_input" as const,
         query: "",
         groundingSources: [],
         expectedReasoningResult: null,
@@ -129,7 +129,7 @@ export function emptyValidationMetrics(total = 0): ValidationMetrics {
     complianceRate: 0,
     falsePositiveRate: 0,
     falseNegativeRate: 0,
-    deepEscalationRate: 0,
+    escalationRate: 0,
     p95LatencyMs: 0,
   };
 }
@@ -138,7 +138,7 @@ export function validationMetrics(results: readonly ValidationCaseResult[]): Val
   const passed = results.filter((item) => item.passed).length;
   const falsePositive = results.filter((item) => item.expectedDecision === "allow" && item.actualDecision !== "allow").length;
   const falseNegative = results.filter((item) => item.expectedDecision !== "allow" && item.actualDecision === "allow").length;
-  const deep = results.filter((item) => item.stageReached === "deep_judge").length;
+  const escalated = results.filter((item) => item.escalated).length;
   const latencies = results.map((item) => item.latencyMs).sort((left, right) => left - right);
   return {
     total: results.length,
@@ -146,7 +146,7 @@ export function validationMetrics(results: readonly ValidationCaseResult[]): Val
     complianceRate: percent(passed, results.length),
     falsePositiveRate: percent(falsePositive, results.length),
     falseNegativeRate: percent(falseNegative, results.length),
-    deepEscalationRate: percent(deep, results.length),
+    escalationRate: percent(escalated, results.length),
     p95LatencyMs: latencies.length ? latencies[Math.min(latencies.length - 1, Math.ceil(latencies.length * 0.95) - 1)]! : 0,
   };
 }

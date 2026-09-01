@@ -28,9 +28,15 @@ def plan_from_proto(message: protocol.GuardrailPlan) -> dict[str, Any]:
         if result.get(key) == "unspecified":
             raise ValueError(f"Guardrail Plan requires {key}.")
     for step in result.get("steps", ()):
-        for key in ("stage", "on_unsafe", "escalation"):
-            if step.get(key) == "unspecified":
-                raise ValueError(f"Guardrail Plan step requires {key}.")
+        if not step.get("capability"):
+            raise ValueError("Guardrail Plan step requires capability.")
+        if not step.get("contract_ref"):
+            raise ValueError("Guardrail Plan step requires contract_ref.")
+        if step.get("on_unsafe") == "unspecified":
+            raise ValueError("Guardrail Plan step requires on_unsafe.")
+        trigger = step.get("trigger", {})
+        if trigger.get("type") == "unspecified":
+            raise ValueError("Guardrail Plan step requires trigger.type.")
     return result
 
 

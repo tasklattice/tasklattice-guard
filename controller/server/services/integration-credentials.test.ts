@@ -3,12 +3,11 @@ import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
 import {
-  LEGACY_INTEGRATION_CREDENTIAL_ID,
   activeIntegrationCredentials,
   appendIntegrationCredential,
   issueIntegrationCredential,
   publicIntegrationCredentials,
-  revokeIntegrationCredentialDigest,
+  revokeIntegrationCredential,
 } from "./integration-credentials.js";
 
 const createdAt = new Date("2026-08-20T01:02:03.000Z");
@@ -27,44 +26,46 @@ describe("Integration credential verification", () => {
     expect(JSON.stringify(issued.publicCredential)).not.toContain(issued.stored.sha256);
   });
 
-  it("projects legacy and structured digests without exposing either digest", () => {
-    const legacyDigest = "a".repeat(64);
-    const structuredDigest = "b".repeat(64);
+  it("projects active credentials without exposing their digests", () => {
+    const firstDigest = "a".repeat(64);
+    const secondDigest = "b".repeat(64);
     const verification = {
-      credentialSha256: legacyDigest,
       credentials: [{
+        id: "credential-1",
+        sha256: firstDigest,
+        keyHint: "tg_first…1234",
+        createdAt: createdAt.toISOString(),
+        revokedAt: null,
+      }, {
         id: "credential-2",
-        sha256: structuredDigest,
+        sha256: secondDigest,
         keyHint: "tg_next…abcd",
         createdAt: "2026-08-20T02:00:00.000Z",
         revokedAt: null,
       }],
     };
 
-    expect(publicIntegrationCredentials(verification, createdAt)).toEqual([
+    expect(publicIntegrationCredentials(verification)).toEqual([
       { id: "credential-2", keyHint: "tg_next…abcd", createdAt: "2026-08-20T02:00:00.000Z" },
-      { id: LEGACY_INTEGRATION_CREDENTIAL_ID, keyHint: "legacy credential", createdAt: createdAt.toISOString() },
+      { id: "credential-1", keyHint: "tg_first…1234", createdAt: createdAt.toISOString() },
     ]);
-    expect(JSON.stringify(publicIntegrationCredentials(verification, createdAt))).not.toContain(legacyDigest);
-    expect(JSON.stringify(publicIntegrationCredentials(verification, createdAt))).not.toContain(structuredDigest);
+    expect(JSON.stringify(publicIntegrationCredentials(verification))).not.toContain(firstDigest);
+    expect(JSON.stringify(publicIntegrationCredentials(verification))).not.toContain(secondDigest);
   });
 
   it("retains revoked records internally and excludes them from active credentials", () => {
     const issued = issueIntegrationCredential(createdAt);
     const verification = appendIntegrationCredential({}, issued.stored);
-    const revoked = revokeIntegrationCredentialDigest(verification, issued.stored.id, new Date("2026-08-20T03:00:00.000Z"));
+    const revoked = revokeIntegrationCredential(verification, issued.stored.id, new Date("2026-08-20T03:00:00.000Z"));
 
     expect(revoked).not.toBeNull();
-    expect(activeIntegrationCredentials(revoked ?? {}, createdAt)).toEqual([]);
+    expect(activeIntegrationCredentials(revoked ?? {})).toEqual([]);
     expect(revoked).toMatchObject({
       credentials: [expect.objectContaining({ id: issued.stored.id, revokedAt: "2026-08-20T03:00:00.000Z" })],
     });
   });
 
-  it("removes only the legacy digest when revoking a legacy credential", () => {
-    const verification = { credentialSha256: "a".repeat(64), provider: "kept" };
-    expect(revokeIntegrationCredentialDigest(verification, LEGACY_INTEGRATION_CREDENTIAL_ID, createdAt))
-      .toEqual({ provider: "kept" });
-    expect(revokeIntegrationCredentialDigest({}, LEGACY_INTEGRATION_CREDENTIAL_ID, createdAt)).toBeNull();
+  it("returns null when the requested credential does not exist", () => {
+    expect(revokeIntegrationCredential({}, "missing", createdAt)).toBeNull();
   });
 });

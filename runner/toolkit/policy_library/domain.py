@@ -15,7 +15,7 @@ PolicyRuleForm = Literal[
     "competitor_intent",
     "colang_flow",
 ]
-PolicyStage = RailType
+PolicyRail = RailType
 PolicyTestDecision = Literal["allow", "block", "transform", "intervene"]
 PolicyTestKind = Literal["rule_acceptance", "scenario"]
 PolicyTagSource = Literal["declared", "derived"]
@@ -79,8 +79,9 @@ class PolicyRuleSpec:
     description: str
     form: PolicyRuleForm
     effect: str
-    stages: tuple[PolicyStage, ...]
+    rails: tuple[PolicyRail, ...]
     implementation: PolicyImplementationRef
+    taxonomy_ids: tuple[str, ...]
     expression: str | None = None
     context_expression: str | None = None
     context_max_gap_words: int | None = None
@@ -100,7 +101,7 @@ class PolicyTestCaseSpec:
     id: str
     name: str
     description: str
-    stage: PolicyStage
+    phase: PolicyRail
     content: str
     expected_decision: PolicyTestDecision
     covered_rule_ids: tuple[str, ...]
@@ -125,16 +126,16 @@ class PolicySpec:
     output_delivery: OutputDeliveryMode = "window_buffered"
 
     @property
-    def stages(self) -> tuple[PolicyStage, ...]:
-        configured = {stage for rule in self.rules for stage in rule.stages}
-        order: tuple[PolicyStage, ...] = (
+    def rails(self) -> tuple[PolicyRail, ...]:
+        configured = {rail for rule in self.rules for rail in rule.rails}
+        order: tuple[PolicyRail, ...] = (
             "input",
             "retrieval",
             "dialog",
             "execution",
             "output",
         )
-        return tuple(stage for stage in order if stage in configured)
+        return tuple(rail for rail in order if rail in configured)
 
     @property
     def effects(self) -> tuple[str, ...]:

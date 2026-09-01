@@ -9,18 +9,7 @@ import { Label } from "@/components/ui/label";
 import { MultiSelectCombobox, type MultiSelectOption } from "@/components/ui/multi-select-combobox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import type { EnforcementAction, GuardrailPolicyBinding, Policy } from "@/lib/api";
-
-const ACTIONS: EnforcementAction[] = [
-  "reject",
-  "redact",
-  "rewrite",
-  "regenerate",
-  "redirect",
-  "fallback",
-  "clarify",
-  "pass",
-];
+import { enforcementActions, type EnforcementAction, type GuardrailPolicyBinding, type Policy } from "@/lib/api";
 
 export function PolicyBindingEditor({
   policies,
@@ -130,13 +119,13 @@ export function PolicyBindingEditor({
                         <Field label={t("guardrailWizard.policyAction")}>
                           <Select value={binding.action ?? "policy_default"} onValueChange={(selected) => update(binding.policy_id, { action: selected === "policy_default" ? null : selected as EnforcementAction })}>
                             <SelectTrigger className="min-h-11 bg-card"><SelectValue /></SelectTrigger>
-                            <SelectContent><SelectItem value="policy_default">{t("guardrailWizard.usePolicyBehavior")}</SelectItem>{ACTIONS.map((action) => <SelectItem key={action} value={action}>{action}</SelectItem>)}</SelectContent>
+                            <SelectContent><SelectItem value="policy_default">{t("guardrailWizard.usePolicyBehavior")}</SelectItem>{enforcementActions.map((action) => <SelectItem key={action} value={action}>{action}</SelectItem>)}</SelectContent>
                           </Select>
                         </Field>
                         <div>
                           <Label>{t("guardrailWizard.enabledRails")}</Label>
                           <div className="mt-2 flex min-h-11 flex-wrap items-center gap-2">
-                            {policy.stages.map((stage) => <Badge key={stage} variant="outline" className="font-mono uppercase">{stage}</Badge>)}
+                            {policy.rails.map((rail) => <Badge key={rail} variant="outline" className="font-mono uppercase">{rail}</Badge>)}
                           </div>
                         </div>
                       </div>
@@ -197,7 +186,7 @@ export function PolicyBindingEditor({
                               <span className="min-w-0"><strong className="block truncate text-xs">{rule.name}</strong><span className="mt-1 block truncate font-mono text-xs text-muted-foreground">{rule.id}</span></span>
                               <Select value={binding.rule_actions[rule.id] ?? "policy_default"} disabled={!enabled} onValueChange={(selected) => { const next = { ...binding.rule_actions }; if (selected === "policy_default") delete next[rule.id]; else next[rule.id] = selected as EnforcementAction; update(binding.policy_id, { rule_actions: next }); }}>
                                 <SelectTrigger className="min-h-11"><SelectValue /></SelectTrigger>
-                                <SelectContent><SelectItem value="policy_default">{rule.effect}</SelectItem>{ACTIONS.map((action) => <SelectItem key={action} value={action}>{action}</SelectItem>)}</SelectContent>
+                                <SelectContent><SelectItem value="policy_default">{rule.effect}</SelectItem>{enforcementActions.map((action) => <SelectItem key={action} value={action}>{action}</SelectItem>)}</SelectContent>
                               </Select>
                             </div>
                           );
@@ -225,7 +214,7 @@ export function defaultPolicyBinding(policy: Policy): GuardrailPolicyBinding {
     parameter_values: Object.fromEntries(policy.parameters.filter((parameter) => parameter.default != null).map((parameter) => [parameter.name, parameter.default ?? ""])),
     enabled_rule_ids: policy.rules.map((rule) => rule.id),
     rule_actions: {},
-    enabled_rails: policy.stages,
+    enabled_rails: policy.rails,
     reasoning_policy: policy.id === "builtin-automated-reasoning" ? { policy_id: "", policy_version: "", confidence_threshold: 0.8 } : null,
   };
 }

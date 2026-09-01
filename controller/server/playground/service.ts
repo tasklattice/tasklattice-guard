@@ -18,10 +18,10 @@ const traceStep = z.object({
   detail: z.string(),
   duration_ms: z.number().default(0),
   parent_id: z.string().nullable().optional(),
-  stage: z.string().nullable().optional(),
+  contract_ref: z.string().nullable().optional(),
   verdict: z.string().nullable().optional(),
   route: z.string().nullable().optional(),
-  risk: z.string().nullable().optional(),
+  capability: z.string().nullable().optional(),
   confidence: z.number().nullable().optional(),
   policy_id: z.string().nullable().optional(),
   policy_version: z.string().nullable().optional(),
@@ -42,8 +42,9 @@ const runnerDecision = z.object({
   guardrail_version: z.number().int().positive().nullable().optional(),
   findings: z.array(z.object({
     risk: z.string(),
+    taxonomy_id: z.string(),
     verdict: z.string(),
-    confidence: z.number(),
+    confidence: z.number().nullable(),
     evidence: z.string(),
     recommended_action: z.string(),
     policy_id: z.string().nullable().optional(),
@@ -386,7 +387,7 @@ function checkResult(
     return {
       id: policyId,
       name: policyId,
-      risk: step?.risk ?? "policy",
+      risk: step?.capability ?? "policy",
       status: (matchedPolicies.has(policyId) ? "matched" : step?.status === "error" ? "error" : "not_matched") as "matched" | "error" | "not_matched",
       duration_ms: step?.duration_ms ?? 0,
     };
@@ -418,7 +419,8 @@ function checkResult(
     findings: result.decision.findings.map((finding, index) => ({
       id: `finding-${index + 1}`,
       severity: (finding.verdict === "unsafe" ? "high" : finding.verdict === "uncertain" ? "medium" : "low") as "high" | "medium" | "low",
-      title: finding.risk,
+      title: finding.taxonomy_id,
+      taxonomy_id: finding.taxonomy_id,
       detail: finding.evidence,
       confidence: finding.confidence,
       recommended_action: finding.recommended_action,

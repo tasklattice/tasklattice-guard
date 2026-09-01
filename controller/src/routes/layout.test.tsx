@@ -32,8 +32,7 @@ vi.mock("react-i18next", () => ({
       "runtimeHealth.dataPlane": "Data Plane",
       "runtimeHealth.policyAnalysis": "Policy analysis",
       "runtimeHealth.contentSafety": "Content safety",
-      "runtimeHealth.topicControl": "Topic control",
-      "runtimeHealth.jailbreak": "Jailbreak detection",
+      "runtimeHealth.taxonomyJudge": "TALI taxonomy judge",
       "runtimeHealth.runtimeState": "Runtime state",
       "runtimeHealth.generation": "Desired generation",
       "runtimeHealth.defaultRunner": "GuardRails 0",
@@ -50,13 +49,12 @@ const status: SystemStatus = {
   desiredGeneration: 16,
   defaultRunnerReady: true,
   modelConnections: {
-    controlPlane: { provider: "DeepSeek", model: "deepseek-v4-flash" },
+    controlPlane: { provider: "Qwen", model: "Qwen/Qwen3.5-9B" },
     dataPlane: {
-      provider: "NVIDIA",
+      provider: "Runner",
       models: [
-        { capability: "contentSafety", model: "nvidia/llama-3.1-nemotron-safety-guard-8b-v3" },
-        { capability: "topicControl", model: "nvidia/llama-3.1-nemoguard-8b-topic-control" },
-        { capability: "jailbreak", model: "nvidia/nvidia-nemotron-nano-9b-v2" },
+        { id: "qwen3guard", model: "Qwen/Qwen3Guard-Gen-8B" },
+        { id: "llama-guard", model: "meta-llama/Llama-Guard-3-8B" },
       ],
     },
   },
@@ -65,17 +63,20 @@ const status: SystemStatus = {
 describe("RuntimeHealthMenu", () => {
   afterEach(cleanup);
 
-  it("keeps both model-plane providers visible in the global trigger and menu", () => {
+  it("shows Runner models as a simple list without capability details", () => {
     render(<RuntimeHealthMenu loading={false} error={null} status={status} />);
 
-    const trigger = screen.getByRole("button", { name: /DeepSeek · NVIDIA, Runtime ready/ });
-    expect(trigger.textContent).toContain("DeepSeek · NVIDIA");
+    const trigger = screen.getByRole("button", { name: /Qwen · Runner, Runtime ready/ });
+    expect(trigger.textContent).toContain("Qwen · Runner");
     fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: "mouse" });
 
     expect(screen.getByText("Control Plane")).toBeTruthy();
     expect(screen.getByText("Data Plane")).toBeTruthy();
-    expect(screen.getByText("deepseek-v4-flash")).toBeTruthy();
-    expect(screen.getByText("nvidia/llama-3.1-nemotron-safety-guard-8b-v3")).toBeTruthy();
-    expect(screen.getByText("nvidia/llama-3.1-nemoguard-8b-topic-control")).toBeTruthy();
+    expect(screen.getByText("Qwen/Qwen3.5-9B")).toBeTruthy();
+    expect(screen.getByText("Qwen/Qwen3Guard-Gen-8B")).toBeTruthy();
+    expect(screen.getByText("meta-llama/Llama-Guard-3-8B")).toBeTruthy();
+    expect(screen.queryByText("Content safety")).toBeNull();
+    expect(screen.queryByText("TALI taxonomy judge")).toBeNull();
+    expect(screen.getByText("Ready")).toBeTruthy();
   });
 });

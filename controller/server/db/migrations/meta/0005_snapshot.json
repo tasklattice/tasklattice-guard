@@ -2262,7 +2262,7 @@
           "type": "jsonb",
           "primaryKey": false,
           "notNull": true,
-          "default": "'{\"total\":0,\"passed\":0,\"complianceRate\":0,\"falsePositiveRate\":0,\"falseNegativeRate\":0,\"deepEscalationRate\":0,\"p95LatencyMs\":0}'::jsonb"
+          "default": "'{\"total\":0,\"passed\":0,\"complianceRate\":0,\"falsePositiveRate\":0,\"falseNegativeRate\":0,\"escalationRate\":0,\"p95LatencyMs\":0}'::jsonb"
         },
         "results": {
           "name": "results",

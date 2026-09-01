@@ -55,7 +55,7 @@ const policy = {
   version: "1",
   tags: [],
   parameters: [],
-  stages: ["input"],
+  rails: ["input"],
   effects: ["redact"],
   forms: ["regex"],
   rules: [
@@ -65,7 +65,7 @@ const policy = {
       description: "Redact account identifiers.",
       form: "regex",
       effect: "redact",
-      stages: ["input"],
+      rails: ["input"],
       implementation: {
         engine: "nemo-guardrails",
         form: "regex",

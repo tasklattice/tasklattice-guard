@@ -1,5 +1,3 @@
-export type ResourceStatus = "draft" | "active" | "disabled";
-
 export type DeletionImpact = {
   resourceId: string;
   windowMinutes: number;
@@ -50,7 +48,7 @@ export type ValidationMetrics = {
   complianceRate: number;
   falsePositiveRate: number;
   falseNegativeRate: number;
-  deepEscalationRate: number;
+  escalationRate: number;
   p95LatencyMs: number;
 };
 
@@ -61,7 +59,7 @@ export type ValidationCaseResult = {
   expectedDecision: string;
   actualDecision: string;
   passed: boolean;
-  stageReached: string;
+  evaluatorIds: string[];
   latencyMs: number;
   reason: string;
   phase: "input" | "output";
@@ -86,4 +84,7 @@ export type ValidationCaseResult = {
   sourceCaseId: string | null;
   coveredRuleIds: string[];
   matchedRuleIds: string[];
+  evaluationContracts: string[];
+  escalated: boolean;
+  modelInvocations: number;
 };

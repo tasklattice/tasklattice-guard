@@ -121,13 +121,15 @@ export function RuntimeHealthMenu({ loading, error, status }: { loading: boolean
               icon={<Bot className="size-4" />}
               plane={t("runtimeHealth.controlPlane")}
               provider={status?.modelConnections.controlPlane.provider}
-              models={status ? [{ capability: t("runtimeHealth.policyAnalysis"), model: status.modelConnections.controlPlane.model }] : []}
+              models={status ? [{ label: t("runtimeHealth.policyAnalysis"), model: status.modelConnections.controlPlane.model }] : []}
             />
             <ModelConnectionRow
               icon={<Server className="size-4" />}
               plane={t("runtimeHealth.dataPlane")}
               provider={status?.modelConnections.dataPlane.provider}
-              models={status?.modelConnections.dataPlane.models.map((item) => ({ capability: t(`runtimeHealth.${item.capability}`), model: item.model })) ?? []}
+              models={status?.modelConnections.dataPlane.models.map((item) => ({ label: item.id, model: item.model })) ?? []}
+              showCapabilities={false}
+              ready={status?.defaultRunnerReady}
               className="border-t"
             />
           </div>
@@ -147,11 +149,13 @@ export function RuntimeHealthMenu({ loading, error, status }: { loading: boolean
   );
 }
 
-function ModelConnectionRow({ icon, plane, provider, models, className }: {
+function ModelConnectionRow({ icon, plane, provider, models, showCapabilities = true, ready, className }: {
   icon: ReactNode;
   plane: string;
   provider?: string;
-  models: Array<{ capability: string; model: string }>;
+  models: Array<{ label: string; model: string }>;
+  showCapabilities?: boolean;
+  ready?: boolean;
   className?: string;
 }) {
   return (
@@ -163,12 +167,12 @@ function ModelConnectionRow({ icon, plane, provider, models, className }: {
             <p className="text-[11px] text-muted-foreground">{plane}</p>
             <p className="truncate text-sm font-semibold text-foreground">{provider ?? "—"}</p>
           </div>
-          <span className={`size-2 shrink-0 rounded-full ${provider ? "bg-emerald-500" : "bg-muted-foreground/35"}`} />
+          <span className={`size-2 shrink-0 rounded-full ${(ready ?? Boolean(provider)) ? "bg-emerald-500" : "bg-muted-foreground/35"}`} />
         </div>
         <div className="mt-2 space-y-1.5">
           {models.length ? models.map((item) => (
-            <div key={`${item.capability}-${item.model}`} className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-2 text-[11px] leading-4">
-              <span className="text-muted-foreground">{item.capability}</span>
+            <div key={`${item.label}-${item.model}`} className={showCapabilities ? "grid grid-cols-[5.5rem_minmax(0,1fr)] gap-2 text-[11px] leading-4" : "text-[11px] leading-4"}>
+              {showCapabilities ? <span className="text-muted-foreground">{item.label}</span> : null}
               <span className="break-all font-mono text-foreground/80">{item.model}</span>
             </div>
           )) : <span className="text-[11px] text-muted-foreground">—</span>}

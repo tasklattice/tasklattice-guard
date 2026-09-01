@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { getHelpContent, searchHelpContent } from "@/features/help-content";
+import { enforcementActionConflictOrder, enforcementActionDisplayOrder } from "../../shared/enforcement-action.generated";
 
 describe("help center content", () => {
   it("provides a complete role path for users, developers, and operators in both locales", () => {
@@ -29,17 +30,8 @@ describe("help center content", () => {
       "绑定参数",
     ]));
     expect(runtime?.paragraphs?.join(" ")).toContain("自动使用 Colang 2.x");
-    expect(actions?.terms?.map((term) => term.name)).toEqual([
-      "reject",
-      "redact",
-      "rewrite",
-      "regenerate",
-      "redirect",
-      "fallback",
-      "clarify",
-      "pass",
-    ]);
-    expect(actions?.note).toContain("reject → clarify → fallback → regenerate → rewrite → redirect → redact → pass");
+    expect(actions?.terms?.map((term) => term.name)).toEqual(enforcementActionDisplayOrder);
+    expect(actions?.note).toContain(enforcementActionConflictOrder.join(" → "));
   });
 
   it("keeps lifecycle, runtime, routing, and evidence concepts discoverable", () => {
@@ -58,6 +50,7 @@ describe("help center content", () => {
       "flow",
       "colang",
       "action",
+      "enforcement-action",
       "action-reference",
       "parameter",
       "validation-run",

@@ -4,7 +4,7 @@ package tasklattice.guard.control.v1;
 
 // Every *_UNSPECIFIED enum value in this file is a wire/default sentinel, not
 // a business decision. Boundary codecs must reject it when the field is
-// required. ValidationStage.NONE is defined separately because "not reached"
+// required. Optional result fields represent observations that were not reached
 // is a valid observed outcome.
 
 // A stable key/value entry. Repeated pairs are used where order is meaningful;
@@ -46,20 +46,11 @@ enum OutputDeliveryMode {
   OUTPUT_DELIVERY_MODE_FULL_BUFFERED = 3;
 }
 
-// Cost/latency tier of an evaluator; implementations may vary within a tier.
-enum EvaluationStage {
-  EVALUATION_STAGE_UNSPECIFIED = 0;
-  EVALUATION_STAGE_DETERMINISTIC = 1;
-  EVALUATION_STAGE_FAST_SEMANTIC = 2;
-  EVALUATION_STAGE_DEEP_JUDGE = 3;
-}
-
-// Policy for invoking a deeper evaluator after an earlier result.
-enum EscalationMode {
-  ESCALATION_MODE_UNSPECIFIED = 0;
-  ESCALATION_MODE_NEVER = 1;
-  ESCALATION_MODE_ON_UNCERTAIN = 2;
-  ESCALATION_MODE_ALWAYS = 3;
+// Condition that makes one evaluation step eligible to run.
+enum EvaluationTriggerType {
+  EVALUATION_TRIGGER_TYPE_UNSPECIFIED = 0;
+  EVALUATION_TRIGGER_TYPE_ALWAYS = 1;
+  EVALUATION_TRIGGER_TYPE_ON_RESULT = 2;
 }
 
 // Product-level policy domain used to group plan modules.
@@ -102,7 +93,7 @@ enum EvaluatorVerdict {
   EVALUATOR_VERDICT_ERROR = 4;
 }
 
-// Coordinator decision after evaluating one stage of the execution route.
+// Coordinator decision after evaluating one step of the execution route.
 enum RouteDecision {
   ROUTE_DECISION_UNSPECIFIED = 0;
   ROUTE_DECISION_COMPLETE = 1;
