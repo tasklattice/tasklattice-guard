@@ -248,7 +248,7 @@ class BuiltinContentFilter:
                     f"{item.kind} Rule {item.rule}: {item.evidence}."
                 ),
                 recommended_action=item.action,
-                replacement=(item.replacement if item.action == "redact" else None),
+                replacement=(item.replacement if item.action in {"redact", "rewrite"} else None),
                 policy_id=item.policy,
                 rule_id=item.rule,
             )
@@ -392,6 +392,7 @@ class BuiltinContentFilter:
                             action,
                             text[matches[0][0] : matches[0][1]],
                             matches,
+                            str(rule.get("replacement") or "[REDACTED]"),
                         )
                     )
                 continue
@@ -413,6 +414,7 @@ class BuiltinContentFilter:
                                 action,
                                 rendered,
                                 matches,
+                                str(rule.get("replacement") or "[REDACTED]"),
                             )
                         )
                         break
@@ -745,7 +747,7 @@ class BuiltinContentFilter:
         candidates = [
             (start, end, item.policy, item.rule, item.replacement)
             for item in detections
-            if item.action == "redact"
+            if item.action in {"redact", "rewrite"}
             for start, end in (item.spans or ((0, len(text)),))
         ]
         selected: list[tuple[int, int, str]] = []

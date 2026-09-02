@@ -16,6 +16,7 @@ import type {
   GuardrailDeletionImpact,
   GuardrailLoggingSettings,
   GuardrailPolicyBinding,
+  GuardrailPurposeDetails,
   GuardrailVersion,
   GuardrailVersionDetail,
   IntentAnalysis,
@@ -113,6 +114,13 @@ function mapGuardrail(
     id: value.id,
     name: value.name,
     purpose: value.description,
+    purpose_details: {
+      audience: value.draftConfig.purposeDetails?.audience ?? "",
+      tasks: value.draftConfig.purposeDetails?.tasks ?? "",
+      protect: value.draftConfig.purposeDetails?.protect ?? "",
+      out_of_scope: value.draftConfig.purposeDetails?.outOfScope ?? "",
+    },
+    custom_content_rules: value.draftConfig.customContentRules ?? [],
     allowed_topics: value.draftConfig.allowedTopics,
     restricted_topics: value.draftConfig.restrictedTopics,
     policy_bindings: value.draftConfig.policyBindings.map(fromCurrentBinding),
@@ -166,6 +174,8 @@ export async function getGuardrail(id: string): Promise<Guardrail> {
 export async function createGuardrail(input: {
   name: string;
   purpose?: string;
+  purpose_details?: GuardrailPurposeDetails;
+  custom_content_rules?: Guardrail["custom_content_rules"];
   allowed_topics?: string[];
   restricted_topics?: string[];
   policy_bindings: GuardrailPolicyBinding[];
@@ -176,6 +186,13 @@ export async function createGuardrail(input: {
     name: input.name,
     description: input.purpose ?? "",
     draftConfig: {
+      purposeDetails: {
+        audience: input.purpose_details?.audience ?? "",
+        tasks: input.purpose_details?.tasks ?? "",
+        protect: input.purpose_details?.protect ?? "",
+        outOfScope: input.purpose_details?.out_of_scope ?? "",
+      },
+      customContentRules: input.custom_content_rules ?? [],
       allowedTopics: input.allowed_topics ?? [],
       restrictedTopics: input.restricted_topics ?? [],
       policyBindings: input.policy_bindings.map(toCurrentBinding),
@@ -189,18 +206,25 @@ export async function createGuardrail(input: {
 
 export const updateGuardrail = (
   id: string,
-  input: Partial<Pick<Guardrail, "name" | "purpose" | "allowed_topics" | "restricted_topics" | "policy_bindings" | "safety_level" | "output_delivery">>,
+  input: Partial<Pick<Guardrail, "name" | "purpose" | "purpose_details" | "custom_content_rules" | "allowed_topics" | "restricted_topics" | "policy_bindings" | "safety_level" | "output_delivery">>,
 ) => updateGuardrailDraft(id, input);
 
 async function updateGuardrailDraft(
   id: string,
-  input: Partial<Pick<Guardrail, "name" | "purpose" | "allowed_topics" | "restricted_topics" | "policy_bindings" | "safety_level" | "output_delivery">>,
+  input: Partial<Pick<Guardrail, "name" | "purpose" | "purpose_details" | "custom_content_rules" | "allowed_topics" | "restricted_topics" | "policy_bindings" | "safety_level" | "output_delivery">>,
 ): Promise<Guardrail> {
   const current = await controllerApi.getControllerGuardrail(id);
   const updated = await controllerApi.updateControllerGuardrail(id, {
     ...(input.name !== undefined ? { name: input.name } : {}),
     ...(input.purpose !== undefined ? { description: input.purpose } : {}),
     draftConfig: {
+      purposeDetails: {
+        audience: input.purpose_details?.audience ?? current.draftConfig.purposeDetails?.audience ?? "",
+        tasks: input.purpose_details?.tasks ?? current.draftConfig.purposeDetails?.tasks ?? "",
+        protect: input.purpose_details?.protect ?? current.draftConfig.purposeDetails?.protect ?? "",
+        outOfScope: input.purpose_details?.out_of_scope ?? current.draftConfig.purposeDetails?.outOfScope ?? "",
+      },
+      customContentRules: input.custom_content_rules ?? current.draftConfig.customContentRules ?? [],
       allowedTopics: input.allowed_topics ?? current.draftConfig.allowedTopics,
       restrictedTopics: input.restricted_topics ?? current.draftConfig.restrictedTopics,
       policyBindings: (input.policy_bindings ?? current.draftConfig.policyBindings.map(fromCurrentBinding)).map(toCurrentBinding),
@@ -362,6 +386,8 @@ export const rollbackGuardrail = (guardrailId: string, version: number) =>
 export function previewGuardrailCandidate(input: {
   name: string;
   purpose: string;
+  purpose_details?: GuardrailPurposeDetails;
+  custom_content_rules?: Guardrail["custom_content_rules"];
   allowed_topics?: string[];
   restricted_topics?: string[];
   policy_bindings: GuardrailPolicyBinding[];
@@ -372,6 +398,13 @@ export function previewGuardrailCandidate(input: {
     name: input.name,
     description: input.purpose,
     draftConfig: {
+      purposeDetails: {
+        audience: input.purpose_details?.audience ?? "",
+        tasks: input.purpose_details?.tasks ?? "",
+        protect: input.purpose_details?.protect ?? "",
+        outOfScope: input.purpose_details?.out_of_scope ?? "",
+      },
+      customContentRules: input.custom_content_rules ?? [],
       allowedTopics: input.allowed_topics ?? [],
       restrictedTopics: input.restricted_topics ?? [],
       policyBindings: input.policy_bindings.map(toCurrentBinding),
@@ -392,6 +425,13 @@ export async function getGuardrailCompilePreview(id: string): Promise<GuardrailC
   return previewGuardrailCandidate({
     name: guardrail.name,
     purpose: guardrail.description,
+    purpose_details: {
+      audience: guardrail.draftConfig.purposeDetails?.audience ?? "",
+      tasks: guardrail.draftConfig.purposeDetails?.tasks ?? "",
+      protect: guardrail.draftConfig.purposeDetails?.protect ?? "",
+      out_of_scope: guardrail.draftConfig.purposeDetails?.outOfScope ?? "",
+    },
+    custom_content_rules: guardrail.draftConfig.customContentRules ?? [],
     policy_bindings: guardrail.draftConfig.policyBindings.map(fromCurrentBinding),
     safety_level: guardrail.draftConfig.safetyLevel,
     output_delivery: guardrail.draftConfig.outputDelivery,

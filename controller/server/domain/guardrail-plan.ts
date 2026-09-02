@@ -24,6 +24,13 @@ export type GuardrailPolicyBindingConfig = {
   } | null;
 };
 
+export type GuardrailPurposeDetails = {
+  audience: string;
+  tasks: string;
+  protect: string;
+  outOfScope: string;
+};
+
 export const protectionIds = ["secrets", "pii", "builtin_content_filter", "prompt_injection", "jailbreak"] as const;
 export type ProtectionId = typeof protectionIds[number];
 
@@ -34,11 +41,21 @@ export type ProtectionId = typeof protectionIds[number];
  */
 export type GuardrailDraftConfig = {
   protections?: ProtectionId[] | undefined;
+  purposeDetails: GuardrailPurposeDetails;
   allowedTopics: string[];
   restrictedTopics: string[];
   policyBindings: GuardrailPolicyBindingConfig[];
   safetyLevel: "balanced" | "strict";
   outputDelivery: "interruptible" | "window_buffered" | "full_buffered";
+  customContentRules?: Array<{
+    id: string;
+    phases: Array<"input" | "output">;
+    detector: "keyword" | "regex";
+    keywords?: string[] | undefined;
+    expression?: string | undefined;
+    action: EnforcementAction;
+    replacement?: string | undefined;
+  }> | undefined;
 };
 
 type RuntimeCapability = {
@@ -87,6 +104,7 @@ export function normalizeGuardrailDraft(value: unknown): GuardrailDraftConfig {
     : legacy.map(legacyBinding);
   return {
     ...(legacy.length ? { protections: legacy } : {}),
+    purposeDetails: normalizePurposeDetails(source.purposeDetails),
     allowedTopics: stringArray(source.allowedTopics),
     restrictedTopics: stringArray(source.restrictedTopics),
     policyBindings,
@@ -94,6 +112,7 @@ export function normalizeGuardrailDraft(value: unknown): GuardrailDraftConfig {
     outputDelivery: source.outputDelivery === "interruptible" || source.outputDelivery === "window_buffered"
       ? source.outputDelivery
       : "full_buffered",
+    customContentRules: normalizeCustomContentRules(source.customContentRules),
   };
 }
 
@@ -247,11 +266,19 @@ function parametersFor(
       ["enabled_rules_json", JSON.stringify(Object.fromEntries(declarative.map((item) => [item.binding.policyId, item.binding.enabledRuleIds])))],
       ["rule_actions_json", JSON.stringify(Object.fromEntries(declarative.filter((item) => Object.keys(item.binding.ruleActions).length).map((item) => [item.binding.policyId, item.binding.ruleActions])))],
       ["policy_parameters_json", JSON.stringify(Object.fromEntries(declarative.filter((item) => Object.keys(item.binding.parameterValues).length).map((item) => [item.binding.policyId, item.binding.parameterValues])))],
-      ["custom_rules_json", "[]"],
+      ["custom_rules_json", JSON.stringify(draft.customContentRules ?? [])],
     ];
   }
   if (risk === "topic_control" || risk === "company_policy") {
-    return [["purpose", purpose], ["allowed_topics", draft.allowedTopics.join("\n")], ["restricted_topics", draft.restrictedTopics.join("\n")]];
+    return [
+      ["purpose", purpose],
+      ["purpose_audience", draft.purposeDetails.audience],
+      ["purpose_tasks", draft.purposeDetails.tasks],
+      ["purpose_protect", draft.purposeDetails.protect],
+      ["purpose_out_of_scope", draft.purposeDetails.outOfScope],
+      ["allowed_topics", draft.allowedTopics.join("\n")],
+      ["restricted_topics", draft.restrictedTopics.join("\n")],
+    ];
   }
   if (risk === "contextual_grounding") {
     return [["grounding_threshold", binding.parameterValues.grounding_threshold ?? "0.7"], ["relevance_threshold", binding.parameterValues.relevance_threshold ?? "0.7"]];
@@ -276,6 +303,48 @@ function phasesFor(
   }
   const enabled = binding.enabledRails.filter((item): item is "input" | "output" => item === "input" || item === "output");
   return enabled.length ? capability.defaultPhases.filter((phase) => enabled.includes(phase)) : capability.defaultPhases;
+}
+
+function normalizePurposeDetails(value: unknown): GuardrailPurposeDetails {
+  const source = record(value);
+  return {
+    audience: stringValue(source.audience),
+    tasks: stringValue(source.tasks),
+    protect: stringValue(source.protect),
+    outOfScope: stringValue(source.outOfScope),
+  };
+}
+
+function normalizeCustomContentRules(value: unknown): GuardrailDraftConfig["customContentRules"] {
+  if (!Array.isArray(value)) return [];
+  const normalized: NonNullable<GuardrailDraftConfig["customContentRules"]> = [];
+  value.forEach((item, index) => {
+    const source = record(item);
+    const detector: "keyword" | "regex" = stringValue(source.detector) === "regex" ? "regex" : "keyword";
+    const phases: Array<"input" | "output"> = Array.isArray(source.phases)
+      ? source.phases.filter((phase): phase is "input" | "output" => phase === "input" || phase === "output")
+      : [];
+    const normalizedPhases: Array<"input" | "output"> = phases.length ? phases : ["input"];
+    const action = enforcementActions.includes(source.action as EnforcementAction)
+      ? source.action as EnforcementAction
+      : "reject";
+    const id = stringValue(source.id) || `custom-rule-${index + 1}`;
+    const replacement = stringValue(source.replacement) || undefined;
+    if (detector === "keyword") {
+      const keywords = stringArray(source.keywords);
+      if (!keywords.length) return;
+      normalized.push({ id, phases: normalizedPhases, detector, keywords, action, replacement });
+      return;
+    }
+    const expression = stringValue(source.expression);
+    if (!expression) return;
+    normalized.push({ id, phases: normalizedPhases, detector, expression, action, replacement });
+  });
+  return normalized;
+}
+
+function stringValue(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
 }
 
 function validateCatalogBinding(binding: GuardrailPolicyBindingConfig, policy: PolicyDto): void {

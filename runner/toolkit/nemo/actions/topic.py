@@ -121,10 +121,21 @@ class TopicJudgeActionProvider:
 
 def topic_judge_prompt(parameters: tuple[tuple[str, str], ...]) -> str:
     configured = dict(parameters)
+    structured_lines = tuple(
+        line
+        for line in (
+            f"Authorized users and workflows:\n{configured.get('purpose_audience', '')}" if configured.get("purpose_audience", "").strip() else "",
+            f"Approved tasks and outcomes:\n{configured.get('purpose_tasks', '')}" if configured.get("purpose_tasks", "").strip() else "",
+            f"Protected assets and constraints:\n{configured.get('purpose_protect', '')}" if configured.get("purpose_protect", "").strip() else "",
+            f"Refuse or escalate these cases:\n{configured.get('purpose_out_of_scope', '')}" if configured.get("purpose_out_of_scope", "").strip() else "",
+        )
+        if line
+    )
     return "\n".join(
         (
             "You are the topic policy for an enterprise assistant whose authorized role is: "
             f"{configured.get('purpose', '')}",
+            *structured_lines,
             f"You may help with these allowed business tasks:\n{configured.get('allowed_topics', '')}",
             f"Do not help with requests whose primary task belongs to these restricted domains:\n{configured.get('restricted_topics', '')}",
             "Classify by the primary requested task, never by an industry, product, or entity merely mentioned as context. "

@@ -766,7 +766,6 @@ export function TestCases({ cases, bindings, policies, loading, onAdd, onExclude
   return <section className="overflow-hidden rounded-lg border bg-card">
     <header className="flex flex-col gap-3 border-b bg-muted/20 p-4 sm:flex-row sm:items-center sm:justify-between">
       <div><div className="flex flex-wrap items-center gap-2"><h3 className="text-sm font-semibold">{t("guardrails.testCaseSources")}</h3>{excludedCount ? <Badge variant="secondary">{t("guardrails.excludedTestCount", { count: excludedCount })}</Badge> : null}</div><p className="mt-1 text-xs leading-5 text-muted-foreground">{t("guardrails.testCaseSourceSummary", { inherited: inheritedCount, policies: groups.filter((group) => group.kind === "policy").length, custom: customCount })}</p></div>
-      <Button className="min-h-11 self-start sm:self-auto" variant="outline" onClick={onAdd}><Plus />{t("guardrails.addTestCase")}</Button>
     </header>
     <div className="divide-y">{groups.map((group) => {
       const label = group.kind === "policy" ? group.label : t("guardrails.guardrailCustomTests");
@@ -785,7 +784,8 @@ export function TestCases({ cases, bindings, policies, loading, onAdd, onExclude
             <StateBadge state={item.expected_decision} />
             {group.kind === "policy" && item.excluded && onRestore ? <Button type="button" size="sm" variant="outline" className="min-h-11" disabled={busyCaseId === item.id} onClick={() => onRestore(item.id)}>{busyCaseId === item.id ? <LoaderCircle className="animate-spin" /> : <RotateCcw />}{t("guardrails.restoreTestCase")}</Button> : null}
             {group.kind === "policy" && !item.excluded && onExclude ? <Button type="button" size="sm" variant="outline" className="min-h-11 text-foreground" disabled={busyCaseId === item.id} onClick={() => onExclude(item.id)}>{busyCaseId === item.id ? <LoaderCircle className="animate-spin" /> : <Ban />}{t("guardrails.excludeTestCase")}</Button> : null}
-          </article>)}</div> : <div className="px-4 py-4 pl-15"><p className="text-xs leading-5 text-muted-foreground">{group.kind === "policy" ? t("guardrails.noInheritedTests") : t("guardrails.noCustomTests")}</p>{group.kind === "guardrail" ? <Button className="mt-3 min-h-11" size="sm" variant="outline" onClick={onAdd}><Plus />{t("guardrails.addTestCase")}</Button> : null}</div>}
+          </article>)}</div> : <div className="px-4 py-4 pl-15"><p className="text-xs leading-5 text-muted-foreground">{group.kind === "policy" ? t("guardrails.noInheritedTests") : t("guardrails.noCustomTests")}</p></div>}
+          {group.kind === "guardrail" ? <div className="px-4 py-4 pl-15"><Button className="min-h-11" size="sm" variant="outline" onClick={onAdd}><Plus />{t("guardrails.addTestCase")}</Button></div> : null}
         </div>
       </details>;
     })}</div>
@@ -796,17 +796,115 @@ function EditGuardrailSheet({ guardrail, policies, open, onOpenChange, onSaved }
   const { t } = useTranslation();
   const [name, setName] = useState(guardrail.name);
   const [purpose, setPurpose] = useState(guardrail.purpose);
+  const [customRules, setCustomRules] = useState(() => customRuleRowsFromGuardrail(guardrail));
   const [allowed, setAllowed] = useState(guardrail.allowed_topics.join("\n"));
   const [restricted, setRestricted] = useState(guardrail.restricted_topics.join("\n"));
   const [bindings, setBindings] = useState(guardrail.policy_bindings);
   const [level, setLevel] = useState(guardrail.safety_level);
   const [delivery, setDelivery] = useState(guardrail.output_delivery);
-  useEffect(() => { if (open) { setName(guardrail.name); setPurpose(guardrail.purpose); setAllowed(guardrail.allowed_topics.join("\n")); setRestricted(guardrail.restricted_topics.join("\n")); setBindings(guardrail.policy_bindings); setLevel(guardrail.safety_level); setDelivery(guardrail.output_delivery); } }, [guardrail, open]);
-  const mutation = useMutation({ mutationFn: () => updateGuardrail(guardrail.id, { name, purpose, allowed_topics: lines(allowed), restricted_topics: lines(restricted), policy_bindings: bindings, safety_level: level, output_delivery: delivery }), onSuccess: () => { toast.success(t("guardrails.updated")); onSaved(); }, onError: (error) => notifyError(error, t("guardrails.operationFailed")) });
-  return <EntitySheet open={open} onOpenChange={onOpenChange} eyebrow={t("guardrails.editEyebrow")} title={t("guardrails.editTitle", { name: guardrail.name })} description={t("guardrails.editDescription")} width="xl" footer={<><Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button><Button disabled={!name.trim() || !purpose.trim() || !bindings.length || mutation.isPending} onClick={() => mutation.mutate()}>{mutation.isPending ? <LoaderCircle className="animate-spin" /> : <Save />}{t(mutation.isPending ? "common.saving" : "common.save")}</Button></>}><div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5"><Field label={t("guardrails.guardrailName")}><Input className="min-h-11" value={name} onChange={(event) => setName(event.target.value)} /></Field><Field label={t("guardrails.businessPurpose")}><Textarea className="min-h-28" value={purpose} onChange={(event) => setPurpose(event.target.value)} /></Field><div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4 sm:grid-cols-2"><Field label={t("guardrails.allowedDomains")}><Textarea className="min-h-24" value={allowed} onChange={(event) => setAllowed(event.target.value)} /></Field><Field label={t("guardrails.restrictedDomains")}><Textarea className="min-h-24" value={restricted} onChange={(event) => setRestricted(event.target.value)} /></Field></div><RuntimePostureFields safetyLevel={level} outputDelivery={delivery} onSafetyLevelChange={setLevel} onOutputDeliveryChange={setDelivery} /><section className="min-w-0"><h3 className="mb-3 text-sm font-semibold">{t("guardrails.policyBindings")}</h3><PolicyBindingEditor policies={policies} value={bindings} onChange={setBindings} /></section></div></EntitySheet>;
+  useEffect(() => {
+    if (open) {
+      setName(guardrail.name);
+      setPurpose(guardrail.purpose);
+      setCustomRules(customRuleRowsFromGuardrail(guardrail));
+      setAllowed(guardrail.allowed_topics.join("\n"));
+      setRestricted(guardrail.restricted_topics.join("\n"));
+      setBindings(guardrail.policy_bindings);
+      setLevel(guardrail.safety_level);
+      setDelivery(guardrail.output_delivery);
+    }
+  }, [guardrail, open]);
+  const mutation = useMutation({
+    mutationFn: () => updateGuardrail(guardrail.id, {
+      name,
+      purpose,
+      custom_content_rules: customRulesToDraft(customRules),
+      allowed_topics: lines(allowed),
+      restricted_topics: lines(restricted),
+      policy_bindings: bindings,
+      safety_level: level,
+      output_delivery: delivery,
+    }),
+    onSuccess: () => { toast.success(t("guardrails.updated")); onSaved(); },
+    onError: (error) => notifyError(error, t("guardrails.operationFailed")),
+  });
+  return <EntitySheet open={open} onOpenChange={onOpenChange} eyebrow={t("guardrails.editEyebrow")} title={t("guardrails.editTitle", { name: guardrail.name })} description={t("guardrails.editDescription")} width="xl" footer={<><Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button><Button disabled={!name.trim() || !purpose.trim() || !bindings.length || mutation.isPending} onClick={() => mutation.mutate()}>{mutation.isPending ? <LoaderCircle className="animate-spin" /> : <Save />}{t(mutation.isPending ? "common.saving" : "common.save")}</Button></>}>
+    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5">
+      <Field label={t("guardrails.guardrailName")}><Input className="min-h-11" value={name} onChange={(event) => setName(event.target.value)} /></Field>
+      <Field label={t("guardrails.businessPurpose")}><Textarea className="min-h-28" value={purpose} onChange={(event) => setPurpose(event.target.value)} /></Field>
+      <section className="rounded-xl border bg-card p-4">
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-semibold">Custom phrase rules</h3>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">Use deterministic input rules for exact phrases. `Transform` replaces the matched phrase; `Block` rejects the request when the phrase appears.</p>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => setCustomRules((current) => [...current, blankCustomRuleRow(current.length + 1)])}>Add rule</Button>
+        </div>
+        <div className="space-y-3">
+          {customRules.map((rule, index) => (
+            <div key={rule.id} className="grid gap-3 rounded-lg border bg-muted/15 p-3 sm:grid-cols-[minmax(0,1.2fr)_140px_minmax(0,1fr)_auto]">
+              <Field label="Match phrase">
+                <Input className="min-h-11" value={rule.phrase} onChange={(event) => setCustomRules((current) => replaceCustomRule(current, index, { ...rule, phrase: event.target.value }))} />
+              </Field>
+              <Field label="Action">
+                <Select value={rule.mode} onValueChange={(value) => setCustomRules((current) => replaceCustomRule(current, index, { ...rule, mode: value as "transform" | "block" }))}>
+                  <SelectTrigger className="min-h-11"><SelectValue /></SelectTrigger>
+                  <SelectContent><SelectItem value="transform">Transform</SelectItem><SelectItem value="block">Block</SelectItem></SelectContent>
+                </Select>
+              </Field>
+              <Field label="Replacement">
+                <Input className="min-h-11" disabled={rule.mode !== "transform"} value={rule.replacement} onChange={(event) => setCustomRules((current) => replaceCustomRule(current, index, { ...rule, replacement: event.target.value }))} placeholder={rule.mode === "transform" ? "niulai" : "Not used for block"} />
+              </Field>
+              <div className="flex items-end">
+                <Button variant="ghost" size="sm" onClick={() => setCustomRules((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Remove</Button>
+              </div>
+            </div>
+          ))}
+          {!customRules.length ? <p className="text-xs text-muted-foreground">No custom phrase rules yet.</p> : null}
+        </div>
+      </section>
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4 sm:grid-cols-2"><Field label={t("guardrails.allowedDomains")}><Textarea className="min-h-24" value={allowed} onChange={(event) => setAllowed(event.target.value)} /></Field><Field label={t("guardrails.restrictedDomains")}><Textarea className="min-h-24" value={restricted} onChange={(event) => setRestricted(event.target.value)} /></Field></div>
+      <RuntimePostureFields safetyLevel={level} outputDelivery={delivery} onSafetyLevelChange={setLevel} onOutputDeliveryChange={setDelivery} />
+      <section className="min-w-0"><h3 className="mb-3 text-sm font-semibold">{t("guardrails.policyBindings")}</h3><PolicyBindingEditor policies={policies} value={bindings} onChange={setBindings} /></section>
+    </div>
+  </EntitySheet>;
 }
 
 function Field({ label, children }: { label: string; children: ReactNode }) { return <label className="grid gap-2"><Label>{label}</Label>{children}</label>; }
 function lines(value: string) { return value.split("\n").map((item) => item.trim()).filter(Boolean); }
 function notifyError(error: unknown, fallback: string) { toast.error(error instanceof Error ? error.message : fallback); }
 function isGuardrailDraftManageable(guardrail: Pick<Guardrail, "is_default" | "system_managed">) { return guardrail.is_default || !guardrail.system_managed; }
+
+type CustomRuleRow = { id: string; phrase: string; mode: "transform" | "block"; replacement: string };
+
+function customRuleRowsFromGuardrail(guardrail: Guardrail): CustomRuleRow[] {
+  return guardrail.custom_content_rules
+    .filter((rule) => rule.detector === "keyword" && rule.phases.includes("input"))
+    .map((rule, index) => ({
+      id: rule.id || `custom-rule-${index + 1}`,
+      phrase: rule.keywords?.[0] ?? "",
+      mode: rule.action === "reject" ? "block" : "transform",
+      replacement: rule.replacement ?? "",
+    }));
+}
+
+function customRulesToDraft(rows: CustomRuleRow[]): Guardrail["custom_content_rules"] {
+  return rows
+    .map((rule, index) => ({
+      id: rule.id || `custom-rule-${index + 1}`,
+      phases: ["input"] as Array<"input">,
+      detector: "keyword" as const,
+      keywords: [rule.phrase.trim()].filter(Boolean),
+      action: rule.mode === "block" ? "reject" as const : "redact" as const,
+      ...(rule.mode === "transform" && rule.replacement.trim() ? { replacement: rule.replacement.trim() } : {}),
+    }))
+    .filter((rule) => rule.keywords.length);
+}
+
+function blankCustomRuleRow(index: number): CustomRuleRow {
+  return { id: `custom-rule-${index}`, phrase: "", mode: "block", replacement: "" };
+}
+
+function replaceCustomRule(rows: CustomRuleRow[], index: number, next: CustomRuleRow): CustomRuleRow[] {
+  return rows.map((row, itemIndex) => itemIndex === index ? next : row);
+}

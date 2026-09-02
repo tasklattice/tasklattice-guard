@@ -1,22 +1,19 @@
-CONTROLLER_REPOSITORY ?= ghcr.io/tasklattice/tali-guard-controller
-RUNNER_REPOSITORY ?= ghcr.io/tasklattice/tali-guard-runner
-CONTROLLER_IMAGE ?= $(CONTROLLER_REPOSITORY):dev
-RUNNER_IMAGE ?= $(RUNNER_REPOSITORY):dev
-
+DEV_IMAGE_REPOSITORY := ghcr.io/tasklattice/tasklattice-guard
+DEV_IMAGE := $(DEV_IMAGE_REPOSITORY):dev
+DEV_CHART_VERSION ?= 0.0.0-dev
+DEV_NAMESPACE := tali
+HELM_RELEASE := tali-guard
 HELM_CHART := charts/tali-guard
-HELM_DEV_VALUES := $(HELM_CHART)/values-dev.yaml
-HELM_DEBUG_VALUES := $(HELM_CHART)/values-debug.yaml
-HELM_VALUES_ARGS ?= --values $(HELM_DEV_VALUES)
-HELM_RELEASE ?= tali-guard
-HELM_NAMESPACE ?= tali
-HELM_CONTEXT ?= orbstack
-HELM_TIMEOUT ?= 30s
-HELM_ROLLOUT_REVISION ?= $(shell date -u +%Y%m%d%H%M%S)
+HELM_WORKLOAD := tali-guard
+HELM_NAMESPACE ?= $(DEV_NAMESPACE)
+HELM_DEV_VALUES ?= $(HELM_CHART)/values-dev.yaml
+HELM_DEBUG_VALUES ?= $(HELM_CHART)/values-debug.yaml
+HELM_TIMEOUT ?= 180s
+PORT ?= 8091
+SERVICE_PORT ?= 38081
+RUNTIME_PUBLIC_BASE_URL ?= http://$(HELM_WORKLOAD).$(DEV_NAMESPACE).svc.cluster.local:$(SERVICE_PORT)
+LOCAL_ENV_FILE := $(if $(wildcard .env),--env-file .env,)
 LOCAL_PROVIDER_SECRET ?= tali-guard-provider-keys
-CONTROL_PLANE_AI_PROVIDER ?= DeepSeek
-CONTROL_PLANE_AI_BASE_URL ?= https://api.deepseek.com
-CONTROL_PLANE_AI_MODEL ?= deepseek-v4-flash
-NVIDIA_PROVIDER ?= NVIDIA
 NVIDIA_BASE_URL ?= https://integrate.api.nvidia.com/v1
 NVIDIA_CONTENT_SAFETY_MODEL ?= nvidia/llama-3.1-nemotron-safety-guard-8b-v3
 NVIDIA_TOPIC_CONTROL_MODEL ?= nvidia/llama-3.1-nemoguard-8b-topic-control
@@ -24,8 +21,7 @@ NVIDIA_JAILBREAK_MODEL ?= nvidia/nvidia-nemotron-nano-9b-v2
 NVIDIA_GROUNDING_MODEL ?=
 HELM_REQUIRED_VALUES := --set database.url=postgresql://guard:guard@postgres:5432/guard --set security.artifactSigning.existingSecret=guard-artifact-signing --set security.controlTls.existingSecret=guard-control-tls --set security.bootstrapAdmin.existingSecret=guard-bootstrap-admin --set runner.callContextRedisUrl=redis://redis:6379/0
 
-.PHONY: sync test controller-dev controller-build controller-run runner-run images \
-	helm-lint helm-template helm-install helm-install-debug helm-status helm-test helm-uninstall
+.PHONY: sync test web-dev web-build run image helm-package helm-lint helm-template helm-install helm-test helm-uninstall deploy-local
 
 sync:
 	uv sync --all-extras --frozen
@@ -55,12 +51,11 @@ controller-build:
 controller-run:
 	cd controller && npm run start
 
-runner-run:
-	.venv/bin/uvicorn runner.main:app --host 0.0.0.0 --port 8091
+image: helm-package
+	docker build --tag $(DEV_IMAGE) .
 
-images:
-	docker build -f Dockerfile.controller -t $(CONTROLLER_IMAGE) .
-	docker build -f Dockerfile.runner -t $(RUNNER_IMAGE) .
+helm-package:
+	TASKLATTICE_GUARD_IMAGE_REPOSITORY=$(DEV_IMAGE_REPOSITORY) bash scripts/package-runtime-chart.sh $(DEV_CHART_VERSION)
 
 helm-lint:
 	helm lint $(HELM_CHART) --strict $(HELM_REQUIRED_VALUES)

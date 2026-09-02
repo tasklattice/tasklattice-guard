@@ -257,7 +257,9 @@ describe("Guardrail detail information hierarchy", () => {
     expect(onRestore).toHaveBeenCalledWith("case-2");
     fireEvent.click(screen.getAllByRole("button", { name: "guardrails.excludeTestCase" })[0]);
     expect(onExclude).toHaveBeenCalledWith("case-1");
-    fireEvent.click(screen.getAllByRole("button", { name: "guardrails.addTestCase" })[0]);
+    fireEvent.click(customGroup.querySelector("summary")!);
+    expect(customGroup.open).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "guardrails.addTestCase" }));
     expect(onAdd).toHaveBeenCalledOnce();
   });
 

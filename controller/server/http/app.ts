@@ -46,11 +46,26 @@ const guardrailPolicyBindingInput = z.object({
 });
 const guardrailDraftInput = z.object({
   protections: z.array(z.enum(protectionIds)).optional(),
+  purposeDetails: z.object({
+    audience: z.string().trim().max(500).default(""),
+    tasks: z.string().trim().max(2_000).default(""),
+    protect: z.string().trim().max(2_000).default(""),
+    outOfScope: z.string().trim().max(2_000).default(""),
+  }).default({ audience: "", tasks: "", protect: "", outOfScope: "" }),
   allowedTopics: z.array(z.string().trim().min(1).max(500)).max(256).default([]),
   restrictedTopics: z.array(z.string().trim().min(1).max(500)).max(256).default([]),
   policyBindings: z.array(guardrailPolicyBindingInput).min(1).max(128),
   safetyLevel: z.enum(["balanced", "strict"]).default("balanced"),
   outputDelivery: z.enum(["interruptible", "window_buffered", "full_buffered"]).default("full_buffered"),
+  customContentRules: z.array(z.object({
+    id: z.string().trim().min(1).max(160),
+    phases: z.array(z.enum(["input", "output"])).min(1).max(2),
+    detector: z.enum(["keyword", "regex"]),
+    keywords: z.array(z.string().trim().min(1).max(240)).max(50).optional(),
+    expression: z.string().trim().max(500).optional(),
+    action: z.enum(enforcementActions),
+    replacement: z.string().trim().max(240).optional(),
+  })).max(50).default([]),
 });
 const guardrailInput = z.object({
   name: z.string().trim().min(1).max(160),

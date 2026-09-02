@@ -23,6 +23,12 @@ describe("OpenAI-compatible intent analyzer", () => {
           message: {
             content: JSON.stringify({
               summary: "Finance data analysis only.",
+              structured_purpose: {
+                audience: "Finance analysts",
+                tasks: "Approved reporting and data analysis",
+                protect: "Internal financial data and approval boundaries",
+                out_of_scope: "Biomedical or chemical-process guidance",
+              },
               allowed_topics: ["Financial data analysis", "SQL and Python for finance"],
               restricted_topics: ["Biomedical research advice", "Chemical refining instructions"],
               review_notes: ["Confirm whether general statistics is allowed."],
@@ -55,6 +61,12 @@ describe("OpenAI-compatible intent analyzer", () => {
         message: {
           content: "```json\n" + JSON.stringify({
             summary: "Draft.",
+            structured_purpose: {
+              audience: "Finance",
+              tasks: "SQL",
+              protect: "",
+              out_of_scope: "",
+            },
             allowed_topics: ["Finance", "SQL"],
             restricted_topics: ["finance", "Biomedicine"],
             review_notes: [],

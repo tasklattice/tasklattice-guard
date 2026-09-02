@@ -16,6 +16,12 @@ export type SystemStatus = {
 
 export type GuardrailDraftConfig = {
   protections?: Array<"secrets" | "pii" | "builtin_content_filter" | "prompt_injection" | "jailbreak">;
+  purposeDetails: {
+    audience: string;
+    tasks: string;
+    protect: string;
+    outOfScope: string;
+  };
   allowedTopics: string[];
   restrictedTopics: string[];
   policyBindings: Array<{
@@ -30,6 +36,15 @@ export type GuardrailDraftConfig = {
   }>;
   safetyLevel: "balanced" | "strict";
   outputDelivery: "interruptible" | "window_buffered" | "full_buffered";
+  customContentRules?: Array<{
+    id: string;
+    phases: Array<"input" | "output">;
+    detector: "keyword" | "regex";
+    keywords?: string[];
+    expression?: string;
+    action: "pass" | "redact" | "rewrite" | "regenerate" | "redirect" | "reject" | "fallback" | "clarify";
+    replacement?: string;
+  }>;
 };
 
 export type Guardrail = {

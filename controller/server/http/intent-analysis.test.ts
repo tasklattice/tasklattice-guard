@@ -22,6 +22,12 @@ const config = loadConfig({
 
 const analysis = {
   summary: "Finance analysis only.",
+  structured_purpose: {
+    audience: "Finance analysts",
+    tasks: "Approved reporting only",
+    protect: "Internal finance datasets and reporting limits",
+    out_of_scope: "Medical or chemical-process advice",
+  },
   allowed_topics: ["Financial analysis", "Financial reporting"],
   restricted_topics: ["Medical advice", "Chemical process instructions"],
   review_notes: [],

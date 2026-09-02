@@ -8,6 +8,7 @@ describe("Guardrail Validation contract", () => {
   it("inherits only enabled catalog Rule cases and materializes binding parameters", () => {
     const policies = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
     const cases = generatedTestCases("guardrail-1", {
+      purposeDetails: { audience: "", tasks: "", protect: "", outOfScope: "" },
       allowedTopics: [], restrictedTopics: [], safetyLevel: "balanced", outputDelivery: "full_buffered",
       policyBindings: [{
         policyId: "keyword-blocking", policyVersion: "1.95.0", action: "reject",

@@ -384,6 +384,23 @@ export type TrafficScopeExpression = {
   conditions: Array<TrafficCondition | TrafficScopeExpression>;
 };
 
+export type GuardrailPurposeDetails = {
+  audience: string;
+  tasks: string;
+  protect: string;
+  out_of_scope: string;
+};
+
+export type GuardrailCustomContentRule = {
+  id: string;
+  phases: Array<"input" | "output">;
+  detector: "keyword" | "regex";
+  keywords?: string[];
+  expression?: string;
+  action: "pass" | "redact" | "rewrite" | "regenerate" | "redirect" | "reject" | "fallback" | "clarify";
+  replacement?: string;
+};
+
 export type TrafficScopeField = {
   id: string;
   group: "request" | "authentication" | "http" | "model" | "litellm" | "a2a";
@@ -398,6 +415,8 @@ export type Guardrail = {
   id: string;
   name: string;
   purpose: string;
+  purpose_details: GuardrailPurposeDetails;
+  custom_content_rules: GuardrailCustomContentRule[];
   allowed_topics: string[];
   restricted_topics: string[];
   policy_bindings: GuardrailPolicyBinding[];
@@ -1091,7 +1110,13 @@ export type IntentAnalysisStatus = {
   model: string | null;
   document_analysis_available: boolean;
 };
-export type IntentAnalysis = { summary: string; allowed_topics: string[]; restricted_topics: string[]; review_notes: string[] };
+export type IntentAnalysis = {
+  summary: string;
+  structured_purpose: GuardrailPurposeDetails;
+  allowed_topics: string[];
+  restricted_topics: string[];
+  review_notes: string[];
+};
 export type ComplianceDocumentSource = {
   id: string;
   name: string;

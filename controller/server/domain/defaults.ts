@@ -59,6 +59,7 @@ export function defaultGuardrailDraft(policies: readonly PolicyDto[]): Guardrail
     };
   });
   return {
+    purposeDetails: { audience: "", tasks: "", protect: "", outOfScope: "" },
     allowedTopics: [],
     restrictedTopics: [],
     policyBindings: selected,

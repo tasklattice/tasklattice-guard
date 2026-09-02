@@ -35,11 +35,12 @@ helm lint "$work_dir/tali-guard" --strict \
   --set security.controlTls.existingSecret=guard-control-tls \
   --set security.bootstrapAdmin.existingSecret=guard-bootstrap-admin \
   --set runner.callContextRedisUrl=redis://redis:6379/0
+mkdir -p "$work_dir/packaged"
 helm package "$work_dir/tali-guard" \
   --version "$version" \
   --app-version "$version" \
   --destination "$work_dir/packaged" >/dev/null
-cp "$work_dir/packaged/tali-guard-${version}.tgz" \
+cp "$work_dir/packaged/"*.tgz \
   "$output_root/tali-guard.tgz"
 
 echo "Packaged TALI Guard Helm chart at $output_root/tali-guard.tgz"

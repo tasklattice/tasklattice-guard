@@ -11,6 +11,7 @@ describe("Controller Guardrail plan", () => {
       guardrailVersion: 3,
       draft: {
         protections: ["secrets", "pii", "prompt_injection"],
+        purposeDetails: { audience: "", tasks: "", protect: "", outOfScope: "" },
         safetyLevel: "strict",
         outputDelivery: "full_buffered",
       },
@@ -40,6 +41,7 @@ describe("Controller Guardrail plan", () => {
       purpose: "Protect internal support traffic.",
       policies,
       draft: {
+        purposeDetails: { audience: "Support agents", tasks: "Handle account support", protect: "Credentials", outOfScope: "Credential sharing" },
         allowedTopics: ["customer support"],
         restrictedTopics: ["credential sharing"],
         safetyLevel: "strict",
@@ -76,6 +78,10 @@ describe("Controller Guardrail plan", () => {
         ["rule_actions_json", JSON.stringify({ "keyword-blocking": { "keyword/blocked-words": "redact" } })],
       ]),
     })]);
+    expect(plan.steps).toEqual(expect.arrayContaining([expect.objectContaining({
+      risk: "builtin_content_filter",
+      parameters: expect.arrayContaining([["custom_rules_json", "[]"]]),
+    })]));
   });
 
   it("rejects a stale catalog version before it can reach Runner", () => {
@@ -85,6 +91,7 @@ describe("Controller Guardrail plan", () => {
       guardrailVersion: 1,
       policies,
       draft: {
+        purposeDetails: { audience: "", tasks: "", protect: "", outOfScope: "" },
         allowedTopics: [], restrictedTopics: [], safetyLevel: "balanced", outputDelivery: "full_buffered",
         policyBindings: [{
           policyId: "keyword-blocking", policyVersion: "0.0.1", action: null,
@@ -93,5 +100,53 @@ describe("Controller Guardrail plan", () => {
         }],
       },
     })).toThrow(/version/i);
+  });
+
+  it("passes structured purpose fields and custom content rules into the immutable Runner contract", () => {
+    const policies = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
+    const plan = buildGuardrailPlan({
+      guardrailId: "guardrail-demo",
+      guardrailVersion: 2,
+      purpose: "Support account-service operations while masking nicknames and blocking disallowed slang.",
+      policies,
+      draft: {
+        purposeDetails: {
+          audience: "Support agents",
+          tasks: "Summarize requests and prepare safe replies",
+          protect: "Customer identifiers and internal handling instructions",
+          outOfScope: "Disallowed slang and abusive nickname handling beyond masking",
+        },
+        allowedTopics: ["account support"],
+        restrictedTopics: ["abusive slang instructions"],
+        safetyLevel: "balanced",
+        outputDelivery: "window_buffered",
+        customContentRules: [
+          { id: "mask-mama", phases: ["input"], detector: "keyword", keywords: ["mama"], action: "redact", replacement: "niulai" },
+          { id: "block-xiao-sheng-zi", phases: ["input"], detector: "keyword", keywords: ["xiao sheng zi"], action: "reject" },
+        ],
+        policyBindings: [{
+          policyId: "keyword-blocking",
+          policyVersion: "1.95.0",
+          action: "reject",
+          parameterValues: { blocked_words: "placeholder" },
+          enabledRuleIds: ["keyword/blocked-words"],
+          ruleActions: {},
+          enabledRails: ["input"],
+          reasoningPolicy: null,
+        }],
+      },
+    });
+
+    expect(plan.steps).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        risk: "builtin_content_filter",
+        parameters: expect.arrayContaining([
+          ["custom_rules_json", JSON.stringify([
+            { id: "mask-mama", phases: ["input"], detector: "keyword", keywords: ["mama"], action: "redact", replacement: "niulai" },
+            { id: "block-xiao-sheng-zi", phases: ["input"], detector: "keyword", keywords: ["xiao sheng zi"], action: "reject" },
+          ])],
+        ]),
+      }),
+    ]));
   });
 });

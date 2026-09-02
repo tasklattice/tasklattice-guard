@@ -7,6 +7,12 @@ export type IntentAnalysisLanguage = "en" | "zh-CN";
 
 export type IntentAnalysis = {
   summary: string;
+  structured_purpose: {
+    audience: string;
+    tasks: string;
+    protect: string;
+    out_of_scope: string;
+  };
   allowed_topics: string[];
   restricted_topics: string[];
   review_notes: string[];
@@ -50,6 +56,12 @@ const responseEnvelope = z.object({
 
 const analysisPayload = z.object({
   summary: z.string().trim().min(1).max(500),
+  structured_purpose: z.object({
+    audience: z.string().trim().max(300).default(""),
+    tasks: z.string().trim().max(600).default(""),
+    protect: z.string().trim().max(600).default(""),
+    out_of_scope: z.string().trim().max(600).default(""),
+  }).default({ audience: "", tasks: "", protect: "", out_of_scope: "" }),
   allowed_topics: z.array(z.string().trim().min(1).max(160)).min(2).max(10),
   restricted_topics: z.array(z.string().trim().min(1).max(160)).min(2).max(10),
   review_notes: z.array(z.string().trim().min(1).max(300)).max(6).default([]),
@@ -57,6 +69,12 @@ const analysisPayload = z.object({
 
 const documentAnalysisPayload = z.object({
   summary: z.string().trim().min(1).max(1_500),
+  structured_purpose: z.object({
+    audience: z.string().trim().max(300).default(""),
+    tasks: z.string().trim().max(600).default(""),
+    protect: z.string().trim().max(600).default(""),
+    out_of_scope: z.string().trim().max(600).default(""),
+  }).default({ audience: "", tasks: "", protect: "", out_of_scope: "" }),
   allowed_topics: z.array(z.string().trim().min(1).max(240)).max(20).default([]),
   restricted_topics: z.array(z.string().trim().min(1).max(240)).max(20).default([]),
   requirements: z.array(z.object({
@@ -164,9 +182,10 @@ export function intentAnalysisPrompt(language: IntentAnalysisLanguage): string {
     "Allowed topics must be clear business domains or task-and-domain combinations. Restricted topics must describe disallowed domains, advice, processes, or technologies with enough context to avoid accidental keyword blocking.",
     "Preserve every explicit allow or deny boundary in the user's text. Do not invent legal, regulatory, or company facts.",
     "Generate 2 to 10 distinct allowed topics and 2 to 10 distinct restricted topics. Keep each item under 160 characters.",
+    "Also decompose the purpose into audience, approved tasks, protected assets, and out-of-scope or escalation cases.",
     `Write every user-facing value in ${outputLanguage}.`,
     "Return JSON only using this exact object shape:",
-    '{"summary":"one-sentence normalized purpose","allowed_topics":["rule"],"restricted_topics":["rule"],"review_notes":["assumption or boundary the user should verify"]}',
+    '{"summary":"one-sentence normalized purpose","structured_purpose":{"audience":"who may use the assistant","tasks":"approved work","protect":"what must stay protected","out_of_scope":"what to refuse or escalate"},"allowed_topics":["rule"],"restricted_topics":["rule"],"review_notes":["assumption or boundary the user should verify"]}',
   ].join("\n");
 }
 
@@ -182,7 +201,7 @@ export function complianceDocumentPrompt(language: IntentAnalysisLanguage, polic
     "Available Policy catalog:",
     policyCatalog || "- none",
     "Return JSON only using this exact object shape:",
-    '{"summary":"business purpose","allowed_topics":["domain"],"restricted_topics":["domain"],"requirements":[{"title":"requirement","description":"reviewable statement","effect":"allow|block|transform|review","source_refs":["document-1:lines-1-20"]}],"recommended_policy_ids":["policy-id"],"review_notes":["ambiguity"]}',
+    '{"summary":"business purpose","structured_purpose":{"audience":"who may use the assistant","tasks":"approved work","protect":"what must stay protected","out_of_scope":"what to refuse or escalate"},"allowed_topics":["domain"],"restricted_topics":["domain"],"requirements":[{"title":"requirement","description":"reviewable statement","effect":"allow|block|transform|review","source_refs":["document-1:lines-1-20"]}],"recommended_policy_ids":["policy-id"],"review_notes":["ambiguity"]}',
   ].join("\n");
 }
 
@@ -200,6 +219,7 @@ function parseAnalysis(content: string): IntentAnalysis {
   }
   return {
     summary: parsed.data.summary,
+    structured_purpose: parsed.data.structured_purpose,
     allowed_topics: allowed,
     restricted_topics: restricted,
     review_notes: distinct(parsed.data.review_notes),
@@ -225,6 +245,7 @@ function parseDocumentAnalysis(
   }
   return {
     summary: parsed.data.summary,
+    structured_purpose: parsed.data.structured_purpose,
     allowed_topics: allowed,
     restricted_topics: restricted,
     requirements: parsed.data.requirements,

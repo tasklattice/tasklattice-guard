@@ -26,10 +26,12 @@ export function PolicyBindingEditor({
   policies,
   value,
   onChange,
+  showSelector = true,
 }: {
   policies: Policy[];
   value: GuardrailPolicyBinding[];
   onChange: (next: GuardrailPolicyBinding[]) => void;
+  showSelector?: boolean;
 }) {
   const { t } = useTranslation();
   const selectedIds = value.map((binding) => binding.policy_id);
@@ -73,21 +75,23 @@ export function PolicyBindingEditor({
 
   return (
     <div className="min-w-0 space-y-5">
-      <div className="min-w-0 space-y-2">
-        <MultiSelectCombobox
-          ariaLabel={t("guardrailWizard.selectPolicies")}
-          value={selectedIds}
-          options={options}
-          placeholder={t("guardrailWizard.selectPolicies")}
-          searchPlaceholder={t("guardrailWizard.searchPolicies")}
-          emptyMessage={t("guardrailWizard.noMatchingPolicies")}
-          emptyDescription={t("guardrailWizard.noMatchingPoliciesDescription")}
-          noOptionsMessage={t("guardrailWizard.noPublishedPolicies")}
-          noOptionsDescription={t("guardrailWizard.noPublishedPoliciesDescription")}
-          onValueChange={selectPolicies}
-        />
-        <p className="text-xs leading-5 text-muted-foreground">{t("guardrailWizard.policyPickerHint")}</p>
-      </div>
+      {showSelector ? (
+        <div className="min-w-0 space-y-2">
+          <MultiSelectCombobox
+            ariaLabel={t("guardrailWizard.selectPolicies")}
+            value={selectedIds}
+            options={options}
+            placeholder={t("guardrailWizard.selectPolicies")}
+            searchPlaceholder={t("guardrailWizard.searchPolicies")}
+            emptyMessage={t("guardrailWizard.noMatchingPolicies")}
+            emptyDescription={t("guardrailWizard.noMatchingPoliciesDescription")}
+            noOptionsMessage={t("guardrailWizard.noPublishedPolicies")}
+            noOptionsDescription={t("guardrailWizard.noPublishedPoliciesDescription")}
+            onValueChange={selectPolicies}
+          />
+          <p className="text-xs leading-5 text-muted-foreground">{t("guardrailWizard.policyPickerHint")}</p>
+        </div>
+      ) : null}
 
       {value.length ? (
         <section className="min-w-0 overflow-hidden rounded-xl border bg-card">
@@ -117,57 +121,74 @@ export function PolicyBindingEditor({
                     <ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
                   </summary>
                   <div className="space-y-5 border-t bg-muted/[0.12] p-4">
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <Field label={t("guardrailWizard.policyAction")}>
-                        <Select value={binding.action ?? "policy_default"} onValueChange={(selected) => update(binding.policy_id, { action: selected === "policy_default" ? null : selected as EnforcementAction })}>
-                          <SelectTrigger className="min-h-11 bg-card"><SelectValue /></SelectTrigger>
-                          <SelectContent><SelectItem value="policy_default">{t("guardrailWizard.usePolicyBehavior")}</SelectItem>{ACTIONS.map((action) => <SelectItem key={action} value={action}>{action}</SelectItem>)}</SelectContent>
-                        </Select>
-                      </Field>
+                    <section className="space-y-3">
                       <div>
-                        <Label>{t("guardrailWizard.enabledRails")}</Label>
-                        <div className="mt-2 flex min-h-11 flex-wrap items-center gap-2">
-                          {policy.stages.map((stage) => <Badge key={stage} variant="outline" className="font-mono uppercase">{stage}</Badge>)}
+                        <h4 className="text-xs font-semibold">{t("guardrailWizard.behaviorTitle")}</h4>
+                        <p className="mt-1 text-xs leading-5 text-muted-foreground">{t("guardrailWizard.behaviorDescription")}</p>
+                      </div>
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <Field label={t("guardrailWizard.policyAction")}>
+                          <Select value={binding.action ?? "policy_default"} onValueChange={(selected) => update(binding.policy_id, { action: selected === "policy_default" ? null : selected as EnforcementAction })}>
+                            <SelectTrigger className="min-h-11 bg-card"><SelectValue /></SelectTrigger>
+                            <SelectContent><SelectItem value="policy_default">{t("guardrailWizard.usePolicyBehavior")}</SelectItem>{ACTIONS.map((action) => <SelectItem key={action} value={action}>{action}</SelectItem>)}</SelectContent>
+                          </Select>
+                        </Field>
+                        <div>
+                          <Label>{t("guardrailWizard.enabledRails")}</Label>
+                          <div className="mt-2 flex min-h-11 flex-wrap items-center gap-2">
+                            {policy.stages.map((stage) => <Badge key={stage} variant="outline" className="font-mono uppercase">{stage}</Badge>)}
+                          </div>
                         </div>
                       </div>
-                    </div>
+                    </section>
 
-                    {policy.parameters.length ? (
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        {policy.parameters.map((parameter) => (
-                          <Field key={parameter.name} label={`${parameter.label ?? parameter.name}${parameter.required ? " *" : ""}`} hint={parameter.description}>
-                            {parameter.kind === "textarea" ? (
-                              <Textarea
-                                className="min-h-24 bg-card"
-                                value={binding.parameter_values[parameter.name] ?? parameter.default ?? ""}
-                                placeholder={parameter.placeholder}
-                                onChange={(event) => update(binding.policy_id, { parameter_values: { ...binding.parameter_values, [parameter.name]: event.target.value } })}
-                              />
-                            ) : (
-                              <Input
-                                className="min-h-11 bg-card"
-                                type={parameter.kind === "secret" ? "password" : "text"}
-                                value={binding.parameter_values[parameter.name] ?? parameter.default ?? ""}
-                                placeholder={parameter.placeholder}
-                                onChange={(event) => update(binding.policy_id, { parameter_values: { ...binding.parameter_values, [parameter.name]: event.target.value } })}
-                              />
-                            )}
-                          </Field>
-                        ))}
-                      </div>
+                    {policy.parameters.length || binding.policy_id === "builtin-automated-reasoning" ? (
+                      <section className="space-y-3">
+                        <div>
+                          <h4 className="text-xs font-semibold">{t("guardrailWizard.inputsTitle")}</h4>
+                          <p className="mt-1 text-xs leading-5 text-muted-foreground">{t("guardrailWizard.inputsDescription")}</p>
+                        </div>
+                        {policy.parameters.length ? (
+                          <div className="grid gap-4 sm:grid-cols-2">
+                            {policy.parameters.map((parameter) => (
+                              <Field key={parameter.name} label={`${parameter.label ?? parameter.name}${parameter.required ? " *" : ""}`} hint={parameter.description}>
+                                {parameter.kind === "textarea" ? (
+                                  <Textarea
+                                    className="min-h-24 bg-card"
+                                    value={binding.parameter_values[parameter.name] ?? parameter.default ?? ""}
+                                    placeholder={parameter.placeholder}
+                                    onChange={(event) => update(binding.policy_id, { parameter_values: { ...binding.parameter_values, [parameter.name]: event.target.value } })}
+                                  />
+                                ) : (
+                                  <Input
+                                    className="min-h-11 bg-card"
+                                    type={parameter.kind === "secret" ? "password" : "text"}
+                                    value={binding.parameter_values[parameter.name] ?? parameter.default ?? ""}
+                                    placeholder={parameter.placeholder}
+                                    onChange={(event) => update(binding.policy_id, { parameter_values: { ...binding.parameter_values, [parameter.name]: event.target.value } })}
+                                  />
+                                )}
+                              </Field>
+                            ))}
+                          </div>
+                        ) : null}
+
+                        {binding.policy_id === "builtin-automated-reasoning" ? (
+                          <div className="grid gap-4 rounded-lg border bg-card p-4 sm:grid-cols-3">
+                            <Field label={t("guardrailWizard.reasoningPolicyId")}><Input className="min-h-11" value={binding.reasoning_policy?.policy_id ?? ""} onChange={(event) => update(binding.policy_id, { reasoning_policy: { policy_id: event.target.value, policy_version: binding.reasoning_policy?.policy_version ?? "", confidence_threshold: binding.reasoning_policy?.confidence_threshold ?? 0.8 } })} /></Field>
+                            <Field label={t("guardrailWizard.reasoningPolicyVersion")}><Input className="min-h-11" value={binding.reasoning_policy?.policy_version ?? ""} onChange={(event) => update(binding.policy_id, { reasoning_policy: { policy_id: binding.reasoning_policy?.policy_id ?? "", policy_version: event.target.value, confidence_threshold: binding.reasoning_policy?.confidence_threshold ?? 0.8 } })} /></Field>
+                            <Field label={t("guardrailWizard.confidenceThreshold")}><Input className="min-h-11" type="number" min={0} max={1} step={0.05} value={binding.reasoning_policy?.confidence_threshold ?? 0.8} onChange={(event) => update(binding.policy_id, { reasoning_policy: { policy_id: binding.reasoning_policy?.policy_id ?? "", policy_version: binding.reasoning_policy?.policy_version ?? "", confidence_threshold: Number(event.target.value) } })} /></Field>
+                          </div>
+                        ) : null}
+                      </section>
                     ) : null}
 
-                    {binding.policy_id === "builtin-automated-reasoning" ? (
-                      <div className="grid gap-4 rounded-lg border bg-card p-4 sm:grid-cols-3">
-                        <Field label={t("guardrailWizard.reasoningPolicyId")}><Input className="min-h-11" value={binding.reasoning_policy?.policy_id ?? ""} onChange={(event) => update(binding.policy_id, { reasoning_policy: { policy_id: event.target.value, policy_version: binding.reasoning_policy?.policy_version ?? "", confidence_threshold: binding.reasoning_policy?.confidence_threshold ?? 0.8 } })} /></Field>
-                        <Field label={t("guardrailWizard.reasoningPolicyVersion")}><Input className="min-h-11" value={binding.reasoning_policy?.policy_version ?? ""} onChange={(event) => update(binding.policy_id, { reasoning_policy: { policy_id: binding.reasoning_policy?.policy_id ?? "", policy_version: event.target.value, confidence_threshold: binding.reasoning_policy?.confidence_threshold ?? 0.8 } })} /></Field>
-                        <Field label={t("guardrailWizard.confidenceThreshold")}><Input className="min-h-11" type="number" min={0} max={1} step={0.05} value={binding.reasoning_policy?.confidence_threshold ?? 0.8} onChange={(event) => update(binding.policy_id, { reasoning_policy: { policy_id: binding.reasoning_policy?.policy_id ?? "", policy_version: binding.reasoning_policy?.policy_version ?? "", confidence_threshold: Number(event.target.value) } })} /></Field>
+                    <section className="space-y-3">
+                      <div>
+                        <h4 className="text-xs font-semibold">{t("guardrailWizard.coverageTitle")}</h4>
+                        <p className="mt-1 text-xs leading-5 text-muted-foreground">{t("guardrailWizard.coverageDescription")}</p>
                       </div>
-                    ) : null}
-
-                    <section>
-                      <h4 className="text-xs font-semibold">{t("guardrailWizard.policyRules")}</h4>
-                      <div className="mt-2 divide-y rounded-lg border bg-card">
+                      <div className="divide-y rounded-lg border bg-card">
                         {policy.rules.map((rule) => {
                           const enabled = binding.enabled_rule_ids.includes(rule.id);
                           return (
