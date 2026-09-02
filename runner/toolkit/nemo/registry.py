@@ -138,6 +138,35 @@ class NeMoRuntimeRegistry:
         )
         self.readiness()
 
+    def replace_providers(
+        self,
+        providers: ActionProviders,
+        candidates: tuple[tuple[GuardrailPlanSnapshot, NeMoConfigSnapshot], ...],
+    ) -> None:
+        """Prewarm against a new registry, then swap it in as one atomic unit."""
+
+        with self._lock:
+            previous_providers = self._providers
+            previous_items = self._items
+            previous_retired = list(self._retired)
+            self._providers = providers
+            self._items = OrderedDict()
+            try:
+                for plan, config in candidates:
+                    key = (plan.guardrail_id, plan.guardrail_version, config_checksum(config))
+                    self._build_with_logging(plan, config, key)
+                self.readiness()
+            except Exception:
+                rejected = [item.rails for item in self._items.values()]
+                self._providers = previous_providers
+                self._items = previous_items
+                self._retired = [*previous_retired, *rejected]
+                raise
+            self._retired = [
+                *previous_retired,
+                *(item.rails for item in previous_items.values()),
+            ]
+
     def stats(self) -> dict[str, int]:
         with self._lock:
             return {

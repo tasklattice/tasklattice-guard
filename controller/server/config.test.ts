@@ -134,37 +134,37 @@ describe("Controller config", () => {
     });
   });
 
-  it("rejects a partially configured control-plane authoring model", () => {
-    expect(() => loadConfig({
+  it("ignores a partial legacy control-plane model so Settings remains available", () => {
+    expect(loadConfig({
       ...requiredEnvironment,
       MODEL_GUARDRAILS_CONTROL_PLANE_AI_BASE_URL: "https://api.deepseek.com/v1",
-    })).toThrow(/must be configured together/);
-    expect(() => loadConfig({
+    }).controlPlaneAi).toBeNull();
+    expect(loadConfig({
       ...requiredEnvironment,
       MODEL_GUARDRAILS_CONTROL_PLANE_AI_API_KEY: "secret",
-    })).toThrow(/base URL and model are required/);
+    }).controlPlaneAi).toBeNull();
   });
 
-  it("rejects invalid Evaluator Binding references before startup", () => {
+  it("ignores invalid legacy Evaluator Bindings before startup", () => {
     const runtimes = JSON.stringify([{
       id: "llama", client: "openai_chat", base_url: "http://llama/v1",
       model: "meta-llama/Llama-Guard-3-8B",
     }]);
-    expect(() => loadConfig({
+    expect(loadConfig({
       ...requiredEnvironment,
       MODEL_GUARDRAILS_MODEL_RUNTIMES_JSON: runtimes,
       MODEL_GUARDRAILS_EVALUATOR_BINDINGS_JSON: JSON.stringify([{
         id: "bad-jailbreak", contract_ref: "tali.guard.jailbreak.v1",
         profile_ref: "tali.llama-guard-3.v1", model_ref: "llama", priority: 10,
       }]),
-    })).toThrow(/does not implement/);
-    expect(() => loadConfig({
+    }).modelConnections.dataPlane.models).toEqual([{ id: "llama", model: "meta-llama/Llama-Guard-3-8B" }]);
+    expect(loadConfig({
       ...requiredEnvironment,
       MODEL_GUARDRAILS_MODEL_RUNTIMES_JSON: runtimes,
       MODEL_GUARDRAILS_EVALUATOR_BINDINGS_JSON: JSON.stringify([{
         id: "unknown-runtime", contract_ref: "tali.guard.content-safety.v1",
         profile_ref: "tali.llama-guard-3.v1", model_ref: "missing", priority: 10,
       }]),
-    })).toThrow(/unknown Model Runtimes/);
+    }).modelConnections.dataPlane.models).toEqual([{ id: "llama", model: "meta-llama/Llama-Guard-3-8B" }]);
   });
 });

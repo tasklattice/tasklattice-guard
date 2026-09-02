@@ -11,12 +11,15 @@ import { ControlPlaneService } from "./services/control-plane.js";
 import { ControllerMetrics } from "./metrics.js";
 import { ensureBootstrapAdmin } from "./bootstrap.js";
 import { OpenAICompatiblePlaygroundModel, RunnerPlaygroundClient } from "./playground/service.js";
+import { ModelConfigurationService } from "./model-config/service.js";
 
 const config = loadConfig();
 const { db, pool } = createDatabase(config);
 await runMigrations(config, db);
 const service = new ControlPlaneService(db, config);
 await service.initialize();
+const models = new ModelConfigurationService(db, config.betterAuthSecret, config.policyCatalogDir);
+await models.initialize();
 
 const auth = createAuth(config, db);
 if (config.bootstrapAdmin) {
@@ -24,7 +27,7 @@ if (config.bootstrapAdmin) {
   if (status === "created") process.stdout.write(`Created Better Auth bootstrap administrator ${config.bootstrapAdmin.email}.\n`);
 }
 const metrics = new ControllerMetrics();
-const runnerControl = new RunnerControlServer(config, service, metrics);
+const runnerControl = new RunnerControlServer(config, service, metrics, models);
 await runnerControl.start();
 
 const intentAnalyzer = config.controlPlaneAi
@@ -43,6 +46,7 @@ const app = createHttpApp({
   service,
   runnerControl,
   metrics,
+  models,
   intentAnalyzer,
   playgroundModel,
   playgroundRunner,

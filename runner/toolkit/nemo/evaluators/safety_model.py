@@ -6,7 +6,7 @@ from dataclasses import replace
 from ...runtime.contracts import ProviderEvidence, RiskFinding
 from ...safety.mappings import ProviderCategoryMapping, provider_mapping
 from ...safety.providers import NativeSafetyAssessment, SafetyModelProvider
-from ...safety.taxonomy import taxonomy
+from ...safety.taxonomy import taxonomy, taxonomy_for_evaluator
 from ..actions.model_call import ModelCallTracker, observe_model_call
 from .contracts import (
     EvaluationRequest,
@@ -230,6 +230,24 @@ class SafetyModelEvaluator:
         trackers: list[ModelCallTracker],
         errors: list[str],
     ) -> tuple[tuple[RiskFinding, ...], tuple[str, ...], tuple[str, ...]]:
+        # Some native safety models return only an authoritative unsafe label.
+        # Preserve that enforcement signal with the product-owned capability
+        # fallback instead of converting a valid provider response into an
+        # adapter error merely because the optional category line is absent.
+        if assessment.verdict == "unsafe" and not assessment.categories:
+            return (
+                (
+                    _finding(
+                        request,
+                        assessment,
+                        taxonomy_for_evaluator(request.capability),
+                        native_category="unspecified",
+                        mapping_quality="partial",
+                    ),
+                ),
+                (),
+                (),
+            )
         if assessment.canonical_categories:
             applicable = tuple(
                 category_id

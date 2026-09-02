@@ -21,6 +21,8 @@ import type { RunnerControlHandlers } from "../generated/control-protocol/taskla
 import type { ValidationResult__Output } from "../generated/control-protocol/tasklattice/guard/control/v1/ValidationResult.js";
 import type { ProtoGrpcType } from "../generated/control-protocol/runner_control.js";
 import type { ControllerMetrics } from "../metrics.js";
+import { assignmentContracts, type ModelRole } from "../model-config/domain.js";
+import type { ModelConfigurationService } from "../model-config/service.js";
 import type { ControlPlaneService } from "../services/control-plane.js";
 import {
   artifactFromWire,
@@ -44,6 +46,7 @@ type Connection = {
   poolId: string;
   compilerCapable: boolean;
   appliedGeneration: number;
+  appliedModelRevisionId: string;
   lastReconcileGeneration: number;
 };
 
@@ -56,6 +59,7 @@ export class RunnerControlServer {
     private readonly config: ControllerConfig,
     private readonly service: ControlPlaneService,
     private readonly metrics: ControllerMetrics,
+    private readonly models: ModelConfigurationService,
   ) {
     const definition = loadSync(config.protoPath, {
       includeDirs: [dirname(config.protoPath)],
@@ -106,11 +110,15 @@ export class RunnerControlServer {
     distributionStatus: "ready" | "syncing";
   }> {
     const desiredGeneration = await this.service.desiredGeneration();
+    const expectedModelRevisionId = (await this.models.activeConfiguration(true))?.revisionId ?? "";
     await this.dispatchDesiredStateChanges();
     const deadline = Date.now() + timeoutMs;
     while (Date.now() <= deadline) {
       const runners = [...this.connections.values()].filter((item) => item.poolId === poolId);
-      if (runners.length > 0 && runners.every((item) => item.appliedGeneration >= desiredGeneration)) {
+      if (runners.length > 0 && runners.every((item) => (
+        item.appliedGeneration >= desiredGeneration
+        && item.appliedModelRevisionId === expectedModelRevisionId
+      ))) {
         return { desiredGeneration, distributionStatus: "ready" };
       }
       await new Promise((resolve) => setTimeout(resolve, 25));
@@ -123,10 +131,14 @@ export class RunnerControlServer {
     distributionStatus: "ready" | "syncing";
   }> {
     const desiredGeneration = await this.service.desiredGeneration();
+    const expectedModelRevisionId = (await this.models.activeConfiguration(true))?.revisionId ?? "";
     const runners = [...this.connections.values()].filter((item) => item.poolId === poolId);
     return {
       desiredGeneration,
-      distributionStatus: runners.length > 0 && runners.every((item) => item.appliedGeneration >= desiredGeneration)
+      distributionStatus: runners.length > 0 && runners.every((item) => (
+        item.appliedGeneration >= desiredGeneration
+        && item.appliedModelRevisionId === expectedModelRevisionId
+      ))
         ? "ready"
         : "syncing",
     };
@@ -194,6 +206,7 @@ export class RunnerControlServer {
         poolId: registration.poolId,
         compilerCapable: registration.compilerCapable,
         appliedGeneration: number(registration.appliedGeneration),
+        appliedModelRevisionId: "",
         lastReconcileGeneration: -1,
       };
       const prior = this.connections.get(connection.runnerId);
@@ -249,6 +262,34 @@ export class RunnerControlServer {
       this.metrics.observeArtifactResult(current.poolId, Boolean(result.accepted));
       if (result.accepted) await this.reconcile(current);
       else current.lastReconcileGeneration = -1;
+    } else if (message.desiredStateResult) {
+      const result = message.desiredStateResult;
+      if (result.runnerId !== current.runnerId) {
+        throw new Error("Desired-state result identity does not match the registered stream.");
+      }
+      const generation = number(result.generation);
+      if (result.accepted) {
+        current.appliedGeneration = Math.max(current.appliedGeneration, generation);
+        current.appliedModelRevisionId = result.modelRevisionId;
+        if (result.modelRevisionId) {
+          const peers = [...this.connections.values()].filter((item) => item.poolId === current.poolId);
+          if (peers.length > 0 && peers.every((item) => (
+            item.appliedGeneration >= generation
+            && item.appliedModelRevisionId === result.modelRevisionId
+          ))) {
+            await this.models.finalizeActivation(result.modelRevisionId);
+          }
+        }
+      } else {
+        if (result.modelRevisionId) {
+          await this.models.failActivation(
+            result.modelRevisionId,
+            result.reason || `Runner ${current.runnerId} rejected desired generation ${generation}.`,
+          );
+        }
+        for (const connection of this.connections.values()) connection.lastReconcileGeneration = -1;
+        await this.reconcileAll();
+      }
     }
     return null;
   }
@@ -310,11 +351,27 @@ export class RunnerControlServer {
   private async reconcile(connection: Connection): Promise<void> {
     const started = performance.now();
     try {
-      const desired = await this.service.desiredStateForPool(connection.poolId);
+      const [desired, modelConfiguration] = await Promise.all([
+        this.service.desiredStateForPool(connection.poolId),
+        this.models.activeConfiguration(true),
+      ]);
       if (connection.lastReconcileGeneration === desired.generation) {
         this.metrics.observeReconcile(connection.poolId, "noop", (performance.now() - started) / 1_000);
         return;
       }
+      const dataAssignments = modelConfiguration ? dataPlaneRoles.flatMap((role) => {
+        const modelRef = modelConfiguration.assignments[role];
+        if (!modelRef) return [];
+        const model = modelConfiguration.models.find((item) => item.id === modelRef);
+        if (!model) return [];
+        return [{
+          role,
+          modelRef,
+          profileRef: model.profile,
+          contractRefs: [...assignmentContracts(role, model.profile, modelConfiguration.assignments)],
+        }];
+      }) : [];
+      const dataModelIds = new Set(dataAssignments.map((item) => item.modelRef));
       this.write(connection.stream, {
       desiredState: {
         generation: String(desired.generation),
@@ -335,6 +392,22 @@ export class RunnerControlServer {
           verification: integrationVerificationToWire(integration.verification),
         })),
         guardrailLoggingLevels: desired.guardrailLoggingLevels,
+        modelConfiguration: modelConfiguration ? {
+          revisionId: modelConfiguration.revisionId,
+          revision: modelConfiguration.revision,
+          runtimes: modelConfiguration.models.filter((model) => dataModelIds.has(model.id)).map((model) => ({
+            id: model.id,
+            providerId: model.providerId,
+            providerName: model.providerName,
+            baseUrl: model.baseUrl,
+            credentialRef: model.credentialRef,
+            model: model.model,
+            profileRef: model.profile,
+            timeoutSeconds: model.timeoutSeconds,
+            maxTokens: model.maxTokens,
+          })),
+          assignments: dataAssignments,
+        } : null,
       },
       });
       connection.lastReconcileGeneration = desired.generation;
@@ -420,6 +493,14 @@ export class RunnerControlServer {
     return ServerCredentials.createInsecure();
   }
 }
+
+const dataPlaneRoles: ModelRole[] = [
+  "safety_evaluator",
+  "jailbreak_evaluator",
+  "topic_policy_judge",
+  "grounding_judge",
+  "automated_reasoning",
+];
 
 function normalizeLoad(load: RunnerHeartbeat__Output["load"]): RunnerLoad {
   return {

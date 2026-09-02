@@ -20,6 +20,7 @@ vi.mock("react-i18next", () => ({
         "guardrailWizard.boundPolicies": "Bound Policies ({{count}})",
         "guardrailWizard.boundPoliciesDescription": "Pinned Policy bindings.",
         "guardrailWizard.boundPolicyDetails": "Review Rule details for {{name}}",
+        "guardrailWizard.boundPolicyDetailsRequiresConfiguration": "Review required configuration for {{name}}",
         "guardrailWizard.enabledRuleCount": "{{count}} Rules",
         "guardrailWizard.missingRequiredFieldCount": "Required fields remaining: {{count}}",
         "guardrailWizard.reasoningConfigurationRequired": "Reasoning configuration required",
@@ -171,6 +172,10 @@ describe("PolicyBindingEditor", () => {
     const details = document.querySelector("details");
     expect(details).not.toBeNull();
     expect(details!.open).toBe(true);
+    expect(details!.querySelector("summary")?.getAttribute("aria-label")).toBe(
+      "Review required configuration for Aviation Operations Security",
+    );
+    expect(screen.getByTestId("required-configuration-indicator").getAttribute("aria-hidden")).toBe("true");
     expect(screen.getByText("Required fields remaining: 2")).toBeTruthy();
     expect(screen.getByPlaceholderText("e.g. Acme Airlines")).toBeTruthy();
     expect(screen.getByPlaceholderText("One competitor per line")).toBeTruthy();
@@ -179,6 +184,10 @@ describe("PolicyBindingEditor", () => {
     fireEvent.change(screen.getByPlaceholderText("One competitor per line"), { target: { value: "Example Air" } });
 
     expect(screen.queryByText("Required fields remaining: 2")).toBeNull();
+    expect(screen.queryByTestId("required-configuration-indicator")).toBeNull();
+    expect(details!.querySelector("summary")?.getAttribute("aria-label")).toBe(
+      "Review Rule details for Aviation Operations Security",
+    );
     expect(details!.open).toBe(true);
   });
 });

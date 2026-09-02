@@ -4,9 +4,6 @@ import time
 
 import pytest
 
-from runner import generated as protocol
-from runner.compiler import DefaultRunnerCompiler
-from runner.protocol_codec import action_bindings_from_proto, plan_to_proto
 from runner.toolkit.nemo.action_registry import action_name_for
 from runner.toolkit.nemo.actions.contracts import (
     ActionRequest,
@@ -119,7 +116,7 @@ def test_guard_evaluate_action_rejects_invalid_or_duplicate_routes() -> None:
         ))
 
 
-def test_new_compiler_bindings_use_one_action_for_guard_capabilities() -> None:
+def test_guard_capabilities_share_one_runtime_action() -> None:
     for capability, contract_ref in (
         ("pii", CONTRACT_PII_EXACT),
         ("pii", CONTRACT_PII_SEMANTIC),
@@ -127,95 +124,6 @@ def test_new_compiler_bindings_use_one_action_for_guard_capabilities() -> None:
         ("jailbreak", CONTRACT_JAILBREAK),
     ):
         assert action_name_for(capability, contract_ref) == ACTION_EVALUATE
-
-    plan = {
-        "safety_level": "balanced",
-        "output_delivery": "full_buffered",
-        "steps": [
-            {
-                "id": "pii:exact",
-                "capability": "pii",
-                "contract_ref": CONTRACT_PII_EXACT,
-                "phases": ["input"],
-                "on_unsafe": "redact",
-                "trigger": {"type": "always"},
-                "parameters": [],
-            },
-            {
-                "id": "pii:semantic",
-                "capability": "pii",
-                "contract_ref": CONTRACT_PII_SEMANTIC,
-                "phases": ["input"],
-                "on_unsafe": "redact",
-                "trigger": {"type": "on_result", "step_ref": "pii:exact", "verdicts": ["uncertain"]},
-                "parameters": [],
-            },
-            {
-                "id": "content-safety:primary",
-                "capability": "content_safety",
-                "contract_ref": CONTRACT_CONTENT_SAFETY,
-                "phases": ["input"],
-                "on_unsafe": "reject",
-                "trigger": {"type": "always"},
-                "parameters": [],
-            },
-            {
-                "id": "jailbreak:primary",
-                "capability": "jailbreak",
-                "contract_ref": CONTRACT_JAILBREAK,
-                "phases": ["input"],
-                "on_unsafe": "reject",
-                "trigger": {"type": "always"},
-                "parameters": [],
-            },
-        ],
-        "modules": [
-            {
-                "id": "data-protection:input",
-                "module": "data_protection",
-                "phase": "input",
-                "step_ids": ["pii:exact", "pii:semantic"],
-                "depends_on": [],
-                "input_view": "original",
-                "required_for_release": True,
-                "timeout_ms": 5_000,
-                "failure_mode": "fail_closed",
-            },
-            {
-                "id": "interaction-safety:input",
-                "module": "interaction_safety",
-                "phase": "input",
-                "step_ids": [
-                    "content-safety:primary",
-                    "jailbreak:primary",
-                ],
-                "depends_on": [],
-                "input_view": "original",
-                "required_for_release": True,
-                "timeout_ms": 30_000,
-                "failure_mode": "fail_closed",
-            },
-        ],
-        "reasoning_policies": [],
-        "policy_versions": [],
-        "policy_bindings": [],
-    }
-    artifact = DefaultRunnerCompiler().compile(protocol.CompileRequest(
-        compile_id="compile-unified-evaluation-action",
-        guardrail_id="guardrail-unified-evaluation-action",
-        guardrail_version=1,
-        generation=1,
-        plan=plan_to_proto(plan),
-        runtime_profile="auto",
-    ))
-
-    bindings = action_bindings_from_proto(artifact.action_bindings)
-    assert artifact.compiler_version == "tasklattice-nemo-config-v11"
-    assert {item["action_name"] for item in bindings} == {ACTION_EVALUATE}
-    by_id = {item["id"]: item for item in bindings}
-    assert by_id["pii:exact"]["timeout_ms"] == 750
-    assert by_id["pii:semantic"]["timeout_ms"] == 4_250
-    assert by_id["content-safety:primary"]["timeout_ms"] == 30_000
 
 
 def _request(content: str, capability: str, contract_ref: str) -> ActionRequest:

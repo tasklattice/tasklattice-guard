@@ -35,7 +35,8 @@ class GroundingActionProvider:
         *,
         base_url: str,
         model: str,
-        api_key_env_var: str,
+        api_key_env_var: str | None = None,
+        api_key: str | None = None,
         timeout_seconds: float = 20.0,
         transport: httpx.AsyncBaseTransport | None = None,
         request_options: dict[str, object] | None = None,
@@ -43,6 +44,7 @@ class GroundingActionProvider:
         self._base_url = base_url.rstrip("/")
         self._model = model
         self._api_key_env_var = api_key_env_var
+        self._api_key = api_key
         self._timeout_seconds = timeout_seconds
         self._transport = transport
         self._request_options = dict(request_options or {})
@@ -102,7 +104,11 @@ class GroundingActionProvider:
         except ValueError as error:
             return action_result(request, "error", request.content, reason=str(error))
 
-        credential = os.environ.get(self._api_key_env_var, "").strip()
+        credential = (self._api_key or "").strip() or (
+            os.environ.get(self._api_key_env_var, "").strip()
+            if self._api_key_env_var
+            else ""
+        )
         if not credential:
             return action_result(request,
                 "error",

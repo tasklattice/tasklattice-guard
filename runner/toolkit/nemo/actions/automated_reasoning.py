@@ -51,12 +51,14 @@ class HTTPAutomatedReasoningProvider:
         self,
         *,
         endpoint_url: str,
-        api_key_env_var: str,
+        api_key_env_var: str | None = None,
+        api_key: str | None = None,
         timeout_seconds: float = 20.0,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self._endpoint_url = endpoint_url
         self._api_key_env_var = api_key_env_var
+        self._api_key = api_key
         self._timeout_seconds = timeout_seconds
         self._transport = transport
 
@@ -67,7 +69,7 @@ class HTTPAutomatedReasoningProvider:
         query_content: str,
         guard_content: str,
     ) -> tuple[tuple[AutomatedReasoningFinding, ...], ActionUsage]:
-        credential = os.environ.get(self._api_key_env_var, "").strip()
+        credential = self._credential()
         if not credential:
             raise RuntimeError("Automated Reasoning provider credential is not configured.")
         raise RuntimeError(
@@ -82,7 +84,7 @@ class HTTPAutomatedReasoningProvider:
         query_content: str,
         guard_content: str,
     ) -> tuple[tuple[AutomatedReasoningFinding, ...], ActionUsage]:
-        credential = os.environ.get(self._api_key_env_var, "").strip()
+        credential = self._credential()
         if not credential:
             raise RuntimeError("Automated Reasoning provider credential is not configured.")
         with observe_model_call(
@@ -113,6 +115,13 @@ class HTTPAutomatedReasoningProvider:
                 findings = parse_reasoning_findings(payload)
                 call.complete(payload=payload)
         return findings, action_usage(call, len(query_content) + len(guard_content))
+
+    def _credential(self) -> str:
+        return (self._api_key or "").strip() or (
+            os.environ.get(self._api_key_env_var, "").strip()
+            if self._api_key_env_var
+            else ""
+        )
 
 
 class ReasoningActionProvider:

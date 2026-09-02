@@ -11,7 +11,7 @@ HELM_VALUES_ARGS ?= --values $(HELM_DEV_VALUES)
 HELM_RELEASE ?= tali-guard
 HELM_NAMESPACE ?= tali
 HELM_CONTEXT ?= orbstack
-HELM_TIMEOUT ?= 180s
+HELM_TIMEOUT ?= 5m
 HELM_ROLLOUT_REVISION ?= $(shell date -u +%Y%m%d%H%M%S)
 LOCAL_PROVIDER_SECRET ?= tali-guard-provider-keys
 CONTROL_PLANE_AI_PROVIDER ?= Qwen
@@ -21,8 +21,9 @@ HELM_REQUIRED_VALUES := --set database.url=postgresql://guard:guard@postgres:543
 
 .PHONY: helm-package
 
-.PHONY: sync proto-generate proto-check test controller-dev controller-build controller-run runner-run images \
-	helm-lint helm-template helm-install helm-install-debug helm-status helm-test helm-uninstall
+.PHONY: sync proto-generate proto-check test test-control-plane test-data-plane test-e2e test-contracts \
+	controller-dev controller-build controller-run runner-run images \
+	install install-debug helm-lint helm-template helm-status helm-test helm-uninstall
 
 sync:
 	uv sync --all-extras --frozen
@@ -34,12 +35,21 @@ proto-generate:
 proto-check:
 	.venv/bin/python scripts/generate_control_protocol.py --check
 
-test:
+test-control-plane:
+	.venv/bin/python scripts/generate_test_artifacts.py --check
+	.venv/bin/python -m pytest -q -m control_plane
+	cd controller && npm run test:control-plane
+
+test-data-plane:
+	.venv/bin/python -m pytest -q -m data_plane
+
+test-e2e:
+	.venv/bin/python -m pytest -q -m e2e
+
+test-contracts:
 	$(MAKE) proto-check
-	.venv/bin/python -m pytest -q
-	cd controller && npm test
-	cd controller && npm run typecheck
-	cd controller && npm run build
+	.venv/bin/python -m pytest -q -m contract
+	$(MAKE) helm-lint
 	helm template $(HELM_RELEASE) $(HELM_CHART) --values $(HELM_DEV_VALUES) >/dev/null
 	jq empty $(HELM_CHART)/grafana/dashboards/tasklattice-guard-overview.json
 	jq empty $(HELM_CHART)/grafana/dashboards/tasklattice-guard-troubleshooting.json
@@ -49,6 +59,10 @@ test:
 		--set observability.grafanaDashboard.enabled=true >/dev/null
 	helm template $(HELM_RELEASE) $(HELM_CHART) --values $(HELM_DEV_VALUES) \
 		--values $(HELM_DEBUG_VALUES) >/dev/null
+
+test: test-contracts test-control-plane test-data-plane test-e2e
+	cd controller && npm run typecheck
+	cd controller && npm run build
 
 controller-dev:
 	cd controller && npm run dev
@@ -88,7 +102,8 @@ helm-template:
 # Controller and every Runner pool always roll to the latest local image. When
 # .env contains provider credentials, the configured control-plane model and
 # Model Runtimes and Evaluator Bindings are wired into the data plane.
-helm-install: images
+# One deployment entry point: upgrade if present, install if absent.
+install: images
 	@set -eu; \
 		helm_args=""; \
 		provider_configured=false; \
@@ -182,10 +197,7 @@ helm-install: images
 				| kubectl --context $(HELM_CONTEXT) --namespace $(HELM_NAMESPACE) apply -f - >/dev/null; \
 			echo "Updated Kubernetes provider Secret from .env"; \
 		fi; \
-		helm upgrade --install $(HELM_RELEASE) $(HELM_CHART) \
-			--kube-context $(HELM_CONTEXT) \
-			--namespace $(HELM_NAMESPACE) \
-			--create-namespace \
+		bash scripts/helm-upgrade.sh "$(HELM_RELEASE)" "$(HELM_CHART)" "$(HELM_CONTEXT)" "$(HELM_NAMESPACE)" \
 			$(HELM_VALUES_ARGS) \
 			--set controller.image.repository=$(CONTROLLER_REPOSITORY) \
 			--set-string controller.image.tag=dev \
@@ -193,13 +205,13 @@ helm-install: images
 			--set-string runner.image.tag=dev \
 			--set-string rolloutRevision=$(HELM_ROLLOUT_REVISION) \
 			$$helm_args \
-			--server-side=false \
+			--wait \
 			--timeout $(HELM_TIMEOUT)
 
 # Reuses the self-contained development environment and adds full tracing,
 # profiling, Prometheus rules, and Grafana dashboards as an orthogonal overlay.
-helm-install-debug:
-	$(MAKE) helm-install HELM_VALUES_ARGS="--values $(HELM_DEV_VALUES) --values $(HELM_DEBUG_VALUES)"
+install-debug:
+	$(MAKE) install HELM_VALUES_ARGS="--values $(HELM_DEV_VALUES) --values $(HELM_DEBUG_VALUES)"
 
 helm-status:
 	helm status $(HELM_RELEASE) --kube-context $(HELM_CONTEXT) --namespace $(HELM_NAMESPACE)

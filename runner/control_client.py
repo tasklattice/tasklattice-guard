@@ -5,11 +5,13 @@ import importlib.metadata
 import logging
 import time
 import uuid
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 import grpc
+import httpx
 
-from runner.toolkit.nemo.action_registry import ActionProviders
+from runner.toolkit.nemo.action_registry import ActionProviders, action_providers
 
 from . import __version__
 from .artifact_store import ArtifactStore
@@ -18,6 +20,7 @@ from .config import RunnerSettings
 from . import generated as protocol
 from .generated import runner_control_pb2_grpc as services
 from .metrics import RunnerMetrics
+from .providers import dynamic_runtime_action_providers
 from .protocol_codec import validation_case_result_to_proto, validation_metrics_to_proto
 from .validator import DefaultRunnerValidator
 
@@ -32,6 +35,7 @@ class RunnerControlClient:
         store: ArtifactStore,
         metrics: RunnerMetrics,
         providers: ActionProviders | None = None,
+        provider_observer: Callable[[ActionProviders], Awaitable[None]] | None = None,
     ) -> None:
         self._settings = settings
         self._store = store
@@ -47,6 +51,8 @@ class RunnerControlClient:
         self._heartbeat_interval = 10
         self._sequence = 0
         self._compiler = DefaultRunnerCompiler(settings) if settings.compiler_capable else None
+        self._providers = providers
+        self._provider_observer = provider_observer
         self._validator = (
             DefaultRunnerValidator(self._compiler, providers)
             if self._compiler
@@ -158,8 +164,41 @@ class RunnerControlClient:
     async def _apply_desired_state(self, desired_state: protocol.DesiredState) -> None:
         started = time.perf_counter()
         self._metrics.set_desired_generation(desired_state.generation)
+        model_revision_id = (
+            desired_state.model_configuration.revision_id
+            if desired_state.HasField("model_configuration")
+            else ""
+        )
         try:
-            await asyncio.to_thread(self._store.apply, desired_state)
+            providers = None
+            if desired_state.HasField("model_configuration"):
+                credentials = await self._model_credentials(
+                    desired_state.model_configuration
+                )
+                providers = action_providers(*dynamic_runtime_action_providers(
+                    desired_state.model_configuration,
+                    credentials,
+                ))
+            if providers is None:
+                await asyncio.to_thread(self._store.apply, desired_state)
+            else:
+                await asyncio.to_thread(
+                    self._store.apply,
+                    desired_state,
+                    providers=providers,
+                )
+            if providers is not None:
+                self._providers = providers
+                if self._compiler is not None:
+                    self._validator = DefaultRunnerValidator(self._compiler, providers)
+                if self._provider_observer is not None:
+                    try:
+                        await self._provider_observer(providers)
+                    except Exception:
+                        logger.exception(
+                            "Dynamic Model Providers were applied, but existing Draft previews "
+                            "could not be retired. New desired state remains active."
+                        )
             artifact_count, route_count, integration_count = self._store.observability_counts()
             self._metrics.set_desired_state(
                 generation=desired_state.generation,
@@ -176,14 +215,62 @@ class RunnerControlClient:
             logger.exception("Rejected desired generation %d.", desired_state.generation)
             for artifact in desired_state.artifacts:
                 await self._artifact_result(artifact, desired_state.generation, False, str(error))
+            await self._desired_state_result(
+                desired_state.generation,
+                False,
+                str(error),
+                model_revision_id,
+            )
             return
         for artifact in desired_state.artifacts:
             await self._artifact_result(artifact, desired_state.generation, True, "")
+        await self._desired_state_result(
+            desired_state.generation,
+            True,
+            "",
+            model_revision_id,
+        )
         # A desired state can contain only Integration or route changes and no
         # artifact acknowledgements. Report the applied generation immediately
         # so Controller mutations do not expose a Secret or route before the
         # data plane can actually serve it.
         await self._send_heartbeat()
+
+    async def _model_credentials(
+        self,
+        configuration: protocol.DataPlaneModelConfiguration,
+    ) -> dict[str, str]:
+        refs = sorted({
+            runtime.credential_ref
+            for runtime in configuration.runtimes
+            if runtime.credential_ref
+        })
+        if not refs:
+            return {}
+        endpoint = self._settings.telemetry_endpoint
+        base_url = endpoint.split("/api/internal/v1/", 1)[0].rstrip("/")
+        if not base_url.startswith(("http://", "https://")):
+            raise ValueError("Controller HTTP endpoint cannot be derived for Model credentials.")
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.post(
+                f"{base_url}/api/internal/v1/model-credentials/resolve",
+                headers={
+                    "authorization": f"Bearer {self._settings.controller_token}",
+                    "content-type": "application/json",
+                },
+                json={"refs": refs},
+            )
+            response.raise_for_status()
+            payload = response.json()
+        credentials = payload.get("credentials")
+        if not isinstance(credentials, dict):
+            raise TypeError("Controller returned an invalid Model credential lease.")
+        missing = [ref for ref in refs if not isinstance(credentials.get(ref), str)]
+        if missing:
+            raise ValueError(
+                "Controller did not resolve Model credentials: " + ", ".join(missing)
+            )
+        return {ref: str(credentials[ref]) for ref in refs}
 
     async def _compile(self, request: protocol.CompileRequest) -> None:
         if self._compiler is None:
@@ -258,6 +345,24 @@ class RunnerControlClient:
                 generation=generation,
                 accepted=accepted,
                 reason=reason,
+            ),
+        ))
+
+    async def _desired_state_result(
+        self,
+        generation: int,
+        accepted: bool,
+        reason: str,
+        model_revision_id: str,
+    ) -> None:
+        await self._send(protocol.RunnerMessage(
+            message_id=str(uuid.uuid4()), sent_at_unix_ms=_now_ms(),
+            desired_state_result=protocol.DesiredStateResult(
+                runner_id=self._settings.runner_id,
+                generation=generation,
+                accepted=accepted,
+                reason=reason,
+                model_revision_id=model_revision_id,
             ),
         ))
 

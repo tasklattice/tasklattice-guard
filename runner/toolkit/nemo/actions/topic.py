@@ -29,6 +29,7 @@ class TopicJudgeActionProvider:
         base_url: str,
         model: str,
         api_key_env_var: str | None,
+        api_key: str | None = None,
         provider_id: str = "taxonomy_judge",
         timeout_seconds: float = 20.0,
         request_options: dict[str, object] | None = None,
@@ -38,17 +39,18 @@ class TopicJudgeActionProvider:
         self._model = model
         self._provider_id = provider_id
         self._api_key_env_var = api_key_env_var
+        self._api_key = api_key
         self._timeout_seconds = timeout_seconds
         self._request_options = dict(request_options or {})
         self._transport = transport
 
     async def execute(self, request: ActionRequest) -> ActionResult:
-        credential = (
+        credential = (self._api_key or "").strip() or (
             os.environ.get(self._api_key_env_var, "").strip()
             if self._api_key_env_var
             else ""
         )
-        if self._api_key_env_var and not credential:
+        if (self._api_key_env_var or self._api_key is not None) and not credential:
             return action_result(
                 request,
                 "error",

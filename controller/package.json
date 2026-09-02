@@ -15,6 +15,7 @@
     "auth:bootstrap": "tsx server/bootstrap-admin.ts",
     "typecheck": "tsc -b tsconfig.app.json --pretty false && tsc -p tsconfig.server.json --noEmit --pretty false",
     "test": "vitest run --environment jsdom",
+    "test:control-plane": "vitest run --environment jsdom",
     "test:server": "vitest run server",
     "audit:production": "npm audit --omit=dev --omit=optional"
   },

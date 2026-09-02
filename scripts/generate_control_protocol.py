@@ -30,6 +30,7 @@ PROTO_FILES = (
     "artifact.proto",
     "routing.proto",
     "integration.proto",
+    "model.proto",
     "validation.proto",
     "runner_control.proto",
 )

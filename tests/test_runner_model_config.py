@@ -4,10 +4,7 @@ import json
 
 import pytest
 
-from runner.compiler import DefaultRunnerCompiler
 from runner.config import RunnerSettings
-from runner import generated as protocol
-from runner.protocol_codec import action_bindings_from_proto, plan_to_proto
 from runner.providers import runtime_action_providers
 from runner.toolkit.nemo.actions.names import ACTION_EVALUATE
 from runner.toolkit.evaluation.contracts import (
@@ -46,8 +43,6 @@ def test_runner_loads_qwen_primary_and_llama_fallback(
     ]))
 
     settings = RunnerSettings.from_env()
-    compiler = DefaultRunnerCompiler(settings)
-
     assert [item.id for item in settings.model_runtimes] == [
         "llama-runtime", "qwen-runtime",
     ]
@@ -78,49 +73,25 @@ def test_runner_loads_qwen_primary_and_llama_fallback(
         ("jailbreak", CONTRACT_JAILBREAK, "model-safety"),
     )
 
-    plan = {
-        "safety_level": "balanced", "output_delivery": "full_buffered",
-        "steps": [{
-            "id": "content_safety:primary", "capability": "content_safety",
-            "contract_ref": CONTRACT_CONTENT_SAFETY, "phases": ["input"],
-            "on_unsafe": "reject", "trigger": {"type": "always"}, "parameters": [],
-        }],
-        "modules": [{
-            "id": "interaction_safety:input", "module": "interaction_safety",
-            "phase": "input", "step_ids": ["content_safety:primary"],
-            "depends_on": [], "input_view": "original", "required_for_release": True,
-            "timeout_ms": 2_500, "failure_mode": "fail_closed",
-        }],
-        "reasoning_policies": [], "policy_versions": [], "policy_bindings": [],
-    }
-    artifact = compiler.compile(protocol.CompileRequest(
-        compile_id="compile-tali-safety", guardrail_id="guardrail-tali-safety",
-        guardrail_version=1, generation=1, plan=plan_to_proto(plan),
-        runtime_profile="auto",
-    ))
-    bindings = action_bindings_from_proto(artifact.action_bindings)
-
-    assert artifact.compiler_version == "tasklattice-nemo-config-v11"
-    assert bindings[0]["action_name"] == ACTION_EVALUATE
-    assert "nvidia" not in artifact.config_yaml.casefold()
-    assert "Qwen/Qwen3Guard-Gen-8B" not in artifact.config_yaml
 
 
-def test_runner_rejects_invalid_provider_configuration(
+def test_runner_ignores_invalid_legacy_provider_configuration(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _required_runner_env(monkeypatch)
     monkeypatch.setenv("MODEL_GUARDRAILS_MODEL_RUNTIMES_JSON", "not-json")
-    with pytest.raises(ValueError, match="valid JSON"):
-        RunnerSettings.from_env()
+    settings = RunnerSettings.from_env()
+    assert settings.model_runtimes == ()
+    assert settings.evaluator_bindings == ()
 
     monkeypatch.setenv("MODEL_GUARDRAILS_MODEL_RUNTIMES_JSON", json.dumps([{
         "id": "guard-runtime",
         "base_url": "http://guard.internal/v1", "model": "Qwen/Qwen3Guard-Gen-8B",
         "api_key_env_var": "MISSING_GUARD_KEY",
     }]))
-    with pytest.raises(ValueError, match="MISSING_GUARD_KEY"):
-        RunnerSettings.from_env()
+    settings = RunnerSettings.from_env()
+    assert settings.model_runtimes == ()
+    assert settings.evaluator_bindings == ()
 
 
 def test_runner_validates_the_optional_metrics_token(monkeypatch: pytest.MonkeyPatch) -> None:

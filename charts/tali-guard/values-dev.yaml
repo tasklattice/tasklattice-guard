@@ -4,10 +4,9 @@
 # Build the two local images first:
 #   make images
 #
-# Then install everything required by the baseline deployment:
-#   helm upgrade --install tali-guard ./charts/tali-guard \
-#     --namespace tali --create-namespace --values ./charts/tali-guard/values-dev.yaml \
-#     --server-side=false --timeout 30s
+# Then upgrade (or install) everything required by the baseline deployment:
+#   bash scripts/helm-upgrade.sh tali-guard ./charts/tali-guard orbstack tali \
+#     --values ./charts/tali-guard/values-dev.yaml --wait --timeout 5m
 
 fullnameOverride: tali-guard
 

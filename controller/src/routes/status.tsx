@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { PageHeader, StateBadge } from "@/components/product-shell";
+import { SettingsNavigation } from "@/components/settings-navigation";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getControllerSystemStatus, type SystemStatus } from "@/lib/controller-api";
@@ -50,6 +51,7 @@ export function StatusPage() {
           </Button>
         )}
       />
+      <SettingsNavigation />
 
       {query.isLoading ? <StatusSkeleton /> : (
         <div className="mt-6 space-y-5">

@@ -15,6 +15,14 @@ import { sql } from "drizzle-orm";
 
 import type { GuardrailDraftConfig } from "../domain/guardrail-plan.js";
 import type { ValidationCaseResult, ValidationMetrics } from "../domain/models.js";
+import type {
+  ModelAssignments,
+  ModelProfile,
+  ModelProviderKind,
+  ModelResourceStatus,
+  ModelRevisionState,
+  ModelValidationReport,
+} from "../model-config/domain.js";
 import type { PolicyValidationResult, ProgrammablePolicyDraft, ProgrammablePolicySnapshot } from "../policy-studio/model.js";
 import type {
   GuardrailLifecycleState,
@@ -102,6 +110,64 @@ export const controllerState = pgTable("controller_state", {
   desiredGeneration: bigint("desired_generation", { mode: "number" }).notNull().default(0),
   updatedAt,
 });
+
+export const modelProviders = pgTable("model_provider", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  kind: text("kind").$type<ModelProviderKind>().notNull(),
+  baseUrl: text("base_url").notNull(),
+  credentialCiphertext: text("credential_ciphertext").notNull(),
+  credentialHint: text("credential_hint").notNull().default("Not required"),
+  status: text("status").$type<ModelResourceStatus>().notNull().default("pending"),
+  validationMessage: text("validation_message").notNull().default("Not validated."),
+  validationLatencyMs: integer("validation_latency_ms"),
+  validatedAt: timestamp("validated_at", { withTimezone: true }),
+  createdBy: text("created_by").references(() => user.id),
+  createdAt,
+  updatedAt,
+}, (table) => [
+  uniqueIndex("model_provider_name_idx").on(table.name),
+  index("model_provider_status_idx").on(table.status),
+]);
+
+export const modelDefinitions = pgTable("model_definition", {
+  id: text("id").primaryKey(),
+  providerId: text("provider_id").notNull().references(() => modelProviders.id, { onDelete: "restrict" }),
+  name: text("name").notNull(),
+  model: text("model").notNull(),
+  profile: text("profile").$type<ModelProfile>().notNull().default("generic-chat"),
+  timeoutSeconds: integer("timeout_seconds").notNull().default(20),
+  maxTokens: integer("max_tokens").notNull().default(512),
+  status: text("status").$type<ModelResourceStatus>().notNull().default("pending"),
+  validationMessage: text("validation_message").notNull().default("Not validated."),
+  validationLatencyMs: integer("validation_latency_ms"),
+  validatedAt: timestamp("validated_at", { withTimezone: true }),
+  createdBy: text("created_by").references(() => user.id),
+  createdAt,
+  updatedAt,
+}, (table) => [
+  uniqueIndex("model_definition_provider_model_idx").on(table.providerId, table.model, table.profile),
+  index("model_definition_provider_idx").on(table.providerId),
+  index("model_definition_status_idx").on(table.status),
+]);
+
+export const modelConfigurationRevisions = pgTable("model_configuration_revision", {
+  id: text("id").primaryKey(),
+  revision: integer("revision").notNull(),
+  state: text("state").$type<ModelRevisionState>().notNull().default("draft"),
+  generation: bigint("generation", { mode: "number" }),
+  assignments: jsonb("assignments").$type<ModelAssignments>().notNull(),
+  validationReport: jsonb("validation_report").$type<ModelValidationReport>(),
+  failureReason: text("failure_reason"),
+  validatedAt: timestamp("validated_at", { withTimezone: true }),
+  activatedAt: timestamp("activated_at", { withTimezone: true }),
+  createdBy: text("created_by").references(() => user.id),
+  createdAt,
+  updatedAt,
+}, (table) => [
+  uniqueIndex("model_configuration_revision_number_idx").on(table.revision),
+  index("model_configuration_revision_state_idx").on(table.state),
+]);
 
 export const policyRecords = pgTable("policy_record", {
   id: text("id").primaryKey(),
@@ -372,6 +438,9 @@ export const schema = {
   account,
   verification,
   controllerState,
+  modelProviders,
+  modelDefinitions,
+  modelConfigurationRevisions,
   runnerPools,
   guardrails,
   guardrailVersions,

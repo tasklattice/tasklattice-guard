@@ -5,6 +5,7 @@ import hmac
 import json
 import fnmatch
 import threading
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from runner.toolkit.nemo.registry import NeMoRuntimeRegistry
+from runner.toolkit.nemo.action_registry import ActionProviders
 from runner.toolkit.runtime.contracts import (
     GuardrailPlanSnapshot,
     NeMoConfigSnapshot,
@@ -28,6 +30,9 @@ from .protocol_codec import (
     traffic_scope_from_proto,
 )
 from .serialization import config_from_dict, plan_from_dict
+
+
+logger = logging.getLogger("tasklattice.guard.runner.artifact_store")
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,7 +75,16 @@ class ArtifactStore:
     def attach_registry(self, registry: NeMoRuntimeRegistry) -> None:
         self._registry = registry
         if self._persisted_state is not None:
-            self.apply(self._persisted_state, persist=False)
+            try:
+                self.apply(self._persisted_state, persist=False)
+            except Exception:
+                # Dynamic Model credentials are intentionally not persisted on
+                # the Runner. A fresh Controller sync will lease them again.
+                logger.warning(
+                    "Last-known-good state needs a fresh Controller Model credential lease; "
+                    "Runner will stay unready until synchronization.",
+                    exc_info=True,
+                )
             self._persisted_state = None
 
     @property
@@ -214,7 +228,13 @@ class ArtifactStore:
             value = self._logging_levels.get(guardrail_id, "info")
         return value if value in {"info", "debug", "trace"} else "info"
 
-    def apply(self, desired_state: Any, *, persist: bool = True) -> None:
+    def apply(
+        self,
+        desired_state: Any,
+        *,
+        persist: bool = True,
+        providers: ActionProviders | None = None,
+    ) -> None:
         generation = int(desired_state.generation)
         with self._lock:
             if generation < self._generation:
@@ -244,8 +264,14 @@ class ArtifactStore:
         registry = self._registry
         if registry is None:
             raise RuntimeError("NeMo Runtime Registry is not attached.")
-        for artifact in staged.values():
-            registry.validate(artifact.plan, artifact.config)
+        if providers is None:
+            for artifact in staged.values():
+                registry.validate(artifact.plan, artifact.config)
+        else:
+            registry.replace_providers(
+                providers,
+                tuple((artifact.plan, artifact.config) for artifact in staged.values()),
+            )
         with self._lock:
             self._artifacts = staged
             self._routes = routes
@@ -254,7 +280,10 @@ class ArtifactStore:
             self._generation = generation
             if persist:
                 self._persist_snapshot(desired_state)
-        registry.reload()
+        if providers is None:
+            registry.reload()
+        else:
+            registry.readiness()
 
     def _artifact_from_message(self, message: Any) -> RuntimeArtifact:
         content = artifact_content(message)

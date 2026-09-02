@@ -215,17 +215,15 @@ describe("Policy detail", () => {
     expect(onConfirm).toHaveBeenCalledOnce();
   });
 
-  it("presents Rail types with canonical names and model-position guidance", () => {
+  it("omits implementation-only Rail types from user-facing filters", () => {
     const onChange = vi.fn();
     const railTag = policy.tags.find((tag) => tag.namespace === "rail");
     if (!railTag) throw new Error("Rail fixture is required");
 
     render(<TagFilters facets={new Map([["rail", [railTag]]])} selected={new Set()} onChange={onChange} />);
 
-    const option = screen.getByRole("button", { name: /Input rail.*Before the main model/ });
-    expect(option.getAttribute("aria-pressed")).toBe("false");
-    expect(screen.queryByText("Traffic stage")).toBeNull();
-    fireEvent.click(option);
-    expect(onChange).toHaveBeenCalledWith(new Set(["rail:input"]));
+    expect(screen.queryByText("Rail type")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Input rail/ })).toBeNull();
+    expect(onChange).not.toHaveBeenCalled();
   });
 });

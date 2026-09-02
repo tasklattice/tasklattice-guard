@@ -34,7 +34,11 @@ const names: Record<string, { group: string; page: string }> = {
   "/activity": { group: "nav.assurance", page: "nav.activity" },
   "/access": { group: "nav.system", page: "nav.access" },
   "/account": { group: "nav.system", page: "account.title" },
+  "/settings": { group: "nav.settings", page: "nav.status" },
   "/settings/status": { group: "nav.settings", page: "nav.status" },
+  "/settings/providers": { group: "nav.settings", page: "nav.providers" },
+  "/settings/models": { group: "nav.settings", page: "nav.models" },
+  "/settings/capabilities": { group: "nav.settings", page: "nav.capabilities" },
   "/help": { group: "nav.helpResources", page: "nav.helpCenter" },
 };
 

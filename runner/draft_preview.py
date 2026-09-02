@@ -178,6 +178,14 @@ class DraftPreviewRuntime:
             await asyncio.gather(*cleanup_tasks, return_exceptions=True)
         await _shutdown(entries)
 
+    async def replace_providers(self, providers: ActionProviders) -> None:
+        """Use a new active Provider registry for subsequently prepared previews."""
+        async with self._lock:
+            entries = list(self._items.values())
+            self._items.clear()
+            self._providers = providers
+        await _shutdown(entries)
+
     def _prune_locked(self) -> list[_PreviewEntry]:
         now = time.monotonic()
         expired = [key for key, item in self._items.items() if item.expires_at <= now]

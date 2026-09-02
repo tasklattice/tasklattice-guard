@@ -51,9 +51,38 @@ _LLAMA_GUARD_3 = (
     ProviderCategoryMapping("S14", "TALI-TOOL-SECURITY-CODE-INTERPRETER-ABUSE", "direct"),
 )
 
+_NEMOTRON_CONTENT_SAFETY = (
+    ProviderCategoryMapping("Violence", "TALI-PHYSICAL-HARM", "parent", True),
+    ProviderCategoryMapping("Criminal Planning/Confessions", "TALI-ILLEGAL-ACTIVITY", "parent", True),
+    ProviderCategoryMapping("Guns and Illegal Weapons", "TALI-PHYSICAL-HARM-WEAPONS", "direct"),
+    ProviderCategoryMapping("Controlled/Regulated Substances", "TALI-ILLEGAL-ACTIVITY-DRUGS", "direct"),
+    ProviderCategoryMapping("Sexual", "TALI-SEXUAL-SAFETY-CONTENT", "direct"),
+    ProviderCategoryMapping("Sexual (minor)", "TALI-SEXUAL-SAFETY-CHILD-EXPLOITATION", "direct"),
+    ProviderCategoryMapping("Suicide and Self Harm", "TALI-SELF-HARM", "direct"),
+    ProviderCategoryMapping("Hate/Identity Hate", "TALI-SOCIAL-HARM-HATE", "direct"),
+    ProviderCategoryMapping("PII/Privacy", "TALI-PRIVACY", "parent", True),
+    ProviderCategoryMapping("Harassment", "TALI-SOCIAL-HARM-HARASSMENT", "direct"),
+    ProviderCategoryMapping("Threat", "TALI-SOCIAL-HARM-THREAT", "direct"),
+    ProviderCategoryMapping("Profanity", "TALI-SOCIAL-HARM-HARASSMENT", "partial"),
+    ProviderCategoryMapping("Fraud/Deception", "TALI-ILLEGAL-ACTIVITY-FRAUD", "direct"),
+    ProviderCategoryMapping("Malware", "TALI-ILLEGAL-ACTIVITY-CYBER", "direct"),
+    ProviderCategoryMapping("Political/Misinformation/Conspiracy", "TALI-CIVIC-INTEGRITY-POLITICAL-MISINFORMATION", "direct"),
+    ProviderCategoryMapping("Copyright/Trademark/Plagiarism", "TALI-INTELLECTUAL-PROPERTY", "parent", True),
+    ProviderCategoryMapping("Unauthorized Advice", "TALI-PROFESSIONAL-ADVICE", "parent", True),
+    ProviderCategoryMapping("Illegal Activity", "TALI-ILLEGAL-ACTIVITY", "parent", True),
+    ProviderCategoryMapping("Immoral/Unethical", "TALI-SOCIAL-HARM", "partial", True),
+)
+
 _MAPPINGS = {
     "qwen3guard": {_normalized(item.native_category): item for item in _QWEN3GUARD},
     "llama_guard_3": {_normalized(item.native_category): item for item in _LLAMA_GUARD_3},
+    "nemotron_content_safety": {_normalized(item.native_category): item for item in _NEMOTRON_CONTENT_SAFETY},
+    # Safety Guard v3 keeps NVIDIA's native category vocabulary while changing
+    # the prompt and response envelope to strict JSON.
+    "nemotron_safety_guard_v3": {
+        _normalized(item.native_category): item
+        for item in _NEMOTRON_CONTENT_SAFETY
+    },
 }
 
 

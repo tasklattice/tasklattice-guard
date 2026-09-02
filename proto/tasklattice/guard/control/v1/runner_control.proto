@@ -4,6 +4,7 @@ package tasklattice.guard.control.v1;
 
 import "artifact.proto";
 import "integration.proto";
+import "model.proto";
 import "routing.proto";
 import "validation.proto";
 
@@ -27,6 +28,7 @@ message RunnerMessage {
     ArtifactResult artifact_result = 12;
     CompileResult compile_result = 13;
     ValidationResult validation_result = 14;
+    DesiredStateResult desired_state_result = 15;
   }
 }
 
@@ -122,6 +124,20 @@ message DesiredState {
   repeated DeploymentRoute deployments = 5;
   repeated IntegrationRuntime integrations = 6;
   map<string, string> guardrail_logging_levels = 7;
+  DataPlaneModelConfiguration model_configuration = 8;
+}
+
+// ACK/NACK for the complete atomic desired-state generation. A NACK keeps the
+// prior artifacts, routes, integrations, and model Provider registry active.
+message DesiredStateResult {
+  string runner_id = 1;
+  // Complete desired-state generation that was either applied or rejected.
+  int64 generation = 2;
+  // True only after the full generation has been prewarmed and swapped in.
+  bool accepted = 3;
+  // Human-readable NACK detail; empty for an ACK.
+  string reason = 4;
+  string model_revision_id = 5;
 }
 
 // Ordered traffic route from one Integration to one immutable artifact.

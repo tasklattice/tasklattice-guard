@@ -23,6 +23,83 @@ export type SystemStatus = {
   };
 };
 
+export type ModelProviderKind = "openai" | "qwen" | "deepseek" | "vllm" | "ollama" | "custom-openai-compatible";
+export type ModelProfile = "generic-chat" | "tali.qwen3guard.v1" | "tali.llama-guard-3.v1" | "tali.nemotron-content-safety.v1" | "tali.nemotron-safety-guard-v3.v1" | "tali.nemoguard-topic-control.v1" | "tali.nemotron-nano-jailbreak.v1" | "tali.taxonomy-judge.v1" | "tali.grounding-judge.v1" | "tali.automated-reasoning.v1";
+export type ModelRole = "control_plane" | "safety_evaluator" | "jailbreak_evaluator" | "topic_policy_judge" | "grounding_judge" | "automated_reasoning";
+export type ModelAssignments = Record<ModelRole, string | null>;
+
+export type ModelProvider = {
+  id: string;
+  name: string;
+  kind: ModelProviderKind;
+  baseUrl: string;
+  credentialHint: string | null;
+  credentialConfigured: boolean;
+  status: "pending" | "validated" | "failed";
+  validationMessage: string | null;
+  validationLatencyMs: number | null;
+  validatedAt: string | null;
+};
+
+export type DiscoveredProviderModels = {
+  providerId: string;
+  providerName: string;
+  models: Array<{ id: string; name: string }>;
+};
+
+export type ModelDefinition = {
+  id: string;
+  providerId: string;
+  providerName: string;
+  providerKind: ModelProviderKind;
+  name: string;
+  model: string;
+  profile: ModelProfile;
+  timeoutSeconds: number;
+  maxTokens: number;
+  status: "pending" | "validated" | "failed";
+  validationMessage: string | null;
+  validationLatencyMs: number | null;
+  validatedAt: string | null;
+};
+
+export type ModelValidationReport = {
+  valid: boolean;
+  checkedAt: string;
+  checks: Array<{
+    id: string;
+    scope: "configuration" | "provider" | "model" | "capability";
+    status: "passed" | "failed" | "skipped";
+    message: string;
+    latencyMs?: number;
+  }>;
+  capabilities: Array<{ contract: string; source: "local" | "model"; modelId: string | null }>;
+  policies: Array<{ id: string; name: string; status: "ready" | "blocked"; missingContracts: string[] }>;
+};
+
+export type ModelConfigurationRevision = {
+  id: string;
+  revision: number;
+  state: "draft" | "validated" | "activating" | "active" | "superseded" | "failed";
+  generation: number | null;
+  assignments: ModelAssignments;
+  validationReport: ModelValidationReport | null;
+  failureReason: string | null;
+  validatedAt: string | null;
+  activatedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ModelConfigurationView = {
+  providers: ModelProvider[];
+  models: ModelDefinition[];
+  draft: ModelConfigurationRevision;
+  active: ModelConfigurationRevision | null;
+  activating: ModelConfigurationRevision | null;
+  failed: ModelConfigurationRevision | null;
+};
+
 export type GuardrailDraftConfig = {
   purposeDetails: {
     audience: string;
@@ -312,6 +389,18 @@ export const getControllerSystemStatus = async () => {
   if (response.status === 200 || response.status === 503) return response.json() as Promise<SystemStatus>;
   throw new Error(`System status failed with status ${response.status}.`);
 };
+export const getModelConfiguration = () => requestController<ModelConfigurationView>("/api/v1/model-configuration");
+export const createModelProvider = (input: { name: string; kind: ModelProviderKind; baseUrl: string; apiKey?: string }) => requestController<ModelProvider>("/api/v1/model-providers", json("POST", input));
+export const revalidateModelProvider = (id: string) => requestController<ModelProvider>(`/api/v1/model-providers/${encodeURIComponent(id)}/validate`, json("POST"));
+export const discoverModelProvider = (id: string) => requestController<DiscoveredProviderModels>(`/api/v1/model-providers/${encodeURIComponent(id)}/discover`, json("POST"));
+export const deleteModelProvider = (id: string) => requestController<void>(`/api/v1/model-providers/${encodeURIComponent(id)}`, json("DELETE"));
+export const createModelDefinition = (input: { providerId: string; name: string; model: string; profile: ModelProfile; timeoutSeconds: number; maxTokens: number }) => requestController<ModelDefinition>("/api/v1/models", json("POST", input));
+export const revalidateModelDefinition = (id: string) => requestController<ModelDefinition>(`/api/v1/models/${encodeURIComponent(id)}/validate`, json("POST"));
+export const deleteModelDefinition = (id: string) => requestController<void>(`/api/v1/models/${encodeURIComponent(id)}`, json("DELETE"));
+export const saveModelAssignments = (assignments: ModelAssignments) => requestController<ModelConfigurationRevision>("/api/v1/model-configuration/draft", json("PUT", assignments));
+export const validateModelConfiguration = () => requestController<ModelConfigurationRevision>("/api/v1/model-configuration/validate", json("POST"));
+export const activateModelConfiguration = (revisionId: string) => requestController<ModelConfigurationView & { distribution: { desiredGeneration: number; distributionStatus: "ready" | "syncing" } }>(`/api/v1/model-configuration/${encodeURIComponent(revisionId)}/activate`, json("POST"));
+export const rollbackModelConfiguration = () => requestController<ModelConfigurationView & { distribution: { desiredGeneration: number; distributionStatus: "ready" | "syncing" } }>("/api/v1/model-configuration/rollback", json("POST"));
 export const listControllerGuardrails = () => requestController<Collection<Guardrail>>("/api/v1/guardrails");
 export const getControllerGuardrail = (id: string) => requestController<GuardrailDetail>(`/api/v1/guardrails/${encodeURIComponent(id)}`);
 export const createControllerGuardrail = (input: Pick<Guardrail, "name" | "description" | "draftConfig" | "runtimeProfile">) => requestController<Guardrail>("/api/v1/guardrails", json("POST", input));

@@ -174,6 +174,52 @@ describe("Controller Guardrail plan", () => {
       }),
     ]));
   });
+  it.each(["interruptible", "window_buffered", "full_buffered"] as const)(
+    "preserves the %s output-delivery flag in the immutable Plan",
+    (outputDelivery) => {
+      const plan = buildGuardrailPlan({
+        guardrailId: `guardrail-${outputDelivery}`,
+        guardrailVersion: 1,
+        draft: {
+          allowedTopics: [],
+          restrictedTopics: [],
+          policyBindings: [nativeBinding("builtin-secrets")],
+          safetyLevel: "balanced",
+          outputDelivery,
+        },
+      });
+
+      expect(plan.output_delivery).toBe(outputDelivery);
+    },
+  );
+
+  it("preserves selected Rails and per-binding enforcement flags", () => {
+    const plan = buildGuardrailPlan({
+      guardrailId: "guardrail-rail-flags",
+      guardrailVersion: 2,
+      draft: {
+        allowedTopics: [],
+        restrictedTopics: [],
+        safetyLevel: "balanced",
+        outputDelivery: "full_buffered",
+        policyBindings: [{
+          ...nativeBinding("builtin-secrets"),
+          action: "redact",
+          enabledRails: ["output"],
+        }],
+      },
+    });
+
+    expect(plan.steps).toEqual([
+      expect.objectContaining({ phases: ["output"], on_unsafe: "redact" }),
+    ]);
+    expect(plan.modules).toEqual([
+      expect.objectContaining({ id: "data_protection:output", phase: "output" }),
+    ]);
+    expect(plan.policy_bindings).toEqual([
+      expect.objectContaining({ action: "redact", enabled_rails: ["output"] }),
+    ]);
+  });
 });
 
 function nativeBinding(policyId: string) {

@@ -9,6 +9,7 @@ import { StatusPage } from "./status";
 
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ children }: { children: ReactNode }) => <a href="/runners">{children}</a>,
+  useRouterState: ({ select }: { select: (state: { location: { pathname: string } }) => string }) => select({ location: { pathname: "/settings/status" } }),
 }));
 
 vi.mock("@/lib/controller-api", async (importOriginal) => {

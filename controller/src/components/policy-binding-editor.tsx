@@ -103,7 +103,12 @@ export function PolicyBindingEditor({
               return (
                 <AutoOpenDetails key={binding.policy_id} className="group" autoOpen={Boolean(validationLabel)}>
                   <summary
-                    aria-label={t("guardrailWizard.boundPolicyDetails", { name: policy.name })}
+                    aria-label={t(
+                      validationLabel
+                        ? "guardrailWizard.boundPolicyDetailsRequiresConfiguration"
+                        : "guardrailWizard.boundPolicyDetails",
+                      { name: policy.name },
+                    )}
                     className="flex min-h-14 cursor-pointer list-none items-center gap-3 px-4 py-3 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [&::-webkit-details-marker]:hidden"
                     onKeyDown={(event) => {
                       if (event.repeat || (event.key !== "Enter" && event.key !== " ")) return;
@@ -114,7 +119,18 @@ export function PolicyBindingEditor({
                   >
                     <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><ShieldCheck className="size-4" /></span>
                     <span className="min-w-0 flex-1">
-                      <strong className="block truncate text-sm">{policy.name}</strong>
+                      <span className="flex min-w-0 items-center gap-1">
+                        <strong className="min-w-0 truncate text-sm">{policy.name}</strong>
+                        {validationLabel ? (
+                          <span
+                            aria-hidden="true"
+                            className="-translate-y-0.5 shrink-0 text-base font-semibold leading-none text-destructive"
+                            data-testid="required-configuration-indicator"
+                          >
+                            *
+                          </span>
+                        ) : null}
+                      </span>
                       <span className="font-mono text-xs text-muted-foreground">{binding.policy_id}@{binding.policy_version}</span>
                       {validationLabel ? <span className="mt-1 block text-xs font-medium text-destructive">{validationLabel}</span> : null}
                     </span>

@@ -4,6 +4,7 @@ import os
 import socket
 import base64
 import json
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -12,6 +13,9 @@ from runner.toolkit.safety.providers import (
     ModelRuntimeConfig,
     resolve_evaluator_model_providers,
 )
+
+
+logger = logging.getLogger("tasklattice.guard.runner.config")
 
 
 def _boolean(name: str, default: bool) -> bool:
@@ -94,22 +98,35 @@ class RunnerSettings:
             )
         if all(tls_values) and not metrics_token:
             raise ValueError("GUARD_METRICS_TOKEN is required with production control-channel mTLS.")
-        model_runtimes = _model_runtimes(
-            os.environ.get("MODEL_GUARDRAILS_MODEL_RUNTIMES_JSON", "")
-        )
-        evaluator_bindings = _evaluator_bindings(
-            os.environ.get("MODEL_GUARDRAILS_EVALUATOR_BINDINGS_JSON", "")
-        )
-        # Validate every binding/profile reference before the runtime starts.
-        resolve_evaluator_model_providers(model_runtimes, evaluator_bindings)
-        for runtime in model_runtimes:
-            if runtime.api_key_env_var and not os.environ.get(
-                runtime.api_key_env_var, ""
-            ).strip():
+        try:
+            model_runtimes = _model_runtimes(
+                os.environ.get("MODEL_GUARDRAILS_MODEL_RUNTIMES_JSON", "")
+            )
+            evaluator_bindings = _evaluator_bindings(
+                os.environ.get("MODEL_GUARDRAILS_EVALUATOR_BINDINGS_JSON", "")
+            )
+            # Legacy environment settings are only a bootstrap fallback. The
+            # Controller-owned revision replaces them after the first sync.
+            resolve_evaluator_model_providers(model_runtimes, evaluator_bindings)
+            missing_credentials = [
+                runtime.api_key_env_var
+                for runtime in model_runtimes
+                if runtime.api_key_env_var
+                and not os.environ.get(runtime.api_key_env_var, "").strip()
+            ]
+            if missing_credentials:
                 raise ValueError(
-                    f"{runtime.api_key_env_var} is required by Model Runtime "
-                    f"{runtime.id!r}."
+                    "Legacy Model Runtime credentials are unavailable: "
+                    + ", ".join(sorted(set(missing_credentials)))
                 )
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+            logger.warning(
+                "Ignoring invalid legacy Model Runtime environment configuration; "
+                "configure Models in Controller Settings instead: %s",
+                error,
+            )
+            model_runtimes = ()
+            evaluator_bindings = ()
         runtime_log_key_value = os.environ.get(
             "MODEL_GUARDRAILS_RUNTIME_LOG_ENCRYPTION_KEY", ""
         ).strip()
@@ -134,15 +151,15 @@ class RunnerSettings:
             "MODEL_GUARDRAILS_AUTOMATED_REASONING_API_KEY_ENV_VAR",
             "MODEL_GUARDRAILS_AUTOMATED_REASONING_API_KEY",
         ).strip() or "MODEL_GUARDRAILS_AUTOMATED_REASONING_API_KEY"
-        if automated_reasoning_endpoint_url:
-            if not automated_reasoning_endpoint_url.startswith(("http://", "https://")):
-                raise ValueError(
-                    "MODEL_GUARDRAILS_AUTOMATED_REASONING_ENDPOINT_URL must be an HTTP(S) URL."
-                )
-            if not os.environ.get(automated_reasoning_api_key_env_var, "").strip():
-                raise ValueError(
-                    f"{automated_reasoning_api_key_env_var} is required when Automated Reasoning is configured."
-                )
+        if automated_reasoning_endpoint_url and (
+            not automated_reasoning_endpoint_url.startswith(("http://", "https://"))
+            or not os.environ.get(automated_reasoning_api_key_env_var, "").strip()
+        ):
+            logger.warning(
+                "Ignoring incomplete legacy Automated Reasoning configuration; "
+                "configure it in Controller Settings instead."
+            )
+            automated_reasoning_endpoint_url = ""
         return cls(
             runner_id=runner_id,
             pool_id=pool_id,

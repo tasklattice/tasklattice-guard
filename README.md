@@ -181,7 +181,9 @@ make runner-run
 Controller runs database migrations and idempotently creates the bootstrap
 administrator through Better Auth. With the example local configuration, sign
 in as `admin` / `admin`; the corresponding internal Better Auth email is
-`admin@tasklattice.local`. Run all automated checks with:
+`admin@tasklattice.local`. The test suite is split into independent control
+plane, data plane, Controller/Runner communication, and contract gates; see
+[Test architecture](docs/testing.md). Run all automated checks with:
 
 ```bash
 make test
@@ -202,15 +204,18 @@ ownership and extension rules.
 
 ## Kubernetes deployment
 
-The self-contained OrbStack profile builds both images and installs Controller,
+The self-contained OrbStack profile builds both images and upgrades or installs Controller,
 two GuardRails 0 Runners, development PostgreSQL and Redis, bootstrap identity,
 artifact signing, and control-channel mTLS with:
 
 ```bash
-make helm-install
+make install
 ```
 
-Use `make helm-install-debug` for the same OrbStack deployment with the
+This single command upgrades an existing release or installs a missing one, then
+waits for workload readiness. It does not uninstall the release or clear data.
+
+Use `make install-debug` for the same OrbStack deployment with the
 `values-debug.yaml` overlay and all performance diagnostics enabled.
 
 If `.env` contains the configured Qwen/Llama Provider credentials, the same

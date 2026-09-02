@@ -71,6 +71,27 @@ function parseConfiguration<T>(value: string, name: string, schema: z.ZodType<T>
   return schema.parse(decoded);
 }
 
+function parseLegacyConfiguration<T>(value: string, name: string, schema: z.ZodType<T>, fallback: T): T {
+  try {
+    return parseConfiguration(value, name, schema);
+  } catch (error) {
+    process.stderr.write(
+      `Ignoring invalid legacy ${name}; configure Models in Controller Settings instead: ${error instanceof Error ? error.message : "unknown error"}\n`,
+    );
+    return fallback;
+  }
+}
+
+function httpUrl(value: string | undefined): string | null {
+  if (!value) return null;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? value.replace(/\/$/, "") : null;
+  } catch {
+    return null;
+  }
+}
+
 const environmentSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   CONTROLLER_HTTP_HOST: z.string().default("0.0.0.0"),
@@ -105,11 +126,11 @@ const environmentSchema = z.object({
   CONTROLLER_BOOTSTRAP_ADMIN_EMAIL: z.string().email().optional(),
   CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD: z.string().min(1).optional(),
   CONTROLLER_BOOTSTRAP_ADMIN_NAME: z.string().min(1).default("Administrator"),
-  MODEL_GUARDRAILS_CONTROL_PLANE_AI_BASE_URL: z.string().url().optional(),
+  MODEL_GUARDRAILS_CONTROL_PLANE_AI_BASE_URL: z.string().trim().optional(),
   MODEL_GUARDRAILS_CONTROL_PLANE_AI_MODEL: z.string().min(1).optional(),
   MODEL_GUARDRAILS_CONTROL_PLANE_AI_API_KEY: z.string().min(1).optional(),
   MODEL_GUARDRAILS_CONTROL_PLANE_AI_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(120_000).default(45_000),
-  MODEL_GUARDRAILS_PLAYGROUND_CHAT_BASE_URL: z.string().url().optional(),
+  MODEL_GUARDRAILS_PLAYGROUND_CHAT_BASE_URL: z.string().trim().optional(),
   MODEL_GUARDRAILS_PLAYGROUND_CHAT_MODEL: z.string().min(1).optional(),
   MODEL_GUARDRAILS_PLAYGROUND_CHAT_API_KEY: z.string().min(1).optional(),
   MODEL_GUARDRAILS_RUNTIME_LOG_ENCRYPTION_KEY: z.string().trim().min(1).optional(),
@@ -120,7 +141,7 @@ const environmentSchema = z.object({
   MODEL_GUARDRAILS_CONTROL_PLANE_AI_PROVIDER: z.string().trim().min(1).default("Qwen"),
   MODEL_GUARDRAILS_MODEL_RUNTIMES_JSON: z.string().default("[]"),
   MODEL_GUARDRAILS_EVALUATOR_BINDINGS_JSON: z.string().default("[]"),
-  MODEL_GUARDRAILS_AUTOMATED_REASONING_ENDPOINT_URL: z.string().url().optional(),
+  MODEL_GUARDRAILS_AUTOMATED_REASONING_ENDPOINT_URL: z.string().trim().optional(),
 }).superRefine((value, context) => {
   const publicHostname = new URL(value.CONTROLLER_PUBLIC_URL).hostname;
   const isLoopback = ["localhost", "127.0.0.1", "::1"].includes(publicHostname);
@@ -150,25 +171,6 @@ const environmentSchema = z.object({
       message: "CONTROLLER_BOOTSTRAP_ADMIN_EMAIL and CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD must be configured together.",
     });
   }
-  if (value.MODEL_GUARDRAILS_CONTROL_PLANE_AI_BASE_URL && !value.MODEL_GUARDRAILS_CONTROL_PLANE_AI_MODEL) {
-    context.addIssue({
-      code: "custom",
-      message: "MODEL_GUARDRAILS_CONTROL_PLANE_AI_BASE_URL and MODEL_GUARDRAILS_CONTROL_PLANE_AI_MODEL must be configured together.",
-    });
-  }
-  if (value.MODEL_GUARDRAILS_CONTROL_PLANE_AI_API_KEY && !value.MODEL_GUARDRAILS_CONTROL_PLANE_AI_BASE_URL) {
-    context.addIssue({
-      code: "custom",
-      path: ["MODEL_GUARDRAILS_CONTROL_PLANE_AI_API_KEY"],
-      message: "The control-plane AI base URL and model are required when its API key is configured.",
-    });
-  }
-  if (Boolean(value.MODEL_GUARDRAILS_PLAYGROUND_CHAT_BASE_URL) !== Boolean(value.MODEL_GUARDRAILS_PLAYGROUND_CHAT_MODEL)) {
-    context.addIssue({ code: "custom", message: "MODEL_GUARDRAILS_PLAYGROUND_CHAT_BASE_URL and MODEL_GUARDRAILS_PLAYGROUND_CHAT_MODEL must be configured together." });
-  }
-  if (value.MODEL_GUARDRAILS_PLAYGROUND_CHAT_API_KEY && !value.MODEL_GUARDRAILS_PLAYGROUND_CHAT_BASE_URL) {
-    context.addIssue({ code: "custom", message: "Playground base URL and model are required when its API key is configured." });
-  }
   if (
     value.CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD
     && value.CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD.length < value.BETTER_AUTH_MIN_PASSWORD_LENGTH
@@ -186,38 +188,43 @@ export type ControllerConfig = ReturnType<typeof loadConfig>;
 
 export function loadConfig(environment: NodeJS.ProcessEnv = process.env) {
   const parsed = environmentSchema.parse(environment);
-  const modelRuntimes = parseConfiguration(
+  const modelRuntimes = parseLegacyConfiguration(
     parsed.MODEL_GUARDRAILS_MODEL_RUNTIMES_JSON,
     "MODEL_GUARDRAILS_MODEL_RUNTIMES_JSON",
     modelRuntimeList,
+    [],
   );
-  const evaluatorBindings = parseConfiguration(
+  const parsedEvaluatorBindings = parseLegacyConfiguration(
     parsed.MODEL_GUARDRAILS_EVALUATOR_BINDINGS_JSON,
     "MODEL_GUARDRAILS_EVALUATOR_BINDINGS_JSON",
     evaluatorBindingList,
+    [],
   );
   const modelRuntimeIds = new Set(modelRuntimes.map((item) => item.id));
-  const unknownRuntimeBindings = evaluatorBindings.filter((item) => !modelRuntimeIds.has(item.model_ref));
+  const unknownRuntimeBindings = parsedEvaluatorBindings.filter((item) => !modelRuntimeIds.has(item.model_ref));
   if (unknownRuntimeBindings.length) {
-    throw new Error(`Evaluator Bindings reference unknown Model Runtimes: ${unknownRuntimeBindings.map((item) => item.model_ref).join(", ")}.`);
+    process.stderr.write(`Ignoring legacy Evaluator Bindings that reference unknown Model Runtimes: ${unknownRuntimeBindings.map((item) => item.model_ref).join(", ")}. Configure Models in Controller Settings instead.\n`);
   }
-  const controlPlaneAi = parsed.MODEL_GUARDRAILS_CONTROL_PLANE_AI_BASE_URL
+  const controlPlaneBaseUrl = httpUrl(parsed.MODEL_GUARDRAILS_CONTROL_PLANE_AI_BASE_URL);
+  const playgroundBaseUrl = httpUrl(parsed.MODEL_GUARDRAILS_PLAYGROUND_CHAT_BASE_URL);
+  const automatedReasoningUrl = httpUrl(parsed.MODEL_GUARDRAILS_AUTOMATED_REASONING_ENDPOINT_URL);
+  const controlPlaneAi = controlPlaneBaseUrl
     && parsed.MODEL_GUARDRAILS_CONTROL_PLANE_AI_MODEL
     && parsed.MODEL_GUARDRAILS_CONTROL_PLANE_AI_API_KEY
     ? {
         provider: parsed.MODEL_GUARDRAILS_CONTROL_PLANE_AI_PROVIDER,
-        baseUrl: parsed.MODEL_GUARDRAILS_CONTROL_PLANE_AI_BASE_URL.replace(/\/$/, ""),
+        baseUrl: controlPlaneBaseUrl,
         model: parsed.MODEL_GUARDRAILS_CONTROL_PLANE_AI_MODEL,
         apiKey: parsed.MODEL_GUARDRAILS_CONTROL_PLANE_AI_API_KEY,
         timeoutMs: parsed.MODEL_GUARDRAILS_CONTROL_PLANE_AI_TIMEOUT_MS,
       }
     : null;
-  const playgroundChat = parsed.MODEL_GUARDRAILS_PLAYGROUND_CHAT_BASE_URL
+  const playgroundChat = playgroundBaseUrl
     && parsed.MODEL_GUARDRAILS_PLAYGROUND_CHAT_MODEL
     && parsed.MODEL_GUARDRAILS_PLAYGROUND_CHAT_API_KEY
     ? {
         provider: "OpenAI-compatible",
-        baseUrl: parsed.MODEL_GUARDRAILS_PLAYGROUND_CHAT_BASE_URL.replace(/\/$/, ""),
+        baseUrl: playgroundBaseUrl,
         model: parsed.MODEL_GUARDRAILS_PLAYGROUND_CHAT_MODEL,
         apiKey: parsed.MODEL_GUARDRAILS_PLAYGROUND_CHAT_API_KEY,
         timeoutMs: parsed.MODEL_GUARDRAILS_CONTROL_PLANE_AI_TIMEOUT_MS,
@@ -274,8 +281,8 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env) {
             id: item.id,
             model: item.model,
           })),
-          ...(parsed.MODEL_GUARDRAILS_AUTOMATED_REASONING_ENDPOINT_URL
-            ? [{ id: "automated-reasoning", model: parsed.MODEL_GUARDRAILS_AUTOMATED_REASONING_ENDPOINT_URL }]
+          ...(automatedReasoningUrl
+            ? [{ id: "automated-reasoning", model: automatedReasoningUrl }]
             : []),
         ],
       },

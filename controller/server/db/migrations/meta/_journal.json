@@ -71,6 +71,13 @@
       "when": 1788186130596,
       "tag": "0009_illegal_whizzer",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1788265112452,
+      "tag": "0010_public_wasp",
+      "breakpoints": true
     }
   ]
 }

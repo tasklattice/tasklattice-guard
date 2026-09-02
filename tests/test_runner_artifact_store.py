@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import base64
 import hashlib
+from pathlib import Path
 
 import pytest
 
@@ -9,13 +11,14 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from runner.toolkit.runtime.contracts import RequestContext
 from runner.artifact_store import ArtifactStore
-from runner.compiler import DefaultRunnerCompiler
 from runner import generated as protocol
 from runner.protocol_codec import (
     integration_verification_to_proto,
-    plan_to_proto,
     traffic_scope_to_proto,
 )
+
+
+FIXTURE = Path(__file__).parent / "fixtures" / "artifacts" / "local-secrets-v1"
 
 
 class Registry:
@@ -152,37 +155,27 @@ def test_protocol_rejects_malformed_integration_credentials() -> None:
 
 
 def _artifact() -> protocol.Artifact:
-    plan = {
-        "guardrail_id": "guardrail-1",
-        "guardrail_version": 1,
-        "compiler_version": "tasklattice-controller-plan-v3",
-        "safety_level": "balanced",
-        "output_delivery": "full_buffered",
-        "steps": [{
-            "id": "secrets:exact", "capability": "secrets",
-            "contract_ref": "tali.guard.secrets.exact.v1",
-            "phases": ["input", "output"], "on_unsafe": "redact",
-            "trigger": {"type": "always", "verdicts": []}, "parameters": [],
-        }],
-        "modules": [{
-            "id": "data_protection:input", "module": "data_protection", "phase": "input",
-            "step_ids": ["secrets:exact"], "depends_on": [], "input_view": "original",
-            "required_for_release": True, "timeout_ms": 750, "failure_mode": "fail_closed",
-        }, {
-            "id": "data_protection:output", "module": "data_protection", "phase": "output",
-            "step_ids": ["secrets:exact"], "depends_on": [], "input_view": "original",
-            "required_for_release": True, "timeout_ms": 750, "failure_mode": "fail_closed",
-        }],
-        "reasoning_policies": [], "policy_versions": [], "policy_bindings": [],
-    }
-    return DefaultRunnerCompiler().compile(protocol.CompileRequest(
-        compile_id="compile-1",
-        guardrail_id="guardrail-1",
-        guardrail_version=1,
-        generation=7,
-        plan=plan_to_proto(plan),
-        runtime_profile="auto",
+    state = protocol.DesiredState()
+    state.ParseFromString(base64.b64decode(
+        (FIXTURE / "desired-state.pb.b64").read_text(encoding="utf-8").strip()
     ))
+    artifact = protocol.Artifact()
+    artifact.CopyFrom(state.artifacts[0])
+    artifact.guardrail_id = "guardrail-1"
+    artifact.guardrail_version = 1
+    artifact.generation = 7
+    # The signed content changed above. The test signs it with its own ephemeral
+    # key after ArtifactStore recomputes the canonical fixture checksum.
+    from runner.protocol_codec import artifact_content
+    import json
+    artifact.checksum = hashlib.sha256(json.dumps(
+        artifact_content(artifact),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode()).hexdigest()
+    artifact.signature = ""
+    return artifact
 
 
 def _signature(private_key: Ed25519PrivateKey, checksum: str) -> str:
