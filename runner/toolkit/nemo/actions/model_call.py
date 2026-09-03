@@ -239,6 +239,8 @@ class ModelCallTracker:
     model: str
     operation: str
     started: float
+    profile_ref: str | None = None
+    runtime_ref: str | None = None
     result: ModelCallResult = "unknown_error"
     error_type: str = "none"
     input_tokens: int = 0
@@ -280,6 +282,8 @@ class ModelCallTracker:
             operation=self.operation,
             result=self.result,
             duration_ms=duration_ms,
+            profile_ref=self.profile_ref,
+            runtime_ref=self.runtime_ref,
             started_offset_ms=started_offset_ms,
             finished_offset_ms=started_offset_ms + duration_ms,
             time_to_first_token_ms=self.time_to_first_token_ms,
@@ -298,9 +302,14 @@ def observe_model_call(
     provider: str,
     model: str,
     operation: str,
+    profile_ref: str | None = None,
+    runtime_ref: str | None = None,
 ) -> Iterator[ModelCallTracker]:
     started = time.perf_counter()
-    tracker = ModelCallTracker(request, provider, model, operation, started)
+    tracker = ModelCallTracker(
+        request, provider, model, operation, started,
+        profile_ref=profile_ref, runtime_ref=runtime_ref,
+    )
     integration_id = (
         request.request_context.integration_id
         if request.request_context is not None
@@ -310,13 +319,16 @@ def observe_model_call(
         "guardrail.id": request.guardrail_id,
         "guardrail.version": request.guardrail_version,
         "guardrail.phase": request.rail_type,
-        "guardrail.risk": request.risk,
+        "guardrail.capability": request.capability,
+        "guardrail.evaluation.contract_ref": request.binding.contract_ref,
         "guardrail.action": request.binding.action_name or request.binding.id,
         "guardrail.policy.id": request.policy_id or "__none__",
         "integration.id": integration_id or "__internal__",
         "gen_ai.provider.name": provider,
         "gen_ai.request.model": model,
         "gen_ai.operation.name": operation,
+        "guardrail.evaluator.profile_ref": profile_ref or "__none__",
+        "guardrail.model.runtime_ref": runtime_ref or "__none__",
     }
     observer_labels = {
         "guardrail_id": request.guardrail_id,

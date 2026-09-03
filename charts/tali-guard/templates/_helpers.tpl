@@ -71,12 +71,12 @@ app.kubernetes.io/part-of: tasklattice-guard
 {{- default (printf "%s-runtime-logs" (include "tali-guard.fullname" .)) .Values.security.runtimeLogs.existingSecret }}
 {{- end }}
 
-{{- define "tali-guard.deepseekSecretName" -}}
-{{- default (printf "%s-control-plane-ai" (include "tali-guard.fullname" .)) .Values.controlPlaneAgent.deepseek.existingSecret }}
+{{- define "tali-guard.controlPlaneAgentSecretName" -}}
+{{- default (printf "%s-control-plane-ai" (include "tali-guard.fullname" .)) .Values.controlPlaneAgent.provider.existingSecret }}
 {{- end }}
 
-{{- define "tali-guard.nvidiaSecretName" -}}
-{{- default (printf "%s-nvidia" (include "tali-guard.fullname" .)) .Values.evaluators.nvidia.existingSecret }}
+{{- define "tali-guard.modelRuntimeSecretName" -}}
+{{- default (printf "%s-model-runtimes" (include "tali-guard.fullname" .)) .Values.models.credentials.existingSecret }}
 {{- end }}
 
 {{- define "tali-guard.automatedReasoningSecretName" -}}
@@ -149,23 +149,58 @@ app.kubernetes.io/part-of: tasklattice-guard
 {{- if not (or .Values.security.controlTls.existingSecret .Values.security.controlTls.autoGenerate) }}
 {{- fail "configure controlTls existingSecret or set autoGenerate=true for development" }}
 {{- end }}
-{{- if and .Values.controlPlaneAgent.deepseek.apiKey .Values.controlPlaneAgent.deepseek.existingSecret }}
-{{- fail "set either controlPlaneAgent.deepseek.apiKey or controlPlaneAgent.deepseek.existingSecret, not both" }}
+{{- if and .Values.controlPlaneAgent.provider.apiKey .Values.controlPlaneAgent.provider.existingSecret }}
+{{- fail "set either controlPlaneAgent.provider.apiKey or controlPlaneAgent.provider.existingSecret, not both" }}
 {{- end }}
-{{- if and (or .Values.controlPlaneAgent.deepseek.apiKey .Values.controlPlaneAgent.deepseek.existingSecret) (not .Values.controlPlaneAgent.deepseek.baseUrl) }}
-{{- fail "controlPlaneAgent.deepseek.baseUrl is required when a control-plane model credential is configured" }}
+{{- if and (or .Values.controlPlaneAgent.provider.apiKey .Values.controlPlaneAgent.provider.existingSecret) (not .Values.controlPlaneAgent.provider.baseUrl) }}
+{{- fail "controlPlaneAgent.provider.baseUrl is required when a control-plane model credential is configured" }}
 {{- end }}
-{{- if and (or .Values.controlPlaneAgent.deepseek.apiKey .Values.controlPlaneAgent.deepseek.existingSecret) (not .Values.controlPlaneAgent.deepseek.model) }}
-{{- fail "controlPlaneAgent.deepseek.model is required when a control-plane model credential is configured" }}
+{{- if and (or .Values.controlPlaneAgent.provider.apiKey .Values.controlPlaneAgent.provider.existingSecret) (not .Values.controlPlaneAgent.provider.model) }}
+{{- fail "controlPlaneAgent.provider.model is required when a control-plane model credential is configured" }}
 {{- end }}
-{{- if and .Values.evaluators.nvidia.apiKey .Values.evaluators.nvidia.existingSecret }}
-{{- fail "set either evaluators.nvidia.apiKey or evaluators.nvidia.existingSecret, not both" }}
+{{- if and .Values.models.credentials.values .Values.models.credentials.existingSecret }}
+{{- fail "set either models.credentials.values or existingSecret, not both" }}
 {{- end }}
-{{- if and (or .Values.evaluators.nvidia.apiKey .Values.evaluators.nvidia.existingSecret) (not .Values.evaluators.nvidia.baseUrl) }}
-{{- fail "evaluators.nvidia.baseUrl is required when an NVIDIA credential is configured" }}
+{{- $runtimeIds := dict }}
+{{- range $index, $runtime := .Values.models.runtimes }}
+{{- if hasKey $runtimeIds $runtime.id }}
+{{- fail (printf "models.runtimes id %s must be unique" $runtime.id) }}
 {{- end }}
-{{- if and .Values.evaluators.nvidia.baseUrl (not (regexMatch "^https?://" .Values.evaluators.nvidia.baseUrl)) }}
-{{- fail "evaluators.nvidia.baseUrl must be an HTTP(S) URL" }}
+{{- $_ := set $runtimeIds $runtime.id true }}
+{{- if not (regexMatch "^https?://" (required (printf "models.runtimes[%d].base_url is required" $index) $runtime.base_url)) }}
+{{- fail (printf "models.runtimes[%d].base_url must be an HTTP(S) URL" $index) }}
+{{- end }}
+{{- if and $runtime.client (ne $runtime.client "openai_chat") }}
+{{- fail (printf "models.runtimes[%d].client is unsupported" $index) }}
+{{- end }}
+{{- end }}
+{{- $bindingIds := dict }}
+{{- $contractPriorities := dict }}
+{{- range $index, $binding := .Values.evaluators.bindings }}
+{{- if hasKey $bindingIds $binding.id }}
+{{- fail (printf "evaluators.bindings id %s must be unique" $binding.id) }}
+{{- end }}
+{{- $_ := set $bindingIds $binding.id true }}
+{{- if not (hasKey $runtimeIds $binding.model_ref) }}
+{{- fail (printf "evaluators.bindings[%d] references unknown models.runtimes id %s" $index $binding.model_ref) }}
+{{- end }}
+{{- $priority := 100 }}
+{{- if hasKey $binding "priority" }}
+{{- $priority = $binding.priority }}
+{{- end }}
+{{- $routeKey := printf "%s@%v" $binding.contract_ref $priority }}
+{{- if hasKey $contractPriorities $routeKey }}
+{{- fail (printf "evaluators.bindings contract %s priority %v must be unique" $binding.contract_ref $priority) }}
+{{- end }}
+{{- $_ := set $contractPriorities $routeKey true }}
+{{- $profileContracts := dict
+      "tali.qwen3guard.v1" (list "tali.guard.content-safety.v1" "tali.guard.jailbreak.v1" "tali.guard.pii.semantic.v1")
+      "tali.llama-guard-3.v1" (list "tali.guard.content-safety.v1")
+      "tali.taxonomy-judge.v1" (list "tali.guard.taxonomy-normalization.v1" "tali.guard.topic-control.semantic.v1" "tali.guard.company-policy.v1") }}
+{{- $contracts := get $profileContracts $binding.profile_ref }}
+{{- if not (has $binding.contract_ref $contracts) }}
+{{- fail (printf "Evaluator Profile %s does not implement contract %s" $binding.profile_ref $binding.contract_ref) }}
+{{- end }}
 {{- end }}
 {{- if and .Values.evaluators.automatedReasoning.apiKey .Values.evaluators.automatedReasoning.existingSecret }}
 {{- fail "set either evaluators.automatedReasoning.apiKey or existingSecret, not both" }}

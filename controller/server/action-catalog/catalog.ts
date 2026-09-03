@@ -20,7 +20,7 @@ const runtimeActions: Array<{
   timeoutMs?: number;
 }> = [
   { name: "GuardSecretsAction", rails: ["input", "output"] },
-  { name: "GuardPiiAction", rails: ["input", "output"] },
+  { name: "GuardEvaluateAction", rails: ["input", "output"], network: true, timeoutMs: 30_000 },
   { name: "GuardContentFilterAction", rails: ["input", "output"] },
   { name: "GuardTopicRulesAction", rails: ["input", "output"] },
   { name: "GuardPromptSecurityAction", rails: ["input"] },

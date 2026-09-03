@@ -11,22 +11,132 @@ permissions:
   contents: read
 
 jobs:
-  helm:
+  control-plane:
+    name: Control plane
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          version: "0.11.32"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: controller/package-lock.json
+
+      - name: Install dependencies
+        run: uv sync --all-extras --frozen && npm ci --prefix controller --no-audit --no-fund
+
+      - name: Test control-plane behavior and artifact production
+        run: make test-control-plane
+
+      - name: Typecheck and build Controller
+        working-directory: controller
+        run: npm run typecheck && npm run build
+
+  data-plane:
+    name: Data plane (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          version: "0.11.32"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install dependencies
+        run: uv sync --all-extras --frozen
+
+      - name: Execute precompiled artifacts in Runner
+        run: make test-data-plane
+
+  runner-communication:
+    name: Controller / Runner communication
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          version: "0.11.32"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install dependencies
+        run: uv sync --all-extras --frozen
+
+      - name: Test the real gRPC control stream and ACK/NACK lifecycle
+        run: make test-e2e
+
+  contracts-and-deployment:
+    name: Contracts and deployment
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          version: "0.11.32"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: controller/package-lock.json
 
       - name: Set up Helm
         uses: azure/setup-helm@v5
         with:
           version: v4.0.0
 
-      - name: Lint standalone chart
-        run: make helm-lint
+      - name: Install dependencies
+        run: uv sync --all-extras --frozen && npm ci --prefix controller --no-audit --no-fund
 
-      - name: Render development deployment
-        run: make helm-template > /tmp/tali-guard.yaml
+      - name: Verify protocol, suite boundaries, and deployment contracts
+        run: make test-contracts
 
       - name: Package chart for runtime image
         run: bash scripts/package-runtime-chart.sh 0.0.0-ci
@@ -48,53 +158,3 @@ jobs:
             --set security.bootstrapAdmin.existingSecret=guard-bootstrap-admin \
             --set runner.callContextRedisUrl=redis://redis:6379/0 \
             > /tmp/tali-guard-packaged.yaml
-
-  controller:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v7
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: "24"
-          cache: npm
-          cache-dependency-path: controller/package-lock.json
-
-      - name: Install Controller dependencies
-        working-directory: controller
-        run: npm ci --no-audit --no-fund
-
-      - name: Test, typecheck, and build Controller
-        working-directory: controller
-        run: npm test && npm run typecheck && npm run build
-
-  test:
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.11", "3.12", "3.13"]
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v7
-
-      - name: Set up Python
-        uses: actions/setup-python@v7
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v10.0.1
-        with:
-          version: "0.11.32"
-          enable-cache: true
-          cache-dependency-glob: uv.lock
-
-      - name: Install dependencies
-        run: uv sync --all-extras --frozen
-
-      - name: Run tests
-        run: uv run pytest -q

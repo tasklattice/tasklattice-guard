@@ -70,7 +70,7 @@ class EvaluateRequest(BaseModel):
             raise ValueError("Provide exactly one of texts or content.")
         expected_phase = "input" if self.input_type == "request" else "output"
         if self.phase is not None and self.input_type is not None and self.phase != expected_phase:
-            raise ValueError("phase and input_type describe different protection stages.")
+            raise ValueError("phase and input_type describe different protection phases.")
         ids = [item.id or f"{self.resolved_phase}:{index}" for index, item in enumerate(self.content)]
         if len(ids) != len(set(ids)):
             raise ValueError("Content block identifiers must be unique.")
@@ -614,11 +614,13 @@ def _telemetry_metadata(decision: ProtectionDecision) -> dict[str, Any]:
         {
             "id": f"finding-{index}",
             "risk": item.risk,
+            "taxonomyId": item.taxonomy_id,
             "verdict": item.verdict,
             "confidence": item.confidence,
             "recommendedAction": item.recommended_action,
             "policyId": item.policy_id,
             "ruleId": item.rule_id,
+            "providerEvidence": [asdict(evidence) for evidence in item.provider_evidence],
         }
         for index, item in enumerate(decision.findings, start=1)
     ]
@@ -629,10 +631,10 @@ def _telemetry_metadata(decision: ProtectionDecision) -> dict[str, Any]:
             "name": item.name,
             "status": item.status,
             "durationMs": item.duration_ms,
-            "stage": item.stage,
+            "contractRef": item.contract_ref,
             "verdict": item.verdict,
             "route": item.route,
-            "risk": item.risk,
+            "capability": item.capability,
             "moduleId": item.module_id,
             "confidence": item.confidence,
             "policyId": item.policy_id,
@@ -663,6 +665,8 @@ def _telemetry_metadata(decision: ProtectionDecision) -> dict[str, Any]:
             "modelBackoffMs": item.model_backoff_ms,
             "startedOffsetMs": item.started_offset_ms,
             "finishedOffsetMs": item.finished_offset_ms,
+            "evaluatorId": item.evaluator_id,
+            "profileRef": item.profile_ref,
         }
         for item in decision.trace
     ]

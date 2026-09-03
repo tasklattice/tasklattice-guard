@@ -30,7 +30,7 @@ CREATE TABLE "guardrail_validation_run" (
 	"guardrail_version" integer,
 	"source_draft_revision" integer NOT NULL,
 	"status" text DEFAULT 'queued' NOT NULL,
-	"metrics" jsonb DEFAULT '{"total":0,"passed":0,"complianceRate":0,"falsePositiveRate":0,"falseNegativeRate":0,"deepEscalationRate":0,"p95LatencyMs":0}'::jsonb NOT NULL,
+	"metrics" jsonb DEFAULT '{"total":0,"passed":0,"complianceRate":0,"falsePositiveRate":0,"falseNegativeRate":0,"escalationRate":0,"p95LatencyMs":0}'::jsonb NOT NULL,
 	"results" jsonb DEFAULT '[]'::jsonb NOT NULL,
 	"excluded_case_ids" jsonb DEFAULT '[]'::jsonb NOT NULL,
 	"failure_reason" text,

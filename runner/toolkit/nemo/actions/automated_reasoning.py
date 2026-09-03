@@ -15,6 +15,7 @@ from ...runtime.contracts import (
     AutomatedReasoningTranslation,
     RiskFinding,
 )
+from ...safety.taxonomy import taxonomy_for_evaluator
 from .contracts import ActionRequest, ActionResult, ActionUsage, action_result, action_view
 from .model_call import action_usage, observe_model_call
 from .names import ACTION_AUTOMATED_REASONING
@@ -50,12 +51,14 @@ class HTTPAutomatedReasoningProvider:
         self,
         *,
         endpoint_url: str,
-        api_key_env_var: str,
+        api_key_env_var: str | None = None,
+        api_key: str | None = None,
         timeout_seconds: float = 20.0,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self._endpoint_url = endpoint_url
         self._api_key_env_var = api_key_env_var
+        self._api_key = api_key
         self._timeout_seconds = timeout_seconds
         self._transport = transport
 
@@ -66,7 +69,7 @@ class HTTPAutomatedReasoningProvider:
         query_content: str,
         guard_content: str,
     ) -> tuple[tuple[AutomatedReasoningFinding, ...], ActionUsage]:
-        credential = os.environ.get(self._api_key_env_var, "").strip()
+        credential = self._credential()
         if not credential:
             raise RuntimeError("Automated Reasoning provider credential is not configured.")
         raise RuntimeError(
@@ -81,7 +84,7 @@ class HTTPAutomatedReasoningProvider:
         query_content: str,
         guard_content: str,
     ) -> tuple[tuple[AutomatedReasoningFinding, ...], ActionUsage]:
-        credential = os.environ.get(self._api_key_env_var, "").strip()
+        credential = self._credential()
         if not credential:
             raise RuntimeError("Automated Reasoning provider credential is not configured.")
         with observe_model_call(
@@ -113,6 +116,13 @@ class HTTPAutomatedReasoningProvider:
                 call.complete(payload=payload)
         return findings, action_usage(call, len(query_content) + len(guard_content))
 
+    def _credential(self) -> str:
+        return (self._api_key or "").strip() or (
+            os.environ.get(self._api_key_env_var, "").strip()
+            if self._api_key_env_var
+            else ""
+        )
+
 
 class ReasoningActionProvider:
     """Evaluate complete output against one immutable formal policy snapshot."""
@@ -120,7 +130,7 @@ class ReasoningActionProvider:
     name = ACTION_AUTOMATED_REASONING
     version = "1.0.0"
     rails = frozenset({"output"})
-    risks = frozenset({"automated_reasoning"})
+    capabilities = frozenset({"automated_reasoning"})
 
     def __init__(self, provider: AutomatedReasoningProvider) -> None:
         self._provider = provider
@@ -196,7 +206,8 @@ class ReasoningActionProvider:
             _result_message(result),
         )
         risk_finding = RiskFinding(
-            risk=request.risk,
+            risk=request.capability,
+            taxonomy_id=taxonomy_for_evaluator(request.capability),
             verdict="unsafe" if detected else "safe",
             confidence=min(item.confidence for item in ordered),
             evidence=message,

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 import type { PolicyDto } from "../policy-catalog/catalog.js";
 import type { ProgrammablePolicySnapshot } from "../policy-studio/model.js";
-import { normalizeGuardrailDraft, type GuardrailDraftConfig } from "./guardrail-plan.js";
+import { normalizeGuardrailDraft, type GuardrailDraftConfig, type ValidationExpectationOverride } from "./guardrail-plan.js";
 import type { ValidationCaseResult, ValidationMetrics } from "./models.js";
 
 export type StoredTestCaseInput = {
@@ -42,19 +42,19 @@ export function generatedTestCases(
     if (!policy) return [];
     const enabledRules = new Set(binding.enabledRuleIds);
     return policy.test_cases.flatMap((item) => {
-      if (item.stage !== "input" && item.stage !== "output") return [];
+      if (item.phase !== "input" && item.phase !== "output") return [];
       if (item.covered_rule_ids.length && !item.covered_rule_ids.some((id) => enabledRules.has(id))) return [];
       return [{
         id: generatedCaseId(policy.id, item.id),
         guardrailId,
         name: materialize(item.name, binding.parameterValues),
         policyId: policy.id,
-        phase: item.stage,
+        phase: item.phase,
         content: materialize(item.content, binding.parameterValues),
         expectedDecision: item.expected_decision,
         origin: "generated" as const,
         trustedInstruction: "",
-        targetSource: item.stage === "output" ? "model_output" as const : "user_input" as const,
+        targetSource: item.phase === "output" ? "model_output" as const : "user_input" as const,
         query: "",
         groundingSources: [],
         expectedReasoningResult: null,
@@ -122,6 +122,37 @@ export function generatedTestCases(
   return [...declarative, ...programmable];
 }
 
+/** Preserve template assertions in storage; freeze reviewed local overlays into each run. */
+export function applyValidationOverrides<T extends { id: string; sourcePolicyId: string | null; sourcePolicyVersion: string | null; sourceCaseId: string | null; expectedDecision: string }>(cases: readonly T[], draftValue: GuardrailDraftConfig): Array<T & { expectationOverride?: ValidationExpectationOverride }> {
+  const draft = normalizeGuardrailDraft(draftValue);
+  const bindings = new Map(draft.policyBindings.map((binding) => [binding.policyId, binding]));
+  for (const binding of draft.policyBindings) {
+    for (const [caseId, override] of Object.entries(binding.testCaseOverrides ?? {})) {
+      const source = cases.find((item) => item.sourcePolicyId === binding.policyId && item.sourceCaseId === caseId);
+      if (!source) throw new Error(`Expectation override references unavailable Test Case ${binding.policyId}/${caseId}.`);
+      if (source.sourcePolicyVersion !== override.sourcePolicyVersion || binding.policyVersion !== override.sourcePolicyVersion) {
+        throw new Error(`Review the stale expectation override for ${binding.policyId}/${caseId} after changing Policy version.`);
+      }
+      if (source.expectedDecision !== "allow" && override.expectedDecision === "allow") {
+        throw new Error(`Cannot weaken an unsafe inherited Test Case to allow: ${binding.policyId}/${caseId}. Use an explicit scoped exclusion instead.`);
+      }
+      for (const match of override.expectedMatches) {
+        if (!bindings.get(match.policyId)?.enabledRuleIds.includes(match.ruleId)) {
+          throw new Error(`Expected Rule ${match.policyId}/${match.ruleId} is not enabled in this Guardrail.`);
+        }
+      }
+      if (override.expectedDecision === "transform" && override.expectedOutputContent === undefined) {
+        throw new Error(`A transformation expectation must assert the complete output: ${binding.policyId}/${caseId}.`);
+      }
+    }
+  }
+  return cases.map((item) => {
+    const expectationOverride = item.sourcePolicyId && item.sourceCaseId
+      ? bindings.get(item.sourcePolicyId)?.testCaseOverrides?.[item.sourceCaseId] : undefined;
+    return expectationOverride ? { ...item, expectationOverride } : { ...item };
+  });
+}
+
 export function emptyValidationMetrics(total = 0): ValidationMetrics {
   return {
     total,
@@ -129,7 +160,7 @@ export function emptyValidationMetrics(total = 0): ValidationMetrics {
     complianceRate: 0,
     falsePositiveRate: 0,
     falseNegativeRate: 0,
-    deepEscalationRate: 0,
+    escalationRate: 0,
     p95LatencyMs: 0,
   };
 }
@@ -138,7 +169,7 @@ export function validationMetrics(results: readonly ValidationCaseResult[]): Val
   const passed = results.filter((item) => item.passed).length;
   const falsePositive = results.filter((item) => item.expectedDecision === "allow" && item.actualDecision !== "allow").length;
   const falseNegative = results.filter((item) => item.expectedDecision !== "allow" && item.actualDecision === "allow").length;
-  const deep = results.filter((item) => item.stageReached === "deep_judge").length;
+  const escalated = results.filter((item) => item.escalated).length;
   const latencies = results.map((item) => item.latencyMs).sort((left, right) => left - right);
   return {
     total: results.length,
@@ -146,7 +177,7 @@ export function validationMetrics(results: readonly ValidationCaseResult[]): Val
     complianceRate: percent(passed, results.length),
     falsePositiveRate: percent(falsePositive, results.length),
     falseNegativeRate: percent(falseNegative, results.length),
-    deepEscalationRate: percent(deep, results.length),
+    escalationRate: percent(escalated, results.length),
     p95LatencyMs: latencies.length ? latencies[Math.min(latencies.length - 1, Math.ceil(latencies.length * 0.95) - 1)]! : 0,
   };
 }

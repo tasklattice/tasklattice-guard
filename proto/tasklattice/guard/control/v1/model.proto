@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package tasklattice.guard.control.v1;
+
+// One physical model endpoint. Credentials are resolved through the
+// authenticated Controller credential lease and are never persisted in the
+// desired-state snapshot.
+message ModelRuntime {
+  string id = 1;
+  string provider_id = 2;
+  string provider_name = 3;
+  string base_url = 4;
+  string credential_ref = 5;
+  string model = 6;
+  string profile_ref = 7;
+  int32 timeout_seconds = 8;
+  int32 max_tokens = 9;
+}
+
+// Bind one product module role to a registered Model.
+message ModelAssignment {
+  string role = 1;
+  string model_ref = 2;
+  string profile_ref = 3;
+  repeated string contract_refs = 4;
+}
+
+// Complete data-plane projection of one validated Model configuration
+// revision. Only roles needed by Runner are included.
+message DataPlaneModelConfiguration {
+  string revision_id = 1;
+  int32 revision = 2;
+  repeated ModelRuntime runtimes = 3;
+  repeated ModelAssignment assignments = 4;
+}

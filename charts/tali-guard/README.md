@@ -55,45 +55,58 @@ One command rebuilds the moving `:dev` images and installs or upgrades the
 whole Guard release on the `orbstack` context:
 
 ```bash
-make helm-install
+make install
 ```
+
+This single entry point upgrades an existing release or installs a missing one,
+then waits for workload readiness (up to `HELM_TIMEOUT`, default `5m`). There is
+no need to check whether it is already deployed. Cluster or permission errors
+stop the command; they do not trigger an uninstall or clear data.
 
 To deploy the same local environment with every performance-debug feature
 enabled, use the Debug overlay entry point:
 
 ```bash
-make helm-install-debug
+make install-debug
 ```
 
 This is equivalent to applying `values-dev.yaml` followed by
 `values-debug.yaml`; it preserves the separation between local infrastructure
 and temporary observability overhead.
 
-When the repository `.env` contains `DEEPSEEK_API_KEY` and/or `NVAPI_API_KEY`,
-this target also creates or updates the `tali-guard-provider-keys` Secret.
-DeepSeek is connected to Controller's authoring-only policy analyst. NVIDIA
-Content Safety, Topic Control, and the chat-completion Jailbreak Judge model are
-connected to every Runner pool through one Provider configuration. The command
-prints the exact selected models during installation.
+When the repository `.env` contains `QWEN_CONTROL_API_KEY`,
+`QWEN_GUARD_API_KEY`, or `LLAMA_GUARD_API_KEY`, this target also creates or
+updates the `tali-guard-provider-keys` Secret. The Qwen control model is used by
+Controller authoring and optional TALI taxonomy refinement; configured native
+Guard Providers are connected to every Runner pool.
 
-The equivalent direct Helm flow, after `make images`, is:
+The deployment helper can also be used after `make images`:
 
 ```bash
-helm upgrade --install tali-guard ./charts/tali-guard \
-  --kube-context orbstack \
-  --namespace tali \
-  --create-namespace \
+bash scripts/helm-upgrade.sh tali-guard ./charts/tali-guard orbstack tali \
   --values ./charts/tali-guard/values-dev.yaml \
-  --server-side=false \
-  --timeout 30s
+  --wait --timeout 5m
 ```
 
-`make helm-install` keeps both application tags fixed at `dev` and changes a
+The helper calls `helm upgrade` for an existing release, or `helm install
+--create-namespace` for a missing one. It explicitly passes `--server-side=false`
+to both paths: Helm 4.0.0's `upgrade --install` fallback does not forward this
+option and can fail when reusing retained Secrets with
+`metadata.managedFields must be nil`. Retained credentials and certificates are
+reused, not deleted. An uninstalled release with retained history is reinstalled
+with `--replace`; failed upgrades are reported without automatic reinstall.
+
+Deployment-path regression tests run with
+`.venv/bin/python -m pytest -q tests/contract/test_helm_upgrade.py`. To also test
+install, upgrade, and reinstall with retained Secrets on a local cluster, prefix
+the command with `GUARD_HELM_TEST_CONTEXT=orbstack`. This creates and removes an
+isolated namespace containing only a test Secret and ConfigMap, not Guard data.
+
+`make install` keeps both application tags fixed at `dev` and changes a
 Helm-managed rollout revision annotation on every run. Controller and all
 Runner pools therefore replace their Pods and load the latest local `dev`
-images even though the image names remain unchanged. The command submits the
-upgrade without waiting for Pod readiness; use `make helm-status` to inspect
-the rollout separately.
+images even though the image names remain unchanged. The command waits for Pod
+readiness; use `make helm-status` to inspect the deployment at any time.
 
 Check the deployment and access Controller:
 
@@ -161,14 +174,39 @@ kubectl -n guard-system create secret generic guard-control-plane-ai \
   --from-literal=api-key='replace-with-provider-key'
 ```
 
-Then set `controlPlaneAgent.deepseek.existingSecret=guard-control-plane-ai` in
-the production values file. `baseUrl`, `model`, `provider`, and `secretKey` can
+Then set `controlPlaneAgent.provider.existingSecret=guard-control-plane-ai` in
+the production values file. `baseUrl`, `model`, `name`, and `secretKey` can
 be overridden under the same values object.
 
-NVIDIA runtime evaluators use `evaluators.nvidia`. Content Safety, Topic
-Control, and Jailbreak share its OpenAI-compatible `baseUrl` and credential;
-their independently configurable model names are `contentSafetyModel`,
-`topicControlModel`, and `jailbreakModel`.
+Runtime model configuration is split in two. `models.runtimes` declares
+reusable physical endpoints; `evaluators.bindings` maps a stable Evaluation
+Contract and Evaluator Profile onto a runtime. Fallback is scoped to bindings
+for the same contract, so a model is never used for a capability it does not
+implement. Credentials are supplied through `models.credentials`. For example:
+
+```yaml
+models:
+  runtimes:
+    - id: qwen3guard
+      client: openai_chat
+      base_url: http://qwen3guard.models.svc.cluster.local/v1
+      model: Qwen/Qwen3Guard-Gen-8B
+      api_key_env_var: QWEN_GUARD_API_KEY
+  credentials:
+    existingSecret: tali-model-runtime-credentials
+
+evaluators:
+  bindings:
+    - id: qwen-content
+      contract_ref: tali.guard.content-safety.v1
+      profile_ref: tali.qwen3guard.v1
+      model_ref: qwen3guard
+      priority: 10
+```
+
+See
+[`docs/tali-safety-taxonomy-and-providers.zh-CN.md`](../../docs/tali-safety-taxonomy-and-providers.zh-CN.md)
+for the complete contract.
 
 Install with a private environment values file containing the actual public
 URL, image tags, resource sizing, ingress, and Secret references. Helm loads

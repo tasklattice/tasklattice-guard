@@ -129,7 +129,7 @@ describe("Guardrail Playground HTTP capability", () => {
     expect(prepare).not.toHaveBeenCalled();
   });
 
-  it("lists the configured model and runs real input-model-output stages on an immutable version", async () => {
+  it("lists the configured model and runs real input-model-output checkpoints on an immutable version", async () => {
     const modelFetch = vi.fn(async () => Response.json({ choices: [{ message: { content: "model answer" } }] })) as typeof fetch;
     const runnerFetch = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
       const request = JSON.parse(String(init?.body)) as { phase: string; guardrail_version: number };
@@ -216,6 +216,7 @@ describe("Guardrail Playground HTTP capability", () => {
       texts: [],
       findings: [{
         risk: "pii",
+        taxonomy_id: "TALI-PRIVACY-PII",
         verdict: "unsafe",
         confidence: 0.99,
         evidence: "PII detected",

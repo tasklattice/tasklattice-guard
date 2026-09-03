@@ -27,9 +27,8 @@ if _version_not_supported:
 
 class RunnerControlStub:
     """RunnerControl is the only state-distribution channel between the control
-    plane and data plane. Runners initiate the stream so they can live behind a
-    private network or NAT. Messages are desired-state notifications; the
-    database remains authoritative and reconnecting runners always reconcile.
+    plane and data plane. Every business payload is a typed imported message;
+    the stream envelope contains no embedded JSON documents.
     """
 
     def __init__(self, channel):
@@ -47,9 +46,8 @@ class RunnerControlStub:
 
 class RunnerControlServicer:
     """RunnerControl is the only state-distribution channel between the control
-    plane and data plane. Runners initiate the stream so they can live behind a
-    private network or NAT. Messages are desired-state notifications; the
-    database remains authoritative and reconnecting runners always reconcile.
+    plane and data plane. Every business payload is a typed imported message;
+    the stream envelope contains no embedded JSON documents.
     """
 
     def Connect(self, request_iterator, context):
@@ -76,9 +74,8 @@ def add_RunnerControlServicer_to_server(servicer, server):
  # This class is part of an EXPERIMENTAL API.
 class RunnerControl:
     """RunnerControl is the only state-distribution channel between the control
-    plane and data plane. Runners initiate the stream so they can live behind a
-    private network or NAT. Messages are desired-state notifications; the
-    database remains authoritative and reconnecting runners always reconcile.
+    plane and data plane. Every business payload is a typed imported message;
+    the stream envelope contains no embedded JSON documents.
     """
 
     @staticmethod

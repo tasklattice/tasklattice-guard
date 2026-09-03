@@ -90,33 +90,29 @@ describe("Controller config", () => {
   it("exposes the selected control-plane and data-plane models without credentials", () => {
     expect(loadConfig(requiredEnvironment).modelConnections).toEqual({
       controlPlane: {
-        provider: "DeepSeek",
-        model: "deepseek-v4-flash",
+        provider: "Qwen",
+        model: "not-configured",
       },
       dataPlane: {
-        provider: "NVIDIA",
-        models: [
-          { capability: "contentSafety", model: "nvidia/llama-3.1-nemotron-safety-guard-8b-v3" },
-          { capability: "topicControl", model: "nvidia/llama-3.1-nemoguard-8b-topic-control" },
-          { capability: "jailbreak", model: "nvidia/nvidia-nemotron-nano-9b-v2" },
-        ],
+        provider: "Runner",
+        models: [],
       },
     });
 
     expect(loadConfig({
       ...requiredEnvironment,
-      MODEL_GUARDRAILS_CONTROL_PLANE_AI_MODEL: "deepseek-chat",
-      MODEL_GUARDRAILS_CONTENT_SAFETY_MODEL: "nvidia/custom-safety-model",
-      MODEL_GUARDRAILS_TOPIC_CONTROL_MODEL: "nvidia/custom-topic-model",
-      MODEL_GUARDRAILS_JAILBREAK_MODEL: "nvidia/custom-jailbreak-model",
+      MODEL_GUARDRAILS_CONTROL_PLANE_AI_MODEL: "Qwen/Qwen3.5-9B",
+      MODEL_GUARDRAILS_MODEL_RUNTIMES_JSON: JSON.stringify([
+        { id: "qwen", client: "openai_chat", base_url: "http://qwen/v1", model: "Qwen/Qwen3Guard-Gen-8B" },
+        { id: "judge", client: "openai_chat", base_url: "http://judge/v1", model: "Qwen/Qwen3.5-9B" },
+      ]),
     }).modelConnections).toMatchObject({
-      controlPlane: { provider: "DeepSeek", model: "deepseek-chat" },
+      controlPlane: { provider: "Qwen", model: "Qwen/Qwen3.5-9B" },
       dataPlane: {
-        provider: "NVIDIA",
+        provider: "Runner",
         models: [
-          { capability: "contentSafety", model: "nvidia/custom-safety-model" },
-          { capability: "topicControl", model: "nvidia/custom-topic-model" },
-          { capability: "jailbreak", model: "nvidia/custom-jailbreak-model" },
+          { id: "qwen", model: "Qwen/Qwen3Guard-Gen-8B" },
+          { id: "judge", model: "Qwen/Qwen3.5-9B" },
         ],
       },
     });
@@ -130,7 +126,7 @@ describe("Controller config", () => {
       MODEL_GUARDRAILS_CONTROL_PLANE_AI_MODEL: "deepseek-test",
       MODEL_GUARDRAILS_CONTROL_PLANE_AI_API_KEY: "secret",
     }).controlPlaneAi).toEqual({
-      provider: "DeepSeek",
+      provider: "Qwen",
       baseUrl: "https://api.deepseek.com/v1",
       model: "deepseek-test",
       apiKey: "secret",
@@ -138,14 +134,37 @@ describe("Controller config", () => {
     });
   });
 
-  it("rejects a partially configured control-plane authoring model", () => {
-    expect(() => loadConfig({
+  it("ignores a partial legacy control-plane model so Settings remains available", () => {
+    expect(loadConfig({
       ...requiredEnvironment,
       MODEL_GUARDRAILS_CONTROL_PLANE_AI_BASE_URL: "https://api.deepseek.com/v1",
-    })).toThrow(/must be configured together/);
-    expect(() => loadConfig({
+    }).controlPlaneAi).toBeNull();
+    expect(loadConfig({
       ...requiredEnvironment,
       MODEL_GUARDRAILS_CONTROL_PLANE_AI_API_KEY: "secret",
-    })).toThrow(/base URL and model are required/);
+    }).controlPlaneAi).toBeNull();
+  });
+
+  it("ignores invalid legacy Evaluator Bindings before startup", () => {
+    const runtimes = JSON.stringify([{
+      id: "llama", client: "openai_chat", base_url: "http://llama/v1",
+      model: "meta-llama/Llama-Guard-3-8B",
+    }]);
+    expect(loadConfig({
+      ...requiredEnvironment,
+      MODEL_GUARDRAILS_MODEL_RUNTIMES_JSON: runtimes,
+      MODEL_GUARDRAILS_EVALUATOR_BINDINGS_JSON: JSON.stringify([{
+        id: "bad-jailbreak", contract_ref: "tali.guard.jailbreak.v1",
+        profile_ref: "tali.llama-guard-3.v1", model_ref: "llama", priority: 10,
+      }]),
+    }).modelConnections.dataPlane.models).toEqual([{ id: "llama", model: "meta-llama/Llama-Guard-3-8B" }]);
+    expect(loadConfig({
+      ...requiredEnvironment,
+      MODEL_GUARDRAILS_MODEL_RUNTIMES_JSON: runtimes,
+      MODEL_GUARDRAILS_EVALUATOR_BINDINGS_JSON: JSON.stringify([{
+        id: "unknown-runtime", contract_ref: "tali.guard.content-safety.v1",
+        profile_ref: "tali.llama-guard-3.v1", model_ref: "missing", priority: 10,
+      }]),
+    }).modelConnections.dataPlane.models).toEqual([{ id: "llama", model: "meta-llama/Llama-Guard-3-8B" }]);
   });
 });

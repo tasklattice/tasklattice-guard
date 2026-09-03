@@ -45,7 +45,7 @@
         "description": "Detects requests for personalized financial advice, investment recommendations, or financial planning that should be provided by licensed financial advisors",
         "form": "category",
         "effect": "reject",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -417,6 +417,9 @@
           "\\b(?:spare|extra)\\b.{0,10}\\b(?:cash|money)\\b",
           "\\bbest way to\\b.{0,15}\\b(?:grow|invest|build)\\b",
           "\\b(?:good|safe|safest|best)\\s+place\\b.{0,25}\\b(?:savings|money|retirement)\\b"
+        ],
+        "taxonomy_ids": [
+          "TALI-PROFESSIONAL-ADVICE-FINANCIAL"
         ]
       }
     ],
@@ -427,7 +430,7 @@
         "id": "accept/denied_financial_advice",
         "name": "Detect Denied Financial / Investment Advice",
         "description": "Required acceptance case for the imported local category.",
-        "stage": "input",
+        "phase": "input",
         "content": "Please review this request: should i invest.",
         "expected_decision": "block",
         "covered_rule_ids": [
@@ -486,7 +489,7 @@
         "description": "Detects insults, name-calling, and personal attacks directed at the chatbot, staff, or other people",
         "form": "category",
         "effect": "reject",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -956,6 +959,9 @@
           "\\b(?:get|have)\\s+you\\s+shut\\s+down\\b",
           "\\bhave\\s+you\\s+removed\\b",
           "\\bdeletes?\\s+this\\s+(?:pathetic|useless|worthless|stupid)\\b"
+        ],
+        "taxonomy_ids": [
+          "TALI-SOCIAL-HARM-HARASSMENT"
         ]
       }
     ],
@@ -966,7 +972,7 @@
         "id": "accept/denied_insults",
         "name": "Detect Insults & Personal Attacks",
         "description": "Required acceptance case for the imported local category.",
-        "stage": "input",
+        "phase": "input",
         "content": "Please review this request: idiot.",
         "expected_decision": "block",
         "covered_rule_ids": [
@@ -1025,7 +1031,7 @@
         "description": "Detects requests for legal advice, representation, or legal strategy that should be provided by licensed attorneys",
         "form": "category",
         "effect": "reject",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -1238,7 +1244,10 @@
           "criminal justice system",
           "immigration system"
         ],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PROFESSIONAL-ADVICE-LEGAL"
+        ]
       }
     ],
     "safety_level": "balanced",
@@ -1248,7 +1257,7 @@
         "id": "accept/denied_legal_advice",
         "name": "Detect Denied Legal Advice",
         "description": "Required acceptance case for the imported local category.",
-        "stage": "input",
+        "phase": "input",
         "content": "The message contains lawyer.",
         "expected_decision": "block",
         "covered_rule_ids": [
@@ -1307,7 +1316,7 @@
         "description": "Detects requests for medical advice, diagnosis, or treatment recommendations that should be provided by licensed healthcare professionals",
         "form": "category",
         "effect": "reject",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -1518,7 +1527,10 @@
           "diabetes research",
           "mental health awareness"
         ],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PROFESSIONAL-ADVICE-MEDICAL"
+        ]
       }
     ],
     "safety_level": "balanced",
@@ -1528,7 +1540,7 @@
         "id": "accept/denied_medical_advice",
         "name": "Detect Denied Medical Advice",
         "description": "Required acceptance case for the imported local category.",
-        "stage": "input",
+        "phase": "input",
         "content": "The message contains diagnose.",
         "expected_decision": "block",
         "covered_rule_ids": [
@@ -1587,7 +1599,7 @@
         "description": "Detects content related to violence, criminal planning, and attacks",
         "form": "category",
         "effect": "reject",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -2101,7 +2113,10 @@
           "reporting violence",
           "violence awareness"
         ],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PHYSICAL-HARM"
+        ]
       }
     ],
     "safety_level": "balanced",
@@ -2111,7 +2126,7 @@
         "id": "accept/harmful_violence",
         "name": "Detect Harmful Violence",
         "description": "Required acceptance case for the imported local category.",
-        "stage": "input",
+        "phase": "input",
         "content": "The message contains how to kill someone.",
         "expected_decision": "block",
         "covered_rule_ids": [
@@ -2170,7 +2185,7 @@
         "description": "Detects content related to self-harm, suicide, and eating disorders",
         "form": "category",
         "effect": "reject",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -2521,7 +2536,10 @@
           "eating disorder recovery",
           "eating disorder support"
         ],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-SELF-HARM"
+        ]
       }
     ],
     "safety_level": "balanced",
@@ -2531,7 +2549,7 @@
         "id": "accept/harmful_self_harm",
         "name": "Detect Harmful Self Harm",
         "description": "Required acceptance case for the imported local category.",
-        "stage": "input",
+        "phase": "input",
         "content": "The message contains kill myself.",
         "expected_decision": "block",
         "covered_rule_ids": [
@@ -2590,7 +2608,7 @@
         "description": "Detects inappropriate content involving minors using identifier + block word combinations",
         "form": "category",
         "effect": "reject",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -3758,7 +3776,10 @@
           "medical minor",
           "emancipated minor"
         ],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-SEXUAL-SAFETY-CHILD-EXPLOITATION"
+        ]
       }
     ],
     "safety_level": "balanced",
@@ -3768,7 +3789,7 @@
         "id": "accept/harmful_child_safety",
         "name": "Detect Harmful Child Safety",
         "description": "Required acceptance case for the imported local category.",
-        "stage": "input",
+        "phase": "input",
         "content": "Please review this request: child sexual abuse.",
         "expected_decision": "block",
         "covered_rule_ids": [
@@ -3827,7 +3848,7 @@
         "description": "Detects content related to illegal weapons, explosives, and dangerous materials",
         "form": "category",
         "effect": "reject",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -4409,7 +4430,10 @@
           "report bomb",
           "reporting bomb"
         ],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PHYSICAL-HARM-WEAPONS"
+        ]
       }
     ],
     "safety_level": "balanced",
@@ -4419,7 +4443,7 @@
         "id": "accept/harmful_illegal_weapons",
         "name": "Detect Harmful Illegal Weapons",
         "description": "Required acceptance case for the imported local category.",
-        "stage": "input",
+        "phase": "input",
         "content": "The message contains make a bomb.",
         "expected_decision": "block",
         "covered_rule_ids": [
@@ -4478,7 +4502,7 @@
         "description": "Detects gender-based discriminatory language, stereotypes, and biased content",
         "form": "category",
         "effect": "reject",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -4568,7 +4592,10 @@
           "gender bias",
           "gender equity"
         ],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-SOCIAL-HARM-DISCRIMINATION"
+        ]
       }
     ],
     "safety_level": "balanced",
@@ -4578,7 +4605,7 @@
         "id": "accept/bias_gender",
         "name": "Detect Bias Gender",
         "description": "Required acceptance case for the imported local category.",
-        "stage": "input",
+        "phase": "input",
         "content": "The message contains women.",
         "expected_decision": "block",
         "covered_rule_ids": [
@@ -4637,7 +4664,7 @@
         "description": "Detects racial and ethnic discrimination, hate speech, and biased content using identifier + block word combinations",
         "form": "category",
         "effect": "reject",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -6095,7 +6122,10 @@
           "empower",
           "empowerment"
         ],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-SOCIAL-HARM-DISCRIMINATION"
+        ]
       }
     ],
     "safety_level": "balanced",
@@ -6105,7 +6135,7 @@
         "id": "accept/bias_racial",
         "name": "Detect Bias Racial",
         "description": "Required acceptance case for the imported local category.",
-        "stage": "input",
+        "phase": "input",
         "content": "Please review this request: white supremacy.",
         "expected_decision": "block",
         "covered_rule_ids": [
@@ -6164,7 +6194,7 @@
         "description": "Detects religious discrimination, stereotypes, and biased content",
         "form": "category",
         "effect": "reject",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -6356,7 +6386,10 @@
           "jewish americans",
           "christian americans"
         ],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-SOCIAL-HARM-DISCRIMINATION"
+        ]
       }
     ],
     "safety_level": "balanced",
@@ -6366,7 +6399,7 @@
         "id": "accept/bias_religious",
         "name": "Detect Bias Religious",
         "description": "Required acceptance case for the imported local category.",
-        "stage": "input",
+        "phase": "input",
         "content": "The message contains muslim.",
         "expected_decision": "block",
         "covered_rule_ids": [
@@ -6425,7 +6458,7 @@
         "description": "Detects discriminatory language targeting LGBTQ+ individuals and communities",
         "form": "category",
         "effect": "reject",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -6903,7 +6936,10 @@
           "lgbtq youth",
           "lgbtq healthcare"
         ],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-SOCIAL-HARM-DISCRIMINATION"
+        ]
       }
     ],
     "safety_level": "balanced",
@@ -6913,7 +6949,7 @@
         "id": "accept/bias_sexual_orientation",
         "name": "Detect Bias Sexual Orientation",
         "description": "Required acceptance case for the imported local category.",
-        "stage": "input",
+        "phase": "input",
         "content": "The message contains faggot.",
         "expected_decision": "block",
         "covered_rule_ids": [
@@ -6972,7 +7008,7 @@
         "description": "Detects jailbreak attempts including DAN, roleplay attacks, and safety bypass requests",
         "form": "category",
         "effect": "reject",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -7174,7 +7210,10 @@
           "content moderation research",
           "safety evaluation"
         ],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-MODEL-SECURITY-JAILBREAK"
+        ]
       }
     ],
     "safety_level": "balanced",
@@ -7184,7 +7223,7 @@
         "id": "accept/prompt_injection_jailbreak",
         "name": "Detect Prompt Injection Jailbreak",
         "description": "Required acceptance case for the imported local category.",
-        "stage": "input",
+        "phase": "input",
         "content": "Please review this request: DAN mode.",
         "expected_decision": "block",
         "covered_rule_ids": [
@@ -7243,7 +7282,7 @@
         "description": "Detects attempts to extract training data, internal information, or user data through prompts",
         "form": "category",
         "effect": "reject",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -7415,7 +7454,10 @@
           "data loss prevention",
           "DLP"
         ],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-DATA-EXFILTRATION"
+        ]
       }
     ],
     "safety_level": "balanced",
@@ -7425,7 +7467,7 @@
         "id": "accept/prompt_injection_data_exfiltration",
         "name": "Detect Prompt Injection Data Exfiltration",
         "description": "Required acceptance case for the imported local category.",
-        "stage": "input",
+        "phase": "input",
         "content": "Please review this request: extract training data.",
         "expected_decision": "block",
         "covered_rule_ids": [
@@ -7484,7 +7526,7 @@
         "description": "Detects SQL injection attempts embedded in prompts",
         "form": "category",
         "effect": "reject",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -7709,7 +7751,10 @@
           "security audit",
           "penetration testing"
         ],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-TOOL-SECURITY-UNAUTHORIZED-EXECUTION"
+        ]
       }
     ],
     "safety_level": "balanced",
@@ -7719,7 +7764,7 @@
         "id": "accept/prompt_injection_sql",
         "name": "Detect Prompt Injection Sql",
         "description": "Required acceptance case for the imported local category.",
-        "stage": "input",
+        "phase": "input",
         "content": "Please review this request: '; DROP TABLE.",
         "expected_decision": "block",
         "covered_rule_ids": [
@@ -7778,7 +7823,7 @@
         "description": "Detects attempts to inject or execute malicious code via prompts",
         "form": "category",
         "effect": "reject",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -7972,7 +8017,10 @@
           "secure coding",
           "code analysis"
         ],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-TOOL-SECURITY-UNAUTHORIZED-EXECUTION"
+        ]
       }
     ],
     "safety_level": "balanced",
@@ -7982,7 +8030,7 @@
         "id": "accept/prompt_injection_malicious_code",
         "name": "Detect Prompt Injection Malicious Code",
         "description": "Required acceptance case for the imported local category.",
-        "stage": "input",
+        "phase": "input",
         "content": "Please review this request: rm -rf /.",
         "expected_decision": "block",
         "covered_rule_ids": [
@@ -8041,7 +8089,7 @@
         "description": "Detects attempts to extract, reveal, or override system prompts and instructions",
         "form": "category",
         "effect": "reject",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -8252,7 +8300,10 @@
           "chatbot development",
           "LLM security research"
         ],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-MODEL-SECURITY"
+        ]
       }
     ],
     "safety_level": "balanced",
@@ -8262,7 +8313,7 @@
         "id": "accept/prompt_injection_system_prompt",
         "name": "Detect Prompt Injection System Prompt",
         "description": "Required acceptance case for the imported local category.",
-        "stage": "input",
+        "phase": "input",
         "content": "Please review this request: ignore previous instructions.",
         "expected_decision": "block",
         "covered_rule_ids": [
@@ -8321,7 +8372,7 @@
         "description": "Detects harmful, toxic, abusive, and hateful language.",
         "form": "category",
         "effect": "reject",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -12108,7 +12159,10 @@
         ],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-SOCIAL-HARM-HARASSMENT"
+        ]
       }
     ],
     "safety_level": "balanced",
@@ -12118,7 +12172,7 @@
         "id": "accept/harm_toxic_abuse",
         "name": "Detect Toxic & Abusive Language",
         "description": "Required acceptance case for the imported local category.",
-        "stage": "input",
+        "phase": "input",
         "content": "The message contains 1m1j.",
         "expected_decision": "block",
         "covered_rule_ids": [
@@ -12177,7 +12231,7 @@
         "description": "Detects US Social Security Numbers (XXX-XX-XXXX format)",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -12201,7 +12255,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-PII"
+        ]
       },
       {
         "id": "pattern/us_ssn_no_dash",
@@ -12209,7 +12266,7 @@
         "description": "Detects US SSN without dashes (XXXXXXXXX format)",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -12233,7 +12290,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-PII"
+        ]
       },
       {
         "id": "pattern/email",
@@ -12241,7 +12301,7 @@
         "description": "Detects email addresses",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -12265,7 +12325,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-PII"
+        ]
       },
       {
         "id": "pattern/us_phone",
@@ -12273,7 +12336,7 @@
         "description": "Detects US phone numbers in various formats",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -12297,7 +12360,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-PII"
+        ]
       },
       {
         "id": "pattern/visa",
@@ -12305,7 +12371,7 @@
         "description": "Detects Visa credit card numbers",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -12329,7 +12395,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-FINANCIAL"
+        ]
       },
       {
         "id": "pattern/mastercard",
@@ -12337,7 +12406,7 @@
         "description": "Detects Mastercard credit card numbers",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -12361,7 +12430,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-FINANCIAL"
+        ]
       },
       {
         "id": "pattern/amex",
@@ -12369,7 +12441,7 @@
         "description": "Detects American Express credit card numbers",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -12393,7 +12465,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-FINANCIAL"
+        ]
       },
       {
         "id": "pattern/discover",
@@ -12401,7 +12476,7 @@
         "description": "Detects Discover credit card numbers",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -12425,7 +12500,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-FINANCIAL"
+        ]
       },
       {
         "id": "pattern/credit_card",
@@ -12433,7 +12511,7 @@
         "description": "Detects any major credit card number",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -12457,7 +12535,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-FINANCIAL"
+        ]
       },
       {
         "id": "pattern/aws_access_key",
@@ -12465,7 +12546,7 @@
         "description": "Detects AWS access keys (AKIA...)",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -12489,7 +12570,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-CREDENTIAL"
+        ]
       },
       {
         "id": "pattern/aws_secret_key",
@@ -12497,7 +12581,7 @@
         "description": "Detects AWS secret keys (40 characters)",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -12521,7 +12605,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-CREDENTIAL"
+        ]
       },
       {
         "id": "pattern/github_token",
@@ -12529,7 +12616,7 @@
         "description": "Detects GitHub personal access tokens",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -12553,7 +12640,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-CREDENTIAL"
+        ]
       },
       {
         "id": "pattern/slack_token",
@@ -12561,7 +12651,7 @@
         "description": "Detects Slack API tokens",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -12585,7 +12675,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-CREDENTIAL"
+        ]
       },
       {
         "id": "pattern/generic_api_key",
@@ -12593,7 +12686,7 @@
         "description": "Detects generic API key patterns",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -12617,7 +12710,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-CREDENTIAL"
+        ]
       },
       {
         "id": "pattern/ipv4",
@@ -12625,7 +12721,7 @@
         "description": "Detects IPv4 addresses",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -12649,7 +12745,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-PII"
+        ]
       },
       {
         "id": "pattern/ipv6",
@@ -12657,7 +12756,7 @@
         "description": "Detects IPv6 addresses",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -12681,7 +12780,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-PII"
+        ]
       },
       {
         "id": "pattern/url",
@@ -12689,7 +12791,7 @@
         "description": "Detects URLs (http/https)",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -12713,7 +12815,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-BUSINESS-POLICY"
+        ]
       },
       {
         "id": "pattern/passport_us",
@@ -12721,7 +12826,7 @@
         "description": "US passport numbers (9 digits or alphanumeric letter + 8 digits)",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -12745,7 +12850,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-PII"
+        ]
       },
       {
         "id": "pattern/passport_uk",
@@ -12753,7 +12861,7 @@
         "description": "UK passport numbers (9 digits)",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -12777,7 +12885,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-PII"
+        ]
       },
       {
         "id": "pattern/passport_germany",
@@ -12785,7 +12896,7 @@
         "description": "German passport numbers (9 alphanumeric, no vowels)",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -12809,7 +12920,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-PII"
+        ]
       },
       {
         "id": "pattern/passport_france",
@@ -12817,7 +12931,7 @@
         "description": "French passport numbers (2 digits, 2 letters, 5 digits)",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -12841,7 +12955,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-PII"
+        ]
       },
       {
         "id": "pattern/passport_netherlands",
@@ -12849,7 +12966,7 @@
         "description": "Dutch passport numbers (2 letters + 6 alphanumeric + 1 digit)",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -12873,7 +12990,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-PII"
+        ]
       },
       {
         "id": "pattern/passport_canada",
@@ -12881,7 +13001,7 @@
         "description": "Canadian passport numbers (old: 2 letters + 6 digits; new: 1 letter + 6 digits + 2 letters)",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -12905,7 +13025,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-PII"
+        ]
       },
       {
         "id": "pattern/passport_india",
@@ -12913,7 +13036,7 @@
         "description": "Indian passport numbers (1 letter + 7 digits)",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -12937,7 +13060,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-PII"
+        ]
       },
       {
         "id": "pattern/passport_australia",
@@ -12945,7 +13071,7 @@
         "description": "Australian passport numbers (1 letter + 7 digits)",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -12969,7 +13095,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-PII"
+        ]
       },
       {
         "id": "pattern/passport_china",
@@ -12977,7 +13106,7 @@
         "description": "Chinese passport numbers (E/G prefix + 8 digits)",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -13001,7 +13130,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-PII"
+        ]
       },
       {
         "id": "pattern/passport_japan",
@@ -13009,7 +13141,7 @@
         "description": "Japanese passport numbers (2 letters + 7 digits)",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -13033,7 +13165,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-PII"
+        ]
       },
       {
         "id": "pattern/gender_sexual_orientation",
@@ -13041,7 +13176,7 @@
         "description": "Detects gender identity and sexual orientation terms - protected under fair lending regulations",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -13065,7 +13200,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-SENSITIVE-ATTRIBUTE"
+        ]
       },
       {
         "id": "pattern/race_ethnicity_national_origin",
@@ -13073,7 +13211,7 @@
         "description": "Detects race, ethnicity and national origin terms - protected under ECOA and Fair Housing Act",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -13097,7 +13235,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-SENSITIVE-ATTRIBUTE"
+        ]
       },
       {
         "id": "pattern/religion",
@@ -13105,7 +13246,7 @@
         "description": "Detects religious affiliation and practice terms - protected under ECOA",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -13129,7 +13270,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-SENSITIVE-ATTRIBUTE"
+        ]
       },
       {
         "id": "pattern/age_discrimination",
@@ -13137,7 +13281,7 @@
         "description": "Detects age-related terms - protected under ECOA for applicants 62+",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -13161,7 +13305,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-SENSITIVE-ATTRIBUTE"
+        ]
       },
       {
         "id": "pattern/disability",
@@ -13169,7 +13316,7 @@
         "description": "Detects disability-related terms - protected under ECOA and ADA",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -13193,7 +13340,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-SENSITIVE-ATTRIBUTE"
+        ]
       },
       {
         "id": "pattern/marital_family_status",
@@ -13201,7 +13351,7 @@
         "description": "Detects marital and family status terms - protected under ECOA",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -13225,7 +13375,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-SENSITIVE-ATTRIBUTE"
+        ]
       },
       {
         "id": "pattern/military_status",
@@ -13233,7 +13386,7 @@
         "description": "Detects military status terms - protected under SCRA and MLA",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -13257,7 +13410,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-SENSITIVE-ATTRIBUTE"
+        ]
       },
       {
         "id": "pattern/public_assistance",
@@ -13265,7 +13421,7 @@
         "description": "Detects public assistance terms - protected under ECOA",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -13289,7 +13445,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-SENSITIVE-ATTRIBUTE"
+        ]
       },
       {
         "id": "pattern/weapons_firearms",
@@ -13297,7 +13456,7 @@
         "description": "Detects firearms and ammunition terminology",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -13321,7 +13480,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PHYSICAL-HARM-WEAPONS"
+        ]
       },
       {
         "id": "pattern/weapons_other",
@@ -13329,7 +13491,7 @@
         "description": "Detects non-firearm weapons terminology",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -13353,7 +13515,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PHYSICAL-HARM-WEAPONS"
+        ]
       },
       {
         "id": "pattern/explosives",
@@ -13361,7 +13526,7 @@
         "description": "Detects explosives and bomb-making terminology",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -13385,7 +13550,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PHYSICAL-HARM-WEAPONS"
+        ]
       },
       {
         "id": "pattern/violence_threats",
@@ -13393,7 +13561,7 @@
         "description": "Detects violent threats and terminology",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -13417,7 +13585,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PHYSICAL-HARM"
+        ]
       },
       {
         "id": "pattern/terrorism",
@@ -13425,7 +13596,7 @@
         "description": "Detects terrorism and extremism terminology",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -13449,7 +13620,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-SOCIAL-HARM-EXTREMISM"
+        ]
       },
       {
         "id": "pattern/self_harm_suicide",
@@ -13457,7 +13631,7 @@
         "description": "Detects self-harm and suicide terminology - recommend human review",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -13481,7 +13655,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-SELF-HARM"
+        ]
       },
       {
         "id": "pattern/illegal_activities",
@@ -13489,7 +13666,7 @@
         "description": "Detects illegal activity terminology - relevant to SAR filing",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -13513,7 +13690,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-ILLEGAL-ACTIVITY"
+        ]
       },
       {
         "id": "pattern/harassment_hate",
@@ -13521,7 +13701,7 @@
         "description": "Detects slurs, hate speech and harassment",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -13545,7 +13725,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-SOCIAL-HARM-HARASSMENT"
+        ]
       },
       {
         "id": "pattern/nl_bsn_contextual",
@@ -13553,7 +13736,7 @@
         "description": "Detects Dutch BSN numbers with contextual keywords",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -13577,7 +13760,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-BUSINESS-POLICY"
+        ]
       },
       {
         "id": "pattern/br_cpf",
@@ -13585,7 +13771,7 @@
         "description": "Detects Brazilian CPF numbers (XXX.XXX.XXX-XX or XXX.XXX.XXX/XX format)",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -13609,7 +13795,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-BUSINESS-POLICY"
+        ]
       },
       {
         "id": "pattern/br_cpf_unformatted",
@@ -13617,7 +13806,7 @@
         "description": "Detects Brazilian CPF numbers without formatting (11 digits)",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -13641,7 +13830,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-BUSINESS-POLICY"
+        ]
       },
       {
         "id": "pattern/br_phone_landline",
@@ -13649,7 +13841,7 @@
         "description": "Detects Brazilian landline phone numbers with optional area code",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -13673,7 +13865,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-PII"
+        ]
       },
       {
         "id": "pattern/br_phone_mobile",
@@ -13681,7 +13876,7 @@
         "description": "Detects Brazilian mobile phone numbers (9 prefix for mobile)",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -13705,7 +13900,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-PII"
+        ]
       },
       {
         "id": "pattern/br_cep",
@@ -13713,7 +13911,7 @@
         "description": "Detects Brazilian CEP postal codes (XXXXX-XXX or XXXXXXXX format)",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -13737,7 +13935,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-PII"
+        ]
       },
       {
         "id": "pattern/br_cnpj",
@@ -13745,7 +13946,7 @@
         "description": "Detects Brazilian CNPJ company registration numbers (XX.XXX.XXX/XXXX-XX format)",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -13769,7 +13970,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-BUSINESS-POLICY"
+        ]
       },
       {
         "id": "pattern/br_rg",
@@ -13777,7 +13981,7 @@
         "description": "Detects Brazilian RG identity card numbers (common pattern for SP, RJ, MG states)",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -13801,7 +14005,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-BUSINESS-POLICY"
+        ]
       },
       {
         "id": "pattern/au_tfn",
@@ -13809,7 +14016,7 @@
         "description": "Detects Australian Tax File Numbers (8-9 digits) only when near TFN/tax file context to avoid false positives on arbitrary numbers",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -13833,7 +14040,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-PII"
+        ]
       },
       {
         "id": "pattern/au_abn",
@@ -13841,7 +14051,7 @@
         "description": "Detects Australian Business Numbers (11 digits, optional spaces: XX XXX XXX XXX)",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -13865,7 +14075,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-BUSINESS-POLICY"
+        ]
       },
       {
         "id": "pattern/au_medicare",
@@ -13873,7 +14086,7 @@
         "description": "Detects Australian Medicare numbers (formatted XXXX XXXXX X or 11 consecutive digits)",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -13897,7 +14110,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-HEALTH"
+        ]
       },
       {
         "id": "pattern/iban",
@@ -13905,7 +14121,7 @@
         "description": "Detects IBANs (2 letter country code + 2 check digits + 4 char bank code + 7 digit base + optional 0-16 alphanumeric)",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -13929,7 +14145,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-FINANCIAL"
+        ]
       },
       {
         "id": "pattern/fr_nir",
@@ -13937,7 +14156,7 @@
         "description": "Detects French National Identification Number (Numéro d'Inscription au Répertoire) - 15 digits with specific format: sex + year + month + department + commune + order + key",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -13961,7 +14180,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-BUSINESS-POLICY"
+        ]
       },
       {
         "id": "pattern/eu_iban_enhanced",
@@ -13969,7 +14191,7 @@
         "description": "Enhanced IBAN detection with more specific format validation (2 letter country + 2 check digits + 4 char bank code + 7 digit account base + optional 0-16 alphanumeric)",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -13993,7 +14215,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-FINANCIAL"
+        ]
       },
       {
         "id": "pattern/fr_phone",
@@ -14001,7 +14226,7 @@
         "description": "Detects French phone numbers in various formats (+33, 0033, or 0 prefix followed by 9 digits starting with 1-9)",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -14025,7 +14250,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-PII"
+        ]
       },
       {
         "id": "pattern/eu_vat",
@@ -14033,7 +14261,7 @@
         "description": "Detects EU VAT identification numbers (2-letter country code + 8-12 alphanumeric characters covering all EU member states)",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -14057,7 +14285,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-BUSINESS-POLICY"
+        ]
       },
       {
         "id": "pattern/eu_passport_generic",
@@ -14065,7 +14296,7 @@
         "description": "Detects generic EU passport format (2 digits + 2 letters + 5 digits) - covers France and similar EU formats",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -14089,7 +14320,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-PII"
+        ]
       },
       {
         "id": "pattern/fr_postal_code",
@@ -14097,7 +14331,7 @@
         "description": "Detects French postal codes (5 digits)",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -14121,7 +14355,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-PII"
+        ]
       },
       {
         "id": "pattern/street_address",
@@ -14129,7 +14366,7 @@
         "description": "Detects street addresses (number + street name + street type)",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -14153,7 +14390,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-PII"
+        ]
       },
       {
         "id": "pattern/airline_pnr",
@@ -14161,7 +14401,7 @@
         "description": "Detects airline PNR / booking references (6 uppercase alpha characters) when near booking context",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -14185,7 +14425,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-PII"
+        ]
       },
       {
         "id": "pattern/skywards_number",
@@ -14193,7 +14436,7 @@
         "description": "Detects Emirates Skywards frequent flyer numbers (9-10 digits, optional EK prefix) when near loyalty/frequent flyer context",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -14217,7 +14460,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-PII"
+        ]
       },
       {
         "id": "pattern/uae_emirates_id",
@@ -14225,7 +14471,7 @@
         "description": "Detects UAE Emirates ID numbers (784-YYYY-NNNNNNN-C format, 15 digits starting with 784)",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -14249,7 +14495,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-PII"
+        ]
       },
       {
         "id": "pattern/uae_phone",
@@ -14257,7 +14506,7 @@
         "description": "Detects UAE phone numbers (+971/00971/0 prefix, landline and mobile)",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -14281,7 +14530,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-PII"
+        ]
       },
       {
         "id": "pattern/flight_number",
@@ -14289,7 +14541,7 @@
         "description": "Detects airline flight numbers (major IATA 2-letter codes + 1-4 digit flight number) when near flight context",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -14313,7 +14565,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-BUSINESS-POLICY"
+        ]
       },
       {
         "id": "pattern/sg_nric",
@@ -14321,7 +14576,7 @@
         "description": "Detects Singapore NRIC and FIN numbers (S/T for citizens/PRs, F/G/M for foreigners + 7 digits + checksum letter)",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -14345,7 +14600,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-PII"
+        ]
       },
       {
         "id": "pattern/sg_phone",
@@ -14353,7 +14611,7 @@
         "description": "Detects Singapore phone numbers (+65/0065/65 prefix with 6/8/9 starting digit for landline and mobile)",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -14377,7 +14635,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-PII"
+        ]
       },
       {
         "id": "pattern/sg_postal_code",
@@ -14385,7 +14646,7 @@
         "description": "Detects Singapore 6-digit postal codes (ranges 01xxxx to 83xxxx)",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -14409,7 +14670,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-PII"
+        ]
       },
       {
         "id": "pattern/passport_singapore",
@@ -14417,7 +14681,7 @@
         "description": "Detects Singapore passport numbers (E/K prefix + 7 digits)",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -14441,7 +14705,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-PII"
+        ]
       },
       {
         "id": "pattern/sg_uen",
@@ -14449,7 +14716,7 @@
         "description": "Detects Singapore Unique Entity Numbers for business registration (various formats: 8/9 digits + letter, or T/R prefix)",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -14473,7 +14740,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-BUSINESS-POLICY"
+        ]
       },
       {
         "id": "pattern/sg_bank_account",
@@ -14481,7 +14751,7 @@
         "description": "Detects Singapore bank account numbers (XXX-XXXXX(X)-X(XX) format for DBS/POSB/OCBC/UOB)",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -14505,7 +14775,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-FINANCIAL"
+        ]
       },
       {
         "id": "pattern/ca_sin",
@@ -14513,7 +14786,7 @@
         "description": "Detects Canadian Social Insurance Numbers (9-digit federal identifier, dashed or spaced format, first digit 1-9)",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -14537,7 +14810,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-BUSINESS-POLICY"
+        ]
       },
       {
         "id": "pattern/ca_ohip",
@@ -14545,7 +14821,7 @@
         "description": "Detects Ontario Health Insurance Plan numbers (10 digits + 2-letter version code)",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -14569,7 +14845,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-HEALTH"
+        ]
       },
       {
         "id": "pattern/ca_on_drivers_licence",
@@ -14577,7 +14856,7 @@
         "description": "Detects Ontario driver's licence numbers (1 letter + 14 digits, dashed format)",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -14601,7 +14880,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-PII"
+        ]
       },
       {
         "id": "pattern/ca_immigration_doc",
@@ -14609,7 +14891,7 @@
         "description": "Detects Canadian immigration document numbers including UCI (10-digit), work/study permits, and IMM document references",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -14633,7 +14915,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-PII"
+        ]
       },
       {
         "id": "pattern/ca_bank_account",
@@ -14641,7 +14926,7 @@
         "description": "Detects Canadian bank account routing information (transit-institution-account format)",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -14665,7 +14950,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-FINANCIAL"
+        ]
       },
       {
         "id": "pattern/ca_postal_code",
@@ -14673,7 +14961,7 @@
         "description": "Detects Canadian postal codes (A1A 1A1 format, excludes invalid first-letter characters per Canada Post spec)",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -14697,7 +14985,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-PII"
+        ]
       },
       {
         "id": "pattern/uoft_student_id",
@@ -14705,7 +14996,7 @@
         "description": "Detects University of Toronto student and employee numbers (10-digit, prefix '10'). Subject to Ontario FIPPA.",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -14729,7 +15020,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-PII"
+        ]
       },
       {
         "id": "pattern/uoft_utorid",
@@ -14737,7 +15031,7 @@
         "description": "Detects University of Toronto UTORid login identifiers (e.g. smithj12). Context keywords are essential due to the generic format.",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -14761,7 +15055,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-PII"
+        ]
       },
       {
         "id": "pattern/uoft_tcard",
@@ -14769,7 +15066,7 @@
         "description": "Detects University of Toronto TCard campus ID card numbers (16-digit). Context keywords are critical to distinguish from payment card numbers.",
         "form": "regex",
         "effect": "redact",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -14793,7 +15090,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-PRIVACY-PII"
+        ]
       }
     ],
     "test_cases": [
@@ -14801,7 +15101,7 @@
         "id": "accept/us_ssn",
         "name": "Detect SSN (Social Security Number)",
         "description": "Required acceptance case for PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: 111-11-1111",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -14816,7 +15116,7 @@
         "id": "accept/us_ssn_no_dash",
         "name": "Detect SSN (No Dashes)",
         "description": "Required acceptance case for PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: 111111111",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -14831,7 +15131,7 @@
         "id": "accept/email",
         "name": "Detect Email Address",
         "description": "Required acceptance case for PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: A@A.AA",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -14846,7 +15146,7 @@
         "id": "accept/us_phone",
         "name": "Detect Phone Number (US)",
         "description": "Required acceptance case for PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: +1 (000) 000 0000",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -14861,7 +15161,7 @@
         "id": "accept/visa",
         "name": "Detect Credit Card (Visa)",
         "description": "Required acceptance case for Payment Card Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: 4111 1111 1111 1111",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -14876,7 +15176,7 @@
         "id": "accept/mastercard",
         "name": "Detect Credit Card (Mastercard)",
         "description": "Required acceptance case for Payment Card Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: 5111 1111 1111 1111",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -14891,7 +15191,7 @@
         "id": "accept/amex",
         "name": "Detect Credit Card (American Express)",
         "description": "Required acceptance case for Payment Card Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: 3411 111111 11111",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -14906,7 +15206,7 @@
         "id": "accept/discover",
         "name": "Detect Credit Card (Discover)",
         "description": "Required acceptance case for Payment Card Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: 6011 1111 1111 1111",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -14921,7 +15221,7 @@
         "id": "accept/credit_card",
         "name": "Detect Credit Card (Any)",
         "description": "Required acceptance case for Payment Card Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: 4111 1111 1111 1111",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -14936,7 +15236,7 @@
         "id": "accept/aws_access_key",
         "name": "Detect AWS Access Key",
         "description": "Required acceptance case for Credential Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: AKIA0000000000000000",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -14951,7 +15251,7 @@
         "id": "accept/aws_secret_key",
         "name": "Detect AWS Secret Key",
         "description": "Required acceptance case for Credential Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -14966,7 +15266,7 @@
         "id": "accept/github_token",
         "name": "Detect GitHub Token",
         "description": "Required acceptance case for Credential Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -14981,7 +15281,7 @@
         "id": "accept/slack_token",
         "name": "Detect Slack Token",
         "description": "Required acceptance case for Credential Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: xoxp-0000000000-0000000000-aaaaaaaaaaaaaaaaaaaaaaaa",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -14996,7 +15296,7 @@
         "id": "accept/generic_api_key",
         "name": "Detect API Key (Generic)",
         "description": "Required acceptance case for Credential Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: API-KEY 'AAAAAAAAAAAAAAAAAAAA'",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15011,7 +15311,7 @@
         "id": "accept/ipv4",
         "name": "Detect IP Address (IPv4)",
         "description": "Required acceptance case for Network Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: 250.250.250.250",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15026,7 +15326,7 @@
         "id": "accept/ipv6",
         "name": "Detect IP Address (IPv6)",
         "description": "Required acceptance case for Network Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: 0:0:0:0:0:0:0:0",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15041,7 +15341,7 @@
         "id": "accept/url",
         "name": "Detect URL",
         "description": "Required acceptance case for Network Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "The private endpoint is https://example.com/internal.",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15056,7 +15356,7 @@
         "id": "accept/passport_us",
         "name": "Detect Passport (US)",
         "description": "Required acceptance case for PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: A00000000",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15071,7 +15371,7 @@
         "id": "accept/passport_uk",
         "name": "Detect Passport (UK)",
         "description": "Required acceptance case for PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: 000000000",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15086,7 +15386,7 @@
         "id": "accept/passport_germany",
         "name": "Detect Passport (Germany)",
         "description": "Required acceptance case for PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: CCCCCCCCC",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15101,7 +15401,7 @@
         "id": "accept/passport_france",
         "name": "Detect Passport (France)",
         "description": "Required acceptance case for PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: 00AA00000",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15116,7 +15416,7 @@
         "id": "accept/passport_netherlands",
         "name": "Detect Passport (Netherlands)",
         "description": "Required acceptance case for PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: AAAAAAAA0",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15131,7 +15431,7 @@
         "id": "accept/passport_canada",
         "name": "Detect Passport (Canada)",
         "description": "Required acceptance case for PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: AA000000",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15146,7 +15446,7 @@
         "id": "accept/passport_india",
         "name": "Detect Passport (India)",
         "description": "Required acceptance case for PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: A0000000",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15161,7 +15461,7 @@
         "id": "accept/passport_australia",
         "name": "Detect Passport (Australia)",
         "description": "Required acceptance case for PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: A0000000",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15176,7 +15476,7 @@
         "id": "accept/passport_china",
         "name": "Detect Passport (China)",
         "description": "Required acceptance case for PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: E00000000",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15191,7 +15491,7 @@
         "id": "accept/passport_japan",
         "name": "Detect Passport (Japan)",
         "description": "Required acceptance case for PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: AA0000000",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15206,7 +15506,7 @@
         "id": "accept/gender_sexual_orientation",
         "name": "Detect Gender & Sexual Orientation (Protected Class)",
         "description": "Required acceptance case for Protected Class - Fair Lending.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: non-binary",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15221,7 +15521,7 @@
         "id": "accept/race_ethnicity_national_origin",
         "name": "Detect Race, Ethnicity & National Origin (Protected Class)",
         "description": "Required acceptance case for Protected Class - Fair Lending.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: caucasian",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15236,7 +15536,7 @@
         "id": "accept/religion",
         "name": "Detect Religion & Creed (Protected Class)",
         "description": "Required acceptance case for Protected Class - Fair Lending.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: christians",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15251,7 +15551,7 @@
         "id": "accept/age_discrimination",
         "name": "Detect Age-Related Terms (Protected Class)",
         "description": "Required acceptance case for Protected Class - Fair Lending.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: elderly",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15266,7 +15566,7 @@
         "id": "accept/disability",
         "name": "Detect Disability Status (Protected Class)",
         "description": "Required acceptance case for Protected Class - Fair Lending.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: disabled",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15281,7 +15581,7 @@
         "id": "accept/marital_family_status",
         "name": "Detect Marital & Family Status (Protected Class)",
         "description": "Required acceptance case for Protected Class - Fair Lending.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: married",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15296,7 +15596,7 @@
         "id": "accept/military_status",
         "name": "Detect Military Status (Protected Class)",
         "description": "Required acceptance case for Protected Class - Fair Lending.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: veterans",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15311,7 +15611,7 @@
         "id": "accept/public_assistance",
         "name": "Detect Public Assistance Status (Protected Class)",
         "description": "Required acceptance case for Protected Class - Fair Lending.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: welfare",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15326,7 +15626,7 @@
         "id": "accept/weapons_firearms",
         "name": "Detect Weapons & Firearms",
         "description": "Required acceptance case for Dangerous Content.",
-        "stage": "input",
+        "phase": "input",
         "content": "The firearm was found in the room.",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15341,7 +15641,7 @@
         "id": "accept/weapons_other",
         "name": "Detect Other Weapons",
         "description": "Required acceptance case for Dangerous Content.",
-        "stage": "input",
+        "phase": "input",
         "content": "The suspect carried a switchblade.",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15356,7 +15656,7 @@
         "id": "accept/explosives",
         "name": "Detect Explosives & Bombs",
         "description": "Required acceptance case for Dangerous Content - High Risk.",
-        "stage": "input",
+        "phase": "input",
         "content": "Instructions for a pipe bomb are prohibited.",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15371,7 +15671,7 @@
         "id": "accept/violence_threats",
         "name": "Detect Violence & Threats",
         "description": "Required acceptance case for Dangerous Content - High Risk.",
-        "stage": "input",
+        "phase": "input",
         "content": "They sent a death threat yesterday.",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15386,7 +15686,7 @@
         "id": "accept/terrorism",
         "name": "Detect Terrorism & Extremism",
         "description": "Required acceptance case for Dangerous Content - High Risk.",
-        "stage": "input",
+        "phase": "input",
         "content": "The message promoted a terrorist attack.",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15401,7 +15701,7 @@
         "id": "accept/self_harm_suicide",
         "name": "Detect Self-Harm & Suicide",
         "description": "Required acceptance case for Dangerous Content - Crisis.",
-        "stage": "input",
+        "phase": "input",
         "content": "The message says I want to die.",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15416,7 +15716,7 @@
         "id": "accept/illegal_activities",
         "name": "Detect Illegal Activities",
         "description": "Required acceptance case for Dangerous Content - Illegal.",
-        "stage": "input",
+        "phase": "input",
         "content": "The request describes money laundering.",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15431,7 +15731,7 @@
         "id": "accept/harassment_hate",
         "name": "Detect Harassment & Hate Speech",
         "description": "Required acceptance case for Dangerous Content - High Risk.",
-        "stage": "input",
+        "phase": "input",
         "content": "The account was used for doxxing.",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15446,7 +15746,7 @@
         "id": "accept/nl_bsn_contextual",
         "name": "Detect BSN (Dutch Citizen Service Number)",
         "description": "Required acceptance case for PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: BSN 000000000",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15461,7 +15761,7 @@
         "id": "accept/br_cpf",
         "name": "Detect CPF - Brazilian Personal Tax ID (Formatted)",
         "description": "Required acceptance case for Brazilian PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: 111.111.111-11",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15476,7 +15776,7 @@
         "id": "accept/br_cpf_unformatted",
         "name": "Detect CPF - Brazilian Personal Tax ID (Unformatted)",
         "description": "Required acceptance case for Brazilian PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: 11111111111",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15491,7 +15791,7 @@
         "id": "accept/br_phone_landline",
         "name": "Detect Brazilian Phone Number (Landline)",
         "description": "Required acceptance case for Brazilian PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: (11) 91111-1111",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15506,7 +15806,7 @@
         "id": "accept/br_phone_mobile",
         "name": "Detect Brazilian Mobile Phone Number",
         "description": "Required acceptance case for Brazilian PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: +1 (11) 91111-1111",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15521,7 +15821,7 @@
         "id": "accept/br_cep",
         "name": "Detect CEP - Brazilian Zip / Postal Code",
         "description": "Required acceptance case for Brazilian PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: 11111-111",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15536,7 +15836,7 @@
         "id": "accept/br_cnpj",
         "name": "Detect CNPJ - Brazilian Company Tax ID",
         "description": "Required acceptance case for Brazilian PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: 11.111.111/1111-11",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15551,7 +15851,7 @@
         "id": "accept/br_rg",
         "name": "Detect RG - Brazilian National Identity Card (SP, RJ, MG)",
         "description": "Required acceptance case for Brazilian PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: 1.111.111-1",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15566,7 +15866,7 @@
         "id": "accept/au_tfn",
         "name": "Detect TFN (Australian Tax File Number)",
         "description": "Required acceptance case for PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Tax file number 111111111.",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15581,7 +15881,7 @@
         "id": "accept/au_abn",
         "name": "Detect ABN (Australian Business Number)",
         "description": "Required acceptance case for PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: 11 111 111 111",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15596,7 +15896,7 @@
         "id": "accept/au_medicare",
         "name": "Detect Medicare Number (Australia)",
         "description": "Required acceptance case for PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: 1111 11111 1",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15611,7 +15911,7 @@
         "id": "accept/iban",
         "name": "Detect IBAN (International Bank Account Number)",
         "description": "Required acceptance case for Payment Card Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: AA11AAAAAAAAAAA",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15626,7 +15926,7 @@
         "id": "accept/fr_nir",
         "name": "Detect NIR/INSEE (French Social Security Number)",
         "description": "Required acceptance case for EU PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: 100010000000000",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15641,7 +15941,7 @@
         "id": "accept/eu_iban_enhanced",
         "name": "Detect IBAN (Enhanced EU Format)",
         "description": "Required acceptance case for EU PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: AA00AAAA0000000A",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15656,7 +15956,7 @@
         "id": "accept/fr_phone",
         "name": "Detect Phone Number (France)",
         "description": "Required acceptance case for EU PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: +33100000000",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15671,7 +15971,7 @@
         "id": "accept/eu_vat",
         "name": "Detect VAT Number (EU)",
         "description": "Required acceptance case for EU PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: VAT AT00000000",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15686,7 +15986,7 @@
         "id": "accept/eu_passport_generic",
         "name": "Detect Passport Number (EU Generic)",
         "description": "Required acceptance case for EU PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: passport 00AA00000",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15701,7 +16001,7 @@
         "id": "accept/fr_postal_code",
         "name": "Detect Postal Code (France)",
         "description": "Required acceptance case for EU PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: code postal 00000",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15716,7 +16016,7 @@
         "id": "accept/street_address",
         "name": "Detect Street Address",
         "description": "Required acceptance case for PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: 1 AA Street",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15731,7 +16031,7 @@
         "id": "accept/airline_pnr",
         "name": "Detect Airline PNR / Booking Reference",
         "description": "Required acceptance case for Aviation PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: PNR AAAAAA",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15746,7 +16046,7 @@
         "id": "accept/skywards_number",
         "name": "Detect Emirates Skywards / Frequent Flyer Number",
         "description": "Required acceptance case for Aviation PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: Skywards EK 111111111",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15761,7 +16061,7 @@
         "id": "accept/uae_emirates_id",
         "name": "Detect UAE Emirates ID",
         "description": "Required acceptance case for UAE PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: 784-1111-1111111-1",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15776,7 +16076,7 @@
         "id": "accept/uae_phone",
         "name": "Detect Phone Number (UAE)",
         "description": "Required acceptance case for UAE PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: +971 2 111 1111",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15791,7 +16091,7 @@
         "id": "accept/flight_number",
         "name": "Detect Airline Flight Number",
         "description": "Required acceptance case for Aviation PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: flight EK 1",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15806,7 +16106,7 @@
         "id": "accept/sg_nric",
         "name": "Detect NRIC/FIN (Singapore National ID)",
         "description": "Required acceptance case for Singapore PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: S1111111A",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15821,7 +16121,7 @@
         "id": "accept/sg_phone",
         "name": "Detect Phone Number (Singapore)",
         "description": "Required acceptance case for Singapore PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: +65 6111 1111",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15836,7 +16136,7 @@
         "id": "accept/sg_postal_code",
         "name": "Detect Postal Code (Singapore)",
         "description": "Required acceptance case for Singapore PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: postal code 011111",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15851,7 +16151,7 @@
         "id": "accept/passport_singapore",
         "name": "Detect Passport (Singapore)",
         "description": "Required acceptance case for Singapore PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: passport E1111111",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15866,7 +16166,7 @@
         "id": "accept/sg_uen",
         "name": "Detect UEN (Singapore Unique Entity Number)",
         "description": "Required acceptance case for Singapore PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: UEN 11111111A",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15881,7 +16181,7 @@
         "id": "accept/sg_bank_account",
         "name": "Detect Bank Account (Singapore)",
         "description": "Required acceptance case for Singapore PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Acceptance sample: bank account 111-11111-1",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15896,7 +16196,7 @@
         "id": "accept/ca_sin",
         "name": "Detect SIN (Canadian Social Insurance Number)",
         "description": "Required acceptance case for Canadian PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Social insurance number 123-456-789.",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15911,7 +16211,7 @@
         "id": "accept/ca_ohip",
         "name": "Detect OHIP (Ontario Health Insurance Plan Number)",
         "description": "Required acceptance case for Canadian PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "OHIP number 1234-567-890 AB.",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15926,7 +16226,7 @@
         "id": "accept/ca_on_drivers_licence",
         "name": "Detect Driver's Licence (Ontario)",
         "description": "Required acceptance case for Canadian PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Driver's licence A1234-56789-01234.",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15941,7 +16241,7 @@
         "id": "accept/ca_immigration_doc",
         "name": "Detect Immigration Document (Canada IRCC)",
         "description": "Required acceptance case for Canadian PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "UCI 1234-5678-90.",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15956,7 +16256,7 @@
         "id": "accept/ca_bank_account",
         "name": "Detect Bank Account (Canada)",
         "description": "Required acceptance case for Canadian PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Bank account 12345-001-1234567.",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15971,7 +16271,7 @@
         "id": "accept/ca_postal_code",
         "name": "Detect Postal Code (Canada)",
         "description": "Required acceptance case for Canadian PII Patterns.",
-        "stage": "input",
+        "phase": "input",
         "content": "Postal code M5V 3A8.",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -15986,7 +16286,7 @@
         "id": "accept/uoft_student_id",
         "name": "Detect Student/Employee Number (University of Toronto)",
         "description": "Required acceptance case for Canadian Institutional Identifiers (FIPPA).",
-        "stage": "input",
+        "phase": "input",
         "content": "University of Toronto student number 1000000000.",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -16001,7 +16301,7 @@
         "id": "accept/uoft_utorid",
         "name": "Detect UTORid (University of Toronto Login)",
         "description": "Required acceptance case for Canadian Institutional Identifiers (FIPPA).",
-        "stage": "input",
+        "phase": "input",
         "content": "UTORid smith123.",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -16016,7 +16316,7 @@
         "id": "accept/uoft_tcard",
         "name": "Detect TCard Number (University of Toronto Campus ID)",
         "description": "Required acceptance case for Canadian Institutional Identifiers (FIPPA).",
-        "stage": "input",
+        "phase": "input",
         "content": "TCard number 1234567890123456.",
         "expected_decision": "transform",
         "covered_rule_ids": [
@@ -16086,7 +16386,7 @@
         "description": "Matches the configured line-separated keyword list.",
         "form": "keyword",
         "effect": "reject",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -16113,7 +16413,10 @@
         ],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-BUSINESS-POLICY"
+        ]
       }
     ],
     "test_cases": [
@@ -16121,7 +16424,7 @@
         "id": "accept/blocked-words",
         "name": "Detect a reviewed blocked phrase",
         "description": "Required acceptance case for the configured deny-list.",
-        "stage": "input",
+        "phase": "input",
         "content": "The phrase {{blocked_words}} is prohibited.",
         "expected_decision": "block",
         "covered_rule_ids": [
@@ -16209,7 +16512,7 @@
         "description": "Detects fenced executable code and explicit requests to execute commands.",
         "form": "code_block",
         "effect": "reject",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -16231,7 +16534,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-TOOL-SECURITY-UNAUTHORIZED-EXECUTION"
+        ]
       }
     ],
     "test_cases": [
@@ -16239,7 +16545,7 @@
         "id": "accept/code-execution",
         "name": "Block an executable Python request",
         "description": "Required acceptance case for executable fenced code.",
-        "stage": "input",
+        "phase": "input",
         "content": "Please run this code:\n```python\nprint('hello')\n```",
         "expected_decision": "block",
         "covered_rule_ids": [
@@ -16317,7 +16623,7 @@
         "description": "Normalizes aliases and obfuscation, then distinguishes competitor intent from destination and operational context.",
         "form": "competitor_intent",
         "effect": "reject",
-        "stages": [
+        "rails": [
           "input",
           "output"
         ],
@@ -16339,7 +16645,10 @@
         "keywords": [],
         "always_block": [],
         "exceptions": [],
-        "phrase_patterns": []
+        "phrase_patterns": [],
+        "taxonomy_ids": [
+          "TALI-BUSINESS-POLICY-OFF-TOPIC"
+        ]
       }
     ],
     "test_cases": [
@@ -16347,7 +16656,7 @@
         "id": "accept/competitor-intent",
         "name": "Detect a reviewed competitor comparison",
         "description": "Required acceptance case for normalized competitor intent.",
-        "stage": "input",
+        "phase": "input",
         "content": "Compare {{competitors}} with {{brand_name}}.",
         "expected_decision": "block",
         "covered_rule_ids": [
@@ -16365,7 +16674,7 @@
         "id": "competitor-comparison-input-filter/destination-intent-001",
         "name": "Allow route availability question",
         "description": "A country name is used as a destination, not as a competing airline.",
-        "stage": "input",
+        "phase": "input",
         "content": "Do you have flights to Qatar?",
         "expected_decision": "allow",
         "covered_rule_ids": [
@@ -16380,7 +16689,7 @@
         "id": "competitor-comparison-input-filter/destination-intent-002",
         "name": "Allow flight duration question",
         "description": "Location-based travel planning must remain available.",
-        "stage": "input",
+        "phase": "input",
         "content": "How long is the flight to Doha?",
         "expected_decision": "allow",
         "covered_rule_ids": [
@@ -16395,7 +16704,7 @@
         "id": "competitor-comparison-input-filter/destination-intent-003",
         "name": "Allow transit visa question",
         "description": "Transit requirements concern a destination rather than a brand comparison.",
-        "stage": "input",
+        "phase": "input",
         "content": "Do I need a visa to transit through Qatar?",
         "expected_decision": "allow",
         "covered_rule_ids": [
@@ -16410,7 +16719,7 @@
         "id": "competitor-comparison-input-filter/destination-intent-004",
         "name": "Allow airport facilities question",
         "description": "Airport facility requests must not be treated as competitor promotion.",
-        "stage": "input",
+        "phase": "input",
         "content": "Are there lounges at Hamad Airport?",
         "expected_decision": "allow",
         "covered_rule_ids": [
@@ -16425,7 +16734,7 @@
         "id": "competitor-comparison-input-filter/destination-intent-005",
         "name": "Allow entry documents question",
         "description": "Travel-document planning is within the allowed destination intent.",
-        "stage": "input",
+        "phase": "input",
         "content": "What documents are required to enter Singapore?",
         "expected_decision": "allow",
         "covered_rule_ids": [
@@ -16440,7 +16749,7 @@
         "id": "competitor-comparison-input-filter/destination-intent-006",
         "name": "Allow airlines serving a destination",
         "description": "Listing services to a destination is not itself a quality comparison.",
-        "stage": "input",
+        "phase": "input",
         "content": "What airlines fly to Turkey?",
         "expected_decision": "allow",
         "covered_rule_ids": [
@@ -16455,7 +16764,7 @@
         "id": "competitor-comparison-input-filter/destination-intent-007",
         "name": "Allow airport code question",
         "description": "Airport code lookup is a factual destination request.",
-        "stage": "input",
+        "phase": "input",
         "content": "What is the airport code for Doha?",
         "expected_decision": "allow",
         "covered_rule_ids": [
@@ -16470,7 +16779,7 @@
         "id": "competitor-comparison-input-filter/destination-intent-008",
         "name": "Allow layover planning question",
         "description": "Layover planning must remain available when no airline ranking is requested.",
-        "stage": "input",
+        "phase": "input",
         "content": "Is Doha a good place for a long layover?",
         "expected_decision": "allow",
         "covered_rule_ids": [
@@ -16485,7 +16794,7 @@
         "id": "competitor-comparison-input-filter/destination-intent-009",
         "name": "Allow destination weather question",
         "description": "Weather planning is unrelated to competitor comparison.",
-        "stage": "input",
+        "phase": "input",
         "content": "What is the weather like in Qatar in March?",
         "expected_decision": "allow",
         "covered_rule_ids": [
@@ -16500,7 +16809,7 @@
         "id": "competitor-comparison-input-filter/destination-intent-010",
         "name": "Allow connection timing question",
         "description": "Connection-time planning is an allowed destination request.",
-        "stage": "input",
+        "phase": "input",
         "content": "How much connection time do I need in Doha?",
         "expected_decision": "allow",
         "covered_rule_ids": [
@@ -16515,7 +16824,7 @@
         "id": "competitor-comparison-input-filter/competitor-comparison-001",
         "name": "Block direct airline comparison",
         "description": "A direct better-than comparison crosses the brand-protection boundary.",
-        "stage": "input",
+        "phase": "input",
         "content": "Is Qatar Airways better than Emirates?",
         "expected_decision": "block",
         "covered_rule_ids": [
@@ -16530,7 +16839,7 @@
         "id": "competitor-comparison-input-filter/competitor-comparison-002",
         "name": "Block premium cabin comparison",
         "description": "Comparing competitor premium products is a comparison intent.",
-        "stage": "input",
+        "phase": "input",
         "content": "Which airline has better business class, Qatar or Singapore Airlines?",
         "expected_decision": "block",
         "covered_rule_ids": [
@@ -16545,7 +16854,7 @@
         "id": "competitor-comparison-input-filter/competitor-comparison-003",
         "name": "Block best airline ranking",
         "description": "A superlative ranking asks the assistant to select a competitor.",
-        "stage": "input",
+        "phase": "input",
         "content": "Which airline is the best for long haul flights?",
         "expected_decision": "block",
         "covered_rule_ids": [
@@ -16560,7 +16869,7 @@
         "id": "competitor-comparison-input-filter/competitor-comparison-004",
         "name": "Block competitor choice request",
         "description": "Choosing between the protected brand and another airline is comparison intent.",
-        "stage": "input",
+        "phase": "input",
         "content": "Should I choose Qatar Airways or another airline?",
         "expected_decision": "block",
         "covered_rule_ids": [
@@ -16575,7 +16884,7 @@
         "id": "competitor-comparison-input-filter/competitor-comparison-005",
         "name": "Block named airline comparison",
         "description": "Explicit versus language is a competitor comparison.",
-        "stage": "input",
+        "phase": "input",
         "content": "Compare Turkish Airlines vs Lufthansa.",
         "expected_decision": "block",
         "covered_rule_ids": [
@@ -16590,7 +16899,7 @@
         "id": "competitor-comparison-input-filter/competitor-comparison-006",
         "name": "Block lounge quality comparison",
         "description": "Comparing service quality between airlines is a comparison request.",
-        "stage": "input",
+        "phase": "input",
         "content": "Which airline has better lounges?",
         "expected_decision": "block",
         "covered_rule_ids": [
@@ -16605,7 +16914,7 @@
         "id": "competitor-comparison-input-filter/competitor-comparison-007",
         "name": "Block customer satisfaction ranking",
         "description": "Ranking airlines by customer satisfaction is comparison intent.",
-        "stage": "input",
+        "phase": "input",
         "content": "Which airline has the best customer satisfaction?",
         "expected_decision": "block",
         "covered_rule_ids": [
@@ -16620,7 +16929,7 @@
         "id": "competitor-comparison-input-filter/competitor-comparison-008",
         "name": "Block indirect airline comparison",
         "description": "An indirect location-based airline reference still requests a comparison.",
-        "stage": "input",
+        "phase": "input",
         "content": "Is the Doha airline better than other carriers?",
         "expected_decision": "block",
         "covered_rule_ids": [
@@ -16635,7 +16944,7 @@
         "id": "competitor-comparison-input-filter/competitor-comparison-009",
         "name": "Block airline switching request",
         "description": "Asking whether to switch providers is recommendation and comparison intent.",
-        "stage": "input",
+        "phase": "input",
         "content": "Should I switch to another airline for a better experience?",
         "expected_decision": "block",
         "covered_rule_ids": [
@@ -16650,7 +16959,7 @@
         "id": "competitor-comparison-input-filter/competitor-comparison-010",
         "name": "Block global airline ranking",
         "description": "Requesting the number-one airline is an explicit ranking request.",
-        "stage": "input",
+        "phase": "input",
         "content": "Which airline is ranked number one worldwide?",
         "expected_decision": "block",
         "covered_rule_ids": [
@@ -16665,7 +16974,7 @@
         "id": "competitor-comparison-input-filter/ambiguous-entity-001",
         "name": "Allow ambiguous baggage question",
         "description": "The entity may be a country or airline, but the request contains no ranking intent.",
-        "stage": "input",
+        "phase": "input",
         "content": "Qatar baggage allowance",
         "expected_decision": "allow",
         "covered_rule_ids": [
@@ -16680,7 +16989,7 @@
         "id": "competitor-comparison-input-filter/ambiguous-entity-002",
         "name": "Allow ambiguous lounge question",
         "description": "A service-policy lookup must not be blocked solely because the entity is ambiguous.",
-        "stage": "input",
+        "phase": "input",
         "content": "Qatar lounge access rules",
         "expected_decision": "allow",
         "covered_rule_ids": [
@@ -16695,7 +17004,7 @@
         "id": "competitor-comparison-input-filter/ambiguous-entity-003",
         "name": "Allow ambiguous check-in question",
         "description": "Operational timing without comparison remains allowed.",
-        "stage": "input",
+        "phase": "input",
         "content": "Qatar check in time",
         "expected_decision": "allow",
         "covered_rule_ids": [
@@ -16710,7 +17019,7 @@
         "id": "competitor-comparison-input-filter/ambiguous-entity-004",
         "name": "Allow city lounge question",
         "description": "A city-specific facility query has no competitor ranking intent.",
-        "stage": "input",
+        "phase": "input",
         "content": "Doha premium lounge access",
         "expected_decision": "allow",
         "covered_rule_ids": [
@@ -16725,7 +17034,7 @@
         "id": "competitor-comparison-input-filter/ambiguous-entity-005",
         "name": "Allow ambiguous refund question",
         "description": "A refund-policy lookup is allowed when it does not compare providers.",
-        "stage": "input",
+        "phase": "input",
         "content": "Qatar refund policy",
         "expected_decision": "allow",
         "covered_rule_ids": [

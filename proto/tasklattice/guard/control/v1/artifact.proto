@@ -1,0 +1,115 @@
+syntax = "proto3";
+
+package tasklattice.guard.control.v1;
+
+import "common.proto";
+import "enforcement_action.proto";
+import "runtime.proto";
+
+// Prompt template embedded in an immutable compiled artifact.
+message PromptDefinition {
+  // NeMo prompt task identifier.
+  string task = 1;
+  string content = 2;
+  // Registered output parser name; absence uses the task default.
+  optional string output_parser = 3;
+  // Generation limit; absence delegates to the configured model/provider default.
+  optional int32 max_tokens = 4;
+}
+
+// Fully resolved runtime action invocation emitted by the compiler.
+message ActionBinding {
+  string id = 1;
+  string capability = 2;
+  string contract_ref = 3;
+  repeated GuardrailPhase phases = 4;
+  EnforcementAction on_unsafe = 5;
+  EvaluationTrigger trigger = 6;
+  // End-to-end action deadline in milliseconds; must be greater than zero.
+  int32 timeout_ms = 7;
+  repeated StringPair parameters = 8;
+  // Source policy identity; absent for built-in plan steps not backed by a policy.
+  optional string policy_id = 9;
+  // Source policy version; present only together with policy_id.
+  optional string policy_version = 10;
+  // Compiled policy flow; absent for native runtime evaluators.
+  optional string flow_name = 11;
+  // Registered NeMo Action name; absent when the binding does not invoke an Action.
+  optional string action_name = 12;
+  // Registered Action version; present only together with action_name.
+  optional string action_version = 13;
+  // Scheduler concurrency group; absence means no explicit parallel grouping.
+  optional string parallel_group = 14;
+  PolicyExecutionMode execution_mode = 15;
+  // Decision used when the Action times out or fails.
+  FailureMode failure_mode = 16;
+  // Action binding IDs that must complete before this binding becomes runnable.
+  repeated string depends_on = 17;
+  // NeMo context variable receiving this Action's result, when one is required.
+  optional string result_var = 18;
+}
+
+// Version-pinned dependency required to load an artifact.
+message ArtifactDependency {
+  string kind = 1;
+  string name = 2;
+  string version = 3;
+}
+
+// Immutable, signed Guardrail runtime package distributed to Runner pools.
+message Artifact {
+  string artifact_id = 1;
+  string guardrail_id = 2;
+  // Immutable Guardrail version compiled into this artifact.
+  int32 guardrail_version = 3;
+  // Desired-state generation for which Controller accepted and signed the artifact.
+  int64 generation = 4;
+  // Compiler implementation version that produced the artifact.
+  string compiler_version = 5;
+  // NeMo Guardrails version against which the runtime payload was compiled.
+  string nemo_version = 6;
+  // Runtime profiles are registry identifiers so third-party runtimes do not
+  // require a control protocol enum change.
+  string runtime_profile = 7;
+  GuardrailPlan plan = 8;
+  // Opaque compiled NeMo YAML; it is not an alternate business-object contract.
+  string config_yaml = 9;
+  // Opaque compiled Colang source consumed by NeMo.
+  string colang_content = 10;
+  repeated PromptDefinition prompts = 11;
+  repeated ActionBinding action_bindings = 12;
+  repeated ArtifactDependency dependency_manifest = 13;
+  // Lowercase SHA-256 hex digest of the canonical unsigned artifact payload.
+  string checksum = 14;
+  // Base64 Ed25519 signature over the UTF-8 checksum, produced by Controller.
+  string signature = 15;
+}
+
+// Command sent to a compiler-capable GuardRails 0 Runner.
+message CompileRequest {
+  // Idempotency/correlation ID for exactly one requested compilation.
+  string compile_id = 1;
+  string guardrail_id = 2;
+  // Candidate immutable version that the result must preserve.
+  int32 guardrail_version = 3;
+  // Desired-state generation reserved by Controller for this candidate.
+  int64 generation = 4;
+  GuardrailPlan plan = 5;
+  // Extensible runtime registry identifier, not a model or Provider name.
+  string runtime_profile = 6;
+}
+
+// Compiler response. Accepted results must contain an artifact; rejected
+// results must contain a reason and must not be activated by Controller.
+message CompileResult {
+  // Runner that executed the compile command.
+  string runner_id = 1;
+  // Must exactly match the originating CompileRequest.compile_id.
+  string compile_id = 2;
+  // True only when compilation produced the complete candidate artifact below.
+  bool accepted = 3;
+  // Human-readable rejection detail; empty on successful compilation.
+  string reason = 4;
+  // Required when accepted is true and absent when accepted is false.
+  optional Artifact artifact = 5;
+}

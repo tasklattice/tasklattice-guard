@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft-07/schema#",
   "type": "object",
-  "required": ["controller", "controlPlaneAgent", "evaluators", "runner", "database", "postgresql", "redis", "security"],
+  "required": ["controller", "controlPlaneAgent", "models", "evaluators", "runner", "database", "postgresql", "redis", "security"],
   "properties": {
     "nameOverride": {"type": "string"},
     "fullnameOverride": {"type": "string"},
@@ -49,13 +49,13 @@
     },
     "controlPlaneAgent": {
       "type": "object",
-      "required": ["deepseek"],
+      "required": ["provider"],
       "properties": {
-        "deepseek": {
+        "provider": {
           "type": "object",
-          "required": ["provider", "baseUrl", "model", "apiKey", "existingSecret", "secretKey"],
+          "required": ["name", "baseUrl", "model", "apiKey", "existingSecret", "secretKey"],
           "properties": {
-            "provider": {"type": "string", "minLength": 1},
+            "name": {"type": "string", "minLength": 1},
             "baseUrl": {"type": "string"},
             "model": {"type": "string"},
             "apiKey": {"type": "string"},
@@ -65,23 +65,52 @@
         }
       }
     },
+    "models": {
+      "type": "object",
+      "required": ["runtimes", "credentials"],
+      "properties": {
+        "runtimes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "base_url", "model"],
+            "properties": {
+              "id": {"type": "string", "minLength": 1},
+              "client": {"type": "string", "enum": ["openai_chat"]},
+              "base_url": {"type": "string", "pattern": "^https?://"},
+              "model": {"type": "string", "minLength": 1},
+              "api_key_env_var": {"type": "string", "minLength": 1},
+              "timeout_seconds": {"type": "number", "exclusiveMinimum": 0},
+              "max_tokens": {"type": "integer", "minimum": 1}
+            }
+          }
+        },
+        "credentials": {
+          "type": "object",
+          "required": ["existingSecret", "values"],
+          "properties": {
+            "existingSecret": {"type": "string"},
+            "values": {"type": "object", "additionalProperties": {"type": "string"}}
+          }
+        }
+      }
+    },
     "evaluators": {
       "type": "object",
-      "required": ["nvidia", "automatedReasoning"],
+      "required": ["bindings", "automatedReasoning"],
       "properties": {
-        "nvidia": {
-          "type": "object",
-          "required": ["provider", "baseUrl", "contentSafetyModel", "topicControlModel", "jailbreakModel", "groundingModel", "apiKey", "existingSecret", "secretKey"],
-          "properties": {
-            "provider": {"type": "string", "minLength": 1},
-            "baseUrl": {"type": "string"},
-            "contentSafetyModel": {"type": "string"},
-            "topicControlModel": {"type": "string"},
-            "jailbreakModel": {"type": "string"},
-            "groundingModel": {"type": "string"},
-            "apiKey": {"type": "string"},
-            "existingSecret": {"type": "string"},
-            "secretKey": {"type": "string", "minLength": 1}
+        "bindings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "contract_ref", "profile_ref", "model_ref"],
+            "properties": {
+              "id": {"type": "string", "minLength": 1},
+              "contract_ref": {"type": "string", "minLength": 1},
+              "profile_ref": {"type": "string", "enum": ["tali.qwen3guard.v1", "tali.llama-guard-3.v1", "tali.taxonomy-judge.v1"]},
+              "model_ref": {"type": "string", "minLength": 1},
+              "priority": {"type": "integer"}
+            }
           }
         },
         "automatedReasoning": {

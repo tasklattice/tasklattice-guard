@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package tasklattice.guard.control.v1;
+
+// Non-secret credential verifier projected from Controller to Runner.
+message IntegrationCredential {
+  // Stable credential identifier safe to expose in telemetry and audit events.
+  string id = 1;
+  // Lowercase SHA-256 hex digest of the plaintext credential; plaintext is never sent.
+  string sha256 = 2;
+  // Non-secret suffix/prefix hint suitable for operator display.
+  string key_hint = 3;
+  // RFC 3339 UTC timestamp at which Controller issued the credential.
+  string created_at = 4;
+  // RFC 3339 UTC revocation timestamp; absence means the credential is active.
+  optional string revoked_at = 5;
+}
+
+// Complete set of active and recently revoked credentials for an Integration.
+message IntegrationVerification {
+  // Full verifier snapshot; Runner replaces its previous set atomically.
+  repeated IntegrationCredential credentials = 1;
+}

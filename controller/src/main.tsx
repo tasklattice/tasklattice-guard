@@ -20,6 +20,8 @@ import { AccountPage } from "@/routes/account";
 import { HelpPage } from "@/routes/help";
 import { RunnersPage } from "@/routes/runners";
 import { ActivityPage } from "@/routes/activity";
+import { StatusPage } from "@/routes/status";
+import { CapabilitiesPage, ModelsPage, ProvidersPage } from "@/routes/models";
 import { AuthProvider } from "@/lib/auth";
 import "@/i18n";
 import "@/styles.css";
@@ -52,6 +54,11 @@ const logsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/logs", 
 const activityRoute = createRoute({ getParentRoute: () => rootRoute, path: "/activity", component: ActivityPage });
 const usersRoute = createRoute({ getParentRoute: () => rootRoute, path: "/access", component: UsersPage });
 const accountRoute = createRoute({ getParentRoute: () => rootRoute, path: "/account", component: AccountPage });
+const settingsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings", component: () => <Navigate to="/settings/status" replace /> });
+const statusRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/status", component: StatusPage });
+const providersRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/providers", component: ProvidersPage });
+const modelsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/models", component: ModelsPage });
+const capabilitiesRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/capabilities", component: CapabilitiesPage });
 const helpRoute = createRoute({ getParentRoute: () => rootRoute, path: "/help", component: HelpPage });
 const routeTree = rootRoute.addChildren([
   indexRoute,
@@ -70,6 +77,11 @@ const routeTree = rootRoute.addChildren([
   activityRoute,
   usersRoute,
   accountRoute,
+  settingsRoute,
+  statusRoute,
+  providersRoute,
+  modelsRoute,
+  capabilitiesRoute,
   helpRoute,
 ]);
 const router = createRouter({ routeTree, history: createBrowserHistory() });

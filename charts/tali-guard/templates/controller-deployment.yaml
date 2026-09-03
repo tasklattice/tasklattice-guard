@@ -70,22 +70,21 @@ spec:
             - { name: BETTER_AUTH_TRUSTED_ORIGINS, value: {{ join "," .Values.controller.trustedOrigins | quote }} }
             - { name: BETTER_AUTH_MIN_PASSWORD_LENGTH, value: {{ .Values.controller.auth.minPasswordLength | quote }} }
             - { name: CONTROLLER_ALLOW_LOCAL_DEFAULT_CREDENTIALS, value: {{ .Values.controller.auth.allowLocalDefaultCredentials | quote }} }
-            - { name: MODEL_GUARDRAILS_CONTROL_PLANE_AI_PROVIDER, value: {{ .Values.controlPlaneAgent.deepseek.provider | quote }} }
-            - { name: MODEL_GUARDRAILS_CONTROL_PLANE_AI_BASE_URL, value: {{ .Values.controlPlaneAgent.deepseek.baseUrl | quote }} }
-            - { name: MODEL_GUARDRAILS_CONTROL_PLANE_AI_MODEL, value: {{ .Values.controlPlaneAgent.deepseek.model | quote }} }
-            - { name: MODEL_GUARDRAILS_NVIDIA_PROVIDER, value: {{ .Values.evaluators.nvidia.provider | quote }} }
-            - { name: MODEL_GUARDRAILS_CONTENT_SAFETY_MODEL, value: {{ .Values.evaluators.nvidia.contentSafetyModel | quote }} }
-            - { name: MODEL_GUARDRAILS_TOPIC_CONTROL_MODEL, value: {{ .Values.evaluators.nvidia.topicControlModel | quote }} }
-            - { name: MODEL_GUARDRAILS_JAILBREAK_MODEL, value: {{ .Values.evaluators.nvidia.jailbreakModel | quote }} }
-            {{- with .Values.evaluators.nvidia.groundingModel }}
-            - { name: MODEL_GUARDRAILS_GROUNDING_MODEL, value: {{ . | quote }} }
+            - { name: MODEL_GUARDRAILS_CONTROL_PLANE_AI_PROVIDER, value: {{ .Values.controlPlaneAgent.provider.name | quote }} }
+            {{- with .Values.controlPlaneAgent.provider.baseUrl }}
+            - { name: MODEL_GUARDRAILS_CONTROL_PLANE_AI_BASE_URL, value: {{ . | quote }} }
             {{- end }}
+            {{- with .Values.controlPlaneAgent.provider.model }}
+            - { name: MODEL_GUARDRAILS_CONTROL_PLANE_AI_MODEL, value: {{ . | quote }} }
+            {{- end }}
+            - { name: MODEL_GUARDRAILS_MODEL_RUNTIMES_JSON, value: {{ toJson .Values.models.runtimes | quote }} }
+            - { name: MODEL_GUARDRAILS_EVALUATOR_BINDINGS_JSON, value: {{ toJson .Values.evaluators.bindings | quote }} }
             {{- with .Values.evaluators.automatedReasoning.endpointUrl }}
             - { name: MODEL_GUARDRAILS_AUTOMATED_REASONING_ENDPOINT_URL, value: {{ . | quote }} }
             {{- end }}
-            {{- if or .Values.controlPlaneAgent.deepseek.apiKey .Values.controlPlaneAgent.deepseek.existingSecret }}
+            {{- if or .Values.controlPlaneAgent.provider.apiKey .Values.controlPlaneAgent.provider.existingSecret }}
             - name: MODEL_GUARDRAILS_CONTROL_PLANE_AI_API_KEY
-              valueFrom: { secretKeyRef: { name: {{ include "tali-guard.deepseekSecretName" . }}, key: {{ .Values.controlPlaneAgent.deepseek.secretKey }} } }
+              valueFrom: { secretKeyRef: { name: {{ include "tali-guard.controlPlaneAgentSecretName" . }}, key: {{ .Values.controlPlaneAgent.provider.secretKey }} } }
             {{- end }}
             - name: CONTROLLER_DATABASE_URL
               valueFrom: { secretKeyRef: { name: {{ include "tali-guard.databaseSecretName" . }}, key: {{ .Values.database.secretKey }} } }

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import math
 import time
 from dataclasses import asdict
@@ -9,8 +8,14 @@ from typing import Any
 
 import yaml
 
-from runner.toolkit.nemo.action_registry import action_providers
-from runner.toolkit.nemo.actions import local_action_providers
+from runner.toolkit.nemo.action_registry import ActionProviders, action_providers
+from runner.toolkit.nemo.actions import (
+    EvaluationActionProvider,
+    EvaluationRoute,
+    local_action_providers,
+)
+from runner.toolkit.nemo.evaluators.pii import PiiEvaluator
+from runner.toolkit.evaluation.contracts import CONTRACT_PII_EXACT
 from runner.toolkit.nemo.registry import NeMoRuntimeRegistry
 from runner.toolkit.nemo.runtime import NeMoRuntime
 from runner.toolkit.runtime.content_views import content_view
@@ -24,15 +29,27 @@ from runner.toolkit.runtime.contracts import (
 )
 
 from .compiler import DefaultRunnerCompiler
-from .generated import runner_control_pb2 as protocol
+from . import generated as protocol
+from .protocol_codec import (
+    action_bindings_from_proto,
+    dependencies_from_proto,
+    plan_from_proto,
+    prompts_from_proto,
+    validation_test_from_proto,
+)
 from .serialization import config_from_dict, plan_from_dict
 
 
 class DefaultRunnerValidator:
     """Compile a draft and run its reviewed cases through the real NeMo runtime."""
 
-    def __init__(self, compiler: DefaultRunnerCompiler) -> None:
+    def __init__(
+        self,
+        compiler: DefaultRunnerCompiler,
+        providers: ActionProviders | None = None,
+    ) -> None:
         self._compiler = compiler
+        self._providers = providers or _local_validation_providers()
 
     async def validate(
         self, request: protocol.ValidationRequest
@@ -44,23 +61,23 @@ class DefaultRunnerValidator:
                 guardrail_id=request.guardrail_id,
                 guardrail_version=request.candidate_version,
                 generation=0,
-                plan_json=request.plan_json,
+                plan=request.plan,
                 runtime_profile=request.runtime_profile,
             ),
         )
-        plan = plan_from_dict(json.loads(artifact.plan_json))
+        plan = plan_from_dict(plan_from_proto(artifact.plan))
         config = _config_from_artifact(artifact)
         store = _CandidateStore(plan, config)
         registry = NeMoRuntimeRegistry(
             store,
-            action_providers(*local_action_providers()),
+            self._providers,
             max_entries=1,
             max_concurrency_per_guardrail=8,
         )
         runtime = NeMoRuntime(registry)
         try:
-            cases = json.loads(request.test_cases_json or "[]")
-            if not isinstance(cases, list) or not cases:
+            cases = [validation_test_from_proto(item) for item in request.test_cases]
+            if not cases:
                 raise ValueError("Validation requires at least one Test Case.")
             results = await asyncio.gather(
                 *(self._evaluate(runtime, plan, item) for item in cases)
@@ -99,7 +116,9 @@ class DefaultRunnerValidator:
         latency = max(0, round((time.perf_counter() - started) * 1_000))
         findings = [asdict(item) for item in decision.findings]
         trace = [asdict(item) for item in decision.trace]
-        expected = _string(case.get("expectedDecision"))
+        template_expected = _string(case.get("expectedDecision"))
+        override = _record(case.get("expectationOverride") or {})
+        expected = _string(override.get("expectedDecision")) if override else template_expected
         covered = {_string(item) for item in _list(case.get("coveredRuleIds"))}
         source_policy_id = _optional_string(case.get("sourcePolicyId"))
         matched = sorted({
@@ -120,13 +139,61 @@ class DefaultRunnerValidator:
             or (expected == "allow" and covered.isdisjoint(matched))
             or (expected != "allow" and not covered.isdisjoint(matched))
         )
+        output_content = decision.texts[0] if decision.texts else "" if decision.decision == "block" else content
+        assertion_failures = []
+        if override:
+            actual_matches = {
+                (item.get("policy_id"), item.get("rule_id")) for item in findings
+                if item.get("verdict") in {"unsafe", "uncertain"}
+            }
+            expected_matches = {
+                (_record(item).get("policyId"), _record(item).get("ruleId"))
+                for item in _list(override.get("expectedMatches"))
+            }
+            valid_override = (
+                bool(_string(override.get("reason")).strip())
+                and override.get("sourcePolicyVersion") == case.get("sourcePolicyVersion")
+                and (bool(expected_matches) if expected != "allow" else template_expected == "allow")
+                and (expected != "transform" or "expectedOutputContent" in override)
+            )
+            rule_contract = valid_override and (
+                expected_matches.issubset(actual_matches) if expected != "allow" else not actual_matches
+            )
+            if not valid_override:
+                assertion_failures.append("The reviewed expectation is invalid or stale.")
+            if "expectedOutputContent" in override and output_content != override["expectedOutputContent"]:
+                assertion_failures.append("Output content does not match the reviewed complete-output assertion.")
+        if not rule_contract:
+            assertion_failures.append("Expected Policy/Rule evidence was not observed.")
+        if decision.decision != expected and not (expected == "intervene" and decision.decision != "allow"):
+            assertion_failures.append(f"Expected {expected}; received {decision.decision}.")
+        if actual_failure != expected_failure:
+            assertion_failures.append(f"Expected infrastructure failure {expected_failure}; received {actual_failure}.")
         actual_reasoning = _reasoning_result(findings)
         expected_reasoning = _optional_string(case.get("expectedReasoningResult"))
+        evaluation_contracts = sorted({
+            _string(item.get("contract_ref"))
+            for item in trace
+            if item.get("contract_ref") and item.get("status") != "skipped"
+        })
+        evaluator_ids = sorted({
+            _string(item.get("evaluator_id") or item.get("action_name"))
+            for item in trace
+            if item.get("kind") in {"evaluator", "action"}
+            and (item.get("evaluator_id") or item.get("action_name"))
+            and item.get("status") != "skipped"
+        })
+        escalated = any(
+            step.trigger.type == "on_result"
+            and step.contract_ref in evaluation_contracts
+            for step in plan.steps
+        )
         passed = (
             (decision.decision != "allow" if expected == "intervene" else decision.decision == expected)
             and (expected_failure is None or expected_failure == actual_failure)
             and rule_contract
             and (expected_reasoning is None or expected_reasoning == actual_reasoning)
+            and not assertion_failures
         )
         return {
             "caseId": _string(case.get("id")),
@@ -135,13 +202,19 @@ class DefaultRunnerValidator:
             "expectedDecision": expected,
             "actualDecision": decision.decision,
             "passed": passed,
-            "stageReached": _stage_reached(trace),
+            "evaluatorIds": evaluator_ids,
             "latencyMs": latency,
-            "reason": decision.reason or "",
+            "reason": "; ".join([
+                decision.reason or "",
+                *([f"Reviewed composition expectation: {_string(override.get('reason'))}"] if override else []),
+                *assertion_failures,
+            ]).strip("; "),
             "phase": phase,
             "inputContent": content,
             "action": decision.action,
-            "outputContent": decision.texts[0] if decision.texts else "" if decision.decision == "block" else content,
+            "outputContent": output_content,
+            "assertionFailures": assertion_failures,
+            **({"expectationOverride": override, "templateExpectedDecision": template_expected} if override else {}),
             "findings": findings,
             "trace": trace,
             "trustedInstruction": _string(case.get("trustedInstruction")),
@@ -160,7 +233,20 @@ class DefaultRunnerValidator:
             "sourceCaseId": _optional_string(case.get("sourceCaseId")),
             "coveredRuleIds": sorted(covered),
             "matchedRuleIds": matched,
+            "evaluationContracts": evaluation_contracts,
+            "escalated": escalated,
+            "modelInvocations": (
+                decision.usage.model_invocations if decision.usage is not None else 0
+            ),
         }
+
+
+def _local_validation_providers() -> ActionProviders:
+    local = local_action_providers()
+    evaluation = EvaluationActionProvider((
+        EvaluationRoute("pii", CONTRACT_PII_EXACT, PiiEvaluator()),
+    ))
+    return action_providers(*local, evaluation)
 
 
 class _CandidateStore:
@@ -182,18 +268,19 @@ class _CandidateStore:
 
 
 def _config_from_artifact(artifact: protocol.Artifact) -> NeMoConfigSnapshot:
-    prompts = json.loads(artifact.prompts_json or "[]")
+    prompts = prompts_from_proto(artifact.prompts)
+    plan = plan_from_proto(artifact.plan)
     return config_from_dict({
         "guardrail_id": artifact.guardrail_id,
         "guardrail_version": artifact.guardrail_version,
         "compiler_version": artifact.compiler_version,
         "runtime_profile": artifact.runtime_profile,
-        "output_delivery": json.loads(artifact.plan_json).get("output_delivery", "full_buffered"),
+        "output_delivery": plan.get("output_delivery", "full_buffered"),
         "config_yaml": artifact.config_yaml,
         "colang_content": artifact.colang_content,
         "prompts_yaml": yaml.safe_dump({"prompts": prompts}, allow_unicode=True, sort_keys=False) if prompts else "",
-        "action_bindings": json.loads(artifact.action_bindings_json or "[]"),
-        "dependency_manifest": json.loads(artifact.dependency_manifest_json or "[]"),
+        "action_bindings": action_bindings_from_proto(artifact.action_bindings),
+        "dependency_manifest": dependencies_from_proto(artifact.dependency_manifest),
         "runtime_engine": "iorails" if artifact.runtime_profile == "iorails_native" else "llmrails",
         "colang_version": "2.x" if artifact.runtime_profile == "llmrails_colang2_programmable" else "1.0",
     })
@@ -235,7 +322,7 @@ def _metrics(results: list[dict[str, Any]]) -> dict[str, Any]:
     passed = sum(bool(item["passed"]) for item in results)
     false_positive = sum(item["expectedDecision"] == "allow" and item["actualDecision"] != "allow" for item in results)
     false_negative = sum(item["expectedDecision"] != "allow" and item["actualDecision"] == "allow" for item in results)
-    deep = sum(item["stageReached"] == "deep_judge" for item in results)
+    escalated = sum(bool(item["escalated"]) for item in results)
     latencies = sorted(int(item["latencyMs"]) for item in results) or [0]
     return {
         "total": total,
@@ -243,17 +330,9 @@ def _metrics(results: list[dict[str, Any]]) -> dict[str, Any]:
         "complianceRate": _percent(passed, total),
         "falsePositiveRate": _percent(false_positive, total),
         "falseNegativeRate": _percent(false_negative, total),
-        "deepEscalationRate": _percent(deep, total),
+        "escalationRate": _percent(escalated, total),
         "p95LatencyMs": latencies[max(0, math.ceil(len(latencies) * 0.95) - 1)],
     }
-
-
-def _stage_reached(trace: list[dict[str, Any]]) -> str:
-    reached = "none"
-    for stage in ("deterministic", "fast_semantic", "deep_judge"):
-        if any(item.get("stage") == stage and item.get("status") != "skipped" for item in trace):
-            reached = stage
-    return reached
 
 
 def _reasoning_result(findings: list[dict[str, Any]]) -> str | None:

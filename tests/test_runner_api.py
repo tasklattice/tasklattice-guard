@@ -32,6 +32,7 @@ class Runtime:
             integration_id="integration-1",
             findings=(RiskFinding(
                 risk="secrets",
+                taxonomy_id="TALI-PRIVACY-CREDENTIAL",
                 verdict="unsafe",
                 confidence=0.99,
                 evidence="secret prompt must never be exported",
@@ -47,7 +48,8 @@ class Runtime:
                 duration_ms=7,
                 detail="Policy evaluation completed",
                 evidence="secret prompt must never be exported",
-                risk="secrets",
+                capability="secrets",
+                contract_ref="tali.guard.secrets.exact.v1",
                 outcome="unsafe",
                 action_name="GuardSecretsAction",
                 action_version="1.0.0",
@@ -125,6 +127,9 @@ class MetricObservation:
         return None
 
     def complete(self, *_args, **_kwargs):
+        return None
+
+    def fail(self, *_args, **_kwargs):
         return None
 
 
@@ -218,13 +223,15 @@ async def test_runtime_authenticates_locally_and_emits_content_free_telemetry():
     assert telemetry.events[0]["guardrailId"] == "guardrail-1"
     assert telemetry.events[0]["deploymentId"] == "deployment-1"
     assert telemetry.events[0]["metadata"]["findings"] == [{
-        "id": "finding-1",
-        "risk": "secrets",
-        "verdict": "unsafe",
+            "id": "finding-1",
+            "risk": "secrets",
+            "taxonomyId": "TALI-PRIVACY-CREDENTIAL",
+            "verdict": "unsafe",
         "confidence": 0.99,
         "recommendedAction": "reject",
         "policyId": "builtin-secrets",
-        "ruleId": "credential-pattern",
+            "ruleId": "credential-pattern",
+            "providerEvidence": [],
     }]
     assert telemetry.events[0]["metadata"]["usage"]["action_invocations"] == 1
     assert telemetry.events[0]["metadata"]["trace"][0]["actionName"] == "GuardSecretsAction"

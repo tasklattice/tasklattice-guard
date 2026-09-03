@@ -45,3 +45,10 @@ packages = ["runner"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+addopts = "--strict-markers"
+markers = [
+  "control_plane: Controller features, plan construction, validation, and artifact production.",
+  "data_plane: Runner-only runtime, model, routing, telemetry, and artifact-consumption behavior.",
+  "e2e: Communication across the Controller/Runner protocol boundary.",
+  "contract: Shared protocol, packaging, deployment, and generated-contract gates.",
+]

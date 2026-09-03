@@ -38,9 +38,10 @@ import {
 import { ConflictError, NotFoundError, ValidationError } from "../domain/errors.js";
 import { buildGuardrailPlan, normalizeGuardrailDraft, type GuardrailDraftConfig } from "../domain/guardrail-plan.js";
 import type { CompiledArtifactInput, DeletionImpact, RuntimeEventInput, ValidationCaseResult, ValidationMetrics } from "../domain/models.js";
-import { emptyValidationMetrics, generatedTestCases } from "../domain/validation.js";
+import { applyValidationOverrides, emptyValidationMetrics, generatedTestCases } from "../domain/validation.js";
 import { PolicyCatalog } from "../policy-catalog/catalog.js";
 import { registeredAction } from "../action-catalog/catalog.js";
+import type { ValidationTerminalState } from "../../shared/lifecycle.js";
 import {
   flowRuleId,
   programmablePolicyDraftSchema,
@@ -53,7 +54,7 @@ import {
   appendIntegrationCredential,
   issueIntegrationCredential,
   publicIntegrationCredentials,
-  revokeIntegrationCredentialDigest,
+  revokeIntegrationCredential,
 } from "./integration-credentials.js";
 
 type RunnerRegistration = {
@@ -347,7 +348,7 @@ export class ControlPlaneService {
       draftRevision: guardrail.draftRevision,
       candidateVersion,
       runtimeProfile: guardrail.runtimeProfile,
-      compilerVersion: String(plan.compiler_version ?? "tasklattice-controller-plan-v2"),
+      compilerVersion: String(plan.compiler_version ?? "tasklattice-controller-plan-v3"),
       plan,
     };
   }
@@ -371,14 +372,14 @@ export class ControlPlaneService {
     const modules = Array.isArray(plan.modules) ? plan.modules as Array<Record<string, unknown>> : [];
     const rails = steps.flatMap((step) => {
       const phases = Array.isArray(step.phases) ? step.phases.filter((phase): phase is string => typeof phase === "string") : [];
-      return phases.map((phase) => ({ rail_type: phase, flow: String(step.id ?? step.risk ?? "runtime-step") }));
+      return phases.map((phase) => ({ rail_type: phase, flow: String(step.id ?? step.capability ?? "runtime-step") }));
     });
     const actions = steps.map((step) => {
-      const stepId = String(step.id ?? step.risk ?? "runtime-step");
+      const stepId = String(step.id ?? step.capability ?? "runtime-step");
       const module = modules.find((candidate) => Array.isArray(candidate.step_ids) && candidate.step_ids.includes(stepId));
       return {
-        name: String(step.risk ?? stepId),
-        version: "controller-plan-v2",
+        name: String(step.capability ?? stepId),
+        version: "controller-plan-v3",
         flow: stepId,
         timeout_ms: typeof module?.timeout_ms === "number" ? module.timeout_ms : 0,
         failure_mode: typeof module?.failure_mode === "string" ? module.failure_mode : "fail_closed",
@@ -389,7 +390,7 @@ export class ControlPlaneService {
       candidate_version: 1,
       engine: "GuardRails 0 · NeMo",
       colang_version: input.runtimeProfile === "llmrails_colang1_standard" ? "1.0" : input.runtimeProfile === "llmrails_colang2_programmable" ? "2.x" : "auto",
-      compiler_version: String(plan.compiler_version ?? "tasklattice-controller-plan-v2"),
+      compiler_version: String(plan.compiler_version ?? "tasklattice-controller-plan-v3"),
       checksum: createHash("sha256").update(stableJson({ draftConfig, runtimeProfile: input.runtimeProfile })).digest("hex"),
       rails,
       parallel_groups: modules.map((module) => String(module.id ?? "")).filter(Boolean),
@@ -771,13 +772,13 @@ export class ControlPlaneService {
   }
 
   async listTestCases(guardrailId: string) {
-    const [guardrail] = await this.db.select({ excludedTestCaseIds: guardrails.excludedTestCaseIds })
+    const [guardrail] = await this.db.select({ excludedTestCaseIds: guardrails.excludedTestCaseIds, draftConfig: guardrails.draftConfig })
       .from(guardrails).where(and(eq(guardrails.id, guardrailId), isNull(guardrails.deletedAt)));
     if (!guardrail) throw new NotFoundError("Guardrail", guardrailId);
     const excluded = new Set(guardrail.excludedTestCaseIds);
     const rows = await this.db.select().from(testCases).where(eq(testCases.guardrailId, guardrailId))
       .orderBy(asc(testCases.origin), asc(testCases.name), asc(testCases.id));
-    return rows.map((item) => ({ ...item, excluded: excluded.has(item.id) }));
+    return applyValidationOverrides(rows, guardrail.draftConfig).map((item) => ({ ...item, excluded: excluded.has(item.id) }));
   }
 
   async createTestCase(input: {
@@ -898,7 +899,7 @@ export class ControlPlaneService {
       if (!guardrail) throw new NotFoundError("Guardrail", input.guardrailId);
       const rows = await tx.select().from(testCases).where(eq(testCases.guardrailId, input.guardrailId));
       const excluded = new Set(guardrail.excludedTestCaseIds);
-      const activeCases = rows.filter((item) => !excluded.has(item.id));
+      const activeCases = applyValidationOverrides(rows, guardrail.draftConfig).filter((item) => !excluded.has(item.id));
       if (!activeCases.length) throw new ValidationError("Add at least one reviewed Test Case before running Validation.");
       const [versionRow] = await tx.select({ value: max(guardrailVersions.version) })
         .from(guardrailVersions).where(eq(guardrailVersions.guardrailId, input.guardrailId));
@@ -956,7 +957,7 @@ export class ControlPlaneService {
 
   async completeValidation(input: {
     runId: string;
-    status: "passed" | "failed";
+    status: ValidationTerminalState;
     metrics: ValidationMetrics;
     results: ValidationCaseResult[];
     reason?: string | undefined;
@@ -1369,7 +1370,7 @@ export class ControlPlaneService {
       const [integration] = await tx.select().from(integrations)
         .where(and(eq(integrations.id, input.id), isNull(integrations.deletedAt))).for("update");
       if (!integration) throw new NotFoundError("Integration", input.id);
-      const activeCredentials = activeIntegrationCredentials(integration.verification, integration.createdAt);
+      const activeCredentials = activeIntegrationCredentials(integration.verification);
       if (!activeCredentials.some((credential) => credential.id === input.credentialId)) {
         throw new NotFoundError("Integration credential", input.credentialId);
       }
@@ -1379,7 +1380,7 @@ export class ControlPlaneService {
           "last_integration_credential",
         );
       }
-      const verification = revokeIntegrationCredentialDigest(integration.verification, input.credentialId, new Date());
+      const verification = revokeIntegrationCredential(integration.verification, input.credentialId, new Date());
       if (!verification) throw new NotFoundError("Integration credential", input.credentialId);
       const updated = await tx.update(integrations).set({ verification, updatedAt: new Date() })
         .where(and(eq(integrations.id, input.id), isNull(integrations.deletedAt))).returning({ id: integrations.id });
@@ -1973,9 +1974,6 @@ export class ControlPlaneService {
       }
     }
     for (const binding of draft.rail_bindings) {
-      if (binding.execution_mode === "mutate" && binding.priority === null) {
-        throw new ValidationError(`Mutating Flow ${binding.flow_name} requires an explicit priority.`);
-      }
       const missing = binding.depends_on.filter((item) => !bindingNames.has(item));
       if (missing.length) throw new ValidationError(`Flow ${binding.flow_name} depends on undefined Flows: ${missing.join(", ")}.`);
     }
@@ -2219,7 +2217,6 @@ export class ControlPlaneService {
   }
 
   private async validateGuardrailDraft(purpose: string, draft: GuardrailDraftConfig): Promise<ProgrammablePolicySnapshot[]> {
-    if (!purpose.trim()) throw new ValidationError("A Guardrail requires a clear purpose.");
     try {
       const programmablePolicies = await this.resolveProgrammablePolicies(draft);
       buildGuardrailPlan({
@@ -2279,6 +2276,11 @@ export class ControlPlaneService {
   ): Promise<string[]> {
     const programmablePolicies = await this.resolveProgrammablePolicies(draft);
     const generated = generatedTestCases(guardrailId, draft, this.policyCatalog().list(), programmablePolicies);
+    try {
+      applyValidationOverrides(generated, draft);
+    } catch (error) {
+      throw new ValidationError(error instanceof Error ? error.message : "Invalid Validation expectation override.");
+    }
     await tx.delete(testCases).where(and(eq(testCases.guardrailId, guardrailId), eq(testCases.origin, "generated")));
     if (generated.length) await tx.insert(testCases).values(generated);
     const generatedIds = new Set(generated.map((item) => item.id));
@@ -2293,7 +2295,7 @@ export class ControlPlaneService {
       status: integration.status,
       createdAt: integration.createdAt,
       updatedAt: integration.updatedAt,
-      credentials: publicIntegrationCredentials(integration.verification, integration.createdAt),
+      credentials: publicIntegrationCredentials(integration.verification),
       setup: integrationSetup(this.config.runtimeServiceUrl, integration.id, integration.adapter),
     };
   }
@@ -2513,7 +2515,7 @@ function programmablePolicyPayload(
     description: `Runs ${binding.flow_name} on the ${binding.rail_type} Rail and applies ${binding.on_unsafe} when the Flow reports unsafe content.`,
     form: "colang_flow" as const,
     effect: binding.on_unsafe,
-    stages: [binding.rail_type],
+    rails: [binding.rail_type],
     implementation: {
       engine: "nemo-guardrails",
       form: "colang_flow" as const,
@@ -2535,7 +2537,7 @@ function programmablePolicyPayload(
     id: item.id || `draft/${index + 1}`,
     name: item.name,
     description: item.description || `Validates the published behavior for ${item.rail_type} traffic.`,
-    stage: item.rail_type,
+    phase: item.rail_type,
     content: item.content,
     expected_decision: item.expected_decision,
     covered_rule_ids: item.covered_rule_ids,
@@ -2576,7 +2578,7 @@ function programmablePolicyPayload(
       })),
     ],
     parameters: record.draft.parameter_schema,
-    stages: railTypes,
+    rails: railTypes,
     effects,
     forms: ["colang_flow" as const],
     rules,
@@ -2630,12 +2632,12 @@ function programmablePolicyPlan(
   const phases = [...new Set(snapshot.rail_bindings.map((item) => item.rail_type))];
   const action = snapshot.rail_bindings[0]?.on_unsafe ?? "reject";
   const steps = nativeRisk ? [{
-    id: `${nativeRisk}:deep-judge`,
-    risk: nativeRisk,
-    stage: "deep_judge",
+    id: `${nativeRisk}:primary`,
+    capability: nativeRisk,
+    contract_ref: snapshot.evaluation_contracts[0] ?? `tali.guard.${nativeRisk.replaceAll("_", "-")}.v1`,
     phases,
     on_unsafe: action,
-    escalation: "never",
+    trigger: { type: "always" },
     parameters: [],
   }] : [];
   const modules = steps.length ? phases.map((phase) => ({
@@ -2652,7 +2654,7 @@ function programmablePolicyPlan(
   return {
     guardrail_id: `policy-preview-${policyId}`,
     guardrail_version: revision,
-    compiler_version: "tasklattice-controller-plan-v2",
+    compiler_version: "tasklattice-controller-plan-v3",
     safety_level: "balanced",
     output_delivery: contract.output_delivery ?? "window_buffered",
     purpose: description || `Evaluate ${policyName}.`,
@@ -2669,7 +2671,7 @@ function programmablePolicyPlan(
       parameter_schema: snapshot.parameter_schema.map((item) => [item.name, item.kind]),
       rail_bindings: snapshot.rail_bindings,
       action_references: snapshot.action_references,
-      model_dependencies: snapshot.model_dependencies,
+      evaluation_contracts: snapshot.evaluation_contracts,
       prompt_dependencies: snapshot.prompt_dependencies,
       execution_contract: snapshot.execution_contract,
       test_cases: snapshot.test_cases.map((item) => [item.name, item.expected_decision]),
@@ -2761,6 +2763,15 @@ function validateBindingGraph(draft: ProgrammablePolicyDraft): void {
     visited.add(flow);
   };
   for (const flow of graph.keys()) visit(flow);
+  const positions = new Map(draft.rail_bindings.map((binding, index) => [binding.flow_name, index]));
+  for (const binding of draft.rail_bindings) {
+    for (const dependency of binding.depends_on) {
+      const source = draft.rail_bindings[positions.get(dependency)!];
+      if (!source || source.rail_type !== binding.rail_type || positions.get(dependency)! >= positions.get(binding.flow_name)!) {
+        throw new ValidationError(`Flow ${binding.flow_name} must follow dependency ${dependency} in the same Rail's list order.`);
+      }
+    }
+  }
 }
 
 function decryptRuntimeEventMetadata(value: Record<string, unknown>, key: Buffer | null): Record<string, unknown> {

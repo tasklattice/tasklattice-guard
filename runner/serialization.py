@@ -4,6 +4,7 @@ from typing import Any
 
 from runner.toolkit.runtime.contracts import (
     AutomatedReasoningPolicySnapshot,
+    EvaluationTrigger,
     GuardrailPlanModule,
     GuardrailPlanSnapshot,
     GuardrailPlanStep,
@@ -27,12 +28,11 @@ def plan_from_dict(payload: dict[str, Any]) -> GuardrailPlanSnapshot:
         steps=tuple(
             GuardrailPlanStep(
                 id=str(item["id"]),
-                risk=str(item["risk"]),
-                stage=str(item.get("stage", "deterministic")),
+                capability=str(item["capability"]),
+                contract_ref=str(item["contract_ref"]),
                 phases=tuple(item.get("phases", ("input", "output"))),
                 on_unsafe=str(item.get("on_unsafe", "reject")),
-                escalation=str(item.get("escalation", "never")),
-                threshold=(float(item["threshold"]) if item.get("threshold") is not None else None),
+                trigger=_evaluation_trigger(item.get("trigger")),
                 parameters=_pairs(item.get("parameters", ())),
             )
             for item in payload.get("steps", ())
@@ -63,6 +63,7 @@ def plan_from_dict(payload: dict[str, Any]) -> GuardrailPlanSnapshot:
                 action=(str(item["action"]) if item.get("action") else None),
                 parameter_values=_pairs(item.get("parameter_values", ())),
                 enabled_rule_ids=tuple(item.get("enabled_rule_ids", ())),
+                rule_order=tuple(item.get("rule_order", ())),
                 rule_actions=_pairs(item.get("rule_actions", ())),
                 enabled_rails=tuple(item.get("enabled_rails", ("input", "output"))),
             )
@@ -95,11 +96,11 @@ def config_from_dict(payload: dict[str, Any]) -> NeMoConfigSnapshot:
 def _action_binding(item: dict[str, Any]) -> NeMoActionBinding:
     return NeMoActionBinding(
         id=str(item["id"]),
-        risk=str(item["risk"]),
-        stage=str(item["stage"]),
+        capability=str(item["capability"]),
+        contract_ref=str(item["contract_ref"]),
         phases=tuple(item["phases"]),
         on_unsafe=str(item["on_unsafe"]),
-        escalation=str(item.get("escalation", "never")),
+        trigger=_evaluation_trigger(item.get("trigger")),
         timeout_ms=int(item.get("timeout_ms", 2_000)),
         parameters=_pairs(item.get("parameters", ())),
         policy_id=(str(item["policy_id"]) if item.get("policy_id") else None),
@@ -126,7 +127,7 @@ def _policy_version(item: dict[str, Any]) -> PolicyVersionSnapshot:
         parameter_schema=_pairs(item.get("parameter_schema", ())),
         rail_bindings=tuple(PolicyRailBindingSnapshot(**binding) for binding in item.get("rail_bindings", ())),
         action_references=tuple(PolicyActionReferenceSnapshot(**reference) for reference in item.get("action_references", ())),
-        model_dependencies=tuple(item.get("model_dependencies", ())),
+        evaluation_contracts=tuple(item.get("evaluation_contracts", ())),
         prompt_dependencies=tuple(item.get("prompt_dependencies", ())),
         execution_contract=_pairs(item.get("execution_contract", ())),
         test_cases=_pairs(item.get("test_cases", ())),
@@ -138,3 +139,15 @@ def _pairs(value: Any) -> tuple[tuple[str, str], ...]:
     if isinstance(value, dict):
         return tuple((str(key), str(item)) for key, item in value.items())
     return tuple((str(item[0]), str(item[1])) for item in value)
+
+
+def _evaluation_trigger(value: Any) -> EvaluationTrigger:
+    if value is None:
+        return EvaluationTrigger()
+    if not isinstance(value, dict):
+        raise ValueError("Evaluation trigger must be an object.")
+    return EvaluationTrigger(
+        type=str(value.get("type", "always")),
+        step_ref=(str(value["step_ref"]) if value.get("step_ref") else None),
+        verdicts=tuple(str(verdict) for verdict in value.get("verdicts", ())),
+    )

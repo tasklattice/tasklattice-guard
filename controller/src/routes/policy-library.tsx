@@ -53,7 +53,8 @@ import { cn } from "@/lib/utils";
 
 const EMPTY_POLICIES: Policy[] = [];
 const HIDDEN_POLICY_TAG_NAMESPACES = new Set(["engine", "scope", "stage"]);
-const POLICY_FACET_ORDER = ["source", "capability", "collection", "domain", "framework", "implementation", "jurisdiction", "rail"];
+const HIDDEN_POLICY_FACET_NAMESPACES = new Set(["rail"]);
+const POLICY_FACET_ORDER = ["source", "capability", "collection", "domain", "framework", "implementation", "jurisdiction"];
 type CatalogFacetTag = Omit<PolicyTag, "namespace"> & { namespace: PolicyTag["namespace"] | "source" };
 const JURISDICTION_FLAGS: Record<string, string> = {
   au: "🇦🇺",
@@ -284,7 +285,7 @@ export function TagFilters({ facets, selected, onChange }: { facets: Map<string,
         <h2 className="text-base font-semibold">{t("policyLibrary.filters")}</h2>
         <Button size="sm" variant="ghost" className="min-h-11 px-2 text-muted-foreground shadow-none" disabled={!selected.size} onClick={() => onChange(new Set())}>{t("policyLibrary.clearFilters")}</Button>
       </div>
-      {[...facets].map(([namespace, tags]) => (
+      {[...facets].filter(([namespace]) => !HIDDEN_POLICY_FACET_NAMESPACES.has(namespace)).map(([namespace, tags]) => (
         <details key={namespace} open className="group mt-5 border-t pt-4 first-of-type:mt-3 first-of-type:border-t-0 first-of-type:pt-1">
           <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 text-xs font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
             {t(`policyLibrary.tagNamespaces.${namespace}`, { defaultValue: namespace })}<ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
@@ -296,13 +297,12 @@ export function TagFilters({ facets, selected, onChange }: { facets: Map<string,
                 type="button"
                 className={cn(
                   "inline-flex min-h-11 min-w-11 items-center gap-2 rounded-lg bg-secondary px-3 text-left text-xs text-secondary-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring",
-                  tag.namespace === "rail" && "w-full justify-start border bg-card py-2.5",
                   selected.has(tag.id) && "border-primary/30 bg-primary/10 text-primary ring-1 ring-primary/25",
                 )}
                 aria-pressed={selected.has(tag.id)}
                 onClick={() => toggle(tag.id)}
               >
-                <PolicyTagLabel tag={tag} truncate showRailHint={tag.namespace === "rail"} />
+                <PolicyTagLabel tag={tag} truncate />
               </button>
             ))}
           </div>
@@ -440,7 +440,7 @@ function RuleRow({ rule }: { rule: PolicyRule }) {
         <p className="leading-5 text-muted-foreground">{rule.description || t("policyLibrary.noRuleDescription")}</p>
         <dl className="mt-3 grid gap-3 sm:grid-cols-3">
           <Fact label={t("policyLibrary.ruleForm")} value={t(`policyLibrary.forms.${rule.form}`)} />
-          <Fact label={t("policyLibrary.railTypesLabel")} value={rule.stages.map((railType) => t(`policyLibrary.railTypes.${railType}`)).join(", ")} />
+          <Fact label={t("policyLibrary.railTypesLabel")} value={rule.rails.map((railType) => t(`policyLibrary.railTypes.${railType}`)).join(", ")} />
           <Fact label={t("policyLibrary.effectLabel")} value={t(`policyLibrary.effects.${rule.effect}`, { defaultValue: rule.effect })} />
         </dl>
       </div>
@@ -490,7 +490,7 @@ function Implementation({ policy }: { policy: Policy }) {
       <h3 className="text-sm font-semibold">{t("policyLibrary.implementationTitle")}</h3>
       <p className="mt-1 text-xs leading-5 text-muted-foreground">{t("policyLibrary.implementationDescription")}</p>
       <dl className="mt-4 grid gap-3 rounded-lg border bg-muted/15 p-4 sm:grid-cols-2">
-        <Fact label={t("policyLibrary.railTypesLabel")} value={policy.stages.map((railType) => t(`policyLibrary.railTypes.${railType}`)).join(", ")} />
+        <Fact label={t("policyLibrary.railTypesLabel")} value={policy.rails.map((railType) => t(`policyLibrary.railTypes.${railType}`)).join(", ")} />
         <Fact label={t("policyLibrary.ruleForms")} value={policy.forms.map((form) => t(`policyLibrary.forms.${form}`)).join(", ")} />
       </dl>
       <div className="mt-4 divide-y overflow-hidden rounded-lg border">
@@ -526,6 +526,7 @@ function tagFacets(policies: Policy[]) {
   for (const policy of policies) {
     const sourceTag: CatalogFacetTag = { id: `source:${policy.source}`, namespace: "source", value: policy.source, label: policy.source, source: "derived" };
     for (const tag of [sourceTag, ...visiblePolicyTags(policy.tags)]) {
+      if (HIDDEN_POLICY_FACET_NAMESPACES.has(tag.namespace)) continue;
       const values = facets.get(tag.namespace) ?? new Map<string, CatalogFacetTag>();
       values.set(tag.id, tag);
       facets.set(tag.namespace, values);
@@ -542,7 +543,7 @@ function visiblePolicyTags(tags: PolicyTag[]) {
   return tags.filter((tag) => !HIDDEN_POLICY_TAG_NAMESPACES.has(tag.namespace));
 }
 
-function PolicyTagLabel({ tag, truncate = false, showRailHint = false }: { tag: CatalogFacetTag; truncate?: boolean; showRailHint?: boolean }) {
+function PolicyTagLabel({ tag, truncate = false }: { tag: CatalogFacetTag; truncate?: boolean }) {
   const { t } = useTranslation();
   const jurisdiction = tag.namespace === "jurisdiction";
   const source = tag.namespace === "source";
@@ -555,14 +556,6 @@ function PolicyTagLabel({ tag, truncate = false, showRailHint = false }: { tag: 
     ? t(`policyLibrary.railTypes.${tag.value}`, { defaultValue: tag.label })
     : tag.label;
   const flag = jurisdiction ? JURISDICTION_FLAGS[tag.value] : undefined;
-  if (rail && showRailHint) {
-    return (
-      <span className="flex min-w-0 flex-col gap-0.5">
-        <span className={cn("font-medium", truncate && "max-w-52 truncate")}>{label}</span>
-        <span className="text-[10px] leading-4 text-muted-foreground">{t(`policyLibrary.railTiming.${tag.value}`)}</span>
-      </span>
-    );
-  }
   return (
     <>
       {flag ? <span aria-hidden="true" className="shrink-0 text-base leading-none">{flag}</span> : null}

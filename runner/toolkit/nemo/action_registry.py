@@ -12,9 +12,9 @@ from .actions.names import (
     ACTION_AUTOMATED_REASONING,
     ACTION_CONTENT_FILTER,
     ACTION_CUSTOMER_IDENTIFIER,
+    ACTION_EVALUATE,
     ACTION_GROUNDING,
     ACTION_INDIRECT_PROMPT_INJECTION,
-    ACTION_PII,
     ACTION_PROMPT_SECURITY,
     ACTION_PROMPT_LEAKAGE,
     ACTION_RECORD_NATIVE,
@@ -24,6 +24,7 @@ from .actions.names import (
     ACTION_TOPIC_JUDGE,
     ACTION_TOPIC_RULES,
 )
+from ..evaluation.contracts import CONTRACT_TOPIC_RULES
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,11 +69,11 @@ ActionProviders = Mapping[tuple[str, str], ActionProvider]
 
 
 _BUILTIN_RUNTIME_ACTIONS = (
+    (ACTION_EVALUATE, ("pii", "content_safety", "jailbreak"), ("input", "output")),
     (ACTION_SECRETS, ("secrets",), ("input", "output")),
-    (ACTION_PII, ("pii",), ("input", "output")),
     (ACTION_CONTENT_FILTER, ("builtin_content_filter",), ("input", "output")),
     (ACTION_TOPIC_RULES, ("topic_control",), ("input", "output")),
-    (ACTION_PROMPT_SECURITY, ("prompt_injection", "jailbreak"), ("input",)),
+    (ACTION_PROMPT_SECURITY, ("prompt_injection",), ("input",)),
     (ACTION_INDIRECT_PROMPT_INJECTION, ("indirect_prompt_injection",), ("input",)),
     (ACTION_PROMPT_LEAKAGE, ("system_prompt_leakage",), ("output",)),
     (ACTION_TOPIC_JUDGE, ("topic_control", "company_policy"), ("input", "output")),
@@ -91,35 +92,28 @@ def action_providers(*providers: ActionProvider) -> ActionProviders:
     )
 
 
-def _dynamic_action_name(risk: str) -> str:
-    parts = tuple(item for item in re.split(r"[^A-Za-z0-9]+", risk) if item)
+def _dynamic_action_name(capability: str) -> str:
+    parts = tuple(item for item in re.split(r"[^A-Za-z0-9]+", capability) if item)
     capability = "".join(item.capitalize() for item in parts) or "Custom"
     return f"Guard{capability}Action"
 
 
-def action_name_for(risk: str, stage: str) -> str:
-    """Return the stable NeMo Action name for one native Policy stage."""
-    if stage == "deterministic":
-        return {
-            "secrets": ACTION_SECRETS,
-            "pii": ACTION_PII,
-            "builtin_content_filter": ACTION_CONTENT_FILTER,
-            "topic_control": ACTION_TOPIC_RULES,
-            "indirect_prompt_injection": ACTION_INDIRECT_PROMPT_INJECTION,
-            "system_prompt_leakage": ACTION_PROMPT_LEAKAGE,
-        }.get(risk, _dynamic_action_name(risk))
-    if stage == "fast_semantic":
-        return (
-            ACTION_PROMPT_SECURITY
-            if risk in {"prompt_injection", "jailbreak"}
-            else _dynamic_action_name(risk)
-        )
+def action_name_for(capability: str, contract_ref: str) -> str:
+    """Return the stable NeMo Action name for one evaluation contract."""
+    if capability in {"pii", "content_safety", "jailbreak"}:
+        return ACTION_EVALUATE
+    if capability == "topic_control":
+        return ACTION_TOPIC_RULES if contract_ref == CONTRACT_TOPIC_RULES else ACTION_TOPIC_JUDGE
     return {
-        "topic_control": ACTION_TOPIC_JUDGE,
+        "secrets": ACTION_SECRETS,
+        "builtin_content_filter": ACTION_CONTENT_FILTER,
+        "prompt_injection": ACTION_PROMPT_SECURITY,
+        "indirect_prompt_injection": ACTION_INDIRECT_PROMPT_INJECTION,
+        "system_prompt_leakage": ACTION_PROMPT_LEAKAGE,
         "company_policy": ACTION_TOPIC_JUDGE,
         "contextual_grounding": ACTION_GROUNDING,
         "automated_reasoning": ACTION_AUTOMATED_REASONING,
-    }.get(risk, _dynamic_action_name(risk))
+    }.get(capability, _dynamic_action_name(capability))
 
 
 BUILTIN_ACTION_CATALOG = ActionCatalog(
@@ -131,11 +125,19 @@ BUILTIN_ACTION_CATALOG = ActionCatalog(
                 input_schema=(("request", "ActionRequest"),),
                 output_schema=(("result", "ActionResult"),),
                 supported_rails=tuple(rails),
-                timeout_ms=30_000 if name == ACTION_AUTOMATED_REASONING else 5_000,
+                timeout_ms=(
+                    30_000
+                    if name in {
+                        ACTION_EVALUATE,
+                        ACTION_AUTOMATED_REASONING,
+                    }
+                    else 5_000
+                ),
                 failure_mode="fail_closed",
                 side_effects=False,
                 concurrent=True,
                 network_access=name in {
+                    ACTION_EVALUATE,
                     ACTION_TOPIC_JUDGE,
                     ACTION_GROUNDING,
                     ACTION_AUTOMATED_REASONING,

@@ -162,7 +162,8 @@ def test_scoped_technical_failures_are_bounded_and_keep_guardrail_identity():
 def test_policy_and_protection_metrics_explain_module_risk_policy_and_failure():
     metrics = RunnerMetrics(8)
     finding = RiskFinding(
-        risk="prompt_injection", verdict="unsafe", confidence=0.99,
+        risk="prompt_injection", taxonomy_id="TALI-MODEL-SECURITY-PROMPT-INJECTION",
+        verdict="unsafe", confidence=0.99,
         evidence="bounded evidence", recommended_action="reject",
         policy_id="policy-injection",
     )
@@ -189,7 +190,9 @@ def test_policy_and_protection_metrics_explain_module_risk_policy_and_failure():
             status="timeout", detail="deadline exceeded", timed_out=True,
             module_id="interaction-safety", policy_id="policy-injection",
             action_name="PromptInjectionAction", route="fail_closed",
-            risk="prompt_injection", verdict="error", model_result="timeout",
+            capability="prompt_injection",
+            contract_ref="tali.guard.prompt-injection.v1",
+            verdict="error", model_result="timeout",
         ),),
         coverage=coverage,
     )

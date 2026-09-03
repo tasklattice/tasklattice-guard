@@ -7,6 +7,7 @@ from typing import Any
 import httpx
 
 from ...runtime.contracts import RiskFinding
+from ...safety.taxonomy import taxonomy_for_evaluator
 from .contracts import ActionRequest, ActionResult, action_result
 from .model_call import action_usage, observe_model_call
 from .names import ACTION_TOPIC_JUDGE
@@ -20,28 +21,36 @@ class TopicJudgeActionProvider:
     rails = frozenset({"input", "output"})
     # Both capabilities classify an interaction against explicit, compiled
     # business boundaries with the dedicated NVIDIA Topic Control model.
-    risks = frozenset({"topic_control", "company_policy"})
+    capabilities = frozenset({"topic_control", "company_policy"})
 
     def __init__(
         self,
         *,
         base_url: str,
         model: str,
-        api_key_env_var: str,
+        api_key_env_var: str | None,
+        api_key: str | None = None,
+        provider_id: str = "taxonomy_judge",
         timeout_seconds: float = 20.0,
         request_options: dict[str, object] | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._model = model
+        self._provider_id = provider_id
         self._api_key_env_var = api_key_env_var
+        self._api_key = api_key
         self._timeout_seconds = timeout_seconds
         self._request_options = dict(request_options or {})
         self._transport = transport
 
     async def execute(self, request: ActionRequest) -> ActionResult:
-        credential = os.environ.get(self._api_key_env_var, "").strip()
-        if not credential:
+        credential = (self._api_key or "").strip() or (
+            os.environ.get(self._api_key_env_var, "").strip()
+            if self._api_key_env_var
+            else ""
+        )
+        if (self._api_key_env_var or self._api_key is not None) and not credential:
             return action_result(
                 request,
                 "error",
@@ -53,7 +62,7 @@ class TopicJudgeActionProvider:
         try:
             with observe_model_call(
                 request,
-                provider="nvidia",
+                provider=self._provider_id,
                 model=self._model,
                 operation="topic_classification",
             ) as call:
@@ -63,7 +72,11 @@ class TopicJudgeActionProvider:
                 ) as client:
                     response = await client.post(
                         f"{self._base_url}/chat/completions",
-                        headers={"authorization": f"Bearer {credential}"},
+                            headers=(
+                                {"authorization": f"Bearer {credential}"}
+                                if credential
+                                else {}
+                            ),
                         json={
                             "model": self._model,
                             "temperature": 0.01,
@@ -102,7 +115,8 @@ class TopicJudgeActionProvider:
             verdict = "uncertain"
         findings = () if verdict == "uncertain" else (
             RiskFinding(
-                risk=request.risk,
+                risk=request.capability,
+                taxonomy_id=taxonomy_for_evaluator(request.capability),
                 verdict="unsafe",
                 confidence=_confidence(payload.get("confidence")),
                 evidence=reason,

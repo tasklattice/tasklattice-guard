@@ -15,7 +15,7 @@ from ..compiler.domain import PlanCompilationError
 from ..runtime.contracts import GuardrailPlanSnapshot, NeMoConfigSnapshot
 from .action_registry import (
     ACTION_CUSTOMER_IDENTIFIER,
-    ACTION_PII,
+    ACTION_EVALUATE,
     ACTION_RECORD_NATIVE,
     ACTION_RECORD_POLICY,
     ACTION_RESOLVE,
@@ -137,6 +137,35 @@ class NeMoRuntimeRegistry:
             duration_ms,
         )
         self.readiness()
+
+    def replace_providers(
+        self,
+        providers: ActionProviders,
+        candidates: tuple[tuple[GuardrailPlanSnapshot, NeMoConfigSnapshot], ...],
+    ) -> None:
+        """Prewarm against a new registry, then swap it in as one atomic unit."""
+
+        with self._lock:
+            previous_providers = self._providers
+            previous_items = self._items
+            previous_retired = list(self._retired)
+            self._providers = providers
+            self._items = OrderedDict()
+            try:
+                for plan, config in candidates:
+                    key = (plan.guardrail_id, plan.guardrail_version, config_checksum(config))
+                    self._build_with_logging(plan, config, key)
+                self.readiness()
+            except Exception:
+                rejected = [item.rails for item in self._items.values()]
+                self._providers = previous_providers
+                self._items = previous_items
+                self._retired = [*previous_retired, *rejected]
+                raise
+            self._retired = [
+                *previous_retired,
+                *(item.rails for item in previous_items.values()),
+            ]
 
     def stats(self) -> dict[str, int]:
         with self._lock:
@@ -435,6 +464,9 @@ class NeMoRuntimeRegistry:
             binding
             for binding in config.action_bindings
             if (
+                not binding.capability
+                or not binding.contract_ref
+                or
                 (not binding.action_name and not binding.flow_name)
                 or (binding.action_name and not binding.action_version)
             )
@@ -459,14 +491,14 @@ class NeMoRuntimeRegistry:
             )
         )
         if "sensitive_data_detection" in config.required_features and not (
-            (ACTION_PII, "1.0.0") in self._providers
+            (ACTION_EVALUATE, "1.0.0") in self._providers
         ):
             raise PlanCompilationError(
-                "NeMo sensitive-data rails require a configured PII Action provider."
+                "NeMo sensitive-data rails require GuardEvaluateAction."
             )
         if malformed:
             names = ", ".join(
-                f"{item.id} ({item.stage})" for item in malformed
+                f"{item.id} ({item.contract_ref})" for item in malformed
             )
             raise PlanCompilationError(
                 f"NeMo Action bindings are incomplete for: {names}."
@@ -482,6 +514,22 @@ class NeMoRuntimeRegistry:
             raise PlanCompilationError(
                 f"NeMo Action providers are unavailable for: {names}."
             )
+        evaluation = self._providers.get((ACTION_EVALUATE, "1.0.0"))
+        route_keys = frozenset(getattr(evaluation, "route_keys", ()))
+        unmapped_contracts = tuple(
+            binding
+            for binding in config.action_bindings
+            if binding.action_name == ACTION_EVALUATE
+            and (binding.capability, binding.contract_ref) not in route_keys
+        )
+        if unmapped_contracts:
+            details = ", ".join(
+                f"{item.capability} -> {item.contract_ref}"
+                for item in unmapped_contracts
+            )
+            raise PlanCompilationError(
+                "No Evaluator Binding is available for: " + details + "."
+            )
 
     def _providers_for(self, config: NeMoConfigSnapshot) -> ActionProviders:
         """Scope name-based NeMo registration to artifact-pinned providers."""
@@ -491,7 +539,7 @@ class NeMoRuntimeRegistry:
             if name not in _EXECUTOR_ACTION_VERSIONS
         }
         if "sensitive_data_detection" in config.required_features:
-            references.add((ACTION_PII, "1.0.0"))
+            references.add((ACTION_EVALUATE, "1.0.0"))
         return action_providers(
             *(
                 self._providers[(name, version)]

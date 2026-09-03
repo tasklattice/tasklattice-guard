@@ -28,7 +28,7 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/nvidia-secret: {{ include (print $.Template.BasePath "/nvidia-secret.yaml") $root | sha256sum }}
+        checksum/model-runtime-secret: {{ include (print $.Template.BasePath "/model-runtime-secret.yaml") $root | sha256sum }}
         checksum/automated-reasoning-secret: {{ include (print $.Template.BasePath "/automated-reasoning-secret.yaml") $root | sha256sum }}
       {{- with $root.Values.rolloutRevision }}
         tasklattice.io/rollout-revision: {{ . | quote }}
@@ -84,27 +84,21 @@ spec:
             - { name: GUARD_CONTROLLER_CA_PATH, value: /var/run/tasklattice/control-tls/ca.crt }
             - { name: GUARD_RUNNER_CLIENT_CERT_PATH, value: /var/run/tasklattice/control-tls/runner.crt }
             - { name: GUARD_RUNNER_CLIENT_KEY_PATH, value: /var/run/tasklattice/control-tls/runner.key }
-            {{- with $root.Values.evaluators.nvidia.baseUrl }}
-            - { name: MODEL_GUARDRAILS_NVIDIA_BASE_URL, value: {{ . | quote }} }
-            - { name: MODEL_GUARDRAILS_CONTENT_SAFETY_MODEL, value: {{ $root.Values.evaluators.nvidia.contentSafetyModel | quote }} }
-            - { name: MODEL_GUARDRAILS_TOPIC_CONTROL_MODEL, value: {{ $root.Values.evaluators.nvidia.topicControlModel | quote }} }
-            - { name: MODEL_GUARDRAILS_JAILBREAK_MODEL, value: {{ $root.Values.evaluators.nvidia.jailbreakModel | quote }} }
-            {{- with $root.Values.evaluators.nvidia.groundingModel }}
-            - { name: MODEL_GUARDRAILS_GROUNDING_MODEL, value: {{ . | quote }} }
-            {{- end }}
-            {{- end }}
+            - { name: MODEL_GUARDRAILS_MODEL_RUNTIMES_JSON, value: {{ toJson $root.Values.models.runtimes | quote }} }
+            - { name: MODEL_GUARDRAILS_EVALUATOR_BINDINGS_JSON, value: {{ toJson $root.Values.evaluators.bindings | quote }} }
             {{- with $root.Values.evaluators.automatedReasoning.endpointUrl }}
             - { name: MODEL_GUARDRAILS_AUTOMATED_REASONING_ENDPOINT_URL, value: {{ . | quote }} }
             - name: MODEL_GUARDRAILS_AUTOMATED_REASONING_API_KEY
               valueFrom: { secretKeyRef: { name: {{ include "tali-guard.automatedReasoningSecretName" $root }}, key: {{ $root.Values.evaluators.automatedReasoning.secretKey }} } }
             {{- end }}
-            {{- if or $root.Values.evaluators.nvidia.apiKey $root.Values.evaluators.nvidia.existingSecret }}
-            - name: MODEL_GUARDRAILS_NVIDIA_API_KEY
-              valueFrom: { secretKeyRef: { name: {{ include "tali-guard.nvidiaSecretName" $root }}, key: {{ $root.Values.evaluators.nvidia.secretKey }} } }
-            {{- end }}
             {{- with include "tali-guard.callContextRedisUrl" $root }}
             - { name: GUARD_RUNNER_CALL_CONTEXT_REDIS_URL, value: {{ . | quote }} }
             {{- end }}
+          {{- if or $root.Values.models.credentials.existingSecret $root.Values.models.credentials.values }}
+          envFrom:
+            - secretRef:
+                name: {{ include "tali-guard.modelRuntimeSecretName" $root }}
+          {{- end }}
           volumeMounts:
             - { name: artifact-signing, mountPath: /var/run/tasklattice/artifact, readOnly: true }
             - { name: control-tls, mountPath: /var/run/tasklattice/control-tls, readOnly: true }

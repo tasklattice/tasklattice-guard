@@ -1,7 +1,5 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 
-export const LEGACY_INTEGRATION_CREDENTIAL_ID = "legacy";
-
 export type StoredIntegrationCredential = {
   id: string;
   sha256: string;
@@ -16,6 +14,10 @@ export type IssuedIntegrationCredential = {
   value: string;
   stored: StoredIntegrationCredential;
   publicCredential: PublicIntegrationCredential;
+};
+
+export type StoredIntegrationVerification = {
+  credentials: StoredIntegrationCredential[];
 };
 
 export function issueIntegrationCredential(now = new Date()): IssuedIntegrationCredential {
@@ -35,71 +37,43 @@ export function issueIntegrationCredential(now = new Date()): IssuedIntegrationC
 }
 
 export function activeIntegrationCredentials(
-  verification: Record<string, unknown>,
-  legacyCreatedAt: Date,
+  verification: unknown,
 ): StoredIntegrationCredential[] {
-  return allIntegrationCredentials(verification, legacyCreatedAt)
+  return structuredCredentials(verification)
     .filter((credential) => credential.revokedAt === null)
     .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
 }
 
 export function publicIntegrationCredentials(
-  verification: Record<string, unknown>,
-  legacyCreatedAt: Date,
+  verification: unknown,
 ): PublicIntegrationCredential[] {
-  return activeIntegrationCredentials(verification, legacyCreatedAt).map(toPublicCredential);
+  return activeIntegrationCredentials(verification).map(toPublicCredential);
 }
 
 export function appendIntegrationCredential(
-  verification: Record<string, unknown>,
+  verification: unknown,
   credential: StoredIntegrationCredential,
-): Record<string, unknown> {
+): StoredIntegrationVerification {
   const structured = structuredCredentials(verification);
-  return {
-    ...verification,
-    credentials: [...structured, credential],
-  };
+  return { credentials: [...structured, credential] };
 }
 
-export function revokeIntegrationCredentialDigest(
-  verification: Record<string, unknown>,
+export function revokeIntegrationCredential(
+  verification: unknown,
   credentialId: string,
   now: Date,
-): Record<string, unknown> | null {
-  if (credentialId === LEGACY_INTEGRATION_CREDENTIAL_ID) {
-    if (typeof verification.credentialSha256 !== "string") return null;
-    const { credentialSha256: _removed, ...remaining } = verification;
-    return remaining;
-  }
-
+): StoredIntegrationVerification | null {
   let found = false;
   const credentials = structuredCredentials(verification).map((credential) => {
     if (credential.id !== credentialId || credential.revokedAt !== null) return credential;
     found = true;
     return { ...credential, revokedAt: now.toISOString() };
   });
-  return found ? { ...verification, credentials } : null;
+  return found ? { credentials } : null;
 }
 
-function allIntegrationCredentials(
-  verification: Record<string, unknown>,
-  legacyCreatedAt: Date,
-): StoredIntegrationCredential[] {
-  const credentials = structuredCredentials(verification);
-  if (typeof verification.credentialSha256 === "string" && verification.credentialSha256) {
-    credentials.push({
-      id: LEGACY_INTEGRATION_CREDENTIAL_ID,
-      sha256: verification.credentialSha256,
-      keyHint: "legacy credential",
-      createdAt: legacyCreatedAt.toISOString(),
-      revokedAt: null,
-    });
-  }
-  return credentials;
-}
-
-function structuredCredentials(verification: Record<string, unknown>): StoredIntegrationCredential[] {
-  if (!Array.isArray(verification.credentials)) return [];
+function structuredCredentials(verification: unknown): StoredIntegrationCredential[] {
+  if (!isRecord(verification) || !Array.isArray(verification.credentials)) return [];
   return verification.credentials.flatMap((value) => {
     if (!isRecord(value)) return [];
     const id = nonEmptyString(value.id);

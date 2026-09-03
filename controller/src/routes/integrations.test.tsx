@@ -56,7 +56,7 @@ vi.mock("react-i18next", () => ({
         "integrations.taskLatticeGuardProviderDescription": "Built into the TaskLattice LiteLLM image",
         "integrations.litellmProviderStepOpen": "Open Guardrails > Guardrail Garden.",
         "integrations.litellmProviderStepSelect": "Open TaskLattice Guard and choose Create Guardrail.",
-        "integrations.litellmProviderStepConnect": "Paste Endpoint and Secret, select a protection stage, then choose Verify & connect.",
+        "integrations.litellmProviderStepConnect": "Paste Endpoint and Secret, select an inspection point, then choose Verify & connect.",
         "integrations.integrationEndpoint": "Endpoint",
         "integrations.integrationSecret": "Secret",
         "integrations.integrationSecretDescription": "Use the complete one-time Secret saved in step 1.",
@@ -64,8 +64,8 @@ vi.mock("react-i18next", () => ({
         "integrations.integrationSecretAvailable": "Active Secret available",
         "integrations.litellmProviderSettings": "Provider settings",
         "integrations.litellmProviderSettingsDescription": "These settings are enforced by LiteLLM.",
-        "integrations.protectionStages": "Protection stages",
-        "integrations.protectionStagesDescription": "Select Before model, After model, or both. At least one stage is required.",
+        "integrations.protectionStages": "Inspection points",
+        "integrations.protectionStagesDescription": "Select Before model, After model, or both. At least one checkpoint is required.",
         "integrations.guardUnavailable": "Guard unavailable",
         "integrations.guardUnavailableDescription": "Block request is recommended; Continue without protection favors availability.",
         "integrations.advancedProviderSettings": "Advanced",
@@ -90,7 +90,7 @@ vi.mock("react-i18next", () => ({
         "integrations.inputCallback": "Input callback",
         "integrations.outputCallback": "Output callback",
         "integrations.waiting": "Waiting",
-        "integrations.callbacksVerified": "An authenticated callback has been received. This Gateway connection is verified; other stages are optional.",
+        "integrations.callbacksVerified": "An authenticated callback has been received. This Gateway connection is verified; other checkpoints are optional.",
         "integrations.complete": "Complete",
         "integrations.finishLater": "Finish later",
         "integrations.openIntegrationDetails": "Open integration",
@@ -232,11 +232,11 @@ describe("Integration onboarding", () => {
     expect(screen.getByRole("button", { name: "Reveal credential" })).toBeTruthy();
     expect(screen.getByText("Connect the TaskLattice Guard Provider")).toBeTruthy();
     expect(screen.getByText("Open TaskLattice Guard and choose Create Guardrail.")).toBeTruthy();
-    expect(screen.getByText("Paste Endpoint and Secret, select a protection stage, then choose Verify & connect.")).toBeTruthy();
+    expect(screen.getByText("Paste Endpoint and Secret, select an inspection point, then choose Verify & connect.")).toBeTruthy();
     expect(screen.getByText("Endpoint")).toBeTruthy();
     expect(screen.getByText(item.setup.api_base_url)).toBeTruthy();
     expect(screen.getByText("Secret")).toBeTruthy();
-    expect(screen.getByText("Protection stages")).toBeTruthy();
+    expect(screen.getByText("Inspection points")).toBeTruthy();
     expect(screen.getByText("Guard unavailable")).toBeTruthy();
     expect(screen.getByText("Advanced")).toBeTruthy();
     expect(screen.getByText("Continue is limited to availability failures")).toBeTruthy();
@@ -245,7 +245,7 @@ describe("Integration onboarding", () => {
     expect(screen.queryByText(/config\.yaml/i)).toBeNull();
     expect(screen.queryByText(/guardrail_name: tasklattice-guard/)).toBeNull();
     expect(screen.queryByText(`TASKLATTICE_GUARD_API_BASE=${item.setup.api_base_url}`)).toBeNull();
-    expect(screen.getByText("An authenticated callback has been received. This Gateway connection is verified; other stages are optional.")).toBeTruthy();
+    expect(screen.getByText("An authenticated callback has been received. This Gateway connection is verified; other checkpoints are optional.")).toBeTruthy();
   });
 
   it("hides a saved credential and supports explicit reveal and hide without clearing the saved state", async () => {

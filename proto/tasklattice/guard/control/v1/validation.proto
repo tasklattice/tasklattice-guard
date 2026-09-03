@@ -1,0 +1,172 @@
+syntax = "proto3";
+
+package tasklattice.guard.control.v1;
+
+import "common.proto";
+import "enforcement_action.proto";
+import "evaluation.proto";
+import "runtime.proto";
+
+// Reviewed Guardrail-local composition assertion; never inferred from observed output.
+message ValidationExpectedMatch {
+  string policy_id = 1;
+  string rule_id = 2;
+}
+
+// An explicit, version-pinned replacement for a source case's composition expectation.
+message ValidationExpectationOverride {
+  string source_policy_version = 1;
+  // Required human-readable review rationale, retained in Validation evidence.
+  string reason = 2;
+  ValidationDecision expected_decision = 3;
+  // Exact complete output; presence distinguishes asserting empty output from no assertion.
+  optional string expected_output_content = 4;
+  repeated ValidationExpectedMatch expected_matches = 5;
+}
+
+// Immutable validation input and expected business/infrastructure outcome.
+message ValidationTestCase {
+  // Stable case identifier within the validation request.
+  string id = 1;
+  string name = 2;
+  string policy_id = 3;
+  GuardrailPhase phase = 4;
+  string content = 5;
+  // Business decision required for this case to pass.
+  ValidationDecision expected_decision = 6;
+  // Trusted system instruction used to evaluate indirect prompt injection.
+  string trusted_instruction = 7;
+  TargetSource target_source = 8;
+  // User query associated with retrieved/tool/model content, when applicable.
+  string query = 9;
+  // Source blocks used by grounding and relevance evaluation.
+  repeated string grounding_sources = 10;
+  // Required automated-reasoning outcome; absence means it is not asserted.
+  optional AutomatedReasoningResult expected_reasoning_result = 11;
+  // Extensible test category identifier; not a closed protocol enum.
+  string case_type = 12;
+  // False marks a diagnostic case that does not fail the overall run.
+  bool required = 13;
+  // Expected infrastructure failure; absence means successful execution is expected.
+  optional ValidationFailure expected_failure = 14;
+  // Cases in the same non-empty group are eligible for concurrent execution.
+  optional string concurrency_group = 15;
+  // Original catalog policy identity for generated cases; absent for custom cases.
+  optional string source_policy_id = 16;
+  // Original catalog policy version; present only together with source_policy_id.
+  optional string source_policy_version = 17;
+  // Original catalog case ID; absent for custom cases.
+  optional string source_case_id = 18;
+  repeated string covered_rule_ids = 19;
+  // Absent preserves the inherited Policy/Rule contract unchanged.
+  optional ValidationExpectationOverride expectation_override = 20;
+}
+
+// Aggregate metrics computed across all cases in one executed validation run.
+message ValidationMetrics {
+  // Number of executed cases included in the aggregate.
+  int32 total = 1;
+  // Number of cases whose observed outcome matched their expectation.
+  int32 passed = 2;
+  // passed / total in [0, 1], or zero when total is zero.
+  double compliance_rate = 3;
+  // Safe cases incorrectly blocked or transformed, normalized to [0, 1].
+  double false_positive_rate = 4;
+  // Unsafe cases incorrectly allowed, normalized to [0, 1].
+  double false_negative_rate = 5;
+  // Cases that executed a trigger-dependent evaluation step divided by total.
+  double escalation_rate = 6;
+  // End-to-end case latency p95 in milliseconds.
+  int32 p95_latency_ms = 7;
+}
+
+// Observed decision, evidence, and trace for one validation case.
+message ValidationCaseResult {
+  string case_id = 1;
+  string name = 2;
+  string policy_id = 3;
+  ValidationDecision expected_decision = 4;
+  ValidationDecision actual_decision = 5;
+  // True when required business and expected-failure assertions matched.
+  bool passed = 6;
+  repeated string evaluator_ids = 7;
+  // End-to-end case execution latency in milliseconds.
+  int32 latency_ms = 8;
+  // Human-readable diagnostic detail; consumers must not parse it as a code.
+  string reason = 9;
+  GuardrailPhase phase = 10;
+  string input_content = 11;
+  EnforcementAction action = 12;
+  string output_content = 13;
+  repeated RiskFinding findings = 14;
+  repeated RuntimeTraceStep trace = 15;
+  string trusted_instruction = 16;
+  TargetSource target_source = 17;
+  string query = 18;
+  repeated string grounding_sources = 19;
+  // Copied expected reasoning assertion; absence means it was not asserted.
+  optional AutomatedReasoningResult expected_reasoning_result = 20;
+  // Observed reasoning result; absent when automated reasoning did not run.
+  optional AutomatedReasoningResult actual_reasoning_result = 21;
+  string case_type = 22;
+  // Copied from the request so aggregate policy can distinguish diagnostic cases.
+  bool required = 23;
+  // Copied expected infrastructure failure; absence means none was expected.
+  optional ValidationFailure expected_failure = 24;
+  // Observed infrastructure failure; absence means execution completed normally.
+  optional ValidationFailure actual_failure = 25;
+  // Copied scheduler group; absence means the case had no explicit grouping.
+  optional string concurrency_group = 26;
+  // Original catalog policy identity for generated cases; absent for custom cases.
+  optional string source_policy_id = 27;
+  // Original catalog policy version; present only together with source_policy_id.
+  optional string source_policy_version = 28;
+  // Original catalog case ID; absent for custom cases.
+  optional string source_case_id = 29;
+  repeated string covered_rule_ids = 30;
+  repeated string matched_rule_ids = 31;
+  repeated string evaluation_contracts = 32;
+  bool escalated = 33;
+  int32 model_invocations = 34;
+  // Reviewed expectation used by this immutable run; absent means no local override.
+  optional ValidationExpectationOverride expectation_override = 35;
+  // Original unmodified source expectation, present when a local override was applied.
+  optional ValidationDecision template_expected_decision = 36;
+  repeated string assertion_failures = 37;
+}
+
+// Command to execute an immutable candidate plan against its test cases.
+message ValidationRequest {
+  // Idempotency/correlation ID for exactly one validation run.
+  string run_id = 1;
+  string guardrail_id = 2;
+  // Candidate Guardrail version evaluated without publishing or activation.
+  int32 candidate_version = 3;
+  // Draft revision whose plan and test cases are frozen in this request.
+  int32 source_draft_revision = 4;
+  GuardrailPlan plan = 5;
+  // Extensible runtime registry identifier used to compile/execute the candidate.
+  string runtime_profile = 6;
+  repeated ValidationTestCase test_cases = 7;
+}
+
+// Validation response. `accepted` reports whether the Runner executed the
+// command; `status` reports the business outcome of that executed run. Thus an
+// accepted result may legitimately have FAILED status. Rejected results carry
+// a reason and no meaningful metrics or case results.
+message ValidationResult {
+  // Runner that executed or rejected the validation command.
+  string runner_id = 1;
+  // Must exactly match the originating ValidationRequest.run_id.
+  string run_id = 2;
+  // True when execution completed and status/metrics/results are meaningful.
+  bool accepted = 3;
+  // Infrastructure rejection detail, or optional context for an executed run.
+  string reason = 4;
+  // Business outcome; meaningful only when accepted is true.
+  ValidationStatus status = 5;
+  // Present and meaningful only when accepted is true.
+  ValidationMetrics metrics = 6;
+  // Per-case results; meaningful only when accepted is true.
+  repeated ValidationCaseResult results = 7;
+}

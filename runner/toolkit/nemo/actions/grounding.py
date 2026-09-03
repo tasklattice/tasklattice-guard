@@ -11,6 +11,7 @@ from ...runtime.contracts import (
     GroundingFilterAssessment,
     RiskFinding,
 )
+from ...safety.taxonomy import taxonomy_for_evaluator
 from .contracts import ActionRequest, ActionResult, action_result, action_view
 from .model_call import action_usage, observe_model_call
 from .names import ACTION_GROUNDING
@@ -27,14 +28,15 @@ class GroundingActionProvider:
     name = ACTION_GROUNDING
     version = "1.0.0"
     rails = frozenset({"output"})
-    risks = frozenset({"contextual_grounding"})
+    capabilities = frozenset({"contextual_grounding"})
 
     def __init__(
         self,
         *,
         base_url: str,
         model: str,
-        api_key_env_var: str,
+        api_key_env_var: str | None = None,
+        api_key: str | None = None,
         timeout_seconds: float = 20.0,
         transport: httpx.AsyncBaseTransport | None = None,
         request_options: dict[str, object] | None = None,
@@ -42,6 +44,7 @@ class GroundingActionProvider:
         self._base_url = base_url.rstrip("/")
         self._model = model
         self._api_key_env_var = api_key_env_var
+        self._api_key = api_key
         self._timeout_seconds = timeout_seconds
         self._transport = transport
         self._request_options = dict(request_options or {})
@@ -78,7 +81,8 @@ class GroundingActionProvider:
                 request.content,
                 findings=(
                     RiskFinding(
-                        risk=request.risk,
+                        risk=request.capability,
+                        taxonomy_id=taxonomy_for_evaluator(request.capability),
                         verdict="uncertain",
                         confidence=0.0,
                         evidence=reason,
@@ -100,7 +104,11 @@ class GroundingActionProvider:
         except ValueError as error:
             return action_result(request, "error", request.content, reason=str(error))
 
-        credential = os.environ.get(self._api_key_env_var, "").strip()
+        credential = (self._api_key or "").strip() or (
+            os.environ.get(self._api_key_env_var, "").strip()
+            if self._api_key_env_var
+            else ""
+        )
         if not credential:
             return action_result(request,
                 "error",
@@ -196,7 +204,8 @@ class GroundingActionProvider:
             else "The response is grounded in the supplied sources and relevant to the query."
         )
         finding = RiskFinding(
-            risk=request.risk,
+            risk=request.capability,
+            taxonomy_id=taxonomy_for_evaluator(request.capability),
             verdict=verdict,
             confidence=min(grounding_score, relevance_score),
             evidence=reason,

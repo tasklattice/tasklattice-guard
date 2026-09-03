@@ -20,7 +20,11 @@ vi.mock("react-i18next", () => ({
         "guardrailWizard.boundPolicies": "Bound Policies ({{count}})",
         "guardrailWizard.boundPoliciesDescription": "Pinned Policy bindings.",
         "guardrailWizard.boundPolicyDetails": "Review Rule details for {{name}}",
+        "guardrailWizard.boundPolicyDetailsRequiresConfiguration": "Review required configuration for {{name}}",
         "guardrailWizard.enabledRuleCount": "{{count}} Rules",
+        "guardrailWizard.missingRequiredFieldCount": "Required fields remaining: {{count}}",
+        "guardrailWizard.reasoningConfigurationRequired": "Reasoning configuration required",
+        "guardrailWizard.noEnabledRules": "No Rules enabled",
         "guardrailWizard.policyAction": "Policy action",
         "guardrailWizard.usePolicyBehavior": "Use Policy behavior",
         "guardrailWizard.enabledRails": "Enabled Rails",
@@ -55,7 +59,7 @@ const policy = {
   version: "1",
   tags: [],
   parameters: [],
-  stages: ["input"],
+  rails: ["input"],
   effects: ["redact"],
   forms: ["regex"],
   rules: [
@@ -65,7 +69,7 @@ const policy = {
       description: "Redact account identifiers.",
       form: "regex",
       effect: "redact",
-      stages: ["input"],
+      rails: ["input"],
       implementation: {
         engine: "nemo-guardrails",
         form: "regex",
@@ -91,6 +95,16 @@ const policy = {
   test_count: 1,
   safety_level: "balanced",
   output_delivery: "window_buffered",
+} satisfies Policy;
+
+const requiredPolicy = {
+  ...policy,
+  id: "aviation-operations-security",
+  name: "Aviation Operations Security",
+  parameters: [
+    { name: "brand_name", label: "Your Airline / Brand Name", kind: "text", required: true, placeholder: "e.g. Acme Airlines", description: "" },
+    { name: "competitors", label: "Competitors", kind: "textarea", required: true, placeholder: "One competitor per line", description: "Reviewed competitors." },
+  ],
 } satisfies Policy;
 
 function Harness({ policies = [policy] }: { policies?: Policy[] }) {
@@ -147,5 +161,33 @@ describe("PolicyBindingEditor", () => {
     expect(screen.getByRole("option", { name: /Prompt injection Policy/ })).toBeTruthy();
     expect(screen.queryByRole("option", { name: /Customer data Policy/ })).toBeNull();
     expect(screen.getByText(/OWASP LLM 2025/)).toBeTruthy();
+  });
+
+  it("opens a newly selected Policy when required configuration is missing", () => {
+    render(<Harness policies={[requiredPolicy]} />);
+
+    fireEvent.focus(screen.getByRole("combobox", { name: "Select Policies" }));
+    fireEvent.click(screen.getByRole("option", { name: /Aviation Operations Security/ }));
+
+    const details = document.querySelector("details");
+    expect(details).not.toBeNull();
+    expect(details!.open).toBe(true);
+    expect(details!.querySelector("summary")?.getAttribute("aria-label")).toBe(
+      "Review required configuration for Aviation Operations Security",
+    );
+    expect(screen.getByTestId("required-configuration-indicator").getAttribute("aria-hidden")).toBe("true");
+    expect(screen.getByText("Required fields remaining: 2")).toBeTruthy();
+    expect(screen.getByPlaceholderText("e.g. Acme Airlines")).toBeTruthy();
+    expect(screen.getByPlaceholderText("One competitor per line")).toBeTruthy();
+
+    fireEvent.change(screen.getByPlaceholderText("e.g. Acme Airlines"), { target: { value: "TaskLattice Air" } });
+    fireEvent.change(screen.getByPlaceholderText("One competitor per line"), { target: { value: "Example Air" } });
+
+    expect(screen.queryByText("Required fields remaining: 2")).toBeNull();
+    expect(screen.queryByTestId("required-configuration-indicator")).toBeNull();
+    expect(details!.querySelector("summary")?.getAttribute("aria-label")).toBe(
+      "Review Rule details for Aviation Operations Security",
+    );
+    expect(details!.open).toBe(true);
   });
 });

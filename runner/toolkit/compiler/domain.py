@@ -17,7 +17,8 @@ from ..runtime.contracts import (
 )
 
 
-GuardrailStatus = Literal["needs_validation", "ready", "protected"]
+# Runner-side view models are local compilation inputs, not Controller resource
+# lifecycle states. Keep only aliases that are consumed by the dataclasses below.
 ValidationRunStatus = Literal["passed", "failed", "incomplete"]
 TestCaseOrigin = Literal["generated", "custom"]
 TestTargetSource = Literal[
@@ -27,7 +28,6 @@ TestTargetSource = Literal[
     "model_output",
 ]
 PolicySourceKind = Literal["built-in", "custom"]
-PolicyVersionStatus = Literal["draft", "published"]
 IntegrationSetupStatus = Literal["awaiting_callback", "verified", "disabled"]
 LoggingLevel = Literal["info", "debug", "trace"]
 
@@ -96,7 +96,7 @@ class PolicyDraft:
     parameter_schema: tuple[PolicyParameterDefinition, ...]
     rail_bindings: tuple[RailBinding, ...]
     action_references: tuple[ActionReference, ...]
-    model_dependencies: tuple[str, ...] = ()
+    evaluation_contracts: tuple[str, ...] = ()
     prompt_dependencies: tuple[str, ...] = ()
     execution_contract: tuple[tuple[str, str], ...] = ()
     test_cases: tuple[PolicyTestCaseDefinition, ...] = ()
@@ -127,7 +127,7 @@ class PolicyVersion:
     parameter_schema: tuple[PolicyParameterDefinition, ...]
     rail_bindings: tuple[RailBinding, ...]
     action_references: tuple[ActionReference, ...]
-    model_dependencies: tuple[str, ...]
+    evaluation_contracts: tuple[str, ...]
     prompt_dependencies: tuple[str, ...]
     execution_contract: tuple[tuple[str, str], ...]
     test_cases: tuple[PolicyTestCaseDefinition, ...]
@@ -157,7 +157,7 @@ class RuntimeCapability:
     default_phases: tuple[GuardrailPhase, ...]
     default_action: EnforcementAction
     allowed_actions: tuple[EnforcementAction, ...]
-    available_stages: tuple[str, ...]
+    evaluation_contracts: tuple[str, ...]
     limitations: tuple[str, ...]
     module: PolicyModule
 
@@ -166,7 +166,7 @@ class RuntimeCapability:
 class ResolvedPolicyCapability:
     """Compiler-only capability resolved from a product Policy binding."""
 
-    risk: str
+    capability: str
     action: EnforcementAction
     reasoning_policy: AutomatedReasoningPolicyBinding | None = None
 
@@ -361,7 +361,7 @@ class TestCaseResult:
     expected_decision: str
     actual_decision: str
     passed: bool
-    stage_reached: str
+    evaluator_ids: tuple[str, ...]
     latency_ms: int
     reason: str
     phase: GuardrailPhase = "input"
@@ -386,6 +386,9 @@ class TestCaseResult:
     source_case_id: str | None = None
     covered_rule_ids: tuple[str, ...] = ()
     matched_rule_ids: tuple[str, ...] = ()
+    evaluation_contracts: tuple[str, ...] = ()
+    escalated: bool = False
+    model_invocations: int = 0
 
 
 # The product name intentionally starts with ``Test``; keep pytest from
@@ -400,7 +403,7 @@ class ValidationMetrics:
     compliance_rate: float
     false_positive_rate: float
     false_negative_rate: float
-    deep_escalation_rate: float
+    escalation_rate: float
     p95_latency_ms: int
 
 
@@ -484,8 +487,8 @@ class RuntimeStepMetricEvent:
     phase: str
     kind: str
     name: str
-    risk: str | None
-    stage: str | None
+    capability: str | None
+    contract_ref: str | None
     outcome: str
     latency_ms: int
     timed_out: bool
@@ -530,8 +533,9 @@ class RuntimeFindingEvent:
     phase: str
     severity: Literal["critical", "high", "medium", "low"]
     risk: str
+    taxonomy_id: str
     verdict: str
-    confidence: float
+    confidence: float | None
     recommended_action: str
     policy_id: str | None
     rule_id: str | None

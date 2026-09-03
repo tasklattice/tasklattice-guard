@@ -10,9 +10,9 @@ import { z } from "zod";
 
 import type { ControllerAuth } from "../auth.js";
 import type { ControllerConfig } from "../config.js";
-import type { IntentAnalyzer } from "../control-plane-ai/intent-analyzer.js";
-import { ControllerError, NotFoundError, ValidationError } from "../domain/errors.js";
-import { enforcementActions, protectionIds } from "../domain/guardrail-plan.js";
+import { OpenAICompatibleIntentAnalyzer, type IntentAnalyzer } from "../control-plane-ai/intent-analyzer.js";
+import { ConflictError, ControllerError, NotFoundError, ValidationError } from "../domain/errors.js";
+import { enforcementActions } from "../domain/guardrail-plan.js";
 import type { RunnerControlServer } from "../control-channel/control-server.js";
 import type { ControlPlaneService } from "../services/control-plane.js";
 import type { ControllerMetrics } from "../metrics.js";
@@ -20,8 +20,10 @@ import { PolicyCatalog } from "../policy-catalog/catalog.js";
 import { actionCatalog } from "../action-catalog/catalog.js";
 import { createProgrammablePolicySchema, updateProgrammablePolicySchema } from "../policy-studio/model.js";
 import { extractDocuments } from "../control-plane-ai/document-ingestion.js";
+import type { ModelConfigurationService } from "../model-config/service.js";
+import { modelInputSchema, providerInputSchema, providerUpdateSchema } from "../model-config/domain.js";
 import {
-  type OpenAICompatiblePlaygroundModel,
+  OpenAICompatiblePlaygroundModel,
   PlaygroundDraftPreviewStore,
   type RunnerPlaygroundClient,
   runPlaygroundInteraction,
@@ -37,6 +39,14 @@ const guardrailPolicyBindingInput = z.object({
   parameterValues: z.record(z.string(), z.string()).default({}),
   enabledRuleIds: z.array(z.string().min(1)).max(512).default([]),
   ruleActions: z.record(z.string(), z.enum(enforcementActions)).default({}),
+  ruleOrder: z.array(z.string()).default([]),
+  testCaseOverrides: z.record(z.string(), z.object({
+    sourcePolicyVersion: z.string().min(1),
+    reason: z.string().trim().min(1).max(2000),
+    expectedDecision: z.enum(["allow", "block", "transform", "intervene"]),
+    expectedOutputContent: z.string().max(100000).optional(),
+    expectedMatches: z.array(z.object({ policyId: z.string().min(1), ruleId: z.string().min(1) })).max(512),
+  })).default({}),
   enabledRails: z.array(z.enum(["input", "output", "retrieval", "dialog", "execution"])).default([]),
   reasoningPolicy: z.object({
     policyId: z.string().trim().min(1),
@@ -45,7 +55,6 @@ const guardrailPolicyBindingInput = z.object({
   }).nullable().default(null),
 });
 const guardrailDraftInput = z.object({
-  protections: z.array(z.enum(protectionIds)).optional(),
   purposeDetails: z.object({
     audience: z.string().trim().max(500).default(""),
     tasks: z.string().trim().max(2_000).default(""),
@@ -168,6 +177,7 @@ const runtimeEventBatchInput = z.object({
     context.addIssue({ code: "custom", path: ["runnerId"], message: "runnerId is required for an empty telemetry batch." });
   }
 });
+const modelCredentialRefsInput = z.object({ refs: z.array(z.string().uuid()).max(64) });
 
 export function createHttpApp(input: {
   config: ControllerConfig;
@@ -175,6 +185,7 @@ export function createHttpApp(input: {
   service: ControlPlaneService;
   runnerControl: RunnerControlServer;
   metrics: ControllerMetrics;
+  models?: ModelConfigurationService | null;
   intentAnalyzer?: IntentAnalyzer | null;
   playgroundModel?: OpenAICompatiblePlaygroundModel | null;
   playgroundRunner?: RunnerPlaygroundClient | null;
@@ -186,9 +197,17 @@ export function createHttpApp(input: {
     collectDefaultMetrics: false,
   });
   const policyCatalog = PolicyCatalog.load(input.config.policyCatalogDir);
-  const intentAnalyzer = input.intentAnalyzer ?? null;
-  const playgroundModel = input.playgroundModel ?? null;
+  const legacyIntentAnalyzer = input.intentAnalyzer ?? null;
+  const legacyPlaygroundModel = input.playgroundModel ?? null;
   const playgroundRunner = input.playgroundRunner ?? null;
+  const currentIntentAnalyzer = async () => {
+    const configured = await input.models?.controlPlaneModel("policy_authoring");
+    return configured ? new OpenAICompatibleIntentAnalyzer(configured) : legacyIntentAnalyzer;
+  };
+  const currentPlaygroundModel = async () => {
+    const configured = await input.models?.controlPlaneModel("playground_chat");
+    return configured ? new OpenAICompatiblePlaygroundModel(configured) : legacyPlaygroundModel;
+  };
   const playgroundDraftPreviews = new PlaygroundDraftPreviewStore();
   const withDistribution = async <T extends Record<string, unknown>>(resource: T, wait = false) => ({
     ...resource,
@@ -222,7 +241,7 @@ export function createHttpApp(input: {
       deploymentComplete: defaultRunnerReady,
       desiredGeneration: await input.service.desiredGeneration(),
       defaultRunnerReady,
-      modelConnections: input.config.modelConnections,
+      modelConnections: input.models ? await input.models.statusSummary() : input.config.modelConnections,
     }, defaultRunnerReady ? 200 : 503);
   });
 
@@ -230,6 +249,83 @@ export function createHttpApp(input: {
 
   const authenticated = authentication(input.auth);
   const administrator = authorization("admin");
+
+  app.get("/api/v1/model-configuration", authenticated, async (context) => {
+    if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
+    const view = await input.models.view();
+    if (view.activating?.generation) {
+      const distribution = await input.runnerControl.distributionStatus();
+      if (distribution.distributionStatus === "ready" && distribution.desiredGeneration === view.activating.generation) {
+        await input.models.finalizeActivation(view.activating.id);
+        return context.json(await input.models.view());
+      }
+    }
+    return context.json(view);
+  });
+  app.post("/api/v1/model-providers", authenticated, administrator, async (context) => {
+    if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
+    return context.json(await input.models.createProvider(providerInputSchema.parse(await context.req.json()), context.get("actor").id), 201);
+  });
+  app.patch("/api/v1/model-providers/:id", authenticated, administrator, async (context) => {
+    if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
+    return context.json(await input.models.updateProvider(context.req.param("id"), providerUpdateSchema.parse(await context.req.json()), context.get("actor").id));
+  });
+  app.post("/api/v1/model-providers/:id/validate", authenticated, administrator, async (context) => {
+    if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
+    return context.json(await input.models.revalidateProvider(context.req.param("id"), context.get("actor").id));
+  });
+  app.post("/api/v1/model-providers/:id/discover", authenticated, administrator, async (context) => {
+    if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
+    return context.json(await input.models.discoverProviderModels(context.req.param("id")));
+  });
+  app.delete("/api/v1/model-providers/:id", authenticated, administrator, async (context) => {
+    if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
+    await input.models.deleteProvider(context.req.param("id"), context.get("actor").id);
+    return context.body(null, 204);
+  });
+  app.post("/api/v1/models", authenticated, administrator, async (context) => {
+    if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
+    return context.json(await input.models.createModel(modelInputSchema.parse(await context.req.json()), context.get("actor").id), 201);
+  });
+  app.post("/api/v1/models/:id/validate", authenticated, administrator, async (context) => {
+    if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
+    return context.json(await input.models.revalidateModel(context.req.param("id"), context.get("actor").id));
+  });
+  app.delete("/api/v1/models/:id", authenticated, administrator, async (context) => {
+    if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
+    await input.models.deleteModel(context.req.param("id"), context.get("actor").id);
+    return context.body(null, 204);
+  });
+  app.put("/api/v1/model-configuration/draft", authenticated, administrator, async (context) => {
+    if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
+    return context.json(await input.models.updateDraft(await context.req.json(), context.get("actor").id));
+  });
+  app.post("/api/v1/model-configuration/validate", authenticated, administrator, async (context) => {
+    if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
+    return context.json(await input.models.validateDraft(context.get("actor").id));
+  });
+  app.post("/api/v1/model-configuration/:id/activate", authenticated, administrator, async (context) => {
+    if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
+    const revision = await input.models.beginActivation(context.req.param("id"), context.get("actor").id);
+    const distribution = await input.runnerControl.distributeDesiredState("default", 10_000);
+    if (distribution.distributionStatus === "ready") await input.models.finalizeActivation(revision.id);
+    const view = await input.models.view();
+    if (view.failed?.id === revision.id) {
+      throw new ConflictError(view.failed.failureReason || "Runner rejected the Model configuration.", "model_configuration_runner_rejected");
+    }
+    return context.json({ ...view, distribution }, distribution.distributionStatus === "ready" ? 200 : 202);
+  });
+  app.post("/api/v1/model-configuration/rollback", authenticated, administrator, async (context) => {
+    if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
+    const revision = await input.models.rollback(context.get("actor").id);
+    const distribution = await input.runnerControl.distributeDesiredState("default", 10_000);
+    if (distribution.distributionStatus === "ready") await input.models.finalizeActivation(revision.id);
+    const view = await input.models.view();
+    if (view.failed?.id === revision.id) {
+      throw new ConflictError(view.failed.failureReason || "Runner rejected the rollback Model configuration.", "model_configuration_runner_rejected");
+    }
+    return context.json({ ...view, distribution }, distribution.distributionStatus === "ready" ? 200 : 202);
+  });
 
   app.get("/api/v1/policies", authenticated, async (context) => {
     const items = await input.service.listPolicies();
@@ -268,13 +364,17 @@ export function createHttpApp(input: {
     return context.json({ items, count: items.length });
   });
 
-  app.get("/api/v1/intent-analysis-status", authenticated, (context) => context.json({
-    available: intentAnalyzer !== null,
-    provider: intentAnalyzer?.provider ?? null,
-    model: intentAnalyzer?.model ?? null,
-    document_analysis_available: intentAnalyzer !== null,
-  }));
+  app.get("/api/v1/intent-analysis-status", authenticated, async (context) => {
+    const analyzer = await currentIntentAnalyzer();
+    return context.json({
+      available: analyzer !== null,
+      provider: analyzer?.provider ?? null,
+      model: analyzer?.model ?? null,
+      document_analysis_available: analyzer !== null,
+    });
+  });
   app.post("/api/v1/intent-analyses", authenticated, administrator, async (context) => {
+    const intentAnalyzer = await currentIntentAnalyzer();
     if (!intentAnalyzer) {
       throw new ControllerError(
         "The control-plane assistant is not configured.",
@@ -286,6 +386,7 @@ export function createHttpApp(input: {
     return context.json(await intentAnalyzer.analyze(body));
   });
   app.post("/api/v1/compliance-document-analyses", authenticated, administrator, async (context) => {
+    const intentAnalyzer = await currentIntentAnalyzer();
     if (!intentAnalyzer) {
       throw new ControllerError("The control-plane assistant is not configured.", 503, "intent_analysis_unavailable");
     }
@@ -306,11 +407,13 @@ export function createHttpApp(input: {
   });
 
   app.get("/api/v1/guardrails", authenticated, async (context) => context.json({ items: await input.service.listGuardrails() }));
-  app.get("/api/v1/playground/models", authenticated, (context) => {
+  app.get("/api/v1/playground/models", authenticated, async (context) => {
+    const playgroundModel = await currentPlaygroundModel();
     const items = playgroundModel ? [playgroundModel.descriptor] : [];
     return context.json({ items, count: items.length });
   });
   app.post("/api/v1/playground/draft-previews/:guardrailId", authenticated, administrator, async (context) => {
+    const playgroundModel = await currentPlaygroundModel();
     if (!playgroundModel || !playgroundRunner) {
       throw new ControllerError("Guardrail Playground has no model connection configured.", 503, "playground_unavailable");
     }
@@ -343,6 +446,7 @@ export function createHttpApp(input: {
     }
   });
   app.post("/api/v1/playground/draft-interactions/:guardrailId", authenticated, administrator, async (context) => {
+    const playgroundModel = await currentPlaygroundModel();
     if (!playgroundModel || !playgroundRunner) {
       throw new ControllerError("Guardrail Playground has no model connection configured.", 503, "playground_unavailable");
     }
@@ -376,6 +480,7 @@ export function createHttpApp(input: {
     }));
   });
   app.post("/api/v1/playground/interactions/:guardrailId", authenticated, async (context) => {
+    const playgroundModel = await currentPlaygroundModel();
     if (!playgroundModel || !playgroundRunner) {
       throw new ControllerError("Guardrail Playground has no model connection configured.", 503, "playground_unavailable");
     }
@@ -638,6 +743,11 @@ export function createHttpApp(input: {
       );
       throw error;
     }
+  });
+  app.post("/api/internal/v1/model-credentials/resolve", runnerAuthentication(input.config.runnerToken), async (context) => {
+    if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
+    const body = modelCredentialRefsInput.parse(await context.req.json());
+    return context.json({ credentials: await input.models.resolveCredentials(body.refs) });
   });
 
   app.notFound((context) => {

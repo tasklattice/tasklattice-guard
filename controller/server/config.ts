@@ -1,5 +1,97 @@
 import { z } from "zod";
 
+const modelRuntime = z.object({
+  id: z.string().trim().min(1),
+  client: z.literal("openai_chat").default("openai_chat"),
+  base_url: z.string().url(),
+  model: z.string().trim().min(1),
+  api_key_env_var: z.string().trim().min(1).optional(),
+  timeout_seconds: z.number().positive().default(20),
+  max_tokens: z.number().int().positive().default(128),
+});
+
+const modelRuntimeList = z.array(modelRuntime).superRefine((items, context) => {
+  const ids = items.map((item) => item.id);
+  if (new Set(ids).size !== ids.length) {
+    context.addIssue({ code: "custom", message: "Model Runtime IDs must be unique." });
+  }
+});
+
+const evaluatorProfiles = {
+  "tali.qwen3guard.v1": new Set([
+    "tali.guard.content-safety.v1",
+    "tali.guard.jailbreak.v1",
+    "tali.guard.pii.semantic.v1",
+  ]),
+  "tali.llama-guard-3.v1": new Set(["tali.guard.content-safety.v1"]),
+  "tali.taxonomy-judge.v1": new Set([
+    "tali.guard.taxonomy-normalization.v1",
+    "tali.guard.topic-control.semantic.v1",
+    "tali.guard.company-policy.v1",
+  ]),
+} as const;
+
+const evaluatorBindingList = z.array(z.object({
+  id: z.string().trim().min(1),
+  contract_ref: z.string().trim().min(1),
+  profile_ref: z.enum([
+    "tali.qwen3guard.v1",
+    "tali.llama-guard-3.v1",
+    "tali.taxonomy-judge.v1",
+  ]),
+  model_ref: z.string().trim().min(1),
+  priority: z.number().int().default(100),
+})).superRefine((items, context) => {
+  const ids = items.map((item) => item.id);
+  if (new Set(ids).size !== ids.length) {
+    context.addIssue({ code: "custom", message: "Evaluator Binding IDs must be unique." });
+  }
+  const routes = items.map((item) => `${item.contract_ref}\u0000${item.priority}`);
+  if (new Set(routes).size !== routes.length) {
+    context.addIssue({ code: "custom", message: "Evaluator Binding contract priorities must be unique." });
+  }
+  for (const [index, item] of items.entries()) {
+    if (!evaluatorProfiles[item.profile_ref].has(item.contract_ref)) {
+      context.addIssue({
+        code: "custom",
+        path: [index, "contract_ref"],
+        message: `Evaluator Profile ${item.profile_ref} does not implement ${item.contract_ref}.`,
+      });
+    }
+  }
+});
+
+function parseConfiguration<T>(value: string, name: string, schema: z.ZodType<T>): T {
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(value);
+  } catch {
+    throw new Error(`${name} must be valid JSON.`);
+  }
+  return schema.parse(decoded);
+}
+
+function parseLegacyConfiguration<T>(value: string, name: string, schema: z.ZodType<T>, fallback: T): T {
+  try {
+    return parseConfiguration(value, name, schema);
+  } catch (error) {
+    process.stderr.write(
+      `Ignoring invalid legacy ${name}; configure Models in Controller Settings instead: ${error instanceof Error ? error.message : "unknown error"}\n`,
+    );
+    return fallback;
+  }
+}
+
+function httpUrl(value: string | undefined): string | null {
+  if (!value) return null;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? value.replace(/\/$/, "") : null;
+  } catch {
+    return null;
+  }
+}
+
 const environmentSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   CONTROLLER_HTTP_HOST: z.string().default("0.0.0.0"),
@@ -34,11 +126,11 @@ const environmentSchema = z.object({
   CONTROLLER_BOOTSTRAP_ADMIN_EMAIL: z.string().email().optional(),
   CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD: z.string().min(1).optional(),
   CONTROLLER_BOOTSTRAP_ADMIN_NAME: z.string().min(1).default("Administrator"),
-  MODEL_GUARDRAILS_CONTROL_PLANE_AI_BASE_URL: z.string().url().optional(),
+  MODEL_GUARDRAILS_CONTROL_PLANE_AI_BASE_URL: z.string().trim().optional(),
   MODEL_GUARDRAILS_CONTROL_PLANE_AI_MODEL: z.string().min(1).optional(),
   MODEL_GUARDRAILS_CONTROL_PLANE_AI_API_KEY: z.string().min(1).optional(),
   MODEL_GUARDRAILS_CONTROL_PLANE_AI_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(120_000).default(45_000),
-  MODEL_GUARDRAILS_PLAYGROUND_CHAT_BASE_URL: z.string().url().optional(),
+  MODEL_GUARDRAILS_PLAYGROUND_CHAT_BASE_URL: z.string().trim().optional(),
   MODEL_GUARDRAILS_PLAYGROUND_CHAT_MODEL: z.string().min(1).optional(),
   MODEL_GUARDRAILS_PLAYGROUND_CHAT_API_KEY: z.string().min(1).optional(),
   MODEL_GUARDRAILS_RUNTIME_LOG_ENCRYPTION_KEY: z.string().trim().min(1).optional(),
@@ -46,13 +138,10 @@ const environmentSchema = z.object({
   RUNNER_OFFLINE_AFTER_SECONDS: z.coerce.number().int().min(5).max(300).default(30),
   DELETE_TRAFFIC_WINDOW_MINUTES: z.coerce.number().int().min(1).max(1440).default(30),
   TELEMETRY_STALE_AFTER_SECONDS: z.coerce.number().int().min(10).max(3600).default(60),
-  MODEL_GUARDRAILS_CONTROL_PLANE_AI_PROVIDER: z.string().trim().min(1).default("DeepSeek"),
-  MODEL_GUARDRAILS_NVIDIA_PROVIDER: z.string().trim().min(1).default("NVIDIA"),
-  MODEL_GUARDRAILS_CONTENT_SAFETY_MODEL: z.string().trim().min(1).default("nvidia/llama-3.1-nemotron-safety-guard-8b-v3"),
-  MODEL_GUARDRAILS_TOPIC_CONTROL_MODEL: z.string().trim().min(1).default("nvidia/llama-3.1-nemoguard-8b-topic-control"),
-  MODEL_GUARDRAILS_JAILBREAK_MODEL: z.string().trim().min(1).default("nvidia/nvidia-nemotron-nano-9b-v2"),
-  MODEL_GUARDRAILS_GROUNDING_MODEL: z.string().trim().optional(),
-  MODEL_GUARDRAILS_AUTOMATED_REASONING_ENDPOINT_URL: z.string().url().optional(),
+  MODEL_GUARDRAILS_CONTROL_PLANE_AI_PROVIDER: z.string().trim().min(1).default("Qwen"),
+  MODEL_GUARDRAILS_MODEL_RUNTIMES_JSON: z.string().default("[]"),
+  MODEL_GUARDRAILS_EVALUATOR_BINDINGS_JSON: z.string().default("[]"),
+  MODEL_GUARDRAILS_AUTOMATED_REASONING_ENDPOINT_URL: z.string().trim().optional(),
 }).superRefine((value, context) => {
   const publicHostname = new URL(value.CONTROLLER_PUBLIC_URL).hostname;
   const isLoopback = ["localhost", "127.0.0.1", "::1"].includes(publicHostname);
@@ -82,25 +171,6 @@ const environmentSchema = z.object({
       message: "CONTROLLER_BOOTSTRAP_ADMIN_EMAIL and CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD must be configured together.",
     });
   }
-  if (value.MODEL_GUARDRAILS_CONTROL_PLANE_AI_BASE_URL && !value.MODEL_GUARDRAILS_CONTROL_PLANE_AI_MODEL) {
-    context.addIssue({
-      code: "custom",
-      message: "MODEL_GUARDRAILS_CONTROL_PLANE_AI_BASE_URL and MODEL_GUARDRAILS_CONTROL_PLANE_AI_MODEL must be configured together.",
-    });
-  }
-  if (value.MODEL_GUARDRAILS_CONTROL_PLANE_AI_API_KEY && !value.MODEL_GUARDRAILS_CONTROL_PLANE_AI_BASE_URL) {
-    context.addIssue({
-      code: "custom",
-      path: ["MODEL_GUARDRAILS_CONTROL_PLANE_AI_API_KEY"],
-      message: "The control-plane AI base URL and model are required when its API key is configured.",
-    });
-  }
-  if (Boolean(value.MODEL_GUARDRAILS_PLAYGROUND_CHAT_BASE_URL) !== Boolean(value.MODEL_GUARDRAILS_PLAYGROUND_CHAT_MODEL)) {
-    context.addIssue({ code: "custom", message: "MODEL_GUARDRAILS_PLAYGROUND_CHAT_BASE_URL and MODEL_GUARDRAILS_PLAYGROUND_CHAT_MODEL must be configured together." });
-  }
-  if (value.MODEL_GUARDRAILS_PLAYGROUND_CHAT_API_KEY && !value.MODEL_GUARDRAILS_PLAYGROUND_CHAT_BASE_URL) {
-    context.addIssue({ code: "custom", message: "Playground base URL and model are required when its API key is configured." });
-  }
   if (
     value.CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD
     && value.CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD.length < value.BETTER_AUTH_MIN_PASSWORD_LENGTH
@@ -118,23 +188,43 @@ export type ControllerConfig = ReturnType<typeof loadConfig>;
 
 export function loadConfig(environment: NodeJS.ProcessEnv = process.env) {
   const parsed = environmentSchema.parse(environment);
-  const controlPlaneAi = parsed.MODEL_GUARDRAILS_CONTROL_PLANE_AI_BASE_URL
+  const modelRuntimes = parseLegacyConfiguration(
+    parsed.MODEL_GUARDRAILS_MODEL_RUNTIMES_JSON,
+    "MODEL_GUARDRAILS_MODEL_RUNTIMES_JSON",
+    modelRuntimeList,
+    [],
+  );
+  const parsedEvaluatorBindings = parseLegacyConfiguration(
+    parsed.MODEL_GUARDRAILS_EVALUATOR_BINDINGS_JSON,
+    "MODEL_GUARDRAILS_EVALUATOR_BINDINGS_JSON",
+    evaluatorBindingList,
+    [],
+  );
+  const modelRuntimeIds = new Set(modelRuntimes.map((item) => item.id));
+  const unknownRuntimeBindings = parsedEvaluatorBindings.filter((item) => !modelRuntimeIds.has(item.model_ref));
+  if (unknownRuntimeBindings.length) {
+    process.stderr.write(`Ignoring legacy Evaluator Bindings that reference unknown Model Runtimes: ${unknownRuntimeBindings.map((item) => item.model_ref).join(", ")}. Configure Models in Controller Settings instead.\n`);
+  }
+  const controlPlaneBaseUrl = httpUrl(parsed.MODEL_GUARDRAILS_CONTROL_PLANE_AI_BASE_URL);
+  const playgroundBaseUrl = httpUrl(parsed.MODEL_GUARDRAILS_PLAYGROUND_CHAT_BASE_URL);
+  const automatedReasoningUrl = httpUrl(parsed.MODEL_GUARDRAILS_AUTOMATED_REASONING_ENDPOINT_URL);
+  const controlPlaneAi = controlPlaneBaseUrl
     && parsed.MODEL_GUARDRAILS_CONTROL_PLANE_AI_MODEL
     && parsed.MODEL_GUARDRAILS_CONTROL_PLANE_AI_API_KEY
     ? {
         provider: parsed.MODEL_GUARDRAILS_CONTROL_PLANE_AI_PROVIDER,
-        baseUrl: parsed.MODEL_GUARDRAILS_CONTROL_PLANE_AI_BASE_URL.replace(/\/$/, ""),
+        baseUrl: controlPlaneBaseUrl,
         model: parsed.MODEL_GUARDRAILS_CONTROL_PLANE_AI_MODEL,
         apiKey: parsed.MODEL_GUARDRAILS_CONTROL_PLANE_AI_API_KEY,
         timeoutMs: parsed.MODEL_GUARDRAILS_CONTROL_PLANE_AI_TIMEOUT_MS,
       }
     : null;
-  const playgroundChat = parsed.MODEL_GUARDRAILS_PLAYGROUND_CHAT_BASE_URL
+  const playgroundChat = playgroundBaseUrl
     && parsed.MODEL_GUARDRAILS_PLAYGROUND_CHAT_MODEL
     && parsed.MODEL_GUARDRAILS_PLAYGROUND_CHAT_API_KEY
     ? {
         provider: "OpenAI-compatible",
-        baseUrl: parsed.MODEL_GUARDRAILS_PLAYGROUND_CHAT_BASE_URL.replace(/\/$/, ""),
+        baseUrl: playgroundBaseUrl,
         model: parsed.MODEL_GUARDRAILS_PLAYGROUND_CHAT_MODEL,
         apiKey: parsed.MODEL_GUARDRAILS_PLAYGROUND_CHAT_API_KEY,
         timeoutMs: parsed.MODEL_GUARDRAILS_CONTROL_PLANE_AI_TIMEOUT_MS,
@@ -182,19 +272,17 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env) {
     modelConnections: {
       controlPlane: {
         provider: parsed.MODEL_GUARDRAILS_CONTROL_PLANE_AI_PROVIDER,
-        model: parsed.MODEL_GUARDRAILS_CONTROL_PLANE_AI_MODEL ?? "deepseek-v4-flash",
+        model: parsed.MODEL_GUARDRAILS_CONTROL_PLANE_AI_MODEL ?? "not-configured",
       },
       dataPlane: {
-        provider: parsed.MODEL_GUARDRAILS_NVIDIA_PROVIDER,
+        provider: "Runner",
         models: [
-          { capability: "contentSafety", model: parsed.MODEL_GUARDRAILS_CONTENT_SAFETY_MODEL },
-          { capability: "topicControl", model: parsed.MODEL_GUARDRAILS_TOPIC_CONTROL_MODEL },
-          { capability: "jailbreak", model: parsed.MODEL_GUARDRAILS_JAILBREAK_MODEL },
-          ...(parsed.MODEL_GUARDRAILS_GROUNDING_MODEL
-            ? [{ capability: "grounding" as const, model: parsed.MODEL_GUARDRAILS_GROUNDING_MODEL }]
-            : []),
-          ...(parsed.MODEL_GUARDRAILS_AUTOMATED_REASONING_ENDPOINT_URL
-            ? [{ capability: "automatedReasoning" as const, model: parsed.MODEL_GUARDRAILS_AUTOMATED_REASONING_ENDPOINT_URL }]
+          ...modelRuntimes.map((item) => ({
+            id: item.id,
+            model: item.model,
+          })),
+          ...(automatedReasoningUrl
+            ? [{ id: "automated-reasoning", model: automatedReasoningUrl }]
             : []),
         ],
       },
