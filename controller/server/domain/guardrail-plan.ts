@@ -199,6 +199,16 @@ export function buildGuardrailPlan(input: {
   const steps: PlanStep[] = [];
   const modules: Array<Record<string, unknown>> = [];
   const previousModule: Partial<Record<"input" | "output", string>> = {};
+  // Custom Rules used to follow the coalesced local-Policy group. Preserve
+  // that behavior when each Policy has its own step: once per phase, not once
+  // per Policy, without replaying transformations or moving them earlier.
+  const lastLocalPolicy: Partial<Record<"input" | "output", string>> = {};
+  for (const { capability: definition, binding, policy } of resolved) {
+    if (!policy) continue;
+    for (const phase of phasesFor(definition, binding, [{ binding, policy }])) {
+      lastLocalPolicy[phase] = binding.policyId;
+    }
+  }
   for (const { capability: definition, binding, policy } of resolved) {
     // Never coalesce separate Policies by capability: a later Policy must see
     // the content produced by every earlier Policy, even across module types.
@@ -207,10 +217,14 @@ export function buildGuardrailPlan(input: {
     const phases = phasesFor(definition, binding, declarative).filter((phase) => !nativePolicy || nativePolicy.rail_bindings.some((rail) => (
       rail.rail_type === phase && binding.enabledRuleIds.includes(flowRuleId(phase, rail.flow_name))
     )));
+    const customContentRules = (draft.customContentRules ?? []).flatMap((rule) => {
+      const rulePhases = rule.phases.filter((phase) => lastLocalPolicy[phase] === binding.policyId);
+      return rulePhases.length ? [{ ...rule, phases: rulePhases }] : [];
+    });
     const parameters: Array<[string, string]> = [
       ["policy_id", binding.policyId],
       ["policy_version", binding.policyVersion],
-      ...parametersFor(definition.capability, binding, draft, input.purpose ?? "", declarative),
+      ...parametersFor(definition.capability, binding, { ...draft, customContentRules }, input.purpose ?? "", declarative),
     ];
     const prefix = `${definition.capability}:${binding.policyId}`;
     const policySteps: PlanStep[] = [];

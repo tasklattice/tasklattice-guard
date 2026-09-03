@@ -16,6 +16,7 @@ from ...runtime.contracts import (
     RuntimeTraceStep,
 )
 from ...runtime.interventions import fallback_content
+from ...safety.taxonomy import taxonomy_for_evaluator
 from .contracts import ActionRequest, ActionResult, action_result
 from .names import ACTION_CONTENT_FILTER
 
@@ -896,6 +897,10 @@ class ContentFilterActionProvider:
 
 
 def _taxonomy_ids(policy_id: str, rule_id: str) -> tuple[str, ...]:
+    # Guardrail-local phrase/regex Rules have no shared catalog entry. Their
+    # category is the configured business boundary, not an inferred PII label.
+    if policy_id == "custom":
+        return (taxonomy_for_evaluator("builtin_content_filter"),)
     definition = policy(policy_id)
     if definition is not None:
         rule = next((item for item in definition.rules if item.id == rule_id), None)

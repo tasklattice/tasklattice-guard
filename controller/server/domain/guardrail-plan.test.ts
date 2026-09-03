@@ -7,6 +7,34 @@ import { programmablePolicyDraftSchema, type ProgrammablePolicySnapshot } from "
 import { defaultGuardrailDraft } from "./defaults.js";
 
 describe("Controller Guardrail plan", () => {
+  it("runs Guardrail-local custom rules once per phase after the last local Policy", () => {
+    const policies = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
+    const draft = {
+      purposeDetails: { audience: "", tasks: "", protect: "", outOfScope: "" },
+      allowedTopics: [], restrictedTopics: [], safetyLevel: "balanced" as const, outputDelivery: "full_buffered" as const,
+      customContentRules: [{ id: "mask", phases: ["input", "output"] as Array<"input" | "output">, detector: "keyword" as const, keywords: ["private"], action: "redact" as const, replacement: "public" }],
+      policyBindings: ["keyword-blocking", "pattern-matching"].map((id, index) => {
+        const policy = policies.find((item) => item.id === id)!;
+        return {
+          ...nativeBinding(id), policyVersion: policy.version,
+          parameterValues: id === "keyword-blocking" ? { blocked_words: "blocked" } : {},
+          enabledRuleIds: policy.rules.map((rule) => rule.id),
+          enabledRails: index === 0 ? ["input", "output"] as Array<"input" | "output"> : ["input"] as Array<"input">,
+        };
+      }),
+    };
+    const compiledRules = () => {
+      const plan = buildGuardrailPlan({ guardrailId: "custom-order", guardrailVersion: 1, draft, policies });
+      return (plan.steps as Array<{ parameters: Array<[string, string]> }>).map((step) => JSON.parse(Object.fromEntries(step.parameters).custom_rules_json!));
+    };
+    expect(compiledRules()).toEqual([
+      [{ ...draft.customContentRules[0], phases: ["output"] }],
+      [{ ...draft.customContentRules[0], phases: ["input"] }],
+    ]);
+    draft.policyBindings.reverse();
+    expect(compiledRules()).toEqual([[], draft.customContentRules]);
+  });
+
   it("preserves independent Policy and Rule ordering in the executable and immutable contracts", () => {
     const policies = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
     const draft = defaultGuardrailDraft(policies);

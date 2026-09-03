@@ -15,6 +15,7 @@ _CONTROL_PLANE = frozenset({
     "test_tali_taxonomy.py",
 })
 _DATA_PLANE = frozenset({
+    "test_custom_content_rules.py",
     "test_dynamic_model_configuration.py",
     "test_evaluation_action_routing.py",
     "test_pii_evaluator.py",
