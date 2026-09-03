@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
@@ -5,6 +6,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Deployment, Guardrail, GuardrailFindingPage, GuardrailPolicyBinding, GuardrailVersion, GuardrailVersionDetail, Metrics, Policy, TestCase } from "@/lib/api";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { defaultGuardrailDraft, DEFAULT_GUARDRAIL_ID } from "../../server/domain/defaults";
+import { PolicyCatalog } from "../../server/policy-catalog/catalog";
 
 import { DeleteGuardrailSheet, DraftReleaseView, GuardrailFindingsView, GuardrailRuntimeView, ImmutableVersionView, TestCases } from "./guardrails";
 
@@ -349,6 +352,40 @@ describe("Guardrail detail information hierarchy", () => {
     fireEvent.click(screen.getByRole("button", { name: "common.edit" }));
     expect(onEdit).toHaveBeenCalledOnce();
     expect(screen.queryByRole("button", { name: "guardrails.createDeployment" })).toBeNull();
+  });
+
+  it("shows every complete Default Policy with its identity, version, and full Rule count", () => {
+    const policies = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
+    const draft = defaultGuardrailDraft(policies);
+    const guardrail: Guardrail = {
+      ...deletableGuardrail,
+      id: DEFAULT_GUARDRAIL_ID,
+      name: "Default Guardrail",
+      is_default: true,
+      system_managed: true,
+      local_only: true,
+      policy_bindings: draft.policyBindings.map((binding) => ({
+        policy_id: binding.policyId,
+        policy_version: binding.policyVersion,
+        action: binding.action,
+        parameter_values: binding.parameterValues,
+        enabled_rule_ids: binding.enabledRuleIds,
+        rule_actions: binding.ruleActions,
+        enabled_rails: binding.enabledRails,
+      })),
+    };
+    const client = new QueryClient();
+    render(<QueryClientProvider client={client}><DraftReleaseView guardrail={guardrail} policies={policies} cases={[]} casesLoading={false} deployments={[]} onEdit={vi.fn()} onAddCase={vi.fn()} onCreateDeployment={vi.fn()} onChanged={async () => undefined} /></QueryClientProvider>);
+
+    for (const binding of draft.policyBindings) {
+      const policy = policies.find((item) => item.id === binding.policyId)!;
+      const link = screen.getAllByRole("link").find((item) => item.textContent?.includes(`${policy.id}@${policy.version}`));
+      expect(link).toBeDefined();
+      expect(link!.textContent).toContain(policy.name);
+      expect(link!.textContent).toContain(`${policy.id}@${policy.version}`);
+      expect(link!.textContent).toContain(`guardrails.ruleCount count:${policy.rules.length}`);
+      expect(link!.textContent).toContain("guardrails.policyBehavior");
+    }
   });
 
   it("deletes directly after impact review when there was no recent incoming traffic", () => {

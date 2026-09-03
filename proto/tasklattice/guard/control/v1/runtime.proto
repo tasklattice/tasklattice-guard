@@ -136,4 +136,6 @@ message GuardrailPolicyBinding {
   // Rule ID to EnforcementAction name; keys must be present in enabled_rule_ids.
   repeated StringPair rule_actions = 6;
   repeated RailType enabled_rails = 7;
+  // Guardrail-local order. Unlisted Rules retain pinned template order after these.
+  repeated string rule_order = 8;
 }

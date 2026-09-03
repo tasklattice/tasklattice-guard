@@ -41,6 +41,7 @@ const DEFAULT_GUARDRAIL_ID = "guardrail-default";
 
 type CurrentPolicyBinding = controllerApi.GuardrailDraftConfig["policyBindings"][number];
 type CurrentTestCase = {
+  expectationOverride?: TestCase["expectation_override"];
   id: string;
   guardrailId: string;
   name: string;
@@ -74,6 +75,8 @@ function toCurrentBinding(binding: GuardrailPolicyBinding): CurrentPolicyBinding
     parameterValues: binding.parameter_values,
     enabledRuleIds: binding.enabled_rule_ids,
     ruleActions: binding.rule_actions,
+    ruleOrder: binding.rule_order ?? [],
+    testCaseOverrides: binding.test_case_overrides ?? {},
     enabledRails: binding.enabled_rails,
     reasoningPolicy: binding.reasoning_policy ? {
       policyId: binding.reasoning_policy.policy_id,
@@ -91,6 +94,8 @@ function fromCurrentBinding(binding: CurrentPolicyBinding): GuardrailPolicyBindi
     parameter_values: binding.parameterValues,
     enabled_rule_ids: binding.enabledRuleIds,
     rule_actions: binding.ruleActions,
+    rule_order: binding.ruleOrder ?? [],
+    test_case_overrides: binding.testCaseOverrides ?? {},
     enabled_rails: binding.enabledRails,
     reasoning_policy: binding.reasoningPolicy ? {
       policy_id: binding.reasoningPolicy.policyId,
@@ -601,6 +606,9 @@ function mapValidationRun(value: controllerApi.ValidationRun): ValidationRun {
 function mapValidationResult(value: Record<string, unknown>): ValidationRun["results"][number] {
   const phase = stringValue(value.phase) === "output" ? "output" : "input";
   return {
+    ...(value.expectationOverride && typeof value.expectationOverride === "object" ? { expectation_override: value.expectationOverride as Record<string, unknown> } : {}),
+    ...(typeof value.templateExpectedDecision === "string" ? { template_expected_decision: value.templateExpectedDecision } : {}),
+    assertion_failures: arrayOfStrings(value.assertionFailures),
     case_id: stringValue(value.caseId) ?? "",
     name: stringValue(value.name) ?? "",
     policy_id: stringValue(value.policyId) ?? "",
@@ -656,7 +664,8 @@ function mapTestCase(value: CurrentTestCase): TestCase {
     policy_id: value.policyId,
     phase: value.phase,
     content: value.content,
-    expected_decision: value.expectedDecision,
+    expected_decision: value.expectationOverride?.expectedDecision ?? value.expectedDecision,
+    ...(value.expectationOverride ? { expectation_override: value.expectationOverride, template_expected_decision: value.expectedDecision } : {}),
     origin: value.origin,
     updated_at: value.updatedAt,
     trusted_instruction: value.trustedInstruction,

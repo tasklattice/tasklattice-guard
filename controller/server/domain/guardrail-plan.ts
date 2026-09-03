@@ -12,12 +12,24 @@ export { enforcementActions };
 export type { EnforcementAction };
 export type GuardrailRail = "input" | "output" | "retrieval" | "dialog" | "execution";
 
+export type ValidationExpectationOverride = {
+  sourcePolicyVersion: string;
+  reason: string;
+  expectedDecision: "allow" | "block" | "transform" | "intervene";
+  expectedOutputContent?: string | undefined;
+  expectedMatches: Array<{ policyId: string; ruleId: string }>;
+};
+
 export type GuardrailPolicyBindingConfig = {
   policyId: string;
   policyVersion: string;
   action: EnforcementAction | null;
   parameterValues: Record<string, string>;
   enabledRuleIds: string[];
+  /** Explicit local order; unlisted Rules follow in their pinned template order. */
+  ruleOrder?: string[];
+  /** Keyed by the inherited source Case ID, never by a runtime result. */
+  testCaseOverrides?: Record<string, ValidationExpectationOverride>;
   ruleActions: Record<string, EnforcementAction>;
   enabledRails: GuardrailRail[];
   reasoningPolicy: {
@@ -153,8 +165,7 @@ export function buildGuardrailPlan(input: {
   const bindings = draft.policyBindings;
   if (!bindings.length) throw new Error("Select at least one Policy before compiling a Guardrail.");
 
-  const resolved = new Map<string, { capability: RuntimeCapability; binding: GuardrailPolicyBindingConfig }>();
-  const declarative: Array<{ binding: GuardrailPolicyBindingConfig; policy: PolicyDto }> = [];
+  const resolved: Array<{ capability: RuntimeCapability; binding: GuardrailPolicyBindingConfig; policy?: PolicyDto }> = [];
   const programmable: Array<{ binding: GuardrailPolicyBindingConfig; policy: ProgrammablePolicySnapshot }> = [];
   for (const binding of bindings) {
     const programmablePolicy = programmableByKey.get(`${binding.policyId}@${binding.policyVersion}`);
@@ -163,7 +174,7 @@ export function buildGuardrailPlan(input: {
       programmable.push({ binding, policy: programmablePolicy });
       const nativeRisk = Object.fromEntries(programmablePolicy.execution_contract).native_risk;
       const native = nativeRisk ? capabilityById.get(nativeRisk) : undefined;
-      if (native) resolved.set(native.capability, { capability: native, binding });
+      if (native) resolved.push({ capability: native, binding });
       continue;
     }
     const catalogPolicy = policyById.get(binding.policyId);
@@ -173,37 +184,54 @@ export function buildGuardrailPlan(input: {
     }
     const native = capabilityByPolicyId.get(binding.policyId);
     if (native) {
-      resolved.set(native.capability, { capability: native, binding });
+      resolved.push({ capability: native, binding });
       continue;
     }
     const policy = catalogPolicy;
     if (!policy) throw new Error(`Policy ${binding.policyId}@${binding.policyVersion} is unavailable in the Controller catalog.`);
     if (input.policies === undefined) validateCatalogBinding(binding, policy);
-    declarative.push({ binding, policy });
-  }
-  if (declarative.length) {
-    const contentFilter: RuntimeCapability = {
+    resolved.push({ capability: {
       capability: "builtin_content_filter", policyId: "", defaultPhases: ["input", "output"],
       defaultAction: "reject", evaluations: [always("rules", contracts.contentFilter)], module: "interaction_safety",
-    };
-    resolved.set(contentFilter.capability, { capability: contentFilter, binding: declarative[0]!.binding });
+    }, binding, policy });
   }
 
   const steps: PlanStep[] = [];
-  for (const { capability: definition, binding } of resolved.values()) {
-    const phases = phasesFor(definition, binding, declarative);
-    const parameters = parametersFor(definition.capability, binding, draft, input.purpose ?? "", declarative);
-    for (const evaluation of definition.evaluations) {
-      steps.push({
-        id: `${definition.capability}:${evaluation.idSuffix}`,
+  const modules: Array<Record<string, unknown>> = [];
+  const previousModule: Partial<Record<"input" | "output", string>> = {};
+  for (const { capability: definition, binding, policy } of resolved) {
+    // Never coalesce separate Policies by capability: a later Policy must see
+    // the content produced by every earlier Policy, even across module types.
+    const declarative = policy ? [{ binding, policy }] : [];
+    const nativePolicy = programmableByKey.get(`${binding.policyId}@${binding.policyVersion}`);
+    const phases = phasesFor(definition, binding, declarative).filter((phase) => !nativePolicy || nativePolicy.rail_bindings.some((rail) => (
+      rail.rail_type === phase && binding.enabledRuleIds.includes(flowRuleId(phase, rail.flow_name))
+    )));
+    const parameters: Array<[string, string]> = [
+      ["policy_id", binding.policyId],
+      ["policy_version", binding.policyVersion],
+      ...parametersFor(definition.capability, binding, draft, input.purpose ?? "", declarative),
+    ];
+    const prefix = `${definition.capability}:${binding.policyId}`;
+    const policySteps: PlanStep[] = [];
+    const groups = nativePolicy ? phases.map((phase) => {
+      const rail = nativePolicy.rail_bindings.find((item) => item.rail_type === phase && binding.enabledRuleIds.includes(flowRuleId(phase, item.flow_name)))!;
+      return {
+        prefix: `${prefix}:${phase}`, phases: [phase],
+        action: binding.ruleActions[flowRuleId(phase, rail.flow_name)] ?? binding.action ?? rail.on_unsafe,
+      };
+    }) : [{ prefix, phases, action: binding.action ?? definition.defaultAction }];
+    for (const group of groups) for (const evaluation of definition.evaluations) {
+      policySteps.push({
+        id: `${group.prefix}:${evaluation.idSuffix}`,
         capability: definition.capability,
         contract_ref: evaluation.contractRef,
-        phases,
-        on_unsafe: binding.action ?? definition.defaultAction,
+        phases: group.phases,
+        on_unsafe: group.action,
         trigger: evaluation.after
           ? {
               type: "on_result",
-              step_ref: `${definition.capability}:${evaluation.after.idSuffix}`,
+              step_ref: `${group.prefix}:${evaluation.after.idSuffix}`,
               verdicts: draft.safetyLevel === "strict"
                 ? Array.from(new Set(["safe" as const, ...evaluation.after.verdicts]))
                 : evaluation.after.verdicts,
@@ -212,23 +240,19 @@ export function buildGuardrailPlan(input: {
         parameters,
       });
     }
-  }
-
-  const modules = (["input", "output"] as const).flatMap((phase) =>
-    (["data_protection", "interaction_safety", "business_assurance"] as const).flatMap((module) => {
-      const stepIds = steps.filter((step) => step.phases.includes(phase) && moduleForCapability(step.capability) === module).map((step) => step.id);
-      if (!stepIds.length) return [];
-      const containsRemoteContract = Array.from(resolved.values()).some(({ capability }) =>
-        capability.module === module && capability.evaluations.some((evaluation) => evaluation.potentiallyRemote)
-      );
-      return [{
-        id: `${module}:${phase}`, module, phase, step_ids: stepIds, depends_on: [], input_view: "original",
+    steps.push(...policySteps);
+    for (const phase of phases) {
+      const id = `${definition.module}:${binding.policyId}:${phase}`;
+      modules.push({
+        id, module: definition.module, phase, step_ids: policySteps.filter((step) => step.phases.includes(phase)).map((step) => step.id),
+        depends_on: previousModule[phase] ? [previousModule[phase]] : [], input_view: "previous_output",
         required_for_release: true,
-        timeout_ms: containsRemoteContract ? 30_000 : moduleTimeout[module],
+        timeout_ms: definition.evaluations.some((evaluation) => evaluation.potentiallyRemote) ? 30_000 : moduleTimeout[definition.module],
         failure_mode: "fail_closed",
-      }];
-    }),
-  );
+      });
+      previousModule[phase] = id;
+    }
+  }
   const reasoningPolicies = bindings.flatMap((binding) => binding.reasoningPolicy ? [{
     id: `automated-reasoning:${binding.reasoningPolicy.policyId}:${binding.reasoningPolicy.policyVersion}`,
     policy_id: binding.reasoningPolicy.policyId,
@@ -238,7 +262,7 @@ export function buildGuardrailPlan(input: {
   return {
     guardrail_id: input.guardrailId,
     guardrail_version: input.guardrailVersion,
-    compiler_version: "tasklattice-controller-plan-v3",
+    compiler_version: "tasklattice-controller-plan-v5-rule-order",
     safety_level: draft.safetyLevel,
     output_delivery: draft.outputDelivery,
     steps,
@@ -266,6 +290,7 @@ export function buildGuardrailPlan(input: {
       action: binding.action,
       parameter_values: Object.entries(binding.parameterValues).sort(([left], [right]) => left.localeCompare(right)),
       enabled_rule_ids: binding.enabledRuleIds,
+      ...(binding.ruleOrder?.length ? { rule_order: binding.ruleOrder } : {}),
       rule_actions: Object.entries(binding.ruleActions).sort(([left], [right]) => left.localeCompare(right)),
       enabled_rails: binding.enabledRails,
     })),
@@ -284,7 +309,15 @@ function parametersFor(
       ["policy_versions_json", JSON.stringify(Object.fromEntries(declarative.map((item) => [item.binding.policyId, item.policy.version])))],
       ["policy_ids", declarative.map((item) => item.binding.policyId).join("\n")],
       ["enabled_rules_json", JSON.stringify(Object.fromEntries(declarative.map((item) => [item.binding.policyId, item.binding.enabledRuleIds])))],
-      ["rule_actions_json", JSON.stringify(Object.fromEntries(declarative.filter((item) => Object.keys(item.binding.ruleActions).length).map((item) => [item.binding.policyId, item.binding.ruleActions])))],
+      ["rule_order_json", JSON.stringify(Object.fromEntries(declarative.map((item) => [item.binding.policyId, item.binding.ruleOrder ?? []])))],
+      // Resolve action inheritance per Rule, without modifying the library or
+      // replacing the authored Policy/Rule overrides in policy_bindings.
+      ["rule_actions_json", JSON.stringify(Object.fromEntries(declarative.map(({ binding: item, policy }) => [
+        item.policyId,
+        Object.fromEntries(policy.rules.filter((rule) => item.enabledRuleIds.includes(rule.id)).map((rule) => [
+          rule.id, item.ruleActions[rule.id] ?? item.action ?? rule.effect,
+        ])),
+      ])))],
       ["policy_parameters_json", JSON.stringify(Object.fromEntries(declarative.filter((item) => Object.keys(item.binding.parameterValues).length).map((item) => [item.binding.policyId, item.binding.parameterValues])))],
       ["custom_rules_json", JSON.stringify(draft.customContentRules ?? [])],
     ];
@@ -370,6 +403,7 @@ function stringValue(value: unknown): string {
 function validateCatalogBinding(binding: GuardrailPolicyBindingConfig, policy: PolicyDto): void {
   if (binding.policyVersion !== policy.version) throw new Error(`Policy ${policy.id} must pin catalog version ${policy.version}; received ${binding.policyVersion}.`);
   const ruleIds = new Set(policy.rules.map((item) => item.id));
+  validateRuleOrder(binding, ruleIds);
   const unknownRules = binding.enabledRuleIds.filter((item) => !ruleIds.has(item));
   if (unknownRules.length) throw new Error(`Policy ${policy.id} contains unknown enabled Rules: ${unknownRules.join(", ")}.`);
   if (!binding.enabledRuleIds.length) throw new Error(`Policy ${policy.id} must enable at least one Rule.`);
@@ -382,6 +416,7 @@ function validateCatalogBinding(binding: GuardrailPolicyBindingConfig, policy: P
 
 function validateProgrammableBinding(binding: GuardrailPolicyBindingConfig, policy: ProgrammablePolicySnapshot): void {
   const ruleIds = new Set(policy.rail_bindings.map((item) => flowRuleId(item.rail_type, item.flow_name)));
+  validateRuleOrder(binding, ruleIds);
   const unknownRules = binding.enabledRuleIds.filter((item) => !ruleIds.has(item));
   if (unknownRules.length) throw new Error(`Policy ${policy.policy_id} contains unknown enabled Rules: ${unknownRules.join(", ")}.`);
   if (!binding.enabledRuleIds.length) throw new Error(`Policy ${policy.policy_id} must enable at least one Rule.`);
@@ -407,6 +442,8 @@ function normalizeBinding(value: unknown): GuardrailPolicyBindingConfig {
     action: enforcementActions.includes(source.action as EnforcementAction) ? source.action as EnforcementAction : null,
     parameterValues: stringRecord(source.parameterValues),
     enabledRuleIds: stringArray(source.enabledRuleIds),
+    ruleOrder: stringArray(source.ruleOrder),
+    testCaseOverrides: expectationOverrides(source.testCaseOverrides),
     ruleActions: actionRecord(source.ruleActions),
     enabledRails: stringArray(source.enabledRails).filter((item): item is GuardrailRail => ["input", "output", "retrieval", "dialog", "execution"].includes(item)),
     reasoningPolicy: reasoning.policyId && reasoning.policyVersion ? {
@@ -416,14 +453,38 @@ function normalizeBinding(value: unknown): GuardrailPolicyBindingConfig {
   };
 }
 
+function validateRuleOrder(binding: GuardrailPolicyBindingConfig, ruleIds: Set<string>): void {
+  const order = binding.ruleOrder ?? [];
+  if (new Set(order).size !== order.length) throw new Error(`Policy ${binding.policyId} contains duplicate Rules in ruleOrder.`);
+  const unknown = order.filter((id) => !ruleIds.has(id));
+  if (unknown.length) throw new Error(`Policy ${binding.policyId} contains unknown ordered Rules: ${unknown.join(", ")}.`);
+}
+
+function expectationOverrides(value: unknown): Record<string, ValidationExpectationOverride> {
+  return Object.fromEntries(Object.entries(record(value)).map(([id, raw]) => {
+    const item = record(raw);
+    const matches = Array.isArray(item.expectedMatches) ? item.expectedMatches.map(record) : [];
+    if (!string(item.reason).trim() || !string(item.sourcePolicyVersion)
+      || !["allow", "block", "transform", "intervene"].includes(string(item.expectedDecision))
+      || matches.some((match) => !string(match.policyId) || !string(match.ruleId))
+      || (item.expectedDecision !== "allow" && !matches.length)
+      || (item.expectedOutputContent !== undefined && typeof item.expectedOutputContent !== "string")) {
+      throw new Error(`Invalid reviewed expectation override for Test Case ${id}.`);
+    }
+    return [id, {
+      sourcePolicyVersion: string(item.sourcePolicyVersion), reason: string(item.reason).trim(),
+      expectedDecision: item.expectedDecision as ValidationExpectationOverride["expectedDecision"],
+      ...(typeof item.expectedOutputContent === "string" ? { expectedOutputContent: item.expectedOutputContent } : {}),
+      expectedMatches: matches.map((match) => ({ policyId: string(match.policyId), ruleId: string(match.ruleId) })),
+    }];
+  }));
+}
+
 function capability(
   capabilityId: string, policyId: string, defaultPhases: Array<"input" | "output">,
   defaultAction: EnforcementAction, evaluations: RuntimeEvaluation[], module: RuntimeCapability["module"],
 ): RuntimeCapability { return { capability: capabilityId, policyId, defaultPhases, defaultAction, evaluations, module }; }
 
-function moduleForCapability(capabilityId: string): RuntimeCapability["module"] {
-  return capabilityId === "builtin_content_filter" ? "interaction_safety" : capabilityById.get(capabilityId)?.module ?? "interaction_safety";
-}
 function record(value: unknown): Record<string, unknown> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
 function string(value: unknown): string { return typeof value === "string" ? value : ""; }
 function stringArray(value: unknown): string[] { return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []; }

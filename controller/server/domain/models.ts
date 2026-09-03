@@ -53,6 +53,9 @@ export type ValidationMetrics = {
 };
 
 export type ValidationCaseResult = {
+  expectationOverride?: import("./guardrail-plan.js").ValidationExpectationOverride;
+  templateExpectedDecision?: string;
+  assertionFailures?: string[];
   caseId: string;
   name: string;
   policyId: string;

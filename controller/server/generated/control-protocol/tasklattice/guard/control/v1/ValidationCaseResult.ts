@@ -8,6 +8,7 @@ import type { RuntimeTraceStep as _tasklattice_guard_control_v1_RuntimeTraceStep
 import type { TargetSource as _tasklattice_guard_control_v1_TargetSource, TargetSource__Output as _tasklattice_guard_control_v1_TargetSource__Output } from '../../../../tasklattice/guard/control/v1/TargetSource.js';
 import type { AutomatedReasoningResult as _tasklattice_guard_control_v1_AutomatedReasoningResult, AutomatedReasoningResult__Output as _tasklattice_guard_control_v1_AutomatedReasoningResult__Output } from '../../../../tasklattice/guard/control/v1/AutomatedReasoningResult.js';
 import type { ValidationFailure as _tasklattice_guard_control_v1_ValidationFailure, ValidationFailure__Output as _tasklattice_guard_control_v1_ValidationFailure__Output } from '../../../../tasklattice/guard/control/v1/ValidationFailure.js';
+import type { ValidationExpectationOverride as _tasklattice_guard_control_v1_ValidationExpectationOverride, ValidationExpectationOverride__Output as _tasklattice_guard_control_v1_ValidationExpectationOverride__Output } from '../../../../tasklattice/guard/control/v1/ValidationExpectationOverride.js';
 
 /**
  * Observed decision, evidence, and trace for one validation case.
@@ -83,6 +84,15 @@ export interface ValidationCaseResult {
   'evaluationContracts'?: (string)[];
   'escalated'?: (boolean);
   'modelInvocations'?: (number);
+  /**
+   * Reviewed expectation used by this immutable run; absent means no local override.
+   */
+  'expectationOverride'?: (_tasklattice_guard_control_v1_ValidationExpectationOverride | null);
+  /**
+   * Original unmodified source expectation, present when a local override was applied.
+   */
+  'templateExpectedDecision'?: (_tasklattice_guard_control_v1_ValidationDecision);
+  'assertionFailures'?: (string)[];
   '_expectedReasoningResult'?: "expectedReasoningResult";
   '_actualReasoningResult'?: "actualReasoningResult";
   '_expectedFailure'?: "expectedFailure";
@@ -91,6 +101,8 @@ export interface ValidationCaseResult {
   '_sourcePolicyId'?: "sourcePolicyId";
   '_sourcePolicyVersion'?: "sourcePolicyVersion";
   '_sourceCaseId'?: "sourceCaseId";
+  '_expectationOverride'?: "expectationOverride";
+  '_templateExpectedDecision'?: "templateExpectedDecision";
 }
 
 /**
@@ -167,6 +179,15 @@ export interface ValidationCaseResult__Output {
   'evaluationContracts': (string)[];
   'escalated': (boolean);
   'modelInvocations': (number);
+  /**
+   * Reviewed expectation used by this immutable run; absent means no local override.
+   */
+  'expectationOverride'?: (_tasklattice_guard_control_v1_ValidationExpectationOverride__Output | null);
+  /**
+   * Original unmodified source expectation, present when a local override was applied.
+   */
+  'templateExpectedDecision'?: (_tasklattice_guard_control_v1_ValidationDecision__Output);
+  'assertionFailures': (string)[];
   '_expectedReasoningResult'?: "expectedReasoningResult";
   '_actualReasoningResult'?: "actualReasoningResult";
   '_expectedFailure'?: "expectedFailure";
@@ -175,4 +196,6 @@ export interface ValidationCaseResult__Output {
   '_sourcePolicyId'?: "sourcePolicyId";
   '_sourcePolicyVersion'?: "sourcePolicyVersion";
   '_sourceCaseId'?: "sourceCaseId";
+  '_expectationOverride'?: "expectationOverride";
+  '_templateExpectedDecision'?: "templateExpectedDecision";
 }

@@ -5,6 +5,7 @@ import type { ValidationDecision as _tasklattice_guard_control_v1_ValidationDeci
 import type { TargetSource as _tasklattice_guard_control_v1_TargetSource, TargetSource__Output as _tasklattice_guard_control_v1_TargetSource__Output } from '../../../../tasklattice/guard/control/v1/TargetSource.js';
 import type { AutomatedReasoningResult as _tasklattice_guard_control_v1_AutomatedReasoningResult, AutomatedReasoningResult__Output as _tasklattice_guard_control_v1_AutomatedReasoningResult__Output } from '../../../../tasklattice/guard/control/v1/AutomatedReasoningResult.js';
 import type { ValidationFailure as _tasklattice_guard_control_v1_ValidationFailure, ValidationFailure__Output as _tasklattice_guard_control_v1_ValidationFailure__Output } from '../../../../tasklattice/guard/control/v1/ValidationFailure.js';
+import type { ValidationExpectationOverride as _tasklattice_guard_control_v1_ValidationExpectationOverride, ValidationExpectationOverride__Output as _tasklattice_guard_control_v1_ValidationExpectationOverride__Output } from '../../../../tasklattice/guard/control/v1/ValidationExpectationOverride.js';
 
 /**
  * Immutable validation input and expected business/infrastructure outcome.
@@ -68,12 +69,17 @@ export interface ValidationTestCase {
    */
   'sourceCaseId'?: (string);
   'coveredRuleIds'?: (string)[];
+  /**
+   * Absent preserves the inherited Policy/Rule contract unchanged.
+   */
+  'expectationOverride'?: (_tasklattice_guard_control_v1_ValidationExpectationOverride | null);
   '_expectedReasoningResult'?: "expectedReasoningResult";
   '_expectedFailure'?: "expectedFailure";
   '_concurrencyGroup'?: "concurrencyGroup";
   '_sourcePolicyId'?: "sourcePolicyId";
   '_sourcePolicyVersion'?: "sourcePolicyVersion";
   '_sourceCaseId'?: "sourceCaseId";
+  '_expectationOverride'?: "expectationOverride";
 }
 
 /**
@@ -138,10 +144,15 @@ export interface ValidationTestCase__Output {
    */
   'sourceCaseId'?: (string);
   'coveredRuleIds': (string)[];
+  /**
+   * Absent preserves the inherited Policy/Rule contract unchanged.
+   */
+  'expectationOverride'?: (_tasklattice_guard_control_v1_ValidationExpectationOverride__Output | null);
   '_expectedReasoningResult'?: "expectedReasoningResult";
   '_expectedFailure'?: "expectedFailure";
   '_concurrencyGroup'?: "concurrencyGroup";
   '_sourcePolicyId'?: "sourcePolicyId";
   '_sourcePolicyVersion'?: "sourcePolicyVersion";
   '_sourceCaseId'?: "sourceCaseId";
+  '_expectationOverride'?: "expectationOverride";
 }

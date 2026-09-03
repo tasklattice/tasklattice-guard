@@ -38,7 +38,7 @@ import {
 import { ConflictError, NotFoundError, ValidationError } from "../domain/errors.js";
 import { buildGuardrailPlan, normalizeGuardrailDraft, type GuardrailDraftConfig } from "../domain/guardrail-plan.js";
 import type { CompiledArtifactInput, DeletionImpact, RuntimeEventInput, ValidationCaseResult, ValidationMetrics } from "../domain/models.js";
-import { emptyValidationMetrics, generatedTestCases } from "../domain/validation.js";
+import { applyValidationOverrides, emptyValidationMetrics, generatedTestCases } from "../domain/validation.js";
 import { PolicyCatalog } from "../policy-catalog/catalog.js";
 import { registeredAction } from "../action-catalog/catalog.js";
 import type { ValidationTerminalState } from "../../shared/lifecycle.js";
@@ -772,13 +772,13 @@ export class ControlPlaneService {
   }
 
   async listTestCases(guardrailId: string) {
-    const [guardrail] = await this.db.select({ excludedTestCaseIds: guardrails.excludedTestCaseIds })
+    const [guardrail] = await this.db.select({ excludedTestCaseIds: guardrails.excludedTestCaseIds, draftConfig: guardrails.draftConfig })
       .from(guardrails).where(and(eq(guardrails.id, guardrailId), isNull(guardrails.deletedAt)));
     if (!guardrail) throw new NotFoundError("Guardrail", guardrailId);
     const excluded = new Set(guardrail.excludedTestCaseIds);
     const rows = await this.db.select().from(testCases).where(eq(testCases.guardrailId, guardrailId))
       .orderBy(asc(testCases.origin), asc(testCases.name), asc(testCases.id));
-    return rows.map((item) => ({ ...item, excluded: excluded.has(item.id) }));
+    return applyValidationOverrides(rows, guardrail.draftConfig).map((item) => ({ ...item, excluded: excluded.has(item.id) }));
   }
 
   async createTestCase(input: {
@@ -899,7 +899,7 @@ export class ControlPlaneService {
       if (!guardrail) throw new NotFoundError("Guardrail", input.guardrailId);
       const rows = await tx.select().from(testCases).where(eq(testCases.guardrailId, input.guardrailId));
       const excluded = new Set(guardrail.excludedTestCaseIds);
-      const activeCases = rows.filter((item) => !excluded.has(item.id));
+      const activeCases = applyValidationOverrides(rows, guardrail.draftConfig).filter((item) => !excluded.has(item.id));
       if (!activeCases.length) throw new ValidationError("Add at least one reviewed Test Case before running Validation.");
       const [versionRow] = await tx.select({ value: max(guardrailVersions.version) })
         .from(guardrailVersions).where(eq(guardrailVersions.guardrailId, input.guardrailId));
@@ -1974,9 +1974,6 @@ export class ControlPlaneService {
       }
     }
     for (const binding of draft.rail_bindings) {
-      if (binding.execution_mode === "mutate" && binding.priority === null) {
-        throw new ValidationError(`Mutating Flow ${binding.flow_name} requires an explicit priority.`);
-      }
       const missing = binding.depends_on.filter((item) => !bindingNames.has(item));
       if (missing.length) throw new ValidationError(`Flow ${binding.flow_name} depends on undefined Flows: ${missing.join(", ")}.`);
     }
@@ -2279,6 +2276,11 @@ export class ControlPlaneService {
   ): Promise<string[]> {
     const programmablePolicies = await this.resolveProgrammablePolicies(draft);
     const generated = generatedTestCases(guardrailId, draft, this.policyCatalog().list(), programmablePolicies);
+    try {
+      applyValidationOverrides(generated, draft);
+    } catch (error) {
+      throw new ValidationError(error instanceof Error ? error.message : "Invalid Validation expectation override.");
+    }
     await tx.delete(testCases).where(and(eq(testCases.guardrailId, guardrailId), eq(testCases.origin, "generated")));
     if (generated.length) await tx.insert(testCases).values(generated);
     const generatedIds = new Set(generated.map((item) => item.id));
@@ -2761,6 +2763,15 @@ function validateBindingGraph(draft: ProgrammablePolicyDraft): void {
     visited.add(flow);
   };
   for (const flow of graph.keys()) visit(flow);
+  const positions = new Map(draft.rail_bindings.map((binding, index) => [binding.flow_name, index]));
+  for (const binding of draft.rail_bindings) {
+    for (const dependency of binding.depends_on) {
+      const source = draft.rail_bindings[positions.get(dependency)!];
+      if (!source || source.rail_type !== binding.rail_type || positions.get(dependency)! >= positions.get(binding.flow_name)!) {
+        throw new ValidationError(`Flow ${binding.flow_name} must follow dependency ${dependency} in the same Rail's list order.`);
+      }
+    }
+  }
 }
 
 function decryptRuntimeEventMetadata(value: Record<string, unknown>, key: Buffer | null): Record<string, unknown> {

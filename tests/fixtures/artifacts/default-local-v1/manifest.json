@@ -1,14 +1,16 @@
 {
   "adapter": "litellm-generic-guardrail",
-  "artifact_id": "fixture-artifact-local-secrets-v1",
-  "checksum": "21e60b9d20373b50fbdcc3becac1c7a39cea1ef69a371b8dbb201a7471872ca1",
+  "artifact_id": "fixture-artifact-default-local-v1",
+  "checksum": "0e2a642ac6dc1fa63bc9c4d90640c88612066318490ffed5df69b9846b88ed6b",
   "compiler_version": "tasklattice-nemo-config-v13-rule-order",
   "expected": {
+    "redacted_input": "GUARDRAIL_INTERVENED",
+    "redacted_output": "GUARDRAIL_INTERVENED",
     "safe_input": "NONE",
     "safe_output": "NONE",
     "unsafe_input": "BLOCKED"
   },
-  "fixture": "local-secrets-v1",
+  "fixture": "default-local-v1",
   "format": "tasklattice.guard.control.v1.DesiredState/base64",
   "generation": 1,
   "guardrail_id": "fixture-secrets",

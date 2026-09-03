@@ -24,6 +24,11 @@ def plan_to_proto(payload: Mapping[str, Any]) -> protocol.GuardrailPlan:
 
 def plan_from_proto(message: protocol.GuardrailPlan) -> dict[str, Any]:
     result = _message_to_mapping(message)
+    # An absent new ordering field must not alter the canonical body of an
+    # already signed artifact during a rolling Controller/Runner upgrade.
+    for binding in result.get("policy_bindings", ()):
+        if not binding.get("rule_order"):
+            binding.pop("rule_order", None)
     for key in ("safety_level", "output_delivery"):
         if result.get(key) == "unspecified":
             raise ValueError(f"Guardrail Plan requires {key}.")

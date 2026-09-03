@@ -7,6 +7,23 @@ import "enforcement_action.proto";
 import "evaluation.proto";
 import "runtime.proto";
 
+// Reviewed Guardrail-local composition assertion; never inferred from observed output.
+message ValidationExpectedMatch {
+  string policy_id = 1;
+  string rule_id = 2;
+}
+
+// An explicit, version-pinned replacement for a source case's composition expectation.
+message ValidationExpectationOverride {
+  string source_policy_version = 1;
+  // Required human-readable review rationale, retained in Validation evidence.
+  string reason = 2;
+  ValidationDecision expected_decision = 3;
+  // Exact complete output; presence distinguishes asserting empty output from no assertion.
+  optional string expected_output_content = 4;
+  repeated ValidationExpectedMatch expected_matches = 5;
+}
+
 // Immutable validation input and expected business/infrastructure outcome.
 message ValidationTestCase {
   // Stable case identifier within the validation request.
@@ -41,6 +58,8 @@ message ValidationTestCase {
   // Original catalog case ID; absent for custom cases.
   optional string source_case_id = 18;
   repeated string covered_rule_ids = 19;
+  // Absent preserves the inherited Policy/Rule contract unchanged.
+  optional ValidationExpectationOverride expectation_override = 20;
 }
 
 // Aggregate metrics computed across all cases in one executed validation run.
@@ -109,6 +128,11 @@ message ValidationCaseResult {
   repeated string evaluation_contracts = 32;
   bool escalated = 33;
   int32 model_invocations = 34;
+  // Reviewed expectation used by this immutable run; absent means no local override.
+  optional ValidationExpectationOverride expectation_override = 35;
+  // Original unmodified source expectation, present when a local override was applied.
+  optional ValidationDecision template_expected_decision = 36;
+  repeated string assertion_failures = 37;
 }
 
 // Command to execute an immutable candidate plan against its test cases.

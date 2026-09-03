@@ -63,6 +63,7 @@ def plan_from_dict(payload: dict[str, Any]) -> GuardrailPlanSnapshot:
                 action=(str(item["action"]) if item.get("action") else None),
                 parameter_values=_pairs(item.get("parameter_values", ())),
                 enabled_rule_ids=tuple(item.get("enabled_rule_ids", ())),
+                rule_order=tuple(item.get("rule_order", ())),
                 rule_actions=_pairs(item.get("rule_actions", ())),
                 enabled_rails=tuple(item.get("enabled_rails", ("input", "output"))),
             )

@@ -13,6 +13,7 @@ import {
   planFromWire,
   planToWire,
   trafficScopeToWire,
+  validationTestToWire,
 } from "./protocol-codec.js";
 
 
@@ -52,12 +53,33 @@ const plan = {
   policy_bindings: [{
     policy_id: "passport-policy", policy_version: "1.0.0", action: "redact",
     parameter_values: [["entity_types", "passport"]], enabled_rule_ids: ["pii/passport"],
-    rule_actions: [["pii/passport", "redact"]], enabled_rails: ["input", "output"],
+    rule_actions: [["pii/passport", "redact"]], enabled_rails: ["input", "output"], rule_order: ["pii/passport"],
   }],
 };
 
 
 describe("Controller/Runner control protocol", () => {
+  it("preserves local expectation matches and an explicitly empty output on the real wire", () => {
+    const protoPath = resolve("../proto/tasklattice/guard/control/v1/runner_control.proto");
+    const definition = loadSync(protoPath, { includeDirs: [dirname(protoPath)], longs: String, enums: String, defaults: true, oneofs: true });
+    const descriptor = loadPackageDefinition(definition) as unknown as ProtoGrpcType;
+    const connect = descriptor.tasklattice.guard.control.v1.RunnerControl.service.Connect;
+    const testCase = validationTestToWire({
+      id: "inherited", name: "Credential", policyId: "pattern", phase: "input", content: "synthetic key",
+      expectedDecision: "transform", targetSource: "user_input", required: true, sourcePolicyVersion: "1.95.0",
+      expectationOverride: {
+        sourcePolicyVersion: "1.95.0", reason: "Earlier Policy rejects the key.", expectedDecision: "block",
+        expectedOutputContent: "", expectedMatches: [{ policyId: "baseline", ruleId: "credential" }],
+      },
+    });
+    const encoded = connect.responseSerialize({ validationRequest: { testCases: [testCase] } });
+    const decoded = connect.responseDeserialize(encoded).validationRequest!.testCases[0]!;
+    expect(decoded.expectedDecision).toBe("VALIDATION_DECISION_TRANSFORM");
+    expect(decoded.expectationOverride).toMatchObject({
+      sourcePolicyVersion: "1.95.0", expectedDecision: "VALIDATION_DECISION_BLOCK", expectedOutputContent: "",
+      expectedMatches: [{ policyId: "baseline", ruleId: "credential" }],
+    });
+  });
   it("serializes a typed message through the service loaded from the split Proto graph", () => {
     const protoPath = resolve("../proto/tasklattice/guard/control/v1/runner_control.proto");
     const definition = loadSync(protoPath, {

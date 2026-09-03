@@ -24,6 +24,10 @@ export interface GuardrailPolicyBinding {
    */
   'ruleActions'?: (_tasklattice_guard_control_v1_StringPair)[];
   'enabledRails'?: (_tasklattice_guard_control_v1_RailType)[];
+  /**
+   * Guardrail-local order. Unlisted Rules retain pinned template order after these.
+   */
+  'ruleOrder'?: (string)[];
   '_action'?: "action";
 }
 
@@ -47,5 +51,9 @@ export interface GuardrailPolicyBinding__Output {
    */
   'ruleActions': (_tasklattice_guard_control_v1_StringPair__Output)[];
   'enabledRails': (_tasklattice_guard_control_v1_RailType__Output)[];
+  /**
+   * Guardrail-local order. Unlisted Rules retain pinned template order after these.
+   */
+  'ruleOrder': (string)[];
   '_action'?: "action";
 }

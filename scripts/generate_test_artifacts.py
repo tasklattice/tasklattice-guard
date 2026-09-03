@@ -12,6 +12,7 @@ import argparse
 import base64
 import hashlib
 import json
+import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -31,6 +32,8 @@ from runner.protocol_codec import (
 ROOT = Path(__file__).resolve().parent.parent
 OUTPUT = ROOT / "tests" / "fixtures" / "artifacts"
 FIXTURE_NAME = "local-secrets-v1"
+ORDERED_FIXTURE_NAME = "ordered-local-v1"
+DEFAULT_FIXTURE_NAME = "default-local-v1"
 TEST_CREDENTIAL = "fixture-runtime-secret"
 _PRIVATE_KEY_BYTES = bytes(range(1, 33))
 
@@ -88,7 +91,49 @@ def _plan() -> dict[str, object]:
     }
 
 
-def generate() -> FixtureFiles:
+def _ordered_plan() -> dict[str, object]:
+    plan = _plan()
+    plan["compiler_version"] = "tasklattice-controller-plan-v4-ordered"
+    redactions = {
+        "id": "local:redactions", "capability": "builtin_content_filter",
+        "contract_ref": "tali.guard.content-filter.rules.v1",
+        "phases": ["input", "output"], "on_unsafe": "reject",
+        "trigger": {"type": "always", "verdicts": []},
+        "parameters": [
+            ["policy_id", "pattern-matching"], ["policy_version", "1.95.0"],
+            ["policy_ids", "pattern-matching"],
+            ["enabled_rules_json", json.dumps({"pattern-matching": ["pattern/email", "pattern/generic_api_key"]})],
+            ["rule_actions_json", json.dumps({"pattern-matching": {"pattern/email": "redact", "pattern/generic_api_key": "redact"}})],
+        ],
+    }
+    plan["steps"] = [redactions, *plan["steps"]]
+    plan["modules"] = [
+        {**module, "id": f"local-redactions:{module['phase']}", "step_ids": ["local:redactions"], "input_view": "previous_output"}
+        for module in plan["modules"]
+    ] + [
+        {**module, "depends_on": [f"local-redactions:{module['phase']}"], "input_view": "previous_output"}
+        for module in plan["modules"]
+    ]
+    return plan
+
+
+def _default_plan() -> dict[str, object]:
+    # Control-plane generation only. Runner-only tests never import the builder.
+    source = """
+      import {defaultGuardrailDraft} from './server/domain/defaults.ts';
+      import {buildGuardrailPlan} from './server/domain/guardrail-plan.ts';
+      import {PolicyCatalog} from './server/policy-catalog/catalog.ts';
+      const policies = PolicyCatalog.load('../runner/toolkit/policy_library/assets').list();
+      console.log(JSON.stringify(buildGuardrailPlan({guardrailId:'fixture-secrets', guardrailVersion:1,
+        draft:defaultGuardrailDraft(policies), policies})));
+    """
+    return json.loads(subprocess.run(
+        ["node", "--import", "tsx", "--input-type=module", "-e", source],
+        cwd=ROOT / "controller", capture_output=True, text=True, check=True, timeout=30,
+    ).stdout)
+
+
+def generate(fixture_name: str = FIXTURE_NAME) -> FixtureFiles:
     private_key = Ed25519PrivateKey.from_private_bytes(_PRIVATE_KEY_BYTES)
     public_key = private_key.public_key().public_bytes(
         serialization.Encoding.PEM,
@@ -99,10 +144,10 @@ def generate() -> FixtureFiles:
         guardrail_id="fixture-secrets",
         guardrail_version=1,
         generation=1,
-        plan=plan_to_proto(_plan()),
+        plan=plan_to_proto(_default_plan() if fixture_name == DEFAULT_FIXTURE_NAME else _ordered_plan() if fixture_name == ORDERED_FIXTURE_NAME else _plan()),
         runtime_profile="auto",
     ))
-    artifact.artifact_id = "fixture-artifact-local-secrets-v1"
+    artifact.artifact_id = f"fixture-artifact-{fixture_name}"
     artifact.signature = base64.b64encode(
         private_key.sign(artifact.checksum.encode())
     ).decode()
@@ -134,7 +179,7 @@ def generate() -> FixtureFiles:
         )],
     )
     manifest = {
-        "fixture": FIXTURE_NAME,
+        "fixture": fixture_name,
         "format": "tasklattice.guard.control.v1.DesiredState/base64",
         "generation": 1,
         "artifact_id": artifact.artifact_id,
@@ -152,6 +197,9 @@ def generate() -> FixtureFiles:
             "unsafe_input": "BLOCKED",
         },
     }
+    if fixture_name in {ORDERED_FIXTURE_NAME, DEFAULT_FIXTURE_NAME}:
+        manifest["expected"]["redacted_input"] = "GUARDRAIL_INTERVENED"
+        manifest["expected"]["redacted_output"] = "GUARDRAIL_INTERVENED"
     return FixtureFiles(
         desired_state=base64.b64encode(desired_state.SerializeToString()).decode() + "\n",
         public_key=public_key.decode(),
@@ -170,21 +218,23 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
-    files = generate()
-    destination = OUTPUT / FIXTURE_NAME
-    if not args.check:
-        _write(destination, files)
-        print(f"generated {destination.relative_to(ROOT)}")
-        return 0
-    with tempfile.TemporaryDirectory() as raw:
-        candidate = Path(raw) / FIXTURE_NAME
-        _write(candidate, files)
-        mismatches = [
-            name
-            for name in ("desired-state.pb.b64", "public-key.pem", "manifest.json")
-            if not (destination / name).exists()
-            or (destination / name).read_bytes() != (candidate / name).read_bytes()
-        ]
+    mismatches = []
+    for fixture_name in (FIXTURE_NAME, ORDERED_FIXTURE_NAME, DEFAULT_FIXTURE_NAME):
+        files = generate(fixture_name)
+        destination = OUTPUT / fixture_name
+        if not args.check:
+            _write(destination, files)
+            print(f"generated {destination.relative_to(ROOT)}")
+            continue
+        with tempfile.TemporaryDirectory() as raw:
+            candidate = Path(raw) / fixture_name
+            _write(candidate, files)
+            mismatches.extend(
+                f"{fixture_name}/{name}"
+                for name in ("desired-state.pb.b64", "public-key.pem", "manifest.json")
+                if not (destination / name).exists()
+                or (destination / name).read_bytes() != (candidate / name).read_bytes()
+            )
     if mismatches:
         print(
             "stale deterministic test artifacts: "

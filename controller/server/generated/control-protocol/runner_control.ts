@@ -48,6 +48,8 @@ import type { StringPair as _tasklattice_guard_control_v1_StringPair, StringPair
 import type { TrafficCondition as _tasklattice_guard_control_v1_TrafficCondition, TrafficCondition__Output as _tasklattice_guard_control_v1_TrafficCondition__Output } from './tasklattice/guard/control/v1/TrafficCondition.js';
 import type { TrafficScope as _tasklattice_guard_control_v1_TrafficScope, TrafficScope__Output as _tasklattice_guard_control_v1_TrafficScope__Output } from './tasklattice/guard/control/v1/TrafficScope.js';
 import type { ValidationCaseResult as _tasklattice_guard_control_v1_ValidationCaseResult, ValidationCaseResult__Output as _tasklattice_guard_control_v1_ValidationCaseResult__Output } from './tasklattice/guard/control/v1/ValidationCaseResult.js';
+import type { ValidationExpectationOverride as _tasklattice_guard_control_v1_ValidationExpectationOverride, ValidationExpectationOverride__Output as _tasklattice_guard_control_v1_ValidationExpectationOverride__Output } from './tasklattice/guard/control/v1/ValidationExpectationOverride.js';
+import type { ValidationExpectedMatch as _tasklattice_guard_control_v1_ValidationExpectedMatch, ValidationExpectedMatch__Output as _tasklattice_guard_control_v1_ValidationExpectedMatch__Output } from './tasklattice/guard/control/v1/ValidationExpectedMatch.js';
 import type { ValidationMetrics as _tasklattice_guard_control_v1_ValidationMetrics, ValidationMetrics__Output as _tasklattice_guard_control_v1_ValidationMetrics__Output } from './tasklattice/guard/control/v1/ValidationMetrics.js';
 import type { ValidationRequest as _tasklattice_guard_control_v1_ValidationRequest, ValidationRequest__Output as _tasklattice_guard_control_v1_ValidationRequest__Output } from './tasklattice/guard/control/v1/ValidationRequest.js';
 import type { ValidationResult as _tasklattice_guard_control_v1_ValidationResult, ValidationResult__Output as _tasklattice_guard_control_v1_ValidationResult__Output } from './tasklattice/guard/control/v1/ValidationResult.js';
@@ -133,6 +135,8 @@ export interface ProtoGrpcType {
           TrafficScope: MessageTypeDefinition<_tasklattice_guard_control_v1_TrafficScope, _tasklattice_guard_control_v1_TrafficScope__Output>
           ValidationCaseResult: MessageTypeDefinition<_tasklattice_guard_control_v1_ValidationCaseResult, _tasklattice_guard_control_v1_ValidationCaseResult__Output>
           ValidationDecision: EnumTypeDefinition
+          ValidationExpectationOverride: MessageTypeDefinition<_tasklattice_guard_control_v1_ValidationExpectationOverride, _tasklattice_guard_control_v1_ValidationExpectationOverride__Output>
+          ValidationExpectedMatch: MessageTypeDefinition<_tasklattice_guard_control_v1_ValidationExpectedMatch, _tasklattice_guard_control_v1_ValidationExpectedMatch__Output>
           ValidationFailure: EnumTypeDefinition
           ValidationMetrics: MessageTypeDefinition<_tasklattice_guard_control_v1_ValidationMetrics, _tasklattice_guard_control_v1_ValidationMetrics__Output>
           ValidationRequest: MessageTypeDefinition<_tasklattice_guard_control_v1_ValidationRequest, _tasklattice_guard_control_v1_ValidationRequest__Output>

@@ -344,6 +344,7 @@ class GuardrailPolicyBindingSnapshot:
     enabled_rule_ids: tuple[str, ...] = ()
     rule_actions: tuple[tuple[str, str], ...] = ()
     enabled_rails: tuple[RailType, ...] = ()
+    rule_order: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

@@ -116,6 +116,13 @@ export type GuardrailDraftConfig = {
     parameterValues: Record<string, string>;
     enabledRuleIds: string[];
     ruleActions: Record<string, EnforcementAction>;
+    ruleOrder?: string[];
+    testCaseOverrides?: Record<string, {
+      sourcePolicyVersion: string; reason: string;
+      expectedDecision: "allow" | "block" | "transform" | "intervene";
+      expectedOutputContent?: string;
+      expectedMatches: Array<{ policyId: string; ruleId: string }>;
+    }>;
     enabledRails: Array<"input" | "output" | "retrieval" | "dialog" | "execution">;
     reasoningPolicy: { policyId: string; policyVersion: string; confidenceThreshold: number } | null;
   }>;

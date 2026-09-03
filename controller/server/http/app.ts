@@ -39,6 +39,14 @@ const guardrailPolicyBindingInput = z.object({
   parameterValues: z.record(z.string(), z.string()).default({}),
   enabledRuleIds: z.array(z.string().min(1)).max(512).default([]),
   ruleActions: z.record(z.string(), z.enum(enforcementActions)).default({}),
+  ruleOrder: z.array(z.string()).default([]),
+  testCaseOverrides: z.record(z.string(), z.object({
+    sourcePolicyVersion: z.string().min(1),
+    reason: z.string().trim().min(1).max(2000),
+    expectedDecision: z.enum(["allow", "block", "transform", "intervene"]),
+    expectedOutputContent: z.string().max(100000).optional(),
+    expectedMatches: z.array(z.object({ policyId: z.string().min(1), ruleId: z.string().min(1) })).max(512),
+  })).default({}),
   enabledRails: z.array(z.enum(["input", "output", "retrieval", "dialog", "execution"])).default([]),
   reasoningPolicy: z.object({
     policyId: z.string().trim().min(1),

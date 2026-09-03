@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 import type { PolicyDto } from "../policy-catalog/catalog.js";
 import type { ProgrammablePolicySnapshot } from "../policy-studio/model.js";
-import { normalizeGuardrailDraft, type GuardrailDraftConfig } from "./guardrail-plan.js";
+import { normalizeGuardrailDraft, type GuardrailDraftConfig, type ValidationExpectationOverride } from "./guardrail-plan.js";
 import type { ValidationCaseResult, ValidationMetrics } from "./models.js";
 
 export type StoredTestCaseInput = {
@@ -120,6 +120,37 @@ export function generatedTestCases(
     });
   });
   return [...declarative, ...programmable];
+}
+
+/** Preserve template assertions in storage; freeze reviewed local overlays into each run. */
+export function applyValidationOverrides<T extends { id: string; sourcePolicyId: string | null; sourcePolicyVersion: string | null; sourceCaseId: string | null; expectedDecision: string }>(cases: readonly T[], draftValue: GuardrailDraftConfig): Array<T & { expectationOverride?: ValidationExpectationOverride }> {
+  const draft = normalizeGuardrailDraft(draftValue);
+  const bindings = new Map(draft.policyBindings.map((binding) => [binding.policyId, binding]));
+  for (const binding of draft.policyBindings) {
+    for (const [caseId, override] of Object.entries(binding.testCaseOverrides ?? {})) {
+      const source = cases.find((item) => item.sourcePolicyId === binding.policyId && item.sourceCaseId === caseId);
+      if (!source) throw new Error(`Expectation override references unavailable Test Case ${binding.policyId}/${caseId}.`);
+      if (source.sourcePolicyVersion !== override.sourcePolicyVersion || binding.policyVersion !== override.sourcePolicyVersion) {
+        throw new Error(`Review the stale expectation override for ${binding.policyId}/${caseId} after changing Policy version.`);
+      }
+      if (source.expectedDecision !== "allow" && override.expectedDecision === "allow") {
+        throw new Error(`Cannot weaken an unsafe inherited Test Case to allow: ${binding.policyId}/${caseId}. Use an explicit scoped exclusion instead.`);
+      }
+      for (const match of override.expectedMatches) {
+        if (!bindings.get(match.policyId)?.enabledRuleIds.includes(match.ruleId)) {
+          throw new Error(`Expected Rule ${match.policyId}/${match.ruleId} is not enabled in this Guardrail.`);
+        }
+      }
+      if (override.expectedDecision === "transform" && override.expectedOutputContent === undefined) {
+        throw new Error(`A transformation expectation must assert the complete output: ${binding.policyId}/${caseId}.`);
+      }
+    }
+  }
+  return cases.map((item) => {
+    const expectationOverride = item.sourcePolicyId && item.sourceCaseId
+      ? bindings.get(item.sourcePolicyId)?.testCaseOverrides?.[item.sourceCaseId] : undefined;
+    return expectationOverride ? { ...item, expectationOverride } : { ...item };
+  });
 }
 
 export function emptyValidationMetrics(total = 0): ValidationMetrics {

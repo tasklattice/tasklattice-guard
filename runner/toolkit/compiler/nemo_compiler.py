@@ -3,13 +3,12 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from dataclasses import asdict, replace
+from dataclasses import replace
 from typing import Any, Literal
 
 import yaml
 from nemoguardrails import RailsConfig
 
-from ..policy_library import policy as library_policy
 from ..nemo.action_registry import (
     ACTION_CONTENT_FILTER,
     ACTION_EVALUATE,
@@ -25,7 +24,6 @@ from ..nemo.action_registry import (
 from ..nemo.artifacts import config_checksum
 from ..runtime.contracts import (
     GuardrailPhase,
-    GuardrailPlanModule,
     GuardrailPlanSnapshot,
     NeMoActionBinding,
     NeMoConfigSnapshot,
@@ -35,7 +33,7 @@ from ..runtime.contracts import (
 from .domain import PolicyDraft, PlanCompilationError, RailBinding
 
 
-NEMO_COMPILER_VERSION = "tasklattice-nemo-config-v11"
+NEMO_COMPILER_VERSION = "tasklattice-nemo-config-v13-rule-order"
 
 ExecutionSurface = Literal["standalone_check", "owned_generation"]
 
@@ -92,48 +90,33 @@ class NeMoConfigCompiler:
         return name in self._prompt_tasks
 
     def compile(self, plan: GuardrailPlanSnapshot) -> NeMoConfigSnapshot:
+        _validate_execution_order(plan)
         flows: dict[GuardrailPhase, list[str]] = {"input": [], "output": []}
         binding_phases: dict[str, list[GuardrailPhase]] = {}
         binding_steps = {}
         required_models: set[str] = set()
         required_features: set[str] = set()
 
-        capabilities = tuple(dict.fromkeys(step.capability for step in plan.steps))
         for phase in ("input", "output"):
-            native_detection: list[str] = []
-            native_mutation: list[str] = []
-            for capability in capabilities:
-                steps = tuple(
-                    step
-                    for step in plan.steps
-                    if step.capability == capability and phase in step.phases
-                )
-                if not steps:
+            for step in plan.steps:
+                if phase not in step.phases:
                     continue
-
-                # A NeMo library flow represents one terminal check. Never
-                # collapse an evaluation graph into that flow or dependent
-                # contracts would silently disappear.
+                capability = step.capability
                 native = (
-                    self._native_flow(capability, phase, steps[0].on_unsafe)
-                    if len(steps) == 1
+                    self._native_flow(capability, phase, step.on_unsafe)
+                    if sum(capability == item.capability and phase in item.phases for item in plan.steps) == 1
                     else None
                 )
                 if native is not None:
-                    target = native_mutation if native.startswith("mask ") else native_detection
-                    target.append(native)
+                    flows[phase].append(native)
                     if capability == "content_safety":
                         required_models.add("content_safety")
                     elif capability == "topic_control":
                         required_models.add("topic_control")
                     continue
 
-                for step in steps:
-                    binding_steps[step.id] = step
-                    binding_phases.setdefault(step.id, []).append(phase)
-
-            flows[phase].extend(native_detection)
-            flows[phase].extend(native_mutation)
+                binding_steps[step.id] = step
+                binding_phases.setdefault(step.id, []).append(phase)
 
         builtin_bindings = tuple(
             _builtin_action_binding(
@@ -142,7 +125,8 @@ class NeMoConfigCompiler:
                 binding_steps[step_id],
                 tuple(dict.fromkeys(phases)),
             )
-            for step_id, phases in binding_phases.items()
+            for step_id in (step.id for step in plan.steps if step.id in binding_phases)
+            for phases in (binding_phases[step_id],)
         )
         custom_bindings = _custom_action_bindings(plan)
         bindings = builtin_bindings + custom_bindings
@@ -426,7 +410,7 @@ class NeMoConfigCompiler:
         if include_flow_lists:
             rails.update(
                 {
-                    phase: {"flows": items, "parallel": True}
+                    phase: {"flows": items, "parallel": False}
                     for phase, items in flows.items()
                     if items
                 }
@@ -536,19 +520,7 @@ def _is_colang1_standard_compatible(
         return False
     if any(step.capability in _COLANG1_COMPLEX_CAPABILITIES for step in plan.steps):
         return False
-    if any(module.depends_on for module in plan.modules):
-        return False
-    if any(
-        module.input_view not in {"original", "complete_output"}
-        for module in plan.modules
-    ):
-        return False
-
-    steps_by_capability_phase: dict[tuple[str, GuardrailPhase], list[object]] = {}
-    for step in plan.steps:
-        for phase in step.phases:
-            steps_by_capability_phase.setdefault((step.capability, phase), []).append(step)
-    if any(len(items) != 1 for items in steps_by_capability_phase.values()):
+    if any(step.trigger.type != "always" for step in plan.steps):
         # Contract dependency graphs need ordered, result-aware routing.
         return False
     if any(
@@ -565,77 +537,11 @@ def _is_colang1_standard_compatible(
     if native_flows and builtin_bindings:
         return False
 
-    modifiers_by_phase = {
-        phase: sum(
-            1
-            for binding in builtin_bindings
-            if phase in binding.phases and _binding_can_modify(binding)
-        )
-        for phase in ("input", "output")
-    }
-    return all(count <= 1 for count in modifiers_by_phase.values())
+    # Sequential NeMo subflows thread user_message/bot_message, so any number
+    # of modifiers is safe. No capability regrouping or mutation-priority sort.
+    return True
 
 
-def _binding_can_modify(binding: NeMoActionBinding) -> bool:
-    if binding.on_unsafe not in {"reject", "pass"}:
-        return True
-    if binding.action_name in {
-        ACTION_TOPIC_RULES,
-        ACTION_PROMPT_SECURITY,
-        ACTION_TOPIC_JUDGE,
-    }:
-        # These Actions can return ``uncertain``.  The standard lane maps that
-        # outcome to a clarification, which is a content modification even when
-        # the configured unsafe action itself is reject.
-        return True
-    if binding.capability != "builtin_content_filter":
-        return False
-
-    # A Policy can contain a mix of reject and redact Rules even though its
-    # Guardrail-level fallback action is reject. Inspect the immutable Rule
-    # selection rather than classifying every Policy as a modifier; this lets
-    # reject-only Policies safely share the C1 parallel
-    # lane with one real modifier (for example PII redaction).
-    parameters = dict(binding.parameters)
-    try:
-        enabled = json.loads(parameters.get("enabled_rules_json", "{}"))
-        overrides = json.loads(parameters.get("rule_actions_json", "{}"))
-        custom_rules = json.loads(parameters.get("custom_rules_json", "[]"))
-    except (TypeError, ValueError):
-        return True
-
-    if any(
-        _is_modifying_rule_action(str(item.get("action", "")))
-        for item in custom_rules
-        if isinstance(item, dict)
-    ):
-        return True
-
-    for policy_id in parameters.get("policy_ids", "").splitlines():
-        policy_id = policy_id.strip()
-        if not policy_id:
-            continue
-        definition = library_policy(policy_id)
-        if definition is None:
-            return True
-        selected = enabled.get(policy_id)
-        selected_ids = set(selected) if isinstance(selected, list) else None
-        policy_overrides = overrides.get(policy_id, {})
-        if not isinstance(policy_overrides, dict):
-            policy_overrides = {}
-        for rule in definition.rules:
-            if selected_ids is not None and rule.id not in selected_ids:
-                continue
-            # Flat overrides are accepted for already-compiled snapshots; new
-            # plans namespace Rule actions by Policy ID.
-            action = policy_overrides.get(rule.id, overrides.get(rule.id, rule.effect))
-            if _is_modifying_rule_action(str(action)):
-                return True
-    return False
-
-
-def _is_modifying_rule_action(action: str) -> bool:
-    return action.strip().casefold() in {"mask", "redact", "rewrite"}
 
 
 def _with_result_var(binding: NeMoActionBinding) -> NeMoActionBinding:
@@ -745,8 +651,8 @@ def _timeout_for(
     if len(serial_steps) <= 1:
         return module.timeout_ms
 
-    # Independent capabilities run concurrently. Within one capability, a
-    # contract that gates another contract receives a small bounded budget;
+    # Within one Policy's serial evaluation chain, a prerequisite receives a
+    # small bounded budget;
     # terminal evaluators receive the remaining declared module deadline.
     prerequisites = tuple(
         candidate
@@ -804,119 +710,58 @@ def _colang_v2(
         phase_custom = tuple(
             item for item in custom_bindings if phase in item.phases
         )
-        capabilities = tuple(dict.fromkeys(
-            tuple(_native_capability(flow) for flow in native_flows[phase])
-            + tuple(item.capability for item in phase_bindings)
-        ))
-        capabilities = tuple(item for item in capabilities if item)
-        if not capabilities and not phase_custom:
-            continue
-
         lines.extend((f"flow tasklattice {phase} rails $text",))
         message_var = "$user_message" if phase == "input" else "$bot_message"
-        lines.extend((f"  global {message_var}", f"  {message_var} = $text"))
-
-        modules = _phase_modules(plan, phase, capabilities) if capabilities else ()
-        detection_custom = tuple(
-            item for item in phase_custom if item.execution_mode == "detect"
-        )
-        mutation_custom = tuple(
-            sorted(
-                (item for item in phase_custom if item.execution_mode == "mutate"),
-                key=lambda item: int(item.parameter("priority") or 0),
-            )
-        )
-        module_waves = _module_waves(modules) if modules else ()
-        policy_waves = _custom_binding_waves(detection_custom)
-        for index in range(max(len(module_waves), len(policy_waves))):
-            flow_names = tuple(
-                _module_flow_name(phase, module.id)
-                for module in (module_waves[index] if index < len(module_waves) else ())
-            ) + tuple(
-                _compiled_flow_name(item)
-                for item in (
-                    policy_waves[index] if index < len(policy_waves) else ()
-                )
-            )
-            lines.extend(_await_parallel(flow_names, "$text", indent="  "))
-        for binding in mutation_custom:
-            lines.append(
-                f"  await {_compiled_flow_name(binding)}(text=$text)"
-            )
-        lines.extend((f"  $decision = await {ACTION_RESOLVE}(text=$text)", ""))
-
-        capability_to_native = {
+        lines.extend((f"  global {message_var}", f"  {message_var} = $text", "  $blocked = False"))
+        native_by_capability = {
             _native_capability(flow): flow for flow in native_flows[phase]
         }
-        for module in modules:
-            module_capabilities = tuple(
-                capability
-                for capability in capabilities
-                if _module_for_capability(plan, phase, capability) == module.id
-            )
-            lines.append(f"flow {_module_flow_name(phase, module.id)} $text")
-            lines.extend(
-                _await_parallel(
-                    tuple(
-                        _capability_flow_name(phase, capability)
-                        for capability in module_capabilities
-                    ),
-                    "$text",
-                    indent="  ",
-                )
-            )
-            lines.append("")
-
-            for capability in module_capabilities:
-                flow_name = _capability_flow_name(phase, capability)
-                native = capability_to_native.get(capability)
-                selected = tuple(
-                    item for item in phase_bindings
-                    if item.capability == capability
-                )
-                lines.append(f"flow {flow_name} $text")
-                if native:
-                    lines.extend(_native_flow_lines(native, phase))
-                else:
-                    lines.extend(_binding_flow_lines(selected))
-                lines.append("")
+        binding_by_id = {item.id: item for item in phase_bindings}
+        policy_order = {item.policy_id: index for index, item in enumerate(plan.policy_bindings)}
+        entries = []
+        for index, step in enumerate(plan.steps):
+            if phase not in step.phases:
+                continue
+            binding = binding_by_id.get(step.id)
+            policy_id = dict(step.parameters).get("policy_id") or (binding.policy_id if binding else None)
+            rank = policy_order.get(policy_id, index)
+            if binding is not None:
+                entries.append((rank, index, "action", binding))
+            elif step.capability in native_by_capability:
+                entries.append((rank, index, "native", native_by_capability[step.capability]))
+        for index, binding in enumerate(phase_custom):
+            entries.append((policy_order.get(binding.policy_id, len(plan.steps) + index), index, "custom", binding))
+        entries.sort(key=lambda item: item[:2])
+        result_vars = {item.id: f"$tl_result_{_binding_suffix(item)}" for item in phase_bindings}
+        for result_var in result_vars.values():
+            lines.append(f'  {result_var} = {{"verdict": "skipped"}}')
+        for _, _, kind, entry in entries:
+            lines.append("  if not $blocked")
+            if kind == "native":
+                lines.extend("  " + line for line in _native_flow_lines(entry, phase))
+            elif kind == "custom":
+                lines.append(f"    await {_compiled_flow_name(entry)}(text=$text)")
+            else:
+                result_var = result_vars[entry.id]
+                indent = "    "
+                if entry.trigger.type != "always":
+                    source = result_vars.get(entry.trigger.step_ref)
+                    if source is None:
+                        raise PlanCompilationError(f"Unavailable trigger step {entry.trigger.step_ref!r}.")
+                    condition = " or ".join(f'{source}["verdict"] == "{verdict}"' for verdict in entry.trigger.verdicts)
+                    lines.append(f"    if {condition}")
+                    indent += "  "
+                lines.append(f'{indent}{result_var} = await {entry.action_name}(text=$text, binding_id="{entry.id}")')
+            lines.extend((
+                f"    $decision = await {ACTION_RESOLVE}(text=$text)",
+                '    $text = $decision["content"]',
+                '    $blocked = $decision["blocked"]',
+                f"    {message_var} = $text",
+            ))
+        lines.extend((f"  $decision = await {ACTION_RESOLVE}(text=$text)", ""))
 
     return "\n".join(lines).rstrip() + "\n"
 
-
-def _binding_flow_lines(bindings: tuple[NeMoActionBinding, ...]) -> list[str]:
-    lines: list[str] = []
-    by_id = {binding.id: binding for binding in bindings}
-    result_vars = {
-        binding.id: f"$tl_result_{_flow_identifier(binding.id)}_{_binding_suffix(binding)}"
-        for binding in bindings
-    }
-    for binding in bindings:
-        if not binding.action_name:
-            raise PlanCompilationError(
-                f"NeMo Action binding {binding.id!r} has no fixed Action name."
-            )
-        result_var = result_vars[binding.id]
-        call = (
-            f"{result_var} = await {binding.action_name}("
-            f'text=$text, binding_id="{binding.id}")'
-        )
-        if binding.trigger.type == "always":
-            lines.append(f"  {call}")
-            continue
-        source_id = binding.trigger.step_ref
-        if source_id not in by_id or source_id not in result_vars:
-            raise PlanCompilationError(
-                f"Evaluation binding {binding.id!r} references unavailable "
-                f"trigger step {source_id!r}."
-            )
-        source = result_vars[source_id]
-        condition = " or ".join(
-            f'{source}["verdict"] == "{verdict}"'
-            for verdict in binding.trigger.verdicts
-        )
-        lines.extend((f"  if {condition}", f"    {call}"))
-    return lines
 
 
 def _native_flow_lines(flow: str, phase: GuardrailPhase) -> list[str]:
@@ -950,103 +795,11 @@ def _native_flow_lines(flow: str, phase: GuardrailPhase) -> list[str]:
     raise PlanCompilationError(f"Unsupported NeMo native flow {flow!r}.")
 
 
-def _await_parallel(
-    flow_names: tuple[str, ...],
-    argument: str,
-    *,
-    indent: str,
-) -> list[str]:
-    if not flow_names:
-        return [f"{indent}pass"]
-    if len(flow_names) == 1:
-        return [f"{indent}await {flow_names[0]}(text={argument})"]
-    refs = tuple(f"$parallel_{index}" for index in range(len(flow_names)))
-    lines = [
-        f"{indent}start {name}(text={argument}) as {ref}"
-        for name, ref in zip(flow_names, refs, strict=True)
-    ]
-    joined = " and ".join(f"{ref}.Finished()" for ref in refs)
-    lines.append(f"{indent}match {joined}")
-    return lines
 
 
-def _phase_modules(
-    plan: GuardrailPlanSnapshot,
-    phase: GuardrailPhase,
-    capabilities: tuple[str, ...],
-) -> tuple[GuardrailPlanModule, ...]:
-    modules = list(plan.modules_for(phase))
-    unassigned = tuple(
-        capability
-        for capability in capabilities
-        if not any(
-            _module_contains_capability(plan, item.id, capability)
-            for item in modules
-        )
-    )
-    if unassigned:
-        raise PlanCompilationError(
-            "NeMo capabilities must belong to a Policy module: "
-            + ", ".join(unassigned)
-            + "."
-        )
-    return tuple(modules)
 
 
-def _module_waves(
-    modules: tuple[GuardrailPlanModule, ...],
-) -> tuple[tuple[GuardrailPlanModule, ...], ...]:
-    pending = list(modules)
-    completed: set[str] = set()
-    waves = []
-    while pending:
-        wave = tuple(item for item in pending if set(item.depends_on) <= completed)
-        if not wave:
-            raise PlanCompilationError("NeMo module dependencies contain a cycle.")
-        waves.append(wave)
-        completed.update(item.id for item in wave)
-        pending = [item for item in pending if item not in wave]
-    return tuple(waves)
 
-
-def _module_for_capability(
-    plan: GuardrailPlanSnapshot,
-    phase: GuardrailPhase,
-    capability: str,
-) -> str:
-    try:
-        return next(
-            module.id
-            for module in plan.modules_for(phase)
-            if _module_contains_capability(plan, module.id, capability)
-        )
-    except StopIteration as error:
-        raise PlanCompilationError(
-            f"NeMo capability {capability!r} has no {phase} Policy module."
-        ) from error
-
-
-def _module_contains_capability(
-    plan: GuardrailPlanSnapshot,
-    module_id: str,
-    capability: str,
-) -> bool:
-    module = next((item for item in plan.modules if item.id == module_id), None)
-    if module is None:
-        return False
-    steps = {step.id: step for step in plan.steps}
-    return any(
-        step_id in steps and steps[step_id].capability == capability
-        for step_id in module.step_ids
-    )
-
-
-def _module_flow_name(phase: GuardrailPhase, module_id: str) -> str:
-    return f"tasklattice_module_{phase}_{_flow_identifier(module_id)}"
-
-
-def _capability_flow_name(phase: GuardrailPhase, capability: str) -> str:
-    return f"tasklattice_capability_{phase}_{_flow_identifier(capability)}"
 
 
 def _flow_identifier(value: str) -> str:
@@ -1069,8 +822,8 @@ def _builtin_action_binding(
     step,
     phases: tuple[GuardrailPhase, ...],
 ) -> NeMoActionBinding:
-    policy_id = None
-    policy_version = None
+    policy_id = dict(step.parameters).get("policy_id")
+    policy_version = dict(step.parameters).get("policy_version")
     versions = {
         (item.policy_id, item.version): item for item in plan.policy_versions
     }
@@ -1136,7 +889,13 @@ def _custom_action_bindings(
         )
         enabled_rules = set(selected.enabled_rule_ids)
         rule_actions = dict(selected.rule_actions)
-        for rail in version.rail_bindings:
+        rule_order = selected.rule_order
+        by_id = {f"flow/{rail.rail_type}/{rail.flow_name}": rail for rail in version.rail_bindings}
+        if len(set(rule_order)) != len(rule_order) or set(rule_order) - by_id.keys():
+            raise ValueError(f"Invalid Rule order for Policy {selected.policy_id}")
+        ordered_rails = [by_id[rule_id] for rule_id in rule_order]
+        ordered_rails.extend(rail for rule_id, rail in by_id.items() if rule_id not in rule_order)
+        for rail in ordered_rails:
             if rail.rail_type not in selected.enabled_rails:
                 continue
             if rail.rail_type not in {"input", "output"}:
@@ -1165,16 +924,13 @@ def _custom_action_bindings(
                         or rail.on_unsafe
                     ),
                     timeout_ms=rail.timeout_ms,
-                    parameters=(
-                        *selected.parameter_values,
-                        ("priority", str(rail.priority or 0)),
-                    ),
+                    parameters=selected.parameter_values,
                     policy_id=version.policy_id,
                     policy_version=version.version,
                     flow_name=rail.flow_name,
                     action_name=action.name if action else None,
                     action_version=action.version if action else None,
-                    parallel_group=rail.parallel_group,
+                    parallel_group=None,
                     execution_mode=rail.execution_mode,
                     failure_mode=rail.failure_mode,
                     depends_on=rail.depends_on,
@@ -1271,54 +1027,16 @@ def _validate_binding_graph(
 
     for name in by_name:
         visit(name)
+    positions = {item.flow_name: index for index, item in enumerate(bindings)}
     for binding in bindings:
         for dependency_name in binding.depends_on:
             dependency = by_name[dependency_name]
-            if binding.execution_mode == "detect" and dependency.execution_mode == "mutate":
+            if dependency.rail_type != binding.rail_type or positions[dependency_name] >= positions[binding.flow_name]:
                 raise PlanCompilationError(
-                    f"Policy {policy_id!r} detection Flow {binding.flow_name!r} "
-                    f"cannot depend on mutating Flow {dependency_name!r}."
-                )
-            if (
-                binding.execution_mode == "mutate"
-                and dependency.execution_mode == "mutate"
-                and int(binding.priority or 0) <= int(dependency.priority or 0)
-            ):
-                raise PlanCompilationError(
-                    f"Policy {policy_id!r} mutation Flow {binding.flow_name!r} "
-                    f"must have a higher priority than dependency {dependency_name!r}."
+                    f"Policy {policy_id!r} Flow {binding.flow_name!r} must follow "
+                    f"dependency {dependency_name!r} in the same Rail's list order."
                 )
 
-
-def _custom_binding_waves(
-    bindings: tuple[NeMoActionBinding, ...],
-) -> tuple[tuple[NeMoActionBinding, ...], ...]:
-    pending = list(bindings)
-    completed: set[tuple[str, int, str]] = set()
-    waves: list[tuple[NeMoActionBinding, ...]] = []
-
-    def key(item: NeMoActionBinding, flow_name: str | None = None):
-        return (
-            item.policy_id or "",
-            item.policy_version or 0,
-            flow_name or item.flow_name or "",
-        )
-
-    while pending:
-        wave = tuple(
-            item
-            for item in pending
-            if all(key(item, dependency) in completed for dependency in item.depends_on)
-        )
-        if not wave:
-            raise PlanCompilationError(
-                "Custom Policy detection dependencies contain a cycle or "
-                "reference a non-detection Flow."
-            )
-        waves.append(wave)
-        completed.update(key(item) for item in wave)
-        pending = [item for item in pending if item not in wave]
-    return tuple(waves)
 
 
 def _dependency_manifest(
@@ -1371,23 +1089,32 @@ def _estimated_critical_path_ms(
     plan: GuardrailPlanSnapshot,
     custom_bindings: tuple[NeMoActionBinding, ...],
 ) -> int:
-    estimates: list[int] = []
+    return max((
+        sum(module.timeout_ms for module in plan.modules_for(phase))
+        + sum(item.timeout_ms for item in custom_bindings if phase in item.phases)
+        for phase in ("input", "output")
+    ), default=0)
+
+
+def _validate_execution_order(plan: GuardrailPlanSnapshot) -> None:
+    """Reject contradictory dependencies rather than silently reordering lists."""
+    if len({step.id for step in plan.steps}) != len(plan.steps):
+        raise PlanCompilationError("Ordered plan step IDs must be unique.")
     for phase in ("input", "output"):
-        module_waves = _module_waves(plan.modules_for(phase)) if plan.modules_for(phase) else ()
-        module_total = sum(max(item.timeout_ms for item in wave) for wave in module_waves)
-        detections = tuple(
-            item
-            for item in custom_bindings
-            if phase in item.phases and item.execution_mode == "detect"
-        )
-        detection_total = sum(
-            max(item.timeout_ms for item in wave)
-            for wave in _custom_binding_waves(detections)
-        ) if detections else 0
-        mutation_total = sum(
-            item.timeout_ms
-            for item in custom_bindings
-            if phase in item.phases and item.execution_mode == "mutate"
-        )
-        estimates.append(max(module_total, detection_total) + mutation_total)
-    return max(estimates, default=0)
+        phase_steps = [step for step in plan.steps if phase in step.phases]
+        positions = {step.id: index for index, step in enumerate(phase_steps)}
+        for step in phase_steps:
+            owners = [module for module in plan.modules_for(phase) if step.id in module.step_ids]
+            if len(owners) != 1:
+                raise PlanCompilationError(f"Step {step.id!r} must belong to exactly one {phase} Policy module.")
+            source = step.trigger.step_ref
+            if step.trigger.type != "always" and (source not in positions or positions[source] >= positions[step.id]):
+                raise PlanCompilationError(f"Step {step.id!r} must follow trigger {source!r} in list order.")
+        modules = {module.id: module for module in plan.modules_for(phase)}
+        for module in modules.values():
+            own_positions = [positions[item] for item in module.step_ids if item in positions]
+            for dependency in module.depends_on:
+                previous = modules.get(dependency)
+                dependency_positions = [positions[item] for item in previous.step_ids if item in positions] if previous else []
+                if not own_positions or not dependency_positions or max(dependency_positions) >= min(own_positions):
+                    raise PlanCompilationError(f"Module {module.id!r} must follow dependency {dependency!r} in list order.")

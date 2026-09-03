@@ -83,6 +83,7 @@ export function planToWire(value: unknown): GuardrailPlan {
       ...(optionalString(binding.action) === null ? {} : { action: wireEnum("ENFORCEMENT_ACTION", binding.action) }),
       parameterValues: pairsToWire(binding.parameter_values),
       enabledRuleIds: strings(binding.enabled_rule_ids),
+      ruleOrder: strings(binding.rule_order),
       ruleActions: pairsToWire(binding.rule_actions),
       enabledRails: strings(binding.enabled_rails).map((rail) => wireEnum("RAIL_TYPE", rail)),
     })),
@@ -156,6 +157,7 @@ export function planFromWire(plan: GuardrailPlan__Output): Record<string, unknow
       ...(binding.action === undefined ? {} : { action: domainEnum("ENFORCEMENT_ACTION", binding.action) }),
       parameter_values: pairsFromWire(binding.parameterValues),
       enabled_rule_ids: [...binding.enabledRuleIds],
+      ...(binding.ruleOrder?.length ? { rule_order: [...binding.ruleOrder] } : {}),
       rule_actions: pairsFromWire(binding.ruleActions),
       enabled_rails: binding.enabledRails.map((rail) => domainEnum("RAIL_TYPE", rail)),
     })),
@@ -253,6 +255,7 @@ export function validationTestToWire(value: unknown): ValidationTestCase {
     ...(optionalString(item.sourcePolicyVersion) === null ? {} : { sourcePolicyVersion: string(item.sourcePolicyVersion) }),
     ...(optionalString(item.sourceCaseId) === null ? {} : { sourceCaseId: string(item.sourceCaseId) }),
     coveredRuleIds: strings(item.coveredRuleIds),
+    ...(item.expectationOverride ? { expectationOverride: expectationToWire(item.expectationOverride) } : {}),
   };
 }
 
@@ -304,6 +307,28 @@ export function validationCaseFromWire(value: ValidationCaseResult__Output): Val
     evaluationContracts: [...value.evaluationContracts],
     escalated: value.escalated,
     modelInvocations: value.modelInvocations,
+    ...(value.expectationOverride ? { expectationOverride: {
+      sourcePolicyVersion: value.expectationOverride.sourcePolicyVersion,
+      reason: value.expectationOverride.reason,
+      expectedDecision: domainEnum("VALIDATION_DECISION", value.expectationOverride.expectedDecision) as "allow" | "block" | "transform" | "intervene",
+      ...(value.expectationOverride.expectedOutputContent !== undefined ? { expectedOutputContent: value.expectationOverride.expectedOutputContent } : {}),
+      expectedMatches: value.expectationOverride.expectedMatches.map((item) => ({ policyId: item.policyId, ruleId: item.ruleId })),
+    } } : {}),
+    ...(value.templateExpectedDecision ? { templateExpectedDecision: domainEnum("VALIDATION_DECISION", value.templateExpectedDecision) } : {}),
+    assertionFailures: [...value.assertionFailures],
+  };
+}
+
+function expectationToWire(value: unknown): import("../generated/control-protocol/tasklattice/guard/control/v1/ValidationExpectationOverride.js").ValidationExpectationOverride {
+  const item = record(value);
+  return {
+    sourcePolicyVersion: string(item.sourcePolicyVersion), reason: string(item.reason),
+    expectedDecision: wireEnum("VALIDATION_DECISION", item.expectedDecision),
+    ...(typeof item.expectedOutputContent === "string" ? { expectedOutputContent: item.expectedOutputContent } : {}),
+    expectedMatches: records(item.expectedMatches).map((raw) => {
+      const match = record(raw);
+      return { policyId: string(match.policyId), ruleId: string(match.ruleId) };
+    }),
   };
 }
 

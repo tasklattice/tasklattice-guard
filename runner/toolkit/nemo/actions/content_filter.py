@@ -15,6 +15,7 @@ from ...runtime.contracts import (
     RiskFinding,
     RuntimeTraceStep,
 )
+from ...runtime.interventions import fallback_content
 from .contracts import ActionRequest, ActionResult, action_result
 from .names import ACTION_CONTENT_FILTER
 
@@ -174,6 +175,7 @@ class BuiltinContentFilter:
         parameters: Mapping[str, str] | None = None,
         policy_parameters: Mapping[str, Mapping[str, str]] | None = None,
         enabled_rules: Mapping[str, Iterable[str]] | None = None,
+        rule_order: Mapping[str, Iterable[str]] | None = None,
         rule_actions: Mapping[str, str] | None = None,
         policy_rule_actions: Mapping[str, Mapping[str, str]] | None = None,
         custom_rules: Iterable[Mapping[str, Any]] = (),
@@ -187,6 +189,7 @@ class BuiltinContentFilter:
         flat_actions = rule_actions or {}
         actions_by_policy = policy_rule_actions or {}
         detections: list[_Detection] = []
+        content = text
 
         try:
             for name in policies:
@@ -200,20 +203,26 @@ class BuiltinContentFilter:
                 if phase not in definition.rails:
                     continue
                 configured = configured_by_policy.get(name, shared_parameters)
-                detections.extend(
-                    self._apply_policy(
-                        definition,
-                        text,
-                        phase,
-                        configured,
-                        selected_rules.get(name),
-                        flat_actions,
-                        actions_by_policy.get(name, {}),
-                    )
+                content, matched = self._apply_policy(
+                    definition,
+                    content,
+                    phase,
+                    configured,
+                    selected_rules.get(name),
+                    flat_actions,
+                    actions_by_policy.get(name, {}),
+                    tuple((rule_order or {}).get(name, ())),
                 )
-            detections.extend(
-                self._apply_custom_rules(tuple(custom_rules), text, phase)
-            )
+                detections.extend(matched)
+                if any(item.action == "reject" for item in matched):
+                    break
+            else:
+                for rule in custom_rules:
+                    matched = self._apply_custom_rules((rule,), content, phase)
+                    detections.extend(matched)
+                    content = self._apply_effect(content, matched)
+                    if any(item.action == "reject" for item in matched):
+                        break
         except (re.error, ValueError) as error:
             return _ContentFilterResult(
                 verdict="error",
@@ -221,15 +230,9 @@ class BuiltinContentFilter:
                 reason=f"Content-filter Rule is invalid: {error}.",
             )
 
-        detections = sorted(
-            (item for item in detections if item.action != "pass"),
-            key=lambda item: (
-                item.policy,
-                item.rule,
-                item.kind,
-                item.evidence,
-            ),
-        )
+        # Findings retain actual execution order. Redaction offsets belong to
+        # each Rule's input, never to a shared original-text snapshot.
+        detections = [item for item in detections if item.action != "pass"]
         if not detections:
             return _ContentFilterResult(
                 verdict="safe",
@@ -237,7 +240,6 @@ class BuiltinContentFilter:
                 reason="No built-in content-filter Rule matched.",
             )
 
-        content = self._apply_redactions(text, detections)
         findings = tuple(
             RiskFinding(
                 risk="builtin_content_filter",
@@ -277,9 +279,15 @@ class BuiltinContentFilter:
         enabled_rules: frozenset[str] | None,
         flat_actions: Mapping[str, str],
         policy_actions: Mapping[str, str],
-    ) -> list[_Detection]:
+        rule_order: tuple[str, ...] = (),
+    ) -> tuple[str, list[_Detection]]:
         detections: list[_Detection] = []
-        for rule in definition.rules:
+        by_id = {rule.id: rule for rule in definition.rules}
+        if len(set(rule_order)) != len(rule_order) or set(rule_order) - by_id.keys():
+            raise ValueError(f"Invalid Rule order for Policy {definition.id}")
+        ordered = [by_id[rule_id] for rule_id in rule_order]
+        ordered.extend(rule for rule in definition.rules if rule.id not in rule_order)
+        for rule in ordered:
             if phase not in rule.rails:
                 continue
             if enabled_rules is not None and rule.id not in enabled_rules:
@@ -292,6 +300,7 @@ class BuiltinContentFilter:
             )
             if action == "pass":
                 continue
+            start = len(detections)
             if rule.form == "category":
                 match = self._category_match(rule, text)
                 if match is not None:
@@ -364,7 +373,18 @@ class BuiltinContentFilter:
                 )
                 if detection is not None:
                     detections.append(detection)
-        return detections
+            matched = detections[start:]
+            text = self._apply_effect(text, matched)
+            if any(item.action == "reject" for item in matched):
+                break
+        return text, detections
+
+    def _apply_effect(self, text: str, detections: list[_Detection]) -> str:
+        text = self._apply_redactions(text, detections)
+        for item in detections:
+            if item.action not in {"pass", "reject", "redact"}:
+                text = fallback_content(item.action, text)
+        return text
 
     def _apply_custom_rules(
         self,
@@ -859,6 +879,7 @@ class ContentFilterActionProvider:
                 parameters.get("enabled_rules_json", "{}")
             ),
             rule_actions=flat_actions,
+            rule_order=_json_mapping(parameters.get("rule_order_json", "{}")),
             policy_rule_actions=policy_actions,
             custom_rules=_json_rules(
                 parameters.get("custom_rules_json", "[]")

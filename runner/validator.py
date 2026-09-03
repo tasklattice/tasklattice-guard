@@ -116,7 +116,9 @@ class DefaultRunnerValidator:
         latency = max(0, round((time.perf_counter() - started) * 1_000))
         findings = [asdict(item) for item in decision.findings]
         trace = [asdict(item) for item in decision.trace]
-        expected = _string(case.get("expectedDecision"))
+        template_expected = _string(case.get("expectedDecision"))
+        override = _record(case.get("expectationOverride") or {})
+        expected = _string(override.get("expectedDecision")) if override else template_expected
         covered = {_string(item) for item in _list(case.get("coveredRuleIds"))}
         source_policy_id = _optional_string(case.get("sourcePolicyId"))
         matched = sorted({
@@ -137,6 +139,36 @@ class DefaultRunnerValidator:
             or (expected == "allow" and covered.isdisjoint(matched))
             or (expected != "allow" and not covered.isdisjoint(matched))
         )
+        output_content = decision.texts[0] if decision.texts else "" if decision.decision == "block" else content
+        assertion_failures = []
+        if override:
+            actual_matches = {
+                (item.get("policy_id"), item.get("rule_id")) for item in findings
+                if item.get("verdict") in {"unsafe", "uncertain"}
+            }
+            expected_matches = {
+                (_record(item).get("policyId"), _record(item).get("ruleId"))
+                for item in _list(override.get("expectedMatches"))
+            }
+            valid_override = (
+                bool(_string(override.get("reason")).strip())
+                and override.get("sourcePolicyVersion") == case.get("sourcePolicyVersion")
+                and (bool(expected_matches) if expected != "allow" else template_expected == "allow")
+                and (expected != "transform" or "expectedOutputContent" in override)
+            )
+            rule_contract = valid_override and (
+                expected_matches.issubset(actual_matches) if expected != "allow" else not actual_matches
+            )
+            if not valid_override:
+                assertion_failures.append("The reviewed expectation is invalid or stale.")
+            if "expectedOutputContent" in override and output_content != override["expectedOutputContent"]:
+                assertion_failures.append("Output content does not match the reviewed complete-output assertion.")
+        if not rule_contract:
+            assertion_failures.append("Expected Policy/Rule evidence was not observed.")
+        if decision.decision != expected and not (expected == "intervene" and decision.decision != "allow"):
+            assertion_failures.append(f"Expected {expected}; received {decision.decision}.")
+        if actual_failure != expected_failure:
+            assertion_failures.append(f"Expected infrastructure failure {expected_failure}; received {actual_failure}.")
         actual_reasoning = _reasoning_result(findings)
         expected_reasoning = _optional_string(case.get("expectedReasoningResult"))
         evaluation_contracts = sorted({
@@ -161,6 +193,7 @@ class DefaultRunnerValidator:
             and (expected_failure is None or expected_failure == actual_failure)
             and rule_contract
             and (expected_reasoning is None or expected_reasoning == actual_reasoning)
+            and not assertion_failures
         )
         return {
             "caseId": _string(case.get("id")),
@@ -171,11 +204,17 @@ class DefaultRunnerValidator:
             "passed": passed,
             "evaluatorIds": evaluator_ids,
             "latencyMs": latency,
-            "reason": decision.reason or "",
+            "reason": "; ".join([
+                decision.reason or "",
+                *([f"Reviewed composition expectation: {_string(override.get('reason'))}"] if override else []),
+                *assertion_failures,
+            ]).strip("; "),
             "phase": phase,
             "inputContent": content,
             "action": decision.action,
-            "outputContent": decision.texts[0] if decision.texts else "" if decision.decision == "block" else content,
+            "outputContent": output_content,
+            "assertionFailures": assertion_failures,
+            **({"expectationOverride": override, "templateExpectedDecision": template_expected} if override else {}),
             "findings": findings,
             "trace": trace,
             "trustedInstruction": _string(case.get("trustedInstruction")),

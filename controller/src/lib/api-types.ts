@@ -50,6 +50,8 @@ export type AutomatedReasoningFinding = {
 export type Collection<T> = { items: T[]; count: number };
 
 export type GuardrailPolicyBinding = {
+  rule_order?: string[];
+  test_case_overrides?: import("./controller-api").GuardrailDraftConfig["policyBindings"][number]["testCaseOverrides"];
   policy_id: string;
   policy_version: string;
   action?: EnforcementAction | null;
@@ -118,6 +120,9 @@ export type RuntimeTraceStep = {
 };
 
 export type TestCaseResult = {
+  expectation_override?: Record<string, unknown>;
+  template_expected_decision?: string;
+  assertion_failures?: string[];
   case_id: string;
   name: string;
   policy_id: string;
@@ -247,6 +252,8 @@ export type PlaygroundInteraction = {
 };
 
 export type TestCase = {
+  expectation_override?: NonNullable<GuardrailPolicyBinding["test_case_overrides"]>[string];
+  template_expected_decision?: string;
   id: string;
   guardrail_id: string;
   name: string;
