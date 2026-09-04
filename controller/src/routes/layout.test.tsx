@@ -4,9 +4,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ControlPlaneLayout } from "./layout";
 
+let pathname = "/dashboard";
+
 vi.mock("@tanstack/react-router", () => ({
   Outlet: () => <div>Page content</div>,
-  useRouterState: () => "/dashboard",
+  useRouterState: () => pathname,
 }));
 
 vi.mock("@/lib/auth", () => ({
@@ -34,18 +36,33 @@ vi.mock("react-i18next", () => ({
     t: (key: string) => ({
       "nav.home": "Home",
       "nav.dashboard": "Dashboard",
+      "nav.guardrailDesign": "Guardrail Design",
+      "nav.guardrails": "Guardrails",
       "auth.sessionLoading": "Checking your session…",
     } as Record<string, string>)[key] ?? key,
   }),
 }));
 
 describe("ControlPlaneLayout", () => {
-  afterEach(cleanup);
+  afterEach(() => { cleanup(); pathname = "/dashboard"; });
 
-  it("places the account avatar menu in the top application header", () => {
+  it("shows Dashboard as a standalone title instead of a breadcrumb trail", () => {
     render(<ControlPlaneLayout />);
 
     expect(screen.getByRole("button", { name: "Account menu · header" })).toBeTruthy();
     expect(screen.getByText("Page content")).toBeTruthy();
+    expect(screen.getByText("Dashboard")).toBeTruthy();
+    expect(screen.queryByText("Home")).toBeNull();
+    expect(screen.queryByText("TaskLattice Guard")).toBeNull();
+    expect(screen.queryByRole("navigation", { name: "breadcrumb" })).toBeNull();
+  });
+
+  it("starts sidebar-page breadcrumbs at the navigation group", () => {
+    pathname = "/guardrails";
+    render(<ControlPlaneLayout />);
+
+    expect(screen.getByText("Guardrail Design")).toBeTruthy();
+    expect(screen.getByText("Guardrails")).toBeTruthy();
+    expect(screen.queryByText("TaskLattice Guard")).toBeNull();
   });
 });

@@ -1,4 +1,5 @@
-# syntax=docker/dockerfile:1.14
+# Use the BuildKit-bundled Dockerfile frontend so local installation does not
+# require a separate docker.io/docker/dockerfile pull before cached inputs work.
 ARG PYTHON_VERSION=3.12
 
 FROM python:${PYTHON_VERSION}-slim-bookworm AS dependencies

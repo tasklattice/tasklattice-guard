@@ -55,12 +55,14 @@ class HTTPAutomatedReasoningProvider:
         api_key: str | None = None,
         timeout_seconds: float = 20.0,
         transport: httpx.AsyncBaseTransport | None = None,
+        skip_tls_verify: bool = False,
     ) -> None:
         self._endpoint_url = endpoint_url
         self._api_key_env_var = api_key_env_var
         self._api_key = api_key
         self._timeout_seconds = timeout_seconds
         self._transport = transport
+        self._skip_tls_verify = skip_tls_verify
 
     async def evaluate(
         self,
@@ -96,6 +98,7 @@ class HTTPAutomatedReasoningProvider:
             async with httpx.AsyncClient(
                 timeout=self._timeout_seconds,
                 transport=self._transport,
+                verify=not self._skip_tls_verify,
             ) as client:
                 response = await client.post(
                     self._endpoint_url,

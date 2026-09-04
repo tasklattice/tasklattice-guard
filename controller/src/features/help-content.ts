@@ -7,7 +7,7 @@ import {
 
 export type HelpAudience = "user" | "developer" | "operator";
 export type HelpLocale = "en" | "zh-CN";
-export type HelpLinkTo = "/policy-library" | "/guardrails" | "/validation" | "/deployments" | "/integrations" | "/evidence" | "/playground";
+export type HelpLinkTo = "/policy-library" | "/guardrails" | "/deployments" | "/integrations" | "/evidence" | "/playground";
 
 export type HelpStep = { title: string; description: string };
 export type HelpTermRow = { name: string; description: string };
@@ -192,7 +192,7 @@ const ZH_CONTENT: HelpContent = {
           links: [
             { label: "打开 Policy Library", to: "/policy-library" },
             { label: "管理 Guardrails", to: "/guardrails" },
-            { label: "查看 Validation Runs", to: "/validation" },
+            { label: "在 Guardrail 中查看 Validation", to: "/guardrails" },
           ],
         },
         {
@@ -277,7 +277,7 @@ const ZH_CONTENT: HelpContent = {
             "导出包携带可编辑定义，不携带另一个环境的 Validation Run 或发布状态。目标环境必须重新验证。",
             "发布后的 Policy Version 不可变；后续修改形成新的 draft revision 和版本。",
           ],
-          links: [{ label: "查看 Validation Runs", to: "/validation" }, { label: "打开 Policy Library", to: "/policy-library" }],
+          links: [{ label: "在 Guardrail 中查看 Validation", to: "/guardrails" }, { label: "打开 Policy Library", to: "/policy-library" }],
         },
         {
           id: "developer-integration",
@@ -439,7 +439,7 @@ const EN_CONTENT: HelpContent = {
             { title: "5. Deploy", description: "Bind an Integration and Traffic Scope to the exact version." },
             { title: "6. Observe", description: "Use Playground, Evidence, and metrics to verify real behavior." },
           ],
-          links: [{ label: "Open Policy Library", to: "/policy-library" }, { label: "Manage Guardrails", to: "/guardrails" }, { label: "View Validation Runs", to: "/validation" }],
+          links: [{ label: "Open Policy Library", to: "/policy-library" }, { label: "Manage Guardrails", to: "/guardrails" }, { label: "View Validation in a Guardrail", to: "/guardrails" }],
         },
         {
           id: "user-review-policy",
@@ -521,7 +521,7 @@ const EN_CONTENT: HelpContent = {
             "Export packages carry editable definition, not another environment's validation or publication state.",
             "Published Policy Versions are immutable.",
           ],
-          links: [{ label: "View Validation Runs", to: "/validation" }, { label: "Open Policy Library", to: "/policy-library" }],
+          links: [{ label: "View Validation in a Guardrail", to: "/guardrails" }, { label: "Open Policy Library", to: "/policy-library" }],
         },
         {
           id: "developer-integration",

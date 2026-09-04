@@ -15,18 +15,20 @@ message ModelRuntime {
   string profile_ref = 7;
   int32 timeout_seconds = 8;
   int32 max_tokens = 9;
+  // Explicit Provider-scoped opt-in. False retains HTTPS certificate checks.
+  bool skip_tls_verify = 10;
 }
 
-// Bind one product module role to a registered Model.
+// Bind one Guardrail Catalog detector type to a registered Model.
 message ModelAssignment {
-  string role = 1;
+  string detector_type = 1;
   string model_ref = 2;
   string profile_ref = 3;
   repeated string contract_refs = 4;
 }
 
 // Complete data-plane projection of one validated Model configuration
-// revision. Only roles needed by Runner are included.
+// revision. Only model-backed detectors needed by Runner are included.
 message DataPlaneModelConfiguration {
   string revision_id = 1;
   int32 revision = 2;

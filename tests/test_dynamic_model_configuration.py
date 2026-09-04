@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 import json
+import ssl
+import subprocess
+import threading
 import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
 import httpx
 import pytest
@@ -29,6 +34,93 @@ from runner.toolkit.safety.providers import (
 )
 
 
+@pytest.fixture
+def self_signed_provider(tmp_path: Path):
+    """Real local TLS handshake; no external APIs or credentials."""
+    key, cert = tmp_path / "key.pem", tmp_path / "cert.pem"
+    subprocess.run([
+        "openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+        "-keyout", str(key), "-out", str(cert), "-days", "1", "-subj", "/CN=localhost",
+    ], check=True, capture_output=True)
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            responses = {
+                "nvidia/llama-3.1-nemotron-safety-guard-8b-v3": json.dumps({"User Safety": "unsafe", "Safety Categories": "Profanity,Harassment"}),
+                "example/jailbreak-judge": "JAILBREAK",
+                "nvidia/llama-3.1-nemoguard-8b-topic-control": "off-topic",
+                "Qwen/Qwen3Guard-Gen-8B": "Safety: Unsafe\nCategories: Violent",
+            }
+            payload = json.dumps({"jailbreak": True, "score": 0.99} if self.path == "/v1/classify" else {"choices": [{"message": {"content": responses[body["model"]]}}]}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def log_message(self, *_args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.load_cert_chain(cert, key)
+    server.socket = context.wrap_socket(server.socket, server_side=True)
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    try:
+        yield f"https://127.0.0.1:{server.server_port}/v1"
+    finally:
+        server.shutdown()
+        server.server_close()
+        worker.join(timeout=5)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("qwen", [False, True])
+async def test_self_signed_provider_opt_in_reaches_real_data_plane_clients(self_signed_provider, qwen):
+    # Rebuild just as the Runner does after a Provider settings update. A
+    # secure Provider must still fail after an insecure one has succeeded.
+    for skip_tls_verify in (False, True, False):
+        configuration = _qwen3guard_configuration() if qwen else _split_guard_configuration()
+        for runtime in configuration.runtimes:
+            runtime.base_url = self_signed_provider
+            runtime.skip_tls_verify = skip_tls_verify
+        configuration = protocol.DataPlaneModelConfiguration.FromString(configuration.SerializeToString())
+        credentials = {runtime.credential_ref: "local-test-key" for runtime in configuration.runtimes}
+        providers = action_providers(*dynamic_runtime_action_providers(configuration, credentials))
+        requests = [(ACTION_EVALUATE, _content_safety_request())]
+        if not qwen:
+            requests += [(ACTION_EVALUATE, _jailbreak_request()), (ACTION_TOPIC_JUDGE, _topic_request())]
+        for name, request in requests:
+            result = await providers[(name, "1.0.0")].execute(request)
+            assert result.verdict == ("unsafe" if skip_tls_verify else "error"), (name, result)
+
+
+@pytest.mark.asyncio
+async def test_jailbreak_detect_revision_uses_scoped_tls_and_protobuf_without_changing_other_assignments(self_signed_provider):
+    for skip_tls_verify in (False, True, False):
+        configuration = _split_guard_configuration()
+        for runtime in configuration.runtimes:
+            runtime.base_url = self_signed_provider
+            runtime.skip_tls_verify = skip_tls_verify
+            if runtime.id == "chat-jailbreak":
+                runtime.model = "nvidia/nemoguard-jailbreak-detect"
+                runtime.profile_ref = "tali.nemoguard-jailbreak-detect.v1"
+        for binding in configuration.assignments:
+            if binding.detector_type == "jailbreak_detection":
+                binding.profile_ref = "tali.nemoguard-jailbreak-detect.v1"
+        configuration = protocol.DataPlaneModelConfiguration.FromString(configuration.SerializeToString())
+        providers = action_providers(*dynamic_runtime_action_providers(
+            configuration, {"provider-nvidia": "test-key"},
+        ))
+        result = await providers[(ACTION_EVALUATE, "1.0.0")].execute(_jailbreak_request())
+        assert result.verdict == ("unsafe" if skip_tls_verify else "error"), result
+        if skip_tls_verify:
+            assert (await providers[(ACTION_EVALUATE, "1.0.0")].execute(_content_safety_request())).verdict == "unsafe"
+            assert (await providers[(ACTION_TOPIC_JUDGE, "1.0.0")].execute(_topic_request())).verdict == "unsafe"
+
+
 def test_controller_model_revision_builds_a_complete_dynamic_provider_registry() -> None:
     runtimes = [
         protocol.ModelRuntime(
@@ -39,8 +131,8 @@ def test_controller_model_revision_builds_a_complete_dynamic_provider_registry()
         ),
         protocol.ModelRuntime(
             id="jailbreak", base_url="http://jailbreak/v1", credential_ref="provider-1",
-            model="nvidia/nvidia-nemotron-nano-9b-v2",
-            profile_ref="tali.nemotron-nano-jailbreak.v1",
+            model="example/jailbreak-judge",
+            profile_ref="tali.openai-compatible-jailbreak.v1",
             timeout_seconds=20, max_tokens=32,
         ),
         protocol.ModelRuntime(
@@ -62,25 +154,25 @@ def test_controller_model_revision_builds_a_complete_dynamic_provider_registry()
     ]
     assignments = [
         protocol.ModelAssignment(
-            role="safety_evaluator", model_ref="safety",
+            detector_type="content_safety", model_ref="safety",
             profile_ref="tali.nemotron-safety-guard-v3.v1",
             contract_refs=["tali.guard.content-safety.v1"],
         ),
         protocol.ModelAssignment(
-            role="jailbreak_evaluator", model_ref="jailbreak",
-            profile_ref="tali.nemotron-nano-jailbreak.v1",
+            detector_type="jailbreak_detection", model_ref="jailbreak",
+            profile_ref="tali.openai-compatible-jailbreak.v1",
             contract_refs=["tali.guard.jailbreak.v1"],
         ),
         protocol.ModelAssignment(
-            role="topic_policy_judge", model_ref="topic", profile_ref="tali.nemoguard-topic-control.v1",
+            detector_type="topic_control", model_ref="topic", profile_ref="tali.nemoguard-topic-control.v1",
             contract_refs=["tali.guard.topic-control.semantic.v1"],
         ),
         protocol.ModelAssignment(
-            role="grounding_judge", model_ref="grounding", profile_ref="tali.grounding-judge.v1",
+            detector_type="contextual_grounding", model_ref="grounding", profile_ref="tali.grounding-judge.v1",
             contract_refs=["tali.guard.contextual-grounding.v1"],
         ),
         protocol.ModelAssignment(
-            role="automated_reasoning", model_ref="reasoning", profile_ref="tali.automated-reasoning.v1",
+            detector_type="automated_reasoning", model_ref="reasoning", profile_ref="tali.automated-reasoning.v1",
             contract_refs=["tali.guard.automated-reasoning.v1"],
         ),
     ]
@@ -100,7 +192,7 @@ def test_controller_model_revision_builds_a_complete_dynamic_provider_registry()
 
 
 @pytest.mark.asyncio
-async def test_deepseek_control_plane_and_nvidia_trio_execute_as_one_replaceable_stack() -> None:
+async def test_deepseek_control_plane_and_split_guard_models_execute_as_one_replaceable_stack() -> None:
     requests: list[dict[str, object]] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -112,12 +204,12 @@ async def test_deepseek_control_plane_and_nvidia_trio_execute_as_one_replaceable
                 "User Safety": "unsafe",
                 "Safety Categories": "Profanity,Harassment",
             }),
-            "nvidia/nvidia-nemotron-nano-9b-v2": "JAILBREAK",
+            "example/jailbreak-judge": "JAILBREAK",
             "nvidia/llama-3.1-nemoguard-8b-topic-control": "off-topic",
         }
         return _chat_response(response_by_model[payload["model"]])
 
-    configuration = _nvidia_trio_configuration()
+    configuration = _split_guard_configuration()
     providers = action_providers(*dynamic_runtime_action_providers(
         configuration,
         {"provider-nvidia": "leased-secret"},
@@ -139,7 +231,7 @@ async def test_deepseek_control_plane_and_nvidia_trio_execute_as_one_replaceable
     assert topic.verdict == "unsafe"
     assert [request["model"] for request in requests] == [
         "nvidia/llama-3.1-nemotron-safety-guard-8b-v3",
-        "nvidia/nvidia-nemotron-nano-9b-v2",
+        "example/jailbreak-judge",
         "nvidia/llama-3.1-nemoguard-8b-topic-control",
     ]
     assert '"User Safety"' in requests[0]["messages"][0]["content"]
@@ -222,7 +314,7 @@ async def test_dynamic_safety_model_executes_with_a_mock_client_and_leased_crede
             max_tokens=128,
         )],
         assignments=[protocol.ModelAssignment(
-            role="safety_evaluator",
+            detector_type="content_safety",
             model_ref="safety",
             profile_ref="tali.qwen3guard.v1",
             contract_refs=[CONTRACT_CONTENT_SAFETY],
@@ -269,21 +361,21 @@ async def test_dedicated_jailbreak_slot_overrides_a_bundled_guard_contract(
                 timeout_seconds=20, max_tokens=128,
             ),
             protocol.ModelRuntime(
-                id="nano", base_url="http://nano/v1", credential_ref="provider-1",
-                model="nvidia/nvidia-nemotron-nano-9b-v2",
-                profile_ref="tali.nemotron-nano-jailbreak.v1",
+                id="chat-jailbreak", base_url="http://jailbreak-judge/v1", credential_ref="provider-1",
+                model="example/jailbreak-judge",
+                profile_ref="tali.openai-compatible-jailbreak.v1",
                 timeout_seconds=20, max_tokens=32,
             ),
         ],
         assignments=[
             protocol.ModelAssignment(
-                role="safety_evaluator", model_ref="qwen",
+                detector_type="content_safety", model_ref="qwen",
                 profile_ref="tali.qwen3guard.v1",
                 contract_refs=[CONTRACT_CONTENT_SAFETY, CONTRACT_JAILBREAK],
             ),
             protocol.ModelAssignment(
-                role="jailbreak_evaluator", model_ref="nano",
-                profile_ref="tali.nemotron-nano-jailbreak.v1",
+                detector_type="jailbreak_detection", model_ref="chat-jailbreak",
+                profile_ref="tali.openai-compatible-jailbreak.v1",
                 contract_refs=[CONTRACT_JAILBREAK],
             ),
         ],
@@ -299,7 +391,7 @@ async def test_dedicated_jailbreak_slot_overrides_a_bundled_guard_contract(
 
     assert result.verdict == "unsafe"
     assert [request.model for request in captured] == [
-        "nvidia/nvidia-nemotron-nano-9b-v2"
+        "example/jailbreak-judge"
     ]
 
 
@@ -317,7 +409,7 @@ def test_runner_rejects_a_profile_that_does_not_implement_the_assigned_contract(
             max_tokens=128,
         )],
         assignments=[protocol.ModelAssignment(
-            role="safety_evaluator",
+            detector_type="content_safety",
             model_ref="llama",
             profile_ref="tali.llama-guard-3.v1",
             contract_refs=["tali.guard.jailbreak.v1"],
@@ -331,7 +423,7 @@ def test_runner_rejects_a_profile_that_does_not_implement_the_assigned_contract(
         )
 
 
-def _nvidia_trio_configuration() -> protocol.DataPlaneModelConfiguration:
+def _split_guard_configuration() -> protocol.DataPlaneModelConfiguration:
     return protocol.DataPlaneModelConfiguration(
         revision_id="revision-nvidia-trio",
         revision=5,
@@ -355,24 +447,24 @@ def _nvidia_trio_configuration() -> protocol.DataPlaneModelConfiguration:
                 max_tokens=32,
             ),
             protocol.ModelRuntime(
-                id="nvidia-jailbreak",
+                id="chat-jailbreak",
                 base_url="http://nvidia.mock/v1",
                 credential_ref="provider-nvidia",
-                model="nvidia/nvidia-nemotron-nano-9b-v2",
-                profile_ref="tali.nemotron-nano-jailbreak.v1",
+                model="example/jailbreak-judge",
+                profile_ref="tali.openai-compatible-jailbreak.v1",
                 timeout_seconds=20,
                 max_tokens=32,
             ),
         ],
         assignments=[
             protocol.ModelAssignment(
-                role="safety_evaluator",
+                detector_type="content_safety",
                 model_ref="nvidia-safety",
                 profile_ref="tali.nemotron-safety-guard-v3.v1",
                 contract_refs=[CONTRACT_CONTENT_SAFETY],
             ),
             protocol.ModelAssignment(
-                role="topic_policy_judge",
+                detector_type="topic_control",
                 model_ref="nvidia-topic",
                 profile_ref="tali.nemoguard-topic-control.v1",
                 contract_refs=[
@@ -381,9 +473,9 @@ def _nvidia_trio_configuration() -> protocol.DataPlaneModelConfiguration:
                 ],
             ),
             protocol.ModelAssignment(
-                role="jailbreak_evaluator",
-                model_ref="nvidia-jailbreak",
-                profile_ref="tali.nemotron-nano-jailbreak.v1",
+                detector_type="jailbreak_detection",
+                model_ref="chat-jailbreak",
+                profile_ref="tali.openai-compatible-jailbreak.v1",
                 contract_refs=[CONTRACT_JAILBREAK],
             ),
         ],
@@ -404,7 +496,7 @@ def _qwen3guard_configuration() -> protocol.DataPlaneModelConfiguration:
             max_tokens=128,
         )],
         assignments=[protocol.ModelAssignment(
-            role="safety_evaluator",
+            detector_type="content_safety",
             model_ref="qwen3guard",
             profile_ref="tali.qwen3guard.v1",
             contract_refs=[

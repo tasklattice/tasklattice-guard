@@ -13,8 +13,8 @@
         "source": "declared"
       },
       {
-        "namespace": "capability",
-        "value": "content-safety",
+        "namespace": "guardrail_category",
+        "value": "content_safety",
         "label": "Content Safety",
         "source": "declared"
       },
@@ -457,8 +457,8 @@
         "source": "declared"
       },
       {
-        "namespace": "capability",
-        "value": "content-safety",
+        "namespace": "guardrail_category",
+        "value": "content_safety",
         "label": "Content Safety",
         "source": "declared"
       },
@@ -999,8 +999,8 @@
         "source": "declared"
       },
       {
-        "namespace": "capability",
-        "value": "content-safety",
+        "namespace": "guardrail_category",
+        "value": "content_safety",
         "label": "Content Safety",
         "source": "declared"
       },
@@ -1284,8 +1284,8 @@
         "source": "declared"
       },
       {
-        "namespace": "capability",
-        "value": "content-safety",
+        "namespace": "guardrail_category",
+        "value": "content_safety",
         "label": "Content Safety",
         "source": "declared"
       },
@@ -1567,8 +1567,8 @@
         "source": "declared"
       },
       {
-        "namespace": "capability",
-        "value": "content-safety",
+        "namespace": "guardrail_category",
+        "value": "content_safety",
         "label": "Content Safety",
         "source": "declared"
       },
@@ -2153,8 +2153,8 @@
         "source": "declared"
       },
       {
-        "namespace": "capability",
-        "value": "content-safety",
+        "namespace": "guardrail_category",
+        "value": "content_safety",
         "label": "Content Safety",
         "source": "declared"
       },
@@ -2576,8 +2576,8 @@
         "source": "declared"
       },
       {
-        "namespace": "capability",
-        "value": "content-safety",
+        "namespace": "guardrail_category",
+        "value": "content_safety",
         "label": "Content Safety",
         "source": "declared"
       },
@@ -3816,8 +3816,8 @@
         "source": "declared"
       },
       {
-        "namespace": "capability",
-        "value": "content-safety",
+        "namespace": "guardrail_category",
+        "value": "content_safety",
         "label": "Content Safety",
         "source": "declared"
       },
@@ -4470,8 +4470,8 @@
         "source": "declared"
       },
       {
-        "namespace": "capability",
-        "value": "content-safety",
+        "namespace": "guardrail_category",
+        "value": "content_safety",
         "label": "Content Safety",
         "source": "declared"
       },
@@ -4632,8 +4632,8 @@
         "source": "declared"
       },
       {
-        "namespace": "capability",
-        "value": "content-safety",
+        "namespace": "guardrail_category",
+        "value": "content_safety",
         "label": "Content Safety",
         "source": "declared"
       },
@@ -6162,8 +6162,8 @@
         "source": "declared"
       },
       {
-        "namespace": "capability",
-        "value": "content-safety",
+        "namespace": "guardrail_category",
+        "value": "content_safety",
         "label": "Content Safety",
         "source": "declared"
       },
@@ -6426,8 +6426,8 @@
         "source": "declared"
       },
       {
-        "namespace": "capability",
-        "value": "content-safety",
+        "namespace": "guardrail_category",
+        "value": "content_safety",
         "label": "Content Safety",
         "source": "declared"
       },
@@ -6976,9 +6976,9 @@
         "source": "declared"
       },
       {
-        "namespace": "capability",
-        "value": "prompt-security",
-        "label": "Prompt Security",
+        "namespace": "guardrail_category",
+        "value": "jailbreak_protection",
+        "label": "Jailbreak Protection",
         "source": "declared"
       },
       {
@@ -7250,9 +7250,9 @@
         "source": "declared"
       },
       {
-        "namespace": "capability",
-        "value": "prompt-security",
-        "label": "Prompt Security",
+        "namespace": "guardrail_category",
+        "value": "agentic_security",
+        "label": "Agentic Security",
         "source": "declared"
       },
       {
@@ -7494,9 +7494,9 @@
         "source": "declared"
       },
       {
-        "namespace": "capability",
-        "value": "prompt-security",
-        "label": "Prompt Security",
+        "namespace": "guardrail_category",
+        "value": "agentic_security",
+        "label": "Agentic Security",
         "source": "declared"
       },
       {
@@ -7791,9 +7791,9 @@
         "source": "declared"
       },
       {
-        "namespace": "capability",
-        "value": "prompt-security",
-        "label": "Prompt Security",
+        "namespace": "guardrail_category",
+        "value": "agentic_security",
+        "label": "Agentic Security",
         "source": "declared"
       },
       {
@@ -8057,9 +8057,9 @@
         "source": "declared"
       },
       {
-        "namespace": "capability",
-        "value": "prompt-security",
-        "label": "Prompt Security",
+        "namespace": "guardrail_category",
+        "value": "agentic_security",
+        "label": "Agentic Security",
         "source": "declared"
       },
       {
@@ -8340,8 +8340,8 @@
         "source": "declared"
       },
       {
-        "namespace": "capability",
-        "value": "content-safety",
+        "namespace": "guardrail_category",
+        "value": "content_safety",
         "label": "Content Safety",
         "source": "declared"
       },
@@ -12199,9 +12199,9 @@
         "source": "declared"
       },
       {
-        "namespace": "capability",
-        "value": "sensitive-data",
-        "label": "Sensitive Data",
+        "namespace": "guardrail_category",
+        "value": "pii_detection",
+        "label": "PII Detection",
         "source": "declared"
       },
       {
@@ -16345,8 +16345,8 @@
         "source": "declared"
       },
       {
-        "namespace": "capability",
-        "value": "content-safety",
+        "namespace": "guardrail_category",
+        "value": "content_safety",
         "label": "Content Safety",
         "source": "declared"
       },
@@ -16455,9 +16455,9 @@
         "source": "declared"
       },
       {
-        "namespace": "capability",
-        "value": "code-safety",
-        "label": "Code Safety",
+        "namespace": "guardrail_category",
+        "value": "tool_calling",
+        "label": "Tool Calling",
         "source": "declared"
       },
       {
@@ -16574,9 +16574,9 @@
         "source": "declared"
       },
       {
-        "namespace": "capability",
-        "value": "brand-safety",
-        "label": "Brand Safety",
+        "namespace": "guardrail_category",
+        "value": "content_safety",
+        "label": "Content Safety",
         "source": "declared"
       },
       {

@@ -1,0 +1,10 @@
+[
+  ["https://integrate.api.nvidia.com/v1", "https://ai.api.nvidia.com/v1/security/nvidia/nemoguard-jailbreak-detect"],
+  ["https://ai.api.nvidia.com/", "https://ai.api.nvidia.com/v1/security/nvidia/nemoguard-jailbreak-detect"],
+  ["https://ai.api.nvidia.com/v1/security/nvidia/nemoguard-jailbreak-detect/", "https://ai.api.nvidia.com/v1/security/nvidia/nemoguard-jailbreak-detect"],
+  ["http://nim.internal:8000", "http://nim.internal:8000/v1/classify"],
+  ["https://nim.internal/v1/", "https://nim.internal/v1/classify"],
+  ["https://nim.internal/v1/classify", "https://nim.internal/v1/classify"],
+  ["https://proxy.internal/nim/v1", "https://proxy.internal/nim/v1/classify"],
+  ["https://integrate.api.nvidia.com.proxy.internal/v1", "https://integrate.api.nvidia.com.proxy.internal/v1/classify"]
+]

@@ -42,6 +42,7 @@ import { applyValidationOverrides, emptyValidationMetrics, generatedTestCases } 
 import { PolicyCatalog } from "../policy-catalog/catalog.js";
 import { registeredAction } from "../action-catalog/catalog.js";
 import type { ValidationTerminalState } from "../../shared/lifecycle.js";
+import { guardrailCategoryLabels } from "../../shared/guardrail-catalog.js";
 import {
   flowRuleId,
   programmablePolicyDraftSchema,
@@ -2568,6 +2569,13 @@ function programmablePolicyPayload(
     owner: record.owner,
     updated_at: record.updatedAt.toISOString(),
     tags: [
+      {
+        id: `guardrail_category:${record.draft.guardrail_category}`,
+        namespace: "guardrail_category" as const,
+        value: record.draft.guardrail_category,
+        label: guardrailCategoryLabels[record.draft.guardrail_category],
+        source: "declared" as const,
+      },
       { id: `implementation:colang-${record.draft.colang_version}`, namespace: "implementation", value: `colang-${record.draft.colang_version}`, label: `Colang ${record.draft.colang_version}`, source: "derived" as const },
       ...railTypes.map((railType) => ({
         id: `rail:${railType}`,

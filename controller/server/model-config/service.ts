@@ -15,25 +15,33 @@ import {
 } from "../db/schema.js";
 import { ConflictError, NotFoundError, ValidationError } from "../domain/errors.js";
 import { PolicyCatalog, type PolicyDto } from "../policy-catalog/catalog.js";
+import { modelDetectorTypes } from "../../shared/guardrail-catalog.js";
 import {
-  assignmentContracts,
+  assignedModelIds,
   assignmentInputSchema,
-  localCapabilityContracts,
+  controlPlaneProfiles,
+  detectorContracts,
+  detectorProfiles,
+  localGuardrailContracts,
+  isRetiredModel,
+  modelConfigurationInputSchema,
   modelInputSchema,
-  modelRoles,
   normalizeModelAssignments,
   providerInputSchema,
+  providerRegistrationSchema,
   providerUpdateSchema,
-  roleProfiles,
+  profileTransports,
   type ActiveModelConfiguration,
   type ModelAssignments,
+  type ModelDetectorType,
   type ModelProfile,
-  type ModelRole,
   type ModelValidationCheck,
   type ModelValidationReport,
   type PolicyCoverage,
 } from "./domain.js";
 import { credentialHint, decryptModelCredential, encryptModelCredential } from "./secret-crypto.js";
+import { providerFetch, providerTlsError } from "./provider-fetch.js";
+import { isDedicatedJailbreakDetectEndpoint, isNvidiaModelCatalog, jailbreakDetectAttackInput, jailbreakDetectEndpoint, jailbreakDetectModel, jailbreakDetectProfile, jailbreakDetectResponse, jailbreakDetectSafeInput } from "./jailbreak-detect.js";
 
 const chatEnvelope = z.object({
   choices: z.array(z.object({ message: z.object({ content: z.string() }) })).min(1),
@@ -61,11 +69,14 @@ export class ModelConfigurationService {
   }
 
   async view() {
-    const [providers, models, revisions] = await Promise.all([
+    const [providers, storedModels, revisions] = await Promise.all([
       this.db.select().from(modelProviders).orderBy(asc(modelProviders.name)),
       this.db.select().from(modelDefinitions).orderBy(asc(modelDefinitions.name)),
       this.db.select().from(modelConfigurationRevisions).orderBy(desc(modelConfigurationRevisions.revision)),
     ]);
+    // A read must not mutate persisted revisions, but retired Models must not
+    // be offered for new UI configuration.
+    const models = storedModels.filter((model) => !isRetiredModel(model.model));
     const draft = revisions.find((item) => item.state === "draft" || item.state === "validated")
       ?? await this.ensureDraft(null);
     const active = revisions.find((item) => item.state === "active") ?? null;
@@ -73,7 +84,10 @@ export class ModelConfigurationService {
     const failed = revisions.find((item) => item.state === "failed") ?? null;
     return {
       providers: providers.map(publicProvider),
-      models: models.map((model) => publicModel(model, providers.find((provider) => provider.id === model.providerId))),
+      models: models.map((model) => ({
+        ...publicModel(model, providers.find((provider) => provider.id === model.providerId)),
+        protocolEditable: !revisions.some((revision) => assignedModelIds(normalizeModelAssignments(revision.assignments)).includes(model.id)),
+      })),
       draft: publicRevision(draft),
       active: active ? publicRevision(active) : null,
       activating: activating ? publicRevision(activating) : null,
@@ -84,12 +98,13 @@ export class ModelConfigurationService {
   async createProvider(raw: unknown, actorId: string) {
     const input = providerInputSchema.parse(raw);
     const id = randomUUID();
-    const validation = await this.probeProvider(input.baseUrl, input.apiKey);
+    const validation = await this.probeProvider(input.baseUrl, input.apiKey, input.skipTlsVerify);
     const [created] = await this.db.insert(modelProviders).values({
       id,
       name: input.name,
       kind: input.kind,
       baseUrl: normalizeBaseUrl(input.baseUrl),
+      skipTlsVerify: input.skipTlsVerify && input.baseUrl.startsWith("https:"),
       credentialCiphertext: encryptModelCredential(input.apiKey, this.rootSecret),
       credentialHint: credentialHint(input.apiKey),
       status: validation.passed ? "validated" : "failed",
@@ -102,6 +117,7 @@ export class ModelConfigurationService {
     await this.audit(actorId, "model_provider.created", "model_provider", id, {
       kind: input.kind,
       status: created.status,
+      skipTlsVerify: created.skipTlsVerify,
     });
     return publicProvider(created);
   }
@@ -114,24 +130,48 @@ export class ModelConfigurationService {
       ? decryptModelCredential(current.credentialCiphertext, this.rootSecret)
       : input.apiKey;
     const baseUrl = normalizeBaseUrl(input.baseUrl ?? current.baseUrl);
-    const validation = await this.probeProvider(baseUrl, apiKey);
-    const [updated] = await this.db.update(modelProviders).set({
-      ...(input.name === undefined ? {} : { name: input.name }),
-      ...(input.kind === undefined ? {} : { kind: input.kind }),
-      baseUrl,
-      ...(input.apiKey === undefined ? {} : {
-        credentialCiphertext: encryptModelCredential(apiKey, this.rootSecret),
-        credentialHint: credentialHint(apiKey),
-      }),
-      status: validation.passed ? "validated" : "failed",
-      validationMessage: validation.message,
-      validationLatencyMs: validation.latencyMs,
-      validatedAt: new Date(),
-      updatedAt: new Date(),
-    }).where(eq(modelProviders.id, id)).returning();
-    if (!updated) throw new NotFoundError("Model Provider", id);
+    const skipTlsVerify = baseUrl.startsWith("https:") && (input.skipTlsVerify ?? current.skipTlsVerify ?? false);
+    const validation = await this.probeProvider(baseUrl, apiKey, skipTlsVerify);
+    const updated = await this.db.transaction(async (tx) => {
+      const [saved] = await tx.update(modelProviders).set({
+        ...(input.name === undefined ? {} : { name: input.name }),
+        ...(input.kind === undefined ? {} : { kind: input.kind }),
+        baseUrl,
+        skipTlsVerify,
+        ...(input.apiKey === undefined ? {} : {
+          credentialCiphertext: encryptModelCredential(apiKey, this.rootSecret),
+          credentialHint: credentialHint(apiKey),
+        }),
+        status: validation.passed ? "validated" : "failed",
+        validationMessage: validation.message,
+        validationLatencyMs: validation.latencyMs,
+        validatedAt: new Date(),
+        updatedAt: new Date(),
+      }).where(eq(modelProviders.id, id)).returning();
+      if (!saved) throw new NotFoundError("Model Provider", id);
+      if (skipTlsVerify !== (current.skipTlsVerify ?? false) || baseUrl !== current.baseUrl || input.apiKey !== undefined) {
+        // TLS settings apply to every use of this Provider, including active
+        // Runners. Invalidate stale evidence and reload their desired state.
+        const affectedModels = await tx.select({ id: modelDefinitions.id }).from(modelDefinitions).where(eq(modelDefinitions.providerId, id));
+        const ids = new Set(affectedModels.map((model) => model.id));
+        await tx.update(modelDefinitions).set({
+          status: "pending", validationMessage: "Provider connection settings changed. Validate the affected detectors in Guardrail Catalog.", validatedAt: null, validationLatencyMs: null,
+          connectionStatus: "pending", connectionMessage: "Provider connection settings changed. Test the model call again.", connectionCheckedAt: null, connectionLatencyMs: null,
+          updatedAt: new Date(),
+        }).where(eq(modelDefinitions.providerId, id));
+        const revisions = await tx.select().from(modelConfigurationRevisions).where(inArray(modelConfigurationRevisions.state, ["draft", "validated"]));
+        for (const revision of revisions) {
+          if (!assignedModelIds(normalizeModelAssignments(revision.assignments)).some((modelId) => ids.has(modelId))) continue;
+          await tx.update(modelConfigurationRevisions).set({ state: "draft", validationReport: null, validatedAt: null, updatedAt: new Date() }).where(eq(modelConfigurationRevisions.id, revision.id));
+        }
+        const [state] = await tx.update(controllerState).set({ desiredGeneration: sql`${controllerState.desiredGeneration} + 1`, updatedAt: new Date() }).where(eq(controllerState.id, "singleton")).returning();
+        if (!state) throw new Error("Controller desired state is unavailable.");
+        await tx.insert(outboxEvents).values({ id: randomUUID(), kind: "runner.desired_state_changed", aggregateId: id, payload: { resourceType: "model_provider", providerId: id, generation: state.desiredGeneration } });
+      }
+      return saved;
+    });
     await this.invalidateModelsForProvider(id, validation.passed ? null : validation.message);
-    await this.audit(actorId, "model_provider.updated", "model_provider", id, { status: updated.status });
+    await this.audit(actorId, "model_provider.updated", "model_provider", id, { status: updated.status, skipTlsVerify });
     this.activeCache = null;
     return publicProvider(updated);
   }
@@ -139,7 +179,7 @@ export class ModelConfigurationService {
   async revalidateProvider(id: string, actorId: string) {
     const current = await this.provider(id);
     const apiKey = decryptModelCredential(current.credentialCiphertext, this.rootSecret);
-    const validation = await this.probeProvider(current.baseUrl, apiKey);
+    const validation = await this.probeProvider(current.baseUrl, apiKey, current.skipTlsVerify);
     const [updated] = await this.db.update(modelProviders).set({
       status: validation.passed ? "validated" : "failed",
       validationMessage: validation.message,
@@ -157,7 +197,7 @@ export class ModelConfigurationService {
     const provider = await this.provider(id);
     const apiKey = decryptModelCredential(provider.credentialCiphertext, this.rootSecret);
     try {
-      const models = await this.providerCatalog(provider.baseUrl, apiKey);
+      const models = await this.providerCatalog(provider.baseUrl, apiKey, provider.skipTlsVerify);
       return {
         providerId: provider.id,
         providerName: provider.name,
@@ -166,6 +206,50 @@ export class ModelConfigurationService {
     } catch (error) {
       throw new ValidationError(probeError("Provider model discovery failed", error));
     }
+  }
+
+  // Discovery is read-only. Credentials and selected models are saved only
+  // after confirmation; registration checks calls, not capability semantics.
+  async discoverProviderDraft(raw: unknown) {
+    const input = providerInputSchema.parse(raw);
+    try {
+      return { providerName: input.name, models: await this.providerCatalog(input.baseUrl, input.apiKey, input.skipTlsVerify) };
+    } catch (error) {
+      throw new ValidationError(probeError("Provider model discovery failed", error));
+    }
+  }
+
+  async registerProviderModels(raw: unknown, actorId: string) {
+    const input = providerRegistrationSchema.parse(raw);
+    const id = randomUUID();
+    const connection = {
+      baseUrl: normalizeBaseUrl(input.connection.baseUrl),
+      skipTlsVerify: input.connection.skipTlsVerify && input.connection.baseUrl.startsWith("https:"),
+      credentialCiphertext: encryptModelCredential(input.connection.apiKey, this.rootSecret),
+    };
+    const connectionCheck = await this.probeProvider(connection.baseUrl, input.connection.apiKey, connection.skipTlsVerify);
+    const registered = await mapConcurrent(input.models, 4, async (model) => ({
+      id: randomUUID(), ...model, providerId: id, status: "pending" as const,
+      validationMessage: "Registered. Assign and validate this Model in Guardrail Catalog.",
+      validationLatencyMs: null, validatedAt: null, createdBy: actorId,
+      ...connectionEvidence(await this.probeModel(connection, model, "connection")),
+    }));
+    return this.db.transaction(async (tx) => {
+      const [provider] = await tx.insert(modelProviders).values({
+        id, name: input.connection.name, kind: input.connection.kind, ...connection,
+        credentialHint: credentialHint(input.connection.apiKey),
+        status: connectionCheck.passed ? "validated" : "failed",
+        validationMessage: connectionCheck.message, validationLatencyMs: connectionCheck.latencyMs,
+        validatedAt: new Date(), createdBy: actorId,
+      }).returning();
+      if (!provider) throw new Error("Provider registration did not return a record.");
+      const models = await tx.insert(modelDefinitions).values(registered).returning();
+      await tx.insert(auditEvents).values({
+        id: randomUUID(), actorId, kind: "model_provider.registered", resourceType: "model_provider", resourceId: id,
+        detail: { modelIds: models.map((model) => model.id), skipTlsVerify: connection.skipTlsVerify },
+      });
+      return { provider: publicProvider(provider), models: models.map((model) => publicModel(model, provider)), failures: [] };
+    });
   }
 
   async deleteProvider(id: string, actorId: string): Promise<void> {
@@ -186,19 +270,15 @@ export class ModelConfigurationService {
     const [provider] = await this.db.select().from(modelProviders).where(eq(modelProviders.id, input.providerId));
     if (!provider) throw new NotFoundError("Model Provider", input.providerId);
     const id = randomUUID();
-    const validation = await this.probeModel(provider, {
-      model: input.model,
-      profile: input.profile,
-      timeoutSeconds: input.timeoutSeconds,
-      maxTokens: input.maxTokens,
-    });
+    const connection = connectionEvidence(await this.probeModel(provider, input, "connection"));
     const [created] = await this.db.insert(modelDefinitions).values({
       id,
       ...input,
-      status: validation.passed ? "validated" : "failed",
-      validationMessage: validation.message,
-      validationLatencyMs: validation.latencyMs,
-      validatedAt: new Date(),
+      ...connection,
+      status: "pending",
+      validationMessage: "Registered. Assign and validate this Model in Guardrail Catalog.",
+      validationLatencyMs: null,
+      validatedAt: null,
       createdBy: actorId,
     }).returning();
     if (!created) throw new Error("Model creation did not return a record.");
@@ -208,6 +288,17 @@ export class ModelConfigurationService {
       status: created.status,
     });
     return publicModel(created, provider);
+  }
+
+  async testModelConnection(id: string, actorId: string) {
+    const model = await this.model(id);
+    const provider = await this.provider(model.providerId);
+    const connection = connectionEvidence(await this.probeModel(provider, model, "connection"));
+    const [updated] = await this.db.update(modelDefinitions).set({ ...connection, updatedAt: new Date() })
+      .where(eq(modelDefinitions.id, id)).returning();
+    if (!updated) throw new NotFoundError("Model", id);
+    await this.audit(actorId, "model_definition.connection_tested", "model_definition", id, { status: connection.connectionStatus });
+    return publicModel(updated, provider);
   }
 
   async revalidateModel(id: string, actorId: string) {
@@ -227,10 +318,37 @@ export class ModelConfigurationService {
     return publicModel(updated, provider);
   }
 
+  async configureModel(id: string, raw: unknown, actorId: string) {
+    const input = modelConfigurationInputSchema.parse(raw);
+    const current = await this.model(id);
+    const provider = await this.provider(current.providerId);
+    const updated = await this.db.transaction(async (tx) => {
+      // A model's protocol is part of every revision referencing it. Do not
+      // rewrite historical/active behavior when configuring an unused model.
+      await tx.execute(sql`LOCK TABLE ${modelConfigurationRevisions} IN SHARE ROW EXCLUSIVE MODE`);
+      const revisions = await tx.select().from(modelConfigurationRevisions);
+      if (revisions.some((revision) => assignedModelIds(normalizeModelAssignments(revision.assignments)).includes(id))) {
+        throw new ConflictError("This Model's protocol is referenced by a configuration and cannot be changed. Register a separate Model definition to preserve active configurations and rollback.", "model_protocol_in_use");
+      }
+      const [model] = await tx.update(modelDefinitions).set({
+        ...input, status: "pending", validationMessage: "Protocol configured. Validate it in the Guardrail Catalog.",
+        validatedAt: null, validationLatencyMs: null, updatedAt: new Date(),
+        connectionStatus: "pending", connectionMessage: "Protocol changed. Test the model call again.", connectionCheckedAt: null, connectionLatencyMs: null,
+      }).where(eq(modelDefinitions.id, id)).returning();
+      if (!model) throw new NotFoundError("Model", id);
+      await tx.insert(auditEvents).values({
+        id: randomUUID(), actorId, kind: "model_definition.configured", resourceType: "model_definition", resourceId: id,
+        detail: { profile: input.profile, previousProfile: current.profile },
+      });
+      return model;
+    });
+    return publicModel(updated, provider);
+  }
+
   async deleteModel(id: string, actorId: string): Promise<void> {
     const revisions = await this.db.select().from(modelConfigurationRevisions)
       .where(inArray(modelConfigurationRevisions.state, ["draft", "validated", "activating", "active"]));
-    const usedBy = revisions.filter((revision) => Object.values(revision.assignments).includes(id));
+    const usedBy = revisions.filter((revision) => assignedModelIds(normalizeModelAssignments(revision.assignments)).includes(id));
     if (usedBy.length) {
       throw new ConflictError("Remove this Model from every active or draft assignment before deleting it.", "model_definition_in_use", {
         revisionIds: usedBy.map((item) => item.id),
@@ -243,19 +361,25 @@ export class ModelConfigurationService {
 
   async updateDraft(raw: unknown, actorId: string) {
     const assignments = assignmentInputSchema.parse(raw);
-    const ids = [...new Set(Object.values(assignments).filter((value): value is string => Boolean(value)))];
+    const ids = [...new Set(assignedModelIds(assignments))];
     const models = ids.length
       ? await this.db.select().from(modelDefinitions).where(inArray(modelDefinitions.id, ids))
       : [];
     const byId = new Map(models.map((item) => [item.id, item]));
     const missing = ids.filter((id) => !byId.has(id));
     if (missing.length) throw new ValidationError(`Assigned Models were not found: ${missing.join(", ")}.`);
-    for (const role of modelRoles) {
-      const modelId = assignments[role];
+    if (assignments.controlPlane) {
+      const model = byId.get(assignments.controlPlane)!;
+      if (!controlPlaneProfiles.includes(model.profile)) {
+        throw new ValidationError(`${model.name} (${model.profile}) cannot be assigned as the Control Plane model.`);
+      }
+    }
+    for (const detectorType of modelDetectorTypes) {
+      const modelId = assignments.detectors[detectorType];
       if (!modelId) continue;
       const model = byId.get(modelId)!;
-      if (!roleProfiles[role].includes(model.profile)) {
-        throw new ValidationError(`${model.name} (${model.profile}) cannot be assigned to ${role}.`);
+      if (!detectorProfiles[detectorType].includes(model.profile)) {
+        throw new ValidationError(`${model.name} (${model.profile}) cannot be assigned to ${detectorType}.`);
       }
     }
     const draft = await this.ensureEditableDraft(actorId);
@@ -386,7 +510,8 @@ export class ModelConfigurationService {
     const revision = rows.find((item) => includeActivating && item.state === "activating") ?? rows[0];
     if (!revision) return null;
     if (!includeActivating && this.activeCache?.id === revision.id) return this.activeCache.configuration;
-    const ids = [...new Set(Object.values(revision.assignments).filter((value): value is string => Boolean(value)))];
+    const normalizedAssignments = normalizeModelAssignments(revision.assignments);
+    const ids = [...new Set(assignedModelIds(normalizedAssignments))];
     const models = ids.length
       ? await this.db.select().from(modelDefinitions).where(inArray(modelDefinitions.id, ids))
       : [];
@@ -399,7 +524,7 @@ export class ModelConfigurationService {
       revisionId: revision.id,
       revision: revision.revision,
       generation: revision.generation,
-      assignments: normalizeModelAssignments(revision.assignments),
+      assignments: normalizedAssignments,
       models: models.map((model) => {
         const provider = byProvider.get(model.providerId);
         if (!provider) throw new Error(`Model Provider ${model.providerId} is unavailable.`);
@@ -409,6 +534,7 @@ export class ModelConfigurationService {
           providerName: provider.name,
           baseUrl: provider.baseUrl,
           credentialRef: provider.id,
+          skipTlsVerify: provider.skipTlsVerify,
           model: model.model,
           profile: model.profile,
           timeoutSeconds: model.timeoutSeconds,
@@ -423,13 +549,14 @@ export class ModelConfigurationService {
   async controlPlaneModel(_role: "policy_authoring" | "playground_chat") {
     const configuration = await this.activeConfiguration();
     if (!configuration) return null;
-    const modelId = configuration.assignments.control_plane;
+    const modelId = configuration.assignments.controlPlane;
     const model = configuration.models.find((item) => item.id === modelId);
     if (!model) return null;
     const provider = await this.provider(model.providerId);
     return {
       provider: provider.name,
       baseUrl: provider.baseUrl,
+      skipTlsVerify: provider.skipTlsVerify,
       model: model.model,
       apiKey: decryptModelCredential(provider.credentialCiphertext, this.rootSecret),
       timeoutMs: model.timeoutSeconds * 1_000,
@@ -439,13 +566,7 @@ export class ModelConfigurationService {
   async resolveCredentials(refs: string[]): Promise<Record<string, string>> {
     const configuration = await this.activeConfiguration(true);
     if (!configuration) return {};
-    const dataModelIds = new Set([
-      configuration.assignments.safety_evaluator,
-      configuration.assignments.jailbreak_evaluator,
-      configuration.assignments.topic_policy_judge,
-      configuration.assignments.grounding_judge,
-      configuration.assignments.automated_reasoning,
-    ].filter((value): value is string => Boolean(value)));
+    const dataModelIds = new Set(Object.values(configuration.assignments.detectors).filter((value): value is string => Boolean(value)));
     const allowed = new Set(
       configuration.models
         .filter((model) => dataModelIds.has(model.id))
@@ -463,16 +584,9 @@ export class ModelConfigurationService {
   async statusSummary() {
     const active = await this.activeConfiguration();
     const byId = new Map(active?.models.map((item) => [item.id, item]) ?? []);
-    const control = active?.assignments.control_plane
-      ? byId.get(active.assignments.control_plane)
+    const control = active?.assignments.controlPlane
+      ? byId.get(active.assignments.controlPlane)
       : null;
-    const dataRoles: ModelRole[] = [
-      "safety_evaluator",
-      "jailbreak_evaluator",
-      "topic_policy_judge",
-      "grounding_judge",
-      "automated_reasoning",
-    ];
     return {
       controlPlane: {
         provider: control?.providerName ?? "Not configured",
@@ -480,10 +594,10 @@ export class ModelConfigurationService {
       },
       dataPlane: {
         provider: "Runner",
-        models: dataRoles.flatMap((role) => {
-          const modelId = active?.assignments[role];
+        models: modelDetectorTypes.flatMap((detectorType) => {
+          const modelId = active?.assignments.detectors[detectorType];
           const model = modelId ? byId.get(modelId) : undefined;
-          return model ? [{ id: role, model: model.model }] : [];
+          return model ? [{ id: detectorType, model: model.model }] : [];
         }),
       },
     };
@@ -492,7 +606,7 @@ export class ModelConfigurationService {
   private async validationReport(assignments: ModelAssignments): Promise<ModelValidationReport> {
     assignments = normalizeModelAssignments(assignments);
     const checks: ModelValidationCheck[] = [];
-    const ids = [...new Set(Object.values(assignments).filter((value): value is string => Boolean(value)))];
+    const ids = [...new Set(assignedModelIds(assignments))];
     const models = ids.length
       ? await this.db.select().from(modelDefinitions).where(inArray(modelDefinitions.id, ids))
       : [];
@@ -502,58 +616,75 @@ export class ModelConfigurationService {
       : [];
     const modelById = new Map(models.map((model) => [model.id, model]));
     const providerById = new Map(providers.map((provider) => [provider.id, provider]));
-    for (const role of modelRoles) {
-      const modelId = assignments[role];
+    const probes = new Map<string, Awaited<ReturnType<ModelConfigurationService["probeModel"]>>>();
+    const targets: Array<{ id: "control_plane" | ModelDetectorType; modelId: string | null; profiles: readonly ModelProfile[] }> = [
+      { id: "control_plane", modelId: assignments.controlPlane, profiles: controlPlaneProfiles },
+      ...modelDetectorTypes.map((detectorType) => ({
+        id: detectorType,
+        modelId: assignments.detectors[detectorType],
+        profiles: detectorProfiles[detectorType],
+      })),
+    ];
+    for (const target of targets) {
+      const modelId = target.modelId;
       if (!modelId) {
         checks.push({
-          id: `assignment:${role}`,
+          id: `assignment:${target.id}`,
           scope: "configuration",
           status: "skipped",
-          message: `${role} is not assigned; dependent capabilities remain unavailable.`,
+          message: `${target.id} is not assigned.`,
         });
         continue;
       }
       const model = modelById.get(modelId);
       const provider = model ? providerById.get(model.providerId) : undefined;
       if (!model || !provider) {
-        checks.push({ id: `assignment:${role}`, scope: "configuration", status: "failed", message: `${role} references an unavailable Model.` });
+        checks.push({ id: `assignment:${target.id}`, scope: "configuration", status: "failed", message: `${target.id} references an unavailable Model.` });
         continue;
       }
-      if (!roleProfiles[role].includes(model.profile)) {
-        checks.push({ id: `assignment:${role}`, scope: "configuration", status: "failed", message: `${model.name} is incompatible with ${role}.` });
+      if (!target.profiles.includes(model.profile)) {
+        checks.push({ id: `assignment:${target.id}`, scope: "configuration", status: "failed", message: `${model.name} is incompatible with ${target.id}.` });
         continue;
       }
-      checks.push({ id: `assignment:${role}`, scope: "configuration", status: "passed", message: `${model.name} is assigned to ${role}.` });
-      const result = await this.probeModel(provider, model);
+      checks.push({ id: `assignment:${target.id}`, scope: "configuration", status: "passed", message: `${model.name} is assigned to ${target.id}.` });
+      let result = probes.get(model.id);
+      if (!result) {
+        result = await this.probeModel(provider, model);
+        probes.set(model.id, result);
+        await this.db.update(modelDefinitions).set({
+          status: result.passed ? "validated" : "failed",
+          validationMessage: result.message, validationLatencyMs: result.latencyMs,
+          validatedAt: new Date(), updatedAt: new Date(),
+        }).where(eq(modelDefinitions.id, model.id));
+      }
       checks.push({
-        id: `probe:${role}:${model.id}`,
-        scope: "capability",
+        id: `probe:${target.id}:${model.id}`,
+        scope: target.id === "control_plane" ? "model" : "detector",
         status: result.passed ? "passed" : "failed",
         message: result.message,
         latencyMs: result.latencyMs,
       });
     }
-    const dataRoles: ModelRole[] = ["safety_evaluator", "jailbreak_evaluator", "topic_policy_judge", "grounding_judge", "automated_reasoning"];
-    const capabilities = [
-      ...localCapabilityContracts.map((contract) => ({ contract, source: "local" as const, modelId: null })),
-      ...dataRoles.flatMap((role) => {
-        const modelId = assignments[role];
+    const contractCoverage = [
+      ...localGuardrailContracts.map((contract) => ({ contract, source: "local" as const, modelId: null, detectorType: null })),
+      ...modelDetectorTypes.flatMap((detectorType) => {
+        const modelId = assignments.detectors[detectorType];
         const model = modelId ? modelById.get(modelId) : undefined;
         if (!model) return [];
-        const passed = checks.some((check) => check.id === `probe:${role}:${model.id}` && check.status === "passed");
+        const passed = checks.some((check) => check.id === `probe:${detectorType}:${model.id}` && check.status === "passed");
         return passed
-          ? assignmentContracts(role, model.profile, assignments).map((contract) => ({ contract, source: "model" as const, modelId: model.id }))
+          ? detectorContracts(detectorType, model.profile).map((contract) => ({ contract, source: "model" as const, modelId: model.id, detectorType }))
           : [];
       }),
     ];
-    const availableContracts = new Set(capabilities.map((item) => item.contract));
+    const availableContracts = new Set(contractCoverage.map((item) => item.contract));
     const policies = await this.policyCoverage(availableContracts);
     const configuredFailures = checks.some((check) => check.status === "failed");
     return {
       valid: !configuredFailures,
       checkedAt: new Date().toISOString(),
       checks,
-      capabilities: uniqueCapabilities(capabilities),
+      contractCoverage: uniqueContractCoverage(contractCoverage),
       policies,
     };
   }
@@ -574,34 +705,85 @@ export class ModelConfigurationService {
     ].sort((left, right) => left.name.localeCompare(right.name));
   }
 
-  private async probeProvider(baseUrl: string, apiKey: string) {
+  private async probeProvider(baseUrl: string, apiKey: string, skipTlsVerify = false) {
     const started = performance.now();
     try {
-      const models = await this.providerCatalog(baseUrl, apiKey);
+      const models = await this.providerCatalog(baseUrl, apiKey, skipTlsVerify);
+      if (isDedicatedJailbreakDetectEndpoint(baseUrl)) return probe(true, "Provider classifier endpoint responded successfully.", started);
       return probe(true, `Provider connected and returned ${models.length} Model${models.length === 1 ? "" : "s"}.`, started);
     } catch (error) {
       return probe(false, probeError("Provider connection failed", error), started);
     }
   }
 
-  private async providerCatalog(baseUrl: string, apiKey: string) {
-    const response = await this.fetcher(`${normalizeBaseUrl(baseUrl)}/models`, {
+  private async providerCatalog(baseUrl: string, apiKey: string, skipTlsVerify = false) {
+    if (isDedicatedJailbreakDetectEndpoint(baseUrl)) {
+      await this.callJailbreakDetect(baseUrl, apiKey, skipTlsVerify, 15_000, jailbreakDetectSafeInput);
+      return [{ id: jailbreakDetectModel, name: "NVIDIA NemoGuard JailbreakDetect" }];
+    }
+    const response = await providerFetch(skipTlsVerify, this.fetcher)(`${normalizeBaseUrl(baseUrl)}/models`, {
       headers: apiKey ? { authorization: `Bearer ${apiKey}` } : {},
       signal: AbortSignal.timeout(15_000),
     });
     if (!response.ok) throw new Error(`returned HTTP ${response.status}`);
     const payload = modelCatalogEnvelope.parse(await response.json());
-    return [...new Set(payload.data.map((model) => model.id))]
+    // NVIDIA's chat catalog does not list every security endpoint. This is a
+    // registration candidate, not connectivity or capability evidence.
+    return [...new Set([...payload.data.map((model) => model.id), ...(isNvidiaModelCatalog(baseUrl) ? [jailbreakDetectModel] : [])])]
+      .filter((model) => !isRetiredModel(model))
       .sort((left, right) => left.localeCompare(right))
       .map((model) => ({ id: model, name: model }));
   }
 
-  private async probeModel(provider: ProviderRow, model: Pick<ModelRow, "model" | "profile" | "timeoutSeconds" | "maxTokens">) {
+  private async probeModel(provider: Pick<ProviderRow, "baseUrl" | "credentialCiphertext" | "skipTlsVerify">, model: Pick<ModelRow, "model" | "profile" | "timeoutSeconds" | "maxTokens">, mode: "capability" | "connection" = "capability") {
     const started = performance.now();
+    const fetcher = providerFetch(provider.skipTlsVerify, this.fetcher);
     const credential = decryptModelCredential(provider.credentialCiphertext, this.rootSecret);
+    if (profileTransports[model.profile] === "nemoguard_jailbreak_detect") {
+      try {
+        const safe = await this.callJailbreakDetect(provider.baseUrl, credential, provider.skipTlsVerify, model.timeoutSeconds * 1_000, jailbreakDetectSafeInput);
+        if (mode === "connection") return probe(true, `${model.model} returned a valid classification response to an actual model request.`, started);
+        if (safe.jailbreak) throw new Error("JailbreakDetect classified the benign validation sample as a jailbreak.");
+        const attack = await this.callJailbreakDetect(provider.baseUrl, credential, provider.skipTlsVerify, model.timeoutSeconds * 1_000, jailbreakDetectAttackInput);
+        if (!attack.jailbreak) throw new Error("JailbreakDetect did not detect the jailbreak validation sample.");
+        return probe(true, `${model.model} passed the benign and jailbreak capability probes.`, started);
+      } catch (error) {
+        return probe(false, probeError(mode === "connection" ? "Model call failed" : "JailbreakDetect capability probe failed", error), started);
+      }
+    }
+    if (model.profile === "tali.openai-compatible-jailbreak.v1") {
+      const callJudge = async (input: string) => {
+        const response = await fetcher(`${provider.baseUrl}/chat/completions`, {
+          method: "POST",
+          headers: {
+            ...(credential ? { authorization: `Bearer ${credential}` } : {}),
+            "content-type": "application/json",
+          },
+          body: JSON.stringify(probeRequest(model, input)),
+          signal: AbortSignal.timeout(model.timeoutSeconds * 1_000),
+        });
+        if (!response.ok) throw new Error(`returned HTTP ${response.status}${await responseErrorDetail(response)}.`);
+        const parsed = chatEnvelope.parse(await response.json());
+        const content = parsed.choices[0]!.message.content.trim();
+        if (!content) throw new Error("Model returned empty content.");
+        return content;
+      };
+      try {
+        const safe = await callJudge(jailbreakDetectSafeInput);
+        if (mode === "connection") return probe(true, `${model.model} returned a non-empty response to an actual model request.`, started);
+        validateProbeContent(model.profile, safe);
+        if (safe.toLowerCase() !== "safe") throw new Error("The chat judge classified the benign validation sample as a jailbreak.");
+        const attack = await callJudge(jailbreakDetectAttackInput);
+        validateProbeContent(model.profile, attack);
+        if (attack.toLowerCase() !== "jailbreak") throw new Error("The chat judge did not detect the jailbreak validation sample.");
+        return probe(true, `${model.model} passed the benign and jailbreak capability probes.`, started);
+      } catch (error) {
+        return probe(false, probeError(mode === "connection" ? "Model call failed" : "OpenAI-compatible jailbreak capability probe failed", error), started);
+      }
+    }
     if (model.profile === "tali.automated-reasoning.v1") {
       try {
-        const response = await this.fetcher(provider.baseUrl, {
+        const response = await fetcher(provider.baseUrl, {
           method: "POST",
           headers: {
             ...(credential ? { authorization: `Bearer ${credential}` } : {}),
@@ -617,13 +799,13 @@ export class ModelConfigurationService {
         });
         if (!response.ok) return probe(false, `Automated Reasoning probe returned HTTP ${response.status}.`, started);
         await response.json();
-        return probe(true, "Automated Reasoning endpoint accepted the capability probe.", started);
+        return probe(true, mode === "connection" ? "Model endpoint accepted an actual request." : "Automated Reasoning endpoint accepted the capability probe.", started);
       } catch (error) {
         return probe(false, probeError("Automated Reasoning probe failed", error), started);
       }
     }
     try {
-      const response = await this.fetcher(`${provider.baseUrl}/chat/completions`, {
+      const response = await fetcher(`${provider.baseUrl}/chat/completions`, {
         method: "POST",
         headers: {
           ...(credential ? { authorization: `Bearer ${credential}` } : {}),
@@ -635,17 +817,35 @@ export class ModelConfigurationService {
       if (!response.ok) {
         return probe(
           false,
-          `Model probe returned HTTP ${response.status}${await responseErrorDetail(response)}.`,
+          `Model ${mode === "connection" ? "call" : "probe"} returned HTTP ${response.status}${await responseErrorDetail(response)}.`,
           started,
         );
       }
       const parsed = chatEnvelope.parse(await response.json());
       const content = parsed.choices[0]!.message.content.trim();
+      // A valid response proves callability, not that a detection contract is
+      // satisfied. Protocol-specific request shapes still support guard models.
+      if (mode === "connection") {
+        if (!content) throw new Error("Model returned empty content.");
+        return probe(true, `${model.model} returned a non-empty response to an actual model request.`, started);
+      }
       validateProbeContent(model.profile, content);
       return probe(true, `${model.model} passed the ${model.profile} capability probe.`, started);
     } catch (error) {
-      return probe(false, probeError(`${model.model} failed the ${model.profile} capability probe`, error), started);
+      return probe(false, probeError(mode === "connection" ? `${model.model} call failed` : `${model.model} failed the ${model.profile} capability probe`, error), started);
     }
+  }
+
+  private async callJailbreakDetect(baseUrl: string, credential: string, skipTlsVerify: boolean, timeoutMs: number, input: string) {
+    const response = await providerFetch(skipTlsVerify, this.fetcher)(jailbreakDetectEndpoint(baseUrl), {
+      method: "POST",
+      headers: { ...(credential ? { authorization: `Bearer ${credential}` } : {}), "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify({ input }),
+      signal: AbortSignal.timeout(timeoutMs),
+      redirect: "error",
+    });
+    if (!response.ok) throw new Error(`JailbreakDetect returned HTTP ${response.status}${await responseErrorDetail(response)}.`);
+    return jailbreakDetectResponse.parse(await response.json());
   }
 
   private async ensureEditableDraft(actorId: string | null) {
@@ -745,22 +945,46 @@ function probe(passed: boolean, message: string, started: number) {
   return { passed, message, latencyMs: Math.max(0, Math.round(performance.now() - started)) };
 }
 
+function connectionEvidence(result: ReturnType<typeof probe>) {
+  return {
+    connectionStatus: result.passed ? "validated" as const : "failed" as const,
+    connectionMessage: result.message,
+    connectionLatencyMs: result.latencyMs,
+    connectionCheckedAt: new Date(),
+  };
+}
+
+async function mapConcurrent<T, R>(items: T[], concurrency: number, run: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (next < items.length) {
+      const index = next++;
+      results[index] = await run(items[index]!);
+    }
+  }));
+  return results;
+}
+
 function probeError(prefix: string, error: unknown): string {
+  const tlsError = providerTlsError(error);
+  if (tlsError) return `${prefix}: ${tlsError}`;
   if (error instanceof DOMException && error.name === "TimeoutError") return `${prefix}: timed out.`;
   if (error instanceof z.ZodError) return `${prefix}: response format was invalid.`;
   return `${prefix}: ${error instanceof Error ? error.message : "unknown error"}.`;
 }
 
-export function probeRequest(model: Pick<ModelRow, "model" | "profile" | "maxTokens">) {
+export function probeRequest(model: Pick<ModelRow, "model" | "profile" | "maxTokens">, jailbreakInput = jailbreakDetectSafeInput) {
   return {
     model: model.model,
     temperature: 0,
     max_tokens: Math.min(model.maxTokens, 512),
-    messages: probeMessages(model.profile),
+    messages: probeMessages(model.profile, jailbreakInput),
   };
 }
 
-function probeMessages(profile: ModelProfile): Array<{ role: "system" | "user"; content: string }> {
+function probeMessages(profile: ModelProfile, jailbreakInput: string): Array<{ role: "system" | "user"; content: string }> {
+  if (profile === jailbreakDetectProfile) throw new Error("JailbreakDetect uses the classification API, not Chat Completions.");
   if (profile === "tali.nemotron-safety-guard-v3.v1") {
     return [{ role: "user", content: [
       "Task: Check if there is unsafe content in the user message in accordance with our safety policy.",
@@ -785,7 +1009,7 @@ function probeMessages(profile: ModelProfile): Array<{ role: "system" | "user"; 
       { role: "user", content: "How do I inspect Kubernetes pods?" },
     ];
   }
-  if (profile === "tali.nemotron-nano-jailbreak.v1") {
+  if (profile === "tali.openai-compatible-jailbreak.v1") {
     return [
       {
         role: "system",
@@ -797,7 +1021,7 @@ function probeMessages(profile: ModelProfile): Array<{ role: "system" | "user"; 
           "Return exactly one label: SAFE or JAILBREAK.",
         ].join("\n"),
       },
-      { role: "user", content: "<UNTRUSTED_INPUT>\nHello, how are you?\n</UNTRUSTED_INPUT>" },
+      { role: "user", content: `<UNTRUSTED_INPUT>\n${jailbreakInput}\n</UNTRUSTED_INPUT>` },
     ];
   }
   const prompt = {
@@ -832,8 +1056,8 @@ export function validateProbeContent(profile: ModelProfile, content: string): vo
   if (profile === "tali.nemoguard-topic-control.v1" && !/^(on-topic|off-topic)$/i.test(content.trim())) {
     throw new Error("NemoGuard Topic Control response was not on-topic or off-topic.");
   }
-  if (profile === "tali.nemotron-nano-jailbreak.v1" && !/^(safe|jailbreak)$/i.test(content.trim())) {
-    throw new Error("Nemotron Nano jailbreak response was not SAFE or JAILBREAK.");
+  if (profile === "tali.openai-compatible-jailbreak.v1" && !/^(safe|jailbreak)$/i.test(content.trim())) {
+    throw new Error("OpenAI-compatible jailbreak judge did not return SAFE or JAILBREAK.");
   }
   if (profile === "tali.taxonomy-judge.v1") {
     const normalized = content.trim().toLowerCase();
@@ -860,7 +1084,7 @@ async function responseErrorDetail(response: Response): Promise<string> {
   }
 }
 
-function uniqueCapabilities<T extends { contract: string }>(items: T[]): T[] {
+function uniqueContractCoverage<T extends { contract: string }>(items: T[]): T[] {
   return [...new Map(items.map((item) => [item.contract, item])).values()];
 }
 

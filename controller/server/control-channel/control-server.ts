@@ -21,7 +21,8 @@ import type { RunnerControlHandlers } from "../generated/control-protocol/taskla
 import type { ValidationResult__Output } from "../generated/control-protocol/tasklattice/guard/control/v1/ValidationResult.js";
 import type { ProtoGrpcType } from "../generated/control-protocol/runner_control.js";
 import type { ControllerMetrics } from "../metrics.js";
-import { assignmentContracts, type ModelRole } from "../model-config/domain.js";
+import { detectorContracts } from "../model-config/domain.js";
+import { modelDetectorTypes } from "../../shared/guardrail-catalog.js";
 import type { ModelConfigurationService } from "../model-config/service.js";
 import type { ControlPlaneService } from "../services/control-plane.js";
 import {
@@ -359,16 +360,16 @@ export class RunnerControlServer {
         this.metrics.observeReconcile(connection.poolId, "noop", (performance.now() - started) / 1_000);
         return;
       }
-      const dataAssignments = modelConfiguration ? dataPlaneRoles.flatMap((role) => {
-        const modelRef = modelConfiguration.assignments[role];
+      const dataAssignments = modelConfiguration ? modelDetectorTypes.flatMap((detectorType) => {
+        const modelRef = modelConfiguration.assignments.detectors[detectorType];
         if (!modelRef) return [];
         const model = modelConfiguration.models.find((item) => item.id === modelRef);
         if (!model) return [];
         return [{
-          role,
+          detectorType,
           modelRef,
           profileRef: model.profile,
-          contractRefs: [...assignmentContracts(role, model.profile, modelConfiguration.assignments)],
+          contractRefs: [...detectorContracts(detectorType, model.profile)],
         }];
       }) : [];
       const dataModelIds = new Set(dataAssignments.map((item) => item.modelRef));
@@ -401,6 +402,7 @@ export class RunnerControlServer {
             providerName: model.providerName,
             baseUrl: model.baseUrl,
             credentialRef: model.credentialRef,
+            skipTlsVerify: model.skipTlsVerify ?? false,
             model: model.model,
             profileRef: model.profile,
             timeoutSeconds: model.timeoutSeconds,
@@ -493,14 +495,6 @@ export class RunnerControlServer {
     return ServerCredentials.createInsecure();
   }
 }
-
-const dataPlaneRoles: ModelRole[] = [
-  "safety_evaluator",
-  "jailbreak_evaluator",
-  "topic_policy_judge",
-  "grounding_judge",
-  "automated_reasoning",
-];
 
 function normalizeLoad(load: RunnerHeartbeat__Output["load"]): RunnerLoad {
   return {

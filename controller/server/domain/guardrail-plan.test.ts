@@ -316,6 +316,7 @@ describe("Controller Guardrail plan", () => {
   it("honors native Policy Rule overrides independently for input and output", () => {
     const snapshot: ProgrammablePolicySnapshot = {
       ...programmablePolicyDraftSchema.parse({
+        guardrail_category: "content_safety",
         sources: [{ path: "main.co", content: "flow check_input $text\n  pass\nflow check_output $text\n  pass" }],
         rail_bindings: [
           { rail_type: "input", flow_name: "check_input", execution_mode: "detect", on_unsafe: "reject" },

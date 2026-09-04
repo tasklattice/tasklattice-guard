@@ -2,20 +2,20 @@
 
 
 /**
- * Bind one product module role to a registered Model.
+ * Bind one Guardrail Catalog detector type to a registered Model.
  */
 export interface ModelAssignment {
-  'role'?: (string);
+  'detectorType'?: (string);
   'modelRef'?: (string);
   'profileRef'?: (string);
   'contractRefs'?: (string)[];
 }
 
 /**
- * Bind one product module role to a registered Model.
+ * Bind one Guardrail Catalog detector type to a registered Model.
  */
 export interface ModelAssignment__Output {
-  'role': (string);
+  'detectorType': (string);
   'modelRef': (string);
   'profileRef': (string);
   'contractRefs': (string)[];

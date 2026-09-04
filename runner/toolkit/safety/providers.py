@@ -18,12 +18,18 @@ from ..evaluation.contracts import (
     MODEL_SAFETY_CAPABILITY_BY_CONTRACT,
 )
 from .taxonomy import TaxonomyRegistry, taxonomy
+from .jailbreak_detect import (
+    PROFILE as JAILBREAK_DETECT_PROFILE,
+    jailbreak_detect_endpoint,
+    parse_jailbreak_detect_response,
+)
 
 
 SafetyProviderAdapter: TypeAlias = str
 SafetyProviderRole = Literal["guard", "taxonomy_judge"]
 SafetyCapability = Literal["content_safety", "jailbreak", "pii"]
 NativeSafetyVerdict = Literal["safe", "unsafe", "controversial", "uncertain"]
+ModelTransport = Literal["openai_chat", "nemoguard_jailbreak_detect"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,6 +44,7 @@ class ModelRuntimeConfig:
     api_key: str | None = None
     timeout_seconds: float = 20.0
     max_tokens: int = 128
+    skip_tls_verify: bool = False
 
     def __post_init__(self) -> None:
         if not self.id.strip() or not self.model.strip():
@@ -72,6 +79,7 @@ class EvaluatorBindingConfig:
 class EvaluatorProfile:
     ref: str
     adapter: SafetyProviderAdapter
+    transport: ModelTransport
     role: SafetyProviderRole
     contracts: frozenset[str]
 
@@ -82,6 +90,7 @@ EVALUATOR_PROFILES = {
         EvaluatorProfile(
             "tali.qwen3guard.v1",
             "qwen3guard",
+            "openai_chat",
             "guard",
             frozenset({
                 CONTRACT_CONTENT_SAFETY,
@@ -92,30 +101,42 @@ EVALUATOR_PROFILES = {
         EvaluatorProfile(
             "tali.llama-guard-3.v1",
             "llama_guard_3",
+            "openai_chat",
             "guard",
             frozenset({CONTRACT_CONTENT_SAFETY}),
         ),
         EvaluatorProfile(
             "tali.nemotron-content-safety.v1",
             "nemotron_content_safety",
+            "openai_chat",
             "guard",
             frozenset({CONTRACT_CONTENT_SAFETY}),
         ),
         EvaluatorProfile(
             "tali.nemotron-safety-guard-v3.v1",
             "nemotron_safety_guard_v3",
+            "openai_chat",
             "guard",
             frozenset({CONTRACT_CONTENT_SAFETY}),
         ),
         EvaluatorProfile(
-            "tali.nemotron-nano-jailbreak.v1",
-            "nemotron_nano_jailbreak",
+            "tali.openai-compatible-jailbreak.v1",
+            "openai_compatible_jailbreak",
+            "openai_chat",
+            "guard",
+            frozenset({CONTRACT_JAILBREAK}),
+        ),
+        EvaluatorProfile(
+            JAILBREAK_DETECT_PROFILE,
+            "nemoguard_jailbreak_detect",
+            "nemoguard_jailbreak_detect",
             "guard",
             frozenset({CONTRACT_JAILBREAK}),
         ),
         EvaluatorProfile(
             "tali.taxonomy-judge.v1",
             "taxonomy_judge",
+            "openai_chat",
             "taxonomy_judge",
             frozenset({
                 CONTRACT_TAXONOMY_NORMALIZATION,
@@ -144,12 +165,16 @@ class SafetyModelProviderConfig:
     contract_ref: str = ""
     profile_ref: str = ""
     runtime_ref: str = ""
+    skip_tls_verify: bool = False
+    transport: ModelTransport = "openai_chat"
 
     def __post_init__(self) -> None:
         if not self.id.strip() or not self.model.strip():
             raise ValueError("Safety Provider id and model cannot be empty.")
         if not self.adapter.strip():
             raise ValueError("Safety Provider adapter cannot be empty.")
+        if self.transport not in {"openai_chat", "nemoguard_jailbreak_detect"}:
+            raise ValueError(f"Unsupported Model transport {self.transport!r}.")
         if self.role not in {"guard", "taxonomy_judge"}:
             raise ValueError(f"Unsupported Safety Provider role {self.role!r}.")
         if self.adapter == "taxonomy_judge" and self.role != "taxonomy_judge":
@@ -159,7 +184,8 @@ class SafetyModelProviderConfig:
             "llama_guard_3",
             "nemotron_content_safety",
             "nemotron_safety_guard_v3",
-            "nemotron_nano_jailbreak",
+            "openai_compatible_jailbreak",
+            "nemoguard_jailbreak_detect",
         } and self.role != "guard":
             raise ValueError("Native Guard adapters require the guard role.")
         if not self.base_url.strip():
@@ -190,6 +216,7 @@ class ModelCompletionRequest:
     timeout_seconds: float
     max_tokens: int
     api_key: str | None = None
+    skip_tls_verify: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -230,6 +257,7 @@ class OpenAIChatModelClient:
         async with httpx.AsyncClient(
             timeout=request.timeout_seconds,
             transport=self._transport,
+            verify=not request.skip_tls_verify,
         ) as client:
             response = await client.post(
                 f"{request.base_url.rstrip('/')}/chat/completions",
@@ -247,6 +275,39 @@ class OpenAIChatModelClient:
         if not isinstance(content, str):
             raise TypeError("Model Client response content must be text.")
         return ModelCompletionResponse(content, payload)
+
+
+class NemoGuardJailbreakDetectClient:
+    """Dedicated NVIDIA security API or self-hosted NIM /v1/classify."""
+
+    def __init__(self, transport: httpx.AsyncBaseTransport | None = None) -> None:
+        self._transport = transport
+
+    async def complete(self, request: ModelCompletionRequest) -> ModelCompletionResponse:
+        if len(request.messages) != 1 or request.messages[0].get("role") != "user":
+            raise ValueError("JailbreakDetect requires exactly one user input.")
+        credential = (request.api_key or "").strip()
+        if not credential and request.api_key_env_var:
+            credential = os.environ.get(request.api_key_env_var, "").strip()
+            if not credential:
+                raise ValueError(f"Model Client credential {request.api_key_env_var!r} is not configured.")
+        headers = {"content-type": "application/json", "accept": "application/json"}
+        if credential:
+            headers["authorization"] = f"Bearer {credential}"
+        async with httpx.AsyncClient(
+            timeout=request.timeout_seconds,
+            transport=self._transport,
+            verify=not request.skip_tls_verify,
+        ) as client:
+            response = await client.post(
+                jailbreak_detect_endpoint(request.base_url),
+                headers=headers,
+                json={"input": request.messages[0]["content"]},
+            )
+            response.raise_for_status()
+            payload = response.json()
+        parse_jailbreak_detect_response(payload)
+        return ModelCompletionResponse(json.dumps(payload), payload)
 
 
 class SafetyModelProtocolAdapter(Protocol):
@@ -502,10 +563,52 @@ class NemotronSafetyGuardV3Adapter:
         return _native_assessment(config, verdict, categories, content, payload)
 
 
-class NemotronNanoJailbreakAdapter:
-    """Use Nemotron Nano as the strict SAFE/JAILBREAK judge from legacy config."""
+class NemoGuardJailbreakDetectAdapter:
+    name: SafetyProviderAdapter = "nemoguard_jailbreak_detect"
+    capabilities = frozenset({"jailbreak"})
 
-    name: SafetyProviderAdapter = "nemotron_nano_jailbreak"
+    def messages(
+        self,
+        messages: tuple[dict[str, str], ...],
+        *,
+        scope: Literal["input", "output"],
+        candidate_taxonomy_ids: tuple[str, ...],
+    ) -> tuple[dict[str, str], ...]:
+        del candidate_taxonomy_ids
+        if scope != "input":
+            raise ValueError("JailbreakDetect supports input detection only.")
+        for item in reversed(messages):
+            if item.get("role") == "user":
+                # No judge prompt or conversation serialization: NIM classifies
+                # the actual user input, not our trusted system instructions.
+                return ({"role": "user", "content": item["content"]},)
+        raise ValueError("JailbreakDetect requires a user message.")
+
+    def parse(
+        self,
+        content: str,
+        payload: dict[str, Any] | None,
+        config: SafetyModelProviderConfig,
+        candidate_taxonomy_ids: tuple[str, ...],
+    ) -> NativeSafetyAssessment:
+        del candidate_taxonomy_ids
+        result = payload if payload is not None else json.loads(content)
+        detected, score = parse_jailbreak_detect_response(result)
+        return _native_assessment(
+            config,
+            "unsafe" if detected else "safe",
+            ("TALI-MODEL-SECURITY-JAILBREAK",) if detected else (),
+            content,
+            result,
+            reason=f"JailbreakDetect score: {score}",
+            canonical_categories=True,
+        )
+
+
+class OpenAICompatibleJailbreakAdapter:
+    """Use an OpenAI-compatible chat model as a strict SAFE/JAILBREAK judge."""
+
+    name: SafetyProviderAdapter = "openai_compatible_jailbreak"
     capabilities = frozenset({"jailbreak"})
 
     def messages(
@@ -550,17 +653,10 @@ class NemotronNanoJailbreakAdapter:
         candidate_taxonomy_ids: tuple[str, ...],
     ) -> NativeSafetyAssessment:
         del candidate_taxonomy_ids
-        cleaned = _strip_json_fence(content)
-        try:
-            decoded = json.loads(cleaned)
-        except json.JSONDecodeError:
-            decoded = None
-        if isinstance(decoded, dict):
-            cleaned = str(decoded.get("verdict", decoded.get("label", ""))).strip()
-        normalized = cleaned.casefold().replace("_", "-").strip(" .!\n\t")
-        if normalized in {"safe", "benign", "not-jailbreak"}:
+        normalized = _strip_json_fence(content).casefold().strip()
+        if normalized == "safe":
             return _native_assessment(config, "safe", (), content, payload)
-        if normalized in {"jailbreak", "unsafe"}:
+        if normalized == "jailbreak":
             return _native_assessment(
                 config,
                 "unsafe",
@@ -569,7 +665,7 @@ class NemotronNanoJailbreakAdapter:
                 payload,
                 canonical_categories=True,
             )
-        raise ValueError("Nemotron Nano did not return SAFE or JAILBREAK.")
+        raise ValueError("OpenAI-compatible jailbreak judge did not return SAFE or JAILBREAK.")
 
 
 class TaxonomyJudgeAdapter:
@@ -715,6 +811,7 @@ class ConfiguredSafetyModelProvider:
             api_key=self.config.api_key,
             timeout_seconds=self.config.timeout_seconds,
             max_tokens=self.config.max_tokens,
+            skip_tls_verify=self.config.skip_tls_verify,
         ))
         return self.adapter.parse(
             response.content,
@@ -749,7 +846,7 @@ def build_safety_model_provider(
         raise ValueError("Provide either a Model Client or an HTTP transport, not both.")
     if client is None and not config.base_url.startswith(("http://", "https://")):
         raise ValueError(
-            "The built-in OpenAI Chat Model Client requires an HTTP(S) base_url."
+            "The built-in Model Clients require an HTTP(S) base_url."
         )
     adapter = protocol_adapter
     if adapter is None:
@@ -761,8 +858,10 @@ def build_safety_model_provider(
             adapter = NemotronContentSafetyAdapter()
         elif config.adapter == "nemotron_safety_guard_v3":
             adapter = NemotronSafetyGuardV3Adapter()
-        elif config.adapter == "nemotron_nano_jailbreak":
-            adapter = NemotronNanoJailbreakAdapter()
+        elif config.adapter == "openai_compatible_jailbreak":
+            adapter = OpenAICompatibleJailbreakAdapter()
+        elif config.adapter == "nemoguard_jailbreak_detect":
+            adapter = NemoGuardJailbreakDetectAdapter()
         elif config.adapter == "taxonomy_judge":
             adapter = TaxonomyJudgeAdapter(registry)
         else:
@@ -773,7 +872,11 @@ def build_safety_model_provider(
     return ConfiguredSafetyModelProvider(
         config,
         adapter,
-        client if client is not None else OpenAIChatModelClient(transport),
+        client if client is not None else (
+            NemoGuardJailbreakDetectClient(transport)
+            if config.transport == "nemoguard_jailbreak_detect"
+            else OpenAIChatModelClient(transport)
+        ),
     )
 
 
@@ -817,6 +920,8 @@ def resolve_evaluator_model_providers(
             contract_ref=binding.contract_ref,
             profile_ref=binding.profile_ref,
             runtime_ref=binding.model_ref,
+            skip_tls_verify=runtime.skip_tls_verify,
+            transport=profile.transport,
         ))
     return tuple(sorted(resolved, key=lambda item: (item.priority, item.id)))
 

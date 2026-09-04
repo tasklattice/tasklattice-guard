@@ -16,23 +16,23 @@ vi.mock("react-i18next", () => ({
 describe("SettingsNavigation", () => {
   afterEach(cleanup);
 
-  it("uses route-backed tabs for Status, Providers, Models, and Capabilities", () => {
+  it("uses route-backed tabs for Status, Providers, Models, and Guardrail Catalog", () => {
     render(<SettingsNavigation />);
 
     const tablist = screen.getByRole("tablist", { name: "nav.settings" });
     const models = screen.getByRole("tab", { name: "nav.models" });
     const status = screen.getByRole("tab", { name: "nav.status" });
     const providers = screen.getByRole("tab", { name: "nav.providers" });
-    const capabilities = screen.getByRole("tab", { name: "nav.capabilities" });
+    const catalog = screen.getByRole("tab", { name: "nav.guardrailCatalog" });
 
     expect(tablist.contains(models)).toBe(true);
     expect(tablist.contains(status)).toBe(true);
     expect(tablist.contains(providers)).toBe(true);
-    expect(tablist.contains(capabilities)).toBe(true);
+    expect(tablist.contains(catalog)).toBe(true);
     expect(models.getAttribute("aria-selected")).toBe("true");
     expect(models.getAttribute("href")).toBe("/settings/models");
     expect(status.getAttribute("href")).toBe("/settings/status");
     expect(providers.getAttribute("href")).toBe("/settings/providers");
-    expect(capabilities.getAttribute("href")).toBe("/settings/capabilities");
+    expect(catalog.getAttribute("href")).toBe("/settings/guardrail-catalog");
   });
 });

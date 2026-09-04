@@ -78,6 +78,20 @@
       "when": 1788265112452,
       "tag": "0010_public_wasp",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1788423393507,
+      "tag": "0011_provider_skip_tls_verify",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1788424604084,
+      "tag": "0012_model_connection_health",
+      "breakpoints": true
     }
   ]
 }

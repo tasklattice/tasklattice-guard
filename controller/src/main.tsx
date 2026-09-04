@@ -11,7 +11,6 @@ import { DeploymentDetailPage } from "@/routes/deployment-detail";
 import { EvidencePage } from "@/routes/evidence";
 import { LogsPage } from "@/routes/logs";
 import { IntegrationsPage } from "@/routes/integrations";
-import { ValidationPage } from "@/routes/validation";
 import { PlaygroundPage } from "@/routes/playground";
 import { UsersPage } from "@/routes/users";
 import { DashboardPage } from "@/routes/dashboard";
@@ -21,7 +20,7 @@ import { HelpPage } from "@/routes/help";
 import { RunnersPage } from "@/routes/runners";
 import { ActivityPage } from "@/routes/activity";
 import { StatusPage } from "@/routes/status";
-import { CapabilitiesPage, ModelsPage, ProvidersPage } from "@/routes/models";
+import { GuardrailCatalogPage, ModelsPage, ProvidersPage } from "@/routes/models";
 import { AuthProvider } from "@/lib/auth";
 import "@/i18n";
 import "@/styles.css";
@@ -44,7 +43,6 @@ const playgroundSearch = (search: Record<string, unknown>) => {
   };
 };
 const playgroundRoute = createRoute({ getParentRoute: () => rootRoute, path: "/playground", validateSearch: playgroundSearch, component: PlaygroundPage });
-const validationRoute = createRoute({ getParentRoute: () => rootRoute, path: "/validation", validateSearch: guardrailSearch, component: ValidationPage });
 const deploymentsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/deployments", component: DeploymentsPage });
 const deploymentDetailRoute = createRoute({ getParentRoute: () => rootRoute, path: "/deployments/$deploymentId", component: DeploymentDetailPage });
 const integrationsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/integrations", component: IntegrationsPage });
@@ -58,7 +56,7 @@ const settingsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/set
 const statusRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/status", component: StatusPage });
 const providersRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/providers", component: ProvidersPage });
 const modelsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/models", component: ModelsPage });
-const capabilitiesRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/capabilities", component: CapabilitiesPage });
+const guardrailCatalogRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/guardrail-catalog", component: GuardrailCatalogPage });
 const helpRoute = createRoute({ getParentRoute: () => rootRoute, path: "/help", component: HelpPage });
 const routeTree = rootRoute.addChildren([
   indexRoute,
@@ -67,7 +65,6 @@ const routeTree = rootRoute.addChildren([
   guardrailDetailRoute,
   policyLibraryRoute,
   playgroundRoute,
-  validationRoute,
   deploymentsRoute,
   deploymentDetailRoute,
   integrationsRoute,
@@ -81,7 +78,7 @@ const routeTree = rootRoute.addChildren([
   statusRoute,
   providersRoute,
   modelsRoute,
-  capabilitiesRoute,
+  guardrailCatalogRoute,
   helpRoute,
 ]);
 const router = createRouter({ routeTree, history: createBrowserHistory() });

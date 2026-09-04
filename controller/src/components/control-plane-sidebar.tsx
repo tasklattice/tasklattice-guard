@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Activity, Cable, CircleHelp, FlaskConical, History, LayoutDashboard, LibraryBig, ListChecks, Rocket, ScrollText, Server, Settings, ShieldCheck } from "lucide-react";
+import { Activity, Cable, CircleHelp, FlaskConical, History, LibraryBig, Rocket, ScrollText, Server, Settings, ShieldCheck } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -22,18 +22,11 @@ import { listControllerDeployments, listControllerGuardrails, listControllerInte
 
 const navigation = [
   {
-    label: "nav.home",
-    items: [
-      { label: "nav.dashboard", to: "/dashboard", icon: LayoutDashboard },
-      { label: "nav.playground", to: "/playground", icon: FlaskConical },
-    ],
-  },
-  {
-    label: "nav.buildValidate",
+    label: "nav.guardrailDesign",
     items: [
       { label: "nav.guardrails", to: "/guardrails", icon: ShieldCheck, count: "guardrails" },
+      { label: "nav.playground", to: "/playground", icon: FlaskConical },
       { label: "nav.policyLibrary", to: "/policy-library", icon: LibraryBig },
-      { label: "nav.validation", to: "/validation", icon: ListChecks },
     ],
   },
   {

@@ -22,20 +22,11 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { PolicyStudioSheet } from "@/components/policy-studio";
+import { ConfirmationSheet } from "@/components/confirmation-sheet";
 import { EntitySheet } from "@/components/entity-sheet";
 import { ErrorNotice, InfoNotice, PageHeader } from "@/components/product-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -52,9 +43,9 @@ import {
 import { cn } from "@/lib/utils";
 
 const EMPTY_POLICIES: Policy[] = [];
-const HIDDEN_POLICY_TAG_NAMESPACES = new Set(["engine", "scope", "stage"]);
-const HIDDEN_POLICY_FACET_NAMESPACES = new Set(["rail"]);
-const POLICY_FACET_ORDER = ["source", "capability", "collection", "domain", "framework", "implementation", "jurisdiction"];
+const HIDDEN_POLICY_TAG_NAMESPACES = new Set(["engine", "scope", "stage", "implementation", "rail"]);
+const HIDDEN_POLICY_FACET_NAMESPACES = new Set(["implementation", "rail"]);
+const POLICY_FACET_ORDER = ["source", "guardrail_category", "collection", "domain", "framework", "jurisdiction"];
 type CatalogFacetTag = Omit<PolicyTag, "namespace"> & { namespace: PolicyTag["namespace"] | "source" };
 const JURISDICTION_FLAGS: Record<string, string> = {
   au: "🇦🇺",
@@ -327,7 +318,7 @@ export function PolicyCard({ policy, onOpen, onExport, onDelete }: { policy: Pol
         <p className="mt-1 line-clamp-2 min-h-10 text-xs leading-5 text-muted-foreground">{policy.description}</p>
       </div>
       <div className="mt-3 flex flex-wrap gap-1.5">
-        {visiblePolicyTags(policy.tags).filter((tag) => !["implementation", "rail"].includes(tag.namespace)).slice(0, 3).map((tag) => <Badge key={tag.id} variant="secondary" className="font-normal"><PolicyTagLabel tag={tag} /></Badge>)}
+        {visiblePolicyTags(policy.tags).slice(0, 3).map((tag) => <Badge key={tag.id} variant="secondary" className="font-normal"><PolicyTagLabel tag={tag} /></Badge>)}
       </div>
       <div className="mt-auto pt-5">
         <div className="grid grid-cols-2 gap-2 rounded-lg bg-muted/35 p-3 text-xs">
@@ -387,29 +378,24 @@ export function PolicyDetail({ policy, onClose, onEdit, onExport, onDelete }: { 
 export function DeletePolicyDialog({ policy, deleting, error, onCancel, onConfirm }: { policy: Policy | null; deleting: boolean; error: Error | null; onCancel: () => void; onConfirm: () => void }) {
   const { t } = useTranslation();
   return (
-    <AlertDialog open={Boolean(policy)} onOpenChange={(open) => { if (!open && !deleting) onCancel(); }}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>{t("policyLibrary.deleteDialogTitle")}</AlertDialogTitle>
-          <AlertDialogDescription>
-            {t("policyLibrary.deleteDialogDescription", { name: policy?.name ?? "" })}
-          </AlertDialogDescription>
-        </AlertDialogHeader>
+    <ConfirmationSheet
+      open={Boolean(policy)}
+      onOpenChange={(open) => { if (!open && !deleting) onCancel(); }}
+      eyebrow={t("policyLibrary.deleteAction")}
+      title={t("policyLibrary.deleteDialogTitle")}
+      description={t("policyLibrary.deleteDialogDescription", { name: policy?.name ?? "" })}
+      cancelLabel={t("common.cancel")}
+      confirmLabel={t("policyLibrary.deleteConfirm")}
+      pendingLabel={t("policyLibrary.deleting")}
+      pending={deleting}
+      variant="destructive"
+      onConfirm={onConfirm}
+    >
         <div className="rounded-lg border bg-muted/35 px-4 py-3 text-xs leading-5 text-muted-foreground">
           {t("policyLibrary.deleteDialogGuardrailNote")}
         </div>
         {error ? <p role="alert" className="rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-xs leading-5 text-destructive">{error.message}</p> : null}
-        <AlertDialogFooter>
-          <AlertDialogCancel asChild><Button variant="outline" disabled={deleting}>{t("common.cancel")}</Button></AlertDialogCancel>
-          <AlertDialogAction asChild>
-            <Button variant="destructive" disabled={deleting} onClick={(event) => { event.preventDefault(); onConfirm(); }}>
-              {deleting ? <LoaderCircle className="animate-spin" /> : <Trash2 />}
-              {t(deleting ? "policyLibrary.deleting" : "policyLibrary.deleteConfirm")}
-            </Button>
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    </ConfirmationSheet>
   );
 }
 
@@ -548,8 +534,11 @@ function PolicyTagLabel({ tag, truncate = false }: { tag: CatalogFacetTag; trunc
   const jurisdiction = tag.namespace === "jurisdiction";
   const source = tag.namespace === "source";
   const rail = tag.namespace === "rail";
+  const guardrailCategory = tag.namespace === "guardrail_category";
   const label = source
     ? t(`policyLibrary.sourceLabels.${tag.value}`, { defaultValue: tag.label })
+    : guardrailCategory
+      ? t(`modelSettings.categories.${tag.value}.title`, { defaultValue: tag.label })
     : jurisdiction
     ? t(`policyLibrary.jurisdictions.${tag.value}`, { defaultValue: tag.label })
     : rail

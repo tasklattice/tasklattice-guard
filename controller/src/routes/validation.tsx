@@ -75,9 +75,38 @@ export function filterValidationRuns(runs: ValidationRun[], guardrailNames: Map<
   return runs.filter((run) => (guardrailId === "all" || run.guardrail_id === guardrailId) && (status === "all" || run.status === status) && (!query || `${run.id} ${guardrailNames.get(run.guardrail_id) ?? run.guardrail_id}`.toLowerCase().includes(query)));
 }
 
-function ValidationRow({ run, guardrailName, locale, onOpen }: { run: ValidationRun; guardrailName?: string; locale: string; onOpen: () => void }) {
+export function GuardrailValidationHistory({ runs, loading, error, canManage, running, onRun, onOpen }: {
+  runs: ValidationRun[];
+  loading: boolean;
+  error: unknown;
+  canManage: boolean;
+  running: boolean;
+  onRun: () => void;
+  onOpen: (run: ValidationRun) => void;
+}) {
+  const { t, i18n } = useTranslation();
+  const orderedRuns = useMemo(() => [...runs].sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at)), [runs]);
+  return <section className="overflow-hidden rounded-xl border bg-card shadow-xs">
+    <header className="flex flex-col gap-3 border-b bg-muted/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <div className="flex flex-wrap items-center gap-2"><h2 className="text-sm font-semibold">{t("guardrails.validationHistoryTitle")}</h2><Badge variant="outline" className="font-mono text-[10px]">{orderedRuns.length}</Badge></div>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">{t("guardrails.validationHistoryDescription")}</p>
+      </div>
+      {canManage ? <Button className="min-h-11 shrink-0" disabled={running} onClick={onRun}>{running ? <LoaderCircle className="animate-spin" /> : <Play />}{t(running ? "guardrails.runningValidation" : "guardrails.runReviewed")}</Button> : null}
+    </header>
+    {error ? <div className="p-4"><ErrorNotice error={error} /></div> : null}
+    {loading ? <div className="p-4"><Skeleton className="h-72 rounded-lg" /></div> : null}
+    {!loading && !error && orderedRuns.length ? <div className="overflow-x-auto"><Table>
+      <TableHeader><TableRow className="hover:bg-transparent"><TableHead className="min-w-52 pl-4">{t("validation.validationRunColumn")}</TableHead><TableHead>{t("validation.targetColumn")}</TableHead><TableHead>{t("validation.casesColumn")}</TableHead><TableHead>{t("validation.statusColumn")}</TableHead><TableHead>{t("validation.passRateColumn")}</TableHead><TableHead>{t("validation.durationColumn")}</TableHead><TableHead>{t("validation.runAtColumn")}</TableHead><TableHead className="w-12"><span className="sr-only">{t("validation.openValidationRun")}</span></TableHead></TableRow></TableHeader>
+      <TableBody>{orderedRuns.map((run) => <ValidationRow key={run.id} run={run} locale={i18n.language} showGuardrail={false} onOpen={() => onOpen(run)} />)}</TableBody>
+    </Table></div> : null}
+    {!loading && !error && !orderedRuns.length ? <EmptyState title={t("validation.noValidationRuns")} description={t("validation.noValidationRunsDescription")} action={canManage ? <Button onClick={onRun}><Play />{t("guardrails.runReviewed")}</Button> : undefined} /> : null}
+  </section>;
+}
+
+function ValidationRow({ run, guardrailName, locale, showGuardrail = true, onOpen }: { run: ValidationRun; guardrailName?: string; locale: string; showGuardrail?: boolean; onOpen: () => void }) {
   const { t } = useTranslation();
-  return <TableRow role="button" tabIndex={0} className="cursor-pointer" onClick={onOpen} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onOpen(); } }}><TableCell className="pl-4"><strong className="block text-sm font-medium">{t("validation.validationRunNamed", { id: shortId(run.id) })}</strong><span className="mt-1 block font-mono text-xs text-muted-foreground">{run.id}</span></TableCell><TableCell><strong className="block text-sm font-medium">{guardrailName ?? run.guardrail_id}</strong>{guardrailName ? <span className="mt-1 block font-mono text-xs text-muted-foreground">{run.guardrail_id}</span> : null}</TableCell><TableCell className="text-xs">{targetLabel(run, t)}</TableCell><TableCell className="font-mono text-xs">{run.metrics.total}</TableCell><TableCell><StateBadge state={run.status} /></TableCell><TableCell className="font-mono text-xs">{run.metrics.compliance_rate}%</TableCell><TableCell className="font-mono text-xs">P95 {run.metrics.p95_latency_ms} ms</TableCell><TableCell className="whitespace-nowrap text-xs text-muted-foreground">{new Date(run.created_at).toLocaleString(locale)}</TableCell><TableCell><ChevronRight className="size-4 text-muted-foreground" /></TableCell></TableRow>;
+  return <TableRow role="button" tabIndex={0} className="cursor-pointer" onClick={onOpen} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onOpen(); } }}><TableCell className="pl-4"><strong className="block text-sm font-medium">{t("validation.validationRunNamed", { id: shortId(run.id) })}</strong><span className="mt-1 block font-mono text-xs text-muted-foreground">{run.id}</span></TableCell>{showGuardrail ? <TableCell><strong className="block text-sm font-medium">{guardrailName ?? run.guardrail_id}</strong>{guardrailName ? <span className="mt-1 block font-mono text-xs text-muted-foreground">{run.guardrail_id}</span> : null}</TableCell> : null}<TableCell className="text-xs">{targetLabel(run, t)}</TableCell><TableCell className="font-mono text-xs">{run.metrics.total}</TableCell><TableCell><StateBadge state={run.status} /></TableCell><TableCell className="font-mono text-xs">{run.metrics.compliance_rate}%</TableCell><TableCell className="font-mono text-xs">P95 {run.metrics.p95_latency_ms} ms</TableCell><TableCell className="whitespace-nowrap text-xs text-muted-foreground">{new Date(run.created_at).toLocaleString(locale)}</TableCell><TableCell><ChevronRight className="size-4 text-muted-foreground" /></TableCell></TableRow>;
 }
 
 function CreateValidationSheet({ open, onOpenChange, guardrails, initialGuardrailId, onCreated }: { open: boolean; onOpenChange: (open: boolean) => void; guardrails: Guardrail[]; initialGuardrailId: string; onCreated: (run: ValidationRun) => Promise<void> }) {

@@ -4,7 +4,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import type { TestCaseResult, ValidationRun } from "@/lib/api";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
-import { DetailFact, filterValidationRuns, TestCaseResultRow, ValidationCaseResults } from "./validation";
+import { DetailFact, filterValidationRuns, GuardrailValidationHistory, TestCaseResultRow, ValidationCaseResults } from "./validation";
 
 vi.mock("@/components/add-test-case-sheet", () => ({ AddTestCaseSheet: () => null }));
 vi.mock("react-i18next", () => ({
@@ -28,6 +28,17 @@ vi.mock("react-i18next", () => ({
       "validation.decisionMismatch": "Decision mismatch",
       "validation.ruleMismatch": "Rule contract mismatch",
       "validation.validationContractMismatch": "Validation contract mismatch",
+      "validation.validationRunColumn": "Validation Run",
+      "validation.targetColumn": "Target",
+      "validation.casesColumn": "Cases",
+      "validation.statusColumn": "Status",
+      "validation.passRateColumn": "Pass rate",
+      "validation.durationColumn": "Duration",
+      "validation.runAtColumn": "Run at",
+      "validation.openValidationRun": "Open Validation Run",
+      "guardrails.validationHistoryTitle": "Validation history",
+      "guardrails.validationHistoryDescription": "Immutable release-gate evidence.",
+      "guardrails.runReviewed": "Run Validation",
       "guardrails.expectedDecision": "Expected decision",
       "guardrails.actualDecision": "Actual decision",
     } as Record<string, string>)[key] ?? key,
@@ -103,6 +114,19 @@ describe("Validation Run acceptance evidence", () => {
 
     expect(filterValidationRuns([validationRun, otherRun], names, "", "guardrail-banker", "all")).toEqual([otherRun]);
     expect(filterValidationRuns([validationRun, otherRun], names, "finance", "all", "passed")).toEqual([validationRun]);
+  });
+
+  it("keeps Validation history inside one Guardrail and opens records from the compact table", () => {
+    const onOpen = vi.fn();
+    const onRun = vi.fn();
+    render(<GuardrailValidationHistory runs={[validationRun]} loading={false} error={null} canManage running={false} onRun={onRun} onOpen={onOpen} />);
+
+    expect(screen.getByRole("heading", { name: "Validation history" })).toBeTruthy();
+    expect(screen.queryByText("Guardrail", { selector: "th" })).toBeNull();
+    fireEvent.click(screen.getByText("validation-finance-001").closest("tr")!);
+    expect(onOpen).toHaveBeenCalledWith(validationRun);
+    fireEvent.click(screen.getByRole("button", { name: "Run Validation" }));
+    expect(onRun).toHaveBeenCalledOnce();
   });
 
   it("shows the pinned contract and actual Rule match", () => {

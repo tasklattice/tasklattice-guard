@@ -16,6 +16,10 @@ export interface ModelRuntime {
   'profileRef'?: (string);
   'timeoutSeconds'?: (number);
   'maxTokens'?: (number);
+  /**
+   * Explicit Provider-scoped opt-in. False retains HTTPS certificate checks.
+   */
+  'skipTlsVerify'?: (boolean);
 }
 
 /**
@@ -33,4 +37,8 @@ export interface ModelRuntime__Output {
   'profileRef': (string);
   'timeoutSeconds': (number);
   'maxTokens': (number);
+  /**
+   * Explicit Provider-scoped opt-in. False retains HTTPS certificate checks.
+   */
+  'skipTlsVerify': (boolean);
 }

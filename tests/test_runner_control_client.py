@@ -140,7 +140,7 @@ def _model_desired_state(*, generation: int) -> protocol.DesiredState:
                 max_tokens=128,
             )],
             assignments=[protocol.ModelAssignment(
-                role="safety_evaluator",
+                detector_type="content_safety",
                 model_ref="safety",
                 profile_ref="tali.qwen3guard.v1",
                 contract_refs=["tali.guard.content-safety.v1"],

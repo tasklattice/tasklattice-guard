@@ -1,4 +1,5 @@
 import type { EnforcementAction } from "../../shared/enforcement-action.generated";
+import type { GuardrailCategoryId } from "../../shared/guardrail-catalog";
 import type {
   GuardrailReadinessState,
   IntegrationSetupState,
@@ -548,7 +549,7 @@ export type GuardrailVersionDetail = GuardrailVersion & {
 };
 
 export type PolicyTagNamespace =
-  | "capability"
+  | "guardrail_category"
   | "collection"
   | "domain"
   | "framework"
@@ -687,6 +688,7 @@ export type PolicyDraftTestCase = {
   expected_reasoning_result: AutomatedReasoningResult | null;
 };
 export type ProgrammablePolicyDraft = {
+  guardrail_category: GuardrailCategoryId;
   colang_version: "1.0" | "2.x";
   sources: PolicySourceFile[];
   parameter_schema: PolicyDraftParameter[];

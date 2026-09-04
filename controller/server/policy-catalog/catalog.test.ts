@@ -20,7 +20,7 @@ describe("Policy catalog", () => {
     });
   });
 
-  it("normalizes computed fields, defaults, tag IDs, and framework metadata for the old UI DTO", () => {
+  it("normalizes computed fields, Guardrail categories, and framework metadata", () => {
     const policy = PolicyCatalog.load(assetDirectory).get("pattern-matching");
 
     expect(policy).toBeDefined();
@@ -30,7 +30,7 @@ describe("Policy catalog", () => {
     expect(policy?.test_count).toBe(policy?.test_cases.length);
     expect(policy?.tags).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: "framework:owasp-llm-2025", label: "OWASP LLM 2025" }),
-      expect.objectContaining({ id: "capability:sensitive-data" }),
+      expect.objectContaining({ id: "guardrail_category:pii_detection", label: "PII Detection" }),
     ]));
     expect(policy?.rules[0]).toMatchObject({
       context_max_gap_words: null,
@@ -46,6 +46,8 @@ describe("Policy catalog", () => {
 
     expect(namespaces.has("scope")).toBe(false);
     expect(namespaces.has("stage")).toBe(false);
+    expect(namespaces.has("capability")).toBe(false);
+    expect(namespaces.has("guardrail_category")).toBe(true);
     expect(namespaces.has("rail")).toBe(true);
     expect(tags).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: "rail:input", label: "Input rail" }),
