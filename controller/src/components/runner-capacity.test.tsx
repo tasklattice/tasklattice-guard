@@ -17,6 +17,7 @@ vi.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (key: string, values?: Record<string, string | number>) => {
       const labels: Record<string, string> = {
+        "runners.title": "Runner capacity",
         "runners.convergence.converged": "Configuration converged",
         "runners.convergence.syncing": "Configuration syncing",
         "runners.convergence.unavailable": "No connected Runners",
@@ -184,6 +185,15 @@ describe("Runner configuration convergence", () => {
     expect(screen.getAllByText("Applied 2 · Desired 2")).toHaveLength(2);
     expect(screen.getAllByText("Not connected")).toHaveLength(2);
     expect(screen.getAllByText("Last reported 2 · Desired 2")).toHaveLength(2);
+  });
+
+  it("can omit its internal header when the Runner page owns the page title", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><RunnerCapacitySection showHeader={false} /></QueryClientProvider>);
+
+    expect(await screen.findByRole("region", { name: "Runner capacity" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Runner capacity" })).toBeNull();
+    expect((await screen.findAllByText("GuardRails 0")).length).toBeGreaterThan(0);
   });
 
   it("shows the pool and Runner as syncing with the generation lag", async () => {

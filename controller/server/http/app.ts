@@ -22,7 +22,7 @@ import { actionCatalog } from "../action-catalog/catalog.js";
 import { createProgrammablePolicySchema, updateProgrammablePolicySchema } from "../policy-studio/model.js";
 import { extractDocuments } from "../control-plane-ai/document-ingestion.js";
 import type { ModelConfigurationService } from "../model-config/service.js";
-import { modelInputSchema, providerInputSchema, providerRegistrationSchema, providerUpdateSchema } from "../model-config/domain.js";
+import { modelAssignmentTargetSchema, modelInputSchema, providerInputSchema, providerRegistrationSchema, providerUpdateSchema } from "../model-config/domain.js";
 import {
   OpenAICompatiblePlaygroundModel,
   PlaygroundDraftPreviewStore,
@@ -239,7 +239,8 @@ export function createHttpApp(input: {
   app.get("/api/v1/system/status", async (context) => {
     const pools = await input.service.listRunnerPoolsWithCapacity();
     const defaultPool = pools.find((pool) => pool.isDefault);
-    const { reasons, ...runnerFleet } = deriveRunnerFleetStatus(defaultPool);
+    const { reasons: runnerReasons, ...runnerFleet } = deriveRunnerFleetStatus(defaultPool);
+    const basicProtection = await input.service.defaultGuardrailReadiness();
     const configuredModels = input.models ? await input.models.statusSummary() : {
       controlPlane: {
         status: input.config.modelConnections.controlPlane.model === "not-configured" ? "unconfigured" as const : "configured" as const,
@@ -256,13 +257,31 @@ export function createHttpApp(input: {
       : runnerFleet.servingRunners > 0
         ? "ready" as const
         : "unavailable" as const;
+    const basicProtectionReason = basicProtection.status === "initializing"
+      ? "default_guardrail_initializing" as const
+      : basicProtection.status === "unavailable"
+        ? "default_guardrail_unavailable" as const
+        : null;
+    const status = basicProtection.status === "unavailable"
+      ? "unavailable" as const
+      : runnerFleet.status === "unavailable"
+        ? "unavailable" as const
+        : basicProtection.status === "initializing"
+          ? "initializing" as const
+          : runnerFleet.status;
+    const reasons = [
+      ...(basicProtectionReason ? [basicProtectionReason] : []),
+      ...runnerReasons.filter((reason) => reason !== "all_required_components_ready" || basicProtection.status !== "ready"),
+    ];
+    if (reasons.length === 0) reasons.push("all_required_components_ready");
     const snapshot = {
-      status: runnerFleet.status,
+      status,
       reasons,
       observedAt: new Date().toISOString(),
       desiredGeneration: await input.service.desiredGeneration(),
       components: {
         controller: { status: "operational" as const },
+        basicProtection,
         runnerFleet,
         controlPlaneModel: configuredModels.controlPlane,
         runtimeModels: {
@@ -345,6 +364,17 @@ export function createHttpApp(input: {
   app.put("/api/v1/model-configuration/draft", authenticated, administrator, async (context) => {
     if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
     return context.json(await input.models.updateDraft(await context.req.json(), context.get("actor").id));
+  });
+  app.put("/api/v1/model-configuration/draft/assignments/:target", authenticated, administrator, async (context) => {
+    if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
+    const target = modelAssignmentTargetSchema.parse(context.req.param("target"));
+    const body = z.object({ modelId: z.string().uuid().nullable() }).parse(await context.req.json());
+    return context.json(await input.models.updateAssignment(target, body.modelId, context.get("actor").id));
+  });
+  app.post("/api/v1/model-configuration/draft/assignments/:target/validate", authenticated, administrator, async (context) => {
+    if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
+    const target = modelAssignmentTargetSchema.parse(context.req.param("target"));
+    return context.json(await input.models.validateAssignment(target, context.get("actor").id));
   });
   app.post("/api/v1/model-configuration/validate", authenticated, administrator, async (context) => {
     if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");

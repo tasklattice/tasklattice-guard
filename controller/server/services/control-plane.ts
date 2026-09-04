@@ -310,6 +310,40 @@ export class ControlPlaneService {
     return Promise.all(rows.map((row) => this.guardrailSummary(row)));
   }
 
+  async defaultGuardrailReadiness() {
+    const [guardrail] = await this.db.select().from(guardrails).where(and(
+      eq(guardrails.id, DEFAULT_GUARDRAIL_ID),
+      isNull(guardrails.deletedAt),
+    )).limit(1);
+    const [deployment] = await this.db.select().from(deployments).where(and(
+      eq(deployments.id, DEFAULT_DEPLOYMENT_ID),
+      isNull(deployments.deletedAt),
+    )).limit(1);
+    const [compiling] = await this.db.select({ version: guardrailVersions.version }).from(guardrailVersions).where(and(
+      eq(guardrailVersions.guardrailId, DEFAULT_GUARDRAIL_ID),
+      eq(guardrailVersions.status, "compiling"),
+    )).limit(1);
+
+    const guardrailActive = Boolean(guardrail?.activeArtifactId && guardrail.activeVersion);
+    const deploymentActive = Boolean(
+      guardrailActive
+      && deployment?.enabled
+      && deployment.guardrailId === DEFAULT_GUARDRAIL_ID
+      && deployment.guardrailVersion === guardrail?.activeVersion
+      && deployment.poolId === "default"
+      && isCatchAllTrafficScope(deployment.trafficScope),
+    );
+    const initializing = Boolean(guardrail && (!guardrailActive || !deploymentActive) && compiling);
+
+    return {
+      status: deploymentActive ? "ready" as const : initializing ? "initializing" as const : "unavailable" as const,
+      guardrailStatus: guardrailActive ? "active" as const : compiling ? "initializing" as const : "unavailable" as const,
+      deploymentStatus: deploymentActive ? "active" as const : compiling ? "initializing" as const : "unavailable" as const,
+      activeVersion: guardrail?.activeVersion ?? null,
+      modelIndependent: true as const,
+    };
+  }
+
   async getGuardrail(id: string) {
     const [guardrail] = await this.db.select().from(guardrails).where(and(eq(guardrails.id, id), isNull(guardrails.deletedAt)));
     if (!guardrail) throw new NotFoundError("Guardrail", id);

@@ -16,22 +16,32 @@ vi.mock("react-i18next", () => ({
 describe("SettingsNavigation", () => {
   afterEach(cleanup);
 
-  it("uses route-backed tabs for Status, Providers, Models, and Guardrail Catalog", () => {
+  it("uses route-backed tabs for Health, Runner, Providers, Models, and Guardrail Catalog", () => {
     render(<SettingsNavigation />);
 
     const tablist = screen.getByRole("tablist", { name: "nav.settings" });
     const models = screen.getByRole("tab", { name: "nav.models" });
-    const status = screen.getByRole("tab", { name: "nav.status" });
+    const health = screen.getByRole("tab", { name: "nav.health" });
+    const runner = screen.getByRole("tab", { name: "nav.runner" });
     const providers = screen.getByRole("tab", { name: "nav.providers" });
     const catalog = screen.getByRole("tab", { name: "nav.guardrailCatalog" });
 
     expect(tablist.contains(models)).toBe(true);
-    expect(tablist.contains(status)).toBe(true);
+    expect(tablist.contains(health)).toBe(true);
+    expect(tablist.contains(runner)).toBe(true);
     expect(tablist.contains(providers)).toBe(true);
     expect(tablist.contains(catalog)).toBe(true);
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent?.trim())).toEqual([
+      "nav.health",
+      "nav.runner",
+      "nav.providers",
+      "nav.models",
+      "nav.guardrailCatalog",
+    ]);
     expect(models.getAttribute("aria-selected")).toBe("true");
     expect(models.getAttribute("href")).toBe("/settings/models");
-    expect(status.getAttribute("href")).toBe("/settings/status");
+    expect(health.getAttribute("href")).toBe("/settings/health");
+    expect(runner.getAttribute("href")).toBe("/settings/runner");
     expect(providers.getAttribute("href")).toBe("/settings/providers");
     expect(catalog.getAttribute("href")).toBe("/settings/guardrail-catalog");
   });

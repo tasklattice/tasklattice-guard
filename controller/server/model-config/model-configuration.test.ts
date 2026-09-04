@@ -183,15 +183,26 @@ describe("Capability configuration after registration", () => {
   it("invalidates old probe evidence and publishes a Runner reload when TLS changes", async () => {
     const { service, rows, fetcher, tx } = setup("validated", true);
     rows.set(controllerState, [{ id: "singleton", desiredGeneration: 9 }]);
-    fetcher.mockResolvedValue(Response.json({ data: [{ id: "guard-alias" }] }));
+    fetcher.mockResolvedValue(Response.json({ choices: [{ message: { content: "OK" } }] }));
     const updated = await service.updateProvider("provider-1", { skipTlsVerify: true }, "admin");
     expect(updated.skipTlsVerify).toBe(true);
     expect(rows.get(modelDefinitions)?.[0]).toMatchObject({ status: "pending", validatedAt: null });
-    expect(rows.get(modelDefinitions)?.[0]).toMatchObject({ connectionStatus: "pending", connectionCheckedAt: null });
+    expect(rows.get(modelDefinitions)?.[0]).toMatchObject({ connectionStatus: "validated", connectionCheckedAt: expect.any(Date) });
     expect(rows.get(modelConfigurationRevisions)?.[0]).toMatchObject({ state: "draft", validationReport: null });
     expect(tx.insert).toHaveBeenCalledWith(outboxEvents);
     expect(tx.update).toHaveBeenCalledWith(controllerState);
     expect(fetcher).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ dispatcher: expect.anything() }));
+  });
+
+  it("derives Provider health from a real registered Model call", async () => {
+    const { service, rows, fetcher } = setup();
+    fetcher.mockResolvedValue(new Response(JSON.stringify({ status: 401, title: "Unauthorized" }), { status: 401 }));
+
+    const result = await service.revalidateProvider("provider-1", "admin");
+
+    expect(result).toMatchObject({ status: "failed", validationMessage: expect.stringContaining("HTTP 401") });
+    expect(rows.get(modelDefinitions)?.[0]).toMatchObject({ connectionStatus: "failed", connectionMessage: expect.stringContaining("HTTP 401") });
+    expect(String(fetcher.mock.calls[0]?.[0])).toBe("https://provider.test/v1/chat/completions");
   });
 
   it("configures an unused alias without invoking it and resets old probe evidence", async () => {
@@ -228,5 +239,24 @@ describe("Capability configuration after registration", () => {
     expect(fetcher).not.toHaveBeenCalled();
     expect((await service.validateDraft("admin")).validationReport?.valid).toBe(true);
     expect(fetcher).toHaveBeenCalledOnce();
+  });
+
+  it("saves and validates capability assignments independently", async () => {
+    const { service, fetcher } = setup("draft", true);
+    const saved = await service.updateAssignment("content_safety", id, "admin");
+    expect(saved.assignments.detectors.content_safety).toBe(id);
+    expect(fetcher).not.toHaveBeenCalled();
+
+    const first = await service.validateAssignment("content_safety", "admin");
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(first.validationReport?.checks).toContainEqual(expect.objectContaining({ id: `probe:content_safety:${id}`, status: "passed" }));
+    expect(first.validationReport?.checks.some((check) => check.id.startsWith("probe:jailbreak_detection:"))).toBe(false);
+    expect(first.validationReport?.valid).toBe(false);
+
+    const second = await service.validateAssignment("jailbreak_detection", "admin");
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(second.validationReport?.checks).toContainEqual(expect.objectContaining({ id: `probe:content_safety:${id}`, status: "passed" }));
+    expect(second.validationReport?.checks).toContainEqual(expect.objectContaining({ id: `probe:jailbreak_detection:${id}`, status: "passed" }));
+    expect(second.validationReport?.valid).toBe(true);
   });
 });

@@ -18,6 +18,7 @@ import { PolicyCatalog, type PolicyDto } from "../policy-catalog/catalog.js";
 import { modelDetectorTypes } from "../../shared/guardrail-catalog.js";
 import {
   assignedModelIds,
+  assignmentTargetProfiles,
   assignmentInputSchema,
   controlPlaneProfiles,
   detectorContracts,
@@ -33,6 +34,7 @@ import {
   profileTransports,
   type ActiveModelConfiguration,
   type ModelAssignments,
+  type ModelAssignmentTarget,
   type ModelDetectorType,
   type ModelProfile,
   type ModelValidationCheck,
@@ -98,7 +100,7 @@ export class ModelConfigurationService {
   async createProvider(raw: unknown, actorId: string) {
     const input = providerInputSchema.parse(raw);
     const id = randomUUID();
-    const validation = await this.probeProvider(input.baseUrl, input.apiKey, input.skipTlsVerify);
+    const validation = await this.probeProviderFromCatalog(input.baseUrl, input.apiKey, input.skipTlsVerify);
     const [created] = await this.db.insert(modelProviders).values({
       id,
       name: input.name,
@@ -131,7 +133,10 @@ export class ModelConfigurationService {
       : input.apiKey;
     const baseUrl = normalizeBaseUrl(input.baseUrl ?? current.baseUrl);
     const skipTlsVerify = baseUrl.startsWith("https:") && (input.skipTlsVerify ?? current.skipTlsVerify ?? false);
-    const validation = await this.probeProvider(baseUrl, apiKey, skipTlsVerify);
+    const target = await this.providerValidationModel(id);
+    const validation = target
+      ? await this.probeProviderCredential(baseUrl, apiKey, skipTlsVerify, target)
+      : await this.probeProviderFromCatalog(baseUrl, apiKey, skipTlsVerify);
     const updated = await this.db.transaction(async (tx) => {
       const [saved] = await tx.update(modelProviders).set({
         ...(input.name === undefined ? {} : { name: input.name }),
@@ -170,6 +175,10 @@ export class ModelConfigurationService {
       }
       return saved;
     });
+    if (target) {
+      await this.db.update(modelDefinitions).set({ ...connectionEvidence(validation), updatedAt: new Date() })
+        .where(eq(modelDefinitions.id, target.id));
+    }
     await this.invalidateModelsForProvider(id, validation.passed ? null : validation.message);
     await this.audit(actorId, "model_provider.updated", "model_provider", id, { status: updated.status, skipTlsVerify });
     this.activeCache = null;
@@ -179,7 +188,10 @@ export class ModelConfigurationService {
   async revalidateProvider(id: string, actorId: string) {
     const current = await this.provider(id);
     const apiKey = decryptModelCredential(current.credentialCiphertext, this.rootSecret);
-    const validation = await this.probeProvider(current.baseUrl, apiKey, current.skipTlsVerify);
+    const target = await this.providerValidationModel(id);
+    const validation = target
+      ? await this.probeProviderCredential(current.baseUrl, apiKey, current.skipTlsVerify, target)
+      : await this.probeProviderFromCatalog(current.baseUrl, apiKey, current.skipTlsVerify);
     const [updated] = await this.db.update(modelProviders).set({
       status: validation.passed ? "validated" : "failed",
       validationMessage: validation.message,
@@ -188,6 +200,10 @@ export class ModelConfigurationService {
       updatedAt: new Date(),
     }).where(eq(modelProviders.id, id)).returning();
     if (!updated) throw new NotFoundError("Model Provider", id);
+    if (target) {
+      await this.db.update(modelDefinitions).set({ ...connectionEvidence(validation), updatedAt: new Date() })
+        .where(eq(modelDefinitions.id, target.id));
+    }
     await this.invalidateModelsForProvider(id, validation.passed ? null : validation.message);
     await this.audit(actorId, "model_provider.validated", "model_provider", id, { status: updated.status });
     return publicProvider(updated);
@@ -227,12 +243,17 @@ export class ModelConfigurationService {
       skipTlsVerify: input.connection.skipTlsVerify && input.connection.baseUrl.startsWith("https:"),
       credentialCiphertext: encryptModelCredential(input.connection.apiKey, this.rootSecret),
     };
-    const connectionCheck = await this.probeProvider(connection.baseUrl, input.connection.apiKey, connection.skipTlsVerify);
-    const registered = await mapConcurrent(input.models, 4, async (model) => ({
+    const probes = await mapConcurrent(input.models, 4, async (model) => ({
+      model,
+      result: await this.probeModel(connection, model, "connection"),
+    }));
+    const successfulProbe = probes.find(({ result }) => result.passed) ?? probes[0]!;
+    const connectionCheck = providerCredentialEvidence(successfulProbe.model, successfulProbe.result);
+    const registered = probes.map(({ model, result }) => ({
       id: randomUUID(), ...model, providerId: id, status: "pending" as const,
       validationMessage: "Registered. Assign and validate this Model in Guardrail Catalog.",
       validationLatencyMs: null, validatedAt: null, createdBy: actorId,
-      ...connectionEvidence(await this.probeModel(connection, model, "connection")),
+      ...connectionEvidence(result),
     }));
     return this.db.transaction(async (tx) => {
       const [provider] = await tx.insert(modelProviders).values({
@@ -395,6 +416,88 @@ export class ModelConfigurationService {
     await this.audit(actorId, "model_configuration.draft_updated", "model_configuration", updated.id, {
       revision: updated.revision,
     });
+    return publicRevision(updated);
+  }
+
+  async updateAssignment(target: ModelAssignmentTarget, modelId: string | null, actorId: string) {
+    const draft = await this.ensureEditableDraft(actorId);
+    const assignments = normalizeModelAssignments(draft.assignments);
+    if (modelId) {
+      const [model] = await this.db.select().from(modelDefinitions).where(eq(modelDefinitions.id, modelId));
+      if (!model) throw new ValidationError(`Assigned Model was not found: ${modelId}.`);
+      if (!assignmentTargetProfiles(target).includes(model.profile)) {
+        throw new ValidationError(`${model.name} (${model.profile}) cannot be assigned to ${target}.`);
+      }
+    }
+    if (target === "control_plane") assignments.controlPlane = modelId;
+    else assignments.detectors[target] = modelId;
+
+    const checks = (draft.validationReport?.checks ?? []).filter((check) => !checkBelongsToTarget(check, target));
+    checks.push({
+      id: `assignment:${target}`,
+      scope: "configuration",
+      status: modelId ? "passed" : "skipped",
+      message: modelId ? `${target} has a saved Model assignment.` : `${target} is not assigned.`,
+    });
+    const report = await this.reportFromChecks(assignments, checks);
+    const [updated] = await this.db.update(modelConfigurationRevisions).set({
+      assignments,
+      state: report.valid ? "validated" : "draft",
+      validationReport: report,
+      validatedAt: report.valid ? new Date(report.checkedAt) : null,
+      failureReason: report.valid ? null : "One or more saved assignments still need validation.",
+      updatedAt: new Date(),
+    }).where(eq(modelConfigurationRevisions.id, draft.id)).returning();
+    if (!updated) throw new NotFoundError("Model configuration revision", draft.id);
+    await this.audit(actorId, "model_configuration.assignment_updated", "model_configuration", updated.id, { target, modelId });
+    return publicRevision(updated);
+  }
+
+  async validateAssignment(target: ModelAssignmentTarget, actorId: string) {
+    const draft = await this.ensureEditableDraft(actorId);
+    const assignments = normalizeModelAssignments(draft.assignments);
+    const modelId = target === "control_plane" ? assignments.controlPlane : assignments.detectors[target];
+    const checks = (draft.validationReport?.checks ?? []).filter((check) => !checkBelongsToTarget(check, target));
+    if (!modelId) {
+      checks.push({ id: `assignment:${target}`, scope: "configuration", status: "skipped", message: `${target} is not assigned.` });
+    } else {
+      const [model] = await this.db.select().from(modelDefinitions).where(eq(modelDefinitions.id, modelId));
+      const [provider] = model
+        ? await this.db.select().from(modelProviders).where(eq(modelProviders.id, model.providerId))
+        : [];
+      if (!model || !provider) {
+        checks.push({ id: `assignment:${target}`, scope: "configuration", status: "failed", message: `${target} references an unavailable Model.` });
+      } else if (!assignmentTargetProfiles(target).includes(model.profile)) {
+        checks.push({ id: `assignment:${target}`, scope: "configuration", status: "failed", message: `${model.name} is incompatible with ${target}.` });
+      } else {
+        checks.push({ id: `assignment:${target}`, scope: "configuration", status: "passed", message: `${model.name} is assigned to ${target}.` });
+        const result = await this.probeModel(provider, model);
+        await this.db.update(modelDefinitions).set({
+          status: result.passed ? "validated" : "failed",
+          validationMessage: result.message,
+          validationLatencyMs: result.latencyMs,
+          validatedAt: new Date(),
+          updatedAt: new Date(),
+        }).where(eq(modelDefinitions.id, model.id));
+        checks.push({
+          id: `probe:${target}:${model.id}`,
+          scope: target === "control_plane" ? "model" : "detector",
+          status: result.passed ? "passed" : "failed",
+          message: result.message,
+          latencyMs: result.latencyMs,
+        });
+      }
+    }
+    const report = await this.reportFromChecks(assignments, checks);
+    const [updated] = await this.db.update(modelConfigurationRevisions).set({
+      state: report.valid ? "validated" : "draft",
+      validationReport: report,
+      validatedAt: new Date(report.checkedAt),
+      failureReason: report.valid ? null : "One or more saved assignments still need validation.",
+      updatedAt: new Date(),
+    }).where(eq(modelConfigurationRevisions.id, draft.id)).returning();
+    if (!updated) throw new NotFoundError("Model configuration revision", draft.id);
+    await this.audit(actorId, "model_configuration.assignment_validated", "model_configuration", updated.id, { target, modelId, valid: report.valid });
     return publicRevision(updated);
   }
 
@@ -692,6 +795,40 @@ export class ModelConfigurationService {
     };
   }
 
+  private async reportFromChecks(assignments: ModelAssignments, checks: ModelValidationCheck[]): Promise<ModelValidationReport> {
+    assignments = normalizeModelAssignments(assignments);
+    const ids = [...new Set(assignedModelIds(assignments))];
+    const models = ids.length
+      ? await this.db.select().from(modelDefinitions).where(inArray(modelDefinitions.id, ids))
+      : [];
+    const modelById = new Map(models.map((model) => [model.id, model]));
+    const contractCoverage = [
+      ...localGuardrailContracts.map((contract) => ({ contract, source: "local" as const, modelId: null, detectorType: null })),
+      ...modelDetectorTypes.flatMap((detectorType) => {
+        const modelId = assignments.detectors[detectorType];
+        const model = modelId ? modelById.get(modelId) : undefined;
+        if (!model) return [];
+        const passed = checks.some((check) => check.id === `probe:${detectorType}:${model.id}` && check.status === "passed");
+        return passed
+          ? detectorContracts(detectorType, model.profile).map((contract) => ({ contract, source: "model" as const, modelId: model.id, detectorType }))
+          : [];
+      }),
+    ];
+    const assignedTargets: Array<[ModelAssignmentTarget, string | null]> = [
+      ["control_plane", assignments.controlPlane],
+      ...modelDetectorTypes.map((target) => [target, assignments.detectors[target]] as [ModelDetectorType, string | null]),
+    ];
+    const allAssignedTargetsPassed = assignedTargets.every(([target, id]) => !id || checks.some((check) => check.id === `probe:${target}:${id}` && check.status === "passed"));
+    const availableContracts = new Set(contractCoverage.map((item) => item.contract));
+    return {
+      valid: allAssignedTargetsPassed && !checks.some((check) => check.status === "failed"),
+      checkedAt: new Date().toISOString(),
+      checks,
+      contractCoverage: uniqueContractCoverage(contractCoverage),
+      policies: await this.policyCoverage(availableContracts),
+    };
+  }
+
   private async policyCoverage(available: Set<string>): Promise<PolicyCoverage[]> {
     const catalog = PolicyCatalog.load(this.policyCatalogDirectory).list();
     const custom = await this.db.select().from(policyVersions).orderBy(desc(policyVersions.version));
@@ -708,15 +845,31 @@ export class ModelConfigurationService {
     ].sort((left, right) => left.name.localeCompare(right.name));
   }
 
-  private async probeProvider(baseUrl: string, apiKey: string, skipTlsVerify = false) {
+  private async probeProviderFromCatalog(baseUrl: string, apiKey: string, skipTlsVerify = false) {
     const started = performance.now();
     try {
       const models = await this.providerCatalog(baseUrl, apiKey, skipTlsVerify);
-      if (isDedicatedJailbreakDetectEndpoint(baseUrl)) return probe(true, "Provider classifier endpoint responded successfully.", started);
-      return probe(true, `Provider connected and returned ${models.length} Model${models.length === 1 ? "" : "s"}.`, started);
+      const candidate = models[0];
+      if (!candidate) return probe(false, "Provider credential could not be verified because no callable Model was found.", started);
+      return this.probeProviderCredential(baseUrl, apiKey, skipTlsVerify, {
+        model: candidate.id,
+        profile: isDedicatedJailbreakDetectEndpoint(baseUrl) ? jailbreakDetectProfile : "generic-chat",
+        timeoutSeconds: 20,
+        maxTokens: 64,
+      });
     } catch (error) {
-      return probe(false, probeError("Provider connection failed", error), started);
+      return probe(false, probeError("Provider credential verification failed", error), started);
     }
+  }
+
+  private async probeProviderCredential(
+    baseUrl: string,
+    apiKey: string,
+    skipTlsVerify: boolean,
+    model: Pick<ModelRow, "model" | "profile" | "timeoutSeconds" | "maxTokens">,
+  ) {
+    const result = await this.probeModel({ baseUrl: normalizeBaseUrl(baseUrl), credentialCiphertext: "", skipTlsVerify }, model, "connection", apiKey);
+    return providerCredentialEvidence(model, result);
   }
 
   private async providerCatalog(baseUrl: string, apiKey: string, skipTlsVerify = false) {
@@ -738,10 +891,10 @@ export class ModelConfigurationService {
       .map((model) => ({ id: model, name: model }));
   }
 
-  private async probeModel(provider: Pick<ProviderRow, "baseUrl" | "credentialCiphertext" | "skipTlsVerify">, model: Pick<ModelRow, "model" | "profile" | "timeoutSeconds" | "maxTokens">, mode: "capability" | "connection" = "capability") {
+  private async probeModel(provider: Pick<ProviderRow, "baseUrl" | "credentialCiphertext" | "skipTlsVerify">, model: Pick<ModelRow, "model" | "profile" | "timeoutSeconds" | "maxTokens">, mode: "capability" | "connection" = "capability", credentialOverride?: string) {
     const started = performance.now();
     const fetcher = providerFetch(provider.skipTlsVerify, this.fetcher);
-    const credential = decryptModelCredential(provider.credentialCiphertext, this.rootSecret);
+    const credential = credentialOverride ?? decryptModelCredential(provider.credentialCiphertext, this.rootSecret);
     if (profileTransports[model.profile] === "nemoguard_jailbreak_detect") {
       try {
         const safe = await this.callJailbreakDetect(provider.baseUrl, credential, provider.skipTlsVerify, model.timeoutSeconds * 1_000, jailbreakDetectSafeInput);
@@ -897,6 +1050,14 @@ export class ModelConfigurationService {
     return provider;
   }
 
+  private async providerValidationModel(providerId: string): Promise<ModelRow | null> {
+    const models = await this.db.select().from(modelDefinitions).where(eq(modelDefinitions.providerId, providerId));
+    return models
+      .filter((model) => !isRetiredModel(model.model))
+      .sort((left, right) => Number(right.connectionStatus === "validated") - Number(left.connectionStatus === "validated")
+        || left.name.localeCompare(right.name))[0] ?? null;
+  }
+
   private async invalidateModelsForProvider(providerId: string, reason: string | null): Promise<void> {
     if (!reason) return;
     await this.db.update(modelDefinitions).set({
@@ -954,6 +1115,18 @@ function connectionEvidence(result: ReturnType<typeof probe>) {
     connectionMessage: result.message,
     connectionLatencyMs: result.latencyMs,
     connectionCheckedAt: new Date(),
+  };
+}
+
+function providerCredentialEvidence(
+  model: Pick<ModelRow, "model">,
+  result: ReturnType<typeof probe>,
+) {
+  return {
+    ...result,
+    message: result.passed
+      ? `Provider credential was verified by an actual call to ${model.model}.`
+      : `Provider credential verification failed while calling ${model.model}: ${result.message}`,
   };
 }
 
@@ -1089,6 +1262,10 @@ async function responseErrorDetail(response: Response): Promise<string> {
 
 function uniqueContractCoverage<T extends { contract: string }>(items: T[]): T[] {
   return [...new Map(items.map((item) => [item.contract, item])).values()];
+}
+
+function checkBelongsToTarget(check: ModelValidationCheck, target: ModelAssignmentTarget): boolean {
+  return check.id === `assignment:${target}` || check.id.startsWith(`probe:${target}:`);
 }
 
 const nativePolicyRequirements: Record<string, string[]> = {

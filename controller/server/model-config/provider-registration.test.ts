@@ -64,7 +64,7 @@ describe("Relay-style Provider registration", () => {
     const result = await service.registerProviderModels({ connection: { ...connection, skipTlsVerify }, models: [model("chat")] }, "admin");
     expect(result.provider.skipTlsVerify).toBe(skipTlsVerify);
     await service.discoverProviderModels(result.provider.id);
-    expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(fetcher).toHaveBeenCalledTimes(2);
     for (const [, init] of fetcher.mock.calls) expect(Boolean(init && "dispatcher" in init)).toBe(skipTlsVerify);
   });
 
@@ -90,11 +90,12 @@ describe("Relay-style Provider registration", () => {
     expect(result.models.map((item) => item.model)).toEqual(["chat", "bad"]);
     expect(result.models.every((item) => item.status === "pending" && item.validatedAt === null)).toBe(true);
     expect(result.failures).toEqual([]);
-    expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(fetcher).toHaveBeenCalledTimes(2);
     expect(result.models.map((item) => item.connectionStatus)).toEqual(["validated", "failed"]);
     expect(result.models.every((item) => item.connectionCheckedAt instanceof Date)).toBe(true);
     expect(result.models[1]?.connectionMessage).toContain("HTTP 503");
-    expect(String(fetcher.mock.calls[0]![0])).toBe("https://provider.test/v1/models");
+    expect(fetcher.mock.calls.every(([url]) => String(url).endsWith("/chat/completions"))).toBe(true);
+    expect(result.provider).toMatchObject({ status: "validated", validationMessage: expect.stringContaining("actual call to chat") });
     expect(rows.get(modelProviders)).toHaveLength(1);
     expect(rows.get(modelDefinitions)).toHaveLength(2);
     expect(rows.get(auditEvents)).toHaveLength(1);
@@ -109,9 +110,23 @@ describe("Relay-style Provider registration", () => {
     const { service, db, fetcher } = setup(true);
     const result = await service.registerProviderModels({ connection, models: [model("example/jailbreak-judge")] }, "admin");
     expect(db.transaction).toHaveBeenCalledOnce();
-    expect(result.provider.status).toBe("failed");
+    expect(result.provider.status).toBe("validated");
     expect(result.models[0]).toMatchObject({ model: "example/jailbreak-judge", status: "pending", validatedAt: null, connectionStatus: "validated" });
-    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+
+  it("does not report a Provider as healthy when its public catalog works but an actual Model call rejects the credential", async () => {
+    const { service, fetcher } = setup();
+    fetcher.mockImplementation(async (url) => String(url).endsWith("/models")
+      ? Response.json({ data: [{ id: "chat" }] })
+      : new Response(JSON.stringify({ status: 401, title: "Unauthorized", detail: "Authentication failed" }), { status: 401 }));
+
+    await expect(service.discoverProviderDraft(connection)).resolves.toMatchObject({ models: [{ id: "chat" }] });
+    const result = await service.registerProviderModels({ connection, models: [model("chat")] }, "admin");
+
+    expect(result.provider.status).toBe("failed");
+    expect(result.provider.validationMessage).toContain("HTTP 401");
+    expect(result.models[0]).toMatchObject({ connectionStatus: "failed", connectionMessage: expect.stringContaining("HTTP 401") });
   });
 
   it("registers a model on a saved Provider without discovery or capability validation", async () => {

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 export function ConfirmationSheet({
   children,
   cancelLabel,
+  confirmIcon,
   confirmLabel,
   confirmDisabled = false,
   description,
@@ -21,6 +22,7 @@ export function ConfirmationSheet({
 }: {
   children?: ReactNode;
   cancelLabel: string;
+  confirmIcon?: ReactNode;
   confirmLabel: string;
   confirmDisabled?: boolean;
   description: ReactNode;
@@ -47,7 +49,7 @@ export function ConfirmationSheet({
       footer={<>
         <Button type="button" variant="outline" disabled={pending} onClick={() => onOpenChange(false)}>{cancelLabel}</Button>
         <Button type="button" variant={variant === "destructive" ? "destructive" : "default"} disabled={pending || confirmDisabled} onClick={onConfirm}>
-          {pending ? <LoaderCircle className="animate-spin motion-reduce:animate-none" /> : <Icon />}
+          {pending ? <LoaderCircle className="animate-spin motion-reduce:animate-none" /> : confirmIcon ?? <Icon />}
           {pending ? pendingLabel ?? confirmLabel : confirmLabel}
         </Button>
       </>}

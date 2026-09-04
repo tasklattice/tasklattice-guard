@@ -55,6 +55,26 @@ export const detectorProfileRefs = {
   automated_reasoning: ["tali.automated-reasoning.v1"],
 } as const satisfies Record<ModelDetectorType, readonly string[]>;
 
+// Preference is about protocol specificity, not model quality. Dedicated
+// detector contracts are shown before multi-purpose guard protocols.
+export const detectorProfilePreference = {
+  content_safety: [
+    "tali.nemotron-safety-guard-v3.v1",
+    "tali.nemotron-content-safety.v1",
+    "tali.llama-guard-3.v1",
+    "tali.qwen3guard.v1",
+  ],
+  jailbreak_detection: [
+    "tali.nemoguard-jailbreak-detect.v1",
+    "tali.openai-compatible-jailbreak.v1",
+    "tali.qwen3guard.v1",
+  ],
+  topic_control: ["tali.nemoguard-topic-control.v1", "tali.taxonomy-judge.v1"],
+  pii_detection: ["tali.qwen3guard.v1"],
+  contextual_grounding: ["tali.grounding-judge.v1"],
+  automated_reasoning: ["tali.automated-reasoning.v1"],
+} as const satisfies Record<ModelDetectorType, readonly string[]>;
+
 export const guardrailCatalog: ReadonlyArray<{
   id: GuardrailCategoryId;
   detectors: readonly ModelDetectorType[];

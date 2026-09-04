@@ -25,7 +25,7 @@ import { cn } from "@/lib/utils";
 
 export const runnerPoolKey = ["resources", "runner-pools"] as const;
 
-export function RunnerCapacitySection() {
+export function RunnerCapacitySection({ showHeader = true }: { showHeader?: boolean }) {
   const { t, i18n } = useTranslation();
   const auth = useAuth();
   const queryClient = useQueryClient();
@@ -34,11 +34,15 @@ export function RunnerCapacitySection() {
   const [removing, setRemoving] = useState<{ runner: RunnerInstance; poolName: string } | null>(null);
 
   return (
-    <section className="overflow-hidden rounded-lg border bg-card" aria-labelledby="runner-capacity-title">
-      <header className="border-b px-5 py-4">
+    <section
+      className="overflow-hidden rounded-lg border bg-card"
+      aria-labelledby={showHeader ? "runner-capacity-title" : undefined}
+      aria-label={showHeader ? undefined : t("runners.title")}
+    >
+      {showHeader ? <header className="border-b px-5 py-4">
         <h2 id="runner-capacity-title" className="text-base font-semibold">{t("runners.title")}</h2>
         <p className="mt-1 text-sm leading-6 text-muted-foreground">{t("runners.description")}</p>
-      </header>
+      </header> : null}
       {query.isLoading ? <div className="p-5"><Skeleton className="h-80 rounded-lg" /></div> : null}
       {query.error ? <div className="p-5"><ErrorNotice error={query.error} /></div> : null}
       {!query.isLoading && !query.error && !query.data?.items.length ? <div className="p-5"><EmptyState title={t("runners.emptyTitle")} description={t("runners.emptyDescription")} /></div> : null}

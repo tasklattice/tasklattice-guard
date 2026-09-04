@@ -1,11 +1,12 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Activity, Bot, LibraryBig, ServerCog } from "lucide-react";
+import { Activity, Bot, LibraryBig, Server, ServerCog } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const settingsItems = [
-  { to: "/settings/status", label: "nav.status", icon: Activity },
+  { to: "/settings/health", label: "nav.health", icon: Activity },
+  { to: "/settings/runner", label: "nav.runner", icon: Server },
   { to: "/settings/providers", label: "nav.providers", icon: ServerCog },
   { to: "/settings/models", label: "nav.models", icon: Bot },
   { to: "/settings/guardrail-catalog", label: "nav.guardrailCatalog", icon: LibraryBig },

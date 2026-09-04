@@ -10,10 +10,11 @@ import {
   deleteModelProvider,
   discoverModelProvider,
   getModelConfiguration,
-  revalidateModelDefinition,
-  saveModelAssignments,
+  revalidateModelProvider,
+  saveModelAssignment,
   testModelConnection,
-  validateModelConfiguration,
+  updateModelProviderCredential,
+  validateModelAssignment,
   type ModelAssignments,
   type ModelConfigurationView,
 } from "@/lib/controller-api";
@@ -34,10 +35,11 @@ vi.mock("@/lib/controller-api", async (importOriginal) => {
     activateModelConfiguration: vi.fn(),
     deleteModelDefinition: vi.fn(),
     deleteModelProvider: vi.fn(),
-    validateModelConfiguration: vi.fn(),
-    saveModelAssignments: vi.fn(),
-    revalidateModelDefinition: vi.fn(),
+    validateModelAssignment: vi.fn(),
+    saveModelAssignment: vi.fn(),
+    revalidateModelProvider: vi.fn(),
     testModelConnection: vi.fn(),
+    updateModelProviderCredential: vi.fn(),
     discoverModelProvider: vi.fn(),
   };
 });
@@ -114,12 +116,13 @@ describe("Models and Guardrail Catalog", () => {
     Element.prototype.scrollIntoView = vi.fn();
     vi.mocked(getModelConfiguration).mockReset().mockResolvedValue(view);
     vi.mocked(activateModelConfiguration).mockReset().mockResolvedValue({ ...view, distribution: { desiredGeneration: 7, distributionStatus: "ready" } });
-    vi.mocked(validateModelConfiguration).mockReset().mockResolvedValue(view.draft);
-    vi.mocked(revalidateModelDefinition).mockReset().mockResolvedValue(safetyModel);
+    vi.mocked(validateModelAssignment).mockReset().mockResolvedValue(view.draft);
+    vi.mocked(revalidateModelProvider).mockReset().mockResolvedValue(provider);
     vi.mocked(testModelConnection).mockReset().mockResolvedValue(safetyModel);
+    vi.mocked(updateModelProviderCredential).mockReset().mockResolvedValue(provider);
     vi.mocked(deleteModelDefinition).mockReset().mockResolvedValue(undefined);
     vi.mocked(deleteModelProvider).mockReset().mockResolvedValue(undefined);
-    vi.mocked(saveModelAssignments).mockReset().mockResolvedValue(view.draft);
+    vi.mocked(saveModelAssignment).mockReset().mockResolvedValue(view.draft);
     vi.mocked(discoverModelProvider).mockReset().mockResolvedValue({ providerId: provider.id, providerName: provider.name, models: [] });
     vi.mocked(toast.success).mockReset();
     vi.mocked(toast.error).mockReset();
@@ -141,18 +144,13 @@ describe("Models and Guardrail Catalog", () => {
     expect(screen.getAllByText("modelSettings.categoryStates.service.title").length).toBeGreaterThan(0);
   });
 
-  it("binds the same compatible Model independently to another detector and confirms the draft update in the right drawer", async () => {
+  it("binds and saves a compatible Model only for the selected detector", async () => {
     renderPage(<GuardrailCatalogPage />);
     const jailbreak = await screen.findByRole("row", { name: "modelSettings.categories.jailbreak_protection.title" });
     fireEvent.keyDown(within(jailbreak).getByRole("combobox", { name: "modelSettings.modelColumn" }), { key: "ArrowDown" });
     fireEvent.click(await screen.findByRole("option", { name: /Qwen Guard · Mock provider/ }));
-    fireEvent.click(screen.getByRole("button", { name: "modelSettings.saveDraft" }));
-    const drawer = screen.getByRole("dialog", { name: "modelSettings.saveConfirmationTitle" });
-    fireEvent.click(within(drawer).getByRole("button", { name: "modelSettings.saveConfirmationAction" }));
-    await waitFor(() => expect(saveModelAssignments).toHaveBeenCalledWith({
-      ...assignments,
-      detectors: { ...assignments.detectors, jailbreak_detection: "safety-model" },
-    }));
+    fireEvent.click(within(jailbreak).getAllByRole("button", { name: "modelSettings.saveAssignment" })[0]!);
+    await waitFor(() => expect(saveModelAssignment).toHaveBeenCalledWith("jailbreak_detection", "safety-model"));
   });
 
   it("activates only after confirming the validated clean catalog revision", async () => {
@@ -161,6 +159,21 @@ describe("Models and Guardrail Catalog", () => {
     const drawer = screen.getByRole("dialog", { name: "modelSettings.activateConfirmationTitle" });
     fireEvent.click(within(drawer).getByRole("button", { name: "modelSettings.activateConfirmationAction" }));
     await waitFor(() => expect(activateModelConfiguration).toHaveBeenCalledWith("revision-2"));
+  });
+
+  it("validates only the selected detector without a global Catalog action", async () => {
+    renderPage(<GuardrailCatalogPage />);
+    const contentSafety = await screen.findByRole("row", { name: "modelSettings.categories.content_safety.title" });
+    fireEvent.click(within(contentSafety).getAllByRole("button", { name: "modelSettings.validateAssignment" })[0]!);
+    await waitFor(() => expect(validateModelAssignment).toHaveBeenCalledWith("content_safety", expect.anything()));
+    expect(screen.queryByRole("button", { name: "modelSettings.validateCatalog" })).toBeNull();
+  });
+
+  it("validates the Control Plane assignment independently", async () => {
+    renderPage(<GuardrailCatalogPage />);
+    const section = (await screen.findByRole("heading", { name: "modelSettings.controlPlane" })).closest("section")!;
+    fireEvent.click(within(section).getByRole("button", { name: "modelSettings.validateAssignment" }));
+    await waitFor(() => expect(validateModelAssignment).toHaveBeenCalledWith("control_plane", expect.anything()));
   });
 
   it("blocks removal in the shared right drawer and clearly identifies Topic Control use", async () => {
@@ -187,6 +200,44 @@ describe("Models and Guardrail Catalog", () => {
     expect(screen.getByRole("button", { name: "modelSettings.addProvider" })).toBeTruthy();
   });
 
+  it("updates a Provider credential from the shared right-side drawer", async () => {
+    renderPage(<ProvidersPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "modelSettings.manageProvider Mock provider" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Mock provider" })).getByRole("button", { name: "modelSettings.updateCredential" }));
+    const drawer = screen.getByRole("dialog", { name: "modelSettings.updateCredential" });
+    fireEvent.change(within(drawer).getByLabelText("modelSettings.newCredential"), { target: { value: "replacement-secret" } });
+    fireEvent.click(within(drawer).getByRole("button", { name: "modelSettings.saveAndVerifyCredential" }));
+    await waitFor(() => expect(updateModelProviderCredential).toHaveBeenCalledWith(provider.id, "replacement-secret"));
+  });
+
+  it("keeps every Provider row action behind one management entry", async () => {
+    renderPage(<ProvidersPage />);
+    const manage = await screen.findByRole("button", { name: "modelSettings.manageProvider Mock provider" });
+    expect(screen.queryByRole("button", { name: "modelSettings.updateCredential Mock provider" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "modelSettings.retest Mock provider" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "common.remove Mock provider" })).toBeNull();
+    fireEvent.click(manage);
+    const drawer = screen.getByRole("dialog", { name: "Mock provider" });
+    expect(within(drawer).getByRole("button", { name: "modelSettings.retest" })).toBeTruthy();
+    expect(within(drawer).getByRole("button", { name: "modelSettings.updateCredential" })).toBeTruthy();
+    expect(within(drawer).getByRole("button", { name: "providerRegistration.registerModels" })).toBeTruthy();
+    expect(within(drawer).getByRole("button", { name: "common.remove" })).toBeTruthy();
+  });
+
+  it("keeps a failed credential update inside the inspector with a clear recovery path", async () => {
+    vi.mocked(updateModelProviderCredential).mockRejectedValueOnce(new Error("Credential rejected by Provider"));
+    renderPage(<ProvidersPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "modelSettings.manageProvider Mock provider" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Mock provider" })).getByRole("button", { name: "modelSettings.updateCredential" }));
+    const drawer = screen.getByRole("dialog", { name: "modelSettings.updateCredential" });
+    fireEvent.change(within(drawer).getByLabelText("modelSettings.newCredential"), { target: { value: "rejected-secret" } });
+    fireEvent.click(within(drawer).getByRole("button", { name: "modelSettings.saveAndVerifyCredential" }));
+    expect((await within(drawer).findByRole("alert")).textContent).toContain("Credential rejected by Provider");
+    expect(within(drawer).getByRole("button", { name: "common.back" })).toHaveProperty("disabled", false);
+    fireEvent.change(within(drawer).getByLabelText("modelSettings.newCredential"), { target: { value: "corrected-secret" } });
+    expect(within(drawer).queryByRole("alert")).toBeNull();
+  });
+
   it("removes an unassigned Model only after drawer confirmation", async () => {
     const unused = { ...safetyModel, id: "unused-model", name: "Unused model", model: "mock/unused" };
     vi.mocked(getModelConfiguration).mockResolvedValue({ ...view, models: [...view.models, unused] });
@@ -200,8 +251,21 @@ describe("Models and Guardrail Catalog", () => {
   it("tests Model callability without changing catalog assignments", async () => {
     renderPage(<ModelsPage />);
     fireEvent.click(await screen.findByRole("button", { name: "modelSettings.testCall Qwen Guard" }));
+    expect(testModelConnection).not.toHaveBeenCalled();
+    const drawer = screen.getByRole("dialog", { name: "modelSettings.modelTestConfirmationTitle" });
+    fireEvent.click(within(drawer).getByRole("button", { name: "modelSettings.modelTestConfirmationAction" }));
     await waitFor(() => expect(testModelConnection).toHaveBeenCalledWith("safety-model"));
-    expect(saveModelAssignments).not.toHaveBeenCalled();
+    expect(saveModelAssignment).not.toHaveBeenCalled();
     expect(activateModelConfiguration).not.toHaveBeenCalled();
+  });
+
+  it("retests a Provider only after right-drawer confirmation", async () => {
+    renderPage(<ProvidersPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "modelSettings.manageProvider Mock provider" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Mock provider" })).getByRole("button", { name: "modelSettings.retest" }));
+    expect(revalidateModelProvider).not.toHaveBeenCalled();
+    const drawer = screen.getByRole("dialog", { name: "modelSettings.providerRetestConfirmationTitle" });
+    fireEvent.click(within(drawer).getByRole("button", { name: "modelSettings.providerRetestConfirmationAction" }));
+    await waitFor(() => expect(revalidateModelProvider).toHaveBeenCalledWith(provider.id));
   });
 });

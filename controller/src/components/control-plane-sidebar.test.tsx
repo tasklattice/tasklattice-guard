@@ -29,8 +29,8 @@ vi.mock("react-i18next", () => ({
       "nav.helpCenter": "Help center",
       "nav.settings": "Settings",
       "nav.settingsDescription": "Platform settings and operational information.",
-      "nav.status": "Status",
-      "nav.statusDescription": "View Controller, Runner, and model connection health.",
+      "nav.health": "Health",
+      "nav.healthDescription": "View platform health.",
       "sidebar.toggleNavigation": "Toggle navigation",
     } as Record<string, string>)[key] ?? key,
   }),
@@ -51,7 +51,7 @@ describe("ControlPlaneSidebar", () => {
     const help = screen.getByRole("link", { name: "Help center" });
     const settings = screen.getByRole("link", { name: "Settings" });
     expect(help.closest('[data-sidebar="footer"]')).toBe(settings.closest('[data-sidebar="footer"]'));
-    expect(settings.getAttribute("href")).toBe("/settings/status");
+    expect(settings.getAttribute("href")).toBe("/settings/health");
     expect(settings.getAttribute("aria-haspopup")).toBeNull();
     expect(settings.querySelectorAll("svg")).toHaveLength(1);
     expect(screen.queryByRole("dialog")).toBeNull();

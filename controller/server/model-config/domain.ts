@@ -48,6 +48,10 @@ export type ModelAssignments = {
   detectors: Record<ModelDetectorType, string | null>;
 };
 
+export const modelAssignmentTargets = ["control_plane", ...modelDetectorTypes] as const;
+export type ModelAssignmentTarget = (typeof modelAssignmentTargets)[number];
+export const modelAssignmentTargetSchema = z.enum(modelAssignmentTargets);
+
 export const emptyModelAssignments = (): ModelAssignments => ({
   controlPlane: null,
   detectors: Object.fromEntries(modelDetectorTypes.map((type) => [type, null])) as Record<ModelDetectorType, null>,

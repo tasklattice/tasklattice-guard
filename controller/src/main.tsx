@@ -17,7 +17,8 @@ import { PolicyLibraryPage } from "@/routes/policy-library";
 import { AccountPage } from "@/routes/account";
 import { HelpPage } from "@/routes/help";
 import { AuditLogPage } from "@/routes/audit-log";
-import { StatusPage } from "@/routes/status";
+import { HealthPage } from "@/routes/status";
+import { RunnerPage } from "@/routes/runner";
 import { GuardrailCatalogPage, ModelsPage, ProvidersPage } from "@/routes/models";
 import { AuthProvider } from "@/lib/auth";
 import { isGuardrailVersionId } from "../shared/guardrail-version";
@@ -48,8 +49,9 @@ const logsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/logs", 
 const auditLogRoute = createRoute({ getParentRoute: () => rootRoute, path: "/audit-log", component: AuditLogPage });
 const usersRoute = createRoute({ getParentRoute: () => rootRoute, path: "/access", component: UsersPage });
 const accountRoute = createRoute({ getParentRoute: () => rootRoute, path: "/account", component: AccountPage });
-const settingsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings", component: () => <Navigate to="/settings/status" replace /> });
-const statusRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/status", component: StatusPage });
+const settingsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings", component: () => <Navigate to="/settings/health" replace /> });
+const healthRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/health", component: HealthPage });
+const runnerRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/runner", component: RunnerPage });
 const providersRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/providers", component: ProvidersPage });
 const modelsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/models", component: ModelsPage });
 const guardrailCatalogRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/guardrail-catalog", component: GuardrailCatalogPage });
@@ -69,7 +71,8 @@ const routeTree = rootRoute.addChildren([
   usersRoute,
   accountRoute,
   settingsRoute,
-  statusRoute,
+  healthRoute,
+  runnerRoute,
   providersRoute,
   modelsRoute,
   guardrailCatalogRoute,

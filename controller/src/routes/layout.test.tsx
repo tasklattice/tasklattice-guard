@@ -38,6 +38,8 @@ vi.mock("react-i18next", () => ({
       "nav.dashboard": "Dashboard",
       "nav.guardrailDesign": "Guardrail Design",
       "nav.guardrails": "Guardrails",
+      "nav.settings": "Settings",
+      "nav.runner": "Runner",
       "auth.sessionLoading": "Checking your session…",
     } as Record<string, string>)[key] ?? key,
   }),
@@ -64,5 +66,13 @@ describe("ControlPlaneLayout", () => {
     expect(screen.getByText("Guardrail Design")).toBeTruthy();
     expect(screen.getByText("Guardrails")).toBeTruthy();
     expect(screen.queryByText("TaskLattice Guard")).toBeNull();
+  });
+
+  it("labels the Runner settings page independently from Health", () => {
+    pathname = "/settings/runner";
+    render(<ControlPlaneLayout />);
+
+    expect(screen.getByText("Settings")).toBeTruthy();
+    expect(screen.getByText("Runner")).toBeTruthy();
   });
 });

@@ -8,6 +8,13 @@
       "when": 1788510804117,
       "tag": "0000_baseline",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1788518268638,
+      "tag": "0001_provider_live_validation",
+      "breakpoints": true
     }
   ]
 }

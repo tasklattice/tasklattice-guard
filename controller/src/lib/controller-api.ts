@@ -408,6 +408,7 @@ export type ProviderRegistrationResult = { provider: ModelProvider; models: Mode
 export const discoverProviderDraft = (input: ProviderConnectionDraft) => requestController<Omit<DiscoveredProviderModels, "providerId">>("/api/v1/model-providers/discover", json("POST", input));
 export const registerProviderModels = (input: { connection: ProviderConnectionDraft; models: ProviderModelSelection[] }) => requestController<ProviderRegistrationResult>("/api/v1/model-providers/register", json("POST", input));
 export const createModelProvider = (input: { name: string; kind: ModelProviderKind; baseUrl: string; apiKey?: string; skipTlsVerify?: boolean }) => requestController<ModelProvider>("/api/v1/model-providers", json("POST", input));
+export const updateModelProviderCredential = (id: string, apiKey: string) => requestController<ModelProvider>(`/api/v1/model-providers/${encodeURIComponent(id)}`, json("PATCH", { apiKey }));
 export const updateProviderTls = (id: string, skipTlsVerify: boolean) => requestController<ModelProvider>(`/api/v1/model-providers/${encodeURIComponent(id)}`, json("PATCH", { skipTlsVerify }));
 export const revalidateModelProvider = (id: string) => requestController<ModelProvider>(`/api/v1/model-providers/${encodeURIComponent(id)}/validate`, json("POST"));
 export const discoverModelProvider = (id: string) => requestController<DiscoveredProviderModels>(`/api/v1/model-providers/${encodeURIComponent(id)}/discover`, json("POST"));
@@ -419,6 +420,9 @@ export const testModelConnection = (id: string) => requestController<ModelDefini
 export const deleteModelDefinition = (id: string) => requestController<void>(`/api/v1/models/${encodeURIComponent(id)}`, json("DELETE"));
 export const saveModelAssignments = (assignments: ModelAssignments) => requestController<ModelConfigurationRevision>("/api/v1/model-configuration/draft", json("PUT", assignments));
 export const validateModelConfiguration = () => requestController<ModelConfigurationRevision>("/api/v1/model-configuration/validate", json("POST"));
+export type ModelAssignmentTarget = "control_plane" | ModelDetectorType;
+export const saveModelAssignment = (target: ModelAssignmentTarget, modelId: string | null) => requestController<ModelConfigurationRevision>(`/api/v1/model-configuration/draft/assignments/${encodeURIComponent(target)}`, json("PUT", { modelId }));
+export const validateModelAssignment = (target: ModelAssignmentTarget) => requestController<ModelConfigurationRevision>(`/api/v1/model-configuration/draft/assignments/${encodeURIComponent(target)}/validate`, json("POST"));
 export const activateModelConfiguration = (revisionId: string) => requestController<ModelConfigurationView & { distribution: { desiredGeneration: number; distributionStatus: "ready" | "syncing" } }>(`/api/v1/model-configuration/${encodeURIComponent(revisionId)}/activate`, json("POST"));
 export const rollbackModelConfiguration = () => requestController<ModelConfigurationView & { distribution: { desiredGeneration: number; distributionStatus: "ready" | "syncing" } }>("/api/v1/model-configuration/rollback", json("POST"));
 export const listControllerGuardrails = () => requestController<Collection<Guardrail>>("/api/v1/guardrails");
