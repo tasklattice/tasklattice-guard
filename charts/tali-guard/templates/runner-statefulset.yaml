@@ -102,6 +102,9 @@ spec:
           volumeMounts:
             - { name: artifact-signing, mountPath: /var/run/tasklattice/artifact, readOnly: true }
             - { name: control-tls, mountPath: /var/run/tasklattice/control-tls, readOnly: true }
+            {{- if $root.Values.security.customCa.existingSecret }}
+            - { name: custom-ca, mountPath: /etc/ssl/certs/tasklattice-custom-ca.crt, subPath: tasklattice-custom-ca.crt, readOnly: true }
+            {{- end }}
             - { name: state, mountPath: /var/lib/tasklattice/guard-runner }
             - { name: tmp, mountPath: /tmp }
           startupProbe: { httpGet: { path: /health/live, port: runtime }, periodSeconds: 2, failureThreshold: 60 }
@@ -127,6 +130,13 @@ spec:
               - { key: {{ $root.Values.security.controlTls.caKey }}, path: ca.crt }
               - { key: {{ $root.Values.security.controlTls.runnerCertificateKey }}, path: runner.crt }
               - { key: {{ $root.Values.security.controlTls.runnerPrivateKeyKey }}, path: runner.key }
+        {{- if $root.Values.security.customCa.existingSecret }}
+        - name: custom-ca
+          secret:
+            secretName: {{ include "tali-guard.customCaSecretName" $root }}
+            items:
+              - { key: {{ $root.Values.security.customCa.certificateKey }}, path: tasklattice-custom-ca.crt }
+        {{- end }}
         - name: state
           emptyDir: { sizeLimit: {{ $root.Values.runner.state.sizeLimit }} }
         - name: tmp

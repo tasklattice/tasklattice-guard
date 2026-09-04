@@ -12,6 +12,11 @@ from runner.toolkit.runtime.contracts import ProtectionDecision, RiskFinding
 from runner.validator import DefaultRunnerValidator
 
 
+def test_legacy_numeric_guardrail_versions_are_rejected():
+    with pytest.raises(ValueError, match="canonical UTC timestamp"):
+        plan_from_dict({"guardrail_id": "legacy", "guardrail_version": 1})
+
+
 @pytest.mark.parametrize("change", ["none", "partial_output", "wrong_rule", "stale", "unreviewed"])
 async def test_composition_assertions_require_reviewed_evidence_and_complete_output(change):
     case = {
@@ -45,7 +50,7 @@ async def test_composition_assertions_require_reviewed_evidence_and_complete_out
         ),),
     )
     plan = plan_from_dict({
-        "guardrail_id": "test", "guardrail_version": 1, "compiler_version": "test",
+        "guardrail_id": "test", "guardrail_version": "20260904-010000.001Z", "compiler_version": "test",
         "safety_level": "balanced", "output_delivery": "full_buffered",
         "steps": [], "modules": [],
     })

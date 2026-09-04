@@ -4,10 +4,11 @@ import hashlib
 import json
 import re
 from dataclasses import replace
-from typing import Any, Literal
+from typing import Any
 
 import yaml
 from nemoguardrails import RailsConfig
+from nemoguardrails.guardrails.iorails import IORails
 
 from ..nemo.action_registry import (
     ACTION_CONTENT_FILTER,
@@ -22,6 +23,7 @@ from ..nemo.action_registry import (
     action_name_for,
 )
 from ..nemo.artifacts import config_checksum
+from ..nemo.native_models import TOPIC_CONTROL_MODEL_TYPE, TOPIC_CONTROL_PROFILE
 from ..runtime.contracts import (
     GuardrailPhase,
     GuardrailPlanSnapshot,
@@ -33,15 +35,7 @@ from ..runtime.contracts import (
 from .domain import PolicyDraft, PlanCompilationError, RailBinding
 
 
-NEMO_COMPILER_VERSION = "tasklattice-nemo-config-v13-rule-order"
-
-ExecutionSurface = Literal["standalone_check", "owned_generation"]
-
-_NATIVE_IORAILS_FLOWS = {
-    "content safety check input $model=content_safety",
-    "content safety check output $model=content_safety",
-    "topic safety check input $model=topic_control",
-}
+NEMO_COMPILER_VERSION = "tasklattice-nemo-config-v14-iorails-check"
 
 _COLANG1_STANDARD_ACTIONS = {
     ACTION_EVALUATE,
@@ -52,7 +46,7 @@ _COLANG1_STANDARD_ACTIONS = {
     ACTION_TOPIC_JUDGE,
 }
 _COLANG1_COMPLEX_CAPABILITIES = {"contextual_grounding", "automated_reasoning"}
-_ALLOWED_RUNTIME_MODEL_TYPES = frozenset({"content_safety", "topic_control"})
+_ALLOWED_RUNTIME_MODEL_TYPES = frozenset({TOPIC_CONTROL_MODEL_TYPE})
 
 
 class NeMoConfigCompiler:
@@ -64,7 +58,6 @@ class NeMoConfigCompiler:
         models: tuple[dict[str, Any], ...] = (),
         builtin_prompts_yaml: str = "",
         otel_enabled: bool = False,
-        execution_surface: ExecutionSurface = "standalone_check",
     ) -> None:
         self._models = tuple(dict(item) for item in models)
         self._model_types = frozenset(str(item.get("type", "")) for item in models)
@@ -79,9 +72,6 @@ class NeMoConfigCompiler:
             str(item.get("task", "")) for item in self._builtin_prompts
         )
         self._otel_enabled = otel_enabled
-        if execution_surface not in {"standalone_check", "owned_generation"}:
-            raise ValueError(f"Unsupported NeMo execution surface {execution_surface!r}.")
-        self._execution_surface = execution_surface
 
     def has_model_dependency(self, name: str) -> bool:
         return name in self._model_types
@@ -92,6 +82,7 @@ class NeMoConfigCompiler:
     def compile(self, plan: GuardrailPlanSnapshot) -> NeMoConfigSnapshot:
         _validate_execution_order(plan)
         flows: dict[GuardrailPhase, list[str]] = {"input": [], "output": []}
+        native_steps: dict[tuple[GuardrailPhase, str], str] = {}
         binding_phases: dict[str, list[GuardrailPhase]] = {}
         binding_steps = {}
         required_models: set[str] = set()
@@ -102,17 +93,11 @@ class NeMoConfigCompiler:
                 if phase not in step.phases:
                     continue
                 capability = step.capability
-                native = (
-                    self._native_flow(capability, phase, step.on_unsafe)
-                    if sum(capability == item.capability and phase in item.phases for item in plan.steps) == 1
-                    else None
-                )
+                native = self._native_flow(step, phase)
                 if native is not None:
                     flows[phase].append(native)
-                    if capability == "content_safety":
-                        required_models.add("content_safety")
-                    elif capability == "topic_control":
-                        required_models.add("topic_control")
+                    native_steps[(phase, step.id)] = native
+                    required_models.add(TOPIC_CONTROL_MODEL_TYPE)
                     continue
 
                 binding_steps[step.id] = step
@@ -146,7 +131,6 @@ class NeMoConfigCompiler:
             builtin_bindings,
             custom_bindings,
             required_features,
-            execution_surface=self._execution_surface,
         )
         runtime_engine = (
             "iorails" if runtime_profile == "iorails_native" else "llmrails"
@@ -165,6 +149,7 @@ class NeMoConfigCompiler:
         config = self._config(
             flows,
             prompts,
+            required_models,
             required_features,
             runtime_profile=runtime_profile,
             colang_version=colang_version,
@@ -180,7 +165,7 @@ class NeMoConfigCompiler:
             if runtime_profile == "llmrails_colang1_standard"
             else ""
             if runtime_profile == "iorails_native"
-            else _colang_v2(plan, flows, builtin_bindings, custom_bindings)
+            else _colang_v2(plan, native_steps, builtin_bindings, custom_bindings)
         )
         rail_flows = tuple(
             (phase, flow)
@@ -337,10 +322,18 @@ class NeMoConfigCompiler:
     @staticmethod
     def validate(snapshot: NeMoConfigSnapshot) -> None:
         try:
-            RailsConfig.from_content(
+            rails_config = RailsConfig.from_content(
                 yaml_content=snapshot.config_yaml,
                 colang_content=snapshot.colang_content or None,
             )
+            if snapshot.runtime_profile == "iorails_native":
+                reason = IORails.unsupported_reason(rails_config)
+                if reason is not None:
+                    raise PlanCompilationError(
+                        f"Compiled NeMo configuration is not supported by IORails: {reason}."
+                    )
+        except PlanCompilationError:
+            raise
         except Exception as error:
             raise PlanCompilationError(
                 f"Compiled NeMo configuration is invalid: {type(error).__name__}: {error}"
@@ -348,15 +341,15 @@ class NeMoConfigCompiler:
 
     def _native_flow(
         self,
-        capability: str,
+        step,
         phase: GuardrailPhase,
-        action: str,
     ) -> str | None:
         if (
-            capability == "topic_control"
-            and action == "reject"
+            step.capability == "topic_control"
+            and step.contract_ref == "tali.guard.topic-control.semantic.v1"
+            and step.on_unsafe == "reject"
             and phase == "input"
-            and "topic_control" in self._model_types
+            and TOPIC_CONTROL_MODEL_TYPE in self._model_types
         ):
             return "topic safety check input $model=topic_control"
         return None
@@ -366,15 +359,13 @@ class NeMoConfigCompiler:
         plan: GuardrailPlanSnapshot,
         required_models: set[str],
     ) -> list[dict[str, Any]]:
-        prompts = [
-            dict(item)
-            for item in self._builtin_prompts
-            if str(item.get("task", "")).startswith("content_safety_check_")
-            and "content_safety" in required_models
-        ]
-        if "topic_control" in required_models:
+        prompts: list[dict[str, Any]] = []
+        if TOPIC_CONTROL_MODEL_TYPE in required_models:
             topic_step = next(
-                step for step in plan.steps if step.capability == "topic_control"
+                step
+                for step in plan.steps
+                if step.contract_ref == "tali.guard.topic-control.semantic.v1"
+                and "input" in step.phases
             )
             parameters = dict(topic_step.parameters)
             prompts.append(
@@ -400,6 +391,7 @@ class NeMoConfigCompiler:
         self,
         flows: dict[GuardrailPhase, list[str]],
         prompts: list[dict[str, Any]],
+        required_models: set[str],
         required_features: set[str],
         *,
         runtime_profile: NeMoRuntimeProfile,
@@ -449,8 +441,13 @@ class NeMoConfigCompiler:
                 )
             },
         }
-        if self._models:
-            config["models"] = [dict(item) for item in self._models]
+        models = [
+            dict(item)
+            for item in self._models
+            if str(item.get("type", "")) in required_models
+        ]
+        if models:
+            config["models"] = models
         if prompts:
             config["prompts"] = prompts
         return config
@@ -469,25 +466,20 @@ def _runtime_profile(
     builtin_bindings: tuple[NeMoActionBinding, ...],
     custom_bindings: tuple[NeMoActionBinding, ...],
     required_features: set[str],
-    *,
-    execution_surface: ExecutionSurface,
 ) -> NeMoRuntimeProfile:
     """Select the smallest NeMo runtime that proves the plan's semantics.
 
-    IORails owns full generation, but this service normally performs standalone
-    pre/post checks.  The latter therefore remains on LLMRails even when every
-    configured library flow is IORails-compatible.
+    NeMo 0.24 exposes a public standalone ``check_async`` API, so a plan made
+    solely from standard input/output rails can use IORails directly.
     """
     configured_native = tuple(
         flow for items in native_flows.values() for flow in items
     )
     iorails_compatible = (
-        execution_surface == "owned_generation"
-        and not builtin_bindings
+        not builtin_bindings
         and not custom_bindings
         and "sensitive_data_detection" not in required_features
         and bool(configured_native)
-        and all(flow in _NATIVE_IORAILS_FLOWS for flow in configured_native)
     )
     if iorails_compatible:
         return "iorails_native"
@@ -540,10 +532,6 @@ def _is_colang1_standard_compatible(
     # Sequential NeMo subflows thread user_message/bot_message, so any number
     # of modifiers is safe. No capability regrouping or mutation-priority sort.
     return True
-
-
-
-
 def _with_result_var(binding: NeMoActionBinding) -> NeMoActionBinding:
     return replace(
         binding,
@@ -675,14 +663,14 @@ def _timeout_for(
 
 def _colang_v2(
     plan: GuardrailPlanSnapshot,
-    native_flows: dict[GuardrailPhase, list[str]],
+    native_steps: dict[tuple[GuardrailPhase, str], str],
     bindings: tuple[NeMoActionBinding, ...],
     custom_bindings: tuple[NeMoActionBinding, ...],
 ) -> str:
     """Compile the policy graph into Colang 2.x so NeMo owns orchestration."""
     imports = {"import core"}
     configured_native = {
-        flow for flows in native_flows.values() for flow in flows
+        flow for flow in native_steps.values()
     }
     if any(flow.startswith("content safety check") for flow in configured_native):
         imports.add("import nemoguardrails.library.content_safety")
@@ -712,33 +700,80 @@ def _colang_v2(
         )
         lines.extend((f"flow tasklattice {phase} rails $text",))
         message_var = "$user_message" if phase == "input" else "$bot_message"
-        lines.extend((f"  global {message_var}", f"  {message_var} = $text", "  $blocked = False"))
-        native_by_capability = {
-            _native_capability(flow): flow for flow in native_flows[phase]
-        }
+        lines.extend(
+            (
+                f"  global {message_var}",
+                f"  {message_var} = $text",
+                "  $blocked = False",
+            )
+        )
         binding_by_id = {item.id: item for item in phase_bindings}
-        policy_order = {item.policy_id: index for index, item in enumerate(plan.policy_bindings)}
+        policy_order = {
+            item.policy_id: index
+            for index, item in enumerate(plan.policy_bindings)
+        }
         entries = []
         for index, step in enumerate(plan.steps):
             if phase not in step.phases:
                 continue
             binding = binding_by_id.get(step.id)
-            policy_id = dict(step.parameters).get("policy_id") or (binding.policy_id if binding else None)
+            policy_id = dict(step.parameters).get("policy_id") or (
+                binding.policy_id if binding else None
+            )
             rank = policy_order.get(policy_id, index)
             if binding is not None:
                 entries.append((rank, index, "action", binding))
-            elif step.capability in native_by_capability:
-                entries.append((rank, index, "native", native_by_capability[step.capability]))
+            elif (phase, step.id) in native_steps:
+                entries.append(
+                    (
+                        rank,
+                        index,
+                        "native",
+                        (step, native_steps[(phase, step.id)]),
+                    )
+                )
         for index, binding in enumerate(phase_custom):
-            entries.append((policy_order.get(binding.policy_id, len(plan.steps) + index), index, "custom", binding))
+            entries.append(
+                (
+                    policy_order.get(binding.policy_id, len(plan.steps) + index),
+                    index,
+                    "custom",
+                    binding,
+                )
+            )
         entries.sort(key=lambda item: item[:2])
-        result_vars = {item.id: f"$tl_result_{_binding_suffix(item)}" for item in phase_bindings}
+        result_vars = {
+            step.id: f"$tl_result_{hashlib.sha256(step.id.encode()).hexdigest()[:8]}"
+            for step in plan.steps
+            if phase in step.phases
+        }
         for result_var in result_vars.values():
             lines.append(f'  {result_var} = {{"verdict": "skipped"}}')
         for _, _, kind, entry in entries:
             lines.append("  if not $blocked")
             if kind == "native":
-                lines.extend("  " + line for line in _native_flow_lines(entry, phase))
+                step, flow = entry
+                indent = "    "
+                if step.trigger.type != "always":
+                    source = result_vars.get(step.trigger.step_ref)
+                    if source is None:
+                        raise PlanCompilationError(
+                            f"Unavailable trigger step {step.trigger.step_ref!r}."
+                        )
+                    condition = " or ".join(
+                        f'{source}["verdict"] == "{verdict}"'
+                        for verdict in step.trigger.verdicts
+                    )
+                    lines.append(f"    if {condition}")
+                    indent += "  "
+                lines.extend(
+                    f"{indent}{line}"
+                    for line in _native_flow_lines(
+                        flow,
+                        step.id,
+                        result_vars[step.id],
+                    )
+                )
             elif kind == "custom":
                 lines.append(f"    await {_compiled_flow_name(entry)}(text=$text)")
             else:
@@ -747,73 +782,55 @@ def _colang_v2(
                 if entry.trigger.type != "always":
                     source = result_vars.get(entry.trigger.step_ref)
                     if source is None:
-                        raise PlanCompilationError(f"Unavailable trigger step {entry.trigger.step_ref!r}.")
-                    condition = " or ".join(f'{source}["verdict"] == "{verdict}"' for verdict in entry.trigger.verdicts)
+                        raise PlanCompilationError(
+                            f"Unavailable trigger step {entry.trigger.step_ref!r}."
+                        )
+                    condition = " or ".join(
+                        f'{source}["verdict"] == "{verdict}"'
+                        for verdict in entry.trigger.verdicts
+                    )
                     lines.append(f"    if {condition}")
                     indent += "  "
-                lines.append(f'{indent}{result_var} = await {entry.action_name}(text=$text, binding_id="{entry.id}")')
-            lines.extend((
-                f"    $decision = await {ACTION_RESOLVE}(text=$text)",
-                '    $text = $decision["content"]',
-                '    $blocked = $decision["blocked"]',
-                f"    {message_var} = $text",
-            ))
+                lines.append(
+                    f'{indent}{result_var} = await {entry.action_name}('
+                    f'text=$text, binding_id="{entry.id}")'
+                )
+            lines.extend(
+                (
+                    f"    $decision = await {ACTION_RESOLVE}(text=$text)",
+                    '    $text = $decision["content"]',
+                    '    $blocked = $decision["blocked"]',
+                    f"    {message_var} = $text",
+                )
+            )
         lines.extend((f"  $decision = await {ACTION_RESOLVE}(text=$text)", ""))
 
     return "\n".join(lines).rstrip() + "\n"
 
 
-
-def _native_flow_lines(flow: str, phase: GuardrailPhase) -> list[str]:
-    if flow.startswith("content safety check"):
-        action = (
-            "ContentSafetyCheckInputAction"
-            if phase == "input"
-            else "ContentSafetyCheckOutputAction"
-        )
-        return [
-            f'  $response = await {action}(model_name="content_safety")',
-            f"  $recorded = await {ACTION_RECORD_NATIVE}("
-            'risk="content_safety", safe=$response["allowed"], text=$text, '
-            'details=$response["policy_violations"])',
-        ]
+def _native_flow_lines(
+    flow: str,
+    binding_id: str,
+    result_var: str,
+) -> list[str]:
     if flow.startswith("topic safety check"):
+        suffix = hashlib.sha256(binding_id.encode()).hexdigest()[:8]
+        response_var = f"$tl_native_response_{suffix}"
+        safe_var = f"$tl_native_safe_{suffix}"
+        failed_var = f"$tl_native_failed_{suffix}"
         return [
-            '  $response = await TopicSafetyCheckInputAction(model_name="topic_control")',
-            f"  $recorded = await {ACTION_RECORD_NATIVE}("
-            'risk="topic_control", safe=$response["on_topic"], text=$text)',
-        ]
-    if "sensitive data" in flow:
-        action = (
-            "MaskSensitiveDataAction"
-            if flow.startswith("mask ")
-            else "DetectSensitiveDataAction"
-        )
-        return [
-            f'  $pii_result = await {action}(source="{phase}", text=$text)'
+            f'{response_var} = await TopicSafetyCheckInputAction(model_name="topic_control")',
+            f"{safe_var} = not {response_var}.is_blocked",
+            f"{failed_var} = {response_var}.failed",
+            f"{result_var} = await {ACTION_RECORD_NATIVE}("
+            f'risk="topic_control", safe={safe_var}, failed={failed_var}, '
+            f'text=$text, binding_id="{binding_id}")',
         ]
     raise PlanCompilationError(f"Unsupported NeMo native flow {flow!r}.")
 
 
-
-
-
-
-
-
-
 def _flow_identifier(value: str) -> str:
     return "_".join(re.sub(r"[^a-zA-Z0-9]+", " ", value).split()).lower()
-
-
-def _native_capability(flow: str) -> str | None:
-    if flow.startswith("content safety check"):
-        return "content_safety"
-    if flow.startswith("topic safety check"):
-        return "topic_control"
-    if "sensitive data" in flow:
-        return "pii"
-    return None
 
 
 def _builtin_action_binding(
@@ -1075,7 +1092,10 @@ def _dependency_manifest(
             entries.add(("action", ACTION_RECORD_NATIVE, "1.0.0"))
         if any(item.policy_id is not None for item in bindings):
             entries.add(("action", ACTION_RECORD_POLICY, "1.0.0"))
-    entries.update(("model", item, "profile") for item in required_models)
+    entries.update(
+        ("model", item, TOPIC_CONTROL_PROFILE)
+        for item in required_models
+    )
     for prompt in prompts:
         task = str(prompt.get("task", ""))
         digest = hashlib.sha256(

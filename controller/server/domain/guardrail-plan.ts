@@ -153,7 +153,7 @@ export function normalizeGuardrailDraft(value: unknown): GuardrailDraftConfig {
 /** Convert the product draft into the immutable contract compiled by Runner. */
 export function buildGuardrailPlan(input: {
   guardrailId: string;
-  guardrailVersion: number;
+  guardrailVersion: string;
   purpose?: string;
   draft: GuardrailDraftConfig;
   policies?: readonly PolicyDto[];
@@ -304,7 +304,7 @@ export function buildGuardrailPlan(input: {
       action: binding.action,
       parameter_values: Object.entries(binding.parameterValues).sort(([left], [right]) => left.localeCompare(right)),
       enabled_rule_ids: binding.enabledRuleIds,
-      ...(binding.ruleOrder?.length ? { rule_order: binding.ruleOrder } : {}),
+      rule_order: binding.ruleOrder ?? [],
       rule_actions: Object.entries(binding.ruleActions).sort(([left], [right]) => left.localeCompare(right)),
       enabled_rails: binding.enabledRails,
     })),

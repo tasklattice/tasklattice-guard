@@ -58,6 +58,13 @@ describe("Controller metrics authentication", () => {
     } as unknown as ControllerMetrics;
     const service = {
       listRunnerPoolsWithCapacity: vi.fn().mockResolvedValue([]),
+      defaultGuardrailReadiness: vi.fn().mockResolvedValue({
+        status: "unavailable",
+        guardrailStatus: "unavailable",
+        deploymentStatus: "unavailable",
+        activeVersion: null,
+        modelIndependent: true,
+      }),
       desiredGeneration: vi.fn().mockResolvedValue(3),
     } as unknown as ControlPlaneService;
     const app = createHttpApp({
@@ -68,7 +75,26 @@ describe("Controller metrics authentication", () => {
       metrics,
     });
 
-    expect((await app.request("/api/v1/system/status")).status).toBe(503);
+    const response = await app.request("/api/v1/system/status");
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      status: "unavailable",
+      reasons: ["default_guardrail_unavailable", "no_connected_runners"],
+      desiredGeneration: 3,
+      components: {
+        controller: { status: "operational" },
+        basicProtection: {
+          status: "unavailable",
+          guardrailStatus: "unavailable",
+          deploymentStatus: "unavailable",
+          activeVersion: null,
+          modelIndependent: true,
+        },
+        runnerFleet: { status: "unavailable", servingRunners: 0, connectedRunners: 0 },
+        controlPlaneModel: { status: "unconfigured", provider: null, model: null },
+        runtimeModels: { status: "unconfigured", models: [] },
+      },
+    });
     const rendered = await registry.metrics();
     expect(rendered).toContain(
       'guard_controller_http_requests_total{method="GET",route="/api/v1/system/status",status="503",ok="false"} 1',

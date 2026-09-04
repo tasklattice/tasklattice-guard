@@ -11,7 +11,7 @@ from runner.toolkit.runtime.contracts import ProtectionRequest, RequestContext
 
 PLAN = {
     "guardrail_id": "guardrail-draft",
-    "guardrail_version": 4,
+    "guardrail_version": "20260904-040000.004Z",
     "compiler_version": "tasklattice-controller-plan-v3",
     "safety_level": "balanced",
     "output_delivery": "full_buffered",
@@ -63,7 +63,7 @@ async def test_draft_preview_compiles_real_runtime_and_rejects_identity_reuse() 
             preview_id="preview-1",
             guardrail_id="guardrail-draft",
             draft_revision=7,
-            candidate_version=4,
+            candidate_version="20260904-040000.004Z",
             plan=PLAN,
             runtime_profile="auto",
         )
@@ -77,7 +77,7 @@ async def test_draft_preview_compiles_real_runtime_and_rejects_identity_reuse() 
             preview_id="preview-1",
             guardrail_id="guardrail-draft",
             draft_revision=7,
-            candidate_version=4,
+            candidate_version="20260904-040000.004Z",
             plan=PLAN,
             runtime_profile="auto",
         )
@@ -86,13 +86,13 @@ async def test_draft_preview_compiles_real_runtime_and_rejects_identity_reuse() 
         assert prepared["ttl_seconds"] == 900
         assert decision.decision == "allow"
         assert decision.guardrail_id == "guardrail-draft"
-        assert decision.guardrail_version == 4
+        assert decision.guardrail_version == "20260904-040000.004Z"
         with pytest.raises(ValueError, match="identity"):
             await previews.prepare(
                 preview_id="preview-1",
                 guardrail_id="guardrail-draft",
                 draft_revision=8,
-                candidate_version=4,
+                candidate_version="20260904-040000.004Z",
                 plan=PLAN,
                 runtime_profile="auto",
             )

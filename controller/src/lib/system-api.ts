@@ -9,16 +9,18 @@ export async function getSystemStatus(): Promise<SystemStatus> {
     controllerApi.listControllerDeployments(),
     controllerApi.listControllerIntegrations(),
   ]);
+  const runtimeModels = status.components.runtimeModels.models;
+  const runtimeHealthy = status.status === "healthy";
   return {
-    status: status.status === "ready" ? "healthy" : "degraded",
-    status_reason: status.defaultRunnerReady ? "runtime_ready" : "default_runner_unavailable",
+    status: runtimeHealthy ? "healthy" : "degraded",
+    status_reason: runtimeHealthy ? "runtime_ready" : "default_runner_unavailable",
     active_deployments: deployments.items.filter((item) => item.enabled).length,
     enabled_integrations: integrations.items.filter((item) => item.status === "active").length,
     total_integrations: integrations.items.length,
     capabilities: {
-      evaluators: unique(status.modelConnections.dataPlane.models.map((item) => item.id)),
+      evaluators: unique(runtimeModels.map((item) => item.id)),
       generic_runtime_llm: false,
-      automated_reasoning: status.modelConnections.dataPlane.models.some((item) => item.id === "automated-reasoning"),
+      automated_reasoning: runtimeModels.some((item) => item.id === "automated-reasoning"),
     },
   };
 }

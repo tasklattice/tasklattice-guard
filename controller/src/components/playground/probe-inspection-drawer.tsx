@@ -5,7 +5,6 @@ import { useTranslation } from "react-i18next";
 
 import { ModelMark } from "@/components/playground/model-mark";
 import { EvaluatedPoliciesPanel, ExecutionTracePanel, FindingsPanel } from "@/components/playground/probe-insights";
-import { formatGuardrailReleaseId } from "@/components/guardrail-version-workspace";
 import { StateBadge } from "@/components/product-shell";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -47,10 +46,7 @@ function guardrailTargetLabel(result: PlaygroundCheckResult, t: ReturnType<typeo
   if (result.guardrail.target_kind === "draft") {
     return t("playground.draftPreviewTarget", { revision: result.guardrail.draft_revision ?? 1 });
   }
-  return t("playground.publishedVersion", {
-    version: result.guardrail.version,
-    release: result.guardrail.published_at ? formatGuardrailReleaseId(result.guardrail.published_at) : "",
-  });
+  return t("playground.publishedVersion", { version: result.guardrail.version });
 }
 
 export function StageTabs({ result }: { result: PlaygroundInteraction }) {

@@ -53,7 +53,9 @@ describe("Controller operations translations", () => {
 
     expect(en("runners.recommendation", { recommended: 3, desired: 2 })).toBe("Recommended 3 replicas; 2 currently desired");
     expect(zh("runners.removal.title")).toBe("移除此离线 Runner？");
-    expect(en("activity.runtimeEvents")).toBe("Runtime events");
-    expect(zh("activity.runtimeEvents")).toBe("运行事件");
+    expect(en("nav.observability")).toBe("Observability");
+    expect(zh("nav.observability")).toBe("可观测性");
+    expect(en("logs.systemEvents")).toBe("System events");
+    expect(zh("logs.systemEvents")).toBe("系统事件");
   });
 });

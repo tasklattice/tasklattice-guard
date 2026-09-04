@@ -28,7 +28,7 @@ class EvaluationRequest:
     content: str
     rail_type: GuardrailPhase
     guardrail_id: str
-    guardrail_version: int
+    guardrail_version: str
     policy_id: str | None
     policy_version: int | None
     trusted_context: tuple[tuple[str, str], ...]

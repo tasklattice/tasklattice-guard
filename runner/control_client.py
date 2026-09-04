@@ -12,6 +12,7 @@ import grpc
 import httpx
 
 from runner.toolkit.nemo.action_registry import ActionProviders, action_providers
+from runner.toolkit.nemo.native_models import native_rail_models
 
 from . import __version__
 from .artifact_store import ArtifactStore
@@ -36,6 +37,7 @@ class RunnerControlClient:
         metrics: RunnerMetrics,
         providers: ActionProviders | None = None,
         provider_observer: Callable[[ActionProviders], Awaitable[None]] | None = None,
+        compiler: DefaultRunnerCompiler | None = None,
     ) -> None:
         self._settings = settings
         self._store = store
@@ -50,7 +52,9 @@ class RunnerControlClient:
         self._metrics.set_control_state(connected=False, synchronized=self._synchronized.is_set())
         self._heartbeat_interval = 10
         self._sequence = 0
-        self._compiler = DefaultRunnerCompiler(settings) if settings.compiler_capable else None
+        self._compiler = None
+        if settings.compiler_capable:
+            self._compiler = compiler or DefaultRunnerCompiler(settings)
         self._providers = providers
         self._provider_observer = provider_observer
         self._validator = (
@@ -171,6 +175,7 @@ class RunnerControlClient:
         )
         try:
             providers = None
+            native_models = None
             if desired_state.HasField("model_configuration"):
                 credentials = await self._model_credentials(
                     desired_state.model_configuration
@@ -179,6 +184,10 @@ class RunnerControlClient:
                     desired_state.model_configuration,
                     credentials,
                 ))
+                native_models = native_rail_models(
+                    desired_state.model_configuration,
+                    credentials,
+                )
             if providers is None:
                 await asyncio.to_thread(self._store.apply, desired_state)
             else:
@@ -186,10 +195,12 @@ class RunnerControlClient:
                     self._store.apply,
                     desired_state,
                     providers=providers,
+                    native_models=native_models,
                 )
             if providers is not None:
                 self._providers = providers
                 if self._compiler is not None:
+                    self._compiler.configure_native_models(native_models or ())
                     self._validator = DefaultRunnerValidator(self._compiler, providers)
                 if self._provider_observer is not None:
                     try:

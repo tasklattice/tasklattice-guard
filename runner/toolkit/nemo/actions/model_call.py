@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Iterator, Protocol
 
 import httpx
+from nemoguardrails import Guardrails
 from nemoguardrails.types import ChatMessage, LLMResponse, LLMResponseChunk
 from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode
@@ -113,11 +114,12 @@ class ObservedNeMoModel:
                 yield chunk
 
 
-def instrument_nemo_models(rails: Any, model_roles: tuple[str, ...]) -> None:
-    """Wrap NeMo model action parameters without depending on private clients."""
-    engine = getattr(rails, "rails_engine", rails)
-    runtime = getattr(engine, "runtime", None)
-    params = getattr(runtime, "registered_action_params", {})
+def instrument_nemo_models(
+    rails: Guardrails,
+    model_roles: tuple[str, ...],
+) -> None:
+    """Wrap model action parameters on the pinned NeMo Guardrails runtime."""
+    params = rails.runtime.registered_action_params
     for role in model_roles:
         parameter = f"{role}_llm"
         model = params.get(parameter)
@@ -133,6 +135,8 @@ class _NativeModelCall:
     provider: str
     model: str
     started: float
+    profile_ref: str | None = None
+    runtime_ref: str | None = None
     result: ModelCallResult = "success"
     error_type: str = "none"
     input_tokens: int = 0
@@ -165,6 +169,8 @@ class _NativeModelCall:
             operation=f"{self.role}_{phase}",
             result=self.result,
             duration_ms=duration_ms,
+            profile_ref=self.profile_ref,
+            runtime_ref=self.runtime_ref,
             started_offset_ms=started_offset_ms,
             finished_offset_ms=started_offset_ms + duration_ms,
             input_tokens=self.input_tokens,
@@ -178,16 +184,43 @@ def _observe_native_model_call(
     model: ObservedNeMoModel,
     role: str,
 ) -> Iterator[_NativeModelCall]:
-    scope = _NATIVE_MODEL_SCOPE.get()
-    provider = str(model.provider_name or "unknown")
-    call = _NativeModelCall(scope, role, provider, model.model_name, time.perf_counter())
+    with observe_native_model_call(
+        _NATIVE_MODEL_SCOPE.get(),
+        role=role,
+        provider=str(model.provider_name or "unknown"),
+        model=model.model_name,
+    ) as call:
+        yield call
+
+
+@contextmanager
+def observe_native_model_call(
+    scope: NativeModelObservationScope | None,
+    *,
+    role: str,
+    provider: str,
+    model: str,
+    profile_ref: str | None = None,
+    runtime_ref: str | None = None,
+) -> Iterator[_NativeModelCall]:
+    """Observe a native model call with an explicit request scope."""
+
+    call = _NativeModelCall(
+        scope,
+        role,
+        provider,
+        model,
+        time.perf_counter(),
+        profile_ref=profile_ref,
+        runtime_ref=runtime_ref,
+    )
     labels = {
         "guardrail_id": scope.guardrail_id if scope is not None else "__unresolved__",
         "integration_id": scope.integration_id if scope is not None else "__internal__",
         "phase": scope.phase if scope is not None else "unknown",
         "action": f"nemo_{role}",
         "provider": provider,
-        "model": model.model_name,
+        "model": model,
         "operation": f"{role}_{scope.phase if scope is not None else 'unknown'}",
     }
     observer = scope.observer if scope is not None else None
@@ -201,7 +234,7 @@ def _observe_native_model_call(
             "guardrail.action": labels["action"],
             "integration.id": labels["integration_id"],
             "gen_ai.provider.name": provider,
-            "gen_ai.request.model": model.model_name,
+            "gen_ai.request.model": model,
             "gen_ai.operation.name": labels["operation"],
             "guardrail.model.source": "nemo_native",
         },

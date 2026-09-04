@@ -1,5 +1,6 @@
-# syntax=docker/dockerfile:1.14
-ARG PYTHON_VERSION=3.12
+# Use the BuildKit-bundled Dockerfile frontend so local installation does not
+# require a separate docker.io/docker/dockerfile pull before cached inputs work.
+ARG PYTHON_VERSION=3.13
 
 FROM python:${PYTHON_VERSION}-slim-bookworm AS dependencies
 COPY --from=ghcr.io/astral-sh/uv:0.11.32 /uv /uvx /bin/
@@ -14,7 +15,10 @@ ENV PATH="/opt/tasklattice/venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     GUARD_RUNNER_STATE_PATH=/var/lib/tasklattice/guard-runner
 WORKDIR /opt/tasklattice/guard-runner
-RUN useradd --system --uid 65532 --no-create-home runner \
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --system --uid 65532 --no-create-home runner \
     && mkdir -p /var/lib/tasklattice/guard-runner \
     && chown -R 65532:65532 /var/lib/tasklattice/guard-runner
 COPY --link --from=dependencies /opt/tasklattice/venv /opt/tasklattice/venv

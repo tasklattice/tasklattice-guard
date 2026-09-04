@@ -14,10 +14,11 @@ class Store:
     providers = None
     fail = False
 
-    def apply(self, desired_state, *, providers=None):
+    def apply(self, desired_state, *, providers=None, native_models=None):
         if self.fail:
             raise RuntimeError("provider prewarm failed")
         self.providers = providers
+        self.native_models = native_models
         self.generation = desired_state.generation
 
     def observability_counts(self):
@@ -140,7 +141,7 @@ def _model_desired_state(*, generation: int) -> protocol.DesiredState:
                 max_tokens=128,
             )],
             assignments=[protocol.ModelAssignment(
-                role="safety_evaluator",
+                detector_type="content_safety",
                 model_ref="safety",
                 profile_ref="tali.qwen3guard.v1",
                 contract_refs=["tali.guard.content-safety.v1"],

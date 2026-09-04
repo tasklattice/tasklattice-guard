@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { UserAvatar } from "@/components/account-menu";
 import { ChangePasswordSheet } from "@/components/change-password-sheet";
+import { ConfirmationSheet } from "@/components/confirmation-sheet";
 import { PageHeader } from "@/components/product-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,6 +24,7 @@ export function AccountPage() {
   const [displayName, setDisplayName] = useState(user?.display_name ?? "");
   const [language, setLanguage] = useState<SupportedLanguage>(user?.preferred_language ?? "en");
   const [passwordOpen, setPasswordOpen] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   useEffect(() => {
     setDisplayName(user?.display_name ?? "");
@@ -31,7 +33,7 @@ export function AccountPage() {
 
   const mutation = useMutation({
     mutationFn: () => updateProfile({ display_name: displayName.trim(), preferred_language: language }),
-    onSuccess: () => toast.success(t("account.saved")),
+    onSuccess: () => { setConfirmOpen(false); toast.success(t("account.saved")); },
     onError: (error) => toast.error(error instanceof Error ? error.message : t("common.unknownError")),
   });
 
@@ -42,7 +44,7 @@ export function AccountPage() {
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (displayName.trim() && dirty) mutation.mutate();
+    if (displayName.trim() && dirty) setConfirmOpen(true);
   }
 
   return (
@@ -152,6 +154,24 @@ export function AccountPage() {
       </Tabs>
 
       <ChangePasswordSheet open={passwordOpen} onOpenChange={setPasswordOpen} />
+      <ConfirmationSheet
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        eyebrow={t("account.confirmEyebrow")}
+        title={t("account.confirmTitle")}
+        description={t("account.confirmDescription")}
+        cancelLabel={t("common.cancel")}
+        confirmLabel={t("account.saveChanges")}
+        pendingLabel={t("common.saving")}
+        pending={mutation.isPending}
+        onConfirm={() => mutation.mutate()}
+      >
+        <dl className="divide-y rounded-lg border bg-card px-4 text-sm">
+          <AccountFact label={t("account.displayName")} value={displayName.trim()} />
+          <AccountFact label={t("account.interfaceLanguage")} value={t(language === "zh-CN" ? "common.chinese" : "common.english")} />
+        </dl>
+        {mutation.error ? <p role="alert" className="rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">{mutation.error instanceof Error ? mutation.error.message : t("common.unknownError")}</p> : null}
+      </ConfirmationSheet>
     </section>
   );
 }

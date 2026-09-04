@@ -40,6 +40,7 @@ vi.mock("react-i18next", () => ({
         "policyLibrary.implementationDescription": "Technical Rule bindings.",
         "policyLibrary.filters": "Filters",
         "policyLibrary.clearFilters": "Clear filters",
+        "policyLibrary.tagNamespaces.implementation": "Implementation",
         "policyLibrary.tagNamespaces.rail": "Rail type",
         "policyLibrary.railTypesLabel": "Rail types",
         "policyLibrary.ruleForms": "Rule forms",
@@ -73,8 +74,9 @@ const policy: Policy = {
   source: "built_in",
   version: "1.0.0",
   tags: [
-    { id: "capability:topic-safety", namespace: "capability", value: "topic-safety", label: "Topic Safety", source: "declared" },
+    { id: "guardrail_category:topic_control", namespace: "guardrail_category", value: "topic_control", label: "Topic Control", source: "declared" },
     { id: "jurisdiction:au", namespace: "jurisdiction", value: "au", label: "Australia", source: "declared" },
+    { id: "implementation:category", namespace: "implementation", value: "category", label: "Category classifier", source: "derived" },
     { id: "rail:input", namespace: "rail", value: "input", label: "Input rail", source: "derived" },
   ],
   parameters: [],
@@ -155,6 +157,7 @@ describe("Policy detail", () => {
     expect(screen.getByRole("tab", { name: "Policy" }).getAttribute("aria-selected")).toBe("true");
     expect(screen.getAllByText("Input rail").length).toBeGreaterThan(0);
     expect(screen.getByText("Australia").parentElement?.textContent).toBe("🇦🇺Australia");
+    expect(screen.queryByText("Category classifier")).toBeNull();
     expect(screen.getByText("Rules (1)")).toBeTruthy();
     expect(screen.getByText("Competitor comparison intent")).toBeTruthy();
 
@@ -195,6 +198,9 @@ describe("Policy detail", () => {
     render(<PolicyCard policy={policy} onOpen={vi.fn()} />);
 
     expect(screen.queryByRole("button", { name: "Delete Competitor Discussion Policy" })).toBeNull();
+    const heading = screen.getByRole("heading", { name: "Competitor Discussion Policy" });
+    expect(heading.parentElement?.textContent).toContain("Built-in");
+    expect(heading.closest("article")?.querySelectorAll(".lucide-shield-check")).toHaveLength(1);
   });
 
   it("requires explicit confirmation before deleting a custom Policy", () => {
@@ -209,19 +215,22 @@ describe("Policy detail", () => {
 
     render(<DeletePolicyDialog policy={customPolicy} deleting={false} error={null} onCancel={vi.fn()} onConfirm={onConfirm} />);
 
-    expect(screen.getByRole("alertdialog")).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "Delete custom Policy?" })).toBeTruthy();
     expect(screen.getByText("Permanently delete Customer identifiers.")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Delete permanently" }));
     expect(onConfirm).toHaveBeenCalledOnce();
   });
 
-  it("omits implementation-only Rail types from user-facing filters", () => {
+  it("omits technical implementation and Rail classifications from user-facing filters", () => {
     const onChange = vi.fn();
     const railTag = policy.tags.find((tag) => tag.namespace === "rail");
-    if (!railTag) throw new Error("Rail fixture is required");
+    const implementationTag = policy.tags.find((tag) => tag.namespace === "implementation");
+    if (!railTag || !implementationTag) throw new Error("Technical tag fixtures are required");
 
-    render(<TagFilters facets={new Map([["rail", [railTag]]])} selected={new Set()} onChange={onChange} />);
+    render(<TagFilters facets={new Map([["implementation", [implementationTag]], ["rail", [railTag]]])} selected={new Set()} onChange={onChange} />);
 
+    expect(screen.queryByText("Implementation")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Category classifier/ })).toBeNull();
     expect(screen.queryByText("Rail type")).toBeNull();
     expect(screen.queryByRole("button", { name: /Input rail/ })).toBeNull();
     expect(onChange).not.toHaveBeenCalled();

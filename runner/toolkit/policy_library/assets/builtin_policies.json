@@ -7,15 +7,9 @@
     "version": "1.95.0",
     "tags": [
       {
-        "namespace": "capability",
-        "value": "sensitive-data",
-        "label": "Sensitive Data",
-        "source": "declared"
-      },
-      {
-        "namespace": "capability",
-        "value": "pii",
-        "label": "PII",
+        "namespace": "guardrail_category",
+        "value": "pii_detection",
+        "label": "PII Detection",
         "source": "declared"
       },
       {
@@ -2262,9 +2256,9 @@
     "version": "1.95.0",
     "tags": [
       {
-        "namespace": "capability",
-        "value": "topic-safety",
-        "label": "Topic Safety",
+        "namespace": "guardrail_category",
+        "value": "topic_control",
+        "label": "Topic Control",
         "source": "declared"
       },
       {
@@ -2386,9 +2380,9 @@
     "version": "1.95.0",
     "tags": [
       {
-        "namespace": "capability",
-        "value": "sensitive-data",
-        "label": "Sensitive Data",
+        "namespace": "guardrail_category",
+        "value": "pii_detection",
+        "label": "PII Detection",
         "source": "declared"
       },
       {
@@ -3419,15 +3413,15 @@
     "version": "1.95.0",
     "tags": [
       {
-        "namespace": "capability",
-        "value": "content-safety",
+        "namespace": "guardrail_category",
+        "value": "content_safety",
         "label": "Content Safety",
         "source": "declared"
       },
       {
-        "namespace": "capability",
-        "value": "topic-safety",
-        "label": "Topic Safety",
+        "namespace": "guardrail_category",
+        "value": "topic_control",
+        "label": "Topic Control",
         "source": "declared"
       },
       {
@@ -5512,15 +5506,9 @@
     "version": "1.95.0",
     "tags": [
       {
-        "namespace": "capability",
-        "value": "sensitive-data",
-        "label": "Sensitive Data",
-        "source": "declared"
-      },
-      {
-        "namespace": "capability",
-        "value": "pii",
-        "label": "PII",
+        "namespace": "guardrail_category",
+        "value": "pii_detection",
+        "label": "PII Detection",
         "source": "declared"
       },
       {
@@ -6210,15 +6198,9 @@
     "version": "1.95.0",
     "tags": [
       {
-        "namespace": "capability",
-        "value": "regulatory-governance",
-        "label": "Regulatory & Governance",
-        "source": "declared"
-      },
-      {
-        "namespace": "capability",
-        "value": "prompt-security",
-        "label": "Prompt Security",
+        "namespace": "guardrail_category",
+        "value": "agentic_security",
+        "label": "Agentic Security",
         "source": "declared"
       },
       {
@@ -7381,15 +7363,15 @@
     "version": "1.95.0",
     "tags": [
       {
-        "namespace": "capability",
-        "value": "topic-safety",
-        "label": "Topic Safety",
+        "namespace": "guardrail_category",
+        "value": "topic_control",
+        "label": "Topic Control",
         "source": "declared"
       },
       {
-        "namespace": "capability",
-        "value": "brand-safety",
-        "label": "Brand Safety",
+        "namespace": "guardrail_category",
+        "value": "content_safety",
+        "label": "Content Safety",
         "source": "declared"
       },
       {
@@ -8217,9 +8199,9 @@
     "version": "1.95.0",
     "tags": [
       {
-        "namespace": "capability",
-        "value": "regulatory-governance",
-        "label": "Regulatory & Governance",
+        "namespace": "guardrail_category",
+        "value": "agentic_security",
+        "label": "Agentic Security",
         "source": "declared"
       },
       {
@@ -9900,9 +9882,9 @@
     "version": "1.95.0",
     "tags": [
       {
-        "namespace": "capability",
-        "value": "sensitive-data",
-        "label": "Sensitive Data",
+        "namespace": "guardrail_category",
+        "value": "pii_detection",
+        "label": "PII Detection",
         "source": "declared"
       },
       {
@@ -10322,8 +10304,8 @@
     "version": "1.95.0",
     "tags": [
       {
-        "namespace": "capability",
-        "value": "content-safety",
+        "namespace": "guardrail_category",
+        "value": "content_safety",
         "label": "Content Safety",
         "source": "declared"
       },
@@ -18508,8 +18490,8 @@
     "version": "1.95.0",
     "tags": [
       {
-        "namespace": "capability",
-        "value": "content-safety",
+        "namespace": "guardrail_category",
+        "value": "content_safety",
         "label": "Content Safety",
         "source": "declared"
       },
@@ -25660,8 +25642,8 @@
     "version": "1.95.0",
     "tags": [
       {
-        "namespace": "capability",
-        "value": "content-safety",
+        "namespace": "guardrail_category",
+        "value": "content_safety",
         "label": "Content Safety",
         "source": "declared"
       },
@@ -32450,9 +32432,9 @@
     "version": "1.95.0",
     "tags": [
       {
-        "namespace": "capability",
-        "value": "prompt-security",
-        "label": "Prompt Security",
+        "namespace": "guardrail_category",
+        "value": "agentic_security",
+        "label": "Agentic Security",
         "source": "declared"
       },
       {
@@ -33992,9 +33974,9 @@
     "version": "1.95.0",
     "tags": [
       {
-        "namespace": "capability",
-        "value": "regulatory-governance",
-        "label": "Regulatory & Governance",
+        "namespace": "guardrail_category",
+        "value": "agentic_security",
+        "label": "Agentic Security",
         "source": "declared"
       },
       {
@@ -34728,15 +34710,15 @@
     "version": "1.95.0",
     "tags": [
       {
-        "namespace": "capability",
-        "value": "sensitive-data",
-        "label": "Sensitive Data",
+        "namespace": "guardrail_category",
+        "value": "pii_detection",
+        "label": "PII Detection",
         "source": "declared"
       },
       {
-        "namespace": "capability",
-        "value": "regulatory-governance",
-        "label": "Regulatory & Governance",
+        "namespace": "guardrail_category",
+        "value": "agentic_security",
+        "label": "Agentic Security",
         "source": "declared"
       },
       {
@@ -35786,9 +35768,9 @@
     "version": "1.95.0",
     "tags": [
       {
-        "namespace": "capability",
-        "value": "topic-safety",
-        "label": "Topic Safety",
+        "namespace": "guardrail_category",
+        "value": "topic_control",
+        "label": "Topic Control",
         "source": "declared"
       },
       {
@@ -36430,9 +36412,9 @@
     "version": "1.95.0",
     "tags": [
       {
-        "namespace": "capability",
-        "value": "regulatory-governance",
-        "label": "Regulatory & Governance",
+        "namespace": "guardrail_category",
+        "value": "agentic_security",
+        "label": "Agentic Security",
         "source": "declared"
       },
       {

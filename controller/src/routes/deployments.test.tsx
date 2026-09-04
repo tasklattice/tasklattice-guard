@@ -144,7 +144,7 @@ describe("Deployment Integration bindings", () => {
       id: "deployment-binding",
       name: "All Gateway traffic",
       guardrail_id: guardrail.id,
-      guardrail_version: 3,
+      guardrail_version: "20260904-030000.003Z",
       integration_id: "integration-cn",
       route_order: 1,
       traffic_scope: { combinator: "and", conditions: [] },

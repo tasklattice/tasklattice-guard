@@ -21,6 +21,7 @@ const config = loadConfig({
 
 describe("Guardrail Playground HTTP capability", () => {
   it("prepares and runs an administrator-only draft preview without an immutable version", async () => {
+    const versionId = "20260904-073000.123Z";
     const modelFetch = vi.fn(async () => Response.json({ choices: [{ message: { content: "draft answer" } }] })) as typeof fetch;
     const runnerFetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       const path = String(url);
@@ -30,7 +31,7 @@ describe("Guardrail Playground HTTP capability", () => {
         expect(request).toMatchObject({
           guardrail_id: "guardrail-draft",
           draft_revision: 7,
-          candidate_version: 4,
+          candidate_version: versionId,
           runtime_profile: "auto",
         });
         return Response.json({
@@ -42,7 +43,7 @@ describe("Guardrail Playground HTTP capability", () => {
       }
       expect(request).toMatchObject({
         draft_revision: 7,
-        candidate_version: 4,
+        candidate_version: versionId,
         protocol: "playground",
       });
       expect(request).not.toHaveProperty("guardrail_version");
@@ -52,7 +53,7 @@ describe("Guardrail Playground HTTP capability", () => {
         reason: "draft passed",
         texts: [],
         guardrail_id: "guardrail-draft",
-        guardrail_version: 4,
+        guardrail_version: versionId,
         findings: [],
         trace: [],
         usage: { runtime_engine: "llmrails", runtime_profile: "llmrails_colang1_standard" },
@@ -63,10 +64,10 @@ describe("Guardrail Playground HTTP capability", () => {
         guardrailId: "guardrail-draft",
         guardrailName: "Draft Guardrail",
         draftRevision: 7,
-        candidateVersion: 4,
+        candidateVersion: versionId,
         runtimeProfile: "auto",
         compilerVersion: "controller-plan-v2",
-        plan: { guardrail_id: "guardrail-draft", guardrail_version: 4, compiler_version: "controller-plan-v2", steps: [], modules: [] },
+        plan: { guardrail_id: "guardrail-draft", guardrail_version: versionId, compiler_version: "controller-plan-v2", steps: [], modules: [] },
       }),
       getGuardrail: vi.fn().mockResolvedValue({ id: "guardrail-draft", draftRevision: 7 }),
     } as unknown as ControlPlaneService;
@@ -130,18 +131,19 @@ describe("Guardrail Playground HTTP capability", () => {
   });
 
   it("lists the configured model and runs real input-model-output checkpoints on an immutable version", async () => {
+    const versionId = "20260904-074000.456Z";
     const modelFetch = vi.fn(async () => Response.json({ choices: [{ message: { content: "model answer" } }] })) as typeof fetch;
     const runnerFetch = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
-      const request = JSON.parse(String(init?.body)) as { phase: string; guardrail_version: number };
+      const request = JSON.parse(String(init?.body)) as { phase: string; guardrail_version: string };
       expect(init?.headers).toMatchObject({ authorization: `Bearer ${config.runnerToken}` });
-      expect(request.guardrail_version).toBe(3);
+      expect(request.guardrail_version).toBe(versionId);
       return Response.json({
         decision: "allow",
         action: "pass",
         reason: `${request.phase} passed`,
         texts: [],
         guardrail_id: "guardrail-default",
-        guardrail_version: 3,
+        guardrail_version: versionId,
         findings: [],
         trace: [{ id: `${request.phase}-1`, kind: "action", name: "PII", status: "complete", detail: "checked", duration_ms: 2 }],
         usage: { runtime_engine: "llmrails", runtime_profile: "llmrails_colang1_standard" },
@@ -158,7 +160,7 @@ describe("Guardrail Playground HTTP capability", () => {
           id: "guardrail-default",
           name: "Default Guardrail",
           versions: [{
-            version: 3,
+            version: versionId,
             status: "ready",
             artifactId: "artifact-3",
             createdAt: new Date("2026-08-20T00:00:00Z"),
@@ -187,7 +189,7 @@ describe("Guardrail Playground HTTP capability", () => {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        guardrail_version: 3,
+        guardrail_version: versionId,
         model_id: "deepseek-test",
         message: "hello",
         history: [],
@@ -200,14 +202,15 @@ describe("Guardrail Playground HTTP capability", () => {
     await expect(interaction.json()).resolves.toMatchObject({
       state: "completed",
       assistant_message: "model answer",
-      input_check: { phase: "input", guardrail: { id: "guardrail-default", version: 3 } },
-      output_check: { phase: "output", guardrail: { id: "guardrail-default", version: 3 } },
+      input_check: { phase: "input", guardrail: { id: "guardrail-default", version: versionId } },
+      output_check: { phase: "output", guardrail: { id: "guardrail-default", version: versionId } },
     });
     expect(runnerFetch).toHaveBeenCalledTimes(2);
     expect(modelFetch).toHaveBeenCalledTimes(1);
   });
 
   it("does not call the model after the input Guardrail blocks", async () => {
+    const versionId = "20260904-075000.789Z";
     const modelFetch = vi.fn();
     const runnerFetch = vi.fn(async () => Response.json({
       decision: "block",
@@ -237,7 +240,7 @@ describe("Guardrail Playground HTTP capability", () => {
       config, auth,
       service: { getGuardrail: vi.fn().mockResolvedValue({
         id: "guardrail-default", name: "Default Guardrail",
-        versions: [{ version: 1, status: "ready", artifactId: "artifact-1", createdAt: new Date(), plan: {} }],
+        versions: [{ version: versionId, status: "ready", artifactId: "artifact-1", createdAt: new Date(), plan: {} }],
       }) } as unknown as ControlPlaneService,
       runnerControl: {} as RunnerControlServer,
       metrics: {} as ControllerMetrics,
@@ -247,7 +250,7 @@ describe("Guardrail Playground HTTP capability", () => {
 
     const response = await app.request("/api/v1/playground/interactions/guardrail-default", {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ guardrail_version: 1, model_id: "deepseek-test", message: "secret", history: [] }),
+      body: JSON.stringify({ guardrail_version: versionId, model_id: "deepseek-test", message: "secret", history: [] }),
     });
 
     expect(response.status).toBe(200);

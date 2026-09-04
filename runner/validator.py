@@ -6,8 +6,6 @@ import time
 from dataclasses import asdict
 from typing import Any
 
-import yaml
-
 from runner.toolkit.nemo.action_registry import ActionProviders, action_providers
 from runner.toolkit.nemo.actions import (
     EvaluationActionProvider,
@@ -29,15 +27,13 @@ from runner.toolkit.runtime.contracts import (
 )
 
 from .compiler import DefaultRunnerCompiler
+from .artifact_config import config_snapshot_from_artifact
 from . import generated as protocol
 from .protocol_codec import (
-    action_bindings_from_proto,
-    dependencies_from_proto,
     plan_from_proto,
-    prompts_from_proto,
     validation_test_from_proto,
 )
-from .serialization import config_from_dict, plan_from_dict
+from .serialization import plan_from_dict
 
 
 class DefaultRunnerValidator:
@@ -73,6 +69,7 @@ class DefaultRunnerValidator:
             self._providers,
             max_entries=1,
             max_concurrency_per_guardrail=8,
+            native_models=self._compiler.native_models,
         )
         runtime = NeMoRuntime(registry)
         try:
@@ -254,36 +251,21 @@ class _CandidateStore:
         self._plan = plan
         self._config = config
 
-    def plan(self, guardrail_id: str, version: int) -> GuardrailPlanSnapshot:
+    def plan(self, guardrail_id: str, version: str) -> GuardrailPlanSnapshot:
         if (guardrail_id, version) != (self._plan.guardrail_id, self._plan.guardrail_version):
             raise KeyError((guardrail_id, version))
         return self._plan
 
-    def nemo_config(self, guardrail_id: str, version: int) -> NeMoConfigSnapshot:
+    def nemo_config(self, guardrail_id: str, version: str) -> NeMoConfigSnapshot:
         self.plan(guardrail_id, version)
         return self._config
 
-    def active_plan_keys(self) -> tuple[tuple[str, int], ...]:
+    def active_plan_keys(self) -> tuple[tuple[str, str], ...]:
         return ((self._plan.guardrail_id, self._plan.guardrail_version),)
 
 
 def _config_from_artifact(artifact: protocol.Artifact) -> NeMoConfigSnapshot:
-    prompts = prompts_from_proto(artifact.prompts)
-    plan = plan_from_proto(artifact.plan)
-    return config_from_dict({
-        "guardrail_id": artifact.guardrail_id,
-        "guardrail_version": artifact.guardrail_version,
-        "compiler_version": artifact.compiler_version,
-        "runtime_profile": artifact.runtime_profile,
-        "output_delivery": plan.get("output_delivery", "full_buffered"),
-        "config_yaml": artifact.config_yaml,
-        "colang_content": artifact.colang_content,
-        "prompts_yaml": yaml.safe_dump({"prompts": prompts}, allow_unicode=True, sort_keys=False) if prompts else "",
-        "action_bindings": action_bindings_from_proto(artifact.action_bindings),
-        "dependency_manifest": dependencies_from_proto(artifact.dependency_manifest),
-        "runtime_engine": "iorails" if artifact.runtime_profile == "iorails_native" else "llmrails",
-        "colang_version": "2.x" if artifact.runtime_profile == "llmrails_colang2_programmable" else "1.0",
-    })
+    return config_snapshot_from_artifact(artifact)
 
 
 def _test_context_messages(case: dict[str, Any], phase: str, content: str) -> tuple[dict[str, str], ...]:

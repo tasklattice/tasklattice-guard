@@ -111,9 +111,9 @@ async def test_mock_controller_and_real_runner_exchange_and_apply_desired_state(
     "configuration,credentials",
     [
         pytest.param(
-            lambda: _nvidia_trio_configuration(),
+            lambda: _split_guard_configuration(),
             {"provider-nvidia": "mock-nvidia-key"},
-            id="nvidia-trio",
+            id="split-guard-stack",
         ),
         pytest.param(
             lambda: _qwen3guard_configuration(),
@@ -190,7 +190,7 @@ def _desired_state() -> protocol.DesiredState:
     return message
 
 
-def _nvidia_trio_configuration() -> protocol.DataPlaneModelConfiguration:
+def _split_guard_configuration() -> protocol.DataPlaneModelConfiguration:
     return protocol.DataPlaneModelConfiguration(
         revision_id="revision-nvidia-trio",
         revision=5,
@@ -214,24 +214,24 @@ def _nvidia_trio_configuration() -> protocol.DataPlaneModelConfiguration:
                 max_tokens=32,
             ),
             protocol.ModelRuntime(
-                id="nvidia-jailbreak",
+                id="chat-jailbreak",
                 base_url="http://nvidia.mock/v1",
                 credential_ref="provider-nvidia",
-                model="nvidia/nvidia-nemotron-nano-9b-v2",
-                profile_ref="tali.nemotron-nano-jailbreak.v1",
+                model="example/jailbreak-judge",
+                profile_ref="tali.openai-compatible-jailbreak.v1",
                 timeout_seconds=20,
                 max_tokens=32,
             ),
         ],
         assignments=[
             protocol.ModelAssignment(
-                role="safety_evaluator",
+                detector_type="content_safety",
                 model_ref="nvidia-safety",
                 profile_ref="tali.nemotron-safety-guard-v3.v1",
                 contract_refs=[CONTRACT_CONTENT_SAFETY],
             ),
             protocol.ModelAssignment(
-                role="topic_policy_judge",
+                detector_type="topic_control",
                 model_ref="nvidia-topic",
                 profile_ref="tali.nemoguard-topic-control.v1",
                 contract_refs=[
@@ -240,9 +240,9 @@ def _nvidia_trio_configuration() -> protocol.DataPlaneModelConfiguration:
                 ],
             ),
             protocol.ModelAssignment(
-                role="jailbreak_evaluator",
-                model_ref="nvidia-jailbreak",
-                profile_ref="tali.nemotron-nano-jailbreak.v1",
+                detector_type="jailbreak_detection",
+                model_ref="chat-jailbreak",
+                profile_ref="tali.openai-compatible-jailbreak.v1",
                 contract_refs=[CONTRACT_JAILBREAK],
             ),
         ],
@@ -263,7 +263,7 @@ def _qwen3guard_configuration() -> protocol.DataPlaneModelConfiguration:
             max_tokens=128,
         )],
         assignments=[protocol.ModelAssignment(
-            role="safety_evaluator",
+            detector_type="content_safety",
             model_ref="qwen3guard",
             profile_ref="tali.qwen3guard.v1",
             contract_refs=[

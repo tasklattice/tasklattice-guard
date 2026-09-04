@@ -2,12 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import type { GuardrailVersionDetail } from "@/lib/api";
 
-import { buildGuardrailVersionDiff, formatGuardrailReleaseId } from "./guardrail-version-workspace";
+import { buildGuardrailVersionDiff } from "./guardrail-version-workspace";
 
 function version(overrides: Partial<GuardrailVersionDetail> = {}): GuardrailVersionDetail {
   return {
     guardrail_id: "guardrail-dev",
-    version: 1,
+    version: "20260814-075544.381Z",
     source_draft_version: 1,
     compiler_version: "tasklattice-nemo-config-v7",
     plan_checksum: "plan-one",
@@ -33,14 +33,10 @@ function version(overrides: Partial<GuardrailVersionDetail> = {}): GuardrailVers
 }
 
 describe("Guardrail version workspace", () => {
-  it("creates a UTC, chronologically sortable release label", () => {
-    expect(formatGuardrailReleaseId("2026-08-14T07:55:44.381Z")).toBe("20260814-075544Z");
-  });
-
   it("builds semantic changes instead of diffing raw JSON first", () => {
     const base = version();
     const target = version({
-      version: 2,
+      version: "20260814-080000.000Z",
       safety_level: "strict",
       policy_bindings: [
         { policy_id: "content-filter", policy_version: "2", action: "block", enabled_rule_ids: ["sql", "code"], enabled_rails: ["input"] },

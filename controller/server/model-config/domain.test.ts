@@ -1,13 +1,21 @@
 import { describe, expect, it } from "vitest";
 
-import { assignmentContracts, emptyModelAssignments, modelInputSchema, normalizeModelAssignments, profileContracts, roleProfiles } from "./domain.js";
+import {
+  controlPlaneProfiles,
+  detectorContracts,
+  detectorProfiles,
+  emptyModelAssignments,
+  modelInputSchema,
+  normalizeModelAssignments,
+  profileContracts,
+  profileTransports,
+} from "./domain.js";
 
-
-describe("Nemotron Content Safety profile", () => {
-  it("is assignable only to the data-plane content-safety contract", () => {
+describe("Guardrail Catalog detector profiles", () => {
+  it("assigns Nemotron Content Safety only to the content-safety detector", () => {
     const profile = "tali.nemotron-content-safety.v1";
-    expect(roleProfiles.safety_evaluator).toContain(profile);
-    expect(roleProfiles.control_plane).not.toContain(profile);
+    expect(detectorProfiles.content_safety).toContain(profile);
+    expect(controlPlaneProfiles).not.toContain(profile);
     expect(profileContracts[profile]).toEqual(["tali.guard.content-safety.v1"]);
     expect(modelInputSchema.parse({
       providerId: "2da89935-e001-4a43-a47b-95f419666bb0",
@@ -16,51 +24,52 @@ describe("Nemotron Content Safety profile", () => {
       profile,
     }).profile).toBe(profile);
   });
+
+  it("keeps interchangeable jailbreak implementations under one detector type", () => {
+    const profile = "tali.nemoguard-jailbreak-detect.v1";
+    expect(detectorProfiles.jailbreak_detection).toContain(profile);
+    expect(detectorProfiles.jailbreak_detection).toContain("tali.openai-compatible-jailbreak.v1");
+    expect(controlPlaneProfiles).not.toContain(profile);
+    expect(detectorProfiles.content_safety).not.toContain(profile);
+    expect(profileContracts[profile]).toEqual(["tali.guard.jailbreak.v1"]);
+    expect(profileTransports[profile]).toBe("nemoguard_jailbreak_detect");
+  });
+
+  it("keeps content safety, topic control, and jailbreak independently replaceable", () => {
+    expect(detectorProfiles.content_safety).toContain("tali.nemotron-safety-guard-v3.v1");
+    expect(detectorProfiles.topic_control).toContain("tali.nemoguard-topic-control.v1");
+    expect(detectorProfiles.jailbreak_detection).toContain("tali.openai-compatible-jailbreak.v1");
+  });
+
+  it("rejects the retired Nano model while allowing another OpenAI-compatible judge", () => {
+    const base = {
+      providerId: "2da89935-e001-4a43-a47b-95f419666bb0",
+      name: "Jailbreak judge",
+      profile: "tali.openai-compatible-jailbreak.v1",
+    };
+    expect(modelInputSchema.safeParse({ ...base, model: "nvidia/nvidia-nemotron-nano-9b-v2" }).success).toBe(false);
+    expect(modelInputSchema.safeParse({ ...base, model: "example/jailbreak-judge" }).success).toBe(true);
+  });
 });
 
-describe("legacy NVIDIA model trio", () => {
-  it("keeps content safety, topic control, and jailbreak as independent replaceable slots", () => {
-    expect(roleProfiles.safety_evaluator).toContain("tali.nemotron-safety-guard-v3.v1");
-    expect(roleProfiles.topic_policy_judge).toContain("tali.nemoguard-topic-control.v1");
-    expect(roleProfiles.jailbreak_evaluator).toContain("tali.nemotron-nano-jailbreak.v1");
-    expect(profileContracts["tali.nemotron-safety-guard-v3.v1"]).toEqual(["tali.guard.content-safety.v1"]);
-    expect(profileContracts["tali.nemoguard-topic-control.v1"]).toEqual([
-      "tali.guard.topic-control.semantic.v1",
-      "tali.guard.company-policy.v1",
-    ]);
-    expect(profileContracts["tali.nemotron-nano-jailbreak.v1"]).toEqual(["tali.guard.jailbreak.v1"]);
+describe("detector assignments", () => {
+  it("normalizes the explicit catalog shape without legacy role inference", () => {
+    expect(normalizeModelAssignments({ detectors: { content_safety: "safety" } })).toEqual({
+      ...emptyModelAssignments(),
+      detectors: { ...emptyModelAssignments().detectors, content_safety: "safety" },
+    });
+    expect(normalizeModelAssignments({})).toEqual(emptyModelAssignments());
   });
 
-  it("adds the new jailbreak slot to revisions created before the role existed", () => {
-    expect(normalizeModelAssignments({ safety_evaluator: "safety" })).toEqual({
-      ...emptyModelAssignments(),
-      safety_evaluator: "safety",
-    });
-  });
-
-  it("migrates either legacy control-plane assignment into the single control-plane slot", () => {
-    expect(normalizeModelAssignments({ policy_authoring: "authoring", playground_chat: "chat" })).toEqual({
-      ...emptyModelAssignments(),
-      control_plane: "authoring",
-    });
-    expect(normalizeModelAssignments({ playground_chat: "chat" })).toEqual({
-      ...emptyModelAssignments(),
-      control_plane: "chat",
-    });
-  });
-
-  it("lets a dedicated jailbreak assignment override Qwen's bundled jailbreak contract", () => {
-    const assignments = {
-      ...emptyModelAssignments(),
-      safety_evaluator: "qwen",
-      jailbreak_evaluator: "nano",
-    };
-    expect(assignmentContracts("safety_evaluator", "tali.qwen3guard.v1", assignments)).toEqual([
+  it("projects a multi-purpose profile into only the selected detector contract", () => {
+    expect(detectorContracts("content_safety", "tali.qwen3guard.v1")).toEqual([
       "tali.guard.content-safety.v1",
-      "tali.guard.pii.semantic.v1",
     ]);
-    expect(assignmentContracts("jailbreak_evaluator", "tali.nemotron-nano-jailbreak.v1", assignments)).toEqual([
+    expect(detectorContracts("jailbreak_detection", "tali.qwen3guard.v1")).toEqual([
       "tali.guard.jailbreak.v1",
+    ]);
+    expect(detectorContracts("pii_detection", "tali.qwen3guard.v1")).toEqual([
+      "tali.guard.pii.semantic.v1",
     ]);
   });
 });

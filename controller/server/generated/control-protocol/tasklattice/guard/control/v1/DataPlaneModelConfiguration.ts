@@ -5,7 +5,7 @@ import type { ModelAssignment as _tasklattice_guard_control_v1_ModelAssignment, 
 
 /**
  * Complete data-plane projection of one validated Model configuration
- * revision. Only roles needed by Runner are included.
+ * revision. Only model-backed detectors needed by Runner are included.
  */
 export interface DataPlaneModelConfiguration {
   'revisionId'?: (string);
@@ -16,7 +16,7 @@ export interface DataPlaneModelConfiguration {
 
 /**
  * Complete data-plane projection of one validated Model configuration
- * revision. Only roles needed by Runner are included.
+ * revision. Only model-backed detectors needed by Runner are included.
  */
 export interface DataPlaneModelConfiguration__Output {
   'revisionId': (string);

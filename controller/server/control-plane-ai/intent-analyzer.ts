@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { ControllerError } from "../domain/errors.js";
+import { providerFetch } from "../model-config/provider-fetch.js";
 import { documentAnalysisText, type ExtractedDocument } from "./document-ingestion.js";
 
 export type IntentAnalysisLanguage = "en" | "zh-CN";
@@ -100,6 +101,7 @@ export class OpenAICompatibleIntentAnalyzer implements IntentAnalyzer {
     baseUrl: string;
     model: string;
     apiKey: string;
+    skipTlsVerify?: boolean;
     timeoutMs?: number;
     fetcher?: Fetch;
   }) {
@@ -108,7 +110,7 @@ export class OpenAICompatibleIntentAnalyzer implements IntentAnalyzer {
     this.#baseUrl = input.baseUrl.replace(/\/+$/, "");
     this.#apiKey = input.apiKey;
     this.#timeoutMs = input.timeoutMs ?? 45_000;
-    this.#fetch = input.fetcher ?? globalThis.fetch;
+    this.#fetch = providerFetch(input.skipTlsVerify, input.fetcher);
   }
 
   async analyze(input: { purpose: string; language: IntentAnalysisLanguage }): Promise<IntentAnalysis> {

@@ -3,13 +3,18 @@ from __future__ import annotations
 import hashlib
 import importlib.metadata
 import json
-from dataclasses import asdict, replace
+import threading
+from dataclasses import asdict
 from typing import Any
 
 import yaml
 
 from runner.toolkit.compiler.nemo_compiler import NeMoConfigCompiler
 from runner.toolkit.nemo.builtin_policies import prompt_catalog_yaml
+from runner.toolkit.nemo.native_models import (
+    NativeRailModel,
+    compiler_model_configs,
+)
 
 from . import generated as protocol
 from .config import RunnerSettings
@@ -29,10 +34,29 @@ class DefaultRunnerCompiler:
 
     def __init__(self, settings: RunnerSettings | None = None) -> None:
         del settings
-        self._compiler = NeMoConfigCompiler(
+        self._lock = threading.RLock()
+        self._native_models: tuple[NativeRailModel, ...] = ()
+        self._compiler = self._new_compiler()
+        self._nemo_version = importlib.metadata.version("nemoguardrails")
+
+    def configure_native_models(
+        self,
+        models: tuple[NativeRailModel, ...],
+    ) -> None:
+        with self._lock:
+            self._native_models = models
+            self._compiler = self._new_compiler()
+
+    @property
+    def native_models(self) -> tuple[NativeRailModel, ...]:
+        with self._lock:
+            return self._native_models
+
+    def _new_compiler(self) -> NeMoConfigCompiler:
+        return NeMoConfigCompiler(
+            models=compiler_model_configs(self._native_models),
             builtin_prompts_yaml=prompt_catalog_yaml(),
         )
-        self._nemo_version = importlib.metadata.version("nemoguardrails")
 
     def compile(self, request: protocol.CompileRequest) -> protocol.Artifact:
         payload = plan_from_proto(request.plan)
@@ -42,7 +66,9 @@ class DefaultRunnerCompiler:
             "compiler_version": payload.get("compiler_version") or "tasklattice-controller-plan-v5-rule-order",
         })
         plan = plan_from_dict(payload)
-        snapshot = self._compiler.compile(plan)
+        with self._lock:
+            compiler = self._compiler
+        snapshot = compiler.compile(plan)
         if request.runtime_profile not in {"", "auto", snapshot.runtime_profile}:
             raise ValueError(
                 f"Plan requires {snapshot.runtime_profile}; requested {request.runtime_profile}."

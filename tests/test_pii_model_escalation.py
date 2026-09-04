@@ -72,7 +72,7 @@ async def test_nemo_pii_flow_short_circuits_local_hits_and_escalates_to_qwen() -
         protocol.ValidationRequest(
             run_id="validation-pii-escalation",
             guardrail_id="guardrail-pii-escalation",
-            candidate_version=1,
+            candidate_version="20260904-010000.001Z",
             source_draft_revision=1,
             plan=plan_to_proto(_plan()),
             runtime_profile="auto",
@@ -118,7 +118,7 @@ async def test_nemo_pii_flow_short_circuits_local_hits_and_escalates_to_qwen() -
         protocol.ValidationRequest(
             run_id="validation-pii-strict",
             guardrail_id="guardrail-pii-escalation",
-            candidate_version=2,
+            candidate_version="20260904-020000.002Z",
             source_draft_revision=2,
             plan=plan_to_proto(_plan(safety_level="strict")),
             runtime_profile="auto",

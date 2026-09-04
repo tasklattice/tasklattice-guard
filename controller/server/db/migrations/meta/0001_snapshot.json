@@ -1,6 +1,6 @@
 {
-  "id": "ff76c0a2-199b-41da-9f1f-3fb44642ee93",
-  "prevId": "d7d4fcbb-255a-4918-b550-9a3b3f45c966",
+  "id": "555c85a5-61e3-41ad-aea0-322e52312748",
+  "prevId": "260c55bb-8ecf-41a0-b7c2-52ba60704a3b",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -107,9 +107,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "auth_account_issuer_idx": {
           "name": "auth_account_issuer_idx",
@@ -128,24 +128,24 @@
             }
           ],
           "isUnique": true,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "auth_account_user_id_auth_user_id_fk": {
           "name": "auth_account_user_id_auth_user_id_fk",
           "tableFrom": "auth_account",
-          "tableTo": "auth_user",
           "columnsFrom": [
             "user_id"
           ],
+          "tableTo": "auth_user",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -172,7 +172,7 @@
         },
         "guardrail_version": {
           "name": "guardrail_version",
-          "type": "integer",
+          "type": "text",
           "primaryKey": false,
           "notNull": true
         },
@@ -272,9 +272,9 @@
             }
           ],
           "isUnique": true,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "guardrail_artifact_version_idx": {
           "name": "guardrail_artifact_version_idx",
@@ -293,24 +293,24 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "guardrail_artifact_guardrail_id_guardrail_id_fk": {
           "name": "guardrail_artifact_guardrail_id_guardrail_id_fk",
           "tableFrom": "guardrail_artifact",
-          "tableTo": "guardrail",
           "columnsFrom": [
             "guardrail_id"
           ],
+          "tableTo": "guardrail",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -386,24 +386,24 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "audit_event_actor_id_auth_user_id_fk": {
           "name": "audit_event_actor_id_auth_user_id_fk",
           "tableFrom": "audit_event",
-          "tableTo": "auth_user",
           "columnsFrom": [
             "actor_id"
           ],
+          "tableTo": "auth_user",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -471,7 +471,7 @@
           "name": "integration_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "pool_id": {
           "name": "pool_id",
@@ -481,7 +481,7 @@
         },
         "guardrail_version": {
           "name": "guardrail_version",
-          "type": "integer",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
@@ -505,6 +505,24 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'{}'::jsonb"
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "deleted_by": {
+          "name": "deleted_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "delete_reason": {
+          "name": "delete_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "created_at": {
           "name": "created_at",
@@ -533,9 +551,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "deployment_integration_idx": {
           "name": "deployment_integration_idx",
@@ -548,9 +566,31 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
+        },
+        "deployment_integration_route_order_idx": {
+          "name": "deployment_integration_route_order_idx",
+          "columns": [
+            {
+              "expression": "integration_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "route_order",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "where": "\"guardrail_deployment\".\"deleted_at\" is null",
+          "concurrently": false
         },
         "deployment_pool_idx": {
           "name": "deployment_pool_idx",
@@ -563,50 +603,63 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "guardrail_deployment_guardrail_id_guardrail_id_fk": {
           "name": "guardrail_deployment_guardrail_id_guardrail_id_fk",
           "tableFrom": "guardrail_deployment",
-          "tableTo": "guardrail",
           "columnsFrom": [
             "guardrail_id"
           ],
+          "tableTo": "guardrail",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "guardrail_deployment_integration_id_integration_id_fk": {
           "name": "guardrail_deployment_integration_id_integration_id_fk",
           "tableFrom": "guardrail_deployment",
-          "tableTo": "integration",
           "columnsFrom": [
             "integration_id"
           ],
+          "tableTo": "integration",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "guardrail_deployment_pool_id_runner_pool_id_fk": {
           "name": "guardrail_deployment_pool_id_runner_pool_id_fk",
           "tableFrom": "guardrail_deployment",
-          "tableTo": "runner_pool",
           "columnsFrom": [
             "pool_id"
           ],
+          "tableTo": "runner_pool",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "guardrail_deployment_deleted_by_auth_user_id_fk": {
+          "name": "guardrail_deployment_deleted_by_auth_user_id_fk",
+          "tableFrom": "guardrail_deployment",
+          "columnsFrom": [
+            "deleted_by"
+          ],
+          "tableTo": "auth_user",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -627,7 +680,7 @@
         },
         "version": {
           "name": "version",
-          "type": "integer",
+          "type": "text",
           "primaryKey": false,
           "notNull": true
         },
@@ -679,7 +732,7 @@
           "name": "created_by",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "created_at": {
           "name": "created_at",
@@ -701,37 +754,37 @@
             }
           ],
           "isUnique": true,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "guardrail_version_guardrail_id_guardrail_id_fk": {
           "name": "guardrail_version_guardrail_id_guardrail_id_fk",
           "tableFrom": "guardrail_version",
-          "tableTo": "guardrail",
           "columnsFrom": [
             "guardrail_id"
           ],
+          "tableTo": "guardrail",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "guardrail_version_created_by_auth_user_id_fk": {
           "name": "guardrail_version_created_by_auth_user_id_fk",
           "tableFrom": "guardrail_version",
-          "tableTo": "auth_user",
           "columnsFrom": [
             "created_by"
           ],
+          "tableTo": "auth_user",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -821,7 +874,7 @@
         },
         "active_version": {
           "name": "active_version",
-          "type": "integer",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
@@ -876,24 +929,24 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "guardrail_deleted_by_auth_user_id_fk": {
           "name": "guardrail_deleted_by_auth_user_id_fk",
           "tableFrom": "guardrail",
-          "tableTo": "auth_user",
           "columnsFrom": [
             "deleted_by"
           ],
+          "tableTo": "auth_user",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -983,24 +1036,520 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "integration_deleted_by_auth_user_id_fk": {
           "name": "integration_deleted_by_auth_user_id_fk",
           "tableFrom": "integration",
-          "tableTo": "auth_user",
           "columnsFrom": [
             "deleted_by"
           ],
+          "tableTo": "auth_user",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.model_configuration_revision": {
+      "name": "model_configuration_revision",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'draft'"
+        },
+        "generation": {
+          "name": "generation",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "assignments": {
+          "name": "assignments",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "validation_report": {
+          "name": "validation_report",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "failure_reason": {
+          "name": "failure_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "validated_at": {
+          "name": "validated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "activated_at": {
+          "name": "activated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "model_configuration_revision_number_idx": {
+          "name": "model_configuration_revision_number_idx",
+          "columns": [
+            {
+              "expression": "revision",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "model_configuration_revision_state_idx": {
+          "name": "model_configuration_revision_state_idx",
+          "columns": [
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "model_configuration_revision_created_by_auth_user_id_fk": {
+          "name": "model_configuration_revision_created_by_auth_user_id_fk",
+          "tableFrom": "model_configuration_revision",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "tableTo": "auth_user",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.model_definition": {
+      "name": "model_definition",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "provider_id": {
+          "name": "provider_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "model": {
+          "name": "model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "profile": {
+          "name": "profile",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'generic-chat'"
+        },
+        "timeout_seconds": {
+          "name": "timeout_seconds",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 20
+        },
+        "max_tokens": {
+          "name": "max_tokens",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 512
+        },
+        "connection_status": {
+          "name": "connection_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "connection_message": {
+          "name": "connection_message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'Not checked.'"
+        },
+        "connection_latency_ms": {
+          "name": "connection_latency_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "connection_checked_at": {
+          "name": "connection_checked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "validation_message": {
+          "name": "validation_message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'Not validated.'"
+        },
+        "validation_latency_ms": {
+          "name": "validation_latency_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "validated_at": {
+          "name": "validated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "model_definition_provider_model_idx": {
+          "name": "model_definition_provider_model_idx",
+          "columns": [
+            {
+              "expression": "provider_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "model",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "profile",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "model_definition_provider_idx": {
+          "name": "model_definition_provider_idx",
+          "columns": [
+            {
+              "expression": "provider_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "model_definition_status_idx": {
+          "name": "model_definition_status_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "model_definition_provider_id_model_provider_id_fk": {
+          "name": "model_definition_provider_id_model_provider_id_fk",
+          "tableFrom": "model_definition",
+          "columnsFrom": [
+            "provider_id"
+          ],
+          "tableTo": "model_provider",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "restrict"
+        },
+        "model_definition_created_by_auth_user_id_fk": {
+          "name": "model_definition_created_by_auth_user_id_fk",
+          "tableFrom": "model_definition",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "tableTo": "auth_user",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.model_provider": {
+      "name": "model_provider",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "base_url": {
+          "name": "base_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "skip_tls_verify": {
+          "name": "skip_tls_verify",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "credential_ciphertext": {
+          "name": "credential_ciphertext",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "credential_hint": {
+          "name": "credential_hint",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'Not required'"
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "validation_message": {
+          "name": "validation_message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'Not validated.'"
+        },
+        "validation_latency_ms": {
+          "name": "validation_latency_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "validated_at": {
+          "name": "validated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "model_provider_name_idx": {
+          "name": "model_provider_name_idx",
+          "columns": [
+            {
+              "expression": "name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "model_provider_status_idx": {
+          "name": "model_provider_status_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "model_provider_created_by_auth_user_id_fk": {
+          "name": "model_provider_created_by_auth_user_id_fk",
+          "tableFrom": "model_provider",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "tableTo": "auth_user",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1083,13 +1632,302 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.policy_record": {
+      "name": "policy_record",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'custom'"
+        },
+        "owner": {
+          "name": "owner",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "draft": {
+          "name": "draft",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "draft_revision": {
+          "name": "draft_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "policy_record_name_idx": {
+          "name": "policy_record_name_idx",
+          "columns": [
+            {
+              "expression": "name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.policy_validation_run": {
+      "name": "policy_validation_run",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "policy_id": {
+          "name": "policy_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "draft_revision": {
+          "name": "draft_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'queued'"
+        },
+        "results": {
+          "name": "results",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "failure_reason": {
+          "name": "failure_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "policy_validation_run_policy_idx": {
+          "name": "policy_validation_run_policy_idx",
+          "columns": [
+            {
+              "expression": "policy_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "policy_validation_run_policy_id_policy_record_id_fk": {
+          "name": "policy_validation_run_policy_id_policy_record_id_fk",
+          "tableFrom": "policy_validation_run",
+          "columnsFrom": [
+            "policy_id"
+          ],
+          "tableTo": "policy_record",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "policy_validation_run_created_by_auth_user_id_fk": {
+          "name": "policy_validation_run_created_by_auth_user_id_fk",
+          "tableFrom": "policy_validation_run",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "tableTo": "auth_user",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.policy_version": {
+      "name": "policy_version",
+      "schema": "",
+      "columns": {
+        "policy_id": {
+          "name": "policy_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "snapshot": {
+          "name": "snapshot",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "checksum": {
+          "name": "checksum",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "published_at": {
+          "name": "published_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "policy_version_checksum_idx": {
+          "name": "policy_version_checksum_idx",
+          "columns": [
+            {
+              "expression": "checksum",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "policy_version_policy_id_policy_record_id_fk": {
+          "name": "policy_version_policy_id_policy_record_id_fk",
+          "tableFrom": "policy_version",
+          "columnsFrom": [
+            "policy_id"
+          ],
+          "tableTo": "policy_record",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {
+        "policy_version_policy_id_version_pk": {
+          "name": "policy_version_policy_id_version_pk",
+          "columns": [
+            "policy_id",
+            "version"
+          ]
+        }
+      },
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
@@ -1122,7 +1960,7 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "default": "'registered'"
+          "default": "'offline'"
         },
         "runner_version": {
           "name": "runner_version",
@@ -1223,24 +2061,24 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "runner_instance_pool_id_runner_pool_id_fk": {
           "name": "runner_instance_pool_id_runner_pool_id_fk",
           "tableFrom": "runner_instance",
-          "tableTo": "runner_pool",
           "columnsFrom": [
             "pool_id"
           ],
+          "tableTo": "runner_pool",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1320,10 +2158,10 @@
             }
           ],
           "isUnique": true,
-          "where": "\"runner_pool\".\"is_default\" = true",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"runner_pool\".\"is_default\" = true",
+          "concurrently": false
         }
       },
       "foreignKeys": {},
@@ -1376,7 +2214,7 @@
         },
         "guardrail_version": {
           "name": "guardrail_version",
-          "type": "integer",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
@@ -1436,9 +2274,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "runtime_event_integration_time_idx": {
           "name": "runtime_event_integration_time_idx",
@@ -1457,9 +2295,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {},
@@ -1542,34 +2380,34 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "auth_session_user_id_auth_user_id_fk": {
           "name": "auth_session_user_id_auth_user_id_fk",
           "tableFrom": "auth_session",
-          "tableTo": "auth_user",
           "columnsFrom": [
             "user_id"
           ],
+          "tableTo": "auth_user",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "auth_session_token_unique": {
           "name": "auth_session_token_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "token"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
       },
       "policies": {},
@@ -1773,24 +2611,24 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "guardrail_test_case_guardrail_id_guardrail_id_fk": {
           "name": "guardrail_test_case_guardrail_id_guardrail_id_fk",
           "tableFrom": "guardrail_test_case",
-          "tableTo": "guardrail",
           "columnsFrom": [
             "guardrail_id"
           ],
+          "tableTo": "guardrail",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -1875,6 +2713,12 @@
           "notNull": true,
           "default": "'en'"
         },
+        "last_login_at": {
+          "name": "last_login_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -1896,10 +2740,10 @@
       "uniqueConstraints": {
         "auth_user_email_unique": {
           "name": "auth_user_email_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "email"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
       },
       "policies": {},
@@ -1924,9 +2768,9 @@
         },
         "guardrail_version": {
           "name": "guardrail_version",
-          "type": "integer",
+          "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "source_draft_revision": {
           "name": "source_draft_revision",
@@ -2006,37 +2850,37 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "guardrail_validation_run_guardrail_id_guardrail_id_fk": {
           "name": "guardrail_validation_run_guardrail_id_guardrail_id_fk",
           "tableFrom": "guardrail_validation_run",
-          "tableTo": "guardrail",
           "columnsFrom": [
             "guardrail_id"
           ],
+          "tableTo": "guardrail",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "guardrail_validation_run_created_by_auth_user_id_fk": {
           "name": "guardrail_validation_run_created_by_auth_user_id_fk",
           "tableFrom": "guardrail_validation_run",
-          "tableTo": "auth_user",
           "columnsFrom": [
             "created_by"
           ],
+          "tableTo": "auth_user",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2100,9 +2944,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {},
@@ -2115,10 +2959,10 @@
   },
   "enums": {},
   "schemas": {},
+  "views": {},
   "sequences": {},
   "roles": {},
   "policies": {},
-  "views": {},
   "_meta": {
     "columns": {},
     "schemas": {},

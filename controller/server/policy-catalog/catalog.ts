@@ -2,11 +2,12 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { z } from "zod";
+import { guardrailCategoryIds } from "../../shared/guardrail-catalog.js";
 
 const railTypeSchema = z.enum(["input", "retrieval", "dialog", "execution", "output"]);
 const ruleFormSchema = z.enum(["regex", "keyword", "category", "code_block", "competitor_intent", "colang_flow"]);
 const policyTagNamespaceSchema = z.enum([
-  "capability",
+  "guardrail_category",
   "collection",
   "domain",
   "framework",
@@ -19,6 +20,10 @@ const tagSchema = z.object({
   value: z.string().min(1),
   label: z.string().min(1),
   source: z.enum(["declared", "derived"]).default("declared"),
+}).superRefine((tag, context) => {
+  if (tag.namespace === "guardrail_category" && !(guardrailCategoryIds as readonly string[]).includes(tag.value)) {
+    context.addIssue({ code: "custom", path: ["value"], message: `Unknown Guardrail category ${tag.value}.` });
+  }
 });
 const parameterSchema = z.object({
   name: z.string().min(1),

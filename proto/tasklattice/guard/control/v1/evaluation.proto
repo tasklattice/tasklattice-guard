@@ -132,7 +132,7 @@ message RuntimeTraceStep {
   // Guardrail identity when this node is scoped to one Guardrail.
   optional string guardrail_id = 16;
   // Immutable Guardrail version associated with this trace node.
-  optional int32 guardrail_version = 17;
+  optional string guardrail_version = 17;
   // Policy provenance when this node executes a programmable policy.
   optional string policy_id = 18;
   // Policy version; present only together with policy_id.

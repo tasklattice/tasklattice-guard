@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { RuntimeLogInteraction } from "@/lib/api";
 
-import { AuditHistory } from "./logs";
+import { CheckpointHistory } from "./logs";
 
 vi.mock("react-i18next", () => ({
   initReactI18next: { type: "3rdParty", init: () => undefined },
@@ -21,7 +21,7 @@ const interaction: RuntimeLogInteraction = {
   created_at: "2026-08-15T05:00:00Z",
   completed_at: "2026-08-15T05:00:01Z",
   guardrail_id: "guardrail-1",
-  guardrail_version: 3,
+  guardrail_version: "20260904-030000.003Z",
   deployment_id: "deployment-1",
   integration_id: null,
   protocol: "openai",
@@ -67,22 +67,18 @@ const interaction: RuntimeLogInteraction = {
 
 const baseProps = {
   interactions: [interaction],
-  outcome: "all" as const,
   loading: false,
   error: null,
-  hasMore: false,
-  loadingMore: false,
-  onLoadMore: vi.fn(),
   onInspect: vi.fn(),
   guardrailName: () => "Runtime Guardrail",
   deploymentName: () => "Runtime Deployment",
 };
 
-describe("AuditHistory", () => {
+describe("CheckpointHistory", () => {
   afterEach(cleanup);
 
   it("renders one traffic checkpoint per inbound and outbound log entry", () => {
-    render(<AuditHistory {...baseProps} phase="all" />);
+    render(<CheckpointHistory {...baseProps} />);
 
     expect(screen.getByText("Inbound request approved")).toBeTruthy();
     expect(screen.getByText("Outbound response blocked")).toBeTruthy();
@@ -91,8 +87,8 @@ describe("AuditHistory", () => {
     expect(screen.queryByText(/validation completed/i)).toBeNull();
   });
 
-  it("applies the direction filter to traffic checkpoints", () => {
-    render(<AuditHistory {...baseProps} phase="input" />);
+  it("renders only checkpoints supplied by the shared runtime query", () => {
+    render(<CheckpointHistory {...baseProps} interactions={[{ ...interaction, entries: [interaction.entries[0]!] }]} />);
 
     expect(screen.getByText("Inbound request approved")).toBeTruthy();
     expect(screen.queryByText("Outbound response blocked")).toBeNull();

@@ -118,7 +118,7 @@ const policy = {
   description: "Topic control",
   source: "built_in",
   version: "1",
-  tags: [{ id: "capability:topic-safety", namespace: "capability", value: "topic-safety", label: "Topic safety", source: "declared" }],
+  tags: [{ id: "guardrail_category:topic_control", namespace: "guardrail_category", value: "topic_control", label: "Topic Control", source: "declared" }],
   parameters: [],
   rails: ["input", "output"],
   effects: ["block"],

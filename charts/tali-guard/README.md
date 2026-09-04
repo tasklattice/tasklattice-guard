@@ -55,7 +55,7 @@ One command rebuilds the moving `:dev` images and installs or upgrades the
 whole Guard release on the `orbstack` context:
 
 ```bash
-make install
+make helm-install
 ```
 
 This single entry point upgrades an existing release or installs a missing one,
@@ -67,18 +67,17 @@ To deploy the same local environment with every performance-debug feature
 enabled, use the Debug overlay entry point:
 
 ```bash
-make install-debug
+make helm-install-debug
 ```
 
 This is equivalent to applying `values-dev.yaml` followed by
 `values-debug.yaml`; it preserves the separation between local infrastructure
 and temporary observability overhead.
 
-When the repository `.env` contains `QWEN_CONTROL_API_KEY`,
-`QWEN_GUARD_API_KEY`, or `LLAMA_GUARD_API_KEY`, this target also creates or
-updates the `tali-guard-provider-keys` Secret. The Qwen control model is used by
-Controller authoring and optional TALI taxonomy refinement; configured native
-Guard Providers are connected to every Runner pool.
+The install target does not read model configuration or credentials from the
+repository `.env` and does not create Provider Secrets. Register models,
+credentials, and capability assignments after deployment through the
+Controller UI.
 
 The deployment helper can also be used after `make images`:
 
@@ -102,7 +101,7 @@ install, upgrade, and reinstall with retained Secrets on a local cluster, prefix
 the command with `GUARD_HELM_TEST_CONTEXT=orbstack`. This creates and removes an
 isolated namespace containing only a test Secret and ConfigMap, not Guard data.
 
-`make install` keeps both application tags fixed at `dev` and changes a
+`make helm-install` keeps both application tags fixed at `dev` and changes a
 Helm-managed rollout revision annotation on every run. Controller and all
 Runner pools therefore replace their Pods and load the latest local `dev`
 images even though the image names remain unchanged. The command waits for Pod
@@ -165,6 +164,27 @@ Create `guard-control-tls` with these keys:
 The Controller certificate must be valid for the Controller Service DNS name.
 Both certificates must chain to `ca.crt`. Production intentionally requires an
 externally managed Secret instead of auto-generating a private CA.
+
+If the Controller and Runners connect to HTTPS model Providers whose server
+certificates are issued by a private CA, create a Secret containing the PEM CA
+certificate and configure it once for both planes:
+
+```bash
+kubectl -n guard-system create secret generic guard-model-provider-ca \
+  --from-file=ca.crt=company-root-ca.crt
+```
+
+```yaml
+security:
+  customCa:
+    existingSecret: guard-model-provider-ca
+    certificateKey: ca.crt
+```
+
+The chart mounts that Secret key read-only at
+`/etc/ssl/certs/tasklattice-custom-ca.crt` in the Controller and every Runner
+Pod. When the externally managed Secret is rotated, restart the workloads so
+the `subPath` mount receives the new certificate.
 
 To enable business-boundary generation, create a separate model credential
 Secret:

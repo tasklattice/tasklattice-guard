@@ -37,7 +37,7 @@ def default_baseline() -> dict:
         const draft = defaultGuardrailDraft(policies);
         const buildPlan = (bindings) => buildGuardrailPlan({
             guardrailId: DEFAULT_GUARDRAIL_ID,
-            guardrailVersion: 1,
+            guardrailVersion: "20260904-010000.001Z",
             purpose: 'Default complete local Policy baseline',
             draft: { ...draft, policyBindings: bindings },
             policies,
@@ -50,7 +50,7 @@ def default_baseline() -> dict:
         const connect = loadPackageDefinition(definition).tasklattice.guard.control.v1.RunnerControl.service.Connect;
         const binary = connect.responseSerialize({ validationRequest: {
             runId: 'default-composition', guardrailId: DEFAULT_GUARDRAIL_ID,
-            candidateVersion: 1, sourceDraftRevision: 1, runtimeProfile: 'auto',
+            candidateVersion: "20260904-010000.001Z", sourceDraftRevision: 1, runtimeProfile: 'auto',
             plan: planToWire(plan), testCases: cases.map(validationTestToWire),
         }});
         console.log(JSON.stringify({plan, cases, wireRequest: binary.toString('base64')}));
@@ -89,7 +89,7 @@ async def test_default_complete_policies_compile_and_run_without_models(
         "preview_id": f"default-local-{phase}",
         "guardrail_id": "guardrail-default",
         "draft_revision": 1,
-        "candidate_version": 1,
+        "candidate_version": "20260904-010000.001Z",
         "plan": default_plan,
         "runtime_profile": "auto",
     }
@@ -187,7 +187,7 @@ async def test_reduced_default_retains_tax_ids_credentials_and_passports(
         result = await previews.evaluate(
             ProtectionRequest(phase=phase, texts=(content,), context=RequestContext(protocol="playground")),
             preview_id="reduced-default", guardrail_id="guardrail-default",
-            draft_revision=1, candidate_version=1, plan=default_plan, runtime_profile="auto",
+            draft_revision=1, candidate_version="20260904-010000.001Z", plan=default_plan, runtime_profile="auto",
         )
         assert result.decision == expected_decision, result.reason
         if expected_text is not None:

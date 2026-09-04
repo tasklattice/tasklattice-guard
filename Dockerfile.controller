@@ -1,4 +1,5 @@
-# syntax=docker/dockerfile:1.14
+# Use the BuildKit-bundled Dockerfile frontend so local installation does not
+# require a separate docker.io/docker/dockerfile pull before cached inputs work.
 ARG NODE_VERSION=24
 
 FROM node:${NODE_VERSION}-bookworm-slim AS build
@@ -21,7 +22,7 @@ ENV NODE_ENV=production \
     TALI_HELM_CHART=/opt/tali/helm/tali-guard.tgz
 WORKDIR /opt/tasklattice/guard-controller
 RUN apt-get update \
-    && apt-get install --yes --no-install-recommends antiword \
+    && apt-get install --yes --no-install-recommends antiword ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --uid 65532 --no-create-home controller
 COPY --link --from=build /build/controller/package.json ./

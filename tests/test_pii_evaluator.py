@@ -77,7 +77,7 @@ def _request(content: str, *, semantic: bool = False) -> EvaluationRequest:
         )
     plan = GuardrailPlanSnapshot(
         guardrail_id="guardrail-pii",
-        guardrail_version=1,
+        guardrail_version="20260904-010000.001Z",
         compiler_version="test",
         safety_level="balanced",
         output_delivery="full_buffered",

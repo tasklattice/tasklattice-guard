@@ -67,7 +67,7 @@ export interface RuntimeTraceStep {
   /**
    * Immutable Guardrail version associated with this trace node.
    */
-  'guardrailVersion'?: (number);
+  'guardrailVersion'?: (string);
   /**
    * Policy provenance when this node executes a programmable policy.
    */
@@ -286,7 +286,7 @@ export interface RuntimeTraceStep__Output {
   /**
    * Immutable Guardrail version associated with this trace node.
    */
-  'guardrailVersion'?: (number);
+  'guardrailVersion'?: (string);
   /**
    * Policy provenance when this node executes a programmable policy.
    */

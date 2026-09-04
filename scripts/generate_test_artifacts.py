@@ -34,6 +34,8 @@ OUTPUT = ROOT / "tests" / "fixtures" / "artifacts"
 FIXTURE_NAME = "local-secrets-v1"
 ORDERED_FIXTURE_NAME = "ordered-local-v1"
 DEFAULT_FIXTURE_NAME = "default-local-v1"
+JAILBREAK_FIXTURE_NAME = "jailbreak-v1"
+FIXTURE_NAMES = (FIXTURE_NAME, ORDERED_FIXTURE_NAME, DEFAULT_FIXTURE_NAME, JAILBREAK_FIXTURE_NAME)
 TEST_CREDENTIAL = "fixture-runtime-secret"
 _PRIVATE_KEY_BYTES = bytes(range(1, 33))
 
@@ -48,7 +50,7 @@ class FixtureFiles:
 def _plan() -> dict[str, object]:
     return {
         "guardrail_id": "fixture-secrets",
-        "guardrail_version": 1,
+        "guardrail_version": "20260904-010000.001Z",
         "compiler_version": "tasklattice-controller-plan-v3",
         "safety_level": "balanced",
         "output_delivery": "full_buffered",
@@ -117,6 +119,20 @@ def _ordered_plan() -> dict[str, object]:
     return plan
 
 
+def _jailbreak_plan() -> dict[str, object]:
+    # The artifact declares only the capability, never a model or transport.
+    plan = _plan()
+    plan["steps"] = [{
+        **plan["steps"][0], "id": "jailbreak:primary", "capability": "jailbreak",
+        "contract_ref": "tali.guard.jailbreak.v1", "phases": ["input"],
+    }]
+    plan["modules"] = [{
+        **plan["modules"][0], "id": "interaction_safety:input", "module": "interaction_safety",
+        "step_ids": ["jailbreak:primary"], "timeout_ms": 5_000,
+    }]
+    return plan
+
+
 def _default_plan() -> dict[str, object]:
     # Control-plane generation only. Runner-only tests never import the builder.
     source = """
@@ -124,7 +140,7 @@ def _default_plan() -> dict[str, object]:
       import {buildGuardrailPlan} from './server/domain/guardrail-plan.ts';
       import {PolicyCatalog} from './server/policy-catalog/catalog.ts';
       const policies = PolicyCatalog.load('../runner/toolkit/policy_library/assets').list();
-      console.log(JSON.stringify(buildGuardrailPlan({guardrailId:'fixture-secrets', guardrailVersion:1,
+      console.log(JSON.stringify(buildGuardrailPlan({guardrailId:'fixture-secrets', guardrailVersion:"20260904-010000.001Z",
         draft:defaultGuardrailDraft(policies), policies})));
     """
     return json.loads(subprocess.run(
@@ -142,9 +158,13 @@ def generate(fixture_name: str = FIXTURE_NAME) -> FixtureFiles:
     artifact = DefaultRunnerCompiler().compile(protocol.CompileRequest(
         compile_id="fixture-compile-local-secrets-v1",
         guardrail_id="fixture-secrets",
-        guardrail_version=1,
+        guardrail_version="20260904-010000.001Z",
         generation=1,
-        plan=plan_to_proto(_default_plan() if fixture_name == DEFAULT_FIXTURE_NAME else _ordered_plan() if fixture_name == ORDERED_FIXTURE_NAME else _plan()),
+        plan=plan_to_proto({
+            DEFAULT_FIXTURE_NAME: _default_plan,
+            ORDERED_FIXTURE_NAME: _ordered_plan,
+            JAILBREAK_FIXTURE_NAME: _jailbreak_plan,
+        }.get(fixture_name, _plan)()),
         runtime_profile="auto",
     ))
     artifact.artifact_id = f"fixture-artifact-{fixture_name}"
@@ -217,9 +237,10 @@ def _write(directory: Path, files: FixtureFiles) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", action="store_true")
+    parser.add_argument("--fixture", choices=FIXTURE_NAMES)
     args = parser.parse_args()
     mismatches = []
-    for fixture_name in (FIXTURE_NAME, ORDERED_FIXTURE_NAME, DEFAULT_FIXTURE_NAME):
+    for fixture_name in (args.fixture,) if args.fixture else FIXTURE_NAMES:
         files = generate(fixture_name)
         destination = OUTPUT / fixture_name
         if not args.check:

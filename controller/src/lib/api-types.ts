@@ -1,4 +1,5 @@
 import type { EnforcementAction } from "../../shared/enforcement-action.generated";
+import type { GuardrailCategoryId } from "../../shared/guardrail-catalog";
 import type {
   GuardrailReadinessState,
   IntegrationSetupState,
@@ -162,7 +163,7 @@ export type TestCaseResult = {
 export type ValidationRun = {
   id: string;
   guardrail_id: string;
-  guardrail_version: number | null;
+  guardrail_version: string;
   source_draft_version: number;
   status: "passed" | "failed" | "incomplete";
   metrics: ValidationMetrics;
@@ -198,7 +199,7 @@ export type PlaygroundCheckResult = {
   guardrail: {
     id: string;
     name: string;
-    version: number;
+    version: string;
     target_kind: "published" | "draft";
     draft_revision: number | null;
     published_at: string | null;
@@ -228,13 +229,13 @@ export type PlaygroundModel = {
 
 export type PlaygroundTarget =
   | { kind: "draft"; draft_revision: number; preview_id?: string }
-  | { kind: "published"; version: number };
+  | { kind: "published"; version: string };
 
 export type PlaygroundDraftPreview = {
   preview_id: string;
   guardrail_id: string;
   draft_revision: number;
-  candidate_version: number;
+  candidate_version: string;
   compiler_version: string;
   runtime_profile: string;
   expires_at: string;
@@ -288,7 +289,7 @@ export type Deployment = {
   id: string;
   name: string;
   guardrail_id: string;
-  guardrail_version: number;
+  guardrail_version: string;
   integration_id: string | null;
   route_order: number;
   traffic_scope: TrafficScopeExpression;
@@ -316,7 +317,7 @@ export type DeploymentTraceFinding = {
   trace_id: string;
   created_at: string;
   guardrail_id: string | null;
-  guardrail_version: number | null;
+  guardrail_version: string | null;
   deployment_id: string | null;
   integration_id: string | null;
   phase: string;
@@ -361,7 +362,7 @@ export type DeploymentTraceStep = {
   trace_id: string;
   created_at: string;
   guardrail_id: string;
-  guardrail_version: number;
+  guardrail_version: string;
   deployment_id: string | null;
   integration_id: string | null;
   protocol: string;
@@ -391,7 +392,7 @@ export type DeploymentRuntimeTrace = {
   created_at: string;
   deployment_id: string;
   guardrail_id: string | null;
-  guardrail_version: number | null;
+  guardrail_version: string | null;
   integration_id: string | null;
   protocol: string;
   phase: string;
@@ -500,7 +501,7 @@ export type DeleteConfirmation = {
 
 export type GuardrailVersion = {
   guardrail_id: string;
-  version: number;
+  version: string;
   source_draft_version: number;
   compiler_version: string;
   plan_checksum: string;
@@ -548,7 +549,7 @@ export type GuardrailVersionDetail = GuardrailVersion & {
 };
 
 export type PolicyTagNamespace =
-  | "capability"
+  | "guardrail_category"
   | "collection"
   | "domain"
   | "framework"
@@ -687,6 +688,7 @@ export type PolicyDraftTestCase = {
   expected_reasoning_result: AutomatedReasoningResult | null;
 };
 export type ProgrammablePolicyDraft = {
+  guardrail_category: GuardrailCategoryId;
   colang_version: "1.0" | "2.x";
   sources: PolicySourceFile[];
   parameter_schema: PolicyDraftParameter[];
@@ -767,7 +769,7 @@ export type PolicyDraftValidationRun = {
 };
 export type GuardrailCompilePreview = {
   guardrail_id: string;
-  candidate_version: number;
+  candidate_version: string;
   engine: string;
   colang_version: string;
   compiler_version: string;
@@ -850,20 +852,6 @@ export type IntegrationRegistration = {
   credential: OneTimeIntegrationCredential;
 };
 
-export type EvidenceRecord = {
-  id: string;
-  created_at: string;
-  kind: string;
-  outcome: string;
-  guardrail_id: string | null;
-  deployment_id: string | null;
-  integration_id: string | null;
-  risk: string | null;
-  detail: string;
-  actor_id: string | null;
-  metadata: Record<string, string>;
-};
-
 export type LoggingLevel = "info" | "debug" | "trace";
 
 export type GuardrailLoggingSettings = {
@@ -906,17 +894,13 @@ export type RuntimeLogInteraction = {
   created_at: string;
   completed_at: string | null;
   guardrail_id: string;
-  guardrail_version: number | null;
+  guardrail_version: string | null;
   deployment_id: string | null;
   integration_id: string | null;
   protocol: string;
   outcome: "allow" | "transform" | "block" | "error" | string;
   capture_level: LoggingLevel;
   entries: RuntimeLogEntry[];
-};
-
-export type RuntimeLogPage = Collection<RuntimeLogInteraction> & {
-  next_cursor: string | null;
 };
 
 export type MetricWindow = "1h" | "24h" | "7d" | "15d" | "30d";
@@ -1049,7 +1033,7 @@ export type Metrics = {
     slo_breach_count: number;
     runtime_engines: string[];
     config_checksums: string[];
-    versions: number[];
+    versions: string[];
   }>;
   caller_distribution: Array<{
     integration_id: string | null;
@@ -1066,12 +1050,12 @@ export type Metrics = {
     intervention_rate: number;
     error_rate: number;
     p95_latency_ms: number;
-    guardrail_versions: number[];
+    guardrail_versions: string[];
   }>;
   version_distribution: Array<{
     guardrail_id: string;
     guardrail_name: string;
-    guardrail_version: number;
+    guardrail_version: string;
     requests: number;
     share: number;
     p95_latency_ms: number;

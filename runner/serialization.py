@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+import re
 from typing import Any
 
 from runner.toolkit.runtime.contracts import (
@@ -21,7 +23,7 @@ from runner.toolkit.runtime.contracts import (
 def plan_from_dict(payload: dict[str, Any]) -> GuardrailPlanSnapshot:
     return GuardrailPlanSnapshot(
         guardrail_id=str(payload["guardrail_id"]),
-        guardrail_version=int(payload["guardrail_version"]),
+        guardrail_version=_guardrail_version(payload["guardrail_version"]),
         compiler_version=str(payload.get("compiler_version", "tasklattice-controller-plan-v1")),
         safety_level=str(payload.get("safety_level", "balanced")),
         output_delivery=str(payload.get("output_delivery", "full_buffered")),
@@ -75,7 +77,7 @@ def plan_from_dict(payload: dict[str, Any]) -> GuardrailPlanSnapshot:
 def config_from_dict(payload: dict[str, Any]) -> NeMoConfigSnapshot:
     return NeMoConfigSnapshot(
         guardrail_id=str(payload["guardrail_id"]),
-        guardrail_version=int(payload["guardrail_version"]),
+        guardrail_version=_guardrail_version(payload["guardrail_version"]),
         compiler_version=str(payload["compiler_version"]),
         output_delivery=str(payload.get("output_delivery", "full_buffered")),
         config_yaml=str(payload["config_yaml"]),
@@ -91,6 +93,16 @@ def config_from_dict(payload: dict[str, Any]) -> NeMoConfigSnapshot:
         dependency_manifest=tuple(tuple(item) for item in payload.get("dependency_manifest", ())),
         estimated_critical_path_ms=int(payload.get("estimated_critical_path_ms", 0)),
     )
+
+
+def _guardrail_version(value: Any) -> str:
+    if not isinstance(value, str) or re.fullmatch(r"\d{8}-\d{6}\.\d{3}Z", value) is None:
+        raise ValueError("Guardrail Version must be a canonical UTC timestamp.")
+    try:
+        datetime.strptime(value, "%Y%m%d-%H%M%S.%fZ")
+    except ValueError as error:
+        raise ValueError("Guardrail Version must be a canonical UTC timestamp.") from error
+    return value
 
 
 def _action_binding(item: dict[str, Any]) -> NeMoActionBinding:

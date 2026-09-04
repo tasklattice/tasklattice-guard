@@ -16,10 +16,11 @@ import {
   validationTestToWire,
 } from "./protocol-codec.js";
 
+const versionId = "20260904-073000.123Z";
 
 const plan = {
   guardrail_id: "guardrail-1",
-  guardrail_version: 3,
+  guardrail_version: versionId,
   compiler_version: "tasklattice-controller-plan-v3",
   safety_level: "strict",
   output_delivery: "full_buffered",
@@ -59,6 +60,10 @@ const plan = {
 
 
 describe("Controller/Runner control protocol", () => {
+  it("rejects legacy numeric Guardrail Versions instead of coercing them", () => {
+    expect(() => planToWire({ ...plan, guardrail_version: 1 })).toThrow("canonical UTC timestamp");
+  });
+
   it("preserves local expectation matches and an explicitly empty output on the real wire", () => {
     const protoPath = resolve("../proto/tasklattice/guard/control/v1/runner_control.proto");
     const definition = loadSync(protoPath, { includeDirs: [dirname(protoPath)], longs: String, enums: String, defaults: true, oneofs: true });
@@ -91,7 +96,7 @@ describe("Controller/Runner control protocol", () => {
       messageId: "message-1",
       sentAtUnixMs: "1",
       compileRequest: {
-        compileId: "compile-1", guardrailId: "guardrail-1", guardrailVersion: 3,
+        compileId: "compile-1", guardrailId: "guardrail-1", guardrailVersion: versionId,
         generation: "11", plan: planToWire(plan), runtimeProfile: "nemo-default",
       },
     });
@@ -112,8 +117,8 @@ describe("Controller/Runner control protocol", () => {
 
   it("round-trips the canonical signed Artifact body", () => {
     const content = {
-      guardrailId: "guardrail-1", guardrailVersion: 3, generation: 11,
-      compilerVersion: "compiler-v2", nemoVersion: "0.20.0", runtimeProfile: "nemo-default",
+      guardrailId: "guardrail-1", guardrailVersion: versionId, generation: 11,
+      compilerVersion: "compiler-v2", nemoVersion: "0.24.0", runtimeProfile: "nemo-default",
       plan, configYaml: "models: []", colangContent: "define flow passport",
       prompts: [{ task: "passport_check", content: "Check {{ user_input }}", output_parser: "json", max_tokens: 64 }],
       actionBindings: [{

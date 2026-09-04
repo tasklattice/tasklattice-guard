@@ -196,6 +196,12 @@ redis:
       memory: 128Mi
 
 security:
+  # Optional CA used to verify HTTPS model Provider certificates. The same
+  # externally managed Secret is mounted into the Linux certificate directory
+  # of the Controller and every Runner. The Secret value must be PEM encoded.
+  customCa:
+    existingSecret: ""
+    certificateKey: ca.crt
   metrics:
     # Helm creates and retains a dedicated scrape token by default. Prometheus
     # receives it through ServiceMonitor without reusing the control token.

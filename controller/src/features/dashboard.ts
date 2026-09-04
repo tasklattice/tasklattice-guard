@@ -2,11 +2,12 @@ import { useQuery } from "@tanstack/react-query";
 
 import { queryKeys } from "@/features/query-keys";
 import {
-  getEvidence,
   getGuardrails,
   getMetrics,
+  metricWindowMilliseconds,
   type MetricWindow,
 } from "@/lib/api";
+import { listRuntimeEvents } from "@/lib/controller-api";
 
 export type DashboardFilters = {
   guardrailId?: string;
@@ -19,9 +20,12 @@ export function useGuardrailsDashboard(filters: DashboardFilters) {
     queryFn: () => getMetrics(filters),
     refetchInterval: 15_000,
   });
-  const evidence = useQuery({
-    queryKey: [...queryKeys.evidence, filters],
-    queryFn: () => getEvidence({ ...filters, kind: "interaction.decision", limit: 50 }),
+  const events = useQuery({
+    queryKey: queryKeys.runtimeEventsScope({ ...filters, limit: 50 }),
+    queryFn: () => listRuntimeEvents(50, {
+      guardrailId: filters.guardrailId,
+      since: new Date(Date.now() - metricWindowMilliseconds(filters.window)).toISOString(),
+    }),
     refetchInterval: 2_000,
   });
   const guardrails = useQuery({
@@ -30,9 +34,9 @@ export function useGuardrailsDashboard(filters: DashboardFilters) {
   });
   return {
     metrics,
-    evidence,
+    events,
     guardrails,
-    error: metrics.error ?? evidence.error ?? guardrails.error,
+    error: metrics.error ?? events.error ?? guardrails.error,
   };
 }
 

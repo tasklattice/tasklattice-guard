@@ -17,6 +17,7 @@ const policy: ProgrammablePolicy = {
   draft_revision: 3,
   updated_at: "2026-08-14T00:00:00Z",
   draft: {
+    guardrail_category: "pii_detection",
     colang_version: "2.x",
     sources: [{ path: "main.co", content: "flow check_request $text\n  pass\n" }],
     parameter_schema: [],

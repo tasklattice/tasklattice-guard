@@ -34,6 +34,7 @@ LITELLM_ADAPTER_ID = "litellm-generic-guardrail"
 SENSITIVE_HEADERS = frozenset({"authorization", "cookie", "proxy-authorization", "x-api-key"})
 RUNTIME_LOG_AAD = b"tasklattice-runtime-log-v1"
 _TRACER = trace.get_tracer("tasklattice.guard-runner.api")
+GUARDRAIL_VERSION_PATTERN = r"^\d{8}-\d{6}\.\d{3}Z$"
 
 
 class EvaluateRequest(BaseModel):
@@ -113,7 +114,7 @@ EvaluateRequest.model_rebuild()
 
 class GuardrailEvaluateRequest(EvaluateRequest):
     protocol: Literal["playground"] = "playground"
-    guardrail_version: int = Field(gt=0)
+    guardrail_version: str = Field(pattern=GUARDRAIL_VERSION_PATTERN)
 
 
 class DraftPreviewPrepareRequest(BaseModel):
@@ -122,7 +123,7 @@ class DraftPreviewPrepareRequest(BaseModel):
     preview_id: str = Field(min_length=1, max_length=256)
     guardrail_id: str = Field(min_length=1, max_length=256)
     draft_revision: int = Field(gt=0)
-    candidate_version: int = Field(gt=0)
+    candidate_version: str = Field(pattern=GUARDRAIL_VERSION_PATTERN)
     plan: dict[str, Any]
     runtime_profile: str = Field(min_length=1, max_length=128)
 
@@ -130,7 +131,7 @@ class DraftPreviewPrepareRequest(BaseModel):
 class DraftPreviewEvaluateRequest(EvaluateRequest):
     preview_id: str = Field(min_length=1, max_length=256)
     draft_revision: int = Field(gt=0)
-    candidate_version: int = Field(gt=0)
+    candidate_version: str = Field(pattern=GUARDRAIL_VERSION_PATTERN)
     plan: dict[str, Any]
     runtime_profile: str = Field(min_length=1, max_length=128)
     protocol: Literal["playground"] = "playground"

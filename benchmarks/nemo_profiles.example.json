@@ -12,7 +12,7 @@
       "url": "http://127.0.0.1:8010/benchmark/v1/guardrails/generate",
       "api_key_env": "TL_BENCH_API_KEY",
       "guardrail_id": "replace-iorails-guardrail-id",
-      "guardrail_version": 1,
+      "guardrail_version": "20260904-010000.001Z",
       "artifact_checksum": "replace-iorails-otel-off-checksum"
     },
     {
@@ -22,7 +22,7 @@
       "url": "http://127.0.0.1:8011/benchmark/v1/guardrails/generate",
       "api_key_env": "TL_BENCH_API_KEY",
       "guardrail_id": "replace-iorails-guardrail-id",
-      "guardrail_version": 2,
+      "guardrail_version": "20260904-020000.002Z",
       "artifact_checksum": "replace-iorails-otel-on-checksum"
     },
     {
@@ -32,7 +32,7 @@
       "url": "http://127.0.0.1:8020/v1/guardrails/evaluate",
       "api_key_env": "TL_BENCH_API_KEY",
       "guardrail_id": "replace-colang1-guardrail-id",
-      "guardrail_version": 1,
+      "guardrail_version": "20260904-010000.001Z",
       "artifact_checksum": "replace-colang1-otel-off-checksum"
     },
     {
@@ -42,7 +42,7 @@
       "url": "http://127.0.0.1:8021/v1/guardrails/evaluate",
       "api_key_env": "TL_BENCH_API_KEY",
       "guardrail_id": "replace-colang1-guardrail-id",
-      "guardrail_version": 2,
+      "guardrail_version": "20260904-020000.002Z",
       "artifact_checksum": "replace-colang1-otel-on-checksum"
     },
     {
@@ -52,7 +52,7 @@
       "url": "http://127.0.0.1:8030/v1/guardrails/evaluate",
       "api_key_env": "TL_BENCH_API_KEY",
       "guardrail_id": "replace-colang2-guardrail-id",
-      "guardrail_version": 1,
+      "guardrail_version": "20260904-010000.001Z",
       "artifact_checksum": "replace-colang2-otel-off-checksum"
     },
     {
@@ -62,7 +62,7 @@
       "url": "http://127.0.0.1:8031/v1/guardrails/evaluate",
       "api_key_env": "TL_BENCH_API_KEY",
       "guardrail_id": "replace-colang2-guardrail-id",
-      "guardrail_version": 2,
+      "guardrail_version": "20260904-020000.002Z",
       "artifact_checksum": "replace-colang2-otel-on-checksum"
     }
   ],

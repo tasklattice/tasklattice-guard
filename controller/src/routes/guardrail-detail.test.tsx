@@ -11,6 +11,8 @@ import { PolicyCatalog } from "../../server/policy-catalog/catalog";
 
 import { DeleteGuardrailSheet, DraftReleaseView, GuardrailFindingsView, GuardrailRuntimeView, ImmutableVersionView, TestCases } from "./guardrails";
 
+const VERSION_ID = "20260813-080000.000Z";
+
 vi.mock("react-i18next", () => ({
   initReactI18next: { type: "3rdParty", init: () => undefined },
   useTranslation: () => ({
@@ -38,7 +40,7 @@ const deployment: Deployment = {
   id: "deployment-observed",
   name: "Observed traffic",
   guardrail_id: "guardrail-observed",
-  guardrail_version: 2,
+  guardrail_version: VERSION_ID,
   integration_id: "integration-observed",
   route_order: 1,
   traffic_scope: { combinator: "and", conditions: [{ field: "protocol", operator: "equals", value: "litellm" }] },
@@ -99,14 +101,14 @@ describe("Guardrail detail information hierarchy", () => {
         intervention_rate: 12.5,
         error_rate: 2.5,
         p95_latency_ms: 86,
-        guardrail_versions: [2],
+        guardrail_versions: [VERSION_ID],
       }],
     } as Metrics;
 
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<QueryClientProvider client={client}><GuardrailRuntimeView guardrailId="guardrail-observed" metrics={metrics} loading={false} error={null} deployments={[deployment]} versions={[{
       guardrail_id: "guardrail-observed",
-      version: 2,
+      version: VERSION_ID,
       source_draft_version: 3,
       compiler_version: "tasklattice-nemo-config-v7",
       plan_checksum: "plan-checksum",
@@ -120,7 +122,7 @@ describe("Guardrail detail information hierarchy", () => {
     expect(screen.getByText("Observed LiteLLM")).toBeTruthy();
     expect(screen.getByText("Observed traffic")).toBeTruthy();
     expect(screen.getByText("Observed traffic scope")).toBeTruthy();
-    expect(screen.getByText("20260813-080000Z")).toBeTruthy();
+    expect(screen.getByText(VERSION_ID)).toBeTruthy();
     expect(screen.getByText("runtime-chart")).toBeTruthy();
   });
 
@@ -133,7 +135,7 @@ describe("Guardrail detail information hierarchy", () => {
         trace_id: "trace-playground",
         created_at: "2026-08-16T09:46:46Z",
         guardrail_id: "guardrail-observed",
-        guardrail_version: 4,
+        guardrail_version: "20260816-094646.000Z",
         deployment_id: null,
         integration_id: null,
         protocol: "playground",
@@ -162,7 +164,7 @@ describe("Guardrail detail information hierarchy", () => {
   it("shows immutable configuration before the unified compiled runtime", () => {
     const version: GuardrailVersion = {
       guardrail_id: "guardrail-observed",
-      version: 2,
+      version: VERSION_ID,
       source_draft_version: 3,
       compiler_version: "tasklattice-nemo-config-v6",
       plan_checksum: "plan-checksum",
@@ -191,7 +193,7 @@ describe("Guardrail detail information hierarchy", () => {
     const client = new QueryClient();
     render(<QueryClientProvider client={client}><TooltipProvider><ImmutableVersionView detail={detail} selectedVersion={version} versions={[version]} loading={false} comparisonActive={false} comparisonLoading={false} compareOptions={[]} guardrailId="guardrail-observed" validation={null} onChanged={async () => undefined} onOpenDraft={() => undefined} onSelectVersion={() => undefined} onStartCompare={() => undefined} onCompareBaseChange={() => undefined} onCloseCompare={() => undefined} /></TooltipProvider></QueryClientProvider>);
 
-    const configuration = screen.getAllByText("20260813-080000Z")[1];
+    const configuration = screen.getAllByText(VERSION_ID)[1];
     const compiledRuntime = screen.getByText("guardrails.compiledRuntime");
     expect(configuration.compareDocumentPosition(compiledRuntime) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByText("pii@1.95.0")).toBeTruthy();
@@ -281,7 +283,7 @@ describe("Guardrail detail information hierarchy", () => {
       latest_validation_run: {
         id: "validation-release",
         guardrail_id: "guardrail-release",
-        guardrail_version: null,
+        guardrail_version: "20260814-080000.000Z",
         source_draft_version: 2,
         status: "passed",
         created_at: "2026-08-14T08:00:00Z",
@@ -311,7 +313,7 @@ describe("Guardrail detail information hierarchy", () => {
     fireEvent.click(screen.getByRole("button", { name: "guardrails.openValidation" }));
     expect(onOpenValidation).toHaveBeenCalledWith(validatedGuardrail.latest_validation_run);
 
-    view.rerender(<QueryClientProvider client={client}><DraftReleaseView {...props} guardrail={{ ...validatedGuardrail, published_current: true }} activeVersion={{ guardrail_id: validatedGuardrail.id, version: 1, source_draft_version: 2, compiler_version: "compiler", plan_checksum: "plan", config_checksum: "config", created_at: "2026-08-14T08:00:00Z", active: true, runtime_engine: "llmrails", execution_mode: "nemo_only" }} /></QueryClientProvider>);
+    view.rerender(<QueryClientProvider client={client}><DraftReleaseView {...props} guardrail={{ ...validatedGuardrail, published_current: true }} activeVersion={{ guardrail_id: validatedGuardrail.id, version: "20260814-080000.000Z", source_draft_version: 2, compiler_version: "compiler", plan_checksum: "plan", config_checksum: "config", created_at: "2026-08-14T08:00:00Z", active: true, runtime_engine: "llmrails", execution_mode: "nemo_only" }} /></QueryClientProvider>);
     expect(screen.queryByRole("button", { name: "guardrails.publishVersion" })).toBeNull();
     expect(screen.getByRole("button", { name: "guardrails.createDeployment" })).toBeTruthy();
   });

@@ -3,8 +3,11 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 
 import { ControllerError, ValidationError } from "../domain/errors.js";
+import { providerFetch } from "../model-config/provider-fetch.js";
+import { isGuardrailVersionId } from "../../shared/guardrail-version.js";
 
 type Fetch = typeof globalThis.fetch;
+const guardrailVersion = z.string().refine(isGuardrailVersionId);
 
 const modelEnvelope = z.object({
   choices: z.array(z.object({ message: z.object({ content: z.string() }) })).min(1),
@@ -39,7 +42,7 @@ const runnerDecision = z.object({
   reason: z.string().nullable().optional(),
   texts: z.array(z.string()).default([]),
   guardrail_id: z.string().nullable().optional(),
-  guardrail_version: z.number().int().positive().nullable().optional(),
+  guardrail_version: guardrailVersion.nullable().optional(),
   findings: z.array(z.object({
     risk: z.string(),
     taxonomy_id: z.string(),
@@ -66,14 +69,14 @@ export type PlaygroundModel = {
 
 export type PublishedPlaygroundTarget = {
   kind: "published";
-  version: number;
+  version: string;
 };
 
 export type DraftPlaygroundTarget = {
   kind: "draft";
   previewId: string;
   draftRevision: number;
-  candidateVersion: number;
+  candidateVersion: string;
   plan: Record<string, unknown>;
   runtimeProfile: string;
 };
@@ -147,6 +150,7 @@ export class OpenAICompatiblePlaygroundModel {
     baseUrl: string;
     model: string;
     apiKey: string;
+    skipTlsVerify?: boolean;
     timeoutMs?: number;
     fetcher?: Fetch;
   }) {
@@ -159,7 +163,7 @@ export class OpenAICompatiblePlaygroundModel {
     this.#baseUrl = input.baseUrl.replace(/\/+$/, "");
     this.#apiKey = input.apiKey;
     this.#timeoutMs = input.timeoutMs ?? 45_000;
-    this.#fetch = input.fetcher ?? globalThis.fetch;
+    this.#fetch = providerFetch(input.skipTlsVerify, input.fetcher);
   }
 
   async complete(input: {
@@ -266,7 +270,7 @@ export class RunnerPlaygroundClient {
     previewId: string;
     guardrailId: string;
     draftRevision: number;
-    candidateVersion: number;
+    candidateVersion: string;
     plan: Record<string, unknown>;
     runtimeProfile: string;
   }) {
@@ -305,7 +309,7 @@ export async function runPlaygroundInteraction(input: {
   guardrail: {
     id: string;
     name: string;
-    version: number;
+    version: string;
     publishedAt: Date | string | null;
     compilerVersion: string;
     targetKind: "published" | "draft";
@@ -374,7 +378,7 @@ function transformedText(decision: z.infer<typeof runnerDecision>, fallback: str
 }
 
 function checkResult(
-  guardrail: { id: string; name: string; version: number; publishedAt: Date | string | null; compilerVersion: string; targetKind: "published" | "draft"; draftRevision: number | null },
+  guardrail: { id: string; name: string; version: string; publishedAt: Date | string | null; compilerVersion: string; targetKind: "published" | "draft"; draftRevision: number | null },
   phase: "input" | "output",
   outputContent: string,
   result: { decision: z.infer<typeof runnerDecision>; latencyMs: number },

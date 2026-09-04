@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { enforcementActions } from "../../shared/enforcement-action.generated.js";
+import { guardrailCategoryIds } from "../../shared/guardrail-catalog.js";
 
 export const policyRailTypes = ["input", "output"] as const;
 
@@ -58,6 +59,7 @@ const policyTestCaseSchema = z.object({
 });
 
 export const programmablePolicyDraftSchema = z.object({
+  guardrail_category: z.enum(guardrailCategoryIds),
   colang_version: z.enum(["1.0", "2.x"]).default("2.x"),
   sources: z.array(sourceSchema).min(1).max(32),
   parameter_schema: z.array(parameterSchema).max(128).default([]),

@@ -47,7 +47,7 @@ const guardrail = {
 
 const version = {
   guardrail_id: guardrail.id,
-  version: 2,
+  version: "20260904-020000.002Z",
   source_draft_version: 2,
   compiler_version: "test",
   plan_checksum: "plan",

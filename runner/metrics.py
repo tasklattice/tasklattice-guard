@@ -80,7 +80,7 @@ class GuardrailRequestObservation:
         self,
         *,
         guardrail_id: str | None,
-        guardrail_version: int | str | None,
+        guardrail_version: str | None,
         deployment_id: str | None,
     ) -> None:
         self.guardrail_id = _identity_label(guardrail_id, self.guardrail_id)
@@ -454,7 +454,7 @@ class RunnerMetrics:
         *,
         integration_id: str | None = None,
         guardrail_id: str = UNRESOLVED_METRIC_ID,
-        guardrail_version: int | str = UNRESOLVED_METRIC_ID,
+        guardrail_version: str = UNRESOLVED_METRIC_ID,
         deployment_id: str = UNRESOLVED_METRIC_ID,
     ) -> Iterator[GuardrailRequestObservation]:
         started = time.perf_counter()

@@ -19,26 +19,24 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/lib/auth";
 import { LoginPage } from "@/routes/login";
 
-const names: Record<string, { group: string; page: string }> = {
-  "/": { group: "nav.home", page: "nav.dashboard" },
-  "/dashboard": { group: "nav.home", page: "nav.dashboard" },
-  "/guardrails": { group: "nav.buildValidate", page: "nav.guardrails" },
-  "/policy-library": { group: "nav.buildValidate", page: "nav.policyLibrary" },
-  "/playground": { group: "nav.home", page: "nav.playground" },
-  "/validation": { group: "nav.buildValidate", page: "nav.validation" },
+const names: Record<string, { group?: string; page: string }> = {
+  "/": { page: "nav.dashboard" },
+  "/dashboard": { page: "nav.dashboard" },
+  "/guardrails": { group: "nav.guardrailDesign", page: "nav.guardrails" },
+  "/policy-library": { group: "nav.guardrailDesign", page: "nav.policyLibrary" },
+  "/playground": { group: "nav.guardrailDesign", page: "nav.playground" },
   "/deployments": { group: "nav.runtime", page: "nav.deployments" },
   "/integrations": { group: "nav.runtime", page: "nav.integrations" },
-  "/runners": { group: "nav.runtime", page: "nav.runners" },
-  "/evidence": { group: "nav.assurance", page: "nav.evidence" },
-  "/logs": { group: "nav.assurance", page: "nav.logs" },
-  "/activity": { group: "nav.assurance", page: "nav.activity" },
+  "/logs": { group: "nav.observability", page: "nav.logs" },
+  "/audit-log": { group: "nav.observability", page: "nav.auditLog" },
   "/access": { group: "nav.system", page: "nav.access" },
   "/account": { group: "nav.system", page: "account.title" },
-  "/settings": { group: "nav.settings", page: "nav.status" },
-  "/settings/status": { group: "nav.settings", page: "nav.status" },
+  "/settings": { group: "nav.settings", page: "nav.health" },
+  "/settings/health": { group: "nav.settings", page: "nav.health" },
+  "/settings/runner": { group: "nav.settings", page: "nav.runner" },
   "/settings/providers": { group: "nav.settings", page: "nav.providers" },
   "/settings/models": { group: "nav.settings", page: "nav.models" },
-  "/settings/capabilities": { group: "nav.settings", page: "nav.capabilities" },
+  "/settings/guardrail-catalog": { group: "nav.settings", page: "nav.guardrailCatalog" },
   "/help": { group: "nav.helpResources", page: "nav.helpCenter" },
 };
 
@@ -49,7 +47,7 @@ export function ControlPlaneLayout() {
   const location = names[pathname]
     ?? (pathname.startsWith("/guardrails/") ? names["/guardrails"] : undefined)
     ?? (pathname.startsWith("/deployments/") ? names["/deployments"] : undefined)
-    ?? { group: "nav.home", page: "nav.dashboard" };
+    ?? { page: "nav.dashboard" };
   if (auth.isLoading) {
     return <div className="flex min-h-dvh items-center justify-center bg-background"><div className="flex items-center gap-3 text-sm text-muted-foreground"><ShieldCheck className="size-5 animate-pulse text-primary" />{t("auth.sessionLoading")}</div></div>;
   }
@@ -64,20 +62,15 @@ export function ControlPlaneLayout() {
             <div className="flex min-w-0 items-center gap-3">
               <SidebarTrigger className="size-11 rounded-lg" />
               <Separator orientation="vertical" className="h-5" />
-              <Breadcrumb className="min-w-0">
+              {location.group ? <Breadcrumb className="min-w-0">
                 <BreadcrumbList className="flex-nowrap">
-                  <BreadcrumbItem className="hidden sm:inline-flex">
-                    <ShieldCheck className="size-4 text-primary" />
-                    <span>TaskLattice Guard</span>
-                  </BreadcrumbItem>
+                  <BreadcrumbItem className="hidden sm:inline-flex">{t(location.group)}</BreadcrumbItem>
                   <BreadcrumbSeparator className="hidden sm:block" />
-                  <BreadcrumbItem className="hidden md:inline-flex">{t(location.group)}</BreadcrumbItem>
-                  <BreadcrumbSeparator className="hidden md:block" />
                   <BreadcrumbItem className="min-w-0">
                     <BreadcrumbPage className="truncate">{t(location.page)}</BreadcrumbPage>
                   </BreadcrumbItem>
                 </BreadcrumbList>
-              </Breadcrumb>
+              </Breadcrumb> : <span className="truncate text-sm font-medium text-foreground">{t(location.page)}</span>}
             </div>
             <AccountMenu placement="header" />
           </header>

@@ -5,6 +5,7 @@ import { ArrowDown, ArrowUp, Building2, ChevronRight, ListFilter, Plus, Route, S
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 
+import { ConfirmationSheet } from "@/components/confirmation-sheet";
 import { EntitySheet } from "@/components/entity-sheet";
 import { EmptyState, ErrorNotice, InfoNotice, PageHeader, StateBadge } from "@/components/product-shell";
 import {
@@ -42,6 +43,9 @@ import {
 
 const EMPTY_INTEGRATIONS: Integration[] = [];
 const EMPTY_TRAFFIC_FIELDS: TrafficScopeField[] = [];
+type PendingDeploymentChange =
+  | { kind: "toggle"; id: string; name: string; enabled: boolean }
+  | { kind: "reorder"; integrationId: string; integrationName: string; deploymentIds: string[] };
 
 export function DeploymentsPage() {
   const { t } = useTranslation();
@@ -52,6 +56,7 @@ export function DeploymentsPage() {
   const guardrailsQuery = useQuery({ queryKey: queryKeys.guardrails, queryFn: getGuardrails });
   const integrationsQuery = useQuery({ queryKey: queryKeys.integrations, queryFn: getIntegrations });
   const [createOpen, setCreateOpen] = useState(false);
+  const [pendingChange, setPendingChange] = useState<PendingDeploymentChange | null>(null);
   const deployments = deploymentsQuery.data?.items ?? [];
   const guardrails = guardrailsQuery.data?.items ?? [];
   const integrations = integrationsQuery.data?.items ?? [];
@@ -79,12 +84,12 @@ export function DeploymentsPage() {
   };
   const toggle = useMutation({
     mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) => setDeploymentEnabled(id, enabled),
-    onSuccess: refresh,
+    onSuccess: async () => { setPendingChange(null); await refresh(); },
     onError: (error) => notifyError(error, t("deployments.operationFailed")),
   });
   const reorder = useMutation({
     mutationFn: ({ integrationId, deploymentIds }: { integrationId: string; deploymentIds: string[] }) => reorderDeploymentRoutes(integrationId, deploymentIds),
-    onSuccess: refresh,
+    onSuccess: async () => { setPendingChange(null); await refresh(); },
     onError: (error) => notifyError(error, t("deployments.operationFailed")),
   });
 
@@ -117,8 +122,8 @@ export function DeploymentsPage() {
                   guardrails={guardrails}
                   reordering={reorder.isPending}
                   canManage={canManage}
-                  onToggle={(id, enabled) => toggle.mutate({ id, enabled })}
-                  onReorder={(deploymentIds) => reorder.mutate({ integrationId: integration.id, deploymentIds })}
+                  onToggle={(id, enabled) => setPendingChange({ kind: "toggle", id, enabled, name: routes.find((item) => item.id === id)?.name ?? id })}
+                  onReorder={(deploymentIds) => setPendingChange({ kind: "reorder", integrationId: integration.id, integrationName: integration.name, deploymentIds })}
                 />
               ))}
             </div>
@@ -144,7 +149,7 @@ export function DeploymentsPage() {
                     key={deployment.id}
                     deployment={deployment}
                     guardrail={guardrails.find((item) => item.id === deployment.guardrail_id)}
-                    onToggle={(enabled) => toggle.mutate({ id: deployment.id, enabled })}
+                    onToggle={(enabled) => setPendingChange({ kind: "toggle", id: deployment.id, enabled, name: deployment.name })}
                   />
                 ))}
               </div>
@@ -182,6 +187,29 @@ export function DeploymentsPage() {
         guardrails={guardrails}
         onCreated={async () => { setCreateOpen(false); await refresh(); }}
       />
+      <ConfirmationSheet
+        open={Boolean(pendingChange)}
+        onOpenChange={(open) => { if (!open && !toggle.isPending && !reorder.isPending) { setPendingChange(null); toggle.reset(); reorder.reset(); } }}
+        eyebrow={t("deployments.confirmChangeEyebrow")}
+        title={t(pendingChange?.kind === "reorder" ? "deployments.confirmReorderTitle" : pendingChange?.enabled ? "deployments.confirmEnableTitle" : "deployments.confirmPauseTitle", {
+          name: pendingChange?.kind === "toggle" ? pendingChange.name : pendingChange?.integrationName ?? "",
+        })}
+        description={t(pendingChange?.kind === "reorder" ? "deployments.confirmReorderDescription" : "deployments.confirmToggleDescription")}
+        cancelLabel={t("common.cancel")}
+        confirmLabel={t(pendingChange?.kind === "reorder" ? "deployments.confirmReorderAction" : pendingChange?.enabled ? "deployments.enable" : "deployments.pause")}
+        pendingLabel={t("common.saving")}
+        pending={toggle.isPending || reorder.isPending}
+        variant={pendingChange?.kind === "toggle" && !pendingChange.enabled ? "warning" : "default"}
+        onConfirm={() => {
+          if (pendingChange?.kind === "toggle") toggle.mutate({ id: pendingChange.id, enabled: pendingChange.enabled });
+          if (pendingChange?.kind === "reorder") reorder.mutate({ integrationId: pendingChange.integrationId, deploymentIds: pendingChange.deploymentIds });
+        }}
+      >
+        <div className="rounded-lg border bg-muted/35 px-4 py-3 text-sm leading-6 text-muted-foreground">
+          {t(pendingChange?.kind === "reorder" ? "deployments.confirmReorderImpact" : pendingChange?.enabled ? "deployments.confirmEnableImpact" : "deployments.confirmPauseImpact")}
+        </div>
+        {toggle.error || reorder.error ? <p role="alert" className="rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">{(toggle.error ?? reorder.error) instanceof Error ? (toggle.error ?? reorder.error)?.message : t("deployments.operationFailed")}</p> : null}
+      </ConfirmationSheet>
     </section>
   );
 }
