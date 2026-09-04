@@ -116,7 +116,7 @@ export function DeploymentDetailPage() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.deployments, exact: true }),
         queryClient.invalidateQueries({ queryKey: queryKeys.metrics }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.evidence }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.auditEvents }),
         queryClient.invalidateQueries({ queryKey: queryKeys.systemStatus }),
       ]);
       navigate({ to: "/deployments" });

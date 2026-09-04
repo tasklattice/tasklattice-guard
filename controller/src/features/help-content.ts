@@ -7,7 +7,7 @@ import {
 
 export type HelpAudience = "user" | "developer" | "operator";
 export type HelpLocale = "en" | "zh-CN";
-export type HelpLinkTo = "/policy-library" | "/guardrails" | "/deployments" | "/integrations" | "/evidence" | "/playground";
+export type HelpLinkTo = "/policy-library" | "/guardrails" | "/deployments" | "/integrations" | "/logs" | "/playground";
 
 export type HelpStep = { title: string; description: string };
 export type HelpTermRow = { name: string; description: string };
@@ -187,7 +187,7 @@ const ZH_CONTENT: HelpContent = {
             { title: "3. 运行 Validation Run", description: "让当前草稿的 Test Cases 通过与生产相同的 NeMo 运行时；失败结果也会保留为证据。" },
             { title: "4. 发布版本", description: "把已通过验证的草稿固化为不可变 Guardrail Version。后续修改不会改变已有版本。" },
             { title: "5. 创建 Deployment", description: "选择 Integration 和 Traffic Scope，把匹配流量绑定到确切版本。" },
-            { title: "6. 观察与改进", description: "在 Playground 进行端到端试用，并通过 Evidence 和运行指标检查真实结果。" },
+            { title: "6. 观察与改进", description: "在 Playground 进行端到端试用，并通过运行日志、审计日志和指标检查真实结果。" },
           ],
           links: [
             { label: "打开 Policy Library", to: "/policy-library" },
@@ -219,7 +219,7 @@ const ZH_CONTENT: HelpContent = {
             { name: "Block / reject", description: "停止当前阶段。输入被阻断时不应调用模型；输出被阻断时不应把原始响应交付给用户。" },
           ],
           note: "Playground 会展示模型前检查、模型调用和模型后检查的完整链路，适合在上线前确认调用方行为。",
-          links: [{ label: "打开 Playground", to: "/playground" }, { label: "查看 Evidence", to: "/evidence" }],
+          links: [{ label: "打开 Playground", to: "/playground" }, { label: "查看运行日志", to: "/logs" }],
         },
       ],
     },
@@ -335,7 +335,7 @@ const ZH_CONTENT: HelpContent = {
             "进行中的调用继续使用开始时固定的版本；新调用使用回滚后的版本。",
             "不要修改历史 artifact 或在进程外替换源码；任何语义变化都应创建新版本。",
           ],
-          links: [{ label: "查看 Guardrails", to: "/guardrails" }, { label: "查看 Evidence", to: "/evidence" }],
+          links: [{ label: "查看 Guardrails", to: "/guardrails" }, { label: "查看运行日志", to: "/logs" }],
         },
         {
           id: "operator-troubleshooting",
@@ -344,11 +344,11 @@ const ZH_CONTENT: HelpContent = {
           steps: [
             { title: "1. 身份与路由", description: "确认 Integration 已启用、凭据匹配、Deployment 顺序正确，Traffic Scope 使用可信字段。" },
             { title: "2. 版本状态", description: "确认 Deployment 指向预期 Guardrail Version，checksum 与发布记录一致。" },
-            { title: "3. Rail 与 Action", description: "从 Evidence/trace 检查命中的 Policy、Rule、Rail、Action、实际 Decision 和延迟。" },
+            { title: "3. Rail 与 Action", description: "从运行日志检查命中的 Policy、Rule、Rail、Action、实际 Decision 和延迟。" },
             { title: "4. Provider 与依赖", description: "确认专用 evaluator、模型、网络和 Secret 可用；不要用通用聊天模型冒充 runtime judge。" },
             { title: "5. 容量与超时", description: "查看排队、Rail、Action 和 Provider 延迟，区分并发饱和、deadline 与真实检测失败。" },
           ],
-          links: [{ label: "查看 Evidence", to: "/evidence" }, { label: "查看 Integrations", to: "/integrations" }],
+          links: [{ label: "查看运行日志", to: "/logs" }, { label: "查看 Integrations", to: "/integrations" }],
         },
       ],
     },
@@ -414,7 +414,7 @@ const EN_CONTENT: HelpContent = {
   relatedPages: "Open related pages",
   keyConcepts: "Key concepts",
   glossaryTitle: "Concept glossary",
-  glossaryDescription: "The product UI, API, runtime logs, and evidence use the same vocabulary. These definitions explain both meaning and purpose.",
+  glossaryDescription: "The product UI, API, runtime logs, and audit log use the same vocabulary. These definitions explain both meaning and purpose.",
   searchResults: "Search results",
   roleResults: "Role guides",
   glossaryResults: "Concept glossary",
@@ -424,7 +424,7 @@ const EN_CONTENT: HelpContent = {
       id: "user",
       label: "Everyday user",
       title: "Design, validate, and release protection",
-      summary: "For security, compliance, product, and business owners. Focus on intent, reusable Policies, validation, and evidence.",
+      summary: "For security, compliance, product, and business owners. Focus on intent, reusable Policies, validation, and audit history.",
       outcome: "Outcome: a tested Guardrail Version that a Deployment can reference.",
       articles: [
         {
@@ -437,7 +437,7 @@ const EN_CONTENT: HelpContent = {
             { title: "3. Run Validation", description: "Execute the current draft's Test Cases through the production-equivalent NeMo runtime." },
             { title: "4. Publish", description: "Freeze the passing draft as an immutable Guardrail Version." },
             { title: "5. Deploy", description: "Bind an Integration and Traffic Scope to the exact version." },
-            { title: "6. Observe", description: "Use Playground, Evidence, and metrics to verify real behavior." },
+            { title: "6. Observe", description: "Use Playground, Runtime logs, Audit log, and metrics to verify real behavior." },
           ],
           links: [{ label: "Open Policy Library", to: "/policy-library" }, { label: "Manage Guardrails", to: "/guardrails" }, { label: "View Validation in a Guardrail", to: "/guardrails" }],
         },
@@ -465,7 +465,7 @@ const EN_CONTENT: HelpContent = {
             { name: "Block / reject", description: "Stop the phase. Do not call the model for blocked input or deliver blocked output." },
           ],
           note: "Playground shows the input check, model call, and output check as one inspectable path.",
-          links: [{ label: "Open Playground", to: "/playground" }, { label: "View Evidence", to: "/evidence" }],
+          links: [{ label: "Open Playground", to: "/playground" }, { label: "View runtime logs", to: "/logs" }],
         },
       ],
     },
@@ -541,7 +541,7 @@ const EN_CONTENT: HelpContent = {
       id: "operator",
       label: "Operator",
       title: "Release, route, and operate NeMo Guardrails",
-      summary: "For platform engineering, SRE, and security operations. Focus on trusted identity, version routing, runtime health, capacity, rollback, and evidence.",
+      summary: "For platform engineering, SRE, and security operations. Focus on trusted identity, version routing, runtime health, capacity, rollback, and logs.",
       outcome: "Outcome: an observable, rollback-safe production path that cannot bypass the Guardrail.",
       articles: [
         {
@@ -579,7 +579,7 @@ const EN_CONTENT: HelpContent = {
             "In-flight calls remain on their original version; new calls use the selected version.",
             "Never patch historical artifacts; create a new version for semantic changes.",
           ],
-          links: [{ label: "View Guardrails", to: "/guardrails" }, { label: "View Evidence", to: "/evidence" }],
+          links: [{ label: "View Guardrails", to: "/guardrails" }, { label: "View runtime logs", to: "/logs" }],
         },
         {
           id: "operator-troubleshooting",
@@ -588,11 +588,11 @@ const EN_CONTENT: HelpContent = {
           steps: [
             { title: "1. Identity and route", description: "Confirm Integration state, credentials, Deployment order, and trusted Traffic Scope fields." },
             { title: "2. Version", description: "Confirm the expected Guardrail Version and checksum." },
-            { title: "3. Rail and Action", description: "Inspect Policy, Rule, Rail, Action, Decision, and latency in Evidence/trace." },
+            { title: "3. Rail and Action", description: "Inspect Policy, Rule, Rail, Action, Decision, and latency in Runtime logs." },
             { title: "4. Provider", description: "Check specialized evaluators, models, networking, and Secrets." },
             { title: "5. Capacity", description: "Separate queue saturation, deadlines, and provider latency from true policy failures." },
           ],
-          links: [{ label: "View Evidence", to: "/evidence" }, { label: "View Integrations", to: "/integrations" }],
+          links: [{ label: "View runtime logs", to: "/logs" }, { label: "View Integrations", to: "/integrations" }],
         },
       ],
     },

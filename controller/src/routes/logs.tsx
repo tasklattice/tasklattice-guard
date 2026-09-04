@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
@@ -23,11 +23,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { queryKeys } from "@/features/query-keys";
 import { useAuth } from "@/lib/auth";
+import { normalizeOutcome } from "@/lib/controller-api-mappers";
+import { listRuntimeEvents, type RuntimeEvent } from "@/lib/controller-api";
 import {
   getDeployments,
   getGuardrailLoggingSettings,
   getGuardrails,
-  getRuntimeLogs,
+  metricWindowMilliseconds,
+  runtimeLogInteractions,
   type MetricWindow,
   type RuntimeLogContentBlock,
   type RuntimeLogEntry,
@@ -36,10 +39,11 @@ import {
 
 type PhaseFilter = "all" | "input" | "output";
 type OutcomeFilter = "all" | "allow" | "transform" | "block" | "error";
+type LogView = "interactions" | "checkpoints" | "system";
 
 export function LogsPage() {
   const { t } = useTranslation();
-  const [tab, setTab] = useState("prompt");
+  const [tab, setTab] = useState<LogView>("interactions");
   const [guardrailId, setGuardrailId] = useState("all");
   const [window, setWindow] = useState<MetricWindow>("24h");
   const [phase, setPhase] = useState<PhaseFilter>("all");
@@ -49,19 +53,12 @@ export function LogsPage() {
   const guardrailsQuery = useQuery({ queryKey: queryKeys.guardrails, queryFn: getGuardrails });
   const deploymentsQuery = useQuery({ queryKey: queryKeys.deployments, queryFn: getDeployments });
   const scopedGuardrailId = guardrailId === "all" ? undefined : guardrailId;
-  const filterKey = { guardrailId: scopedGuardrailId, phase: phase === "all" ? undefined : phase, outcome: outcome === "all" ? undefined : outcome, window };
-  const logsQuery = useInfiniteQuery({
-    queryKey: queryKeys.runtimeLogs(filterKey),
-    queryFn: ({ pageParam }) => getRuntimeLogs({
-      limit: 50,
+  const eventsQuery = useQuery({
+    queryKey: queryKeys.runtimeEventsScope({ guardrailId: scopedGuardrailId, window, limit: 10_000 }),
+    queryFn: () => listRuntimeEvents(10_000, {
       guardrailId: scopedGuardrailId,
-      phase: phase === "all" ? undefined : phase,
-      outcome: outcome === "all" ? undefined : outcome,
-      window,
-      cursor: pageParam,
+      since: new Date(Date.now() - metricWindowMilliseconds(window)).toISOString(),
     }),
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
     refetchInterval: 15_000,
   });
   const settingsQuery = useQuery({
@@ -69,7 +66,11 @@ export function LogsPage() {
     queryFn: () => getGuardrailLoggingSettings(scopedGuardrailId!),
     enabled: Boolean(scopedGuardrailId),
   });
-  const interactions = useMemo(() => logsQuery.data?.pages.flatMap((page) => page.items) ?? [], [logsQuery.data]);
+  const runtimeEvents = eventsQuery.data?.items ?? [];
+  const interactions = useMemo(() => runtimeLogInteractions(runtimeEvents, {
+    phase: phase === "all" ? undefined : phase,
+    outcome: outcome === "all" ? undefined : outcome,
+  }), [outcome, phase, runtimeEvents]);
   const guardrails = guardrailsQuery.data?.items ?? [];
   const deployments = deploymentsQuery.data?.items ?? [];
   const guardrailName = (id: string | null) => guardrails.find((item) => item.id === id)?.name ?? id ?? "—";
@@ -103,35 +104,39 @@ export function LogsPage() {
         </div>
       </Card>
 
-      <Tabs value={tab} onValueChange={setTab} className="mt-5">
+      <Tabs value={tab} onValueChange={(value) => setTab(value as LogView)} className="mt-5">
         <TabsList aria-label={t("logs.views")}>
-          <TabsTrigger value="prompt">{t("logs.promptHistory")}</TabsTrigger>
-          <TabsTrigger value="audit">{t("logs.auditLog")}</TabsTrigger>
+          <TabsTrigger value="interactions">{t("logs.interactions")}</TabsTrigger>
+          <TabsTrigger value="checkpoints">{t("logs.checkpoints")}</TabsTrigger>
+          <TabsTrigger value="system">{t("logs.systemEvents")}</TabsTrigger>
         </TabsList>
-        <TabsContent value="prompt" className="pt-4">
-          <PromptHistory
+        <TabsContent value="interactions" className="pt-4">
+          <InteractionHistory
             interactions={interactions}
-            loading={logsQuery.isLoading}
-            error={logsQuery.error}
-            hasMore={logsQuery.hasNextPage}
-            loadingMore={logsQuery.isFetchingNextPage}
-            onLoadMore={() => void logsQuery.fetchNextPage()}
+            loading={eventsQuery.isLoading}
+            error={eventsQuery.error}
             onInspect={setSelected}
             guardrailName={guardrailName}
             deploymentName={deploymentName}
           />
         </TabsContent>
-        <TabsContent value="audit" className="pt-4">
-          <AuditHistory
+        <TabsContent value="checkpoints" className="pt-4">
+          <CheckpointHistory
             interactions={interactions}
+            loading={eventsQuery.isLoading}
+            error={eventsQuery.error}
+            onInspect={setSelected}
+            guardrailName={guardrailName}
+            deploymentName={deploymentName}
+          />
+        </TabsContent>
+        <TabsContent value="system" className="pt-4">
+          <SystemEventHistory
+            events={runtimeEvents}
             phase={phase}
             outcome={outcome}
-            loading={logsQuery.isLoading}
-            error={logsQuery.error}
-            hasMore={logsQuery.hasNextPage}
-            loadingMore={logsQuery.isFetchingNextPage}
-            onLoadMore={() => void logsQuery.fetchNextPage()}
-            onInspect={setSelected}
+            loading={eventsQuery.isLoading}
+            error={eventsQuery.error}
             guardrailName={guardrailName}
             deploymentName={deploymentName}
           />
@@ -154,15 +159,14 @@ function LogFilter({ label, children }: { label: string; children: ReactNode }) 
   return <label className="grid gap-1.5"><span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><Filter className="size-3" />{label}</span>{children}</label>;
 }
 
-function PromptHistory({ interactions, loading, error, hasMore, loadingMore, onLoadMore, onInspect, guardrailName, deploymentName }: { interactions: RuntimeLogInteraction[]; loading: boolean; error: unknown; hasMore: boolean; loadingMore: boolean; onLoadMore: () => void; onInspect: (item: RuntimeLogInteraction) => void; guardrailName: (id: string | null) => string; deploymentName: (id: string | null) => string }) {
+function InteractionHistory({ interactions, loading, error, onInspect, guardrailName, deploymentName }: { interactions: RuntimeLogInteraction[]; loading: boolean; error: unknown; onInspect: (item: RuntimeLogInteraction) => void; guardrailName: (id: string | null) => string; deploymentName: (id: string | null) => string }) {
   const { t, i18n } = useTranslation();
   if (loading) return <Skeleton className="h-[30rem] rounded-xl" />;
   if (error) return <ErrorNotice error={error} />;
-  if (!interactions.length) return <EmptyState title={t("logs.emptyPromptTitle")} description={t("logs.emptyPromptDescription")} />;
+  if (!interactions.length) return <EmptyState title={t("logs.emptyInteractionTitle")} description={t("logs.emptyInteractionDescription")} />;
   return <Card className="gap-0 overflow-hidden p-0 shadow-none">
     <div className="overflow-x-auto"><table className="w-full min-w-[58rem] table-fixed text-left text-xs"><thead className="border-b bg-muted/40 text-muted-foreground"><tr><th className="h-10 w-44 px-4 font-medium">{t("logs.time")}</th><th className="h-10 w-52 px-4 font-medium">{t("logs.guardrail")}</th><th className="h-10 w-28 px-4 font-medium">{t("logs.direction")}</th><th className="h-10 w-28 px-4 font-medium">{t("logs.outcome")}</th><th className="h-10 px-4 font-medium">{t("logs.context")}</th><th className="h-10 w-24 px-4 text-right font-medium">{t("logs.latency")}</th><th className="h-10 w-14"><span className="sr-only">{t("logs.inspect")}</span></th></tr></thead>
     <tbody className="divide-y">{interactions.map((item) => { const phases = new Set(item.entries.map((entry) => entry.phase)); const latency = item.entries.reduce((sum, entry) => sum + entry.latency_ms, 0); return <tr key={item.id} className="h-14 hover:bg-muted/30"><td className="px-4 font-mono text-[11px] tabular-nums text-muted-foreground">{new Date(item.created_at).toLocaleString(i18n.language)}</td><td className="px-4"><strong className="block truncate text-xs font-medium">{guardrailName(item.guardrail_id)}</strong><span className="mt-0.5 block truncate text-[11px] text-muted-foreground">{t("logs.version", { version: item.guardrail_version ?? "—" })}</span></td><td className="px-4"><Direction phases={phases} /></td><td className="px-4"><StateBadge state={item.outcome} /></td><td className="truncate px-4"><span className="block truncate">{deploymentName(item.deployment_id)}</span><span className="mt-0.5 block truncate font-mono text-[11px] text-muted-foreground">{item.protocol} · {item.id}</span></td><td className="px-4 text-right font-mono text-[11px] tabular-nums">{latency} ms</td><td><Button size="icon" variant="ghost" className="size-11" aria-label={t("logs.inspectRecord", { id: item.id })} onClick={() => onInspect(item)}><ScrollText className="size-4" /></Button></td></tr>; })}</tbody></table></div>
-    {hasMore ? <div className="flex justify-center border-t p-3"><Button variant="outline" className="min-h-11" disabled={loadingMore} onClick={onLoadMore}>{t(loadingMore ? "logs.loadingMore" : "logs.loadMore")}</Button></div> : null}
   </Card>;
 }
 
@@ -173,27 +177,44 @@ function Direction({ phases }: { phases: Set<string> }) {
   return <span className="inline-flex items-center gap-1.5"><ArrowDownToLine className="size-3.5 text-primary" />{t("logs.inbound")}</span>;
 }
 
-export function AuditHistory({ interactions, phase, outcome, loading, error, hasMore, loadingMore, onLoadMore, onInspect, guardrailName, deploymentName }: { interactions: RuntimeLogInteraction[]; phase: PhaseFilter; outcome: OutcomeFilter; loading: boolean; error: unknown; hasMore: boolean; loadingMore: boolean; onLoadMore: () => void; onInspect: (item: RuntimeLogInteraction) => void; guardrailName: (id: string | null) => string; deploymentName: (id: string | null) => string }) {
+export function CheckpointHistory({ interactions, loading, error, onInspect, guardrailName, deploymentName }: { interactions: RuntimeLogInteraction[]; loading: boolean; error: unknown; onInspect: (item: RuntimeLogInteraction) => void; guardrailName: (id: string | null) => string; deploymentName: (id: string | null) => string }) {
   const { t, i18n } = useTranslation();
   const records = useMemo(() => interactions.flatMap((interaction) => interaction.entries
-    .filter((entry) => phase === "all" || entry.phase === phase)
-    .filter((entry) => outcome === "all" || entry.outcome === outcome)
     .map((entry) => ({ interaction, entry })))
-    .sort((left, right) => Date.parse(right.entry.created_at) - Date.parse(left.entry.created_at)), [interactions, outcome, phase]);
+    .sort((left, right) => Date.parse(right.entry.created_at) - Date.parse(left.entry.created_at)), [interactions]);
   if (loading) return <Skeleton className="h-[28rem] rounded-xl" />;
   if (error) return <ErrorNotice error={error} />;
-  if (!records.length) return <EmptyState title={t("logs.emptyAuditTitle")} description={t("logs.emptyAuditDescription")} />;
+  if (!records.length) return <EmptyState title={t("logs.emptyCheckpointTitle")} description={t("logs.emptyCheckpointDescription")} />;
   return <Card className="gap-0 overflow-hidden p-0 shadow-none">
-    <div className="border-b px-4 py-3"><p className="text-xs font-semibold">{t("logs.trafficAuditTitle")}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{t("logs.trafficAuditDescription")}</p></div>
-    <div className="overflow-x-auto"><table className="w-full min-w-[64rem] table-fixed text-left text-xs"><thead className="border-b bg-muted/40 text-muted-foreground"><tr><th className="h-10 w-44 px-4 font-medium">{t("logs.time")}</th><th className="h-10 w-28 px-4 font-medium">{t("logs.direction")}</th><th className="h-10 w-48 px-4 font-medium">{t("logs.guardrail")}</th><th className="h-10 w-28 px-4 font-medium">{t("logs.outcome")}</th><th className="h-10 px-4 font-medium">{t("logs.auditDetail")}</th><th className="h-10 w-24 px-4 text-right font-medium">{t("logs.latency")}</th><th className="h-10 w-14"><span className="sr-only">{t("logs.inspect")}</span></th></tr></thead><tbody className="divide-y">{records.map(({ interaction, entry }) => <tr key={entry.id} className="min-h-14 hover:bg-muted/30"><td className="px-4 py-3 font-mono text-[11px] text-muted-foreground">{new Date(entry.created_at).toLocaleString(i18n.language)}</td><td className="px-4 py-3"><Direction phases={new Set([entry.phase])} /></td><td className="px-4 py-3"><strong className="block truncate text-xs font-medium">{guardrailName(interaction.guardrail_id)}</strong><span className="mt-0.5 block text-[11px] text-muted-foreground">{t("logs.version", { version: interaction.guardrail_version ?? "—" })}</span></td><td className="px-4 py-3"><StateBadge state={entry.outcome} /></td><td className="px-4 py-3"><p className="leading-5">{entry.detail}</p><p className="mt-1 truncate font-mono text-[10px] text-muted-foreground">{deploymentName(interaction.deployment_id)} · {interaction.protocol} · {entry.trace_id}</p></td><td className="px-4 py-3 text-right font-mono text-[11px] tabular-nums">{entry.latency_ms} ms</td><td><Button size="icon" variant="ghost" className="size-11" aria-label={t("logs.inspectAuditRecord", { id: entry.id })} onClick={() => onInspect(interaction)}><ScrollText className="size-4" /></Button></td></tr>)}</tbody></table></div>
-    {hasMore ? <div className="flex justify-center border-t p-3"><Button variant="outline" className="min-h-11" disabled={loadingMore} onClick={onLoadMore}>{t(loadingMore ? "logs.loadingMore" : "logs.loadMore")}</Button></div> : null}
+    <div className="border-b px-4 py-3"><p className="text-xs font-semibold">{t("logs.checkpointTitle")}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{t("logs.checkpointDescription")}</p></div>
+    <div className="overflow-x-auto"><table className="w-full min-w-[64rem] table-fixed text-left text-xs"><thead className="border-b bg-muted/40 text-muted-foreground"><tr><th className="h-10 w-44 px-4 font-medium">{t("logs.time")}</th><th className="h-10 w-28 px-4 font-medium">{t("logs.direction")}</th><th className="h-10 w-48 px-4 font-medium">{t("logs.guardrail")}</th><th className="h-10 w-28 px-4 font-medium">{t("logs.outcome")}</th><th className="h-10 px-4 font-medium">{t("logs.checkpointDetail")}</th><th className="h-10 w-24 px-4 text-right font-medium">{t("logs.latency")}</th><th className="h-10 w-14"><span className="sr-only">{t("logs.inspect")}</span></th></tr></thead><tbody className="divide-y">{records.map(({ interaction, entry }) => <tr key={entry.id} className="min-h-14 hover:bg-muted/30"><td className="px-4 py-3 font-mono text-[11px] text-muted-foreground">{new Date(entry.created_at).toLocaleString(i18n.language)}</td><td className="px-4 py-3"><Direction phases={new Set([entry.phase])} /></td><td className="px-4 py-3"><strong className="block truncate text-xs font-medium">{guardrailName(interaction.guardrail_id)}</strong><span className="mt-0.5 block text-[11px] text-muted-foreground">{t("logs.version", { version: interaction.guardrail_version ?? "—" })}</span></td><td className="px-4 py-3"><StateBadge state={entry.outcome} /></td><td className="px-4 py-3"><p className="leading-5">{entry.detail}</p><p className="mt-1 truncate font-mono text-[10px] text-muted-foreground">{deploymentName(interaction.deployment_id)} · {interaction.protocol} · {entry.trace_id}</p></td><td className="px-4 py-3 text-right font-mono text-[11px] tabular-nums">{entry.latency_ms} ms</td><td><Button size="icon" variant="ghost" className="size-11" aria-label={t("logs.inspectCheckpoint", { id: entry.id })} onClick={() => onInspect(interaction)}><ScrollText className="size-4" /></Button></td></tr>)}</tbody></table></div>
   </Card>;
+}
+
+function SystemEventHistory({ events, phase, outcome, loading, error, guardrailName, deploymentName }: { events: RuntimeEvent[]; phase: PhaseFilter; outcome: OutcomeFilter; loading: boolean; error: unknown; guardrailName: (id: string | null) => string; deploymentName: (id: string | null) => string }) {
+  const { t, i18n } = useTranslation();
+  const filtered = useMemo(() => events
+    .filter((event) => phase === "all" || event.direction === (phase === "input" ? "incoming" : "outgoing"))
+    .filter((event) => outcome === "all" || normalizeOutcome(event.decision) === outcome)
+    .sort((left, right) => Date.parse(right.occurredAt) - Date.parse(left.occurredAt)), [events, outcome, phase]);
+  if (loading) return <Skeleton className="h-[28rem] rounded-xl" />;
+  if (error) return <ErrorNotice error={error} />;
+  if (!filtered.length) return <EmptyState title={t("logs.emptySystemTitle")} description={t("logs.emptySystemDescription")} />;
+  return <Card className="gap-0 overflow-hidden p-0 shadow-none">
+    <div className="border-b px-4 py-3"><p className="text-xs font-semibold">{t("logs.systemEventTitle")}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{t("logs.systemEventDescription")}</p></div>
+    <div className="divide-y xl:hidden">{filtered.map((event) => <article key={event.id} className="p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-sm font-medium">{guardrailName(event.guardrailId)}</p><p className="mt-1 font-mono text-[11px] text-muted-foreground">{new Date(event.occurredAt).toLocaleString(i18n.language)}</p></div><StateBadge state={event.decision} /></div><dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs"><RuntimeFact label={t("logs.runner")} value={event.runnerId} /><RuntimeFact label={t("logs.direction")} value={t(event.direction === "incoming" ? "logs.inbound" : "logs.outbound")} /><RuntimeFact label={t("logs.context")} value={deploymentName(event.deploymentId)} /><RuntimeFact label={t("logs.latency")} value={`${event.durationMs} ms`} /></dl></article>)}</div>
+    <div className="hidden overflow-x-auto xl:block"><table className="w-full min-w-[68rem] table-fixed text-left text-xs"><thead className="border-b bg-muted/40 text-muted-foreground"><tr><th className="h-10 w-44 px-4 font-medium">{t("logs.time")}</th><th className="h-10 w-48 px-4 font-medium">{t("logs.guardrail")}</th><th className="h-10 w-32 px-4 font-medium">{t("logs.runner")}</th><th className="h-10 w-28 px-4 font-medium">{t("logs.direction")}</th><th className="h-10 w-28 px-4 font-medium">{t("logs.outcome")}</th><th className="h-10 px-4 font-medium">{t("logs.context")}</th><th className="h-10 w-24 px-4 text-right font-medium">{t("logs.latency")}</th></tr></thead><tbody className="divide-y">{filtered.map((event) => <tr key={event.id} className="h-14 hover:bg-muted/30"><td className="px-4 font-mono text-[11px] text-muted-foreground">{new Date(event.occurredAt).toLocaleString(i18n.language)}</td><td className="px-4"><strong className="block truncate text-xs font-medium">{guardrailName(event.guardrailId)}</strong><span className="mt-0.5 block truncate text-[11px] text-muted-foreground">{t("logs.version", { version: event.guardrailVersion ?? "—" })}</span></td><td className="truncate px-4 font-mono text-[11px]">{event.runnerId}</td><td className="px-4">{t(event.direction === "incoming" ? "logs.inbound" : "logs.outbound")}</td><td className="px-4"><StateBadge state={event.decision} /></td><td className="px-4"><span className="block truncate">{deploymentName(event.deploymentId)}</span><span className="mt-0.5 block truncate font-mono text-[10px] text-muted-foreground">{event.requestId}</span></td><td className="px-4 text-right font-mono text-[11px] tabular-nums">{event.durationMs} ms</td></tr>)}</tbody></table></div>
+  </Card>;
+}
+
+function RuntimeFact({ label, value }: { label: string; value: string }) {
+  return <div className="min-w-0"><dt className="text-muted-foreground">{label}</dt><dd className="mt-0.5 truncate font-medium">{value}</dd></div>;
 }
 
 function RuntimeLogSheet({ interaction, admin, guardrailName, deploymentName, open, onOpenChange }: { interaction: RuntimeLogInteraction | null; admin: boolean; guardrailName: (id: string | null) => string; deploymentName: (id: string | null) => string; open: boolean; onOpenChange: (open: boolean) => void }) {
   const { t, i18n } = useTranslation();
   if (!interaction) return null;
-  return <EntitySheet open={open} onOpenChange={onOpenChange} eyebrow={t("logs.detailEyebrow")} title={t("logs.detailTitle")} description={interaction.id} width="xl" footer={<Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.close")}</Button>}>
+  return <EntitySheet open={open} onOpenChange={onOpenChange} eyebrow={t("logs.interactionDetailEyebrow")} title={t("logs.detailTitle")} description={interaction.id} width="xl" footer={<Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.close")}</Button>}>
     <div className="grid gap-5">
       <dl className="grid overflow-hidden rounded-lg border sm:grid-cols-2"><Fact label={t("logs.time")} value={new Date(interaction.created_at).toLocaleString(i18n.language)} /><Fact label={t("logs.outcome")} value={interaction.outcome} /><Fact label={t("logs.guardrail")} value={`${guardrailName(interaction.guardrail_id)} · ${interaction.guardrail_version ?? "—"}`} /><Fact label={t("logs.context")} value={`${deploymentName(interaction.deployment_id)} · ${interaction.protocol}`} /></dl>
       {!admin && interaction.entries.some((entry) => entry.content_available) ? <div className="flex gap-3 rounded-lg border bg-muted/25 p-4"><LockKeyhole className="mt-0.5 size-4 shrink-0" /><div><p className="text-sm font-medium">{t("logs.adminContentTitle")}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{t("logs.adminContentDescription")}</p></div></div> : null}

@@ -13,16 +13,14 @@ import {
 } from "@/lib/controller-api-mappers";
 import type {
   Collection,
-  EvidenceRecord,
   GuardrailFindingPage,
   Metrics,
   MetricTrendPoint,
   MetricWindow,
   RuntimeLogInteraction,
-  RuntimeLogPage,
 } from "@/lib/api-types";
 
-function windowMilliseconds(window: MetricWindow): number {
+export function metricWindowMilliseconds(window: MetricWindow): number {
   return {
     "1h": 60 * 60 * 1_000,
     "24h": 24 * 60 * 60 * 1_000,
@@ -34,86 +32,7 @@ function windowMilliseconds(window: MetricWindow): number {
 
 function inWindow(timestamp: string, window: MetricWindow, now = Date.now()): boolean {
   const value = Date.parse(timestamp);
-  return Number.isFinite(value) && value >= now - windowMilliseconds(window) && value <= now;
-}
-
-function metadataStrings(metadata: Record<string, unknown>): Record<string, string> {
-  return Object.fromEntries(Object.entries(metadata).map(([key, value]) => [
-    key,
-    typeof value === "string" ? value : JSON.stringify(value) ?? String(value),
-  ]));
-}
-
-function runtimeEvidence(event: controllerApi.RuntimeEvent): EvidenceRecord {
-  return {
-    id: event.id,
-    created_at: event.occurredAt,
-    kind: "interaction.decision",
-    outcome: normalizeOutcome(event.decision),
-    guardrail_id: event.guardrailId,
-    deployment_id: event.deploymentId,
-    integration_id: event.integrationId,
-    risk: stringValue(event.metadata.risk),
-    detail: `Runner ${event.runnerId} reported ${event.direction} decision “${event.decision}” in ${event.durationMs} ms.`,
-    actor_id: null,
-    metadata: {
-      ...metadataStrings(event.metadata),
-      request_id: event.requestId,
-      runner_id: event.runnerId,
-      direction: event.direction,
-      duration_ms: String(event.durationMs),
-    },
-  };
-}
-
-function auditEvidence(event: controllerApi.AuditEvent): EvidenceRecord {
-  return {
-    id: event.id,
-    created_at: event.occurredAt,
-    kind: event.kind,
-    outcome: "recorded",
-    guardrail_id: event.resourceType === "guardrail" ? event.resourceId : stringValue(event.detail.guardrailId),
-    deployment_id: event.resourceType === "deployment" ? event.resourceId : stringValue(event.detail.deploymentId),
-    integration_id: event.resourceType === "integration" ? event.resourceId : stringValue(event.detail.integrationId),
-    risk: stringValue(event.detail.risk),
-    detail: JSON.stringify(event.detail),
-    actor_id: event.actorId,
-    metadata: metadataStrings(event.detail),
-  };
-}
-
-export async function getEvidence(filters: {
-  limit?: number;
-  guardrailId?: string;
-  deploymentId?: string;
-  kind?: string;
-  outcome?: string;
-  risk?: string;
-  window?: MetricWindow;
-} = {}): Promise<Collection<EvidenceRecord>> {
-  const window = filters.window ?? "24h";
-  const now = Date.now();
-  const since = new Date(now - windowMilliseconds(window)).toISOString();
-  const [runtime, audit] = await Promise.all([
-    controllerApi.listRuntimeEvents(10_000, {
-      guardrailId: filters.guardrailId,
-      deploymentId: filters.deploymentId,
-      since,
-    }),
-    controllerApi.listAuditEvents(500),
-  ]);
-  const matching = [...runtime.items.map(runtimeEvidence), ...audit.items.map(auditEvidence)]
-    .filter((item) => inWindow(item.created_at, window, now))
-    .filter((item) => !filters.guardrailId || item.guardrail_id === filters.guardrailId)
-    .filter((item) => !filters.deploymentId || item.deployment_id === filters.deploymentId)
-    .filter((item) => !filters.kind || item.kind === filters.kind)
-    .filter((item) => !filters.outcome || item.outcome === filters.outcome)
-    .filter((item) => !filters.risk || item.risk === filters.risk)
-    .sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at));
-  return {
-    items: matching.slice(0, Math.min(500, Math.max(1, filters.limit ?? 100))),
-    count: matching.length,
-  };
+  return Number.isFinite(value) && value >= now - metricWindowMilliseconds(window) && value <= now;
 }
 
 export const getGuardrailFindings = async (
@@ -121,7 +40,7 @@ export const getGuardrailFindings = async (
   window: MetricWindow,
   limit = 200,
 ): Promise<GuardrailFindingPage> => {
-  const since = new Date(Date.now() - windowMilliseconds(window)).toISOString();
+  const since = new Date(Date.now() - metricWindowMilliseconds(window)).toISOString();
   const events = await controllerApi.listRuntimeEvents(10_000, { guardrailId, since });
   const all = events.items.flatMap(runtimeFindings).sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at));
   const items = all.slice(0, Math.min(1_000, Math.max(1, limit)));
@@ -168,24 +87,13 @@ function worstOutcome(values: string[]): string {
   return [...values].sort((left, right) => rank(right) - rank(left))[0] ?? "allow";
 }
 
-export async function getRuntimeLogs(filters: {
-  limit?: number;
-  guardrailId?: string;
+export function runtimeLogInteractions(events: controllerApi.RuntimeEvent[], filters: {
   phase?: "input" | "output";
   outcome?: "allow" | "transform" | "block" | "error";
-  window?: MetricWindow;
-  cursor?: string;
-} = {}): Promise<RuntimeLogPage> {
-  const runtime = await controllerApi.listRuntimeEvents(10_000, {
-    ...(filters.guardrailId ? { guardrailId: filters.guardrailId } : {}),
-    since: new Date(Date.now() - windowMilliseconds(filters.window ?? "24h")).toISOString(),
-  });
-  const window = filters.window ?? "24h";
-  const matching = runtime.items
+} = {}): RuntimeLogInteraction[] {
+  const matching = events
     .filter((event): event is controllerApi.RuntimeEvent & { guardrailId: string } => Boolean(event.guardrailId))
     .filter((event) => event.metadata.runtimeLogCaptured === true)
-    .filter((event) => inWindow(event.occurredAt, window))
-    .filter((event) => !filters.guardrailId || event.guardrailId === filters.guardrailId)
     .filter((event) => !filters.phase || (event.direction === "incoming" ? "input" : "output") === filters.phase)
     .filter((event) => !filters.outcome || normalizeOutcome(event.decision) === filters.outcome);
   const grouped = new Map<string, typeof matching>();
@@ -193,7 +101,7 @@ export async function getRuntimeLogs(filters: {
     const key = `${event.requestId}:${event.guardrailId}`;
     grouped.set(key, [...(grouped.get(key) ?? []), event]);
   }
-  const allItems: RuntimeLogInteraction[] = [...grouped.values()].map((events) => {
+  return [...grouped.values()].map((events) => {
     const ordered = [...events].sort((left, right) => Date.parse(left.occurredAt) - Date.parse(right.occurredAt));
     const first = ordered[0] as typeof events[number];
     const last = ordered.at(-1) as typeof events[number];
@@ -211,14 +119,6 @@ export async function getRuntimeLogs(filters: {
       entries: ordered.map(runtimeLogEntry),
     };
   }).sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at));
-  const offset = parseCursor(filters.cursor);
-  const limit = Math.min(500, Math.max(1, filters.limit ?? 100));
-  const items = allItems.slice(offset, offset + limit);
-  return {
-    items,
-    count: allItems.length,
-    next_cursor: offset + limit < allItems.length ? `offset:${offset + limit}` : null,
-  };
 }
 
 function runtimeLogContent(value: unknown): RuntimeLogInteraction["entries"][number]["content_before"] {
@@ -233,12 +133,6 @@ function runtimeLogContent(value: unknown): RuntimeLogInteraction["entries"][num
     if (!id || !role || !source || text === null) return [];
     return [{ id, role, source, text, truncated: record.truncated === true }];
   });
-}
-
-function parseCursor(cursor: string | undefined): number {
-  if (!cursor?.startsWith("offset:")) return 0;
-  const value = Number.parseInt(cursor.slice("offset:".length), 10);
-  return Number.isFinite(value) && value >= 0 ? value : 0;
 }
 
 type EventSummary = {
@@ -296,7 +190,7 @@ function intervalMilliseconds(interval: Metrics["interval"]): number {
 function buildTrend(events: controllerApi.RuntimeEvent[], window: MetricWindow, now: number): MetricTrendPoint[] {
   const interval = metricInterval(window);
   const step = intervalMilliseconds(interval);
-  const first = Math.floor((now - windowMilliseconds(window)) / step) * step;
+  const first = Math.floor((now - metricWindowMilliseconds(window)) / step) * step;
   const buckets = new Map<number, controllerApi.RuntimeEvent[]>();
   for (const event of events) {
     const timestamp = Date.parse(event.occurredAt);
@@ -427,7 +321,7 @@ export async function getMetrics(filters: {
   window?: MetricWindow;
 } = {}): Promise<Metrics> {
   const window = filters.window ?? "24h";
-  const duration = windowMilliseconds(window);
+  const duration = metricWindowMilliseconds(window);
   const now = Date.now();
   const windowStart = now - duration;
   const [runtime, guardrails, deployments, integrations, status] = await Promise.all([

@@ -8,7 +8,6 @@ import { ControlPlaneLayout } from "@/routes/layout";
 import { GuardrailDetailPage, GuardrailsPage } from "@/routes/guardrails";
 import { DeploymentsPage } from "@/routes/deployments";
 import { DeploymentDetailPage } from "@/routes/deployment-detail";
-import { EvidencePage } from "@/routes/evidence";
 import { LogsPage } from "@/routes/logs";
 import { IntegrationsPage } from "@/routes/integrations";
 import { PlaygroundPage } from "@/routes/playground";
@@ -18,7 +17,7 @@ import { PolicyLibraryPage } from "@/routes/policy-library";
 import { AccountPage } from "@/routes/account";
 import { HelpPage } from "@/routes/help";
 import { RunnersPage } from "@/routes/runners";
-import { ActivityPage } from "@/routes/activity";
+import { AuditLogPage } from "@/routes/audit-log";
 import { StatusPage } from "@/routes/status";
 import { GuardrailCatalogPage, ModelsPage, ProvidersPage } from "@/routes/models";
 import { AuthProvider } from "@/lib/auth";
@@ -47,9 +46,8 @@ const deploymentsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/
 const deploymentDetailRoute = createRoute({ getParentRoute: () => rootRoute, path: "/deployments/$deploymentId", component: DeploymentDetailPage });
 const integrationsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/integrations", component: IntegrationsPage });
 const runnersRoute = createRoute({ getParentRoute: () => rootRoute, path: "/runners", component: RunnersPage });
-const evidenceRoute = createRoute({ getParentRoute: () => rootRoute, path: "/evidence", component: EvidencePage });
 const logsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/logs", component: LogsPage });
-const activityRoute = createRoute({ getParentRoute: () => rootRoute, path: "/activity", component: ActivityPage });
+const auditLogRoute = createRoute({ getParentRoute: () => rootRoute, path: "/audit-log", component: AuditLogPage });
 const usersRoute = createRoute({ getParentRoute: () => rootRoute, path: "/access", component: UsersPage });
 const accountRoute = createRoute({ getParentRoute: () => rootRoute, path: "/account", component: AccountPage });
 const settingsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings", component: () => <Navigate to="/settings/status" replace /> });
@@ -69,9 +67,8 @@ const routeTree = rootRoute.addChildren([
   deploymentDetailRoute,
   integrationsRoute,
   runnersRoute,
-  evidenceRoute,
   logsRoute,
-  activityRoute,
+  auditLogRoute,
   usersRoute,
   accountRoute,
   settingsRoute,

@@ -125,7 +125,7 @@ function PlaygroundWorkspace({ guardrail, guardrails, versions, target, selected
       if (target.kind === "published") {
         void Promise.all([
           queryClient.invalidateQueries({ queryKey: queryKeys.metrics }),
-          queryClient.invalidateQueries({ queryKey: queryKeys.evidence }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.runtimeEvents }),
         ]);
       }
     },

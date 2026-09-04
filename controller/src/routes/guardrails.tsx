@@ -189,7 +189,7 @@ export function GuardrailDetailPage() {
         queryClient.invalidateQueries({ queryKey: queryKeys.guardrails, exact: true }),
         queryClient.invalidateQueries({ queryKey: queryKeys.deployments }),
         queryClient.invalidateQueries({ queryKey: queryKeys.metrics }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.evidence }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.auditEvents }),
       ]);
       navigate({ to: "/guardrails" });
     },
@@ -527,7 +527,7 @@ function GuardrailLoggingCard({ guardrailId }: { guardrailId: string }) {
       toast.success(t("guardrails.loggingUpdated"));
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.guardrailLogging(guardrailId) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.evidence }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.auditEvents }),
       ]);
     },
     onError: (mutationError) => toast.error(mutationError instanceof Error ? mutationError.message : t("guardrails.loggingUpdateFailed")),

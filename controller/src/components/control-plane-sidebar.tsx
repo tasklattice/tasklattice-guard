@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Activity, Cable, CircleHelp, FlaskConical, History, LibraryBig, Rocket, ScrollText, Server, Settings, ShieldCheck } from "lucide-react";
+import { Cable, CircleHelp, FlaskConical, History, LibraryBig, Rocket, ScrollText, Server, Settings, ShieldCheck } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -38,11 +38,10 @@ const navigation = [
     ],
   },
   {
-    label: "nav.assurance",
+    label: "nav.observability",
     items: [
-      { label: "nav.evidence", to: "/evidence", icon: Activity },
       { label: "nav.logs", to: "/logs", icon: ScrollText },
-      { label: "nav.activity", to: "/activity", icon: History },
+      { label: "nav.auditLog", to: "/audit-log", icon: History },
     ],
   },
 ] as const;

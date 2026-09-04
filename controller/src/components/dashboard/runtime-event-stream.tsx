@@ -7,12 +7,12 @@ import { StateBadge } from "@/components/product-shell";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { EvidenceRecord } from "@/lib/api";
+import type { RuntimeEvent } from "@/lib/controller-api";
 
 type GuardrailReference = { id: string; name: string };
 
 export function RuntimeEventStream({ items, loading, guardrails }: {
-  items: EvidenceRecord[];
+  items: RuntimeEvent[];
   loading: boolean;
   guardrails: GuardrailReference[];
 }) {
@@ -34,7 +34,7 @@ export function RuntimeEventStream({ items, loading, guardrails }: {
           <p className="mt-0.5 truncate text-xs text-muted-foreground">{t("dashboard.recentEventsDescription")}</p>
         </div>
         <Button size="sm" variant="ghost" className="h-8 shrink-0 self-start px-2 text-xs sm:self-auto" asChild>
-          <Link to="/evidence">{t("dashboard.viewAllEvents")}<ArrowRight /></Link>
+          <Link to="/logs">{t("dashboard.viewAllEvents")}<ArrowRight /></Link>
         </Button>
       </header>
 
@@ -56,16 +56,17 @@ export function RuntimeEventStream({ items, loading, guardrails }: {
             </thead>
             <tbody className="divide-y">
               {items.map((item) => {
-                const timestamp = formatEventTimestamp(item.created_at, i18n.language);
-                const guardrailName = item.guardrail_id ? guardrailNames.get(item.guardrail_id) ?? item.guardrail_id : t("dashboard.unassigned");
+                const timestamp = formatEventTimestamp(item.occurredAt, i18n.language);
+                const guardrailName = item.guardrailId ? guardrailNames.get(item.guardrailId) ?? item.guardrailId : t("dashboard.unassigned");
+                const detail = t("dashboard.runtimeEventMessage", { runner: item.runnerId, direction: t(item.direction === "incoming" ? "logs.inbound" : "logs.outbound"), duration: item.durationMs });
                 return (
                   <tr key={item.id} className="h-10 transition-colors hover:bg-muted/40">
-                    <td className="px-3 font-mono text-[11px] whitespace-nowrap tabular-nums" title={new Date(item.created_at).toLocaleString(i18n.language)}>
+                    <td className="px-3 font-mono text-[11px] whitespace-nowrap tabular-nums" title={new Date(item.occurredAt).toLocaleString(i18n.language)}>
                       <span className="text-muted-foreground">{timestamp.date}</span> {timestamp.time}
                     </td>
-                    <td className="px-3"><StateBadge state={item.outcome} /></td>
+                    <td className="px-3"><StateBadge state={item.decision} /></td>
                     <td className="truncate px-3 text-[11px] text-muted-foreground" title={guardrailName}>{guardrailName}</td>
-                    <td className="truncate px-3 text-xs" title={item.detail}>{item.detail}</td>
+                    <td className="truncate px-3 text-xs" title={detail}>{detail}</td>
                     <td className="px-3 text-right"><code className="text-[10px] text-muted-foreground" title={item.id}>#{shortEventId(item.id)}</code></td>
                   </tr>
                 );
@@ -85,5 +86,5 @@ export function RuntimeEventStream({ items, loading, guardrails }: {
 }
 
 export function shortEventId(id: string) {
-  return id.replace(/^evidence-/, "").slice(-8);
+  return id.slice(-8);
 }

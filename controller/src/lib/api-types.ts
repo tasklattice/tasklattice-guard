@@ -852,20 +852,6 @@ export type IntegrationRegistration = {
   credential: OneTimeIntegrationCredential;
 };
 
-export type EvidenceRecord = {
-  id: string;
-  created_at: string;
-  kind: string;
-  outcome: string;
-  guardrail_id: string | null;
-  deployment_id: string | null;
-  integration_id: string | null;
-  risk: string | null;
-  detail: string;
-  actor_id: string | null;
-  metadata: Record<string, string>;
-};
-
 export type LoggingLevel = "info" | "debug" | "trace";
 
 export type GuardrailLoggingSettings = {
@@ -915,10 +901,6 @@ export type RuntimeLogInteraction = {
   outcome: "allow" | "transform" | "block" | "error" | string;
   capture_level: LoggingLevel;
   entries: RuntimeLogEntry[];
-};
-
-export type RuntimeLogPage = Collection<RuntimeLogInteraction> & {
-  next_cursor: string | null;
 };
 
 export type MetricWindow = "1h" | "24h" | "7d" | "15d" | "30d";
