@@ -50,11 +50,11 @@ _EXECUTOR_ACTION_VERSIONS = {
 
 
 class NeMoConfigStore(Protocol):
-    def plan(self, guardrail_id: str, version: int) -> GuardrailPlanSnapshot: ...
+    def plan(self, guardrail_id: str, version: str) -> GuardrailPlanSnapshot: ...
 
-    def nemo_config(self, guardrail_id: str, version: int) -> NeMoConfigSnapshot: ...
+    def nemo_config(self, guardrail_id: str, version: str) -> NeMoConfigSnapshot: ...
 
-    def active_plan_keys(self) -> tuple[tuple[str, int], ...]: ...
+    def active_plan_keys(self) -> tuple[tuple[str, str], ...]: ...
 
 
 @dataclass(slots=True)
@@ -85,12 +85,12 @@ class NeMoRuntimeRegistry:
         self._max_entries = max(1, max_entries)
         self._max_concurrency_per_guardrail = max(1, max_concurrency_per_guardrail)
         self._native_models = native_models
-        self._items: OrderedDict[tuple[str, int, str], NeMoRuntimeInstance] = OrderedDict()
+        self._items: OrderedDict[tuple[str, str, str], NeMoRuntimeInstance] = OrderedDict()
         self._retired: list[Guardrails] = []
         self._lock = threading.RLock()
         self._hits = 0
         self._misses = 0
-        self._last_missing_versions: tuple[tuple[str, int], ...] | None = None
+        self._last_missing_versions: tuple[tuple[str, str], ...] | None = None
         self.reload()
 
     def get(self, plan: GuardrailPlanSnapshot) -> NeMoRuntimeInstance:
@@ -260,7 +260,7 @@ class NeMoRuntimeRegistry:
         self,
         plan: GuardrailPlanSnapshot,
         config: NeMoConfigSnapshot,
-        key: tuple[str, int, str],
+        key: tuple[str, str, str],
     ) -> NeMoRuntimeInstance:
         from .runtime import NeMoActionBridge
 
@@ -333,11 +333,11 @@ class NeMoRuntimeRegistry:
         self,
         plan: GuardrailPlanSnapshot,
         config: NeMoConfigSnapshot,
-        key: tuple[str, int, str],
+        key: tuple[str, str, str],
     ) -> NeMoRuntimeInstance:
         started = time.perf_counter()
         logger.info(
-            "Prewarming NeMo runtime: guardrail_id=%s version=%d profile=%s.",
+            "Prewarming NeMo runtime: guardrail_id=%s version=%s profile=%s.",
             plan.guardrail_id,
             plan.guardrail_version,
             config.runtime_profile,
@@ -346,14 +346,14 @@ class NeMoRuntimeRegistry:
             item = self._build(plan, config, key)
         except Exception:
             logger.exception(
-                "NeMo runtime prewarm failed: guardrail_id=%s version=%d profile=%s.",
+                "NeMo runtime prewarm failed: guardrail_id=%s version=%s profile=%s.",
                 plan.guardrail_id,
                 plan.guardrail_version,
                 config.runtime_profile,
             )
             raise
         logger.info(
-            "NeMo runtime prewarm completed: guardrail_id=%s version=%d duration_ms=%d.",
+            "NeMo runtime prewarm completed: guardrail_id=%s version=%s duration_ms=%d.",
             plan.guardrail_id,
             plan.guardrail_version,
             max(0, round((time.perf_counter() - started) * 1_000)),

@@ -54,7 +54,7 @@ describe("Controller metrics contract", () => {
         }],
         guardrails: [{
           guardrailId: "guardrail-1", guardrailName: "PII Shield",
-          status: "active", activeVersion: 3,
+          status: "active", activeVersion: "20260904-030000.003Z",
         }],
         integrations: [{
           integrationId: "integration-1", integrationName: "Agent Gateway",
@@ -65,7 +65,7 @@ describe("Controller metrics contract", () => {
           integrationName: "Agent Gateway", poolId: "default", status: "active",
         }],
         deployments: [{
-          guardrailId: "guardrail-1", guardrailVersion: 3,
+          guardrailId: "guardrail-1", guardrailVersion: "20260904-030000.003Z",
           deploymentId: "deployment-1", deploymentName: "Production API",
           poolId: "default", status: "active",
         }],
@@ -84,7 +84,7 @@ describe("Controller metrics contract", () => {
     expect(rendered).toContain('guard_controller_guardrail_info{guardrail_id="guardrail-1",guardrail_name="PII Shield",status="active"} 1');
     expect(rendered).toContain('guard_controller_integration_info{integration_id="integration-1",integration_name="Agent Gateway",adapter="generic-http-guard",status="active"} 1');
     expect(rendered).toContain('guard_controller_guardrail_integration_info{guardrail_id="guardrail-1",integration_id="integration-1",integration_name="Agent Gateway",pool="default",status="active"} 1');
-    expect(rendered).toContain('guard_controller_guardrail_deployment_info{guardrail_id="guardrail-1",guardrail_version="3",deployment_id="deployment-1",deployment_name="Production API",pool="default",status="syncing"} 1');
+    expect(rendered).toContain('guard_controller_guardrail_deployment_info{guardrail_id="guardrail-1",guardrail_version="20260904-030000.003Z",deployment_id="deployment-1",deployment_name="Production API",pool="default",status="syncing"} 1');
     expect(rendered).toContain('guard_controller_guardrail_deployment_ready{guardrail_id="guardrail-1",deployment_id="deployment-1"} 0');
   });
 
@@ -109,11 +109,11 @@ describe("Controller metrics contract", () => {
         watermarks: [], pendingOutbox: [],
         guardrails: [{
           guardrailId: "guardrail-1", guardrailName: "PII Shield",
-          status: "active", activeVersion: 3,
+          status: "active", activeVersion: "20260904-030000.003Z",
         }],
         integrations: [], integrationBindings: [],
         deployments: [{
-          guardrailId: "guardrail-1", guardrailVersion: 3,
+          guardrailId: "guardrail-1", guardrailVersion: "20260904-030000.003Z",
           deploymentId: "deployment-1", deploymentName: "Production API",
           poolId: "production", status: "active",
         }],
@@ -123,7 +123,7 @@ describe("Controller metrics contract", () => {
     const rendered = await new ControllerMetrics().render(service);
 
     expect(rendered).toContain('guard_controller_runner_info{runner_id="runner-ready",pool="production",status="ready"} 1');
-    expect(rendered).toContain('guard_controller_guardrail_deployment_info{guardrail_id="guardrail-1",guardrail_version="3",deployment_id="deployment-1",deployment_name="Production API",pool="production",status="degraded"} 1');
+    expect(rendered).toContain('guard_controller_guardrail_deployment_info{guardrail_id="guardrail-1",guardrail_version="20260904-030000.003Z",deployment_id="deployment-1",deployment_name="Production API",pool="production",status="degraded"} 1');
     expect(rendered).toContain('guard_controller_guardrail_deployment_ready{guardrail_id="guardrail-1",deployment_id="deployment-1"} 1');
   });
 
@@ -163,7 +163,7 @@ describe("Controller metrics contract", () => {
         watermarks: [], pendingOutbox: [],
         guardrails: present ? [{
           guardrailId: "guardrail-1", guardrailName: "PII Shield",
-          status: "active", activeVersion: 1,
+          status: "active", activeVersion: "20260904-010000.001Z",
         }] : [],
         integrations: present ? [{
           integrationId: "integration-1", integrationName: "Agent Gateway",
@@ -174,7 +174,7 @@ describe("Controller metrics contract", () => {
           integrationName: "Agent Gateway", poolId: "default", status: "active",
         }] : [],
         deployments: present ? [{
-          guardrailId: "guardrail-1", guardrailVersion: 1,
+          guardrailId: "guardrail-1", guardrailVersion: "20260904-010000.001Z",
           deploymentId: "deployment-1", deploymentName: "Production API",
           poolId: "default", status: "active",
         }] : [],
@@ -207,7 +207,7 @@ describe("Controller metrics contract", () => {
       .mockImplementationOnce(() => ({
         from: vi.fn(() => ({
           where: vi.fn().mockResolvedValue([
-            { id: "guardrail-1", name: "PII Shield", status: "active", activeVersion: 3 },
+            { id: "guardrail-1", name: "PII Shield", status: "active", activeVersion: "20260904-030000.003Z" },
             { id: "guardrail-2", name: "Draft Shield", status: "draft", activeVersion: null },
           ]),
         })),
@@ -221,7 +221,7 @@ describe("Controller metrics contract", () => {
             },
             {
               id: "deployment-disabled", name: "Disabled API", guardrailId: "guardrail-1",
-              guardrailVersion: 2, integrationId: "integration-active", poolId: "production", enabled: false,
+              guardrailVersion: "20260904-020000.002Z", integrationId: "integration-active", poolId: "production", enabled: false,
             },
             {
               id: "deployment-inactive", name: "Draft API", guardrailId: "guardrail-2",
@@ -255,7 +255,7 @@ describe("Controller metrics contract", () => {
     const snapshot = await new ControlPlaneService(db, {} as ControllerConfig).observabilitySnapshot();
 
     expect(snapshot.guardrails).toEqual([
-      { guardrailId: "guardrail-1", guardrailName: "PII Shield", status: "active", activeVersion: 3 },
+      { guardrailId: "guardrail-1", guardrailName: "PII Shield", status: "active", activeVersion: "20260904-030000.003Z" },
       { guardrailId: "guardrail-2", guardrailName: "Draft Shield", status: "draft", activeVersion: null },
     ]);
     expect(snapshot.integrations).toEqual([
@@ -284,12 +284,12 @@ describe("Controller metrics contract", () => {
     ]);
     expect(snapshot.deployments).toEqual([
       {
-        guardrailId: "guardrail-1", guardrailVersion: 3,
+        guardrailId: "guardrail-1", guardrailVersion: "20260904-030000.003Z",
         deploymentId: "deployment-active", deploymentName: "Production API",
         poolId: "production", status: "active",
       },
       {
-        guardrailId: "guardrail-1", guardrailVersion: 2,
+        guardrailId: "guardrail-1", guardrailVersion: "20260904-020000.002Z",
         deploymentId: "deployment-disabled", deploymentName: "Disabled API",
         poolId: "production", status: "disabled",
       },

@@ -12,13 +12,14 @@ import type { ValidationMetrics__Output } from "../generated/control-protocol/ta
 import type { ValidationTestCase } from "../generated/control-protocol/tasklattice/guard/control/v1/ValidationTestCase.js";
 
 import type { ValidationCaseResult, ValidationMetrics } from "../domain/models.js";
+import { isGuardrailVersionId } from "../../shared/guardrail-version.js";
 
 /** Convert the Controller plan document into the generated transport type. */
 export function planToWire(value: unknown): GuardrailPlan {
   const plan = record(value);
   return {
     guardrailId: string(plan.guardrail_id),
-    guardrailVersion: number(plan.guardrail_version),
+    guardrailVersion: guardrailVersion(plan.guardrail_version),
     compilerVersion: string(plan.compiler_version),
     safetyLevel: wireEnum("SAFETY_LEVEL", plan.safety_level),
     outputDelivery: wireEnum("OUTPUT_DELIVERY_MODE", plan.output_delivery),
@@ -169,7 +170,7 @@ export function artifactToWire(input: unknown): Artifact {
   return {
     artifactId: string(value.id),
     guardrailId: string(value.guardrailId),
-    guardrailVersion: number(value.guardrailVersion),
+    guardrailVersion: guardrailVersion(value.guardrailVersion),
     generation: string(value.generation),
     compilerVersion: string(value.compilerVersion),
     nemoVersion: string(value.nemoVersion),
@@ -512,6 +513,10 @@ function records(value: unknown): Record<string, unknown>[] { return Array.isArr
 function arrays(value: unknown): unknown[][] { return Array.isArray(value) ? value.filter(Array.isArray) as unknown[][] : []; }
 function strings(value: unknown): string[] { return Array.isArray(value) ? value.map(string) : []; }
 function string(value: unknown): string { return typeof value === "string" ? value : String(value ?? ""); }
+function guardrailVersion(value: unknown): string {
+  if (!isGuardrailVersionId(value)) throw new Error("Guardrail Version must be a canonical UTC timestamp.");
+  return value;
+}
 function optionalString(value: unknown): string | null { return typeof value === "string" && value.length ? value : null; }
 function number(value: unknown): number {
   const parsed = Number(value ?? 0);

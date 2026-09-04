@@ -9,8 +9,8 @@ import "enforcement_action.proto";
 message GuardrailPlan {
   // Stable Controller resource identifier.
   string guardrail_id = 1;
-  // Immutable, monotonically increasing version within guardrail_id.
-  int32 guardrail_version = 2;
+  // Immutable, UTC timestamp version ID within guardrail_id.
+  string guardrail_version = 2;
   // Compiler contract version expected to understand this plan shape.
   string compiler_version = 3;
   SafetyLevel safety_level = 4;

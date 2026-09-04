@@ -42,6 +42,7 @@ import { applyValidationOverrides, emptyValidationMetrics, generatedTestCases } 
 import { PolicyCatalog } from "../policy-catalog/catalog.js";
 import { registeredAction } from "../action-catalog/catalog.js";
 import type { ValidationTerminalState } from "../../shared/lifecycle.js";
+import { guardrailVersionId } from "../../shared/guardrail-version.js";
 import {
   flowRuleId,
   programmablePolicyDraftSchema,
@@ -233,9 +234,10 @@ export class ControlPlaneService {
       this.validatePolicyDraft(input.id, record.draft, true);
       if (!record.draft.test_cases.length) throw new ValidationError("Add at least one Test Case before creating a Validation Run.");
       const runId = `policy-validation-${randomUUID()}`;
+      const candidateVersion = guardrailVersionId();
       const snapshot = policySnapshot(record, String(record.draftRevision), "");
       snapshot.checksum = createHash("sha256").update(stableJson(snapshot)).digest("hex");
-      const plan = programmablePolicyPlan(record.id, record.name, record.description, record.draftRevision, snapshot);
+      const plan = programmablePolicyPlan(record.id, record.name, record.description, candidateVersion, snapshot);
       await tx.insert(policyValidationRuns).values({
         id: runId,
         policyId: record.id,
@@ -251,7 +253,7 @@ export class ControlPlaneService {
         payload: {
           runId,
           guardrailId: `policy-preview-${record.id}`,
-          candidateVersion: record.draftRevision,
+          candidateVersion,
           sourceDraftRevision: record.draftRevision,
           plan,
           runtimeProfile: "llmrails_colang2_programmable",
@@ -329,9 +331,7 @@ export class ControlPlaneService {
       isNull(guardrails.deletedAt),
     ));
     if (!guardrail) throw new NotFoundError("Guardrail", id);
-    const [versionRow] = await this.db.select({ value: max(guardrailVersions.version) })
-      .from(guardrailVersions).where(eq(guardrailVersions.guardrailId, id));
-    const candidateVersion = (versionRow?.value ?? 0) + 1;
+    const candidateVersion = guardrailVersionId();
     const draft = normalizeGuardrailDraft(guardrail.draftConfig);
     const programmablePolicies = await this.resolveProgrammablePolicies(draft);
     const plan = buildGuardrailPlan({
@@ -362,7 +362,7 @@ export class ControlPlaneService {
     const programmablePolicies = await this.validateGuardrailDraft(input.description, draftConfig);
     const plan = buildGuardrailPlan({
       guardrailId: "draft-preview",
-      guardrailVersion: 1,
+      guardrailVersion: guardrailVersionId(),
       purpose: input.description,
       draft: draftConfig,
       policies: this.policyCatalog().list(),
@@ -387,7 +387,7 @@ export class ControlPlaneService {
     });
     return {
       guardrail_id: "",
-      candidate_version: 1,
+      candidate_version: String(plan.guardrail_version),
       engine: "GuardRails 0 · NeMo",
       colang_version: input.runtimeProfile === "llmrails_colang1_standard" ? "1.0" : input.runtimeProfile === "llmrails_colang2_programmable" ? "2.x" : "auto",
       compiler_version: String(plan.compiler_version ?? "tasklattice-controller-plan-v3"),
@@ -493,10 +493,11 @@ export class ControlPlaneService {
           { draftRevision: guardrail.draftRevision },
         );
       }
+      const version = guardrailVersionId(latestValidation.createdAt);
       const [existingVersion] = await tx.select().from(guardrailVersions).where(and(
         eq(guardrailVersions.guardrailId, input.guardrailId),
-        eq(guardrailVersions.sourceDraftRevision, guardrail.draftRevision),
-      )).orderBy(desc(guardrailVersions.version)).limit(1);
+        eq(guardrailVersions.version, version),
+      )).limit(1);
       if (existingVersion && existingVersion.status !== "failed") {
         await tx.update(validationRuns).set({ guardrailVersion: existingVersion.version })
           .where(eq(validationRuns.id, latestValidation.id));
@@ -561,6 +562,13 @@ export class ControlPlaneService {
           status: existingVersion.status,
         };
       }
+      if (existingVersion?.status === "failed") {
+        throw new ConflictError(
+          "The previous compilation failed. Run Validation again to create a new timestamped Guardrail Version.",
+          "guardrail_validation_required",
+          { draftRevision: guardrail.draftRevision },
+        );
+      }
       if (!input.compilerAvailable) {
         throw new ConflictError(
           "A healthy GuardRails 0 Runner is required to compile Guardrail configurations.",
@@ -572,9 +580,6 @@ export class ControlPlaneService {
         .where(eq(controllerState.id, "singleton"))
         .returning();
       if (!state) throw new Error("Controller state is not initialized.");
-      const [versionRow] = await tx.select({ value: max(guardrailVersions.version) })
-        .from(guardrailVersions).where(eq(guardrailVersions.guardrailId, input.guardrailId));
-      const version = (versionRow?.value ?? 0) + 1;
       const programmablePolicies = await this.resolveProgrammablePolicies(normalizeGuardrailDraft(guardrail.draftConfig));
       const plan = buildGuardrailPlan({
         guardrailId: input.guardrailId,
@@ -716,7 +721,7 @@ export class ControlPlaneService {
     return { artifactId: stored.id, checksum: stored.checksum, signature: stored.signature };
   }
 
-  async rejectCompile(input: { compileId: string; guardrailId: string; guardrailVersion: number; reason: string }) {
+  async rejectCompile(input: { compileId: string; guardrailId: string; guardrailVersion: string; reason: string }) {
     await this.db.transaction(async (tx) => {
       await tx.update(guardrailVersions).set({ status: "failed", failureReason: input.reason })
         .where(and(eq(guardrailVersions.guardrailId, input.guardrailId), eq(guardrailVersions.version, input.guardrailVersion)));
@@ -733,7 +738,7 @@ export class ControlPlaneService {
     });
   }
 
-  async rollbackGuardrail(input: { guardrailId: string; version: number; actorId: string }) {
+  async rollbackGuardrail(input: { guardrailId: string; version: string; actorId: string }) {
     return this.db.transaction(async (tx) => {
       const [guardrail] = await tx.select().from(guardrails).where(and(
         eq(guardrails.id, input.guardrailId), isNull(guardrails.deletedAt),
@@ -901,9 +906,8 @@ export class ControlPlaneService {
       const excluded = new Set(guardrail.excludedTestCaseIds);
       const activeCases = applyValidationOverrides(rows, guardrail.draftConfig).filter((item) => !excluded.has(item.id));
       if (!activeCases.length) throw new ValidationError("Add at least one reviewed Test Case before running Validation.");
-      const [versionRow] = await tx.select({ value: max(guardrailVersions.version) })
-        .from(guardrailVersions).where(eq(guardrailVersions.guardrailId, input.guardrailId));
-      const candidateVersion = (versionRow?.value ?? 0) + 1;
+      const requestedAt = new Date();
+      const candidateVersion = guardrailVersionId(requestedAt);
       const programmablePolicies = await this.resolveProgrammablePolicies(normalizeGuardrailDraft(guardrail.draftConfig));
       const plan = buildGuardrailPlan({
         guardrailId: input.guardrailId,
@@ -917,12 +921,14 @@ export class ControlPlaneService {
       await tx.insert(validationRuns).values({
         id: runId,
         guardrailId: input.guardrailId,
+        guardrailVersion: candidateVersion,
         sourceDraftRevision: guardrail.draftRevision,
         status: "queued",
         metrics: emptyValidationMetrics(activeCases.length),
         results: [],
         excludedCaseIds: [...excluded],
         createdBy: input.actorId,
+        createdAt: requestedAt,
       });
       await tx.insert(outboxEvents).values({
         id: runId,
@@ -2107,9 +2113,7 @@ export class ControlPlaneService {
       .set({ desiredGeneration: sql`${controllerState.desiredGeneration} + 1`, updatedAt: new Date() })
       .where(eq(controllerState.id, "singleton")).returning();
     if (!state) throw new Error("Controller state is not initialized.");
-    const [versionRow] = await tx.select({ value: max(guardrailVersions.version) })
-      .from(guardrailVersions).where(eq(guardrailVersions.guardrailId, DEFAULT_GUARDRAIL_ID));
-    const version = (versionRow?.value ?? 0) + 1;
+    const version = guardrailVersionId();
     const plan = buildGuardrailPlan({
       guardrailId: DEFAULT_GUARDRAIL_ID,
       guardrailVersion: version,
@@ -2158,7 +2162,7 @@ export class ControlPlaneService {
 
   private async ensureDefaultDeployment(
     tx: Parameters<Parameters<ControllerDatabase["transaction"]>[0]>[0],
-    guardrailVersion: number,
+    guardrailVersion: string,
   ): Promise<boolean> {
     const [existing] = await tx.select().from(deployments)
       .where(eq(deployments.id, DEFAULT_DEPLOYMENT_ID)).for("update");
@@ -2221,7 +2225,7 @@ export class ControlPlaneService {
       const programmablePolicies = await this.resolveProgrammablePolicies(draft);
       buildGuardrailPlan({
         guardrailId: "guardrail-draft-validation",
-        guardrailVersion: 1,
+        guardrailVersion: guardrailVersionId(),
         purpose,
         draft,
         policies: this.policyCatalog().list(),
@@ -2624,7 +2628,7 @@ function programmablePolicyPlan(
   policyId: string,
   policyName: string,
   description: string,
-  revision: number,
+  version: string,
   snapshot: ProgrammablePolicySnapshot,
 ): Record<string, unknown> {
   const contract = Object.fromEntries(snapshot.execution_contract);
@@ -2653,7 +2657,7 @@ function programmablePolicyPlan(
   })) : [];
   return {
     guardrail_id: `policy-preview-${policyId}`,
-    guardrail_version: revision,
+    guardrail_version: version,
     compiler_version: "tasklattice-controller-plan-v3",
     safety_level: "balanced",
     output_delivery: contract.output_delivery ?? "window_buffered",

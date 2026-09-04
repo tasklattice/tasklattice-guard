@@ -66,7 +66,7 @@ class DraftPreviewRuntime:
         preview_id: str,
         guardrail_id: str,
         draft_revision: int,
-        candidate_version: int,
+        candidate_version: str,
         plan: dict[str, Any],
         runtime_profile: str,
     ) -> dict[str, str | int]:
@@ -143,7 +143,7 @@ class DraftPreviewRuntime:
         preview_id: str,
         guardrail_id: str,
         draft_revision: int,
-        candidate_version: int,
+        candidate_version: str,
         plan: dict[str, Any],
         runtime_profile: str,
     ) -> ProtectionDecision:
@@ -209,7 +209,7 @@ class _PreviewStore:
         self._plan = plan
         self._config = config
 
-    def plan(self, guardrail_id: str, version: int):
+    def plan(self, guardrail_id: str, version: str):
         if (guardrail_id, version) != (
             self._plan.guardrail_id,
             self._plan.guardrail_version,
@@ -217,14 +217,14 @@ class _PreviewStore:
             raise KeyError((guardrail_id, version))
         return self._plan
 
-    def nemo_config(self, guardrail_id: str, version: int):
+    def nemo_config(self, guardrail_id: str, version: str):
         self.plan(guardrail_id, version)
         return self._config
 
-    def active_plan_keys(self) -> tuple[tuple[str, int], ...]:
+    def active_plan_keys(self) -> tuple[tuple[str, str], ...]:
         return ((self._plan.guardrail_id, self._plan.guardrail_version),)
 
-    def resolve_guardrail(self, guardrail_id: str, version: int) -> PlanResolution:
+    def resolve_guardrail(self, guardrail_id: str, version: str) -> PlanResolution:
         plan = self.plan(guardrail_id, version)
         deployment_id = f"playground-draft:{self._preview_id}"
         return PlanResolution(
@@ -249,7 +249,7 @@ def _config_from_artifact(artifact: protocol.Artifact):
 def _fingerprint(
     guardrail_id: str,
     draft_revision: int,
-    candidate_version: int,
+    candidate_version: str,
     plan: dict[str, Any],
     runtime_profile: str,
 ) -> str:

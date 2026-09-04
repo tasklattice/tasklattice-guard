@@ -221,7 +221,7 @@ export const guardrails = pgTable("guardrail", {
   runtimeProfile: text("runtime_profile").notNull().default("auto"),
   status: text("status").$type<GuardrailLifecycleState>().notNull().default("draft"),
   desiredGeneration: bigint("desired_generation", { mode: "number" }).notNull().default(0),
-  activeVersion: integer("active_version"),
+  activeVersion: text("active_version"),
   activeArtifactId: text("active_artifact_id"),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
   deletedBy: text("deleted_by").references(() => user.id),
@@ -232,7 +232,7 @@ export const guardrails = pgTable("guardrail", {
 
 export const guardrailVersions = pgTable("guardrail_version", {
   guardrailId: text("guardrail_id").notNull().references(() => guardrails.id),
-  version: integer("version").notNull(),
+  version: text("version").notNull(),
   generation: bigint("generation", { mode: "number" }).notNull(),
   sourceDraftRevision: integer("source_draft_revision").notNull().default(1),
   status: text("status").$type<GuardrailVersionState>().notNull().default("compiling"),
@@ -278,7 +278,7 @@ export const testCases = pgTable("guardrail_test_case", {
 export const validationRuns = pgTable("guardrail_validation_run", {
   id: text("id").primaryKey(),
   guardrailId: text("guardrail_id").notNull().references(() => guardrails.id),
-  guardrailVersion: integer("guardrail_version"),
+  guardrailVersion: text("guardrail_version").notNull(),
   sourceDraftRevision: integer("source_draft_revision").notNull(),
   status: text("status").$type<ValidationRunState>().notNull().default("queued"),
   metrics: jsonb("metrics").$type<ValidationMetrics>().notNull().default({
@@ -301,7 +301,7 @@ export const validationRuns = pgTable("guardrail_validation_run", {
 export const artifacts = pgTable("guardrail_artifact", {
   id: text("id").primaryKey(),
   guardrailId: text("guardrail_id").notNull().references(() => guardrails.id),
-  guardrailVersion: integer("guardrail_version").notNull(),
+  guardrailVersion: text("guardrail_version").notNull(),
   generation: bigint("generation", { mode: "number" }).notNull(),
   compilerVersion: text("compiler_version").notNull(),
   nemoVersion: text("nemo_version").notNull(),
@@ -339,7 +339,7 @@ export const deployments = pgTable("guardrail_deployment", {
   guardrailId: text("guardrail_id").notNull().references(() => guardrails.id),
   integrationId: text("integration_id").references(() => integrations.id),
   poolId: text("pool_id").notNull().references(() => runnerPools.id),
-  guardrailVersion: integer("guardrail_version"),
+  guardrailVersion: text("guardrail_version"),
   routeOrder: integer("route_order").notNull().default(0),
   enabled: boolean("enabled").notNull().default(true),
   trafficScope: jsonb("traffic_scope").$type<Record<string, unknown>>().notNull().default({}),
@@ -398,7 +398,7 @@ export const runtimeEvents = pgTable("runtime_event", {
   requestId: text("request_id").notNull(),
   runnerId: text("runner_id").notNull(),
   guardrailId: text("guardrail_id"),
-  guardrailVersion: integer("guardrail_version"),
+  guardrailVersion: text("guardrail_version"),
   integrationId: text("integration_id"),
   deploymentId: text("deployment_id"),
   direction: text("direction").notNull(),

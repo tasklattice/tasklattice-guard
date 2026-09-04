@@ -10,13 +10,13 @@ describe("Guardrail publication", () => {
       id: "guardrail-default",
       draftRevision: 2,
       status: "active",
-      activeVersion: 1,
+      activeVersion: "20260904-010000.001Z",
       activeArtifactId: "artifact-1",
     };
-    const validation = { id: "validation-2", sourceDraftRevision: 2, status: "passed" };
+    const validation = { id: "validation-2", sourceDraftRevision: 2, status: "passed", createdAt: new Date("2026-09-04T02:00:00.002Z") };
     const readyVersion = {
       guardrailId: guardrail.id,
-      version: 2,
+      version: "20260904-020000.002Z",
       generation: 18,
       sourceDraftRevision: 2,
       status: "ready",
@@ -25,7 +25,7 @@ describe("Guardrail publication", () => {
     const defaultDeployment = {
       id: "deployment-default",
       guardrailId: guardrail.id,
-      guardrailVersion: 1,
+      guardrailVersion: "20260904-010000.001Z",
       integrationId: null,
       poolId: "default",
       routeOrder: 100,
@@ -70,27 +70,27 @@ describe("Guardrail publication", () => {
       compilerAvailable: false,
     });
 
-    expect(result).toMatchObject({ version: 2, generation: 23, status: "ready" });
-    expect(updatePayloads).toContainEqual({ guardrailVersion: 2 });
+    expect(result).toMatchObject({ version: "20260904-020000.002Z", generation: 23, status: "ready" });
+    expect(updatePayloads).toContainEqual({ guardrailVersion: "20260904-020000.002Z" });
     expect(updatePayloads).toContainEqual(expect.objectContaining({
       status: "active",
-      activeVersion: 2,
+      activeVersion: "20260904-020000.002Z",
       activeArtifactId: "artifact-2",
       desiredGeneration: 23,
     }));
-    expect(updatePayloads).toContainEqual(expect.objectContaining({ guardrailVersion: 2 }));
+    expect(updatePayloads).toContainEqual(expect.objectContaining({ guardrailVersion: "20260904-020000.002Z" }));
     expect(inserted).toContainEqual(expect.objectContaining({
       kind: "runner.desired_state_changed",
-      payload: expect.objectContaining({ version: 2, artifactId: "artifact-2", generation: 23 }),
+      payload: expect.objectContaining({ version: "20260904-020000.002Z", artifactId: "artifact-2", generation: 23 }),
     }));
     expect(inserted).toContainEqual(expect.objectContaining({
       kind: "guardrail.version_activated",
       actorId: "admin-1",
-      detail: { version: 2, generation: 23, reusedArtifact: true },
+      detail: { version: "20260904-020000.002Z", generation: 23, reusedArtifact: true },
     }));
     expect(inserted).toContainEqual(expect.objectContaining({
       kind: "deployment.default.restored",
-      detail: expect.objectContaining({ guardrailVersion: 2 }),
+      detail: expect.objectContaining({ guardrailVersion: "20260904-020000.002Z" }),
     }));
   });
 });

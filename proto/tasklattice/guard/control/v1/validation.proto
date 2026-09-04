@@ -141,7 +141,7 @@ message ValidationRequest {
   string run_id = 1;
   string guardrail_id = 2;
   // Candidate Guardrail version evaluated without publishing or activation.
-  int32 candidate_version = 3;
+  string candidate_version = 3;
   // Draft revision whose plan and test cases are frozen in this request.
   int32 source_draft_revision = 4;
   GuardrailPlan plan = 5;

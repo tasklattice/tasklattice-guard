@@ -28,9 +28,11 @@ import {
   type RunnerPlaygroundClient,
   runPlaygroundInteraction,
 } from "../playground/service.js";
+import { isGuardrailVersionId } from "../../shared/guardrail-version.js";
 
 type Actor = { id: string; role: string };
 type Variables = { actor: Actor };
+const guardrailVersionInput = z.string().refine(isGuardrailVersionId, "Guardrail Version must be a canonical UTC timestamp.");
 
 const guardrailPolicyBindingInput = z.object({
   policyId: z.string().trim().min(1).max(256),
@@ -104,7 +106,7 @@ const testCaseInput = z.object({
 const validationScopeInput = z.object({ caseId: z.string().min(1), excluded: z.boolean() });
 const validationRunInput = z.object({ guardrailId: z.string().min(1) });
 const playgroundInteractionInput = z.object({
-  guardrail_version: z.number().int().positive(),
+  guardrail_version: guardrailVersionInput,
   model_id: z.string().trim().min(1).max(256),
   message: z.string().trim().min(1).max(32_000),
   history: z.array(z.object({
@@ -160,7 +162,7 @@ const runtimeEventInput = z.object({
   requestId: z.string().min(1),
   runnerId: z.string().min(1),
   guardrailId: z.string().optional(),
-  guardrailVersion: z.number().int().positive().optional(),
+  guardrailVersion: guardrailVersionInput.optional(),
   integrationId: z.string().optional(),
   deploymentId: z.string().optional(),
   direction: z.enum(["incoming", "outgoing"]),
@@ -551,7 +553,7 @@ export function createHttpApp(input: {
     }), 202);
   });
   app.post("/api/v1/guardrails/:id/rollback/:version", authenticated, administrator, async (context) => {
-    const version = z.coerce.number().int().positive().parse(context.req.param("version"));
+    const version = guardrailVersionInput.parse(context.req.param("version"));
     const result = await input.service.rollbackGuardrail({
       guardrailId: context.req.param("id"), version, actorId: context.get("actor").id,
     });

@@ -188,7 +188,7 @@ def _artifact() -> protocol.Artifact:
     artifact = protocol.Artifact()
     artifact.CopyFrom(state.artifacts[0])
     artifact.guardrail_id = "guardrail-1"
-    artifact.guardrail_version = 1
+    artifact.guardrail_version = "20260904-010000.001Z"
     artifact.generation = 7
     # The signed content changed above. The test signs it with its own ephemeral
     # key after ArtifactStore recomputes the canonical fixture checksum.

@@ -156,7 +156,7 @@ export type Guardrail = {
   draftRevision: number;
   excludedTestCaseIds: string[];
   loggingLevel: "info" | "debug" | "trace";
-  activeVersion: number | null;
+  activeVersion: string | null;
   activeSourceDraftRevision: number | null;
   activeArtifactId: string | null;
   createdAt: string;
@@ -168,7 +168,7 @@ export type Guardrail = {
 
 export type GuardrailVersion = {
   guardrailId: string;
-  version: number;
+  version: string;
   generation: number;
   sourceDraftRevision: number;
   status: GuardrailVersionState;
@@ -201,7 +201,7 @@ export type GuardrailDetail = Guardrail & { versions: GuardrailVersion[] };
 
 export type GuardrailPlanPreview = {
   guardrail_id: string;
-  candidate_version: number;
+  candidate_version: string;
   engine: string;
   colang_version: string;
   compiler_version: string;
@@ -232,7 +232,7 @@ export type Deployment = {
   guardrailId: string;
   integrationId: string | null;
   poolId: string;
-  guardrailVersion: number | null;
+  guardrailVersion: string | null;
   routeOrder: number;
   enabled: boolean;
   trafficScope: Record<string, unknown>;
@@ -243,7 +243,7 @@ export type Deployment = {
 export type ValidationRun = {
   id: string;
   guardrailId: string;
-  guardrailVersion: number | null;
+  guardrailVersion: string;
   sourceDraftRevision: number;
   status: ValidationRunState;
   metrics: {
@@ -337,7 +337,7 @@ export type RuntimeEvent = {
   requestId: string;
   runnerId: string;
   guardrailId: string | null;
-  guardrailVersion: number | null;
+  guardrailVersion: string | null;
   integrationId: string | null;
   deploymentId: string | null;
   direction: "incoming" | "outgoing";
@@ -427,8 +427,8 @@ export const getControllerGuardrail = (id: string) => requestController<Guardrai
 export const createControllerGuardrail = (input: Pick<Guardrail, "name" | "description" | "draftConfig" | "runtimeProfile">) => requestController<Guardrail>("/api/v1/guardrails", json("POST", input));
 export const previewControllerGuardrailPlan = (input: Pick<Guardrail, "name" | "description" | "draftConfig" | "runtimeProfile">) => requestController<GuardrailPlanPreview>("/api/v1/guardrail-plan-previews", json("POST", input));
 export const updateControllerGuardrail = (id: string, input: Partial<Pick<Guardrail, "name" | "description" | "draftConfig" | "runtimeProfile">>) => requestController<Guardrail>(`/api/v1/guardrails/${encodeURIComponent(id)}`, json("PATCH", input));
-export const publishControllerGuardrail = (id: string) => requestController<{ status: string; version: number }>(`/api/v1/guardrails/${encodeURIComponent(id)}/publish`, json("POST"));
-export const rollbackControllerGuardrail = (id: string, version: number) => requestController<GuardrailVersion>(`/api/v1/guardrails/${encodeURIComponent(id)}/rollback/${version}`, json("POST"));
+export const publishControllerGuardrail = (id: string) => requestController<{ status: string; version: string }>(`/api/v1/guardrails/${encodeURIComponent(id)}/publish`, json("POST"));
+export const rollbackControllerGuardrail = (id: string, version: string) => requestController<GuardrailVersion>(`/api/v1/guardrails/${encodeURIComponent(id)}/rollback/${encodeURIComponent(version)}`, json("POST"));
 export const getControllerGuardrailDeletionImpact = (id: string) => requestController<DeletionImpact>(`/api/v1/guardrails/${encodeURIComponent(id)}/deletion-impact`);
 export const deleteControllerGuardrail = (id: string, input: { reason: string; confirmRecentTraffic: boolean; confirmationName?: string | undefined }) => requestController<void>(`/api/v1/guardrails/${encodeURIComponent(id)}`, json("DELETE", input));
 

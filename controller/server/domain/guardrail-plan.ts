@@ -153,7 +153,7 @@ export function normalizeGuardrailDraft(value: unknown): GuardrailDraftConfig {
 /** Convert the product draft into the immutable contract compiled by Runner. */
 export function buildGuardrailPlan(input: {
   guardrailId: string;
-  guardrailVersion: number;
+  guardrailVersion: string;
   purpose?: string;
   draft: GuardrailDraftConfig;
   policies?: readonly PolicyDto[];

@@ -15,7 +15,7 @@ export interface ValidationRequest {
   /**
    * Candidate Guardrail version evaluated without publishing or activation.
    */
-  'candidateVersion'?: (number);
+  'candidateVersion'?: (string);
   /**
    * Draft revision whose plan and test cases are frozen in this request.
    */
@@ -40,7 +40,7 @@ export interface ValidationRequest__Output {
   /**
    * Candidate Guardrail version evaluated without publishing or activation.
    */
-  'candidateVersion': (number);
+  'candidateVersion': (string);
   /**
    * Draft revision whose plan and test cases are frozen in this request.
    */

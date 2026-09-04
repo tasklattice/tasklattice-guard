@@ -8,7 +8,7 @@ const event = {
   requestId: "request-1",
   runnerId: "runner-1",
   guardrailId: "guardrail-1",
-  guardrailVersion: 3,
+  guardrailVersion: "20260904-030000.003Z",
   integrationId: "integration-1",
   deploymentId: "deployment-1",
   direction: "incoming",

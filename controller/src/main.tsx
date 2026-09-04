@@ -23,6 +23,7 @@ import { ActivityPage } from "@/routes/activity";
 import { StatusPage } from "@/routes/status";
 import { CapabilitiesPage, ModelsPage, ProvidersPage } from "@/routes/models";
 import { AuthProvider } from "@/lib/auth";
+import { isGuardrailVersionId } from "../shared/guardrail-version";
 import "@/i18n";
 import "@/styles.css";
 
@@ -36,11 +37,10 @@ const policyLibrarySearch = (search: Record<string, unknown>) => ({ policy: type
 const policyLibraryRoute = createRoute({ getParentRoute: () => rootRoute, path: "/policy-library", validateSearch: policyLibrarySearch, component: PolicyLibraryPage });
 const guardrailSearch = (search: Record<string, unknown>) => ({ guardrail: typeof search.guardrail === "string" ? search.guardrail : undefined });
 const playgroundSearch = (search: Record<string, unknown>) => {
-  const version = Number(search.version);
   return {
     ...guardrailSearch(search),
     target: search.target === "draft" ? "draft" as const : undefined,
-    version: Number.isInteger(version) && version > 0 ? version : undefined,
+    version: isGuardrailVersionId(search.version) ? search.version : undefined,
   };
 };
 const playgroundRoute = createRoute({ getParentRoute: () => rootRoute, path: "/playground", validateSearch: playgroundSearch, component: PlaygroundPage });

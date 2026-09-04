@@ -4,7 +4,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import type { TestCaseResult, ValidationRun } from "@/lib/api";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
-import { DetailFact, filterValidationRuns, TestCaseResultRow, ValidationCaseResults } from "./validation";
+import { DetailFact, filterValidationRuns, GuardrailValidationHistory, TestCaseResultRow, ValidationCaseResults } from "./validation";
 
 vi.mock("@/components/add-test-case-sheet", () => ({ AddTestCaseSheet: () => null }));
 vi.mock("react-i18next", () => ({
@@ -28,6 +28,8 @@ vi.mock("react-i18next", () => ({
       "validation.decisionMismatch": "Decision mismatch",
       "validation.ruleMismatch": "Rule contract mismatch",
       "validation.validationContractMismatch": "Validation contract mismatch",
+      "validation.versionTarget": "Guardrail Version 20260904-010000.001Z",
+      "validation.openValidationRun": "Open Validation Run",
       "guardrails.expectedDecision": "Expected decision",
       "guardrails.actualDecision": "Actual decision",
     } as Record<string, string>)[key] ?? key,
@@ -77,7 +79,7 @@ const result: TestCaseResult = {
 const validationRun = {
   id: "validation-finance-001",
   guardrail_id: "guardrail-finance",
-  guardrail_version: 1,
+  guardrail_version: "20260904-010000.001Z",
   source_draft_version: 1,
   status: "passed",
   metrics: { total: 1, passed: 1, compliance_rate: 100, false_positive_rate: 0, false_negative_rate: 0, escalation_rate: 0, p95_latency_ms: 7 },
@@ -103,6 +105,26 @@ describe("Validation Run acceptance evidence", () => {
 
     expect(filterValidationRuns([validationRun, otherRun], names, "", "guardrail-banker", "all")).toEqual([otherRun]);
     expect(filterValidationRuns([validationRun, otherRun], names, "finance", "all", "passed")).toEqual([validationRun]);
+  });
+
+  it("opens the timestamped Target without opening the Validation Run", () => {
+    const onOpen = vi.fn();
+    const onOpenTarget = vi.fn();
+    render(<GuardrailValidationHistory
+      runs={[validationRun]}
+      loading={false}
+      error={null}
+      canManage={false}
+      running={false}
+      onRun={vi.fn()}
+      onOpen={onOpen}
+      onOpenTarget={onOpenTarget}
+    />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Guardrail Version 20260904-010000.001Z" }));
+
+    expect(onOpenTarget).toHaveBeenCalledWith(validationRun);
+    expect(onOpen).not.toHaveBeenCalled();
   });
 
   it("shows the pinned contract and actual Rule match", () => {

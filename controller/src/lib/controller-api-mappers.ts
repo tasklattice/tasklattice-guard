@@ -80,7 +80,7 @@ export function runtimeTraceSteps(event: controllerApi.RuntimeEvent): Deployment
     trace_id: event.requestId,
     created_at: event.occurredAt,
     guardrail_id: event.guardrailId ?? "",
-    guardrail_version: event.guardrailVersion ?? 0,
+    guardrail_version: event.guardrailVersion ?? "",
     deployment_id: event.deploymentId,
     integration_id: event.integrationId,
     protocol: stringValue(event.metadata.protocol) ?? "unknown",

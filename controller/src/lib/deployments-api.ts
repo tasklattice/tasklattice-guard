@@ -40,7 +40,7 @@ function mapDeployments(
       id: item.id,
       name: item.name,
       guardrail_id: item.guardrailId,
-      guardrail_version: item.guardrailVersion ?? guardrailById.get(item.guardrailId)?.activeVersion ?? 0,
+      guardrail_version: item.guardrailVersion ?? guardrailById.get(item.guardrailId)?.activeVersion ?? "",
       integration_id: item.integrationId,
       route_order: item.routeOrder,
       traffic_scope: normalizeTrafficScope(item.trafficScope),

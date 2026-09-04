@@ -99,7 +99,7 @@ class ArtifactStore:
         with self._lock:
             return len(self._artifacts), len(self._routes), len(self._integrations)
 
-    def plan(self, guardrail_id: str, version: int) -> GuardrailPlanSnapshot:
+    def plan(self, guardrail_id: str, version: str) -> GuardrailPlanSnapshot:
         with self._lock:
             return next(
                 artifact.plan
@@ -108,7 +108,7 @@ class ArtifactStore:
                 and artifact.plan.guardrail_version == version
             )
 
-    def nemo_config(self, guardrail_id: str, version: int) -> NeMoConfigSnapshot:
+    def nemo_config(self, guardrail_id: str, version: str) -> NeMoConfigSnapshot:
         with self._lock:
             return next(
                 artifact.config
@@ -117,7 +117,7 @@ class ArtifactStore:
                 and artifact.config.guardrail_version == version
             )
 
-    def active_plan_keys(self) -> tuple[tuple[str, int], ...]:
+    def active_plan_keys(self) -> tuple[tuple[str, str], ...]:
         with self._lock:
             active_artifact_ids = {route.artifact_id for route in self._routes}
             return tuple(
@@ -159,7 +159,7 @@ class ArtifactStore:
                 ),),
             )
 
-    def resolve_guardrail(self, guardrail_id: str, version: int) -> PlanResolution:
+    def resolve_guardrail(self, guardrail_id: str, version: str) -> PlanResolution:
         """Resolve an explicit immutable version for Controller-owned tools such as Playground."""
         with self._lock:
             artifact = next(

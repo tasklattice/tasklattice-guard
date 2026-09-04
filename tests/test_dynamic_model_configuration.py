@@ -518,7 +518,7 @@ def _chat_response(content: str) -> httpx.Response:
 def _content_safety_request() -> ActionRequest:
     plan = GuardrailPlanSnapshot(
         guardrail_id="dynamic-model-guardrail",
-        guardrail_version=1,
+        guardrail_version="20260904-010000.001Z",
         compiler_version="fixture",
         safety_level="balanced",
         output_delivery="full_buffered",
@@ -551,7 +551,7 @@ def _content_safety_request() -> ActionRequest:
 def _jailbreak_request() -> ActionRequest:
     plan = GuardrailPlanSnapshot(
         guardrail_id="dynamic-jailbreak-guardrail",
-        guardrail_version=1,
+        guardrail_version="20260904-010000.001Z",
         compiler_version="fixture",
         safety_level="balanced",
         output_delivery="full_buffered",
@@ -584,7 +584,7 @@ def _jailbreak_request() -> ActionRequest:
 def _pii_request() -> ActionRequest:
     plan = GuardrailPlanSnapshot(
         guardrail_id="dynamic-pii-guardrail",
-        guardrail_version=1,
+        guardrail_version="20260904-010000.001Z",
         compiler_version="fixture",
         safety_level="balanced",
         output_delivery="full_buffered",
@@ -617,7 +617,7 @@ def _pii_request() -> ActionRequest:
 def _topic_request() -> ActionRequest:
     plan = GuardrailPlanSnapshot(
         guardrail_id="dynamic-topic-guardrail",
-        guardrail_version=1,
+        guardrail_version="20260904-010000.001Z",
         compiler_version="fixture",
         safety_level="balanced",
         output_delivery="full_buffered",

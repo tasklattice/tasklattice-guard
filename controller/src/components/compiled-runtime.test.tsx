@@ -13,7 +13,7 @@ vi.mock("react-i18next", () => ({
 
 const detail: GuardrailVersionDetail = {
   guardrail_id: "guardrail-observed",
-  version: 2,
+  version: "20260904-020000.002Z",
   source_draft_version: 3,
   compiler_version: "tasklattice-nemo-config-v7",
   plan_checksum: "plan-checksum",

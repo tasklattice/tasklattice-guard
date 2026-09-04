@@ -55,7 +55,7 @@ class GuardrailRuntimeService:
         self,
         request: ProtectionRequest,
         guardrail_id: str,
-        version: int,
+        version: str,
         *,
         on_resolved: Callable[[PlanResolution], None] | None = None,
     ) -> ProtectionDecision:

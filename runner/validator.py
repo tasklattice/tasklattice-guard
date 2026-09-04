@@ -251,16 +251,16 @@ class _CandidateStore:
         self._plan = plan
         self._config = config
 
-    def plan(self, guardrail_id: str, version: int) -> GuardrailPlanSnapshot:
+    def plan(self, guardrail_id: str, version: str) -> GuardrailPlanSnapshot:
         if (guardrail_id, version) != (self._plan.guardrail_id, self._plan.guardrail_version):
             raise KeyError((guardrail_id, version))
         return self._plan
 
-    def nemo_config(self, guardrail_id: str, version: int) -> NeMoConfigSnapshot:
+    def nemo_config(self, guardrail_id: str, version: str) -> NeMoConfigSnapshot:
         self.plan(guardrail_id, version)
         return self._config
 
-    def active_plan_keys(self) -> tuple[tuple[str, int], ...]:
+    def active_plan_keys(self) -> tuple[tuple[str, str], ...]:
         return ((self._plan.guardrail_id, self._plan.guardrail_version),)
 
 

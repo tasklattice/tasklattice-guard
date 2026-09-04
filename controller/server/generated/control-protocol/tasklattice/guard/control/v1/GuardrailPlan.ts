@@ -17,9 +17,9 @@ export interface GuardrailPlan {
    */
   'guardrailId'?: (string);
   /**
-   * Immutable, monotonically increasing version within guardrail_id.
+   * Immutable, UTC timestamp version ID within guardrail_id.
    */
-  'guardrailVersion'?: (number);
+  'guardrailVersion'?: (string);
   /**
    * Compiler contract version expected to understand this plan shape.
    */
@@ -51,9 +51,9 @@ export interface GuardrailPlan__Output {
    */
   'guardrailId': (string);
   /**
-   * Immutable, monotonically increasing version within guardrail_id.
+   * Immutable, UTC timestamp version ID within guardrail_id.
    */
-  'guardrailVersion': (number);
+  'guardrailVersion': (string);
   /**
    * Compiler contract version expected to understand this plan shape.
    */

@@ -300,7 +300,7 @@ export class RunnerControlServer {
       await this.service.rejectCompile({
         compileId: result.compileId,
         guardrailId: artifact?.guardrailId ?? "",
-        guardrailVersion: artifact?.guardrailVersion ?? 0,
+        guardrailVersion: artifact?.guardrailVersion ?? "",
         reason: result.reason || "GuardRails 0 rejected the Guardrail plan.",
       });
       return;
@@ -310,7 +310,7 @@ export class RunnerControlServer {
     await this.service.acceptCompiledArtifact({
       compileId: result.compileId,
       guardrailId: string(content.guardrailId),
-      guardrailVersion: number(content.guardrailVersion),
+      guardrailVersion: string(content.guardrailVersion),
       generation: number(content.generation),
       compilerVersion: string(content.compilerVersion),
       nemoVersion: string(content.nemoVersion),
@@ -429,7 +429,7 @@ export class RunnerControlServer {
         compileRequest: {
           compileId: string(payload.compileId),
           guardrailId: string(payload.guardrailId),
-          guardrailVersion: number(payload.guardrailVersion),
+          guardrailVersion: string(payload.guardrailVersion),
           generation: String(number(payload.generation)),
           plan: planToWire(payload.plan ?? {}),
           runtimeProfile: string(payload.runtimeProfile),
@@ -452,7 +452,7 @@ export class RunnerControlServer {
         validationRequest: {
           runId: string(payload.runId),
           guardrailId: string(payload.guardrailId),
-          candidateVersion: number(payload.candidateVersion),
+          candidateVersion: string(payload.candidateVersion),
           sourceDraftRevision: number(payload.sourceDraftRevision),
           plan: planToWire(payload.plan ?? {}),
           runtimeProfile: string(payload.runtimeProfile),

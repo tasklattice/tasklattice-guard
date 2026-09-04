@@ -363,7 +363,7 @@ export async function getGuardrailVersions(guardrailId: string): Promise<Collect
   return { items, count: items.length };
 }
 
-export async function getGuardrailVersion(guardrailId: string, version: number): Promise<GuardrailVersionDetail> {
+export async function getGuardrailVersion(guardrailId: string, version: string): Promise<GuardrailVersionDetail> {
   const guardrail = await controllerApi.getControllerGuardrail(guardrailId);
   const found = guardrail.versions.find((item) => item.version === version);
   if (!found) throw new Error(`Guardrail version ${version} was not found.`);
@@ -382,7 +382,7 @@ export async function publishGuardrail(guardrailId: string): Promise<GuardrailVe
   throw new Error(`Guardrail version ${result.version} is still compiling. Check Controller activity for progress.`);
 }
 
-export const rollbackGuardrail = (guardrailId: string, version: number) =>
+export const rollbackGuardrail = (guardrailId: string, version: string) =>
   controllerApi.rollbackControllerGuardrail(guardrailId, version).then(async (item) => {
     const guardrail = await controllerApi.getControllerGuardrail(guardrailId);
     return mapVersion(item, guardrail);

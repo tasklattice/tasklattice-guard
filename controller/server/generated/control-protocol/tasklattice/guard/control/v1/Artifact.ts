@@ -15,7 +15,7 @@ export interface Artifact {
   /**
    * Immutable Guardrail version compiled into this artifact.
    */
-  'guardrailVersion'?: (number);
+  'guardrailVersion'?: (string);
   /**
    * Desired-state generation for which Controller accepted and signed the artifact.
    */
@@ -64,7 +64,7 @@ export interface Artifact__Output {
   /**
    * Immutable Guardrail version compiled into this artifact.
    */
-  'guardrailVersion': (number);
+  'guardrailVersion': (string);
   /**
    * Desired-state generation for which Controller accepted and signed the artifact.
    */

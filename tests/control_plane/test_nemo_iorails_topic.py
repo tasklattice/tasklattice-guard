@@ -84,7 +84,7 @@ def _plan(*steps: GuardrailPlanStep) -> GuardrailPlanSnapshot:
     phases = tuple(dict.fromkeys(phase for step in steps for phase in step.phases))
     return GuardrailPlanSnapshot(
         guardrail_id="topic-guard",
-        guardrail_version=1,
+        guardrail_version="20260904-010000.001Z",
         compiler_version="test-plan-v1",
         safety_level="balanced",
         output_delivery="full_buffered",

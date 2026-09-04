@@ -135,7 +135,7 @@ describe("Default Guardrail baseline", () => {
     const draft = defaultGuardrailDraft(policies);
     const plan = buildGuardrailPlan({
       guardrailId: DEFAULT_GUARDRAIL_ID,
-      guardrailVersion: 1,
+      guardrailVersion: "20260904-010000.001Z",
       purpose: "Protect unmatched traffic with complete local Policies.",
       draft,
       policies,

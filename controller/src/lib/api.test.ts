@@ -113,7 +113,7 @@ describe("API error responses", () => {
         guardrailId: "guardrail-1",
         integrationId: "integration-1",
         poolId: "default",
-        guardrailVersion: 1,
+        guardrailVersion: "20260904-010000.001Z",
         routeOrder: 0,
         enabled: true,
         trafficScope: { combinator: "and", conditions: [] },
@@ -122,7 +122,7 @@ describe("API error responses", () => {
       }] }), { status: 200 });
       return new Response(JSON.stringify({ items: [{
         id: "guardrail-1",
-        activeVersion: 1,
+        activeVersion: "20260904-010000.001Z",
       }] }), { status: 200 });
     }));
 
