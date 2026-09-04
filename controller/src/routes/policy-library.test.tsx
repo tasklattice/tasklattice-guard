@@ -198,6 +198,9 @@ describe("Policy detail", () => {
     render(<PolicyCard policy={policy} onOpen={vi.fn()} />);
 
     expect(screen.queryByRole("button", { name: "Delete Competitor Discussion Policy" })).toBeNull();
+    const heading = screen.getByRole("heading", { name: "Competitor Discussion Policy" });
+    expect(heading.parentElement?.textContent).toContain("Built-in");
+    expect(heading.closest("article")?.querySelectorAll(".lucide-shield-check")).toHaveLength(1);
   });
 
   it("requires explicit confirmation before deleting a custom Policy", () => {

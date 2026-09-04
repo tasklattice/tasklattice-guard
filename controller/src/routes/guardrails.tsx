@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
-import { Activity, ArrowLeft, ArrowUpRight, Ban, Check, ChevronDown, Circle, CircleAlert, FlaskConical, GitCompareArrows, History, LoaderCircle, LockKeyhole, Pencil, Plus, Rocket, RotateCcw, Save, ScrollText, ShieldAlert, ShieldCheck, Trash2 } from "lucide-react";
+import { Activity, ArrowLeft, ArrowUpRight, Ban, Check, ChevronDown, Circle, CircleAlert, FlaskConical, GitCompareArrows, History, LoaderCircle, LockKeyhole, Pencil, Plus, RefreshCw, Rocket, RotateCcw, Save, ScrollText, ShieldAlert, ShieldCheck, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
@@ -14,6 +14,7 @@ import { ConfirmationSheet } from "@/components/confirmation-sheet";
 import { CopyableChecksum } from "@/components/copyable-checksum";
 import { EntitySheet } from "@/components/entity-sheet";
 import { GuardrailVersionComparison, GuardrailVersionNavigator } from "@/components/guardrail-version-workspace";
+import { GuardrailRegistry } from "@/components/guardrail-registry";
 import { PolicyBindingEditor } from "@/components/policy-binding-editor";
 import { ProtectedDeleteSheet } from "@/components/protected-delete-sheet";
 import { EmptyState, ErrorNotice, InfoNotice, PageHeader, StateBadge } from "@/components/product-shell";
@@ -31,6 +32,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { queryKeys } from "@/features/query-keys";
+import { guardrailQueries } from "@/features/guardrail-queries";
 import { useAuth } from "@/lib/auth";
 import {
   createValidationRun,
@@ -41,7 +43,6 @@ import {
   getGuardrailDeletionImpact,
   getGuardrailFindings,
   getGuardrailVersion,
-  getGuardrails,
   getGuardrailVersions,
   getGuardrailLoggingSettings,
   getMetrics,
@@ -84,38 +85,35 @@ type GuardrailDeletionConfirmation = {
 };
 
 export function GuardrailsPage() {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const auth = useAuth();
-  const query = useQuery({ queryKey: queryKeys.guardrails, queryFn: getGuardrails });
+  const query = useQuery(guardrailQueries.list());
   const [createOpen, setCreateOpen] = useState(false);
-  const guardrails = [...(query.data?.items ?? [])].sort((left, right) => Number(right.is_default) - Number(left.is_default));
+  const guardrails = query.data?.items ?? [];
 
   return (
     <section className="py-6 sm:py-8">
       <PageHeader title={t("pages.guardrails.title")} description={t("guardrails.description")} action={auth.user?.role === "admin" ? <Button className="min-h-11" onClick={() => setCreateOpen(true)}><Plus />{t("guardrails.create")}</Button> : undefined} />
-      {query.error ? <div className="mt-5"><ErrorNotice error={query.error} /></div> : null}
-      {query.isLoading ? <Skeleton className="mt-5 h-80 rounded-xl" /> : null}
-      {!query.isLoading && !guardrails.length ? <div className="mt-5"><EmptyState title={t("guardrails.emptyTitle")} description={t("guardrails.emptyDescription")} action={auth.user?.role === "admin" ? <Button onClick={() => setCreateOpen(true)}><Plus />{t("guardrails.createFirst")}</Button> : undefined} /></div> : null}
-      {guardrails.length ? (
-        <section className="mt-5 overflow-hidden rounded-xl border bg-card shadow-xs">
-          <header className="border-b bg-muted/25 px-5 py-3"><p className="text-xs font-medium text-muted-foreground">{t("guardrails.registry", { count: guardrails.length })}</p></header>
-          <Table>
-            <TableHeader><TableRow className="hover:bg-transparent"><TableHead className="min-w-64 px-5">{t("guardrails.guardrail")}</TableHead><TableHead>{t("common.status")}</TableHead><TableHead className="hidden md:table-cell">{t("guardrails.policies")}</TableHead><TableHead className="hidden lg:table-cell">{t("guardrails.validation")}</TableHead><TableHead className="hidden xl:table-cell">{t("guardrails.updated")}</TableHead></TableRow></TableHeader>
-            <TableBody>{guardrails.map((guardrail) => (
-              <TableRow key={guardrail.id} tabIndex={0} className="cursor-pointer focus-visible:outline-2 focus-visible:outline-ring" onClick={() => navigate({ to: "/guardrails/$guardrailId", params: { guardrailId: guardrail.id } })} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") navigate({ to: "/guardrails/$guardrailId", params: { guardrailId: guardrail.id } }); }}>
-                <TableCell className="px-5"><span className="flex items-start gap-3"><span className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><ShieldCheck className="size-4" /></span><span className="min-w-0"><strong className="block truncate text-sm">{guardrail.name}</strong><span className="mt-1 line-clamp-1 text-xs text-muted-foreground">{guardrail.purpose}</span></span></span></TableCell>
-                <TableCell><StateBadge state={guardrail.status} /></TableCell>
-                <TableCell className="hidden font-mono text-xs md:table-cell">{guardrail.policy_bindings.length}</TableCell>
-                <TableCell className="hidden lg:table-cell">{guardrail.latest_validation_run ? <span className="flex items-center gap-2"><StateBadge state={guardrail.latest_validation_run.status} /><span className="font-mono text-xs text-muted-foreground">{guardrail.latest_validation_run.metrics.compliance_rate}%</span></span> : <span className="text-xs text-muted-foreground">{t("guardrails.notRun")}</span>}</TableCell>
-                <TableCell className="hidden text-xs text-muted-foreground xl:table-cell">{new Date(guardrail.updated_at).toLocaleString(i18n.language)}</TableCell>
-              </TableRow>
-            ))}</TableBody>
-          </Table>
-        </section>
-      ) : null}
+      {query.error ? <div className="mt-5 space-y-3"><ErrorNotice error={query.error} /><Button type="button" variant="outline" className="min-h-11" disabled={query.isFetching} onClick={() => void query.refetch()}><RefreshCw className={query.isFetching ? "animate-spin motion-reduce:animate-none" : undefined} />{t("common.retry")}</Button></div> : null}
+      {query.isPending ? <GuardrailRegistrySkeleton /> : null}
+      {!query.isPending && !guardrails.length ? <div className="mt-5"><EmptyState title={t("guardrails.emptyTitle")} description={t("guardrails.emptyDescription")} action={auth.user?.role === "admin" ? <Button onClick={() => setCreateOpen(true)}><Plus />{t("guardrails.createFirst")}</Button> : undefined} /></div> : null}
+      {guardrails.length ? <GuardrailRegistry guardrails={guardrails} onOpen={(guardrailId) => navigate({ to: "/guardrails/$guardrailId", params: { guardrailId } })} /> : null}
       <CreateGuardrailWizard open={createOpen} onOpenChange={setCreateOpen} onCreated={async (id) => { setCreateOpen(false); await queryClient.invalidateQueries({ queryKey: queryKeys.guardrails }); navigate({ to: "/guardrails/$guardrailId", params: { guardrailId: id } }); }} />
+    </section>
+  );
+}
+
+function GuardrailRegistrySkeleton() {
+  return (
+    <section className="mt-5 overflow-hidden rounded-xl border bg-card shadow-xs" aria-hidden="true">
+      <header className="border-b bg-muted/25 px-5 py-3"><Skeleton className="h-4 w-36" /></header>
+      <div className="flex items-center gap-3 px-5 py-4">
+        <Skeleton className="size-9 shrink-0 rounded-lg" />
+        <div className="min-w-0 flex-1 space-y-2"><Skeleton className="h-4 w-40" /><Skeleton className="h-3 w-full max-w-xl" /></div>
+        <Skeleton className="h-5 w-20 shrink-0" />
+      </div>
     </section>
   );
 }

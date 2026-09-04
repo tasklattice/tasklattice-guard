@@ -724,8 +724,6 @@ const resources = {
         noDecisionReason: "No decision reason was returned.",
       },
       policyLibrary: {
-        catalogManagedTitle: "Business Policy catalog",
-        catalogManagedDescription: "Browse reviewed controls by business purpose and protection scope. Built-in and custom Policies use the same Rules and executable Test Cases.",
         catalogLabel: "Policy catalog",
         searchCatalog: "Search all Policies",
         catalogSearchPlaceholder: "Search Policies, Rules, tests, tags, or Guardrail categories…",
@@ -3352,8 +3350,6 @@ const resources = {
         noDecisionReason: "运行时未返回决策原因。",
       },
       policyLibrary: {
-        catalogManagedTitle: "业务 Policy 目录",
-        catalogManagedDescription: "按业务目的和保护范围浏览经过审查的控制能力；内建与自定义 Policy 使用相同的 Rules 和可执行 Test Case。",
         catalogLabel: "Policy 目录",
         searchCatalog: "搜索全部 Policies",
         catalogSearchPlaceholder: "搜索 Policy、Rule、测试、标签或能力…",

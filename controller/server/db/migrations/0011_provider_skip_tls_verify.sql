@@ -1,1 +1,0 @@
-ALTER TABLE "model_provider" ADD COLUMN "skip_tls_verify" boolean DEFAULT false NOT NULL;

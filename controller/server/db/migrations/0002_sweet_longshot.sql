@@ -1,1 +1,0 @@
-CREATE UNIQUE INDEX "deployment_integration_route_order_idx" ON "guardrail_deployment" USING btree ("integration_id","route_order");

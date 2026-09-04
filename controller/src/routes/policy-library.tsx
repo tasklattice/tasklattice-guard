@@ -24,7 +24,7 @@ import { toast } from "sonner";
 import { PolicyStudioSheet } from "@/components/policy-studio";
 import { ConfirmationSheet } from "@/components/confirmation-sheet";
 import { EntitySheet } from "@/components/entity-sheet";
-import { ErrorNotice, InfoNotice, PageHeader } from "@/components/product-shell";
+import { ErrorNotice, PageHeader } from "@/components/product-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -160,17 +160,14 @@ export function PolicyLibraryPage() {
       <PageHeader
         title={t("pages.policyLibrary.title")}
         description={t("pages.policyLibrary.description")}
-      />
-      <div className="mt-5 flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-        <div className="min-w-0 flex-1"><InfoNotice title={t("policyLibrary.catalogManagedTitle")}>{t("policyLibrary.catalogManagedDescription")}</InfoNotice></div>
-        {canManage ? (
+        action={canManage ? (
           <div className="flex shrink-0 flex-wrap gap-2">
             <Button variant="outline" onClick={() => importInputRef.current?.click()}><Upload />{t("policyStudio.importPolicy")}</Button>
             <Button onClick={() => { setPolicyImport(null); setStudioPolicy(null); }}><Plus />{t("policyLibrary.newPolicy")}</Button>
             <input ref={importInputRef} hidden type="file" accept="application/json,.json" onChange={(event) => { const file = event.target.files?.[0]; if (file) void importPolicy(file); event.target.value = ""; }} />
           </div>
-        ) : null}
-      </div>
+        ) : undefined}
+      />
 
       <div className="mt-6 flex flex-col gap-3 border-y py-4 sm:flex-row sm:items-center sm:justify-between">
         <label className="relative block w-full sm:max-w-xl">
@@ -306,17 +303,13 @@ export function TagFilters({ facets, selected, onChange }: { facets: Map<string,
 export function PolicyCard({ policy, onOpen, onExport, onDelete }: { policy: Policy; onOpen: () => void; onExport?: () => void; onDelete?: () => void }) {
   const { t } = useTranslation();
   const custom = policy.source === "custom";
-  const SourceIcon = custom ? FileCode2 : ShieldCheck;
   return (
     <article className={cn("group flex min-h-64 min-w-0 flex-col rounded-xl border bg-card p-4 shadow-xs transition-[border-color,box-shadow] hover:border-primary/30 hover:shadow-sm", custom && "border-primary/35 bg-primary/[0.025] ring-1 ring-primary/10")}>
-      <div className="flex items-start justify-between gap-3">
-        <span className={cn("grid size-10 shrink-0 place-items-center rounded-lg border text-primary", custom ? "border-primary/25 bg-primary/10" : "bg-muted/40")}><SourceIcon className="size-4" /></span>
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <h3 className="line-clamp-2 min-w-0 flex-1 text-sm leading-5 font-semibold">{policy.name}</h3>
         <PolicySourceBadge source={policy.source} />
       </div>
-      <div className="mt-4 min-w-0">
-        <h3 className="truncate text-sm font-semibold">{policy.name}</h3>
-        <p className="mt-1 line-clamp-2 min-h-10 text-xs leading-5 text-muted-foreground">{policy.description}</p>
-      </div>
+      <p className="mt-2 line-clamp-2 min-h-10 text-xs leading-5 text-muted-foreground">{policy.description}</p>
       <div className="mt-3 flex flex-wrap gap-1.5">
         {visiblePolicyTags(policy.tags).slice(0, 3).map((tag) => <Badge key={tag.id} variant="secondary" className="font-normal"><PolicyTagLabel tag={tag} /></Badge>)}
       </div>
