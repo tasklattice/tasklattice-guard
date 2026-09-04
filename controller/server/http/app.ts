@@ -21,7 +21,7 @@ import { actionCatalog } from "../action-catalog/catalog.js";
 import { createProgrammablePolicySchema, updateProgrammablePolicySchema } from "../policy-studio/model.js";
 import { extractDocuments } from "../control-plane-ai/document-ingestion.js";
 import type { ModelConfigurationService } from "../model-config/service.js";
-import { modelInputSchema, providerInputSchema, providerUpdateSchema } from "../model-config/domain.js";
+import { modelInputSchema, providerInputSchema, providerRegistrationSchema, providerUpdateSchema } from "../model-config/domain.js";
 import {
   OpenAICompatiblePlaygroundModel,
   PlaygroundDraftPreviewStore,
@@ -270,6 +270,14 @@ export function createHttpApp(input: {
     if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
     return context.json(await input.models.updateProvider(context.req.param("id"), providerUpdateSchema.parse(await context.req.json()), context.get("actor").id));
   });
+  app.post("/api/v1/model-providers/discover", authenticated, administrator, async (context) => {
+    if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
+    return context.json(await input.models.discoverProviderDraft(providerInputSchema.parse(await context.req.json())));
+  });
+  app.post("/api/v1/model-providers/register", authenticated, administrator, async (context) => {
+    if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
+    return context.json(await input.models.registerProviderModels(providerRegistrationSchema.parse(await context.req.json()), context.get("actor").id), 201);
+  });
   app.post("/api/v1/model-providers/:id/validate", authenticated, administrator, async (context) => {
     if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
     return context.json(await input.models.revalidateProvider(context.req.param("id"), context.get("actor").id));
@@ -290,6 +298,14 @@ export function createHttpApp(input: {
   app.post("/api/v1/models/:id/validate", authenticated, administrator, async (context) => {
     if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
     return context.json(await input.models.revalidateModel(context.req.param("id"), context.get("actor").id));
+  });
+  app.post("/api/v1/models/:id/test-connection", authenticated, administrator, async (context) => {
+    if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
+    return context.json(await input.models.testModelConnection(context.req.param("id"), context.get("actor").id));
+  });
+  app.put("/api/v1/models/:id/protocol", authenticated, administrator, async (context) => {
+    if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
+    return context.json(await input.models.configureModel(context.req.param("id"), await context.req.json(), context.get("actor").id));
   });
   app.delete("/api/v1/models/:id", authenticated, administrator, async (context) => {
     if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");

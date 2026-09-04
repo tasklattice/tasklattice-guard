@@ -113,7 +113,7 @@ describe("Controller/Runner control protocol", () => {
   it("round-trips the canonical signed Artifact body", () => {
     const content = {
       guardrailId: "guardrail-1", guardrailVersion: 3, generation: 11,
-      compilerVersion: "compiler-v2", nemoVersion: "0.20.0", runtimeProfile: "nemo-default",
+      compilerVersion: "compiler-v2", nemoVersion: "0.24.0", runtimeProfile: "nemo-default",
       plan, configYaml: "models: []", colangContent: "define flow passport",
       prompts: [{ task: "passport_check", content: "Check {{ user_input }}", output_parser: "json", max_tokens: 64 }],
       actionBindings: [{

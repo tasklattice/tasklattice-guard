@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import fnmatch
 import hashlib
 import hmac
+import importlib.metadata
 import json
-import fnmatch
-import threading
 import logging
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from runner.toolkit.nemo.registry import NeMoRuntimeRegistry
 from runner.toolkit.nemo.action_registry import ActionProviders
+from runner.toolkit.nemo.native_models import NativeRailModel
 from runner.toolkit.runtime.contracts import (
     GuardrailPlanSnapshot,
     NeMoConfigSnapshot,
@@ -24,12 +26,13 @@ from runner.toolkit.runtime.contracts import (
 )
 
 from . import generated as protocol
+from .artifact_config import config_snapshot_from_artifact
 from .protocol_codec import (
     artifact_content,
     integration_verification_from_proto,
     traffic_scope_from_proto,
 )
-from .serialization import config_from_dict, plan_from_dict
+from .serialization import plan_from_dict
 
 
 logger = logging.getLogger("tasklattice.guard.runner.artifact_store")
@@ -62,6 +65,7 @@ class ArtifactStore:
         if not isinstance(key, Ed25519PublicKey):
             raise ValueError("GUARD_ARTIFACT_PUBLIC_KEY_PATH must contain an Ed25519 public key.")
         self._public_key = key
+        self._nemo_version = importlib.metadata.version("nemoguardrails")
         self._state_path = state_path
         self._lock = threading.RLock()
         self._registry: NeMoRuntimeRegistry | None = None
@@ -78,11 +82,9 @@ class ArtifactStore:
             try:
                 self.apply(self._persisted_state, persist=False)
             except Exception:
-                # Dynamic Model credentials are intentionally not persisted on
-                # the Runner. A fresh Controller sync will lease them again.
                 logger.warning(
-                    "Last-known-good state needs a fresh Controller Model credential lease; "
-                    "Runner will stay unready until synchronization.",
+                    "Last-known-good state could not be restored; Runner will stay "
+                    "unready until the Controller synchronizes current desired state.",
                     exc_info=True,
                 )
             self._persisted_state = None
@@ -234,6 +236,7 @@ class ArtifactStore:
         *,
         persist: bool = True,
         providers: ActionProviders | None = None,
+        native_models: tuple[NativeRailModel, ...] | None = None,
     ) -> None:
         generation = int(desired_state.generation)
         with self._lock:
@@ -264,13 +267,18 @@ class ArtifactStore:
         registry = self._registry
         if registry is None:
             raise RuntimeError("NeMo Runtime Registry is not attached.")
-        if providers is None:
+        if providers is None and native_models is None:
             for artifact in staged.values():
                 registry.validate(artifact.plan, artifact.config)
         else:
+            if providers is None:
+                raise ValueError(
+                    "Native model configuration must be swapped with a complete Action provider registry."
+                )
             registry.replace_providers(
                 providers,
                 tuple((artifact.plan, artifact.config) for artifact in staged.values()),
+                native_models,
             )
         with self._lock:
             self._artifacts = staged
@@ -280,39 +288,34 @@ class ArtifactStore:
             self._generation = generation
             if persist:
                 self._persist_snapshot(desired_state)
-        if providers is None:
+        if providers is None and native_models is None:
             registry.reload()
         else:
             registry.readiness()
 
     def _artifact_from_message(self, message: Any) -> RuntimeArtifact:
         content = artifact_content(message)
-        plan_payload = content["plan"]
-        config_payload = {
-            "guardrail_id": message.guardrail_id,
-            "guardrail_version": message.guardrail_version,
-            "compiler_version": message.compiler_version,
-            "runtime_profile": message.runtime_profile,
-            "output_delivery": plan_payload.get("output_delivery", "full_buffered"),
-            "config_yaml": message.config_yaml,
-            "colang_content": message.colang_content,
-            "prompts_yaml": _prompts_yaml(content["prompts"]),
-            "action_bindings": content["actionBindings"],
-            "dependency_manifest": content["dependencyManifest"],
-            "runtime_engine": "iorails" if message.runtime_profile == "iorails_native" else "llmrails",
-            "colang_version": "2.x" if message.runtime_profile == "llmrails_colang2_programmable" else "1.0",
-        }
         canonical = _stable_json(content)
         checksum = hashlib.sha256(canonical.encode()).hexdigest()
         if not hmac.compare_digest(checksum, message.checksum):
             raise ValueError(f"Artifact {message.artifact_id} checksum does not match its content.")
         self._public_key.verify(_base64(message.signature), checksum.encode())
+        if message.nemo_version != self._nemo_version:
+            raise ValueError(
+                f"Artifact {message.artifact_id} targets NeMo Guardrails "
+                f"{message.nemo_version!r}; this Runner requires "
+                f"{self._nemo_version!r}. Recompile the Guardrail before deployment."
+            )
+        plan_payload = content["plan"]
         return RuntimeArtifact(
             artifact_id=message.artifact_id,
             generation=int(message.generation),
             checksum=checksum,
             plan=plan_from_dict(plan_payload),
-            config=config_from_dict(config_payload),
+            config=config_snapshot_from_artifact(
+                message,
+                verified_content=content,
+            ),
         )
 
     def _persist_snapshot(self, desired_state: Any) -> None:
@@ -341,13 +344,6 @@ class ArtifactStore:
         if int(desired_state.generation) != int(payload.get("generation", -1)):
             raise ValueError("Runner last-known-good generation does not match its payload.")
         return desired_state
-
-
-def _prompts_yaml(prompts: list[dict[str, Any]]) -> str:
-    if not prompts:
-        return ""
-    import yaml
-    return yaml.safe_dump({"prompts": prompts}, allow_unicode=True, sort_keys=False)
 
 
 def _stable_json(value: Any) -> str:

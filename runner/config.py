@@ -222,6 +222,7 @@ def _model_runtimes(value: str) -> tuple[ModelRuntimeConfig, ...]:
                 ),
                 timeout_seconds=float(item.get("timeout_seconds", 20.0)),
                 max_tokens=int(item.get("max_tokens", 128)),
+                skip_tls_verify=item.get("skip_tls_verify") is True,
             ))
         except (KeyError, TypeError, ValueError) as error:
             raise ValueError(f"Model Runtime at index {index} is invalid: {error}") from error

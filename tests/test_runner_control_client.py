@@ -14,10 +14,11 @@ class Store:
     providers = None
     fail = False
 
-    def apply(self, desired_state, *, providers=None):
+    def apply(self, desired_state, *, providers=None, native_models=None):
         if self.fail:
             raise RuntimeError("provider prewarm failed")
         self.providers = providers
+        self.native_models = native_models
         self.generation = desired_state.generation
 
     def observability_counts(self):

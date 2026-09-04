@@ -39,6 +39,7 @@ class GroundingActionProvider:
         api_key: str | None = None,
         timeout_seconds: float = 20.0,
         transport: httpx.AsyncBaseTransport | None = None,
+        skip_tls_verify: bool = False,
         request_options: dict[str, object] | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
@@ -47,6 +48,7 @@ class GroundingActionProvider:
         self._api_key = api_key
         self._timeout_seconds = timeout_seconds
         self._transport = transport
+        self._skip_tls_verify = skip_tls_verify
         self._request_options = dict(request_options or {})
 
     async def execute(self, request: ActionRequest) -> ActionResult:
@@ -127,6 +129,7 @@ class GroundingActionProvider:
                 async with httpx.AsyncClient(
                     timeout=self._timeout_seconds,
                     transport=self._transport,
+                    verify=not self._skip_tls_verify,
                 ) as client:
                     response = await client.post(
                         f"{self._base_url}/chat/completions",

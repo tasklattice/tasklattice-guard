@@ -2,8 +2,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Bot,
   BrainCircuit,
-  Check,
-  ChevronsUpDown,
   CircleAlert,
   CloudCog,
   Database,
@@ -15,7 +13,6 @@ import {
   RefreshCw,
   RotateCcw,
   Save,
-  Search,
   Server,
   ShieldAlert,
   ShieldCheck,
@@ -23,34 +20,34 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
+import { ConfirmationSheet } from "@/components/confirmation-sheet";
 import { ErrorNotice, PageHeader, StateBadge } from "@/components/product-shell";
 import { SettingsNavigation } from "@/components/settings-navigation";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MultiSelectCombobox, type MultiSelectOption } from "@/components/ui/multi-select-combobox";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { RegisterModelsDrawer } from "@/components/providers/register-models-drawer";
+import { ProviderMark } from "@/components/providers/provider-mark";
+import { ModelProtocolSettings } from "@/components/providers/model-protocol-settings";
+import { ProviderTlsSettings } from "@/components/providers/provider-tls-settings";
+import { ModelCallEvidence } from "@/components/providers/model-call-evidence";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAuth } from "@/lib/auth";
 import {
   activateModelConfiguration,
-  createModelDefinition,
-  createModelProvider,
   deleteModelDefinition,
   deleteModelProvider,
-  discoverModelProvider,
   getModelConfiguration,
   revalidateModelDefinition,
+  testModelConnection,
   revalidateModelProvider,
   rollbackModelConfiguration,
   saveModelAssignments,
@@ -59,8 +56,6 @@ import {
   type ModelConfigurationView,
   type ModelDefinition,
   type ModelProfile,
-  type ModelProvider,
-  type ModelProviderKind,
   type ModelRole,
 } from "@/lib/controller-api";
 import { cn } from "@/lib/utils";
@@ -76,7 +71,7 @@ const roles: Array<{
 }> = [
   { role: "control_plane", plane: "control", icon: Bot, profiles: ["generic-chat"] },
   { role: "safety_evaluator", plane: "data", icon: ShieldCheck, profiles: ["tali.qwen3guard.v1", "tali.llama-guard-3.v1", "tali.nemotron-content-safety.v1", "tali.nemotron-safety-guard-v3.v1"] },
-  { role: "jailbreak_evaluator", plane: "data", icon: ShieldAlert, profiles: ["tali.qwen3guard.v1", "tali.nemotron-nano-jailbreak.v1"] },
+  { role: "jailbreak_evaluator", plane: "data", icon: ShieldAlert, profiles: ["tali.qwen3guard.v1", "tali.openai-compatible-jailbreak.v1", "tali.nemoguard-jailbreak-detect.v1"] },
   { role: "topic_policy_judge", plane: "data", icon: BrainCircuit, profiles: ["tali.taxonomy-judge.v1", "tali.nemoguard-topic-control.v1"] },
   { role: "grounding_judge", plane: "data", icon: Database, profiles: ["tali.grounding-judge.v1"] },
   { role: "automated_reasoning", plane: "data", icon: Gauge, profiles: ["tali.automated-reasoning.v1"] },
@@ -116,26 +111,6 @@ function assignmentsFrom(controlPlaneModelId: string | null, groups: CapabilityA
   return next;
 }
 
-function profileCapabilityKeys(profile: ModelProfile): string[] {
-  const keys: Record<ModelProfile, string[]> = {
-    "generic-chat": ["modelSettings.roles.control_plane.title"],
-    "tali.qwen3guard.v1": [
-      "modelSettings.roles.safety_evaluator.title",
-      "modelSettings.roles.jailbreak_evaluator.title",
-      "modelSettings.semanticPii",
-    ],
-    "tali.llama-guard-3.v1": ["modelSettings.roles.safety_evaluator.title"],
-    "tali.nemotron-content-safety.v1": ["modelSettings.roles.safety_evaluator.title"],
-    "tali.nemotron-safety-guard-v3.v1": ["modelSettings.roles.safety_evaluator.title"],
-    "tali.nemoguard-topic-control.v1": ["modelSettings.roles.topic_policy_judge.title", "modelSettings.companyPolicy"],
-    "tali.nemotron-nano-jailbreak.v1": ["modelSettings.roles.jailbreak_evaluator.title"],
-    "tali.taxonomy-judge.v1": ["modelSettings.roles.topic_policy_judge.title", "modelSettings.taxonomyNormalization", "modelSettings.companyPolicy"],
-    "tali.grounding-judge.v1": ["modelSettings.roles.grounding_judge.title"],
-    "tali.automated-reasoning.v1": ["modelSettings.roles.automated_reasoning.title"],
-  };
-  return keys[profile];
-}
-
 const localCapabilities = [
   "secretsExact",
   "piiExact",
@@ -145,35 +120,6 @@ const localCapabilities = [
   "systemPromptLeakage",
   "topicControlRules",
 ] as const;
-
-const providerKinds: ModelProviderKind[] = ["openai", "qwen", "deepseek", "vllm", "ollama", "custom-openai-compatible"];
-const profiles: ModelProfile[] = [
-  "generic-chat",
-  "tali.qwen3guard.v1",
-  "tali.llama-guard-3.v1",
-  "tali.nemotron-content-safety.v1",
-  "tali.nemotron-safety-guard-v3.v1",
-  "tali.nemoguard-topic-control.v1",
-  "tali.nemotron-nano-jailbreak.v1",
-  "tali.taxonomy-judge.v1",
-  "tali.grounding-judge.v1",
-  "tali.automated-reasoning.v1",
-];
-
-function suggestedProfile(modelId: string): ModelProfile {
-  const value = modelId.toLowerCase();
-  if (value.includes("qwen3guard") || value.includes("qwen-guard")) return "tali.qwen3guard.v1";
-  if (value.includes("nemotron-safety-guard-8b-v3")) return "tali.nemotron-safety-guard-v3.v1";
-  if (value.includes("nemoguard") && value.includes("topic")) return "tali.nemoguard-topic-control.v1";
-  if (value.includes("nemotron-nano-9b-v2")) return "tali.nemotron-nano-jailbreak.v1";
-  if (value.includes("nemotron") && value.includes("content-safety")) return "tali.nemotron-content-safety.v1";
-  if (value.includes("llama-guard")) return "tali.llama-guard-3.v1";
-  return "generic-chat";
-}
-
-function displayNameForModel(modelId: string) {
-  return modelId.split("/").at(-1)?.replaceAll("-", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()) ?? modelId;
-}
 
 export function ProvidersPage() {
   const { t } = useTranslation();
@@ -236,6 +182,7 @@ export function CapabilitiesPage() {
   const query = useQuery({ queryKey: configurationKey, queryFn: getModelConfiguration, refetchInterval: 10_000, retry: false });
   const [controlPlaneModelId, setControlPlaneModelId] = useState<string | null>(null);
   const [capabilityAssignments, setCapabilityAssignments] = useState<CapabilityAssignment[] | null>(null);
+  const [pendingAction, setPendingAction] = useState<"save" | "activate" | "rollback" | null>(null);
   useEffect(() => {
     if (!query.data?.draft.assignments) return;
     setControlPlaneModelId(query.data.draft.assignments.control_plane);
@@ -251,14 +198,11 @@ export function CapabilitiesPage() {
   const refresh = async () => { await queryClient.invalidateQueries({ queryKey: configurationKey }); };
   const saveMutation = useMutation({
     mutationFn: async () => saveModelAssignments(assignments!),
-    onSuccess: async () => { toast.success(t("modelSettings.saved")); await refresh(); },
+    onSuccess: async () => { setPendingAction(null); toast.success(t("modelSettings.saved")); await refresh(); },
     onError: (error) => toast.error(errorMessage(error)),
   });
   const validateMutation = useMutation({
-    mutationFn: async () => {
-      if (dirty && assignments) await saveModelAssignments(assignments);
-      return validateModelConfiguration();
-    },
+    mutationFn: validateModelConfiguration,
     onSuccess: async (revision) => {
       toast[revision.validationReport?.valid ? "success" : "error"](
         t(revision.validationReport?.valid ? "modelSettings.validationPassed" : "modelSettings.validationFailed"),
@@ -270,6 +214,7 @@ export function CapabilitiesPage() {
   const activateMutation = useMutation({
     mutationFn: async (revisionId: string) => activateModelConfiguration(revisionId),
     onSuccess: async (result) => {
+      setPendingAction(null);
       toast[result.distribution.distributionStatus === "ready" ? "success" : "info"](
         t(result.distribution.distributionStatus === "ready" ? "modelSettings.activated" : "modelSettings.syncing"),
       );
@@ -279,7 +224,7 @@ export function CapabilitiesPage() {
   });
   const rollbackMutation = useMutation({
     mutationFn: rollbackModelConfiguration,
-    onSuccess: async () => { toast.success(t("modelSettings.rollbackStarted")); await refresh(); },
+    onSuccess: async () => { setPendingAction(null); toast.success(t("modelSettings.rollbackStarted")); await refresh(); },
     onError: (error) => toast.error(errorMessage(error)),
   });
   const probeModelMutation = useMutation({
@@ -301,6 +246,20 @@ export function CapabilitiesPage() {
     return <section className="py-8"><PageHeader title={t("modelSettings.capabilitiesTitle")} description={t("modelSettings.capabilitiesPageDescription")} /><div className="mt-6"><ErrorNotice error={query.error} /></div></section>;
   }
   const report = query.data.draft.validationReport;
+  const confirmationPending = saveMutation.isPending || activateMutation.isPending || rollbackMutation.isPending;
+  const confirmationError = pendingAction === "save" ? saveMutation.error : pendingAction === "activate" ? activateMutation.error : rollbackMutation.error;
+  const closeConfirmation = () => {
+    if (confirmationPending) return;
+    saveMutation.reset();
+    activateMutation.reset();
+    rollbackMutation.reset();
+    setPendingAction(null);
+  };
+  const confirmPendingAction = () => {
+    if (pendingAction === "save") saveMutation.mutate();
+    if (pendingAction === "activate") activateMutation.mutate(query.data.draft.id);
+    if (pendingAction === "rollback") rollbackMutation.mutate();
+  };
 
   return (
     <section className="py-6 sm:py-8">
@@ -310,14 +269,15 @@ export function CapabilitiesPage() {
         description={t("modelSettings.capabilitiesPageDescription")}
         action={(
           <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" className="h-11" disabled={!administrator || operationPending} onClick={() => validateMutation.mutate()}>
+            <ModelProtocolSettings models={query.data.models} disabled={!administrator || operationPending || dirty} onChanged={refresh} />
+            <Button type="button" variant="outline" className="h-11" title={dirty ? t("modelSettings.saveBeforeValidation") : undefined} disabled={!administrator || operationPending || dirty} onClick={() => validateMutation.mutate()}>
               {validateMutation.isPending ? <LoaderCircle className="animate-spin" /> : <TestTube2 />}{t("modelSettings.validateSetup")}
             </Button>
             <Button
               type="button"
               className="h-11"
               disabled={!administrator || operationPending || dirty || query.data.draft.state !== "validated" || !report?.valid}
-              onClick={() => activateMutation.mutate(query.data.draft.id)}
+              onClick={() => setPendingAction("activate")}
             >
               {activateMutation.isPending ? <LoaderCircle className="animate-spin" /> : <Play />}{t("modelSettings.activate")}
             </Button>
@@ -344,8 +304,8 @@ export function CapabilitiesPage() {
           {dirty ? <Badge variant="secondary">{t("modelSettings.unsaved")}</Badge> : null}
         </div>
         <div className="flex gap-2">
-          {query.data.active ? <Button type="button" variant="ghost" className="h-11" disabled={!administrator || operationPending} onClick={() => rollbackMutation.mutate()}><RotateCcw />{t("modelSettings.rollback")}</Button> : null}
-          <Button type="button" variant="outline" className="h-11" disabled={!administrator || !dirty || operationPending} onClick={() => saveMutation.mutate()}>
+          {query.data.active ? <Button type="button" variant="ghost" className="h-11" disabled={!administrator || operationPending} onClick={() => setPendingAction("rollback")}><RotateCcw />{t("modelSettings.rollback")}</Button> : null}
+          <Button type="button" variant="outline" className="h-11" disabled={!administrator || !dirty || operationPending} onClick={() => setPendingAction("save")}>
             {saveMutation.isPending ? <LoaderCircle className="animate-spin" /> : <Save />}{t("modelSettings.saveDraft")}
           </Button>
         </div>
@@ -368,6 +328,26 @@ export function CapabilitiesPage() {
         onValidate={(modelId) => probeModelMutation.mutate(modelId)}
       />
       <CapabilityCatalogSection assignments={assignments} models={query.data.models} />
+      <ConfirmationSheet
+        open={Boolean(pendingAction)}
+        onOpenChange={(open) => { if (!open) closeConfirmation(); }}
+        eyebrow={t("modelSettings.confirmChangeEyebrow")}
+        title={t(`modelSettings.${pendingAction ?? "save"}ConfirmationTitle`)}
+        description={t(`modelSettings.${pendingAction ?? "save"}ConfirmationDescription`)}
+        cancelLabel={t("common.cancel")}
+        confirmLabel={t(`modelSettings.${pendingAction ?? "save"}ConfirmationAction`)}
+        pendingLabel={t("modelSettings.actionPending")}
+        pending={confirmationPending}
+        variant={pendingAction === "rollback" ? "warning" : "default"}
+        onConfirm={confirmPendingAction}
+      >
+        <Alert variant={pendingAction === "rollback" ? "default" : "info"} className={pendingAction === "rollback" ? "border-amber-300 bg-amber-50 text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100" : undefined}>
+          {pendingAction === "rollback" ? <CircleAlert /> : <ShieldCheck />}
+          <AlertTitle>{t(`modelSettings.${pendingAction ?? "save"}ConfirmationSummary`)}</AlertTitle>
+          <AlertDescription>{t(`modelSettings.${pendingAction ?? "save"}ConfirmationImpact`)}</AlertDescription>
+        </Alert>
+        {confirmationError ? <p role="alert" className="rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">{errorMessage(confirmationError)}</p> : null}
+      </ConfirmationSheet>
     </section>
   );
 }
@@ -579,15 +559,21 @@ function ModelOption({ model }: { model: ModelDefinition }) {
 function ResourceManagement({ resource, view, administrator, onChanged }: { resource: "provider" | "model"; view: ModelConfigurationView; administrator: boolean; onChanged: () => Promise<void> }) {
   const { t } = useTranslation();
   const [createMode, setCreateMode] = useState<"provider" | "model" | null>(null);
+  const [initialProviderId, setInitialProviderId] = useState<string>();
   const [removeTarget, setRemoveTarget] = useState<{ kind: "provider" | "model"; id: string; name: string } | null>(null);
   const probeMutation = useMutation({
-    mutationFn: async ({ kind, id }: { kind: "provider" | "model"; id: string }) => kind === "provider" ? revalidateModelProvider(id) : revalidateModelDefinition(id),
-    onSuccess: async (resource, variables) => {
-      toast[resource.status === "validated" ? "success" : "error"](
-        resource.status === "validated"
-          ? t("modelSettings.connectionRetested")
-          : resource.validationMessage ?? t(variables.kind === "provider" ? "modelSettings.providerValidationFailed" : "modelSettings.modelValidationFailed"),
-      );
+    mutationFn: async ({ kind, id }: { kind: "provider" | "model"; id: string }) => {
+      if (kind === "provider") {
+        const result = await revalidateModelProvider(id);
+        return { passed: result.status === "validated", message: result.validationMessage };
+      }
+      const result = await testModelConnection(id);
+      return { passed: result.connectionStatus === "validated", message: result.connectionMessage };
+    },
+    onSuccess: async (result, variables) => {
+      toast[result.passed ? "success" : "error"](result.passed
+        ? t(variables.kind === "provider" ? "modelSettings.connectionRetested" : "modelSettings.callPassed")
+        : result.message ?? t("modelSettings.callFailed"));
       await onChanged();
     },
     onError: (error) => toast.error(errorMessage(error)),
@@ -598,12 +584,26 @@ function ResourceManagement({ resource, view, administrator, onChanged }: { reso
     onError: (error) => toast.error(errorMessage(error)),
   });
   const pending = probeMutation.isPending || deleteMutation.isPending;
+  const removalModelIds = new Set(removeTarget
+    ? removeTarget.kind === "model"
+      ? [removeTarget.id]
+      : view.models.filter((model) => model.providerId === removeTarget.id).map((model) => model.id)
+    : []);
+  const topicControlDraftUse = Boolean(view.draft.assignments.topic_policy_judge && removalModelIds.has(view.draft.assignments.topic_policy_judge));
+  const topicControlActiveUse = Boolean(view.active?.assignments.topic_policy_judge && removalModelIds.has(view.active.assignments.topic_policy_judge));
+  const topicControlUse = topicControlDraftUse || topicControlActiveUse;
+  const assignedRoles = roles.filter(({ role }) => {
+    const draftModelId = view.draft.assignments[role];
+    const activeModelId = view.active?.assignments[role];
+    return Boolean((draftModelId && removalModelIds.has(draftModelId)) || (activeModelId && removalModelIds.has(activeModelId)));
+  });
+  const removalBlocked = assignedRoles.length > 0 || Boolean(removeTarget?.kind === "provider" && removalModelIds.size > 0);
   return (
     <>
       {resource === "provider" ? <ResourceSection
         title={t("modelSettings.providers")}
         description={t("modelSettings.providersDescription")}
-        action={<Button type="button" variant="outline" className="h-10" disabled={!administrator} onClick={() => setCreateMode("provider")}><Plus />{t("modelSettings.addProvider")}</Button>}
+        action={<Button type="button" variant="outline" className="h-11" disabled={!administrator} onClick={() => { setInitialProviderId(undefined); setCreateMode("provider"); }}><Plus />{t("modelSettings.addProvider")}</Button>}
       >
         {view.providers.length ? (
           <Table>
@@ -611,10 +611,10 @@ function ResourceManagement({ resource, view, administrator, onChanged }: { reso
             <TableBody>{view.providers.map((provider) => (
               <TableRow key={provider.id}>
                 <TableCell className="pl-5"><div className="flex items-center gap-3"><ProviderMark provider={provider.name} kind={provider.kind} /><div><p className="font-medium">{provider.name}</p><p className="mt-0.5 text-xs text-muted-foreground">{provider.kind}</p></div></div></TableCell>
-                <TableCell><code className="block max-w-80 truncate text-xs text-muted-foreground" title={provider.baseUrl}>{provider.baseUrl}</code></TableCell>
+                <TableCell><code className="block max-w-80 truncate text-xs text-muted-foreground" title={provider.baseUrl}>{provider.baseUrl}</code>{provider.skipTlsVerify ? <p className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-400">{t("providerRegistration.tlsSkipped")}</p> : null}</TableCell>
                 <TableCell>{view.models.filter((model) => model.providerId === provider.id).length}</TableCell>
                 <TableCell><ValidationEvidence kind="provider" status={provider.status} checkedAt={provider.validatedAt} latencyMs={provider.validationLatencyMs} message={provider.validationMessage} /></TableCell>
-                <TableCell className="pr-5"><ResourceActions kind="provider" name={provider.name} pending={pending || !administrator} onRetest={() => probeMutation.mutate({ kind: "provider", id: provider.id })} onRemove={() => setRemoveTarget({ kind: "provider", id: provider.id, name: provider.name })} /></TableCell>
+                <TableCell className="pr-5"><div className="flex justify-end gap-1"><ProviderTlsSettings provider={provider} disabled={!administrator || pending} onChanged={onChanged} /><Button type="button" variant="outline" className="h-11" disabled={!administrator || pending} onClick={() => { setInitialProviderId(provider.id); setCreateMode("model"); }}><Plus />{t("providerRegistration.registerModels")}</Button><ResourceActions kind="provider" name={provider.name} pending={pending || !administrator} onRetest={() => probeMutation.mutate({ kind: "provider", id: provider.id })} onRemove={() => setRemoveTarget({ kind: "provider", id: provider.id, name: provider.name })} /></div></TableCell>
               </TableRow>
             ))}</TableBody>
           </Table>
@@ -624,20 +624,20 @@ function ResourceManagement({ resource, view, administrator, onChanged }: { reso
       {resource === "model" ? <ResourceSection
         title={t("modelSettings.models")}
         description={t("modelSettings.modelsDescription")}
-        action={<Button type="button" variant="outline" className="h-10" disabled={!administrator || !view.providers.length} onClick={() => setCreateMode("model")}><Plus />{t("modelSettings.addModel")}</Button>}
+        action={<Button type="button" variant="outline" className="h-11" disabled={!administrator} onClick={() => { setInitialProviderId(undefined); setCreateMode("model"); }}><Plus />{t("modelSettings.addModel")}</Button>}
       >
         {view.models.length ? (
-          <Table className="min-w-[60rem]">
-            <TableHeader><TableRow><TableHead className="pl-5">{t("modelSettings.model")}</TableHead><TableHead>{t("modelSettings.providerConnection")}</TableHead><TableHead>{t("modelSettings.compatibleCapabilities")}</TableHead><TableHead>{t("modelSettings.capabilityProbe")}</TableHead><TableHead className="pr-5 text-right">{t("modelSettings.actions")}</TableHead></TableRow></TableHeader>
+          <Table className="min-w-[56rem] table-fixed">
+            <colgroup><col className="w-[32%]" /><col className="w-[24%]" /><col /><col className="w-48" /></colgroup>
+            <TableHeader><TableRow><TableHead className="pl-5">{t("modelSettings.model")}</TableHead><TableHead>{t("modelSettings.providerConnection")}</TableHead><TableHead>{t("modelSettings.modelCall")}</TableHead><TableHead className="pr-5 text-right">{t("modelSettings.actions")}</TableHead></TableRow></TableHeader>
             <TableBody>{view.models.map((model) => {
               const provider = view.providers.find((item) => item.id === model.providerId);
               return (
                 <TableRow key={model.id}>
                   <TableCell className="pl-5"><div><p className="font-medium">{model.name}</p><code className="mt-1 block max-w-80 truncate text-xs text-muted-foreground" title={model.model}>{model.model}</code></div></TableCell>
                   <TableCell><div className="flex items-start gap-3"><ProviderMark provider={model.providerName} kind={model.providerKind} model={model.model} /><div><p className="mb-1.5 font-medium">{model.providerName}</p>{provider ? <ValidationEvidence kind="provider" status={provider.status} checkedAt={provider.validatedAt} latencyMs={provider.validationLatencyMs} message={provider.validationMessage} /> : <StateBadge state="unavailable" label={t("modelSettings.providerUnavailable")} />}</div></div></TableCell>
-                  <TableCell><div className="flex max-w-md flex-wrap gap-1.5">{profileCapabilityKeys(model.profile).map((key) => <Badge key={key} variant="secondary">{t(key)}</Badge>)}</div></TableCell>
-                  <TableCell><ValidationEvidence kind="model" status={model.status} checkedAt={model.validatedAt} latencyMs={model.validationLatencyMs} message={model.validationMessage} /></TableCell>
-                  <TableCell className="pr-5"><ResourceActions kind="model" name={model.name} pending={pending || !administrator} onRetest={() => probeMutation.mutate({ kind: "model", id: model.id })} onRemove={() => setRemoveTarget({ kind: "model", id: model.id, name: model.name })} /></TableCell>
+                  <TableCell><ModelCallEvidence model={model} checking={probeMutation.isPending && probeMutation.variables?.id === model.id} /></TableCell>
+                  <TableCell className="pr-5"><ResourceActions kind="model" name={model.name} checking={probeMutation.isPending && probeMutation.variables?.id === model.id} pending={pending || !administrator} onRetest={() => probeMutation.mutate({ kind: "model", id: model.id })} onRemove={() => setRemoveTarget({ kind: "model", id: model.id, name: model.name })} /></TableCell>
                 </TableRow>
               );
             })}</TableBody>
@@ -645,13 +645,43 @@ function ResourceManagement({ resource, view, administrator, onChanged }: { reso
         ) : <EmptyResource>{t("modelSettings.noModels")}</EmptyResource>}
       </ResourceSection> : null}
 
-      <CreateResourceSheet mode={createMode} onOpenChange={(open) => { if (!open) setCreateMode(null); }} view={view} administrator={administrator} onChanged={onChanged} />
-      <AlertDialog open={Boolean(removeTarget)} onOpenChange={(next) => { if (!next) setRemoveTarget(null); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader><AlertDialogTitle>{t("modelSettings.removeResourceTitle", { name: removeTarget?.name })}</AlertDialogTitle><AlertDialogDescription>{t("modelSettings.removeResourceDescription")}</AlertDialogDescription></AlertDialogHeader>
-          <AlertDialogFooter><AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel><AlertDialogAction disabled={deleteMutation.isPending} onClick={() => { if (removeTarget) deleteMutation.mutate(removeTarget); }}>{deleteMutation.isPending ? <LoaderCircle className="animate-spin" /> : <Trash2 />}{t("common.remove")}</AlertDialogAction></AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {createMode ? <RegisterModelsDrawer intent={createMode === "provider" ? "add-provider" : "register-models"} initialProviderId={initialProviderId} open onOpenChange={(open) => { if (!open) setCreateMode(null); }} providers={view.providers} registeredModels={view.models} onChanged={onChanged} /> : null}
+      <ConfirmationSheet
+        open={Boolean(removeTarget)}
+        onOpenChange={(next) => { if (!next && !deleteMutation.isPending) { setRemoveTarget(null); deleteMutation.reset(); } }}
+        eyebrow={t("modelSettings.removeResourceEyebrow")}
+        title={t("modelSettings.removeResourceTitle", { name: removeTarget?.name })}
+        description={t("modelSettings.removeResourceDescription")}
+        cancelLabel={t("common.cancel")}
+        confirmLabel={t("common.remove")}
+        pendingLabel={t("modelSettings.removingResource")}
+        pending={deleteMutation.isPending}
+        confirmDisabled={removalBlocked}
+        variant="destructive"
+        onConfirm={() => { if (removeTarget) deleteMutation.mutate(removeTarget); }}
+      >
+        {topicControlUse ? <Alert variant="destructive">
+          <CircleAlert />
+          <AlertTitle>{t("modelSettings.topicControlRemovalTitle")}</AlertTitle>
+          <AlertDescription>{t("modelSettings.topicControlRemovalWarning", {
+            scope: t(topicControlDraftUse && topicControlActiveUse
+              ? "modelSettings.draftAndActiveConfiguration"
+              : topicControlActiveUse
+                ? "modelSettings.activeConfiguration"
+                : "modelSettings.draftConfiguration"),
+          })}</AlertDescription>
+        </Alert> : <Alert variant="info">
+          <ShieldCheck />
+          <AlertTitle>{t("modelSettings.removalProtectionTitle")}</AlertTitle>
+          <AlertDescription>{t("modelSettings.removalProtectionDescription")}</AlertDescription>
+        </Alert>}
+        {assignedRoles.length ? <section aria-labelledby="model-removal-assignments" className="rounded-lg border bg-card px-4 py-3">
+          <h3 id="model-removal-assignments" className="text-sm font-semibold">{t("modelSettings.currentAssignments")}</h3>
+          <div className="mt-2 flex flex-wrap gap-2">{assignedRoles.map(({ role }) => <Badge key={role} variant={role === "topic_policy_judge" ? "destructive" : "secondary"}>{t(`modelSettings.roles.${role}.title`)}</Badge>)}</div>
+        </section> : null}
+        {removeTarget?.kind === "provider" ? <p className="rounded-lg border bg-muted/35 px-4 py-3 text-sm leading-6 text-muted-foreground">{t("modelSettings.providerRemovalModelCount", { count: removalModelIds.size })}</p> : null}
+        {deleteMutation.error ? <p role="alert" className="rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">{errorMessage(deleteMutation.error)}</p> : null}
+      </ConfirmationSheet>
     </>
   );
 }
@@ -695,167 +725,16 @@ function ValidationEvidence({ kind, status, checkedAt, latencyMs, message }: {
   );
 }
 
-function ResourceActions({ kind, name, pending, onRetest, onRemove }: { kind: "provider" | "model"; name: string; pending: boolean; onRetest: () => void; onRemove: () => void }) {
+function ResourceActions({ kind, name, pending, checking = false, onRetest, onRemove }: { kind: "provider" | "model"; name: string; pending: boolean; checking?: boolean; onRetest: () => void; onRemove: () => void }) {
   const { t } = useTranslation();
   return (
     <div className="flex justify-end gap-1">
-      {kind === "provider" ? (
-        <Button type="button" size="icon-sm" variant="ghost" aria-label={`${t("modelSettings.retest")} ${name}`} disabled={pending} onClick={onRetest}><RefreshCw /></Button>
-      ) : null}
-      <Button type="button" size="icon-sm" variant="ghost" aria-label={`${t("common.remove")} ${name}`} disabled={pending} onClick={onRemove}><Trash2 /></Button>
+      <Button type="button" variant={kind === "model" ? "outline" : "ghost"} className="h-11 min-w-11" aria-label={`${t(kind === "model" ? "modelSettings.testCall" : "modelSettings.retest")} ${name}`} disabled={pending} onClick={onRetest}>{checking ? <LoaderCircle className="animate-spin" /> : <RefreshCw />}{kind === "model" ? t("modelSettings.testCall") : null}</Button>
+      <Button type="button" size="icon-sm" className="size-11" variant="ghost" aria-label={`${t("common.remove")} ${name}`} disabled={pending} onClick={onRemove}><Trash2 /></Button>
     </div>
   );
 }
 
-function CreateResourceSheet({ mode, onOpenChange, view, administrator, onChanged }: { mode: "provider" | "model" | null; onOpenChange: (open: boolean) => void; view: ModelConfigurationView; administrator: boolean; onChanged: () => Promise<void> }) {
-  const { t } = useTranslation();
-  const [provider, setProvider] = useState({ name: "", kind: "custom-openai-compatible" as ModelProviderKind, baseUrl: "", apiKey: "" });
-  const [model, setModel] = useState({ providerId: "", name: "", model: "", profile: "generic-chat" as ModelProfile, timeoutSeconds: 20, maxTokens: 512 });
-  const [manualModel, setManualModel] = useState(false);
-  const discoveryQuery = useQuery({
-    queryKey: ["resources", "model-provider-discovery", model.providerId],
-    queryFn: () => discoverModelProvider(model.providerId),
-    enabled: mode === "model" && Boolean(model.providerId) && !manualModel,
-    retry: false,
-  });
-  const createProviderMutation = useMutation({
-    mutationFn: createModelProvider,
-    onSuccess: async (created) => {
-      setProvider({ name: "", kind: "custom-openai-compatible", baseUrl: "", apiKey: "" });
-      setModel((current) => ({ ...current, providerId: created.id }));
-      toast[created.status === "validated" ? "success" : "error"](
-        created.status === "validated"
-          ? t("modelSettings.providerCreated")
-          : created.validationMessage ?? t("modelSettings.providerValidationFailed"),
-      );
-      onOpenChange(false);
-      await onChanged();
-    },
-    onError: (error) => toast.error(errorMessage(error)),
-  });
-  const createModelMutation = useMutation({
-    mutationFn: createModelDefinition,
-    onSuccess: async (created) => {
-      setModel((current) => ({ ...current, name: "", model: "" }));
-      toast[created.status === "validated" ? "success" : "error"](
-        created.status === "validated"
-          ? t("modelSettings.modelCreated")
-          : created.validationMessage ?? t("modelSettings.modelValidationFailed"),
-      );
-      onOpenChange(false);
-      await onChanged();
-    },
-    onError: (error) => toast.error(errorMessage(error)),
-  });
-  const submitProvider = (event: FormEvent) => { event.preventDefault(); createProviderMutation.mutate(provider); };
-  const submitModel = (event: FormEvent) => { event.preventDefault(); createModelMutation.mutate(model); };
-  return (
-    <Sheet open={Boolean(mode)} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="gap-0 p-0 sm:!w-[32rem] sm:!max-w-[32rem]">
-        <SheetHeader className="border-b px-5 py-5 pr-14">
-          <SheetTitle className="font-display text-xl font-semibold">{t(mode === "model" ? "modelSettings.addModel" : "modelSettings.addProvider")}</SheetTitle>
-          <SheetDescription>{t(mode === "model" ? "modelSettings.addModelDescription" : "modelSettings.addProviderDescription")}</SheetDescription>
-        </SheetHeader>
-        {mode === "provider" ? (
-          <form className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5" onSubmit={submitProvider}>
-            <Field id="provider-name" label={t("modelSettings.providerName")}><Input id="provider-name" className="h-11" required minLength={3} value={provider.name} onChange={(event) => setProvider({ ...provider, name: event.target.value })} /></Field>
-            <Field id="provider-type" label={t("modelSettings.providerType")}><Select value={provider.kind} onValueChange={(value) => setProvider({ ...provider, kind: value as ModelProviderKind })}><SelectTrigger id="provider-type" className="h-11"><SelectValue /></SelectTrigger><SelectContent>{providerKinds.map((kind) => <SelectItem key={kind} value={kind}>{kind}</SelectItem>)}</SelectContent></Select></Field>
-            <Field id="provider-url" label={t("modelSettings.baseUrl")} hint={t("modelSettings.baseUrlHint")}><Input id="provider-url" className="h-11 font-mono" required type="url" placeholder="https://api.example.com/v1" value={provider.baseUrl} onChange={(event) => setProvider({ ...provider, baseUrl: event.target.value })} /></Field>
-            <Field id="provider-key" label={t("modelSettings.apiKey")} hint={t("modelSettings.apiKeyHint")}><Input id="provider-key" className="h-11" type="password" autoComplete="new-password" value={provider.apiKey} onChange={(event) => setProvider({ ...provider, apiKey: event.target.value })} /></Field>
-            <Button className="h-11 w-full" disabled={!administrator || createProviderMutation.isPending}>{createProviderMutation.isPending ? <LoaderCircle className="animate-spin" /> : <Plus />}{t("modelSettings.addAndTestProvider")}</Button>
-          </form>
-        ) : mode === "model" ? (
-          <form className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5" onSubmit={submitModel}>
-            <Field id="model-provider" label={t("modelSettings.provider")}><ProviderRegistrationPicker providers={view.providers} value={model.providerId} onChange={(value) => { setManualModel(false); setModel({ ...model, providerId: value, name: "", model: "", profile: "generic-chat" }); }} /></Field>
-            <Field id="model-id" label={t("modelSettings.modelId")} hint={t("modelSettings.modelDiscoveryHint")}>
-              {manualModel ? (
-                <Input id="model-id" className="h-11 font-mono" required value={model.model} onChange={(event) => setModel({ ...model, model: event.target.value, profile: suggestedProfile(event.target.value) })} />
-              ) : (
-                <Select value={model.model || undefined} disabled={!model.providerId || discoveryQuery.isFetching || Boolean(discoveryQuery.error)} onValueChange={(value) => setModel({ ...model, model: value, name: displayNameForModel(value), profile: suggestedProfile(value) })}>
-                  <SelectTrigger id="model-id" className="h-11 font-mono"><SelectValue placeholder={t(discoveryQuery.isFetching ? "modelSettings.discoveringModels" : "modelSettings.selectDiscoveredModel")} /></SelectTrigger>
-                  <SelectContent position="popper">{discoveryQuery.data?.models.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}</SelectContent>
-                </Select>
-              )}
-              {model.providerId ? <Button type="button" variant="link" className="mt-1 h-9 px-0" onClick={() => { setManualModel((current) => !current); setModel({ ...model, name: "", model: "", profile: "generic-chat" }); }}>{t(manualModel ? "modelSettings.useDiscoveredModel" : "modelSettings.enterModelManually")}</Button> : null}
-              {discoveryQuery.error && !manualModel ? <p role="alert" className="text-xs leading-5 text-destructive">{errorMessage(discoveryQuery.error)}</p> : null}
-            </Field>
-            <Field id="model-name" label={t("modelSettings.displayName")}><Input id="model-name" className="h-11" required minLength={2} value={model.name} onChange={(event) => setModel({ ...model, name: event.target.value })} /></Field>
-            <Field id="model-profile" label={t("modelSettings.profile")} hint={t("modelSettings.profileHint")}><Select value={model.profile} onValueChange={(value) => setModel({ ...model, profile: value as ModelProfile })}><SelectTrigger id="model-profile" className="h-11"><SelectValue /></SelectTrigger><SelectContent>{profiles.map((profile) => <SelectItem key={profile} value={profile}>{t(`modelSettings.profiles.${profile}`)}</SelectItem>)}</SelectContent></Select></Field>
-            <div className="grid grid-cols-2 gap-3"><Field id="model-timeout" label={t("modelSettings.timeout")}><Input id="model-timeout" className="h-11" type="number" min={1} max={120} value={model.timeoutSeconds} onChange={(event) => setModel({ ...model, timeoutSeconds: Number(event.target.value) })} /></Field><Field id="model-tokens" label={t("modelSettings.maxTokens")}><Input id="model-tokens" className="h-11" type="number" min={1} max={32768} value={model.maxTokens} onChange={(event) => setModel({ ...model, maxTokens: Number(event.target.value) })} /></Field></div>
-            <Button className="h-11 w-full" disabled={!administrator || !model.providerId || !model.model || !model.name || createModelMutation.isPending}>{createModelMutation.isPending ? <LoaderCircle className="animate-spin" /> : <Plus />}{t("modelSettings.addAndTestModel")}</Button>
-          </form>
-        ) : null}
-      </SheetContent>
-    </Sheet>
-  );
-}
-
-function ProviderRegistrationPicker({ providers, value, onChange }: { providers: ModelProvider[]; value: string; onChange: (value: string) => void }) {
-  const { t } = useTranslation();
-  const searchRef = useRef<HTMLInputElement>(null);
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const selected = providers.find((provider) => provider.id === value);
-  const filtered = providers.filter((provider) => `${provider.name} ${provider.kind} ${provider.baseUrl}`.toLowerCase().includes(query.trim().toLowerCase()));
-  return (
-    <Popover open={open} onOpenChange={(next) => { setOpen(next); if (!next) setQuery(""); }}>
-      <PopoverTrigger asChild>
-        <button id="model-provider" type="button" aria-haspopup="listbox" aria-expanded={open} className="flex min-h-12 w-full items-center gap-3 rounded-lg border border-input bg-card px-3 text-left shadow-xs outline-none transition-colors hover:bg-muted/35 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/25">
-          {selected ? <ProviderMark provider={selected.name} kind={selected.kind} /> : <span className="grid size-9 place-items-center rounded-md bg-muted text-muted-foreground"><Server className="size-4" /></span>}
-          <span className="min-w-0 flex-1">
-            <span className={cn("block truncate text-sm font-medium", !selected && "text-muted-foreground")}>{selected?.name ?? t("modelSettings.selectProvider")}</span>
-            {selected ? <span className="block truncate text-xs text-muted-foreground">{selected.baseUrl}</span> : null}
-          </span>
-          {selected ? <StateBadge state={selected.status} /> : null}
-          <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent align="start" className="w-(--radix-popover-trigger-width) max-w-[calc(100vw-2rem)] overflow-hidden p-0" onOpenAutoFocus={(event) => { event.preventDefault(); searchRef.current?.focus(); }}>
-        <div className="border-b p-3">
-          <Label htmlFor="model-provider-search" className="sr-only">{t("modelSettings.searchProviders")}</Label>
-          <div className="relative"><Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" /><Input ref={searchRef} id="model-provider-search" type="search" className="h-10 pl-9" placeholder={t("modelSettings.searchProviders")} value={query} onChange={(event) => setQuery(event.target.value)} /></div>
-        </div>
-        <div role="listbox" aria-label={t("modelSettings.provider")} className="max-h-72 overflow-y-auto p-1.5">
-          {filtered.length ? filtered.map((provider) => (
-            <button key={provider.id} type="button" role="option" aria-selected={provider.id === value} className={cn("flex min-h-14 w-full items-center gap-3 rounded-md px-3 py-2 text-left outline-none hover:bg-muted focus-visible:bg-muted", provider.id === value && "bg-primary/7")} onClick={() => { onChange(provider.id); setOpen(false); setQuery(""); }}>
-              <ProviderMark provider={provider.name} kind={provider.kind} />
-              <span className="min-w-0 flex-1"><strong className="block truncate text-sm font-medium">{provider.name}</strong><span className="block truncate text-xs text-muted-foreground">{provider.baseUrl}</span></span>
-              <StateBadge state={provider.status} />
-              {provider.id === value ? <Check className="size-4 shrink-0 text-primary" /> : null}
-            </button>
-          )) : <p className="px-4 py-8 text-center text-sm text-muted-foreground">{t("modelSettings.noProviderMatches")}</p>}
-        </div>
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-function ProviderMark({ provider, kind, model, size = "md" }: { provider: string; kind: ModelProviderKind; model?: string; size?: "sm" | "md" }) {
-  const identity = `${provider} ${kind} ${model ?? ""}`.toLowerCase();
-  const brand = identity.includes("nvidia") || identity.includes("nemotron") || identity.includes("nemoguard")
-    ? { label: "NVIDIA", src: "/assets/providers/nvidia.webp" }
-    : identity.includes("qwen") || identity.includes("dashscope")
-      ? { label: "Qwen", src: "/assets/providers/qwen.webp" }
-      : identity.includes("deepseek")
-        ? { label: "DeepSeek", src: "/assets/providers/deepseek.webp" }
-        : kind === "openai"
-          ? { label: "OpenAI", src: "/assets/providers/openai.webp" }
-          : kind === "ollama"
-            ? { label: "Ollama", src: "/assets/providers/ollama.webp" }
-            : kind === "vllm"
-              ? { label: "vLLM", src: "/assets/providers/vllm.webp" }
-              : { label: provider, src: "/assets/providers/custom.svg" };
-  return (
-    <span aria-label={brand.label} title={brand.label} className={cn("block shrink-0 overflow-hidden rounded-md", size === "sm" ? "size-5" : "size-9")}>
-      <img src={brand.src} alt="" className="size-full object-cover" />
-    </span>
-  );
-}
-
-function Field({ id, label, hint, children }: { id: string; label: string; hint?: string; children: ReactNode }) {
-  const hintId = useId();
-  return <div className="space-y-2"><Label htmlFor={id}>{label}</Label>{children}{hint ? <p id={hintId} className="text-xs leading-5 text-muted-foreground">{hint}</p> : null}</div>;
-}
 
 function ModelsSkeleton() {
   return <section className="py-8"><Skeleton className="h-10 w-72" /><Skeleton className="mt-3 h-5 w-full max-w-2xl" /><div className="mt-7 space-y-5">{Array.from({ length: 4 }).map((_, index) => <Skeleton key={index} className="h-36" />)}</div></section>;

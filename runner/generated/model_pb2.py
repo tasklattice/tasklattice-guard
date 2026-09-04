@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0bmodel.proto\x12\x1ctasklattice.guard.control.v1\"\xc1\x01\n\x0cModelRuntime\x12\n\n\x02id\x18\x01 \x01(\t\x12\x13\n\x0bprovider_id\x18\x02 \x01(\t\x12\x15\n\rprovider_name\x18\x03 \x01(\t\x12\x10\n\x08\x62\x61se_url\x18\x04 \x01(\t\x12\x16\n\x0e\x63redential_ref\x18\x05 \x01(\t\x12\r\n\x05model\x18\x06 \x01(\t\x12\x13\n\x0bprofile_ref\x18\x07 \x01(\t\x12\x17\n\x0ftimeout_seconds\x18\x08 \x01(\x05\x12\x12\n\nmax_tokens\x18\t \x01(\x05\"^\n\x0fModelAssignment\x12\x0c\n\x04role\x18\x01 \x01(\t\x12\x11\n\tmodel_ref\x18\x02 \x01(\t\x12\x13\n\x0bprofile_ref\x18\x03 \x01(\t\x12\x15\n\rcontract_refs\x18\x04 \x03(\t\"\xc6\x01\n\x1b\x44\x61taPlaneModelConfiguration\x12\x13\n\x0brevision_id\x18\x01 \x01(\t\x12\x10\n\x08revision\x18\x02 \x01(\x05\x12<\n\x08runtimes\x18\x03 \x03(\x0b\x32*.tasklattice.guard.control.v1.ModelRuntime\x12\x42\n\x0b\x61ssignments\x18\x04 \x03(\x0b\x32-.tasklattice.guard.control.v1.ModelAssignmentb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0bmodel.proto\x12\x1ctasklattice.guard.control.v1\"\xda\x01\n\x0cModelRuntime\x12\n\n\x02id\x18\x01 \x01(\t\x12\x13\n\x0bprovider_id\x18\x02 \x01(\t\x12\x15\n\rprovider_name\x18\x03 \x01(\t\x12\x10\n\x08\x62\x61se_url\x18\x04 \x01(\t\x12\x16\n\x0e\x63redential_ref\x18\x05 \x01(\t\x12\r\n\x05model\x18\x06 \x01(\t\x12\x13\n\x0bprofile_ref\x18\x07 \x01(\t\x12\x17\n\x0ftimeout_seconds\x18\x08 \x01(\x05\x12\x12\n\nmax_tokens\x18\t \x01(\x05\x12\x17\n\x0fskip_tls_verify\x18\n \x01(\x08\"^\n\x0fModelAssignment\x12\x0c\n\x04role\x18\x01 \x01(\t\x12\x11\n\tmodel_ref\x18\x02 \x01(\t\x12\x13\n\x0bprofile_ref\x18\x03 \x01(\t\x12\x15\n\rcontract_refs\x18\x04 \x03(\t\"\xc6\x01\n\x1b\x44\x61taPlaneModelConfiguration\x12\x13\n\x0brevision_id\x18\x01 \x01(\t\x12\x10\n\x08revision\x18\x02 \x01(\x05\x12<\n\x08runtimes\x18\x03 \x03(\x0b\x32*.tasklattice.guard.control.v1.ModelRuntime\x12\x42\n\x0b\x61ssignments\x18\x04 \x03(\x0b\x32-.tasklattice.guard.control.v1.ModelAssignmentb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -32,9 +32,9 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'model_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
   _globals['_MODELRUNTIME']._serialized_start=46
-  _globals['_MODELRUNTIME']._serialized_end=239
-  _globals['_MODELASSIGNMENT']._serialized_start=241
-  _globals['_MODELASSIGNMENT']._serialized_end=335
-  _globals['_DATAPLANEMODELCONFIGURATION']._serialized_start=338
-  _globals['_DATAPLANEMODELCONFIGURATION']._serialized_end=536
+  _globals['_MODELRUNTIME']._serialized_end=264
+  _globals['_MODELASSIGNMENT']._serialized_start=266
+  _globals['_MODELASSIGNMENT']._serialized_end=360
+  _globals['_DATAPLANEMODELCONFIGURATION']._serialized_start=363
+  _globals['_DATAPLANEMODELCONFIGURATION']._serialized_end=561
 # @@protoc_insertion_point(module_scope)

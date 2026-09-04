@@ -82,6 +82,7 @@ def test_checked_in_runner_fixture_is_the_current_compiler_output() -> None:
         capture_output=True,
         text=True,
     )
+
     assert result.returncode == 0, result.stdout + result.stderr
 
 

@@ -30,12 +30,12 @@ describe("replaceable model probe protocols", () => {
       response: "on-topic",
     },
     {
-      model: "nvidia/nvidia-nemotron-nano-9b-v2",
-      profile: "tali.nemotron-nano-jailbreak.v1" as const,
+      model: "example/jailbreak-judge",
+      profile: "tali.openai-compatible-jailbreak.v1" as const,
       marker: "SAFE or JAILBREAK",
       response: "SAFE",
     },
-  ])("validates the exact NVIDIA protocol for $model", ({ model, profile, marker, response }) => {
+  ])("validates the configured protocol for $model", ({ model, profile, marker, response }) => {
     const request = probeRequest({ model, profile, maxTokens: 128 });
     expect(JSON.stringify(request.messages)).toContain(marker);
     expect(() => validateProbeContent(profile, response)).not.toThrow();

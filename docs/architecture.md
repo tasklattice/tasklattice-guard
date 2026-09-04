@@ -302,9 +302,10 @@ binding when its Profile does not declare the requested contract.
 Model-family semantics and transport are separate plugins. A
 `ConfiguredSafetyModelProvider` composes one `ModelProtocolAdapter` (prompt and
 response parsing) with one `ModelClient` (I/O). The built-in deployment client
-uses OpenAI Chat Completions, while tests and non-OpenAI/local runtimes can
-inject a different client without changing the Qwen, Llama, or taxonomy
-adapters.
+is selected from the Evaluator Profile's explicit transport metadata. Most
+Profiles use OpenAI Chat Completions; the dedicated JailbreakDetect Profile uses
+its native classification client. Tests and non-OpenAI/local runtimes can inject
+a different client without changing the Qwen, Llama, or taxonomy adapters.
 
 A model PII hit cannot claim span-level precision: because the generation
 protocol returns no trustworthy offsets, the runtime conservatively redacts the

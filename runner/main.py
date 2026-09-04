@@ -62,17 +62,23 @@ def create_app(settings: RunnerSettings | None = None) -> FastAPI:
         configured.runner_id,
         metrics,
     )
+    compiler = DefaultRunnerCompiler(configured) if configured.compiler_capable else None
     draft_previews = DraftPreviewRuntime(
-        DefaultRunnerCompiler(configured),
+        compiler,
         providers,
         max_concurrency_per_guardrail=min(configured.max_concurrency, 8),
-    ) if configured.compiler_capable else None
+    ) if compiler is not None else None
     control = RunnerControlClient(
         configured,
         store,
         metrics,
-        providers,
-        draft_previews.replace_providers if draft_previews is not None else None,
+        providers=providers,
+        provider_observer=(
+            draft_previews.replace_providers
+            if draft_previews is not None
+            else None
+        ),
+        compiler=compiler,
     )
     metrics.set_control_state(synchronized=control.synchronized)
     runtime_api = RunnerAPI(

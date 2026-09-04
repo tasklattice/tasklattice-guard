@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 
 import { ControllerError, ValidationError } from "../domain/errors.js";
+import { providerFetch } from "../model-config/provider-fetch.js";
 
 type Fetch = typeof globalThis.fetch;
 
@@ -147,6 +148,7 @@ export class OpenAICompatiblePlaygroundModel {
     baseUrl: string;
     model: string;
     apiKey: string;
+    skipTlsVerify?: boolean;
     timeoutMs?: number;
     fetcher?: Fetch;
   }) {
@@ -159,7 +161,7 @@ export class OpenAICompatiblePlaygroundModel {
     this.#baseUrl = input.baseUrl.replace(/\/+$/, "");
     this.#apiKey = input.apiKey;
     this.#timeoutMs = input.timeoutMs ?? 45_000;
-    this.#fetch = input.fetcher ?? globalThis.fetch;
+    this.#fetch = providerFetch(input.skipTlsVerify, input.fetcher);
   }
 
   async complete(input: {

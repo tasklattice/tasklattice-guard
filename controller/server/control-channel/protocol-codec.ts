@@ -157,7 +157,7 @@ export function planFromWire(plan: GuardrailPlan__Output): Record<string, unknow
       ...(binding.action === undefined ? {} : { action: domainEnum("ENFORCEMENT_ACTION", binding.action) }),
       parameter_values: pairsFromWire(binding.parameterValues),
       enabled_rule_ids: [...binding.enabledRuleIds],
-      ...(binding.ruleOrder?.length ? { rule_order: [...binding.ruleOrder] } : {}),
+      rule_order: [...binding.ruleOrder],
       rule_actions: pairsFromWire(binding.ruleActions),
       enabled_rails: binding.enabledRails.map((rail) => domainEnum("RAIL_TYPE", rail)),
     })),

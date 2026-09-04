@@ -49,10 +49,12 @@ function SheetContent({
   children,
   side = "right",
   showCloseButton = true,
+  closeDisabled = false,
   ...props
 }: React.ComponentProps<typeof SheetPrimitive.Content> & {
   side?: "top" | "right" | "bottom" | "left"
   showCloseButton?: boolean
+  closeDisabled?: boolean
 }) {
   const { t } = useTranslation()
   return (
@@ -73,6 +75,7 @@ function SheetContent({
               variant="ghost"
               className="absolute top-3 right-3"
               size="icon-sm"
+              disabled={closeDisabled}
             >
               <XIcon
               />

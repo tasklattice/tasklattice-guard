@@ -6,15 +6,20 @@ import { toast } from "sonner";
 
 import {
   activateModelConfiguration,
+  configureModelDefinition,
+  deleteModelDefinition,
+  deleteModelProvider,
   discoverModelProvider,
   getModelConfiguration,
   revalidateModelDefinition,
+  testModelConnection,
   saveModelAssignments,
   type ModelAssignments,
   type ModelConfigurationView,
 } from "@/lib/controller-api";
 
 import { CapabilitiesPage, ModelsPage, ProvidersPage } from "./models";
+vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => false }));
 
 vi.mock("@/lib/auth", () => ({
   useAuth: () => ({ user: { id: "admin-1", role: "admin" } }),
@@ -31,9 +36,13 @@ vi.mock("@/lib/controller-api", async (importOriginal) => {
     ...original,
     getModelConfiguration: vi.fn(),
     activateModelConfiguration: vi.fn(),
+    configureModelDefinition: vi.fn(),
+    deleteModelDefinition: vi.fn(),
+    deleteModelProvider: vi.fn(),
     validateModelConfiguration: vi.fn(),
     saveModelAssignments: vi.fn(),
     revalidateModelDefinition: vi.fn(),
+    testModelConnection: vi.fn(),
     discoverModelProvider: vi.fn(),
   };
 });
@@ -79,6 +88,10 @@ const view: ModelConfigurationView = {
       providerName: "Mock provider",
       providerKind: "custom-openai-compatible",
       name: "Authoring model",
+      connectionStatus: "validated",
+      connectionMessage: "Actual call succeeded",
+      connectionLatencyMs: 23,
+      connectionCheckedAt: "2026-09-03T00:00:00Z",
       model: "mock/chat",
       profile: "generic-chat",
       timeoutSeconds: 20,
@@ -94,6 +107,10 @@ const view: ModelConfigurationView = {
       providerName: "Mock provider",
       providerKind: "custom-openai-compatible",
       name: "Qwen Guard",
+      connectionStatus: "failed",
+      connectionMessage: "Model call returned HTTP 404: model not found.",
+      connectionLatencyMs: 17,
+      connectionCheckedAt: "2026-09-03T00:00:00Z",
       model: "mock/qwen-guard",
       profile: "tali.qwen3guard.v1",
       timeoutSeconds: 20,
@@ -153,12 +170,17 @@ function renderPage(node: ReactNode = <ModelsPage />) {
 
 describe("ModelsPage", () => {
   beforeEach(() => {
+    Element.prototype.scrollIntoView = vi.fn();
     vi.mocked(getModelConfiguration).mockReset().mockResolvedValue(view);
     vi.mocked(activateModelConfiguration).mockReset().mockResolvedValue({
       ...view,
       distribution: { desiredGeneration: 7, distributionStatus: "ready" },
     });
     vi.mocked(revalidateModelDefinition).mockReset();
+    vi.mocked(testModelConnection).mockReset();
+    vi.mocked(configureModelDefinition).mockReset();
+    vi.mocked(deleteModelDefinition).mockReset().mockResolvedValue(undefined);
+    vi.mocked(deleteModelProvider).mockReset().mockResolvedValue(undefined);
     vi.mocked(discoverModelProvider).mockReset().mockResolvedValue({
       providerId: "provider-1",
       providerName: "Mock provider",
@@ -197,6 +219,7 @@ describe("ModelsPage", () => {
     const activate = await screen.findByRole("button", { name: "modelSettings.activate" });
     expect(activate.hasAttribute("disabled")).toBe(false);
     fireEvent.click(activate);
+    fireEvent.click(within(screen.getByRole("dialog", { name: "modelSettings.activateConfirmationTitle" })).getByRole("button", { name: "modelSettings.activateConfirmationAction" }));
 
     await waitFor(() => expect(activateModelConfiguration).toHaveBeenCalledWith("revision-2"));
   });
@@ -208,11 +231,61 @@ describe("ModelsPage", () => {
     fireEvent.focus(capabilityPicker);
     fireEvent.click(await screen.findByRole("option", { name: /modelSettings\.roles\.jailbreak_evaluator\.title/ }));
     fireEvent.click(screen.getByRole("button", { name: "modelSettings.saveDraft" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "modelSettings.saveConfirmationTitle" })).getByRole("button", { name: "modelSettings.saveConfirmationAction" }));
 
     await waitFor(() => expect(saveModelAssignments).toHaveBeenCalledWith(expect.objectContaining({
       safety_evaluator: "safety-model",
       jailbreak_evaluator: "safety-model",
     })));
+  });
+
+  it("switches the existing jailbreak capability between a chat judge and the dedicated classifier", async () => {
+    const chatJudge = { ...view.models[1]!, id: "chat-judge", name: "Chat judge", profile: "tali.openai-compatible-jailbreak.v1" as const };
+    const detector = { ...view.models[1]!, id: "detector", name: "JailbreakDetect", profile: "tali.nemoguard-jailbreak-detect.v1" as const };
+    vi.mocked(getModelConfiguration).mockResolvedValue({ ...view, models: [view.models[0]!, chatJudge, detector], draft: {
+      ...view.draft, assignments: { ...assignments, safety_evaluator: null, jailbreak_evaluator: "chat-judge" },
+    } });
+    renderPage(<CapabilitiesPage />);
+    const region = await screen.findByRole("region", { name: "modelSettings.capabilityAssignments" });
+    fireEvent.keyDown(within(region).getByRole("combobox", { name: "modelSettings.modelColumn" }), { key: "ArrowDown" });
+    expect(await screen.findByRole("option", { name: /Chat judge · Mock provider/ })).toBeTruthy();
+    fireEvent.click(screen.getByRole("option", { name: /JailbreakDetect · Mock provider/ }));
+    fireEvent.click(screen.getByRole("button", { name: "modelSettings.saveDraft" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "modelSettings.saveConfirmationTitle" })).getByRole("button", { name: "modelSettings.saveConfirmationAction" }));
+    await waitFor(() => expect(saveModelAssignments).toHaveBeenCalledWith({
+      ...assignments, safety_evaluator: null, jailbreak_evaluator: "detector",
+    }));
+    expect(revalidateModelDefinition).not.toHaveBeenCalled();
+    expect(testModelConnection).not.toHaveBeenCalled();
+  });
+
+  it("configures an unused model alias in Capabilities without validating or activating it", async () => {
+    const alias = { ...view.models[0]!, id: "alias-model", name: "Guard alias", model: "my-guard", status: "pending" as const, protocolEditable: true };
+    vi.mocked(getModelConfiguration).mockResolvedValue({ ...view, models: [alias] });
+    vi.mocked(configureModelDefinition).mockResolvedValue({ ...alias, profile: "tali.qwen3guard.v1" });
+    renderPage(<CapabilitiesPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "providerRegistration.configureModel" }));
+    const dialog = screen.getByRole("dialog", { name: "providerRegistration.configureModel" });
+    fireEvent.keyDown(within(dialog).getByRole("combobox", { name: "modelSettings.model" }), { key: "ArrowDown" });
+    fireEvent.click(await screen.findByRole("option", { name: "Guard alias · Mock provider" }));
+    fireEvent.keyDown(within(dialog).getByRole("combobox", { name: "modelSettings.profile" }), { key: "ArrowDown" });
+    fireEvent.click(await screen.findByRole("option", { name: "modelSettings.profiles.tali.qwen3guard.v1" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "common.save" }));
+    await waitFor(() => expect(configureModelDefinition).toHaveBeenCalledWith("alias-model", { profile: "tali.qwen3guard.v1", timeoutSeconds: 20, maxTokens: 512 }));
+    expect(revalidateModelDefinition).not.toHaveBeenCalled();
+    expect(activateModelConfiguration).not.toHaveBeenCalled();
+  });
+
+  it("explains why a referenced model's protocol is read-only", async () => {
+    vi.mocked(getModelConfiguration).mockResolvedValue({ ...view, models: [{ ...view.models[0]!, protocolEditable: false }] });
+    renderPage(<CapabilitiesPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "providerRegistration.configureModel" }));
+    const dialog = screen.getByRole("dialog", { name: "providerRegistration.configureModel" });
+    fireEvent.keyDown(within(dialog).getByRole("combobox", { name: "modelSettings.model" }), { key: "ArrowDown" });
+    fireEvent.click(await screen.findByRole("option", { name: "Authoring model · Mock provider" }));
+    expect(within(dialog).getByText("providerRegistration.protocolInUse")).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: "common.save" }).hasAttribute("disabled")).toBe(true);
+    expect(configureModelDefinition).not.toHaveBeenCalled();
   });
 
   it("keeps the Model inventory on the Models page and Provider credentials on their own page", async () => {
@@ -221,10 +294,18 @@ describe("ModelsPage", () => {
     expect(await screen.findByRole("heading", { name: "modelSettings.models" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "modelSettings.addModel" })).toBeTruthy();
     expect(screen.getByRole("columnheader", { name: "modelSettings.providerConnection" })).toBeTruthy();
-    expect(screen.getByRole("columnheader", { name: "modelSettings.compatibleCapabilities" })).toBeTruthy();
-    expect(screen.getByRole("columnheader", { name: "modelSettings.capabilityProbe" })).toBeTruthy();
+    expect(screen.queryByRole("columnheader", { name: "modelSettings.compatibleCapabilities" })).toBeNull();
+    expect(screen.queryByRole("columnheader", { name: "modelSettings.capabilityProbe" })).toBeNull();
+    expect(screen.getByRole("columnheader", { name: "modelSettings.modelCall" })).toBeTruthy();
     expect(screen.getAllByText("modelSettings.connected").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("modelSettings.probePassed").length).toBeGreaterThan(0);
+    expect(screen.getByText("modelSettings.callPassed")).toBeTruthy();
+    expect(screen.getByText("modelSettings.callFailed")).toBeTruthy();
+    expect(screen.queryByText("Model call returned HTTP 404: model not found.")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "modelSettings.viewCallError · Qwen Guard" }));
+    expect(await screen.findByRole("dialog", { name: "modelSettings.callErrorTitle" })).toBeTruthy();
+    expect(screen.getByText("Model call returned HTTP 404: model not found.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "common.close" }));
+    expect(screen.queryByText("modelSettings.probePassed")).toBeNull();
     expect(screen.queryByRole("heading", { name: "modelSettings.providers" })).toBeNull();
     expect(screen.queryByRole("button", { name: /modelSettings\.validateModel/ })).toBeNull();
 
@@ -235,16 +316,78 @@ describe("ModelsPage", () => {
     expect(screen.queryByRole("heading", { name: "modelSettings.models" })).toBeNull();
   });
 
+  it("blocks removal in the shared right drawer and highlights Topic control usage", async () => {
+    vi.mocked(getModelConfiguration).mockResolvedValue({
+      ...view,
+      draft: { ...view.draft, assignments: { ...assignments, topic_policy_judge: "safety-model" } },
+    });
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "common.remove Qwen Guard" }));
+    const drawer = screen.getByRole("dialog", { name: "modelSettings.removeResourceTitle" });
+    expect(within(drawer).getByText("modelSettings.topicControlRemovalTitle")).toBeTruthy();
+    expect(within(drawer).getByText("modelSettings.roles.topic_policy_judge.title")).toBeTruthy();
+    expect(deleteModelDefinition).not.toHaveBeenCalled();
+
+    expect(within(drawer).getByRole("button", { name: "common.remove" })).toHaveProperty("disabled", true);
+    expect(deleteModelDefinition).not.toHaveBeenCalled();
+  });
+
+  it("removes an unassigned Model only after confirming in the right drawer", async () => {
+    const unused = { ...view.models[1]!, id: "unused-model", name: "Unused model", model: "mock/unused" };
+    vi.mocked(getModelConfiguration).mockResolvedValue({ ...view, models: [...view.models, unused] });
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "common.remove Unused model" }));
+    const drawer = screen.getByRole("dialog", { name: "modelSettings.removeResourceTitle" });
+    fireEvent.click(within(drawer).getByRole("button", { name: "common.remove" }));
+    await waitFor(() => expect(deleteModelDefinition).toHaveBeenCalledWith("unused-model"));
+  });
+
   it("registers Models by choosing a saved Provider and discovering its catalog", async () => {
     renderPage();
 
     fireEvent.click(await screen.findByRole("button", { name: "modelSettings.addModel" }));
-    const dialog = screen.getByRole("dialog", { name: "modelSettings.addModel" });
-    fireEvent.click(within(dialog).getByRole("button", { name: "modelSettings.provider" }));
-    fireEvent.click(await screen.findByRole("option", { name: /Mock provider/ }));
+    const dialog = screen.getByRole("dialog", { name: "providerRegistration.registerModels" });
+    expect(within(dialog).getByRole("combobox", { name: "providerRegistration.savedCredentials" })).toBeTruthy();
+    expect(discoverModelProvider).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "providerRegistration.discoverModels" }));
 
     await waitFor(() => expect(discoverModelProvider).toHaveBeenCalledWith("provider-1"));
-    expect(await within(dialog).findByRole("combobox", { name: "modelSettings.modelId" })).toBeTruthy();
+    expect(await within(dialog).findByRole("heading", { name: "providerRegistration.discoveredModels" })).toBeTruthy();
+  });
+
+  it("tests a model call without touching capability validation or assignments", async () => {
+    let finish!: (value: ModelConfigurationView["models"][number]) => void;
+    vi.mocked(testModelConnection).mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "modelSettings.testCall Qwen Guard" }));
+    expect(await screen.findByText("modelSettings.testingCall")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "modelSettings.testCall Qwen Guard" })).toHaveProperty("disabled", true);
+    const updated = { ...view.models[1]!, connectionStatus: "validated" as const };
+    vi.mocked(getModelConfiguration).mockResolvedValue({ ...view, models: [view.models[0]!, updated] });
+    finish(updated);
+    await waitFor(() => expect(screen.queryByText("modelSettings.testingCall")).toBeNull());
+    expect(testModelConnection).toHaveBeenCalledWith("safety-model");
+    expect(revalidateModelDefinition).not.toHaveBeenCalled();
+    expect(saveModelAssignments).not.toHaveBeenCalled();
+    expect(activateModelConfiguration).not.toHaveBeenCalled();
+    expect(screen.queryByText("modelSettings.callFailed")).toBeNull();
+  });
+
+  it("does not reinterpret old capability results as model-call health", async () => {
+    vi.mocked(getModelConfiguration).mockResolvedValue({ ...view, models: view.models.map((model) => ({ ...model, connectionStatus: "pending", connectionCheckedAt: null })) });
+    renderPage();
+    expect(await screen.findAllByText("modelSettings.notChecked")).toHaveLength(2);
+    expect(screen.queryByText("modelSettings.callPassed")).toBeNull();
+  });
+
+  it("shows a failed actual model call as an error despite a passing capability result", async () => {
+    vi.mocked(testModelConnection).mockResolvedValue(view.models[1]!);
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "modelSettings.testCall Qwen Guard" }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(view.models[1]!.connectionMessage));
+    expect(toast.success).not.toHaveBeenCalled();
   });
 
   it("surfaces a failed capability Validate as an error with the provider reason", async () => {

@@ -22,20 +22,11 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { PolicyStudioSheet } from "@/components/policy-studio";
+import { ConfirmationSheet } from "@/components/confirmation-sheet";
 import { EntitySheet } from "@/components/entity-sheet";
 import { ErrorNotice, InfoNotice, PageHeader } from "@/components/product-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -387,29 +378,24 @@ export function PolicyDetail({ policy, onClose, onEdit, onExport, onDelete }: { 
 export function DeletePolicyDialog({ policy, deleting, error, onCancel, onConfirm }: { policy: Policy | null; deleting: boolean; error: Error | null; onCancel: () => void; onConfirm: () => void }) {
   const { t } = useTranslation();
   return (
-    <AlertDialog open={Boolean(policy)} onOpenChange={(open) => { if (!open && !deleting) onCancel(); }}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>{t("policyLibrary.deleteDialogTitle")}</AlertDialogTitle>
-          <AlertDialogDescription>
-            {t("policyLibrary.deleteDialogDescription", { name: policy?.name ?? "" })}
-          </AlertDialogDescription>
-        </AlertDialogHeader>
+    <ConfirmationSheet
+      open={Boolean(policy)}
+      onOpenChange={(open) => { if (!open && !deleting) onCancel(); }}
+      eyebrow={t("policyLibrary.deleteAction")}
+      title={t("policyLibrary.deleteDialogTitle")}
+      description={t("policyLibrary.deleteDialogDescription", { name: policy?.name ?? "" })}
+      cancelLabel={t("common.cancel")}
+      confirmLabel={t("policyLibrary.deleteConfirm")}
+      pendingLabel={t("policyLibrary.deleting")}
+      pending={deleting}
+      variant="destructive"
+      onConfirm={onConfirm}
+    >
         <div className="rounded-lg border bg-muted/35 px-4 py-3 text-xs leading-5 text-muted-foreground">
           {t("policyLibrary.deleteDialogGuardrailNote")}
         </div>
         {error ? <p role="alert" className="rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-xs leading-5 text-destructive">{error.message}</p> : null}
-        <AlertDialogFooter>
-          <AlertDialogCancel asChild><Button variant="outline" disabled={deleting}>{t("common.cancel")}</Button></AlertDialogCancel>
-          <AlertDialogAction asChild>
-            <Button variant="destructive" disabled={deleting} onClick={(event) => { event.preventDefault(); onConfirm(); }}>
-              {deleting ? <LoaderCircle className="animate-spin" /> : <Trash2 />}
-              {t(deleting ? "policyLibrary.deleting" : "policyLibrary.deleteConfirm")}
-            </Button>
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    </ConfirmationSheet>
   );
 }
 

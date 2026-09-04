@@ -35,7 +35,8 @@ const activeConfiguration = (revisionId: string, revision: number) => ({
     id: "safety-model",
     providerId: "provider-1",
     providerName: "Mock provider",
-    baseUrl: "http://models.mock/v1",
+    baseUrl: "https://models.mock/v1",
+    skipTlsVerify: true,
     credentialRef: "provider-1",
     model: "Qwen/Qwen3Guard-Gen-8B",
     profile: "tali.qwen3guard.v1" as const,
@@ -62,6 +63,8 @@ describe("Runner model-configuration convergence", () => {
     const secondStream = streamMock();
     const first = await handle(server, firstStream, registration("runner-0"), null);
     const second = await handle(server, secondStream, registration("runner-1"), null);
+
+    expect(firstStream.write.mock.calls.some(([message]) => message.desiredState?.modelConfiguration?.runtimes?.some((runtime) => runtime.skipTlsVerify === true))).toBe(true);
 
     await handle(server, firstStream, desiredResult("runner-0", true), first);
     expect(models.finalizeActivation).not.toHaveBeenCalled();

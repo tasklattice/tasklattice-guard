@@ -7,8 +7,6 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
-import yaml
-
 from runner.toolkit.nemo.action_registry import ActionProviders
 from runner.toolkit.nemo.registry import NeMoRuntimeRegistry
 from runner.toolkit.nemo.runtime import NeMoRuntime
@@ -22,15 +20,13 @@ from runner.toolkit.runtime.contracts import (
 from runner.toolkit.runtime.service import GuardrailRuntimeService
 
 from .compiler import DefaultRunnerCompiler
+from .artifact_config import config_snapshot_from_artifact
 from . import generated as protocol
 from .protocol_codec import (
-    action_bindings_from_proto,
-    dependencies_from_proto,
     plan_from_proto,
     plan_to_proto,
-    prompts_from_proto,
 )
-from .serialization import config_from_dict, plan_from_dict
+from .serialization import plan_from_dict
 
 
 @dataclass(slots=True)
@@ -106,6 +102,7 @@ class DraftPreviewRuntime:
                 self._providers,
                 max_entries=1,
                 max_concurrency_per_guardrail=self._max_concurrency,
+                native_models=self._compiler.native_models,
             )
             runtime = NeMoRuntime(registry)
             service = GuardrailRuntimeService(
@@ -246,24 +243,7 @@ class _PreviewStore:
 
 
 def _config_from_artifact(artifact: protocol.Artifact):
-    prompts = prompts_from_proto(artifact.prompts)
-    plan = plan_from_proto(artifact.plan)
-    return config_from_dict({
-        "guardrail_id": artifact.guardrail_id,
-        "guardrail_version": artifact.guardrail_version,
-        "compiler_version": artifact.compiler_version,
-        "runtime_profile": artifact.runtime_profile,
-        "output_delivery": plan.get("output_delivery", "full_buffered"),
-        "config_yaml": artifact.config_yaml,
-        "colang_content": artifact.colang_content,
-        "prompts_yaml": yaml.safe_dump(
-            {"prompts": prompts}, allow_unicode=True, sort_keys=False
-        ) if prompts else "",
-        "action_bindings": action_bindings_from_proto(artifact.action_bindings),
-        "dependency_manifest": dependencies_from_proto(artifact.dependency_manifest),
-        "runtime_engine": "iorails" if artifact.runtime_profile == "iorails_native" else "llmrails",
-        "colang_version": "2.x" if artifact.runtime_profile == "llmrails_colang2_programmable" else "1.0",
-    })
+    return config_snapshot_from_artifact(artifact)
 
 
 def _fingerprint(

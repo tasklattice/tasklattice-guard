@@ -401,6 +401,7 @@ export class RunnerControlServer {
             providerName: model.providerName,
             baseUrl: model.baseUrl,
             credentialRef: model.credentialRef,
+            skipTlsVerify: model.skipTlsVerify ?? false,
             model: model.model,
             profileRef: model.profile,
             timeoutSeconds: model.timeoutSeconds,

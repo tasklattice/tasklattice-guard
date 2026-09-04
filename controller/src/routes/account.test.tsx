@@ -82,6 +82,8 @@ describe("AccountPage", () => {
     fireEvent.change(screen.getByLabelText("Display name"), { target: { value: "Guard Operator" } });
     expect(save.disabled).toBe(false);
     fireEvent.click(save);
+    expect(updateProfileMock).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => expect(updateProfileMock).toHaveBeenCalledWith({
       display_name: "Guard Operator",

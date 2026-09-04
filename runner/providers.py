@@ -77,6 +77,7 @@ def runtime_action_providers(settings: RunnerSettings) -> tuple[ActionProvider, 
                 api_key_env_var=taxonomy_judge.api_key_env_var,
                 provider_id=taxonomy_judge.id,
                 timeout_seconds=taxonomy_judge.timeout_seconds,
+                skip_tls_verify=taxonomy_judge.skip_tls_verify,
             )
         )
     if settings.automated_reasoning_endpoint_url:
@@ -103,6 +104,7 @@ def dynamic_runtime_action_providers(
             api_key=credentials.get(item.credential_ref, ""),
             timeout_seconds=float(item.timeout_seconds or 20),
             max_tokens=int(item.max_tokens or 128),
+            skip_tls_verify=item.skip_tls_verify,
         )
         for item in configuration.runtimes
     }
@@ -174,6 +176,7 @@ def dynamic_runtime_action_providers(
             api_key_env_var=None,
             api_key=runtime.api_key,
             provider_id=runtime.id,
+            skip_tls_verify=runtime.skip_tls_verify,
             timeout_seconds=runtime.timeout_seconds,
             transport=transport,
         ))
@@ -185,7 +188,9 @@ def dynamic_runtime_action_providers(
             base_url=runtime.base_url,
             model=runtime.model,
             api_key=runtime.api_key,
+            skip_tls_verify=runtime.skip_tls_verify,
             timeout_seconds=runtime.timeout_seconds,
+            transport=transport,
         ))
 
     reasoning = assignments.get("automated_reasoning")
@@ -194,7 +199,9 @@ def dynamic_runtime_action_providers(
         providers.append(ReasoningActionProvider(HTTPAutomatedReasoningProvider(
             endpoint_url=runtime.base_url,
             api_key=runtime.api_key,
+            skip_tls_verify=runtime.skip_tls_verify,
             timeout_seconds=runtime.timeout_seconds,
+            transport=transport,
         )))
     return tuple(providers)
 

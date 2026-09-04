@@ -16,7 +16,7 @@ export function SettingsNavigation() {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
 
   return (
-    <Tabs value={pathname} className="mt-5 gap-0">
+    <Tabs value={pathname} className="mt-5 min-w-0 max-w-full gap-0 overflow-x-auto">
       <TabsList aria-label={t("nav.settings")}>
         {settingsItems.map((item) => {
           return (

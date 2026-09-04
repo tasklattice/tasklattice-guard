@@ -111,9 +111,9 @@ async def test_mock_controller_and_real_runner_exchange_and_apply_desired_state(
     "configuration,credentials",
     [
         pytest.param(
-            lambda: _nvidia_trio_configuration(),
+            lambda: _split_guard_configuration(),
             {"provider-nvidia": "mock-nvidia-key"},
-            id="nvidia-trio",
+            id="split-guard-stack",
         ),
         pytest.param(
             lambda: _qwen3guard_configuration(),
@@ -190,7 +190,7 @@ def _desired_state() -> protocol.DesiredState:
     return message
 
 
-def _nvidia_trio_configuration() -> protocol.DataPlaneModelConfiguration:
+def _split_guard_configuration() -> protocol.DataPlaneModelConfiguration:
     return protocol.DataPlaneModelConfiguration(
         revision_id="revision-nvidia-trio",
         revision=5,
@@ -214,11 +214,11 @@ def _nvidia_trio_configuration() -> protocol.DataPlaneModelConfiguration:
                 max_tokens=32,
             ),
             protocol.ModelRuntime(
-                id="nvidia-jailbreak",
+                id="chat-jailbreak",
                 base_url="http://nvidia.mock/v1",
                 credential_ref="provider-nvidia",
-                model="nvidia/nvidia-nemotron-nano-9b-v2",
-                profile_ref="tali.nemotron-nano-jailbreak.v1",
+                model="example/jailbreak-judge",
+                profile_ref="tali.openai-compatible-jailbreak.v1",
                 timeout_seconds=20,
                 max_tokens=32,
             ),
@@ -241,8 +241,8 @@ def _nvidia_trio_configuration() -> protocol.DataPlaneModelConfiguration:
             ),
             protocol.ModelAssignment(
                 role="jailbreak_evaluator",
-                model_ref="nvidia-jailbreak",
-                profile_ref="tali.nemotron-nano-jailbreak.v1",
+                model_ref="chat-jailbreak",
+                profile_ref="tali.openai-compatible-jailbreak.v1",
                 contract_refs=[CONTRACT_JAILBREAK],
             ),
         ],

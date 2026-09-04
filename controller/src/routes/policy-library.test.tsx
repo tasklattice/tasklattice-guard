@@ -209,7 +209,7 @@ describe("Policy detail", () => {
 
     render(<DeletePolicyDialog policy={customPolicy} deleting={false} error={null} onCancel={vi.fn()} onConfirm={onConfirm} />);
 
-    expect(screen.getByRole("alertdialog")).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "Delete custom Policy?" })).toBeTruthy();
     expect(screen.getByText("Permanently delete Customer identifiers.")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Delete permanently" }));
     expect(onConfirm).toHaveBeenCalledOnce();

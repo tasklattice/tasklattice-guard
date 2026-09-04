@@ -34,6 +34,7 @@ class TopicJudgeActionProvider:
         timeout_seconds: float = 20.0,
         request_options: dict[str, object] | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
+        skip_tls_verify: bool = False,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._model = model
@@ -43,6 +44,7 @@ class TopicJudgeActionProvider:
         self._timeout_seconds = timeout_seconds
         self._request_options = dict(request_options or {})
         self._transport = transport
+        self._skip_tls_verify = skip_tls_verify
 
     async def execute(self, request: ActionRequest) -> ActionResult:
         credential = (self._api_key or "").strip() or (
@@ -69,6 +71,7 @@ class TopicJudgeActionProvider:
                 async with httpx.AsyncClient(
                     timeout=self._timeout_seconds,
                     transport=self._transport,
+                    verify=not self._skip_tls_verify,
                 ) as client:
                     response = await client.post(
                         f"{self._base_url}/chat/completions",

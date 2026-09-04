@@ -10,6 +10,7 @@ describe("OpenAI-compatible intent analyzer", () => {
   it("requests structured JSON and returns validated Topic boundaries", async () => {
     const fetcher = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
       expect(init?.headers).toMatchObject({ authorization: "Bearer test-key" });
+      expect(init).toHaveProperty("dispatcher");
       const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
       expect(body).toMatchObject({
         model: "deepseek-test",
@@ -42,6 +43,7 @@ describe("OpenAI-compatible intent analyzer", () => {
       baseUrl: "https://api.deepseek.test/",
       model: "deepseek-test",
       apiKey: "test-key",
+      skipTlsVerify: true,
       fetcher,
     });
 

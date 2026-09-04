@@ -19,6 +19,7 @@ const widthClasses = {
 export function EntitySheet({
   bodyClassName,
   children,
+  closeDisabled = false,
   density = "default",
   description,
   eyebrow,
@@ -30,6 +31,7 @@ export function EntitySheet({
 }: {
   bodyClassName?: string;
   children: ReactNode;
+  closeDisabled?: boolean;
   density?: "default" | "compact";
   description: ReactNode;
   eyebrow: string;
@@ -43,6 +45,7 @@ export function EntitySheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
+        closeDisabled={closeDisabled}
         className={cn(
           "gap-0 border-l bg-background shadow-[var(--shadow-overlay)] [&>button]:size-11 [&>button]:rounded-lg",
           widthClasses[width],

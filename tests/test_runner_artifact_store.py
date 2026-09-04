@@ -154,6 +154,32 @@ def test_protocol_rejects_malformed_integration_credentials() -> None:
         protocol.IntegrationCredential(id="bad", sha256=42)  # type: ignore[arg-type]
 
 
+def test_runner_rejects_an_artifact_compiled_for_a_different_nemo_version(
+    tmp_path: Path,
+) -> None:
+    private_key = Ed25519PrivateKey.generate()
+    public_path = tmp_path / "public.pem"
+    public_path.write_bytes(private_key.public_key().public_bytes(
+        serialization.Encoding.PEM,
+        serialization.PublicFormat.SubjectPublicKeyInfo,
+    ))
+    artifact = _artifact()
+    artifact.artifact_id = "artifact-needing-recompile"
+    artifact.nemo_version = "0.0.0"
+    artifact.checksum = _checksum(artifact)
+    artifact.signature = _signature(private_key, artifact.checksum)
+    store = ArtifactStore(public_path, tmp_path / "state")
+    store.attach_registry(Registry())  # type: ignore[arg-type]
+
+    with pytest.raises(
+        ValueError,
+        match=r"targets NeMo Guardrails '0\.0\.0'.*Recompile",
+    ):
+        store.apply(protocol.DesiredState(generation=1, artifacts=[artifact]))
+
+    assert store.generation == 0
+
+
 def _artifact() -> protocol.Artifact:
     state = protocol.DesiredState()
     state.ParseFromString(base64.b64decode(
@@ -166,16 +192,20 @@ def _artifact() -> protocol.Artifact:
     artifact.generation = 7
     # The signed content changed above. The test signs it with its own ephemeral
     # key after ArtifactStore recomputes the canonical fixture checksum.
+    artifact.checksum = _checksum(artifact)
+    artifact.signature = ""
+    return artifact
+
+
+def _checksum(artifact: protocol.Artifact) -> str:
     from runner.protocol_codec import artifact_content
     import json
-    artifact.checksum = hashlib.sha256(json.dumps(
+    return hashlib.sha256(json.dumps(
         artifact_content(artifact),
         sort_keys=True,
         separators=(",", ":"),
         ensure_ascii=False,
     ).encode()).hexdigest()
-    artifact.signature = ""
-    return artifact
 
 
 def _signature(private_key: Ed25519PrivateKey, checksum: str) -> str:

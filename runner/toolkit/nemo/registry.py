@@ -6,7 +6,7 @@ import threading
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
-from typing import Literal, Protocol
+from typing import Protocol
 
 import yaml
 from nemoguardrails import Guardrails, RailsConfig
@@ -24,6 +24,13 @@ from .action_registry import (
 )
 from .artifacts import config_checksum
 from .actions.model_call import instrument_nemo_models
+from .actions.strict_topic_safety import install_strict_topic_safety_action
+from .native_models import (
+    NativeRailModel,
+    TOPIC_CONTROL_MODEL_TYPE,
+    TOPIC_CONTROL_PROFILE,
+    materialize_model_configs,
+)
 
 
 logger = logging.getLogger("uvicorn.error.tasklattice.nemo.registry")
@@ -56,6 +63,7 @@ class NeMoRuntimeInstance:
     plan: GuardrailPlanSnapshot
     rails: Guardrails
     admission: asyncio.BoundedSemaphore
+    native_models: tuple[NativeRailModel, ...] = ()
     active_requests: int = 0
     waiting_requests: int = 0
 
@@ -70,15 +78,13 @@ class NeMoRuntimeRegistry:
         *,
         max_entries: int = 128,
         max_concurrency_per_guardrail: int = 64,
-        execution_surface: Literal[
-            "standalone_check", "owned_generation"
-        ] = "standalone_check",
+        native_models: tuple[NativeRailModel, ...] = (),
     ) -> None:
         self._store = store
         self._providers = providers
         self._max_entries = max(1, max_entries)
         self._max_concurrency_per_guardrail = max(1, max_concurrency_per_guardrail)
-        self._execution_surface = execution_surface
+        self._native_models = native_models
         self._items: OrderedDict[tuple[str, int, str], NeMoRuntimeInstance] = OrderedDict()
         self._retired: list[Guardrails] = []
         self._lock = threading.RLock()
@@ -142,14 +148,18 @@ class NeMoRuntimeRegistry:
         self,
         providers: ActionProviders,
         candidates: tuple[tuple[GuardrailPlanSnapshot, NeMoConfigSnapshot], ...],
+        native_models: tuple[NativeRailModel, ...] | None = None,
     ) -> None:
         """Prewarm against a new registry, then swap it in as one atomic unit."""
 
         with self._lock:
             previous_providers = self._providers
+            previous_native_models = self._native_models
             previous_items = self._items
             previous_retired = list(self._retired)
             self._providers = providers
+            if native_models is not None:
+                self._native_models = native_models
             self._items = OrderedDict()
             try:
                 for plan, config in candidates:
@@ -159,6 +169,7 @@ class NeMoRuntimeRegistry:
             except Exception:
                 rejected = [item.rails for item in self._items.values()]
                 self._providers = previous_providers
+                self._native_models = previous_native_models
                 self._items = previous_items
                 self._retired = [*previous_retired, *rejected]
                 raise
@@ -255,11 +266,27 @@ class NeMoRuntimeRegistry:
 
         self._validate_runtime_profile(config)
         self._validate_bindings(config)
+        self._validate_native_model_dependencies(config)
+        materialized_yaml = materialize_model_configs(
+            config.config_yaml,
+            config.required_models,
+            self._native_models,
+        )
+        if TOPIC_CONTROL_MODEL_TYPE in config.required_models:
+            install_strict_topic_safety_action()
         rails_config = RailsConfig.from_content(
-            yaml_content=config.config_yaml,
+            yaml_content=materialized_yaml,
             colang_content=config.colang_content or None,
         )
         use_iorails = config.runtime_profile == "iorails_native"
+        if use_iorails:
+            from nemoguardrails.guardrails.iorails import IORails
+
+            reason = IORails.unsupported_reason(rails_config)
+            if reason is not None:
+                raise PlanCompilationError(
+                    f"NeMo IORails cannot serve the compiled manifest: {reason}."
+                )
         rails = Guardrails(
             rails_config,
             use_iorails=use_iorails,
@@ -282,6 +309,11 @@ class NeMoRuntimeRegistry:
             plan,
             rails,
             asyncio.BoundedSemaphore(self._max_concurrency_per_guardrail),
+            native_models=tuple(
+                item
+                for item in self._native_models
+                if item.type in config.required_models
+            ),
         )
         self._items[key] = item
         self._items.move_to_end(key)
@@ -364,12 +396,6 @@ class NeMoRuntimeRegistry:
             )
 
         if config.runtime_profile == "iorails_native":
-            if self._execution_surface != "owned_generation":
-                raise PlanCompilationError(
-                    "The iorails_native profile requires an owned-generation host; "
-                    "publish a new llmrails_colang1_standard version before using "
-                    "the standalone check service."
-                )
             action_dependencies = tuple(
                 item
                 for item in config.dependency_manifest
@@ -398,14 +424,50 @@ class NeMoRuntimeRegistry:
             and tracing_enabled
         ):
             raise PlanCompilationError(
-                "NeMo 0.23 requires tracing to be disabled for the "
+                "Tracing must be disabled for the "
                 "llmrails_colang2_programmable profile."
             )
         if config.runtime_profile != "iorails_native" and metrics_enabled:
             raise PlanCompilationError(
-                f"NeMo 0.23 requires metrics to be disabled for the "
+                f"Metrics must be disabled for the "
                 f"{config.runtime_profile} profile."
             )
+
+    def _validate_native_model_dependencies(
+        self,
+        config: NeMoConfigSnapshot,
+    ) -> None:
+        manifest_models = {
+            name: version
+            for kind, name, version in config.dependency_manifest
+            if kind == "model"
+        }
+        undeclared = set(config.required_models) - manifest_models.keys()
+        if undeclared:
+            raise PlanCompilationError(
+                "Native model requirements are missing from the artifact manifest: "
+                + ", ".join(sorted(undeclared))
+                + "."
+            )
+        if (
+            TOPIC_CONTROL_MODEL_TYPE in config.required_models
+            and manifest_models.get(TOPIC_CONTROL_MODEL_TYPE) != TOPIC_CONTROL_PROFILE
+        ):
+            raise PlanCompilationError(
+                "Official Topic Safety requires the dedicated Model profile "
+                f"{TOPIC_CONTROL_PROFILE!r}."
+            )
+        active_models = {item.type: item for item in self._native_models}
+        for model_type in config.required_models:
+            active = active_models.get(model_type)
+            if active is None:
+                continue
+            expected_profile = manifest_models[model_type]
+            if active.profile_ref != expected_profile:
+                raise PlanCompilationError(
+                    f"Native model {model_type!r} uses profile {active.profile_ref!r}; "
+                    f"artifact requires {expected_profile!r}."
+                )
 
     def _validate_bindings(self, config: NeMoConfigSnapshot) -> None:
         result_vars = tuple(

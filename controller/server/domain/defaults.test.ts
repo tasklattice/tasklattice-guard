@@ -161,7 +161,7 @@ describe("Default Guardrail baseline", () => {
       action: binding.action,
       parameter_values: Object.entries(binding.parameterValues),
       enabled_rule_ids: binding.enabledRuleIds,
-      ...(binding.ruleOrder?.length ? { rule_order: binding.ruleOrder } : {}),
+      rule_order: binding.ruleOrder ?? [],
       rule_actions: [],
       enabled_rails: binding.enabledRails,
     })));
