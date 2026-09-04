@@ -55,7 +55,7 @@ One command rebuilds the moving `:dev` images and installs or upgrades the
 whole Guard release on the `orbstack` context:
 
 ```bash
-make install
+make helm-install
 ```
 
 This single entry point upgrades an existing release or installs a missing one,
@@ -67,18 +67,17 @@ To deploy the same local environment with every performance-debug feature
 enabled, use the Debug overlay entry point:
 
 ```bash
-make install-debug
+make helm-install-debug
 ```
 
 This is equivalent to applying `values-dev.yaml` followed by
 `values-debug.yaml`; it preserves the separation between local infrastructure
 and temporary observability overhead.
 
-When the repository `.env` contains `QWEN_CONTROL_API_KEY`,
-`QWEN_GUARD_API_KEY`, or `LLAMA_GUARD_API_KEY`, this target also creates or
-updates the `tali-guard-provider-keys` Secret. The Qwen control model is used by
-Controller authoring and optional TALI taxonomy refinement; configured native
-Guard Providers are connected to every Runner pool.
+The install target does not read model configuration or credentials from the
+repository `.env` and does not create Provider Secrets. Register models,
+credentials, and capability assignments after deployment through the
+Controller UI.
 
 The deployment helper can also be used after `make images`:
 
@@ -102,7 +101,7 @@ install, upgrade, and reinstall with retained Secrets on a local cluster, prefix
 the command with `GUARD_HELM_TEST_CONTEXT=orbstack`. This creates and removes an
 isolated namespace containing only a test Secret and ConfigMap, not Guard data.
 
-`make install` keeps both application tags fixed at `dev` and changes a
+`make helm-install` keeps both application tags fixed at `dev` and changes a
 Helm-managed rollout revision annotation on every run. Controller and all
 Runner pools therefore replace their Pods and load the latest local `dev`
 images even though the image names remain unchanged. The command waits for Pod

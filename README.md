@@ -264,21 +264,18 @@ two GuardRails 0 Runners, development PostgreSQL and Redis, bootstrap identity,
 artifact signing, and control-channel mTLS with:
 
 ```bash
-make install
+make helm-install
 ```
 
 This single command upgrades an existing release or installs a missing one, then
 waits for workload readiness. It does not uninstall the release or clear data.
 
-Use `make install-debug` for the same OrbStack deployment with the
+Use `make helm-install-debug` for the same OrbStack deployment with the
 `values-debug.yaml` overlay and all performance diagnostics enabled.
 
-If `.env` contains the configured Qwen/Llama Provider credentials, the same
-command securely connects the Controller authoring model and Runner Model
-Runtimes. Evaluation Contracts are mapped through explicit Evaluator Bindings
-and Profiles, so Qwen3Guard can be primary while Llama Guard is used only as a
-fallback for contracts it actually supports. Model endpoints remain replaceable
-and are not compiled into Policy templates or Guardrail artifacts.
+The Helm install command does not read model configuration or credentials from
+`.env` and does not create Provider Secrets. Register models, credentials, and
+capability assignments after deployment through the Controller UI.
 
 **Settings → Models** registers inventory and tests each selected model with an
 actual request. Its call status, timestamp, latency, and failure reason are stored
