@@ -33,6 +33,7 @@ helm lint "$work_dir/tali-guard" --strict \
   --set database.url=postgresql://guard:guard@postgres:5432/guard \
   --set security.artifactSigning.existingSecret=guard-artifact-signing \
   --set security.controlTls.existingSecret=guard-control-tls \
+  --set security.customCa.existingSecret=guard-model-provider-ca \
   --set security.bootstrapAdmin.existingSecret=guard-bootstrap-admin \
   --set runner.callContextRedisUrl=redis://redis:6379/0
 mkdir -p "$work_dir/packaged"

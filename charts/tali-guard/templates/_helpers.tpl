@@ -105,6 +105,10 @@ app.kubernetes.io/part-of: tasklattice-guard
 {{- default (printf "%s-control-tls" (include "tali-guard.fullname" .)) .Values.security.controlTls.existingSecret }}
 {{- end }}
 
+{{- define "tali-guard.customCaSecretName" -}}
+{{- .Values.security.customCa.existingSecret }}
+{{- end }}
+
 {{- define "tali-guard.validateValues" -}}
 {{- if ne (int .Values.controller.replicaCount) 1 }}
 {{- fail "controller.replicaCount must be 1 in this release; Runner pools provide the horizontal data-plane scale" }}

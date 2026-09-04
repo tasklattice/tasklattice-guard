@@ -166,6 +166,27 @@ The Controller certificate must be valid for the Controller Service DNS name.
 Both certificates must chain to `ca.crt`. Production intentionally requires an
 externally managed Secret instead of auto-generating a private CA.
 
+If the Controller and Runners connect to HTTPS model Providers whose server
+certificates are issued by a private CA, create a Secret containing the PEM CA
+certificate and configure it once for both planes:
+
+```bash
+kubectl -n guard-system create secret generic guard-model-provider-ca \
+  --from-file=ca.crt=company-root-ca.crt
+```
+
+```yaml
+security:
+  customCa:
+    existingSecret: guard-model-provider-ca
+    certificateKey: ca.crt
+```
+
+The chart mounts that Secret key read-only at
+`/etc/ssl/certs/tasklattice-custom-ca.crt` in the Controller and every Runner
+Pod. When the externally managed Secret is rotated, restart the workloads so
+the `subPath` mount receives the new certificate.
+
 To enable business-boundary generation, create a separate model credential
 Secret:
 

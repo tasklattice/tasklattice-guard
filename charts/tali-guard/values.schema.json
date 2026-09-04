@@ -302,8 +302,16 @@
     },
     "security": {
       "type": "object",
-      "required": ["metrics", "bootstrapAdmin", "controlSecret", "runtimeLogs", "artifactSigning", "controlTls"],
+      "required": ["customCa", "metrics", "bootstrapAdmin", "controlSecret", "runtimeLogs", "artifactSigning", "controlTls"],
       "properties": {
+        "customCa": {
+          "type": "object",
+          "required": ["existingSecret", "certificateKey"],
+          "properties": {
+            "existingSecret": {"type": "string"},
+            "certificateKey": {"type": "string", "minLength": 1}
+          }
+        },
         "metrics": {
           "type": "object",
           "required": ["existingSecret", "tokenKey"],

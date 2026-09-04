@@ -14,7 +14,10 @@ ENV PATH="/opt/tasklattice/venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     GUARD_RUNNER_STATE_PATH=/var/lib/tasklattice/guard-runner
 WORKDIR /opt/tasklattice/guard-runner
-RUN useradd --system --uid 65532 --no-create-home runner \
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --system --uid 65532 --no-create-home runner \
     && mkdir -p /var/lib/tasklattice/guard-runner \
     && chown -R 65532:65532 /var/lib/tasklattice/guard-runner
 COPY --link --from=dependencies /opt/tasklattice/venv /opt/tasklattice/venv

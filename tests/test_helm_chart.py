@@ -133,6 +133,56 @@ def test_controller_and_runner_have_distinct_images_ports_and_responsibilities()
     assert "GUARD_PYROSCOPE_SERVER_ADDRESS" not in runner_env
 
 
+def test_custom_ca_secret_is_mounted_into_controller_and_every_runner_system_certificate_directory():
+    documents = render(
+        "--set", "security.customCa.existingSecret=model-provider-ca",
+        "--set", "security.customCa.certificateKey=company-root.crt",
+        "--set", "runner.pools[0].name=gpu",
+        "--set", "runner.pools[0].replicaCount=1",
+        "--set", "runner.pools[0].maxConcurrency=128",
+        "--set", "runner.pools[0].resources.requests.cpu=1",
+        "--set", "runner.pools[0].resources.requests.memory=2Gi",
+        "--set", "runner.pools[0].resources.limits.memory=8Gi",
+    )
+    workloads = [
+        item for item in documents
+        if item.get("kind") in {"Deployment", "StatefulSet"}
+        and item["metadata"]["labels"]["app.kubernetes.io/component"] in {"controller", "runner"}
+    ]
+
+    assert len(workloads) == 3
+    for workload in workloads:
+        pod_spec = workload["spec"]["template"]["spec"]
+        container = pod_spec["containers"][0]
+        mount = next(item for item in container["volumeMounts"] if item["name"] == "custom-ca")
+        volume = next(item for item in pod_spec["volumes"] if item["name"] == "custom-ca")
+
+        assert mount == {
+            "name": "custom-ca",
+            "mountPath": "/etc/ssl/certs/tasklattice-custom-ca.crt",
+            "subPath": "tasklattice-custom-ca.crt",
+            "readOnly": True,
+        }
+        assert volume["secret"] == {
+            "secretName": "model-provider-ca",
+            "items": [{"key": "company-root.crt", "path": "tasklattice-custom-ca.crt"}],
+        }
+
+
+def test_custom_ca_mount_is_absent_when_no_secret_is_configured():
+    documents = render()
+    workloads = [
+        item for item in documents
+        if item.get("kind") in {"Deployment", "StatefulSet"}
+        and item["metadata"]["labels"]["app.kubernetes.io/component"] in {"controller", "runner"}
+    ]
+
+    for workload in workloads:
+        pod_spec = workload["spec"]["template"]["spec"]
+        assert all(item["name"] != "custom-ca" for item in pod_spec["containers"][0]["volumeMounts"])
+        assert all(item["name"] != "custom-ca" for item in pod_spec["volumes"])
+
+
 def test_runner_trace_and_profile_backends_are_explicit_and_independently_enabled():
     documents = render(
         "--set", "observability.tracing.enabled=true",
