@@ -12,7 +12,7 @@ from runner.validator import DefaultRunnerValidator
 async def test_default_runner_validates_cases_through_the_real_nemo_runtime() -> None:
     plan = {
         "guardrail_id": "guardrail-1",
-        "guardrail_version": 1,
+        "guardrail_version": "20260904-010000.001Z",
         "compiler_version": "tasklattice-controller-plan-v3",
         "safety_level": "balanced",
         "output_delivery": "full_buffered",
@@ -74,7 +74,7 @@ async def test_default_runner_validates_cases_through_the_real_nemo_runtime() ->
         protocol.ValidationRequest(
             run_id="validation-1",
             guardrail_id="guardrail-1",
-            candidate_version=1,
+            candidate_version="20260904-010000.001Z",
             source_draft_revision=1,
             plan=plan_to_proto(plan),
             runtime_profile="auto",

@@ -82,13 +82,14 @@ def test_checked_in_runner_fixture_is_the_current_compiler_output() -> None:
         capture_output=True,
         text=True,
     )
+
     assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_model_capability_compiles_to_a_provider_agnostic_action_binding() -> None:
     plan = {
         "guardrail_id": "model-contract",
-        "guardrail_version": 1,
+        "guardrail_version": "20260904-010000.001Z",
         "compiler_version": "tasklattice-controller-plan-v3",
         "safety_level": "balanced",
         "output_delivery": "full_buffered",
@@ -119,7 +120,7 @@ def test_model_capability_compiles_to_a_provider_agnostic_action_binding() -> No
     artifact = DefaultRunnerCompiler().compile(protocol.CompileRequest(
         compile_id="model-provider-agnostic",
         guardrail_id="model-contract",
-        guardrail_version=1,
+        guardrail_version="20260904-010000.001Z",
         generation=1,
         plan=plan_to_proto(plan),
         runtime_profile="auto",
@@ -141,7 +142,7 @@ def _compile(
 ) -> protocol.Artifact:
     plan = {
         "guardrail_id": "flag-contract",
-        "guardrail_version": 1,
+        "guardrail_version": "20260904-010000.001Z",
         "compiler_version": "tasklattice-controller-plan-v3",
         "safety_level": safety_level,
         "output_delivery": output_delivery,
@@ -175,7 +176,7 @@ def _compile(
     return DefaultRunnerCompiler().compile(protocol.CompileRequest(
         compile_id=f"flags-{safety_level}-{output_delivery}",
         guardrail_id="flag-contract",
-        guardrail_version=1,
+        guardrail_version="20260904-010000.001Z",
         generation=1,
         plan=plan_to_proto(plan),
         runtime_profile="auto",

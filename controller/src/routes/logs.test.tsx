@@ -21,7 +21,7 @@ const interaction: RuntimeLogInteraction = {
   created_at: "2026-08-15T05:00:00Z",
   completed_at: "2026-08-15T05:00:01Z",
   guardrail_id: "guardrail-1",
-  guardrail_version: 3,
+  guardrail_version: "20260904-030000.003Z",
   deployment_id: "deployment-1",
   integration_id: null,
   protocol: "openai",

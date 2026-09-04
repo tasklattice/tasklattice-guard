@@ -468,7 +468,7 @@ export async function getMetrics(filters: {
   const trend = buildTrend(currentEvents, window, now);
   const guardrailGroups = groupEvents(currentEvents, (event) => event.guardrailId);
   const callerGroups = groupEvents(currentEvents, (event) => `${event.integrationId ?? ""}\u0000${event.deploymentId ?? ""}`);
-  const versionGroups = groupEvents(currentEvents, (event) => `${event.guardrailId ?? ""}\u0000${event.guardrailVersion ?? 0}`);
+  const versionGroups = groupEvents(currentEvents, (event) => `${event.guardrailId ?? ""}\u0000${event.guardrailVersion ?? ""}`);
   const riskCounts = new Map<string, number>();
   for (const finding of currentEvents.flatMap(runtimeFindings)) riskCounts.set(finding.risk, (riskCounts.get(finding.risk) ?? 0) + 1);
   const engineGroups = groupEvents(currentEvents, (event) => stringValue(eventUsage(event).runtime_engine) ?? stringValue(event.metadata.runtimeEngine) ?? "unknown");
@@ -579,7 +579,7 @@ export async function getMetrics(filters: {
         slo_breach_count: values.filter((event) => event.durationMs > sloP95).length,
         runtime_engines: unique(values.map((event) => stringValue(eventUsage(event).runtime_engine) ?? stringValue(event.metadata.runtimeEngine) ?? "unknown")),
         config_checksums: unique(values.map((event) => stringValue(eventUsage(event).config_checksum) ?? stringValue(event.metadata.configChecksum)).filter((item): item is string => Boolean(item))),
-        versions: unique(values.map((event) => event.guardrailVersion).filter((item): item is number => item !== null)),
+        versions: unique(values.map((event) => event.guardrailVersion).filter((item): item is string => item !== null)),
       };
     }),
     caller_distribution: [...callerGroups.entries()].map(([key, values]) => {
@@ -600,16 +600,16 @@ export async function getMetrics(filters: {
         intervention_rate: percentage(summary.blocked + summary.transformed, summary.total),
         error_rate: percentage(summary.errors, summary.total),
         p95_latency_ms: summary.p95,
-        guardrail_versions: unique(values.map((event) => event.guardrailVersion).filter((item): item is number => item !== null)),
+        guardrail_versions: unique(values.map((event) => event.guardrailVersion).filter((item): item is string => item !== null)),
       };
     }),
     version_distribution: [...versionGroups.entries()].filter(([key]) => !key.startsWith("\u0000")).map(([key, values]) => {
-      const [guardrailId = "", version = "0"] = key.split("\u0000");
+      const [guardrailId = "", version = ""] = key.split("\u0000");
       const summary = summarizeEvents(values);
       return {
         guardrail_id: guardrailId,
         guardrail_name: guardrailById.get(guardrailId)?.name ?? guardrailId,
-        guardrail_version: Number(version),
+        guardrail_version: version,
         requests: summary.total,
         share: percentage(summary.total, current.total),
         p95_latency_ms: summary.p95,

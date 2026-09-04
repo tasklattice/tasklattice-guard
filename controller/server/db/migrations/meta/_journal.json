@@ -92,6 +92,13 @@
       "when": 1788424604084,
       "tag": "0012_model_connection_health",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1788507241667,
+      "tag": "0013_shiny_power_pack",
+      "breakpoints": true
     }
   ]
 }

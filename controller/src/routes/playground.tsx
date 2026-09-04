@@ -15,7 +15,7 @@ import { createPlaygroundInteraction, getGuardrails, getGuardrailVersions, getPl
 
 type PlaygroundTargetSelection =
   | { kind: "draft" }
-  | { kind: "published"; version: number };
+  | { kind: "published"; version: string };
 
 export function PlaygroundPage() {
   const { t } = useTranslation();
@@ -42,11 +42,11 @@ export function PlaygroundPage() {
   useEffect(() => {
     if (!versionsQuery.isSuccess) return;
     if (target.kind === "draft" && canTestDraft) return;
-    const requested = target.kind === "published" ? target.version : 0;
+    const requested = target.kind === "published" ? target.version : "";
     const resolved = resolvePublishedVersion(versions, requested);
-    if (resolved > 0 && (target.kind !== "published" || resolved !== target.version)) {
+    if (resolved && (target.kind !== "published" || resolved !== target.version)) {
       selectTarget({ kind: "published", version: resolved });
-    } else if (resolved === 0 && canTestDraft && target.kind !== "draft") {
+    } else if (!resolved && canTestDraft && target.kind !== "draft") {
       selectTarget({ kind: "draft" });
     }
   }, [canTestDraft, selectTarget, target, versions, versionsQuery.isSuccess]);
@@ -202,9 +202,9 @@ function playgroundInteractionTarget(target: PlaygroundTargetSelection, version:
   return version ? { kind: "published", version: version.version } : null;
 }
 
-export function resolvePublishedVersion(versions: GuardrailVersion[], requested: number) {
+export function resolvePublishedVersion(versions: GuardrailVersion[], requested: string) {
   if (versions.some((item) => item.version === requested)) return requested;
-  return versions.reduce((latest, item) => Math.max(latest, item.version), 0);
+  return versions.reduce((latest, item) => item.version > latest ? item.version : latest, "");
 }
 
 function usePlaygroundSelection(guardrails: Guardrail[], canTestDraft: boolean) {
@@ -223,7 +223,7 @@ function usePlaygroundSelection(guardrails: Guardrail[], canTestDraft: boolean) 
   }, [guardrails, selection.guardrailId]);
   const selectGuardrail = useCallback((guardrailId: string) => {
     const guardrail = guardrails.find((item) => item.id === guardrailId);
-    const next = { guardrailId, target: guardrail ? initialTargetFor(guardrail, canTestDraft) : { kind: "published", version: 0 } as PlaygroundTargetSelection };
+    const next = { guardrailId, target: guardrail ? initialTargetFor(guardrail, canTestDraft) : { kind: "published", version: "" } as PlaygroundTargetSelection };
     setSelection(next);
     syncPlaygroundSearch(next);
   }, [canTestDraft, guardrails]);
@@ -236,14 +236,14 @@ function usePlaygroundSelection(guardrails: Guardrail[], canTestDraft: boolean) 
 }
 
 function initialPlaygroundSelection(): { guardrailId: string; target: PlaygroundTargetSelection } {
-  if (typeof window === "undefined") return { guardrailId: "", target: { kind: "published", version: 0 } };
+  if (typeof window === "undefined") return { guardrailId: "", target: { kind: "published", version: "" } };
   const search = new URLSearchParams(window.location.search);
-  const version = Number(search.get("version"));
+  const version = search.get("version") ?? "";
   return {
     guardrailId: search.get("guardrail") ?? "",
     target: search.get("target") === "draft"
       ? { kind: "draft" }
-      : { kind: "published", version: Number.isInteger(version) && version > 0 ? version : 0 },
+      : { kind: "published", version },
   };
 }
 
@@ -257,7 +257,7 @@ function syncPlaygroundSearch(selection: { guardrailId: string; target: Playgrou
     url.searchParams.delete("version");
   } else {
     url.searchParams.delete("target");
-    if (selection.target.version > 0) url.searchParams.set("version", String(selection.target.version));
+    if (selection.target.version) url.searchParams.set("version", selection.target.version);
     else url.searchParams.delete("version");
   }
   window.history.replaceState(window.history.state, "", url);
@@ -266,5 +266,5 @@ function syncPlaygroundSearch(selection: { guardrailId: string; target: Playgrou
 function initialTargetFor(guardrail: Guardrail, canTestDraft: boolean): PlaygroundTargetSelection {
   return canTestDraft && !hasPublishedVersion(guardrail)
     ? { kind: "draft" }
-    : { kind: "published", version: 0 };
+    : { kind: "published", version: "" };
 }

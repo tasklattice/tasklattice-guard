@@ -265,7 +265,7 @@ def test_validation_result_represents_no_evaluator_without_a_sentinel() -> None:
 def _plan() -> dict[str, object]:
     return {
         "guardrail_id": "guardrail-1",
-        "guardrail_version": 3,
+        "guardrail_version": "20260904-030000.003Z",
         "compiler_version": "tasklattice-controller-plan-v3",
         "safety_level": "strict",
         "output_delivery": "full_buffered",
@@ -332,6 +332,7 @@ def _plan() -> dict[str, object]:
             "action": "redact",
             "parameter_values": [["entity_types", "passport"]],
             "enabled_rule_ids": ["pii/passport"],
+            "rule_order": [],
             "rule_actions": [["pii/passport", "redact"]],
             "enabled_rails": ["input", "output"],
         }],

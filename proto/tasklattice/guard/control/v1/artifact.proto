@@ -61,7 +61,7 @@ message Artifact {
   string artifact_id = 1;
   string guardrail_id = 2;
   // Immutable Guardrail version compiled into this artifact.
-  int32 guardrail_version = 3;
+  string guardrail_version = 3;
   // Desired-state generation for which Controller accepted and signed the artifact.
   int64 generation = 4;
   // Compiler implementation version that produced the artifact.
@@ -91,7 +91,7 @@ message CompileRequest {
   string compile_id = 1;
   string guardrail_id = 2;
   // Candidate immutable version that the result must preserve.
-  int32 guardrail_version = 3;
+  string guardrail_version = 3;
   // Desired-state generation reserved by Controller for this candidate.
   int64 generation = 4;
   GuardrailPlan plan = 5;

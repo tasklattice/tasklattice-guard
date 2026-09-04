@@ -162,7 +162,7 @@ def test_runner_rejects_a_corrupt_generation_and_keeps_last_known_good(
         store.apply(corrupt)
 
     assert store.generation == 1
-    assert store.resolve_guardrail("fixture-secrets", 1).deployment_id == "fixture-deployment"
+    assert store.resolve_guardrail("fixture-secrets", "20260904-010000.001Z").deployment_id == "fixture-deployment"
     assert registry.readiness()["ready"] is True
 
 

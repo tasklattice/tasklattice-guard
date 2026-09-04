@@ -125,9 +125,9 @@ def test_deployment_errors_are_returned_without_reinstall_or_force(
 
 
 @pytest.mark.parametrize("suffix", ["", "-debug"])
-def test_make_install_builds_then_upserts_and_waits_for_readiness(suffix: str):
+def test_make_helm_install_builds_then_upserts_and_waits_for_readiness(suffix: str):
     result = subprocess.run(
-        ["make", "--no-print-directory", "-n", f"install{suffix}", "HELM_ROLLOUT_REVISION=regression"],
+        ["make", "--no-print-directory", "-n", f"helm-install{suffix}", "HELM_ROLLOUT_REVISION=regression"],
         cwd=ROOT,
         capture_output=True,
         text=True,
@@ -138,6 +138,8 @@ def test_make_install_builds_then_upserts_and_waits_for_readiness(suffix: str):
     assert "helm upgrade --install" not in result.stdout
     assert "--wait" in result.stdout
     assert "--timeout 5m" in result.stdout
+    assert "MODEL_GUARDRAILS_" not in result.stdout
+    assert "create secret generic" not in result.stdout
     if suffix:
         assert "--values charts/tali-guard/values-debug.yaml" in result.stdout
 

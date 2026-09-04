@@ -21,17 +21,10 @@ export type VersionDiffChange = {
   after?: string;
 };
 
-export function formatGuardrailReleaseId(value: string) {
-  const timestamp = new Date(value);
-  if (Number.isNaN(timestamp.getTime())) return value;
-  const part = (number: number) => String(number).padStart(2, "0");
-  return `${timestamp.getUTCFullYear()}${part(timestamp.getUTCMonth() + 1)}${part(timestamp.getUTCDate())}-${part(timestamp.getUTCHours())}${part(timestamp.getUTCMinutes())}${part(timestamp.getUTCSeconds())}Z`;
-}
-
 export function GuardrailVersionNavigator({ versions, selectedVersion, onSelect }: {
   versions: GuardrailVersion[];
-  selectedVersion: number;
-  onSelect: (version: number) => void;
+  selectedVersion: string;
+  onSelect: (version: string) => void;
 }) {
   const { t, i18n } = useTranslation();
   return (
@@ -43,7 +36,7 @@ export function GuardrailVersionNavigator({ versions, selectedVersion, onSelect 
       <ol className="relative max-h-[42rem] overflow-y-auto py-1 before:absolute before:top-8 before:bottom-8 before:left-[1.65rem] before:w-px before:bg-border">
         {versions.map((version) => {
           const selected = version.version === selectedVersion;
-          const releaseId = formatGuardrailReleaseId(version.created_at);
+          const releaseId = version.version;
           return (
             <li key={version.version} className="relative px-1.5">
               <button
@@ -77,7 +70,7 @@ export function GuardrailVersionComparison({ base, target, baseOptions, onBaseCh
   base: GuardrailVersionDetail;
   target: GuardrailVersionDetail;
   baseOptions: GuardrailVersion[];
-  onBaseChange: (version: number) => void;
+  onBaseChange: (version: string) => void;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
@@ -99,15 +92,15 @@ export function GuardrailVersionComparison({ base, target, baseOptions, onBaseCh
         <div className="mt-4 grid gap-3 rounded-lg border bg-muted/20 p-3 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:items-end">
           <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
             {t("guardrails.baseVersion")}
-            <Select value={String(base.version)} onValueChange={(value) => onBaseChange(Number(value))}>
+            <Select value={base.version} onValueChange={onBaseChange}>
               <SelectTrigger className="min-h-11 bg-card" aria-label={t("guardrails.baseVersion")}><SelectValue /></SelectTrigger>
-              <SelectContent>{baseOptions.map((version) => <SelectItem key={version.version} value={String(version.version)}>{formatGuardrailReleaseId(version.created_at)}</SelectItem>)}</SelectContent>
+              <SelectContent>{baseOptions.map((version) => <SelectItem key={version.version} value={version.version}>{version.version}</SelectItem>)}</SelectContent>
             </Select>
           </label>
           <ArrowRight className="mb-3 hidden size-4 text-muted-foreground sm:block" />
           <div className="grid min-h-11 gap-1 rounded-lg border bg-card px-3 py-2">
             <span className="text-xs font-medium text-muted-foreground">{t("guardrails.targetVersion")}</span>
-            <span className="truncate font-mono text-xs font-semibold">{formatGuardrailReleaseId(target.created_at)}</span>
+            <span className="truncate font-mono text-xs font-semibold">{target.version}</span>
           </div>
         </div>
       </CardHeader>

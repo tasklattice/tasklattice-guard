@@ -15,7 +15,7 @@ export interface CompileRequest {
   /**
    * Candidate immutable version that the result must preserve.
    */
-  'guardrailVersion'?: (number);
+  'guardrailVersion'?: (string);
   /**
    * Desired-state generation reserved by Controller for this candidate.
    */
@@ -39,7 +39,7 @@ export interface CompileRequest__Output {
   /**
    * Candidate immutable version that the result must preserve.
    */
-  'guardrailVersion': (number);
+  'guardrailVersion': (string);
   /**
    * Desired-state generation reserved by Controller for this candidate.
    */

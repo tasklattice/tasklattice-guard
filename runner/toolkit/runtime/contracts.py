@@ -89,7 +89,7 @@ class RuntimeTraceStep:
     content_block_id: str | None = None
     module_id: str | None = None
     guardrail_id: str | None = None
-    guardrail_version: int | None = None
+    guardrail_version: str | None = None
     policy_id: str | None = None
     policy_version: str | None = None
     rail_type: str | None = None
@@ -350,7 +350,7 @@ class GuardrailPolicyBindingSnapshot:
 @dataclass(frozen=True, slots=True)
 class GuardrailPlanSnapshot:
     guardrail_id: str
-    guardrail_version: int
+    guardrail_version: str
     compiler_version: str
     safety_level: SafetyLevel
     output_delivery: OutputDeliveryMode
@@ -414,7 +414,7 @@ class NeMoConfigSnapshot:
     """Immutable NeMo configuration compiled for one released Guardrail version."""
 
     guardrail_id: str
-    guardrail_version: int
+    guardrail_version: str
     compiler_version: str
     output_delivery: OutputDeliveryMode
     config_yaml: str
@@ -625,7 +625,7 @@ class ProtectionDecision:
     reason: str | None = None
     texts: tuple[str, ...] = ()
     guardrail_id: str | None = None
-    guardrail_version: int | None = None
+    guardrail_version: str | None = None
     deployment_id: str | None = None
     integration_id: str | None = None
     output_delivery: OutputDeliveryMode | None = None

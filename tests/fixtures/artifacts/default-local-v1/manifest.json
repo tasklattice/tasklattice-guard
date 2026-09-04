@@ -1,8 +1,8 @@
 {
   "adapter": "litellm-generic-guardrail",
   "artifact_id": "fixture-artifact-default-local-v1",
-  "checksum": "0e2a642ac6dc1fa63bc9c4d90640c88612066318490ffed5df69b9846b88ed6b",
-  "compiler_version": "tasklattice-nemo-config-v13-rule-order",
+  "checksum": "269501bf49c365e4a6930b97106abac7bb109b025b36f810a9d81c4559a62b48",
+  "compiler_version": "tasklattice-nemo-config-v14-iorails-check",
   "expected": {
     "redacted_input": "GUARDRAIL_INTERVENED",
     "redacted_output": "GUARDRAIL_INTERVENED",
@@ -14,8 +14,8 @@
   "format": "tasklattice.guard.control.v1.DesiredState/base64",
   "generation": 1,
   "guardrail_id": "fixture-secrets",
-  "guardrail_version": 1,
+  "guardrail_version": "20260904-010000.001Z",
   "integration_id": "fixture-integration",
-  "nemo_version": "0.23.0",
+  "nemo_version": "0.24.0",
   "runtime_profile": "llmrails_colang1_standard"
 }

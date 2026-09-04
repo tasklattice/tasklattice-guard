@@ -13,7 +13,7 @@ import { CompiledRuntime } from "@/components/compiled-runtime";
 import { ConfirmationSheet } from "@/components/confirmation-sheet";
 import { CopyableChecksum } from "@/components/copyable-checksum";
 import { EntitySheet } from "@/components/entity-sheet";
-import { formatGuardrailReleaseId, GuardrailVersionComparison, GuardrailVersionNavigator } from "@/components/guardrail-version-workspace";
+import { GuardrailVersionComparison, GuardrailVersionNavigator } from "@/components/guardrail-version-workspace";
 import { PolicyBindingEditor } from "@/components/policy-binding-editor";
 import { ProtectedDeleteSheet } from "@/components/protected-delete-sheet";
 import { EmptyState, ErrorNotice, InfoNotice, PageHeader, StateBadge } from "@/components/product-shell";
@@ -141,8 +141,8 @@ export function GuardrailDetailPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [validationConfirmOpen, setValidationConfirmOpen] = useState(false);
   const [selectedValidationRun, setSelectedValidationRun] = useState<ValidationRun | null>(null);
-  const [selectedVersionOverride, setSelectedVersionOverride] = useState<number | null>(null);
-  const [compareBaseVersionNumber, setCompareBaseVersionNumber] = useState<number | null>(null);
+  const [selectedVersionOverride, setSelectedVersionOverride] = useState<string | null>(null);
+  const [compareBaseVersionNumber, setCompareBaseVersionNumber] = useState<string | null>(null);
   const guardrailVersions = versionsQuery.data?.items ?? [];
   const compilationPending = guardrailVersions.some((item) => item.compile_status === "compiling");
   useEffect(() => {
@@ -153,18 +153,18 @@ export function GuardrailDetailPage() {
     return () => globalThis.clearInterval(timer);
   }, [compilationPending, guardrailQuery, versionsQuery]);
   const activeVersion = guardrailVersions.find((item) => item.active);
-  const selectedVersionNumber = selectedVersionOverride && guardrailVersions.some((item) => item.version === selectedVersionOverride) ? selectedVersionOverride : activeVersion?.version ?? guardrailVersions[0]?.version ?? 0;
+  const selectedVersionNumber = selectedVersionOverride && guardrailVersions.some((item) => item.version === selectedVersionOverride) ? selectedVersionOverride : activeVersion?.version ?? guardrailVersions[0]?.version ?? "";
   const selectedVersion = guardrailVersions.find((item) => item.version === selectedVersionNumber);
   const selectedValidation = validationRunsQuery.data?.items.find((run) => run.guardrail_version === selectedVersionNumber && run.status === "passed") ?? null;
   const compareOptions = guardrailVersions.filter((item) => item.version < selectedVersionNumber);
   const immutableQuery = useQuery({
     queryKey: queryKeys.guardrailVersion(guardrailId, selectedVersionNumber),
     queryFn: () => getGuardrailVersion(guardrailId, selectedVersionNumber),
-    enabled: selectedVersionNumber > 0,
+    enabled: Boolean(selectedVersionNumber),
   });
   const compareQuery = useQuery({
-    queryKey: queryKeys.guardrailVersion(guardrailId, compareBaseVersionNumber ?? 0),
-    queryFn: () => getGuardrailVersion(guardrailId, compareBaseVersionNumber ?? 0),
+    queryKey: queryKeys.guardrailVersion(guardrailId, compareBaseVersionNumber ?? ""),
+    queryFn: () => getGuardrailVersion(guardrailId, compareBaseVersionNumber ?? ""),
     enabled: Boolean(compareBaseVersionNumber),
   });
   const metricsQuery = useQuery({
@@ -222,6 +222,17 @@ export function GuardrailDetailPage() {
     ]);
   }
 
+  function openValidationTarget(run: ValidationRun) {
+    setSelectedValidationRun(null);
+    if (guardrailVersions.some((version) => version.version === run.guardrail_version)) {
+      setSelectedVersionOverride(run.guardrail_version);
+      setCompareBaseVersionNumber(null);
+      setSection("immutable");
+      return;
+    }
+    setSection("draft");
+  }
+
   if (guardrailQuery.isLoading) return <Skeleton className="mt-8 h-[34rem] rounded-xl" />;
   if (guardrailQuery.error || !guardrailQuery.data) return <div className="py-8"><ErrorNotice error={guardrailQuery.error ?? new Error(t("guardrails.notFound"))} /></div>;
   const guardrail = guardrailQuery.data;
@@ -237,7 +248,7 @@ export function GuardrailDetailPage() {
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="font-display text-2xl font-semibold tracking-[-0.015em] sm:text-3xl">{guardrail.name}</h1>
-            {activeVersion ? <Badge className="border-emerald-200 bg-emerald-50 font-mono text-[11px] text-emerald-700 hover:bg-emerald-50">{t("guardrails.activeVersion", { version: formatGuardrailReleaseId(activeVersion.created_at) })}</Badge> : <StateBadge state={guardrail.tested_current ? "ready" : "needs_validation"} />}
+            {activeVersion ? <Badge className="border-emerald-200 bg-emerald-50 font-mono text-[11px] text-emerald-700 hover:bg-emerald-50">{t("guardrails.activeVersion", { version: activeVersion.version })}</Badge> : <StateBadge state={guardrail.tested_current ? "ready" : "needs_validation"} />}
             {deployments.length ? <StateBadge state="protected" /> : activeVersion ? <StateBadge state="ready" /> : null}
             {guardrail.is_default ? <Badge variant="outline">{t("guardrails.defaultBadge")}</Badge> : guardrail.system_managed ? <Badge variant="outline">{t("guardrails.systemManaged")}</Badge> : null}
           </div>
@@ -261,17 +272,14 @@ export function GuardrailDetailPage() {
         <div className="overflow-x-auto">
           <TabsList className="min-w-max" aria-label={t("guardrails.detailViews")}>
             <TabsTrigger value="runtime">{t("guardrails.runtimeTab")}</TabsTrigger>
-            <TabsTrigger value="validation"><span className="flex items-center gap-2">{t("guardrails.validationHistoryTab")}{validationRunsQuery.data?.items.length ? <Badge variant="outline" className="font-mono text-[10px]">{validationRunsQuery.data.items.length}</Badge> : null}</span></TabsTrigger>
             <TabsTrigger value="findings"><span className="flex items-center gap-2">{t("guardrails.securityFindingsTab")}{findingsQuery.data?.summary.total ? <Badge variant="outline" className={findingsQuery.data.summary.critical ? "border-red-200 bg-red-50 font-mono text-[10px] text-red-700" : "font-mono text-[10px]"}>{findingsQuery.data.summary.total}</Badge> : null}</span></TabsTrigger>
             <TabsTrigger value="immutable">{t("guardrails.versions")}</TabsTrigger>
+            <TabsTrigger value="validation"><span className="flex items-center gap-2">{t("guardrails.validationHistoryTab")}{validationRunsQuery.data?.items.length ? <Badge variant="outline" className="font-mono text-[10px]">{validationRunsQuery.data.items.length}</Badge> : null}</span></TabsTrigger>
             <TabsTrigger value="draft"><span className="flex items-center gap-2">{t("guardrails.draftReleaseTab")}{hasUnpublishedDraft ? <Circle className="size-2 fill-amber-500 text-amber-500" /> : null}</span></TabsTrigger>
           </TabsList>
         </div>
         <TabsContent value="runtime" className="pt-5">
           <GuardrailRuntimeView guardrailId={guardrail.id} metrics={metricsQuery.data} loading={metricsQuery.isLoading} error={metricsQuery.error} deployments={deployments} versions={guardrailVersions} window={window} onWindowChange={setWindow} />
-        </TabsContent>
-        <TabsContent value="validation" className="pt-5">
-          <GuardrailValidationHistory runs={validationRunsQuery.data?.items ?? []} loading={validationRunsQuery.isLoading} error={validationRunsQuery.error} canManage={canManageDraft} running={validationMutation.isPending} onRun={() => setValidationConfirmOpen(true)} onOpen={setSelectedValidationRun} />
         </TabsContent>
         <TabsContent value="findings" className="pt-5">
           <GuardrailFindingsView data={findingsQuery.data} loading={findingsQuery.isLoading} error={findingsQuery.error} policies={policies} deployments={deployments} integrations={integrationsQuery.data?.items ?? []} window={window} onWindowChange={setWindow} />
@@ -297,6 +305,18 @@ export function GuardrailDetailPage() {
             onCloseCompare={() => setCompareBaseVersionNumber(null)}
           />
         </TabsContent>
+        <TabsContent value="validation" className="pt-5">
+          <GuardrailValidationHistory
+            runs={validationRunsQuery.data?.items ?? []}
+            loading={validationRunsQuery.isLoading}
+            error={validationRunsQuery.error}
+            canManage={canManageDraft}
+            running={validationMutation.isPending}
+            onRun={() => setValidationConfirmOpen(true)}
+            onOpen={setSelectedValidationRun}
+            onOpenTarget={openValidationTarget}
+          />
+        </TabsContent>
         <TabsContent value="draft" className="pt-5">
           <DraftReleaseView guardrail={guardrail} policies={policies} cases={testsQuery.data?.items ?? []} casesLoading={testsQuery.isLoading} activeVersion={activeVersion} versions={guardrailVersions} deployments={deployments} canManage={canManageDraft} validationRunning={validationMutation.isPending} onRunValidation={() => setValidationConfirmOpen(true)} onOpenValidation={setSelectedValidationRun} onEdit={() => setEditOpen(true)} onAddCase={() => setTestOpen(true)} onCreateDeployment={() => setDeploymentOpen(true)} onChanged={refresh} />
         </TabsContent>
@@ -304,7 +324,7 @@ export function GuardrailDetailPage() {
 
       <EditGuardrailSheet guardrail={guardrail} policies={policies} open={editOpen} onOpenChange={setEditOpen} onSaved={async () => { setEditOpen(false); await refresh(); }} />
       <AddTestCaseSheet guardrail={guardrail} open={testOpen} onOpenChange={setTestOpen} onCreated={async () => { setTestOpen(false); await refresh(); }} />
-      <ValidationDetailSheet run={selectedValidationRun} guardrail={guardrail} canManage={canManageDraft} running={validationMutation.isPending} onRunAgain={() => validationMutation.mutate()} onClose={() => setSelectedValidationRun(null)} />
+      <ValidationDetailSheet run={selectedValidationRun} guardrail={guardrail} canManage={canManageDraft} running={validationMutation.isPending} onRunAgain={() => validationMutation.mutate()} onOpenTarget={openValidationTarget} onClose={() => setSelectedValidationRun(null)} />
       <CreateDeploymentSheet open={deploymentOpen} onOpenChange={setDeploymentOpen} guardrails={[guardrail]} onCreated={async () => { setDeploymentOpen(false); await refresh(); }} />
       <ConfirmationSheet
         open={validationConfirmOpen}
@@ -479,7 +499,7 @@ export function GuardrailFindingsView({ data, loading, error, policies, deployme
               <div className="flex flex-wrap items-center gap-2"><GuardrailSeverityBadge severity={finding.severity} /><strong className="text-sm">{guardrailFindingTitle(finding, policies)}</strong></div>
               <p className="mt-2 text-xs leading-5 text-muted-foreground">{finding.detail}</p>
               <p className="mt-2 break-all font-mono text-[11px] text-muted-foreground">{finding.policy_id ?? "—"}{finding.rule_id ? ` · ${finding.rule_id}` : ""}</p>
-              <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground"><span>{t("guardrails.sourceLabel")}: <strong className="font-medium text-foreground">{source}</strong></span><span>{t("guardrails.versionLabel")}: <code>v{finding.guardrail_version ?? "—"}</code></span><span>{t("guardrails.phaseLabel")}: <code>{finding.phase}</code></span><span>{t("guardrails.confidenceLabel")}: <code>{finding.confidence === null ? "—" : `${Math.round(finding.confidence * 100)}%`}</code></span></div>
+              <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground"><span>{t("guardrails.sourceLabel")}: <strong className="font-medium text-foreground">{source}</strong></span><span>{t("guardrails.versionLabel")}: <code>{finding.guardrail_version ?? "—"}</code></span><span>{t("guardrails.phaseLabel")}: <code>{finding.phase}</code></span><span>{t("guardrails.confidenceLabel")}: <code>{finding.confidence === null ? "—" : `${Math.round(finding.confidence * 100)}%`}</code></span></div>
             </div>
             <time className="self-start font-mono text-[11px] text-muted-foreground" dateTime={finding.created_at}><span className="sm:hidden">{timestamp.date} · </span>{timestamp.time}<span className="hidden sm:mt-1 sm:block sm:text-right">{timestamp.date}</span></time>
           </article>;
@@ -560,7 +580,7 @@ function RuntimeStat({ label, value, detail }: { label: string; value: string; d
 
 function CallerDistribution({ metrics, deployments, versions }: { metrics: Metrics; deployments: Awaited<ReturnType<typeof getDeployments>>["items"]; versions: GuardrailVersion[] }) {
   const { t, i18n } = useTranslation();
-  return <Card size="sm" className="gap-0 overflow-hidden py-0 shadow-none"><CardHeader className="border-b px-4 py-3"><CardTitle className="text-sm">{t("guardrails.callersTitle")}</CardTitle><CardDescription className="text-xs leading-5">{t("guardrails.callersDescription")}</CardDescription></CardHeader>{metrics.caller_distribution.length ? <Table className="text-xs"><TableHeader><TableRow className="hover:bg-transparent"><TableHead className="h-9 pl-4">{t("guardrails.caller")}</TableHead><TableHead className="h-9">{t("guardrails.trafficScope")}</TableHead><TableHead className="h-9">{t("guardrails.volumeShare")}</TableHead><TableHead className="h-9">{t("guardrails.servedVersion")}</TableHead><TableHead className="h-9">{t("guardrails.outcome")}</TableHead><TableHead className="h-9">{t("dashboard.p95Latency")}</TableHead></TableRow></TableHeader><TableBody>{metrics.caller_distribution.map((item) => { const deployment = deployments.find((candidate) => candidate.id === item.deployment_id); return <TableRow key={`${item.integration_id}:${item.deployment_id}:${item.protocol}`}><TableCell className="py-2.5 pl-4 align-top"><strong className="text-sm font-medium">{item.integration_name}</strong><p className="mt-0.5 font-mono text-xs text-muted-foreground">{item.protocol}</p></TableCell><TableCell className="max-w-80 py-2.5 align-top"><p className="mb-1 text-xs font-medium">{item.deployment_name}</p>{deployment ? <TrafficScopeBadges deployment={deployment} /> : <span className="text-xs text-muted-foreground">{t("guardrails.unassignedTraffic")}</span>}</TableCell><TableCell className="py-2.5 align-top"><strong className="text-sm tabular-nums">{item.requests.toLocaleString(i18n.language)}</strong><div className="mt-1.5 flex items-center gap-2"><Progress className="h-1 w-16" value={item.share} /><span className="text-xs text-muted-foreground">{item.share}%</span></div></TableCell><TableCell className="py-2.5 align-top"><div className="flex flex-wrap gap-1">{item.guardrail_versions.map((versionNumber) => { const matched = versions.find((candidate) => candidate.version === versionNumber); return <Badge key={versionNumber} variant="outline" className="font-mono text-[10px]">{matched ? formatGuardrailReleaseId(matched.created_at) : versionNumber}</Badge>; })}</div></TableCell><TableCell className="py-2.5 align-top"><p className="text-xs">{t("guardrails.interventionSummary", { rate: item.intervention_rate })}</p><p className="mt-0.5 text-xs text-muted-foreground">{t("guardrails.errorSummary", { rate: item.error_rate })}</p></TableCell><TableCell className="py-2.5 align-top font-mono text-xs">{item.p95_latency_ms} ms</TableCell></TableRow>; })}</TableBody></Table> : <div className="px-4 pb-4"><EmptyState title={t("guardrails.noRuntimeCalls")} description={t("guardrails.noRuntimeCallsDescription")} /></div>}</Card>;
+  return <Card size="sm" className="gap-0 overflow-hidden py-0 shadow-none"><CardHeader className="border-b px-4 py-3"><CardTitle className="text-sm">{t("guardrails.callersTitle")}</CardTitle><CardDescription className="text-xs leading-5">{t("guardrails.callersDescription")}</CardDescription></CardHeader>{metrics.caller_distribution.length ? <Table className="text-xs"><TableHeader><TableRow className="hover:bg-transparent"><TableHead className="h-9 pl-4">{t("guardrails.caller")}</TableHead><TableHead className="h-9">{t("guardrails.trafficScope")}</TableHead><TableHead className="h-9">{t("guardrails.volumeShare")}</TableHead><TableHead className="h-9">{t("guardrails.servedVersion")}</TableHead><TableHead className="h-9">{t("guardrails.outcome")}</TableHead><TableHead className="h-9">{t("dashboard.p95Latency")}</TableHead></TableRow></TableHeader><TableBody>{metrics.caller_distribution.map((item) => { const deployment = deployments.find((candidate) => candidate.id === item.deployment_id); return <TableRow key={`${item.integration_id}:${item.deployment_id}:${item.protocol}`}><TableCell className="py-2.5 pl-4 align-top"><strong className="text-sm font-medium">{item.integration_name}</strong><p className="mt-0.5 font-mono text-xs text-muted-foreground">{item.protocol}</p></TableCell><TableCell className="max-w-80 py-2.5 align-top"><p className="mb-1 text-xs font-medium">{item.deployment_name}</p>{deployment ? <TrafficScopeBadges deployment={deployment} /> : <span className="text-xs text-muted-foreground">{t("guardrails.unassignedTraffic")}</span>}</TableCell><TableCell className="py-2.5 align-top"><strong className="text-sm tabular-nums">{item.requests.toLocaleString(i18n.language)}</strong><div className="mt-1.5 flex items-center gap-2"><Progress className="h-1 w-16" value={item.share} /><span className="text-xs text-muted-foreground">{item.share}%</span></div></TableCell><TableCell className="py-2.5 align-top"><div className="flex flex-wrap gap-1">{item.guardrail_versions.map((version) => <Badge key={version} variant="outline" className="font-mono text-[10px]">{version}</Badge>)}</div></TableCell><TableCell className="py-2.5 align-top"><p className="text-xs">{t("guardrails.interventionSummary", { rate: item.intervention_rate })}</p><p className="mt-0.5 text-xs text-muted-foreground">{t("guardrails.errorSummary", { rate: item.error_rate })}</p></TableCell><TableCell className="py-2.5 align-top font-mono text-xs">{item.p95_latency_ms} ms</TableCell></TableRow>; })}</TableBody></Table> : <div className="px-4 pb-4"><EmptyState title={t("guardrails.noRuntimeCalls")} description={t("guardrails.noRuntimeCallsDescription")} /></div>}</Card>;
 }
 
 export function ImmutableVersionView({ detail, selectedVersion, versions, loading, comparisonDetail, comparisonActive, comparisonLoading, compareOptions, guardrailId, validation, onChanged, onOpenDraft, onOpenValidation, onSelectVersion, onStartCompare, onCompareBaseChange, onCloseCompare }: {
@@ -577,18 +597,18 @@ export function ImmutableVersionView({ detail, selectedVersion, versions, loadin
   onChanged: () => Promise<void>;
   onOpenDraft: () => void;
   onOpenValidation: (run: ValidationRun) => void;
-  onSelectVersion: (version: number) => void;
+  onSelectVersion: (version: string) => void;
   onStartCompare: () => void;
-  onCompareBaseChange: (version: number) => void;
+  onCompareBaseChange: (version: string) => void;
   onCloseCompare: () => void;
 }) {
   const { t, i18n } = useTranslation();
   const auth = useAuth();
-  const [rollbackVersion, setRollbackVersion] = useState<number | null>(null);
-  const rollback = useMutation({ mutationFn: (version: number) => rollbackGuardrail(guardrailId, version), onSuccess: async () => { setRollbackVersion(null); toast.success(t("guardrails.rollbackSucceeded")); await onChanged(); }, onError: (error) => notifyError(error, t("guardrails.operationFailed")) });
+  const [rollbackVersion, setRollbackVersion] = useState<string | null>(null);
+  const rollback = useMutation({ mutationFn: (version: string) => rollbackGuardrail(guardrailId, version), onSuccess: async () => { setRollbackVersion(null); toast.success(t("guardrails.rollbackSucceeded")); await onChanged(); }, onError: (error) => notifyError(error, t("guardrails.operationFailed")) });
   if (loading) return <Skeleton className="h-[34rem] rounded-xl" />;
   if (!selectedVersion || !detail) return <EmptyState title={t("guardrails.noActiveVersion")} description={t("guardrails.noActiveVersionDescription")} action={<Button onClick={onOpenDraft}>{t("guardrails.openDraftRelease")}</Button>} />;
-  const releaseId = formatGuardrailReleaseId(detail.created_at);
+  const releaseId = detail.version;
   if (selectedVersion.compile_status && selectedVersion.compile_status !== "ready") {
     const failed = selectedVersion.compile_status === "failed";
     return <Card className={failed ? "border-destructive/30 shadow-none" : "shadow-none"}>
@@ -656,7 +676,7 @@ export function DraftReleaseView({ guardrail, policies, cases, casesLoading, act
   const { t } = useTranslation();
   const [publishOpen, setPublishOpen] = useState(false);
   const [scopeChange, setScopeChange] = useState<{ caseId: string; action: "exclude" | "restore" } | null>(null);
-  const releaseId = activeVersion ? formatGuardrailReleaseId(activeVersion.created_at) : "";
+  const releaseId = activeVersion?.version ?? "";
   const draftConfigured = Boolean(guardrail.purpose && guardrail.policy_bindings.length);
   const validated = guardrail.tested_current;
   const published = guardrail.published_current;
@@ -667,7 +687,7 @@ export function DraftReleaseView({ guardrail, policies, cases, casesLoading, act
     mutationFn: () => publishGuardrail(guardrail.id),
     onSuccess: async (version) => {
       setPublishOpen(false);
-      toast.success(t("guardrails.publishSucceeded", { version: formatGuardrailReleaseId(version.created_at) }));
+      toast.success(t("guardrails.publishSucceeded", { version: version.version }));
       await onChanged();
     },
     onError: (error) => notifyError(error, t("guardrails.publishFailed")),
@@ -730,7 +750,7 @@ export function DraftReleaseView({ guardrail, policies, cases, casesLoading, act
       <div className="mb-3"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("guardrails.releaseEvidenceEyebrow")}</p><h2 className="mt-1 text-base font-semibold">{t("guardrails.validationInputs")}</h2><p className="mt-1 text-xs text-muted-foreground">{t("guardrails.validationInputsDescription")}</p></div>
       <TestCases cases={cases} bindings={guardrail.policy_bindings} policies={policies} loading={casesLoading} onAdd={onAddCase} onExclude={(caseId) => setScopeChange({ caseId, action: "exclude" })} onRestore={(caseId) => setScopeChange({ caseId, action: "restore" })} busyCaseId={validationScope.isPending ? validationScope.variables?.caseId : undefined} />
     </section>
-    {deployments.length ? <Card className="shadow-none"><CardHeader className="py-4"><CardTitle>{t("guardrails.guardrailDeployments")}</CardTitle><CardDescription>{t("guardrails.guardrailDeploymentsDescription")}</CardDescription></CardHeader><CardContent className="space-y-2">{deployments.map((deployment) => <div key={deployment.id} className="rounded-lg border px-4 py-3"><div className="flex flex-wrap items-center justify-between gap-2"><strong className="text-sm font-medium">{deployment.name}</strong><Badge variant="outline" className="font-mono text-[10px]">v{deployment.guardrail_version}</Badge></div><div className="mt-2"><TrafficScopeBadges deployment={deployment} /></div></div>)}</CardContent></Card> : null}
+    {deployments.length ? <Card className="shadow-none"><CardHeader className="py-4"><CardTitle>{t("guardrails.guardrailDeployments")}</CardTitle><CardDescription>{t("guardrails.guardrailDeploymentsDescription")}</CardDescription></CardHeader><CardContent className="space-y-2">{deployments.map((deployment) => <div key={deployment.id} className="rounded-lg border px-4 py-3"><div className="flex flex-wrap items-center justify-between gap-2"><strong className="text-sm font-medium">{deployment.name}</strong><Badge variant="outline" className="font-mono text-[10px]">{deployment.guardrail_version}</Badge></div><div className="mt-2"><TrafficScopeBadges deployment={deployment} /></div></div>)}</CardContent></Card> : null}
   </div>
   <ConfirmationSheet
     open={publishOpen}

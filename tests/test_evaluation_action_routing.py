@@ -129,7 +129,7 @@ def test_guard_capabilities_share_one_runtime_action() -> None:
 def _request(content: str, capability: str, contract_ref: str) -> ActionRequest:
     plan = GuardrailPlanSnapshot(
         guardrail_id="guardrail-evaluation",
-        guardrail_version=1,
+        guardrail_version="20260904-010000.001Z",
         compiler_version="test",
         safety_level="balanced",
         output_delivery="full_buffered",

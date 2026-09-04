@@ -21,12 +21,11 @@ import { useTranslation } from "react-i18next";
 import { GuardrailResultCard } from "@/components/playground/guardrail-result-card";
 import { ModelMark } from "@/components/playground/model-mark";
 import type { PlaygroundTurn } from "@/components/playground/types";
-import { formatGuardrailReleaseId } from "@/components/guardrail-version-workspace";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { Guardrail, GuardrailVersion, PlaygroundDraftPreview, PlaygroundInteraction, PlaygroundModel } from "@/lib/api";
 
-type PlaygroundTargetChoice = { kind: "draft" } | { kind: "published"; version: number };
+type PlaygroundTargetChoice = { kind: "draft" } | { kind: "published"; version: string };
 
 type PlaygroundThreadMessage = {
   id: string;
@@ -222,7 +221,7 @@ function PlaygroundComposer({ guardrail, guardrails, versions, target, selectedV
   onModelChange: (modelId: string) => void;
 }) {
   const { t } = useTranslation();
-  const latestVersion = versions.reduce((latest, item) => Math.max(latest, item.version), 0);
+  const latestVersion = versions[0]?.version ?? "";
   const targetValue = target.kind === "draft" ? "draft" : `version:${target.version}`;
   const targetReady = target.kind === "draft" ? draftReady : Boolean(selectedVersion);
   return (
@@ -257,7 +256,7 @@ function PlaygroundComposer({ guardrail, guardrails, versions, target, selectedV
                 <Link to="/guardrails/$guardrailId" params={{ guardrailId: guardrail.id }} aria-label={t("playground.openGuardrailDefinition")}><ExternalLink /></Link>
               </Button>
             </div>
-            <Select value={targetValue} onValueChange={(value) => onTargetChange(value === "draft" ? { kind: "draft" } : { kind: "published", version: Number(value.slice("version:".length)) })} disabled={pending || versionsLoading || (!canTestDraft && !versions.length)}>
+            <Select value={targetValue} onValueChange={(value) => onTargetChange(value === "draft" ? { kind: "draft" } : { kind: "published", version: value.slice("version:".length) })} disabled={pending || versionsLoading || (!canTestDraft && !versions.length)}>
               <SelectTrigger className="h-11 w-full border-0 bg-muted/55 text-xs shadow-none 2xl:w-64" aria-label={t("playground.selectedGuardrailTarget")}>
                 {versionsLoading || draftPreparing ? <LoaderCircle className="size-4 animate-spin text-muted-foreground" /> : target.kind === "draft" ? <FlaskConical className="size-4 text-amber-600" /> : <Tags className="size-4 text-muted-foreground" />}
                 <SelectValue placeholder={versionsLoading ? t("playground.loadingTargets") : t("playground.selectTarget")}>
@@ -268,9 +267,8 @@ function PlaygroundComposer({ guardrail, guardrails, versions, target, selectedV
                 {canTestDraft ? <SelectGroup><SelectLabel>{t("playground.draftTargetGroup")}</SelectLabel><SelectItem value="draft"><FlaskConical className="size-4 text-amber-600" /><span className="font-mono font-medium">{t("playground.draftRevision", { revision: guardrail.draft_revision ?? 1 })}</span><span className="text-amber-700">· {t("playground.unpublished")}</span></SelectItem></SelectGroup> : null}
                 {canTestDraft && versions.length ? <SelectSeparator /> : null}
                 {versions.length ? <SelectGroup><SelectLabel>{t("playground.publishedTargetGroup")}</SelectLabel>{versions.map((item) => {
-                    const releaseId = formatGuardrailReleaseId(item.created_at);
                     const state = item.version === latestVersion ? t("playground.latestVersion") : item.active ? t("playground.activeVersion") : "";
-                    return <SelectItem key={item.version} value={`version:${item.version}`}><span className="font-mono font-medium">{t("playground.versionNumber", { version: item.version })}</span><span className="font-mono text-muted-foreground">{releaseId}</span>{state ? <span className="text-muted-foreground">· {state}</span> : null}</SelectItem>;
+                    return <SelectItem key={item.version} value={`version:${item.version}`}><span className="font-mono font-medium">{t("playground.versionNumber", { version: item.version })}</span>{state ? <span className="text-muted-foreground">· {state}</span> : null}</SelectItem>;
                   })}</SelectGroup> : null}
               </SelectContent>
             </Select>

@@ -52,7 +52,7 @@ class Target:
     headers: tuple[tuple[str, str], ...]
     payload: Mapping[str, Any]
     guardrail_id: str | None
-    guardrail_version: int | None
+    guardrail_version: str | None
     artifact_checksum: str | None
 
     def public_metadata(self) -> dict[str, Any]:
@@ -151,13 +151,11 @@ def load_manifest(path: Path) -> tuple[tuple[Target, ...], tuple[BenchmarkCase, 
             item.get("api_key_header", "x-api-key"),
             f"targets[{index}].api_key_header",
         )
-        guardrail_version = item.get("guardrail_version")
-        if guardrail_version is not None and (
-            isinstance(guardrail_version, bool) or not isinstance(guardrail_version, int)
-        ):
-            raise ValueError(
-                f"targets[{index}].guardrail_version must be an integer."
-            )
+        guardrail_version = _string(
+            item.get("guardrail_version"),
+            f"targets[{index}].guardrail_version",
+            optional=True,
+        )
         targets.append(
             Target(
                 name=str(name),

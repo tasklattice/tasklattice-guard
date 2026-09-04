@@ -664,7 +664,7 @@ def _response(content: str) -> httpx.Response:
 
 def _request(content: str, *, capability: str = "content_safety") -> ActionRequest:
     plan = GuardrailPlanSnapshot(
-        guardrail_id="guardrail-safety", guardrail_version=1,
+        guardrail_id="guardrail-safety", guardrail_version="20260904-010000.001Z",
         compiler_version="test", safety_level="balanced",
         output_delivery="full_buffered", steps=(),
     )

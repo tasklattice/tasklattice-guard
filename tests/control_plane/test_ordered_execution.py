@@ -55,7 +55,7 @@ def chain_plan(steps, phase, programmable=False):
             if programmable and index else {"type": "always"},
         })
     return {
-        "guardrail_id": "ordered", "guardrail_version": 1,
+        "guardrail_id": "ordered", "guardrail_version": "20260904-010000.001Z",
         "compiler_version": "test-ordered", "safety_level": "balanced",
         "output_delivery": "full_buffered", "steps": compiled,
         "modules": [{
@@ -73,7 +73,7 @@ async def run_chain(steps, *, phase="input", programmable=False):
     try:
         result = await previews.evaluate(
             ProtectionRequest(phase=phase, texts=("alpha beta",), context=RequestContext(protocol="playground")),
-            preview_id="ordered", guardrail_id="ordered", draft_revision=1, candidate_version=1,
+            preview_id="ordered", guardrail_id="ordered", draft_revision=1, candidate_version="20260904-010000.001Z",
             plan=chain_plan(steps, phase, programmable), runtime_profile="auto",
         )
         assert not result.usage.fail_closed, result.reason
@@ -207,7 +207,7 @@ flow a_second $text
     try:
         result = await previews.evaluate(
             ProtectionRequest(phase="input", texts=("alpha beta",), context=RequestContext(protocol="playground")),
-            preview_id="custom", guardrail_id="ordered", draft_revision=1, candidate_version=1,
+            preview_id="custom", guardrail_id="ordered", draft_revision=1, candidate_version="20260904-010000.001Z",
             plan=plan, runtime_profile="auto",
         )
         assert not result.usage.fail_closed, result.reason

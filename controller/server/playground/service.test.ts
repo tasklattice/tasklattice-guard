@@ -7,8 +7,8 @@ const candidate = {
   guardrailId: "guardrail-1",
   guardrailName: "Guardrail 1",
   draftRevision: 7,
-  candidateVersion: 4,
-  plan: { guardrail_id: "guardrail-1", guardrail_version: 4 },
+  candidateVersion: "20260904-040000.004Z",
+  plan: { guardrail_id: "guardrail-1", guardrail_version: "20260904-040000.004Z" },
   runtimeProfile: "auto",
   compilerVersion: "controller-plan-v2",
 };
@@ -21,7 +21,7 @@ describe("PlaygroundDraftPreviewStore", () => {
     expect(store.get(preview.previewId, "admin-1")).toMatchObject({
       guardrailId: "guardrail-1",
       draftRevision: 7,
-      candidateVersion: 4,
+      candidateVersion: "20260904-040000.004Z",
     });
     expect(() => store.get(preview.previewId, "admin-2")).toThrow(/expired/i);
   });

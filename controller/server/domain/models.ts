@@ -12,7 +12,7 @@ export type DeletionImpact = {
 export type CompiledArtifactInput = {
   id: string;
   guardrailId: string;
-  guardrailVersion: number;
+  guardrailVersion: string;
   generation: number;
   compilerVersion: string;
   nemoVersion: string;
@@ -33,7 +33,7 @@ export type RuntimeEventInput = {
   requestId: string;
   runnerId: string;
   guardrailId?: string | undefined;
-  guardrailVersion?: number | undefined;
+  guardrailVersion?: string | undefined;
   integrationId?: string | undefined;
   deploymentId?: string | undefined;
   direction: "incoming" | "outgoing";

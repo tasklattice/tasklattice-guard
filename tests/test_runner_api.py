@@ -27,7 +27,7 @@ class Runtime:
             action="reject",
             reason="policy matched",
             guardrail_id="guardrail-1",
-            guardrail_version=2,
+            guardrail_version="20260904-020000.002Z",
             deployment_id="deployment-1",
             integration_id="integration-1",
             findings=(RiskFinding(
@@ -77,7 +77,7 @@ class ResolvedFailureRuntime:
     async def evaluate(self, _request, *, on_resolved=None):
         assert on_resolved is not None
         on_resolved(SimpleNamespace(
-            plan=SimpleNamespace(guardrail_id="guardrail-resolved", guardrail_version=7),
+            plan=SimpleNamespace(guardrail_id="guardrail-resolved", guardrail_version="20260904-070000.007Z"),
             deployment_id="deployment-resolved",
         ))
         raise RuntimeError("provider failed")
@@ -256,7 +256,7 @@ async def test_controller_can_prepare_and_evaluate_draft_without_runtime_evidenc
     ).router)  # type: ignore[arg-type]
     plan = {
         "guardrail_id": "guardrail-draft",
-        "guardrail_version": 4,
+        "guardrail_version": "20260904-040000.004Z",
         "compiler_version": "controller-plan-v2",
         "steps": [],
         "modules": [],
@@ -265,7 +265,7 @@ async def test_controller_can_prepare_and_evaluate_draft_without_runtime_evidenc
         "preview_id": "preview-1",
         "guardrail_id": "guardrail-draft",
         "draft_revision": 7,
-        "candidate_version": 4,
+        "candidate_version": "20260904-040000.004Z",
         "plan": plan,
         "runtime_profile": "auto",
     }
@@ -292,7 +292,7 @@ async def test_controller_can_prepare_and_evaluate_draft_without_runtime_evidenc
     assert prepared.status_code == 200
     assert prepared.json()["ttl_seconds"] == 900
     assert evaluated.status_code == 200
-    assert evaluated.json()["guardrail_version"] == 4
+    assert evaluated.json()["guardrail_version"] == "20260904-040000.004Z"
     assert previews.prepared["draft_revision"] == 7
     request, evaluation = previews.evaluated
     assert evaluation["guardrail_id"] == "guardrail-draft"
@@ -393,7 +393,7 @@ async def test_controller_can_evaluate_an_explicit_guardrail_version_without_an_
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://runner") as client:
         unauthorized = await client.post(
             "/internal/v1/guardrails/guardrail-1/evaluate",
-            json={"phase": "input", "texts": ["hello"], "guardrail_version": 2},
+            json={"phase": "input", "texts": ["hello"], "guardrail_version": "20260904-020000.002Z"},
         )
         response = await client.post(
             "/internal/v1/guardrails/guardrail-1/evaluate",
@@ -401,7 +401,7 @@ async def test_controller_can_evaluate_an_explicit_guardrail_version_without_an_
             json={
                 "phase": "input",
                 "texts": ["secret prompt"],
-                "guardrail_version": 2,
+                "guardrail_version": "20260904-020000.002Z",
                 "call_id": "playground-call-1",
                 "protocol": "playground",
             },
@@ -409,7 +409,7 @@ async def test_controller_can_evaluate_an_explicit_guardrail_version_without_an_
 
     assert unauthorized.status_code == 401
     assert response.status_code == 200
-    assert runtime.explicit_guardrail == ("guardrail-1", 2)
+    assert runtime.explicit_guardrail == ("guardrail-1", "20260904-020000.002Z")
     assert runtime.request.context.integration_id is None
     assert runtime.request.context.value("header", "authorization") is None
     assert runtime.request.context.value("header", "x-api-key") is None
@@ -587,7 +587,7 @@ async def test_internal_api_uses_bounded_sentinel_and_rejected_ids_never_reach_b
         internal = await client.post(
             "/internal/v1/guardrails/guardrail-1/evaluate",
             headers={"authorization": "Bearer controller-token"},
-            json={"phase": "input", "texts": ["hello"], "guardrail_version": 2},
+            json={"phase": "input", "texts": ["hello"], "guardrail_version": "20260904-020000.002Z"},
         )
 
     assert rejected.status_code == 401

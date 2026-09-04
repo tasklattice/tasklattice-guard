@@ -37,19 +37,19 @@ def test_guardrail_business_metrics_cover_allow_deny_transform_and_failure_modes
     )
     allow = ProtectionDecision(
         decision="allow", action="pass", guardrail_id="guardrail-1",
-        guardrail_version=2, deployment_id="deployment-1",
+        guardrail_version="20260904-020000.002Z", deployment_id="deployment-1",
         # The runtime/route identity is deliberately different. Metrics must
         # retain the authenticated entrypoint identity supplied below.
         integration_id="route-derived-must-not-win", coverage=coverage,
     )
     deny = ProtectionDecision(
         decision="block", action="reject", guardrail_id="guardrail-1",
-        guardrail_version=2, deployment_id="deployment-1",
+        guardrail_version="20260904-020000.002Z", deployment_id="deployment-1",
         coverage=coverage, usage=RuntimeUsage(fail_closed=True, queue_latency_ms=5),
     )
     transform = ProtectionDecision(
         decision="transform", action="redact", guardrail_id="guardrail-1",
-        guardrail_version=2, deployment_id="deployment-1",
+        guardrail_version="20260904-020000.002Z", deployment_id="deployment-1",
         mode="detect",
         interventions=(AppliedIntervention(
             kind="redact", module_id="secrets", fragment_id="fragment-1",
@@ -101,7 +101,7 @@ def test_guardrail_request_errors_keep_resolved_identity_and_unmatched_is_stable
             "runtime", "a2a", "output", integration_id="integration-a2a",
         ) as observation:
             observation.resolve(SimpleNamespace(
-                plan=SimpleNamespace(guardrail_id="guardrail-resolved", guardrail_version=7),
+                plan=SimpleNamespace(guardrail_id="guardrail-resolved", guardrail_version="20260904-070000.007Z"),
                 deployment_id="deployment-resolved",
                 integration_id="route-derived-must-not-win",
             ))
@@ -113,7 +113,7 @@ def test_guardrail_request_errors_keep_resolved_identity_and_unmatched_is_stable
         ) as observation:
             observation.set_identity(
                 guardrail_id="guardrail-timeout",
-                guardrail_version=3,
+                guardrail_version="20260904-030000.003Z",
                 deployment_id="deployment-timeout",
             )
             raise TimeoutError("bounded runtime timeout")
@@ -144,7 +144,7 @@ def test_scoped_technical_failures_are_bounded_and_keep_guardrail_identity():
             "runtime", "http", "input", integration_id="integration-1",
         ) as observation:
             observation.set_identity(
-                guardrail_id="guardrail-1", guardrail_version=4,
+                guardrail_id="guardrail-1", guardrail_version="20260904-040000.004Z",
                 deployment_id="deployment-1",
             )
             observation.fail("provider", "timeout")
@@ -174,7 +174,7 @@ def test_policy_and_protection_metrics_explain_module_risk_policy_and_failure():
     )
     decision = ProtectionDecision(
         decision="block", action="reject", guardrail_id="guardrail-1",
-        guardrail_version=1, deployment_id="deployment-1",
+        guardrail_version="20260904-010000.001Z", deployment_id="deployment-1",
         findings=(finding,),
         assessments=(ModuleAssessment(
             module_id="interaction-safety", module="interaction_safety",
@@ -229,7 +229,7 @@ def test_non_integration_requests_use_a_bounded_internal_identity():
             decision="allow",
             action="pass",
             guardrail_id="guardrail-internal",
-            guardrail_version=1,
+            guardrail_version="20260904-010000.001Z",
             deployment_id="deployment-internal",
             integration_id="decision-derived-must-not-win",
         ))

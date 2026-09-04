@@ -50,7 +50,7 @@ class FixtureFiles:
 def _plan() -> dict[str, object]:
     return {
         "guardrail_id": "fixture-secrets",
-        "guardrail_version": 1,
+        "guardrail_version": "20260904-010000.001Z",
         "compiler_version": "tasklattice-controller-plan-v3",
         "safety_level": "balanced",
         "output_delivery": "full_buffered",
@@ -140,7 +140,7 @@ def _default_plan() -> dict[str, object]:
       import {buildGuardrailPlan} from './server/domain/guardrail-plan.ts';
       import {PolicyCatalog} from './server/policy-catalog/catalog.ts';
       const policies = PolicyCatalog.load('../runner/toolkit/policy_library/assets').list();
-      console.log(JSON.stringify(buildGuardrailPlan({guardrailId:'fixture-secrets', guardrailVersion:1,
+      console.log(JSON.stringify(buildGuardrailPlan({guardrailId:'fixture-secrets', guardrailVersion:"20260904-010000.001Z",
         draft:defaultGuardrailDraft(policies), policies})));
     """
     return json.loads(subprocess.run(
@@ -158,7 +158,7 @@ def generate(fixture_name: str = FIXTURE_NAME) -> FixtureFiles:
     artifact = DefaultRunnerCompiler().compile(protocol.CompileRequest(
         compile_id="fixture-compile-local-secrets-v1",
         guardrail_id="fixture-secrets",
-        guardrail_version=1,
+        guardrail_version="20260904-010000.001Z",
         generation=1,
         plan=plan_to_proto({
             DEFAULT_FIXTURE_NAME: _default_plan,
