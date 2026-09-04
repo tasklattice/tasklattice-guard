@@ -522,7 +522,7 @@ export async function getMetrics(filters: {
         points: buildTrend(values, window, now),
       })),
     },
-    system_status: status.status === "ready" ? "healthy" : "degraded",
+    system_status: status.status === "healthy" ? "healthy" : "degraded",
   };
 }
 

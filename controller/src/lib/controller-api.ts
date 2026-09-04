@@ -7,22 +7,11 @@ import type {
   ValidationRunState,
 } from "../../shared/lifecycle";
 import type { ModelDetectorType } from "../../shared/guardrail-catalog";
+import type { PlatformStatusSnapshot } from "../../shared/platform-status";
 
 export type Collection<T> = { items: T[]; count?: number };
 
-export type SystemStatus = {
-  status: "ready" | "degraded";
-  deploymentComplete: boolean;
-  desiredGeneration: number;
-  defaultRunnerReady: boolean;
-  modelConnections: {
-    controlPlane: { provider: string; model: string };
-    dataPlane: {
-      provider: string;
-      models: Array<{ id: string; model: string }>;
-    };
-  };
-};
+export type SystemStatus = PlatformStatusSnapshot;
 
 export type ModelProviderKind = "openai" | "qwen" | "deepseek" | "vllm" | "ollama" | "custom-openai-compatible";
 export type ModelProfile = "generic-chat" | "tali.qwen3guard.v1" | "tali.llama-guard-3.v1" | "tali.nemotron-content-safety.v1" | "tali.nemotron-safety-guard-v3.v1" | "tali.nemoguard-topic-control.v1" | "tali.openai-compatible-jailbreak.v1" | "tali.nemoguard-jailbreak-detect.v1" | "tali.taxonomy-judge.v1" | "tali.grounding-judge.v1" | "tali.automated-reasoning.v1";

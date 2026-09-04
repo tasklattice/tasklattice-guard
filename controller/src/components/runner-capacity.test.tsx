@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RunnerPool } from "@/lib/controller-api";
 
-import { RunnersPage } from "./runners";
+import { RunnerCapacitySection } from "./runner-capacity";
 
 const mocks = vi.hoisted(() => ({
   listRunnerPools: vi.fn(),
@@ -116,7 +116,7 @@ function renderPage() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  return render(<QueryClientProvider client={client}><RunnersPage /></QueryClientProvider>);
+  return render(<QueryClientProvider client={client}><RunnerCapacitySection /></QueryClientProvider>);
 }
 
 describe("Runner capacity removal", () => {
@@ -132,7 +132,7 @@ describe("Runner capacity removal", () => {
   it("offers removal only for an offline Runner and confirms it in the shared side Sheet", async () => {
     renderPage();
 
-    const removeOffline = await screen.findByRole("button", { name: "Remove runner-offline" });
+    const [removeOffline] = await screen.findAllByRole("button", { name: "Remove runner-offline" });
     expect(screen.queryByRole("button", { name: "Remove runner-ready" })).toBeNull();
 
     fireEvent.click(removeOffline);
@@ -149,7 +149,7 @@ describe("Runner capacity removal", () => {
     mocks.role = "member";
     renderPage();
 
-    expect(await screen.findByText("runner-offline")).toBeTruthy();
+    expect((await screen.findAllByText("runner-offline")).length).toBe(2);
     expect(screen.queryByRole("button", { name: /Remove runner-/ })).toBeNull();
   });
 
@@ -157,7 +157,7 @@ describe("Runner capacity removal", () => {
     mocks.removeRunnerInstance.mockRejectedValue(new Error("Only an offline Runner registration can be removed."));
     renderPage();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Remove runner-offline" }));
+    fireEvent.click((await screen.findAllByRole("button", { name: "Remove runner-offline" }))[0]);
     fireEvent.click(screen.getByRole("button", { name: "Remove Runner" }));
 
     expect((await screen.findByRole("alert")).textContent).toContain("Only an offline Runner registration can be removed.");
@@ -180,10 +180,10 @@ describe("Runner configuration convergence", () => {
     const summary = await screen.findByRole("status");
     expect(summary.textContent).toContain("Configuration converged");
     expect(summary.textContent).toContain("1/1 connected Runners · Desired generation 2");
-    expect(screen.getByText("Converged")).toBeTruthy();
-    expect(screen.getByText("Applied 2 · Desired 2")).toBeTruthy();
-    expect(screen.getByText("Not connected")).toBeTruthy();
-    expect(screen.getByText("Last reported 2 · Desired 2")).toBeTruthy();
+    expect(screen.getAllByText("Converged")).toHaveLength(2);
+    expect(screen.getAllByText("Applied 2 · Desired 2")).toHaveLength(2);
+    expect(screen.getAllByText("Not connected")).toHaveLength(2);
+    expect(screen.getAllByText("Last reported 2 · Desired 2")).toHaveLength(2);
   });
 
   it("shows the pool and Runner as syncing with the generation lag", async () => {
@@ -200,9 +200,9 @@ describe("Runner configuration convergence", () => {
     const summary = await screen.findByRole("status");
     expect(summary.textContent).toContain("Configuration syncing");
     expect(summary.textContent).toContain("0/1 connected Runners · Desired generation 2");
-    expect(screen.getByText("Syncing")).toBeTruthy();
-    expect(screen.getByText("Applied 1 · Desired 2")).toBeTruthy();
-    expect(screen.getByText("Lag: 1 generation(s)")).toBeTruthy();
+    expect(screen.getAllByText("Syncing")).toHaveLength(2);
+    expect(screen.getAllByText("Applied 1 · Desired 2")).toHaveLength(2);
+    expect(screen.getAllByText("Lag: 1 generation(s)")).toHaveLength(2);
   });
 
   it("shows an unavailable convergence state when the pool has no connected Runner", async () => {

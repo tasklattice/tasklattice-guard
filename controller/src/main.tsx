@@ -16,7 +16,6 @@ import { DashboardPage } from "@/routes/dashboard";
 import { PolicyLibraryPage } from "@/routes/policy-library";
 import { AccountPage } from "@/routes/account";
 import { HelpPage } from "@/routes/help";
-import { RunnersPage } from "@/routes/runners";
 import { AuditLogPage } from "@/routes/audit-log";
 import { StatusPage } from "@/routes/status";
 import { GuardrailCatalogPage, ModelsPage, ProvidersPage } from "@/routes/models";
@@ -45,7 +44,6 @@ const playgroundRoute = createRoute({ getParentRoute: () => rootRoute, path: "/p
 const deploymentsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/deployments", component: DeploymentsPage });
 const deploymentDetailRoute = createRoute({ getParentRoute: () => rootRoute, path: "/deployments/$deploymentId", component: DeploymentDetailPage });
 const integrationsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/integrations", component: IntegrationsPage });
-const runnersRoute = createRoute({ getParentRoute: () => rootRoute, path: "/runners", component: RunnersPage });
 const logsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/logs", component: LogsPage });
 const auditLogRoute = createRoute({ getParentRoute: () => rootRoute, path: "/audit-log", component: AuditLogPage });
 const usersRoute = createRoute({ getParentRoute: () => rootRoute, path: "/access", component: UsersPage });
@@ -66,7 +64,6 @@ const routeTree = rootRoute.addChildren([
   deploymentsRoute,
   deploymentDetailRoute,
   integrationsRoute,
-  runnersRoute,
   logsRoute,
   auditLogRoute,
   usersRoute,

@@ -587,18 +587,21 @@ export class ModelConfigurationService {
     const control = active?.assignments.controlPlane
       ? byId.get(active.assignments.controlPlane)
       : null;
+    const runtimeModels = modelDetectorTypes.flatMap((detectorType) => {
+      const modelId = active?.assignments.detectors[detectorType];
+      const model = modelId ? byId.get(modelId) : undefined;
+      return model ? [{ id: detectorType, model: model.model }] : [];
+    });
     return {
       controlPlane: {
-        provider: control?.providerName ?? "Not configured",
-        model: control?.model ?? "not-configured",
+        status: control ? "configured" as const : "unconfigured" as const,
+        provider: control?.providerName ?? null,
+        model: control?.model ?? null,
       },
       dataPlane: {
+        status: runtimeModels.length > 0 ? "configured" as const : "unconfigured" as const,
         provider: "Runner",
-        models: modelDetectorTypes.flatMap((detectorType) => {
-          const modelId = active?.assignments.detectors[detectorType];
-          const model = modelId ? byId.get(modelId) : undefined;
-          return model ? [{ id: detectorType, model: model.model }] : [];
-        }),
+        models: runtimeModels,
       },
     };
   }

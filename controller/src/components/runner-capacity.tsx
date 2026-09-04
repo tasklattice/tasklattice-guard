@@ -5,11 +5,10 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { EntitySheet } from "@/components/entity-sheet";
-import { EmptyState, ErrorNotice, Metric, PageHeader, StateBadge } from "@/components/product-shell";
+import { EmptyState, ErrorNotice, StateBadge } from "@/components/product-shell";
 import { ProtectedDeleteSheet } from "@/components/protected-delete-sheet";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -24,9 +23,9 @@ import {
 } from "@/lib/controller-api";
 import { cn } from "@/lib/utils";
 
-const runnerPoolKey = ["controller", "runner-pools"] as const;
+export const runnerPoolKey = ["resources", "runner-pools"] as const;
 
-export function RunnersPage() {
+export function RunnerCapacitySection() {
   const { t, i18n } = useTranslation();
   const auth = useAuth();
   const queryClient = useQueryClient();
@@ -35,47 +34,45 @@ export function RunnersPage() {
   const [removing, setRemoving] = useState<{ runner: RunnerInstance; poolName: string } | null>(null);
 
   return (
-    <section className="py-6 sm:py-8">
-      <PageHeader
-        title={t("runners.title")}
-        description={t("runners.description")}
-      />
-      {query.isLoading ? <Skeleton className="mt-6 h-80 rounded-xl" /> : null}
-      {query.error ? <div className="mt-6"><ErrorNotice error={query.error} /></div> : null}
-      {!query.isLoading && !query.error && !query.data?.items.length ? <div className="mt-6"><EmptyState title={t("runners.emptyTitle")} description={t("runners.emptyDescription")} /></div> : null}
-      <div className="mt-6 grid gap-5">
+    <section className="overflow-hidden rounded-lg border bg-card" aria-labelledby="runner-capacity-title">
+      <header className="border-b px-5 py-4">
+        <h2 id="runner-capacity-title" className="text-base font-semibold">{t("runners.title")}</h2>
+        <p className="mt-1 text-sm leading-6 text-muted-foreground">{t("runners.description")}</p>
+      </header>
+      {query.isLoading ? <div className="p-5"><Skeleton className="h-80 rounded-lg" /></div> : null}
+      {query.error ? <div className="p-5"><ErrorNotice error={query.error} /></div> : null}
+      {!query.isLoading && !query.error && !query.data?.items.length ? <div className="p-5"><EmptyState title={t("runners.emptyTitle")} description={t("runners.emptyDescription")} /></div> : null}
+      <div className="divide-y">
         {(query.data?.items ?? []).map((pool) => (
-          <Card key={pool.id}>
-            <CardHeader className="border-b">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <CardTitle>{pool.name}</CardTitle>
-                    {pool.isDefault ? <Badge>Baseline</Badge> : null}
-                  </div>
-                  <CardDescription className="mt-2">
-                    {t("runners.recommendation", { recommended: pool.capacity.recommendedReplicas, desired: pool.desiredReplicas })}
-                  </CardDescription>
+          <article key={pool.id}>
+            <div className="flex flex-col gap-4 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-sm font-semibold">{pool.name}</h3>
+                  {pool.isDefault ? <Badge>Baseline</Badge> : null}
                 </div>
-                <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
-                  <PoolConvergenceStatus pool={pool} />
-                  {auth.user?.role === "admin" ? (
-                    <Button variant="outline" className="min-h-11" onClick={() => setEditing(pool)}>
-                      <Gauge />{t("runners.capacitySettings")}
-                    </Button>
-                  ) : null}
-                </div>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  {t("runners.recommendation", { recommended: pool.capacity.recommendedReplicas, desired: pool.desiredReplicas })}
+                </p>
               </div>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-                <Metric label={t("runners.readyRunners")} value={`${pool.capacity.readyRunners}/${pool.capacity.totalRunners}`} />
-                <Metric label="RPS" value={pool.capacity.currentRps.toFixed(1)} detail={`${t("runners.safeCapacity")} ${pool.capacity.safeRpsCapacity.toFixed(1)}`} />
-                <Metric label={t("runners.inflightUtilization")} value={`${Math.round(pool.capacity.inflightUtilization * 100)}%`} />
-                <Metric label="p95" value={`${Math.round(pool.capacity.latencyP95Ms)} ms`} />
-                <Metric label={t("runners.errorRate")} value={`${(pool.capacity.errorRate * 100).toFixed(2)}%`} />
+              <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center lg:w-auto">
+                <PoolConvergenceStatus pool={pool} />
+                {auth.user?.role === "admin" ? (
+                  <Button variant="outline" className="min-h-11" onClick={() => setEditing(pool)}>
+                    <Gauge />{t("runners.capacitySettings")}
+                  </Button>
+                ) : null}
               </div>
-              <Table className="mt-5">
+            </div>
+            <div className="grid gap-px border-y bg-border sm:grid-cols-2 xl:grid-cols-5">
+              <RunnerMetric label={t("runners.readyRunners")} value={`${pool.capacity.readyRunners}/${pool.capacity.totalRunners}`} />
+              <RunnerMetric label="RPS" value={pool.capacity.currentRps.toFixed(1)} detail={`${t("runners.safeCapacity")} ${pool.capacity.safeRpsCapacity.toFixed(1)}`} />
+              <RunnerMetric label={t("runners.inflightUtilization")} value={`${Math.round(pool.capacity.inflightUtilization * 100)}%`} />
+              <RunnerMetric label="p95" value={`${Math.round(pool.capacity.latencyP95Ms)} ms`} />
+              <RunnerMetric label={t("runners.errorRate")} value={`${(pool.capacity.errorRate * 100).toFixed(2)}%`} />
+            </div>
+            <div className="hidden overflow-x-auto lg:block">
+              <Table className="min-w-[64rem]">
                 <TableHeader><TableRow><TableHead>Runner</TableHead><TableHead>{t("runners.columns.runtimeState")}</TableHead><TableHead>{t("runners.columns.configurationSync")}</TableHead><TableHead>{t("runners.columns.inflightQueue")}</TableHead><TableHead>CPU / Memory</TableHead><TableHead>{t("runners.columns.lastHeartbeat")}</TableHead><TableHead className="w-14"><span className="sr-only">{t("runners.columns.actions")}</span></TableHead></TableRow></TableHeader>
                 <TableBody>
                   {pool.instances.map((runner) => (
@@ -101,8 +98,34 @@ export function RunnersPage() {
                   ))}
                 </TableBody>
               </Table>
-            </CardContent>
-          </Card>
+            </div>
+            <div className="divide-y lg:hidden">
+              {pool.instances.map((runner) => (
+                <div key={runner.runnerId} className="px-5 py-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <code className="break-all text-xs">{runner.runnerId}</code>
+                      <p className="mt-1 text-xs text-muted-foreground">NeMo {runner.nemoVersion}{runner.compilerCapable ? " · compiler" : ""}</p>
+                    </div>
+                    <StateBadge state={runner.status} />
+                  </div>
+                  <div className="mt-4"><RunnerConvergenceStatus runner={runner} /></div>
+                  <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3">
+                    <RunnerDatum label={t("runners.columns.inflightQueue")} value={`${runner.load?.inflight ?? 0} / ${runner.load?.queueDepth ?? 0}`} />
+                    <RunnerDatum label="CPU / Memory" value={`${Math.round((runner.load?.cpuUtilization ?? 0) * 100)}% / ${Math.round((runner.load?.memoryUtilization ?? 0) * 100)}%`} />
+                    <RunnerDatum label={t("runners.columns.lastHeartbeat")} value={formatDate(runner.lastHeartbeatAt, i18n.language)} />
+                  </dl>
+                  {auth.user?.role === "admin" && runner.status === "offline" ? <Button
+                    type="button"
+                    variant="outline"
+                    className="mt-4 min-h-11 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    aria-label={t("runners.removeAria", { runnerId: runner.runnerId })}
+                    onClick={() => setRemoving({ runner, poolName: pool.name })}
+                  ><Trash2 />{t("runners.removeOffline")}</Button> : null}
+                </div>
+              ))}
+            </div>
+          </article>
         ))}
       </div>
       <RunnerPoolSheet
@@ -123,6 +146,25 @@ export function RunnersPage() {
         }}
       />
     </section>
+  );
+}
+
+function RunnerMetric({ label, value, detail }: { label: string; value: string; detail?: string }) {
+  return (
+    <div className="bg-card px-5 py-4">
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
+      <p className="mt-1.5 text-xl font-semibold tracking-[-0.025em] tabular-nums">{value}</p>
+      {detail ? <p className="mt-1 text-xs text-muted-foreground">{detail}</p> : null}
+    </div>
+  );
+}
+
+function RunnerDatum({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="text-[11px] text-muted-foreground">{label}</dt>
+      <dd className="mt-1 text-xs font-medium tabular-nums">{value}</dd>
+    </div>
   );
 }
 

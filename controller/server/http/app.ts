@@ -13,6 +13,7 @@ import type { ControllerConfig } from "../config.js";
 import { OpenAICompatibleIntentAnalyzer, type IntentAnalyzer } from "../control-plane-ai/intent-analyzer.js";
 import { ConflictError, ControllerError, NotFoundError, ValidationError } from "../domain/errors.js";
 import { enforcementActions } from "../domain/guardrail-plan.js";
+import { deriveRunnerFleetStatus } from "../domain/platform-status.js";
 import type { RunnerControlServer } from "../control-channel/control-server.js";
 import type { ControlPlaneService } from "../services/control-plane.js";
 import type { ControllerMetrics } from "../metrics.js";
@@ -29,6 +30,7 @@ import {
   runPlaygroundInteraction,
 } from "../playground/service.js";
 import { isGuardrailVersionId } from "../../shared/guardrail-version.js";
+import type { PlatformStatusSnapshot } from "../../shared/platform-status.js";
 
 type Actor = { id: string; role: string };
 type Variables = { actor: Actor };
@@ -237,14 +239,40 @@ export function createHttpApp(input: {
   app.get("/api/v1/system/status", async (context) => {
     const pools = await input.service.listRunnerPoolsWithCapacity();
     const defaultPool = pools.find((pool) => pool.isDefault);
-    const defaultRunnerReady = Boolean(defaultPool && defaultPool.capacity.readyRunners > 0);
-    return context.json({
-      status: defaultRunnerReady ? "ready" : "degraded",
-      deploymentComplete: defaultRunnerReady,
+    const { reasons, ...runnerFleet } = deriveRunnerFleetStatus(defaultPool);
+    const configuredModels = input.models ? await input.models.statusSummary() : {
+      controlPlane: {
+        status: input.config.modelConnections.controlPlane.model === "not-configured" ? "unconfigured" as const : "configured" as const,
+        provider: input.config.modelConnections.controlPlane.model === "not-configured" ? null : input.config.modelConnections.controlPlane.provider,
+        model: input.config.modelConnections.controlPlane.model === "not-configured" ? null : input.config.modelConnections.controlPlane.model,
+      },
+      dataPlane: {
+        status: input.config.modelConnections.dataPlane.models.length > 0 ? "configured" as const : "unconfigured" as const,
+        ...input.config.modelConnections.dataPlane,
+      },
+    };
+    const runtimeModelStatus = configuredModels.dataPlane.status === "unconfigured"
+      ? "unconfigured" as const
+      : runnerFleet.servingRunners > 0
+        ? "ready" as const
+        : "unavailable" as const;
+    const snapshot = {
+      status: runnerFleet.status,
+      reasons,
+      observedAt: new Date().toISOString(),
       desiredGeneration: await input.service.desiredGeneration(),
-      defaultRunnerReady,
-      modelConnections: input.models ? await input.models.statusSummary() : input.config.modelConnections,
-    }, defaultRunnerReady ? 200 : 503);
+      components: {
+        controller: { status: "operational" as const },
+        runnerFleet,
+        controlPlaneModel: configuredModels.controlPlane,
+        runtimeModels: {
+          status: runtimeModelStatus,
+          provider: configuredModels.dataPlane.provider,
+          models: configuredModels.dataPlane.models,
+        },
+      },
+    } satisfies PlatformStatusSnapshot;
+    return context.json(snapshot, ["healthy", "degraded"].includes(snapshot.status) ? 200 : 503);
   });
 
   app.on(["GET", "POST"], "/api/auth/*", (context) => input.auth.handler(context.req.raw));

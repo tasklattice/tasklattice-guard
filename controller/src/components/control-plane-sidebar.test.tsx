@@ -67,6 +67,7 @@ describe("ControlPlaneSidebar", () => {
     expect(links[0].getAttribute("href")).toBe("/dashboard");
     expect(screen.queryByRole("link", { name: "Dashboard" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Validation Runs" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Runner capacity" })).toBeNull();
     expect(document.body.textContent).toContain("Guardrail Design");
     expect(document.body.textContent).not.toContain("Build & validate");
   });

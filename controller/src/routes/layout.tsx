@@ -27,7 +27,6 @@ const names: Record<string, { group?: string; page: string }> = {
   "/playground": { group: "nav.guardrailDesign", page: "nav.playground" },
   "/deployments": { group: "nav.runtime", page: "nav.deployments" },
   "/integrations": { group: "nav.runtime", page: "nav.integrations" },
-  "/runners": { group: "nav.runtime", page: "nav.runners" },
   "/logs": { group: "nav.observability", page: "nav.logs" },
   "/audit-log": { group: "nav.observability", page: "nav.auditLog" },
   "/access": { group: "nav.system", page: "nav.access" },
