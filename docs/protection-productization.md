@@ -2300,6 +2300,79 @@ reuse an old deployment report as current release acceptance. The broader custom
 authoring/lifecycle limitations below remain explicit; this run does not erase
 them. No commit/push, cluster write or external-model invocation was made.
 
+## Authorized isolated live smoke and response replay (2026-09-07)
+
+Following explicit user approval, reused isolated Controller8093, Runner8094,
+UI8092 and PostgreSQL55439. No user cluster or38081/38082 service was changed.
+Created two clearly named recorded-smoke Providers and four Models in this test
+database. Credentials stayed in a loopback-only recording gateway; Controller
+stored only the test gateway credential. The gateway is now offline-only.
+
+Actual outbound request count: **23**, under the200-request cap, including two
+catalog reads, connection/probe calls and upstream SDK retries. Complete raw
+synthetic responses are retained privately in
+`/tmp/guard-protection-preview.CMncHZ/model-response-round-20260907.sqlite`.
+Seven portable response fixtures are added under `tests/fixtures/model_responses`.
+
+Candidate source HEAD: `5218bcf5aa57d9ba962183624f9a874cf4946135` (plus this
+recording/replay tooling and documentation change). The round returned14 HTTP200
+responses and9 HTTP500 responses; the latter include native SDK retry attempts,
+not nine independently chosen attack samples. The gateway performed no retries.
+
+Verification after adding the replay fixtures: new focused tests18 passed;
+full `make test-data-plane`369 passed,18 Redis-dependent skips in62.26s;
+test-suite boundary contracts2 passed; `git diff --check` passed. The six new
+artifact/stream cases cover safe/unsafe captured Output classifications across
+full-buffered, window-buffered and interruptible modes. They prove execution
+against recorded replies, not live partial-window model quality. No compiler is
+invoked by these data-plane cases.
+
+| Check | Observed live result |
+| --- | --- |
+| DeepSeek `deepseek-v4-flash` | Actual call and generic-chat probe passed; not a full authoring quality test |
+| NVIDIA Safety Guard8Bv3 Input | Benign allowed, unsafe blocked through real NeMo Rail |
+| NVIDIA Safety Guard8Bv3 Output | Benign allowed, unsafe blocked through real NeMo Rail |
+| NVIDIA Topic Control8B | HTTP500 TensorRT/CUDA illegal memory access; Rail validation failed, not a successful attack block |
+| NVIDIA JailbreakDetect | Callable; benign allowed, but the current synthetic instruction-override attack also allowed; Rail validation correctly failed |
+| Qwen3Guard | Not exercised: no separately supplied endpoint |
+
+Switching the gateway to offline replay reproduced all five Controller-to-Runner
+validation results, including both failures, without increasing the23-call count.
+No failed model configuration was activated or represented as production-ready.
+This is a small engineering smoke round, not independent holdout accuracy, full
+business-model response generation or complete release acceptance.
+
+Two integration findings were retained rather than silently changing product
+behavior: fresh single-assignment Save returned409 `model_configuration_changed`
+even without competing writes (timestamp precision in the optimistic-lock path
+needs investigation); existing whole-draft Save allowed testing to continue.
+Provider registration attempted the first discovered NVIDIA model `01-ai/yi-large`,
+which the approved recording allowlist correctly denied without an external call.
+After registering Safety Guard, the existing Provider validation action tested
+that approved model successfully. Neither finding was patched in this test task.
+
+## Fresh model-draft Save conflict fixed (2026-09-07)
+
+The live-round409 was reproduced against real PostgreSQL: a stored timestamp
+`2026-09-07T00:00:00.123456Z` becomes `.123Z` in JavaScript, so the old equality
+predicate matches no row even without a concurrent writer. The same issue affects
+single-assignment validation and whole-draft validation. Millisecond equality can
+also miss a genuine concurrent update.
+
+Model-draft snapshots now carry an internal PostgreSQL `xmin` token. Single and
+whole saves/validations require both the unchanged row version and draft state;
+public revision payloads do not expose this token. No schema migration or timestamp
+rounding workaround is needed. This change does not waive conflict detection.
+
+Real PostgreSQL regression:6 passed in a newly created, isolated temporary schema;
+structures only were copied, and the test schema was removed afterwards. Cases
+cover fresh creation, the exact microsecond failure, both validation paths, and
+both stale validation paths with a concurrent write retaining `updated_at`.
+Existing server suite516 passed; Controller/UI typecheck passed. No external
+model requests were made. The isolated Controller8093 was restarted with the fix.
+The Topic Control upstream500 and JailbreakDetect observed miss remain unresolved;
+this configuration fix does not turn those results into a passing release gate.
+
 ## Explicit remaining gaps
 
 - Canonical action/dependency lifecycle alignment. Policy-owned literal phrase

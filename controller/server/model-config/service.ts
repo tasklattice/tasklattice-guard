@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { and, asc, desc, eq, inArray, max, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, getTableColumns, inArray, max, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import type { ControllerDatabase } from "../db/client.js";
@@ -59,6 +59,18 @@ const modelCatalogEnvelope = z.object({
 
 type ModelRow = typeof modelDefinitions.$inferSelect;
 type ProviderRow = typeof modelProviders.$inferSelect;
+// Date rounds PostgreSQL microseconds to milliseconds. It is neither a lossless
+// nor a unique optimistic-lock token. xmin changes on every committed row write,
+// including writers that retain updated_at; keep it internal to this DB snapshot.
+const editableRevisionColumns = {
+  ...getTableColumns(modelConfigurationRevisions),
+  rowVersion: sql<string>`${modelConfigurationRevisions}.xmin::text`.as("row_version"),
+};
+function unchangedRevision(draft: { id: string; rowVersion: string }) {
+  return and(eq(modelConfigurationRevisions.id, draft.id),
+    sql`${modelConfigurationRevisions}.xmin::text = ${draft.rowVersion}`,
+    eq(modelConfigurationRevisions.state, "draft"));
+}
 export type RailValidationEvidence = { passed: boolean; message: string; latencyMs: number };
 export type RailValidator = (request: CapabilityValidationRequest) => Promise<RailValidationEvidence>;
 
@@ -469,8 +481,8 @@ export class ModelConfigurationService {
       validatedAt: null,
       failureReason: null,
       updatedAt: new Date(),
-    }).where(eq(modelConfigurationRevisions.id, draft.id)).returning();
-    if (!updated) throw new NotFoundError("Model configuration revision", draft.id);
+    }).where(unchangedRevision(draft)).returning();
+    if (!updated) throw new ConflictError("The draft changed while saving. Reload the current assignments.", "model_configuration_changed");
     await this.audit(actorId, "model_configuration.draft_updated", "model_configuration", updated.id, {
       revision: updated.revision,
     });
@@ -506,7 +518,7 @@ export class ModelConfigurationService {
       validatedAt: report.valid ? new Date(report.checkedAt) : null,
       failureReason: report.valid ? null : "One or more saved assignments still need validation.",
       updatedAt: new Date(),
-    }).where(and(eq(modelConfigurationRevisions.id, draft.id), eq(modelConfigurationRevisions.updatedAt, draft.updatedAt))).returning();
+    }).where(unchangedRevision(draft)).returning();
     if (!updated) throw new ConflictError("The draft changed during Rail validation. Validate the current assignment again.", "model_configuration_changed");
     await this.audit(actorId, "model_configuration.assignment_updated", "model_configuration", updated.id, { target, modelId });
     return publicRevision(updated);
@@ -555,7 +567,7 @@ export class ModelConfigurationService {
       validatedAt: new Date(report.checkedAt),
       failureReason: report.valid ? null : "One or more saved assignments still need validation.",
       updatedAt: new Date(),
-    }).where(and(eq(modelConfigurationRevisions.id, draft.id), eq(modelConfigurationRevisions.updatedAt, draft.updatedAt))).returning();
+    }).where(unchangedRevision(draft)).returning();
     if (!updated) throw new ConflictError("The draft changed during Rail validation. Validate the current assignment again.", "model_configuration_changed");
     await this.audit(actorId, "model_configuration.assignment_validated", "model_configuration", updated.id, { target, modelId, valid: report.valid });
     return publicRevision(updated);
@@ -570,7 +582,7 @@ export class ModelConfigurationService {
       validatedAt: new Date(report.checkedAt),
       failureReason: report.valid ? null : "One or more model configuration checks failed.",
       updatedAt: new Date(),
-    }).where(and(eq(modelConfigurationRevisions.id, draft.id), eq(modelConfigurationRevisions.updatedAt, draft.updatedAt))).returning();
+    }).where(unchangedRevision(draft)).returning();
     if (!updated) throw new ConflictError("The draft changed during Rail validation. Validate the current assignments again.", "model_configuration_changed");
     await this.audit(actorId, "model_configuration.validated", "model_configuration", updated.id, {
       revision: updated.revision,
@@ -1110,7 +1122,7 @@ export class ModelConfigurationService {
   }
 
   private async ensureDraft(actorId: string | null) {
-    const [draft] = await this.db.select().from(modelConfigurationRevisions)
+    const [draft] = await this.db.select(editableRevisionColumns).from(modelConfigurationRevisions)
       .where(inArray(modelConfigurationRevisions.state, ["draft", "validated"]))
       .orderBy(desc(modelConfigurationRevisions.revision))
       .limit(1);
@@ -1132,7 +1144,7 @@ export class ModelConfigurationService {
       state: "draft",
       assignments: normalizeModelAssignments(assignments),
       createdBy: actorId,
-    }).returning();
+    }).returning(editableRevisionColumns);
     if (!created) throw new Error("Model configuration draft creation failed.");
     return created;
   }

@@ -42,6 +42,60 @@ rejection, and restart from last-known-good state.
 
 ## Model tests
 
+### PostgreSQL model-draft optimistic locking
+
+`controller/server/model-config/model-configuration.postgres.test.ts` exercises
+real PostgreSQL `xmin` row-version checks, including microsecond timestamps and
+concurrent validation/edits that retain the same timestamp. It uses a random
+temporary schema, copies only table structures from an already migrated local
+database, and removes that schema afterwards. No public rows or Provider calls
+are used. This is opt-in; ordinary service tests do not emulate DB concurrency.
+
+Supply a loopback-only `GUARD_TEST_POSTGRES_URL` through your private environment,
+then run from `controller`:
+
+```bash
+npx vitest run server/model-config/model-configuration.postgres.test.ts
+```
+
+The row version is an internal database snapshot token, not an API field or a
+persistent identifier. Do not cache it across transactions, backups or restores.
+
+### Recorded real responses: offline Mock Provider
+
+The 2026-09-07 isolated smoke round recorded real DeepSeek and NVIDIA responses.
+Portable samples live in `tests/fixtures/model_responses/20260907-nvidia-smoke.json`.
+They include successful content classifications, a real HTTP 500 and an observed
+JailbreakDetect false negative. Observed failures are not approved behavior or
+independent quality acceptance. Inputs are synthetic; no credentials or headers
+are stored in these fixtures.
+
+```bash
+.venv/bin/python -m pytest -q tests/data_plane/test_model_response_gateway.py tests/data_plane/test_recorded_model_responses.py
+.venv/bin/python scripts/model_response_gateway.py --fixtures tests/fixtures/model_responses/20260907-nvidia-smoke.json --port 8097
+```
+
+Mock base URL: `http://127.0.0.1:8097/nvidia/v1`. Requests must match a recorded
+route and complete JSON payload, including prompts and generation parameters.
+Responses are consumed in recorded order; a missing/exhausted match returns409,
+never falls back to a real model. Restarting resets offline replay cursors.
+These selected fixtures do not provide catalog discovery or arbitrary chat.
+Full SQLite recordings can instead be replayed with `--database PATH`.
+
+For a separately authorized synthetic live recording, pass `--live`, a new
+`--database PATH`, `--credentials-file PATH`, `--limit N` (maximum200), and
+`GUARD_HOLDOUT_ALLOW_MODEL_CALLS=1`. Only the explicit endpoint/model allowlist
+is reachable. Every outbound attempt, including catalog GETs and callers'
+automatic retries, is reserved in SQLite before dispatch; failures consume
+budget. The gateway itself does not retry. Live mode must be stopped after a
+round. The request cap is not a monetary accounting guarantee.
+
+The data-plane replay tests consume existing signed execution artifacts, not a
+compiler: six tests cover recorded safe/unsafe Output decisions across all three
+stream modes. Full buffering also checks that a fragmented prefix is not released
+before the final classification. Partial-window safety quality still requires
+separate reviewed live cases; whole-response recordings cannot establish it.
+
 ### Custom Policy parameter data boundary
 
 Custom Colang `${name}` placeholders are supported inside quoted strings only.

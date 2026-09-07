@@ -19,7 +19,7 @@ function setup(state = "draft", assigned = false, failProbe = false) {
   const rows = new Map<unknown, Array<Record<string, unknown>>>([
     [modelProviders, [{ id: "provider-1", name: "Mock", kind: "custom-openai-compatible", baseUrl: "https://provider.test/v1", credentialCiphertext: null }]],
     [modelDefinitions, [{ id, providerId: "provider-1", name: "Guard alias", model: "guard-alias", ...input, status: "pending", validatedAt: null }]],
-    [modelConfigurationRevisions, [{ id: "revision-1", revision: 1, state, assignments }]],
+    [modelConfigurationRevisions, [{ id: "revision-1", revision: 1, state, assignments, rowVersion: "synthetic-tx-1" }]],
   ]);
   const query = (table: unknown) => {
     const result = rows.get(table) ?? [];
