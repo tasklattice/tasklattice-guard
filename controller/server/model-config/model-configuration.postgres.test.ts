@@ -21,8 +21,8 @@ describe.skipIf(!url)("Model draft PostgreSQL optimistic locking", () => {
     expect(["127.0.0.1", "localhost", "[::1]"]).toContain(new URL(url!).hostname);
     admin = new Pool({ connectionString: url, max: 1 });
     await admin.query(`CREATE SCHEMA "${namespace}"`);
-    pool = new Pool({ connectionString: url, max: 2, options: `-c search_path=${namespace}` });
-    for (const table of ['model_configuration_revision', 'model_provider', 'model_definition', 'policy_version', 'audit_event']) {
+    pool = new Pool({ connectionString: url, max: 2, application_name: namespace, options: `-c search_path=${namespace}` });
+    for (const table of ['model_configuration_revision', 'model_provider', 'model_definition', 'policy_version', 'audit_event', 'controller_state', 'controller_outbox']) {
       // LIKE copies structure/indexes, not data or foreign keys to public rows.
       await pool.query(`CREATE TABLE "${table}" (LIKE public."${table}" INCLUDING ALL)`);
     }
@@ -37,6 +37,9 @@ describe.skipIf(!url)("Model draft PostgreSQL optimistic locking", () => {
   });
   beforeEach(async () => {
     await pool.query('DELETE FROM model_configuration_revision');
+    await pool.query('DELETE FROM controller_outbox');
+    await pool.query('DELETE FROM audit_event');
+    await pool.query("INSERT INTO controller_state (id,desired_generation) VALUES ('singleton',0) ON CONFLICT (id) DO UPDATE SET desired_generation=0");
     service = new ModelConfigurationService(drizzle(pool, { schema }), 'synthetic-root',
       resolve('../runner/toolkit/policy_library/assets'), vi.fn(() => { throw new Error('No external calls allowed'); }));
     service.setRailValidator(async () => ({ passed: true, message: 'Synthetic Rail result', latencyMs: 1 }));
@@ -73,6 +76,171 @@ describe.skipIf(!url)("Model draft PostgreSQL optimistic locking", () => {
       : await service.validateDraft('synthetic-admin');
     expect(result.state).toBe('validated');
     expect(result.validationReport?.valid).toBe(true);
+  });
+
+  it('starts activation only after Rail validation and publishes exactly one desired-state event', async () => {
+    const id = await seed(true);
+    await service.validateAssignment('content_safety.input', 'synthetic-admin');
+    const result = await service.beginActivation(id, 'synthetic-admin');
+    expect(result.state).toBe('activating');
+    expect(result.generation).toBe(1);
+    const { rows: events } = await pool.query('SELECT kind,aggregate_id,payload FROM controller_outbox');
+    expect(events).toEqual([{ kind: 'runner.desired_state_changed', aggregate_id: id,
+      payload: { resourceType: 'model_configuration', revisionId: id, generation: 1 } }]);
+    await expect(service.beginActivation(id, 'synthetic-admin')).rejects.toMatchObject({ code: 'model_configuration_not_validated' });
+    const { rows: [state] } = await pool.query("SELECT desired_generation FROM controller_state WHERE id='singleton'");
+    expect(Number(state.desired_generation)).toBe(1);
+  });
+
+  it('publishes only once when two activation requests pass preflight together', async () => {
+    const id = await seed(true);
+    await service.validateAssignment('content_safety.input', 'synthetic-admin');
+    const reportFromChecks = service['reportFromChecks'].bind(service);
+    let arrivals = 0;
+    let release!: () => void;
+    const bothChecked = new Promise<void>(resolve => { release = resolve; });
+    // Force both requests past the real preflight before either starts its
+    // transaction. No timers or external model calls determine the race.
+    const preflight = vi.spyOn(service as unknown as { reportFromChecks: typeof reportFromChecks }, 'reportFromChecks')
+      .mockImplementation(async (...args) => {
+        const result = await reportFromChecks(...args);
+        if (++arrivals === 2) release();
+        await bothChecked;
+        return result;
+      });
+    let results: PromiseSettledResult<Awaited<ReturnType<typeof service.beginActivation>>>[];
+    try {
+      results = await Promise.allSettled([
+        service.beginActivation(id, 'synthetic-admin-a'),
+        service.beginActivation(id, 'synthetic-admin-b'),
+      ]);
+    } finally {
+      preflight.mockRestore();
+    }
+    expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter(result => result.status === 'rejected')).toEqual([
+      expect.objectContaining({ reason: expect.objectContaining({ code: 'model_configuration_not_validated' }) }),
+    ]);
+    const { rows: revisions } = await pool.query('SELECT state,generation,failure_reason FROM model_configuration_revision WHERE id=$1', [id]);
+    expect(revisions).toEqual([{ state: 'activating', generation: '1', failure_reason: null }]);
+    expect((await pool.query('SELECT payload FROM controller_outbox')).rows).toEqual([
+      { payload: { resourceType: 'model_configuration', revisionId: id, generation: 1 } },
+    ]);
+    const { rows: [state] } = await pool.query("SELECT desired_generation FROM controller_state WHERE id='singleton'");
+    expect(Number(state.desired_generation)).toBe(1);
+    expect((await pool.query("SELECT id FROM audit_event WHERE kind='model_configuration.activation_started'")).rows).toHaveLength(1);
+  });
+
+  it('still lets a different validated revision replace an unfinished activation', async () => {
+    const first = await seed(true);
+    await service.validateAssignment('content_safety.input', 'synthetic-admin');
+    const second = await service.updateAssignment('content_safety.input', modelId, 'synthetic-admin');
+    expect(second.id).not.toBe(first);
+    await service.validateAssignment('content_safety.input', 'synthetic-admin');
+    await service.beginActivation(first, 'synthetic-admin');
+    const replacement = await service.beginActivation(second.id, 'synthetic-admin');
+    expect(replacement.state).toBe('activating');
+    expect(replacement.generation).toBe(2);
+    expect((await pool.query('SELECT state,failure_reason FROM model_configuration_revision WHERE id=$1', [first])).rows)
+      .toEqual([{ state: 'failed', failure_reason: 'A newer model configuration activation replaced this attempt.' }]);
+    expect((await pool.query('SELECT id FROM controller_outbox')).rows).toHaveLength(2);
+    const { rows: [state] } = await pool.query("SELECT desired_generation FROM controller_state WHERE id='singleton'");
+    expect(Number(state.desired_generation)).toBe(2);
+  });
+
+  it('cannot resurrect a replaced activation when its ACK was delayed by a database lock', async () => {
+    const original = randomUUID();
+    await pool.query("INSERT INTO model_configuration_revision (id,revision,assignments,state) VALUES ($1,0,$2,'active')", [original, emptyModelAssignments()]);
+    const first = await seed(true);
+    await service.validateAssignment('content_safety.input', 'synthetic-admin');
+    const next = await service.updateAssignment('content_safety.input', modelId, 'synthetic-admin');
+    await service.validateAssignment('content_safety.input', 'synthetic-admin');
+    await service.beginActivation(first, 'synthetic-admin');
+
+    async function waitUntil(condition: () => Promise<boolean>) {
+      const deadline = Date.now() + 3000;
+      while (!(await condition())) {
+        if (Date.now() >= deadline) throw new Error('Expected database lock interleaving was not observed');
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+    }
+    async function lockWaiters() {
+      const { rows: [row] } = await admin.query("SELECT count(*)::int AS count FROM pg_stat_activity WHERE application_name=$1 AND wait_event_type='Lock'", [namespace]);
+      return Number(row.count);
+    }
+    await admin.query('BEGIN');
+    await admin.query(`SELECT id FROM "${namespace}".model_configuration_revision WHERE id=$1 FOR UPDATE`, [original]);
+    let finalization: Promise<void> | undefined;
+    let replacement: ReturnType<typeof service.beginActivation> | undefined;
+    let replacementCompletedBeforeAck = false;
+    try {
+      finalization = service.finalizeActivation(first);
+      await waitUntil(async () => await lockWaiters() === 1);
+      let replacementSettled = false;
+      replacement = service.beginActivation(next.id, 'synthetic-admin');
+      void replacement.then(() => { replacementSettled = true; }, () => { replacementSettled = true; });
+      await waitUntil(async () => replacementSettled || await lockWaiters() === 2);
+      replacementCompletedBeforeAck = replacementSettled;
+    } finally {
+      await admin.query('ROLLBACK');
+      await Promise.all([finalization, replacement]);
+    }
+    const { rows } = await pool.query('SELECT id,state FROM model_configuration_revision');
+    const states = new Map(rows.map(row => [row.id, row.state]));
+    expect(states.get(next.id)).toBe('activating');
+    // If replacement committed first, the stale ACK must be ignored. If ACK
+    // holds the activation lock, it completes first and remains last-known-good
+    // while the replacement waits for its own ACK. Both serial orders are valid.
+    expect(states.get(first)).toBe(replacementCompletedBeforeAck ? 'failed' : 'active');
+    expect(states.get(original)).toBe(replacementCompletedBeforeAck ? 'active' : 'superseded');
+    expect(rows.filter(row => row.state === 'active')).toHaveLength(1);
+    expect((await pool.query('SELECT id FROM controller_outbox')).rows).toHaveLength(2);
+  });
+
+  it('ignores a late ACK after a NACK and keeps the prior active configuration', async () => {
+    const prior = randomUUID();
+    await pool.query("INSERT INTO model_configuration_revision (id,revision,assignments,state) VALUES ($1,0,$2,'active')", [prior, emptyModelAssignments()]);
+    const id = await seed(true);
+    await service.validateAssignment('content_safety.input', 'synthetic-admin');
+    await service.beginActivation(id, 'synthetic-admin');
+    await service.failActivation(id, 'Synthetic Runner NACK');
+    await service.finalizeActivation(id);
+    expect((await pool.query('SELECT state,failure_reason FROM model_configuration_revision WHERE id=$1', [id])).rows)
+      .toEqual([{ state: 'failed', failure_reason: 'Synthetic Runner NACK' }]);
+    expect((await pool.query("SELECT id FROM model_configuration_revision WHERE state='active'")).rows).toEqual([{ id: prior }]);
+  });
+
+  it('does not activate a partially passing configuration or invalidate its unrelated failure', async () => {
+    const id = await seed(true);
+    await service.updateAssignment('content_safety.output', modelId, 'synthetic-admin');
+    service.setRailValidator(async ({ bindingId }) => ({
+      passed: bindingId === 'content_safety.input', message: `Synthetic ${bindingId} result`, latencyMs: 1,
+    }));
+    await service.validateAssignment('content_safety.output', 'synthetic-admin');
+    const result = await service.validateAssignment('content_safety.input', 'synthetic-admin');
+    expect(result.state).toBe('draft');
+    expect(result.validationReport?.valid).toBe(false);
+    expect(result.validationReport?.checks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: expect.stringContaining('content_safety.output'), status: 'failed' }),
+      expect.objectContaining({ id: expect.stringContaining('content_safety.input'), status: 'passed' }),
+    ]));
+    await expect(service.beginActivation(id, 'synthetic-admin')).rejects.toMatchObject({ code: 'model_configuration_not_validated' });
+    expect((await pool.query('SELECT id FROM controller_outbox')).rows).toEqual([]);
+    const { rows: [state] } = await pool.query("SELECT desired_generation FROM controller_state WHERE id='singleton'");
+    expect(Number(state.desired_generation)).toBe(0);
+  });
+
+  it('requires new Rail evidence after editing a previously validated assignment', async () => {
+    const id = await seed(true);
+    await service.validateAssignment('content_safety.input', 'synthetic-admin');
+    // Even selecting the same model again must not reuse the old target evidence.
+    const edited = await service.updateAssignment('content_safety.input', modelId, 'synthetic-admin');
+    // Validated revisions are immutable snapshots; editing forks a new draft.
+    expect(edited.id).not.toBe(id);
+    expect(edited.state).toBe('draft');
+    expect(edited.validationReport?.valid).toBe(false);
+    await expect(service.beginActivation(edited.id, 'synthetic-admin')).rejects.toMatchObject({ code: 'model_configuration_not_validated' });
+    expect((await pool.query('SELECT id FROM controller_outbox')).rows).toEqual([]);
   });
 
   it.each(['single', 'whole'] as const)('rejects stale %s validation even when a concurrent write keeps the timestamp', async kind => {

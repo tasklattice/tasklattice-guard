@@ -20,13 +20,20 @@ from scripts.model_response_gateway import ReplayFixtures, canonical, create_app
 from tests.data_plane.test_artifact_execution import _runtime, RUNTIME_CREDENTIAL, Telemetry
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
-CASES = json.loads((FIXTURES / "model_responses/20260907-nvidia-smoke.json").read_text())["cases"]
+RECORDINGS = {
+    date: json.loads((FIXTURES / f"model_responses/{date}-nvidia-smoke.json").read_text())["cases"]
+    for date in ("20260907", "20260908")
+}
+RECORDINGS['20260908-non-topic'] = json.loads((FIXTURES / 'model_responses/20260908-non-topic-smoke.json').read_text())['cases']
+CASES = RECORDINGS["20260907"]
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("case", CASES, ids=lambda case: f"recorded-{case['id']}")
-async def test_observed_response_replays_exactly_and_unknown_requests_fail(tmp_path, case):
-    recorder = ReplayFixtures(FIXTURES / 'model_responses/20260907-nvidia-smoke.json')
+@pytest.mark.parametrize("date,case", [(date, case) for date, cases in RECORDINGS.items() for case in cases],
+                         ids=[f"recorded-{date}-{case['id']}" for date, cases in RECORDINGS.items() for case in cases])
+async def test_observed_response_replays_exactly_and_unknown_requests_fail(tmp_path, date, case):
+    filename = '20260908-non-topic-smoke.json' if date == '20260908-non-topic' else f'{date}-nvidia-smoke.json'
+    recorder = ReplayFixtures(FIXTURES / 'model_responses' / filename)
     app = create_app(recorder, transport=httpx.MockTransport(lambda _: pytest.fail("Unexpected external call")))
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://mock") as client:
         result = await client.post('/' + case['route'], json=case['request'])
@@ -37,8 +44,9 @@ async def test_observed_response_replays_exactly_and_unknown_requests_fail(tmp_p
         create_app(recorder, live=True)
 
 
-def test_observed_jailbreak_miss_is_not_relabelled_as_success():
-    case = next(case for case in CASES if case['id'] == 23)
+@pytest.mark.parametrize("date,case_id", [("20260907", 23), ("20260908", 15), ('20260908-non-topic', 7)])
+def test_observed_jailbreak_miss_is_not_relabelled_as_success(date, case_id):
+    case = next(case for case in RECORDINGS[date] if case['id'] == case_id)
     jailbreak, score = parse_jailbreak_detect_response(case['response'])
     assert jailbreak is False
     assert score < 0
@@ -48,8 +56,9 @@ def test_observed_jailbreak_miss_is_not_relabelled_as_success():
 @pytest.mark.asyncio
 @pytest.mark.parametrize('mode', ['full_buffered', 'window_buffered', 'interruptible'])
 @pytest.mark.parametrize('unsafe', [False, True])
-async def test_frozen_output_artifact_with_recorded_real_classification(tmp_path, mode, unsafe):
-    case = next(case for case in CASES if case['id'] == (13 if unsafe else 12))
+@pytest.mark.parametrize('date,safe_id,unsafe_id', [('20260907', 12, 13), ('20260908', 4, 5), ('20260908-non-topic', 4, 5)])
+async def test_frozen_output_artifact_with_recorded_real_classification(tmp_path, mode, unsafe, date, safe_id, unsafe_id):
+    case = next(case for case in RECORDINGS[date] if case['id'] == (unsafe_id if unsafe else safe_id))
     calls = []
     def replay(request):
         payload = json.loads(request.content)

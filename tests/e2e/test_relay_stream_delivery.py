@@ -66,6 +66,17 @@ async def test_actual_relay_stream_delivery_and_cancellation(tmp_path, mode):
     name = f"guard-incremental-e2e-{uuid4()}"
     proxy_key = f"sk-test-{uuid4()}"
     prefix = "benign " * 600
+    safe_suffix = "ordinary answer"
+    # Replay a captured business answer without contacting that model again.
+    # Detector verdicts remain synthetic here: this is an engineering contract test.
+    business_recording = os.environ.get("GUARD_TEST_BUSINESS_RECORDING")
+    if business_recording:
+        recording = json.loads(Path(business_recording).read_text())
+        assert recording["source"] == "live-deepseek-business-sse"
+        assert recording["finish_reason"] == "stop"
+        prefix = recording["text"]
+        assert len(prefix) > 2048, "Recorded answer must span a stream check boundary"
+        safe_suffix = ""
     marker = "REGRESSION_UNSAFE"
     scenario = "safe"
     upstream_entered, upstream_continue, upstream_closed = (asyncio.Event() for _ in range(3))
@@ -101,7 +112,7 @@ async def test_actual_relay_stream_delivery_and_cancellation(tmp_path, mode):
                 yield frame(prefix)
                 upstream_entered.set()
                 await upstream_continue.wait()
-                yield frame("ordinary answer" if scenario == "safe" else marker)
+                yield frame(safe_suffix if scenario == "safe" else marker)
                 yield frame("", "stop")
                 yield "data: [DONE]\n\n"
             finally:
@@ -218,7 +229,7 @@ async def test_actual_relay_stream_delivery_and_cancellation(tmp_path, mode):
                                 upstream_continue.set()
                                 await asyncio.wait_for(pending, 10)
                                 if scenario == "safe":
-                                    assert "".join(content) == prefix + "ordinary answer"
+                                    assert "".join(content) == prefix + safe_suffix
                                     assert errors == [] and finishes == ["stop"]
                                 else:
                                     assert marker not in "".join(content)

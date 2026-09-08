@@ -1,13 +1,109 @@
 # Input / Output protection productization
 
-Status: implementation in progress. This is the acceptance contract for the
-approved end-to-end work, not a claim that the capabilities below already ship.
+Status: core implementation and scoped deployed regression verified; full
+acceptance remains open. This is the acceptance contract for the approved work.
+The [current requirement-by-requirement audit](protection-completion-audit.zh-CN.md)
+identifies the remaining C1 (dynamic custom dependencies), U1 (consolidated
+desktop gate), and Q1 (independent reviewed model quality) evidence gaps.
 
-Latest full local engineering gate (2026-09-07, including selected-Policy
-dependency manifests, grounding-context enforcement and baked-image test mode):
-`make test` completed with **1,841 passed and22 environment-gated skips**,
-typechecks and production builds passing. This is not production or live-model
-acceptance; see the current-state audit and remaining gaps below.
+Latest C1 increment: dynamic lifecycle-event `flow_id` targets now use the same
+Policy-owned symbol mapping as ordinary Flow calls. Expressions are evaluated
+before their event statement; native regex listeners are preserved. Compiler v21
+and 19 refreshed signed test bundles passed freshness; the Python gate passed 1,268 tests
+with 22 environment-gated skips. Both main tali Runners use dev digest
+`sha256:2e83d2053a0de942ae356df1e7c8678d8bf2c0b30074cf8d4d7328feca2bae4a`.
+Each deployed Runner passed six Input/Output helper checks; original Default
+483/483 passed with no model calls and unchanged release identities. Arbitrary
+event-object dispatch and dynamic dependency completeness remain a C1 evidence
+gap; this is not a general sandbox or all-listener-timings claim.
+
+Latest scoped acceptance: [expanded tali round](tali-expanded-acceptance-20260908.zh-CN.md)
+completed at 73 NVIDIA / 13 DeepSeek calls, excluding Topic and Jailbreak:
+48/48 development Input/Output cases, 11/11 three-mode real streaming cases,
+real Controller artifact publication and main Runner routing, and Default 483/483.
+The subsequent completion audit fixed preset previews incorrectly claiming
+Policies were already selected (see the final entry below). The latest Policy
+Studio fix rejects validation results from an earlier edit or editor session;
+10 focused tests and a real desktop stale-result/revalidation path passed.
+Controller/UI gate: 787 passed / 13 environment-gated skips; typecheck/build passed.
+Current Controller `dev` digest is
+`sha256:932b199e37badb18afcb2412fafb8930996f5c5a1fe7ca909a27d7e43a0544f1`.
+Latest UI increment separates confirmed Policy publication from a failing detail
+refresh. Read-only recovery cannot issue a second publication; late reads cannot
+navigate a new editor session. Related 28 tests, type/build and a real desktop
+publish-once/read-failure/keyboard-recovery path passed on `index-Dyfqjo53.js`.
+The subsequent revision-pinned, idempotent publication fix also passed a real
+committed-response-loss/retry path with exactly one version and publication audit.
+See the [desktop matrix](protection-desktop-acceptance-matrix.zh-CN.md) for current
+scope: the latest UI run has 280 passed / 1 failed, due to the old legacy-collection
+assertion conflicting with another user-owned task's Policy filter redesign.
+Do not restore that old UI or treat an earlier green gate as current evidence.
+The subsequent focus correction explicitly connects new/import/edit openers to
+the existing EntitySheet return-focus contract. Four focused files passed 23
+tests; typecheck/build and real desktop Escape/Close/Cancel/Enter paths passed.
+Import and nested-edit focus are component-tested, not new live-browser evidence.
+This closes the observed new-Policy focus loss, not the complete U1 matrix.
+No additional real model calls were made.
+Latest Action-catalog correction distinguishes failed/paused/empty responses,
+adds explicit retry, and preserves selections and cached rows. Four related
+files passed 27 tests; typechecks and the final image production build passed.
+The deployed desktop showed an injected 503, then recovered the real registry
+without losing the two selected versions or form edits. The fixture forwarded
+only reads and is stopped. Offline/empty/background-refresh cases have component
+evidence, not additional live-browser evidence; the broader U1 gate stays open.
+Earlier stage snapshots below do not override these later verified results.
+
+Latest current-worktree gate (2026-09-08 completion audit): `make test` exited 0
+with **1,973 passed / 35 environment-gated skips**: contracts55, Python control
+plane681, Controller/UI779, data plane453, communication5. Typechecks, production
+builds, signed-fixture/protobuf checks and Helm checks passed. This invocation
+did not enable PostgreSQL/Redis/Relay/cluster options; their separate earlier
+evidence remains below. No new model call, image build or deployment occurred.
+
+Previous full local engineering gate (2026-09-08, 15:42): `make test` completed with
+**1,958 passed and 35 environment-gated skips**. All 35 optional items were also
+verified in this round: 13 PostgreSQL and 18 Redis cases using `tali` services,
+one Helm lifecycle case confined to test-owned resources in existing `tali`, and
+three baked Relay `dev` streaming replays. The Helm test was subsequently scoped
+to an explicit existing namespace and its full 13-case file passed again; those
+12 repeated local CLI cases are not added to the distinct total. Typechecks,
+fixture/protobuf checks, Helm render/lint and production builds passed.
+For prior deployment history, the
+Controller was upgraded in the main OrbStack `tali` namespace (Helm revision 35).
+The limited real round passed 16/16 content-safety development cases and 3/3
+real business-model streaming cases; desktop committed-save/response-loss manual
+recovery was verified. NVIDIA usage was 32/40 and DeepSeek 3/3, with no automatic
+retry. Pure content-safety main activation was rejected because an existing
+published artifact requires Jailbreak; the data-plane checks therefore used a
+same-image temporary Runner inside `tali`, not a successful main activation.
+See [current release status](protection-release-status.zh-CN.md) and
+[tali acceptance](tali-acceptance-20260908.zh-CN.md) for current evidence. Older
+isolated-environment snapshots below remain historical, not deployment advice.
+Future cluster verification is `tali` only. Mobile is explicitly excluded.
+The subsequent activation/ACK concurrency fix is deployed in `tali` (initially
+Helm revision 36, now revision 37 with Controller `dev`). Real PostgreSQL lock/race
+tests passed 13/13, related service/channel/HTTP tests 102/102 and production
+build passed. Existing model and Guardrail release identities did not change.
+These activation tests are now included in the current engineering evidence.
+The latest Controller `dev` also includes permission-loss and Policy-catalog
+refill recovery in the desktop wizard: 195 related tests passed, a delayed-catalog
+browser path preserved 17 Policies/38 Rules, and the deployed digest is
+`sha256:38d3df3e93a017366d1b38246d90ef685d1cb9b1d4fa45b03a40c1861f9a90f5`.
+The subsequent saved-draft Policy-order editor is deployed with the same `dev`
+tag at digest `sha256:28492e15023f184b2d7a8720782264457763dfd9b8f68d700ca9b5ef31012c53`.
+Its 28 targeted tests, typecheck and build passed; the read-only desktop audit
+verified moving Policies and restoring their order without saving. This targeted
+addition is not a fresh full-suite run or a server-persistence UI acceptance.
+Subsequent desktop evidence verified actual Policy reorder/save/reload in `tali`
+and retired the temporary unpublished draft. The boundary keyboard-focus fix is
+now deployed as Controller `dev` at
+`sha256:192216c50612f06e9549b0b6015372d7c00181f41abd7246f61d5abdb6a13e7e`;
+47 targeted tests, typecheck/build and real desktop first/last-row keyboard checks
+passed. Default remains unchanged; the temporary draft retirement advanced the
+Controller generation to 20, with both Runners converged.
+Use only `dev` for local project image tags; historical tags below are evidence,
+not instructions for future builds. Record digests to identify tested bytes.
+This is not full production or independent live-model quality acceptance.
 
 ## Objective and boundaries
 
@@ -52,14 +148,14 @@ authorization remain explicitly outside this release's completion claim.
 | Stage | Deliverable / benefit | Required evidence | Status |
 | --- | --- | --- | --- |
 | 0 | Freeze baseline and scope | Existing test result, dirty-worktree inventory, runtime version | Complete |
-| 1 | Capability and protection-directory contracts | Exhaustive metadata validation; invalid direction/action/dependency tests; cross-language agreement | In progress: shared metadata, direction checks and TS/Python parity passed; action/dependency lifecycle alignment remains |
-| 2 | Focused Policy Library | Split mixed responsibilities, merge duplicates, positive/negative/edge/CN+EN fixtures and supported-direction tests | In progress: 23 focused Policies plus Policy-owned configurable phrases; 54 current / 15 explicitly legacy collections; Default migrated to 32 ordinary Policy bindings with 321 composition cases and 140 legacy replays; deployed verification below |
+| 1 | Capability and protection-directory contracts | Exhaustive metadata validation; invalid direction/action/dependency tests; cross-language agreement | Shared metadata, direction checks, TS/Python parity, declared dependencies and selected-only manifests verified; arbitrary dynamic-flow completeness remains C1 |
+| 2 | Focused Policy Library | Split mixed responsibilities, merge duplicates, positive/negative/edge/CN+EN fixtures and supported-direction tests | Focused library and configurable phrases implemented; 54 current / 15 explicitly legacy collections; Default 32 ordinary Policy bindings verified by 483 deployed checks. Legacy presence is not a claim of automatic draft migration |
 | 3 | Common, banking, securities, internet and Singapore presets | Real Policy references; stable expansion/order/deduplication; no-model and missing-parameter tests | Five presets passed real HTTP lifecycle and 599 deployed case replays; UI banking draft saved and verified |
-| 4 | Compilation and release lifecycle | UI configuration equals compiled plan; overrides/order survive; signing/distribution/ACK/revision assertions | In progress: validated snapshot gate, native Rule overrides, late-compile activation protection and deployed signing/convergence passed; broader lifecycle fault matrix remains |
-| 5 | Runtime and safe streaming | Frozen artifacts, real execution, transforms, early termination, split payloads, limits and fault recovery | In progress: five signed preset fixtures, 599 adapter cases and 272 complete-vs-split Output checks passed; TaskLattice Relay streaming adapter and interrupted-upstream fix verified; broader deployed fault/stream matrix remains |
-| 6 | Guided creation, library, health | Full optional stepper, preset preview, tuning and dependency states; desktop/mobile browser evidence | In progress: direction-scoped model assignment evidence now follows creation, review, saved draft and editing; platform causes and validation setup failures preserved; complete UI release gate remains |
-| 7 | Deployed fixed-response replay | Real UI/API/database/Controller/Runner/adapter plus controllable upstream; actual final-client bytes and detector calls | Banking regression artifact: non-stream 5/5 and stream 10/10 passed with authorized TaskLattice-only Relay adapter fix; broader preset/live-model matrix remains |
-| 8 | Live-model regression and handoff | Actual API calls, per-class quality report, image/artifact/model version evidence and deliberate gaps | Budget-gated holdout harness tested; reviewed independent corpus/thresholds and actual model runs still pending |
+| 4 | Compilation and release lifecycle | UI configuration equals compiled plan; overrides/order survive; signing/distribution/ACK/revision assertions | Core lifecycle verified, including actual saved/reloaded Policy order, signed publication/main routing and 13 real PostgreSQL CAS/ACK race cases. This does not close C1 or unexercised UI paths |
+| 5 | Runtime and safe streaming | Frozen artifacts, real execution, transforms, early termination, split payloads, limits and fault recovery | Five signed presets, 599 adapter cases, 272 whole/split Output checks, 18 Redis/TCP lease/handoff cases and baked Relay three-mode replay verified; real three-mode round 11/11 including cancellation/faults |
+| 6 | Guided creation, library, health | Full optional stepper, preset preview, tuning and dependency states; desktop browser evidence | Core desktop implementation verified, including permission/catalog recovery and preview versus Apply; consolidated whole-desktop release evidence remains U1 |
+| 7 | Deployed fixed-response replay | Real UI/API/database/Controller/Runner/adapter plus controllable upstream; actual final-client bytes and detector calls | Deployed preset/lifecycle and proxy replay completed; expanded tali round compares final bytes and uses real detectors for controlled unsafe streaming. Mock transport/fault evidence remains explicitly separate from semantic quality |
+| 8 | Live-model regression and handoff | Actual API calls, per-class quality report, image/artifact/model version evidence and deliberate gaps | Expanded round closed at NVIDIA73/DeepSeek13, Safety48/48 and streaming11/11; recordings and cleanup complete. Independent reviewed corpus/threshold acceptance remains Q1. Topic/JailbreakDetect excluded, not passed |
 
 Stages may share small implementation changes, but no stage is complete merely
 because a unit test passes. Tests are added with each feature, not after UI work.
@@ -72,7 +168,7 @@ Audience: business application owners and platform administrators. Page type:
 guided workflow inside the existing product console. Mode: release_gate.
 Primary job: choose useful protection without understanding model protocols or
 Colang. Desktop uses a stable full protection stepper and focused work area;
-mobile preserves navigation and primary actions without clipping. Reuse existing
+mobile support and mobile acceptance are excluded by user instruction. Reuse existing
 components/tokens. Per-step states: not enabled, selected, missing parameters,
 dependency unavailable; none of these imply runtime validation success.
 
@@ -80,7 +176,7 @@ The final review shows actual Input and Output coverage, ordered execution,
 streaming restrictions, unresolved requirements, and test scope. Save draft is
 distinct from validate/publish. Missing configuration explains disabled actions.
 Browser gates cover default, pending, empty, error, recovery, keyboard focus,
-desktop/mobile overflow and actual visible feedback. Release UI scoring uses
+desktop overflow and actual visible feedback. Release UI scoring uses
 Intent 20%, IA 20%, Craft 15%, Domain trust 25%, Interaction 15%, Visual 5%;
 target >= 8/10 with no blocking correctness/accessibility/path failures.
 
@@ -2373,7 +2469,106 @@ model requests were made. The isolated Controller8093 was restarted with the fix
 The Topic Control upstream500 and JailbreakDetect observed miss remain unresolved;
 this configuration fix does not turn those results into a passing release gate.
 
+## Recorded jailbreak miss against no-model presets (2026-09-07)
+
+Candidate HEAD `e399861ab0562000ecfe2aa3f9b1caa471309033` plus this regression test.
+Replayed the exact benign/classifier-miss inputs from recorded calls22/23 against
+the signed `default-local-v1` artifact and all five signed business-preset
+artifacts. Every local release allowed the benign input and blocked the attack:
+12 tests passed. Each decision recorded zero model invocations and no fail-closed
+infrastructure error; unsafe findings contained Policy/Rule identities belonging
+to the selected release. HTTP clients were explicitly forbidden, and the signed
+desired states contained no model runtimes or bindings.
+
+This demonstrates complementary local protection for this exact instruction
+override/extraction pattern, not general jailbreak detection quality, semantic
+topic enforcement, or automatic fallback from a failed model. The dedicated
+classifier's observed false negative remains a failed model-quality result.
+No Policy, threshold, exclusion, model assignment or fixture artifact was changed
+to obtain this result. No external API calls or deployment mutations were needed.
+
+## User-authorized synthetic Topic Control endpoint (2026-09-07)
+
+The user explicitly authorized mocking Topic Control while NVIDIA is down.
+Added `scripts/mock_topic_control.py` and a separate synthetic fixture map, without
+modifying the previously captured NVIDIA500 responses. This endpoint has no
+external-model client, binds127.0.0.1:8098, and exposes catalog discovery plus the
+OpenAI chat envelope. It matches exact user text and scoped system markers; unknown
+or ambiguous inputs return409. HTTP500, timeout and invalid-verdict modes are
+explicit test scenarios, not fabricated provider health.
+
+Registered `MOCK ONLY - Topic Control 20260907` and model
+`mock/nemoguard-topic-control` in isolated Controller8093. Saved only the
+`topic_control.input` binding and validated it through the connected Runner.
+Provider/model call checks and both semantic-topic/company-policy Rail contracts
+passed:6 matched local requests,0 unmatched,0 external calls. Other assignments,
+including their existing failures, were preserved. Global validation remained
+false; no global model activation or user-cluster change was performed.
+
+Added the signed `topic-control-native-v1` fixture (compiler v18, NeMo0.24,
+`iorails_native`, checksum
+`d04b2a9aa72128a20f467db566d71faf47b92d5c03fc3eabfc57a4494d8b07bc`).
+Ten focused endpoint/runtime tests passed, including real TCP model transport,
+safe/off-topic execution and distinct fail-closed handling for unknown input,
+HTTP500, timeout and malformed output. Fixture freshness and two test-boundary
+contracts passed. These tests do not invoke compilation in the data-plane suite.
+Full affected data-plane gate:391 passed,18 Redis-dependent skips in59.96s.
+All16 signed fixture bundles passed generator freshness checks. The retained
+loopback Mock reported6 matched requests and0 external calls after verification.
+
+This removes NVIDIA availability as a blocker for Topic Control engineering
+regression. It does not demonstrate real topic-classification accuracy, certify
+arbitrary conversations, repair the real service or replace independent model
+quality acceptance. See `docs/testing.md` for restart/configuration instructions.
+
+## Isolated activation gate regression (2026-09-08)
+
+Extended the real PostgreSQL model-configuration suite from6 to9 tests using
+only randomly named temporary schemas. Successful validation starts activation
+with one generation/outbox event; sequential duplicate activation is rejected.
+An unrelated failed assignment remains failed after another assignment passes,
+and cannot be activated. Editing a validated immutable snapshot produces a new
+draft requiring fresh target evidence. The previous validated snapshot is not
+silently modified. All9 tests and Controller/UI typechecking passed. These tests
+use synthetic Rail-validator results and do not claim concurrent activation race
+coverage. No production activation code or external Provider was changed/called.
+The retained Topic Mock health endpoint still reported6 matched requests and
+zero external calls. No preview draft was globally activated.
+
+## Consolidated candidate gate after Topic Mock (2026-09-08)
+
+Ran `make test` once against Guard HEAD
+`e399861ab0562000ecfe2aa3f9b1caa471309033` plus the current uncommitted Topic
+Mock, signed Topic artifact/generator, local-baseline recorded-attack tests,
+runtime-test helper and PostgreSQL activation-gate tests. Relay HEAD remains
+`3e6ade3590cbc1561ee15fa378bd996d774af4be` with its existing dirty LiteLLM
+integration/build/test changes; this command does not deploy either checkout.
+
+| Gate | This invocation |
+| --- | --- |
+| Contracts |55 passed,1 Kubernetes opt-in skip |
+| Python control plane |669 passed in74.12s |
+| Controller API/UI |761 passed,9 PostgreSQL opt-in skips,20.29s |
+| Data plane |391 passed,18 Redis opt-in skips,63.38s |
+| Communication/E2E |5 passed,3 Relay-image opt-in skips,1.51s |
+| Build checks |Protocol/16 signed fixture freshness, strict Helm lint/render, UI/server typechecking and production builds passed |
+
+Total **1,881 passed,31 skipped**; exit0. The separate same-day PostgreSQL run
+above passed all9 tests; it is not included in this total. Earlier isolated Redis
+and baked-Relay evidence remains separately dated, not silently counted here.
+Warnings remain for NeMo's deprecated `nim_url`, deliberately escaped Policy
+literal test strings, Node's localStorage flag, and the large UI bundle. No real
+Provider round, user-cluster deployment or activation was performed. This is a
+consolidated engineering gate, not independent detector-quality acceptance.
+
 ## Explicit remaining gaps
+
+This is a historical gap snapshot. Use C1/U1/Q1 in the
+[current completion audit](protection-completion-audit.zh-CN.md) for actionable
+remaining work. In particular, the live-model round, selected-only/directional
+dependency gates, activation/ACK races and bounded streaming checks below have
+subsequent evidence; do not repeatedly treat them as unimplemented. The audit
+does not waive arbitrary-flow completeness or whole-desktop/quality evidence.
 
 - Canonical action/dependency lifecycle alignment. Policy-owned literal phrase
   configuration is implemented and verified above; custom programmable Policy
@@ -2399,3 +2594,103 @@ this configuration fix does not turn those results into a passing release gate.
   handoff and three-mode proxy scenarios above, live guard/business model evaluation and final
   operational handoff remain. The verified banking full-buffered proxy leak and
   synthetic-completion defects above are fixed, not deferred.
+
+## Completion audit: preset preview versus applied selection (2026-09-08)
+
+The previous goal turn was concrete progress: the authorized expanded real-model
+round completed with durable recordings, actual main lifecycle/routing evidence,
+and cleanup. This turn re-read the objective, stage contract, current preset
+definitions, dependency prewarm code, test contracts, and sibling Relay diff.
+Five presets still compose real pinned Policies; the common baseline remains
+shared and model-free. No generic Relay Router change was introduced.
+
+A fresh main `tali` desktop audit found a remaining semantic error, also noted
+in an older audit: before Apply, the template preview said "已选择 10 项" while
+the actual stepper correctly said unselected. `ProtectionPresetPicker` now uses
+"包含 / 未包含" (`included / Not included`) only in the preview. Actual selected
+counts and application feedback retain their existing wording and behavior.
+No binding, Policy, model assignment, order, or release contract changed.
+
+Regression first failed on the old preview. After the correction, 34 targeted
+wizard/order/detail tests passed; typecheck and production build passed. A
+separate fresh 62-test gate covered all five presets and extended local Policies,
+capability validation, Rule overrides, ordered execution, and independent
+declared-model artifact dependencies. These are scoped fresh runs, not a new
+full-suite or live-model run.
+
+Controller `dev` was rebuilt and rolled out in `tali` only. Verified image:
+`sha256:25dad29873ba7eb341e4a01f6d3b82be95ea67d88e74cbb2e3e0938bc37f53bc`,
+UI asset `index-C-Qmz8vz.js`; no Runner rebuild or model/Default configuration
+change. The fresh Chinese desktop page verifies: bank preview says included
+with no selected steps; Apply marks 17 Policies selected; previewing Internet
+shows its 20 included Policies but preserves the bank's actual selections and
+clears the old application feedback. The temporary tab was closed without
+saving any Guardrail. No real model calls occurred this turn.
+
+Vibe Designing evaluation is limited to this preset-preview state transition,
+not the whole UI. Using the existing 20/20/15/25/15/5 weights and >=8 threshold:
+intent (optional template, explicit Apply), IA (preview separated from stepper),
+craft (existing count text/layout), domain trust (included != selected),
+interaction (Apply updates; changing preview preserves choices), and visual
+readability (fresh rendered desktop screenshot) each passed its one scoped
+subcheck at 2/2. Weighted score 10/10; no blocker within this changed scope;
+decision `pass`. This does not certify unexercised advanced-authoring, offline,
+or complete accessibility states. Mobile remains explicitly excluded.
+
+The remaining-gaps section above is not evidence that its broad items are all
+still broken: declared/directional dependencies, selected-only manifests,
+activation races and bounded streaming now have later successful tests. Full
+goal completion still requires mapping those broad custom-flow/UI/production
+quality claims to their exact current evidence; do not silently replace this
+audit with either blanket "all complete" or a replay of outdated blockers.
+
+### Desktop gate increment: inherited Rule action (2026-09-08)
+
+Vibe Designing bounded revision: one semantic correction for business/platform
+owners editing a Guardrail in the existing product console. Preserve Policy and
+Rule order, action precedence, optional map and draft-not-publish boundaries;
+reuse the existing Select, labels and dimensions. No mobile scope.
+
+Baseline fresh desktop evidence showed a Passport Policy overridden to reject
+while its inherited Rule showed redact, and an indistinguishable default versus
+explicit redact option. The compiler already used Rule override > Policy
+override > Rule default. The editor now names the inherited/default option and
+reflects that same precedence, including configured-phrase actions. No runtime
+action or allowed action was changed.
+
+Using existing weights 20/20/15/25/15/5, one scoped subcheck per dimension:
+intent (edit a local override), IA (same Policy/Rule location), craft (existing
+Select), trust (accurate inherited action), interaction (distinct reset versus
+explicit override), visual readability (fresh 1366x900 screenshot). Baseline
+scores 2/2, 2/2, 2/2, 0/2, 1/2, 2/2 yielded 6.75/10 with a domain-trust blocker.
+After the correction all six scoped subchecks passed at 2/2: 10/10, no blocker
+within this narrow scope, decision pass; stop the bounded revision here.
+
+Evidence: 66 tests across editor, wizard, detail, workspace and plan; typecheck
+and production build passed. Browser verified default, Policy inheritance,
+explicit Rule override, reset, clearing Policy override, Escape/focus return,
+no document horizontal overflow and no console errors. Review still shows
+20 Policies, 50 Rules, full buffering and draft-only creation. No draft saved.
+Controller dev image 2775d9b0b8ede0dcbbe04d36612697fc87aed839ac8ebc1791b9da5025342c83
+was deployed to tali, UI asset index-CbwDsXU_.js verified. No real API calls.
+This is not the consolidated whole-product U1 release gate or Q1 quality signoff.
+
+### Compiler gate increment: literal Flow lifecycle targets (2026-09-08)
+
+Ordinary Policy Flow specs were linked, but the equivalent static flow_id in
+NeMo lifecycle events was neither linked nor checked for Policy ownership.
+The six lifecycle events now use the same local declaration set and namespace;
+both classic and simple named argument syntax are covered. The change does
+not rewrite business strings or claim arbitrary interpolation is static.
+
+Compiler v20 and 18 fresh signed fixtures include custom-flow-events-v1,
+which exercises two same-named helpers with ordered redact then reject.
+The Runner-only tests load frozen signed bytes: Input/Output ownership and
+full-buffered HTTP streaming, without calling the compiler in the data plane.
+110 focused checks and 1234 complete Python checks passed (22 conditional
+skips). Actual deployed container execution confirms both directions with
+zero models. Runner dev digest is
+2d45841ab87112022860a06ebb02dbb86c03b80f8ed2ad06fcf3a29e3810d6f4 in tali;
+both pods ready with two prewarmed versions, synchronized generation 30.
+Dynamic expression/event-object dependency completeness remains C1, not a
+completed guarantee. No new live API calls or Git commit.

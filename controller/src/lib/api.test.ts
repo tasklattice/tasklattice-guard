@@ -1,9 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { analyzeComplianceDocuments, analyzeGuardrailIntent, excludeGuardrailTestCase, getDeploymentDeletionImpact, getIntentAnalysisStatus, updateGuardrail } from "./api";
+import { analyzeComplianceDocuments, analyzeGuardrailIntent, excludeGuardrailTestCase, getDeploymentDeletionImpact, getIntentAnalysisStatus, publishProgrammablePolicy, updateGuardrail } from "./api";
 
 describe("API error responses", () => {
   afterEach(() => vi.unstubAllGlobals());
+  it("pins Policy publication to the validated draft revision", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ version: "1" }), { status: 201 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await publishProgrammablePolicy("policy-1", 7);
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/policies/policy-1/publish", expect.objectContaining({
+      method: "POST", body: JSON.stringify({ expectedDraftRevision: 7 }),
+    }));
+  });
 
   it("renders FastAPI validation issues as readable field messages", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({

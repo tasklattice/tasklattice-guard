@@ -4,13 +4,38 @@ Use this checklist with the evidence ledger in `protection-productization.md`.
 Passing a deterministic replay establishes execution correctness, not attack
 detection quality. Do not silently reclassify a skipped gate as passed.
 
+Latest completed round: [2026-09-08 expanded tali acceptance](tali-expanded-acceptance-20260908.zh-CN.md).
+The user authorized 100 NVIDIA and 100 DeepSeek calls, excluding Topic and
+Jailbreak; actual usage was 73 and 13. Its gateway is stopped and its credential
+Secret removed. Do not recreate it to reset its ledger or automatically repeat
+the completed scripts. Captured NVIDIA responses and DeepSeek completion text
+are available for offline regression. Earlier per-round quotas below remain
+historical records, not additional current authorization.
+
+Current user scope: desktop only; mobile acceptance is explicitly abandoned.
+Further cluster work is limited to the explicitly authorized OrbStack `tali`
+namespace. Older isolated-namespace commands in historical reports are not current
+authorization. The September 8 bounded live run is finished; do not restart its
+gateway or reuse remaining request capacity as authorization for a new run.
+
+Local project images must use the user-required `dev` tag. Do not invent dated,
+acceptance or per-round tags. Record the actual image digest plus source state
+for evidence; use the existing Makefile rollout mechanism to refresh moving
+`dev` images. Third-party base/dependency images keep their explicit versions.
+
+When restoring model configuration, activation/rollback API responses are views
+with `active`/`activating`, not bare revision objects. A rejected activation with
+the original revision still active needs no rollback. Wait for an in-flight owned
+attempt to resolve; refuse to overwrite a different actor's revision. Offline
+checks for these decisions live in `tests/control_plane/test_acceptance_restore.py`.
+
 ## 1. Freeze the candidate
 
 Record the Guard and Relay source revisions **and dirty changes**, Controller and
 Runner image IDs, Relay image ID, compiler identity, Policy versions, artifact
 checksum, model revision and effective release. A Git HEAD alone is insufficient
-for this currently modified workspace. Do not overwrite a user's working cluster
-or rebuild an existing image tag as an implicit part of acceptance.
+for this currently modified workspace. Only perform the authorized `tali` local
+update; a `dev` tag alone is not evidence of which bytes were tested or deployed.
 
 The compiler currently uses
 `tasklattice-nemo-config-v18-selected-policy-dependencies`. Historical deployed
@@ -34,7 +59,7 @@ versus split-output equivalence where complete buffering is required.
 For a **packaged Relay image**, not a source-overlay test:
 
 ```sh
-GUARD_TEST_RELAY_IMAGE=tali-litellm:protection-productization-baked-20260907 \
+GUARD_TEST_RELAY_IMAGE=tali-litellm:dev \
 GUARD_TEST_RELAY_BAKED_IMAGE=1 \
   .venv/bin/python -m pytest -q -s tests/e2e/test_relay_stream_delivery.py
 ```
@@ -48,8 +73,9 @@ not every dependency or the reproducibility of the entire base image build.
 
 ## 3. Isolated persisted lifecycle and Default replay
 
-First deploy the recorded candidate to an explicitly selected isolated test
-environment. Deployment is a separate authorized operation, not a side effect of
+Use the recorded candidate in the authorized OrbStack `tali` namespace. Isolate
+test records by their regression IDs, not by inventing another namespace.
+Deployment is a separate authorized operation, not a side effect of
 the commands below. Configure these environment variables without putting
 credentials into reports:
 
@@ -58,8 +84,8 @@ credentials into reports:
 `GUARD_REGRESSION_PASSWORD`, `GUARD_REGRESSION_RUNNER_TOKEN`.
 
 The scripts enforce loopback endpoints. UI origin must match the Controller's
-allowed origin. Use the isolated preview ports, not the user's active workspace
-ports by assumption.
+allowed origin. Verify that the selected loopback endpoints target `tali`;
+do not reuse historical isolated preview ports without checking their owner.
 
 ```sh
 GUARD_REGRESSION_ALLOW_WRITES=1 GUARD_REGRESSION_RUN_ID=reviewed-release-id \
@@ -82,14 +108,14 @@ database records or publish Default automatically to make a failing test pass.
 ## 4. Final-client 1:1 proxy replay
 
 Use a named published regression Guardrail from step3 and the verified local
-Relay image. This stage creates Integration/Deployment records in the isolated
+Relay image. This stage creates Integration/Deployment records in the `tali`
 Controller; records remain for inspection. The temporary proxy and synthetic
 upstream services are cleaned up by the script.
 
 ```sh
 GUARD_REGRESSION_ALLOW_WRITES=1 \
 GUARD_REGRESSION_GUARDRAIL_ID=verified-regression-guardrail-id \
-GUARD_REGRESSION_PROXY_IMAGE=tali-litellm:protection-productization-baked-20260907 \
+GUARD_REGRESSION_PROXY_IMAGE=tali-litellm:dev \
   node scripts/regress_business_proxy.mjs
 ```
 
@@ -97,6 +123,9 @@ Use the actual ID, not the placeholder. Default selection additionally requires
 `GUARD_REGRESSION_ALLOW_DEFAULT=1`. Ports8095/8096/8098 must be available or override
 `GUARD_REGRESSION_PROXY_PORT`, `GUARD_REGRESSION_BUSINESS_PORT` and
 `GUARD_REGRESSION_TRANSPORT_PORT`. Do not evict existing processes to obtain them.
+The authorized Topic Control Mock also uses8098 by default. When retaining it
+for this regression, set `GUARD_REGRESSION_TRANSPORT_PORT` to another verified
+free loopback port (for example8099); keep the saved Mock Provider URL unchanged.
 
 Here the business-model HTTP/SSE response is deliberately controlled; the local
 Policies, Runner, Relay and final client execute for real. Compare actual request

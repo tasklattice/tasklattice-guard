@@ -1,4 +1,4 @@
-import { Children, cloneElement, isValidElement, useEffect, useId, useState, type ReactElement, type ReactNode } from "react";
+import { Children, cloneElement, isValidElement, useEffect, useId, useRef, useState, type ReactElement, type ReactNode, type RefObject } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -70,10 +70,10 @@ const DEFAULT_COLANG = `flow check_request $text
     $recorded = await GuardRecordPolicyAction(flow_name="check_request", safe=True, text=$text)
 `;
 
-export function PolicyStudioSheet({ policy, imported = null, open, onOpenChange, onSaved }: { policy: ProgrammablePolicy | null | undefined; imported?: PolicyImport | null; open: boolean; onOpenChange: (open: boolean) => void; onSaved: (id: string) => Promise<void> }) {
+export function PolicyStudioSheet({ policy, imported = null, open, onOpenChange, onSaved, returnFocusRef }: { policy: ProgrammablePolicy | null | undefined; imported?: PolicyImport | null; open: boolean; onOpenChange: (open: boolean) => void; onSaved: (id: string, isCurrent: () => boolean) => Promise<void>; returnFocusRef?: RefObject<HTMLElement | null> }) {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const actionsQuery = useQuery({ queryKey: queryKeys.actionCatalog, queryFn: getActionCatalog, enabled: open });
+  const actionsQuery = useQuery({ queryKey: queryKeys.actionCatalog, queryFn: getActionCatalog, enabled: open, retry: false });
   const actions = actionsQuery.data?.items ?? [];
   const [step, setStep] = useState(0);
   const [policyId, setPolicyId] = useState<string | null>(null);
@@ -84,8 +84,15 @@ export function PolicyStudioSheet({ policy, imported = null, open, onOpenChange,
   const [compileError, setCompileError] = useState<string | null>(null);
   const [validatedRevision, setValidatedRevision] = useState<number | null>(null);
   const [validationRun, setTestRun] = useState<PolicyDraftValidationRun | null>(null);
+  const [validationOutdated, setValidationOutdated] = useState(false);
+  const [published, setPublished] = useState<{ id: string; version: string } | null>(null);
+  const [publishedRefreshError, setPublishedRefreshError] = useState<string | null>(null);
+  const editorSession = useRef(0);
+  const editRevision = useRef(0);
 
   useEffect(() => {
+    editorSession.current++;
+    editRevision.current++;
     if (!open) return;
     setStep(0);
     setPolicyId(policy?.id ?? null);
@@ -96,12 +103,22 @@ export function PolicyStudioSheet({ policy, imported = null, open, onOpenChange,
     setCompileError(null);
     setValidatedRevision(null);
     setTestRun(null);
+    setValidationOutdated(false);
+    setPublished(null);
+    setPublishedRefreshError(null);
+    testMutation.reset();
+    publishMutation.reset();
+    openPublishedMutation.reset();
+    return () => { editorSession.current++; };
   }, [policy, imported, open, user?.email]);
 
   function invalidateRelease() {
+    editRevision.current++;
+    publishMutation.reset();
     setCompileError(null);
     setValidatedRevision(null);
     setTestRun(null);
+    setValidationOutdated(false);
   }
 
   function changeDraft(next: ProgrammablePolicyDraft) {
@@ -109,22 +126,31 @@ export function PolicyStudioSheet({ policy, imported = null, open, onOpenChange,
     setDraft(next);
   }
 
-  async function persistDraft() {
+  async function persistDraft(session: number) {
     const payload = { name: name.trim(), description: description.trim(), owner: owner.trim(), draft };
     const saved = policyId
       ? await updateProgrammablePolicy(policyId, payload)
       : await createProgrammablePolicy(payload);
-    setPolicyId(saved.id);
+    // The save may finish after this editor has closed or switched Policies.
+    if (session === editorSession.current) setPolicyId(saved.id);
     return saved;
   }
 
   const testMutation = useMutation({
-    mutationFn: async () => {
-      const saved = await persistDraft();
+    mutationFn: async (request: { session: number; revision: number }) => {
+      const saved = await persistDraft(request.session);
+      if (request.session !== editorSession.current) return null;
       await validateProgrammablePolicy(saved.id);
+      if (request.session !== editorSession.current) return null;
       return runProgrammablePolicyValidation(saved.id);
     },
-    onSuccess: (result) => {
+    onSuccess: (result, request) => {
+      if (!result || request.session !== editorSession.current) return;
+      if (request.revision !== editRevision.current) {
+        setValidationOutdated(true);
+        return;
+      }
+      setValidationOutdated(false);
       setCompileError(null);
       setTestRun(result);
       setValidatedRevision(result.draft_revision ?? null);
@@ -132,22 +158,42 @@ export function PolicyStudioSheet({ policy, imported = null, open, onOpenChange,
         toast.success(t("policyStudio.validationPassed"));
       } else toast.error(t("policyStudio.validationFailed"));
     },
-    onError: (error) => {
+    onError: (error, request) => {
+      if (request.session !== editorSession.current) return;
+      if (request.revision !== editRevision.current) {
+        setValidationOutdated(true);
+        return;
+      }
       const message = errorMessage(error, t("policyStudio.validationFailed"));
       setCompileError(message);
       toast.error(message);
     },
   });
+  const openPublishedMutation = useMutation({
+    mutationFn: async (request: { id: string; session: number }) => {
+      if (request.session !== editorSession.current) return;
+      setPublishedRefreshError(null);
+      await onSaved(request.id, () => request.session === editorSession.current);
+    },
+    onError: (error, request) => {
+      if (request.session === editorSession.current) setPublishedRefreshError(errorMessage(error, t("policyStudio.publishedRefreshFailed")));
+    },
+  });
   const publishMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (_session: number) => {
       if (!policyId) throw new Error(t("policyStudio.saveFirst"));
-      return publishProgrammablePolicy(policyId);
+      if (validatedRevision === null) throw new Error(t("policyStudio.validationFailed"));
+      return publishProgrammablePolicy(policyId, validatedRevision);
     },
-    onSuccess: async (version) => {
+    onSuccess: (version, session) => {
+      if (session !== editorSession.current) return;
+      setPublished({ id: version.policy_id, version: String(version.version) });
       toast.success(t("policyStudio.published", { version: version.version }));
-      await onSaved(version.policy_id);
+      openPublishedMutation.mutate({ id: version.policy_id, session });
     },
-    onError: (error) => toast.error(errorMessage(error, t("policyStudio.publishFailed"))),
+    onError: (error, session) => {
+      if (session === editorSession.current) toast.error(errorMessage(error, t("policyStudio.publishFailed")));
+    },
   });
 
   const steps = (["author", "runtime", "release"] as const).map((key) => ({ label: t(`policyStudio.steps.${key}`), description: t(`policyStudio.stepDescriptions.${key}`) }));
@@ -157,11 +203,12 @@ export function PolicyStudioSheet({ policy, imported = null, open, onOpenChange,
     draft.test_cases.length > 0 && draft.test_cases.every((test) => testReady(test, draft.rail_bindings)) && allRulesCovered(draft.rail_bindings, draft.test_cases),
   ];
   const currentRevisionPassed = validationRun?.status === "passed" && validationRun.draft_revision === validatedRevision;
-  const busy = testMutation.isPending || publishMutation.isPending;
+  const busy = testMutation.isPending || publishMutation.isPending || openPublishedMutation.isPending;
 
   return (
     <EntitySheet
       open={open}
+      returnFocusRef={returnFocusRef}
       onOpenChange={onOpenChange}
       eyebrow={t("policyStudio.builderEyebrow")}
       title={policy ? t("policyStudio.editTitle", { name: policy.name }) : imported ? t("policyStudio.importTitle") : t("policyStudio.createTitle")}
@@ -169,14 +216,24 @@ export function PolicyStudioSheet({ policy, imported = null, open, onOpenChange,
       width="xl"
       bodyClassName="p-0 sm:p-0"
       footer={
-        <>
+        published ? <div className="w-full space-y-3">
+          <Alert variant="info"><ShieldCheck /><AlertTitle>{t("policyStudio.published", { version: published.version })}</AlertTitle><AlertDescription>{publishedRefreshError ? <><p>{t("policyStudio.publishedRefreshFailed")}</p><p className="break-words">{publishedRefreshError}</p></> : t("policyStudio.publishedLoading")}</AlertDescription></Alert>
+          <div className="flex items-center justify-between gap-3">
+          <Button className="min-h-11" variant="outline" onClick={() => onOpenChange(false)}>{t("common.close")}</Button>
+          <Button className="min-h-11" disabled={openPublishedMutation.isPending} onClick={() => openPublishedMutation.mutate({ id: published.id, session: editorSession.current })}>{openPublishedMutation.isPending ? <LoaderCircle className="animate-spin" /> : <ArrowRight />}{t("policyStudio.openPublished")}</Button>
+          </div>
+        </div> : <div className="w-full space-y-3">
+          {publishMutation.isError ? <Alert variant="destructive"><AlertTitle>{t("policyStudio.publicationUnconfirmed")}</AlertTitle><AlertDescription><p>{t("policyStudio.publicationRetryHint")}</p><p className="break-words">{errorMessage(publishMutation.error, t("policyStudio.publishFailed"))}</p></AlertDescription></Alert> : null}
+          <div className="flex items-center justify-between gap-3">
           <Button variant="outline" disabled={busy} onClick={() => step ? setStep(step - 1) : onOpenChange(false)}>{step ? <><ArrowLeft />{t("common.previous")}</> : t("common.cancel")}</Button>
           {step < 2 ? <Button disabled={!canContinue[step] || busy} onClick={() => setStep(step + 1)}>{t("common.next")}<ArrowRight /></Button> : null}
-          {step === 2 && !currentRevisionPassed ? <Button disabled={!canContinue.every(Boolean) || busy} onClick={() => testMutation.mutate()}>{testMutation.isPending ? <LoaderCircle className="animate-spin" /> : <PackageCheck />}{t("policyStudio.validateAndRun")}</Button> : null}
-          {step === 2 && currentRevisionPassed ? <Button disabled={busy} onClick={() => publishMutation.mutate()}>{publishMutation.isPending ? <LoaderCircle className="animate-spin" /> : <ShieldCheck />}{t("policyStudio.publish")}</Button> : null}
-        </>
+          {step === 2 && !currentRevisionPassed ? <Button disabled={!canContinue.every(Boolean) || busy} onClick={() => testMutation.mutate({ session: editorSession.current, revision: editRevision.current })}>{testMutation.isPending ? <LoaderCircle className="animate-spin" /> : <PackageCheck />}{t("policyStudio.validateAndRun")}</Button> : null}
+          {step === 2 && currentRevisionPassed ? <Button disabled={busy} onClick={() => publishMutation.mutate(editorSession.current)}>{publishMutation.isPending ? <LoaderCircle className="animate-spin" /> : <ShieldCheck />}{t(publishMutation.isError ? "policyStudio.retryPublication" : "policyStudio.publish")}</Button> : null}
+          </div>
+        </div>
       }
     >
+      <fieldset disabled={publishMutation.isPending || Boolean(published)} className="min-w-0">
       <CreationFlow orientation="sidebar" currentStep={step} onStepChange={setStep} progressLabel={t("policyStudio.createTitle")} steps={steps}>
         {step === 0 ? <div className="space-y-8">
           {imported ? <Alert variant="info"><PackageCheck /><AlertTitle>{t("policyStudio.transferNoticeTitle")}</AlertTitle><AlertDescription>{t("policyStudio.transferNoticeDescription")}</AlertDescription></Alert> : null}
@@ -196,9 +253,10 @@ export function PolicyStudioSheet({ policy, imported = null, open, onOpenChange,
           </StudioSection>
           <ColangEditor version={draft.colang_version} sources={draft.sources} error={compileError} onChange={(sources) => changeDraft({ ...draft, sources })} />
         </div> : null}
-        {step === 1 ? <div className="space-y-8"><RailEditor rails={draft.rail_bindings} onChange={(rail_bindings) => changeDraft({ ...draft, rail_bindings })} /><ActionEditor actions={actions} selected={draft.action_references} onChange={(action_references) => changeDraft({ ...draft, action_references })} loading={actionsQuery.isLoading} /><ParameterEditor parameters={draft.parameter_schema} onChange={(parameter_schema) => changeDraft({ ...draft, parameter_schema })} /></div> : null}
-        {step === 2 ? <div className="space-y-8"><ReleaseStatus run={validationRun} error={compileError} running={testMutation.isPending} /><TestEditor rails={draft.rail_bindings} testCases={draft.test_cases} run={validationRun} error={compileError} onChange={(test_cases) => changeDraft({ ...draft, test_cases })} />{currentRevisionPassed ? <PublishReview name={name} draft={draft} run={validationRun} /> : null}</div> : null}
+        {step === 1 ? <div className="space-y-8"><RailEditor rails={draft.rail_bindings} onChange={(rail_bindings) => changeDraft({ ...draft, rail_bindings })} /><ActionEditor actions={actions} selected={draft.action_references} onChange={(action_references) => changeDraft({ ...draft, action_references })} loading={actionsQuery.isPending} paused={actionsQuery.fetchStatus === "paused"} error={actionsQuery.error} refreshing={actionsQuery.isFetching} onRetry={() => { void actionsQuery.refetch(); }} /><ParameterEditor parameters={draft.parameter_schema} onChange={(parameter_schema) => changeDraft({ ...draft, parameter_schema })} /></div> : null}
+        {step === 2 ? <div className="space-y-8">{!published ? <ReleaseStatus run={validationRun} error={compileError} running={testMutation.isPending} outdated={validationOutdated} /> : null}<TestEditor rails={draft.rail_bindings} testCases={draft.test_cases} run={validationRun} error={compileError} onChange={(test_cases) => changeDraft({ ...draft, test_cases })} />{currentRevisionPassed ? <PublishReview name={name} draft={draft} run={validationRun} /> : null}</div> : null}
       </CreationFlow>
+      </fieldset>
     </EntitySheet>
   );
 }
@@ -215,9 +273,35 @@ function ColangEditor({ version, sources, error, onChange }: { version: Programm
   return <StudioSection title={t("policyStudio.colangTitle")} description={t("policyStudio.colangDescription")} action={<div className="text-right"><Badge variant="outline">Colang {version} · {t("policyStudio.automatic")}</Badge><p className="mt-1 max-w-64 text-xs leading-4 text-muted-foreground">{t("policyStudio.automaticVersionDescription")}</p></div>}><div className="overflow-hidden rounded-lg border bg-[#111827] text-slate-100"><div className="flex items-center justify-between border-b border-white/10 px-3 py-2"><div className="flex items-center gap-2"><FileCode2 className="size-4 text-blue-400" /><Input aria-label={t("policyStudio.sourcePath")} className="h-9 w-52 border-white/10 bg-white/5 font-mono text-xs text-white" value={source.path} onChange={(event) => onChange([{ ...source, path: event.target.value }])} /></div><Badge variant="outline" className="border-white/15 bg-white/5 text-slate-300">Colang</Badge></div><div className="grid grid-cols-[3rem_minmax(0,1fr)]"><pre aria-hidden="true" className="select-none overflow-hidden border-r border-white/10 py-3 text-right font-mono text-xs leading-5 text-slate-500">{lineNumbers(source.content)}</pre><Textarea aria-label={t("policyStudio.colangSource")} wrap="off" spellCheck={false} className="min-h-[25rem] resize-y overflow-x-auto rounded-none border-0 bg-transparent px-3 py-3 font-mono text-xs leading-5 whitespace-pre text-slate-100 shadow-none focus-visible:ring-0" value={source.content} onChange={(event) => onChange([{ ...source, content: event.target.value }])} /></div><div className="flex items-center justify-between border-t border-white/10 px-3 py-2 font-mono text-xs text-slate-400"><span>{source.content.split("\n").length} {t("policyStudio.lines")}</span><span>{location ? `${location.path}:${location.line}:${location.column}` : t("policyStudio.compileReady")}</span></div></div>{error ? <Alert variant="destructive" className="mt-4"><CircleAlert /><AlertTitle>{t("policyStudio.compileError")}{location ? ` · ${location.path}:${location.line}:${location.column}` : ""}</AlertTitle><AlertDescription className="break-words font-mono text-xs">{error}</AlertDescription></Alert> : null}</StudioSection>;
 }
 
-function ActionEditor({ actions, selected, onChange, loading }: { actions: ActionDefinition[]; selected: PolicyActionReference[]; onChange: (actions: PolicyActionReference[]) => void; loading: boolean }) {
+function ActionEditor({ actions, selected, onChange, loading, paused, error, refreshing, onRetry }: { actions: ActionDefinition[]; selected: PolicyActionReference[]; onChange: (actions: PolicyActionReference[]) => void; loading: boolean; paused: boolean; error: Error | null; refreshing: boolean; onRetry: () => void }) {
   const { t } = useTranslation();
-  return <details className="group rounded-lg border bg-card"><summary className="flex min-h-20 cursor-pointer list-none items-center gap-4 px-4 py-3 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [&::-webkit-details-marker]:hidden"><div className="min-w-0 flex-1"><h3 className="text-base font-semibold">{t("policyStudio.actionsTitle")}</h3><p className="mt-1 text-xs leading-5 text-muted-foreground">{t("policyStudio.actionsDescription")}</p></div><Badge variant="secondary" className="shrink-0">{t("policyStudio.selectedCount", { count: selected.length })}</Badge><ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" /></summary><div className="border-t p-4"><Alert variant="info" className="mb-4"><LockKeyhole /><AlertTitle>{t("policyStudio.registeredOnly")}</AlertTitle><AlertDescription>{t("policyStudio.noPython")}</AlertDescription></Alert>{loading ? <Skeleton className="h-64" /> : <div className="divide-y rounded-lg border">{actions.map((action) => { const checked = selected.some((item) => item.name === action.name && item.version === action.version); return <label key={`${action.name}@${action.version}`} className="grid min-h-20 cursor-pointer grid-cols-[2rem_minmax(0,1fr)] gap-3 p-4 hover:bg-muted/20 sm:grid-cols-[2rem_minmax(0,1fr)_12rem]"><Checkbox className="mt-0.5" checked={checked} onCheckedChange={(value) => onChange(value ? [...selected, { name: action.name, version: action.version }] : selected.filter((item) => item.name !== action.name || item.version !== action.version))} /><span className="min-w-0"><code className="block truncate text-xs font-medium" title={action.name}>{action.name}@{action.version}</code><span className="mt-1 flex flex-wrap gap-1.5">{action.supported_rails.map((rail) => <RailBadge key={rail} rail={rail} />)}{action.concurrent ? <Badge variant="outline">{t("policyStudio.concurrent")}</Badge> : null}{action.network_access ? <Badge variant="outline"><Network />{t("policyStudio.network")}</Badge> : null}</span></span><span className="text-xs text-muted-foreground sm:text-right"><Clock3 className="mr-1 inline size-3" />{action.timeout_ms}ms<br />{action.failure_mode}</span></label>; })}</div>}</div></details>;
+  return <div className="space-y-3">
+    {error ? <Alert variant="destructive">
+      <CircleAlert /><AlertTitle>{t("policyStudio.actionsUnavailable")}</AlertTitle>
+      <AlertDescription className="space-y-3">
+        <p>{t("policyStudio.actionsPreserved")}</p>
+        <Button className="min-h-11" variant="outline" disabled={refreshing} onClick={onRetry}><LoaderCircle className={refreshing ? "animate-spin" : "hidden"} />{t("policyStudio.retryActions")}</Button>
+      </AlertDescription>
+    </Alert> : null}
+    {loading || paused ? <div role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><LoaderCircle className={cn("size-4", !paused && "animate-spin")} />{t(paused ? "policyStudio.actionsWaitingConnection" : "policyStudio.actionsLoading")}</div> : null}
+    <details className="group rounded-lg border bg-card">
+      <summary className="flex min-h-20 cursor-pointer list-none items-center gap-4 px-4 py-3 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+        <div className="min-w-0 flex-1"><h3 className="text-base font-semibold">{t("policyStudio.actionsTitle")}</h3><p className="mt-1 text-xs leading-5 text-muted-foreground">{t("policyStudio.actionsDescription")}</p></div>
+        <Badge variant="secondary" className="shrink-0">{t("policyStudio.selectedCount", { count: selected.length })}</Badge><ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
+      </summary>
+      <div className="border-t p-4">
+        <Alert variant="info" className="mb-4"><LockKeyhole /><AlertTitle>{t("policyStudio.registeredOnly")}</AlertTitle><AlertDescription>{t("policyStudio.noPython")}</AlertDescription></Alert>
+        {loading ? <Skeleton className="h-64" /> : actions.length ? <div className="divide-y rounded-lg border">{actions.map((action) => {
+          const checked = selected.some((item) => item.name === action.name && item.version === action.version);
+          return <label key={`${action.name}@${action.version}`} className="grid min-h-20 cursor-pointer grid-cols-[2rem_minmax(0,1fr)] gap-3 p-4 hover:bg-muted/20 sm:grid-cols-[2rem_minmax(0,1fr)_12rem]">
+            <Checkbox className="mt-0.5" checked={checked} onCheckedChange={(value) => onChange(value ? [...selected, { name: action.name, version: action.version }] : selected.filter((item) => item.name !== action.name || item.version !== action.version))} />
+            <span className="min-w-0"><code className="block truncate text-xs font-medium" title={action.name}>{action.name}@{action.version}</code><span className="mt-1 flex flex-wrap gap-1.5">{action.supported_rails.map((rail) => <RailBadge key={rail} rail={rail} />)}{action.concurrent ? <Badge variant="outline">{t("policyStudio.concurrent")}</Badge> : null}{action.network_access ? <Badge variant="outline"><Network />{t("policyStudio.network")}</Badge> : null}</span></span>
+            <span className="text-xs text-muted-foreground sm:text-right"><Clock3 className="mr-1 inline size-3" />{action.timeout_ms}ms<br />{action.failure_mode}</span>
+          </label>;
+        })}</div> : !error ? <EmptyInline icon={Braces} text={t("policyStudio.actionsEmpty")} /> : null}
+      </div>
+    </details>
+  </div>;
 }
 
 function ParameterEditor({ parameters, onChange }: { parameters: PolicyDraftParameter[]; onChange: (parameters: PolicyDraftParameter[]) => void }) {
@@ -292,9 +376,10 @@ function TestEditor({ rails, testCases, run, error, onChange }: { rails: PolicyR
   );
 }
 
-function ReleaseStatus({ run, error, running }: { run: PolicyDraftValidationRun | null; error: string | null; running: boolean }) {
+function ReleaseStatus({ run, error, running, outdated }: { run: PolicyDraftValidationRun | null; error: string | null; running: boolean; outdated: boolean }) {
   const { t } = useTranslation();
   if (running) return <Alert variant="info"><LoaderCircle className="animate-spin" /><AlertTitle>{t("policyStudio.releaseRunning")}</AlertTitle><AlertDescription>{t("policyStudio.releaseRunningDescription")}</AlertDescription></Alert>;
+  if (outdated) return <Alert variant="info"><CircleAlert /><AlertTitle>{t("policyStudio.validationOutdated")}</AlertTitle><AlertDescription>{t("policyStudio.validationOutdatedDescription")}</AlertDescription></Alert>;
   if (error) return <Alert variant="destructive"><CircleAlert /><AlertTitle>{t("policyStudio.compilerValidationFailed")}</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>;
   if (run?.status === "passed") return <Alert><Check /><AlertTitle>{t("policyStudio.releasePassed")}</AlertTitle><AlertDescription>{t("policyStudio.releasePassedDescription")}</AlertDescription></Alert>;
   if (run?.status === "failed") return <Alert variant="destructive"><X /><AlertTitle>{t("policyStudio.validationFailed")}</AlertTitle><AlertDescription>{t("policyStudio.releaseFailedDescription")}</AlertDescription></Alert>;

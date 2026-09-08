@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode, type MouseEvent } from "react";
 import { boundPolicy } from "@/lib/bound-policy";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
@@ -94,16 +94,21 @@ export function GuardrailsPage() {
   const auth = useAuth();
   const query = useQuery(guardrailQueries.list());
   const [createOpen, setCreateOpen] = useState(false);
+  const createOpener = useRef<HTMLButtonElement | null>(null);
+  const openCreation = (event: MouseEvent<HTMLButtonElement>) => {
+    createOpener.current = event.currentTarget;
+    setCreateOpen(true);
+  };
   const guardrails = query.data?.items ?? [];
 
   return (
     <section className="py-6 sm:py-8">
-      <PageHeader title={t("pages.guardrails.title")} description={t("guardrails.description")} action={auth.user?.role === "admin" ? <Button className="min-h-11" onClick={() => setCreateOpen(true)}><Plus />{t("guardrails.create")}</Button> : undefined} />
+      <PageHeader title={t("pages.guardrails.title")} description={t("guardrails.description")} action={auth.user?.role === "admin" ? <Button className="min-h-11" onClick={openCreation}><Plus />{t("guardrails.create")}</Button> : undefined} />
       {query.error ? <div className="mt-5 space-y-3"><ErrorNotice error={query.error} /><Button type="button" variant="outline" className="min-h-11" disabled={query.isFetching} onClick={() => void query.refetch()}><RefreshCw className={query.isFetching ? "animate-spin motion-reduce:animate-none" : undefined} />{t("common.retry")}</Button></div> : null}
       {query.isPending ? <GuardrailRegistrySkeleton /> : null}
-      {!query.isPending && !guardrails.length ? <div className="mt-5"><EmptyState title={t("guardrails.emptyTitle")} description={t("guardrails.emptyDescription")} action={auth.user?.role === "admin" ? <Button onClick={() => setCreateOpen(true)}><Plus />{t("guardrails.createFirst")}</Button> : undefined} /></div> : null}
+      {!query.isPending && !guardrails.length ? <div className="mt-5"><EmptyState title={t("guardrails.emptyTitle")} description={t("guardrails.emptyDescription")} action={auth.user?.role === "admin" ? <Button onClick={openCreation}><Plus />{t("guardrails.createFirst")}</Button> : undefined} /></div> : null}
       {guardrails.length ? <GuardrailRegistry guardrails={guardrails} onOpen={(guardrailId) => navigate({ to: "/guardrails/$guardrailId", params: { guardrailId } })} /> : null}
-      <CreateGuardrailWizard open={createOpen} onOpenChange={setCreateOpen} onCreated={async (id) => { setCreateOpen(false); await queryClient.invalidateQueries({ queryKey: queryKeys.guardrails }); navigate({ to: "/guardrails/$guardrailId", params: { guardrailId: id } }); }} />
+      <CreateGuardrailWizard open={createOpen} returnFocusRef={createOpener} onOpenChange={setCreateOpen} onCreated={async (id) => { setCreateOpen(false); await queryClient.invalidateQueries({ queryKey: queryKeys.guardrails }); navigate({ to: "/guardrails/$guardrailId", params: { guardrailId: id } }); }} />
     </section>
   );
 }
@@ -936,6 +941,9 @@ export function EditGuardrailSheet({ guardrail, policies, open, onOpenChange, on
     onSuccess: () => { toast.success(t("guardrails.updated")); onSaved(); },
     onError: (error) => notifyError(error, t("guardrails.operationFailed")),
   });
+  const dirty = name !== guardrail.name || allowed !== guardrail.allowed_topics.join("\n")
+    || level !== guardrail.safety_level || delivery !== guardrail.output_delivery
+    || JSON.stringify(bindings) !== JSON.stringify(guardrail.policy_bindings);
   const topicControlEnabled = hasTopicControlBinding(bindings, policies);
   const allowedTopicsMissing = topicControlEnabled && !lines(allowed).length;
   const parameterErrors = bindings.flatMap((binding) => {
@@ -944,7 +952,7 @@ export function EditGuardrailSheet({ guardrail, policies, open, onOpenChange, on
     const { missingRequiredParameters } = getPolicyBindingValidation(binding, policy);
     return missingRequiredParameters.length ? [t("guardrailWizard.nextBlocked.requiredFields", { name: policy.name, fields: missingRequiredParameters.map((parameter) => parameter.label).join(", ") })] : [];
   });
-  return <EntitySheet open={open} onOpenChange={onOpenChange} eyebrow={t("guardrails.editEyebrow")} title={t("guardrails.editTitle", { name: guardrail.name })} description={t("guardrails.editDescription")} width="xl" footer={<><Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button><Button disabled={!name.trim() || !bindings.length || allowedTopicsMissing || parameterErrors.length > 0 || mutation.isPending} onClick={() => mutation.mutate()}>{mutation.isPending ? <LoaderCircle className="animate-spin" /> : <Save />}{t(mutation.isPending ? "common.saving" : "common.save")}</Button></>}>
+  return <EntitySheet open={open} onOpenChange={onOpenChange} eyebrow={t("guardrails.editEyebrow")} title={t("guardrails.editTitle", { name: guardrail.name })} description={t("guardrails.editDescription")} width="xl" footer={<>{dirty ? <span role="status" className="mr-auto self-center text-xs text-muted-foreground">{t("protection.unsavedOrder")}</span> : null}<Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button><Button disabled={!name.trim() || !bindings.length || allowedTopicsMissing || parameterErrors.length > 0 || mutation.isPending} onClick={() => mutation.mutate()}>{mutation.isPending ? <LoaderCircle className="animate-spin" /> : <Save />}{t(mutation.isPending ? "common.saving" : "common.save")}</Button></>}>
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5">
       <Field label={t("guardrails.guardrailName")}><Input className="min-h-11" value={name} onChange={(event) => setName(event.target.value)} /></Field>
       <section className="rounded-xl border bg-card p-4">

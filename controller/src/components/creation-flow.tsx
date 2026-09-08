@@ -47,7 +47,15 @@ export function CreationFlow({
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (vertical || !freelyNavigable) return;
-    root.current?.querySelector<HTMLElement>('[aria-current="step"]')?.scrollIntoView?.({ block: "nearest", inline: "center" });
+    const keepActiveStepVisible = () => {
+      root.current?.querySelector<HTMLElement>('[aria-current="step"]')?.scrollIntoView?.({ block: "nearest", inline: "center" });
+    };
+    keepActiveStepVisible();
+    // The active step also needs repositioning when a narrow viewport changes size.
+    if (!root.current || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(keepActiveStepVisible);
+    observer.observe(root.current);
+    return () => observer.disconnect();
   }, [currentStep, vertical, freelyNavigable]);
 
   function changeStep(value: number) {

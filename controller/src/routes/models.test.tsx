@@ -283,15 +283,33 @@ describe("Models and Guardrail Catalog", () => {
     await waitFor(() => expect(deleteModelDefinition).toHaveBeenCalledWith("unused-model"));
   });
 
-  it("tests Model callability without changing catalog assignments", async () => {
+  it("tests Model callability directly without confirmation or changing catalog assignments", async () => {
     renderPage(<ModelsPage />);
     fireEvent.click(await screen.findByRole("button", { name: "modelSettings.testCall Qwen Guard" }));
-    expect(testModelConnection).not.toHaveBeenCalled();
-    const drawer = screen.getByRole("dialog", { name: "modelSettings.modelTestConfirmationTitle" });
-    fireEvent.click(within(drawer).getByRole("button", { name: "modelSettings.modelTestConfirmationAction" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
     await waitFor(() => expect(testModelConnection).toHaveBeenCalledWith("safety-model"));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(safetyModel.connectionMessage));
+    await waitFor(() => expect(getModelConfiguration).toHaveBeenCalledTimes(2));
     expect(saveModelAssignment).not.toHaveBeenCalled();
     expect(activateModelConfiguration).not.toHaveBeenCalled();
+  });
+
+  it("shows pending feedback and lets users retry a failed Model test directly", async () => {
+    let rejectProbe!: (error: Error) => void;
+    vi.mocked(testModelConnection).mockImplementationOnce(() => new Promise((_, reject) => { rejectProbe = reject; }));
+    renderPage(<ModelsPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "modelSettings.testCall Qwen Guard" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "modelSettings.testCall Qwen Guard" })).toHaveProperty("disabled", true));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    rejectProbe(new Error("Network unavailable"));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Network unavailable"));
+    const retry = await screen.findByRole("button", { name: "modelSettings.testCall Qwen Guard" });
+    expect(retry).toHaveProperty("disabled", false);
+    vi.mocked(testModelConnection).mockResolvedValueOnce({ ...safetyModel, connectionStatus: "validated" });
+    fireEvent.click(retry);
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("modelSettings.callPassed"));
+    expect(testModelConnection).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("retests a Provider only after right-drawer confirmation", async () => {

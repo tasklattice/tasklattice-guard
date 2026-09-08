@@ -12,6 +12,8 @@ from runner.toolkit.runtime.service import GuardrailRuntimeService
 from tests.data_plane.test_artifact_execution import _runtime, RUNTIME_CREDENTIAL, Telemetry
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "artifacts" / "custom-symbol-ownership-v1"
+FLOW_EVENT_FIXTURE = FIXTURE.parent / "custom-flow-events-v1"
+DYNAMIC_FLOW_FIXTURE = FIXTURE.parent / "custom-dynamic-flow-events-v1"
 
 
 def test_runner_without_owned_recording_support_rejects_artifact_before_serving(tmp_path, monkeypatch):
@@ -25,13 +27,14 @@ def test_runner_without_owned_recording_support_rejects_artifact_before_serving(
 
 
 @pytest.mark.parametrize("phase", ["input", "output"])
+@pytest.mark.parametrize("fixture", [FIXTURE, FLOW_EVENT_FIXTURE, DYNAMIC_FLOW_FIXTURE], ids=["flow-specs", "flow-events", "dynamic-flow-events"])
 @pytest.mark.parametrize("content,decision,owners", [
     ("ordinary", "allow", []),
     ("check", "block", ["policy-a", "policy_a"]),
     ("check reviewed", "block", ["policy_a"]),
 ])
-async def test_frozen_custom_source_keeps_literals_and_policy_ownership(tmp_path, phase, content, decision, owners):
-    store, registry, engine = _runtime(tmp_path, FIXTURE)
+async def test_frozen_custom_source_keeps_literals_and_policy_ownership(tmp_path, phase, content, decision, owners, fixture):
+    store, registry, engine = _runtime(tmp_path, fixture)
     runtime = GuardrailRuntimeService(engine, store)
     try:
         result = await runtime.evaluate(ProtectionRequest(phase=phase, texts=(content,),
@@ -47,8 +50,9 @@ async def test_frozen_custom_source_keeps_literals_and_policy_ownership(tmp_path
 
 
 @pytest.mark.parametrize("fragments,decision", [(["ch", "eck"], "block"), (["ordi", "nary"], "allow")])
-async def test_frozen_custom_output_http_stream_waits_for_complete_source(tmp_path, fragments, decision):
-    store, _registry, engine = _runtime(tmp_path, FIXTURE)
+@pytest.mark.parametrize("fixture", [FIXTURE, FLOW_EVENT_FIXTURE, DYNAMIC_FLOW_FIXTURE], ids=["flow-specs", "flow-events", "dynamic-flow-events"])
+async def test_frozen_custom_output_http_stream_waits_for_complete_source(tmp_path, fragments, decision, fixture):
+    store, _registry, engine = _runtime(tmp_path, fixture)
     app = FastAPI()
     app.include_router(RunnerAPI(GuardrailRuntimeService(engine, store), store, RunnerMetrics(4),
         Telemetry(), "fixture-runner", "controller-token").router)

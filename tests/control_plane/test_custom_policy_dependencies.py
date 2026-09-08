@@ -42,14 +42,66 @@ def test_compile_rejects_unreferenced_action_even_in_uncovered_branch(operation,
         compile_plan(custom_plan(source))
 
 
+@pytest.mark.parametrize("nested", [False, True])
+@pytest.mark.parametrize("statement", [
+    'send StartGuardCustomerIdentifierAction(text=$text)',
+    'send Notice() and StartGuardCustomerIdentifierAction(text=$text)',
+    'send (Notice() or StartGuardCustomerIdentifierAction(text=$text))',
+])
+def test_action_start_event_requires_policy_owned_dependency(nested, statement):
+    source = (f"flow check $text\n  if False\n    {statement}\n" if nested
+              else f"flow check $text\n  {statement}\n")
+    with pytest.raises(PlanCompilationError, match="unreferenced Action.*GuardCustomerIdentifierAction"):
+        compile_plan(custom_plan(source))
+
+
+def test_declared_action_start_event_is_not_disabled():
+    artifact = compile_plan(custom_plan(
+        'flow check $text\n  send StartGuardCustomerIdentifierAction(text=$text)\n',
+        ["GuardCustomerIdentifierAction"],
+    ))
+    from runner.protocol_codec import artifact_content
+    manifest = artifact_content(artifact)["dependencyManifest"]
+    assert ["action", "GuardCustomerIdentifierAction", "1.0.0"] in manifest
+
+
+def test_observing_action_start_event_does_not_invoke_it():
+    assert compile_plan(custom_plan(
+        'flow check $text\n  match StartGuardCustomerIdentifierAction()\n',
+    )).checksum
+
+
+@pytest.mark.parametrize("phase", ["input", "output"])
+async def test_declared_event_action_must_be_available_before_validation(phase):
+    from runner.protocol_codec import validation_test_to_proto
+    from runner.validator import DefaultRunnerValidator
+
+    plan = custom_plan(
+        'flow check $text\n  if False\n    send StartExternalReviewAction(text=$text)\n',
+        ["ExternalReviewAction"],
+    )
+    plan["policy_versions"][0]["rail_bindings"][0]["rail_type"] = phase
+    plan["policy_bindings"][0]["enabled_rails"] = [phase]
+    request = protocol.ValidationRequest(
+        run_id="event-dependency", guardrail_id=plan["guardrail_id"],
+        candidate_version=plan["guardrail_version"], source_draft_revision=1,
+        plan=plan_to_proto(plan), runtime_profile="auto",
+        test_cases=[validation_test_to_proto({"id": "benign", "name": "Uncovered event branch",
+            "phase": phase, "content": "ordinary", "expectedDecision": "allow", "required": True})],
+    )
+    with pytest.raises(PlanCompilationError, match="providers are unavailable.*ExternalReviewAction"):
+        await DefaultRunnerValidator(DefaultRunnerCompiler()).validate(request)
+
+
 @pytest.mark.parametrize("call", ["await missing", "await missing()", "activate missing", "start missing"])
 def test_compile_rejects_undefined_flow_without_requiring_parentheses(call):
     with pytest.raises(PlanCompilationError, match="undefined Flow.*missing"):
         compile_plan(custom_plan(f"flow check $text\n  {call}\n"))
 
 
-def test_action_reference_is_owned_by_policy_not_borrowed_from_another_policy():
-    plan = custom_plan("flow check $text\n  await GuardCustomerIdentifierAction(text=$text)\n")
+@pytest.mark.parametrize("call", ["await GuardCustomerIdentifierAction", "send StartGuardCustomerIdentifierAction"])
+def test_action_reference_is_owned_by_policy_not_borrowed_from_another_policy(call):
+    plan = custom_plan(f"flow check $text\n  {call}(text=$text)\n")
     other = deepcopy(plan["policy_versions"][0])
     other.update(policy_id="other", sources=[{"path": "other.co", "content": "flow check $text\n  pass\n"}],
         action_references=[{"name": "GuardCustomerIdentifierAction", "version": "1.0.0"}])

@@ -1,0 +1,18 @@
+# Overlay values-dev.yaml for disposable OrbStack-only lifecycle acceptance.
+# Separate release/database: never edits the user's active model assignments.
+fullnameOverride: tali-topic-e2e
+controller:
+  publicUrl: http://localhost:38181
+  trustedOrigins: [http://localhost:38181]
+  service:
+    public:
+      enabled: false
+runner:
+  default:
+    replicaCount: 2
+  service:
+    public:
+      enabled: false
+postgresql:
+  persistence:
+    enabled: false

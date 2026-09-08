@@ -429,7 +429,7 @@ export async function runProgrammablePolicyValidation(id: string): Promise<Polic
   if (current.status === "queued" || current.status === "running") throw new Error("Policy Validation timed out while waiting for GuardRails 0.");
   return current;
 }
-export const publishProgrammablePolicy = (id: string) => controllerApi.requestController<ProgrammablePolicyVersion>(`/api/v1/policies/${encodeURIComponent(id)}/publish`, { method: "POST" });
+export const publishProgrammablePolicy = (id: string, expectedDraftRevision: number) => controllerApi.requestController<ProgrammablePolicyVersion>(`/api/v1/policies/${encodeURIComponent(id)}/publish`, { method: "POST", body: JSON.stringify({ expectedDraftRevision }) });
 
 export const getIntentAnalysisStatus = () => controllerApi.requestController<IntentAnalysisStatus>("/api/v1/intent-analysis-status");
 export const analyzeGuardrailIntent = (input: { purpose: string; language: "en" | "zh-CN" }) => controllerApi.requestController<IntentAnalysis>("/api/v1/intent-analyses", {
@@ -603,6 +603,7 @@ function mapValidationResult(value: Record<string, unknown>): ValidationRun["res
     source_case_id: stringValue(value.sourceCaseId),
     covered_rule_ids: arrayOfStrings(value.coveredRuleIds),
     matched_rule_ids: arrayOfStrings(value.matchedRuleIds),
+    preempting_matches: arrayOfRecords(value.preemptingMatches).map(item => ({ policyId: String(item.policyId), ruleId: String(item.ruleId) })),
     evaluation_contracts: arrayOfStrings(value.evaluationContracts),
     escalated: Boolean(value.escalated),
     model_invocations: numberValue(value.modelInvocations) ?? 0,

@@ -37,10 +37,10 @@ from ..runtime.contracts import (
     flow_rule_id,
 )
 from .domain import PolicyDraft, PlanCompilationError, RailBinding
-from .policy_sources import expand_policy_parameters, link_policy_source, parse_source_tree, symbol_name
+from .policy_sources import FLOW_ID_EVENTS, expand_policy_parameters, link_policy_source, literal_flow_target, parse_source_tree, symbol_name
 
 
-NEMO_COMPILER_VERSION = "tasklattice-nemo-config-v18-selected-policy-dependencies"
+NEMO_COMPILER_VERSION = "tasklattice-nemo-config-v21-dynamic-flow-targets"
 
 _COLANG1_STANDARD_ACTIONS = {
     ACTION_EVALUATE,
@@ -276,6 +276,12 @@ class NeMoConfigCompiler:
                         f"Policy {policy_id!r} uses forbidden import {imported!r} at {path}."
                     )
             for spec, line in _policy_specs(parsed["flows"]):
+                if spec.spec_type == SpecType.EVENT and spec.name in FLOW_ID_EVENTS:
+                    target = literal_flow_target(spec.arguments.get("flow_id", ""))
+                    if target is not None and target not in declared:
+                        raise PlanCompilationError(
+                            f"Policy {policy_id!r} references undefined Flow {target!r} at {path}:{line}."
+                        )
                 if spec.spec_type == SpecType.FLOW and spec.name not in declared:
                     raise PlanCompilationError(
                         f"Policy {policy_id!r} calls undefined Flow {spec.name!r} at {path}:{line}."
@@ -283,6 +289,14 @@ class NeMoConfigCompiler:
                 if spec.spec_type == SpecType.ACTION and spec.name not in referenced_actions:
                     raise PlanCompilationError(
                         f"Policy {policy_id!r} calls unreferenced Action {spec.name!r} at {path}:{line}."
+                    )
+            # NeMo also dispatches Actions via explicitly sent Start*Action
+            # events. Observing an event is not invocation, but sending one must
+            # obey the same Policy-owned dependency boundary as await/start.
+            for action_name, line in _policy_action_events(parsed["flows"]):
+                if action_name not in referenced_actions:
+                    raise PlanCompilationError(
+                        f"Policy {policy_id!r} calls unreferenced Action {action_name!r} at {path}:{line}."
                     )
         binding_names = {item.flow_name for item in draft.rail_bindings}
         for binding in draft.rail_bindings:
@@ -999,7 +1013,7 @@ def _expand_policy_parameters(content: str, parameters: tuple[tuple[str, str], .
     return expand_policy_parameters(content, parameters)
 
 
-def _policy_specs(node: Any, line: int = 1):
+def _policy_nodes(node: Any, line: int = 1):
     """Walk NeMo's parsed statements, never scan comments or expression strings.
 
     This checks statically named references, not arbitrary expression effects or
@@ -1007,17 +1021,34 @@ def _policy_specs(node: Any, line: int = 1):
     """
     if isinstance(node, SpecOp) and node._source:
         line = node._source.line
-    if isinstance(node, Spec):
-        yield node, line
+    yield node, line
     if is_dataclass(node):
         for field in fields(node):
-            yield from _policy_specs(getattr(node, field.name), line)
+            yield from _policy_nodes(getattr(node, field.name), line)
     elif isinstance(node, dict):
         for value in node.values():
-            yield from _policy_specs(value, line)
+            yield from _policy_nodes(value, line)
     elif isinstance(node, (list, tuple)):
         for value in node:
-            yield from _policy_specs(value, line)
+            yield from _policy_nodes(value, line)
+
+
+def _policy_specs(node: Any):
+    for element, line in _policy_nodes(node):
+        if isinstance(element, Spec):
+            yield element, line
+
+
+def _policy_action_events(node: Any):
+    for element, line in _policy_nodes(node):
+        if not isinstance(element, SpecOp) or element.op != "send":
+            continue
+        # Composite and/or specs retain the parent's send operation. Walking
+        # only a direct Spec would leave the same bypass inside an event group.
+        for spec, _ in _policy_specs(element.spec):
+            if (spec.spec_type == SpecType.EVENT and spec.name
+                    and spec.name.startswith("Start") and spec.name.endswith("Action")):
+                yield spec.name.removeprefix("Start"), line
 
 
 def _compiled_flow_name(binding: NeMoActionBinding) -> str:

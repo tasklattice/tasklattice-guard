@@ -1,4 +1,6 @@
 from copy import deepcopy
+import json
+import re
 
 import pytest
 
@@ -19,6 +21,169 @@ flow check $text
   else
     $r = await GuardRecordPolicyAction(flow_name=$target, safe=True, text=$check)
 '''
+
+
+@pytest.mark.parametrize("phase", ["input", "output"])
+@pytest.mark.parametrize("target", ['"inspect text"', '$target', '{"target": "inspect text"}["target"]', '"{$target}"'])
+async def test_explicit_flow_events_execute_policy_local_helper(phase, target):
+    source = f'''flow check $text
+  $target = "inspect text"
+  send StartFlow(flow_id={target}, flow_instance_uid=uid(), text=$text)
+  match FlowFinished(flow_id={target})
+
+flow inspect text $text
+  $r = await GuardRecordPolicyAction(flow_name="check", safe=False, text=$text)
+'''
+    plan = custom_plan(source, ["GuardRecordPolicyAction"])
+    plan["policy_versions"][0]["rail_bindings"][0]["timeout_ms"] = 500
+    plan["policy_versions"][0]["rail_bindings"][0]["rail_type"] = phase
+    plan["policy_bindings"][0]["enabled_rails"] = [phase]
+    runtime = DraftPreviewRuntime(DefaultRunnerCompiler(), action_providers())
+    try:
+        result = await runtime.evaluate(
+            ProtectionRequest(phase=phase, texts=("check",), context=RequestContext(protocol="test")),
+            preview_id="flow-events", guardrail_id=plan["guardrail_id"], draft_revision=1,
+            candidate_version=plan["guardrail_version"], plan=plan, runtime_profile="auto")
+        assert not result.usage.fail_closed, result.reason
+        assert result.decision == "block"
+        assert any(item.policy_id == "custom" for item in result.findings)
+    finally:
+        await runtime.shutdown()
+
+
+@pytest.mark.parametrize("event", ["StartFlow", "StopFlow", "FinishFlow", "FlowStarted", "FlowFinished", "FlowFailed"])
+@pytest.mark.parametrize("arguments", ['(flow_id=$target)', ' $flow_id=$target'])
+def test_dynamic_lifecycle_targets_resolve_only_within_the_owning_policy(event, arguments):
+    from nemoguardrails.colang.v2_x.runtime.errors import ColangValueError
+    from nemoguardrails.colang.v2_x.lang.parser import parse_colang_file
+    from nemoguardrails.colang.v2_x.runtime.eval import eval_expression
+    from runner.toolkit.compiler.nemo_compiler import _namespaced_flow_name, _policy_specs
+    source = f'flow check $text\n  send {event}{arguments}\n\nflow inspect text\n  pass\n'
+    compiled = compile_plan(custom_plan(source)).colang_content
+    flows = parse_colang_file("compiled.co", compiled)["flows"]
+    owned = [flow for flow in flows if flow.name == _namespaced_flow_name("custom", "1", "check")]
+    expressions = [spec.arguments["flow_id"] for spec, _ in _policy_specs(owned)
+        if spec.name == event and "$tl_flow_target_" in spec.arguments.get("flow_id", "")]
+    linked = _namespaced_flow_name("custom", "1", "inspect text")
+    # Ignore NeMo's automatically inserted static StartFlow listener.
+    assert len(expressions) == 1
+    for expression in expressions:
+        assignments = re.findall(r'^\s*' + re.escape(expression) + r' = (.+)$', compiled, re.MULTILINE)
+        assert len(assignments) == 2
+        def resolve(target):
+            context = {"target": target}
+            for value in assignments:
+                context[expression.lstrip("$")] = eval_expression(value, context)
+            return eval_expression(expression, context)
+        assert resolve("inspect text") == linked
+        # Runtime FlowState references can already carry this linked ID.
+        assert resolve(linked) == linked
+        for target in ["missing", "main", _namespaced_flow_name("other", "1", "inspect text")]:
+            with pytest.raises(ColangValueError):
+                resolve(target)
+
+
+@pytest.mark.parametrize("phase", ["input", "output"])
+@pytest.mark.parametrize("listener", ['match FlowFinished(flow_id=$matcher)', 'when FlowFinished(flow_id=$matcher)\n    pass'])
+async def test_dynamic_targets_evaluate_once_and_preserve_nemo_pattern_listeners(phase, listener):
+    source = f'''flow check $text
+  $targets = ["inspect text"]
+  $matcher = regex(".*")
+  send StartFlow(flow_id=$targets.pop(), flow_instance_uid=uid(), text=$text)
+  {listener}
+
+flow inspect text $text
+  $r = await GuardRecordPolicyAction(flow_name="check", safe=False, text=$text)
+'''
+    plan = custom_plan(source, ["GuardRecordPolicyAction"])
+    plan["policy_versions"][0]["rail_bindings"][0].update(rail_type=phase, timeout_ms=500)
+    plan["policy_bindings"][0]["enabled_rails"] = [phase]
+    runtime = DraftPreviewRuntime(DefaultRunnerCompiler(), action_providers())
+    try:
+        result = await runtime.evaluate(
+            ProtectionRequest(phase=phase, texts=("check",), context=RequestContext(protocol="test")),
+            preview_id="pattern-listener", guardrail_id=plan["guardrail_id"], draft_revision=1,
+            candidate_version=plan["guardrail_version"], plan=plan, runtime_profile="auto")
+        assert result.decision == "block" and not result.usage.fail_closed, result.reason
+        assert any(item.policy_id == "custom" for item in result.findings)
+    finally:
+        await runtime.shutdown()
+
+
+@pytest.mark.parametrize("phase", ["input", "output"])
+@pytest.mark.parametrize("foreign", [False, True])
+async def test_dynamic_target_cannot_execute_another_policys_helper(phase, foreign):
+    from runner.toolkit.compiler.nemo_compiler import _namespaced_flow_name
+    target = _namespaced_flow_name("other", "1", "other helper") if foreign else "other helper"
+    source = f'''flow check $text
+  $target = {json.dumps(target)}
+  send StartFlow(flow_id=$target, flow_instance_uid=uid(), text=$text)
+  match FlowFinished(flow_id=$target)
+'''
+    plan = custom_plan(source, ["GuardRecordPolicyAction"])
+    plan["policy_versions"][0]["rail_bindings"][0].update(rail_type=phase, timeout_ms=500)
+    plan["policy_bindings"][0]["enabled_rails"] = [phase]
+    other = deepcopy(plan["policy_versions"][0])
+    other.update(policy_id="other", sources=[{"path": "main.co", "content": '''flow check $text
+  pass
+
+flow other helper $text
+  $r = await GuardRecordPolicyAction(flow_name="check", safe=False, text=$text)
+'''}])
+    plan["policy_versions"].append(other)
+    plan["policy_bindings"].append({"policy_id": "other", "policy_version": "1", "enabled_rails": [phase]})
+    runtime = DraftPreviewRuntime(DefaultRunnerCompiler(), action_providers())
+    try:
+        result = await runtime.evaluate(
+            ProtectionRequest(phase=phase, texts=("check",), context=RequestContext(protocol="test")),
+            preview_id="foreign-flow", guardrail_id=plan["guardrail_id"], draft_revision=1,
+            candidate_version=plan["guardrail_version"], plan=plan, runtime_profile="auto")
+        assert result.decision == "block" and result.usage.fail_closed
+        assert not any(item.policy_id == "other" for item in result.findings)
+        assert not any(item.kind == "action" and item.policy_id == "other" for item in result.trace)
+    finally:
+        await runtime.shutdown()
+
+
+@pytest.mark.parametrize("event", ["StartFlow", "StopFlow", "FinishFlow", "FlowStarted", "FlowFinished", "FlowFailed"])
+def test_literal_flow_event_target_requires_policy_local_declaration(event):
+    from runner.toolkit.compiler.domain import PlanCompilationError
+    with pytest.raises(PlanCompilationError, match="undefined Flow.*missing"):
+        compile_plan(custom_plan(f'flow check $text\n  send {event}(flow_id="missing")\n'))
+
+
+@pytest.mark.parametrize("event", ["StartFlow", "StopFlow", "FinishFlow", "FlowStarted", "FlowFinished", "FlowFailed"])
+@pytest.mark.parametrize("arguments", ['(flow_id="inspect text")', " $flow_id='inspect text'"])
+def test_flow_lifecycle_event_targets_are_linked_without_changing_business_data(event, arguments):
+    from nemoguardrails.colang.v2_x.lang.parser import parse_colang_file
+    from runner.toolkit.compiler.nemo_compiler import _policy_specs
+    from runner.toolkit.compiler.policy_sources import literal_flow_target
+    source = f'''flow check $text
+  $business_value = "inspect text"
+  send {event}{arguments}
+
+flow inspect text
+  pass
+'''
+    artifact = compile_plan(custom_plan(source))
+    assert '$business_value = "inspect text"' in artifact.colang_content
+    flows = parse_colang_file("compiled.co", artifact.colang_content)["flows"]
+    names = {flow.name for flow in flows}
+    targets = [literal_flow_target(spec.arguments["flow_id"]) for spec, _ in _policy_specs(flows)
+        if spec.name == event and "flow_id" in spec.arguments]
+    assert targets and all(target in names for target in targets)
+    assert "inspect text" not in targets
+
+
+def test_flow_event_cannot_borrow_another_policys_helper():
+    plan = custom_plan('flow check $text\n  send StartFlow(flow_id="other helper")\n')
+    other = deepcopy(plan["policy_versions"][0])
+    other.update(policy_id="other", sources=[{"path": "main.co", "content": "flow check $text\n  pass\n\nflow other helper\n  pass\n"}])
+    plan["policy_versions"].append(other)
+    plan["policy_bindings"].append({"policy_id": "other", "policy_version": "1", "enabled_rails": ["input"]})
+    from runner.toolkit.compiler.domain import PlanCompilationError
+    with pytest.raises(PlanCompilationError, match="undefined Flow.*other helper"):
+        compile_plan(plan)
 
 
 @pytest.mark.parametrize("phase", ["input", "output"])

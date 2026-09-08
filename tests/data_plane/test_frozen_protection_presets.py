@@ -23,10 +23,47 @@ PRESETS = (
     "internet-customer-support", "singapore-financial-assistant",
 )
 
+# Reviewed against the pinned Policy expressions and replacement strings, not
+# generated from runtime results. In particular the passport rule replaces its
+# context label too, while the US phone rule leaves the leading '+' untouched.
+# Any new transform case must receive an explicit oracle before this suite passes.
+EXACT_TRANSFORMS = {
+    ("local-payment-data", "Acceptance sample: 4111 1111 1111 1111"): "Acceptance sample: [credit_card_REDACTED]",
+    ("local-payment-data", "Acceptance sample: AA11AAAAAAAAAAA"): "Acceptance sample: [iban_REDACTED]",
+    ("local-passports", "Passport: E12345678"): "[REDACTED]",
+    ("local-passports", "护照号码：K1234567"): "[REDACTED]",
+    ("local-passports", "Passport number: 12AB12345"): "[REDACTED]",
+    ("local-contact-data", "Acceptance sample: A@A.AA"): "Acceptance sample: [email_REDACTED]",
+    ("local-contact-data", "Acceptance sample: +1 (000) 000 0000"): "Acceptance sample: +[us_phone_REDACTED]",
+    ("singapore-customer-identifiers", "Acceptance sample: S1111111A"): "Acceptance sample: [sg_nric_REDACTED]",
+    ("singapore-customer-identifiers", "Acceptance sample: +65 6111 1111"): "Acceptance sample: [sg_phone_REDACTED]",
+    ("singapore-customer-identifiers", "Acceptance sample: bank account 111-11111-1"): "Acceptance sample: bank account [sg_bank_account_REDACTED]",
+}
+
+
+def expected_text(case):
+    if case["expectedDecision"] == "transform":
+        return EXACT_TRANSFORMS[(case["sourcePolicyId"], case["content"])]
+    assert case["expectedDecision"] == "allow"
+    return case["content"]
+
 
 def frozen(preset):
     directory = FIXTURES / f"preset-{preset}-v1"
     return directory, json.loads((directory / "manifest.json").read_text())
+
+
+def test_every_pinned_transform_has_a_fixed_oracle_in_both_directions():
+    covered = set()
+    for preset in PRESETS:
+        _, manifest = frozen(preset)
+        cases = [case for case in manifest["regression_cases"] if case["expectedDecision"] == "transform"]
+        for case in cases:
+            key = (case["sourcePolicyId"], case["content"])
+            assert expected_text(case) != case["content"]
+            assert {other["phase"] for other in cases if (other["sourcePolicyId"], other["content"]) == key} == {"input", "output"}
+            covered.add(key)
+    assert covered == set(EXACT_TRANSFORMS)
 
 
 @pytest.mark.asyncio
@@ -56,7 +93,7 @@ async def test_signed_preset_cases_through_actual_adapter(tmp_path, preset):
                 result = response.json()
                 assert result["action"] == expected_action[case["expectedDecision"]], (preset, case["name"], case["phase"], result)
                 if case["expectedDecision"] == "transform":
-                    assert result["texts"] and result["texts"] != [case["content"]]
+                    assert result["texts"] == [expected_text(case)], (preset, case["id"], result)
                 elif case["expectedDecision"] == "allow":
                     assert result.get("texts", [case["content"]]) == [case["content"]]
         assert len(telemetry.events) == len(manifest["regression_cases"])
@@ -80,6 +117,13 @@ async def test_every_frozen_output_case_is_equivalent_when_split_across_stream_c
             whole = await runtime.evaluate(request)
             assert whole.decision == case["expectedDecision"]
             assert whole.usage is not None and whole.usage.model_invocations == 0
+            assert not whole.usage.fail_closed
+            if whole.decision == "transform":
+                assert whole.texts == (expected_text(case),)
+            elif whole.decision == "allow":
+                # A pass decision carries no replacement; the adapter/stream
+                # must deliver the original text, checked below independently.
+                assert whole.texts == ()
             assert runtime.output_delivery(request) == "full_buffered"
             # Force phrase, identity-number and injection-marker boundaries into
             # separate chunks. No prefix is released before the complete check.
@@ -95,6 +139,6 @@ async def test_every_frozen_output_case_is_equivalent_when_split_across_stream_c
             if whole.decision == "block":
                 assert last.terminate and last.released_text == ""
             else:
-                assert last.released_text == (whole.texts[0] if whole.texts else case["content"])
+                assert last.released_text == expected_text(case)
     finally:
         await engine.shutdown()

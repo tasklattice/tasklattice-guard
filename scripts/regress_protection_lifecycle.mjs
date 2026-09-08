@@ -110,7 +110,9 @@ for (const preset of presets) {
   assert.deepEqual(version.plan.policy_bindings.map((item) => [item.policy_id, item.policy_version]),
     preset.policyBindings.map((item) => [item.policyId, item.policyVersion]), "Compiled Policy order must match the saved draft.");
   const ready = await until("Runner verified/prewarmed generation", async () => (await call(runner, "/health/ready")).result,
-    (value) => value.ready && value.desired_state_synchronized && value.applied_generation >= publication.generation);
+    (value) => value.ready && value.controller_connected && value.desired_state_synchronized
+      // A compile request is not yet the delivery of its finished artifact.
+      && value.applied_generation >= publication.generation + (publication.status === "compiling" ? 1 : 0));
 
   const cases = (await call(controller, `/api/v1/test-cases?guardrailId=${guardrail.id}`)).result.items;
   assert.equal(cases.length, validation.metrics.total);

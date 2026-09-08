@@ -87,6 +87,7 @@ export type ValidationCaseResult = {
   sourceCaseId: string | null;
   coveredRuleIds: string[];
   matchedRuleIds: string[];
+  preemptingMatches: Array<{ policyId: string; ruleId: string }>;
   evaluationContracts: string[];
   escalated: boolean;
   modelInvocations: number;

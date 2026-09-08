@@ -21,6 +21,18 @@ const config = loadConfig({
 });
 
 describe("Policy catalog HTTP compatibility", () => {
+  it("validates and forwards the requested publication revision", async () => {
+    const publishPolicy = vi.fn().mockResolvedValue({ version: "1" });
+    const app = appWithSession({ user: { id: "author", role: "admin" } }, { publishPolicy });
+    const response = await app.request("/api/v1/policies/example/publish", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedDraftRevision: 7 }) });
+    expect(response.status).toBe(201);
+    expect(publishPolicy).toHaveBeenCalledWith({ id: "example", actorId: "author", expectedDraftRevision: 7 });
+    for (const revision of [0, -1, 1.5, "7"]) {
+      const invalid = await app.request("/api/v1/policies/example/publish", { method: "POST", body: JSON.stringify({ expectedDraftRevision: revision }) });
+      expect(invalid.status).toBe(400);
+    }
+    expect(publishPolicy).toHaveBeenCalledTimes(1);
+  });
   it("requires an authenticated Controller session", async () => {
     const app = appWithSession(null);
     const response = await app.request("/api/v1/policies");
@@ -78,7 +90,7 @@ describe("Policy catalog HTTP compatibility", () => {
   });
 });
 
-function appWithSession(session: { user: { id: string; role: string } } | null) {
+function appWithSession(session: { user: { id: string; role: string } } | null, overrides: Partial<ControlPlaneService> = {}) {
   const auth = {
     api: { getSession: vi.fn().mockResolvedValue(session) },
     handler: vi.fn(),
@@ -91,6 +103,7 @@ function appWithSession(session: { user: { id: string; role: string } } | null) 
       if (!item) throw new NotFoundError("Policy", id);
       return item;
     }),
+    ...overrides,
   } as unknown as ControlPlaneService;
   return createHttpApp({
     config,

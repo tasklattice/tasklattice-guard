@@ -503,7 +503,6 @@ function ResourceManagement({ resource, view, administrator, onChanged }: { reso
   const [createMode, setCreateMode] = useState<"provider" | "model" | null>(null);
   const [initialProviderId, setInitialProviderId] = useState<string>();
   const [providerTargetId, setProviderTargetId] = useState<string | null>(null);
-  const [probeTarget, setProbeTarget] = useState<{ id: string; name: string } | null>(null);
   const [removeTarget, setRemoveTarget] = useState<{ id: string; name: string } | null>(null);
   const providerTarget = view.providers.find((provider) => provider.id === providerTargetId) ?? null;
   const probeMutation = useMutation({
@@ -512,7 +511,6 @@ function ResourceManagement({ resource, view, administrator, onChanged }: { reso
       return { passed: result.connectionStatus === "validated", message: result.connectionMessage };
     },
     onSuccess: async (result) => {
-      setProbeTarget(null);
       toast[result.passed ? "success" : "error"](result.passed
         ? t("modelSettings.callPassed")
         : result.message ?? t("modelSettings.callFailed"));
@@ -601,7 +599,7 @@ function ResourceManagement({ resource, view, administrator, onChanged }: { reso
                   <TableCell className="pl-5"><div><p className="font-medium">{model.name}</p><code className="mt-1 block max-w-80 truncate text-xs text-muted-foreground" title={model.model}>{model.model}</code></div></TableCell>
                   <TableCell><div className="flex items-start gap-3"><ProviderMark provider={model.providerName} kind={model.providerKind} model={model.model} /><div><p className="mb-1.5 font-medium">{model.providerName}</p>{provider ? <ValidationEvidence kind="provider" status={provider.status} checkedAt={provider.validatedAt} latencyMs={provider.validationLatencyMs} message={provider.validationMessage} /> : <StateBadge state="unavailable" label={t("modelSettings.providerUnavailable")} />}</div></div></TableCell>
                   <TableCell><ModelCallEvidence model={model} checking={probeMutation.isPending && probeMutation.variables?.id === model.id} /></TableCell>
-                  <TableCell className="pr-5"><ResourceActions kind="model" name={model.name} checking={probeMutation.isPending && probeMutation.variables?.id === model.id} pending={pending || !administrator} onRetest={() => setProbeTarget({ id: model.id, name: model.name })} onRemove={() => setRemoveTarget({ id: model.id, name: model.name })} /></TableCell>
+                  <TableCell className="pr-5"><ResourceActions kind="model" name={model.name} checking={probeMutation.isPending && probeMutation.variables?.id === model.id} pending={pending || !administrator} onRetest={() => probeMutation.mutate({ id: model.id })} onRemove={() => setRemoveTarget({ id: model.id, name: model.name })} /></TableCell>
                 </TableRow>
               );
             })}</TableBody>
@@ -619,31 +617,6 @@ function ResourceManagement({ resource, view, administrator, onChanged }: { reso
         onOpenChange={(open) => { if (!open) setProviderTargetId(null); }}
         onRegisterModels={() => { setInitialProviderId(providerTarget.id); setCreateMode("model"); }}
       /> : null}
-      <ConfirmationSheet
-        open={Boolean(probeTarget)}
-        onOpenChange={(next) => {
-          if (!next && !probeMutation.isPending) {
-            setProbeTarget(null);
-            probeMutation.reset();
-          }
-        }}
-        eyebrow={t("modelSettings.confirmValidationEyebrow")}
-        title={t("modelSettings.modelTestConfirmationTitle", { name: probeTarget?.name ?? "" })}
-        description={t("modelSettings.modelTestConfirmationDescription")}
-        cancelLabel={t("common.cancel")}
-        confirmLabel={t("modelSettings.modelTestConfirmationAction")}
-        pendingLabel={t("modelSettings.testingCall")}
-        pending={probeMutation.isPending}
-        confirmIcon={<TestTube2 />}
-        onConfirm={() => { if (probeTarget) probeMutation.mutate({ id: probeTarget.id }); }}
-      >
-        <Alert variant="info">
-          <TestTube2 />
-          <AlertTitle>{t("modelSettings.modelTestConfirmationSummary")}</AlertTitle>
-          <AlertDescription>{t("modelSettings.modelTestConfirmationImpact")}</AlertDescription>
-        </Alert>
-        {probeMutation.error ? <p role="alert" className="rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">{errorMessage(probeMutation.error)}</p> : null}
-      </ConfirmationSheet>
       <ConfirmationSheet
         open={Boolean(removeTarget)}
         onOpenChange={(next) => { if (!next && !deleteMutation.isPending) { setRemoveTarget(null); deleteMutation.reset(); } }}

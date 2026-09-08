@@ -607,17 +607,26 @@ export class ModelConfigurationService {
         .where(eq(controllerState.id, "singleton"))
         .returning({ desiredGeneration: controllerState.desiredGeneration });
       if (!state) throw new Error("Controller desired state is unavailable.");
-      await tx.update(modelConfigurationRevisions).set({
-        state: "failed",
-        failureReason: "A newer model configuration activation replaced this attempt.",
-        updatedAt: new Date(),
-      }).where(eq(modelConfigurationRevisions.state, "activating"));
+      // The Controller row serializes activations, but both requests may have
+      // passed preflight before acquiring it. Consume the validated snapshot
+      // atomically; a losing request rolls back its generation increment.
       const [updated] = await tx.update(modelConfigurationRevisions).set({
         state: "activating",
         generation: state.desiredGeneration,
         failureReason: null,
         updatedAt: new Date(),
-      }).where(eq(modelConfigurationRevisions.id, revisionId)).returning();
+      }).where(and(
+        eq(modelConfigurationRevisions.id, revisionId),
+        eq(modelConfigurationRevisions.state, "validated"),
+      )).returning();
+      if (!updated) {
+        throw new ConflictError("Only a successfully validated model configuration can be activated.", "model_configuration_not_validated");
+      }
+      await tx.update(modelConfigurationRevisions).set({
+        state: "failed",
+        failureReason: "A newer model configuration activation replaced this attempt.",
+        updatedAt: new Date(),
+      }).where(and(eq(modelConfigurationRevisions.state, "activating"), ne(modelConfigurationRevisions.id, revisionId)));
       await tx.insert(outboxEvents).values({
         id: randomUUID(),
         kind: "runner.desired_state_changed",
@@ -640,8 +649,13 @@ export class ModelConfigurationService {
 
   async finalizeActivation(revisionId: string): Promise<void> {
     await this.db.transaction(async (tx) => {
+      // Use the same lock order as beginActivation. A delayed ACK must not
+      // reactivate a revision that a newer activation has already replaced.
+      const [state] = await tx.select({ id: controllerState.id }).from(controllerState)
+        .where(eq(controllerState.id, "singleton")).for("update");
+      if (!state) throw new Error("Controller desired state is unavailable.");
       const [revision] = await tx.select().from(modelConfigurationRevisions)
-        .where(eq(modelConfigurationRevisions.id, revisionId));
+        .where(eq(modelConfigurationRevisions.id, revisionId)).for("update");
       if (!revision || revision.state !== "activating") return;
       await tx.update(modelConfigurationRevisions).set({ state: "superseded", updatedAt: new Date() })
         .where(and(eq(modelConfigurationRevisions.state, "active"), ne(modelConfigurationRevisions.id, revisionId)));

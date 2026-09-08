@@ -14,6 +14,7 @@ from runner.toolkit.nemo.actions import (
 )
 from runner.toolkit.nemo.evaluators.pii import PiiEvaluator
 from runner.toolkit.evaluation.contracts import CONTRACT_PII_EXACT
+from runner.toolkit.policy_library import policy as catalog_policy
 from runner.toolkit.nemo.registry import NeMoRuntimeRegistry
 from runner.toolkit.nemo.runtime import NeMoRuntime
 from runner.toolkit.runtime.content_views import content_view
@@ -144,6 +145,12 @@ class DefaultRunnerValidator:
         )
         if runtime_failed and actual_failure is None:
             assertion_failures.append("Runtime failed closed without a classified infrastructure failure; this is not a Policy match.")
+        preempting_matches = []
+        if (not override and not rule_contract and expected in {"block", "intervene"}
+                and decision.decision == "block" and decision.action == "reject"
+                and not runtime_failed and actual_failure is None and expected_failure is None):
+            preempting_matches = _ordered_preemption(plan, case, phase, findings, trace)
+            rule_contract = bool(preempting_matches)
         if override:
             actual_matches = {
                 (item.get("policy_id"), item.get("rule_id")) for item in findings
@@ -210,6 +217,7 @@ class DefaultRunnerValidator:
             "reason": "; ".join([
                 decision.reason or "",
                 *([f"Reviewed composition expectation: {_string(override.get('reason'))}"] if override else []),
+                *(["Execution order satisfied: an earlier Rule blocked the request before the target Rule could run."] if preempting_matches else []),
                 *assertion_failures,
             ]).strip("; "),
             "phase": phase,
@@ -236,12 +244,72 @@ class DefaultRunnerValidator:
             "sourceCaseId": _optional_string(case.get("sourceCaseId")),
             "coveredRuleIds": sorted(covered),
             "matchedRuleIds": matched,
+            "preemptingMatches": preempting_matches,
             "evaluationContracts": evaluation_contracts,
             "escalated": escalated,
             "modelInvocations": (
                 decision.usage.model_invocations if decision.usage is not None else 0
             ),
         }
+
+
+def _ordered_preemption(
+    plan: GuardrailPlanSnapshot, case: dict[str, Any], phase: str,
+    findings: list[dict[str, Any]], trace: list[dict[str, Any]],
+) -> list[dict[str, str]]:
+    """Prove a terminal match precedes every covered target in the authored order.
+
+    A matching final decision alone is insufficient: fail-closed responses and
+    unrelated/later detections cannot stand in for a target Rule. Transformations
+    continue execution and retain their exact-output assertions.
+    """
+    bindings = list(plan.policy_bindings)
+    target_index = next((i for i, b in enumerate(bindings)
+                         if b.policy_id == case.get("sourcePolicyId")), None)
+    if target_index is None:
+        return []
+    target = bindings[target_index]
+    covered = set(_list(case.get("coveredRuleIds")))
+    if (target.policy_version != case.get("sourcePolicyVersion")
+            or phase not in target.enabled_rails or not covered
+            or not covered.issubset(target.enabled_rule_ids)):
+        return []
+
+    def rule_ids(binding):
+        # Match the compiler/runtime: explicit order, then the pinned source order.
+        version = next((v for v in plan.policy_versions
+                        if v.policy_id == binding.policy_id and v.version == binding.policy_version), None)
+        if version:
+            defaults = [f"flow/{rail.rail_type}/{rail.flow_name}" for rail in version.rail_bindings
+                        if rail.rail_type == phase]
+        else:
+            definition = catalog_policy(binding.policy_id)
+            defaults = [r.id for r in definition.rules if phase in r.rails] if definition and definition.version == binding.policy_version else []
+        return list(dict.fromkeys([*binding.rule_order, *defaults]))
+
+    target_order = rule_ids(target)
+    target_executed = any(t.get("kind") == "action" and t.get("policy_id") == target.policy_id
+                          and t.get("status") != "skipped" for t in trace)
+    for finding in findings:
+        if finding.get("verdict") != "unsafe" or finding.get("recommended_action") != "reject":
+            continue
+        index = next((i for i, b in enumerate(bindings) if b.policy_id == finding.get("policy_id")), None)
+        if index is None or index > target_index:
+            continue
+        binding = bindings[index]
+        rule_id = finding.get("rule_id")
+        if phase not in binding.enabled_rails or rule_id not in binding.enabled_rule_ids:
+            continue
+        if index < target_index:
+            if target_executed:
+                continue
+        else:
+            if rule_id not in target_order or not covered.issubset(target_order):
+                continue
+            if target_order.index(rule_id) >= min(target_order.index(r) for r in covered):
+                continue
+        return [{"policyId": binding.policy_id, "ruleId": rule_id}]
+    return []
 
 
 def _local_validation_providers() -> ActionProviders:

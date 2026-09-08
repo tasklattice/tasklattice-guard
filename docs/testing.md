@@ -1,5 +1,32 @@
 # Test architecture
 
+Business-proxy regressions require an explicit `GUARD_REGRESSION_PROXY_IMAGE`.
+Before any Controller writes or live calls, `scripts/verify_relay_stream_image.py`
+compares image-baked Guard code with the current sibling Relay overlay offline.
+Do not assume a local `dev` tag contains the protected streaming implementation.
+See [the live SSE failure and corrective checks](live-stream-proxy-20260908.zh-CN.md).
+
+The subsequent explicitly authorized live round passed seven bounded scenarios:
+[round 2 evidence and limitations](live-stream-proxy-round2-20260908.zh-CN.md).
+Replay its 29 recorded detector responses without credentials or network calls:
+
+```sh
+.venv/bin/python -m pytest tests/data_plane/test_live_stream_recordings.py -q
+```
+
+For zero-external-call replay of the captured business answer:
+
+```sh
+GUARD_TEST_RELAY_IMAGE=tali-litellm:dev \
+GUARD_TEST_RELAY_BAKED_IMAGE=1 \
+GUARD_TEST_BUSINESS_RECORDING=tests/fixtures/model_responses/20260908-deepseek-business-answer.json \
+.venv/bin/python -m pytest tests/e2e/test_relay_stream_delivery.py -q
+```
+
+This uses actual proxy/Runner networking with synthetic detector verdicts; it
+does not certify real-model quality. The live round exhausted its fixed detector
+budget and its gateway is stopped; do not redeploy it to reset that budget.
+
 For the ordered final release procedure, environment inputs, write boundaries
 and the distinction between deterministic replay and real-model quality, see
 [Protection release acceptance](protection-acceptance-runbook.md).
@@ -42,7 +69,69 @@ rejection, and restart from last-known-good state.
 
 ## Model tests
 
-### PostgreSQL model-draft optimistic locking
+### Synthetic Topic Control endpoint while NVIDIA is unavailable
+
+```bash
+.venv/bin/python scripts/mock_topic_control.py --port 8098
+```
+
+Use Provider base URL `http://127.0.0.1:8098/v1`, model ID
+`mock/nemoguard-topic-control`, and compatibility profile
+`tali.nemoguard-topic-control.v1`. Name both Provider and Model **MOCK ONLY**.
+The isolated preview Controller8093 has this registered and assigned to
+`topic_control.input`; other assignments were preserved. Topic validation passed
+through its Runner, but the overall draft remains unvalidated because the other
+previously failed checks are not overridden. No global activation was performed.
+
+This service binds loopback only and has no real-model client or fallback.
+`GET /v1/models` enables discovery; `POST /v1/chat/completions` returns an OpenAI
+chat envelope containing exactly `on-topic` or `off-topic`. Synthetic provenance
+is also explicit in the response and `/health`. It does not generate SSE: the
+classification API is separate from streaming business-model delivery.
+
+Fixed cases live in `tests/fixtures/model_responses/topic-control-synthetic.json`:
+Provider connection, Kubernetes connection probe, product-support safe/off-topic,
+and a changed-scope negative control. Both the exact user input and configured
+system-scope markers must match. Unknown or ambiguous inputs fail with409; this
+is not a general-purpose topic classifier. Add explicit fixtures for additional
+scenarios, never default every unknown input to safe. Multi-turn histories are
+currently rejected rather than classified using incomplete fixtures.
+
+Start a separate test instance with `--scenario http-error`, `invalid-response`
+or `timeout` to test failures. `--cases PATH` loads another reviewed synthetic
+case map. No credentials are loaded, and no upstream call is possible.
+
+```bash
+.venv/bin/python -m pytest -q tests/data_plane/test_mock_topic_control.py
+.venv/bin/python scripts/generate_test_artifacts.py --fixture topic-control-native-v1 --check
+```
+
+The data-plane tests consume a frozen signed native IORails artifact and reach
+the Mock over real loopback TCP. They check safe forwarding, off-topic blocking,
+unknown input, HTTP errors, timeouts and invalid output. Fail-closed errors must
+remain distinguishable from genuine unsafe findings. The compiler runs only in
+the artifact generator, not in these execution tests. This unblocks engineering
+regression; NVIDIA's real semantic quality remains a separate acceptance gate.
+
+### Helm lifecycle in an authorized existing namespace
+
+The cluster test requires both context and namespace explicitly. For the current
+local acceptance scope:
+
+```sh
+GUARD_HELM_TEST_CONTEXT=orbstack GUARD_HELM_TEST_NAMESPACE=tali \
+  .venv/bin/python -m pytest -q tests/contract/test_helm_upgrade.py
+```
+
+It verifies the namespace exists before installing a random `guard-regression-*`
+release. Only that release's synthetic Secret/ConfigMap are created; install,
+upgrade, retained-Secret reinstall and retained-history reinstall are checked.
+Cleanup removes that release/history and its exact retained Secret, never the
+namespace. No workloads, Provider credentials or main release are modified.
+With either variable missing the real-cluster case skips; the local mocked-CLI
+contract cases still run. Do not run it against an unapproved namespace.
+
+### PostgreSQL model-draft locking and activation gates
 
 `controller/server/model-config/model-configuration.postgres.test.ts` exercises
 real PostgreSQL `xmin` row-version checks, including microsecond timestamps and
@@ -50,6 +139,25 @@ concurrent validation/edits that retain the same timestamp. It uses a random
 temporary schema, copies only table structures from an already migrated local
 database, and removes that schema afterwards. No public rows or Provider calls
 are used. This is opt-in; ordinary service tests do not emulate DB concurrency.
+It also verifies successful activation/outbox publication, rejection of duplicate
+sequential and simultaneous activation of the same revision, preservation of an unrelated failed assignment, and
+invalidation of old Rail evidence after an assignment edit. Synthetic validator
+results test these control-plane gates, not model detection quality. The concurrent
+case runs both real preflight checks behind a barrier, then submits both database
+transactions: exactly one succeeds, with one generation increment, one outbox
+event and one activation audit event. A separate test preserves replacement by a
+different validated revision. This is not a general proof of all activation /
+Runner acknowledgement / provider-edit races.
+
+The suite also uses a held PostgreSQL row lock to delay an ACK while a newer
+activation competes. A replacement that has already committed must not be
+resurrected by the old ACK; alternatively, the ACK may acquire the shared
+activation lock first and complete before replacement. Exactly one last-known-good
+active revision remains in either serial order. A separate NACK-then-late-ACK
+case preserves the old active revision and the failure reason. Activation and
+ACK finalization lock Controller state before revision rows; finalization also
+locks its revision against a simultaneous NACK. These are control-plane state
+tests with synthetic Rail results, not live Runner/model quality tests.
 
 Supply a loopback-only `GUARD_TEST_POSTGRES_URL` through your private environment,
 then run from `controller`:
@@ -367,7 +475,7 @@ for the test; no Controller records, user Guardrails or cluster workloads change
 Docker Desktop's `host.docker.internal` loopback routing must be available:
 
 ```sh
-GUARD_TEST_RELAY_IMAGE=tali-litellm:protection-productization-20260906 \
+GUARD_TEST_RELAY_IMAGE=tali-litellm:dev \
   .venv/bin/python -m pytest -q -s tests/e2e/test_relay_stream_delivery.py
 ```
 

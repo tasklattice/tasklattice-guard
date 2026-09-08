@@ -84,6 +84,7 @@ const result: TestCaseResult = {
   source_case_id: "competitor-comparison-002",
   covered_rule_ids: ["competitor-comparison-intent"],
   matched_rule_ids: ["competitor-comparison-intent"],
+  preempting_matches: [],
 };
 
 const validationRun = {
@@ -148,6 +149,16 @@ describe("Validation Run acceptance evidence", () => {
 
     expect(onOpenTarget).toHaveBeenCalledWith(validationRun);
     expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  it("explains ordered preemption without claiming the target Rule matched", () => {
+    render(<TestCaseResultRow result={{ ...result, passed: true, expected_decision: "block", actual_decision: "block", matched_rule_ids: [],
+      preempting_matches: [{ policyId: "earlier-toxic-policy", ruleId: "toxic-rule" }] }} />);
+    fireEvent.click(document.querySelector("summary")!);
+    expect(screen.getByText("validation.preemptedTitle")).toBeTruthy();
+    expect(screen.getByText("earlier-toxic-policy / toxic-rule")).toBeTruthy();
+    expect(screen.getByText("validation.targetPreempted")).toBeTruthy();
+    expect(screen.queryByText("Rule contract mismatch")).toBeNull();
   });
 
   it("shows the pinned contract and actual Rule match", () => {

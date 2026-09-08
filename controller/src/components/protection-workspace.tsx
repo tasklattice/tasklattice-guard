@@ -1,4 +1,5 @@
 import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
+import { useLayoutEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { boundPolicy } from "@/lib/bound-policy";
 import { protectionDirectories, type ProtectionDirectoryId } from "../../shared/protection-map";
@@ -40,7 +41,7 @@ export function ProtectionPresetPicker({ presets, policies, selected, onSelect, 
             const items = preset.bindings.filter((binding) => policies.some((policy) => policy.id === binding.policy_id && policyDirectory(policy) === directory.id));
             return <div key={directory.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-4 py-2 text-sm">
               <dt>{t(`protection.directories.${directory.id}`)}</dt>
-              <dd className={items.length ? "font-medium" : "text-muted-foreground"}>{items.length ? t("protection.selected", { count: items.length }) : t("protection.unset")}</dd>
+              <dd className={items.length ? "font-medium" : "text-muted-foreground"}>{items.length ? t("protection.presetIncludes", { count: items.length }) : t("protection.presetExcludes")}</dd>
             </div>;
           })}
         </dl>
@@ -100,7 +101,16 @@ export function ProtectionOrderEditor({ bindings, policies, onChange }: {
   bindings: GuardrailPolicyBinding[]; policies: Policy[]; onChange: (bindings: GuardrailPolicyBinding[]) => void;
 }) {
   const { t } = useTranslation();
-  function move(index: number, offset: number) {
+  const movedControl = useRef<HTMLButtonElement | null>(null);
+  useLayoutEffect(() => {
+    // Moving a keyed row can detach its focused button from the DOM.
+    const button = movedControl.current;
+    movedControl.current = null;
+    if (button?.isConnected) button.focus();
+  }, [bindings]);
+  function move(index: number, offset: number, button: HTMLButtonElement) {
+    if (index + offset < 0 || index + offset >= bindings.length) return;
+    movedControl.current = document.activeElement === button ? button : null;
     const next = [...bindings];
     const [item] = next.splice(index, 1);
     next.splice(index + offset, 0, item!);
@@ -116,9 +126,9 @@ export function ProtectionOrderEditor({ bindings, policies, onChange }: {
           <span className="w-6 text-center font-mono text-xs text-muted-foreground">{index + 1}</span>
           <span className="min-w-0 flex-1 text-sm font-medium">{name}<span className="mt-0.5 block text-xs font-normal text-muted-foreground">{binding.enabled_rails.map((rail) => t(`protection.${rail}`)).join(" · ")} · v{binding.policy_version}</span></span>
           <div className="flex shrink-0 gap-1">
-            <Button className="size-11" variant="ghost" size="icon" disabled={index === 0} aria-label={t("protection.moveUp", { name })} onClick={() => move(index, -1)}><ArrowUp /></Button>
-            <Button className="size-11" variant="ghost" size="icon" disabled={index === bindings.length - 1} aria-label={t("protection.moveDown", { name })} onClick={() => move(index, 1)}><ArrowDown /></Button>
-            <Button className="size-11" variant="ghost" size="icon" aria-label={t("protection.remove", { name })} onClick={() => onChange(bindings.filter((item) => item.policy_id !== binding.policy_id))}><Trash2 /></Button>
+            <Button type="button" className="size-11 aria-disabled:opacity-50 aria-disabled:hover:bg-transparent" variant="ghost" size="icon" aria-disabled={index === 0} aria-label={t("protection.moveUp", { name })} onClick={event => move(index, -1, event.currentTarget)}><ArrowUp /></Button>
+            <Button type="button" className="size-11 aria-disabled:opacity-50 aria-disabled:hover:bg-transparent" variant="ghost" size="icon" aria-disabled={index === bindings.length - 1} aria-label={t("protection.moveDown", { name })} onClick={event => move(index, 1, event.currentTarget)}><ArrowDown /></Button>
+            <Button type="button" className="size-11" variant="ghost" size="icon" aria-label={t("protection.remove", { name })} onClick={() => onChange(bindings.filter((item) => item.policy_id !== binding.policy_id))}><Trash2 /></Button>
           </div>
         </li>;
       })}
