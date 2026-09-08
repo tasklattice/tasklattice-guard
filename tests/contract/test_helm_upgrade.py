@@ -145,14 +145,18 @@ def test_make_helm_install_builds_then_upserts_and_waits_for_readiness(suffix: s
 
 
 @pytest.mark.skipif(
-    not os.environ.get("GUARD_HELM_TEST_CONTEXT"),
-    reason="Set GUARD_HELM_TEST_CONTEXT for the isolated Kubernetes lifecycle regression.",
+    not (os.environ.get("GUARD_HELM_TEST_CONTEXT") and os.environ.get("GUARD_HELM_TEST_NAMESPACE")),
+    reason="Set GUARD_HELM_TEST_CONTEXT and GUARD_HELM_TEST_NAMESPACE for Kubernetes lifecycle regression.",
 )
 def test_real_cluster_install_upgrade_and_retained_secret_reinstall(tmp_path: Path):
     """No application workloads or provider keys; only test-owned Secret/ConfigMap."""
     context = os.environ["GUARD_HELM_TEST_CONTEXT"]
-    namespace = f"guard-helm-regression-{uuid.uuid4().hex[:12]}"
-    release = "guard-regression"
+    namespace = os.environ["GUARD_HELM_TEST_NAMESPACE"]
+    # Reuse an explicitly authorized namespace. Isolation belongs to the unique
+    # release/resource names; this test must never create or delete a namespace.
+    release = f"guard-regression-{uuid.uuid4().hex[:12]}"
+    secret_name = f"{release}-retained-token"
+    marker_name = f"{release}-deployment-marker"
     cluster_args = ["--kube-context", context, "--namespace", namespace]
     templates = tmp_path / "templates"
     templates.mkdir()
@@ -160,11 +164,12 @@ def test_real_cluster_install_upgrade_and_retained_secret_reinstall(tmp_path: Pa
         "apiVersion: v2\nname: guard-helm-regression\nversion: 0.1.0\n"
     )
     (templates / "resources.yaml").write_text(textwrap.dedent("""\
-        {{- $existing := lookup "v1" "Secret" .Release.Namespace "retained-token" }}
+        {{- $secretName := printf "%s-retained-token" .Release.Name }}
+        {{- $existing := lookup "v1" "Secret" .Release.Namespace $secretName }}
         apiVersion: v1
         kind: Secret
         metadata:
-          name: retained-token
+          name: {{ $secretName }}
           annotations:
             helm.sh/resource-policy: keep
         type: Opaque
@@ -174,13 +179,17 @@ def test_real_cluster_install_upgrade_and_retained_secret_reinstall(tmp_path: Pa
         apiVersion: v1
         kind: ConfigMap
         metadata:
-          name: deployment-marker
+          name: {{ .Release.Name }}-deployment-marker
         data:
           marker: {{ .Values.marker | quote }}
         """))
 
     def run(*args: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run(args, check=True, capture_output=True, text=True, timeout=60)
+
+    # Fail before invoking the install helper if the requested namespace does
+    # not already exist (the developer helper itself supports --create-namespace).
+    run("kubectl", "--context", context, "get", "namespace", namespace)
 
     def deploy(marker: str):
         run(
@@ -189,14 +198,14 @@ def test_real_cluster_install_upgrade_and_retained_secret_reinstall(tmp_path: Pa
         )
         result = run(
             "kubectl", "--context", context, "--namespace", namespace,
-            "get", "configmap", "deployment-marker", "-o", "json",
+            "get", "configmap", marker_name, "-o", "json",
         )
         assert json.loads(result.stdout)["data"]["marker"] == marker
 
     def retained_secret() -> tuple[str, dict]:
         result = run(
             "kubectl", "--context", context, "--namespace", namespace,
-            "get", "secret", "retained-token", "-o", "json",
+            "get", "secret", secret_name, "-o", "json",
         )
         secret = json.loads(result.stdout)
         return secret["metadata"]["uid"], secret["data"]
@@ -215,9 +224,10 @@ def test_real_cluster_install_upgrade_and_retained_secret_reinstall(tmp_path: Pa
         deploy("reinstall-with-kept-history")
         assert retained_secret() == original_secret
     finally:
-        # The random namespace contains only this test's resources, including
-        # the deliberately retained Secret and Helm release records.
+        # Purge only this test's release/history and deliberately retained
+        # synthetic Secret. Never delete the shared namespace or other objects.
+        run("helm", "uninstall", release, *cluster_args, "--ignore-not-found", "--timeout", "30s")
         run(
-            "kubectl", "--context", context, "delete", "namespace", namespace,
-            "--ignore-not-found", "--wait=false",
+            "kubectl", "--context", context, "--namespace", namespace,
+            "delete", "secret", secret_name, "--ignore-not-found",
         )

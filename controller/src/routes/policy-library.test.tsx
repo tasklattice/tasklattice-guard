@@ -1,9 +1,10 @@
+import { useState } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Policy } from "@/lib/api";
 
-import { DeletePolicyDialog, PolicyCard, PolicyDetail, TagFilters } from "./policy-library";
+import { CatalogFilters, filterCatalogPolicies, tagFacets, DeletePolicyDialog, PolicyCard, PolicyDetail, TagFilters } from "./policy-library";
 
 vi.mock("@/components/policy-studio", () => ({ PolicyStudioSheet: () => null }));
 
@@ -234,5 +235,55 @@ describe("Policy detail", () => {
     expect(screen.queryByText("Rail type")).toBeNull();
     expect(screen.queryByRole("button", { name: /Input rail/ })).toBeNull();
     expect(onChange).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("Catalog filtering", () => {
+  afterEach(cleanup);
+  const tag = (namespace: "jurisdiction" | "framework" | "collection" | "domain", value: string) => ({ id: `${namespace}:${value}`, namespace, value, label: value, source: "declared" as const });
+  const australia: Policy = { ...policy, id: "au", tags: [tag("jurisdiction", "au"), tag("framework", "owasp-llm-2025")] };
+  const singapore: Policy = { ...policy, id: "sg", source: "custom", tags: [tag("jurisdiction", "singapore"), tag("framework", "pdpa")] };
+  const eu: Policy = { ...policy, id: "eu", tags: [tag("jurisdiction", "eu"), tag("framework", "gdpr")] };
+  const items = [australia, singapore, eu];
+
+  it("unions choices within a group and intersects groups, protection and search", () => {
+    expect(filterCatalogPolicies(items, null, new Set(["jurisdiction:au", "jurisdiction:sg"]))).toEqual([australia, singapore]);
+    expect(filterCatalogPolicies(items, null, new Set(["jurisdiction:au", "jurisdiction:sg", "source:custom"]))).toEqual([singapore]);
+    expect(filterCatalogPolicies(items, null, new Set(["source:custom", "source:built_in"]))).toEqual(items);
+    expect(filterCatalogPolicies(items, "privacy", new Set())).toEqual([]);
+    expect(filterCatalogPolicies(items, null, new Set(), "no matching text")).toEqual([]);
+  });
+
+  it("keeps regions discoverable, merges Singapore aliases and omits removed facets", () => {
+    const alias: Policy = { ...singapore, id: "alias", tags: [tag("jurisdiction", "sg"), tag("jurisdiction", "singapore"), tag("collection", "old"), tag("domain", "finance")] };
+    const facets = tagFacets([...items, alias]);
+    expect(facets.get("jurisdiction")?.map((tag) => tag.value)).toEqual(["au", "eu", "sg"]);
+    expect(facets.get("jurisdiction")?.find((tag) => tag.value === "sg")?.count).toBe(2);
+    expect(facets.has("collection")).toBe(false);
+    expect(facets.has("domain")).toBe(false);
+    expect(facets.get("framework")?.[0].value).toBe("owasp-llm-2025");
+    const scoped = tagFacets(items, null, new Set(["source:custom"]));
+    expect(scoped.get("jurisdiction")?.find((tag) => tag.value === "au")?.count).toBe(0);
+    expect(scoped.get("jurisdiction")?.find((tag) => tag.value === "sg")?.count).toBe(1);
+    expect(tagFacets([australia]).get("source")?.find((tag) => tag.value === "custom")?.count).toBe(0);
+  });
+
+  it("clears the protection selection together with checkbox selections", () => {
+    function Harness() {
+      const [directory, setDirectory] = useState<"privacy" | null>("privacy");
+      const [selected, setSelected] = useState(new Set(["jurisdiction:au"]));
+      return <CatalogFilters policies={items} facets={tagFacets(items)} directory={directory} onDirectoryChange={(value) => setDirectory(value as "privacy" | null)} selected={selected} onChange={setSelected} onClear={() => { setDirectory(null); setSelected(new Set()); }} />;
+    }
+    render(<Harness />);
+    expect(screen.getByRole("checkbox", { name: /Australia/ }).getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(screen.getByRole("button", { name: /protection.allDirectories/ }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("checkbox", { name: /Australia/ }).getAttribute("aria-checked")).toBe("false");
+    expect((screen.getByRole("button", { name: "Clear filters" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: /protection.directories.privacy/ }));
+    expect(screen.getByRole("button", { name: /protection.directories.privacy/ }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: /protection.allDirectories/ }).getAttribute("aria-pressed")).toBe("false");
   });
 });

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ReactNode, RefObject } from "react";
 
 import {
   Sheet,
@@ -27,6 +27,7 @@ export function EntitySheet({
   footer,
   onOpenChange,
   open,
+  returnFocusRef,
   title,
   width = "lg",
 }: {
@@ -39,6 +40,7 @@ export function EntitySheet({
   footer: ReactNode;
   onOpenChange: (open: boolean) => void;
   open: boolean;
+  returnFocusRef?: RefObject<HTMLElement | null>;
   title: ReactNode;
   width?: keyof typeof widthClasses;
 }) {
@@ -47,6 +49,15 @@ export function EntitySheet({
       <SheetContent
         side="right"
         closeDisabled={closeDisabled}
+        onCloseAutoFocus={(event) => {
+          const target = returnFocusRef?.current;
+          // Controlled sheets may be opened without a Radix SheetTrigger. Restore
+          // their actual opener, but do not focus elements removed by navigation.
+          if (target?.isConnected && target !== document.body && !target.matches(":disabled")) {
+            event.preventDefault();
+            target.focus({ preventScroll: true });
+          }
+        }}
         className={cn(
           "gap-0 border-l bg-background shadow-[var(--shadow-overlay)] [&>button]:size-11 [&>button]:rounded-lg",
           widthClasses[width],

@@ -1,0 +1,17 @@
+# Disposable model lifecycle acceptance; no public LoadBalancer or main DB.
+fullnameOverride: tali-model-e2e
+controller:
+  publicUrl: http://localhost:38381
+  trustedOrigins: [http://localhost:38381]
+  service:
+    public:
+      enabled: false
+runner:
+  default:
+    replicaCount: 2
+  service:
+    public:
+      enabled: false
+postgresql:
+  persistence:
+    enabled: false

@@ -305,6 +305,7 @@ export function validationCaseFromWire(value: ValidationCaseResult__Output): Val
     sourceCaseId: value.sourceCaseId ?? null,
     coveredRuleIds: [...value.coveredRuleIds],
     matchedRuleIds: [...value.matchedRuleIds],
+    preemptingMatches: value.preemptingMatches.map(item => ({ policyId: item.policyId, ruleId: item.ruleId })),
     evaluationContracts: [...value.evaluationContracts],
     escalated: value.escalated,
     modelInvocations: value.modelInvocations,

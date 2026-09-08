@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CreationFlow } from "./creation-flow";
 
-vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => false }));
+const mobile = vi.hoisted(() => ({ value: false }));
+vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => mobile.value }));
+beforeEach(() => { mobile.value = false; });
 afterEach(cleanup);
 
 function Fixture({ freelyNavigable = false }: { freelyNavigable?: boolean }) {
@@ -14,6 +16,32 @@ function Fixture({ freelyNavigable = false }: { freelyNavigable?: boolean }) {
 }
 
 describe("optional creation navigation", () => {
+  it("keeps the current mobile step visible after resizing and disconnects on unmount", () => {
+    mobile.value = true;
+    let resized = () => {};
+    const observe = vi.fn();
+    const disconnect = vi.fn();
+    vi.stubGlobal("ResizeObserver", class {
+      constructor(callback: () => void) { resized = callback; }
+      observe = observe;
+      disconnect = disconnect;
+    });
+    try {
+      const { unmount } = render(<Fixture freelyNavigable />);
+      fireEvent.click(screen.getByRole("tab", { name: /Review/ }));
+      const review = screen.getByRole("tab", { name: /Review/ });
+      const scroll = vi.fn();
+      Object.defineProperty(review, "scrollIntoView", { value: scroll });
+      resized();
+      expect(scroll).toHaveBeenCalledWith({ block: "nearest", inline: "center" });
+      expect(observe).toHaveBeenCalledTimes(2);
+      unmount();
+      expect(disconnect).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("allows jumping ahead without marking skipped protection steps complete", () => {
     const { container } = render(<Fixture freelyNavigable />);
     fireEvent.click(screen.getByRole("tab", { name: /Review/ }));

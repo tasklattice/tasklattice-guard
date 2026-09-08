@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import re
+import hashlib
 from ast import literal_eval
 
 from lark import Tree
@@ -10,6 +11,22 @@ from nemoguardrails.colang.v2_x.lang.parser import ColangParser
 
 from .domain import PlanCompilationError
 from ..nemo.actions.names import ACTION_RECORD_POLICY, ACTION_RECORD_OWNED_POLICY
+
+
+# These NeMo lifecycle events address a Flow by a flow_id argument rather than
+# a SpecType.FLOW symbol. Keep them in the same Policy-local symbol namespace.
+FLOW_ID_EVENTS = frozenset({
+    "StartFlow", "StopFlow", "FinishFlow", "FlowStarted", "FlowFinished", "FlowFailed",
+})
+
+
+def literal_flow_target(expression: str) -> str | None:
+    try:
+        value = literal_eval(expression)
+    except (ValueError, SyntaxError):
+        return None
+    # NeMo evaluates interpolation inside strings. It is not a static target.
+    return value if isinstance(value, str) and not any(char in value for char in "${}") else None
 
 
 def parse_source_tree(content: str) -> tuple[str, Tree]:
@@ -68,6 +85,10 @@ def expand_policy_parameters(content: str, parameters: tuple[tuple[str, str], ..
 
 def link_policy_source(content: str, tree: Tree, replacements: dict[str, str], *, policy_id: str, version: str) -> str:
     edits: list[tuple[int, int, str]] = []
+    # Evaluate dynamic targets once, immediately before their owning statement.
+    # Listener arguments can also be NeMo regex/comparison objects, not Flow IDs.
+    statements = [node for node in tree.iter_subtrees() if node.data in {"spec_op", "when_stmt"}]
+    preambles: dict[int, list[tuple[int, str]]] = {}
     for parent in tree.iter_subtrees():
         if parent.data not in {"flow_def", "spec"}:
             continue
@@ -79,6 +100,42 @@ def link_policy_source(content: str, tree: Tree, replacements: dict[str, str], *
         # events, even if an author also declares a similarly named Flow.
         if name in replacements and (parent.data == "flow_def" or name.islower()):
             edits.append((node.meta.start_pos, node.meta.end_pos, replacements[name]))
+        if parent.data == "spec" and name in FLOW_ID_EVENTS:
+            args = next((child for child in parent.children if isinstance(child, Tree)
+                and child.data in {"classic_arguments", "simple_arguments"}), None)
+            for argument in args.children if args is not None else ():
+                if not isinstance(argument, Tree) or argument.data not in {"argvalue", "simple_argvalue"}:
+                    continue
+                key, expression = argument.children
+                if content[key.meta.start_pos:key.meta.end_pos].lstrip("$") != "flow_id":
+                    continue
+                target = literal_flow_target(content[expression.meta.start_pos:expression.meta.end_pos])
+                if target in replacements:
+                    edits.append((expression.meta.start_pos, expression.meta.end_pos, json.dumps(replacements[target])))
+                elif target is None:
+                    statement = min((node for node in statements
+                        if node.meta.start_pos <= parent.meta.start_pos and node.meta.end_pos >= parent.meta.end_pos),
+                        key=lambda node: node.meta.end_pos - node.meta.start_pos)
+                    sent = any(isinstance(child, Tree) and child.data == "send_spec" for child in statement.children)
+                    aliases = {value: value for value in replacements.values()}
+                    aliases.update(replacements)
+                    original = content[expression.meta.start_pos:expression.meta.end_pos]
+                    suffix = hashlib.sha256(f"{policy_id}:{version}:{expression.meta.start_pos}".encode()).hexdigest()[:16]
+                    temporary = f"$tl_flow_target_{suffix}"
+                    while temporary in content:
+                        temporary += "_"
+                    line_start = content.rfind("\n", 0, statement.meta.start_pos) + 1
+                    indent = content[line_start:statement.meta.start_pos]
+                    lookup = f"{json.dumps(aliases, sort_keys=True)}[{temporary}]"
+                    preamble = f"{indent}{temporary} = {original}\n"
+                    if sent:
+                        preamble += f"{indent}{temporary} = {lookup}\n"
+                    else:
+                        preamble += f"{indent}if is_str({temporary})\n{indent}  {temporary} = {lookup}\n"
+                    preambles.setdefault(line_start, []).append((expression.meta.start_pos, preamble))
+                    edits.append((expression.meta.start_pos, expression.meta.end_pos, temporary))
+    for position, preamble in preambles.items():
+        edits.append((position, position, "".join(value for _, value in sorted(preamble))))
     # Core is already imported once by the generated entrypoint. Import nodes,
     # unlike line regexes, cannot include lookalike text inside string literals.
     for node in tree.find_data("import_stmt"):

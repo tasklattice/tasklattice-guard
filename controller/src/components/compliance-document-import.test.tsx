@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { onlineManager, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -102,8 +102,23 @@ function renderImport(onApply = vi.fn()) {
 }
 
 describe("Compliance document import", () => {
-  beforeEach(() => analyzeMock.mockReset());
-  afterEach(cleanup);
+  beforeEach(() => { analyzeMock.mockReset(); });
+  afterEach(() => { cleanup(); onlineManager.setOnline(true); });
+
+  it("reports offline analysis immediately and never starts it on reconnect", async () => {
+    analyzeMock.mockRejectedValue(new Error('Connection lost'));
+    renderImport();
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]');
+    fireEvent.change(input!, { target: { files: [new File(['Synthetic policy'], 'policy.txt', { type: 'text/plain' })] } });
+    onlineManager.setOnline(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Analyze 1 documents' }));
+    await screen.findByText('Connection lost');
+    expect(analyzeMock).toHaveBeenCalledOnce();
+    onlineManager.setOnline(true);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Analyze 1 documents' }).hasAttribute('disabled')).toBe(false));
+    expect(analyzeMock).toHaveBeenCalledOnce();
+    expect(screen.getByText('policy.txt')).toBeTruthy();
+  });
 
   it("queues multiple supported files, analyzes them together, and explicitly applies the proposal", async () => {
     analyzeMock.mockResolvedValue(analysis);

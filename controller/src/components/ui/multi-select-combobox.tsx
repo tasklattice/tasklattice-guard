@@ -32,6 +32,7 @@ type MultiSelectComboboxProps = {
   options: readonly MultiSelectOption[];
   placeholder?: string;
   searchPlaceholder?: string;
+  showSelectedValues?: boolean;
   value: readonly string[];
 };
 
@@ -51,6 +52,7 @@ export function MultiSelectCombobox({
   options,
   placeholder = "Select options…",
   searchPlaceholder = "Filter by name…",
+  showSelectedValues = true,
   value,
 }: MultiSelectComboboxProps) {
   const { t, i18n } = useTranslation();
@@ -131,7 +133,7 @@ export function MultiSelectCombobox({
       setOpen(false);
       return;
     }
-    if (event.key === "Backspace" && !query && value.length) {
+    if (showSelectedValues && event.key === "Backspace" && !query && value.length) {
       const lastValue = value.at(-1);
       if (lastValue) removeOption(lastValue);
     }
@@ -148,7 +150,7 @@ export function MultiSelectCombobox({
           )}
           onClick={openOptions}
         >
-          {selectedOptions.map((option) => (
+          {showSelectedValues && selectedOptions.map((option) => (
             <button
               key={option.value}
               type="button"

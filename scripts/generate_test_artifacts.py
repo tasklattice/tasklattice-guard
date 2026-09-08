@@ -22,6 +22,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from runner import generated as protocol
 from runner.compiler import DefaultRunnerCompiler
+from runner.toolkit.nemo.native_models import NativeRailModel
 from runner.protocol_codec import (
     integration_verification_to_proto,
     plan_to_proto,
@@ -35,19 +36,23 @@ FIXTURE_NAME = "local-secrets-v1"
 ORDERED_FIXTURE_NAME = "ordered-local-v1"
 DEFAULT_FIXTURE_NAME = "default-local-v1"
 JAILBREAK_FIXTURE_NAME = "jailbreak-v1"
+TOPIC_FIXTURE_NAME = "topic-control-native-v1"
 PHRASE_FIXTURE_NAME = "configured-phrases-v1"
 CUSTOM_SYMBOL_FIXTURE_NAME = "custom-symbol-ownership-v1"
+CUSTOM_FLOW_EVENT_FIXTURE_NAME = "custom-flow-events-v1"
+CUSTOM_DYNAMIC_FLOW_FIXTURE_NAME = "custom-dynamic-flow-events-v1"
 CUSTOM_PARAMETER_FIXTURE_NAME = "custom-literal-parameters-v1"
 STREAM_SAFETY_FIXTURES = {
     f"stream-safety-{mode}-v1": mode for mode in ("window_buffered", "interruptible", "full_buffered")
 }
+STREAM_SAFETY_FIXTURES['content-safety-inout-v1'] = 'window_buffered'
 PRESET_FIXTURES = {
     f"preset-{name}-v1": name for name in (
         "common-baseline", "banking-assistant", "securities-assistant",
         "internet-customer-support", "singapore-financial-assistant",
     )
 }
-FIXTURE_NAMES = (FIXTURE_NAME, ORDERED_FIXTURE_NAME, DEFAULT_FIXTURE_NAME, JAILBREAK_FIXTURE_NAME, PHRASE_FIXTURE_NAME, CUSTOM_SYMBOL_FIXTURE_NAME, CUSTOM_PARAMETER_FIXTURE_NAME, *PRESET_FIXTURES, *STREAM_SAFETY_FIXTURES)
+FIXTURE_NAMES = (FIXTURE_NAME, ORDERED_FIXTURE_NAME, DEFAULT_FIXTURE_NAME, JAILBREAK_FIXTURE_NAME, TOPIC_FIXTURE_NAME, PHRASE_FIXTURE_NAME, CUSTOM_SYMBOL_FIXTURE_NAME, CUSTOM_FLOW_EVENT_FIXTURE_NAME, CUSTOM_DYNAMIC_FLOW_FIXTURE_NAME, CUSTOM_PARAMETER_FIXTURE_NAME, *PRESET_FIXTURES, *STREAM_SAFETY_FIXTURES)
 TEST_CREDENTIAL = "fixture-runtime-secret"
 _PRIVATE_KEY_BYTES = bytes(range(1, 33))
 
@@ -145,6 +150,15 @@ def _jailbreak_plan() -> dict[str, object]:
     return plan
 
 
+def _topic_plan() -> dict[str, object]:
+    plan = _jailbreak_plan()
+    plan['steps'][0].update(id='topic:semantic:input', capability='topic_control',
+        contract_ref='tali.guard.topic-control.semantic.v1',
+        parameters=[['topic_mode', 'allowlist'], ['allowed_topics', 'Product support']])
+    plan['modules'][0].update(step_ids=['topic:semantic:input'])
+    return plan
+
+
 def _default_plan() -> dict[str, object]:
     # Control-plane generation only. Runner-only tests never import the builder.
     source = """
@@ -212,7 +226,7 @@ def _preset_payload(preset_id: str) -> dict:
     ).stdout)
 
 
-def _stream_safety_plan(mode: str) -> dict:
+def _stream_safety_plan(mode: str, rails: tuple[str, ...] = ('output',)) -> dict:
     # The actual Controller builder chooses the Policy's Output step and pins
     # its version. The data plane receives only the generated signed artifact.
     source = """
@@ -222,20 +236,28 @@ def _stream_safety_plan(mode: str) -> dict:
       console.log(JSON.stringify(buildGuardrailPlan({guardrailId:'fixture-secrets', guardrailVersion:'20260904-010000.001Z', policies,
         draft:{allowedTopics:[], restrictedTopics:[], safetyLevel:'balanced', outputDelivery:process.argv[1], policyBindings:[{
           policyId:'builtin-content-safety', policyVersion:'1.0.0', action:null,
-          parameterValues:{}, enabledRuleIds:['model/content-safety'], ruleActions:{}, enabledRails:['output'], reasoningPolicy:null,
+          parameterValues:{}, enabledRuleIds:['model/content-safety'], ruleActions:{}, enabledRails:JSON.parse(process.argv[2]), reasoningPolicy:null,
         }]}})));
     """
     return json.loads(subprocess.run(
-        ["node", "--import", "tsx", "--input-type=module", "-e", source, mode],
+        ["node", "--import", "tsx", "--input-type=module", "-e", source, mode, json.dumps(rails)],
         cwd=ROOT / "controller", capture_output=True, text=True, check=True, timeout=30,
     ).stdout)
 
 
-def _custom_symbol_plan() -> dict:
+def _custom_symbol_plan(*, flow_events: bool = False, dynamic: bool = False) -> dict:
     plan = _plan()
     plan.update(steps=[], modules=[], policy_versions=[], policy_bindings=[])
     for policy_id, marker, action in [("policy-a", "check", "redact"), ("policy_a", "check reviewed", "reject")]:
         source = '\n'.join(f'flow {phase}_check $text\n  await check($text, "{phase}_check")\n' for phase in ("input", "output"))
+        if flow_events:
+            source = '\n'.join(f'''flow {phase}_check $text
+  send StartFlow(flow_id="check", flow_instance_uid=uid(), text=$text, flow_name="{phase}_check")
+  match FlowFinished(flow_id="check")
+''' for phase in ("input", "output"))
+            if dynamic:
+                source = source.replace('  send StartFlow', '  $target = "check"\n  send StartFlow')
+                source = source.replace('flow_id="check"', 'flow_id=$target')
         source += f'''\nflow check $text $flow_name
   $check = $text
   if $check == "{marker}"
@@ -283,13 +305,23 @@ def generate(fixture_name: str = FIXTURE_NAME) -> FixtureFiles:
         DEFAULT_FIXTURE_NAME: _default_plan,
         ORDERED_FIXTURE_NAME: _ordered_plan,
         JAILBREAK_FIXTURE_NAME: _jailbreak_plan,
+        TOPIC_FIXTURE_NAME: _topic_plan,
         PHRASE_FIXTURE_NAME: _phrase_plan,
         CUSTOM_SYMBOL_FIXTURE_NAME: _custom_symbol_plan,
+        CUSTOM_FLOW_EVENT_FIXTURE_NAME: lambda: _custom_symbol_plan(flow_events=True),
+        CUSTOM_DYNAMIC_FLOW_FIXTURE_NAME: lambda: _custom_symbol_plan(flow_events=True, dynamic=True),
         CUSTOM_PARAMETER_FIXTURE_NAME: _custom_parameter_plan,
     }.get(fixture_name, _plan)()
     if fixture_name in STREAM_SAFETY_FIXTURES:
-        plan = _stream_safety_plan(STREAM_SAFETY_FIXTURES[fixture_name])
-    artifact = DefaultRunnerCompiler().compile(protocol.CompileRequest(
+        plan = _stream_safety_plan(STREAM_SAFETY_FIXTURES[fixture_name],
+            ('input', 'output') if fixture_name == 'content-safety-inout-v1' else ('output',))
+    compiler = DefaultRunnerCompiler()
+    if fixture_name == TOPIC_FIXTURE_NAME:
+        compiler.configure_native_models((NativeRailModel(type='topic_control',
+            profile_ref='tali.nemoguard-topic-control.v1', runtime_id='topic-runtime',
+            model='mock/nemoguard-topic-control', base_url='http://mock.invalid/v1',
+            api_key='', timeout_seconds=5, max_tokens=16),))
+    artifact = compiler.compile(protocol.CompileRequest(
         compile_id="fixture-compile-local-secrets-v1",
         guardrail_id="fixture-secrets",
         guardrail_version="20260904-010000.001Z",
@@ -358,10 +390,17 @@ def generate(fixture_name: str = FIXTURE_NAME) -> FixtureFiles:
         manifest["expected"] = {"safe_output": "allow", "unsafe_output": "block",
             "output_delivery": STREAM_SAFETY_FIXTURES[fixture_name]}
         manifest["scope"] = "Frozen output-only model Policy; transport responses in tests are synthetic, not model quality evidence."
-    if fixture_name == CUSTOM_SYMBOL_FIXTURE_NAME:
+        if fixture_name == 'content-safety-inout-v1':
+            manifest['expected'].update(safe_input='allow', unsafe_input='block')
+            manifest['scope'] = 'Frozen Input/Output model Policy. Live versus synthetic verdict evidence is determined by the test transport.'
+    if fixture_name in {CUSTOM_SYMBOL_FIXTURE_NAME, CUSTOM_FLOW_EVENT_FIXTURE_NAME, CUSTOM_DYNAMIC_FLOW_FIXTURE_NAME}:
         manifest["expected"] = {"safe": "ordinary", "first_policy_marker": "check", "second_policy_marker": "check reviewed",
             "policy_order": ["policy-a", "policy_a"], "output_delivery": "full_buffered"}
         manifest["scope"] = "Synthetic custom Colang symbol and result ownership; real NeMo, no models."
+        if fixture_name == CUSTOM_FLOW_EVENT_FIXTURE_NAME:
+            manifest["scope"] = "Synthetic explicit Flow lifecycle events; same-named Policy-local helpers, ordered mutation/rejection, real NeMo, no models."
+        if fixture_name == CUSTOM_DYNAMIC_FLOW_FIXTURE_NAME:
+            manifest["scope"] = "Synthetic dynamic Flow lifecycle targets; same-named Policy-local helpers, ordered mutation/rejection, real NeMo, no models."
     return FixtureFiles(
         desired_state=base64.b64encode(desired_state.SerializeToString()).decode() + "\n",
         public_key=public_key.decode(),

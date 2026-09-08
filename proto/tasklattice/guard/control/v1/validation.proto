@@ -133,6 +133,9 @@ message ValidationCaseResult {
   // Original unmodified source expectation, present when a local override was applied.
   optional ValidationDecision template_expected_decision = 36;
   repeated string assertion_failures = 37;
+  // Terminal Rule evidence preceding the source target in Policy/Rule execution order.
+  // The target is not claimed as matched; this satisfies only the ordered composition contract.
+  repeated ValidationExpectedMatch preempting_matches = 38;
 }
 
 // Command to execute an immutable candidate plan against its test cases.

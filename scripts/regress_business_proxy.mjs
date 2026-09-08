@@ -16,7 +16,7 @@ const runner = new URL(required("GUARD_REGRESSION_RUNNER_URL"));
 for (const url of [controller, runner]) assert(["127.0.0.1", "localhost"].includes(url.hostname), "Only isolated loopback servers are allowed.");
 const origin = required("GUARD_REGRESSION_ORIGIN");
 const guardrailId = required("GUARD_REGRESSION_GUARDRAIL_ID");
-const image = process.env.GUARD_REGRESSION_PROXY_IMAGE ?? "ghcr.io/tasklattice/tali-litellm:dev";
+const image = required("GUARD_REGRESSION_PROXY_IMAGE");
 const proxyPort = Number(process.env.GUARD_REGRESSION_PROXY_PORT ?? 8095);
 const businessPort = Number(process.env.GUARD_REGRESSION_BUSINESS_PORT ?? 8096);
 const guardTransportPort = Number(process.env.GUARD_REGRESSION_TRANSPORT_PORT ?? 8098);
@@ -117,6 +117,9 @@ const upstream = createServer(async (request, response) => {
 });
 
 try {
+  // A stale dev tag may use legacy per-token checks and violate full buffering.
+  // Verify baked code before creating any Controller resources or credentials.
+  const verifiedImage = JSON.parse((await exec(".venv/bin/python", ["scripts/verify_relay_stream_image.py", image])).stdout).image;
   // Port collisions fail without touching another user's process/container.
   await new Promise((resolve, reject) => { upstream.once("error", reject); upstream.listen(businessPort, "127.0.0.1", resolve); });
   await new Promise((resolve, reject) => { guardTransport.once("error", reject); guardTransport.listen(guardTransportPort, "127.0.0.1", resolve); });
@@ -127,6 +130,11 @@ try {
   assert((guardrail.name.startsWith("Regression ") || allowDefault) && guardrail.activeArtifactId,
     "Select a published regression Guardrail, or explicitly allow the isolated Default. Never select a user draft.");
   assert.equal(guardrail.draftConfig.outputDelivery, "full_buffered", "This suite verifies the complete-buffering contract.");
+  const published = guardrail.versions.find(version => version.version === guardrail.activeVersion);
+  assert(published?.status === "ready" && published.sourceDraftRevision === guardrail.draftRevision,
+    "Replay the current reviewed published revision, not an older artifact.");
+  assert(published.plan.steps.length > 0 && published.plan.steps.every(step => step.capability === "builtin_content_filter"),
+    "This zero-external-call regression only permits local Policy execution.");
   const integration = (await api("/api/v1/integrations", { name: container, adapter: "litellm-generic-guardrail" }, 201)).result;
   credential = integration.credential;
   assert(credential, "Integration must return its one-time credential.");
@@ -140,13 +148,13 @@ try {
     await delay(1_000);
   }
   assert(ready, "Runner did not load the integration credential.");
-  const { stdout: imageId } = await exec("docker", ["image", "inspect", image, "--format", "{{.Id}}"]);
+  const imageId = verifiedImage;
   const { stdout: containerId } = await exec("docker", ["run", "-d", "--name", container, "-p", `127.0.0.1:${proxyPort}:4000`,
     "--mount", `type=bind,source=${config},target=/tmp/replay.yaml,readonly`,
     "-e", `TASKLATTICE_GUARD_API_BASE=http://host.docker.internal:${guardTransportPort}/runtime/v1/integrations/${integration.id}`,
     "-e", `TASKLATTICE_GUARD_API_KEY=${credential}`, "-e", `BUSINESS_REPLAY_BASE=http://host.docker.internal:${businessPort}/v1`,
     "-e", `REPLAY_PROXY_MASTER_KEY=${proxyKey}`, "-e", "LITELLM_LOCAL_MODEL_COST_MAP=True", "-e", "DISABLE_ADMIN_UI=true",
-    image, "--config", "/tmp/replay.yaml", "--host", "0.0.0.0", "--port", "4000"], { timeout: 30_000 });
+    verifiedImage, "--config", "/tmp/replay.yaml", "--host", "0.0.0.0", "--port", "4000"], { timeout: 30_000 });
   started = Boolean(containerId.trim());
   report("proxy-starting", { image: imageId.trim(), integrationId: integration.id, deploymentId: deployment.id, guardrailId, version: guardrail.activeVersion });
   ready = false;
@@ -163,8 +171,12 @@ try {
   const scenarios = [
     { name: "safe-forward", input: "Please explain bank account support.", output: benign, calls: 1, expected: benign },
     { name: "input-reject-zero-upstream", input: attack, output: benign, calls: 0, blocked: true },
+    { name: "input-credential-reject-zero-upstream", input: "Synthetic access key for this test: AKIA0000000000000000", output: benign, calls: 0, blocked: true },
     { name: "input-redaction-before-upstream", input: "Please contact alice@example.com for account help.", output: benign, calls: 1, expected: benign, inputRedacted: true },
     { name: "model-output-injection-rejected", input: "Summarize the support steps.", output: attack, calls: 1, blocked: true },
+    { name: "model-output-credential-rejected", input: "Summarize the support steps.",
+      output: "Synthetic access key for this test: AKIA0000000000000000",
+      chunks: ["Synthetic access key for this test: AK", "IA000000", "0000000000"], calls: 1, blocked: true },
     { name: "model-output-contact-redacted", input: "Summarize the support steps.", output: "Contact alice@example.com for help.", calls: 1, outputRedacted: true },
     { name: "long-safe-stream-buffered", input: "Summarize the support steps.", output: longSafe, calls: 1, expected: longSafe, streamOnly: true },
     { name: "late-output-injection-no-prefix-leak", input: "Summarize the support steps.", output: longSafe + attack, calls: 1, blocked: true, streamOnly: true },

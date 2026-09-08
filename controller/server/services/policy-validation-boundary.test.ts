@@ -49,7 +49,8 @@ describe("Policy validation authority", () => {
   });
 
   it.each([[null, 2], ["failed", 2], ["passed", 1]] as const)("cannot publish missing, failed or stale compilation evidence (%s, %s)", async (status, revision) => {
-    const { service, tx } = harness(status, revision);
+    const { service, tx, reads } = harness(status, revision);
+    reads.splice(1, 0, []); // No existing publication for this draft.
     await expect(service.publishPolicy({ id: "fixture", actorId: "author" })).rejects.toThrow("must pass validation");
     expect(tx.insert).not.toHaveBeenCalled();
   });

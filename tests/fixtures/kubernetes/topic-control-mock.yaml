@@ -1,0 +1,67 @@
+# Engineering tests only. Exact synthetic fixtures; never a production detector.
+# Create topic-control-mock-code from scripts/mock_topic_control.py and
+# tests/fixtures/model_responses/topic-control-synthetic.json before applying.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: topic-control-mock
+  labels: {app: topic-control-mock}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: topic-control-mock}
+  template:
+    metadata:
+      labels: {app: topic-control-mock}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+      containers:
+        - name: topic-mock
+          image: ghcr.io/tasklattice/tali-guard-runner:dev
+          imagePullPolicy: Never
+          command: [python, /mock/mock_topic_control.py]
+          args: [--host, 0.0.0.0, --port, '8098', --cases, /mock/topic-control-synthetic.json]
+          ports: [{name: http, containerPort: 8098}]
+          readinessProbe:
+            httpGet: {path: /health, port: http}
+          livenessProbe:
+            httpGet: {path: /health, port: http}
+            initialDelaySeconds: 5
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: '1', memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: code, mountPath: /mock, readOnly: true}
+      volumes:
+        - name: code
+          configMap: {name: topic-control-mock-code}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: topic-control-mock
+spec:
+  selector: {app: topic-control-mock}
+  ports: [{name: http, port: 8098, targetPort: http}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: topic-control-mock-isolation
+spec:
+  podSelector:
+    matchLabels: {app: topic-control-mock}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector: {}
+      ports: [{protocol: TCP, port: 8098}]
+  egress: []

@@ -190,12 +190,14 @@ export const policyRecords = pgTable("policy_record", {
 export const policyVersions = pgTable("policy_version", {
   policyId: text("policy_id").notNull().references(() => policyRecords.id, { onDelete: "cascade" }),
   version: integer("version").notNull(),
+  sourceDraftRevision: integer("source_draft_revision"),
   snapshot: jsonb("snapshot").$type<ProgrammablePolicySnapshot>().notNull(),
   checksum: text("checksum").notNull(),
   publishedAt: timestamp("published_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   primaryKey({ columns: [table.policyId, table.version] }),
   uniqueIndex("policy_version_checksum_idx").on(table.checksum),
+  uniqueIndex("policy_version_source_draft_idx").on(table.policyId, table.sourceDraftRevision),
 ]);
 
 export const policyValidationRuns = pgTable("policy_validation_run", {

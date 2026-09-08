@@ -27,12 +27,16 @@ const auth = await call(controller, "/api/auth/sign-in/email", {
 });
 cookie = auth.response.headers.getSetCookie().map((item) => item.split(";")[0]).join("; ");
 assert(cookie);
-const path = "/api/v1/guardrails/guardrail-default";
+const targetId = process.env.GUARD_REGRESSION_DEFAULT_COPY_ID ?? "guardrail-default";
+const path = `/api/v1/guardrails/${encodeURIComponent(targetId)}`;
 const rail = (await call(controller, path)).value;
+if (targetId !== "guardrail-default") assert(rail.name.startsWith("Regression Default copy "), "Only a named isolated Default copy may be replayed here.");
 const version = rail.versions.find((item) => item.version === rail.activeVersion);
 assert(version?.status === "ready" && version.artifact.signature);
 assert.equal(version.sourceDraftRevision, rail.draftRevision, "Publish the reviewed Default draft before replay.");
 assert.equal(version.artifactId, rail.activeArtifactId);
+assert(version.plan.steps.length > 0 && version.plan.steps.every(step => step.capability === "builtin_content_filter"),
+  "Refuse to replay a Default with model-backed or unknown steps under the zero-external-call budget.");
 assert.equal(rail.draftConfig.outputDelivery, "full_buffered");
 assert.deepEqual(rail.excludedTestCaseIds, []);
 assert.deepEqual(version.plan.policy_bindings.map((item) => [item.policy_id, item.policy_version]),
@@ -40,13 +44,13 @@ assert.deepEqual(version.plan.policy_bindings.map((item) => [item.policy_id, ite
 const ready = (await call(runner, "/health/ready")).value;
 assert(ready.ready && ready.controller_connected && ready.desired_state_synchronized);
 assert(ready.applied_generation >= version.generation);
-const cases = (await call(controller, "/api/v1/test-cases?guardrailId=guardrail-default")).value.items;
+const cases = (await call(controller, `/api/v1/test-cases?guardrailId=${encodeURIComponent(targetId)}`)).value.items;
 assert(cases.length > 0 && cases.every((item) => !item.excluded));
 let checked = 0, exactOutputs = 0;
 const configChecksums = new Set();
 async function replay(test) {
   const expected = test.expectationOverride ?? test;
-  const verdict = (await call(runner, "/internal/v1/guardrails/guardrail-default/evaluate", {
+  const verdict = (await call(runner, `/internal/v1/guardrails/${encodeURIComponent(targetId)}/evaluate`, {
     guardrail_version: version.version, phase: test.phase, texts: [test.content],
     call_id: `${runId}:${checked}`, messages: test.trustedInstruction ? [{ role: "system", content: test.trustedInstruction }] : [],
   })).value;

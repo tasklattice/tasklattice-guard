@@ -156,6 +156,7 @@ export type TestCaseResult = {
   source_case_id: string | null;
   covered_rule_ids: string[];
   matched_rule_ids: string[];
+  preempting_matches: Array<{ policyId: string; ruleId: string }>;
   evaluation_contracts: string[];
   escalated: boolean;
   model_invocations: number;

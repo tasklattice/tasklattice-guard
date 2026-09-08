@@ -42,7 +42,14 @@ export function ComplianceDocumentImport({
   const [applied, setApplied] = useState(false);
   const [selectionError, setSelectionError] = useState("");
   const analyze = useMutation({
-    mutationFn: () => analyzeComplianceDocuments(files, language),
+    mutationFn: async () => {
+      if (!available) throw new Error(t("guardrailWizard.documentUnavailable"));
+      return analyzeComplianceDocuments(files, language);
+    },
+    // Analysis is an explicit external call, not an offline queued job that
+    // can start later after this session's permission or availability changes.
+    networkMode: "always",
+    retry: false,
     onSuccess: (result) => {
       setAnalysis(result);
       setApplied(false);

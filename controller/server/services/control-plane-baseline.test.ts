@@ -207,7 +207,21 @@ describe("Compiled artifact publication gate", () => {
     expect(test.inserts).toContainEqual({ table: "audit_event", value: expect.objectContaining({
       kind: "guardrail.compiled", detail: expect.objectContaining({ activated: false }),
     }) });
-    expect(test.inserts.some((item) => item.value.kind === "runner.desired_state_changed")).toBe(false);
+    expect(test.inserts).toContainEqual({ table: "controller_outbox", value: expect.objectContaining({
+      kind: "runner.desired_state_changed", payload: expect.objectContaining({ generation: 10 }),
+    }) });
+  });
+
+  it("advances delivery generation when compilation finishes after the request generation was sent", async () => {
+    const test = harness([[{ ...baseline(), id: 'test-rail', desiredGeneration: 1 }], [version], [{ id: 'passed-validation' }]],
+      { artifactSigningKeyPath: keyPath });
+    await test.service.acceptCompiledArtifact({ ...input, guardrailId: 'test-rail' });
+    expect(test.updates).toContainEqual({ table: 'controller_state', value: expect.objectContaining({ desiredGeneration: expect.anything() }) });
+    expect(test.inserts).toContainEqual({ table: 'controller_outbox', value: expect.objectContaining({
+      kind: 'runner.desired_state_changed', payload: expect.objectContaining({ generation: 10 }),
+    }) });
+    expect(test.inserts).toContainEqual({ table: 'guardrail_artifact', value: expect.objectContaining({ generation: 1 }) });
+    expect(test.updates).toContainEqual({ table: 'guardrail', value: expect.objectContaining({ desiredGeneration: 1 }) });
   });
 });
 

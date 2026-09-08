@@ -438,7 +438,11 @@ export function createHttpApp(input: {
     }), 202);
   });
   app.post("/api/v1/policies/:id/publish", authenticated, administrator, async (context) => {
-    return context.json(await input.service.publishPolicy({ id: context.req.param("id"), actorId: context.get("actor").id }), 201);
+    const body = await context.req.text();
+    const request = z.object({ expectedDraftRevision: z.number().int().positive().optional() }).parse(body ? JSON.parse(body) : {});
+    return context.json(await input.service.publishPolicy({ id: context.req.param("id"), actorId: context.get("actor").id,
+      ...(request.expectedDraftRevision === undefined ? {} : { expectedDraftRevision: request.expectedDraftRevision }),
+    }), 201);
   });
   app.get("/api/v1/actions", authenticated, (context) => {
     const items = actionCatalog();

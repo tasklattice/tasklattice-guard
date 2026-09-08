@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { boundPolicy } from "@/lib/bound-policy";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
@@ -20,10 +20,12 @@ import { ComplianceDocumentImport } from "@/components/compliance-document-impor
 import { CreationFlow } from "@/components/creation-flow";
 import { EntitySheet } from "@/components/entity-sheet";
 import { defaultPolicyBinding, getPolicyBindingValidation } from "@/components/policy-binding-editor";
-import { ProtectionDirectoryEditor, ProtectionOrderEditor, ProtectionPresetPicker } from "@/components/protection-workspace";
+import { ProtectionOrderEditor } from "@/components/protection-workspace";
+import { GuardrailProtectionPicker } from "@/components/guardrail-protection-picker";
+import { GuardrailStartingPoint } from "@/components/guardrail-starting-point";
 import { ProtectionDependencies } from "@/components/protection-dependencies";
 import { protectionDirectories } from "../../shared/protection-map";
-import { completeResponsePolicies, mergeDirectoryBindings, mergePresetBindings, policyDirectory } from "@/lib/protection-composition";
+import { completeResponsePolicies, mergePresetBindings, policyDirectory } from "@/lib/protection-composition";
 import { ErrorNotice, InfoNotice } from "@/components/product-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -50,8 +52,8 @@ import {
 } from "@/lib/api";
 
 const EMPTY_POLICIES: Policy[] = [];
-const DELIVERY_STEP = protectionDirectories.length + 1;
-const REVIEW_STEP = DELIVERY_STEP + 1;
+const PROTECTIONS_STEP = 1;
+const REVIEW_STEP = 2;
 type PolicyWorkspace = "main" | "intent" | "documents";
 type BoundarySource = "intent" | "documents" | null;
 
@@ -59,22 +61,32 @@ export function CreateGuardrailWizard({
   open,
   onOpenChange,
   onCreated,
+  returnFocusRef,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreated: (id: string) => void;
+  returnFocusRef?: RefObject<HTMLElement | null>;
 }) {
   const { t, i18n } = useTranslation();
   const { user } = useAuth();
+  const canManage = user?.role === "admin";
   const policiesQuery = useQuery({ queryKey: queryKeys.policies, queryFn: getPolicies, enabled: open });
   const presetsQuery = useQuery({ queryKey: queryKeys.protectionPresets, queryFn: getProtectionPresets, enabled: open, retry: false });
   const intentStatusQuery = useQuery({ queryKey: queryKeys.intentAnalysisStatus, queryFn: getIntentAnalysisStatus, enabled: open, retry: false });
   const policies = policiesQuery.data?.items ?? EMPTY_POLICIES;
+  // A cleared identity-scoped cache is not evidence that a pinned Policy was
+  // deleted. Do not classify bindings or allow writes until the catalog loads.
+  const catalogReady = policiesQuery.isSuccess;
+  const catalogStatus = t(policiesQuery.isError ? "protection.catalogUnavailable" : "protection.catalogLoading");
   const [step, setStep] = useState(0);
   const [policyWorkspace, setPolicyWorkspace] = useState<PolicyWorkspace>("main");
   const [name, setName] = useState("");
   const [selectedPreset, setSelectedPreset] = useState("blank");
   const [presetFeedback, setPresetFeedback] = useState("");
+  const [pendingPreset, setPendingPreset] = useState<string | null>(null);
+  const [presetUndo, setPresetUndo] = useState<{ selected: string; bindings: GuardrailPolicyBinding[] } | null>(null);
+  const [expandedPolicy, setExpandedPolicy] = useState<string | null>(null);
   const [intentText, setIntentText] = useState("");
   const [intentProposal, setIntentProposal] = useState<IntentAnalysis | null>(null);
   const [allowed, setAllowed] = useState("");
@@ -84,19 +96,11 @@ export function CreateGuardrailWizard({
   const [showBoundaries, setShowBoundaries] = useState(false);
   const [documentImportReset, setDocumentImportReset] = useState(0);
   const nextBlockedReasonId = useId();
+  const topicField = useRef<HTMLTextAreaElement>(null);
 
-  const directory = protectionDirectories[step - 1];
-  const directoryPolicies = directory ? policies.filter((policy) => policyDirectory(policy) === directory.id) : [];
-  const directoryIds = new Set(directoryPolicies.map((policy) => policy.id));
-  const directoryBindings = bindings.filter((binding) => directoryIds.has(binding.policy_id));
   const steps = [
     { label: t("protection.start"), description: t("protection.startDescription") },
-    ...protectionDirectories.map((item) => {
-      const selected = bindings.filter((binding) => policies.some((policy) => policy.id === binding.policy_id && policyDirectory(policy) === item.id));
-      const needsSetup = selected.length > 0 && getPolicyBindingsBlocker(selected, policies, allowed);
-      return { label: t(`protection.directories.${item.id}`), description: t(needsSetup ? "protection.needsSetup" : selected.length ? "protection.selected" : "protection.optional", { count: selected.length }) };
-    }),
-    { label: t("protection.delivery"), description: t("protection.order") },
+    { label: t("protection.wizard.protections"), description: t("protection.wizard.protectionsHint") },
     { label: t("protection.review"), description: t("guardrailWizard.steps.reviewDescription") },
   ];
 
@@ -107,6 +111,9 @@ export function CreateGuardrailWizard({
     setName("");
     setSelectedPreset("blank");
     setPresetFeedback("");
+    setPendingPreset(null);
+    setPresetUndo(null);
+    setExpandedPolicy(null);
     setShowBoundaries(false);
     setIntentText("");
     setIntentProposal(null);
@@ -119,7 +126,12 @@ export function CreateGuardrailWizard({
 
   const language = user?.preferred_language ?? (i18n.language.toLowerCase().startsWith("zh") ? "zh-CN" : "en");
   const analyzeIntent = useMutation({
-    mutationFn: () => analyzeGuardrailIntent({ purpose: intentText.trim(), language }),
+    mutationFn: async () => {
+      if (!canManage) throw new Error(t("protection.adminAccessRequired"));
+      return analyzeGuardrailIntent({ purpose: intentText.trim(), language });
+    },
+    networkMode: "always",
+    retry: false,
     onSuccess: (analysis) => setIntentProposal(analysis),
     onError: (error) => notifyError(error, t("guardrailWizard.operationFailed")),
   });
@@ -138,12 +150,16 @@ export function CreateGuardrailWizard({
   const preview = useQuery({
     queryKey: ["guardrail-candidate-preview", payload],
     queryFn: () => previewGuardrailCandidate(payload),
-    enabled: open && step === REVIEW_STEP && Boolean(name.trim()) && bindingsValid(bindings, policies, allowed),
+    enabled: open && canManage && catalogReady && step === REVIEW_STEP && Boolean(name.trim()) && bindingsValid(bindings, policies, allowed),
     retry: false,
   });
 
   const create = useMutation({
-    mutationFn: () => createGuardrail(payload),
+    mutationFn: async () => {
+      if (!canManage) throw new Error(t("protection.adminAccessRequired"));
+      if (!catalogReady) throw new Error(catalogStatus);
+      return createGuardrail(payload);
+    },
     // Creation is an explicit write, not a queued offline task. Surface a
     // network failure now rather than silently submitting after reconnection.
     networkMode: "always",
@@ -159,6 +175,7 @@ export function CreateGuardrailWizard({
   useEffect(() => { if (open) resetCreate(); }, [open, resetCreate]);
 
   function addPolicies(policyIds: string[]) {
+    setPresetUndo(null);
     setBindings((current) => {
       const selected = new Set(current.map((binding) => binding.policy_id));
       const additions = [...new Set(policyIds)]
@@ -194,23 +211,48 @@ export function CreateGuardrailWizard({
   }
 
   const hasOutputPolicy = bindings.some((binding) => binding.enabled_rails.includes("output"));
-  const policyBlocker = getPolicyBindingsBlocker(bindings, policies, allowed);
+  const policyBlocker = catalogReady ? getPolicyBindingsBlocker(bindings, policies, allowed) : null;
   const policyBlockedReason = policyBlocker ? t(policyBlocker.key, policyBlocker.values) : null;
-  const localBlocker = directoryBindings.length ? getPolicyBindingsBlocker(directoryBindings, policies, allowed) : null;
-  const nextBlockedReason = step === 0 && !name.trim()
-    ? t("guardrailWizard.nextBlocked.name")
-    : directory && localBlocker ? t(localBlocker.key, localBlocker.values)
-    : step === REVIEW_STEP ? !name.trim() ? t("protection.missingName") : policyBlockedReason : null;
-  const inPolicyWorkspace = directory?.id === "business_topics" && policyWorkspace !== "main";
-  const canCreate = Boolean(name.trim() && !policyBlockedReason && preview.data && !preview.error && !preview.isFetching);
+  const nextBlockedReason = step === 0
+    ? !name.trim() ? t("guardrailWizard.nextBlocked.name") : pendingPreset !== null ? t("protection.wizard.resolvePreset") : null
+    : !catalogReady ? catalogStatus : !name.trim() ? t("protection.missingName") : policyBlockedReason;
+  const inPolicyWorkspace = step === PROTECTIONS_STEP && policyWorkspace !== "main";
+  function issueFor(binding: GuardrailPolicyBinding) {
+    const issue = getPolicyBindingsBlocker([binding], policies, allowed);
+    return issue ? t(issue.key, issue.values) : null;
+  }
+  const incompleteBindings = catalogReady ? bindings.filter(binding => issueFor(binding)) : [];
+  function applyPreset(id: string, mode: "replace" | "add") {
+    const preset = presetsQuery.data?.items.find(item => item.id === id);
+    if (id !== "blank" && !preset) return;
+    setPresetUndo({ selected: selectedPreset, bindings: structuredClone(bindings) });
+    const next = mode === "add" ? mergePresetBindings(bindings, preset?.bindings ?? []) : structuredClone(preset?.bindings ?? []);
+    setBindings(next);
+    setSelectedPreset(id);
+    setPendingPreset(null);
+    setExpandedPolicy(null);
+    setPresetFeedback(t("protection.applied", { count: next.length }));
+  }
+  function fixPolicy(binding: GuardrailPolicyBinding) {
+    if (getPolicyBindingsBlocker([binding], policies, allowed)?.key === "guardrailWizard.nextBlocked.allowedTopics") {
+      topicField.current?.focus();
+      topicField.current?.scrollIntoView?.({ block: "center" });
+    } else setExpandedPolicy(binding.policy_id);
+  }
+  function editPolicy(id: string | null) {
+    changeStep(PROTECTIONS_STEP);
+    setExpandedPolicy(id);
+  }
+  const canCreate = canManage && catalogReady && Boolean(pendingPreset === null && name.trim() && !policyBlockedReason && preview.data && !preview.error && !preview.isFetching);
 
   return (
     <EntitySheet
       open={open}
+      returnFocusRef={returnFocusRef}
       onOpenChange={onOpenChange}
       eyebrow={t("guardrailWizard.eyebrow")}
       title={t("guardrailWizard.title")}
-      description={t("guardrailWizard.description")}
+      description={<>{t("guardrailWizard.description")}{!canManage ? <span role="status" className="mt-2 block font-medium text-foreground">{t("protection.adminAccessRequired")}</span> : null}</>}
       width="workflow"
       bodyClassName="overflow-hidden p-0 sm:p-0"
       footer={inPolicyWorkspace ? (
@@ -221,7 +263,7 @@ export function CreateGuardrailWizard({
         <div className="w-full space-y-3">
           {create.error ? <div className="space-y-2 [overflow-wrap:anywhere]">
             <ErrorNotice error={create.error} />
-            <p className="text-xs leading-5 text-muted-foreground">{t("protection.createRecovery")}</p>
+            {canManage ? <p className="text-xs leading-5 text-muted-foreground">{t("protection.createRecovery")}</p> : null}
           </div> : null}
         <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center">
           {nextBlockedReason ? (
@@ -241,7 +283,7 @@ export function CreateGuardrailWizard({
                 title={nextBlockedReason ?? undefined}
                 onClick={() => changeStep(step + 1)}
               >
-                {t(directory && !directoryBindings.length ? "protection.skip" : "common.next")}<ArrowRight />
+                {t(step === PROTECTIONS_STEP ? "protection.wizard.toReview" : "common.next")}<ArrowRight />
               </Button>
             ) : (
               <Button disabled={!canCreate || create.isPending} onClick={() => create.mutate()}>
@@ -255,6 +297,10 @@ export function CreateGuardrailWizard({
       )}
     >
       <CreationFlow orientation="sidebar" freelyNavigable contained currentStep={step} onStepChange={changeStep} progressLabel={t("protection.overview")} steps={steps}>
+        {!catalogReady ? <div className="m-4 space-y-2 rounded-lg border bg-muted/20 p-4">
+          <p role="status" className="text-sm leading-6">{catalogStatus}</p>
+          {policiesQuery.isError ? <Button variant="outline" disabled={policiesQuery.isFetching} onClick={() => void policiesQuery.refetch()}>{t("protection.retryCatalog")}</Button> : null}
+        </div> : null}
         {step === 0 ? (
           <WizardSection title={t("protection.startTitle")} description={t("protection.startHint")}>
             <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5">
@@ -262,23 +308,35 @@ export function CreateGuardrailWizard({
                 <Input autoFocus className="min-h-11 bg-card" value={name} onChange={(event) => setName(event.target.value)} placeholder={t("guardrailWizard.namePlaceholder")} />
               </Field>
               <InfoNotice title={t("guardrailWizard.draftOnlyTitle")}>{t("guardrailWizard.draftOnlyDescription")}</InfoNotice>
-              {presetsQuery.isLoading ? <Skeleton className="h-32" /> : presetsQuery.error ? <div className="space-y-2"><p className="text-sm text-muted-foreground">{t("protection.presetUnavailable")}</p><Button variant="outline" onClick={() => void presetsQuery.refetch()}>{t("common.retry")}</Button></div> : (
-                <ProtectionPresetPicker presets={presetsQuery.data?.items ?? []} policies={policies} selected={selectedPreset} onSelect={setSelectedPreset}
-                  onApply={(preset) => {
-                    const next = mergePresetBindings(bindings, preset.bindings);
-                    setBindings(next);
-                    setPresetFeedback(t("protection.applied", { count: next.length }));
+              {!catalogReady || presetsQuery.isLoading ? <Skeleton className="h-32" /> : presetsQuery.error ? <div className="space-y-2"><p className="text-sm text-muted-foreground">{t("protection.presetUnavailable")}</p><Button variant="outline" onClick={() => void presetsQuery.refetch()}>{t("common.retry")}</Button></div> : (
+                <GuardrailStartingPoint presets={presetsQuery.data?.items ?? []} policies={policies} selected={selectedPreset} pending={pendingPreset}
+                  onSelect={id => {
+                    setPresetFeedback("");
+                    if (id === selectedPreset) { setPendingPreset(null); return; }
+                    if (bindings.length) setPendingPreset(id);
+                    else applyPreset(id, "replace");
+                  }} onResolve={mode => {
+                    if (mode === "cancel") setPendingPreset(null);
+                    else if (pendingPreset !== null) applyPreset(pendingPreset, mode);
                   }} />
               )}
               {presetFeedback ? <p role="status" className="text-sm font-medium text-primary">{presetFeedback}</p> : null}
+              {presetUndo && pendingPreset === null ? <Button variant="outline" className="min-h-11 justify-self-start" onClick={() => {
+                setBindings(presetUndo.bindings); setSelectedPreset(presetUndo.selected); setPresetUndo(null); setPresetFeedback(t("protection.wizard.undone"));
+              }}>{t("protection.wizard.undoPreset")}</Button> : null}
             </div>
           </WizardSection>
         ) : null}
 
-        {directory && policyWorkspace === "main" ? (
-          <WizardSection title={t(`protection.directories.${directory.id}`)} description={t("protection.directoryHint")}>
+        {step === PROTECTIONS_STEP && policyWorkspace === "main" ? (
+          <WizardSection title={t("protection.wizard.protections")} description={t("protection.wizard.protectionsHint")}>
             <div className="space-y-6">
-              {directory.id === "business_topics" ? <section className="rounded-xl border bg-muted/15 p-4">
+              <p role="status" className="text-sm font-medium">{catalogReady ? t("protection.wizard.selectionSummary", { count: bindings.length, pending: incompleteBindings.length }) : catalogStatus}</p>
+              {incompleteBindings.length ? <div className="flex flex-wrap gap-2">{incompleteBindings.map(binding => <Button key={binding.policy_id} className="min-h-11 h-auto max-w-full whitespace-normal break-words py-2" variant="outline" onClick={() => fixPolicy(binding)}>{t("protection.wizard.fixPolicy", { name: boundPolicy(policies, binding)?.name ?? binding.policy_id })}</Button>)}</div> : null}
+              {!catalogReady ? <Skeleton className="h-80 rounded-xl" /> : <GuardrailProtectionPicker policies={policies} bindings={bindings} onChange={next => { setBindings(next); setPresetUndo(null); }} issueFor={issueFor}
+                expanded={expandedPolicy} onExpand={setExpandedPolicy} businessControls={<div className="space-y-3">
+                  <details className="rounded-lg border px-4"><summary className="min-h-11 cursor-pointer py-3 text-sm font-medium">{t("protection.wizard.businessAssistant")}</summary>
+                  <section className="rounded-xl border bg-muted/15 p-4">
                 <header className="mb-4">
                   <h4 className="text-sm font-semibold">{t("guardrailWizard.policyAssistantTitle")}</h4>
                   <p className="mt-1 text-xs leading-5 text-muted-foreground">{t("guardrailWizard.policyAssistantDescription")}</p>
@@ -288,41 +346,43 @@ export function CreateGuardrailWizard({
                     icon={<MessageSquareText />}
                     title={t("guardrailWizard.generateFromIntent")}
                     description={t("guardrailWizard.generateFromIntentDescription")}
-                    disabled={!intentStatusQuery.data?.available}
+                    disabled={!canManage || !catalogReady || !intentStatusQuery.data?.available}
                     onClick={() => setPolicyWorkspace("intent")}
                   />
                   <PolicyChoiceCard
                     icon={<FileText />}
                     title={t("guardrailWizard.generateFromDocuments")}
                     description={t("guardrailWizard.generateFromDocumentsDescription")}
-                    disabled={!intentStatusQuery.data?.document_analysis_available}
+                    disabled={!canManage || !catalogReady || !intentStatusQuery.data?.document_analysis_available}
                     onClick={() => setPolicyWorkspace("documents")}
                   />
                 </div>
                 {!intentStatusQuery.isLoading && !intentStatusQuery.data?.available ? (
                   <p className="mt-3 text-xs leading-5 text-muted-foreground">{t("guardrailWizard.policyAssistantUnavailable")}</p>
                 ) : null}
-              </section> : null}
-
-              {hasTopicControlBinding(directoryBindings, policies) || (directory.id === "business_topics" && (showBoundaries || boundarySource || allowed.trim())) ? (
-                <TopicBoundaryEditor
-                  allowed={allowed}
-                  source={boundarySource}
-                  onAllowedChange={setAllowed}
-                />
-              ) : directory.id === "business_topics" ? <Button variant="outline" onClick={() => setShowBoundaries(true)}>{t("guardrailWizard.addBoundaries")}</Button> : null}
-
-              {policiesQuery.isLoading ? <Skeleton className="h-80 rounded-xl" /> : policiesQuery.error ? <ErrorNotice error={policiesQuery.error} /> : (
-                <><ProtectionDirectoryEditor directory={directory.id} policies={policies} bindings={directoryBindings} onChange={(next) => setBindings((current) => mergeDirectoryBindings(current, directoryIds, next))} /><ProtectionDependencies bindings={directoryBindings} policies={policies} /></>
-              )}
-
+              </section>
+                  </details>
+                  {hasTopicControlBinding(bindings, policies) || showBoundaries || boundarySource || allowed.trim() ? (
+                  <TopicBoundaryEditor fieldRef={topicField} allowed={allowed} source={boundarySource} onAllowedChange={setAllowed} />
+                ) : <Button variant="outline" onClick={() => setShowBoundaries(true)}>{t("guardrailWizard.addBoundaries")}</Button>}
+                </div>} />}
+              {catalogReady && hasOutputPolicy ? <div className="rounded-lg border p-4 text-sm leading-6"><strong>{t("protection.effectiveDelivery")}: {t(`guardrailWizard.outputDeliveryOptions.${effectiveDelivery}`)}</strong>
+                <p className="mt-1 text-muted-foreground">{fullResponsePolicies.length ? t("protection.bufferSummary", { count: fullResponsePolicies.length }) : t("protection.incrementalHint")}</p>
+              </div> : null}
+              {catalogReady ? <details className="rounded-lg border p-4"><summary className="min-h-11 cursor-pointer py-3 text-sm font-medium">{t("protection.wizard.advanced")}</summary>
+                <div className="space-y-5 pt-3">
+                  {hasOutputPolicy ? <OutputDeliveryField value={effectiveDelivery} onChange={setOutputDelivery} requiredComplete={fullResponsePolicies} /> : <p className="text-sm text-muted-foreground">{t("protection.noOutput")}</p>}
+                  <p className="text-xs leading-5 text-muted-foreground">{t("protection.wizard.orderHint")}</p>
+                  <ProtectionOrderEditor bindings={bindings} policies={policies} onChange={next => { setBindings(next); setPresetUndo(null); }} />
+                </div>
+              </details> : null}
             </div>
           </WizardSection>
         ) : null}
 
-        {directory?.id === "business_topics" && policyWorkspace === "intent" ? (
+        {step === PROTECTIONS_STEP && policyWorkspace === "intent" ? (
           <IntentPolicyWorkspace
-            available={Boolean(intentStatusQuery.data?.available)}
+            available={canManage && catalogReady && Boolean(intentStatusQuery.data?.available)}
             intent={intentText}
             proposal={intentProposal}
             pending={analyzeIntent.isPending}
@@ -337,9 +397,9 @@ export function CreateGuardrailWizard({
           />
         ) : null}
 
-        {directory?.id === "business_topics" && policyWorkspace === "documents" ? (
+        {step === PROTECTIONS_STEP && policyWorkspace === "documents" ? (
           <ComplianceDocumentImport
-            available={Boolean(intentStatusQuery.data?.document_analysis_available)}
+            available={canManage && catalogReady && Boolean(intentStatusQuery.data?.document_analysis_available)}
             analystProvider={intentStatusQuery.data?.provider}
             analystModel={intentStatusQuery.data?.model}
             language={language}
@@ -347,19 +407,6 @@ export function CreateGuardrailWizard({
             resetKey={documentImportReset}
             onApply={applyDocumentAnalysis}
           />
-        ) : null}
-
-        {step === DELIVERY_STEP ? (
-          <WizardSection title={t("protection.delivery")} description={t("protection.deliveryHint")}>
-            <div className="space-y-5">
-              {hasOutputPolicy ? <OutputDeliveryField value={effectiveDelivery} onChange={setOutputDelivery} requiredComplete={fullResponsePolicies} /> : <InfoNotice title={t("protection.output")}>{t("protection.noOutput")}</InfoNotice>}
-              {fullResponsePolicies.length ? <InfoNotice title={t("protection.completeResponse")}>
-                {t("protection.bufferSummary", { count: fullResponsePolicies.length })}
-                <details className="mt-2"><summary className="min-h-11 cursor-pointer rounded-sm py-3 font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring">{t("protection.included")}</summary><ul className="mt-2 list-disc space-y-1 pl-4">{fullResponsePolicies.map((policy) => <li key={policy}>{policy}</li>)}</ul></details>
-              </InfoNotice> : hasOutputPolicy && effectiveDelivery !== "full_buffered" ? <InfoNotice title={t("protection.effectiveDelivery")}>{t("protection.incrementalHint")}</InfoNotice> : null}
-              <ProtectionOrderEditor bindings={bindings} policies={policies} onChange={setBindings} />
-            </div>
-          </WizardSection>
         ) : null}
 
         {step === REVIEW_STEP ? (
@@ -370,25 +417,27 @@ export function CreateGuardrailWizard({
               <ReviewRow label={t("guardrailWizard.policies")} value={t("protection.selected", { count: bindings.length })} />
               <ReviewRow label={t("guardrailWizard.policyRules")} value={String(bindings.reduce((total, binding) => total + binding.enabled_rule_ids.length, 0))} />
               {boundarySource || allowed.trim() ? <ReviewRow label={t("guardrailWizard.topicControl")} value={t("guardrailWizard.topicControlSummary", { allowed: lines(allowed).length })} /> : null}
-              {hasOutputPolicy ? <ReviewRow label={t("protection.effectiveDelivery")} value={t(`guardrailWizard.outputDeliveryOptions.${effectiveDelivery}`)} /> : null}
+              {hasOutputPolicy ? <ReviewRow label={t("protection.effectiveDelivery")} value={catalogReady ? t(`guardrailWizard.outputDeliveryOptions.${effectiveDelivery}`) : t("protection.catalogPending")} /> : null}
             </section>
 
             <section className="mt-4 divide-y overflow-hidden rounded-xl border bg-card">
-              {protectionDirectories.map((item, index) => {
+              {protectionDirectories.filter(item => !catalogReady || bindings.some(binding => policies.some(policy => policy.id === binding.policy_id && policyDirectory(policy) === item.id))).map((item) => {
                 const selected = bindings.filter((binding) => policies.some((policy) => policy.id === binding.policy_id && policyDirectory(policy) === item.id));
-                return <button key={item.id} type="button" className="flex min-h-12 w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring" onClick={() => changeStep(index + 1)}>
-                  <span>{t(`protection.directories.${item.id}`)}</span><span className="text-muted-foreground">{selected.length ? t("protection.selected", { count: selected.length }) : t("protection.unset")}</span>
+                return <button key={item.id} type="button" className="flex min-h-12 w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring" onClick={() => editPolicy(selected[0]?.policy_id ?? null)}>
+                  <span>{t(`protection.directories.${item.id}`)}</span><span className="text-muted-foreground">{!catalogReady ? t("protection.catalogPending") : selected.length ? t("protection.selected", { count: selected.length }) : t("protection.unset")}</span>
                 </button>;
               })}
             </section>
+            <Button variant="outline" className="mt-4 min-h-11" onClick={() => editPolicy(incompleteBindings[0]?.policy_id ?? null)}>{t("protection.wizard.editProtections")}</Button>
+            {pendingPreset !== null ? <Button variant="outline" className="mt-4" onClick={() => changeStep(0)}>{t("protection.wizard.resolvePreset")}</Button> : null}
             <p className="mt-4 text-sm leading-6 text-muted-foreground">{t("protection.selectedNotValidated")}</p>
-            <div className="mt-4"><ProtectionDependencies bindings={bindings} policies={policies} /></div>
+            {catalogReady ? <div className="mt-4"><ProtectionDependencies bindings={bindings} policies={policies} /></div> : null}
             {!hasOutputPolicy ? <p className="mt-3 text-sm text-amber-800">{t("protection.noOutput")}</p> : null}
             {!bindings.some((binding) => binding.enabled_rails.includes("input")) ? <p className="mt-3 text-sm text-amber-800">{t("protection.noInput")}</p> : null}
 
             {preview.isFetching ? <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground"><LoaderCircle className="size-4 animate-spin" />{t("guardrailWizard.validatingPlan")}</div> : null}
-            {preview.error ? <div className="mt-4 space-y-3"><ErrorNotice error={preview.error} /><Button className="min-h-11" variant="outline" onClick={() => void preview.refetch()}>{t("protection.retryPreview")}</Button></div> : null}
-            {preview.data ? (
+            {catalogReady && preview.error ? <div className="mt-4 space-y-3"><ErrorNotice error={preview.error} /><Button className="min-h-11" variant="outline" disabled={!canManage} onClick={() => { if (canManage) void preview.refetch(); }}>{t("protection.retryPreview")}</Button></div> : null}
+            {catalogReady && preview.data ? (
               <details className="mt-4 overflow-hidden rounded-xl border bg-card">
                 <summary className="min-h-11 cursor-pointer list-none px-4 py-3 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
                   {t("guardrailWizard.advancedRuntimePreview")}
@@ -489,10 +538,12 @@ function TopicBoundaryEditor({
   allowed,
   source,
   onAllowedChange,
+  fieldRef,
 }: {
   allowed: string;
   source: BoundarySource;
   onAllowedChange: (value: string) => void;
+  fieldRef?: RefObject<HTMLTextAreaElement | null>;
 }) {
   const { t } = useTranslation();
   return (
@@ -504,7 +555,7 @@ function TopicBoundaryEditor({
         </div>
         {source ? <Badge variant="secondary"><Sparkles />{t(`guardrailWizard.boundarySources.${source}`)}</Badge> : null}
       </header>
-      <Field label={t("guardrailWizard.allowedDomains")} hint={t("guardrailWizard.topicAllowlistHint")}><Textarea aria-label={t("guardrailWizard.allowedDomains")} className="min-h-32 bg-card" value={allowed} onChange={(event) => onAllowedChange(event.target.value)} placeholder={t("guardrailWizard.onePerLine")} /></Field>
+      <Field label={t("guardrailWizard.allowedDomains")} hint={t("guardrailWizard.topicAllowlistHint")}><Textarea ref={fieldRef} aria-label={t("guardrailWizard.allowedDomains")} className="min-h-32 bg-card" value={allowed} onChange={(event) => onAllowedChange(event.target.value)} placeholder={t("guardrailWizard.onePerLine")} /></Field>
     </section>
   );
 }

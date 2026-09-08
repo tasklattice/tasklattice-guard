@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import httpx
 import pytest
@@ -73,3 +74,27 @@ async def test_capability_requires_scoped_credentials_and_a_valid_phase():
     invalid = await validate_capability(request, {"provider-1": "synthetic-secret"})
     assert not invalid.passed
     assert "Input/Output" in invalid.message
+
+
+@pytest.mark.asyncio
+async def test_recorded_input_502_is_not_counted_as_successful_detection():
+    fixture = Path(__file__).resolve().parents[1] / 'fixtures/model_responses/20260908-nvidia-smoke.json'
+    cases = [case for case in json.loads(fixture.read_text())['cases'] if case['id'] in (2, 3)]
+    calls = []
+
+    def replay(request):
+        body = json.loads(request.content)
+        case = next(case for case in cases if case['request'] == body)
+        calls.append(case['id'])
+        return httpx.Response(case['status'], json=case['response'])
+
+    request = candidate(profile='tali.nemotron-safety-guard-v3.v1')
+    request.configuration.runtimes[0].model = cases[0]['request']['model']
+    request.configuration.runtimes[0].max_tokens = 1024
+    result = await validate_capability(request, {'provider-1': 'synthetic-recording-only'},
+                                       transport=httpx.MockTransport(replay))
+    assert calls == [2, 3]
+    assert result.passed is False
+    assert result.cases[0].passed is True
+    assert result.cases[1].actual_decision == 'block'
+    assert result.cases[1].passed is False

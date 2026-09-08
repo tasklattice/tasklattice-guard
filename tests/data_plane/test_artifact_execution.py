@@ -245,15 +245,19 @@ def _runtime(
     tmp_path: Path,
     fixture: Path = FIXTURE,
     providers: tuple | None = None,
+    native_models: tuple | None = None,
 ) -> tuple[ArtifactStore, NeMoRuntimeRegistry, NeMoRuntime]:
     store = ArtifactStore(fixture / "public-key.pem", tmp_path / "state")
+    provider_registry = action_providers(*(providers if providers is not None else local_action_providers()))
     registry = NeMoRuntimeRegistry(
         store,
-        action_providers(*(providers if providers is not None else local_action_providers())),
+        provider_registry,
         max_concurrency_per_guardrail=4,
+        native_models=native_models or (),
     )
     store.attach_registry(registry)
-    store.apply(_desired_state(fixture))
+    store.apply(_desired_state(fixture), native_models=native_models,
+                providers=provider_registry if native_models is not None else None)
     return store, registry, NeMoRuntime(registry)
 
 

@@ -287,10 +287,21 @@ export class ControlPlaneService {
     return run ? policyValidationPayload(run) : { status: "not_run" as const };
   }
 
-  async publishPolicy(input: { id: string; actorId: string }) {
+  async publishPolicy(input: { id: string; actorId: string; expectedDraftRevision?: number }) {
     return this.db.transaction(async (tx) => {
       const [record] = await tx.select().from(policyRecords).where(eq(policyRecords.id, input.id)).for("update");
       if (!record) throw new NotFoundError("Policy", input.id);
+      // The locked Policy serializes both publication and draft edits. Retries
+      // identify the validated draft, not whichever draft happens to be latest.
+      const sourceDraftRevision = input.expectedDraftRevision ?? record.draftRevision;
+      const [published] = await tx.select().from(policyVersions).where(and(
+        eq(policyVersions.policyId, input.id),
+        eq(policyVersions.sourceDraftRevision, sourceDraftRevision),
+      )).limit(1);
+      if (published) return published.snapshot;
+      if (sourceDraftRevision !== record.draftRevision) {
+        throw new ConflictError("The Policy draft changed. Validate the current draft before publishing.", "policy_draft_conflict");
+      }
       this.validatePolicyDraft(input.id, record.draft, true);
       if (record.draft.test_cases.length) {
         const [latest] = await tx.select().from(policyValidationRuns)
@@ -306,7 +317,7 @@ export class ControlPlaneService {
       const snapshot = policySnapshot(record, String(version), "", publishedAt);
       const checksum = createHash("sha256").update(stableJson(snapshot)).digest("hex");
       snapshot.checksum = checksum;
-      await tx.insert(policyVersions).values({ policyId: input.id, version, snapshot, checksum, publishedAt });
+      await tx.insert(policyVersions).values({ policyId: input.id, version, sourceDraftRevision, snapshot, checksum, publishedAt });
       await tx.insert(auditEvents).values({
         id: randomUUID(), kind: "policy.version_published", actorId: input.actorId,
         resourceType: "policy", resourceId: input.id, detail: { version, checksum, draftRevision: record.draftRevision },
@@ -792,16 +803,24 @@ export class ControlPlaneService {
         if (input.guardrailId === DEFAULT_GUARDRAIL_ID) {
           await this.ensureDefaultDeployment(tx, input.guardrailVersion);
         }
-        await tx.insert(outboxEvents).values({
-          id: randomUUID(), kind: "runner.desired_state_changed", aggregateId: input.guardrailId,
-          payload: { guardrailId: input.guardrailId, generation: input.generation, artifactId: artifact.id },
-        });
       }
+      // Compile-request generation may already have been reconciled without
+      // this artifact. Publishing new ready content needs a distinct delivery
+      // generation, including a late version retained for default-pool tools.
+      // Keep the signed artifact's compile generation and activation ordering.
+      const [delivery] = await tx.update(controllerState).set({
+        desiredGeneration: sql`${controllerState.desiredGeneration} + 1`, updatedAt: new Date(),
+      }).where(eq(controllerState.id, "singleton")).returning();
+      if (!delivery) throw new Error("Controller desired state is unavailable.");
+      await tx.insert(outboxEvents).values({
+        id: randomUUID(), kind: "runner.desired_state_changed", aggregateId: input.guardrailId,
+        payload: { guardrailId: input.guardrailId, generation: delivery.desiredGeneration, artifactId: artifact.id },
+      });
       await tx.update(outboxEvents).set({ processedAt: new Date() }).where(eq(outboxEvents.id, input.compileId));
       await tx.insert(auditEvents).values({
         id: randomUUID(), kind: "guardrail.compiled", actorId: null,
         resourceType: "guardrail", resourceId: input.guardrailId,
-        detail: { version: input.guardrailVersion, generation: input.generation, artifactId: artifact.id, checksum, activated },
+        detail: { version: input.guardrailVersion, generation: input.generation, deliveryGeneration: delivery.desiredGeneration, artifactId: artifact.id, checksum, activated },
       });
       return artifact;
     });

@@ -1,0 +1,12 @@
+{
+  "provenance": "Synthetic engineering fixtures; NOT recorded NVIDIA responses or semantic quality evidence.",
+  "cases": [
+    {"id":"provider-connection","system_contains":[],"user":"Reply with exactly OK.","result":"on-topic"},
+    {"id":"model-connection","system_contains":["Kubernetes administration"],"user":"How do I inspect Kubernetes pods?","result":"on-topic"},
+    {"id":"support-safe","system_contains":["Product support"],"user":"How can I reset my product password?","result":"on-topic"},
+    {"id":"support-off-topic","system_contains":["Product support"],"user":"Give me a recipe for chocolate cake.","result":"off-topic"},
+    {"id":"scope-negative-control","system_contains":["Cooking and recipes only"],"user":"How can I reset my product password?","result":"off-topic"},
+    {"id":"support-inherited-contract","system_contains":["Product support"],"user":"Discuss a business subject that is not on the approved list.","result":"off-topic"},
+    {"id":"cooking-inherited-contract","system_contains":["Cooking and recipes only"],"user":"Discuss a business subject that is not on the approved list.","result":"off-topic"}
+  ]
+}

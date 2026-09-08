@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -8,6 +8,8 @@ import type { Deployment, Guardrail, GuardrailFindingPage, GuardrailPolicyBindin
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { defaultGuardrailDraft, DEFAULT_GUARDRAIL_ID } from "../../server/domain/defaults";
 import { PolicyCatalog } from "../../server/policy-catalog/catalog";
+import * as api from "@/lib/api";
+import { defaultPolicyBinding } from "@/components/policy-binding-editor";
 
 import { DeleteGuardrailSheet, DraftReleaseView, EditGuardrailSheet, GuardrailFindingsView, GuardrailRuntimeView, ImmutableVersionView, TestCases } from "./guardrails";
 
@@ -74,7 +76,7 @@ const deletableGuardrail = {
 } satisfies Guardrail;
 
 describe("Guardrail detail information hierarchy", () => {
-  afterEach(cleanup);
+  afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
   it("makes caller distribution the primary runtime evidence", () => {
     const metrics = {
@@ -467,6 +469,35 @@ describe("Guardrail detail information hierarchy", () => {
       expect(link!.textContent).toContain(`guardrails.ruleCount count:${policy.rules.length}`);
       expect(link!.textContent).toContain("guardrails.policyBehavior");
     }
+  });
+
+  it("reorders saved draft Policies without losing pinned versions, Rule order or local overrides", async () => {
+    const catalog = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
+    const policies = ["configured-phrase-filter", "local-credentials"].map(id => catalog.find(p => p.id === id)!);
+    const bindings = policies.map(defaultPolicyBinding);
+    bindings[0]!.parameter_values = { phrase_entries: JSON.stringify([{ id: "private-phrase", phrase: "confidential", action: "reject" }]) };
+    bindings[1]!.rule_order = [...bindings[1]!.enabled_rule_ids].reverse();
+    bindings[1]!.rule_actions = { [bindings[1]!.enabled_rule_ids[0]!]: "redact" };
+    const original = structuredClone(bindings);
+    const guardrail = { ...deletableGuardrail, output_delivery: "full_buffered" as const, policy_bindings: bindings };
+    const update = vi.spyOn(api, "updateGuardrail").mockResolvedValue(guardrail);
+    const onSaved = vi.fn();
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { mutations: { retry: false } } })}><TooltipProvider><EditGuardrailSheet guardrail={guardrail} policies={policies} open onOpenChange={vi.fn()} onSaved={onSaved} /></TooltipProvider></QueryClientProvider>);
+    const order = screen.getByRole("list", { name: "protection.order" });
+    expect(within(order).getAllByRole("listitem").map(item => item.textContent)).toEqual([
+      expect.stringContaining(policies[0]!.name), expect.stringContaining(policies[1]!.name),
+    ]);
+    expect(screen.getByRole("button", { name: `protection.moveUp name:${policies[0]!.name}` }).getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: `protection.moveUp name:${policies[1]!.name}` }));
+    expect(within(order).getAllByRole("listitem").map(item => item.textContent)).toEqual([
+      expect.stringContaining(policies[1]!.name), expect.stringContaining(policies[0]!.name),
+    ]);
+    expect(update).not.toHaveBeenCalled();
+    expect(bindings).toEqual(original);
+    fireEvent.click(screen.getByRole("button", { name: "common.save" }));
+    await waitFor(() => expect(update).toHaveBeenCalledOnce());
+    expect(update).toHaveBeenCalledWith(guardrail.id, expect.objectContaining({ policy_bindings: [original[1], original[0]], output_delivery: "full_buffered" }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
   });
 
   it("blocks saving incomplete Policy-owned phrases and recovers when filled", () => {
