@@ -1844,8 +1844,6 @@ const resources = {
         enabledIntegrations: "{{enabled}} / {{total}} Endpoints enabled",
       },
       deployments: {
-        precedenceTitle: "Endpoint routes run top to bottom",
-        precedenceDescription: "Each request stops at the first enabled matching route and is pinned to one Guardrail Version. All traffic stays last; unmatched traffic falls back to the system baseline.",
         trafficScope: "Traffic Scope",
         deployment: "Router",
         guardrailVersion: "Guardrail Version",
@@ -4617,8 +4615,6 @@ const resources = {
         enabledIntegrations: "{{enabled}} / {{total}} 个 Endpoint 已启用",
       },
       deployments: {
-        precedenceTitle: "Endpoint 路由按从上到下执行",
-        precedenceDescription: "每个请求在首条已启用且命中的路由处停止，并固定到一个 Guardrail Version。全部流量固定在最后；未命中则回退到系统基线。",
         trafficScope: "Traffic Scope",
         deployment: "Router",
         guardrailVersion: "Guardrail Version",

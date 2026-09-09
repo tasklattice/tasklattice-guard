@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ArrowDown, ArrowUp, Building2, ChevronRight, ListFilter, Plus, Route, ShieldCheck } from "lucide-react";
+import { ArrowDown, ArrowUp, Building2, ChevronRight, ListFilter, Plus, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 
@@ -107,11 +107,6 @@ export function DeploymentsPage() {
 
       {!deploymentsQuery.isLoading && !integrationsQuery.isLoading ? (
         <>
-          <div className="mt-5 flex min-h-14 items-center gap-3 rounded-lg border bg-card px-4 py-3">
-            <Route className="size-4 text-primary" />
-            <div><p className="text-sm font-medium">{t("deployments.precedenceTitle")}</p><p className="mt-0.5 text-xs text-muted-foreground">{t("deployments.precedenceDescription")}</p></div>
-          </div>
-
           {routeGroups.length ? (
             <div className="mt-4 grid gap-4">
               {routeGroups.map(({ integration, routes }) => (
