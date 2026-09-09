@@ -147,20 +147,28 @@ describe("Models and Guardrail Catalog", () => {
     expect(screen.getAllByText("modelSettings.detectors.jailbreak_detection.title · modelSettings.inputRail").length).toBeGreaterThan(0);
   });
 
-  it("binds and saves a compatible Model only for the selected detector", async () => {
+  it("validates the selected Model before enabling Save", async () => {
+    vi.mocked(validateModelAssignment).mockResolvedValue({
+      ...view.draft, validationReport: { ...view.draft.validationReport!, checks: [
+        { id: "probe:jailbreak.input:safety-model", scope: "capability", status: "passed", evidenceKind: "nemo-rail-v1", message: "Passed" },
+      ] },
+    });
     renderPage(<GuardrailCatalogPage />);
     const jailbreak = await screen.findByRole("row", { name: "modelSettings.detectors.jailbreak_detection.title · modelSettings.inputRail" });
     fireEvent.keyDown(within(jailbreak).getByRole("combobox", { name: "modelSettings.modelColumn" }), { key: "ArrowDown" });
     fireEvent.click(await screen.findByRole("option", { name: /Qwen Guard · Mock provider/ }));
-    fireEvent.click(within(jailbreak).getAllByRole("button", { name: "modelSettings.saveAssignment" })[0]!);
+    const save = within(jailbreak).getAllByRole("button", { name: "modelSettings.saveAssignment" })[0]!;
+    expect(save.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(within(jailbreak).getAllByRole("button", { name: "modelSettings.validateAssignment" })[0]!);
+    await waitFor(() => expect(save.hasAttribute("disabled")).toBe(false));
+    expect(saveModelAssignment).not.toHaveBeenCalled();
+    fireEvent.click(save);
     await waitFor(() => expect(saveModelAssignment).toHaveBeenCalledWith("jailbreak.input", "safety-model"));
   });
 
-  it("activates only after confirming the validated clean catalog revision", async () => {
+  it("distributes the validated clean catalog revision in one click", async () => {
     renderPage(<GuardrailCatalogPage />);
     fireEvent.click(await screen.findByRole("button", { name: "modelSettings.activate" }));
-    const drawer = screen.getByRole("dialog", { name: "modelSettings.activateConfirmationTitle" });
-    fireEvent.click(within(drawer).getByRole("button", { name: "modelSettings.activateConfirmationAction" }));
     await waitFor(() => expect(activateModelConfiguration).toHaveBeenCalledWith("revision-2"));
   });
 

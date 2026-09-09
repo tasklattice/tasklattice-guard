@@ -410,7 +410,7 @@ export const saveModelAssignments = (assignments: ModelAssignments) => requestCo
 export const validateModelConfiguration = () => requestController<ModelConfigurationRevision>("/api/v1/model-configuration/validate", json("POST"));
 export type ModelAssignmentTarget = "control_plane" | CapabilityBindingId;
 export const saveModelAssignment = (target: ModelAssignmentTarget, modelId: string | null) => requestController<ModelConfigurationRevision>(`/api/v1/model-configuration/draft/assignments/${encodeURIComponent(target)}`, json("PUT", { modelId }));
-export const validateModelAssignment = (target: ModelAssignmentTarget) => requestController<ModelConfigurationRevision>(`/api/v1/model-configuration/draft/assignments/${encodeURIComponent(target)}/validate`, json("POST"));
+export const validateModelAssignment = (target: ModelAssignmentTarget, modelId?: string) => requestController<ModelConfigurationRevision>(`/api/v1/model-configuration/draft/assignments/${encodeURIComponent(target)}/validate`, json("POST", modelId ? { modelId } : undefined));
 export const activateModelConfiguration = (revisionId: string) => requestController<ModelConfigurationView & { distribution: { desiredGeneration: number; distributionStatus: "ready" | "syncing" } }>(`/api/v1/model-configuration/${encodeURIComponent(revisionId)}/activate`, json("POST"));
 export const rollbackModelConfiguration = () => requestController<ModelConfigurationView & { distribution: { desiredGeneration: number; distributionStatus: "ready" | "syncing" } }>("/api/v1/model-configuration/rollback", json("POST"));
 export const listControllerGuardrails = () => requestController<Collection<Guardrail>>("/api/v1/guardrails");

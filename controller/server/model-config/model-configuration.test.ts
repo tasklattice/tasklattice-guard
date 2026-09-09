@@ -45,6 +45,46 @@ function setup(state = "draft", assigned = false, failProbe = false) {
 }
 
 describe("Capability configuration after registration", () => {
+  it("requires a successful preview before saving and preserves the evidence", async () => {
+    const { service, rows } = setup();
+    await expect(service.updateAssignment("content_safety.input", id, "admin"))
+      .rejects.toMatchObject({ code: "model_assignment_not_validated" });
+    const before = structuredClone(rows.get(modelConfigurationRevisions));
+    await service.previewAssignment("content_safety.input", id, "admin");
+    expect(rows.get(modelConfigurationRevisions)).toEqual(before);
+    const saved = await service.updateAssignment("content_safety.input", id, "admin");
+    expect(saved.validationReport?.checks).toContainEqual(expect.objectContaining({
+      id: `probe:content_safety.input:${id}`, status: "passed", evidenceKind: "nemo-rail-v1",
+    }));
+  });
+
+  it("rejects failed previews and changes to the validated model", async () => {
+    const { service, rows, railValidator } = setup();
+    railValidator.mockResolvedValueOnce({ passed: false, message: "Failed", latencyMs: 1 });
+    await service.previewAssignment("content_safety.input", id, "admin");
+    await expect(service.updateAssignment("content_safety.input", id, "admin"))
+      .rejects.toMatchObject({ code: "model_assignment_not_validated" });
+    await service.previewAssignment("content_safety.input", id, "admin");
+    rows.get(modelDefinitions)![0]!.model = "changed-model";
+    await expect(service.updateAssignment("content_safety.input", id, "admin"))
+      .rejects.toMatchObject({ code: "model_assignment_not_validated" });
+  });
+
+  it("makes Chat available only after validated Save without activating Runner", async () => {
+    const { service, rows, railValidator } = setup();
+    rows.get(modelDefinitions)![0]!.profile = "generic-chat";
+    const active = vi.spyOn(service, "activeConfiguration");
+    expect(await service.controlPlaneModel("playground_chat")).toBeNull();
+    await service.previewAssignment("control_plane", id, "admin");
+    expect(await service.controlPlaneModel("playground_chat")).toBeNull();
+    await service.updateAssignment("control_plane", id, "admin");
+    expect(await service.controlPlaneModel("playground_chat")).toMatchObject({ model: "guard-alias" });
+    expect(await service.controlPlaneModel("policy_authoring")).toMatchObject({ model: "guard-alias" });
+    expect(active).not.toHaveBeenCalled();
+    expect(railValidator).not.toHaveBeenCalled();
+    expect(rows.get(modelConfigurationRevisions)![0]!.state).not.toBe("active");
+  });
+
   it("keeps undeclared custom dependencies unknown in the actual setup report", async () => {
     const { service, rows, fetcher, railValidator } = setup();
     rows.set(policyVersions, [
@@ -292,6 +332,8 @@ describe("Capability configuration after registration", () => {
 
   it("saves and validates capability assignments independently", async () => {
     const { service, fetcher, railValidator } = setup("draft", true);
+    await service.previewAssignment("content_safety.input", id, "admin");
+    railValidator.mockClear();
     const saved = await service.updateAssignment("content_safety.input", id, "admin");
     expect(saved.assignments.bindings["content_safety.input"]).toBe(id);
     expect(fetcher).not.toHaveBeenCalled();

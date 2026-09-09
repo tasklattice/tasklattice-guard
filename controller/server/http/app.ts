@@ -373,6 +373,11 @@ export function createHttpApp(input: {
   app.post("/api/v1/model-configuration/draft/assignments/:target/validate", authenticated, administrator, async (context) => {
     if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
     const target = modelAssignmentTargetSchema.parse(context.req.param("target"));
+    const raw = await context.req.text();
+    if (raw) {
+      const body = z.object({ modelId: z.string().uuid() }).parse(JSON.parse(raw));
+      return context.json(await input.models.previewAssignment(target, body.modelId, context.get("actor").id));
+    }
     return context.json(await input.models.validateAssignment(target, context.get("actor").id));
   });
   app.post("/api/v1/model-configuration/validate", authenticated, administrator, async (context) => {
