@@ -86,6 +86,7 @@ describe("API error responses", () => {
 
     expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/v1/intent-analysis-status", {
       credentials: "same-origin",
+      signal: expect.any(AbortSignal),
       headers: undefined,
     });
     expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/v1/intent-analyses", {

@@ -48,7 +48,7 @@ describe("privacy-safe runtime observability", () => {
   it("keeps platform readiness reasons distinct from scoped Guardrail evidence", async () => {
     vi.stubGlobal("fetch", vi.fn(async (path: string) => new Response(JSON.stringify(path === "/api/v1/system/status"
       ? { status: "degraded", reasons: ["runner_capacity_below_desired", "runner_configuration_syncing"] }
-      : { items: [], count: 0 }), { status: 200, headers: { "content-type": "application/json" } })));
+      : { total_decisions: 0, fail_closed_count: 0 }), { status: 200, headers: { "content-type": "application/json" } })));
     const metrics = await getMetrics({ guardrailId: "local-bank" });
     expect(metrics.system_status).toBe("degraded");
     expect(metrics.system_reasons).toEqual(["runner_capacity_below_desired", "runner_configuration_syncing"]);
@@ -74,6 +74,7 @@ describe("privacy-safe runtime observability", () => {
     const traces = await getDeploymentTraces("deployment-1");
 
     expect(fetchMock.mock.calls[0]?.[0]).toContain("deploymentId=deployment-1");
+    expect(fetchMock.mock.calls[0]?.[0]).toContain("limit=100");
     expect(traces.items[0]).toMatchObject({
       evidence_status: "collected",
       runtime_engine: "llmrails",
@@ -86,7 +87,10 @@ describe("privacy-safe runtime observability", () => {
 
   it("marks legacy events as not collected instead of reporting a clean result", async () => {
     const legacy = { ...event, metadata: { protocol: "litellm", action: "allow" }, decision: "allow" };
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ items: [legacy], count: 1 }), {
+    vi.stubGlobal("fetch", vi.fn(async (path: string) => new Response(JSON.stringify(path.startsWith('/api/v1/runtime-metrics') ? {
+      total_decisions: 1, data_availability: { execution_evidence: 'not_collected' },
+      findings_summary: { total: 0, critical: 0, high: 0, medium: 0, low: 0, affected_traces: 0, latest_at: null },
+    } : { items: [legacy], count: 1 }), {
       status: 200,
       headers: { "content-type": "application/json" },
     })));

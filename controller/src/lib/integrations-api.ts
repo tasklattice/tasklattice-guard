@@ -52,7 +52,10 @@ function integrationEvents(value: controllerApi.Integration, events: controllerA
   return events.filter((event) => event.integrationId === value.id);
 }
 
-function mapIntegration(value: CurrentIntegration, events: controllerApi.RuntimeEvent[]): Integration {
+type IntegrationActivity = Pick<Integration, 'first_seen_at' | 'last_seen_at' | 'input_seen_at' | 'output_seen_at' | 'stream_final_check_seen_at' | 'last_error_at' | 'request_count' | 'error_count'> & { id: string };
+const getActivity = () => controllerApi.requestController<{ items: IntegrationActivity[] }>('/api/v1/runtime-integrations');
+
+function mapIntegration(value: CurrentIntegration, events: controllerApi.RuntimeEvent[], activity?: IntegrationActivity): Integration {
   const adapter = integrationAdapter(value.adapter);
   const matching = integrationEvents(value, events);
   const incoming = matching.filter((event) => event.direction === "incoming").map((event) => event.occurredAt).sort();
@@ -73,7 +76,7 @@ function mapIntegration(value: CurrentIntegration, events: controllerApi.Runtime
       ? "disabled"
       : value.distributionStatus === "syncing"
         ? "applying"
-        : matching.length
+        : activity?.last_seen_at || matching.length
           ? "verified"
           : "awaiting_callback",
     desired_generation: value.desiredGeneration,
@@ -90,24 +93,26 @@ function mapIntegration(value: CurrentIntegration, events: controllerApi.Runtime
     setup: value.setup ?? integrationSetup(),
     created_at: value.createdAt,
     updated_at: value.updatedAt,
+    ...(activity ? { ...activity, runtime_status: activity.error_count ? 'degraded' as const : activity.last_seen_at ? 'healthy' as const : 'unknown' as const } : {}),
   };
 }
 
 export async function getIntegrations(): Promise<Collection<Integration>> {
   const [integrations, events] = await Promise.all([
     controllerApi.listControllerIntegrations(),
-    controllerApi.listRuntimeEvents(500),
+    getActivity(),
   ]);
-  const items = integrations.items.map((item) => mapIntegration(item as CurrentIntegration, events.items));
+  const activity = new Map(events.items.map(item=>[item.id,item]));
+  const items = integrations.items.map((item) => mapIntegration(item as CurrentIntegration, [], activity.get(item.id)));
   return { items, count: items.length };
 }
 
 export async function getIntegration(id: string): Promise<Integration> {
   const [integration, events] = await Promise.all([
     controllerApi.requestController<CurrentIntegration>(`/api/v1/integrations/${encodeURIComponent(id)}`),
-    controllerApi.listRuntimeEvents(500),
+    getActivity(),
   ]);
-  return mapIntegration(integration, events.items);
+  return mapIntegration(integration, [], events.items.find(item=>item.id===id));
 }
 
 function oneTimeRegistration(value: CurrentIntegration): IntegrationRegistration {
@@ -137,8 +142,8 @@ export async function setIntegrationEnabled(id: string, enabled: boolean): Promi
     method: "PATCH",
     body: JSON.stringify({ enabled }),
   });
-  const events = await controllerApi.listRuntimeEvents(500);
-  return mapIntegration(updated, events.items);
+  const events = await getActivity();
+  return mapIntegration(updated, [], events.items.find(item=>item.id===id));
 }
 
 export async function rotateIntegrationCredential(id: string): Promise<IntegrationRegistration> {

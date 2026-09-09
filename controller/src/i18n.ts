@@ -11,6 +11,7 @@ const resources = {
     translation: {
       providerRegistration: providerRegistrationEn,
       protection: protectionEn,
+      eventPagination: { label: 'Event pages', page: 'Page {{page}}', latest: 'Latest', previous: 'Newer', next: 'Older', checkpointScope: 'Interactions and details show checkpoints on this page. Older checkpoints remain accessible on older pages.' },
       common: {
         cancel: "Cancel",
         close: "Close",
@@ -2018,7 +2019,9 @@ const resources = {
         noCriticalDescription: "No high-confidence blocking finding appears in the recent Deployment trace window.",
         eventLog: "Runtime events",
         eventLogDescription: "Every recent allow, transform, block, and error decision. Request and response content is not stored.",
-        liveEvents: "Live · refreshes every 15s",
+        liveEvents: "Latest page refreshes every 15s",
+        showingEvents: "Showing {{shown}} of {{total}} events",
+        loadMoreEvents: "Load more",
         time: "Time",
         phase: "Phase",
         decision: "Decision",
@@ -2785,6 +2788,7 @@ const resources = {
     translation: {
       providerRegistration: providerRegistrationZh,
       protection: protectionZh,
+      eventPagination: { label: '事件分页', page: '第 {{page}} 页', latest: '最新', previous: '较新', next: '更早', checkpointScope: '交互与详情显示本页检查点；更早的检查点可通过翻页查看。' },
       common: {
         cancel: "取消",
         close: "关闭",
@@ -4778,7 +4782,9 @@ const resources = {
         noCriticalDescription: "该 Deployment 最近的 Trace 中没有高置信度阻断发现。",
         eventLog: "运行事件",
         eventLogDescription: "最近的 Allow、Transform、Block 与 Error 决策；不会保存请求或响应内容。",
-        liveEvents: "实时 · 每 15 秒刷新",
+        liveEvents: "最新页每 15 秒刷新",
+        showingEvents: "显示 {{shown}} / {{total}} 条事件",
+        loadMoreEvents: "加载更多",
         time: "时间",
         phase: "阶段",
         decision: "决策",

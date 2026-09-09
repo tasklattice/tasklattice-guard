@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode, type MouseEvent } from "react";
 import { boundPolicy } from "@/lib/bound-policy";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { EventPagination, useEventCursor } from '@/components/event-pagination';
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { Activity, ArrowLeft, ArrowUpRight, Ban, Check, ChevronDown, Circle, CircleAlert, FlaskConical, GitCompareArrows, History, LoaderCircle, LockKeyhole, Pencil, Plus, RefreshCw, Rocket, RotateCcw, Save, ScrollText, ShieldAlert, ShieldCheck, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -175,11 +176,13 @@ export function GuardrailDetailPage() {
   });
   const metricsQuery = useQuery({
     queryKey: queryKeys.metricsScope({ guardrailId, window }),
-    queryFn: () => getMetrics({ guardrailId, window }),
+    queryFn: ({ signal }) => getMetrics({ guardrailId, window }, signal),
   });
+  const findingsPaging = useEventCursor(JSON.stringify([guardrailId, window]));
   const findingsQuery = useQuery({
-    queryKey: queryKeys.guardrailFindings(guardrailId, window),
-    queryFn: () => getGuardrailFindings(guardrailId, window),
+    queryKey: [...queryKeys.guardrailFindings(guardrailId, window), findingsPaging.cursor ?? null],
+    queryFn: ({ signal }) => getGuardrailFindings(guardrailId, window, 100, findingsPaging.cursor, signal),
+    gcTime: 30_000,
   });
   const deletionImpactQuery = useQuery({
     queryKey: queryKeys.guardrailDeletionImpact(guardrailId),
@@ -288,6 +291,7 @@ export function GuardrailDetailPage() {
         </TabsContent>
         <TabsContent value="findings" className="pt-5">
           <GuardrailFindingsView data={findingsQuery.data} loading={findingsQuery.isLoading} error={findingsQuery.error} policies={policies} deployments={deployments} integrations={integrationsQuery.data?.items ?? []} window={window} onWindowChange={setWindow} />
+          <EventPagination page={findingsPaging.page} busy={findingsQuery.isFetching} nextCursor={findingsQuery.data?.nextCursor} onNext={findingsPaging.next} onPrevious={findingsPaging.previous} onLatest={findingsPaging.latest} />
         </TabsContent>
         <TabsContent value="immutable" className="pt-5">
           <ImmutableVersionView

@@ -23,6 +23,8 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { EntitySheet } from "@/components/entity-sheet";
+import { EventPagination, useEventCursor } from '@/components/event-pagination';
+import { getDeploymentTrace } from '@/lib/deployments-api';
 import { CopyableChecksum } from "@/components/copyable-checksum";
 import { formatEventTimestamp } from "@/components/dashboard/event-time";
 import { ProtectedDeleteSheet } from "@/components/protected-delete-sheet";
@@ -84,6 +86,7 @@ export function DeploymentDetailPage() {
   const auth = useAuth();
   const canManage = auth.user?.role === "admin";
   const [section, setSection] = useState("runtime");
+  const paging = useEventCursor(deploymentId);
   const [editScopeOpen, setEditScopeOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [selectedTrace, setSelectedTrace] = useState<DeploymentRuntimeTrace | null>(null);
@@ -93,13 +96,16 @@ export function DeploymentDetailPage() {
   const policiesQuery = useQuery({ queryKey: queryKeys.policies, queryFn: getPolicies });
   const fieldsQuery = useQuery({ queryKey: queryKeys.trafficScopeFields, queryFn: getTrafficScopeFields });
   const tracesQuery = useQuery({
-    queryKey: queryKeys.deploymentTraces(deploymentId),
-    queryFn: () => getDeploymentTraces(deploymentId),
-    refetchInterval: 15_000,
+    queryKey: [...queryKeys.deploymentTraces(deploymentId, 100), paging.cursor ?? null],
+    queryFn: ({ signal }) => getDeploymentTraces(deploymentId, 100, paging.cursor, signal),
+    refetchInterval: paging.page === 1 && (section === 'runtime' || section === 'security') ? 15_000 : false,
+    refetchOnWindowFocus: false,
+    gcTime: 30_000,
   });
+  const traceDetail = useQuery({ queryKey: ['event-detail', selectedTrace?.id], enabled: Boolean(selectedTrace), queryFn: ({ signal }) => getDeploymentTrace(selectedTrace!.id, signal), gcTime: 0 });
   const metricsQuery = useQuery({
     queryKey: queryKeys.metricsScope({ deploymentId, window: "24h" }),
-    queryFn: () => getMetrics({ deploymentId, window: "24h" }),
+    queryFn: ({ signal }) => getMetrics({ deploymentId, window: "24h" }, signal),
   });
   const deletionImpactQuery = useQuery({
     queryKey: queryKeys.deploymentDeletionImpact(deploymentId),
@@ -137,7 +143,7 @@ export function DeploymentDetailPage() {
       queryClient.invalidateQueries({ queryKey: queryKeys.deployment(deploymentId) }),
       queryClient.invalidateQueries({ queryKey: queryKeys.deployments }),
       queryClient.invalidateQueries({ queryKey: queryKeys.metrics }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.deploymentTraces(deploymentId) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.deploymentTraces(deploymentId, 100) }),
     ]);
   }
 
@@ -145,7 +151,7 @@ export function DeploymentDetailPage() {
   if (deploymentQuery.error || !deployment) return <div className="py-8"><ErrorNotice error={deploymentQuery.error ?? new Error(t("deploymentDetail.notFound"))} /></div>;
   const traces = tracesQuery.data?.items ?? [];
   const policies = policiesQuery.data?.items ?? [];
-  const findingCount = traces.reduce((count, trace) => count + trace.findings.length, 0);
+  const findingCount = metricsQuery.data?.findings_summary?.total ?? traces.reduce((count, trace) => count + trace.findings.length, 0);
 
   return (
     <section className="py-6 sm:py-8">
@@ -207,6 +213,9 @@ export function DeploymentDetailPage() {
           <DeploymentTrafficView deployment={deployment} integration={integration} canManage={canManage} onEdit={() => setEditScopeOpen(true)} />
         </TabsContent>
       </Tabs>
+      {(section === 'runtime' || section === 'security') && <EventPagination page={paging.page} busy={tracesQuery.isFetching} nextCursor={tracesQuery.data?.nextCursor} onNext={paging.next} onPrevious={paging.previous} onLatest={paging.latest} />}
+      {selectedTrace && traceDetail.isPending ? <p role="status">{t('common.loading')}</p> : null}
+      {selectedTrace && traceDetail.error ? <ErrorNotice error={traceDetail.error} /> : null}
 
       <EditTrafficScopeSheet
         deployment={deployment}
@@ -218,7 +227,7 @@ export function DeploymentDetailPage() {
         onOpenChange={setEditScopeOpen}
         onSaved={async () => { setEditScopeOpen(false); await refreshDeployment(); }}
       />
-      <TraceDetailSheet trace={selectedTrace} deployment={deployment} integration={integration} guardrailName={guardrail?.name} policies={policies} open={Boolean(selectedTrace)} onOpenChange={(open) => { if (!open) setSelectedTrace(null); }} />
+      <TraceDetailSheet trace={traceDetail.data ?? null} deployment={deployment} integration={integration} guardrailName={guardrail?.name} policies={policies} open={Boolean(selectedTrace && traceDetail.data)} onOpenChange={(open) => { if (!open) setSelectedTrace(null); }} />
       <DeleteDeploymentSheet
         deployment={deployment}
         open={deleteOpen}
@@ -301,7 +310,7 @@ export function DeleteDeploymentSheet({ deployment, open, impact, loading, delet
 
 function DeploymentRuntimeView({ metrics, metricsLoading, metricsError, traces, tracesLoading, tracesError, policies, onInspect, onOpenSecurity }: { metrics?: Metrics; metricsLoading: boolean; metricsError: unknown; traces: DeploymentRuntimeTrace[]; tracesLoading: boolean; tracesError: unknown; policies: Policy[]; onInspect: (trace: DeploymentRuntimeTrace) => void; onOpenSecurity: () => void }) {
   const { t, i18n } = useTranslation();
-  const criticalCount = traces.reduce((count, trace) => count + trace.findings.filter((finding) => finding.severity === "critical").length, 0);
+  const criticalCount = metrics?.findings_summary?.critical ?? traces.reduce((count, trace) => count + trace.findings.filter((finding) => finding.severity === "critical").length, 0);
   return (
     <div className="space-y-4">
       <div><h2 className="text-base font-semibold">{t("deploymentDetail.runtimeTitle")}</h2><p className="mt-0.5 text-xs text-muted-foreground">{t("deploymentDetail.runtimeDescription")}</p></div>

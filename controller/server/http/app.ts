@@ -805,8 +805,20 @@ export function createHttpApp(input: {
       integrationId: z.string().min(1).optional(),
       since: z.coerce.date().optional(),
       before: z.coerce.date().optional(),
+      cursor: z.string().max(2048).optional(),
+      requestId: z.string().max(256).optional(),
+      direction: z.enum(['incoming','outgoing']).optional(),
+      outcome: z.enum(['allow','block','transform','error']).optional(),
+      captured: z.enum(['true']).transform(() => true).optional(),
+      findingsOnly: z.enum(['true']).transform(() => true).optional(),
     }).parse(context.req.query());
     return context.json(await input.service.queryRuntimeEvents(query));
+  });
+  app.get('/api/v1/runtime-events/:id', authenticated, async context => context.json(await input.service.getRuntimeEvent(context.req.param('id'), context.get('actor').role === 'admin')));
+  app.get('/api/v1/runtime-integrations', authenticated, async context => context.json(await input.service.runtimeIntegrationActivity()));
+  app.get('/api/v1/runtime-metrics', authenticated, async context => {
+    const scope = z.object({ window: z.enum(['1h','24h','7d','15d','30d']).default('24h'), guardrailId:z.string().max(256).optional(), deploymentId:z.string().max(256).optional() }).parse(context.req.query());
+    return context.json(await input.service.runtimeMetrics(scope));
   });
   app.get("/api/v1/audit-events", authenticated, async (context) => {
     const limit = z.coerce.number().int().min(1).max(500).default(100).parse(context.req.query("limit"));

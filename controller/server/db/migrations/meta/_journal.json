@@ -43,6 +43,13 @@
       "when": 1788860000000,
       "tag": "0005_policy_publication_identity",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788950000000,
+      "tag": "0006_runtime_event_deployment_index",
+      "breakpoints": true
     }
   ]
 }
