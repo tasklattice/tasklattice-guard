@@ -15,7 +15,6 @@ type Candidate = {
  */
 export function recommendationCatalog(policies: readonly Candidate[]) {
   return policies
-    .filter((policy) => !policy.protection?.legacyCollection)
     .filter((policy) => policy.source === "built_in" || policy.version !== "0")
     .map((policy) => ({
       id: policy.id,

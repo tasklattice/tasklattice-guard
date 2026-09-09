@@ -3,7 +3,6 @@ import { z } from "zod";
 
 export const protectionContractsSchema = z.object({
   version: z.string().min(1),
-  legacyCollections: z.array(z.string()).default([]),
   directories: z.array(z.enum(protectionDirectoryIds)),
   nativePolicies: z.record(z.string(), z.object({
     capability: z.string().min(1),
@@ -37,7 +36,6 @@ export function policyProtection(policy: PolicySurface, contracts: ProtectionCon
   const execution = native?.execution ?? (unknownFlow ? "custom" : "local");
   const model = Boolean(native?.modelCapabilities.length);
   return {
-    ...(contracts.legacyCollections.includes(policy.id) ? { legacyCollection: true } : {}),
     directory: declared[0] as ProtectionDirectoryId,
     execution,
     modelCapabilities: [...(native?.modelCapabilities ?? [])],

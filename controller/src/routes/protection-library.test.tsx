@@ -46,18 +46,16 @@ describe("focused protection library", () => {
     expect(routing.navigate).toHaveBeenCalledWith({ to: "/policy-library", search: { policy: undefined, version: undefined }, replace: true });
   });
 
-  it("shows the complete map, respects an empty directory, and makes legacy browsing explicit", async () => {
-    api.getPolicies.mockResolvedValue({ items: [current, { ...current, id: "mixed", name: "Mixed legacy collection", protection: { ...current.protection!, legacyCollection: true } }], count: 2 });
+  it("shows the complete map and respects an empty directory", async () => {
+    api.getPolicies.mockResolvedValue({ items: [current, { ...current, id: "mixed", name: "Mixed collection" }], count: 2 });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<QueryClientProvider client={client}><PolicyLibraryPage /></QueryClientProvider>);
     expect(await screen.findByRole("heading", { name: current.name })).toBeTruthy();
-    expect(screen.queryByRole("heading", { name: "Mixed legacy collection" })).toBeNull();
+    expect(screen.getByRole("heading", { name: "Mixed collection" })).toBeTruthy();
     fireEvent.click(screen.getAllByRole("button", { name: /Answer reliability/ })[0]!);
     expect(screen.queryByRole("heading", { name: current.name })).toBeNull();
     expect(screen.getByText("policyLibrary.noCatalogResults")).toBeTruthy();
-    fireEvent.click(screen.getAllByRole("button", { name: /All protections/ })[0]!);
-    fireEvent.click(screen.getByRole("checkbox", { name: "Include legacy collections" }));
-    expect(screen.getByRole("heading", { name: "Mixed legacy collection" })).toBeTruthy();
-    expect(screen.getByText("Legacy collection")).toBeTruthy();
+    fireEvent.click(screen.getAllByRole("button", { name: /policyLibrary.clearFilters/ })[0]!);
+    expect(screen.getByRole("heading", { name: "Mixed collection" })).toBeTruthy();
   });
 });

@@ -1,6 +1,5 @@
 {
   "version": "1.0.0",
-  "legacyCollections": ["advanced-au-pii-protection", "airline-passenger-data-protection-uae", "aviation-operations-security", "baseline-pii-protection", "claims-agent-safety", "eu-ai-act-article5", "gdpr-eu-pii-protection", "nsfw-content-filter-all-regions", "nsfw-content-filter-australia", "nsfw-content-filter-basic", "prompt-injection-protection", "mas-ai-risk-management", "pdpa-singapore", "uae-regulatory-compliance", "pattern-matching"],
   "directories": ["content_safety", "privacy", "business_topics", "content_filters", "attacks_and_abuse", "application_injection", "business_rules", "answer_reliability"],
   "nativePolicies": {
     "builtin-secrets": {"capability": "secrets", "rails": ["input", "output"], "modelCapabilities": [], "requiredContext": [], "execution": "local", "outputStreaming": "complete_response"},

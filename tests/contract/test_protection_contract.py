@@ -34,11 +34,3 @@ def test_native_contracts_have_explicit_supported_surfaces() -> None:
         assert (native["outputStreaming"] == "not_applicable") == ("output" not in native["rails"])
         if native["execution"] == "local":
             assert native["modelCapabilities"] == []
-
-
-def test_legacy_collections_remain_available_without_rewriting_source_rules() -> None:
-    catalog = {policy["id"]: policy for policy in policy_catalog()}
-    for policy_id in protection_contracts()["legacyCollections"]:
-        assert catalog[policy_id]["protection"]["legacyCollection"] is True
-        assert catalog[policy_id]["rules"]
-    assert "legacyCollection" not in catalog["local-passports"]["protection"]

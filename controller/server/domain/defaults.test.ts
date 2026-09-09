@@ -80,7 +80,6 @@ describe("Default Guardrail baseline", () => {
       expect(cases.some((item) => item.sourcePolicyId === id)).toBe(false);
       expect(policies.find((item) => item.id === id)?.rules).toHaveLength(ruleCount);
     }
-    expect(draft.policyBindings.every((binding) => !policies.find((item) => item.id === binding.policyId)!.protection.legacyCollection)).toBe(true);
     expect(policies).toEqual(originalCatalog);
   });
 

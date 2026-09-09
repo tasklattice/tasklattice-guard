@@ -6,16 +6,13 @@ import { recommendationCatalog } from "./recommendation-catalog.js";
 const source = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
 
 describe("Document recommendation catalog", () => {
-  it("excludes retired mixed collections without removing them from the source library", () => {
-    const legacy = source.filter((policy) => policy.protection.legacyCollection);
-    expect(legacy.length).toBeGreaterThan(0);
+  it("includes every published built-in Policy in the recommendation catalog", () => {
     const recommendations = recommendationCatalog(source);
-    expect(recommendations.map((policy) => policy.id)).not.toEqual(expect.arrayContaining(legacy.map((policy) => policy.id)));
-    for (const policy of legacy) expect(recommendations.some((item) => item.id === policy.id)).toBe(false);
-    const focusedEmail = source.find((policy) => !policy.protection.legacyCollection && policy.rules.some((rule) => rule.id === "pattern/email"));
+    const focusedEmail = source.find((policy) => policy.rules.some((rule) => rule.id === "pattern/email"));
     expect(focusedEmail).toBeDefined();
     expect(recommendations.some((policy) => policy.id === focusedEmail!.id)).toBe(true);
     expect(source.some((policy) => policy.id === "baseline-pii-protection")).toBe(true);
+    expect(recommendations.some((policy) => policy.id === "baseline-pii-protection")).toBe(true);
   });
 
   it("provides real direction, dependency and limitation metadata without implementation bodies", () => {

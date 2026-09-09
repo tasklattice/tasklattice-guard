@@ -65,7 +65,7 @@ export function ProtectionDirectoryEditor({ directory, policies, bindings, onCha
 }) {
   const { t } = useTranslation();
   const available = policies.filter((policy) => policyDirectory(policy) === directory && (policy.source === "built_in" || policy.version !== "0")
-    && (!policy.protection?.legacyCollection || bindings.some((binding) => binding.policy_id === policy.id)));
+    );
   return <div className="space-y-5">
     {available.length ? <div className="divide-y overflow-hidden rounded-xl border bg-card">
       {available.map((policy) => {

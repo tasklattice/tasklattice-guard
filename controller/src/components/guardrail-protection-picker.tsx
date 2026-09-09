@@ -41,7 +41,7 @@ export function GuardrailProtectionPicker({ policies, bindings, onChange, issueF
 
   // Include unavailable pinned bindings so they can be removed explicitly.
   const available = policies.filter(policy => bindings.some(binding => binding.policy_id === policy.id)
-    || ((policy.source === "built_in" || policy.version !== "0") && !policy.protection?.legacyCollection));
+    || (policy.source === "built_in" || policy.version !== "0"));
   const missing = bindings.filter(binding => !policies.some(policy => policy.id === binding.policy_id));
   return <div ref={root} className="space-y-7">
     <div className="flex flex-wrap gap-2">
