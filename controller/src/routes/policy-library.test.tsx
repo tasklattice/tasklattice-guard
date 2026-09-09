@@ -279,11 +279,10 @@ describe("Catalog filtering", () => {
     expect(screen.getByRole("checkbox", { name: /Australia/ }).getAttribute("aria-checked")).toBe("true");
     fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
     expect(screen.queryByRole("combobox")).toBeNull();
-    expect(screen.getByRole("button", { name: /protection.allDirectories/ }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.queryByRole("button", { name: /protection.allDirectories/ })).toBeNull();
     expect(screen.getByRole("checkbox", { name: /Australia/ }).getAttribute("aria-checked")).toBe("false");
     expect((screen.getByRole("button", { name: "Clear filters" }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: /protection.directories.privacy/ }));
     expect(screen.getByRole("button", { name: /protection.directories.privacy/ }).getAttribute("aria-pressed")).toBe("true");
-    expect(screen.getByRole("button", { name: /protection.allDirectories/ }).getAttribute("aria-pressed")).toBe("false");
   });
 });

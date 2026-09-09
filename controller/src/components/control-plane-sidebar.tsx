@@ -32,8 +32,8 @@ const navigation = [
   {
     label: "nav.runtime",
     items: [
-      { label: "nav.deployments", to: "/deployments", icon: Rocket, count: "deployments" },
-      { label: "nav.integrations", to: "/integrations", icon: Cable, count: "integrations" },
+      { label: "nav.deployments", to: "/integration/routers", icon: Rocket, count: "deployments" },
+      { label: "nav.integrations", to: "/integration/endpoint", icon: Cable, count: "integrations" },
     ],
   },
   {

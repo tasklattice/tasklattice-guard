@@ -163,8 +163,8 @@ export function DeploymentsPage() {
                   <ShieldCheck className="mt-0.5 size-4 text-primary" />
                   <div>
                     <Link
-                      to="/deployments/$deploymentId"
-                      params={{ deploymentId: defaultDeployment.id }}
+                      to="/integration/routers/$routerId"
+                      params={{ routerId: defaultDeployment.id }}
                       className="inline-flex min-h-7 items-center gap-1.5 rounded-sm text-sm font-medium outline-none hover:text-primary focus-visible:ring-2 focus-visible:ring-ring/30"
                     >
                       {defaultDeployment.name}<ChevronRight className="size-3.5" />
@@ -266,7 +266,7 @@ function IntegrationRouteTable({
                   <Button type="button" variant="ghost" size="icon" className="size-11" aria-label={t("deployments.moveDown", { name: deployment.name })} disabled={!canManage || reordering || catchAll || index >= lastMovableIndex} onClick={() => move(index, 1)}><ArrowDown className="size-3.5" /></Button>
                 </div>
               </div>
-              <div><Link to="/deployments/$deploymentId" params={{ deploymentId: deployment.id }} className="group inline-flex min-h-11 items-center gap-2 rounded-md outline-none hover:text-primary focus-visible:ring-2 focus-visible:ring-ring/30"><ListFilter className="size-4 text-primary" /><strong className="text-sm font-medium">{deployment.name}</strong><ChevronRight className="size-3.5 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary" /></Link><p className="text-xs text-muted-foreground">{catchAll ? t("deployments.catchAllRoute") : t("deployments.conditionCount", { count: countTrafficConditions(deployment.traffic_scope) })}</p></div>
+              <div><Link to="/integration/routers/$routerId" params={{ routerId: deployment.id }} className="group inline-flex min-h-11 items-center gap-2 rounded-md outline-none hover:text-primary focus-visible:ring-2 focus-visible:ring-ring/30"><ListFilter className="size-4 text-primary" /><strong className="text-sm font-medium">{deployment.name}</strong><ChevronRight className="size-3.5 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary" /></Link><p className="text-xs text-muted-foreground">{catchAll ? t("deployments.catchAllRoute") : t("deployments.conditionCount", { count: countTrafficConditions(deployment.traffic_scope) })}</p></div>
               <TrafficScopeBadges deployment={deployment} />
               <div><p className="text-xs font-medium">{guardrail?.name ?? deployment.guardrail_id}</p><p className="mt-1 text-xs text-muted-foreground">{t("deployments.version", { version: deployment.guardrail_version })}</p></div>
               <div className="flex items-center justify-between gap-3 xl:justify-start"><StateBadge state={deployment.enabled ? "protected" : "paused"} /><Switch disabled={!canManage} className="after:-inset-y-3.5" aria-label={`${t(deployment.enabled ? "deployments.pause" : "deployments.enable")} ${deployment.name}`} checked={deployment.enabled} onCheckedChange={(enabled) => onToggle(deployment.id, enabled)} /></div>
@@ -282,7 +282,7 @@ function LegacyDeploymentRow({ deployment, guardrail, onToggle }: { deployment: 
   const { t } = useTranslation();
   return (
     <article className="grid gap-4 p-5 lg:grid-cols-[minmax(210px,1.1fr)_minmax(320px,1.8fr)_minmax(155px,.8fr)_132px] lg:items-center">
-      <div><Link to="/deployments/$deploymentId" params={{ deploymentId: deployment.id }} className="group inline-flex min-h-11 items-center gap-2 rounded-md outline-none hover:text-primary focus-visible:ring-2 focus-visible:ring-ring/30"><ListFilter className="size-4 text-primary" /><strong className="text-sm font-medium">{deployment.name}</strong><ChevronRight className="size-3.5 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary" /></Link><p className="text-xs text-muted-foreground">{t("deployments.conditionCount", { count: countTrafficConditions(deployment.traffic_scope) })}</p></div>
+              <div><Link to="/integration/routers/$routerId" params={{ routerId: deployment.id }} className="group inline-flex min-h-11 items-center gap-2 rounded-md outline-none hover:text-primary focus-visible:ring-2 focus-visible:ring-ring/30"><ListFilter className="size-4 text-primary" /><strong className="text-sm font-medium">{deployment.name}</strong><ChevronRight className="size-3.5 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary" /></Link><p className="text-xs text-muted-foreground">{t("deployments.conditionCount", { count: countTrafficConditions(deployment.traffic_scope) })}</p></div>
       <TrafficScopeBadges deployment={deployment} />
       <div><p className="text-xs font-medium">{guardrail?.name ?? deployment.guardrail_id}</p><p className="mt-1 text-xs text-muted-foreground">{t("deployments.version", { version: deployment.guardrail_version })}</p></div>
       <div className="flex items-center justify-between gap-3 lg:justify-start"><StateBadge state={deployment.enabled ? "protected" : "paused"} /><Switch className="after:-inset-y-3.5" aria-label={`${t(deployment.enabled ? "deployments.pause" : "deployments.enable")} ${deployment.name}`} checked={deployment.enabled} onCheckedChange={onToggle} /></div>
@@ -399,7 +399,7 @@ export function CreateDeploymentSheet({
             {integrationQuery.isLoading ? <Skeleton className="h-24 rounded-lg" /> : null}
             {integrationQuery.error ? <ErrorNotice error={integrationQuery.error} /> : null}
             {!integrationQuery.isLoading && !integrations.length ? (
-              <EmptyState title={t("deployments.noIntegrationsTitle")} description={t("deployments.noIntegrationsDescription")} action={<Button className="min-h-11" asChild variant="outline"><Link to="/integrations"><Plus />{t("deployments.createIntegration")}</Link></Button>} />
+              <EmptyState title={t("deployments.noIntegrationsTitle")} description={t("deployments.noIntegrationsDescription")} action={<Button className="min-h-11" asChild variant="outline"><Link to="/integration/endpoint"><Plus />{t("deployments.createIntegration")}</Link></Button>} />
             ) : integrations.length ? (
               <Field label={t("deployments.gateways")} hint={t("deployments.gatewaysHint")}>
                 <MultiSelectCombobox

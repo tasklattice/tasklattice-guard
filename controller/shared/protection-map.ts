@@ -35,8 +35,6 @@ export const protectionDirectories = [
 ] as const satisfies ReadonlyArray<{ id: ProtectionDirectoryId; label: string; description: string }>;
 
 export type PolicyProtection = {
-  /** Kept for existing bindings and deliberate legacy inspection, not new presets. */
-  legacyCollection?: boolean;
   directory: ProtectionDirectoryId;
   execution: "local" | "model" | "local_then_model" | "custom";
   /** A dependency, not evidence that an assignment is configured or validated. */

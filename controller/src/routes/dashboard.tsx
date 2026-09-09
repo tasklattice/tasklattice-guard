@@ -143,7 +143,7 @@ function DashboardFilters({ guardrailId, window, guardrails, onGuardrailChange, 
           {(["1h", "24h", "7d", "15d", "30d"] as MetricWindow[]).map((value) => <SelectItem key={value} value={value}>{t(`dashboard.windows.${value}`)}</SelectItem>)}
         </SelectContent>
       </Select>
-      <Button className="min-h-11 w-full sm:w-auto" asChild><Link to="/deployments"><Settings2 />{t("dashboard.manage")}</Link></Button>
+      <Button className="min-h-11 w-full sm:w-auto" asChild><Link to="/integration/routers"><Settings2 />{t("dashboard.manage")}</Link></Button>
     </div>
   );
 }
@@ -197,10 +197,10 @@ function AttentionPanel({ metrics }: { metrics: Metrics }) {
   if (!metrics.total_decisions) return <GettingStarted metrics={metrics} />;
   const items = [
     metrics.latency_slo.p95_status === "breached" ? { icon: TriangleAlert, title: t("dashboard.attentionLatency"), detail: t("dashboard.attentionLatencyDetail", { value: metrics.runtime_p95_ms }), to: "/logs" as const } : null,
-    metrics.degraded_integrations ? { icon: CircleAlert, title: t("dashboard.attentionIntegration"), detail: t("dashboard.attentionIntegrationDetail", { count: metrics.degraded_integrations }), to: "/integrations" as const } : null,
+    metrics.degraded_integrations ? { icon: CircleAlert, title: t("dashboard.attentionIntegration"), detail: t("dashboard.attentionIntegrationDetail", { count: metrics.degraded_integrations }), to: "/integration/endpoint" as const } : null,
     metrics.fail_closed_count ? { icon: ShieldCheck, title: t("dashboard.attentionFailClosed"), detail: t("dashboard.attentionFailClosedDetail", { count: metrics.fail_closed_count }), to: "/logs" as const } : null,
     metrics.guardrails_needing_test ? { icon: CircleAlert, title: t("dashboard.attentionTesting"), detail: t("dashboard.attentionTestingDetail", { count: metrics.guardrails_needing_test }), to: "/guardrails" as const } : null,
-  ].filter(Boolean).slice(0, 3) as Array<{ icon: ComponentType<{ className?: string }>; title: string; detail: string; to: "/logs" | "/integrations" | "/guardrails" }>;
+  ].filter(Boolean).slice(0, 3) as Array<{ icon: ComponentType<{ className?: string }>; title: string; detail: string; to: "/logs" | "/integration/endpoint" | "/guardrails" }>;
 
   return (
     <Card className="shadow-none">
@@ -223,7 +223,7 @@ function AttentionPanel({ metrics }: { metrics: Metrics }) {
   );
 }
 
-function AttentionItem({ icon: Icon, title, detail, to }: { icon: ComponentType<{ className?: string }>; title: string; detail: string; to: "/logs" | "/integrations" | "/guardrails" }) {
+function AttentionItem({ icon: Icon, title, detail, to }: { icon: ComponentType<{ className?: string }>; title: string; detail: string; to: "/logs" | "/integration/endpoint" | "/guardrails" }) {
   return (
     <Link to={to} className="group flex min-h-16 items-start gap-3 rounded-lg px-2 py-3 transition-colors hover:bg-muted/60 focus-visible:outline-2 focus-visible:outline-ring">
       <span className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-md bg-amber-50 text-amber-700"><Icon className="size-4" /></span>
@@ -251,7 +251,7 @@ function GettingStarted({ metrics }: { metrics: Metrics }) {
         <div className="space-y-1">{steps.map(([done, label]) => <div key={label} className="flex min-h-10 items-center gap-3 rounded-lg px-2 text-sm"><span className={cn("grid size-5 place-items-center rounded-full", done ? "bg-emerald-50 text-emerald-700" : "text-muted-foreground")}>
           {done ? <Check className="size-3.5" /> : <Circle className="size-3.5" />}
         </span>{label}</div>)}</div>
-        <Button className="mt-auto w-full" variant="outline" asChild><Link to={guardrailCreated ? "/deployments" : "/guardrails"}>{guardrailCreated ? t("dashboard.createDeployment") : t("dashboard.createGuardrail")}<ArrowRight /></Link></Button>
+      <Button className="mt-auto w-full" variant="outline" asChild><Link to={guardrailCreated ? "/integration/routers" : "/guardrails"}>{guardrailCreated ? t("dashboard.createDeployment") : t("dashboard.createGuardrail")}<ArrowRight /></Link></Button>
       </CardContent>
     </Card>
   );

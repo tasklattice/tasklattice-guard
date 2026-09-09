@@ -7,7 +7,7 @@ import {
 
 export type HelpAudience = "user" | "developer" | "operator";
 export type HelpLocale = "en" | "zh-CN";
-export type HelpLinkTo = "/policy-library" | "/guardrails" | "/deployments" | "/integrations" | "/logs" | "/playground";
+export type HelpLinkTo = "/policy-library" | "/guardrails" | "/integration/routers" | "/integration/endpoint" | "/logs" | "/playground";
 
 export type HelpStep = { title: string; description: string };
 export type HelpTermRow = { name: string; description: string };
@@ -289,7 +289,7 @@ const ZH_CONTENT: HelpContent = {
             { title: "输出检查", description: "把完整或按配置缓冲的模型响应送入相同 Guardrail Version。阻断时不要泄露原始响应。" },
             { title: "关联调用", description: "使用稳定 call ID 关联输入与输出，保证两阶段固定到同一个版本；Integration 身份隔离不同网关。" },
           ],
-          links: [{ label: "管理 Integrations", to: "/integrations" }, { label: "查看 Deployments", to: "/deployments" }],
+          links: [{ label: "管理 Endpoints", to: "/integration/endpoint" }, { label: "查看 Traffic Routers", to: "/integration/routers" }],
         },
       ],
     },
@@ -322,7 +322,7 @@ const ZH_CONTENT: HelpContent = {
             { title: "保留 fallback", description: "All traffic 路由保持在最后；未匹配任何 Integration 路由的流量使用系统管理 baseline。" },
             { title: "验证可信上下文", description: "优先使用 Integration 身份、已验证 JWT claims 或由可信代理重写的 headers。" },
           ],
-          links: [{ label: "管理 Integrations", to: "/integrations" }, { label: "管理 Deployments", to: "/deployments" }],
+          links: [{ label: "管理 Endpoints", to: "/integration/endpoint" }, { label: "管理 Traffic Routers", to: "/integration/routers" }],
         },
         {
           id: "operator-release-rollback",
@@ -348,7 +348,7 @@ const ZH_CONTENT: HelpContent = {
             { title: "4. Provider 与依赖", description: "确认专用 evaluator、模型、网络和 Secret 可用；不要用通用聊天模型冒充 runtime judge。" },
             { title: "5. 容量与超时", description: "查看排队、Rail、Action 和 Provider 延迟，区分并发饱和、deadline 与真实检测失败。" },
           ],
-          links: [{ label: "查看运行日志", to: "/logs" }, { label: "查看 Integrations", to: "/integrations" }],
+          links: [{ label: "查看运行日志", to: "/logs" }, { label: "查看 Endpoints", to: "/integration/endpoint" }],
         },
       ],
     },
@@ -533,7 +533,7 @@ const EN_CONTENT: HelpContent = {
             { title: "Output check", description: "Check model output and never leak original content when blocked." },
             { title: "Call correlation", description: "Use a stable call ID so input and output remain pinned to one version." },
           ],
-          links: [{ label: "Manage Integrations", to: "/integrations" }, { label: "View Deployments", to: "/deployments" }],
+          links: [{ label: "Manage Endpoints", to: "/integration/endpoint" }, { label: "View Traffic Routers", to: "/integration/routers" }],
         },
       ],
     },
@@ -566,7 +566,7 @@ const EN_CONTENT: HelpContent = {
             { title: "Keep fallback", description: "All traffic stays last; unmatched traffic uses the system baseline." },
             { title: "Verify context", description: "Prefer Integration identity, verified JWT claims, or trusted-proxy rewritten headers." },
           ],
-          links: [{ label: "Manage Integrations", to: "/integrations" }, { label: "Manage Deployments", to: "/deployments" }],
+          links: [{ label: "Manage Endpoints", to: "/integration/endpoint" }, { label: "Manage Traffic Routers", to: "/integration/routers" }],
         },
         {
           id: "operator-release-rollback",
@@ -592,7 +592,7 @@ const EN_CONTENT: HelpContent = {
             { title: "4. Provider", description: "Check specialized evaluators, models, networking, and Secrets." },
             { title: "5. Capacity", description: "Separate queue saturation, deadlines, and provider latency from true policy failures." },
           ],
-          links: [{ label: "View runtime logs", to: "/logs" }, { label: "View Integrations", to: "/integrations" }],
+          links: [{ label: "View runtime logs", to: "/logs" }, { label: "View Endpoints", to: "/integration/endpoint" }],
         },
       ],
     },

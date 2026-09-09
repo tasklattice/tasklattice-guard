@@ -41,6 +41,20 @@ describe("Policy catalog", () => {
     });
   });
 
+  it("keeps regulatory framework Policies discoverable in the default catalog", () => {
+    const catalog = PolicyCatalog.load(assetDirectory);
+
+    expect(catalog.get("eu-ai-act-article5")?.tags).toEqual(expect.arrayContaining([expect.objectContaining({ id: "framework:eu-ai-act" })]));
+    expect(catalog.get("gdpr-eu-pii-protection")?.tags).toEqual(expect.arrayContaining([expect.objectContaining({ id: "framework:gdpr" })]));
+    expect(catalog.get("mas-ai-risk-management")?.tags).toEqual(expect.arrayContaining([expect.objectContaining({ id: "framework:mas-ai-risk" })]));
+    expect(catalog.get("pdpa-singapore")?.tags).toEqual(expect.arrayContaining([expect.objectContaining({ id: "framework:pdpa" })]));
+
+    const jurisdictions = new Set(
+      catalog.list().flatMap((policy) => policy.tags.filter((tag) => tag.namespace === "jurisdiction").map((tag) => tag.value)),
+    );
+    expect(jurisdictions).toEqual(new Set(["au", "eu", "sg", "singapore", "uae"]));
+  });
+
   it("uses the reviewed Policy facets and canonical NeMo Rail terminology", () => {
     const tags = PolicyCatalog.load(assetDirectory).list().flatMap((policy) => policy.tags);
     const namespaces = new Set<string>(tags.map((tag) => tag.namespace));

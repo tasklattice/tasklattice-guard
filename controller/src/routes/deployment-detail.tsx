@@ -80,7 +80,7 @@ type DeploymentDeletionConfirmation = {
 
 export function DeploymentDetailPage() {
   const { t } = useTranslation();
-  const { deploymentId } = useParams({ strict: false }) as { deploymentId: string };
+  const { routerId: deploymentId } = useParams({ strict: false }) as { routerId: string };
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const auth = useAuth();
@@ -125,7 +125,7 @@ export function DeploymentDetailPage() {
         queryClient.invalidateQueries({ queryKey: queryKeys.auditEvents }),
         queryClient.invalidateQueries({ queryKey: queryKeys.systemStatus }),
       ]);
-      navigate({ to: "/deployments" });
+      navigate({ to: "/integration/routers" });
     },
     onError: async () => { await deletionImpactQuery.refetch(); },
   });
@@ -155,7 +155,7 @@ export function DeploymentDetailPage() {
 
   return (
     <section className="py-6 sm:py-8">
-      <Link to="/deployments" className="inline-flex min-h-11 items-center gap-2 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="size-4" />{t("deploymentDetail.back")}</Link>
+      <Link to="/integration/routers" className="inline-flex min-h-11 items-center gap-2 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="size-4" />{t("deploymentDetail.back")}</Link>
       <div className="mt-3 flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">

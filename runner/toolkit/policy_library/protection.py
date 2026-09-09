@@ -35,7 +35,6 @@ def policy_protection(item: PolicySpec) -> dict:
     if directory == "application_injection":
         limitations.append("Content screening does not replace parameterized queries, output encoding, sandboxing or tool authorization.")
     return {
-        **({"legacyCollection": True} if item.id in contracts.get("legacyCollections", []) else {}),
         "directory": directory,
         "execution": execution,
         "modelCapabilities": native.get("modelCapabilities", []),

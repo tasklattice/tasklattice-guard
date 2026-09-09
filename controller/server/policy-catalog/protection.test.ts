@@ -42,12 +42,4 @@ describe("Protection contract", () => {
     expect(() => policyProtection({ ...policy, rails: ["output"] }, contracts)).toThrow(/outside its runtime contract/);
   });
 
-  it("keeps mixed legacy collections resolvable without presenting them as focused Policies", () => {
-    expect(contracts.legacyCollections).toHaveLength(15);
-    for (const id of contracts.legacyCollections) {
-      expect(catalog.get(id)?.protection.legacyCollection).toBe(true);
-      expect(catalog.get(id)?.rules.length).toBeGreaterThan(0);
-    }
-    expect(catalog.get("local-passports")?.protection.legacyCollection).toBeUndefined();
-  });
 });

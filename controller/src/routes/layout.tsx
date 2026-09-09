@@ -25,8 +25,8 @@ const names: Record<string, { group?: string; page: string }> = {
   "/guardrails": { group: "nav.guardrailDesign", page: "nav.guardrails" },
   "/policy-library": { group: "nav.guardrailDesign", page: "nav.policyLibrary" },
   "/playground": { group: "nav.guardrailDesign", page: "nav.playground" },
-  "/deployments": { group: "nav.runtime", page: "nav.deployments" },
-  "/integrations": { group: "nav.runtime", page: "nav.integrations" },
+  "/integration/routers": { group: "nav.runtime", page: "nav.deployments" },
+  "/integration/endpoint": { group: "nav.runtime", page: "nav.integrations" },
   "/logs": { group: "nav.observability", page: "nav.logs" },
   "/audit-log": { group: "nav.observability", page: "nav.auditLog" },
   "/access": { group: "nav.system", page: "nav.access" },
@@ -46,7 +46,7 @@ export function ControlPlaneLayout() {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const location = names[pathname]
     ?? (pathname.startsWith("/guardrails/") ? names["/guardrails"] : undefined)
-    ?? (pathname.startsWith("/deployments/") ? names["/deployments"] : undefined)
+    ?? (pathname.startsWith("/integration/routers/") ? names["/integration/routers"] : undefined)
     ?? { page: "nav.dashboard" };
   if (auth.isLoading) {
     return <div className="flex min-h-dvh items-center justify-center bg-background"><div className="flex items-center gap-3 text-sm text-muted-foreground"><ShieldCheck className="size-5 animate-pulse text-primary" />{t("auth.sessionLoading")}</div></div>;

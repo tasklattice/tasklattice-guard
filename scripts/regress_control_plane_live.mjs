@@ -75,7 +75,7 @@ try {
   const catalog = (await call('/api/v1/policies')).items;
   const selected = analysis.recommended_policy_ids.map(id => {
     const p = catalog.find(p => p.id === id);
-    assert(p && p.protection?.execution === 'local' && !p.protection.legacyCollection
+    assert(p && p.protection?.execution === 'local'
       && p.protection.modelCapabilities.length === 0 && p.protection.requiredContext.length === 0,
     `Recommendation ${id} is not a model-free, focused Policy; do not silently replace it.`);
     assert(p.parameters.every(x => !x.required), 'Do not invent required Policy parameters.');
