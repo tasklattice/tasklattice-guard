@@ -11,6 +11,7 @@ export function createDatabase(config: ControllerConfig) {
     connectionString: config.databaseUrl,
     max: config.nodeEnv === "test" ? 2 : 20,
     application_name: "tali-guard-controller",
+    connectionTimeoutMillis: 5_000,
   });
   const db = drizzle(pool, { schema });
   return { db, pool };

@@ -178,10 +178,11 @@ export function GuardrailDetailPage() {
     queryKey: queryKeys.metricsScope({ guardrailId, window }),
     queryFn: ({ signal }) => getMetrics({ guardrailId, window }, signal),
   });
-  const findingsPaging = useEventCursor(JSON.stringify([guardrailId, window]));
+  const [findingSeverity, setFindingSeverity] = useState<GuardrailFindingSeverityFilter>('all');
+  const findingsPaging = useEventCursor(JSON.stringify([guardrailId, window, findingSeverity]));
   const findingsQuery = useQuery({
-    queryKey: [...queryKeys.guardrailFindings(guardrailId, window), findingsPaging.cursor ?? null],
-    queryFn: ({ signal }) => getGuardrailFindings(guardrailId, window, 100, findingsPaging.cursor, signal),
+    queryKey: [...queryKeys.guardrailFindings(guardrailId, window), findingSeverity, findingsPaging.cursor ?? null],
+    queryFn: ({ signal }) => getGuardrailFindings(guardrailId, window, 100, findingsPaging.cursor, signal, findingSeverity),
     gcTime: 30_000,
   });
   const deletionImpactQuery = useQuery({
@@ -290,7 +291,7 @@ export function GuardrailDetailPage() {
           <GuardrailRuntimeView guardrailId={guardrail.id} metrics={metricsQuery.data} loading={metricsQuery.isLoading} error={metricsQuery.error} deployments={deployments} versions={guardrailVersions} window={window} onWindowChange={setWindow} />
         </TabsContent>
         <TabsContent value="findings" className="pt-5">
-          <GuardrailFindingsView data={findingsQuery.data} loading={findingsQuery.isLoading} error={findingsQuery.error} policies={policies} deployments={deployments} integrations={integrationsQuery.data?.items ?? []} window={window} onWindowChange={setWindow} />
+          <GuardrailFindingsView data={findingsQuery.data} loading={findingsQuery.isLoading} error={findingsQuery.error} policies={policies} deployments={deployments} integrations={integrationsQuery.data?.items ?? []} window={window} onWindowChange={setWindow} severity={findingSeverity} onSeverityChange={setFindingSeverity} />
           <EventPagination page={findingsPaging.page} busy={findingsQuery.isFetching} nextCursor={findingsQuery.data?.nextCursor} onNext={findingsPaging.next} onPrevious={findingsPaging.previous} onLatest={findingsPaging.latest} />
         </TabsContent>
         <TabsContent value="immutable" className="pt-5">
@@ -457,9 +458,11 @@ export function GuardrailRuntimeView({ guardrailId, metrics, loading, error, dep
 
 type GuardrailFindingSeverityFilter = "all" | DeploymentTraceFinding["severity"];
 
-export function GuardrailFindingsView({ data, loading, error, policies, deployments, integrations, window, onWindowChange }: { data?: GuardrailFindingPage; loading: boolean; error: unknown; policies: Policy[]; deployments: Awaited<ReturnType<typeof getDeployments>>["items"]; integrations: Integration[]; window: MetricWindow; onWindowChange: (window: MetricWindow) => void }) {
+export function GuardrailFindingsView({ data, loading, error, policies, deployments, integrations, window, onWindowChange, severity: controlledSeverity, onSeverityChange }: { data?: GuardrailFindingPage; loading: boolean; error: unknown; policies: Policy[]; deployments: Awaited<ReturnType<typeof getDeployments>>["items"]; integrations: Integration[]; window: MetricWindow; onWindowChange: (window: MetricWindow) => void; severity?: GuardrailFindingSeverityFilter; onSeverityChange?: (severity: GuardrailFindingSeverityFilter) => void }) {
   const { t, i18n } = useTranslation();
-  const [severity, setSeverity] = useState<GuardrailFindingSeverityFilter>("all");
+  const [localSeverity, setLocalSeverity] = useState<GuardrailFindingSeverityFilter>('all');
+  const severity = controlledSeverity ?? localSeverity;
+  const setSeverity = onSeverityChange ?? setLocalSeverity;
   const findings = data?.items ?? [];
   const summary = data?.summary;
   const counts = useMemo(() => ({

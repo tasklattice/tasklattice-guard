@@ -86,7 +86,8 @@ export function DeploymentDetailPage() {
   const auth = useAuth();
   const canManage = auth.user?.role === "admin";
   const [section, setSection] = useState("runtime");
-  const paging = useEventCursor(deploymentId);
+  const [severity, setSeverity] = useState<FindingSeverityFilter>('all');
+  const paging = useEventCursor(JSON.stringify([deploymentId, section, severity]));
   const [editScopeOpen, setEditScopeOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [selectedTrace, setSelectedTrace] = useState<DeploymentRuntimeTrace | null>(null);
@@ -96,8 +97,8 @@ export function DeploymentDetailPage() {
   const policiesQuery = useQuery({ queryKey: queryKeys.policies, queryFn: getPolicies });
   const fieldsQuery = useQuery({ queryKey: queryKeys.trafficScopeFields, queryFn: getTrafficScopeFields });
   const tracesQuery = useQuery({
-    queryKey: [...queryKeys.deploymentTraces(deploymentId, 100), paging.cursor ?? null],
-    queryFn: ({ signal }) => getDeploymentTraces(deploymentId, 100, paging.cursor, signal),
+    queryKey: [...queryKeys.deploymentTraces(deploymentId, 100), section, severity, paging.cursor ?? null],
+    queryFn: ({ signal }) => getDeploymentTraces(deploymentId, 100, paging.cursor, signal, section === 'security' ? { severity } : undefined),
     refetchInterval: paging.page === 1 && (section === 'runtime' || section === 'security') ? 15_000 : false,
     refetchOnWindowFocus: false,
     gcTime: 30_000,
@@ -199,6 +200,9 @@ export function DeploymentDetailPage() {
         </TabsContent>
         <TabsContent value="security" className="pt-5">
           <DeploymentSecurityView
+            severity={severity}
+            onSeverityChange={setSeverity}
+            summary={metricsQuery.data?.findings_summary}
             traces={traces}
             loading={tracesQuery.isLoading}
             error={tracesQuery.error}
@@ -345,17 +349,17 @@ export function DeploymentRuntimeEventTable({ traces, loading, error, policies, 
 
 type FindingSeverityFilter = "all" | DeploymentTraceFinding["severity"];
 
-function DeploymentSecurityView({ traces, loading, error, policies, onInspect }: { traces: DeploymentRuntimeTrace[]; loading: boolean; error: unknown; policies: Policy[]; onInspect: (trace: DeploymentRuntimeTrace) => void }) {
+function DeploymentSecurityView({ traces, loading, error, policies, onInspect, severity, onSeverityChange, summary }: { traces: DeploymentRuntimeTrace[]; loading: boolean; error: unknown; policies: Policy[]; onInspect: (trace: DeploymentRuntimeTrace) => void; severity: FindingSeverityFilter; onSeverityChange: (value: FindingSeverityFilter) => void; summary: Metrics['findings_summary'] }) {
   const { t, i18n } = useTranslation();
-  const [severity, setSeverity] = useState<FindingSeverityFilter>("all");
+  const setSeverity = onSeverityChange;
   const findings = useMemo(() => traces.flatMap((trace) => trace.findings.map((finding) => ({ trace, finding }))), [traces]);
   const counts = useMemo(() => ({
-    all: findings.length,
-    critical: findings.filter((item) => item.finding.severity === "critical").length,
-    high: findings.filter((item) => item.finding.severity === "high").length,
-    medium: findings.filter((item) => item.finding.severity === "medium").length,
-    low: findings.filter((item) => item.finding.severity === "low").length,
-  }), [findings]);
+    all: summary?.total ?? 0,
+    critical: summary?.critical ?? 0,
+    high: summary?.high ?? 0,
+    medium: summary?.medium ?? 0,
+    low: summary?.low ?? 0,
+  }), [summary]);
   const visibleFindings = severity === "all" ? findings : findings.filter((item) => item.finding.severity === severity);
   const filters: FindingSeverityFilter[] = ["all", "critical", "high", "medium", "low"];
   const evidenceUnavailable = traces.length > 0 && traces.some((trace) => trace.evidence_status === "not_collected");

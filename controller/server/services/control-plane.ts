@@ -2,8 +2,11 @@ import { createHash, createPrivateKey, randomUUID, sign } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { programmablePolicyProtection } from "../policy-studio/protection.js";
 import { queryRuntimeMetrics, type MetricScope } from "./runtime-metrics.js";
+import { boundedRead } from '../db/read-budget.js';
+import { asText, findingSeverity, increment, jsonAggregate, jsonArrayLength, jsonElements, jsonObject, jsonText, jsonValue, literal, lowerText, rowValue, scalar, timestampValue } from '../db/postgres-expressions.js';
+import { advisoryTransactionLock } from '../db/postgres-locks.js';
 
-import { and, asc, count, desc, eq, gte, inArray, isNotNull, isNull, lt, lte, max, min, or, sql } from "drizzle-orm";
+import { and, asc, count, countDistinct, desc, eq, exists, gt, gte, inArray, isNotNull, isNull, lt, lte, max, min, ne, or, type SQL } from "drizzle-orm";
 
 import type { ControllerConfig } from "../config.js";
 import type { ControllerDatabase } from "../db/client.js";
@@ -97,7 +100,7 @@ export class ControlPlaneService {
         safeRpsPerRunner: 50,
         maxConcurrencyPerRunner: 64,
       }).onConflictDoNothing();
-      await tx.execute(sql`select pg_advisory_xact_lock(hashtext('tasklattice-guard-product-defaults'))`);
+      await advisoryTransactionLock(tx, 'tasklattice-guard-product-defaults');
       await this.ensureDefaultGuardrail(tx);
     });
   }
@@ -180,7 +183,7 @@ export class ControlPlaneService {
         description: input.description ?? current.description,
         owner: input.owner ?? current.owner,
         draft,
-        draftRevision: sql`${policyRecords.draftRevision} + 1`,
+        draftRevision: increment(policyRecords.draftRevision),
         updatedAt: new Date(),
       }).where(eq(policyRecords.id, input.id)).returning();
       await tx.insert(auditEvents).values({
@@ -531,7 +534,7 @@ export class ControlPlaneService {
         draftConfig,
         runtimeProfile: input.runtimeProfile ?? existing.runtimeProfile,
         ...(draftChanged ? {
-          draftRevision: sql`${guardrails.draftRevision} + 1`,
+          draftRevision: increment(guardrails.draftRevision),
           excludedTestCaseIds: nextExcluded,
         } : {}),
         updatedAt: new Date(),
@@ -590,7 +593,7 @@ export class ControlPlaneService {
             );
           }
           const [state] = await tx.update(controllerState)
-            .set({ desiredGeneration: sql`${controllerState.desiredGeneration} + 1`, updatedAt: new Date() })
+            .set({ desiredGeneration: increment(controllerState.desiredGeneration), updatedAt: new Date() })
             .where(eq(controllerState.id, "singleton"))
             .returning();
           if (!state) throw new Error("Controller state is not initialized.");
@@ -652,7 +655,7 @@ export class ControlPlaneService {
         );
       }
       const [state] = await tx.update(controllerState)
-        .set({ desiredGeneration: sql`${controllerState.desiredGeneration} + 1`, updatedAt: new Date() })
+        .set({ desiredGeneration: increment(controllerState.desiredGeneration), updatedAt: new Date() })
         .where(eq(controllerState.id, "singleton"))
         .returning();
       if (!state) throw new Error("Controller state is not initialized.");
@@ -810,7 +813,7 @@ export class ControlPlaneService {
       // generation, including a late version retained for default-pool tools.
       // Keep the signed artifact's compile generation and activation ordering.
       const [delivery] = await tx.update(controllerState).set({
-        desiredGeneration: sql`${controllerState.desiredGeneration} + 1`, updatedAt: new Date(),
+        desiredGeneration: increment(controllerState.desiredGeneration), updatedAt: new Date(),
       }).where(eq(controllerState.id, "singleton")).returning();
       if (!delivery) throw new Error("Controller desired state is unavailable.");
       await tx.insert(outboxEvents).values({
@@ -858,7 +861,7 @@ export class ControlPlaneService {
       ));
       if (!version?.artifactId) throw new ConflictError("Only a ready immutable Guardrail Version can be activated.", "guardrail_version_not_ready");
       const [state] = await tx.update(controllerState)
-        .set({ desiredGeneration: sql`${controllerState.desiredGeneration} + 1`, updatedAt: new Date() })
+        .set({ desiredGeneration: increment(controllerState.desiredGeneration), updatedAt: new Date() })
         .where(eq(controllerState.id, "singleton")).returning();
       if (!state) throw new Error("Controller state is not initialized.");
       await tx.update(guardrails).set({
@@ -932,7 +935,7 @@ export class ControlPlaneService {
         coveredRuleIds: [],
       }).returning();
       if (!stored) throw new Error("Test Case creation did not return the stored resource.");
-      await tx.update(guardrails).set({ draftRevision: sql`${guardrails.draftRevision} + 1`, updatedAt: new Date() })
+      await tx.update(guardrails).set({ draftRevision: increment(guardrails.draftRevision), updatedAt: new Date() })
         .where(eq(guardrails.id, input.guardrailId));
       await tx.insert(auditEvents).values({
         id: randomUUID(), kind: "guardrail.test_case_created", actorId: input.actorId,
@@ -949,7 +952,7 @@ export class ControlPlaneService {
       if (!item) throw new NotFoundError("Test Case", input.caseId);
       if (item.origin !== "custom") throw new ValidationError("Only custom Test Cases can be deleted. Exclude inherited Policy cases instead.");
       await tx.delete(testCases).where(and(eq(testCases.guardrailId, item.guardrailId), eq(testCases.id, item.id)));
-      await tx.update(guardrails).set({ draftRevision: sql`${guardrails.draftRevision} + 1`, updatedAt: new Date() })
+      await tx.update(guardrails).set({ draftRevision: increment(guardrails.draftRevision), updatedAt: new Date() })
         .where(eq(guardrails.id, item.guardrailId));
       await tx.insert(auditEvents).values({
         id: randomUUID(), kind: "guardrail.test_case_deleted", actorId: input.actorId,
@@ -974,7 +977,7 @@ export class ControlPlaneService {
       else excluded.delete(input.caseId);
       await tx.update(guardrails).set({
         excludedTestCaseIds: [...excluded].sort(),
-        draftRevision: sql`${guardrails.draftRevision} + 1`,
+        draftRevision: increment(guardrails.draftRevision),
         updatedAt: new Date(),
       }).where(eq(guardrails.id, input.guardrailId));
       await tx.insert(auditEvents).values({
@@ -1190,7 +1193,7 @@ export class ControlPlaneService {
         .where(and(eq(guardrails.id, input.id), isNull(guardrails.deletedAt))).returning({ id: guardrails.id, level: guardrails.loggingLevel });
       if (!rows[0]) throw new NotFoundError("Guardrail", input.id);
       const [state] = await tx.update(controllerState)
-        .set({ desiredGeneration: sql`${controllerState.desiredGeneration} + 1`, updatedAt: new Date() })
+        .set({ desiredGeneration: increment(controllerState.desiredGeneration), updatedAt: new Date() })
         .where(eq(controllerState.id, "singleton")).returning();
       if (!state) throw new Error("Controller state is not initialized.");
       await tx.update(guardrails).set({ desiredGeneration: state.desiredGeneration })
@@ -1266,7 +1269,7 @@ export class ControlPlaneService {
   }
 
   async getRuntimeEvent(id: string, includeContent = false) {
-    const [item] = await this.db.select().from(runtimeEvents).where(eq(runtimeEvents.id, id)).limit(1);
+    const [item] = await boundedRead(this.db, tx => tx.select().from(runtimeEvents).where(eq(runtimeEvents.id, id)).limit(1));
     if (!item) throw new NotFoundError("Runtime event", id);
     const { contentCiphertext: _ciphertext, contentBefore: _before, contentAfter: _after, ...safe } = item.metadata;
     return { ...item, metadata: includeContent ? decryptRuntimeEventMetadata(item.metadata, this.runtimeLogEncryptionKey) : safe };
@@ -1277,20 +1280,40 @@ export class ControlPlaneService {
   async runtimeIntegrationActivity() {
     if (this.integrationActivityCache && this.integrationActivityCache.until > Date.now()) return this.integrationActivityCache.value;
     if (this.integrationActivityJob) return this.integrationActivityJob;
-    const job = this.db.transaction(async tx => {
-      await tx.execute(sql`SET LOCAL statement_timeout = '20s'`);
-      await tx.execute(sql`SET LOCAL work_mem = '16MB'`);
-      const result = await tx.execute(sql`SELECT integration_id AS id,
-      min(occurred_at) AS first_seen_at,max(occurred_at) AS last_seen_at,
-      max(occurred_at) FILTER (WHERE direction='incoming') AS input_seen_at,
-      max(occurred_at) FILTER (WHERE direction='outgoing') AS output_seen_at,
-      max(occurred_at) FILTER (WHERE metadata->>'streamFinalCheck'='true') AS stream_final_check_seen_at,
-      max(occurred_at) FILTER (WHERE lower(decision) IN ('error','failed','failure','timeout','timed_out')) AS last_error_at,
-      count(DISTINCT request_id) FILTER (WHERE occurred_at >= now()-interval '24 hours')::int AS request_count,
-      count(*) FILTER (WHERE occurred_at >= now()-interval '24 hours' AND lower(decision) IN ('error','failed','failure','timeout','timed_out'))::int AS error_count
-      FROM runtime_event WHERE integration_id IS NOT NULL GROUP BY integration_id`);
-      return { items: result.rows };
-    }, { accessMode: "read only" });
+    const job = boundedRead(this.db, async tx => {
+      // Lifetime timestamps are index probes; only recent counters scan a time window.
+      const scope = eq(runtimeEvents.integrationId, integrations.id);
+      const errors = inArray(lowerText(runtimeEvents.decision), ['error','failed','failure','timeout','timed_out']);
+      const timestamp = (name: string, filter?: SQL, oldest = false) => tx
+        .select({ at: runtimeEvents.occurredAt }).from(runtimeEvents)
+        .where(and(scope, filter))
+        .orderBy(oldest ? asc(runtimeEvents.occurredAt) : desc(runtimeEvents.occurredAt))
+        .limit(1).as(name);
+      const first = timestamp('first_activity', undefined, true);
+      const last = timestamp('last_activity');
+      const incoming = timestamp('incoming_activity', eq(runtimeEvents.direction, 'incoming'));
+      const outgoing = timestamp('outgoing_activity', eq(runtimeEvents.direction, 'outgoing'));
+      const finalCheck = timestamp('final_activity', eq(jsonText(runtimeEvents.metadata, 'streamFinalCheck'), 'true'));
+      const lastError = timestamp('error_activity', errors);
+      const recentScope = and(scope, gte(runtimeEvents.occurredAt, new Date(Date.now() - 86_400_000)));
+      const recent = tx.select({ total: countDistinct(runtimeEvents.requestId).as('recent_request_count') })
+        .from(runtimeEvents).where(recentScope).as('recent_activity');
+      const recentErrors = tx.select({ total: count().as('recent_error_count') })
+        .from(runtimeEvents).where(and(recentScope, errors)).as('recent_errors');
+      const join = eq(integrations.id, integrations.id);
+      const items = await tx.select({
+        id: integrations.id, first_seen_at: first.at, last_seen_at: last.at,
+        input_seen_at: incoming.at, output_seen_at: outgoing.at,
+        stream_final_check_seen_at: finalCheck.at, last_error_at: lastError.at,
+        request_count: recent.total, error_count: recentErrors.total,
+      }).from(integrations)
+        .leftJoinLateral(first, join).leftJoinLateral(last, join)
+        .leftJoinLateral(incoming, join).leftJoinLateral(outgoing, join)
+        .leftJoinLateral(finalCheck, join).leftJoinLateral(lastError, join)
+        .innerJoinLateral(recent, join).innerJoinLateral(recentErrors, join)
+        .where(isNull(integrations.deletedAt));
+      return { items };
+    });
     this.integrationActivityJob = job;
     try {
       const value = await job;
@@ -1312,6 +1335,7 @@ export class ControlPlaneService {
     outcome?: string | undefined;
     captured?: boolean | undefined;
     findingsOnly?: boolean | undefined;
+    severity?: 'critical' | 'high' | 'medium' | 'low' | undefined;
   }) {
     let cursor: { at: string; id: string } | undefined;
     if (input.cursor) {
@@ -1320,13 +1344,15 @@ export class ControlPlaneService {
         if (!cursor || typeof cursor.at !== 'string' || !Number.isFinite(Date.parse(cursor.at)) || typeof cursor.id !== 'string') throw new Error();
       } catch { throw new ValidationError("Invalid event cursor"); }
     }
+    const findings = jsonElements(jsonValue(runtimeEvents.metadata, 'findings'), 'finding');
     const conditions = [
-      cursor ? sql`(${runtimeEvents.occurredAt}, ${runtimeEvents.id}) < (${cursor.at}::timestamptz, ${cursor.id})` : undefined,
+      input.severity ? exists(this.db.select({ severity: findingSeverity(findings.item) }).from(findings.source).where(eq(findingSeverity(findings.item), input.severity))) : undefined,
+      cursor ? lt(rowValue(runtimeEvents.occurredAt, runtimeEvents.id), rowValue(timestampValue(cursor.at), literal(cursor.id))) : undefined,
       input.requestId ? eq(runtimeEvents.requestId, input.requestId) : undefined,
       input.direction ? eq(runtimeEvents.direction, input.direction) : undefined,
-      input.outcome ? inArray(sql`lower(${runtimeEvents.decision})`, input.outcome === 'allow' ? ['allow','allowed','pass','passed'] : input.outcome === 'block' ? ['block','blocked','reject','rejected','deny','denied'] : input.outcome === 'transform' ? ['transform','transformed','redact','redacted','rewrite','rewritten','intervene','intervened'] : ['error','failed','failure','timeout','timed_out']) : undefined,
-      input.captured ? sql`${runtimeEvents.metadata}->>'runtimeLogCaptured' = 'true'` : undefined,
-      input.findingsOnly ? sql`jsonb_array_length(CASE WHEN jsonb_typeof(${runtimeEvents.metadata}->'findings')='array' THEN ${runtimeEvents.metadata}->'findings' ELSE '[]'::jsonb END) > 0` : undefined,
+      input.outcome ? inArray(lowerText(runtimeEvents.decision), input.outcome === 'allow' ? ['allow','allowed','pass','passed'] : input.outcome === 'block' ? ['block','blocked','reject','rejected','deny','denied'] : input.outcome === 'transform' ? ['transform','transformed','redact','redacted','rewrite','rewritten','intervene','intervened'] : ['error','failed','failure','timeout','timed_out']) : undefined,
+      input.captured ? eq(jsonText(runtimeEvents.metadata, 'runtimeLogCaptured'), 'true') : undefined,
+      input.findingsOnly ? gt(jsonArrayLength(jsonValue(runtimeEvents.metadata, 'findings')), 0) : undefined,
       input.guardrailId ? eq(runtimeEvents.guardrailId, input.guardrailId) : undefined,
       input.deploymentId ? eq(runtimeEvents.deploymentId, input.deploymentId) : undefined,
       input.integrationId ? eq(runtimeEvents.integrationId, input.integrationId) : undefined,
@@ -1335,19 +1361,19 @@ export class ControlPlaneService {
     ].filter((item): item is NonNullable<typeof item> => Boolean(item));
     const predicate = conditions.length ? and(...conditions) : undefined;
     // SQL projection is essential: discarding metadata after SELECT still allocates the full payload in Node.
-    let itemsQuery = this.db.select({
+    return boundedRead(this.db, async tx => {
+    const findingSummary = jsonObject(Object.fromEntries(['id','risk','verdict','confidence','taxonomyId','recommendedAction','policyId','ruleId'].map(key => [key, jsonValue(findings.item, key)])));
+    const metadata = jsonObject({
+      ...Object.fromEntries(['captureLevel','runtimeLogCaptured','protocol','action','timedOut','timed_out','streamFinalCheck'].map(key => [key,jsonValue(runtimeEvents.metadata, key)])),
+      findings: scalar(tx.select({ value: jsonAggregate(findingSummary) }).from(findings.source)),
+    });
+    let itemsQuery = tx.select({
       id: runtimeEvents.id, occurredAt: runtimeEvents.occurredAt,
-      cursorAt: sql<string>`${runtimeEvents.occurredAt}::text`, requestId: runtimeEvents.requestId,
+      cursorAt: asText(runtimeEvents.occurredAt), requestId: runtimeEvents.requestId,
       runnerId: runtimeEvents.runnerId, guardrailId: runtimeEvents.guardrailId, guardrailVersion: runtimeEvents.guardrailVersion,
       integrationId: runtimeEvents.integrationId, deploymentId: runtimeEvents.deploymentId,
       direction: runtimeEvents.direction, decision: runtimeEvents.decision, durationMs: runtimeEvents.durationMs,
-      metadata: sql<Record<string, unknown>>`jsonb_build_object(
-        'captureLevel',${runtimeEvents.metadata}->'captureLevel','runtimeLogCaptured',${runtimeEvents.metadata}->'runtimeLogCaptured',
-        'protocol',${runtimeEvents.metadata}->'protocol','action',${runtimeEvents.metadata}->'action',
-        'timedOut',${runtimeEvents.metadata}->'timedOut','timed_out',${runtimeEvents.metadata}->'timed_out',
-        'streamFinalCheck',${runtimeEvents.metadata}->'streamFinalCheck',
-        'findings',coalesce((SELECT jsonb_agg(jsonb_build_object('id',f->'id','risk',f->'risk','verdict',f->'verdict','confidence',f->'confidence','taxonomyId',f->'taxonomyId','recommendedAction',f->'recommendedAction','policyId',f->'policyId','ruleId',f->'ruleId'))
-          FROM jsonb_array_elements(CASE WHEN jsonb_typeof(${runtimeEvents.metadata}->'findings')='array' THEN ${runtimeEvents.metadata}->'findings' ELSE '[]'::jsonb END) f),'[]'::jsonb))`,
+      metadata,
     }).from(runtimeEvents).$dynamic();
     if (predicate) {
       itemsQuery = itemsQuery.where(predicate);
@@ -1361,6 +1387,7 @@ export class ControlPlaneService {
       count: items.length,
       nextCursor: rows.length > limit && last ? Buffer.from(JSON.stringify({at:last.cursorAt,id:last.id})).toString('base64url') : null,
     };
+    });
   }
 
   async listAuditEvents(limit = 100) {
@@ -1404,7 +1431,7 @@ export class ControlPlaneService {
       const [pool] = await tx.select().from(runnerPools).where(eq(runnerPools.id, input.poolId));
       if (!pool) throw new NotFoundError("Runner Pool", input.poolId);
       for (const integrationId of [...uniqueIntegrationIds].sort()) {
-        await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${integrationId}))`);
+        await advisoryTransactionLock(tx, integrationId);
       }
       const integrationRows = await tx.select().from(integrations).where(and(
         inArray(integrations.id, uniqueIntegrationIds), eq(integrations.status, "active"), isNull(integrations.deletedAt),
@@ -1452,7 +1479,7 @@ export class ControlPlaneService {
         created.push(row);
       }
       const [state] = await tx.update(controllerState)
-        .set({ desiredGeneration: sql`${controllerState.desiredGeneration} + 1`, updatedAt: new Date() })
+        .set({ desiredGeneration: increment(controllerState.desiredGeneration), updatedAt: new Date() })
         .where(eq(controllerState.id, "singleton")).returning();
       if (!state) throw new Error("Controller state is not initialized.");
       await tx.insert(outboxEvents).values({
@@ -1480,7 +1507,7 @@ export class ControlPlaneService {
   async updateDeploymentTrafficScope(input: { id: string; trafficScope: Record<string, unknown>; actorId: string }) {
     return this.mutateDeployment(input.id, input.actorId, "deployment.traffic_scope_updated", async (tx, current) => {
       if (!current.integrationId) throw new ValidationError("The global fallback Deployment is system managed.");
-      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${current.integrationId}))`);
+      await advisoryTransactionLock(tx, current.integrationId);
       const routes = await tx.select().from(deployments)
         .where(and(eq(deployments.integrationId, current.integrationId), isNull(deployments.deletedAt)))
         .orderBy(asc(deployments.routeOrder), asc(deployments.id)).for("update");
@@ -1496,7 +1523,7 @@ export class ControlPlaneService {
   async reorderDeploymentRoutes(input: { integrationId: string; deploymentIds: string[]; actorId: string }) {
     if (new Set(input.deploymentIds).size !== input.deploymentIds.length) throw new ValidationError("Deployment route order contains duplicate IDs.");
     return this.db.transaction(async (tx) => {
-      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${input.integrationId}))`);
+      await advisoryTransactionLock(tx, input.integrationId);
       const current = await tx.select().from(deployments)
         .where(and(eq(deployments.integrationId, input.integrationId), isNull(deployments.deletedAt)))
         .orderBy(asc(deployments.routeOrder), asc(deployments.id)).for("update");
@@ -1656,7 +1683,7 @@ export class ControlPlaneService {
     this.assertDeletionAllowed(impact, input.confirmRecentTraffic, input.confirmationName, resource.name);
     await this.db.transaction(async (tx) => {
       const [state] = await tx.update(controllerState)
-        .set({ desiredGeneration: sql`${controllerState.desiredGeneration} + 1`, updatedAt: new Date() })
+        .set({ desiredGeneration: increment(controllerState.desiredGeneration), updatedAt: new Date() })
         .where(eq(controllerState.id, "singleton")).returning();
       if (!state) throw new Error("Controller state is not initialized.");
       const disabled = await tx.update(guardrails).set({
@@ -1678,7 +1705,7 @@ export class ControlPlaneService {
     this.assertDeletionAllowed(impact, input.confirmRecentTraffic, input.confirmationName, resource.name);
     await this.db.transaction(async (tx) => {
       const [state] = await tx.update(controllerState)
-        .set({ desiredGeneration: sql`${controllerState.desiredGeneration} + 1`, updatedAt: new Date() })
+        .set({ desiredGeneration: increment(controllerState.desiredGeneration), updatedAt: new Date() })
         .where(eq(controllerState.id, "singleton")).returning();
       if (!state) throw new Error("Controller state is not initialized.");
       const disabled = await tx.update(integrations).set({
@@ -1716,10 +1743,10 @@ export class ControlPlaneService {
     this.assertDeletionAllowed(impact, input.confirmRecentTraffic, input.confirmationName, resource.name);
     await this.db.transaction(async (tx) => {
       if (resource.integrationId) {
-        await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${resource.integrationId}))`);
+        await advisoryTransactionLock(tx, resource.integrationId);
       }
       const [state] = await tx.update(controllerState)
-        .set({ desiredGeneration: sql`${controllerState.desiredGeneration} + 1`, updatedAt: new Date() })
+        .set({ desiredGeneration: increment(controllerState.desiredGeneration), updatedAt: new Date() })
         .where(eq(controllerState.id, "singleton")).returning();
       if (!state) throw new Error("Controller state is not initialized.");
       const deleted = await tx.update(deployments).set({
@@ -1880,7 +1907,7 @@ export class ControlPlaneService {
   async markStaleRunnersOffline(): Promise<void> {
     const cutoff = new Date(Date.now() - this.config.offlineAfterSeconds * 1_000);
     await this.db.update(runnerInstances).set({ status: "offline", disconnectedAt: new Date(), updatedAt: new Date() })
-      .where(and(lte(runnerInstances.lastHeartbeatAt, cutoff), sql`${runnerInstances.status} <> 'offline'`));
+      .where(and(lte(runnerInstances.lastHeartbeatAt, cutoff), ne(runnerInstances.status, 'offline')));
   }
 
   async desiredStateForPool(poolId: string) {
@@ -1894,7 +1921,7 @@ export class ControlPlaneService {
         .innerJoin(guardrails, and(eq(guardrails.id, deployments.guardrailId), eq(guardrails.status, "active")))
         .innerJoin(guardrailVersions, and(
           eq(guardrailVersions.guardrailId, deployments.guardrailId),
-          sql`${guardrailVersions.version} = coalesce(${deployments.guardrailVersion}, ${guardrails.activeVersion})`,
+          or(eq(guardrailVersions.version, deployments.guardrailVersion), and(isNull(deployments.guardrailVersion), eq(guardrailVersions.version, guardrails.activeVersion))),
           eq(guardrailVersions.status, "ready"),
         ))
         .innerJoin(artifacts, eq(artifacts.id, guardrailVersions.artifactId))
@@ -1914,7 +1941,7 @@ export class ControlPlaneService {
       .innerJoin(guardrails, and(eq(guardrails.id, deployments.guardrailId), eq(guardrails.status, "active")))
       .innerJoin(guardrailVersions, and(
         eq(guardrailVersions.guardrailId, deployments.guardrailId),
-        sql`${guardrailVersions.version} = coalesce(${deployments.guardrailVersion}, ${guardrails.activeVersion})`,
+        or(eq(guardrailVersions.version, deployments.guardrailVersion), and(isNull(deployments.guardrailVersion), eq(guardrailVersions.version, guardrails.activeVersion))),
         eq(guardrailVersions.status, "ready"),
       ))
       .where(and(eq(deployments.poolId, poolId), eq(deployments.enabled, true), isNull(deployments.deletedAt)))
@@ -2158,7 +2185,7 @@ export class ControlPlaneService {
 
   async deferOutbox(id: string, delaySeconds: number): Promise<void> {
     await this.db.update(outboxEvents).set({
-      attempts: sql`${outboxEvents.attempts} + 1`,
+      attempts: increment(outboxEvents.attempts),
       availableAt: new Date(Date.now() + delaySeconds * 1_000),
     }).where(eq(outboxEvents.id, id));
   }
@@ -2274,7 +2301,7 @@ export class ControlPlaneService {
       );
       const [upgraded] = await tx.update(guardrails).set({
         draftConfig: desiredDraft,
-        draftRevision: sql`${guardrails.draftRevision} + 1`,
+        draftRevision: increment(guardrails.draftRevision),
         excludedTestCaseIds: nextExcluded,
         updatedAt: new Date(),
       }).where(eq(guardrails.id, DEFAULT_GUARDRAIL_ID)).returning();
@@ -2298,7 +2325,7 @@ export class ControlPlaneService {
       const deploymentChanged = await this.ensureDefaultDeployment(tx, stored.activeVersion);
       if (restored || deploymentChanged) {
         const [state] = await tx.update(controllerState)
-          .set({ desiredGeneration: sql`${controllerState.desiredGeneration} + 1`, updatedAt: new Date() })
+          .set({ desiredGeneration: increment(controllerState.desiredGeneration), updatedAt: new Date() })
           .where(eq(controllerState.id, "singleton")).returning();
         if (!state) throw new Error("Controller state is not initialized.");
         await tx.update(guardrails).set({ desiredGeneration: state.desiredGeneration })
@@ -2335,7 +2362,7 @@ export class ControlPlaneService {
     if (existingVersion) return;
 
     const [state] = await tx.update(controllerState)
-      .set({ desiredGeneration: sql`${controllerState.desiredGeneration} + 1`, updatedAt: new Date() })
+      .set({ desiredGeneration: increment(controllerState.desiredGeneration), updatedAt: new Date() })
       .where(eq(controllerState.id, "singleton")).returning();
     if (!state) throw new Error("Controller state is not initialized.");
     const plan = buildGuardrailPlan({
@@ -2537,7 +2564,7 @@ export class ControlPlaneService {
     },
   ): Promise<number> {
     const [state] = await tx.update(controllerState)
-      .set({ desiredGeneration: sql`${controllerState.desiredGeneration} + 1`, updatedAt: new Date() })
+      .set({ desiredGeneration: increment(controllerState.desiredGeneration), updatedAt: new Date() })
       .where(eq(controllerState.id, "singleton")).returning();
     if (!state) throw new Error("Controller state is not initialized.");
     await tx.insert(auditEvents).values({
@@ -2595,7 +2622,7 @@ export class ControlPlaneService {
     detail: Record<string, unknown>,
   ): Promise<number> {
     const [state] = await tx.update(controllerState)
-      .set({ desiredGeneration: sql`${controllerState.desiredGeneration} + 1`, updatedAt: new Date() })
+      .set({ desiredGeneration: increment(controllerState.desiredGeneration), updatedAt: new Date() })
       .where(eq(controllerState.id, "singleton")).returning();
     if (!state) throw new Error("Controller state is not initialized.");
     await tx.insert(auditEvents).values({

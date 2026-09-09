@@ -164,9 +164,9 @@ export async function updateDeploymentTrafficScope(id: string, trafficScope: Tra
 }
 export const getTrafficScopeFields = (): Promise<Collection<TrafficScopeField>> => controllerApi.requestController<Collection<TrafficScopeField>>("/api/v1/traffic-scope-fields");
 
-export async function getDeploymentTraces(id: string, limit = 100, cursor?: string, signal?: AbortSignal): Promise<Collection<DeploymentRuntimeTrace>> {
+export async function getDeploymentTraces(id: string, limit = 100, cursor?: string, signal?: AbortSignal, security?: { severity: string }): Promise<Collection<DeploymentRuntimeTrace>> {
   const safeLimit = Math.min(500, Math.max(1, limit));
-  const events = await controllerApi.listRuntimeEvents(safeLimit, { deploymentId: id, ...(cursor ? { cursor } : {}) }, signal);
+  const events = await controllerApi.listRuntimeEvents(safeLimit, { deploymentId: id, ...(cursor ? { cursor } : {}), ...(security ? { findingsOnly: 'true', since: new Date(Date.now() - 86_400_000).toISOString(), ...(security.severity === 'all' ? {} : { severity: security.severity }) } : {}) }, signal);
   return { items: events.items.map(mapDeploymentTrace), count: events.count ?? events.items.length, nextCursor: events.nextCursor };
 }
 export async function getDeploymentTrace(id: string, signal?: AbortSignal) { return mapDeploymentTrace(await controllerApi.getRuntimeEvent(id, signal)); }

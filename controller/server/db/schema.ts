@@ -413,6 +413,9 @@ export const runtimeEvents = pgTable("runtime_event", {
   index("runtime_event_deployment_time_idx").on(table.deploymentId, table.occurredAt, table.id),
   index("runtime_event_time_id_idx").on(table.occurredAt, table.id),
   index("runtime_event_request_time_idx").on(table.requestId, table.occurredAt, table.id),
+  index("runtime_event_integration_direction_time_idx").on(table.integrationId, table.direction, table.occurredAt),
+  index("runtime_event_integration_error_time_idx").on(table.integrationId, table.occurredAt).where(sql`lower(${table.decision}) IN ('error','failed','failure','timeout','timed_out')`),
+  index("runtime_event_integration_final_time_idx").on(table.integrationId, table.occurredAt).where(sql`${table.metadata}->>'streamFinalCheck'='true'`),
 ]);
 
 export const telemetryWatermarks = pgTable("telemetry_watermark", {

@@ -1,9 +1,11 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import * as controllerApi from '@/lib/controller-api';
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { RuntimeLogInteraction } from "@/lib/api";
 
-import { buildTraceForest, RuntimeCheckpoint, CheckpointHistory } from "./logs";
+import { buildTraceForest, RuntimeCheckpoint, CheckpointHistory, RuntimeLogSheet } from "./logs";
 
 vi.mock("react-i18next", () => ({
   initReactI18next: { type: "3rdParty", init: () => undefined },
@@ -73,6 +75,34 @@ const baseProps = {
   guardrailName: () => "Runtime Guardrail",
   deploymentName: () => "Runtime Deployment",
 };
+
+describe('request checkpoint browsing', () => {
+  afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+  it('loads only the expanded checkpoint and can browse beyond the original list page', async () => {
+    const event = (id: string): controllerApi.RuntimeEvent => ({
+      id, occurredAt: interaction.created_at, requestId: interaction.id, runnerId:'runner',
+      guardrailId:interaction.guardrail_id,guardrailVersion:interaction.guardrail_version,
+      deploymentId:interaction.deployment_id,integrationId:null,direction:'incoming',decision:'allow',durationMs:1,
+      metadata:{runtimeLogCaptured:true,captureLevel:'trace'},
+    });
+    const list = vi.spyOn(controllerApi,'listRuntimeEvents').mockImplementation(async (_limit, filters) => filters?.cursor
+      ? {items:[event('older-checkpoint')],nextCursor:null}
+      : {items:[event('first-checkpoint'),event('second-checkpoint')],nextCursor:'older'});
+    const detail = vi.spyOn(controllerApi,'getRuntimeEvent').mockImplementation(async id => event(id));
+    const client = new QueryClient({defaultOptions:{queries:{retry:false}}});
+    render(<QueryClientProvider client={client}><RuntimeLogSheet interaction={interaction} open admin guardrailName={baseProps.guardrailName} deploymentName={baseProps.deploymentName} onOpenChange={() => {}} /></QueryClientProvider>);
+    const first=await screen.findByRole('button',{name:/first-checkpoint/});
+    expect(detail).not.toHaveBeenCalled();
+    fireEvent.click(first);
+    await waitFor(() => expect(detail).toHaveBeenCalledTimes(1));
+    expect(detail).toHaveBeenCalledWith('first-checkpoint',expect.any(AbortSignal));
+    fireEvent.click(screen.getByRole('button',{name:'eventPagination.next'}));
+    expect(await screen.findByRole('button',{name:/older-checkpoint/})).toBeTruthy();
+    expect(list).toHaveBeenLastCalledWith(100,expect.objectContaining({requestId:interaction.id,guardrailId:interaction.guardrail_id,cursor:'older'}),expect.any(AbortSignal));
+    expect(detail).toHaveBeenCalledTimes(1);
+    client.clear();
+  });
+});
 
 describe("CheckpointHistory", () => {
   afterEach(cleanup);

@@ -71,15 +71,6 @@ export function LogsPage() {
     refetchOnWindowFocus: false,
     gcTime: 30_000,
   });
-  const detailQuery = useQuery({
-    queryKey: ['log-detail', selected?.id, selected?.entries.map(e=>e.id)], enabled: Boolean(selected), gcTime: 0,
-    queryFn: async ({ signal }) => {
-      const events: RuntimeEvent[] = [];
-      const entries = selected!.entries;
-      for (let i=0; i<entries.length; i+=4) events.push(...await Promise.all(entries.slice(i,i+4).map(e=>getRuntimeEvent(e.id, signal))));
-      return runtimeLogInteractions(events)[0] ?? null;
-    },
-  });
   const settingsQuery = useQuery({
     queryKey: queryKeys.guardrailLogging(scopedGuardrailId ?? ""),
     queryFn: () => getGuardrailLoggingSettings(scopedGuardrailId!),
@@ -164,14 +155,13 @@ export function LogsPage() {
 
       <EventPagination page={paging.page} busy={eventsQuery.isFetching} nextCursor={eventsQuery.data?.nextCursor} onNext={paging.next} onPrevious={paging.previous} onLatest={paging.latest} />
       <p className="mt-2 text-xs text-muted-foreground">{t('eventPagination.checkpointScope')}</p>
-      {selected && detailQuery.isPending ? <p role="status">{t('common.loading')}</p> : null}
-      {selected && detailQuery.error ? <ErrorNotice error={detailQuery.error} /> : null}
       <RuntimeLogSheet
-        interaction={detailQuery.data ?? null}
+        key={`${selected?.id}:${selected?.guardrail_id}`}
+        interaction={selected}
         admin={auth.user?.role === "admin"}
         guardrailName={guardrailName}
         deploymentName={deploymentName}
-        open={Boolean(selected && detailQuery.data)}
+        open={Boolean(selected)}
         onOpenChange={(open) => { if (!open) setSelected(null); }}
       />
     </section>
@@ -234,14 +224,28 @@ function RuntimeFact({ label, value }: { label: string; value: string }) {
   return <div className="min-w-0"><dt className="text-muted-foreground">{label}</dt><dd className="mt-0.5 truncate font-medium">{value}</dd></div>;
 }
 
-function RuntimeLogSheet({ interaction, admin, guardrailName, deploymentName, open, onOpenChange }: { interaction: RuntimeLogInteraction | null; admin: boolean; guardrailName: (id: string | null) => string; deploymentName: (id: string | null) => string; open: boolean; onOpenChange: (open: boolean) => void }) {
+export function RuntimeLogSheet({ interaction, admin, guardrailName, deploymentName, open, onOpenChange }: { interaction: RuntimeLogInteraction | null; admin: boolean; guardrailName: (id: string | null) => string; deploymentName: (id: string | null) => string; open: boolean; onOpenChange: (open: boolean) => void }) {
   const { t, i18n } = useTranslation();
+  const paging = useEventCursor(`${interaction?.id}:${interaction?.guardrail_id}`);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const checkpoints = useQuery({
+    queryKey: ['interaction-checkpoints', interaction?.id, interaction?.guardrail_id, paging.cursor],
+    enabled: open && Boolean(interaction), gcTime: 0, refetchOnWindowFocus: false,
+    queryFn: ({ signal }) => listRuntimeEvents(100, { requestId: interaction!.id, guardrailId: interaction!.guardrail_id, captured: 'true', ...(paging.cursor ? { cursor: paging.cursor } : {}) }, signal),
+  });
+  const detail = useQuery({
+    queryKey: ['checkpoint-detail', expanded], enabled: open && Boolean(expanded), gcTime: 0, refetchOnWindowFocus: false,
+    queryFn: async ({ signal }) => runtimeLogInteractions([await getRuntimeEvent(expanded!, signal)])[0]?.entries[0] ?? null,
+  });
   if (!interaction) return null;
   return <EntitySheet open={open} onOpenChange={onOpenChange} eyebrow={t("logs.interactionDetailEyebrow")} title={t("logs.detailTitle")} description={<span className="break-all font-mono text-xs">{interaction.id}</span>} width="xl" footer={<Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.close")}</Button>}>
     <div className="grid gap-5">
       <dl className="grid overflow-hidden rounded-lg border sm:grid-cols-2"><Fact label={t("logs.time")} value={new Date(interaction.created_at).toLocaleString(i18n.language)} /><Fact label={t("logs.outcome")} value={interaction.outcome} /><Fact label={t("logs.guardrail")} value={`${guardrailName(interaction.guardrail_id)} · ${interaction.guardrail_version ?? "—"}`} /><Fact label={t("logs.context")} value={`${deploymentName(interaction.deployment_id)} · ${interaction.protocol}`} /></dl>
       {!admin && interaction.entries.some((entry) => entry.content_available) ? <div className="flex gap-3 rounded-lg border bg-muted/25 p-4"><LockKeyhole className="mt-0.5 size-4 shrink-0" /><div><p className="text-sm font-medium">{t("logs.adminContentTitle")}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{t("logs.adminContentDescription")}</p></div></div> : null}
-      <div className="grid gap-4">{interaction.entries.map((entry) => <RuntimeCheckpoint key={entry.id} entry={entry} admin={admin} />)}</div>
+      {checkpoints.isPending ? <p role="status">{t('common.loading')}</p> : checkpoints.error ? <ErrorNotice error={checkpoints.error} /> : null}
+      <div className="grid gap-2">{checkpoints.data?.items.map(event => <Button key={event.id} variant={expanded === event.id ? 'secondary' : 'outline'} className="h-auto justify-start whitespace-normal break-all text-left" onClick={() => setExpanded(expanded === event.id ? null : event.id)} aria-expanded={expanded === event.id}>{new Date(event.occurredAt).toLocaleString(i18n.language)} · {event.direction} · {event.id}</Button>)}</div>
+      <EventPagination page={paging.page} busy={checkpoints.isFetching} nextCursor={checkpoints.data?.nextCursor} onNext={cursor => { setExpanded(null); paging.next(cursor); }} onPrevious={() => { setExpanded(null); paging.previous(); }} onLatest={() => { setExpanded(null); paging.latest(); }} />
+      {expanded && detail.isPending ? <p role="status">{t('common.loading')}</p> : expanded && detail.error ? <ErrorNotice error={detail.error} /> : detail.data ? <RuntimeCheckpoint key={detail.data.id} entry={detail.data} admin={admin} /> : null}
     </div>
   </EntitySheet>;
 }

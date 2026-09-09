@@ -50,6 +50,13 @@
       "when": 1788950000000,
       "tag": "0006_runtime_event_deployment_index",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1788960000000,
+      "tag": "0007_runtime_activity_probes",
+      "breakpoints": true
     }
   ]
 }

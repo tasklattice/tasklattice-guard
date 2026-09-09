@@ -811,6 +811,7 @@ export function createHttpApp(input: {
       outcome: z.enum(['allow','block','transform','error']).optional(),
       captured: z.enum(['true']).transform(() => true).optional(),
       findingsOnly: z.enum(['true']).transform(() => true).optional(),
+      severity: z.enum(['critical','high','medium','low']).optional(),
     }).parse(context.req.query());
     return context.json(await input.service.queryRuntimeEvents(query));
   });

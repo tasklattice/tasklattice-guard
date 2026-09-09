@@ -4,6 +4,7 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { sql } from 'drizzle-orm';
 import { queryRuntimeMetrics } from './runtime-metrics.js';
 import { ControlPlaneService } from './control-plane.js';
+import { boundedRead } from '../db/read-budget.js';
 
 // Uses session-local temporary tables only; never inserts/deletes application records.
 describe.skipIf(!process.env.TEST_DATABASE_URL)('bounded runtime observability (PostgreSQL)', () => {
@@ -60,5 +61,51 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('bounded runtime observability (
     expect(detail.metadata.trace).toHaveLength(1);
     expect(detail.metadata).not.toHaveProperty('contentBefore');
     expect(detail.metadata).not.toHaveProperty('contentCiphertext');
+  });
+
+  it('finds older critical events before applying the page limit', async () => {
+    await db.execute(sql`UPDATE runtime_event SET metadata=jsonb_build_object('findings',jsonb_build_array(jsonb_build_object('verdict','error'))) WHERE id='event-000001'`);
+    try {
+      const page = await service.queryRuntimeEvents({ limit:1, severity:'critical', deploymentId:'deployment' });
+      expect(page.items.map(r => r.id)).toEqual(['event-000001']);
+      expect(page.nextCursor).toBeNull();
+    } finally {
+      await db.execute(sql`UPDATE runtime_event SET metadata='{}'::jsonb WHERE id='event-000001'`);
+    }
+  });
+
+  it('cancels SQL at the shared deadline and releases the only pool connection', async () => {
+    const started = performance.now();
+    await expect(boundedRead(db as any, async (tx, execute) => {
+      await execute(tx.execute(sql`SELECT pg_sleep(.6)`));
+      await execute(tx.execute(sql`SELECT pg_sleep(.6)`));
+    }, 1000)).rejects.toMatchObject({ cause: { code: '57014' } });
+    expect(performance.now() - started).toBeLessThan(2000);
+    expect((await db.execute(sql`SELECT 1 AS ok`)).rows[0]).toEqual({ok:1});
+  });
+
+  it('preserves old integration activity while counting only recent requests', async () => {
+    await db.execute(sql`INSERT INTO integration(id,name,adapter) VALUES ('activity','Activity','test')`);
+    await db.execute(sql`INSERT INTO runtime_event(id,occurred_at,request_id,runner_id,integration_id,direction,decision,duration_ms,metadata) VALUES
+      ('old-activity',now()-interval '40 days','old','runner','activity','outgoing','error',1,'{"streamFinalCheck":true}'),
+      ('recent-activity',now()-interval '1 hour','recent','runner','activity','incoming','allow',1,'{}')`);
+    const result = await service.runtimeIntegrationActivity();
+    expect(result.items[0]).toMatchObject({id:'activity',request_count:1,error_count:0});
+    const row=result.items[0]!;
+    expect(new Date(String(row.first_seen_at)).getTime()).toBeLessThan(Date.now()-30*86400000);
+    expect(row.output_seen_at).toEqual(row.first_seen_at);
+    expect(row.last_error_at).toEqual(row.first_seen_at);
+    expect(row.stream_final_check_seen_at).toEqual(row.first_seen_at);
+  });
+
+  it('counts a policy step once instead of emitting duplicate name and guardrail groups', async () => {
+    await db.execute(sql`INSERT INTO runtime_event(id,occurred_at,request_id,runner_id,guardrail_id,deployment_id,direction,decision,duration_ms,metadata) VALUES
+      ('policy-proof',now(),'policy-proof','runner','guard','policy-proof','incoming','allow',5,
+       '{"trace":[{"kind":"policy","name":"policy-a@1","policyId":"policy-a","durationMs":5},{"kind":"action","name":"action-a","policyId":"policy-a","durationMs":2}]}')`);
+    const result = await queryRuntimeMetrics(db as any, {window:'24h',deploymentId:'policy-proof'});
+    expect(result.policy_distribution).toHaveLength(1);
+    expect(result.policy_distribution[0]).toMatchObject({policy_id:'policy-a',invocations:2,hit_share:100});
+    expect(result.action_metrics).toHaveLength(1);
+    expect(result.rail_metrics).toHaveLength(0);
   });
 });

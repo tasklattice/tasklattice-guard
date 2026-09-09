@@ -11,7 +11,7 @@ const resources = {
     translation: {
       providerRegistration: providerRegistrationEn,
       protection: protectionEn,
-      eventPagination: { label: 'Event pages', page: 'Page {{page}}', latest: 'Latest', previous: 'Newer', next: 'Older', checkpointScope: 'Interactions and details show checkpoints on this page. Older checkpoints remain accessible on older pages.' },
+      eventPagination: { label: 'Event pages', page: 'Page {{page}}', latest: 'Latest', previous: 'Newer', next: 'Older', checkpointScope: 'The list summarizes checkpoints on this page. Open details to browse all recorded checkpoints for the request; select one to load its content.' },
       common: {
         cancel: "Cancel",
         close: "Close",
@@ -2788,7 +2788,7 @@ const resources = {
     translation: {
       providerRegistration: providerRegistrationZh,
       protection: protectionZh,
-      eventPagination: { label: '事件分页', page: '第 {{page}} 页', latest: '最新', previous: '较新', next: '更早', checkpointScope: '交互与详情显示本页检查点；更早的检查点可通过翻页查看。' },
+      eventPagination: { label: '事件分页', page: '第 {{page}} 页', latest: '最新', previous: '较新', next: '更早', checkpointScope: '列表汇总本页检查点。打开详情可翻页查看该请求已记录的全部检查点，选择一条后加载其内容。' },
       common: {
         cancel: "取消",
         close: "关闭",
