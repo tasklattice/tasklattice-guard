@@ -49,7 +49,7 @@ export type AutomatedReasoningFinding = {
   message: string;
 };
 
-export type Collection<T> = { items: T[]; count: number };
+export type Collection<T> = { items: T[]; count: number; nextCursor?: string | null | undefined };
 
 export type GuardrailPolicyBinding = {
   rule_order?: string[];
@@ -354,6 +354,7 @@ export type RuntimeFindingSummary = {
 };
 
 export type GuardrailFindingPage = {
+  nextCursor?: string | null | undefined;
   items: DeploymentTraceFinding[];
   count: number;
   summary: RuntimeFindingSummary;
@@ -939,6 +940,7 @@ export type SystemStatus = {
 };
 
 export type Metrics = {
+  findings_summary?: GuardrailFindingPage['summary'];
   data_availability?: {
     runtime_events: "complete" | "truncated";
     execution_evidence: "collected" | "partial" | "not_collected";

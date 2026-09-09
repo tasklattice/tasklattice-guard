@@ -23,7 +23,7 @@ export const queryKeys = {
   deployments: ["resources", "deployments"] as const,
   deployment: (id: string) => ["resources", "deployments", id] as const,
   deploymentDeletionImpact: (id: string) => ["resources", "deployments", id, "deletion-impact"] as const,
-  deploymentTraces: (id: string) => ["resources", "deployments", id, "traces"] as const,
+  deploymentTraces: (id: string, limit: number) => ["resources", "deployments", id, "traces", { limit }] as const,
   trafficScopeFields: ["resources", "traffic-scope-fields"] as const,
   integrations: ["resources", "integrations"] as const,
   integration: (id: string) => ["resources", "integrations", id] as const,

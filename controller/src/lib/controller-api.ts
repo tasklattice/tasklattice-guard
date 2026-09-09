@@ -9,7 +9,7 @@ import type {
 import type { CapabilityBindingId, ImplementedGuardrailRailType } from "../../shared/guardrail-catalog";
 import type { PlatformStatusSnapshot } from "../../shared/platform-status";
 
-export type Collection<T> = { items: T[]; count?: number };
+export type Collection<T> = { items: T[]; count?: number; nextCursor?: string | null };
 
 export type SystemStatus = PlatformStatusSnapshot;
 
@@ -339,6 +339,7 @@ export async function requestController<T>(path: string, init?: RequestInit): Pr
   const response = await fetch(path, {
     credentials: "same-origin",
     ...init,
+    ...(!init?.method || init.method === 'GET' ? { signal: init?.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000) } : {}),
     headers: init?.body && !formData ? { "content-type": "application/json", ...init.headers } : init?.headers,
   });
   if (response.status === 204) return undefined as T;
@@ -437,9 +438,10 @@ export const reorderControllerDeployments = (integrationId: string, deploymentId
 export const listRunnerPools = () => requestController<Collection<RunnerPool>>("/api/v1/runner-pools");
 export const updateRunnerPool = (id: string, input: Pick<RunnerPool, "desiredReplicas" | "safeRpsPerRunner" | "maxConcurrencyPerRunner">) => requestController<RunnerPool>(`/api/v1/runner-pools/${encodeURIComponent(id)}`, json("PATCH", input));
 export const removeRunnerInstance = (runnerId: string) => requestController<void>(`/api/v1/runner-instances/${encodeURIComponent(runnerId)}`, json("DELETE"));
-export const listRuntimeEvents = (limit = 100, filters: { guardrailId?: string; deploymentId?: string; integrationId?: string; since?: string; before?: string } = {}) => {
-  const query = new URLSearchParams({ limit: String(Math.min(10_000, Math.max(1, limit))) });
+export const listRuntimeEvents = (limit = 100, filters: { guardrailId?: string; deploymentId?: string; integrationId?: string; since?: string; before?: string; cursor?: string; requestId?: string; direction?: string; outcome?: string; captured?: string; findingsOnly?: string } = {}, signal?: AbortSignal) => {
+  const query = new URLSearchParams({ limit: String(Math.min(500, Math.max(1, limit))) });
   for (const [key, value] of Object.entries(filters)) if (value) query.set(key, value);
-  return requestController<Collection<RuntimeEvent>>(`/api/v1/runtime-events?${query.toString()}`);
+  return requestController<Collection<RuntimeEvent>>(`/api/v1/runtime-events?${query.toString()}`, signal ? { signal } : undefined);
 };
+export const getRuntimeEvent = (id: string, signal?: AbortSignal) => requestController<RuntimeEvent>(`/api/v1/runtime-events/${encodeURIComponent(id)}`, signal ? { signal } : undefined);
 export const listAuditEvents = (limit = 100) => requestController<Collection<AuditEvent>>(`/api/v1/audit-events?limit=${Math.min(500, Math.max(1, limit))}`);

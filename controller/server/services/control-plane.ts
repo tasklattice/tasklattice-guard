@@ -1,6 +1,7 @@
 import { createHash, createPrivateKey, randomUUID, sign } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { programmablePolicyProtection } from "../policy-studio/protection.js";
+import { queryRuntimeMetrics, type MetricScope } from "./runtime-metrics.js";
 
 import { and, asc, count, desc, eq, gte, inArray, isNotNull, isNull, lt, lte, max, min, or, sql } from "drizzle-orm";
 
@@ -1245,6 +1246,59 @@ export class ControlPlaneService {
     return (await this.queryRuntimeEvents({ limit })).items;
   }
 
+  private metricCache = new Map<string, { until: number; value: Awaited<ReturnType<typeof queryRuntimeMetrics>> }>();
+  private metricJobs = new Map<string, ReturnType<typeof queryRuntimeMetrics>>();
+  async runtimeMetrics(scope: MetricScope) {
+    const key = JSON.stringify([scope.window, scope.guardrailId ?? null, scope.deploymentId ?? null]);
+    const cached = this.metricCache.get(key);
+    if (cached && cached.until > Date.now()) return cached.value;
+    const pending = this.metricJobs.get(key);
+    if (pending) return pending;
+    if (this.metricJobs.size >= 2) throw new ConflictError("Metrics are busy; retry shortly.", "metrics_busy");
+    const job = queryRuntimeMetrics(this.db, scope);
+    this.metricJobs.set(key, job);
+    try {
+      const value = await job;
+      if (this.metricCache.size >= 16) this.metricCache.delete(this.metricCache.keys().next().value!);
+      this.metricCache.set(key, { until: Date.now() + 10_000, value });
+      return value;
+    } finally { this.metricJobs.delete(key); }
+  }
+
+  async getRuntimeEvent(id: string, includeContent = false) {
+    const [item] = await this.db.select().from(runtimeEvents).where(eq(runtimeEvents.id, id)).limit(1);
+    if (!item) throw new NotFoundError("Runtime event", id);
+    const { contentCiphertext: _ciphertext, contentBefore: _before, contentAfter: _after, ...safe } = item.metadata;
+    return { ...item, metadata: includeContent ? decryptRuntimeEventMetadata(item.metadata, this.runtimeLogEncryptionKey) : safe };
+  }
+
+  private integrationActivityCache?: { until: number; value: { items: Record<string, unknown>[] } };
+  private integrationActivityJob: Promise<{ items: Record<string, unknown>[] }> | undefined;
+  async runtimeIntegrationActivity() {
+    if (this.integrationActivityCache && this.integrationActivityCache.until > Date.now()) return this.integrationActivityCache.value;
+    if (this.integrationActivityJob) return this.integrationActivityJob;
+    const job = this.db.transaction(async tx => {
+      await tx.execute(sql`SET LOCAL statement_timeout = '20s'`);
+      await tx.execute(sql`SET LOCAL work_mem = '16MB'`);
+      const result = await tx.execute(sql`SELECT integration_id AS id,
+      min(occurred_at) AS first_seen_at,max(occurred_at) AS last_seen_at,
+      max(occurred_at) FILTER (WHERE direction='incoming') AS input_seen_at,
+      max(occurred_at) FILTER (WHERE direction='outgoing') AS output_seen_at,
+      max(occurred_at) FILTER (WHERE metadata->>'streamFinalCheck'='true') AS stream_final_check_seen_at,
+      max(occurred_at) FILTER (WHERE lower(decision) IN ('error','failed','failure','timeout','timed_out')) AS last_error_at,
+      count(DISTINCT request_id) FILTER (WHERE occurred_at >= now()-interval '24 hours')::int AS request_count,
+      count(*) FILTER (WHERE occurred_at >= now()-interval '24 hours' AND lower(decision) IN ('error','failed','failure','timeout','timed_out'))::int AS error_count
+      FROM runtime_event WHERE integration_id IS NOT NULL GROUP BY integration_id`);
+      return { items: result.rows };
+    }, { accessMode: "read only" });
+    this.integrationActivityJob = job;
+    try {
+      const value = await job;
+      this.integrationActivityCache = { until: Date.now() + 10_000, value };
+      return value;
+    } finally { this.integrationActivityJob = undefined; }
+  }
+
   async queryRuntimeEvents(input: {
     limit?: number | undefined;
     guardrailId?: string | undefined;
@@ -1252,8 +1306,27 @@ export class ControlPlaneService {
     integrationId?: string | undefined;
     since?: Date | undefined;
     before?: Date | undefined;
+    cursor?: string | undefined;
+    requestId?: string | undefined;
+    direction?: string | undefined;
+    outcome?: string | undefined;
+    captured?: boolean | undefined;
+    findingsOnly?: boolean | undefined;
   }) {
+    let cursor: { at: string; id: string } | undefined;
+    if (input.cursor) {
+      try {
+        cursor = JSON.parse(Buffer.from(input.cursor, "base64url").toString());
+        if (!cursor || typeof cursor.at !== 'string' || !Number.isFinite(Date.parse(cursor.at)) || typeof cursor.id !== 'string') throw new Error();
+      } catch { throw new ValidationError("Invalid event cursor"); }
+    }
     const conditions = [
+      cursor ? sql`(${runtimeEvents.occurredAt}, ${runtimeEvents.id}) < (${cursor.at}::timestamptz, ${cursor.id})` : undefined,
+      input.requestId ? eq(runtimeEvents.requestId, input.requestId) : undefined,
+      input.direction ? eq(runtimeEvents.direction, input.direction) : undefined,
+      input.outcome ? inArray(sql`lower(${runtimeEvents.decision})`, input.outcome === 'allow' ? ['allow','allowed','pass','passed'] : input.outcome === 'block' ? ['block','blocked','reject','rejected','deny','denied'] : input.outcome === 'transform' ? ['transform','transformed','redact','redacted','rewrite','rewritten','intervene','intervened'] : ['error','failed','failure','timeout','timed_out']) : undefined,
+      input.captured ? sql`${runtimeEvents.metadata}->>'runtimeLogCaptured' = 'true'` : undefined,
+      input.findingsOnly ? sql`jsonb_array_length(CASE WHEN jsonb_typeof(${runtimeEvents.metadata}->'findings')='array' THEN ${runtimeEvents.metadata}->'findings' ELSE '[]'::jsonb END) > 0` : undefined,
       input.guardrailId ? eq(runtimeEvents.guardrailId, input.guardrailId) : undefined,
       input.deploymentId ? eq(runtimeEvents.deploymentId, input.deploymentId) : undefined,
       input.integrationId ? eq(runtimeEvents.integrationId, input.integrationId) : undefined,
@@ -1261,22 +1334,32 @@ export class ControlPlaneService {
       input.before ? lte(runtimeEvents.occurredAt, input.before) : undefined,
     ].filter((item): item is NonNullable<typeof item> => Boolean(item));
     const predicate = conditions.length ? and(...conditions) : undefined;
-    let itemsQuery = this.db.select().from(runtimeEvents).$dynamic();
-    let countQuery = this.db.select({ value: count() }).from(runtimeEvents).$dynamic();
+    // SQL projection is essential: discarding metadata after SELECT still allocates the full payload in Node.
+    let itemsQuery = this.db.select({
+      id: runtimeEvents.id, occurredAt: runtimeEvents.occurredAt,
+      cursorAt: sql<string>`${runtimeEvents.occurredAt}::text`, requestId: runtimeEvents.requestId,
+      runnerId: runtimeEvents.runnerId, guardrailId: runtimeEvents.guardrailId, guardrailVersion: runtimeEvents.guardrailVersion,
+      integrationId: runtimeEvents.integrationId, deploymentId: runtimeEvents.deploymentId,
+      direction: runtimeEvents.direction, decision: runtimeEvents.decision, durationMs: runtimeEvents.durationMs,
+      metadata: sql<Record<string, unknown>>`jsonb_build_object(
+        'captureLevel',${runtimeEvents.metadata}->'captureLevel','runtimeLogCaptured',${runtimeEvents.metadata}->'runtimeLogCaptured',
+        'protocol',${runtimeEvents.metadata}->'protocol','action',${runtimeEvents.metadata}->'action',
+        'timedOut',${runtimeEvents.metadata}->'timedOut','timed_out',${runtimeEvents.metadata}->'timed_out',
+        'streamFinalCheck',${runtimeEvents.metadata}->'streamFinalCheck',
+        'findings',coalesce((SELECT jsonb_agg(jsonb_build_object('id',f->'id','risk',f->'risk','verdict',f->'verdict','confidence',f->'confidence','taxonomyId',f->'taxonomyId','recommendedAction',f->'recommendedAction','policyId',f->'policyId','ruleId',f->'ruleId'))
+          FROM jsonb_array_elements(CASE WHEN jsonb_typeof(${runtimeEvents.metadata}->'findings')='array' THEN ${runtimeEvents.metadata}->'findings' ELSE '[]'::jsonb END) f),'[]'::jsonb))`,
+    }).from(runtimeEvents).$dynamic();
     if (predicate) {
       itemsQuery = itemsQuery.where(predicate);
-      countQuery = countQuery.where(predicate);
     }
-    const [items, totals] = await Promise.all([
-      itemsQuery.orderBy(desc(runtimeEvents.occurredAt)).limit(input.limit ?? 100),
-      countQuery,
-    ]);
+    const limit = Math.min(500, Math.max(1, input.limit ?? 100));
+    const rows = await itemsQuery.orderBy(desc(runtimeEvents.occurredAt), desc(runtimeEvents.id)).limit(limit + 1);
+    const items = rows.slice(0, limit);
+    const last = items.at(-1);
     return {
-      items: items.map((item) => ({
-        ...item,
-        metadata: decryptRuntimeEventMetadata(item.metadata, this.runtimeLogEncryptionKey),
-      })),
-      count: totals[0]?.value ?? 0,
+      items: items.map(({ cursorAt: _at, ...item }) => item),
+      count: items.length,
+      nextCursor: rows.length > limit && last ? Buffer.from(JSON.stringify({at:last.cursorAt,id:last.id})).toString('base64url') : null,
     };
   }
 

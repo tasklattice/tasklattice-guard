@@ -410,6 +410,9 @@ export const runtimeEvents = pgTable("runtime_event", {
 }, (table) => [
   index("runtime_event_guardrail_time_idx").on(table.guardrailId, table.occurredAt),
   index("runtime_event_integration_time_idx").on(table.integrationId, table.occurredAt),
+  index("runtime_event_deployment_time_idx").on(table.deploymentId, table.occurredAt, table.id),
+  index("runtime_event_time_id_idx").on(table.occurredAt, table.id),
+  index("runtime_event_request_time_idx").on(table.requestId, table.occurredAt, table.id),
 ]);
 
 export const telemetryWatermarks = pgTable("telemetry_watermark", {

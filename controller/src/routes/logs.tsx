@@ -15,6 +15,7 @@ import {
 import { useTranslation } from "react-i18next";
 
 import { EntitySheet } from "@/components/entity-sheet";
+import { EventPagination, useEventCursor } from '@/components/event-pagination';
 import { EmptyState, ErrorNotice, PageHeader, StateBadge } from "@/components/product-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,7 +26,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { queryKeys } from "@/features/query-keys";
 import { useAuth } from "@/lib/auth";
 import { normalizeOutcome } from "@/lib/controller-api-mappers";
-import { listRuntimeEvents, type RuntimeEvent } from "@/lib/controller-api";
+import { getRuntimeEvent, listRuntimeEvents, type RuntimeEvent } from "@/lib/controller-api";
 import {
   getDeployments,
   getGuardrailLoggingSettings,
@@ -55,13 +56,29 @@ export function LogsPage() {
   const guardrailsQuery = useQuery({ queryKey: queryKeys.guardrails, queryFn: getGuardrails });
   const deploymentsQuery = useQuery({ queryKey: queryKeys.deployments, queryFn: getDeployments });
   const scopedGuardrailId = guardrailId === "all" ? undefined : guardrailId;
+  const paging = useEventCursor(JSON.stringify([guardrailId, window, phase, outcome, tab]));
   const eventsQuery = useQuery({
-    queryKey: queryKeys.runtimeEventsScope({ guardrailId: scopedGuardrailId, window, limit: 10_000 }),
-    queryFn: () => listRuntimeEvents(10_000, {
+    queryKey: [...queryKeys.runtimeEventsScope({ guardrailId: scopedGuardrailId, window, limit: 100 }), phase, outcome, tab, paging.cursor ?? null],
+    queryFn: ({ signal }) => listRuntimeEvents(100, {
       guardrailId: scopedGuardrailId,
       since: new Date(Date.now() - metricWindowMilliseconds(window)).toISOString(),
-    }),
-    refetchInterval: 15_000,
+      ...(paging.cursor ? { cursor: paging.cursor } : {}),
+      ...(phase === 'all' ? {} : { direction: phase === 'input' ? 'incoming' : 'outgoing' }),
+      ...(outcome === 'all' ? {} : { outcome }),
+      ...(tab === 'system' ? {} : { captured: 'true' }),
+    }, signal),
+    refetchInterval: paging.page === 1 ? 15_000 : false,
+    refetchOnWindowFocus: false,
+    gcTime: 30_000,
+  });
+  const detailQuery = useQuery({
+    queryKey: ['log-detail', selected?.id, selected?.entries.map(e=>e.id)], enabled: Boolean(selected), gcTime: 0,
+    queryFn: async ({ signal }) => {
+      const events: RuntimeEvent[] = [];
+      const entries = selected!.entries;
+      for (let i=0; i<entries.length; i+=4) events.push(...await Promise.all(entries.slice(i,i+4).map(e=>getRuntimeEvent(e.id, signal))));
+      return runtimeLogInteractions(events)[0] ?? null;
+    },
   });
   const settingsQuery = useQuery({
     queryKey: queryKeys.guardrailLogging(scopedGuardrailId ?? ""),
@@ -145,12 +162,16 @@ export function LogsPage() {
         </TabsContent>
       </Tabs>
 
+      <EventPagination page={paging.page} busy={eventsQuery.isFetching} nextCursor={eventsQuery.data?.nextCursor} onNext={paging.next} onPrevious={paging.previous} onLatest={paging.latest} />
+      <p className="mt-2 text-xs text-muted-foreground">{t('eventPagination.checkpointScope')}</p>
+      {selected && detailQuery.isPending ? <p role="status">{t('common.loading')}</p> : null}
+      {selected && detailQuery.error ? <ErrorNotice error={detailQuery.error} /> : null}
       <RuntimeLogSheet
-        interaction={selected}
+        interaction={detailQuery.data ?? null}
         admin={auth.user?.role === "admin"}
         guardrailName={guardrailName}
         deploymentName={deploymentName}
-        open={Boolean(selected)}
+        open={Boolean(selected && detailQuery.data)}
         onOpenChange={(open) => { if (!open) setSelected(null); }}
       />
     </section>

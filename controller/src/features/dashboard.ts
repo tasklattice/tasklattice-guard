@@ -17,16 +17,18 @@ export type DashboardFilters = {
 export function useGuardrailsDashboard(filters: DashboardFilters) {
   const metrics = useQuery({
     queryKey: queryKeys.metricsScope(filters),
-    queryFn: () => getMetrics(filters),
-    refetchInterval: 15_000,
+    queryFn: ({ signal }) => getMetrics(filters, signal),
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: false,
   });
   const events = useQuery({
     queryKey: queryKeys.runtimeEventsScope({ ...filters, limit: 50 }),
-    queryFn: () => listRuntimeEvents(50, {
+    queryFn: ({ signal }) => listRuntimeEvents(50, {
       guardrailId: filters.guardrailId,
       since: new Date(Date.now() - metricWindowMilliseconds(filters.window)).toISOString(),
-    }),
-    refetchInterval: 2_000,
+    }, signal),
+    refetchInterval: 15_000,
+    refetchOnWindowFocus: false,
   });
   const guardrails = useQuery({
     queryKey: queryKeys.guardrails,
