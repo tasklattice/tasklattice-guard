@@ -42,9 +42,9 @@ const playgroundSearch = (search: Record<string, unknown>) => {
   };
 };
 const playgroundRoute = createRoute({ getParentRoute: () => rootRoute, path: "/playground", validateSearch: playgroundSearch, component: PlaygroundPage });
-const deploymentsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/deployments", component: DeploymentsPage });
-const deploymentDetailRoute = createRoute({ getParentRoute: () => rootRoute, path: "/deployments/$deploymentId", component: DeploymentDetailPage });
-const integrationsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/integrations", component: IntegrationsPage });
+const routersRoute = createRoute({ getParentRoute: () => rootRoute, path: "/integration/routers", component: DeploymentsPage });
+const routerDetailRoute = createRoute({ getParentRoute: () => rootRoute, path: "/integration/routers/$routerId", component: DeploymentDetailPage });
+const endpointRoute = createRoute({ getParentRoute: () => rootRoute, path: "/integration/endpoint", component: IntegrationsPage });
 const logsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/logs", component: LogsPage });
 const auditLogRoute = createRoute({ getParentRoute: () => rootRoute, path: "/audit-log", component: AuditLogPage });
 const usersRoute = createRoute({ getParentRoute: () => rootRoute, path: "/access", component: UsersPage });
@@ -63,9 +63,9 @@ const routeTree = rootRoute.addChildren([
   guardrailDetailRoute,
   policyLibraryRoute,
   playgroundRoute,
-  deploymentsRoute,
-  deploymentDetailRoute,
-  integrationsRoute,
+  routersRoute,
+  routerDetailRoute,
+  endpointRoute,
   logsRoute,
   auditLogRoute,
   usersRoute,
