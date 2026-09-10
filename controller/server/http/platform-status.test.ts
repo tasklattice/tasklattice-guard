@@ -11,7 +11,7 @@ import type { ControlPlaneService } from "../services/control-plane.js";
 import { createHttpApp } from "./app.js";
 
 const configured: BasicProtectionSnapshot = {
-  status: "ready", guardrailStatus: "active", deploymentStatus: "active", activeVersion: "published-v1", modelIndependent: true,
+  status: "ready", guardrailStatus: "active", routerStatus: "active", activeVersion: "published-v1", modelIndependent: true,
   coverage: { policyCount: 2, inputChecks: 2, outputChecks: 1, requiredModelBindings: [], hasUnknownDependencies: false },
   draft: { revision: 2, activeRevision: 1, validationStatus: "failed", validationFailureReason: "New draft failed" },
 };
@@ -44,10 +44,10 @@ describe("Health endpoint evidence", () => {
     expect(body.components.basicProtection).toMatchObject({ status: "ready", draft: { validationStatus: "failed", activeRevision: 1 } });
     expect(body.components.runtimeModels.status).toBe("unconfigured");
   });
-  it("does not claim basic protection if the configured deployment has no Runner", async () => {
+  it("does not claim basic protection if the configured router has no Runner", async () => {
     const { code, body } = await snapshot({ instances: [] });
     expect(code).toBe(503);
-    expect(body.components.basicProtection).toMatchObject({ status: "unavailable", deploymentStatus: "active" });
+    expect(body.components.basicProtection).toMatchObject({ status: "unavailable", routerStatus: "active" });
     expect(body.reasons).toContain("no_connected_runners");
     expect(body.reasons).not.toContain("all_required_components_ready");
   });

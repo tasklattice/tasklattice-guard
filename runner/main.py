@@ -48,12 +48,12 @@ def create_app(settings: RunnerSettings | None = None) -> FastAPI:
     )
     runtime = GuardrailRuntimeService(engine, store, contexts=contexts)
     metrics.set_admission_load_provider(registry.admission_load)
-    artifact_count, route_count, integration_count = store.observability_counts()
+    artifact_count, route_count, endpoint_count = store.observability_counts()
     metrics.set_desired_state(
         generation=store.generation,
         artifacts=artifact_count,
         routes=route_count,
-        integrations=integration_count,
+        endpoints=endpoint_count,
     )
     telemetry = RuntimeTelemetryExporter(
         configured.telemetry_endpoint,

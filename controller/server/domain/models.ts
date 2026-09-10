@@ -3,7 +3,7 @@ export type DeletionImpact = {
   windowMinutes: number;
   incomingRequestCount: number;
   lastRequestAt: Date | null;
-  activeDeploymentCount: number;
+  activeRouterCount: number;
   telemetryFresh: boolean;
   telemetryWatermark: Date | null;
   requiresSecondConfirmation: boolean;
@@ -34,8 +34,8 @@ export type RuntimeEventInput = {
   runnerId: string;
   guardrailId?: string | undefined;
   guardrailVersion?: string | undefined;
-  integrationId?: string | undefined;
-  deploymentId?: string | undefined;
+  endpointId?: string | undefined;
+  routerId?: string | undefined;
   direction: "incoming" | "outgoing";
   decision: string;
   durationMs: number;

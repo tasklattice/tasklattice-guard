@@ -18,10 +18,12 @@ import type { CompileRequest as _tasklattice_guard_control_v1_CompileRequest, Co
 import type { CompileResult as _tasklattice_guard_control_v1_CompileResult, CompileResult__Output as _tasklattice_guard_control_v1_CompileResult__Output } from './tasklattice/guard/control/v1/CompileResult.js';
 import type { ControllerMessage as _tasklattice_guard_control_v1_ControllerMessage, ControllerMessage__Output as _tasklattice_guard_control_v1_ControllerMessage__Output } from './tasklattice/guard/control/v1/ControllerMessage.js';
 import type { DataPlaneModelConfiguration as _tasklattice_guard_control_v1_DataPlaneModelConfiguration, DataPlaneModelConfiguration__Output as _tasklattice_guard_control_v1_DataPlaneModelConfiguration__Output } from './tasklattice/guard/control/v1/DataPlaneModelConfiguration.js';
-import type { DeploymentRoute as _tasklattice_guard_control_v1_DeploymentRoute, DeploymentRoute__Output as _tasklattice_guard_control_v1_DeploymentRoute__Output } from './tasklattice/guard/control/v1/DeploymentRoute.js';
 import type { DesiredState as _tasklattice_guard_control_v1_DesiredState, DesiredState__Output as _tasklattice_guard_control_v1_DesiredState__Output } from './tasklattice/guard/control/v1/DesiredState.js';
 import type { DesiredStateResult as _tasklattice_guard_control_v1_DesiredStateResult, DesiredStateResult__Output as _tasklattice_guard_control_v1_DesiredStateResult__Output } from './tasklattice/guard/control/v1/DesiredStateResult.js';
 import type { DrainRequest as _tasklattice_guard_control_v1_DrainRequest, DrainRequest__Output as _tasklattice_guard_control_v1_DrainRequest__Output } from './tasklattice/guard/control/v1/DrainRequest.js';
+import type { EndpointCredential as _tasklattice_guard_control_v1_EndpointCredential, EndpointCredential__Output as _tasklattice_guard_control_v1_EndpointCredential__Output } from './tasklattice/guard/control/v1/EndpointCredential.js';
+import type { EndpointRuntime as _tasklattice_guard_control_v1_EndpointRuntime, EndpointRuntime__Output as _tasklattice_guard_control_v1_EndpointRuntime__Output } from './tasklattice/guard/control/v1/EndpointRuntime.js';
+import type { EndpointVerification as _tasklattice_guard_control_v1_EndpointVerification, EndpointVerification__Output as _tasklattice_guard_control_v1_EndpointVerification__Output } from './tasklattice/guard/control/v1/EndpointVerification.js';
 import type { EvaluationTrigger as _tasklattice_guard_control_v1_EvaluationTrigger, EvaluationTrigger__Output as _tasklattice_guard_control_v1_EvaluationTrigger__Output } from './tasklattice/guard/control/v1/EvaluationTrigger.js';
 import type { GroundingClaimEvidence as _tasklattice_guard_control_v1_GroundingClaimEvidence, GroundingClaimEvidence__Output as _tasklattice_guard_control_v1_GroundingClaimEvidence__Output } from './tasklattice/guard/control/v1/GroundingClaimEvidence.js';
 import type { GroundingFilterAssessment as _tasklattice_guard_control_v1_GroundingFilterAssessment, GroundingFilterAssessment__Output as _tasklattice_guard_control_v1_GroundingFilterAssessment__Output } from './tasklattice/guard/control/v1/GroundingFilterAssessment.js';
@@ -29,9 +31,6 @@ import type { GuardrailPlan as _tasklattice_guard_control_v1_GuardrailPlan, Guar
 import type { GuardrailPlanModule as _tasklattice_guard_control_v1_GuardrailPlanModule, GuardrailPlanModule__Output as _tasklattice_guard_control_v1_GuardrailPlanModule__Output } from './tasklattice/guard/control/v1/GuardrailPlanModule.js';
 import type { GuardrailPlanStep as _tasklattice_guard_control_v1_GuardrailPlanStep, GuardrailPlanStep__Output as _tasklattice_guard_control_v1_GuardrailPlanStep__Output } from './tasklattice/guard/control/v1/GuardrailPlanStep.js';
 import type { GuardrailPolicyBinding as _tasklattice_guard_control_v1_GuardrailPolicyBinding, GuardrailPolicyBinding__Output as _tasklattice_guard_control_v1_GuardrailPolicyBinding__Output } from './tasklattice/guard/control/v1/GuardrailPolicyBinding.js';
-import type { IntegrationCredential as _tasklattice_guard_control_v1_IntegrationCredential, IntegrationCredential__Output as _tasklattice_guard_control_v1_IntegrationCredential__Output } from './tasklattice/guard/control/v1/IntegrationCredential.js';
-import type { IntegrationRuntime as _tasklattice_guard_control_v1_IntegrationRuntime, IntegrationRuntime__Output as _tasklattice_guard_control_v1_IntegrationRuntime__Output } from './tasklattice/guard/control/v1/IntegrationRuntime.js';
-import type { IntegrationVerification as _tasklattice_guard_control_v1_IntegrationVerification, IntegrationVerification__Output as _tasklattice_guard_control_v1_IntegrationVerification__Output } from './tasklattice/guard/control/v1/IntegrationVerification.js';
 import type { ModelRuntime as _tasklattice_guard_control_v1_ModelRuntime, ModelRuntime__Output as _tasklattice_guard_control_v1_ModelRuntime__Output } from './tasklattice/guard/control/v1/ModelRuntime.js';
 import type { PolicyActionReference as _tasklattice_guard_control_v1_PolicyActionReference, PolicyActionReference__Output as _tasklattice_guard_control_v1_PolicyActionReference__Output } from './tasklattice/guard/control/v1/PolicyActionReference.js';
 import type { PolicyRailBinding as _tasklattice_guard_control_v1_PolicyRailBinding, PolicyRailBinding__Output as _tasklattice_guard_control_v1_PolicyRailBinding__Output } from './tasklattice/guard/control/v1/PolicyRailBinding.js';
@@ -41,6 +40,7 @@ import type { PromptDefinition as _tasklattice_guard_control_v1_PromptDefinition
 import type { ProviderEvidence as _tasklattice_guard_control_v1_ProviderEvidence, ProviderEvidence__Output as _tasklattice_guard_control_v1_ProviderEvidence__Output } from './tasklattice/guard/control/v1/ProviderEvidence.js';
 import type { RegistrationAccepted as _tasklattice_guard_control_v1_RegistrationAccepted, RegistrationAccepted__Output as _tasklattice_guard_control_v1_RegistrationAccepted__Output } from './tasklattice/guard/control/v1/RegistrationAccepted.js';
 import type { RiskFinding as _tasklattice_guard_control_v1_RiskFinding, RiskFinding__Output as _tasklattice_guard_control_v1_RiskFinding__Output } from './tasklattice/guard/control/v1/RiskFinding.js';
+import type { RouterRoute as _tasklattice_guard_control_v1_RouterRoute, RouterRoute__Output as _tasklattice_guard_control_v1_RouterRoute__Output } from './tasklattice/guard/control/v1/RouterRoute.js';
 import type { RunnerControlClient as _tasklattice_guard_control_v1_RunnerControlClient, RunnerControlDefinition as _tasklattice_guard_control_v1_RunnerControlDefinition } from './tasklattice/guard/control/v1/RunnerControl.js';
 import type { RunnerHeartbeat as _tasklattice_guard_control_v1_RunnerHeartbeat, RunnerHeartbeat__Output as _tasklattice_guard_control_v1_RunnerHeartbeat__Output } from './tasklattice/guard/control/v1/RunnerHeartbeat.js';
 import type { RunnerLoad as _tasklattice_guard_control_v1_RunnerLoad, RunnerLoad__Output as _tasklattice_guard_control_v1_RunnerLoad__Output } from './tasklattice/guard/control/v1/RunnerLoad.js';
@@ -87,10 +87,12 @@ export interface ProtoGrpcType {
           ContentView: EnumTypeDefinition
           ControllerMessage: MessageTypeDefinition<_tasklattice_guard_control_v1_ControllerMessage, _tasklattice_guard_control_v1_ControllerMessage__Output>
           DataPlaneModelConfiguration: MessageTypeDefinition<_tasklattice_guard_control_v1_DataPlaneModelConfiguration, _tasklattice_guard_control_v1_DataPlaneModelConfiguration__Output>
-          DeploymentRoute: MessageTypeDefinition<_tasklattice_guard_control_v1_DeploymentRoute, _tasklattice_guard_control_v1_DeploymentRoute__Output>
           DesiredState: MessageTypeDefinition<_tasklattice_guard_control_v1_DesiredState, _tasklattice_guard_control_v1_DesiredState__Output>
           DesiredStateResult: MessageTypeDefinition<_tasklattice_guard_control_v1_DesiredStateResult, _tasklattice_guard_control_v1_DesiredStateResult__Output>
           DrainRequest: MessageTypeDefinition<_tasklattice_guard_control_v1_DrainRequest, _tasklattice_guard_control_v1_DrainRequest__Output>
+          EndpointCredential: MessageTypeDefinition<_tasklattice_guard_control_v1_EndpointCredential, _tasklattice_guard_control_v1_EndpointCredential__Output>
+          EndpointRuntime: MessageTypeDefinition<_tasklattice_guard_control_v1_EndpointRuntime, _tasklattice_guard_control_v1_EndpointRuntime__Output>
+          EndpointVerification: MessageTypeDefinition<_tasklattice_guard_control_v1_EndpointVerification, _tasklattice_guard_control_v1_EndpointVerification__Output>
           EnforcementAction: EnumTypeDefinition
           EvaluationTrigger: MessageTypeDefinition<_tasklattice_guard_control_v1_EvaluationTrigger, _tasklattice_guard_control_v1_EvaluationTrigger__Output>
           EvaluationTriggerType: EnumTypeDefinition
@@ -104,9 +106,6 @@ export interface ProtoGrpcType {
           GuardrailPlanModule: MessageTypeDefinition<_tasklattice_guard_control_v1_GuardrailPlanModule, _tasklattice_guard_control_v1_GuardrailPlanModule__Output>
           GuardrailPlanStep: MessageTypeDefinition<_tasklattice_guard_control_v1_GuardrailPlanStep, _tasklattice_guard_control_v1_GuardrailPlanStep__Output>
           GuardrailPolicyBinding: MessageTypeDefinition<_tasklattice_guard_control_v1_GuardrailPolicyBinding, _tasklattice_guard_control_v1_GuardrailPolicyBinding__Output>
-          IntegrationCredential: MessageTypeDefinition<_tasklattice_guard_control_v1_IntegrationCredential, _tasklattice_guard_control_v1_IntegrationCredential__Output>
-          IntegrationRuntime: MessageTypeDefinition<_tasklattice_guard_control_v1_IntegrationRuntime, _tasklattice_guard_control_v1_IntegrationRuntime__Output>
-          IntegrationVerification: MessageTypeDefinition<_tasklattice_guard_control_v1_IntegrationVerification, _tasklattice_guard_control_v1_IntegrationVerification__Output>
           ModelRuntime: MessageTypeDefinition<_tasklattice_guard_control_v1_ModelRuntime, _tasklattice_guard_control_v1_ModelRuntime__Output>
           OutputDeliveryMode: EnumTypeDefinition
           PolicyActionReference: MessageTypeDefinition<_tasklattice_guard_control_v1_PolicyActionReference, _tasklattice_guard_control_v1_PolicyActionReference__Output>
@@ -121,6 +120,7 @@ export interface ProtoGrpcType {
           RegistrationAccepted: MessageTypeDefinition<_tasklattice_guard_control_v1_RegistrationAccepted, _tasklattice_guard_control_v1_RegistrationAccepted__Output>
           RiskFinding: MessageTypeDefinition<_tasklattice_guard_control_v1_RiskFinding, _tasklattice_guard_control_v1_RiskFinding__Output>
           RouteDecision: EnumTypeDefinition
+          RouterRoute: MessageTypeDefinition<_tasklattice_guard_control_v1_RouterRoute, _tasklattice_guard_control_v1_RouterRoute__Output>
           /**
            * RunnerControl is the only state-distribution channel between the control
            * plane and data plane. Every business payload is a typed imported message;

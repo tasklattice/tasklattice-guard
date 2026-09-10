@@ -10104,7 +10104,7 @@
           "flow_name": null,
           "action_name": "GuardContentFilterAction"
         },
-        "expression": "\\b(veterans?|military|armed\\s+forces|army|navy|air\\s+force|marines?(?:\\s+corps)?|coast\\s+guard|national\\s+guard|reserves?(?:ist)?|active\\s+duty|deployment|deployed|enlisted|commissioned|honorable\\s+discharge|dishonorable\\s+discharge|VA\\s+benefits|GI\\s+bill|military\\s+service|service\\s+members?|servicemembers?|SCRA|MLA|military\\s+lending)\\b",
+        "expression": "\\b(veterans?|military|armed\\s+forces|army|navy|air\\s+force|marines?(?:\\s+corps)?|coast\\s+guard|national\\s+guard|reserves?(?:ist)?|active\\s+duty|router|deployed|enlisted|commissioned|honorable\\s+discharge|dishonorable\\s+discharge|VA\\s+benefits|GI\\s+bill|military\\s+service|service\\s+members?|servicemembers?|SCRA|MLA|military\\s+lending)\\b",
         "context_expression": null,
         "context_max_gap_words": null,
         "allow_word_numbers": false,

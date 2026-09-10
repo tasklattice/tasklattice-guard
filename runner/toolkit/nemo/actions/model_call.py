@@ -37,7 +37,7 @@ class NativeModelObservationScope:
     """Request identity shared with NeMo-native model adapters via ContextVar."""
 
     guardrail_id: str
-    integration_id: str
+    endpoint_id: str
     phase: str
     request_started_at: float
     observer: ModelCallObserver | None = None
@@ -47,14 +47,14 @@ class NativeModelObservationScope:
 def activate_native_model_observation(
     *,
     guardrail_id: str,
-    integration_id: str,
+    endpoint_id: str,
     phase: str,
     request_started_at: float,
     observer: ModelCallObserver | None = None,
 ) -> tuple[NativeModelObservationScope, Any]:
     scope = NativeModelObservationScope(
         guardrail_id=guardrail_id,
-        integration_id=integration_id,
+        endpoint_id=endpoint_id,
         phase=phase,
         request_started_at=request_started_at,
         observer=observer,
@@ -216,7 +216,7 @@ def observe_native_model_call(
     )
     labels = {
         "guardrail_id": scope.guardrail_id if scope is not None else "__unresolved__",
-        "integration_id": scope.integration_id if scope is not None else "__internal__",
+        "endpoint_id": scope.endpoint_id if scope is not None else "__internal__",
         "phase": scope.phase if scope is not None else "unknown",
         "action": f"nemo_{role}",
         "provider": provider,
@@ -232,7 +232,7 @@ def observe_native_model_call(
             "guardrail.id": labels["guardrail_id"],
             "guardrail.phase": labels["phase"],
             "guardrail.action": labels["action"],
-            "integration.id": labels["integration_id"],
+            "endpoint.id": labels["endpoint_id"],
             "gen_ai.provider.name": provider,
             "gen_ai.request.model": model,
             "gen_ai.operation.name": labels["operation"],
@@ -343,8 +343,8 @@ def observe_model_call(
         request, provider, model, operation, started,
         profile_ref=profile_ref, runtime_ref=runtime_ref,
     )
-    integration_id = (
-        request.request_context.integration_id
+    endpoint_id = (
+        request.request_context.endpoint_id
         if request.request_context is not None
         else None
     )
@@ -356,7 +356,7 @@ def observe_model_call(
         "guardrail.evaluation.contract_ref": request.binding.contract_ref,
         "guardrail.action": request.binding.action_name or request.binding.id,
         "guardrail.policy.id": request.policy_id or "__none__",
-        "integration.id": integration_id or "__internal__",
+        "endpoint.id": endpoint_id or "__internal__",
         "gen_ai.provider.name": provider,
         "gen_ai.request.model": model,
         "gen_ai.operation.name": operation,
@@ -365,7 +365,7 @@ def observe_model_call(
     }
     observer_labels = {
         "guardrail_id": request.guardrail_id,
-        "integration_id": integration_id or "__internal__",
+        "endpoint_id": endpoint_id or "__internal__",
         "phase": request.rail_type,
         "action": request.binding.action_name or request.binding.id,
         "provider": provider,

@@ -54,8 +54,8 @@ describe("help center content", () => {
       "action-reference",
       "parameter",
       "validation-run",
-      "deployment",
-      "integration",
+      "router",
+      "endpoint",
       "traffic-scope",
       "evidence",
       "runtime-profile",
@@ -69,13 +69,13 @@ describe("help center content", () => {
   it("searches articles and the glossary across aliases and descriptions", () => {
     const chinese = getHelpContent("zh-CN");
     const railResults = searchHelpContent(chinese, "Rail");
-    const deploymentResults = searchHelpContent(chinese, "部署 路由");
+    const routerResults = searchHelpContent(chinese, "Router");
 
     expect(railResults.guides.flatMap((result) => result.articles.map((article) => article.id))).toContain("developer-policy-runtime");
     expect(railResults.guides.flatMap((result) => result.articles.map((article) => article.id))).not.toContain("user-lifecycle");
     expect(railResults.glossary.map((entry) => entry.id)).toContain("rail");
     expect(railResults.glossary.map((entry) => entry.id)).not.toContain("guardrail");
-    expect(deploymentResults.glossary.map((entry) => entry.id)).toContain("deployment");
-    expect(deploymentResults.guides.flatMap((result) => result.articles.map((article) => article.id))).toContain("operator-routing");
+    expect(routerResults.glossary.map((entry) => entry.id)).toContain("router");
+    expect(routerResults.guides.flatMap((result) => result.articles.map((article) => article.id))).toContain("operator-routing");
   });
 });

@@ -5,7 +5,7 @@ import { assertCatchAllTopology, isCatchAllTrafficScope } from "../services/cont
 const filtered = { combinator: "and", conditions: [{ field: "protocol", operator: "equals", value: "litellm" }] };
 const catchAll = { combinator: "and", conditions: [] };
 
-describe("Deployment route topology", () => {
+describe("Router route topology", () => {
   it("recognizes only an explicit empty condition group as catch-all", () => {
     expect(isCatchAllTrafficScope(catchAll)).toBe(true);
     expect(isCatchAllTrafficScope(filtered)).toBe(false);

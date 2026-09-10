@@ -59,3 +59,18 @@ describe("Controller operations translations", () => {
     expect(zh("logs.systemEvents")).toBe("系统事件");
   });
 });
+
+describe("Router and Endpoint product terminology", () => {
+  it("uses the current entities in both languages, including onboarding and errors", async () => {
+    const { default: i18n } = await import("./i18n");
+    for (const language of ["en", "zh-CN"]) {
+      const t = i18n.getFixedT(language);
+      expect(t("nav.routers")).toContain("Router");
+      expect(t("nav.endpoints")).toMatch(/Endpoint|端点/);
+      for (const key of ["endpoints.register", "endpoints.openEndpointDetails", "endpoints.deleteDialogTitle", "dashboard.attentionEndpoint"]) {
+        expect(t(key), `${language}: ${key}`).toMatch(/endpoint|Endpoint|端点/);
+        expect(t(key), `${language}: ${key}`).not.toMatch(/Integration|集成|Deployment/);
+      }
+    }
+  });
+});

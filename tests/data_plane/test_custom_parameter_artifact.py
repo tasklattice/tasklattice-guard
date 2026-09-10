@@ -20,7 +20,7 @@ async def test_frozen_parameters_cannot_rewrite_flow_input(tmp_path, phase, cont
     try:
         result = await GuardrailRuntimeService(engine, store).evaluate(ProtectionRequest(
             phase=phase, texts=(content,), context=RequestContext(
-                protocol="litellm", integration_id="fixture-integration")))
+                protocol="litellm", endpoint_id="fixture-endpoint")))
         assert registry.readiness()["ready"]
         assert result.decision == expected
         assert not result.usage.fail_closed and result.usage.model_invocations == 0

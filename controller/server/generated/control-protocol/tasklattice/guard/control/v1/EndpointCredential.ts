@@ -1,10 +1,10 @@
-// Original file: integration.proto
+// Original file: endpoint.proto
 
 
 /**
  * Non-secret credential verifier projected from Controller to Runner.
  */
-export interface IntegrationCredential {
+export interface EndpointCredential {
   /**
    * Stable credential identifier safe to expose in telemetry and audit events.
    */
@@ -31,7 +31,7 @@ export interface IntegrationCredential {
 /**
  * Non-secret credential verifier projected from Controller to Runner.
  */
-export interface IntegrationCredential__Output {
+export interface EndpointCredential__Output {
   /**
    * Stable credential identifier safe to expose in telemetry and audit events.
    */

@@ -1,6 +1,6 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 
-export type StoredIntegrationCredential = {
+export type StoredEndpointCredential = {
   id: string;
   sha256: string;
   keyHint: string;
@@ -8,19 +8,19 @@ export type StoredIntegrationCredential = {
   revokedAt: string | null;
 };
 
-export type PublicIntegrationCredential = Pick<StoredIntegrationCredential, "id" | "keyHint" | "createdAt">;
+export type PublicEndpointCredential = Pick<StoredEndpointCredential, "id" | "keyHint" | "createdAt">;
 
-export type IssuedIntegrationCredential = {
+export type IssuedEndpointCredential = {
   value: string;
-  stored: StoredIntegrationCredential;
-  publicCredential: PublicIntegrationCredential;
+  stored: StoredEndpointCredential;
+  publicCredential: PublicEndpointCredential;
 };
 
-export type StoredIntegrationVerification = {
-  credentials: StoredIntegrationCredential[];
+export type StoredEndpointVerification = {
+  credentials: StoredEndpointCredential[];
 };
 
-export function issueIntegrationCredential(now = new Date()): IssuedIntegrationCredential {
+export function issueEndpointCredential(now = new Date()): IssuedEndpointCredential {
   const value = `tg_${randomBytes(32).toString("base64url")}`;
   const stored = {
     id: randomUUID(),
@@ -28,7 +28,7 @@ export function issueIntegrationCredential(now = new Date()): IssuedIntegrationC
     keyHint: credentialHint(value),
     createdAt: now.toISOString(),
     revokedAt: null,
-  } satisfies StoredIntegrationCredential;
+  } satisfies StoredEndpointCredential;
   return {
     value,
     stored,
@@ -36,33 +36,33 @@ export function issueIntegrationCredential(now = new Date()): IssuedIntegrationC
   };
 }
 
-export function activeIntegrationCredentials(
+export function activeEndpointCredentials(
   verification: unknown,
-): StoredIntegrationCredential[] {
+): StoredEndpointCredential[] {
   return structuredCredentials(verification)
     .filter((credential) => credential.revokedAt === null)
     .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
 }
 
-export function publicIntegrationCredentials(
+export function publicEndpointCredentials(
   verification: unknown,
-): PublicIntegrationCredential[] {
-  return activeIntegrationCredentials(verification).map(toPublicCredential);
+): PublicEndpointCredential[] {
+  return activeEndpointCredentials(verification).map(toPublicCredential);
 }
 
-export function appendIntegrationCredential(
+export function appendEndpointCredential(
   verification: unknown,
-  credential: StoredIntegrationCredential,
-): StoredIntegrationVerification {
+  credential: StoredEndpointCredential,
+): StoredEndpointVerification {
   const structured = structuredCredentials(verification);
   return { credentials: [...structured, credential] };
 }
 
-export function revokeIntegrationCredential(
+export function revokeEndpointCredential(
   verification: unknown,
   credentialId: string,
   now: Date,
-): StoredIntegrationVerification | null {
+): StoredEndpointVerification | null {
   let found = false;
   const credentials = structuredCredentials(verification).map((credential) => {
     if (credential.id !== credentialId || credential.revokedAt !== null) return credential;
@@ -72,7 +72,7 @@ export function revokeIntegrationCredential(
   return found ? { credentials } : null;
 }
 
-function structuredCredentials(verification: unknown): StoredIntegrationCredential[] {
+function structuredCredentials(verification: unknown): StoredEndpointCredential[] {
   if (!isRecord(verification) || !Array.isArray(verification.credentials)) return [];
   return verification.credentials.flatMap((value) => {
     if (!isRecord(value)) return [];
@@ -89,7 +89,7 @@ function structuredCredentials(verification: unknown): StoredIntegrationCredenti
   });
 }
 
-function toPublicCredential(credential: StoredIntegrationCredential): PublicIntegrationCredential {
+function toPublicCredential(credential: StoredEndpointCredential): PublicEndpointCredential {
   return {
     id: credential.id,
     keyHint: credential.keyHint,

@@ -3,17 +3,17 @@ import { normalizeOutcome } from "@/lib/controller-api-mappers";
 import type {
   Collection,
   DeleteConfirmation,
-  Integration,
-  IntegrationAdapterId,
-  IntegrationDeletionImpact,
-  IntegrationRegistration,
-  OneTimeIntegrationCredential,
+  Endpoint,
+  EndpointAdapterId,
+  EndpointDeletionImpact,
+  EndpointRegistration,
+  OneTimeEndpointCredential,
 } from "@/lib/api-types";
 
 type CurrentCredential = { id: string; keyHint: string; createdAt: string };
-type CurrentIntegration = controllerApi.Integration & {
+type CurrentEndpoint = controllerApi.Endpoint & {
   credentials?: CurrentCredential[];
-  setup?: Integration["setup"];
+  setup?: Endpoint["setup"];
   credentialId?: string;
   credentialKeyHint?: string;
   credentialCreatedAt?: string;
@@ -21,15 +21,15 @@ type CurrentIntegration = controllerApi.Integration & {
   distributionStatus?: "ready" | "syncing";
 };
 
-function integrationAdapter(adapter: string): { id: IntegrationAdapterId; protocol: "litellm" | "http" | "a2a" } {
+function endpointAdapter(adapter: string): { id: EndpointAdapterId; protocol: "litellm" | "http" | "a2a" } {
   const normalized = adapter.toLowerCase();
   if (normalized.includes("litellm")) return { id: "litellm-generic-guardrail", protocol: "litellm" };
   if (normalized.includes("a2a")) return { id: "a2a-guard", protocol: "a2a" };
   if (normalized === "http" || normalized === "generic-http-guard") return { id: "generic-http-guard", protocol: "http" };
-  throw new Error(`Unknown Integration adapter: ${adapter}`);
+  throw new Error(`Unknown Endpoint adapter: ${adapter}`);
 }
 
-function integrationSetup(): Integration["setup"] {
+function endpointSetup(): Endpoint["setup"] {
   return {
     api_base_url: "",
     callback_url: "",
@@ -48,16 +48,16 @@ function mapCredential(value: CurrentCredential) {
   return { id: value.id, key_hint: value.keyHint, created_at: value.createdAt };
 }
 
-function integrationEvents(value: controllerApi.Integration, events: controllerApi.RuntimeEvent[]): controllerApi.RuntimeEvent[] {
-  return events.filter((event) => event.integrationId === value.id);
+function endpointEvents(value: controllerApi.Endpoint, events: controllerApi.RuntimeEvent[]): controllerApi.RuntimeEvent[] {
+  return events.filter((event) => event.endpointId === value.id);
 }
 
-type IntegrationActivity = Pick<Integration, 'first_seen_at' | 'last_seen_at' | 'input_seen_at' | 'output_seen_at' | 'stream_final_check_seen_at' | 'last_error_at' | 'request_count' | 'error_count'> & { id: string };
-const getActivity = () => controllerApi.requestController<{ items: IntegrationActivity[] }>('/api/v1/runtime-integrations');
+type EndpointActivity = Pick<Endpoint, 'first_seen_at' | 'last_seen_at' | 'input_seen_at' | 'output_seen_at' | 'stream_final_check_seen_at' | 'last_error_at' | 'request_count' | 'error_count'> & { id: string };
+const getActivity = () => controllerApi.requestController<{ items: EndpointActivity[] }>('/api/v1/runtime-endpoints');
 
-function mapIntegration(value: CurrentIntegration, events: controllerApi.RuntimeEvent[], activity?: IntegrationActivity): Integration {
-  const adapter = integrationAdapter(value.adapter);
-  const matching = integrationEvents(value, events);
+function mapEndpoint(value: CurrentEndpoint, events: controllerApi.RuntimeEvent[], activity?: EndpointActivity): Endpoint {
+  const adapter = endpointAdapter(value.adapter);
+  const matching = endpointEvents(value, events);
   const incoming = matching.filter((event) => event.direction === "incoming").map((event) => event.occurredAt).sort();
   const outgoing = matching.filter((event) => event.direction === "outgoing").map((event) => event.occurredAt).sort();
   const errors = matching.filter((event) => normalizeOutcome(event.decision) === "error");
@@ -90,34 +90,34 @@ function mapIntegration(value: CurrentIntegration, events: controllerApi.Runtime
     last_error_at: errors.map((event) => event.occurredAt).sort().at(-1) ?? null,
     request_count: new Set(matching.map((event) => event.requestId)).size,
     error_count: errors.length,
-    setup: value.setup ?? integrationSetup(),
+    setup: value.setup ?? endpointSetup(),
     created_at: value.createdAt,
     updated_at: value.updatedAt,
     ...(activity ? { ...activity, runtime_status: activity.error_count ? 'degraded' as const : activity.last_seen_at ? 'healthy' as const : 'unknown' as const } : {}),
   };
 }
 
-export async function getIntegrations(): Promise<Collection<Integration>> {
-  const [integrations, events] = await Promise.all([
-    controllerApi.listControllerIntegrations(),
+export async function getEndpoints(): Promise<Collection<Endpoint>> {
+  const [endpoints, events] = await Promise.all([
+    controllerApi.listControllerEndpoints(),
     getActivity(),
   ]);
   const activity = new Map(events.items.map(item=>[item.id,item]));
-  const items = integrations.items.map((item) => mapIntegration(item as CurrentIntegration, [], activity.get(item.id)));
+  const items = endpoints.items.map((item) => mapEndpoint(item as CurrentEndpoint, [], activity.get(item.id)));
   return { items, count: items.length };
 }
 
-export async function getIntegration(id: string): Promise<Integration> {
-  const [integration, events] = await Promise.all([
-    controllerApi.requestController<CurrentIntegration>(`/api/v1/integrations/${encodeURIComponent(id)}`),
+export async function getEndpoint(id: string): Promise<Endpoint> {
+  const [endpoint, events] = await Promise.all([
+    controllerApi.requestController<CurrentEndpoint>(`/api/v1/endpoints/${encodeURIComponent(id)}`),
     getActivity(),
   ]);
-  return mapIntegration(integration, [], events.items.find(item=>item.id===id));
+  return mapEndpoint(endpoint, [], events.items.find(item=>item.id===id));
 }
 
-function oneTimeRegistration(value: CurrentIntegration): IntegrationRegistration {
-  if (!value.credential) throw new Error("Controller did not return the one-time Integration credential.");
-  const credential: OneTimeIntegrationCredential = {
+function oneTimeRegistration(value: CurrentEndpoint): EndpointRegistration {
+  if (!value.credential) throw new Error("Controller did not return the one-time Endpoint credential.");
+  const credential: OneTimeEndpointCredential = {
     id: value.credentialId ?? "",
     key_hint: value.credentialKeyHint ?? credentialHint(value.credential),
     created_at: value.credentialCreatedAt ?? value.createdAt,
@@ -127,51 +127,51 @@ function oneTimeRegistration(value: CurrentIntegration): IntegrationRegistration
     ? value.credentials
     : [{ id: credential.id, keyHint: credential.key_hint, createdAt: credential.created_at }];
   return {
-    integration: mapIntegration({ ...value, credentials }, []),
+    endpoint: mapEndpoint({ ...value, credentials }, []),
     credential,
   };
 }
 
-export async function createIntegration(input: { name: string; adapter_id: IntegrationAdapterId }): Promise<IntegrationRegistration> {
-  const created = await controllerApi.createControllerIntegration({ name: input.name, adapter: input.adapter_id }) as CurrentIntegration;
+export async function createEndpoint(input: { name: string; adapter_id: EndpointAdapterId }): Promise<EndpointRegistration> {
+  const created = await controllerApi.createControllerEndpoint({ name: input.name, adapter: input.adapter_id }) as CurrentEndpoint;
   return oneTimeRegistration(created);
 }
 
-export async function setIntegrationEnabled(id: string, enabled: boolean): Promise<Integration> {
-  const updated = await controllerApi.requestController<CurrentIntegration>(`/api/v1/integrations/${encodeURIComponent(id)}`, {
+export async function setEndpointEnabled(id: string, enabled: boolean): Promise<Endpoint> {
+  const updated = await controllerApi.requestController<CurrentEndpoint>(`/api/v1/endpoints/${encodeURIComponent(id)}`, {
     method: "PATCH",
     body: JSON.stringify({ enabled }),
   });
   const events = await getActivity();
-  return mapIntegration(updated, [], events.items.find(item=>item.id===id));
+  return mapEndpoint(updated, [], events.items.find(item=>item.id===id));
 }
 
-export async function rotateIntegrationCredential(id: string): Promise<IntegrationRegistration> {
-  const updated = await controllerApi.requestController<CurrentIntegration>(`/api/v1/integrations/${encodeURIComponent(id)}/credentials`, {
+export async function rotateEndpointCredential(id: string): Promise<EndpointRegistration> {
+  const updated = await controllerApi.requestController<CurrentEndpoint>(`/api/v1/endpoints/${encodeURIComponent(id)}/credentials`, {
     method: "POST",
     body: JSON.stringify({}),
   });
   return oneTimeRegistration(updated);
 }
 
-export const revokeIntegrationCredential = (integrationId: string, credentialId: string) => controllerApi.requestController<void>(
-  `/api/v1/integrations/${encodeURIComponent(integrationId)}/credentials/${encodeURIComponent(credentialId)}`,
+export const revokeEndpointCredential = (endpointId: string, credentialId: string) => controllerApi.requestController<void>(
+  `/api/v1/endpoints/${encodeURIComponent(endpointId)}/credentials/${encodeURIComponent(credentialId)}`,
   { method: "DELETE" },
 );
 
-export async function getIntegrationDeletionImpact(id: string): Promise<IntegrationDeletionImpact> {
-  const [impact, integration] = await Promise.all([
-    controllerApi.getControllerIntegrationDeletionImpact(id),
-    controllerApi.requestController<CurrentIntegration>(`/api/v1/integrations/${encodeURIComponent(id)}`),
+export async function getEndpointDeletionImpact(id: string): Promise<EndpointDeletionImpact> {
+  const [impact, endpoint] = await Promise.all([
+    controllerApi.getControllerEndpointDeletionImpact(id),
+    controllerApi.requestController<CurrentEndpoint>(`/api/v1/endpoints/${encodeURIComponent(id)}`),
   ]);
   return {
-    integration_id: impact.resourceId,
-    integration_name: integration.name,
+    endpoint_id: impact.resourceId,
+    endpoint_name: endpoint.name,
     window_minutes: impact.windowMinutes,
     incoming_request_count: impact.incomingRequestCount,
     last_request_at: impact.lastRequestAt,
-    active_deployment_count: impact.activeDeploymentCount,
-    active_credential_count: integration.credentials?.length ?? 0,
+    active_router_count: impact.activeRouterCount,
+    active_credential_count: endpoint.credentials?.length ?? 0,
     telemetry_fresh: impact.telemetryFresh,
     telemetry_watermark: impact.telemetryWatermark,
     requires_second_confirmation: impact.requiresSecondConfirmation,
@@ -179,7 +179,7 @@ export async function getIntegrationDeletionImpact(id: string): Promise<Integrat
   };
 }
 
-export const deleteIntegration = (id: string, confirmation: DeleteConfirmation) => controllerApi.deleteControllerIntegration(id, {
+export const deleteEndpoint = (id: string, confirmation: DeleteConfirmation) => controllerApi.deleteControllerEndpoint(id, {
   reason: confirmation.reason,
   confirmRecentTraffic: confirmation.confirm_recent_traffic,
   ...(confirmation.confirmation_name ? { confirmationName: confirmation.confirmation_name } : {}),

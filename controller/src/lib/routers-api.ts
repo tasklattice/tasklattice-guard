@@ -11,14 +11,14 @@ import {
 import type {
   Collection,
   DeleteConfirmation,
-  Deployment,
-  DeploymentDeletionImpact,
-  DeploymentRuntimeTrace,
+  Router,
+  RouterDeletionImpact,
+  RouterRuntimeTrace,
   TrafficScopeExpression,
   TrafficScopeField,
 } from "@/lib/api-types";
 
-const DEFAULT_DEPLOYMENT_ID = "deployment-default";
+const DEFAULT_ROUTER_ID = "router-default";
 const emptyCollection = <T>(): Collection<T> => ({ items: [], count: 0 });
 
 function normalizeTrafficScope(value: Record<string, unknown>): TrafficScopeExpression {
@@ -29,19 +29,19 @@ function normalizeTrafficScope(value: Record<string, unknown>): TrafficScopeExpr
   throw new Error("Controller 返回了旧 UI 无法表达的 Traffic Scope。");
 }
 
-function mapDeployments(
-  values: controllerApi.Deployment[],
+function mapRouters(
+  values: controllerApi.Router[],
   guardrails: controllerApi.Guardrail[],
-): Deployment[] {
+): Router[] {
   const guardrailById = new Map(guardrails.map((item) => [item.id, item]));
   return values.map((item) => {
-    const isDefault = item.id === DEFAULT_DEPLOYMENT_ID;
+    const isDefault = item.id === DEFAULT_ROUTER_ID;
     return {
       id: item.id,
       name: item.name,
       guardrail_id: item.guardrailId,
       guardrail_version: item.guardrailVersion ?? guardrailById.get(item.guardrailId)?.activeVersion ?? "",
-      integration_id: item.integrationId,
+      endpoint_id: item.endpointId,
       route_order: item.routeOrder,
       traffic_scope: normalizeTrafficScope(item.trafficScope),
       enabled: item.enabled,
@@ -52,44 +52,44 @@ function mapDeployments(
   });
 }
 
-export async function getDeployments(): Promise<Collection<Deployment>> {
-  const [deployments, guardrails] = await Promise.all([
-    controllerApi.listControllerDeployments(),
+export async function getRouters(): Promise<Collection<Router>> {
+  const [routers, guardrails] = await Promise.all([
+    controllerApi.listControllerRouters(),
     controllerApi.listControllerGuardrails(),
   ]);
-  const items = mapDeployments(deployments.items, guardrails.items);
+  const items = mapRouters(routers.items, guardrails.items);
   return { items, count: items.length };
 }
 
-export async function getDeployment(id: string): Promise<Deployment> {
-  const deployments = await getDeployments();
-  const found = deployments.items.find((item) => item.id === id);
-  if (!found) throw new Error(`Deployment ${id} was not found.`);
+export async function getRouter(id: string): Promise<Router> {
+  const routers = await getRouters();
+  const found = routers.items.find((item) => item.id === id);
+  if (!found) throw new Error(`Router ${id} was not found.`);
   return found;
 }
 
-export async function getDeploymentDeletionImpact(id: string): Promise<DeploymentDeletionImpact> {
-  const [impact, deployment] = await Promise.all([
-    controllerApi.getControllerDeploymentDeletionImpact(id),
-    getDeployment(id),
+export async function getRouterDeletionImpact(id: string): Promise<RouterDeletionImpact> {
+  const [impact, router] = await Promise.all([
+    controllerApi.getControllerRouterDeletionImpact(id),
+    getRouter(id),
   ]);
   if (
     impact.resourceId !== id
     || typeof impact.windowMinutes !== "number"
     || typeof impact.incomingRequestCount !== "number"
-    || typeof impact.activeDeploymentCount !== "number"
+    || typeof impact.activeRouterCount !== "number"
     || typeof impact.telemetryFresh !== "boolean"
     || typeof impact.requiresSecondConfirmation !== "boolean"
   ) {
-    throw new Error("Deployment deletion impact is unavailable. Ensure the Controller API is updated, then retry.");
+    throw new Error("Router deletion impact is unavailable. Ensure the Controller API is updated, then retry.");
   }
   return {
-    deployment_id: impact.resourceId,
-    deployment_name: deployment.name,
+    router_id: impact.resourceId,
+    router_name: router.name,
     window_minutes: impact.windowMinutes,
     incoming_request_count: impact.incomingRequestCount,
     last_request_at: impact.lastRequestAt,
-    active_deployment_count: impact.activeDeploymentCount,
+    active_router_count: impact.activeRouterCount,
     telemetry_fresh: impact.telemetryFresh,
     telemetry_watermark: impact.telemetryWatermark,
     requires_second_confirmation: impact.requiresSecondConfirmation,
@@ -97,81 +97,81 @@ export async function getDeploymentDeletionImpact(id: string): Promise<Deploymen
   };
 }
 
-export const deleteDeployment = (id: string, confirmation: DeleteConfirmation) => controllerApi.deleteControllerDeployment(id, {
+export const deleteRouter = (id: string, confirmation: DeleteConfirmation) => controllerApi.deleteControllerRouter(id, {
   reason: confirmation.reason,
   confirmRecentTraffic: confirmation.confirm_recent_traffic,
   ...(confirmation.confirmation_name ? { confirmationName: confirmation.confirmation_name } : {}),
 });
 
-export async function createDeployment(input: {
+export async function createRouter(input: {
   name: string;
   guardrail_id: string;
-  integration_id?: string | null;
+  endpoint_id?: string | null;
   traffic_scope: TrafficScopeExpression;
   enabled: boolean;
-}): Promise<Deployment> {
-  if (!input.integration_id) throw new Error("Controller 部署必须选择 Integration。");
-  const created = await controllerApi.createControllerDeployment({
+}): Promise<Router> {
+  if (!input.endpoint_id) throw new Error("Controller 部署必须选择 Endpoint。");
+  const created = await controllerApi.createControllerRouter({
     name: input.name,
     guardrailId: input.guardrail_id,
-    integrationId: input.integration_id,
+    endpointId: input.endpoint_id,
     poolId: "default",
     trafficScope: input.traffic_scope,
     enabled: input.enabled,
   });
   const guardrail = await controllerApi.getControllerGuardrail(created.guardrailId);
-  return mapDeployments([created], [guardrail])[0] as Deployment;
+  return mapRouters([created], [guardrail])[0] as Router;
 }
 
-export async function createDeploymentBindings(input: {
+export async function createRouterBindings(input: {
   name: string;
   guardrail_id: string;
-  integration_ids: string[];
+  endpoint_ids: string[];
   traffic_scope: TrafficScopeExpression;
   enabled: boolean;
-}): Promise<Collection<Deployment>> {
-  if (!input.integration_ids.length) return emptyCollection();
-  const response = await controllerApi.requestController<{ items: controllerApi.Deployment[]; count: number }>("/api/v1/deployment-bindings", {
+}): Promise<Collection<Router>> {
+  if (!input.endpoint_ids.length) return emptyCollection();
+  const response = await controllerApi.requestController<{ items: controllerApi.Router[]; count: number }>("/api/v1/router-bindings", {
     method: "POST",
     body: JSON.stringify({
       name: input.name,
       guardrailId: input.guardrail_id,
-      integrationIds: input.integration_ids,
+      endpointIds: input.endpoint_ids,
       poolId: "default",
       trafficScope: input.traffic_scope,
       enabled: input.enabled,
     }),
   });
   const guardrail = await controllerApi.getControllerGuardrail(input.guardrail_id);
-  return { items: mapDeployments(response.items, [guardrail]), count: response.count };
+  return { items: mapRouters(response.items, [guardrail]), count: response.count };
 }
 
-export async function reorderDeploymentRoutes(integrationId: string, deploymentIds: string[]): Promise<Collection<Deployment>> {
-  const response = await controllerApi.reorderControllerDeployments(integrationId, deploymentIds);
+export async function reorderRouterRoutes(endpointId: string, routerIds: string[]): Promise<Collection<Router>> {
+  const response = await controllerApi.reorderControllerRouters(endpointId, routerIds);
   const guardrails = await controllerApi.listControllerGuardrails();
-  const items = mapDeployments(response.items, guardrails.items);
+  const items = mapRouters(response.items, guardrails.items);
   return { items, count: items.length };
 }
-export async function setDeploymentEnabled(id: string, enabled: boolean): Promise<Deployment> {
-  const item = await controllerApi.setControllerDeploymentEnabled(id, enabled);
+export async function setRouterEnabled(id: string, enabled: boolean): Promise<Router> {
+  const item = await controllerApi.setControllerRouterEnabled(id, enabled);
   const guardrail = await controllerApi.getControllerGuardrail(item.guardrailId);
-  return mapDeployments([item], [guardrail])[0]!;
+  return mapRouters([item], [guardrail])[0]!;
 }
-export async function updateDeploymentTrafficScope(id: string, trafficScope: TrafficScopeExpression): Promise<Deployment> {
-  const item = await controllerApi.updateControllerDeploymentTrafficScope(id, trafficScope);
+export async function updateRouterTrafficScope(id: string, trafficScope: TrafficScopeExpression): Promise<Router> {
+  const item = await controllerApi.updateControllerRouterTrafficScope(id, trafficScope);
   const guardrail = await controllerApi.getControllerGuardrail(item.guardrailId);
-  return mapDeployments([item], [guardrail])[0]!;
+  return mapRouters([item], [guardrail])[0]!;
 }
 export const getTrafficScopeFields = (): Promise<Collection<TrafficScopeField>> => controllerApi.requestController<Collection<TrafficScopeField>>("/api/v1/traffic-scope-fields");
 
-export async function getDeploymentTraces(id: string, limit = 100, cursor?: string, signal?: AbortSignal, security?: { severity: string }): Promise<Collection<DeploymentRuntimeTrace>> {
+export async function getRouterTraces(id: string, limit = 100, cursor?: string, signal?: AbortSignal, security?: { severity: string }): Promise<Collection<RouterRuntimeTrace>> {
   const safeLimit = Math.min(500, Math.max(1, limit));
-  const events = await controllerApi.listRuntimeEvents(safeLimit, { deploymentId: id, ...(cursor ? { cursor } : {}), ...(security ? { findingsOnly: 'true', since: new Date(Date.now() - 86_400_000).toISOString(), ...(security.severity === 'all' ? {} : { severity: security.severity }) } : {}) }, signal);
-  return { items: events.items.map(mapDeploymentTrace), count: events.count ?? events.items.length, nextCursor: events.nextCursor };
+  const events = await controllerApi.listRuntimeEvents(safeLimit, { routerId: id, ...(cursor ? { cursor } : {}), ...(security ? { findingsOnly: 'true', since: new Date(Date.now() - 86_400_000).toISOString(), ...(security.severity === 'all' ? {} : { severity: security.severity }) } : {}) }, signal);
+  return { items: events.items.map(mapRouterTrace), count: events.count ?? events.items.length, nextCursor: events.nextCursor };
 }
-export async function getDeploymentTrace(id: string, signal?: AbortSignal) { return mapDeploymentTrace(await controllerApi.getRuntimeEvent(id, signal)); }
+export async function getRouterTrace(id: string, signal?: AbortSignal) { return mapRouterTrace(await controllerApi.getRuntimeEvent(id, signal)); }
 
-function mapDeploymentTrace(event: controllerApi.RuntimeEvent): DeploymentRuntimeTrace {
+function mapRouterTrace(event: controllerApi.RuntimeEvent): RouterRuntimeTrace {
   const outcome = normalizeOutcome(event.decision);
   const findings = runtimeFindings(event);
   const steps = runtimeTraceSteps(event);
@@ -179,10 +179,10 @@ function mapDeploymentTrace(event: controllerApi.RuntimeEvent): DeploymentRuntim
   return {
     id: event.id,
     created_at: event.occurredAt,
-    deployment_id: event.deploymentId ?? "",
+    router_id: event.routerId ?? "",
     guardrail_id: event.guardrailId,
     guardrail_version: event.guardrailVersion,
-    integration_id: event.integrationId,
+    endpoint_id: event.endpointId,
     protocol: stringValue(event.metadata.protocol) ?? "unknown",
     phase: event.direction === "incoming" ? "input" : "output",
     outcome,

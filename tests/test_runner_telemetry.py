@@ -34,7 +34,7 @@ async def test_legacy_null_optional_fields_are_omitted_when_draining_wal(tmp_pat
     await exporter.emit({
         "id": "event-1",
         "requestId": "playground-call",
-        "integrationId": None,
+        "endpointId": None,
         "decision": "allow",
     })
     received = []
@@ -46,7 +46,7 @@ async def test_legacy_null_optional_fields_are_omitted_when_draining_wal(tmp_pat
     async with httpx.AsyncClient(transport=transport) as client:
         assert await exporter._flush_once(client) is False
 
-    assert "integrationId" not in received[0]["events"][0]
+    assert "endpointId" not in received[0]["events"][0]
     assert not (tmp_path / "runtime-events.wal").read_text()
 
 

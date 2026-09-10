@@ -3,7 +3,7 @@
 The production observation path is the same hierarchy a GuardRail owner uses:
 
 ```text
-GuardRail -> Integration -> Runner -> completed check
+GuardRail -> Endpoint -> Runner -> completed check
                                   -> allow | deny | transform | technical error
                                   -> Action -> Model RPC
 ```
@@ -16,7 +16,7 @@ primary Overview navigation model.
 ## Business metric semantics
 
 `guard_runner_guardrail_requests_total` counts completed GuardRail checks. Its
-bounded product identity labels are `guardrail_id` and `integration_id`.
+bounded product identity labels are `guardrail_id` and `endpoint_id`.
 Prometheus attaches `runner_id` from the stable Kubernetes Pod name through the
 Runner ServiceMonitor target relabeling.
 
@@ -56,7 +56,7 @@ provider, and queue latency.
 
 The Overview answers whether the product is healthy. The separate
 `GuardRails Troubleshooting` dashboard answers why an individual scope is
-slow. Its selectors begin with GuardRail, Integration, and Runner, followed by
+slow. Its selectors begin with GuardRail, Endpoint, and Runner, followed by
 the dependency dimensions Provider, Model, and Action.
 
 Latency ownership deliberately uses different semantics for parallel model
@@ -73,7 +73,7 @@ work:
 | TTFT | Time to first token, when a streaming provider reports it |
 
 The model-call series retain only configured product dimensions and bounded
-outcomes: GuardRail, Integration, phase, Action, Provider, Model, operation,
+outcomes: GuardRail, Endpoint, phase, Action, Provider, Model, operation,
 result, and error class. Retry count, retry backoff, input/output tokens, and
 in-flight calls distinguish provider latency from throttling and Runner
 saturation. The same contract covers both TaskLattice model-backed Actions and
@@ -86,7 +86,7 @@ Tempo receives a `guardrail.request` root span, explicit
 `guardrail.queue_wait`, `guardrail.runtime`, and `guardrail.telemetry.append`
 stages, a `guardrail.action` span for each Action, and a nested
 `guardrail.model.request` span for each model RPC.
-The span attributes include the selected GuardRail/Integration/Runner scope,
+The span attributes include the selected GuardRail/Endpoint/Runner scope,
 Action, Provider, Model, result, timeout/failure mode, provider-work time, and
 model-wait time; request content and credentials are never attached. Pyroscope
 profiles are linked to the same trace span. This supports the incident path:
@@ -114,7 +114,7 @@ raw metric families:
 - **Protection completeness** identifies the failed module, policy, action,
   failure mode, and reason behind incomplete coverage or fail-open;
 - **Global entry path** shows authentication, routing, and pre-execution
-  rejection by Runner. GuardRail and Integration selectors intentionally do
+  rejection by Runner. GuardRail and Endpoint selectors intentionally do
   not apply before those identities have been authenticated and resolved;
 - the collapsed **Runner and telemetry internals** section contains Pool
   desired/ready/serving replicas, per-Runner convergence and heartbeat, and
@@ -125,24 +125,24 @@ raw metric families:
 The only globally visible business scope filters are ordered and cascaded:
 
 1. **GuardRail** — friendly `guardrail_name`, stable `guardrail_id` value
-2. **Integration** — friendly `integration_name`, stable `integration_id`
+2. **Endpoint** — friendly `endpoint_name`, stable `endpoint_id`
    value, constrained by the selected GuardRail relationship
 3. **Runner** — stable `runner_id`, constrained through the topology Pool
 
 They come from:
 
 - `guard_controller_guardrail_info`
-- `guard_controller_integration_info`
-- `guard_controller_guardrail_integration_info`
+- `guard_controller_endpoint_info`
+- `guard_controller_guardrail_endpoint_info`
 - `guard_controller_runner_info`
 
 This is intentionally independent of traffic counters, so a zero-traffic legal
-GuardRail, Integration, or Runner remains selectable. Percentile selection is
+GuardRail, Endpoint, or Runner remains selectable. Percentile selection is
 not a dashboard-wide filter: P90, P95, and P99 live together in the Latency
 panel and are explored through that panel's legend.
 
-Deployment, GuardRail version, phase, protocol, namespace, release, Pool, and
-Pod are not Overview filters. Deployment/version/phase/protocol remain useful
+Router, GuardRail version, phase, protocol, namespace, release, Pool, and
+Pod are not Overview filters. Router/version/phase/protocol remain useful
 raw diagnostic dimensions, while namespace and release isolate Prometheus
 tenancy. Pool appears only where it explains Runner placement.
 
@@ -155,7 +155,7 @@ The dashboard is layered as follows:
   Latency panel containing a dominant P95 line alongside P90 and P99;
 - Availability & SLO;
 - Protection Health;
-- Integration and Runner SLI tables, with fixed P95 latency;
+- Endpoint and Runner SLI tables, with fixed P95 latency;
 - Diagnostics, collapsed by default, with fixed P95 latency views.
 
 There are no separate Allow/Deny/Transform stats, no P90/P95/P99 card wall,
@@ -163,7 +163,7 @@ and no global percentile selector.
 
 ## Resolved identity and no-traffic behavior
 
-`__unmatched__` and `__unresolved__` GuardRail or Integration identities are
+`__unmatched__` and `__unresolved__` GuardRail or Endpoint identities are
 shown in the dedicated routing-integrity panel and excluded from product
 availability, latency, coverage, and error-budget denominators. They are also
 alerted independently.
@@ -175,8 +175,8 @@ platform alerts.
 
 ## Recording rules
 
-The Overview contract removes Deployment, version, phase, and protocol while
-retaining `guardrail_id`, `integration_id`, and `runner_id`:
+The Overview contract removes Router, version, phase, and protocol while
+retaining `guardrail_id`, `endpoint_id`, and `runner_id`:
 
 - `guardrail:checks:rate5m`
 - `guardrail:request_duration_seconds_bucket:rate5m`
@@ -193,7 +193,7 @@ The bucket-rate rule supplies the P90, P95, and P99 series in the single
 Latency panel. P95 remains fixed in tables and Diagnostics; fixed p95/p99
 recordings are retained for alert evaluation.
 
-Product alerts preserve GuardRail, Integration, and Runner identity: fast/slow
+Product alerts preserve GuardRail, Endpoint, and Runner identity: fast/slow
 availability burn, p95/p99 latency, incomplete coverage, and fail-open. They
 require positive traffic, so an idle scope does not page. Identity-resolution
 failures alert separately. Platform alerts cover Controller/Runner scrape loss,
@@ -274,21 +274,21 @@ helm upgrade monitoring prometheus-community/kube-prometheus-stack \
 The allowed high-frequency business topology dimensions are:
 
 - `guardrail_id`
-- `integration_id`
+- `endpoint_id`
 - `runner_id` as a scrape target label
 - configured Action, Provider, Model, and operation identifiers
 - bounded enums such as result, disposition, coverage, enforcement mode,
   failure mode, stage, and error class
 
 Controller `*_info` metrics carry friendly names; names are not copied onto
-high-frequency counters or histograms. Raw metrics may retain Deployment,
+high-frequency counters or histograms. Raw metrics may retain Router,
 version, phase, and protocol for diagnostics, but the Overview recording rules
 drop them before long-lived aggregation.
 
 Budget active series approximately as:
 
 ```text
-active GuardRails x Integrations x Runners
+active GuardRails x Endpoints x Runners
 x bounded outcome combinations x histogram buckets
 ```
 
@@ -302,5 +302,5 @@ identities belong in evidence storage, structured logs, traces, and exemplars.
 Runner metrics prove checks only for requests that reached Runner. End-to-end
 bypass detection requires a monotonically increasing request counter at the
 upstream gateway/model-egress boundary and comparison with GuardRail input
-checks for the same Integration and window, accounting for retries and
+checks for the same Endpoint and window, accounting for retries and
 pre-execution rejection.

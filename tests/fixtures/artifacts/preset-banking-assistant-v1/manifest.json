@@ -3,6 +3,7 @@
   "artifact_id": "fixture-artifact-preset-banking-assistant-v1",
   "checksum": "569c4e61ae7283acfe9c422ebb097cc4ad621d9d473dc3a1f42d1d80b0c586e6",
   "compiler_version": "tasklattice-nemo-config-v21-dynamic-flow-targets",
+  "endpoint_id": "fixture-endpoint",
   "expected": {
     "safe_input": "NONE",
     "safe_output": "NONE",
@@ -13,7 +14,6 @@
   "generation": 1,
   "guardrail_id": "fixture-secrets",
   "guardrail_version": "20260904-010000.001Z",
-  "integration_id": "fixture-integration",
   "nemo_version": "0.24.0",
   "policy_ids": [
     "local-credentials",

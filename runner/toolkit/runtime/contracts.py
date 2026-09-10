@@ -124,10 +124,10 @@ class RuntimeTraceStep:
 
 @dataclass(frozen=True, slots=True)
 class RequestContext:
-    """Integration-normalized, trusted attributes used for Deployment resolution."""
+    """Endpoint-normalized, trusted attributes used for Router resolution."""
 
     protocol: str
-    integration_id: str | None = None
+    endpoint_id: str | None = None
     headers: tuple[tuple[str, str], ...] = ()
     jwt_claims: tuple[tuple[str, str], ...] = ()
     fields: tuple[tuple[str, str], ...] = ()
@@ -626,8 +626,8 @@ class ProtectionDecision:
     texts: tuple[str, ...] = ()
     guardrail_id: str | None = None
     guardrail_version: str | None = None
-    deployment_id: str | None = None
-    integration_id: str | None = None
+    router_id: str | None = None
+    endpoint_id: str | None = None
     output_delivery: OutputDeliveryMode | None = None
     findings: tuple[RiskFinding, ...] = ()
     trace: tuple[RuntimeTraceStep, ...] = ()
@@ -644,8 +644,8 @@ class ProtectionDecision:
 @dataclass(frozen=True, slots=True)
 class PlanResolution:
     plan: GuardrailPlanSnapshot
-    deployment_id: str
-    integration_id: str | None = None
+    router_id: str
+    endpoint_id: str | None = None
     trace: tuple[RuntimeTraceStep, ...] = ()
     effective_release_id: str | None = None
     model_revision_id: str | None = None

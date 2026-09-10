@@ -19,8 +19,8 @@ const config = loadConfig({
   BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters",
 });
 
-const integration = {
-  id: "integration-1",
+const endpoint = {
+  id: "endpoint-1",
   name: "Primary gateway",
   adapter: "litellm-generic-guardrail",
   status: "active",
@@ -28,23 +28,23 @@ const integration = {
   updatedAt: new Date("2026-08-20T00:00:00Z"),
   credentials: [{ id: "credential-1", keyHint: "tg_abcd…wxyz", createdAt: "2026-08-20T00:00:00.000Z" }],
   setup: {
-    api_base_url: "https://runtime.example.test/runtime/v1/integrations/integration-1",
-    callback_url: "https://runtime.example.test/runtime/v1/integrations/integration-1/beta/litellm_basic_guardrail_api",
+    api_base_url: "https://runtime.example.test/runtime/v1/endpoints/endpoint-1",
+    callback_url: "https://runtime.example.test/runtime/v1/endpoints/endpoint-1/beta/litellm_basic_guardrail_api",
   },
 };
 
-describe("Integration management HTTP routes", () => {
+describe("Endpoint management HTTP routes", () => {
   it("allows authenticated users to read detail without exposing a digest", async () => {
-    const getIntegration = vi.fn().mockResolvedValue(integration);
-    const app = appWith({ user: { id: "member-1", role: "user" } }, { getIntegration });
+    const getEndpoint = vi.fn().mockResolvedValue(endpoint);
+    const app = appWith({ user: { id: "member-1", role: "user" } }, { getEndpoint });
 
-    const response = await app.request("/api/v1/integrations/integration-1");
+    const response = await app.request("/api/v1/endpoints/endpoint-1");
     expect(response.status).toBe(200);
     const body = await response.json();
-    expect(getIntegration).toHaveBeenCalledWith("integration-1");
+    expect(getEndpoint).toHaveBeenCalledWith("endpoint-1");
     expect(body).toMatchObject({
       credentials: [{ id: "credential-1", keyHint: "tg_abcd…wxyz" }],
-      setup: { callback_url: "https://runtime.example.test/runtime/v1/integrations/integration-1/beta/litellm_basic_guardrail_api" },
+      setup: { callback_url: "https://runtime.example.test/runtime/v1/endpoints/endpoint-1/beta/litellm_basic_guardrail_api" },
     });
     expect(JSON.stringify(body)).not.toContain("sha256");
   });
@@ -52,43 +52,43 @@ describe("Integration management HTTP routes", () => {
   it("requires an administrator for status and credential mutations", async () => {
     const app = appWith({ user: { id: "member-1", role: "user" } }, {});
 
-    expect((await app.request("/api/v1/integrations/integration-1", {
+    expect((await app.request("/api/v1/endpoints/endpoint-1", {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ enabled: false }),
     })).status).toBe(403);
-    expect((await app.request("/api/v1/integrations/integration-1/credentials", {
+    expect((await app.request("/api/v1/endpoints/endpoint-1/credentials", {
       method: "POST",
     })).status).toBe(403);
-    expect((await app.request("/api/v1/integrations/integration-1/credentials/credential-1", {
+    expect((await app.request("/api/v1/endpoints/endpoint-1/credentials/credential-1", {
       method: "DELETE",
     })).status).toBe(403);
   });
 
   it("forwards the administrator actor and route parameters to the service", async () => {
-    const setIntegrationEnabled = vi.fn().mockResolvedValue({ ...integration, status: "disabled" });
-    const rotateIntegrationCredential = vi.fn().mockResolvedValue({ ...integration, credential: "tg_one_time" });
-    const revokeIntegrationCredential = vi.fn().mockResolvedValue(undefined);
+    const setEndpointEnabled = vi.fn().mockResolvedValue({ ...endpoint, status: "disabled" });
+    const rotateEndpointCredential = vi.fn().mockResolvedValue({ ...endpoint, credential: "tg_one_time" });
+    const revokeEndpointCredential = vi.fn().mockResolvedValue(undefined);
     const app = appWith(
       { user: { id: "admin-1", role: "admin" } },
-      { setIntegrationEnabled, rotateIntegrationCredential, revokeIntegrationCredential },
+      { setEndpointEnabled, rotateEndpointCredential, revokeEndpointCredential },
     );
 
-    const toggled = await app.request("/api/v1/integrations/integration-1", {
+    const toggled = await app.request("/api/v1/endpoints/endpoint-1", {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ enabled: false }),
     });
-    const rotated = await app.request("/api/v1/integrations/integration-1/credentials", { method: "POST" });
-    const revoked = await app.request("/api/v1/integrations/integration-1/credentials/credential-1", { method: "DELETE" });
+    const rotated = await app.request("/api/v1/endpoints/endpoint-1/credentials", { method: "POST" });
+    const revoked = await app.request("/api/v1/endpoints/endpoint-1/credentials/credential-1", { method: "DELETE" });
 
     expect(toggled.status).toBe(200);
     expect(rotated.status).toBe(201);
     expect(revoked.status).toBe(204);
-    expect(setIntegrationEnabled).toHaveBeenCalledWith({ id: "integration-1", enabled: false, actorId: "admin-1" });
-    expect(rotateIntegrationCredential).toHaveBeenCalledWith({ id: "integration-1", actorId: "admin-1" });
-    expect(revokeIntegrationCredential).toHaveBeenCalledWith({
-      id: "integration-1",
+    expect(setEndpointEnabled).toHaveBeenCalledWith({ id: "endpoint-1", enabled: false, actorId: "admin-1" });
+    expect(rotateEndpointCredential).toHaveBeenCalledWith({ id: "endpoint-1", actorId: "admin-1" });
+    expect(revokeEndpointCredential).toHaveBeenCalledWith({
+      id: "endpoint-1",
       credentialId: "credential-1",
       actorId: "admin-1",
     });

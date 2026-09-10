@@ -9,7 +9,7 @@ TaskLattice Guard has exactly two application component types:
    PostgreSQL state, creates desired generations, reconciles Runner state,
    retains audit/runtime metadata, and evaluates pool capacity.
 2. **Guard Runner** is the Python data plane. It receives immutable signed
-   artifacts, instantiates NVIDIA NeMo Guardrails, authenticates Integration
+   artifacts, instantiates NVIDIA NeMo Guardrails, authenticates Endpoint
    requests locally, serves traffic, and exports load/telemetry summaries.
 
 `GuardRails 0` is the mandatory baseline runtime and authoritative NeMo
@@ -42,10 +42,10 @@ Runner identities are control-plane observability details and are not exposed
 to upstreams. Kubernetes uses ordinary balancing (`sessionAffinity: None`);
 `call_id` plus the required Redis context provides input/output generation
 pinning when a pool has multiple replicas. A separate private headless Service
-governs StatefulSet identity and is never used as the Integration endpoint.
+governs StatefulSet identity and is never used as the Endpoint endpoint.
 
 The LiteLLM adapter exposes the LiteLLM Basic Guardrail API below the stable
-Integration base URL. It converts LiteLLM request/response callbacks into the
+Endpoint base URL. It converts LiteLLM request/response callbacks into the
 Runner's internal protection contract and maps decisions back to `NONE`,
 `BLOCKED`, or `GUARDRAIL_INTERVENED`.
 
@@ -70,7 +70,7 @@ code.
 | --- | --- | --- |
 | React/TanStack UI | Owns | None |
 | Users, sessions, roles | Better Auth | None |
-| Guardrail/Integration desired state | Owns | Read-only projection |
+| Guardrail/Endpoint desired state | Owns | Read-only projection |
 | NeMo compilation | Dispatches and signs | GuardRails 0 compiles |
 | Runtime authentication | Issues verifier | Enforces locally |
 | Runtime traffic | Never in hot path | Owns |
@@ -135,7 +135,7 @@ must restart. Redis context sharing alone does not replicate historical runtime
 clients; uninterrupted in-flight migration across cold rollouts is not promised.
 
 The HTTP/A2A output-stream endpoint accepts ordered chunks. It is **not** an
-upstream generation proxy or an SSE endpoint. The integration must use a stable
+upstream generation proxy or an SSE endpoint. The endpoint must use a stable
 `call_id` and `stream_id`, serialize increasing `sequence` values, await each
 result, and forward only `released_text`. It must send `final=true` on completion
 and cancel generation on `terminate=true` or transport failure. A lost response
@@ -151,7 +151,7 @@ the immutable plan determines this fallback, not model callability. The API
 returns requested/effective delivery modes, the reason, and effective release ID.
 Timeouts do not consume sequences or duplicate accumulated text on retry.
 
-Integration UI distinguishes Input checks, Output checks, and final Stream checks
+Endpoint UI distinguishes Input checks, Output checks, and final Stream checks
 observed in retained telemetry. These observations are not proof that the caller
 forwarded transformations or cancelled its upstream. A LiteLLM pre/post callback
 or an endpoint connectivity test alone never proves incremental stream protection.
@@ -170,7 +170,7 @@ protocol is split by domain while keeping one versioned package:
 - `runtime.proto` owns the immutable Guardrail Plan and policy bindings.
 - `artifact.proto` owns compilation requests/results and signed artifacts.
 - `evaluation.proto` owns findings and runtime trace evidence.
-- `routing.proto` and `integration.proto` own traffic selection and runtime
+- `routing.proto` and `endpoint.proto` own traffic selection and runtime
   authentication projections.
 - `validation.proto` owns validation requests, cases, metrics, and results.
 - `common.proto` owns enums reused across those domains.
@@ -291,7 +291,7 @@ stateDiagram-v2
   offline --> ready: reconnect synchronized
 ```
 
-An Integration's `active`/`disabled` lifecycle is a reversible operational
+An Endpoint's `active`/`disabled` lifecycle is a reversible operational
 toggle. Soft deletion is a separate terminal overlay (`deleted_at` plus
 `status=disabled`), after which enable/disable commands no longer select it.
 
@@ -311,12 +311,12 @@ The UI's Guardrail readiness is a derived view, not another state machine:
 | Derived value | Exact condition |
 | --- | --- |
 | `needs_validation` | The active version does not represent the current draft. |
-| `ready` | The current draft is active, with no enabled deployment. |
-| `protected` | The current draft is active, with at least one enabled deployment. |
+| `ready` | The current draft is active, with no enabled router. |
+| `protected` | The current draft is active, with at least one enabled router. |
 
 Similarly, `not_run` is an empty validation-history projection rather than a
-persisted validation state. Integration setup progress is separate from the
-Integration lifecycle.
+persisted validation state. Endpoint setup progress is separate from the
+Endpoint lifecycle.
 
 ## Guardrail publication
 
@@ -397,16 +397,16 @@ Bindings select the replaceable runtime model when the artifact executes.
 
 ## Protected soft deletion
 
-Guardrails and Integrations share one side-sheet interaction and one deletion
+Guardrails and Endpoints share one side-sheet interaction and one deletion
 contract. Controller evaluates incoming runtime events from the previous 30
-minutes. Stale telemetry fails closed while active deployments exist.
+minutes. Stale telemetry fails closed while active routers exist.
 
 If recent traffic exists, deletion requires both an explicit second-confirm
 flag and the exact resource name. The API validates both; this is not only a
 browser-side guard. A non-empty reason is always recorded.
 
 Deletion sets the resource to `disabled`, records deletion metadata, disables
-related deployments, and advances desired generation. It never deletes or
+related routers, and advances desired generation. It never deletes or
 rewrites audit events, runtime events, Guardrail versions, or artifacts.
 
 ## Identity and secrets
@@ -422,7 +422,7 @@ rewrites audit events, runtime events, Guardrail versions, or artifacts.
 - Bootstrap only creates a missing identity. Controller startup never resets an
   existing administrator's password, so a Better Auth password change survives
   restarts and upgrades.
-- Integration credentials are shown once. Controller stores only a SHA-256
+- Endpoint credentials are shown once. Controller stores only a SHA-256
   verifier and projects it to Runners.
 - Controller owns the artifact-signing private key. Runners receive only the
   public key.
@@ -456,11 +456,11 @@ A release is acceptable when all of the following hold:
   signed artifact.
 - Runtime traffic is accepted directly by Runner and produces metadata-only
   telemetry.
-- Integration setup exposes the Runtime Service DNS name, never an individual
+- Endpoint setup exposes the Runtime Service DNS name, never an individual
   Runner identity, and LiteLLM can authenticate it through `/verify`.
 - Recent traffic blocks a deletion without second confirmation and with a
   mismatched resource name.
-- Confirmed deletion disables the resource/deployment while artifacts,
+- Confirmed deletion disables the resource/router while artifacts,
   runtime events, and audit events remain present.
 - Controller and Runner images build independently; TypeScript type checks,
   UI/server tests, Python Runner tests, and Helm lint pass.

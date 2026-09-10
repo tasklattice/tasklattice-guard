@@ -6,9 +6,9 @@ import {
   guardrailReadinessStates,
   guardrailVersionStates,
   guardrailVersionTransitions,
-  integrationLifecycleStates,
-  integrationLifecycleTransitions,
-  integrationSetupStates,
+  endpointLifecycleStates,
+  endpointLifecycleTransitions,
+  endpointSetupStates,
   runnerPressureStates,
   runnerReconciliationStates,
   runnerStatuses,
@@ -23,8 +23,8 @@ describe("Controller lifecycle contract", () => {
       guardrailVersionStates,
       guardrailReadinessStates,
       validationRunStates,
-      integrationLifecycleStates,
-      integrationSetupStates,
+      endpointLifecycleStates,
+      endpointSetupStates,
       runnerReconciliationStates,
       runnerPressureStates,
       runnerStatuses,
@@ -51,14 +51,14 @@ describe("Controller lifecycle contract", () => {
     });
   });
 
-  it("allows validation terminal shortcuts and reversible Integration toggles", () => {
+  it("allows validation terminal shortcuts and reversible Endpoint toggles", () => {
     expect(validationRunTransitions).toEqual({
       queued: ["running", "passed", "failed"],
       running: ["passed", "failed"],
       passed: [],
       failed: [],
     });
-    expect(integrationLifecycleTransitions).toEqual({
+    expect(endpointLifecycleTransitions).toEqual({
       active: ["disabled"],
       disabled: ["active"],
     });

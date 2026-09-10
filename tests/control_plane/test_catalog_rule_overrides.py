@@ -84,7 +84,7 @@ async def test_catalog_rule_action_reaches_real_nemo_and_preserves_later_policie
         assert result.usage.model_invocations == 0
         assert result.decision == {"pass": "allow", "redact": "transform", "reject": "block", "continue": "transform"}[action]
         if action == "pass":
-            # Allow carries no replacement: integrations forward the original.
+            # Allow carries no replacement: endpoints forward the original.
             assert result.texts == ()
         elif action in {"redact", "continue"}:
             assert "alice@example.com" not in result.texts[0]

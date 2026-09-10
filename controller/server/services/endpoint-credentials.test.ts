@@ -3,18 +3,18 @@ import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
 import {
-  activeIntegrationCredentials,
-  appendIntegrationCredential,
-  issueIntegrationCredential,
-  publicIntegrationCredentials,
-  revokeIntegrationCredential,
-} from "./integration-credentials.js";
+  activeEndpointCredentials,
+  appendEndpointCredential,
+  issueEndpointCredential,
+  publicEndpointCredentials,
+  revokeEndpointCredential,
+} from "./endpoint-credentials.js";
 
 const createdAt = new Date("2026-08-20T01:02:03.000Z");
 
-describe("Integration credential verification", () => {
+describe("Endpoint credential verification", () => {
   it("issues a one-time value while keeping digests out of the public credential", () => {
-    const issued = issueIntegrationCredential(createdAt);
+    const issued = issueEndpointCredential(createdAt);
 
     expect(issued.value).toMatch(/^tg_/);
     expect(issued.stored.sha256).toBe(createHash("sha256").update(issued.value).digest("hex"));
@@ -45,27 +45,27 @@ describe("Integration credential verification", () => {
       }],
     };
 
-    expect(publicIntegrationCredentials(verification)).toEqual([
+    expect(publicEndpointCredentials(verification)).toEqual([
       { id: "credential-2", keyHint: "tg_next…abcd", createdAt: "2026-08-20T02:00:00.000Z" },
       { id: "credential-1", keyHint: "tg_first…1234", createdAt: createdAt.toISOString() },
     ]);
-    expect(JSON.stringify(publicIntegrationCredentials(verification))).not.toContain(firstDigest);
-    expect(JSON.stringify(publicIntegrationCredentials(verification))).not.toContain(secondDigest);
+    expect(JSON.stringify(publicEndpointCredentials(verification))).not.toContain(firstDigest);
+    expect(JSON.stringify(publicEndpointCredentials(verification))).not.toContain(secondDigest);
   });
 
   it("retains revoked records internally and excludes them from active credentials", () => {
-    const issued = issueIntegrationCredential(createdAt);
-    const verification = appendIntegrationCredential({}, issued.stored);
-    const revoked = revokeIntegrationCredential(verification, issued.stored.id, new Date("2026-08-20T03:00:00.000Z"));
+    const issued = issueEndpointCredential(createdAt);
+    const verification = appendEndpointCredential({}, issued.stored);
+    const revoked = revokeEndpointCredential(verification, issued.stored.id, new Date("2026-08-20T03:00:00.000Z"));
 
     expect(revoked).not.toBeNull();
-    expect(activeIntegrationCredentials(revoked ?? {})).toEqual([]);
+    expect(activeEndpointCredentials(revoked ?? {})).toEqual([]);
     expect(revoked).toMatchObject({
       credentials: [expect.objectContaining({ id: issued.stored.id, revokedAt: "2026-08-20T03:00:00.000Z" })],
     });
   });
 
   it("returns null when the requested credential does not exist", () => {
-    expect(revokeIntegrationCredential({}, "missing", createdAt)).toBeNull();
+    expect(revokeEndpointCredential({}, "missing", createdAt)).toBeNull();
   });
 });

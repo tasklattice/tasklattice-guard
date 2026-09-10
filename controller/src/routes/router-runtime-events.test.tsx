@@ -1,8 +1,8 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { Deployment, DeploymentRuntimeTrace } from "@/lib/api";
-import { DeleteDeploymentSheet, DeploymentRuntimeEventTable } from "./deployment-detail";
+import type { Router, RouterRuntimeTrace } from "@/lib/api";
+import { DeleteRouterSheet, RouterRuntimeEventTable } from "./router-detail";
 
 vi.mock("react-i18next", () => ({
   initReactI18next: { type: "3rdParty", init: () => undefined },
@@ -11,13 +11,13 @@ vi.mock("react-i18next", () => ({
 
 vi.mock("@/lib/auth", () => ({ useAuth: () => ({ user: { role: "admin" } }) }));
 
-const trace: DeploymentRuntimeTrace = {
+const trace: RouterRuntimeTrace = {
   id: "trace-1",
   created_at: "2026-08-14T03:11:02.123Z",
-  deployment_id: "deployment-1",
+  router_id: "router-1",
   guardrail_id: "guardrail-1",
   guardrail_version: "20260904-010000.001Z",
-  integration_id: "integration-1",
+  endpoint_id: "endpoint-1",
   protocol: "litellm",
   phase: "output",
   outcome: "transform",
@@ -33,45 +33,45 @@ const trace: DeploymentRuntimeTrace = {
   steps: [],
 };
 
-describe("Deployment runtime event density", () => {
+describe("Router runtime event density", () => {
   afterEach(cleanup);
 
   it("shows millisecond timestamps in compact rows", () => {
-    render(<DeploymentRuntimeEventTable traces={[trace]} loading={false} error={null} policies={[]} onInspect={() => undefined} />);
+    render(<RouterRuntimeEventTable traces={[trace]} loading={false} error={null} policies={[]} onInspect={() => undefined} />);
     expect(screen.getByText(/\d{2}:\d{2}:\d{2}\.123/)).toBeTruthy();
     expect(screen.getByText("15 ms")).toBeTruthy();
     expect(screen.getByRole("row", { name: /\d{2}:\d{2}:\d{2}\.123/ }).className).toContain("h-11");
   });
 });
 
-describe("Deployment protected delete", () => {
+describe("Router protected delete", () => {
   afterEach(cleanup);
 
   it("requires a reason and exact-name confirmation for recent traffic", () => {
-    const deployment = {
-      id: "deployment-1",
+    const router = {
+      id: "router-1",
       name: "Regional traffic",
       guardrail_id: "guardrail-1",
       guardrail_version: "20260904-010000.001Z",
-      integration_id: "integration-1",
+      endpoint_id: "endpoint-1",
       route_order: 0,
       traffic_scope: { combinator: "and", conditions: [] },
       enabled: true,
       is_default: false,
       system_managed: false,
       updated_at: "2026-08-24T08:00:00.000Z",
-    } satisfies Deployment;
+    } satisfies Router;
     const onConfirm = vi.fn();
-    render(<DeleteDeploymentSheet
-      deployment={deployment}
+    render(<DeleteRouterSheet
+      router={router}
       open
       impact={{
-        deployment_id: deployment.id,
-        deployment_name: deployment.name,
+        router_id: router.id,
+        router_name: router.name,
         window_minutes: 30,
         incoming_request_count: 14,
         last_request_at: "2026-08-24T08:00:00.000Z",
-        active_deployment_count: 1,
+        active_router_count: 1,
         telemetry_fresh: true,
         telemetry_watermark: "2026-08-24T08:00:01.000Z",
         requires_second_confirmation: true,
@@ -85,19 +85,19 @@ describe("Deployment protected delete", () => {
       onConfirm={onConfirm}
     />);
 
-    const continueButton = screen.getByRole("button", { name: "deploymentDetail.continueDelete" }) as HTMLButtonElement;
+    const continueButton = screen.getByRole("button", { name: "routerDetail.continueDelete" }) as HTMLButtonElement;
     expect(continueButton.disabled).toBe(true);
-    fireEvent.change(screen.getByLabelText("deploymentDetail.deleteReason"), { target: { value: "Traffic moved to a new route" } });
+    fireEvent.change(screen.getByLabelText("routerDetail.deleteReason"), { target: { value: "Traffic moved to a new route" } });
     fireEvent.click(continueButton);
-    const confirmButton = screen.getByRole("button", { name: "deploymentDetail.deleteDespiteTraffic" }) as HTMLButtonElement;
+    const confirmButton = screen.getByRole("button", { name: "routerDetail.deleteDespiteTraffic" }) as HTMLButtonElement;
     expect(confirmButton.disabled).toBe(true);
-    fireEvent.change(screen.getByLabelText("deploymentDetail.typeNameToConfirm"), { target: { value: deployment.name } });
+    fireEvent.change(screen.getByLabelText("routerDetail.typeNameToConfirm"), { target: { value: router.name } });
     fireEvent.click(confirmButton);
 
     expect(onConfirm).toHaveBeenCalledWith({
       reason: "Traffic moved to a new route",
       confirm_recent_traffic: true,
-      confirmation_name: deployment.name,
+      confirmation_name: router.name,
     });
   });
 });

@@ -3,6 +3,7 @@
   "artifact_id": "fixture-artifact-stream-safety-interruptible-v1",
   "checksum": "a116b035cdfb90a06b09dc7df09e264c68bb8091e5b10b4a6f2b42dd90f25169",
   "compiler_version": "tasklattice-nemo-config-v21-dynamic-flow-targets",
+  "endpoint_id": "fixture-endpoint",
   "expected": {
     "output_delivery": "interruptible",
     "safe_output": "allow",
@@ -13,7 +14,6 @@
   "generation": 1,
   "guardrail_id": "fixture-secrets",
   "guardrail_version": "20260904-010000.001Z",
-  "integration_id": "fixture-integration",
   "nemo_version": "0.24.0",
   "runtime_profile": "llmrails_colang1_standard",
   "scope": "Frozen output-only model Policy; transport responses in tests are synthetic, not model quality evidence."

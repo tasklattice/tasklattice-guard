@@ -36,9 +36,9 @@ _QUEUE_BUCKETS = (
     0.0005, 0.001, 0.0025, 0.005, 0.0075, 0.01, 0.015, 0.025,
     0.04, 0.05, 0.075, 0.1, 0.15, 0.25, 0.5, 1, 2.5, 5, 10,
 )
-_KNOWN_STAGES = frozenset({"deployment", "module", "evaluator", "rail", "action", "runtime", "queue"})
+_KNOWN_STAGES = frozenset({"router", "module", "evaluator", "rail", "action", "runtime", "queue"})
 _MODEL_SCOPE_LABELS = (
-    "guardrail_id", "integration_id", "phase", "action", "provider", "model",
+    "guardrail_id", "endpoint_id", "phase", "action", "provider", "model",
 )
 INTERNAL_METRIC_ID = "__internal__"
 UNRESOLVED_METRIC_ID = "__unresolved__"
@@ -61,10 +61,10 @@ class GuardrailRequestObservation:
 
     # This identity is fixed by the authenticated request entrypoint. Routing
     # and runtime decisions must never replace it with a route-derived value.
-    integration_id: str = INTERNAL_METRIC_ID
+    endpoint_id: str = INTERNAL_METRIC_ID
     guardrail_id: str = UNRESOLVED_METRIC_ID
     guardrail_version: str = UNRESOLVED_METRIC_ID
-    deployment_id: str = UNRESOLVED_METRIC_ID
+    router_id: str = UNRESOLVED_METRIC_ID
     decision: ProtectionDecision | None = None
     failure_stage: str | None = None
     failure_reason_class: str | None = None
@@ -73,7 +73,7 @@ class GuardrailRequestObservation:
         self.set_identity(
             guardrail_id=resolution.plan.guardrail_id,
             guardrail_version=resolution.plan.guardrail_version,
-            deployment_id=resolution.deployment_id,
+            router_id=resolution.router_id,
         )
 
     def set_identity(
@@ -81,18 +81,18 @@ class GuardrailRequestObservation:
         *,
         guardrail_id: str | None,
         guardrail_version: str | None,
-        deployment_id: str | None,
+        router_id: str | None,
     ) -> None:
         self.guardrail_id = _identity_label(guardrail_id, self.guardrail_id)
         self.guardrail_version = _identity_label(guardrail_version, self.guardrail_version)
-        self.deployment_id = _identity_label(deployment_id, self.deployment_id)
+        self.router_id = _identity_label(router_id, self.router_id)
 
     def complete(self, decision: ProtectionDecision) -> None:
         self.decision = decision
         self.set_identity(
             guardrail_id=decision.guardrail_id,
             guardrail_version=decision.guardrail_version,
-            deployment_id=decision.deployment_id,
+            router_id=decision.router_id,
         )
 
     def fail(self, stage: str, reason_class: str) -> None:
@@ -135,7 +135,7 @@ class RunnerMetrics:
             "guard_runner_guardrail_requests_total",
             "Guardrail executions by stable product identity, result, disposition, and protection state.",
             [
-                "guardrail_id", "integration_id", "traffic_class", "protocol", "phase",
+                "guardrail_id", "endpoint_id", "traffic_class", "protocol", "phase",
                 "result", "disposition", "coverage",
                 "enforcement_mode", "failure_mode",
             ],
@@ -145,7 +145,7 @@ class RunnerMetrics:
             "guard_runner_guardrail_request_duration_seconds",
             "End-to-end Guardrail latency including durable telemetry append.",
             [
-                "guardrail_id", "integration_id", "traffic_class", "protocol", "phase",
+                "guardrail_id", "endpoint_id", "traffic_class", "protocol", "phase",
                 "result", "disposition",
             ],
             buckets=_DURATION_BUCKETS,
@@ -155,7 +155,7 @@ class RunnerMetrics:
             "guard_runner_guardrail_interventions_total",
             "Applied Guardrail interventions by bounded enforcement action.",
             [
-                "guardrail_id", "integration_id", "protocol", "phase", "action",
+                "guardrail_id", "endpoint_id", "protocol", "phase", "action",
             ],
             registry=self.registry,
         )
@@ -165,11 +165,11 @@ class RunnerMetrics:
             ["protocol", "phase", "reason"], registry=self.registry,
         )
         self.route_resolution = Counter(
-            "guard_runner_route_resolution_total", "Integration traffic route resolution attempts.",
+            "guard_runner_route_resolution_total", "Endpoint traffic route resolution attempts.",
             ["protocol", "phase", "result"], registry=self.registry,
         )
         self.authentication = Counter(
-            "guard_runner_authentication_total", "Runtime Integration authentication attempts.",
+            "guard_runner_authentication_total", "Runtime Endpoint authentication attempts.",
             ["protocol", "result"], registry=self.registry,
         )
         self.failures = Counter(
@@ -180,7 +180,7 @@ class RunnerMetrics:
             "guard_runner_guardrail_execution_failures_total",
             "Scoped technical Guardrail request failures by bounded stage, reason, and result.",
             [
-                "guardrail_id", "integration_id", "protocol", "phase",
+                "guardrail_id", "endpoint_id", "protocol", "phase",
                 "stage", "reason_class", "result",
             ],
             registry=self.registry,
@@ -188,20 +188,20 @@ class RunnerMetrics:
         self.stage_duration = Histogram(
             "guard_runner_guardrail_stage_duration_seconds", "Guardrail trace-stage duration.",
             [
-                "guardrail_id", "integration_id", "protocol", "phase", "stage", "result",
+                "guardrail_id", "endpoint_id", "protocol", "phase", "stage", "result",
             ],
             buckets=_DURATION_BUCKETS, registry=self.registry,
         )
         self.provider_work_duration = Histogram(
             "guard_runner_guardrail_provider_work_duration_seconds",
             "Sum of external provider RPC durations; parallel calls intentionally overlap.",
-            ["guardrail_id", "integration_id", "protocol", "phase"],
+            ["guardrail_id", "endpoint_id", "protocol", "phase"],
             buckets=_DURATION_BUCKETS, registry=self.registry,
         )
         self.model_wait_duration = Histogram(
             "guard_runner_guardrail_model_wait_wall_duration_seconds",
             "Union wall time blocked on model RPCs within one Guardrail execution.",
-            ["guardrail_id", "integration_id", "protocol", "phase"],
+            ["guardrail_id", "endpoint_id", "protocol", "phase"],
             buckets=_DURATION_BUCKETS, registry=self.registry,
         )
         self.model_calls = Counter(
@@ -253,7 +253,7 @@ class RunnerMetrics:
             "guard_runner_guardrail_protection_failures_total",
             "Failed or timed-out protection steps by bounded module and cause.",
             [
-                "guardrail_id", "integration_id", "protocol", "phase", "module_id",
+                "guardrail_id", "endpoint_id", "protocol", "phase", "module_id",
                 "stage", "action", "policy_id", "failure_mode", "reason_class",
             ],
             registry=self.registry,
@@ -262,7 +262,7 @@ class RunnerMetrics:
             "guard_runner_guardrail_incomplete_coverage_total",
             "Executions with partial or absent protection coverage by failed module and cause.",
             [
-                "guardrail_id", "integration_id", "protocol", "phase", "coverage",
+                "guardrail_id", "endpoint_id", "protocol", "phase", "coverage",
                 "module_id", "stage", "action", "policy_id", "failure_mode", "reason_class",
             ],
             registry=self.registry,
@@ -271,7 +271,7 @@ class RunnerMetrics:
             "guard_runner_guardrail_policy_triggers_total",
             "Unsafe, uncertain, or error findings that explain a Guardrail disposition.",
             [
-                "guardrail_id", "integration_id", "protocol", "phase",
+                "guardrail_id", "endpoint_id", "protocol", "phase",
                 "disposition", "module_id", "risk", "policy_id", "action", "verdict",
             ],
             registry=self.registry,
@@ -279,38 +279,38 @@ class RunnerMetrics:
         self.queue_duration = Histogram(
             "guard_runner_guardrail_queue_wait_duration_seconds",
             "Guardrail runtime admission wait reported for an execution.",
-            ["guardrail_id", "integration_id", "protocol", "phase"],
+            ["guardrail_id", "endpoint_id", "protocol", "phase"],
             buckets=_QUEUE_BUCKETS, registry=self.registry,
         )
         self.inspected_items = Counter(
             "guard_runner_guardrail_inspected_items_total", "Content items presented to a Guardrail.",
-            ["guardrail_id", "integration_id", "protocol", "phase"],
+            ["guardrail_id", "endpoint_id", "protocol", "phase"],
             registry=self.registry,
         )
         self.guarded_items = Counter(
             "guard_runner_guardrail_guarded_items_total", "Content items covered by a Guardrail.",
-            ["guardrail_id", "integration_id", "protocol", "phase"],
+            ["guardrail_id", "endpoint_id", "protocol", "phase"],
             registry=self.registry,
         )
         self.inspected_characters = Counter(
             "guard_runner_guardrail_inspected_characters_total", "Text characters presented to a Guardrail.",
-            ["guardrail_id", "integration_id", "protocol", "phase"],
+            ["guardrail_id", "endpoint_id", "protocol", "phase"],
             registry=self.registry,
         )
         self.guarded_characters = Counter(
             "guard_runner_guardrail_guarded_characters_total", "Text characters covered by a Guardrail.",
-            ["guardrail_id", "integration_id", "protocol", "phase"],
+            ["guardrail_id", "endpoint_id", "protocol", "phase"],
             registry=self.registry,
         )
         self.required_modules = Counter(
             "guard_runner_guardrail_required_modules_total", "Required modules expected by a Guardrail.",
-            ["guardrail_id", "integration_id", "protocol", "phase"],
+            ["guardrail_id", "endpoint_id", "protocol", "phase"],
             registry=self.registry,
         )
         self.completed_required_modules = Counter(
             "guard_runner_guardrail_completed_required_modules_total",
             "Required Guardrail modules completed.",
-            ["guardrail_id", "integration_id", "protocol", "phase"],
+            ["guardrail_id", "endpoint_id", "protocol", "phase"],
             registry=self.registry,
         )
 
@@ -350,11 +350,11 @@ class RunnerMetrics:
             registry=self.registry,
         )
         self.configured_routes = Gauge(
-            "guard_runner_configured_routes", "Deployment routes configured in this Runner.",
+            "guard_runner_configured_routes", "Router routes configured in this Runner.",
             registry=self.registry,
         )
-        self.configured_integrations = Gauge(
-            "guard_runner_configured_integrations", "Integration verifiers configured in this Runner.",
+        self.configured_endpoints = Gauge(
+            "guard_runner_configured_endpoints", "Endpoint verifiers configured in this Runner.",
             registry=self.registry,
         )
         self.jobs_in_progress = Gauge(
@@ -452,17 +452,17 @@ class RunnerMetrics:
         protocol_name: str = "unknown",
         phase: str = "unknown",
         *,
-        integration_id: str | None = None,
+        endpoint_id: str | None = None,
         guardrail_id: str = UNRESOLVED_METRIC_ID,
         guardrail_version: str = UNRESOLVED_METRIC_ID,
-        deployment_id: str = UNRESOLVED_METRIC_ID,
+        router_id: str = UNRESOLVED_METRIC_ID,
     ) -> Iterator[GuardrailRequestObservation]:
         started = time.perf_counter()
         observation = GuardrailRequestObservation(
-            integration_id=_identity_label(integration_id, INTERNAL_METRIC_ID),
+            endpoint_id=_identity_label(endpoint_id, INTERNAL_METRIC_ID),
             guardrail_id=_identity_label(guardrail_id, UNRESOLVED_METRIC_ID),
             guardrail_version=_identity_label(guardrail_version, UNRESOLVED_METRIC_ID),
-            deployment_id=_identity_label(deployment_id, UNRESOLVED_METRIC_ID),
+            router_id=_identity_label(router_id, UNRESOLVED_METRIC_ID),
         )
         with _TRACER.start_as_current_span(
             "guardrail.request",
@@ -470,7 +470,7 @@ class RunnerMetrics:
                 "guardrail.traffic_class": traffic_class,
                 "guardrail.protocol": protocol_name,
                 "guardrail.phase": phase,
-                "integration.id": observation.integration_id,
+                "endpoint.id": observation.endpoint_id,
             },
         ) as span:
             with self._lock:
@@ -502,7 +502,7 @@ class RunnerMetrics:
                     )
                     self.guardrail_execution_failures.labels(
                         guardrail_id=observation.guardrail_id,
-                        integration_id=observation.integration_id,
+                        endpoint_id=observation.endpoint_id,
                         protocol=protocol_name,
                         phase=phase,
                         stage=failure_stage,
@@ -530,7 +530,7 @@ class RunnerMetrics:
                 span.set_attributes({
                     "guardrail.id": observation.guardrail_id,
                     "guardrail.version": observation.guardrail_version,
-                    "guardrail.deployment.id": observation.deployment_id,
+                    "guardrail.router.id": observation.router_id,
                     "guardrail.result": result,
                     "guardrail.duration_ms": latency_ms,
                     "guardrail.disposition": _disposition(observation.decision),
@@ -564,7 +564,7 @@ class RunnerMetrics:
         failure_mode = _failure_mode(decision)
         identity = {
             "guardrail_id": observation.guardrail_id,
-            "integration_id": observation.integration_id,
+            "endpoint_id": observation.endpoint_id,
         }
         common = {
             **identity,
@@ -664,7 +664,7 @@ class RunnerMetrics:
                 self._record_protection_failure(
                     step,
                     guardrail_id=identity["guardrail_id"],
-                    integration_id=identity["integration_id"],
+                    endpoint_id=identity["endpoint_id"],
                     protocol_name=protocol_name,
                     phase=phase,
                 )
@@ -674,7 +674,7 @@ class RunnerMetrics:
                 labels = _failure_labels(step)
                 self.incomplete_coverage.labels(
                     guardrail_id=identity["guardrail_id"],
-                    integration_id=identity["integration_id"],
+                    endpoint_id=identity["endpoint_id"],
                     protocol=protocol_name,
                     phase=phase,
                     coverage=decision.coverage.status,
@@ -732,7 +732,7 @@ class RunnerMetrics:
         for module_id, risk, policy_id, action, verdict in triggers:
             self.policy_triggers.labels(
                 guardrail_id=identity["guardrail_id"],
-                integration_id=identity["integration_id"],
+                endpoint_id=identity["endpoint_id"],
                 protocol=protocol_name,
                 phase=phase,
                 disposition=disposition,
@@ -748,13 +748,13 @@ class RunnerMetrics:
         step,
         *,
         guardrail_id: str,
-        integration_id: str,
+        endpoint_id: str,
         protocol_name: str,
         phase: str,
     ) -> None:
         self.protection_failures.labels(
             guardrail_id=guardrail_id,
-            integration_id=integration_id,
+            endpoint_id=endpoint_id,
             protocol=protocol_name,
             phase=phase,
             **_failure_labels(step),
@@ -817,13 +817,13 @@ class RunnerMetrics:
         self.desired_generation.set(max(0, generation))
 
     def set_desired_state(
-        self, *, generation: int, artifacts: int, routes: int, integrations: int,
+        self, *, generation: int, artifacts: int, routes: int, endpoints: int,
     ) -> None:
         self._loaded_artifact_count = max(0, artifacts)
         self.applied_generation.set(max(0, generation))
         self.loaded_artifacts.set(self._loaded_artifact_count)
         self.configured_routes.set(max(0, routes))
-        self.configured_integrations.set(max(0, integrations))
+        self.configured_endpoints.set(max(0, endpoints))
 
     def set_control_state(self, *, connected: bool | None = None, synchronized: bool | None = None) -> None:
         if connected is not None:

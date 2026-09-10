@@ -81,7 +81,7 @@ class Metrics:
 
 
 @pytest.mark.asyncio
-async def test_runner_acknowledges_an_integration_only_generation_immediately():
+async def test_runner_acknowledges_an_endpoint_only_generation_immediately():
     settings = SimpleNamespace(
         runner_id="runner-0",
         pool_id="default",

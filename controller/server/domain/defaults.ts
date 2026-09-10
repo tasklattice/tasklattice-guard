@@ -4,8 +4,8 @@ import { defaultTestCaseOverrides } from "./default-expectations.js";
 
 export const DEFAULT_GUARDRAIL_ID = "guardrail-default";
 export const DEFAULT_GUARDRAIL_NAME = "Default Guardrail";
-export const DEFAULT_DEPLOYMENT_ID = "deployment-default";
-export const DEFAULT_DEPLOYMENT_NAME = "Default Deployment";
+export const DEFAULT_ROUTER_ID = "router-default";
+export const DEFAULT_ROUTER_NAME = "Default Router";
 
 // Default is a composition of complete, model-free Policies, not a separate
 // Rule collection. Policy definitions own their Rules, phases, and actions.

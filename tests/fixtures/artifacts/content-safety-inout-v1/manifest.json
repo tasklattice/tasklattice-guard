@@ -3,6 +3,7 @@
   "artifact_id": "fixture-artifact-content-safety-inout-v1",
   "checksum": "63a4eb6be6a5d3e17b8db81c921f0977e57c2e53b73062610c6fd8cc0cbd2c84",
   "compiler_version": "tasklattice-nemo-config-v21-dynamic-flow-targets",
+  "endpoint_id": "fixture-endpoint",
   "expected": {
     "output_delivery": "window_buffered",
     "safe_input": "allow",
@@ -15,7 +16,6 @@
   "generation": 1,
   "guardrail_id": "fixture-secrets",
   "guardrail_version": "20260904-010000.001Z",
-  "integration_id": "fixture-integration",
   "nemo_version": "0.24.0",
   "runtime_profile": "llmrails_colang1_standard",
   "scope": "Frozen Input/Output model Policy. Live versus synthetic verdict evidence is determined by the test transport."

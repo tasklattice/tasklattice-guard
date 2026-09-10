@@ -9,7 +9,7 @@ from scripts.evaluate_model_holdout import classify_result, summarize, validate_
 def corpus():
     return {"guardrail_id": "fixture", "guardrail_version": "20260906-120000.001Z",
         "effective_release_id": "release-1", "model_revision_id": "model-1",
-        "runtime_config_checksum": "a" * 64, "integration_id": "fixture-integration",
+        "runtime_config_checksum": "a" * 64, "endpoint_id": "fixture-endpoint",
         "reviewed_by": "synthetic-test", "reviewed_at": "2026-09-06", "dataset_version": "fixture-1",
         "thresholds": {"max_false_positive_rate": 0, "max_false_negative_rate": 0, "min_cases_per_class": 1},
         "cases": [{"id": label, "phase": "output", "category": "content_safety", "expected": expected,
@@ -99,7 +99,7 @@ def test_cli_emits_redacted_report_and_stops_on_configuration_drift(tmp_path, mo
     path.write_text(json.dumps(c))
     monkeypatch.setattr("sys.argv", ["holdout", str(path), "--runner", "http://127.0.0.1:8094", "--max-cases", "2"])
     monkeypatch.setenv("GUARD_HOLDOUT_ALLOW_MODEL_CALLS", "1")
-    monkeypatch.setenv("GUARD_HOLDOUT_INTEGRATION_KEY", "private-fixture-token")
+    monkeypatch.setenv("GUARD_HOLDOUT_ENDPOINT_KEY", "private-fixture-token")
     requests = []
     class Transport:
         def open(self, request, timeout):
@@ -123,6 +123,6 @@ def test_cli_emits_redacted_report_and_stops_on_configuration_drift(tmp_path, mo
     assert len(report["corpus_sha256"]) == 64
 
 
-def test_redirects_cannot_forward_integration_credentials():
+def test_redirects_cannot_forward_endpoint_credentials():
     from scripts.evaluate_model_holdout import NoRedirect
     assert NoRedirect().redirect_request(None, None, 302, "", {}, "https://other.example") is None

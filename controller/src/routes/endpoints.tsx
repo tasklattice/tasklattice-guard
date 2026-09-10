@@ -34,67 +34,67 @@ import { Switch } from "@/components/ui/switch";
 import { queryKeys } from "@/features/query-keys";
 import { useAuth } from "@/lib/auth";
 import {
-  createIntegration,
-  deleteIntegration,
-  getIntegration,
-  getIntegrationDeletionImpact,
-  getIntegrations,
-  revokeIntegrationCredential,
-  rotateIntegrationCredential,
-  setIntegrationEnabled,
-  type Integration,
-  type IntegrationAdapterId,
-  type IntegrationCredential,
-  type IntegrationDeletionImpact,
-  type IntegrationProtocol,
-  type IntegrationRegistration,
-  type IntegrationSetupStatus,
-  type OneTimeIntegrationCredential,
+  createEndpoint,
+  deleteEndpoint,
+  getEndpoint,
+  getEndpointDeletionImpact,
+  getEndpoints,
+  revokeEndpointCredential,
+  rotateEndpointCredential,
+  setEndpointEnabled,
+  type Endpoint,
+  type EndpointAdapterId,
+  type EndpointCredential,
+  type EndpointDeletionImpact,
+  type EndpointProtocol,
+  type EndpointRegistration,
+  type EndpointSetupStatus,
+  type OneTimeEndpointCredential,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
-const ADAPTERS: ReadonlyArray<{ id: IntegrationAdapterId; protocol: IntegrationProtocol }> = [
+const ADAPTERS: ReadonlyArray<{ id: EndpointAdapterId; protocol: EndpointProtocol }> = [
   { id: "litellm-generic-guardrail", protocol: "litellm" },
   { id: "generic-http-guard", protocol: "http" },
   { id: "a2a-guard", protocol: "a2a" },
 ];
 
-type IntegrationDeletionConfirmation = {
+type EndpointDeletionConfirmation = {
   reason: string;
   confirm_recent_traffic: boolean;
   confirmation_name?: string;
 };
 
-export function IntegrationsPage() {
+export function EndpointsPage() {
   const { t, i18n } = useTranslation();
   const auth = useAuth();
   const queryClient = useQueryClient();
-  const query = useQuery({ queryKey: queryKeys.integrations, queryFn: getIntegrations });
+  const query = useQuery({ queryKey: queryKeys.endpoints, queryFn: getEndpoints });
   const [createOpen, setCreateOpen] = useState(false);
-  const [selected, setSelected] = useState<Integration | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<Integration | null>(null);
-  const integrations = query.data?.items ?? [];
-  const verified = integrations.filter((item) => item.setup_status === "verified").length;
-  const attention = integrations.filter((item) => item.runtime_status === "degraded").length;
+  const [selected, setSelected] = useState<Endpoint | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Endpoint | null>(null);
+  const endpoints = query.data?.items ?? [];
+  const verified = endpoints.filter((item) => item.setup_status === "verified").length;
+  const attention = endpoints.filter((item) => item.runtime_status === "degraded").length;
   const deletionImpactQuery = useQuery({
-    queryKey: queryKeys.integrationDeletionImpact(deleteTarget?.id ?? ""),
-    queryFn: () => getIntegrationDeletionImpact(deleteTarget!.id),
+    queryKey: queryKeys.endpointDeletionImpact(deleteTarget?.id ?? ""),
+    queryFn: () => getEndpointDeletionImpact(deleteTarget!.id),
     enabled: Boolean(deleteTarget),
     staleTime: 0,
   });
   const deleteMutation = useMutation({
-    mutationFn: (confirmation: IntegrationDeletionConfirmation) => deleteIntegration(deleteTarget!.id, confirmation),
+    mutationFn: (confirmation: EndpointDeletionConfirmation) => deleteEndpoint(deleteTarget!.id, confirmation),
     onSuccess: async () => {
-      toast.success(t("integrations.deleteSucceeded"));
+      toast.success(t("endpoints.deleteSucceeded"));
       const deletedId = deleteTarget?.id;
       if (deletedId) {
-        await queryClient.cancelQueries({ queryKey: queryKeys.integration(deletedId) });
-        queryClient.removeQueries({ queryKey: queryKeys.integration(deletedId) });
+        await queryClient.cancelQueries({ queryKey: queryKeys.endpoint(deletedId) });
+        queryClient.removeQueries({ queryKey: queryKeys.endpoint(deletedId) });
       }
       setDeleteTarget(null);
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.integrations, exact: true }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.deployments }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.endpoints, exact: true }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.routers }),
         queryClient.invalidateQueries({ queryKey: queryKeys.metrics }),
         queryClient.invalidateQueries({ queryKey: queryKeys.auditEvents }),
         queryClient.invalidateQueries({ queryKey: queryKeys.systemStatus }),
@@ -103,73 +103,73 @@ export function IntegrationsPage() {
     onError: async () => { await deletionImpactQuery.refetch(); },
   });
 
-  async function refreshIntegrations() {
+  async function refreshEndpoints() {
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: queryKeys.integrations, exact: true }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.endpoints, exact: true }),
       queryClient.invalidateQueries({ queryKey: queryKeys.systemStatus }),
     ]);
   }
 
-  async function completeCreation(integration: Integration, openDetails: boolean) {
+  async function completeCreation(endpoint: Endpoint, openDetails: boolean) {
     setCreateOpen(false);
-    if (openDetails) setSelected(integration);
-    await refreshIntegrations();
+    if (openDetails) setSelected(endpoint);
+    await refreshEndpoints();
   }
 
   return (
     <section className="py-6 sm:py-8">
       <PageHeader
-        title={t("pages.integrations.title")}
-        description={t("integrations.description")}
-        action={auth.user?.role === "admin" ? <Button className="min-h-11 self-start" onClick={() => setCreateOpen(true)}><Plus />{t("integrations.register")}</Button> : undefined}
+        title={t("pages.endpoints.title")}
+        description={t("endpoints.description")}
+        action={auth.user?.role === "admin" ? <Button className="min-h-11 self-start" onClick={() => setCreateOpen(true)}><Plus />{t("endpoints.register")}</Button> : undefined}
       />
 
       {query.error ? <div className="mt-5"><ErrorNotice error={query.error} /></div> : null}
       {query.isLoading ? <Skeleton className="mt-5 h-60 rounded-lg" /> : null}
 
-      {integrations.length ? (
+      {endpoints.length ? (
         <section className="mt-5 overflow-hidden rounded-lg border bg-card shadow-xs">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/30 px-5 py-3 text-xs text-muted-foreground">
-            <span>{t("integrations.listSummary", { total: integrations.length, verified })}</span>
-            {attention ? <span className="font-medium text-destructive">{t("integrations.needsAttention", { count: attention })}</span> : null}
+            <span>{t("endpoints.listSummary", { total: endpoints.length, verified })}</span>
+            {attention ? <span className="font-medium text-destructive">{t("endpoints.needsAttention", { count: attention })}</span> : null}
           </div>
           <div className="hidden grid-cols-[minmax(220px,1fr)_190px_170px_140px_120px_24px] border-b bg-muted/20 px-5 py-3 text-xs font-medium text-muted-foreground lg:grid">
-            <span>{t("integrations.gatewayInstance")}</span>
-            <span>{t("integrations.setup")}</span>
-            <span>{t("integrations.lastCallback")}</span>
-            <span>{t("integrations.traffic")}</span>
-            <span>{t("integrations.health")}</span>
+            <span>{t("endpoints.gatewayInstance")}</span>
+            <span>{t("endpoints.setup")}</span>
+            <span>{t("endpoints.lastCallback")}</span>
+            <span>{t("endpoints.traffic")}</span>
+            <span>{t("endpoints.health")}</span>
             <span />
           </div>
           <div className="divide-y divide-border">
-            {integrations.map((integration) => (
-              <IntegrationRow key={integration.id} integration={integration} onOpen={() => setSelected(integration)} />
+            {endpoints.map((endpoint) => (
+              <EndpointRow key={endpoint.id} endpoint={endpoint} onOpen={() => setSelected(endpoint)} />
             ))}
           </div>
         </section>
       ) : !query.isLoading ? (
         <div className="mt-5">
           <EmptyState
-            title={t("integrations.emptyTitle")}
-            description={t("integrations.emptyDescription")}
-            action={auth.user?.role === "admin" ? <Button onClick={() => setCreateOpen(true)}><Plus />{t("integrations.register")}</Button> : undefined}
+            title={t("endpoints.emptyTitle")}
+            description={t("endpoints.emptyDescription")}
+            action={auth.user?.role === "admin" ? <Button onClick={() => setCreateOpen(true)}><Plus />{t("endpoints.register")}</Button> : undefined}
           />
         </div>
       ) : null}
 
-      <IntegrationDetail
-        integration={selected}
+      <EndpointDetail
+        endpoint={selected}
         onOpenChange={(open) => !open && setSelected(null)}
-        onUpdated={refreshIntegrations}
-        onDelete={auth.user?.role === "admin" ? (integration) => {
+        onUpdated={refreshEndpoints}
+        onDelete={auth.user?.role === "admin" ? (endpoint) => {
           setSelected(null);
           deleteMutation.reset();
-          queryClient.removeQueries({ queryKey: queryKeys.integrationDeletionImpact(integration.id), exact: true });
-          setDeleteTarget(integration);
+          queryClient.removeQueries({ queryKey: queryKeys.endpointDeletionImpact(endpoint.id), exact: true });
+          setDeleteTarget(endpoint);
         } : undefined}
       />
-      {deleteTarget ? <DeleteIntegrationSheet
-        integration={deleteTarget}
+      {deleteTarget ? <DeleteEndpointSheet
+        endpoint={deleteTarget}
         open
         impact={deletionImpactQuery.data}
         loading={deletionImpactQuery.isFetching}
@@ -180,7 +180,7 @@ export function IntegrationsPage() {
         onRetry={() => { deleteMutation.reset(); void deletionImpactQuery.refetch(); }}
         onConfirm={(confirmation) => deleteMutation.mutate(confirmation)}
       /> : null}
-      <CreateIntegrationSheet
+      <CreateEndpointSheet
         open={createOpen}
         onOpenChange={setCreateOpen}
         onCreated={completeCreation}
@@ -189,34 +189,34 @@ export function IntegrationsPage() {
   );
 }
 
-function IntegrationRow({ integration, onOpen }: { integration: Integration; onOpen: () => void }) {
+function EndpointRow({ endpoint, onOpen }: { endpoint: Endpoint; onOpen: () => void }) {
   const { t, i18n } = useTranslation();
   return (
     <button
       type="button"
       onClick={onOpen}
-      aria-label={t("integrations.openIntegration", { name: integration.name })}
+      aria-label={t("endpoints.openEndpoint", { name: endpoint.name })}
       className="group relative grid min-h-24 w-full gap-4 p-5 text-left transition-colors hover:bg-muted/40 focus-visible:outline-2 focus-visible:outline-ring lg:grid-cols-[minmax(220px,1fr)_190px_170px_140px_120px_24px] lg:items-center"
     >
       <div className="min-w-0">
         <span className="flex items-center gap-2.5">
-          <ProtocolIcon protocol={integration.protocol} size="sm" />
-          <strong className="truncate text-sm font-medium">{integration.name}</strong>
+          <ProtocolIcon protocol={endpoint.protocol} size="sm" />
+          <strong className="truncate text-sm font-medium">{endpoint.name}</strong>
         </span>
         <span className="mt-1.5 block truncate pl-9 text-xs text-muted-foreground">
-          {t(`integrations.adapters.${integration.adapter_id}`)} · {shortId(integration.id)}
+          {t(`endpoints.adapters.${endpoint.adapter_id}`)} · {shortId(endpoint.id)}
         </span>
       </div>
-      <ListDatum label={t("integrations.setup")}><SetupBadge status={integration.setup_status} /></ListDatum>
-      <ListDatum label={t("integrations.lastCallback")}>
-        <time className="text-xs" dateTime={integration.last_seen_at ?? undefined} title={formatDate(integration.last_seen_at, i18n.language)}>
-          {integration.last_seen_at ? formatRelativeDate(integration.last_seen_at, i18n.language) : t("integrations.never")}
+      <ListDatum label={t("endpoints.setup")}><SetupBadge status={endpoint.setup_status} /></ListDatum>
+      <ListDatum label={t("endpoints.lastCallback")}>
+        <time className="text-xs" dateTime={endpoint.last_seen_at ?? undefined} title={formatDate(endpoint.last_seen_at, i18n.language)}>
+          {endpoint.last_seen_at ? formatRelativeDate(endpoint.last_seen_at, i18n.language) : t("endpoints.never")}
         </time>
       </ListDatum>
-      <ListDatum label={t("integrations.traffic")}>
-        <span className="font-mono text-xs">{t("integrations.requestErrorCount", { requests: integration.request_count, errors: integration.error_count })}</span>
+      <ListDatum label={t("endpoints.traffic")}>
+        <span className="font-mono text-xs">{t("endpoints.requestErrorCount", { requests: endpoint.request_count, errors: endpoint.error_count })}</span>
       </ListDatum>
-      <ListDatum label={t("integrations.health")}><StateBadge state={integration.runtime_status} /></ListDatum>
+      <ListDatum label={t("endpoints.health")}><StateBadge state={endpoint.runtime_status} /></ListDatum>
       <ChevronRight className="absolute right-4 top-5 size-4 text-muted-foreground lg:static" />
     </button>
   );
@@ -231,29 +231,29 @@ function ListDatum({ children, label }: { children: ReactNode; label: string }) 
   );
 }
 
-function IntegrationDetail({
-  integration,
+function EndpointDetail({
+  endpoint,
   onDelete,
   onOpenChange,
   onUpdated,
 }: {
-  integration: Integration | null;
-  onDelete?: (integration: Integration) => void;
+  endpoint: Endpoint | null;
+  onDelete?: (endpoint: Endpoint) => void;
   onOpenChange: (open: boolean) => void;
   onUpdated: () => Promise<void>;
 }) {
-  if (!integration) return null;
-  return <IntegrationDetailContent key={integration.id} initialIntegration={integration} onDelete={onDelete} onOpenChange={onOpenChange} onUpdated={onUpdated} />;
+  if (!endpoint) return null;
+  return <EndpointDetailContent key={endpoint.id} initialEndpoint={endpoint} onDelete={onDelete} onOpenChange={onOpenChange} onUpdated={onUpdated} />;
 }
 
-function IntegrationDetailContent({
-  initialIntegration,
+function EndpointDetailContent({
+  initialEndpoint,
   onDelete,
   onOpenChange,
   onUpdated,
 }: {
-  initialIntegration: Integration;
-  onDelete?: (integration: Integration) => void;
+  initialEndpoint: Endpoint;
+  onDelete?: (endpoint: Endpoint) => void;
   onOpenChange: (open: boolean) => void;
   onUpdated: () => Promise<void>;
 }) {
@@ -263,52 +263,52 @@ function IntegrationDetailContent({
   const queryClient = useQueryClient();
   const copy = useCopyText();
   const query = useQuery({
-    queryKey: queryKeys.integration(initialIntegration.id),
-    queryFn: () => getIntegration(initialIntegration.id),
-    initialData: initialIntegration,
+    queryKey: queryKeys.endpoint(initialEndpoint.id),
+    queryFn: () => getEndpoint(initialEndpoint.id),
+    initialData: initialEndpoint,
     refetchInterval: 5_000,
   });
-  const integration = query.data;
-  const [oneTimeCredential, setOneTimeCredential] = useState<OneTimeIntegrationCredential | null>(null);
+  const endpoint = query.data;
+  const [oneTimeCredential, setOneTimeCredential] = useState<OneTimeEndpointCredential | null>(null);
   const [credentialSaved, setCredentialSaved] = useState(false);
   const [closeWarning, setCloseWarning] = useState(false);
   const [pendingRevokeId, setPendingRevokeId] = useState<string | null>(null);
 
-  async function cacheIntegration(next: Integration) {
-    queryClient.setQueryData(queryKeys.integration(next.id), next);
+  async function cacheEndpoint(next: Endpoint) {
+    queryClient.setQueryData(queryKeys.endpoint(next.id), next);
     await onUpdated();
   }
 
   const enabledMutation = useMutation({
-    mutationFn: (enabled: boolean) => setIntegrationEnabled(integration.id, enabled),
+    mutationFn: (enabled: boolean) => setEndpointEnabled(endpoint.id, enabled),
     onSuccess: async (next) => {
-      await cacheIntegration(next);
-      toast.success(t(next.enabled ? "integrations.enabledSuccess" : "integrations.disabledSuccess"));
+      await cacheEndpoint(next);
+      toast.success(t(next.enabled ? "endpoints.enabledSuccess" : "endpoints.disabledSuccess"));
     },
-    onError: showMutationError(t("integrations.updateFailed")),
+    onError: showMutationError(t("endpoints.updateFailed")),
   });
 
   const rotateMutation = useMutation({
-    mutationFn: () => rotateIntegrationCredential(integration.id),
+    mutationFn: () => rotateEndpointCredential(endpoint.id),
     onSuccess: async (result) => {
       setOneTimeCredential(result.credential);
       setCredentialSaved(false);
       setCloseWarning(false);
-      await cacheIntegration(result.integration);
-      toast.success(t("integrations.credentialRotated"));
+      await cacheEndpoint(result.endpoint);
+      toast.success(t("endpoints.credentialRotated"));
     },
-    onError: showMutationError(t("integrations.rotationFailed")),
+    onError: showMutationError(t("endpoints.rotationFailed")),
   });
 
   const revokeMutation = useMutation({
-    mutationFn: (credentialId: string) => revokeIntegrationCredential(integration.id, credentialId),
+    mutationFn: (credentialId: string) => revokeEndpointCredential(endpoint.id, credentialId),
     onSuccess: async () => {
       setPendingRevokeId(null);
       await query.refetch();
       await onUpdated();
-      toast.success(t("integrations.credentialRevoked"));
+      toast.success(t("endpoints.credentialRevoked"));
     },
-    onError: showMutationError(t("integrations.revocationFailed")),
+    onError: showMutationError(t("endpoints.revocationFailed")),
   });
 
   function requestClose() {
@@ -321,11 +321,11 @@ function IntegrationDetailContent({
 
   const footer = closeWarning ? (
     <>
-      <Button variant="outline" onClick={() => setCloseWarning(false)}>{t("integrations.keepSettingUp")}</Button>
-      <Button variant="destructive" onClick={() => onOpenChange(false)}>{t("integrations.leaveAndLoseKey")}</Button>
+      <Button variant="outline" onClick={() => setCloseWarning(false)}>{t("endpoints.keepSettingUp")}</Button>
+      <Button variant="destructive" onClick={() => onOpenChange(false)}>{t("endpoints.leaveAndLoseKey")}</Button>
     </>
   ) : <>
-    {onDelete && (!oneTimeCredential || credentialSaved) ? <Button className="text-destructive hover:bg-destructive/10 hover:text-destructive" variant="outline" onClick={() => onDelete(integration)}><Trash2 />{t("integrations.deleteAction")}</Button> : null}
+    {onDelete && (!oneTimeCredential || credentialSaved) ? <Button className="text-destructive hover:bg-destructive/10 hover:text-destructive" variant="outline" onClick={() => onDelete(endpoint)}><Trash2 />{t("endpoints.deleteAction")}</Button> : null}
     <Button variant="outline" onClick={requestClose}>{t("common.close")}</Button>
   </>;
 
@@ -333,9 +333,9 @@ function IntegrationDetailContent({
     <EntitySheet
       open
       onOpenChange={(open) => !open && requestClose()}
-      eyebrow={t("integrations.details")}
-      title={integration.name}
-      description={t("integrations.detailsDescription")}
+      eyebrow={t("endpoints.details")}
+      title={endpoint.name}
+      description={t("endpoints.detailsDescription")}
       width="lg"
       footer={footer}
     >
@@ -347,65 +347,65 @@ function IntegrationDetailContent({
             credential={oneTimeCredential}
             saved={credentialSaved}
             onSavedChange={(saved) => { setCredentialSaved(saved); if (saved) setCloseWarning(false); }}
-            onCopy={() => copy(oneTimeCredential.value, t("integrations.credential"))}
+            onCopy={() => copy(oneTimeCredential.value, t("endpoints.credential"))}
           />
         ) : null}
 
         <section className="overflow-hidden rounded-lg border bg-card">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-muted/30 p-4">
             <div className="flex items-center gap-3">
-              <ProtocolIcon protocol={integration.protocol} />
+              <ProtocolIcon protocol={endpoint.protocol} />
               <div>
-                <p className="text-sm font-medium">{t(`integrations.adapters.${integration.adapter_id}`)}</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">{integration.id}</p>
+                <p className="text-sm font-medium">{t(`endpoints.adapters.${endpoint.adapter_id}`)}</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">{endpoint.id}</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <SetupBadge status={integration.setup_status} />
-              <StateBadge state={integration.runtime_status} />
+              <SetupBadge status={endpoint.setup_status} />
+              <StateBadge state={endpoint.runtime_status} />
             </div>
           </div>
           <dl className="divide-y divide-border">
-            <Detail label={t("integrations.id")} mono copyValue={integration.id}>{integration.id}</Detail>
-            <Detail label={t("integrations.protocol")}>{t(`integrations.protocols.${integration.protocol}`)}</Detail>
-            <Detail label={t("integrations.keyHint")} mono>{integration.key_hint || t("integrations.noActiveCredential")}</Detail>
-            <Detail label={t("integrations.created")}>{formatDate(integration.created_at, i18n.language)}</Detail>
+            <Detail label={t("endpoints.id")} mono copyValue={endpoint.id}>{endpoint.id}</Detail>
+            <Detail label={t("endpoints.protocol")}>{t(`endpoints.protocols.${endpoint.protocol}`)}</Detail>
+            <Detail label={t("endpoints.keyHint")} mono>{endpoint.key_hint || t("endpoints.noActiveCredential")}</Detail>
+            <Detail label={t("endpoints.created")}>{formatDate(endpoint.created_at, i18n.language)}</Detail>
           </dl>
           <div className="flex items-center justify-between gap-4 border-t px-4 py-4">
             <div>
-              <Label htmlFor={`integration-enabled-${integration.id}`}>{t("integrations.acceptCallbacks")}</Label>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">{t("integrations.acceptCallbacksDescription")}</p>
+              <Label htmlFor={`endpoint-enabled-${endpoint.id}`}>{t("endpoints.acceptCallbacks")}</Label>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">{t("endpoints.acceptCallbacksDescription")}</p>
             </div>
             <Switch
-              id={`integration-enabled-${integration.id}`}
-              checked={integration.enabled}
+              id={`endpoint-enabled-${endpoint.id}`}
+              checked={endpoint.enabled}
               disabled={!canManage || enabledMutation.isPending}
               onCheckedChange={(enabled) => enabledMutation.mutate(enabled)}
-              aria-label={t("integrations.acceptCallbacks")}
+              aria-label={t("endpoints.acceptCallbacks")}
             />
           </div>
         </section>
 
-        <SetupConfiguration integration={integration} />
+        <SetupConfiguration endpoint={endpoint} />
 
         <section className="overflow-hidden rounded-lg border bg-card">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-muted/30 px-4 py-3">
             <div>
-              <h3 className="text-sm font-semibold">{t("integrations.activeCredentials")}</h3>
-              <p className="mt-1 text-xs text-muted-foreground">{t("integrations.activeCredentialsDescription")}</p>
+              <h3 className="text-sm font-semibold">{t("endpoints.activeCredentials")}</h3>
+              <p className="mt-1 text-xs text-muted-foreground">{t("endpoints.activeCredentialsDescription")}</p>
             </div>
             {canManage ? <Button variant="outline" disabled={rotateMutation.isPending} onClick={() => rotateMutation.mutate()}>
               <RefreshCw className={cn(rotateMutation.isPending && "animate-spin")} />
-              {t("integrations.generateCredential")}
+              {t("endpoints.generateCredential")}
             </Button> : null}
           </div>
           <div className="divide-y divide-border">
-            {integration.credentials.map((credential) => (
+            {endpoint.credentials.map((credential) => (
               <CredentialRow
                 key={credential.id}
                 credential={credential}
                 locale={i18n.language}
-                onlyCredential={integration.credentials.length === 1}
+                onlyCredential={endpoint.credentials.length === 1}
                 confirming={pendingRevokeId === credential.id}
                 pending={revokeMutation.isPending && pendingRevokeId === credential.id}
                 canManage={canManage}
@@ -415,31 +415,31 @@ function IntegrationDetailContent({
               />
             ))}
           </div>
-          {integration.credentials.length === 1 ? <p className="border-t bg-muted/20 px-4 py-3 text-xs text-muted-foreground">{t("integrations.lastCredentialRequired")}</p> : null}
+          {endpoint.credentials.length === 1 ? <p className="border-t bg-muted/20 px-4 py-3 text-xs text-muted-foreground">{t("endpoints.lastCredentialRequired")}</p> : null}
         </section>
 
         <section className="overflow-hidden rounded-lg border bg-card">
-          <div className="border-b bg-muted/30 px-4 py-3"><h3 className="text-sm font-semibold">{t("integrations.runtimeActivity")}</h3></div>
+          <div className="border-b bg-muted/30 px-4 py-3"><h3 className="text-sm font-semibold">{t("endpoints.runtimeActivity")}</h3></div>
           <dl className="divide-y divide-border">
-            <Detail label={t("integrations.inputCallback")}>{callbackTimestamp(integration.input_seen_at, i18n.language, t("integrations.notReceived"))}</Detail>
-            <Detail label={t("integrations.outputCallback")}>{callbackTimestamp(integration.output_seen_at, i18n.language, t("integrations.notReceived"))}</Detail>
-            <Detail label={t("integrations.requests")} mono>{integration.request_count.toLocaleString(i18n.language)}</Detail>
-            <Detail label={t("integrations.errors")} mono>{integration.error_count.toLocaleString(i18n.language)}</Detail>
-            <Detail label={t("integrations.lastActivity")}>{integration.last_seen_at ? formatDate(integration.last_seen_at, i18n.language) : t("integrations.noTraffic")}</Detail>
+            <Detail label={t("endpoints.inputCallback")}>{callbackTimestamp(endpoint.input_seen_at, i18n.language, t("endpoints.notReceived"))}</Detail>
+            <Detail label={t("endpoints.outputCallback")}>{callbackTimestamp(endpoint.output_seen_at, i18n.language, t("endpoints.notReceived"))}</Detail>
+            <Detail label={t("endpoints.requests")} mono>{endpoint.request_count.toLocaleString(i18n.language)}</Detail>
+            <Detail label={t("endpoints.errors")} mono>{endpoint.error_count.toLocaleString(i18n.language)}</Detail>
+            <Detail label={t("endpoints.lastActivity")}>{endpoint.last_seen_at ? formatDate(endpoint.last_seen_at, i18n.language) : t("endpoints.noTraffic")}</Detail>
           </dl>
         </section>
 
-        <InfoNotice title={t("integrations.trustedContext")}>{t("integrations.trustedContextDescription")}</InfoNotice>
+        <InfoNotice title={t("endpoints.trustedContext")}>{t("endpoints.trustedContextDescription")}</InfoNotice>
       </div>
     </EntitySheet>
   );
 }
 
-export function DeleteIntegrationSheet({
+export function DeleteEndpointSheet({
   deleting,
   error,
   impact,
-  integration,
+  endpoint,
   loading,
   locale,
   onConfirm,
@@ -449,11 +449,11 @@ export function DeleteIntegrationSheet({
 }: {
   deleting: boolean;
   error: Error | null;
-  impact?: IntegrationDeletionImpact;
-  integration: Integration;
+  impact?: EndpointDeletionImpact;
+  endpoint: Endpoint;
   loading: boolean;
   locale: string;
-  onConfirm: (confirmation: IntegrationDeletionConfirmation) => void;
+  onConfirm: (confirmation: EndpointDeletionConfirmation) => void;
   onOpenChange: (open: boolean) => void;
   onRetry: () => void;
   open: boolean;
@@ -470,37 +470,37 @@ export function DeleteIntegrationSheet({
   return <ProtectedDeleteSheet
     open={open}
     onOpenChange={onOpenChange}
-    entityName={integration.name}
+    entityName={endpoint.name}
     loading={loading}
     ready={telemetryFresh}
     deleting={deleting}
-    error={impact && !telemetryFresh ? new Error(t("integrations.deleteTelemetryStale")) : error}
+    error={impact && !telemetryFresh ? new Error(t("endpoints.deleteTelemetryStale")) : error}
     requiresConfirmation={requiresSecondConfirmation}
     impactItems={impact ? [
-      { label: t("integrations.recentIncomingRequests", { minutes: impact.window_minutes }), value: impact.incoming_request_count.toLocaleString(locale) },
-      { label: t("integrations.activeDeploymentsAffected"), value: impact.active_deployment_count.toLocaleString(locale) },
-      { label: t("integrations.activeCredentialsRetained"), value: impact.active_credential_count.toLocaleString(locale) },
+      { label: t("endpoints.recentIncomingRequests", { minutes: impact.window_minutes }), value: impact.incoming_request_count.toLocaleString(locale) },
+      { label: t("endpoints.activeRoutersAffected"), value: impact.active_router_count.toLocaleString(locale) },
+      { label: t("endpoints.activeCredentialsRetained"), value: impact.active_credential_count.toLocaleString(locale) },
     ] : []}
     copy={{
-      eyebrow: t("integrations.deleteEyebrow"),
-      title: t("integrations.deleteDialogTitle"),
-      description: t("integrations.deleteDialogDescription", { name: integration.name }),
-      protectedMessage: t("integrations.protectedDeleteWarning"),
-      clearMessage: t("integrations.noProtectedActivity"),
-      retentionNote: t("integrations.deleteRetentionNote"),
-      continueLabel: t("integrations.continueDelete"),
-      deleteLabel: t("integrations.deleteConfirm"),
-      deletingLabel: t("integrations.deleting"),
-      confirmTitle: t("integrations.deleteProtectedTitle"),
-      confirmDescription: t("integrations.deleteProtectedDescription", { requests: impact?.incoming_request_count ?? 0, minutes: impact?.window_minutes ?? 30, deployments: impact?.active_deployment_count ?? 0 }),
-      confirmWarning: t("integrations.deleteStopsTraffic", { deployments: impact?.active_deployment_count ?? 0, credentials: impact?.active_credential_count ?? 0 }),
-      typeNameLabel: t("integrations.typeNameToConfirm", { name: integration.name }),
-      protectedDeleteLabel: t("integrations.deleteDespiteProtection"),
+      eyebrow: t("endpoints.deleteEyebrow"),
+      title: t("endpoints.deleteDialogTitle"),
+      description: t("endpoints.deleteDialogDescription", { name: endpoint.name }),
+      protectedMessage: t("endpoints.protectedDeleteWarning"),
+      clearMessage: t("endpoints.noProtectedActivity"),
+      retentionNote: t("endpoints.deleteRetentionNote"),
+      continueLabel: t("endpoints.continueDelete"),
+      deleteLabel: t("endpoints.deleteConfirm"),
+      deletingLabel: t("endpoints.deleting"),
+      confirmTitle: t("endpoints.deleteProtectedTitle"),
+      confirmDescription: t("endpoints.deleteProtectedDescription", { requests: impact?.incoming_request_count ?? 0, minutes: impact?.window_minutes ?? 30, routers: impact?.active_router_count ?? 0 }),
+      confirmWarning: t("endpoints.deleteStopsTraffic", { routers: impact?.active_router_count ?? 0, credentials: impact?.active_credential_count ?? 0 }),
+      typeNameLabel: t("endpoints.typeNameToConfirm", { name: endpoint.name }),
+      protectedDeleteLabel: t("endpoints.deleteDespiteProtection"),
       cancelLabel: t("common.cancel"),
       backLabel: t("common.back"),
       retryLabel: t("common.retry"),
-      reasonLabel: t("integrations.deleteReason"),
-      reasonPlaceholder: t("integrations.deleteReasonPlaceholder"),
+      reasonLabel: t("endpoints.deleteReason"),
+      reasonPlaceholder: t("endpoints.deleteReasonPlaceholder"),
     }}
     reason={reason}
     onReasonChange={setReason}
@@ -513,31 +513,31 @@ export function DeleteIntegrationSheet({
   />;
 }
 
-export function CreateIntegrationSheet({
+export function CreateEndpointSheet({
   open,
   onOpenChange,
   onCreated,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onCreated: (integration: Integration, openDetails: boolean) => Promise<void>;
+  onCreated: (endpoint: Endpoint, openDetails: boolean) => Promise<void>;
 }) {
   const { t } = useTranslation();
   const [name, setName] = useState("");
-  const [adapterId, setAdapterId] = useState<IntegrationAdapterId>("litellm-generic-guardrail");
-  const [registration, setRegistration] = useState<IntegrationRegistration | null>(null);
+  const [adapterId, setAdapterId] = useState<EndpointAdapterId>("litellm-generic-guardrail");
+  const [registration, setRegistration] = useState<EndpointRegistration | null>(null);
   const [credentialSaved, setCredentialSaved] = useState(false);
   const [configurationCopied, setConfigurationCopied] = useState(false);
   const [closeWarning, setCloseWarning] = useState(false);
-  const integrationId = registration?.integration.id ?? "";
-  const integrationQuery = useQuery({
-    queryKey: queryKeys.integration(integrationId),
-    queryFn: () => getIntegration(integrationId),
-    enabled: open && Boolean(integrationId),
-    initialData: registration?.integration,
+  const endpointId = registration?.endpoint.id ?? "";
+  const endpointQuery = useQuery({
+    queryKey: queryKeys.endpoint(endpointId),
+    queryFn: () => getEndpoint(endpointId),
+    enabled: open && Boolean(endpointId),
+    initialData: registration?.endpoint,
     refetchInterval: (query) => query.state.data?.setup_status === "verified" ? false : 4_000,
   });
-  const integration = integrationQuery.data ?? registration?.integration;
+  const endpoint = endpointQuery.data ?? registration?.endpoint;
 
   useEffect(() => {
     if (!open) return;
@@ -550,21 +550,21 @@ export function CreateIntegrationSheet({
   }, [open]);
 
   const mutation = useMutation({
-    mutationFn: () => createIntegration({ name: name.trim(), adapter_id: adapterId }),
+    mutationFn: () => createEndpoint({ name: name.trim(), adapter_id: adapterId }),
     onSuccess: (result) => {
       setRegistration(result);
-      toast.success(t("integrations.registered"));
+      toast.success(t("endpoints.registered"));
     },
-    onError: showMutationError(t("integrations.registrationFailed")),
+    onError: showMutationError(t("endpoints.registrationFailed")),
   });
 
   function finish(openDetails: boolean, force = false) {
-    if (!registration || !integration) return;
+    if (!registration || !endpoint) return;
     if (!force && !credentialSaved) {
       setCloseWarning(true);
       return;
     }
-    void onCreated(integration, openDetails);
+    void onCreated(endpoint, openDetails);
   }
 
   function requestOpenChange(next: boolean) {
@@ -577,25 +577,25 @@ export function CreateIntegrationSheet({
   }
 
   const adapter = adapterDefinition(adapterId);
-  const providerConnected = integration?.protocol === "litellm"
-    ? Boolean(integration.input_seen_at || integration.output_seen_at)
+  const providerConnected = endpoint?.protocol === "litellm"
+    ? Boolean(endpoint.input_seen_at || endpoint.output_seen_at)
     : configurationCopied;
-  const setupComplete = [credentialSaved, providerConnected, integration?.setup_status === "verified"].filter(Boolean).length;
+  const setupComplete = [credentialSaved, providerConnected, endpoint?.setup_status === "verified"].filter(Boolean).length;
   const footer = registration ? closeWarning ? (
     <>
-      <Button variant="outline" onClick={() => setCloseWarning(false)}>{t("integrations.keepSettingUp")}</Button>
-      <Button variant="destructive" onClick={() => finish(false, true)}>{t("integrations.leaveAndLoseKey")}</Button>
+      <Button variant="outline" onClick={() => setCloseWarning(false)}>{t("endpoints.keepSettingUp")}</Button>
+      <Button variant="destructive" onClick={() => finish(false, true)}>{t("endpoints.leaveAndLoseKey")}</Button>
     </>
   ) : (
     <>
-      <Button variant="outline" onClick={() => finish(false)}>{t("integrations.finishLater")}</Button>
-      <Button onClick={() => finish(true)}>{t("integrations.openIntegrationDetails")}</Button>
+      <Button variant="outline" onClick={() => finish(false)}>{t("endpoints.finishLater")}</Button>
+      <Button onClick={() => finish(true)}>{t("endpoints.openEndpointDetails")}</Button>
     </>
   ) : (
     <>
       <Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button>
       <Button disabled={!name.trim() || mutation.isPending} onClick={() => mutation.mutate()}>
-        <Plus />{t(mutation.isPending ? "integrations.registering" : "integrations.register")}
+        <Plus />{t(mutation.isPending ? "endpoints.registering" : "endpoints.register")}
       </Button>
     </>
   );
@@ -604,31 +604,31 @@ export function CreateIntegrationSheet({
     <EntitySheet
       open={open}
       onOpenChange={requestOpenChange}
-      eyebrow={`Integration / ${adapter.protocol.toUpperCase()}`}
-      title={t(registration ? "integrations.setupTitle" : "integrations.register")}
-      description={t(registration ? "integrations.setupDescription" : "integrations.registerDescription", { name: registration?.integration.name })}
+      eyebrow={`Endpoint / ${adapter.protocol.toUpperCase()}`}
+      title={t(registration ? "endpoints.setupTitle" : "endpoints.register")}
+      description={t(registration ? "endpoints.setupDescription" : "endpoints.registerDescription", { name: registration?.endpoint.name })}
       width={registration ? "lg" : "md"}
       footer={footer}
     >
-      {registration && integration ? (
+      {registration && endpoint ? (
         <div className="space-y-5">
-          {integrationQuery.error ? <ErrorNotice error={integrationQuery.error} /> : null}
+          {endpointQuery.error ? <ErrorNotice error={endpointQuery.error} /> : null}
           {closeWarning ? <SecretExitWarning /> : null}
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card px-4 py-3">
             <div className="flex min-w-0 items-center gap-3">
-              <ProtocolIcon protocol={integration.protocol} />
+              <ProtocolIcon protocol={endpoint.protocol} />
               <div className="min-w-0">
-                <p className="truncate text-sm font-semibold">{integration.name}</p>
-                <p className="mt-0.5 truncate text-xs text-muted-foreground">{t(`integrations.adapters.${integration.adapter_id}`)}</p>
+                <p className="truncate text-sm font-semibold">{endpoint.name}</p>
+                <p className="mt-0.5 truncate text-xs text-muted-foreground">{t(`endpoints.adapters.${endpoint.adapter_id}`)}</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <span className="text-xs text-muted-foreground">{t("integrations.stepsComplete", { count: setupComplete })}</span>
-              <SetupBadge status={integration.setup_status} />
+              <span className="text-xs text-muted-foreground">{t("endpoints.stepsComplete", { count: setupComplete })}</span>
+              <SetupBadge status={endpoint.setup_status} />
             </div>
           </div>
           <SetupChecklist
-            integration={integration}
+            endpoint={endpoint}
             credential={registration.credential}
             credentialSaved={credentialSaved}
             configurationCopied={configurationCopied}
@@ -638,11 +638,11 @@ export function CreateIntegrationSheet({
         </div>
       ) : (
         <div className="grid min-w-0 gap-5">
-          <Field label={t("integrations.name")}>
-            <Input autoFocus className="min-h-11 rounded-lg bg-card" value={name} onChange={(event) => setName(event.target.value)} placeholder={t("integrations.namePlaceholder")} />
+          <Field label={t("endpoints.name")}>
+            <Input autoFocus className="min-h-11 rounded-lg bg-card" value={name} onChange={(event) => setName(event.target.value)} placeholder={t("endpoints.namePlaceholder")} />
           </Field>
-          <Field label={t("integrations.integrationProtocol")}>
-            <Select value={adapterId} onValueChange={(value) => setAdapterId(value as IntegrationAdapterId)}>
+          <Field label={t("endpoints.endpointProtocol")}>
+            <Select value={adapterId} onValueChange={(value) => setAdapterId(value as EndpointAdapterId)}>
               <SelectTrigger className="min-h-16 min-w-0 overflow-hidden rounded-xl bg-card px-3 py-2 text-left"><SelectValue /></SelectTrigger>
               <SelectContent className="min-w-[var(--radix-select-trigger-width)] rounded-xl p-1">
                 {ADAPTERS.map((item) => <SelectItem key={item.id} className="min-h-16 rounded-lg px-2.5 py-2 pr-10" value={item.id}><AdapterOption adapterId={item.id} /></SelectItem>)}
@@ -656,15 +656,15 @@ export function CreateIntegrationSheet({
 }
 
 export function SetupChecklist({
-  integration,
+  endpoint,
   credential,
   credentialSaved,
   configurationCopied,
   onCredentialSavedChange,
   onConfigurationCopied,
 }: {
-  integration: Integration;
-  credential: OneTimeIntegrationCredential;
+  endpoint: Endpoint;
+  credential: OneTimeEndpointCredential;
   credentialSaved: boolean;
   configurationCopied: boolean;
   onCredentialSavedChange: (saved: boolean) => void;
@@ -673,62 +673,62 @@ export function SetupChecklist({
   const { t, i18n } = useTranslation();
   const copy = useCopyText();
   return (
-    <ol className="space-y-4" aria-label={t("integrations.setupChecklist")}>
+    <ol className="space-y-4" aria-label={t("endpoints.setupChecklist")}>
       <SetupStep
         number={1}
-        title={t("integrations.saveCredential")}
-        description={integration.protocol === "litellm"
-          ? t("integrations.saveIntegrationSecretDescription")
-          : t("integrations.saveCredentialDescription", { env: integration.setup.credential_env_var })}
+        title={t("endpoints.saveCredential")}
+        description={endpoint.protocol === "litellm"
+          ? t("endpoints.saveEndpointSecretDescription")
+          : t("endpoints.saveCredentialDescription", { env: endpoint.setup.credential_env_var })}
         complete={credentialSaved}
       >
         <OneTimeCredentialCard
           credential={credential}
           saved={credentialSaved}
           onSavedChange={onCredentialSavedChange}
-          onCopy={() => copy(credential.value, t("integrations.credential"))}
+          onCopy={() => copy(credential.value, t("endpoints.credential"))}
           compact
         />
       </SetupStep>
       <SetupStep
         number={2}
-        title={integration.protocol === "litellm"
-          ? t("integrations.configureTaskLatticeProvider")
-          : t("integrations.configureAdapter", { adapter: t(`integrations.protocolShort.${integration.protocol}`) })}
-        description={integration.protocol === "litellm"
-          ? t("integrations.configureTaskLatticeProviderDescription")
-          : t("integrations.configureAdapterDescription")}
-        complete={integration.setup_status !== "applying" && (integration.protocol === "litellm"
-          ? Boolean(integration.input_seen_at || integration.output_seen_at)
+        title={endpoint.protocol === "litellm"
+          ? t("endpoints.configureTaskLatticeProvider")
+          : t("endpoints.configureAdapter", { adapter: t(`endpoints.protocolShort.${endpoint.protocol}`) })}
+        description={endpoint.protocol === "litellm"
+          ? t("endpoints.configureTaskLatticeProviderDescription")
+          : t("endpoints.configureAdapterDescription")}
+        complete={endpoint.setup_status !== "applying" && (endpoint.protocol === "litellm"
+          ? Boolean(endpoint.input_seen_at || endpoint.output_seen_at)
           : configurationCopied)}
       >
         <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4">
-          {integration.setup_status === "applying" ? (
-            <InfoNotice title={t("integrations.runnerSyncTitle")}>{t("integrations.runnerSyncDescription", { generation: integration.desired_generation ?? "—" })}</InfoNotice>
-          ) : integration.protocol === "litellm" ? (
-            <LiteLLMProviderSetup endpoint={integration.setup.api_base_url} />
+          {endpoint.setup_status === "applying" ? (
+            <InfoNotice title={t("endpoints.runnerSyncTitle")}>{t("endpoints.runnerSyncDescription", { generation: endpoint.desired_generation ?? "—" })}</InfoNotice>
+          ) : endpoint.protocol === "litellm" ? (
+            <LiteLLMProviderSetup endpoint={endpoint.setup.api_base_url} />
           ) : (
             <>
-              <CopyField label={t("integrations.apiBaseUrl")} value={integration.setup.api_base_url} />
-              <EnvironmentVariableValue label={t("integrations.apiBaseEnvironmentVariable")} name={integration.setup.api_base_env_var} value={integration.setup.api_base_url} />
-              <CodeBlock label={t("integrations.configurationTemplate")} value={integration.setup.yaml_template} onCopied={onConfigurationCopied} />
-              <SetupFacts integration={integration} />
+              <CopyField label={t("endpoints.apiBaseUrl")} value={endpoint.setup.api_base_url} />
+              <EnvironmentVariableValue label={t("endpoints.apiBaseEnvironmentVariable")} name={endpoint.setup.api_base_env_var} value={endpoint.setup.api_base_url} />
+              <CodeBlock label={t("endpoints.configurationTemplate")} value={endpoint.setup.yaml_template} onCopied={onConfigurationCopied} />
+              <SetupFacts endpoint={endpoint} />
             </>
           )}
         </div>
       </SetupStep>
       <SetupStep
         number={3}
-        title={t("integrations.verifyCallbacks")}
-        description={t("integrations.verifyCallbacksDescription")}
-        complete={integration.setup_status === "verified"}
+        title={t("endpoints.verifyCallbacks")}
+        description={t("endpoints.verifyCallbacksDescription")}
+        complete={endpoint.setup_status === "verified"}
       >
         <div className="overflow-hidden rounded-lg border bg-card" aria-live="polite">
-          <CallbackStatusRow label={t("integrations.inputCallback")} seenAt={integration.input_seen_at} locale={i18n.language} />
-          <CallbackStatusRow label={t("integrations.outputCallback")} seenAt={integration.output_seen_at} locale={i18n.language} border />
+          <CallbackStatusRow label={t("endpoints.inputCallback")} seenAt={endpoint.input_seen_at} locale={i18n.language} />
+          <CallbackStatusRow label={t("endpoints.outputCallback")} seenAt={endpoint.output_seen_at} locale={i18n.language} border />
           <div className="flex items-start gap-2 border-t bg-muted/20 px-4 py-3 text-xs leading-5 text-muted-foreground">
             <RefreshCw className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-            {integration.setup_status === "verified" ? t("integrations.callbacksVerified") : t("integrations.waitingForCallbacks")}
+            {endpoint.setup_status === "verified" ? t("endpoints.callbacksVerified") : t("endpoints.waitingForCallbacks")}
           </div>
         </div>
       </SetupStep>
@@ -758,7 +758,7 @@ function SetupStep({
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="text-sm font-semibold">{title}</h3>
-          {complete ? <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700"><Check />{t("integrations.complete")}</Badge> : null}
+          {complete ? <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700"><Check />{t("endpoints.complete")}</Badge> : null}
         </div>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p>
         <div className="mt-4 min-w-0">{children}</div>
@@ -767,19 +767,19 @@ function SetupStep({
   );
 }
 
-function SetupConfiguration({ integration }: { integration: Integration }) {
+function SetupConfiguration({ endpoint }: { endpoint: Endpoint }) {
   const { t } = useTranslation();
-  if (integration.protocol === "litellm") {
+  if (endpoint.protocol === "litellm") {
     return (
       <section className="overflow-hidden rounded-lg border bg-card">
         <div className="border-b bg-muted/30 px-4 py-3">
-          <h3 className="text-sm font-semibold">{t("integrations.litellmProviderSetup")}</h3>
-          <p className="mt-1 text-xs text-muted-foreground">{t("integrations.litellmProviderSetupDescription")}</p>
+          <h3 className="text-sm font-semibold">{t("endpoints.litellmProviderSetup")}</h3>
+          <p className="mt-1 text-xs text-muted-foreground">{t("endpoints.litellmProviderSetupDescription")}</p>
         </div>
         <div className="p-4">
-          <LiteLLMProviderSetup endpoint={integration.setup.api_base_url} detail />
-          <p className="mt-4 text-sm leading-6 text-muted-foreground">{t("integrations.streamNotVerified")}</p>
-          <div className="mt-4"><SetupFacts integration={integration} /></div>
+          <LiteLLMProviderSetup endpoint={endpoint.setup.api_base_url} detail />
+          <p className="mt-4 text-sm leading-6 text-muted-foreground">{t("endpoints.streamNotVerified")}</p>
+          <div className="mt-4"><SetupFacts endpoint={endpoint} /></div>
         </div>
       </section>
     );
@@ -787,36 +787,36 @@ function SetupConfiguration({ integration }: { integration: Integration }) {
   return (
     <section className="overflow-hidden rounded-lg border bg-card">
       <div className="border-b bg-muted/30 px-4 py-3">
-        <h3 className="text-sm font-semibold">{t("integrations.setupConfiguration")}</h3>
-        <p className="mt-1 text-xs text-muted-foreground">{t("integrations.setupConfigurationDescription")}</p>
+        <h3 className="text-sm font-semibold">{t("endpoints.setupConfiguration")}</h3>
+        <p className="mt-1 text-xs text-muted-foreground">{t("endpoints.setupConfigurationDescription")}</p>
       </div>
       <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4 p-4">
-        <CopyField label={t("integrations.apiBaseUrl")} value={integration.setup.api_base_url} />
-        <CopyField label={t("integrations.callbackUrl")} value={integration.setup.callback_url} />
-        {integration.setup.stream_callback_url ? <CopyField label={t("integrations.streamCallbackUrl")} value={integration.setup.stream_callback_url} /> : null}
-        <p className="text-sm leading-6 text-muted-foreground">{t(integration.setup.stream_callback_url ? "integrations.streamContract" : "integrations.streamNotVerified")}</p>
+        <CopyField label={t("endpoints.apiBaseUrl")} value={endpoint.setup.api_base_url} />
+        <CopyField label={t("endpoints.callbackUrl")} value={endpoint.setup.callback_url} />
+        {endpoint.setup.stream_callback_url ? <CopyField label={t("endpoints.streamCallbackUrl")} value={endpoint.setup.stream_callback_url} /> : null}
+        <p className="text-sm leading-6 text-muted-foreground">{t(endpoint.setup.stream_callback_url ? "endpoints.streamContract" : "endpoints.streamNotVerified")}</p>
         <div className="grid gap-4 sm:grid-cols-2">
-          <CopyField label={t("integrations.authHeader")} value={integration.setup.auth_header} />
-          <CopyField label={t("integrations.credentialEnvironmentVariable")} value={integration.setup.credential_env_var} />
+          <CopyField label={t("endpoints.authHeader")} value={endpoint.setup.auth_header} />
+          <CopyField label={t("endpoints.credentialEnvironmentVariable")} value={endpoint.setup.credential_env_var} />
         </div>
-        <EnvironmentVariableValue label={t("integrations.apiBaseEnvironmentVariable")} name={integration.setup.api_base_env_var} value={integration.setup.api_base_url} />
-        <CodeBlock label={t("integrations.configurationTemplate")} value={integration.setup.yaml_template} />
-        <SetupFacts integration={integration} />
+        <EnvironmentVariableValue label={t("endpoints.apiBaseEnvironmentVariable")} name={endpoint.setup.api_base_env_var} value={endpoint.setup.api_base_url} />
+        <CodeBlock label={t("endpoints.configurationTemplate")} value={endpoint.setup.yaml_template} />
+        <SetupFacts endpoint={endpoint} />
       </div>
     </section>
   );
 }
 
-function SetupFacts({ integration }: { integration: Integration }) {
+function SetupFacts({ endpoint }: { endpoint: Endpoint }) {
   const { t } = useTranslation();
-  const setup = integration.setup;
+  const setup = endpoint.setup;
   return (
     <div className="space-y-3"><dl className="grid gap-3 rounded-lg bg-muted/30 p-3 text-xs sm:grid-cols-3">
-      <div><dt className="text-muted-foreground">{t("integrations.modes")}</dt><dd className="mt-1 font-medium">{setup.recommended_modes.join(" + ")}</dd></div>
-      <div><dt className="text-muted-foreground">{t("integrations.defaultBehavior")}</dt><dd className="mt-1 font-medium">{t(setup.default_on ? "integrations.defaultOn" : "integrations.requestSelected")}</dd></div>
-      <div><dt className="text-muted-foreground">{t("integrations.failureBehavior")}</dt><dd className="mt-1 font-medium">{t(setup.unreachable_fallback === "fail_closed" ? "integrations.failClosed" : "integrations.failOpen")} · {t(setup.fail_on_error ? "integrations.blockOnError" : "integrations.allowOnError")}</dd></div>
+      <div><dt className="text-muted-foreground">{t("endpoints.modes")}</dt><dd className="mt-1 font-medium">{setup.recommended_modes.join(" + ")}</dd></div>
+      <div><dt className="text-muted-foreground">{t("endpoints.defaultBehavior")}</dt><dd className="mt-1 font-medium">{t(setup.default_on ? "endpoints.defaultOn" : "endpoints.requestSelected")}</dd></div>
+      <div><dt className="text-muted-foreground">{t("endpoints.failureBehavior")}</dt><dd className="mt-1 font-medium">{t(setup.unreachable_fallback === "fail_closed" ? "endpoints.failClosed" : "endpoints.failOpen")} · {t(setup.fail_on_error ? "endpoints.blockOnError" : "endpoints.allowOnError")}</dd></div>
     </dl><dl className="grid gap-3 border-t pt-3 text-xs sm:grid-cols-3">
-      {[{ label: "Input", seen: integration.input_seen_at }, { label: "Output", seen: integration.output_seen_at }, { label: "Stream", seen: integration.stream_final_check_seen_at }].map(({ label, seen }) => <div key={label}><dt className="text-muted-foreground">{label}</dt><dd className="mt-1"><StateBadge state={seen ? "ready" : "unknown"} label={t(seen ? (label === "Stream" ? "integrations.streamFinalObserved" : "integrations.railObserved") : "integrations.railNotObserved")} /></dd></div>)}
+      {[{ label: "Input", seen: endpoint.input_seen_at }, { label: "Output", seen: endpoint.output_seen_at }, { label: "Stream", seen: endpoint.stream_final_check_seen_at }].map(({ label, seen }) => <div key={label}><dt className="text-muted-foreground">{label}</dt><dd className="mt-1"><StateBadge state={seen ? "ready" : "unknown"} label={t(seen ? (label === "Stream" ? "endpoints.streamFinalObserved" : "endpoints.railObserved") : "endpoints.railNotObserved")} /></dd></div>)}
     </dl></div>
   );
 }
@@ -832,12 +832,12 @@ function LiteLLMProviderSetup({ endpoint, detail = false }: { endpoint: string; 
             <ShieldCheck className="size-5" aria-hidden="true" />
           </span>
           <div className="min-w-0">
-            <h4 id={`${confirmationId}-title`} className="text-sm font-semibold">{t("integrations.taskLatticeGuardProvider")}</h4>
-            <p className="mt-0.5 text-xs text-muted-foreground">{t("integrations.taskLatticeGuardProviderDescription")}</p>
+            <h4 id={`${confirmationId}-title`} className="text-sm font-semibold">{t("endpoints.taskLatticeGuardProvider")}</h4>
+            <p className="mt-0.5 text-xs text-muted-foreground">{t("endpoints.taskLatticeGuardProviderDescription")}</p>
           </div>
         </div>
         <ol className="divide-y divide-border text-sm">
-          {[t("integrations.litellmProviderStepOpen"), t("integrations.litellmProviderStepSelect"), t("integrations.litellmProviderStepConnect")].map((instruction, index) => (
+          {[t("endpoints.litellmProviderStepOpen"), t("endpoints.litellmProviderStepSelect"), t("endpoints.litellmProviderStepConnect")].map((instruction, index) => (
             <li key={instruction} className="grid grid-cols-[1.75rem_minmax(0,1fr)] items-start gap-3 px-4 py-3">
               <span className="flex size-7 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground" aria-hidden="true">{index + 1}</span>
               <span className="min-w-0 pt-1 leading-5">{instruction}</span>
@@ -846,40 +846,40 @@ function LiteLLMProviderSetup({ endpoint, detail = false }: { endpoint: string; 
         </ol>
       </section>
 
-      <CopyField label={t("integrations.integrationEndpoint")} value={endpoint} />
+      <CopyField label={t("endpoints.endpointUrl")} value={endpoint} />
 
       <div className="rounded-lg border bg-muted/20 p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="flex items-center gap-2 text-xs font-medium text-foreground"><KeyRound className="size-4 text-muted-foreground" aria-hidden="true" />{t("integrations.integrationSecret")}</p>
-          {detail ? <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700"><CheckCircle2 />{t("integrations.integrationSecretAvailable")}</Badge> : null}
+          <p className="flex items-center gap-2 text-xs font-medium text-foreground"><KeyRound className="size-4 text-muted-foreground" aria-hidden="true" />{t("endpoints.endpointSecret")}</p>
+          {detail ? <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700"><CheckCircle2 />{t("endpoints.endpointSecretAvailable")}</Badge> : null}
         </div>
-        <p className="mt-2 text-xs leading-5 text-muted-foreground">{t(detail ? "integrations.integrationSecretDetailsDescription" : "integrations.integrationSecretDescription")}</p>
+        <p className="mt-2 text-xs leading-5 text-muted-foreground">{t(detail ? "endpoints.endpointSecretDetailsDescription" : "endpoints.endpointSecretDescription")}</p>
       </div>
 
       <section className="overflow-hidden rounded-lg border bg-card" aria-labelledby={`${confirmationId}-settings-title`}>
         <div className="border-b bg-muted/30 px-4 py-3">
-          <h4 id={`${confirmationId}-settings-title`} className="text-sm font-semibold">{t("integrations.litellmProviderSettings")}</h4>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">{t("integrations.litellmProviderSettingsDescription")}</p>
+          <h4 id={`${confirmationId}-settings-title`} className="text-sm font-semibold">{t("endpoints.litellmProviderSettings")}</h4>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">{t("endpoints.litellmProviderSettingsDescription")}</p>
         </div>
         <dl className="divide-y divide-border text-xs">
           <div className="grid gap-1 px-4 py-3 sm:grid-cols-[10rem_minmax(0,1fr)] sm:gap-4">
-            <dt className="font-medium text-foreground">{t("integrations.protectionStages")}</dt>
-            <dd className="leading-5 text-muted-foreground">{t("integrations.protectionStagesDescription")}</dd>
+            <dt className="font-medium text-foreground">{t("endpoints.protectionStages")}</dt>
+            <dd className="leading-5 text-muted-foreground">{t("endpoints.protectionStagesDescription")}</dd>
           </div>
           <div className="grid gap-1 px-4 py-3 sm:grid-cols-[10rem_minmax(0,1fr)] sm:gap-4">
-            <dt className="font-medium text-foreground">{t("integrations.guardUnavailable")}</dt>
-            <dd className="leading-5 text-muted-foreground">{t("integrations.guardUnavailableDescription")}</dd>
+            <dt className="font-medium text-foreground">{t("endpoints.guardUnavailable")}</dt>
+            <dd className="leading-5 text-muted-foreground">{t("endpoints.guardUnavailableDescription")}</dd>
           </div>
           <div className="grid gap-1 px-4 py-3 sm:grid-cols-[10rem_minmax(0,1fr)] sm:gap-4">
-            <dt className="font-medium text-foreground">{t("integrations.advancedProviderSettings")}</dt>
-            <dd className="leading-5 text-muted-foreground">{t("integrations.advancedProviderSettingsDescription")}</dd>
+            <dt className="font-medium text-foreground">{t("endpoints.advancedProviderSettings")}</dt>
+            <dd className="leading-5 text-muted-foreground">{t("endpoints.advancedProviderSettingsDescription")}</dd>
           </div>
         </dl>
       </section>
 
-      <InfoNotice title={t("integrations.failOpenScopeTitle")}>{t("integrations.failOpenScopeDescription")}</InfoNotice>
+      <InfoNotice title={t("endpoints.failOpenScopeTitle")}>{t("endpoints.failOpenScopeDescription")}</InfoNotice>
 
-      <InfoNotice title={t("integrations.noLiteLLMRestartTitle")}>{t("integrations.noLiteLLMRestartDescription")}</InfoNotice>
+      <InfoNotice title={t("endpoints.noLiteLLMRestartTitle")}>{t("endpoints.noLiteLLMRestartDescription")}</InfoNotice>
     </div>
   );
 }
@@ -891,7 +891,7 @@ function OneTimeCredentialCard({
   onCopy,
   compact = false,
 }: {
-  credential: OneTimeIntegrationCredential;
+  credential: OneTimeEndpointCredential;
   saved: boolean;
   onSavedChange: (saved: boolean) => void;
   onCopy: () => void;
@@ -907,13 +907,13 @@ function OneTimeCredentialCard({
       <div className={cn("rounded-lg border border-emerald-200 bg-emerald-50/60", compact ? "p-4" : "p-5")} aria-live="polite">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
-            <p className="flex items-center gap-2 text-xs font-medium text-emerald-700"><CheckCircle2 className="size-4" aria-hidden="true" />{t("integrations.credentialSaved")}</p>
-            <p className="mt-2 text-xs leading-5 text-muted-foreground">{t("integrations.credentialSavedDescription")}</p>
+            <p className="flex items-center gap-2 text-xs font-medium text-emerald-700"><CheckCircle2 className="size-4" aria-hidden="true" />{t("endpoints.credentialSaved")}</p>
+            <p className="mt-2 text-xs leading-5 text-muted-foreground">{t("endpoints.credentialSavedDescription")}</p>
             <code className="mt-2 block break-all font-mono text-xs text-foreground">{credential.key_hint}</code>
           </div>
           <Button type="button" variant="outline" className="min-h-11 shrink-0 bg-background" onClick={() => setRevealedSavedCredentialId(credential.id)}>
             <Eye aria-hidden="true" />
-            {t("integrations.revealCredential")}
+            {t("endpoints.revealCredential")}
           </Button>
         </div>
       </div>
@@ -922,23 +922,23 @@ function OneTimeCredentialCard({
 
   return (
     <div className={cn("rounded-lg border border-primary/20 bg-primary/5", compact ? "p-4" : "p-5")}>
-      <p className="flex items-center gap-2 text-xs font-medium text-primary"><KeyRound className="size-4" aria-hidden="true" />{t("integrations.oneTimeCredential")}</p>
-      <p className="mt-2 text-xs leading-5 text-muted-foreground">{t("integrations.oneTimeCredentialDescription")}</p>
+      <p className="flex items-center gap-2 text-xs font-medium text-primary"><KeyRound className="size-4" aria-hidden="true" />{t("endpoints.oneTimeCredential")}</p>
+      <p className="mt-2 text-xs leading-5 text-muted-foreground">{t("endpoints.oneTimeCredentialDescription")}</p>
       <code className="mt-3 block break-all rounded-md border bg-card p-4 font-mono text-xs leading-6">{credential.value}</code>
       <div className="mt-3 flex flex-wrap items-center gap-4">
-        <Button type="button" variant="outline" className="min-h-11" onClick={onCopy}><Copy />{t("integrations.copyCredential")}</Button>
+        <Button type="button" variant="outline" className="min-h-11" onClick={onCopy}><Copy />{t("endpoints.copyCredential")}</Button>
         {saved ? (
           <>
-            <span className="flex min-h-11 items-center gap-2 text-xs font-medium text-emerald-700"><CheckCircle2 className="size-4" aria-hidden="true" />{t("integrations.credentialSaved")}</span>
+            <span className="flex min-h-11 items-center gap-2 text-xs font-medium text-emerald-700"><CheckCircle2 className="size-4" aria-hidden="true" />{t("endpoints.credentialSaved")}</span>
             <Button type="button" variant="ghost" className="min-h-11" onClick={() => setRevealedSavedCredentialId(null)}>
               <EyeOff aria-hidden="true" />
-              {t("integrations.hideCredential")}
+              {t("endpoints.hideCredential")}
             </Button>
           </>
         ) : (
           <Label htmlFor={checkboxId} className="min-h-11 cursor-pointer gap-3 text-xs leading-5">
             <Checkbox id={checkboxId} checked={saved} onCheckedChange={(checked) => onSavedChange(checked === true)} />
-            {t("integrations.credentialStoredConfirmation")}
+            {t("endpoints.credentialStoredConfirmation")}
           </Label>
         )}
       </div>
@@ -951,8 +951,8 @@ function SecretExitWarning() {
   return (
     <Alert variant="destructive">
       <AlertTriangle />
-      <AlertTitle>{t("integrations.unsavedCredentialTitle")}</AlertTitle>
-      <AlertDescription>{t("integrations.unsavedCredentialDescription")}</AlertDescription>
+      <AlertTitle>{t("endpoints.unsavedCredentialTitle")}</AlertTitle>
+      <AlertDescription>{t("endpoints.unsavedCredentialDescription")}</AlertDescription>
     </Alert>
   );
 }
@@ -965,7 +965,7 @@ function CopyField({ label, value }: { label: string; value: string }) {
       <p className="mb-2 text-xs font-medium text-muted-foreground">{label}</p>
       <div className="grid grid-cols-[minmax(0,1fr)_2.75rem] items-center overflow-hidden rounded-lg border bg-background">
         <code className="min-w-0 break-all px-3 py-2.5 font-mono text-xs leading-5">{value}</code>
-        <Button type="button" size="icon" variant="ghost" className="size-11 rounded-none border-l" aria-label={t("integrations.copyItem", { item: label })} onClick={() => copy(value, label)}><Copy /></Button>
+        <Button type="button" size="icon" variant="ghost" className="size-11 rounded-none border-l" aria-label={t("endpoints.copyItem", { item: label })} onClick={() => copy(value, label)}><Copy /></Button>
       </div>
     </div>
   );
@@ -980,7 +980,7 @@ function EnvironmentVariableValue({ label, name, value }: { label: string; name:
       <p className="mb-2 text-xs font-medium text-muted-foreground">{label}</p>
       <div className="grid grid-cols-[minmax(0,1fr)_2.75rem] items-center overflow-hidden rounded-lg border bg-background">
         <code className="min-w-0 break-all px-3 py-2.5 font-mono text-xs leading-5">{environmentVariable}</code>
-        <Button type="button" size="icon" variant="ghost" className="size-11 rounded-none border-l" aria-label={t("integrations.copyItem", { item: label })} onClick={() => copy(environmentVariable, label)}><Copy /></Button>
+        <Button type="button" size="icon" variant="ghost" className="size-11 rounded-none border-l" aria-label={t("endpoints.copyItem", { item: label })} onClick={() => copy(environmentVariable, label)}><Copy /></Button>
       </div>
     </div>
   );
@@ -996,7 +996,7 @@ function CodeBlock({ label, value, onCopied }: { label: string; value: string; o
     <div className="min-w-0">
       <div className="mb-2 flex items-center justify-between gap-3">
         <p className="text-xs font-medium text-muted-foreground">{label}</p>
-        <Button type="button" size="sm" variant="outline" onClick={handleCopy}><Copy />{t("integrations.copyTemplate")}</Button>
+        <Button type="button" size="sm" variant="outline" onClick={handleCopy}><Copy />{t("endpoints.copyTemplate")}</Button>
       </div>
       <pre className="max-h-80 min-w-0 max-w-full overflow-auto rounded-lg border bg-muted/30 p-4 font-mono text-xs leading-5 text-foreground"><code>{value}</code></pre>
     </div>
@@ -1011,7 +1011,7 @@ function CallbackStatusRow({ label, seenAt, locale, border = false }: { label: s
         {seenAt ? <CheckCircle2 className="size-4 text-emerald-600" /> : <Clock3 className="size-4 text-amber-600" />}
         {label}
       </span>
-      <span className="text-right text-xs text-muted-foreground">{seenAt ? formatDate(seenAt, locale) : t("integrations.waiting")}</span>
+      <span className="text-right text-xs text-muted-foreground">{seenAt ? formatDate(seenAt, locale) : t("endpoints.waiting")}</span>
     </div>
   );
 }
@@ -1027,7 +1027,7 @@ function CredentialRow({
   onCancel,
   onRevoke,
 }: {
-  credential: IntegrationCredential;
+  credential: EndpointCredential;
   locale: string;
   onlyCredential: boolean;
   confirming: boolean;
@@ -1042,15 +1042,15 @@ function CredentialRow({
     <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
       <div className="min-w-0">
         <code className="block truncate font-mono text-xs">{credential.key_hint}</code>
-        <p className="mt-1 text-xs text-muted-foreground">{t("integrations.createdAt", { date: formatDate(credential.created_at, locale) })}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{t("endpoints.createdAt", { date: formatDate(credential.created_at, locale) })}</p>
       </div>
       {!canManage ? null : confirming ? (
         <div className="flex items-center gap-2">
           <Button size="sm" variant="outline" onClick={onCancel}>{t("common.cancel")}</Button>
-          <Button size="sm" variant="destructive" disabled={pending} onClick={onRevoke}><Trash2 />{t("integrations.confirmRevoke")}</Button>
+          <Button size="sm" variant="destructive" disabled={pending} onClick={onRevoke}><Trash2 />{t("endpoints.confirmRevoke")}</Button>
         </div>
       ) : (
-        <Button size="sm" variant="ghost" className="text-destructive" disabled={onlyCredential} onClick={onConfirm}><Trash2 />{t("integrations.revoke")}</Button>
+        <Button size="sm" variant="ghost" className="text-destructive" disabled={onlyCredential} onClick={onConfirm}><Trash2 />{t("endpoints.revoke")}</Button>
       )}
     </div>
   );
@@ -1063,12 +1063,12 @@ function Detail({ children, copyValue, label, mono = false }: { children: ReactN
     <div className="grid min-h-12 grid-cols-[120px_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3">
       <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
       <dd className={mono ? "min-w-0 break-all font-mono text-xs" : "min-w-0 text-sm"}>{children}</dd>
-      {copyValue ? <Button type="button" size="icon-sm" variant="ghost" aria-label={t("integrations.copyItem", { item: label })} onClick={() => copy(copyValue, label)}><Copy /></Button> : null}
+      {copyValue ? <Button type="button" size="icon-sm" variant="ghost" aria-label={t("endpoints.copyItem", { item: label })} onClick={() => copy(copyValue, label)}><Copy /></Button> : null}
     </div>
   );
 }
 
-function SetupBadge({ status }: { status: IntegrationSetupStatus }) {
+function SetupBadge({ status }: { status: EndpointSetupStatus }) {
   const { t } = useTranslation();
   const verified = status === "verified";
   const disabled = status === "disabled";
@@ -1083,31 +1083,31 @@ function SetupBadge({ status }: { status: IntegrationSetupStatus }) {
       )}
     >
       <span className={cn("size-1.5 rounded-full bg-muted-foreground/50", verified && "bg-emerald-500", !verified && !disabled && "bg-amber-500")} />
-      {t(`integrations.setupStatuses.${status}`)}
+      {t(`endpoints.setupStatuses.${status}`)}
     </Badge>
   );
 }
 
-function AdapterOption({ adapterId }: { adapterId: IntegrationAdapterId }) {
+function AdapterOption({ adapterId }: { adapterId: EndpointAdapterId }) {
   const { t } = useTranslation();
   const adapter = adapterDefinition(adapterId);
   return (
     <span className="flex min-w-0 items-center gap-3">
       <ProtocolIcon protocol={adapter.protocol} />
       <span className="min-w-0">
-        <span className="block truncate text-sm font-medium text-foreground">{t(`integrations.adapters.${adapterId}`)}</span>
-        <span className="mt-0.5 block truncate text-xs font-normal text-muted-foreground">{t(`integrations.adapterDescriptions.${adapterId}`)}</span>
+        <span className="block truncate text-sm font-medium text-foreground">{t(`endpoints.adapters.${adapterId}`)}</span>
+        <span className="mt-0.5 block truncate text-xs font-normal text-muted-foreground">{t(`endpoints.adapterDescriptions.${adapterId}`)}</span>
       </span>
     </span>
   );
 }
 
-function ProtocolIcon({ protocol, size = "default" }: { protocol: IntegrationProtocol; size?: "default" | "sm" }) {
+function ProtocolIcon({ protocol, size = "default" }: { protocol: EndpointProtocol; size?: "default" | "sm" }) {
   const frameClassName = size === "sm" ? "size-7 rounded-md" : "size-10 rounded-lg";
   const iconClassName = size === "sm" ? "size-4" : "size-5";
   return (
     <span className={`flex shrink-0 items-center justify-center overflow-hidden border border-border/80 bg-background shadow-xs ${frameClassName}`}>
-      {protocol === "litellm" ? <img alt="" src="/assets/integrations/litellm-train.webp" className="size-full object-cover" /> : protocol === "a2a" ? <img alt="" src="/assets/integrations/a2a-agent.png" className="size-full object-contain p-1" /> : <Webhook aria-hidden="true" className={`${iconClassName} text-primary`} />}
+      {protocol === "litellm" ? <img alt="" src="/assets/endpoints/litellm-train.webp" className="size-full object-cover" /> : protocol === "a2a" ? <img alt="" src="/assets/endpoints/a2a-agent.png" className="size-full object-contain p-1" /> : <Webhook aria-hidden="true" className={`${iconClassName} text-primary`} />}
     </span>
   );
 }
@@ -1122,10 +1122,10 @@ function useCopyText() {
     try {
       if (!navigator.clipboard) throw new Error("Clipboard is unavailable.");
       await navigator.clipboard.writeText(value);
-      toast.success(t("integrations.copySuccess", { item: label }));
+      toast.success(t("endpoints.copySuccess", { item: label }));
       return true;
     } catch {
-      toast.error(t("integrations.copyFailed", { item: label }));
+      toast.error(t("endpoints.copyFailed", { item: label }));
       return false;
     }
   };
@@ -1135,12 +1135,12 @@ function showMutationError(fallback: string) {
   return (error: unknown) => toast.error(error instanceof Error ? error.message : fallback);
 }
 
-function adapterDefinition(adapterId: IntegrationAdapterId) {
+function adapterDefinition(adapterId: EndpointAdapterId) {
   return ADAPTERS.find((item) => item.id === adapterId) ?? ADAPTERS[0];
 }
 
 function shortId(id: string) {
-  return id.replace(/^integration-/, "").slice(0, 8);
+  return id.replace(/^endpoint-/, "").slice(0, 8);
 }
 
 function callbackTimestamp(value: string | null, locale: string, fallback: string) {

@@ -3,7 +3,7 @@
 GUARD_TEST_RELAY_IMAGE=<existing-local-image> pytest -q -s <this file>
 Requires Docker Desktop host.docker.internal routing. No Controller writes,
 compiler, external models, image pulls, or user ports. Only this test's random
-proxy container is stopped. Current Relay Guard integration is mounted read-only
+proxy container is stopped. Current Relay Guard endpoint is mounted read-only
 unless GUARD_TEST_RELAY_BAKED_IMAGE=1, which verifies and tests image-baked code.
 """
 import asyncio
@@ -53,7 +53,7 @@ async def test_actual_relay_stream_delivery_and_cancellation(tmp_path, mode):
             "import hashlib,importlib.machinery,json,pathlib; "
             "s=importlib.machinery.PathFinder.find_spec('litellm'); "
             "p=pathlib.Path(s.origin).parent/'proxy/guardrails/guardrail_hooks/tasklattice_guard'; "
-            "assert p.is_dir(), 'Missing baked TaskLattice Guard integration'; "
+            "assert p.is_dir(), 'Missing baked TaskLattice Guard endpoint'; "
             "print(json.dumps({str(f.relative_to(p)):hashlib.sha256(f.read_bytes()).hexdigest() "
             "for f in sorted(p.rglob('*.py'))},sort_keys=True))"
         )
@@ -140,7 +140,7 @@ async def test_actual_relay_stream_delivery_and_cancellation(tmp_path, mode):
                     "--mount", f"type=bind,source={root}/tests/fixtures/business-replay/litellm.yaml,target=/tmp/replay.yaml,readonly",
                     *code_mount,
                     "-e", f"BUSINESS_REPLAY_BASE={model_url.replace('127.0.0.1', 'host.docker.internal')}/v1",
-                    "-e", f"TASKLATTICE_GUARD_API_BASE={runner_url.replace('127.0.0.1', 'host.docker.internal')}/runtime/v1/integrations/fixture-integration",
+                    "-e", f"TASKLATTICE_GUARD_API_BASE={runner_url.replace('127.0.0.1', 'host.docker.internal')}/runtime/v1/endpoints/fixture-endpoint",
                     "-e", f"TASKLATTICE_GUARD_API_KEY={RUNTIME_CREDENTIAL}",
                     "-e", f"REPLAY_PROXY_MASTER_KEY={proxy_key}",
                     "-e", "LITELLM_LOCAL_MODEL_COST_MAP=True", "-e", "DISABLE_ADMIN_UI=true",

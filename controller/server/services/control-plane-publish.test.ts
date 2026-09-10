@@ -22,17 +22,17 @@ describe("Guardrail publication", () => {
       status: "ready",
       artifactId: "artifact-2",
     };
-    const defaultDeployment = {
-      id: "deployment-default",
+    const defaultRouter = {
+      id: "router-default",
       guardrailId: guardrail.id,
       guardrailVersion: "20260904-010000.001Z",
-      integrationId: null,
+      endpointId: null,
       poolId: "default",
       routeOrder: 100,
       enabled: true,
       trafficScope: { combinator: "and", conditions: [] },
     };
-    const selectResults = [[guardrail], [validation], [readyVersion], [defaultDeployment]];
+    const selectResults = [[guardrail], [validation], [readyVersion], [defaultRouter]];
     const select = vi.fn(() => {
       const builder = {} as Record<string, unknown>;
       builder.from = vi.fn(() => builder);
@@ -89,7 +89,7 @@ describe("Guardrail publication", () => {
       detail: { version: "20260904-020000.002Z", generation: 23, reusedArtifact: true },
     }));
     expect(inserted).toContainEqual(expect.objectContaining({
-      kind: "deployment.default.restored",
+      kind: "router.default.restored",
       detail: expect.objectContaining({ guardrailVersion: "20260904-020000.002Z" }),
     }));
   });

@@ -1,7 +1,7 @@
 export * from "@/lib/api-types";
-export * from "@/lib/deployments-api";
+export * from "@/lib/routers-api";
 export * from "@/lib/guardrails-api";
-export * from "@/lib/integrations-api";
+export * from "@/lib/endpoints-api";
 export * from "@/lib/observability-api";
 export * from "@/lib/system-api";
 

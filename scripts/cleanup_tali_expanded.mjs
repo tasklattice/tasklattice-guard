@@ -15,7 +15,7 @@ const n=JSON.parse(readFileSync('/tmp/guard-tali-expanded-lifecycle-20260908.jso
 const c=JSON.parse(readFileSync('/tmp/guard-tali-expanded-control-20260908.json'));
 assert(n.passed&&c.passed);
 for(const [type,id,name] of [
- ['deployments',n.deployment.id,n.name],['integrations',n.integration.id,n.name],['guardrails',n.guardrail.id,n.name],['guardrails',c.guardrailId,c.name],
+ ['routers',n.router.id,n.name],['endpoints',n.endpoint.id,n.name],['guardrails',n.guardrail.id,n.name],['guardrails',c.guardrailId,c.name],
 ]){
  assert(name.startsWith('Regression ')&&name.includes('expanded 20260908'));
  const path='/api/v1/'+type+'/'+id;

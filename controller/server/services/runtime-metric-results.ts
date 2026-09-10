@@ -8,7 +8,7 @@ export const metricWindows = {
 export type MetricScope = {
   window: keyof typeof metricWindows;
   guardrailId?: string | undefined;
-  deploymentId?: string | undefined;
+  routerId?: string | undefined;
 };
 // Rows contain aggregate values only. Protected content and individual traces never leave PostgreSQL.
 type Row = Record<string, any>;
@@ -44,7 +44,7 @@ export function assembleMetrics(
     fail_closed_count: 0,
     slo_breach_count: 0,
     unassigned: 0,
-    degraded_integrations: 0,
+    degraded_endpoints: 0,
     peak_active_concurrency: 0,
     rail_invocations: 0,
     action_invocations: 0,
@@ -134,7 +134,7 @@ export function assembleMetrics(
   const scopedDeps = deps.filter(
     (r) =>
       (!scope.guardrailId || r.guardrail_id === scope.guardrailId) &&
-      (!scope.deploymentId || r.id === scope.deploymentId),
+      (!scope.routerId || r.id === scope.routerId),
   );
   return {
     ...current,
@@ -196,14 +196,14 @@ export function assembleMetrics(
       p99_status: current.p99_latency_ms <= 5000 ? "healthy" : "breached",
     },
     latest_validation_p95_ms: guards.reduce((n, r) => Math.max(n, r.p95), 0),
-    active_deployments: scopedDeps.filter((r) => r.enabled).length,
-    total_deployments: scopedDeps.length,
+    active_routers: scopedDeps.filter((r) => r.enabled).length,
+    total_routers: scopedDeps.length,
     guardrails_needing_test: guards.filter(
       (r) =>
         r.status !== "passed" || r.source_draft_revision !== r.draft_revision,
     ).length,
     total_guardrails: guards.length,
-    total_integrations: ints.length,
+    total_endpoints: ints.length,
     risk_counts: risks,
     guardrail_distribution: distribution("guardrail")
       .filter((r) => r.key)
@@ -226,15 +226,15 @@ export function assembleMetrics(
         ),
       })),
     caller_distribution: distribution("caller").map((r) => {
-      const [integration_id, deployment_id] = JSON.parse(r.key);
+      const [endpoint_id, router_id] = JSON.parse(r.key);
       return {
         ...r,
-        integration_id,
-        deployment_id,
-        integration_name:
-          intNames.get(integration_id) ?? integration_id ?? "Unassigned",
-        deployment_name:
-          depNames.get(deployment_id) ?? deployment_id ?? "Unassigned",
+        endpoint_id,
+        router_id,
+        endpoint_name:
+          intNames.get(endpoint_id) ?? endpoint_id ?? "Unassigned",
+        router_name:
+          depNames.get(router_id) ?? router_id ?? "Unassigned",
         requests: r.total,
         share: pct(r.total, current.total),
         guardrail_versions: r.versions,

@@ -1,8 +1,8 @@
 // Original file: runner_control.proto
 
 import type { Artifact as _tasklattice_guard_control_v1_Artifact, Artifact__Output as _tasklattice_guard_control_v1_Artifact__Output } from '../../../../tasklattice/guard/control/v1/Artifact.js';
-import type { DeploymentRoute as _tasklattice_guard_control_v1_DeploymentRoute, DeploymentRoute__Output as _tasklattice_guard_control_v1_DeploymentRoute__Output } from '../../../../tasklattice/guard/control/v1/DeploymentRoute.js';
-import type { IntegrationRuntime as _tasklattice_guard_control_v1_IntegrationRuntime, IntegrationRuntime__Output as _tasklattice_guard_control_v1_IntegrationRuntime__Output } from '../../../../tasklattice/guard/control/v1/IntegrationRuntime.js';
+import type { RouterRoute as _tasklattice_guard_control_v1_RouterRoute, RouterRoute__Output as _tasklattice_guard_control_v1_RouterRoute__Output } from '../../../../tasklattice/guard/control/v1/RouterRoute.js';
+import type { EndpointRuntime as _tasklattice_guard_control_v1_EndpointRuntime, EndpointRuntime__Output as _tasklattice_guard_control_v1_EndpointRuntime__Output } from '../../../../tasklattice/guard/control/v1/EndpointRuntime.js';
 import type { DataPlaneModelConfiguration as _tasklattice_guard_control_v1_DataPlaneModelConfiguration, DataPlaneModelConfiguration__Output as _tasklattice_guard_control_v1_DataPlaneModelConfiguration__Output } from '../../../../tasklattice/guard/control/v1/DataPlaneModelConfiguration.js';
 import type { Long } from '@grpc/proto-loader';
 
@@ -19,9 +19,9 @@ export interface DesiredState {
    */
   'artifacts'?: (_tasklattice_guard_control_v1_Artifact)[];
   'disabledGuardrailIds'?: (string)[];
-  'disabledIntegrationIds'?: (string)[];
-  'deployments'?: (_tasklattice_guard_control_v1_DeploymentRoute)[];
-  'integrations'?: (_tasklattice_guard_control_v1_IntegrationRuntime)[];
+  'disabledEndpointIds'?: (string)[];
+  'routers'?: (_tasklattice_guard_control_v1_RouterRoute)[];
+  'endpoints'?: (_tasklattice_guard_control_v1_EndpointRuntime)[];
   'guardrailLoggingLevels'?: ({[key: string]: string});
   'modelConfiguration'?: (_tasklattice_guard_control_v1_DataPlaneModelConfiguration | null);
 }
@@ -39,9 +39,9 @@ export interface DesiredState__Output {
    */
   'artifacts': (_tasklattice_guard_control_v1_Artifact__Output)[];
   'disabledGuardrailIds': (string)[];
-  'disabledIntegrationIds': (string)[];
-  'deployments': (_tasklattice_guard_control_v1_DeploymentRoute__Output)[];
-  'integrations': (_tasklattice_guard_control_v1_IntegrationRuntime__Output)[];
+  'disabledEndpointIds': (string)[];
+  'routers': (_tasklattice_guard_control_v1_RouterRoute__Output)[];
+  'endpoints': (_tasklattice_guard_control_v1_EndpointRuntime__Output)[];
   'guardrailLoggingLevels': ({[key: string]: string});
   'modelConfiguration': (_tasklattice_guard_control_v1_DataPlaneModelConfiguration__Output | null);
 }

@@ -29,7 +29,7 @@ from . import generated as protocol
 from .artifact_config import config_snapshot_from_artifact
 from .protocol_codec import (
     artifact_content,
-    integration_verification_from_proto,
+    endpoint_verification_from_proto,
     traffic_scope_from_proto,
 )
 from .serialization import plan_from_dict
@@ -48,11 +48,11 @@ class RuntimeArtifact:
 
 
 @dataclass(frozen=True, slots=True)
-class DeploymentRoute:
-    deployment_id: str
+class RouterRoute:
+    router_id: str
     guardrail_id: str
     artifact_id: str
-    integration_id: str | None
+    endpoint_id: str | None
     route_order: int
     traffic_scope: dict[str, Any]
 
@@ -75,8 +75,8 @@ class ArtifactStore:
         self._release_id: str | None = None
         self._model_revision_id: str | None = None
         self._artifacts: dict[str, RuntimeArtifact] = {}
-        self._routes: tuple[DeploymentRoute, ...] = ()
-        self._integrations: dict[str, dict[str, Any]] = {}
+        self._routes: tuple[RouterRoute, ...] = ()
+        self._endpoints: dict[str, dict[str, Any]] = {}
         self._logging_levels: dict[str, str] = {}
         self._persisted_state: protocol.DesiredState | None = self._read_snapshot()
 
@@ -99,9 +99,9 @@ class ArtifactStore:
             return self._generation
 
     def observability_counts(self) -> tuple[int, int, int]:
-        """Return loaded artifact, deployment-route, and Integration counts."""
+        """Return loaded artifact, router-route, and Endpoint counts."""
         with self._lock:
-            return len(self._artifacts), len(self._routes), len(self._integrations)
+            return len(self._artifacts), len(self._routes), len(self._endpoints)
 
     def plan(self, guardrail_id: str, version: str) -> GuardrailPlanSnapshot:
         with self._lock:
@@ -135,29 +135,29 @@ class ArtifactStore:
             candidates = tuple(
                 route
                 for route in self._routes
-                if route.integration_id == context.integration_id
+                if route.endpoint_id == context.endpoint_id
                 and _scope_matches(route.traffic_scope, context)
-            ) or tuple(route for route in self._routes if route.integration_id is None)
+            ) or tuple(route for route in self._routes if route.endpoint_id is None)
             candidates = tuple(route for route in candidates if _scope_matches(route.traffic_scope, context))
             if not candidates:
-                raise LookupError("No active Runner deployment matches this request.")
+                raise LookupError("No active Runner router matches this request.")
             route = min(candidates, key=lambda item: (
                 -_scope_specificity(item.traffic_scope)[0],
                 -_scope_specificity(item.traffic_scope)[1],
                 item.route_order,
-                item.deployment_id,
+                item.router_id,
             ))
             artifact = self._artifacts[route.artifact_id]
             return PlanResolution(
                 plan=artifact.plan,
                 effective_release_id=self._release_id,
                 model_revision_id=self._model_revision_id,
-                deployment_id=route.deployment_id,
-                integration_id=route.integration_id,
+                router_id=route.router_id,
+                endpoint_id=route.endpoint_id,
                 trace=(RuntimeTraceStep(
-                    id=f"deployment:{route.deployment_id}",
-                    kind="deployment",
-                    name=route.deployment_id,
+                    id=f"router:{route.router_id}",
+                    kind="router",
+                    name=route.router_id,
                     status="selected",
                     detail=f"Runner selected immutable Artifact {route.artifact_id}.",
                     guardrail_id=artifact.plan.guardrail_id,
@@ -183,17 +183,17 @@ class ArtifactStore:
                 (item for item in self._routes if item.artifact_id == artifact.artifact_id),
                 None,
             )
-            deployment_id = route.deployment_id if route else f"playground:{guardrail_id}:{version}"
+            router_id = route.router_id if route else f"playground:{guardrail_id}:{version}"
             return PlanResolution(
                 plan=artifact.plan,
                 effective_release_id=self._release_id,
                 model_revision_id=self._model_revision_id,
-                deployment_id=deployment_id,
-                integration_id=None,
+                router_id=router_id,
+                endpoint_id=None,
                 trace=(RuntimeTraceStep(
-                    id=f"deployment:{deployment_id}",
-                    kind="deployment",
-                    name=deployment_id,
+                    id=f"router:{router_id}",
+                    kind="router",
+                    name=router_id,
                     status="selected",
                     detail=f"Controller selected immutable Artifact {artifact.artifact_id} for Playground.",
                     guardrail_id=artifact.plan.guardrail_id,
@@ -201,15 +201,15 @@ class ArtifactStore:
                 ),),
             )
 
-    def authenticate_integration(self, integration_id: str, credential: str | None) -> bool:
+    def authenticate_endpoint(self, endpoint_id: str, credential: str | None) -> bool:
         if not credential:
             return False
         with self._lock:
-            integration = self._integrations.get(integration_id)
-        if not integration:
+            endpoint = self._endpoints.get(endpoint_id)
+        if not endpoint:
             return False
         expected_digests: list[str] = []
-        credentials = integration.get("credentials")
+        credentials = endpoint.get("credentials")
         if isinstance(credentials, list):
             for item in credentials:
                 if not isinstance(item, dict):
@@ -225,10 +225,10 @@ class ArtifactStore:
             authenticated = hmac.compare_digest(actual, expected) or authenticated
         return authenticated
 
-    def integration_adapter(self, integration_id: str) -> str | None:
+    def endpoint_adapter(self, endpoint_id: str) -> str | None:
         with self._lock:
-            integration = self._integrations.get(integration_id)
-            adapter = integration.get("_adapter") if integration else None
+            endpoint = self._endpoints.get(endpoint_id)
+            adapter = endpoint.get("_adapter") if endpoint else None
         return adapter if isinstance(adapter, str) else None
 
     def logging_level(self, guardrail_id: str | None) -> str:
@@ -270,23 +270,23 @@ class ArtifactStore:
             for message in desired_state.artifacts
         }
         routes = tuple(
-            DeploymentRoute(
-                deployment_id=item.deployment_id,
+            RouterRoute(
+                router_id=item.router_id,
                 guardrail_id=item.guardrail_id,
                 artifact_id=item.artifact_id,
-                integration_id=item.integration_id or None,
+                endpoint_id=item.endpoint_id or None,
                 route_order=item.route_order,
                 traffic_scope=traffic_scope_from_proto(item.traffic_scope),
             )
-            for item in desired_state.deployments
+            for item in desired_state.routers
         )
         missing = {route.artifact_id for route in routes} - set(staged)
         if missing:
             raise ValueError("Desired state references unavailable Artifacts: " + ", ".join(sorted(missing)))
-        integrations: dict[str, dict[str, Any]] = {}
-        for item in desired_state.integrations:
-            verification = integration_verification_from_proto(item.verification)
-            integrations[item.integration_id] = {**verification, "_adapter": item.adapter}
+        endpoints: dict[str, dict[str, Any]] = {}
+        for item in desired_state.endpoints:
+            verification = endpoint_verification_from_proto(item.verification)
+            endpoints[item.endpoint_id] = {**verification, "_adapter": item.adapter}
         registry = self._registry
         if registry is None:
             raise RuntimeError("NeMo Runtime Registry is not attached.")
@@ -316,7 +316,7 @@ class ArtifactStore:
         with self._lock:
             self._artifacts = staged
             self._routes = routes
-            self._integrations = integrations
+            self._endpoints = endpoints
             self._logging_levels = dict(desired_state.guardrail_logging_levels)
             self._generation = generation
             self._release_id = release_id
@@ -339,7 +339,7 @@ class ArtifactStore:
             raise ValueError(
                 f"Artifact {message.artifact_id} targets NeMo Guardrails "
                 f"{message.nemo_version!r}; this Runner requires "
-                f"{self._nemo_version!r}. Recompile the Guardrail before deployment."
+                f"{self._nemo_version!r}. Recompile the Guardrail before router."
             )
         plan_payload = content["plan"]
         return RuntimeArtifact(
@@ -414,8 +414,8 @@ def _condition_matches(condition: Any, context: RequestContext) -> bool:
     key = str(condition.get("key", ""))
     if field == "protocol":
         actual = context.protocol
-    elif field == "integration.id":
-        actual = context.integration_id
+    elif field == "endpoint.id":
+        actual = context.endpoint_id
     elif field == "http.header":
         actual = context.value("header", key)
     elif field == "auth.jwt_claim":

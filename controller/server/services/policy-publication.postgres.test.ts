@@ -1,3 +1,4 @@
+// @vitest-environment node
 // Real transactions in an isolated schema on the explicitly selected local DB.
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";

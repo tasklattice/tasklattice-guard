@@ -50,7 +50,7 @@ class EvaluateRequest(BaseModel):
     protocol: Literal["http", "a2a"] = "http"
     messages: list[dict[str, Any]] = Field(default_factory=list, max_length=20)
     attributes: dict[str, str] = Field(default_factory=dict)
-    # Integration clients cannot downgrade an enforced Deployment to detect-only.
+    # Endpoint clients cannot downgrade an enforced Router to detect-only.
     mode: Literal["enforce"] = "enforce"
     model: str | None = None
     method: str | None = None
@@ -234,27 +234,27 @@ class RunnerAPI:
                     "readiness": "/health/ready",
                     "liveness": "/health/live",
                     "metrics": "/metrics",
-                    "verify": "/runtime/v1/integrations/{integration_id}/verify",
-                    "litellm": "/runtime/v1/integrations/{integration_id}/beta/litellm_basic_guardrail_api",
-                    "evaluate": "/runtime/v1/integrations/{integration_id}/guardrails/evaluate",
-                    "output_stream": "/runtime/v1/integrations/{integration_id}/guardrails/output-stream",
+                    "verify": "/runtime/v1/endpoints/{endpoint_id}/verify",
+                    "litellm": "/runtime/v1/endpoints/{endpoint_id}/beta/litellm_basic_guardrail_api",
+                    "evaluate": "/runtime/v1/endpoints/{endpoint_id}/guardrails/evaluate",
+                    "output_stream": "/runtime/v1/endpoints/{endpoint_id}/guardrails/output-stream",
                     "controller_evaluate": "/internal/v1/guardrails/{guardrail_id}/evaluate",
                     "draft_preview": "/internal/v1/playground/draft-previews/{preview_id}",
                 },
             }
 
-        @self.router.post("/runtime/v1/integrations/{integration_id}/verify")
+        @self.router.post("/runtime/v1/endpoints/{endpoint_id}/verify")
         async def verify(
-            integration_id: str,
+            endpoint_id: str,
             x_api_key: str | None = Header(default=None),
         ):
-            authenticated = self._store.authenticate_integration(integration_id, x_api_key)
+            authenticated = self._store.authenticate_endpoint(endpoint_id, x_api_key)
             self._metrics.observe_authentication("litellm", authenticated)
             if not authenticated:
-                raise HTTPException(status_code=401, detail="Integration credential is invalid.")
-            adapter = self._store.integration_adapter(integration_id)
+                raise HTTPException(status_code=401, detail="Endpoint credential is invalid.")
+            adapter = self._store.endpoint_adapter(endpoint_id)
             if adapter != LITELLM_ADAPTER_ID:
-                raise HTTPException(status_code=409, detail="Integration adapter is not compatible with LiteLLM.")
+                raise HTTPException(status_code=409, detail="Endpoint adapter is not compatible with LiteLLM.")
             return {
                 "ready": True,
                 "adapter_id": adapter,
@@ -262,31 +262,31 @@ class RunnerAPI:
             }
 
         @self.router.post(
-            "/runtime/v1/integrations/{integration_id}/beta/litellm_basic_guardrail_api",
+            "/runtime/v1/endpoints/{endpoint_id}/beta/litellm_basic_guardrail_api",
             response_model=LiteLLMGuardrailResponse,
             response_model_exclude_none=True,
         )
         async def apply_litellm_guardrail(
-            integration_id: str,
+            endpoint_id: str,
             payload: LiteLLMGuardrailRequest,
             x_api_key: str | None = Header(default=None),
         ) -> LiteLLMGuardrailResponse:
             phase = "input" if payload.input_type == "request" else "output"
-            authenticated = self._store.authenticate_integration(integration_id, x_api_key)
+            authenticated = self._store.authenticate_endpoint(endpoint_id, x_api_key)
             self._metrics.observe_authentication("litellm", authenticated)
-            adapter_matches = self._store.integration_adapter(integration_id) == LITELLM_ADAPTER_ID
+            adapter_matches = self._store.endpoint_adapter(endpoint_id) == LITELLM_ADAPTER_ID
             if not authenticated:
                 self._metrics.reject_request("litellm", phase=phase, result="authentication_rejected")
-                raise HTTPException(status_code=401, detail="Integration credential is invalid.")
+                raise HTTPException(status_code=401, detail="Endpoint credential is invalid.")
             if not adapter_matches:
                 self._metrics.reject_request("litellm", phase=phase, result="adapter_mismatch")
-                raise HTTPException(status_code=409, detail="Integration adapter is not compatible with LiteLLM.")
+                raise HTTPException(status_code=409, detail="Endpoint adapter is not compatible with LiteLLM.")
             request_id = str(uuid.uuid4())
             started = time.perf_counter()
-            protection_request = _litellm_protection_request(payload, integration_id)
+            protection_request = _litellm_protection_request(payload, endpoint_id)
             decision = None
             with self._metrics.request(
-                "runtime", "litellm", phase, integration_id=integration_id,
+                "runtime", "litellm", phase, endpoint_id=endpoint_id,
             ) as observation:
                 request_id = self._trace_request_id(request_id)
                 try:
@@ -300,12 +300,12 @@ class RunnerAPI:
                         observation.set_identity(
                             guardrail_id=UNMATCHED_METRIC_ID,
                             guardrail_version=UNMATCHED_METRIC_ID,
-                            deployment_id=UNMATCHED_METRIC_ID,
+                            router_id=UNMATCHED_METRIC_ID,
                         )
                         decision = ProtectionDecision(
                             decision="block",
                             action="reject",
-                            reason="No Deployment matches this request.",
+                            reason="No Router matches this request.",
                             mode=protection_request.mode,
                         )
                     self._metrics.observe_route("litellm", phase, route_matched)
@@ -320,7 +320,7 @@ class RunnerAPI:
                     await self._emit_telemetry(
                         request_id=request_id,
                         call_id=protection_request.call_id,
-                        integration_id=integration_id,
+                        endpoint_id=endpoint_id,
                         phase=phase,
                         protocol="litellm",
                         mode=protection_request.mode,
@@ -330,32 +330,32 @@ class RunnerAPI:
                         observation=observation,
                     )
 
-        @self.router.post("/runtime/v1/integrations/{integration_id}/guardrails/evaluate")
+        @self.router.post("/runtime/v1/endpoints/{endpoint_id}/guardrails/evaluate")
         async def evaluate(
-            integration_id: str,
+            endpoint_id: str,
             payload: EvaluateRequest,
             request: Request,
             x_api_key: str | None = Header(default=None),
         ):
             expected_adapter = "a2a-guard" if payload.protocol == "a2a" else "generic-http-guard"
-            authenticated = self._store.authenticate_integration(integration_id, x_api_key)
+            authenticated = self._store.authenticate_endpoint(endpoint_id, x_api_key)
             self._metrics.observe_authentication(payload.protocol, authenticated)
-            adapter_matches = self._store.integration_adapter(integration_id) == expected_adapter
+            adapter_matches = self._store.endpoint_adapter(endpoint_id) == expected_adapter
             if not authenticated:
                 self._metrics.reject_request(
                     payload.protocol, payload.resolved_phase, "authentication_rejected",
                 )
-                raise HTTPException(status_code=401, detail="Integration credential is invalid.")
+                raise HTTPException(status_code=401, detail="Endpoint credential is invalid.")
             if not adapter_matches:
                 self._metrics.reject_request(payload.protocol, payload.resolved_phase, "adapter_mismatch")
-                raise HTTPException(status_code=409, detail="Integration adapter does not match this protocol.")
+                raise HTTPException(status_code=409, detail="Endpoint adapter does not match this protocol.")
             request_id = str(uuid.uuid4())
             started = time.perf_counter()
             decision = None
-            protection_request = _http_protection_request(payload, request, integration_id)
+            protection_request = _http_protection_request(payload, request, endpoint_id)
             with self._metrics.request(
                 "runtime", payload.protocol, payload.resolved_phase,
-                integration_id=integration_id,
+                endpoint_id=endpoint_id,
             ) as observation:
                 request_id = self._trace_request_id(request_id)
                 try:
@@ -369,11 +369,11 @@ class RunnerAPI:
                         observation.set_identity(
                             guardrail_id=UNMATCHED_METRIC_ID,
                             guardrail_version=UNMATCHED_METRIC_ID,
-                            deployment_id=UNMATCHED_METRIC_ID,
+                            router_id=UNMATCHED_METRIC_ID,
                         )
                         decision = ProtectionDecision(
                             decision="block", action="reject",
-                            reason="No Deployment matches this request.",
+                            reason="No Router matches this request.",
                             mode=payload.mode,
                         )
                     self._metrics.observe_route(
@@ -390,7 +390,7 @@ class RunnerAPI:
                     await self._emit_telemetry(
                         request_id=request_id,
                         call_id=protection_request.call_id,
-                        integration_id=integration_id,
+                        endpoint_id=endpoint_id,
                         phase=payload.resolved_phase,
                         protocol=payload.protocol,
                         mode=payload.mode,
@@ -400,9 +400,9 @@ class RunnerAPI:
                         observation=observation,
                     )
 
-        @self.router.post("/runtime/v1/integrations/{integration_id}/guardrails/output-stream")
+        @self.router.post("/runtime/v1/endpoints/{endpoint_id}/guardrails/output-stream")
         async def evaluate_output_stream(
-            integration_id: str,
+            endpoint_id: str,
             payload: OutputStreamRequest,
             request: Request,
             x_api_key: str | None = Header(default=None),
@@ -410,14 +410,14 @@ class RunnerAPI:
             expected_adapter = {
                 "a2a": "a2a-guard", "http": "generic-http-guard", "litellm": LITELLM_ADAPTER_ID,
             }[payload.protocol]
-            authenticated = self._store.authenticate_integration(integration_id, x_api_key)
+            authenticated = self._store.authenticate_endpoint(endpoint_id, x_api_key)
             self._metrics.observe_authentication(payload.protocol, authenticated)
             if not authenticated:
                 self._metrics.reject_request(payload.protocol, "output", "authentication_rejected")
-                raise HTTPException(status_code=401, detail="Integration credential is invalid.")
-            if self._store.integration_adapter(integration_id) != expected_adapter:
+                raise HTTPException(status_code=401, detail="Endpoint credential is invalid.")
+            if self._store.endpoint_adapter(endpoint_id) != expected_adapter:
                 self._metrics.reject_request(payload.protocol, "output", "adapter_mismatch")
-                raise HTTPException(status_code=409, detail="Integration adapter does not match this protocol.")
+                raise HTTPException(status_code=409, detail="Endpoint adapter does not match this protocol.")
 
             if payload.protocol == "litellm":
                 # Preserve the same principal, routing fields and call identity
@@ -427,7 +427,7 @@ class RunnerAPI:
                     litellm_call_id=payload.call_id or payload.stream_id,
                     structured_messages=payload.messages, model=payload.model,
                     request_data=payload.request_data, request_headers=payload.request_headers,
-                ), integration_id)
+                ), endpoint_id)
             else:
                 evaluate_payload = EvaluateRequest(
                     phase="output", texts=[payload.text or " "],
@@ -435,7 +435,7 @@ class RunnerAPI:
                     messages=payload.messages, attributes=payload.attributes,
                     model=payload.model, output_sink=payload.output_sink,
                 )
-                protection_request = _http_protection_request(evaluate_payload, request, integration_id)
+                protection_request = _http_protection_request(evaluate_payload, request, endpoint_id)
             try:
                 resolutions = []
                 mode = self._runtime.output_delivery(protection_request, on_resolved=resolutions.append,
@@ -453,7 +453,7 @@ class RunnerAPI:
                         await self._emit_telemetry(
                             request_id=str(uuid.uuid4()),
                             call_id=candidate.call_id,
-                            integration_id=integration_id,
+                            endpoint_id=endpoint_id,
                             phase="output",
                             protocol=f"{payload.protocol}-stream",
                             mode=candidate.mode,
@@ -466,7 +466,7 @@ class RunnerAPI:
                         )
 
                 result = await self._output_streams.process(
-                    stream_key=f"{integration_id}:{payload.stream_id}",
+                    stream_key=f"{endpoint_id}:{payload.stream_id}",
                     sequence=payload.sequence,
                     text=payload.text,
                     final=payload.final,
@@ -516,7 +516,7 @@ class RunnerAPI:
                 texts=tuple(payload.texts),
                 context=RequestContext(
                     protocol=payload.protocol,
-                    integration_id=None,
+                    endpoint_id=None,
                     headers=tuple(
                         (key, value)
                         for key, value in request.headers.items()
@@ -532,10 +532,10 @@ class RunnerAPI:
                 "controller",
                 payload.protocol,
                 payload.resolved_phase,
-                integration_id=INTERNAL_METRIC_ID,
+                endpoint_id=INTERNAL_METRIC_ID,
                 guardrail_id=guardrail_id,
                 guardrail_version=payload.guardrail_version,
-                deployment_id=UNRESOLVED_METRIC_ID,
+                router_id=UNRESOLVED_METRIC_ID,
             ) as observation:
                 request_id = self._trace_request_id(request_id)
                 try:
@@ -555,7 +555,7 @@ class RunnerAPI:
                     await self._emit_telemetry(
                         request_id=request_id,
                         call_id=payload.call_id,
-                        integration_id=None,
+                        endpoint_id=None,
                         phase=payload.resolved_phase,
                         protocol=payload.protocol,
                         mode=payload.mode,
@@ -607,7 +607,7 @@ class RunnerAPI:
                 texts=tuple(payload.texts),
                 context=RequestContext(
                     protocol=payload.protocol,
-                    integration_id=None,
+                    endpoint_id=None,
                     headers=tuple(
                         (key, value)
                         for key, value in request.headers.items()
@@ -627,10 +627,10 @@ class RunnerAPI:
                 "playground",
                 payload.protocol,
                 payload.resolved_phase,
-                integration_id=INTERNAL_METRIC_ID,
+                endpoint_id=INTERNAL_METRIC_ID,
                 guardrail_id=payload.plan.get("guardrail_id", UNRESOLVED_METRIC_ID),
                 guardrail_version=payload.candidate_version,
-                deployment_id=UNRESOLVED_METRIC_ID,
+                router_id=UNRESOLVED_METRIC_ID,
             ) as observation:
                 try:
                     decision = await self._draft_previews.evaluate(
@@ -660,7 +660,7 @@ class RunnerAPI:
         *,
         request_id: str,
         call_id: str | None,
-        integration_id: str | None,
+        endpoint_id: str | None,
         phase: Literal["input", "output"],
         protocol: str,
         mode: str,
@@ -691,8 +691,8 @@ class RunnerAPI:
                 **(stream_metadata or {}),
             },
         }
-        if integration_id is not None:
-            event["integrationId"] = integration_id
+        if endpoint_id is not None:
+            event["endpointId"] = endpoint_id
         if decision is not None:
             event["metadata"].update(_telemetry_metadata(decision))
             if runtime_log_captured and self._runtime_log_encryption_key:
@@ -706,8 +706,8 @@ class RunnerAPI:
                 event["guardrailId"] = decision.guardrail_id
             if decision.guardrail_version:
                 event["guardrailVersion"] = decision.guardrail_version
-            if decision.deployment_id:
-                event["deploymentId"] = decision.deployment_id
+            if decision.router_id:
+                event["routerId"] = decision.router_id
         try:
             with _TRACER.start_as_current_span(
                 "guardrail.telemetry.append",
@@ -719,7 +719,7 @@ class RunnerAPI:
                     ),
                     "guardrail.phase": phase,
                     "guardrail.protocol": protocol,
-                    "integration.id": integration_id or "__internal__",
+                    "endpoint.id": endpoint_id or "__internal__",
                     "guardrail.telemetry.capture_level": capture_level,
                 },
             ):
@@ -874,7 +874,7 @@ def _runtime_log_blocks(values: tuple[str, ...], role: str) -> list[dict[str, An
 def _http_protection_request(
     payload: EvaluateRequest,
     request: Request,
-    integration_id: str,
+    endpoint_id: str,
 ) -> ProtectionRequest:
     headers = {
         key.lower(): value
@@ -887,8 +887,8 @@ def _http_protection_request(
     fields = {
         **{str(key): str(value) for key, value in payload.attributes.items()},
         "protocol": payload.protocol,
-        "integration.id": integration_id,
-        "auth.principal": integration_id,
+        "endpoint.id": endpoint_id,
+        "auth.principal": endpoint_id,
         "http.method": method,
         "http.path": path,
         "http.host": host,
@@ -906,7 +906,7 @@ def _http_protection_request(
         if value is not None
     })
     if payload.jwt_claims:
-        fields["auth.claim_source"] = "integration_asserted"
+        fields["auth.claim_source"] = "endpoint_asserted"
     if payload.protocol == "a2a":
         fields.update({
             "a2a.version": headers.get("a2a-version", ""),
@@ -924,12 +924,12 @@ def _http_protection_request(
         content_blocks=_http_content_blocks(payload),
         context=RequestContext(
             protocol=payload.protocol,
-            integration_id=integration_id,
+            endpoint_id=endpoint_id,
             headers=tuple(sorted(headers.items())),
             jwt_claims=tuple(sorted(payload.jwt_claims.items())),
             fields=tuple(sorted(fields.items())),
         ),
-        call_id=f"{integration_id}:{external_call_id}" if external_call_id else None,
+        call_id=f"{endpoint_id}:{external_call_id}" if external_call_id else None,
         messages=tuple(payload.messages),
         mode=payload.mode,
         evidence_scope=payload.output_scope,
@@ -983,7 +983,7 @@ def _request_content(request: ProtectionRequest) -> tuple[str, ...]:
 
 def _litellm_protection_request(
     payload: LiteLLMGuardrailRequest,
-    integration_id: str,
+    endpoint_id: str,
 ) -> ProtectionRequest:
     headers = {
         str(key).lower(): str(value)
@@ -1021,11 +1021,11 @@ def _litellm_protection_request(
             )
             if fields.get(key)
         ),
-        integration_id,
+        endpoint_id,
     )
     fields.update({
         "protocol": "litellm",
-        "integration.id": integration_id,
+        "endpoint.id": endpoint_id,
         "auth.principal": principal,
         "model": str(payload.model or payload.request_data.get("model") or ""),
         "litellm.operation": payload.input_type,
@@ -1040,12 +1040,12 @@ def _litellm_protection_request(
         texts=tuple(payload.texts or ()),
         context=RequestContext(
             protocol="litellm",
-            integration_id=integration_id,
+            endpoint_id=endpoint_id,
             headers=tuple(sorted(headers.items())),
             fields=tuple(sorted(fields.items())),
         ),
         call_id=(
-            f"{integration_id}:{payload.litellm_call_id}"
+            f"{endpoint_id}:{payload.litellm_call_id}"
             if payload.litellm_call_id
             else None
         ),

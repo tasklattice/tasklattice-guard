@@ -3,7 +3,7 @@ syntax = "proto3";
 package tasklattice.guard.control.v1;
 
 // Non-secret credential verifier projected from Controller to Runner.
-message IntegrationCredential {
+message EndpointCredential {
   // Stable credential identifier safe to expose in telemetry and audit events.
   string id = 1;
   // Lowercase SHA-256 hex digest of the plaintext credential; plaintext is never sent.
@@ -16,8 +16,8 @@ message IntegrationCredential {
   optional string revoked_at = 5;
 }
 
-// Complete set of active and recently revoked credentials for an Integration.
-message IntegrationVerification {
+// Complete set of active and recently revoked credentials for an Endpoint.
+message EndpointVerification {
   // Full verifier snapshot; Runner replaces its previous set atomically.
-  repeated IntegrationCredential credentials = 1;
+  repeated EndpointCredential credentials = 1;
 }

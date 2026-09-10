@@ -15,7 +15,7 @@ FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "artifacts" / "conf
 async def test_signed_phrase_policy_executes_both_directions_without_other_policies(tmp_path):
     store, registry, engine = _runtime(tmp_path, FIXTURE)
     runtime = GuardrailRuntimeService(engine, store)
-    context = RequestContext(protocol="litellm", integration_id="fixture-integration")
+    context = RequestContext(protocol="litellm", endpoint_id="fixture-endpoint")
     try:
         assert registry.readiness()["ready"]
         for phase in ("input", "output"):

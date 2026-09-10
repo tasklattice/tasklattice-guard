@@ -34,7 +34,7 @@ async def test_stopped_tcp_replica_hands_pinned_checked_stream_to_second_runner(
         pytest.skip("Set GUARD_TEST_REDIS_URL to a dedicated loopback Redis")
     assert urlparse(redis_url).hostname in {"127.0.0.1", "localhost", "::1"}
     call_id, stream_id = str(uuid4()), str(uuid4())
-    scoped_call_id = f"fixture-integration:{call_id}"
+    scoped_call_id = f"fixture-endpoint:{call_id}"
     contexts = [RedisCallContextStore(redis_url) for _ in range(2)]
     streams = [RedisOutputStreamSessionStore(redis_url) for _ in range(2)]
     prefix = "benign " * 600
@@ -82,7 +82,7 @@ async def test_stopped_tcp_replica_hands_pinned_checked_stream_to_second_runner(
                     output_streams=streams[index]).router)
                 apps.append(app)
 
-            endpoint = "/runtime/v1/integrations/fixture-integration/guardrails/output-stream"
+            endpoint = "/runtime/v1/endpoints/fixture-endpoint/guardrails/output-stream"
             async with httpx.AsyncClient(timeout=10, trust_env=False) as client, tcp_server(apps[1]) as second_url:
                 async def send(url, sequence):
                     return await client.post(url + endpoint, headers={"x-api-key": RUNTIME_CREDENTIAL}, json={
@@ -98,7 +98,7 @@ async def test_stopped_tcp_replica_hands_pinned_checked_stream_to_second_runner(
                     assert first["effective_release_id"]
                     expected_prefix = "" if mode == "full_buffered" else prefix[:-2048] if mode == "window_buffered" else prefix
                     assert first["released_text"] == expected_prefix
-                    key = streams[0]._key(f"fixture-integration:{stream_id}")
+                    key = streams[0]._key(f"fixture-endpoint:{stream_id}")
                     before = await streams[0]._redis.get(key)
                     assert json.loads(before)["next_sequence"] == 1
                     assert contexts[1].get(scoped_call_id).resolution.effective_release_id == first["effective_release_id"]
@@ -153,7 +153,7 @@ async def test_stopped_tcp_replica_hands_pinned_checked_stream_to_second_runner(
     finally:
         for engine in engines:
             await engine.shutdown()
-        key = streams[0]._key(f"fixture-integration:{stream_id}")
+        key = streams[0]._key(f"fixture-endpoint:{stream_id}")
         try:
             await streams[0]._redis.delete(key, f"{key}:lock", contexts[0]._key(scoped_call_id))
         finally:

@@ -46,7 +46,7 @@ const guardrail = {
   updated_at: "2026-09-04T08:38:36Z",
   status: "protected",
   latest_validation_run: null,
-  deployment_count: 1,
+  router_count: 1,
   test_case_count: 140,
   excluded_test_case_count: 0,
   excluded_test_case_ids: [],

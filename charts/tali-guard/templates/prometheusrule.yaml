@@ -1,6 +1,6 @@
 {{- if or .Values.observability.performanceDebug.enabled .Values.observability.prometheusRule.enabled }}
 {{- $selector := printf "namespace=%q,app_kubernetes_io_instance=%q" .Release.Namespace .Release.Name -}}
-{{- $resolved := "guardrail_id!~\"__unmatched__|__unresolved__\",integration_id!~\"__unmatched__|__unresolved__\"" -}}
+{{- $resolved := "guardrail_id!~\"__unmatched__|__unresolved__\",endpoint_id!~\"__unmatched__|__unresolved__\"" -}}
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
@@ -15,77 +15,77 @@ spec:
     - name: tasklattice-guard.guardrail-recording
       interval: 30s
       rules:
-        # Completed checks/s. Deployment, version, phase, and protocol are
+        # Completed checks/s. Router, version, phase, and protocol are
         # deliberately removed from the Overview contract.
         - record: guardrail:checks:rate5m
           expr: |
-            sum by (namespace, app_kubernetes_io_instance, guardrail_id, integration_id, runner_id, result, disposition, coverage, enforcement_mode, failure_mode) (
+            sum by (namespace, app_kubernetes_io_instance, guardrail_id, endpoint_id, runner_id, result, disposition, coverage, enforcement_mode, failure_mode) (
               rate(guard_runner_guardrail_requests_total{traffic_class="runtime",{{ $selector }}}[5m])
             )
         # Buckets remain mergeable across Runners. Never record or average a
         # per-Runner percentile for an aggregate latency view.
         - record: guardrail:request_duration_seconds_bucket:rate5m
           expr: |
-            sum by (namespace, app_kubernetes_io_instance, guardrail_id, integration_id, runner_id, result, disposition, le) (
+            sum by (namespace, app_kubernetes_io_instance, guardrail_id, endpoint_id, runner_id, result, disposition, le) (
               rate(guard_runner_guardrail_request_duration_seconds_bucket{traffic_class="runtime",{{ $selector }}}[5m])
             )
         - record: guardrail:availability:ratio5m
           expr: |
-            sum by (namespace, app_kubernetes_io_instance, guardrail_id, integration_id, runner_id) (
+            sum by (namespace, app_kubernetes_io_instance, guardrail_id, endpoint_id, runner_id) (
               guardrail:checks:rate5m{result="success",{{ $resolved }},{{ $selector }}}
             )
             /
-            sum by (namespace, app_kubernetes_io_instance, guardrail_id, integration_id, runner_id) (
+            sum by (namespace, app_kubernetes_io_instance, guardrail_id, endpoint_id, runner_id) (
               guardrail:checks:rate5m{ {{ $resolved }},{{ $selector }} }
             )
         - record: guardrail:availability:ratio30m
           expr: |
-            sum by (namespace, app_kubernetes_io_instance, guardrail_id, integration_id, runner_id) (
+            sum by (namespace, app_kubernetes_io_instance, guardrail_id, endpoint_id, runner_id) (
               rate(guard_runner_guardrail_requests_total{traffic_class="runtime",result="success",{{ $resolved }},{{ $selector }}}[30m])
             )
             /
-            sum by (namespace, app_kubernetes_io_instance, guardrail_id, integration_id, runner_id) (
+            sum by (namespace, app_kubernetes_io_instance, guardrail_id, endpoint_id, runner_id) (
               rate(guard_runner_guardrail_requests_total{traffic_class="runtime",{{ $resolved }},{{ $selector }}}[30m])
             )
         - record: guardrail:availability:ratio30d
           expr: |
-            sum by (namespace, app_kubernetes_io_instance, guardrail_id, integration_id, runner_id) (
+            sum by (namespace, app_kubernetes_io_instance, guardrail_id, endpoint_id, runner_id) (
               increase(guard_runner_guardrail_requests_total{traffic_class="runtime",result="success",{{ $resolved }},{{ $selector }}}[30d])
             )
             /
-            sum by (namespace, app_kubernetes_io_instance, guardrail_id, integration_id, runner_id) (
+            sum by (namespace, app_kubernetes_io_instance, guardrail_id, endpoint_id, runner_id) (
               increase(guard_runner_guardrail_requests_total{traffic_class="runtime",{{ $resolved }},{{ $selector }}}[30d])
             )
         - record: guardrail:latency_seconds:p95_5m
           expr: |
             histogram_quantile(0.95,
-              sum by (namespace, app_kubernetes_io_instance, guardrail_id, integration_id, runner_id, le) (
+              sum by (namespace, app_kubernetes_io_instance, guardrail_id, endpoint_id, runner_id, le) (
                 guardrail:request_duration_seconds_bucket:rate5m{result="success",{{ $resolved }},{{ $selector }}}
               )
             )
         - record: guardrail:latency_seconds:p99_5m
           expr: |
             histogram_quantile(0.99,
-              sum by (namespace, app_kubernetes_io_instance, guardrail_id, integration_id, runner_id, le) (
+              sum by (namespace, app_kubernetes_io_instance, guardrail_id, endpoint_id, runner_id, le) (
                 guardrail:request_duration_seconds_bucket:rate5m{result="success",{{ $resolved }},{{ $selector }}}
               )
             )
         - record: guardrail:coverage:ratio5m
           expr: |
-            sum by (namespace, app_kubernetes_io_instance, guardrail_id, integration_id, runner_id) (
+            sum by (namespace, app_kubernetes_io_instance, guardrail_id, endpoint_id, runner_id) (
               guardrail:checks:rate5m{coverage="complete",{{ $resolved }},{{ $selector }}}
             )
             /
-            sum by (namespace, app_kubernetes_io_instance, guardrail_id, integration_id, runner_id) (
+            sum by (namespace, app_kubernetes_io_instance, guardrail_id, endpoint_id, runner_id) (
               guardrail:checks:rate5m{ {{ $resolved }},{{ $selector }} }
             )
         - record: guardrail:fail_open:ratio5m
           expr: |
-            sum by (namespace, app_kubernetes_io_instance, guardrail_id, integration_id, runner_id) (
+            sum by (namespace, app_kubernetes_io_instance, guardrail_id, endpoint_id, runner_id) (
               guardrail:checks:rate5m{failure_mode="fail_open",{{ $resolved }},{{ $selector }}}
             )
             /
-            sum by (namespace, app_kubernetes_io_instance, guardrail_id, integration_id, runner_id) (
+            sum by (namespace, app_kubernetes_io_instance, guardrail_id, endpoint_id, runner_id) (
               guardrail:checks:rate5m{ {{ $resolved }},{{ $selector }} }
             )
         - record: guardrail:error_budget:remaining_ratio30d
@@ -108,15 +108,15 @@ spec:
               / (1 - {{ .Values.observability.slo.availabilityTarget }})
               > {{ .Values.observability.slo.burnRateFast }}
             )
-            and on (namespace, app_kubernetes_io_instance, guardrail_id, integration_id, runner_id)
-            sum by (namespace, app_kubernetes_io_instance, guardrail_id, integration_id, runner_id) (
+            and on (namespace, app_kubernetes_io_instance, guardrail_id, endpoint_id, runner_id)
+            sum by (namespace, app_kubernetes_io_instance, guardrail_id, endpoint_id, runner_id) (
               guardrail:checks:rate5m{ {{ $resolved }},{{ $selector }} }
             ) > 0
           for: 5m
           labels: { severity: critical, category: availability }
           annotations:
             summary: GuardRail {{ "{{" }} $labels.guardrail_id {{ "}}" }} is consuming error budget rapidly
-            description: Technical failures on this GuardRail, Integration, and Runner path exceed the configured fast-burn threshold. Deny and transform remain successful checks.
+            description: Technical failures on this GuardRail, Endpoint, and Runner path exceed the configured fast-burn threshold. Deny and transform remain successful checks.
         - alert: TaskLatticeGuardAvailabilityBurnRateSlow
           expr: |
             (
@@ -124,8 +124,8 @@ spec:
               / (1 - {{ .Values.observability.slo.availabilityTarget }})
               > {{ .Values.observability.slo.burnRateSlow }}
             )
-            and on (namespace, app_kubernetes_io_instance, guardrail_id, integration_id, runner_id)
-            sum by (namespace, app_kubernetes_io_instance, guardrail_id, integration_id, runner_id) (
+            and on (namespace, app_kubernetes_io_instance, guardrail_id, endpoint_id, runner_id)
+            sum by (namespace, app_kubernetes_io_instance, guardrail_id, endpoint_id, runner_id) (
               guardrail:checks:rate5m{ {{ $resolved }},{{ $selector }} }
             ) > 0
           for: 30m
@@ -136,28 +136,28 @@ spec:
         - alert: TaskLatticeGuardP95LatencyHigh
           expr: |
             guardrail:latency_seconds:p95_5m{ {{ $selector }} } > {{ .Values.observability.slo.runtimeP95Seconds }}
-            and on (namespace, app_kubernetes_io_instance, guardrail_id, integration_id, runner_id)
-            sum by (namespace, app_kubernetes_io_instance, guardrail_id, integration_id, runner_id) (guardrail:checks:rate5m{ {{ $resolved }},{{ $selector }} }) > 0
+            and on (namespace, app_kubernetes_io_instance, guardrail_id, endpoint_id, runner_id)
+            sum by (namespace, app_kubernetes_io_instance, guardrail_id, endpoint_id, runner_id) (guardrail:checks:rate5m{ {{ $resolved }},{{ $selector }} }) > 0
           for: 10m
           labels: { severity: warning, category: latency }
           annotations:
             summary: GuardRail {{ "{{" }} $labels.guardrail_id {{ "}}" }} p95 latency exceeds its SLO
-            description: Successful end-to-end checks on this GuardRail, Integration, and Runner path exceed the p95 latency budget.
+            description: Successful end-to-end checks on this GuardRail, Endpoint, and Runner path exceed the p95 latency budget.
         - alert: TaskLatticeGuardP99LatencyHigh
           expr: |
             guardrail:latency_seconds:p99_5m{ {{ $selector }} } > {{ .Values.observability.slo.runtimeP99Seconds }}
-            and on (namespace, app_kubernetes_io_instance, guardrail_id, integration_id, runner_id)
-            sum by (namespace, app_kubernetes_io_instance, guardrail_id, integration_id, runner_id) (guardrail:checks:rate5m{ {{ $resolved }},{{ $selector }} }) > 0
+            and on (namespace, app_kubernetes_io_instance, guardrail_id, endpoint_id, runner_id)
+            sum by (namespace, app_kubernetes_io_instance, guardrail_id, endpoint_id, runner_id) (guardrail:checks:rate5m{ {{ $resolved }},{{ $selector }} }) > 0
           for: 10m
           labels: { severity: warning, category: latency }
           annotations:
             summary: GuardRail {{ "{{" }} $labels.guardrail_id {{ "}}" }} p99 latency exceeds its SLO
-            description: Successful tail latency on this GuardRail, Integration, and Runner path exceeds the p99 budget.
+            description: Successful tail latency on this GuardRail, Endpoint, and Runner path exceeds the p99 budget.
         - alert: TaskLatticeGuardCoverageBelowTarget
           expr: |
             guardrail:coverage:ratio5m{ {{ $selector }} } < {{ .Values.observability.slo.completeCoverageTarget }}
-            and on (namespace, app_kubernetes_io_instance, guardrail_id, integration_id, runner_id)
-            sum by (namespace, app_kubernetes_io_instance, guardrail_id, integration_id, runner_id) (guardrail:checks:rate5m{ {{ $resolved }},{{ $selector }} }) > 0
+            and on (namespace, app_kubernetes_io_instance, guardrail_id, endpoint_id, runner_id)
+            sum by (namespace, app_kubernetes_io_instance, guardrail_id, endpoint_id, runner_id) (guardrail:checks:rate5m{ {{ $resolved }},{{ $selector }} }) > 0
           for: 2m
           labels: { severity: critical, category: protection }
           annotations:
@@ -166,8 +166,8 @@ spec:
         - alert: TaskLatticeGuardFailOpen
           expr: |
             guardrail:fail_open:ratio5m{ {{ $selector }} } > 0
-            and on (namespace, app_kubernetes_io_instance, guardrail_id, integration_id, runner_id)
-            sum by (namespace, app_kubernetes_io_instance, guardrail_id, integration_id, runner_id) (guardrail:checks:rate5m{ {{ $resolved }},{{ $selector }} }) > 0
+            and on (namespace, app_kubernetes_io_instance, guardrail_id, endpoint_id, runner_id)
+            sum by (namespace, app_kubernetes_io_instance, guardrail_id, endpoint_id, runner_id) (guardrail:checks:rate5m{ {{ $resolved }},{{ $selector }} }) > 0
           for: 0m
           labels: { severity: critical, category: protection }
           annotations:
@@ -177,11 +177,11 @@ spec:
           expr: |
             sum(guardrail:checks:rate5m{guardrail_id=~"__unmatched__|__unresolved__",{{ $selector }}}) > 0
             or
-            sum(guardrail:checks:rate5m{integration_id=~"__unmatched__|__unresolved__",{{ $selector }}}) > 0
+            sum(guardrail:checks:rate5m{endpoint_id=~"__unmatched__|__unresolved__",{{ $selector }}}) > 0
           for: 2m
           labels: { severity: critical, category: routing }
           annotations:
-            summary: GuardRail or Integration identity resolution is failing
+            summary: GuardRail or Endpoint identity resolution is failing
             description: Unmatched and unresolved checks are excluded from product SLI denominators and require route or desired-state repair.
 
     - name: tasklattice-guard.platform
@@ -239,7 +239,7 @@ spec:
           labels: { severity: critical, category: configuration }
           annotations:
             summary: Runner has not applied the current desired generation
-            description: GuardRail policy or Integration route state is not converged across the data plane.
+            description: GuardRail policy or Endpoint route state is not converged across the data plane.
         - alert: TaskLatticeGuardHeartbeatStale
           expr: |
             (

@@ -238,12 +238,12 @@ class RunnerControlClient:
                             "Dynamic Model Providers were applied, but existing Draft previews "
                             "could not be retired. New desired state remains active."
                         )
-            artifact_count, route_count, integration_count = self._store.observability_counts()
+            artifact_count, route_count, endpoint_count = self._store.observability_counts()
             self._metrics.set_desired_state(
                 generation=desired_state.generation,
                 artifacts=artifact_count,
                 routes=route_count,
-                integrations=integration_count,
+                endpoints=endpoint_count,
             )
             self._synchronized.set()
             self._metrics.set_control_state(synchronized=True)
@@ -269,7 +269,7 @@ class RunnerControlClient:
             "",
             model_revision_id,
         )
-        # A desired state can contain only Integration or route changes and no
+        # A desired state can contain only Endpoint or route changes and no
         # artifact acknowledgements. Report the applied generation immediately
         # so Controller mutations do not expose a Secret or route before the
         # data plane can actually serve it.

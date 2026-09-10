@@ -3,7 +3,7 @@ import type { GuardrailCategoryId } from "../../shared/guardrail-catalog";
 import type { PlatformStatusReason } from "../../shared/platform-status";
 import type {
   GuardrailReadinessState,
-  IntegrationSetupState,
+  EndpointSetupState,
   ValidationRunDisplayState,
 } from "../../shared/lifecycle";
 
@@ -288,12 +288,12 @@ export type PolicyCoverage = {
   score: number | null;
 };
 
-export type Deployment = {
+export type Router = {
   id: string;
   name: string;
   guardrail_id: string;
   guardrail_version: string;
-  integration_id: string | null;
+  endpoint_id: string | null;
   route_order: number;
   traffic_scope: TrafficScopeExpression;
   enabled: boolean;
@@ -302,27 +302,27 @@ export type Deployment = {
   updated_at: string;
 };
 
-export type DeploymentDeletionImpact = {
-  deployment_id: string;
-  deployment_name: string;
+export type RouterDeletionImpact = {
+  router_id: string;
+  router_name: string;
   window_minutes: number;
   incoming_request_count: number;
   last_request_at: string | null;
-  active_deployment_count: number;
+  active_router_count: number;
   telemetry_fresh: boolean;
   telemetry_watermark: string | null;
   requires_second_confirmation: boolean;
   requires_confirmation: boolean;
 };
 
-export type DeploymentTraceFinding = {
+export type RouterTraceFinding = {
   id: string;
   trace_id: string;
   created_at: string;
   guardrail_id: string | null;
   guardrail_version: string | null;
-  deployment_id: string | null;
-  integration_id: string | null;
+  router_id: string | null;
+  endpoint_id: string | null;
   phase: string;
   severity: "critical" | "high" | "medium" | "low";
   risk: string;
@@ -355,13 +355,13 @@ export type RuntimeFindingSummary = {
 
 export type GuardrailFindingPage = {
   nextCursor?: string | null | undefined;
-  items: DeploymentTraceFinding[];
+  items: RouterTraceFinding[];
   count: number;
   summary: RuntimeFindingSummary;
   collection_status?: "collected" | "not_collected" | "no_events";
 };
 
-export type DeploymentTraceStep = {
+export type RouterTraceStep = {
   id: string;
   parent_id?: string | null;
   detail?: string | null;
@@ -369,8 +369,8 @@ export type DeploymentTraceStep = {
   created_at: string;
   guardrail_id: string;
   guardrail_version: string;
-  deployment_id: string | null;
-  integration_id: string | null;
+  router_id: string | null;
+  endpoint_id: string | null;
   protocol: string;
   phase: string;
   kind: "rail" | "action" | string;
@@ -393,26 +393,26 @@ export type DeploymentTraceStep = {
   provider_latency_ms: number;
 };
 
-export type DeploymentRuntimeTrace = {
+export type RouterRuntimeTrace = {
   id: string;
   created_at: string;
-  deployment_id: string;
+  router_id: string;
   guardrail_id: string | null;
   guardrail_version: string | null;
-  integration_id: string | null;
+  endpoint_id: string | null;
   protocol: string;
   phase: string;
   outcome: string;
   action: string;
   risk: string | null;
-  severity: DeploymentTraceFinding["severity"] | null;
+  severity: RouterTraceFinding["severity"] | null;
   latency_ms: number;
   timed_out: boolean;
   runtime_engine: string;
   config_checksum: string;
   detail: string;
-  findings: DeploymentTraceFinding[];
-  steps: DeploymentTraceStep[];
+  findings: RouterTraceFinding[];
+  steps: RouterTraceStep[];
   evidence_status?: "collected" | "not_collected";
 };
 
@@ -459,7 +459,7 @@ export type Guardrail = {
   updated_at: string;
   status: GuardrailReadinessState;
   latest_validation_run: ValidationRun | null;
-  deployment_count: number;
+  router_count: number;
   test_case_count: number;
   excluded_test_case_count: number;
   excluded_test_case_ids: string[];
@@ -479,7 +479,7 @@ export type GuardrailDeletionImpact = {
   window_minutes: number;
   incoming_request_count: number;
   last_request_at: string | null;
-  active_deployment_count: number;
+  active_router_count: number;
   telemetry_fresh: boolean;
   telemetry_watermark: string | null;
   requires_second_confirmation: boolean;
@@ -783,11 +783,11 @@ export type GuardrailCompilePreview = {
   estimated_critical_path_ms: number;
 };
 
-export type IntegrationAdapterId = "litellm-generic-guardrail" | "generic-http-guard" | "a2a-guard";
-export type IntegrationProtocol = "litellm" | "http" | "a2a";
-export type IntegrationSetupStatus = IntegrationSetupState;
+export type EndpointAdapterId = "litellm-generic-guardrail" | "generic-http-guard" | "a2a-guard";
+export type EndpointProtocol = "litellm" | "http" | "a2a";
+export type EndpointSetupStatus = EndpointSetupState;
 
-export type IntegrationSetup = {
+export type EndpointSetup = {
   api_base_url: string;
   callback_url: string;
   stream_callback_url?: string | null;
@@ -801,26 +801,26 @@ export type IntegrationSetup = {
   yaml_template: string;
 };
 
-export type IntegrationCredential = {
+export type EndpointCredential = {
   id: string;
   key_hint: string;
   created_at: string;
 };
 
-export type OneTimeIntegrationCredential = IntegrationCredential & {
+export type OneTimeEndpointCredential = EndpointCredential & {
   value: string;
 };
 
-export type Integration = {
+export type Endpoint = {
   id: string;
-  adapter_id: IntegrationAdapterId;
-  protocol: IntegrationProtocol;
+  adapter_id: EndpointAdapterId;
+  protocol: EndpointProtocol;
   name: string;
   description: string;
   enabled: boolean;
   key_hint: string;
-  credentials: IntegrationCredential[];
-  setup_status: IntegrationSetupStatus;
+  credentials: EndpointCredential[];
+  setup_status: EndpointSetupStatus;
   desired_generation?: number;
   runtime_status: string;
   first_seen_at: string | null;
@@ -831,18 +831,18 @@ export type Integration = {
   last_error_at: string | null;
   request_count: number;
   error_count: number;
-  setup: IntegrationSetup;
+  setup: EndpointSetup;
   created_at: string;
   updated_at: string;
 };
 
-export type IntegrationDeletionImpact = {
-  integration_id: string;
-  integration_name: string;
+export type EndpointDeletionImpact = {
+  endpoint_id: string;
+  endpoint_name: string;
   window_minutes: number;
   incoming_request_count: number;
   last_request_at: string | null;
-  active_deployment_count: number;
+  active_router_count: number;
   active_credential_count: number;
   telemetry_fresh: boolean;
   telemetry_watermark: string | null;
@@ -850,9 +850,9 @@ export type IntegrationDeletionImpact = {
   requires_confirmation: boolean;
 };
 
-export type IntegrationRegistration = {
-  integration: Integration;
-  credential: OneTimeIntegrationCredential;
+export type EndpointRegistration = {
+  endpoint: Endpoint;
+  credential: OneTimeEndpointCredential;
 };
 
 export type LoggingLevel = "info" | "debug" | "trace";
@@ -888,8 +888,8 @@ export type RuntimeLogEntry = {
   content_before: RuntimeLogContentBlock[] | null;
   content_after: RuntimeLogContentBlock[] | null;
   content_available: boolean;
-  findings: DeploymentTraceFinding[];
-  steps: DeploymentTraceStep[];
+  findings: RouterTraceFinding[];
+  steps: RouterTraceStep[];
 };
 
 export type RuntimeLogInteraction = {
@@ -898,8 +898,8 @@ export type RuntimeLogInteraction = {
   completed_at: string | null;
   guardrail_id: string;
   guardrail_version: string | null;
-  deployment_id: string | null;
-  integration_id: string | null;
+  router_id: string | null;
+  endpoint_id: string | null;
   protocol: string;
   outcome: "allow" | "transform" | "block" | "error" | string;
   capture_level: LoggingLevel;
@@ -928,10 +928,10 @@ export type MetricTrendSeries = {
 
 export type SystemStatus = {
   status: "healthy" | "degraded";
-  status_reason: "runtime_ready" | "integration_degraded" | "default_runner_unavailable";
-  active_deployments: number;
-  enabled_integrations: number;
-  total_integrations: number;
+  status_reason: "runtime_ready" | "endpoint_degraded" | "default_runner_unavailable";
+  active_routers: number;
+  enabled_endpoints: number;
+  total_endpoints: number;
   capabilities: {
     evaluators: string[];
     generic_runtime_llm: false;
@@ -1000,12 +1000,12 @@ export type Metrics = {
     p99_status: "healthy" | "breached";
   };
   latest_validation_p95_ms: number;
-  active_deployments: number;
-  total_deployments: number;
+  active_routers: number;
+  total_routers: number;
   guardrails_needing_test: number;
   total_guardrails: number;
-  degraded_integrations: number;
-  total_integrations: number;
+  degraded_endpoints: number;
+  total_endpoints: number;
   risk_counts: Array<{ risk: string; count: number }>;
   guardrail_distribution: Array<{
     guardrail_id: string;
@@ -1040,10 +1040,10 @@ export type Metrics = {
     versions: string[];
   }>;
   caller_distribution: Array<{
-    integration_id: string | null;
-    integration_name: string;
-    deployment_id: string | null;
-    deployment_name: string;
+    endpoint_id: string | null;
+    endpoint_name: string;
+    router_id: string | null;
+    router_name: string;
     protocol: string;
     requests: number;
     share: number;

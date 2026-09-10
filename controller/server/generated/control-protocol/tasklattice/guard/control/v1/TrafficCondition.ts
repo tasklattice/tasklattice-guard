@@ -3,7 +3,7 @@
 import type { TrafficOperator as _tasklattice_guard_control_v1_TrafficOperator, TrafficOperator__Output as _tasklattice_guard_control_v1_TrafficOperator__Output } from '../../../../tasklattice/guard/control/v1/TrafficOperator.js';
 
 /**
- * One typed predicate evaluated against Integration request metadata.
+ * One typed predicate evaluated against Endpoint request metadata.
  */
 export interface TrafficCondition {
   /**
@@ -22,7 +22,7 @@ export interface TrafficCondition {
 }
 
 /**
- * One typed predicate evaluated against Integration request metadata.
+ * One typed predicate evaluated against Endpoint request metadata.
  */
 export interface TrafficCondition__Output {
   /**

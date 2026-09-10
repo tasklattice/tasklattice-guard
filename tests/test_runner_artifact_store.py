@@ -13,7 +13,7 @@ from runner.toolkit.runtime.contracts import RequestContext
 from runner.artifact_store import ArtifactStore
 from runner import generated as protocol
 from runner.protocol_codec import (
-    integration_verification_to_proto,
+    endpoint_verification_to_proto,
     traffic_scope_to_proto,
 )
 
@@ -49,28 +49,28 @@ def test_runner_verifies_and_restores_complete_last_known_good(tmp_path):
     desired = protocol.DesiredState(
         generation=7,
         artifacts=[artifact],
-        deployments=[protocol.DeploymentRoute(
-            deployment_id="fallback",
+        routers=[protocol.RouterRoute(
+            router_id="fallback",
             guardrail_id="guardrail-1",
             artifact_id="artifact-1",
-            integration_id="integration-1",
+            endpoint_id="endpoint-1",
             route_order=2,
             traffic_scope=traffic_scope_to_proto({"combinator": "and", "conditions": []}),
-        ), protocol.DeploymentRoute(
-            deployment_id="production",
+        ), protocol.RouterRoute(
+            router_id="production",
             guardrail_id="guardrail-1",
             artifact_id="artifact-1",
-            integration_id="integration-1",
+            endpoint_id="endpoint-1",
             route_order=1,
             traffic_scope=traffic_scope_to_proto({
                 "combinator": "and",
                 "conditions": [{"field": "target.environment", "operator": "equals", "value": "production"}],
             }),
         )],
-        integrations=[protocol.IntegrationRuntime(
-            integration_id="integration-1",
+        endpoints=[protocol.EndpointRuntime(
+            endpoint_id="endpoint-1",
             adapter="http",
-            verification=integration_verification_to_proto({"credentials": [{
+            verification=endpoint_verification_to_proto({"credentials": [{
                 "id": "runtime",
                 "sha256": hashlib.sha256(credential.encode()).hexdigest(),
                 "keyHint": "tg_run…cret",
@@ -84,21 +84,21 @@ def test_runner_verifies_and_restores_complete_last_known_good(tmp_path):
     first.attach_registry(first_registry)  # type: ignore[arg-type]
     first.apply(desired)
     assert first.generation == 7
-    assert first.authenticate_integration("integration-1", credential)
-    assert first.integration_adapter("integration-1") == "http"
+    assert first.authenticate_endpoint("endpoint-1", credential)
+    assert first.endpoint_adapter("endpoint-1") == "http"
     selected = first.resolve(RequestContext(
         protocol="http",
-        integration_id="integration-1",
+        endpoint_id="endpoint-1",
         fields=(("target.environment", "production"),),
     ))
-    assert selected.deployment_id == "production"
+    assert selected.router_id == "production"
 
     restarted = ArtifactStore(public_path, tmp_path / "state")
     restarted_registry = Registry()
     restarted.attach_registry(restarted_registry)  # type: ignore[arg-type]
     assert restarted.generation == 7
-    assert restarted.integration_adapter("integration-1") == "http"
-    assert restarted.resolve(RequestContext(protocol="http", integration_id="integration-1")).deployment_id == "fallback"
+    assert restarted.endpoint_adapter("endpoint-1") == "http"
+    assert restarted.resolve(RequestContext(protocol="http", endpoint_id="endpoint-1")).router_id == "fallback"
     assert restarted_registry.reloads == 1
 
 
@@ -116,10 +116,10 @@ def test_runner_accepts_active_multi_credentials_and_rejects_revoked_credentials
     store.attach_registry(Registry())  # type: ignore[arg-type]
     store.apply(protocol.DesiredState(
         generation=1,
-        integrations=[protocol.IntegrationRuntime(
-            integration_id="integration-1",
+        endpoints=[protocol.EndpointRuntime(
+            endpoint_id="endpoint-1",
             adapter="http",
-            verification=integration_verification_to_proto({
+            verification=endpoint_verification_to_proto({
                 "credentials": [
                     {
                         "id": "current",
@@ -146,15 +146,15 @@ def test_runner_accepts_active_multi_credentials_and_rejects_revoked_credentials
         )],
     ))
 
-    assert store.authenticate_integration("integration-1", current)
-    assert store.authenticate_integration("integration-1", second)
-    assert not store.authenticate_integration("integration-1", revoked)
-    assert not store.authenticate_integration("integration-1", "tg_unknown")
+    assert store.authenticate_endpoint("endpoint-1", current)
+    assert store.authenticate_endpoint("endpoint-1", second)
+    assert not store.authenticate_endpoint("endpoint-1", revoked)
+    assert not store.authenticate_endpoint("endpoint-1", "tg_unknown")
 
 
-def test_protocol_rejects_malformed_integration_credentials() -> None:
+def test_protocol_rejects_malformed_endpoint_credentials() -> None:
     with pytest.raises(TypeError):
-        protocol.IntegrationCredential(id="bad", sha256=42)  # type: ignore[arg-type]
+        protocol.EndpointCredential(id="bad", sha256=42)  # type: ignore[arg-type]
 
 
 def test_runner_rejects_an_artifact_compiled_for_a_different_nemo_version(

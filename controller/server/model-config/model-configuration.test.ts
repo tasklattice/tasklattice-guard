@@ -10,7 +10,7 @@ const id = "7471c0eb-a533-449a-8814-98c3bc23aa98";
 const input = { profile: "tali.qwen3guard.v1", timeoutSeconds: 30, maxTokens: 512 };
 
 // Single-model repository double: exercises service contracts without a live
-// database or Provider. DB locking/transaction semantics need integration QA.
+// database or Provider. DB locking/transaction semantics need endpoint QA.
 function setup(state = "draft", assigned = false, failProbe = false) {
   const empty = emptyModelAssignments();
   const assignments = assigned

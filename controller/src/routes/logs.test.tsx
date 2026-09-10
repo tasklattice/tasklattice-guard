@@ -24,8 +24,8 @@ const interaction: RuntimeLogInteraction = {
   completed_at: "2026-08-15T05:00:01Z",
   guardrail_id: "guardrail-1",
   guardrail_version: "20260904-030000.003Z",
-  deployment_id: "deployment-1",
-  integration_id: null,
+  router_id: "router-1",
+  endpoint_id: null,
   protocol: "openai",
   outcome: "block",
   capture_level: "trace",
@@ -73,7 +73,7 @@ const baseProps = {
   error: null,
   onInspect: vi.fn(),
   guardrailName: () => "Runtime Guardrail",
-  deploymentName: () => "Runtime Deployment",
+  routerName: () => "Runtime Router",
 };
 
 describe('request checkpoint browsing', () => {
@@ -82,7 +82,7 @@ describe('request checkpoint browsing', () => {
     const event = (id: string): controllerApi.RuntimeEvent => ({
       id, occurredAt: interaction.created_at, requestId: interaction.id, runnerId:'runner',
       guardrailId:interaction.guardrail_id,guardrailVersion:interaction.guardrail_version,
-      deploymentId:interaction.deployment_id,integrationId:null,direction:'incoming',decision:'allow',durationMs:1,
+      routerId:interaction.router_id,endpointId:null,direction:'incoming',decision:'allow',durationMs:1,
       metadata:{runtimeLogCaptured:true,captureLevel:'trace'},
     });
     const list = vi.spyOn(controllerApi,'listRuntimeEvents').mockImplementation(async (_limit, filters) => filters?.cursor
@@ -90,7 +90,7 @@ describe('request checkpoint browsing', () => {
       : {items:[event('first-checkpoint'),event('second-checkpoint')],nextCursor:'older'});
     const detail = vi.spyOn(controllerApi,'getRuntimeEvent').mockImplementation(async id => event(id));
     const client = new QueryClient({defaultOptions:{queries:{retry:false}}});
-    render(<QueryClientProvider client={client}><RuntimeLogSheet interaction={interaction} open admin guardrailName={baseProps.guardrailName} deploymentName={baseProps.deploymentName} onOpenChange={() => {}} /></QueryClientProvider>);
+    render(<QueryClientProvider client={client}><RuntimeLogSheet interaction={interaction} open admin guardrailName={baseProps.guardrailName} routerName={baseProps.routerName} onOpenChange={() => {}} /></QueryClientProvider>);
     const first=await screen.findByRole('button',{name:/first-checkpoint/});
     expect(detail).not.toHaveBeenCalled();
     fireEvent.click(first);

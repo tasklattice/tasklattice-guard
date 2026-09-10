@@ -102,7 +102,7 @@ async def test_tcp_waits_for_check_before_release_and_retries_exact_candidate(tm
         app = FastAPI()
         app.include_router(RunnerAPI(GuardrailRuntimeService(engine, store, contexts=CallContextStore()),
             store, RunnerMetrics(4), telemetry, "fixture-tcp", "fixture-controller-token").router)
-        endpoint = "/runtime/v1/integrations/fixture-integration/guardrails/output-stream"
+        endpoint = "/runtime/v1/endpoints/fixture-endpoint/guardrails/output-stream"
         try:
             async with tcp_server(app) as runner_url, httpx.AsyncClient(base_url=runner_url, timeout=10, trust_env=False) as client:
                 async def send(sequence, received):

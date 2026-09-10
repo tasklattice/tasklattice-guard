@@ -96,8 +96,8 @@ export function runtimeLogInteractions(events: controllerApi.RuntimeEvent[], fil
       completed_at: last.occurredAt,
       guardrail_id: first.guardrailId,
       guardrail_version: last.guardrailVersion,
-      deployment_id: last.deploymentId,
-      integration_id: last.integrationId,
+      router_id: last.routerId,
+      endpoint_id: last.endpointId,
       protocol: stringValue(last.metadata.protocol) ?? "unknown",
       outcome: worstOutcome(ordered.map((event) => event.decision)),
       capture_level: enumValue(last.metadata.captureLevel, ["info", "debug", "trace"]) ?? "info",
@@ -121,11 +121,11 @@ function runtimeLogContent(value: unknown): RuntimeLogInteraction["entries"][num
 }
 
 export async function getMetrics(filters: {
-  guardrailId?: string; deploymentId?: string; window?: MetricWindow;
+  guardrailId?: string; routerId?: string; window?: MetricWindow;
 } = {}, signal?: AbortSignal): Promise<Metrics> {
   const query = new URLSearchParams({ window: filters.window ?? "24h" });
   if (filters.guardrailId) query.set("guardrailId", filters.guardrailId);
-  if (filters.deploymentId) query.set("deploymentId", filters.deploymentId);
+  if (filters.routerId) query.set("routerId", filters.routerId);
   const [metrics, status] = await Promise.all([
     controllerApi.requestController<Omit<Metrics, "system_status" | "system_reasons">>(`/api/v1/runtime-metrics?${query}`, signal ? { signal } : undefined),
     controllerApi.getControllerSystemStatus(),

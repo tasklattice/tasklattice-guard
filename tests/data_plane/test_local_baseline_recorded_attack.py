@@ -36,7 +36,7 @@ async def test_local_policy_handles_recorded_classifier_input_without_a_model(tm
     assert not desired.model_configuration.bindings
     store, registry, engine = _runtime(tmp_path, fixture)
     runtime = GuardrailRuntimeService(engine, store)
-    context = RequestContext(protocol='litellm', integration_id='fixture-integration')
+    context = RequestContext(protocol='litellm', endpoint_id='fixture-endpoint')
     try:
         result = await runtime.evaluate(ProtectionRequest(phase='input', texts=(case['request']['input'],),
             call_id='observed-classifier-miss', context=context))

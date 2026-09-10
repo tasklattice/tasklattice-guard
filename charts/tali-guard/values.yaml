@@ -56,52 +56,10 @@ controller:
     limits:
       memory: 1Gi
 
-# Optional model used by Controller authoring tools and Playground. It handles
-# intent/document analysis and supplies the model response between explicit
-# input/output checks on GuardRails 0; it is never used for integration traffic.
-controlPlaneAgent:
-  provider:
-    name: Qwen
-    baseUrl: ""
-    model: ""
-    apiKey: ""
-    existingSecret: ""
-    secretKey: api-key
-
-models:
-  # Physical endpoints are reusable and contain no Guardrails capability logic.
-  runtimes: []
-  # Example:
-  # - id: qwen3guard
-  #   client: openai_chat
-  #   base_url: http://qwen3guard.models.svc.cluster.local/v1
-  #   model: Qwen/Qwen3Guard-Gen-8B
-  #   api_key_env_var: QWEN_GUARD_API_KEY
-  credentials:
-    # Secret keys must match api_key_env_var values in models.runtimes.
-    existingSecret: ""
-    values: {}
-
-evaluators:
-  # Logical evaluator bindings map product contracts and parsing profiles onto
-  # replaceable Model Runtimes. Multiple bindings may share one runtime.
-  bindings: []
-  # Example:
-  # - id: qwen-content-safety
-  #   contract_ref: tali.guard.content-safety.v1
-  #   profile_ref: tali.qwen3guard.v1
-  #   model_ref: qwen3guard
-  #   priority: 10
-  automatedReasoning:
-    endpointUrl: ""
-    apiKey: ""
-    existingSecret: ""
-    secretKey: api-key
-
 runner:
   # All data-plane pools use this image. GuardRails 0 is the mandatory baseline
   # pool and is also the authoritative NeMo configuration compiler.
-  # Integration setup instructions use a stable Runtime Service. They never
+  # Endpoint setup instructions use a stable Runtime Service. They never
   # expose a Runner Pod name or identity to an upstream caller.
   image:
     repository: ghcr.io/tasklattice/tali-guard-runner

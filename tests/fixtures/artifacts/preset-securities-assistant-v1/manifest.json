@@ -3,6 +3,7 @@
   "artifact_id": "fixture-artifact-preset-securities-assistant-v1",
   "checksum": "c2da886eeb56e7f1dc054a0269ec6e5e55e8915707726d7d26417da40d0520b0",
   "compiler_version": "tasklattice-nemo-config-v21-dynamic-flow-targets",
+  "endpoint_id": "fixture-endpoint",
   "expected": {
     "safe_input": "NONE",
     "safe_output": "NONE",
@@ -13,7 +14,6 @@
   "generation": 1,
   "guardrail_id": "fixture-secrets",
   "guardrail_version": "20260904-010000.001Z",
-  "integration_id": "fixture-integration",
   "nemo_version": "0.24.0",
   "policy_ids": [
     "local-credentials",

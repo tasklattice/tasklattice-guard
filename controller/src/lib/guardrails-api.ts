@@ -107,7 +107,7 @@ function fromCurrentBinding(binding: CurrentPolicyBinding): GuardrailPolicyBindi
 
 function mapGuardrail(
   value: controllerApi.Guardrail,
-  deploymentCount: number,
+  routerCount: number,
   publishedVersionCount?: number,
 ): Guardrail {
   const isDefault = value.id === DEFAULT_GUARDRAIL_ID;
@@ -124,9 +124,9 @@ function mapGuardrail(
     safety_level: value.draftConfig.safetyLevel,
     output_delivery: value.draftConfig.outputDelivery,
     updated_at: value.updatedAt,
-    status: publishedCurrent ? (deploymentCount > 0 ? "protected" : "ready") : "needs_validation",
+    status: publishedCurrent ? (routerCount > 0 ? "protected" : "ready") : "needs_validation",
     latest_validation_run: latestValidation,
-    deployment_count: deploymentCount,
+    router_count: routerCount,
     test_case_count: value.testCaseCount,
     excluded_test_case_count: value.excludedTestCaseCount,
     excluded_test_case_ids: value.excludedTestCaseIds,
@@ -141,30 +141,30 @@ function mapGuardrail(
   };
 }
 
-function deploymentCounts(values: controllerApi.Deployment[]): Map<string, number> {
+function routerCounts(values: controllerApi.Router[]): Map<string, number> {
   const result = new Map<string, number>();
-  for (const deployment of values) {
-    if (deployment.enabled) result.set(deployment.guardrailId, (result.get(deployment.guardrailId) ?? 0) + 1);
+  for (const router of values) {
+    if (router.enabled) result.set(router.guardrailId, (result.get(router.guardrailId) ?? 0) + 1);
   }
   return result;
 }
 
 export async function getGuardrails(): Promise<Collection<Guardrail>> {
-  const [guardrails, deployments] = await Promise.all([
+  const [guardrails, routers] = await Promise.all([
     controllerApi.listControllerGuardrails(),
-    controllerApi.listControllerDeployments(),
+    controllerApi.listControllerRouters(),
   ]);
-  const counts = deploymentCounts(deployments.items);
+  const counts = routerCounts(routers.items);
   const items = guardrails.items.map((item) => mapGuardrail(item, counts.get(item.id) ?? 0));
   return { items, count: items.length };
 }
 
 export async function getGuardrail(id: string): Promise<Guardrail> {
-  const [guardrail, deployments] = await Promise.all([
+  const [guardrail, routers] = await Promise.all([
     controllerApi.getControllerGuardrail(id),
-    controllerApi.listControllerDeployments(),
+    controllerApi.listControllerRouters(),
   ]);
-  const count = deployments.items.filter((item) => item.enabled && item.guardrailId === id).length;
+  const count = routers.items.filter((item) => item.enabled && item.guardrailId === id).length;
   return mapGuardrail(guardrail, count, guardrail.versions.length);
 }
 
@@ -223,7 +223,7 @@ export async function getGuardrailDeletionImpact(id: string): Promise<GuardrailD
     window_minutes: impact.windowMinutes,
     incoming_request_count: impact.incomingRequestCount,
     last_request_at: impact.lastRequestAt,
-    active_deployment_count: impact.activeDeploymentCount,
+    active_router_count: impact.activeRouterCount,
     telemetry_fresh: impact.telemetryFresh,
     telemetry_watermark: impact.telemetryWatermark,
     requires_second_confirmation: impact.requiresSecondConfirmation,

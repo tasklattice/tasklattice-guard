@@ -1,3 +1,4 @@
+// @vitest-environment node
 // Opt-in real PostgreSQL semantics; never calls a Provider or changes public rows.
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";

@@ -27,7 +27,7 @@ import type { PolicyValidationResult, ProgrammablePolicyDraft, ProgrammablePolic
 import type {
   GuardrailLifecycleState,
   GuardrailVersionState,
-  IntegrationLifecycleState,
+  EndpointLifecycleState,
   RunnerStatus,
   ValidationRunState,
 } from "../../shared/lifecycle.js";
@@ -322,24 +322,24 @@ export const artifacts = pgTable("guardrail_artifact", {
   index("guardrail_artifact_version_idx").on(table.guardrailId, table.guardrailVersion),
 ]);
 
-export const integrations = pgTable("integration", {
+export const endpoints = pgTable("endpoint", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   adapter: text("adapter").notNull(),
-  status: text("status").$type<IntegrationLifecycleState>().notNull().default("active"),
+  status: text("status").$type<EndpointLifecycleState>().notNull().default("active"),
   verification: jsonb("verification").$type<Record<string, unknown>>().notNull().default({}),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
   deletedBy: text("deleted_by").references(() => user.id),
   deleteReason: text("delete_reason"),
   createdAt,
   updatedAt,
-}, (table) => [index("integration_status_idx").on(table.status)]);
+}, (table) => [index("endpoint_status_idx").on(table.status)]);
 
-export const deployments = pgTable("guardrail_deployment", {
+export const routers = pgTable("guardrail_router", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   guardrailId: text("guardrail_id").notNull().references(() => guardrails.id),
-  integrationId: text("integration_id").references(() => integrations.id),
+  endpointId: text("endpoint_id").references(() => endpoints.id),
   poolId: text("pool_id").notNull().references(() => runnerPools.id),
   guardrailVersion: text("guardrail_version"),
   routeOrder: integer("route_order").notNull().default(0),
@@ -351,11 +351,11 @@ export const deployments = pgTable("guardrail_deployment", {
   createdAt,
   updatedAt,
 }, (table) => [
-  index("deployment_guardrail_idx").on(table.guardrailId),
-  index("deployment_integration_idx").on(table.integrationId),
-  uniqueIndex("deployment_integration_route_order_idx").on(table.integrationId, table.routeOrder)
+  index("router_guardrail_idx").on(table.guardrailId),
+  index("router_endpoint_idx").on(table.endpointId),
+  uniqueIndex("router_endpoint_route_order_idx").on(table.endpointId, table.routeOrder)
     .where(sql`${table.deletedAt} is null`),
-  index("deployment_pool_idx").on(table.poolId),
+  index("router_pool_idx").on(table.poolId),
 ]);
 
 export type RunnerLoad = {
@@ -401,21 +401,21 @@ export const runtimeEvents = pgTable("runtime_event", {
   runnerId: text("runner_id").notNull(),
   guardrailId: text("guardrail_id"),
   guardrailVersion: text("guardrail_version"),
-  integrationId: text("integration_id"),
-  deploymentId: text("deployment_id"),
+  endpointId: text("endpoint_id"),
+  routerId: text("router_id"),
   direction: text("direction").notNull(),
   decision: text("decision").notNull(),
   durationMs: integer("duration_ms").notNull(),
   metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
 }, (table) => [
   index("runtime_event_guardrail_time_idx").on(table.guardrailId, table.occurredAt),
-  index("runtime_event_integration_time_idx").on(table.integrationId, table.occurredAt),
-  index("runtime_event_deployment_time_idx").on(table.deploymentId, table.occurredAt, table.id),
+  index("runtime_event_endpoint_time_idx").on(table.endpointId, table.occurredAt),
+  index("runtime_event_router_time_idx").on(table.routerId, table.occurredAt, table.id),
   index("runtime_event_time_id_idx").on(table.occurredAt, table.id),
   index("runtime_event_request_time_idx").on(table.requestId, table.occurredAt, table.id),
-  index("runtime_event_integration_direction_time_idx").on(table.integrationId, table.direction, table.occurredAt),
-  index("runtime_event_integration_error_time_idx").on(table.integrationId, table.occurredAt).where(sql`lower(${table.decision}) IN ('error','failed','failure','timeout','timed_out')`),
-  index("runtime_event_integration_final_time_idx").on(table.integrationId, table.occurredAt).where(sql`${table.metadata}->>'streamFinalCheck'='true'`),
+  index("runtime_event_endpoint_direction_time_idx").on(table.endpointId, table.direction, table.occurredAt),
+  index("runtime_event_endpoint_error_time_idx").on(table.endpointId, table.occurredAt).where(sql`lower(${table.decision}) IN ('error','failed','failure','timeout','timed_out')`),
+  index("runtime_event_endpoint_final_time_idx").on(table.endpointId, table.occurredAt).where(sql`${table.metadata}->>'streamFinalCheck'='true'`),
 ]);
 
 export const telemetryWatermarks = pgTable("telemetry_watermark", {
@@ -461,8 +461,8 @@ export const schema = {
   testCases,
   validationRuns,
   artifacts,
-  integrations,
-  deployments,
+  endpoints,
+  routers,
   runnerInstances,
   runtimeEvents,
   telemetryWatermarks,

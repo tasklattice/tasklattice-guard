@@ -21,7 +21,7 @@ const health=await(await fetch('http://localhost:38097/health')).json();assert(h
 for(const sample of samples)for(const phase of ['input','output']){
  const c={id:sample.id,phase,expected:sample.blocked?'block':'allow',startedAt:new Date().toISOString()};report.cases.push(c);save();
  try{
-  const r=await fetch('http://localhost:38092/runtime/v1/integrations/quality-integration/guardrails/evaluate',{method:'POST',headers:{'content-type':'application/json','x-api-key':'fixture-runtime-secret'},body:JSON.stringify({phase,texts:[sample.text],call_id:randomUUID()}),signal:AbortSignal.timeout(60000)});
+  const r=await fetch('http://localhost:38092/runtime/v1/endpoints/quality-endpoint/guardrails/evaluate',{method:'POST',headers:{'content-type':'application/json','x-api-key':'fixture-runtime-secret'},body:JSON.stringify({phase,texts:[sample.text],call_id:randomUUID()}),signal:AbortSignal.timeout(60000)});
   c.http=r.status;c.result=await r.json();
   assert(r.ok&&c.result.usage?.fail_closed===false&&c.result.usage?.model_invocations===1,'Service errors must not count as detection.');
   assert.equal(c.result.model_revision_id,'tali-expanded-20260908');

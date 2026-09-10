@@ -18,7 +18,7 @@ enum TrafficOperator {
   TRAFFIC_OPERATOR_GLOB = 4;
 }
 
-// One typed predicate evaluated against Integration request metadata.
+// One typed predicate evaluated against Endpoint request metadata.
 message TrafficCondition {
   // Registered request attribute source, for example header, path, or model.
   string field = 1;

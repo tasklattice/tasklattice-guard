@@ -21,9 +21,9 @@ import { unionAll } from "drizzle-orm/pg-core";
 import type { ControllerDatabase } from "../db/client.js";
 import { boundedRead } from "../db/read-budget.js";
 import {
-  deployments,
+  routers,
   guardrails,
-  integrations,
+  endpoints,
   runtimeEvents as event,
   validationRuns,
 } from "../db/schema.js";
@@ -79,7 +79,7 @@ export async function queryRuntimeMetrics(
     // Allow small clock skew between the app process and PostgreSQL.
     lte(event.occurredAt, new Date(now + 60_000)),
     scope.guardrailId ? eq(event.guardrailId, scope.guardrailId) : undefined,
-    scope.deploymentId ? eq(event.deploymentId, scope.deploymentId) : undefined,
+    scope.routerId ? eq(event.routerId, scope.routerId) : undefined,
   );
   const currentPredicate = and(predicate, gte(event.occurredAt, start));
 
@@ -133,8 +133,8 @@ export async function queryRuntimeMetrics(
           occurred_at: event.occurredAt,
           guardrail_id: event.guardrailId,
           guardrail_version: event.guardrailVersion,
-          integration_id: event.integrationId,
-          deployment_id: event.deploymentId,
+          endpoint_id: event.endpointId,
+          router_id: event.routerId,
           duration_ms: event.durationMs,
           current: gte(event.occurredAt, start).as("current"),
           timed_out: or(
@@ -158,8 +158,8 @@ export async function queryRuntimeMetrics(
       occurred_at: base.occurred_at,
       guardrail_id: base.guardrail_id,
       guardrail_version: base.guardrail_version,
-      integration_id: base.integration_id,
-      deployment_id: base.deployment_id,
+      endpoint_id: base.endpoint_id,
+      router_id: base.router_id,
       duration_ms: base.duration_ms,
       current: base.current,
       timed_out: base.timed_out,
@@ -192,7 +192,7 @@ export async function queryRuntimeMetrics(
       ),
       dimension(
         "caller",
-        jsonArrayKey(base.integration_id, base.deployment_id),
+        jsonArrayKey(base.endpoint_id, base.router_id),
         base.current,
       ),
       dimension(
@@ -235,9 +235,9 @@ export async function queryRuntimeMetrics(
             eq(jsonText(groups.usage, "fail_closed"), "true"),
           ),
           slo_breach_count: countWhere(gt(groups.duration_ms, 2500)),
-          unassigned: countWhere(isNull(groups.deployment_id)),
-          degraded_integrations: distinctCountWhere(
-            groups.integration_id,
+          unassigned: countWhere(isNull(groups.router_id)),
+          degraded_endpoints: distinctCountWhere(
+            groups.endpoint_id,
             eq(groups.outcome, "error"),
           ),
           latency: percentiles(groups.duration_ms),
@@ -479,19 +479,19 @@ export async function queryRuntimeMetrics(
     const deps = await execute(
       tx
         .select({
-          id: deployments.id,
-          name: deployments.name,
-          guardrail_id: deployments.guardrailId,
-          enabled: deployments.enabled,
+          id: routers.id,
+          name: routers.name,
+          guardrail_id: routers.guardrailId,
+          enabled: routers.enabled,
         })
-        .from(deployments)
-        .where(isNull(deployments.deletedAt)),
+        .from(routers)
+        .where(isNull(routers.deletedAt)),
     );
     const ints = await execute(
       tx
-        .select({ id: integrations.id, name: integrations.name })
-        .from(integrations)
-        .where(isNull(integrations.deletedAt)),
+        .select({ id: endpoints.id, name: endpoints.name })
+        .from(endpoints)
+        .where(isNull(endpoints.deletedAt)),
     );
     return {
       ...assembleMetrics(

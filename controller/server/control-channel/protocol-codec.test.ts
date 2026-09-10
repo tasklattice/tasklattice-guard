@@ -9,7 +9,7 @@ import type { ProtoGrpcType } from "../generated/control-protocol/runner_control
 import {
   artifactFromWire,
   artifactToWire,
-  integrationVerificationToWire,
+  endpointVerificationToWire,
   planFromWire,
   planToWire,
   trafficScopeToWire,
@@ -153,7 +153,7 @@ describe("Controller/Runner control protocol", () => {
         groups: [],
       }],
     });
-    expect(integrationVerificationToWire({ credentials: [{
+    expect(endpointVerificationToWire({ credentials: [{
       id: "credential-1", sha256: "abc", keyHint: "tg_...1234", createdAt: "2026-08-31T00:00:00Z",
     }] })).toEqual({ credentials: [{
       id: "credential-1", sha256: "abc", keyHint: "tg_...1234", createdAt: "2026-08-31T00:00:00Z",

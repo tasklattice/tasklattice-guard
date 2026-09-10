@@ -3,6 +3,7 @@
   "artifact_id": "fixture-artifact-preset-singapore-financial-assistant-v1",
   "checksum": "e6445ceaaa91b02eb1679497cb011de42537ed375c1d61eebb1ce560f14bf857",
   "compiler_version": "tasklattice-nemo-config-v21-dynamic-flow-targets",
+  "endpoint_id": "fixture-endpoint",
   "expected": {
     "safe_input": "NONE",
     "safe_output": "NONE",
@@ -13,7 +14,6 @@
   "generation": 1,
   "guardrail_id": "fixture-secrets",
   "guardrail_version": "20260904-010000.001Z",
-  "integration_id": "fixture-integration",
   "nemo_version": "0.24.0",
   "policy_ids": [
     "local-credentials",

@@ -4,7 +4,7 @@ import type { Long } from '@grpc/proto-loader';
 
 /**
  * ACK/NACK for the complete atomic desired-state generation. A NACK keeps the
- * prior artifacts, routes, integrations, and model Provider registry active.
+ * prior artifacts, routes, endpoints, and model Provider registry active.
  */
 export interface DesiredStateResult {
   'runnerId'?: (string);
@@ -25,7 +25,7 @@ export interface DesiredStateResult {
 
 /**
  * ACK/NACK for the complete atomic desired-state generation. A NACK keeps the
- * prior artifacts, routes, integrations, and model Provider registry active.
+ * prior artifacts, routes, endpoints, and model Provider registry active.
  */
 export interface DesiredStateResult__Output {
   'runnerId': (string);

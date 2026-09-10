@@ -9,7 +9,7 @@ export type RuntimeHealthAlertMetrics = {
   system_reasons?: Metrics["system_reasons"];
   latency_slo: Pick<Metrics["latency_slo"], "p95_status">;
   fail_closed_count: number;
-  degraded_integrations: number;
+  degraded_endpoints: number;
 };
 
 export function RuntimeHealthAlert({ metrics }: { metrics: RuntimeHealthAlertMetrics }) {
@@ -24,7 +24,7 @@ export function RuntimeHealthAlert({ metrics }: { metrics: RuntimeHealthAlertMet
       <AlertTitle>{t(detailKey === "dashboard.healthSystem" ? "dashboard.platformAttention" : "dashboard.degraded")}</AlertTitle>
       <AlertDescription className="text-amber-900/75">{detailKey === "dashboard.healthSystem" && metrics.system_reasons?.some(reason => reason !== "all_required_components_ready")
         ? metrics.system_reasons.filter(reason => reason !== "all_required_components_ready").map(reason => <p key={reason}>{t(`platformStatus.reason.${reason}`)}</p>)
-        : t(detailKey, { count: metrics.degraded_integrations })}</AlertDescription>
+        : t(detailKey, { count: metrics.degraded_endpoints })}</AlertDescription>
     </Alert>
   );
 }
@@ -32,7 +32,7 @@ export function RuntimeHealthAlert({ metrics }: { metrics: RuntimeHealthAlertMet
 function runtimeHealthDetailKey(metrics: RuntimeHealthAlertMetrics) {
   if (metrics.fail_closed_count > 0) return "dashboard.healthFailClosed";
   if (metrics.latency_slo.p95_status === "breached") return "dashboard.healthLatency";
-  if (metrics.degraded_integrations > 0) return "dashboard.healthIntegration";
+  if (metrics.degraded_endpoints > 0) return "dashboard.healthEndpoint";
   if (metrics.system_status === "degraded") return "dashboard.healthSystem";
   return null;
 }

@@ -84,7 +84,7 @@ async def test_signed_preset_cases_through_actual_adapter(tmp_path, preset):
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://runner") as client:
             for case in manifest["regression_cases"]:
                 response = await client.post(
-                    "/runtime/v1/integrations/fixture-integration/beta/litellm_basic_guardrail_api",
+                    "/runtime/v1/endpoints/fixture-endpoint/beta/litellm_basic_guardrail_api",
                     headers={"x-api-key": "fixture-runtime-secret"},
                     json={"input_type": "request" if case["phase"] == "input" else "response",
                           "litellm_call_id": case["id"], "texts": [case["content"]], "request_data": {}},
@@ -108,7 +108,7 @@ async def test_every_frozen_output_case_is_equivalent_when_split_across_stream_c
     store, _registry, engine = _runtime(tmp_path, directory)
     runtime = GuardrailRuntimeService(engine, store)
     streams = OutputStreamSessionStore(window_characters=8)
-    context = RequestContext(protocol="litellm", integration_id="fixture-integration")
+    context = RequestContext(protocol="litellm", endpoint_id="fixture-endpoint")
     try:
         for case in manifest["regression_cases"]:
             if case["phase"] != "output":
