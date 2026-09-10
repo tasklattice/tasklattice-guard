@@ -3,6 +3,7 @@
   "artifact_id": "fixture-artifact-jailbreak-v1",
   "checksum": "2615aedceb4329bcf88d42b7d3c525e6a9e5ee60dbdd28e38e98f004499d5dcc",
   "compiler_version": "tasklattice-nemo-config-v21-dynamic-flow-targets",
+  "endpoint_id": "fixture-endpoint",
   "expected": {
     "safe_input": "NONE",
     "safe_output": "NONE",
@@ -13,7 +14,6 @@
   "generation": 1,
   "guardrail_id": "fixture-secrets",
   "guardrail_version": "20260904-010000.001Z",
-  "integration_id": "fixture-integration",
   "nemo_version": "0.24.0",
   "runtime_profile": "llmrails_colang1_standard"
 }

@@ -42,20 +42,20 @@ try{
  const guard=await until(path,g=>g.activeVersion===report.publication.version&&g.versions.some(v=>v.version===g.activeVersion&&v.status==='ready'));
  const version=guard.versions.find(v=>v.version===guard.activeVersion);assert(version.artifact.signature);
  assert(version.plan.steps.every(s=>s.capability==='content_safety'));report.artifact={id:version.artifactId,checksum:version.artifact.checksum};save();
- report.integration=await api('/api/v1/integrations',{name:report.name,adapter:'generic-http-guard'});save();
- report.deployment=await api('/api/v1/deployments',{name:report.name,guardrailId:guard.id,integrationId:report.integration.id,poolId:'default',enabled:true,trafficScope:{combinator:'and',conditions:[]}});save();
+ report.endpoint=await api('/api/v1/endpoints',{name:report.name,adapter:'generic-http-guard'});save();
+ report.router=await api('/api/v1/routers',{name:report.name,guardrailId:guard.id,endpointId:report.endpoint.id,poolId:'default',enabled:true,trafficScope:{combinator:'and',conditions:[]}});save();
  }
  // /verify is a LiteLLM adapter endpoint, not a generic-http-guard check.
  // Require synchronized Runner state; actual evaluate calls below prove routing.
  const guard=await api('/api/v1/guardrails/'+report.guardrail.id);
- const runtime='http://localhost:38082/runtime/v1/integrations/'+report.integration.id;
+ const runtime='http://localhost:38082/runtime/v1/endpoints/'+report.endpoint.id;
  const ready=await(await fetch('http://localhost:38082/health/ready')).json();
  assert(ready.ready&&ready.desired_state_synchronized);
  const cases=policy.test_cases.map(c=>({id:c.id,phase:c.phase,content:c.content,expected:c.expected_decision}));
  cases.push(...['input','output'].map(phase=>({id:'safe-'+phase,phase,content:'Enjoy the flowers in a quiet public garden.',expected:'allow'})));
  for(const c of cases){
   assert(report.reservedNvidiaCalls<6);report.reservedNvidiaCalls++;save();
-  const r=await fetch(runtime+'/guardrails/evaluate',{method:'POST',headers:{'x-api-key':report.integration.credential,'content-type':'application/json'},body:JSON.stringify({phase:c.phase,texts:[c.content],call_id:randomUUID()}),signal:AbortSignal.timeout(60000)});
+  const r=await fetch(runtime+'/guardrails/evaluate',{method:'POST',headers:{'x-api-key':report.endpoint.credential,'content-type':'application/json'},body:JSON.stringify({phase:c.phase,texts:[c.content],call_id:randomUUID()}),signal:AbortSignal.timeout(60000)});
   const result=await r.json();report.checks.push({id:c.id,expected:c.expected,http:r.status,result});save();
   assert(r.ok);assert.equal(result.decision,c.expected);assert.equal(result.guardrail_id,guard.id);assert.equal(result.guardrail_version,guard.activeVersion);assert.equal(result.model_revision_id,before.active.id);
   assert.equal(result.usage.model_invocations,1);assert.equal(result.usage.fail_closed,false);

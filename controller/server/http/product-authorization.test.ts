@@ -45,14 +45,14 @@ const adminRoutes = [
   ["PATCH", "/guardrails/guard/logging"], ["GET", "/guardrails/guard/deletion-impact"],
   ["DELETE", "/guardrails/guard"], ["POST", "/test-cases"], ["DELETE", "/test-cases/case"],
   ["PATCH", "/guardrails/guard/validation-scope"], ["POST", "/validation-runs"],
-  ["POST", "/integrations"], ["PATCH", "/integrations/integration"],
-  ["POST", "/integrations/integration/credentials"], ["DELETE", "/integrations/integration/credentials/credential"],
-  ["GET", "/integrations/integration/deletion-impact"], ["DELETE", "/integrations/integration"],
+  ["POST", "/endpoints"], ["PATCH", "/endpoints/endpoint"],
+  ["POST", "/endpoints/endpoint/credentials"], ["DELETE", "/endpoints/endpoint/credentials/credential"],
+  ["GET", "/endpoints/endpoint/deletion-impact"], ["DELETE", "/endpoints/endpoint"],
   ["PATCH", "/runner-pools/pool"], ["DELETE", "/runner-instances/runner"],
-  ["POST", "/deployments"], ["POST", "/deployment-bindings"],
-  ["PATCH", "/deployments/deployment"], ["PUT", "/deployments/deployment/traffic-scope"],
-  ["GET", "/deployments/deployment/deletion-impact"], ["DELETE", "/deployments/deployment"],
-  ["PUT", "/integrations/integration/deployment-order"],
+  ["POST", "/routers"], ["POST", "/router-bindings"],
+  ["PATCH", "/routers/router"], ["PUT", "/routers/router/traffic-scope"],
+  ["GET", "/routers/router/deletion-impact"], ["DELETE", "/routers/router"],
+  ["PUT", "/endpoints/endpoint/router-order"],
 ] as const;
 
 function setup(role: string | null) {

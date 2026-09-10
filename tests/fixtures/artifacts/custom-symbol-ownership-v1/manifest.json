@@ -3,6 +3,7 @@
   "artifact_id": "fixture-artifact-custom-symbol-ownership-v1",
   "checksum": "66ab6112700a22286c32136a8141972b3483de01a419b047a6be471c5dfcdfd5",
   "compiler_version": "tasklattice-nemo-config-v21-dynamic-flow-targets",
+  "endpoint_id": "fixture-endpoint",
   "expected": {
     "first_policy_marker": "check",
     "output_delivery": "full_buffered",
@@ -18,7 +19,6 @@
   "generation": 1,
   "guardrail_id": "fixture-secrets",
   "guardrail_version": "20260904-010000.001Z",
-  "integration_id": "fixture-integration",
   "nemo_version": "0.24.0",
   "runtime_profile": "llmrails_colang2_programmable",
   "scope": "Synthetic custom Colang symbol and result ownership; real NeMo, no models."

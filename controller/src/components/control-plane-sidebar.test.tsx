@@ -1,9 +1,11 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import type { AnchorHTMLAttributes, ReactNode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
+
+import i18n from "@/i18n";
 
 import { ControlPlaneSidebar } from "./control-plane-sidebar";
 
@@ -18,26 +20,9 @@ vi.mock("@tanstack/react-router", () => ({
 
 vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => false }));
 
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string) => ({
-      "common.close": "Close",
-      "nav.guardrailDesign": "Guardrail Design",
-      "nav.guardrails": "Guardrails",
-      "nav.playground": "Playground",
-      "nav.policyLibrary": "Policy Library",
-      "nav.helpCenter": "Help center",
-      "nav.settings": "Settings",
-      "nav.settingsDescription": "Platform settings and operational information.",
-      "nav.health": "Health",
-      "nav.healthDescription": "View platform health.",
-      "sidebar.toggleNavigation": "Toggle navigation",
-    } as Record<string, string>)[key] ?? key,
-  }),
-}));
-
 describe("ControlPlaneSidebar", () => {
   afterEach(cleanup);
+  beforeEach(async () => { await i18n.changeLanguage("en"); });
 
   it("keeps the primary workflow flat while Dashboard remains on the logo", () => {
     render(
@@ -47,6 +32,12 @@ describe("ControlPlaneSidebar", () => {
         </TooltipProvider>
       </SidebarProvider>,
     );
+
+    expect(screen.getByRole("link", { name: "Traffic Routers" }).getAttribute("href")).toBe("/integration/routers");
+    expect(screen.getByRole("link", { name: "Endpoints" }).getAttribute("href")).toBe("/integration/endpoint");
+    expect(document.body.textContent).toContain("Integration");
+    expect(screen.queryByRole("link", { name: "Deployments" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Integrations" })).toBeNull();
 
     const help = screen.getByRole("link", { name: "Help center" });
     const settings = screen.getByRole("link", { name: "Settings" });

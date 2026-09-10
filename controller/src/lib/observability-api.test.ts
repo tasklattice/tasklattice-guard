@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { getDeploymentTraces, getGuardrailFindings, getMetrics, getValidationRun } from "./api";
+import { getRouterTraces, getGuardrailFindings, getMetrics, getValidationRun } from "./api";
 
 const event = {
   id: "event-1",
@@ -9,8 +9,8 @@ const event = {
   runnerId: "runner-1",
   guardrailId: "guardrail-1",
   guardrailVersion: "20260904-030000.003Z",
-  integrationId: "integration-1",
-  deploymentId: "deployment-1",
+  endpointId: "endpoint-1",
+  routerId: "router-1",
   direction: "incoming",
   decision: "block",
   durationMs: 19,
@@ -71,9 +71,9 @@ describe("privacy-safe runtime observability", () => {
     }));
     vi.stubGlobal("fetch", fetchMock);
 
-    const traces = await getDeploymentTraces("deployment-1");
+    const traces = await getRouterTraces("router-1");
 
-    expect(fetchMock.mock.calls[0]?.[0]).toContain("deploymentId=deployment-1");
+    expect(fetchMock.mock.calls[0]?.[0]).toContain("routerId=router-1");
     expect(fetchMock.mock.calls[0]?.[0]).toContain("limit=100");
     expect(traces.items[0]).toMatchObject({
       evidence_status: "collected",

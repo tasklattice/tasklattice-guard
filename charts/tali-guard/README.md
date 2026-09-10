@@ -27,14 +27,14 @@ Guard application components.
 | Development Redis | `redis:7.4-alpine` | Local two-replica GuardRails 0 only |
 | Redis | `runner.callContextRedisUrl` | Only when any Runner pool has more than one replica |
 
-Integration setup instructions always target the stable Runtime Service through
+Endpoint setup instructions always target the stable Runtime Service through
 its canonical in-cluster DNS name:
 `http://<service>.<namespace>.svc.cluster.local:<service-port>`. Helm derives
 the service, namespace, and port from the release. The endpoint contains no
 Runner Pod or instance identity, never points at `controller.publicUrl`, and
 does not require a manually maintained hostname.
 
-LiteLLM stores that Integration base URL and appends its Basic Guardrail API
+LiteLLM stores that Endpoint base URL and appends its Basic Guardrail API
 suffix (`/beta/litellm_basic_guardrail_api`) for runtime callbacks. Runner
 implements that contract directly; Controller remains outside the request path.
 
@@ -120,7 +120,7 @@ No port-forward process is required. A development-only data-plane Service is
 exposed separately at <http://localhost:38082>;
 its root returns component metadata, while protected traffic uses `/runtime/v1`.
 The host-facing development endpoint remains `http://localhost:38082`, while
-Integration setup instructions use
+Endpoint setup instructions use
 `http://tali-guard-runtime.tali.svc.cluster.local:8091` for callers
 inside the cluster.
 
@@ -186,47 +186,22 @@ The chart mounts that Secret key read-only at
 Pod. When the externally managed Secret is rotated, restart the workloads so
 the `subPath` mount receives the new certificate.
 
-To enable business-boundary generation, create a separate model credential
-Secret:
+Model configuration is managed in **Settings → Providers / Models / Guardrail
+Catalog** and persisted in the Controller database:
 
-```bash
-kubectl -n guard-system create secret generic guard-control-plane-ai \
-  --from-literal=api-key='replace-with-provider-key'
-```
+- Register Providers and their credentials, then register Models.
+- Validate and save the Control Plane Chat model to use it for Policy authoring
+  and Playground generation. Runner activation is not required.
+- Validate and save Input / Output Rail capability bindings, then use
+  **Activate on Runner** to distribute them to Runners.
 
-Then set `controlPlaneAgent.provider.existingSecret=guard-control-plane-ai` in
-the production values file. `baseUrl`, `model`, `name`, and `secretKey` can
-be overridden under the same values object.
-
-Runtime model configuration is split in two. `models.runtimes` declares
-reusable physical endpoints; `evaluators.bindings` maps a stable Evaluation
-Contract and Evaluator Profile onto a runtime. Fallback is scoped to bindings
-for the same contract, so a model is never used for a capability it does not
-implement. Credentials are supplied through `models.credentials`. For example:
-
-```yaml
-models:
-  runtimes:
-    - id: qwen3guard
-      client: openai_chat
-      base_url: http://qwen3guard.models.svc.cluster.local/v1
-      model: Qwen/Qwen3Guard-Gen-8B
-      api_key_env_var: QWEN_GUARD_API_KEY
-  credentials:
-    existingSecret: tali-model-runtime-credentials
-
-evaluators:
-  bindings:
-    - id: qwen-content
-      contract_ref: tali.guard.content-safety.v1
-      profile_ref: tali.qwen3guard.v1
-      model_ref: qwen3guard
-      priority: 10
-```
-
-See
-[`docs/tali-safety-taxonomy-and-providers.zh-CN.md`](../../docs/tali-safety-taxonomy-and-providers.zh-CN.md)
-for the complete contract.
+Helm configures deployment infrastructure: images, resources, networking,
+databases, and platform Secrets. It does not configure model endpoints,
+model credentials, or evaluator bindings. The removed `controlPlaneAgent`,
+`models`, and `evaluators` values are no longer read; remove them from private
+values files as well. Legacy values retained by a previous Helm release are
+ignored and do not override Settings. Existing model configurations saved in
+the Controller database are preserved across Helm upgrades.
 
 Install with a private environment values file containing the actual public
 URL, image tags, resource sizing, ingress, and Secret references. Helm loads
@@ -265,7 +240,7 @@ Ingress exposes only the management UI/API, and protected runtime traffic never
 traverses Controller.
 
 Each pool also gets a private headless governing Service for StatefulSet network
-identity. Upstream integrations continue to use only the load-balanced Runtime
+identity. Upstream endpoints continue to use only the load-balanced Runtime
 Service; the headless Service and ordinal Pod names are not public endpoints.
 
 ## Prometheus and Grafana
@@ -305,7 +280,7 @@ profile targets Tempo and Pyroscope in the `monitoring` namespace and uses
 `observability.slo` configures per-GuardRail availability, latency, complete
 coverage, error-budget burn, and platform freshness budgets. The bundled
 `GuardRails Overview` exposes only the ordered, cascading GuardRail,
-Integration, and Runner filters. It opens with **System Overview · Global** for
+Endpoint, and Runner filters. It opens with **System Overview · Global** for
 system status, Runner fleet health, Controller uptime, Runner/evidence freshness, and
 topology; that section is not narrowed by the business filters. **Traffic &
 Latency · Selected scope** follows. Its throughput panel stacks mutually
@@ -313,9 +288,9 @@ exclusive allow, deny, transform, and technical-error checks so its height is
 completed checks/s. Its one Latency panel keeps successful-check latency
 semantics, renders P95 as the dominant line alongside P90 and P99, and lets the
 panel legend isolate a percentile without changing the rest of the dashboard.
-Availability, Protection Health, Integration SLI, and Runner Load/Health
+Availability, Protection Health, Endpoint SLI, and Runner Load/Health
 follow; their tables and the collapsed Diagnostics latency views use fixed
-P95. Deployment, version, phase, protocol, namespace, release, and Pool are not
+P95. Router, version, phase, protocol, namespace, release, and Pool are not
 Overview filters.
 The bundled `GuardRails Troubleshooting` workbench keeps the same first three
 selectors, then adds Provider, Model, and Action drilldowns. It separates

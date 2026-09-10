@@ -16,7 +16,7 @@ from .artifact_pb2 import (
 from .common_pb2 import *  # noqa: F403 - generated protocol facade
 from .enforcement_action_pb2 import *  # noqa: F403 - generated protocol facade
 from .evaluation_pb2 import *  # noqa: F403 - generated protocol facade
-from .integration_pb2 import IntegrationCredential, IntegrationVerification
+from .endpoint_pb2 import EndpointCredential, EndpointVerification
 from .model_pb2 import CapabilityBinding, DataPlaneModelConfiguration, ModelRuntime, CapabilityValidationRequest, CapabilityValidationResult, CapabilityValidationCase
 from .routing_pb2 import *  # noqa: F403 - generated protocol facade
 from .runner_control_pb2 import *  # noqa: F403 - generated protocol facade

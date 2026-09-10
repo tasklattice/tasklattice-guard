@@ -28,7 +28,7 @@ TestTargetSource = Literal[
     "model_output",
 ]
 PolicySourceKind = Literal["built-in", "custom"]
-IntegrationSetupStatus = Literal["awaiting_callback", "verified", "disabled"]
+EndpointSetupStatus = Literal["awaiting_callback", "verified", "disabled"]
 LoggingLevel = Literal["info", "debug", "trace"]
 
 
@@ -201,7 +201,7 @@ class GuardrailDeletionImpact:
     guardrail_name: str
     window_minutes: int
     incoming_request_count: int
-    active_deployment_count: int
+    active_router_count: int
     requires_confirmation: bool
 
 
@@ -235,12 +235,12 @@ class TrafficScopeExpression:
 
 
 @dataclass(frozen=True, slots=True)
-class Deployment:
+class Router:
     id: str
     name: str
     guardrail_id: str
     guardrail_version: str
-    integration_id: str | None
+    endpoint_id: str | None
     route_order: int
     traffic_scope: TrafficScopeExpression
     enabled: bool
@@ -248,14 +248,14 @@ class Deployment:
 
 
 @dataclass(frozen=True, slots=True)
-class IntegrationCredential:
+class EndpointCredential:
     id: str
     key_hint: str
     created_at: str
 
 
 @dataclass(frozen=True, slots=True)
-class IntegrationCredentialSecret:
+class EndpointCredentialSecret:
     id: str
     value: str
     key_hint: str
@@ -263,7 +263,7 @@ class IntegrationCredentialSecret:
 
 
 @dataclass(frozen=True, slots=True)
-class Integration:
+class Endpoint:
     id: str
     adapter_id: str
     protocol: str
@@ -271,8 +271,8 @@ class Integration:
     description: str
     enabled: bool
     key_hint: str
-    credentials: tuple[IntegrationCredential, ...]
-    setup_status: IntegrationSetupStatus
+    credentials: tuple[EndpointCredential, ...]
+    setup_status: EndpointSetupStatus
     runtime_status: str
     first_seen_at: str | None
     last_seen_at: str | None
@@ -286,20 +286,20 @@ class Integration:
 
 
 @dataclass(frozen=True, slots=True)
-class IntegrationDeletionImpact:
-    integration_id: str
-    integration_name: str
+class EndpointDeletionImpact:
+    endpoint_id: str
+    endpoint_name: str
     window_minutes: int
     incoming_request_count: int
-    active_deployment_count: int
+    active_router_count: int
     active_credential_count: int
     requires_confirmation: bool
 
 
 @dataclass(frozen=True, slots=True)
-class IntegrationRegistration:
-    integration: Integration
-    credential: IntegrationCredentialSecret
+class EndpointRegistration:
+    endpoint: Endpoint
+    credential: EndpointCredentialSecret
 
 
 @dataclass(frozen=True, slots=True)
@@ -426,10 +426,10 @@ class EvidenceRecord:
     kind: str
     outcome: str
     guardrail_id: str | None
-    deployment_id: str | None
+    router_id: str | None
     risk: str | None
     detail: str
-    integration_id: str | None = None
+    endpoint_id: str | None = None
     actor_id: str | None = None
     metadata: tuple[tuple[str, str], ...] = ()
 
@@ -443,8 +443,8 @@ class RuntimeMetricEvent:
     created_at: str
     guardrail_id: str | None
     guardrail_version: str | None
-    deployment_id: str | None
-    integration_id: str | None
+    router_id: str | None
+    endpoint_id: str | None
     protocol: str
     phase: str
     outcome: str
@@ -480,8 +480,8 @@ class RuntimeStepMetricEvent:
     created_at: str
     guardrail_id: str
     guardrail_version: str
-    deployment_id: str | None
-    integration_id: str | None
+    router_id: str | None
+    endpoint_id: str | None
     protocol: str
     phase: str
     kind: str
@@ -527,8 +527,8 @@ class RuntimeFindingEvent:
     created_at: str
     guardrail_id: str | None
     guardrail_version: str | None
-    deployment_id: str | None
-    integration_id: str | None
+    router_id: str | None
+    endpoint_id: str | None
     phase: str
     severity: Literal["critical", "high", "medium", "low"]
     risk: str
@@ -556,15 +556,15 @@ class RuntimeFindingSummary:
 
 
 @dataclass(frozen=True, slots=True)
-class DeploymentRuntimeTrace:
-    """One Deployment decision with correlated findings and NeMo execution steps."""
+class RouterRuntimeTrace:
+    """One Router decision with correlated findings and NeMo execution steps."""
 
     id: str
     created_at: str
-    deployment_id: str
+    router_id: str
     guardrail_id: str | None
     guardrail_version: str | None
-    integration_id: str | None
+    endpoint_id: str | None
     protocol: str
     phase: str
     outcome: str
@@ -625,8 +625,8 @@ class RuntimeLogInteraction:
     completed_at: str | None
     guardrail_id: str
     guardrail_version: str | None
-    deployment_id: str | None
-    integration_id: str | None
+    router_id: str | None
+    endpoint_id: str | None
     protocol: str
     outcome: str
     capture_level: LoggingLevel
@@ -657,7 +657,7 @@ class PlanResolutionError(ControlPlaneError):
     pass
 
 
-class IntegrationAuthenticationError(ControlPlaneError):
+class EndpointAuthenticationError(ControlPlaneError):
     pass
 
 

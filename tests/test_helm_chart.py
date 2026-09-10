@@ -249,62 +249,51 @@ def test_performance_debug_requires_explicit_trace_and_profile_backends():
     assert "observability.profiling.serverAddress is required" in missing_profile.stderr
 
 
-def test_control_plane_authoring_model_is_optional_and_credential_is_secret_backed():
-    baseline = render()
-    baseline_controller = next(
-        item for item in baseline
-        if item.get("kind") == "Deployment"
-        and item["metadata"]["labels"]["app.kubernetes.io/component"] == "controller"
+def assert_settings_managed_models(documents: list[dict]) -> None:
+    model_prefixes = (
+        "MODEL_GUARDRAILS_CONTROL_PLANE_AI_",
+        "MODEL_GUARDRAILS_MODEL_RUNTIMES_",
+        "MODEL_GUARDRAILS_EVALUATOR_BINDINGS_",
+        "MODEL_GUARDRAILS_AUTOMATED_REASONING_",
     )
-    baseline_env = {
-        item["name"]: item
-        for item in baseline_controller["spec"]["template"]["spec"]["containers"][0]["env"]
-    }
-    assert baseline_env["MODEL_GUARDRAILS_CONTROL_PLANE_AI_PROVIDER"]["value"] == "Qwen"
-    assert "MODEL_GUARDRAILS_CONTROL_PLANE_AI_MODEL" not in baseline_env
-    assert "MODEL_GUARDRAILS_CONTROL_PLANE_AI_API_KEY" not in baseline_env
-
-    configured = render(
-        "--set", "controlPlaneAgent.provider.baseUrl=http://qwen-control.internal/v1",
-        "--set", "controlPlaneAgent.provider.model=Qwen/Qwen3.5-9B",
-        "--set", "controlPlaneAgent.provider.existingSecret=provider-keys",
-        "--set", "controlPlaneAgent.provider.secretKey=QWEN_API_KEY",
-    )
-    configured_controller = next(
-        item for item in configured
-        if item.get("kind") == "Deployment"
-        and item["metadata"]["labels"]["app.kubernetes.io/component"] == "controller"
-    )
-    configured_env = {
-        item["name"]: item
-        for item in configured_controller["spec"]["template"]["spec"]["containers"][0]["env"]
-    }
-    assert configured_env["MODEL_GUARDRAILS_CONTROL_PLANE_AI_API_KEY"]["valueFrom"]["secretKeyRef"] == {
-        "name": "provider-keys",
-        "key": "QWEN_API_KEY",
-    }
-
-
-def test_inline_control_plane_authoring_key_creates_a_dedicated_secret():
-    documents = render(
-        "--set", "controlPlaneAgent.provider.baseUrl=http://qwen-control.internal/v1",
-        "--set", "controlPlaneAgent.provider.model=Qwen/Qwen3.5-9B",
-        "--set-string", "controlPlaneAgent.provider.apiKey=test-key",
-    )
-    secret = next(
+    workloads = [
         item for item in documents
-        if item.get("kind") == "Secret"
-        and item["metadata"]["name"] == "contract-tali-guard-control-plane-ai"
+        if item.get("kind") in {"Deployment", "StatefulSet"}
+        and item["metadata"].get("labels", {}).get("app.kubernetes.io/component")
+        in {"controller", "runner"}
+    ]
+    assert len(workloads) >= 2
+    for workload in workloads:
+        for container in workload["spec"]["template"]["spec"]["containers"]:
+            assert not any(
+                item["name"].startswith(model_prefixes)
+                for item in container.get("env", [])
+            )
+            assert not container.get("envFrom")
+    assert not any(
+        item["metadata"]["name"].endswith(("-control-plane-ai", "-model-runtimes", "-automated-reasoning"))
+        for item in documents if item.get("kind") == "Secret"
     )
 
-    assert secret["stringData"] == {"api-key": "test-key"}
+
+def test_chart_renders_without_model_configuration_sections():
+    values = yaml.safe_load(DEFAULT_VALUES.read_text())
+    assert not {"controlPlaneAgent", "models", "evaluators"} & values.keys()
+    assert_settings_managed_models(render())
+    assert_settings_managed_models(render_dev())
 
 
-def test_model_runtimes_and_evaluator_bindings_are_wired_to_every_runner():
+def test_legacy_model_values_do_not_override_settings_or_mount_credentials():
     documents = render(
-        "--set-json", 'models.runtimes=[{"id":"qwen-runtime","client":"openai_chat","base_url":"http://qwen-guard.internal/v1","model":"Qwen/Qwen3Guard-Gen-8B","api_key_env_var":"QWEN_GUARD_KEY","timeout_seconds":15,"max_tokens":128},{"id":"llama-runtime","client":"openai_chat","base_url":"http://llama-guard.internal/v1","model":"meta-llama/Llama-Guard-3-8B","api_key_env_var":"LLAMA_GUARD_KEY","timeout_seconds":10,"max_tokens":64}]',
-        "--set-json", 'evaluators.bindings=[{"id":"qwen-content","contract_ref":"tali.guard.content-safety.v1","profile_ref":"tali.qwen3guard.v1","model_ref":"qwen-runtime","priority":10},{"id":"llama-content","contract_ref":"tali.guard.content-safety.v1","profile_ref":"tali.llama-guard-3.v1","model_ref":"llama-runtime","priority":20}]',
-        "--set", "models.credentials.existingSecret=provider-keys",
+        "--set", "controlPlaneAgent.provider.baseUrl=http://legacy.invalid/v1",
+        "--set", "controlPlaneAgent.provider.model=legacy-chat",
+        "--set-string", "controlPlaneAgent.provider.apiKey=unused-key",
+        "--set-json", 'models.runtimes=[{"id":"legacy","base_url":"http://legacy.invalid/v1","model":"legacy"}]',
+        "--set", "models.credentials.existingSecret=legacy-provider-keys",
+        "--set-string", "models.credentials.values.LEGACY_KEY=unused-key",
+        "--set-json", 'evaluators.bindings=[{"id":"legacy","model_ref":"missing"}]',
+        "--set", "evaluators.automatedReasoning.endpointUrl=http://legacy.invalid/reasoning",
+        "--set-string", "evaluators.automatedReasoning.apiKey=unused-key",
         "--set", "runner.pools[0].name=gpu",
         "--set", "runner.pools[0].replicaCount=1",
         "--set", "runner.pools[0].maxConcurrency=128",
@@ -312,78 +301,15 @@ def test_model_runtimes_and_evaluator_bindings_are_wired_to_every_runner():
         "--set", "runner.pools[0].resources.requests.memory=2Gi",
         "--set", "runner.pools[0].resources.limits.memory=8Gi",
     )
-    runners = [
+    assert_settings_managed_models(documents)
+    assert len([
         item for item in documents
         if item.get("kind") == "StatefulSet"
         and item["metadata"]["labels"]["app.kubernetes.io/component"] == "runner"
-    ]
-
-    assert len(runners) == 2
-    for runner in runners:
-        container = runner["spec"]["template"]["spec"]["containers"][0]
-        environment = {
-            item["name"]: item
-            for item in container["env"]
-        }
-        runtime_config = json.loads(
-            environment["MODEL_GUARDRAILS_MODEL_RUNTIMES_JSON"]["value"]
-        )
-        binding_config = json.loads(
-            environment["MODEL_GUARDRAILS_EVALUATOR_BINDINGS_JSON"]["value"]
-        )
-        assert [item["id"] for item in runtime_config] == [
-            "qwen-runtime", "llama-runtime",
-        ]
-        assert runtime_config[0] == {
-            "id": "qwen-runtime",
-            "client": "openai_chat",
-            "base_url": "http://qwen-guard.internal/v1",
-            "model": "Qwen/Qwen3Guard-Gen-8B",
-            "api_key_env_var": "QWEN_GUARD_KEY",
-            "timeout_seconds": 15,
-            "max_tokens": 128,
-        }
-        assert runtime_config[1] == {
-            "id": "llama-runtime",
-            "client": "openai_chat",
-            "base_url": "http://llama-guard.internal/v1",
-            "model": "meta-llama/Llama-Guard-3-8B",
-            "api_key_env_var": "LLAMA_GUARD_KEY",
-            "timeout_seconds": 10,
-            "max_tokens": 64,
-        }
-        assert binding_config == [{
-            "id": "qwen-content",
-            "contract_ref": "tali.guard.content-safety.v1",
-            "profile_ref": "tali.qwen3guard.v1",
-            "model_ref": "qwen-runtime",
-            "priority": 10,
-        }, {
-            "id": "llama-content",
-            "contract_ref": "tali.guard.content-safety.v1",
-            "profile_ref": "tali.llama-guard-3.v1",
-            "model_ref": "llama-runtime",
-            "priority": 20,
-        }]
-        assert container["envFrom"] == [{"secretRef": {"name": "provider-keys"}}]
+    ]) == 2
 
 
-def test_chart_rejects_incompatible_or_unknown_evaluator_bindings():
-    runtimes = '[{"id":"llama-runtime","client":"openai_chat","base_url":"http://llama-guard.internal/v1","model":"meta-llama/Llama-Guard-3-8B"}]'
-    incompatible = '[{"id":"llama-jailbreak","contract_ref":"tali.guard.jailbreak.v1","profile_ref":"tali.llama-guard-3.v1","model_ref":"llama-runtime","priority":10}]'
-    unknown = '[{"id":"unknown-runtime","contract_ref":"tali.guard.content-safety.v1","profile_ref":"tali.llama-guard-3.v1","model_ref":"missing","priority":10}]'
-
-    assert "does not implement contract" in render_error(
-        "--set-json", f"models.runtimes={runtimes}",
-        "--set-json", f"evaluators.bindings={incompatible}",
-    )
-    assert "references unknown models.runtimes id" in render_error(
-        "--set-json", f"models.runtimes={runtimes}",
-        "--set-json", f"evaluators.bindings={unknown}",
-    )
-
-
-def test_integration_endpoint_tracks_runner_service_namespace_and_port():
+def test_endpoint_tracks_runner_service_namespace_and_port():
     documents = render(
         "--namespace", "guard-system",
         "--set", "runner.service.port=8091",
@@ -639,10 +565,10 @@ def test_observability_bundle_scrapes_with_auth_and_provisions_rules_and_dashboa
     } <= set(alerts)
     checks_rule = recordings["guardrail:checks:rate5m"]["expr"]
     bucket_rule = recordings["guardrail:request_duration_seconds_bucket:rate5m"]["expr"]
-    for label in ("guardrail_id", "integration_id", "runner_id"):
+    for label in ("guardrail_id", "endpoint_id", "runner_id"):
         assert label in checks_rule
         assert label in bucket_rule
-    for removed_dimension in ("deployment_id", "guardrail_version", "phase", "protocol"):
+    for removed_dimension in ("router_id", "guardrail_version", "phase", "protocol"):
         assert removed_dimension not in checks_rule
         assert removed_dimension not in bucket_rule
     assert "le" in bucket_rule
@@ -668,16 +594,16 @@ def test_observability_bundle_scrapes_with_auth_and_provisions_rules_and_dashboa
     assert parsed_dashboard["uid"] == "tasklattice-guard-overview"
     assert parsed_dashboard["title"] == "GuardRails Overview"
     variables = parsed_dashboard["templating"]["list"]
-    assert [item["name"] for item in variables] == ["guardrail", "integration", "runner"]
-    assert [item["label"] for item in variables] == ["GuardRail", "Integration", "Runner"]
+    assert [item["name"] for item in variables] == ["guardrail", "endpoint", "runner"]
+    assert [item["label"] for item in variables] == ["GuardRail", "Endpoint", "Runner"]
     assert "guard_controller_guardrail_info" in variables[0]["query"]["query"]
     assert "guardrail_name" in variables[0]["regex"]
-    assert "guard_controller_guardrail_integration_info" in variables[1]["query"]["query"]
+    assert "guard_controller_guardrail_endpoint_info" in variables[1]["query"]["query"]
     assert "$guardrail" in variables[1]["query"]["query"]
     assert 'status="active"' in variables[1]["query"]["query"]
-    assert "integration_name" in variables[1]["regex"]
+    assert "endpoint_name" in variables[1]["regex"]
     assert "guard_controller_runner_info" in variables[2]["query"]["query"]
-    assert "$integration" in variables[2]["query"]["query"]
+    assert "$endpoint" in variables[2]["query"]["query"]
     assert 'status="active"' in variables[2]["query"]["query"]
     panels = {item["title"]: item for item in parsed_dashboard["panels"]}
     assert {
@@ -686,7 +612,7 @@ def test_observability_bundle_scrapes_with_auth_and_provisions_rules_and_dashboa
         "Traffic & Latency · Selected scope",
         "Processed GuardRail checks/s", "Latency",
         "Availability", "Complete protection coverage",
-        "Integration business SLI · P95",
+        "Endpoint business SLI · P95",
         "Runner inventory and health · P95", "Diagnostics",
     } <= set(panels)
     assert not {"P90 latency", "P95 latency", "P99 latency", "Telemetry scrape", "Allow RPS", "Deny RPS", "Transform RPS"} & set(panels)
@@ -750,17 +676,17 @@ def test_observability_bundle_scrapes_with_auth_and_provisions_rules_and_dashboa
         *(target["expr"] for target in throughput["targets"]),
         *(target["expr"] for target in latency_panel["targets"]),
     ]:
-        for variable in ("$guardrail", "$integration", "$runner"):
+        for variable in ("$guardrail", "$endpoint", "$runner"):
             assert variable in expression
         assert "__unmatched__|__unresolved__" in expression
-    integration_panel = panels["Integration business SLI · P95"]
-    integration_table = json.dumps(integration_panel)
-    assert "guard_controller_integration_info" in integration_table
-    assert "integration_name" in integration_table
-    assert 'status=\\"active\\"' in integration_table
-    assert '"id": "byRegexp", "options": "/^P(90|95|99)$/"' in integration_table
-    assert "histogram_quantile(0.95" in integration_panel["targets"][3]["expr"]
-    assert "$latency_quantile" not in integration_table
+    endpoint_panel = panels["Endpoint business SLI · P95"]
+    endpoint_table = json.dumps(endpoint_panel)
+    assert "guard_controller_endpoint_info" in endpoint_table
+    assert "endpoint_name" in endpoint_table
+    assert 'status=\\"active\\"' in endpoint_table
+    assert '"id": "byRegexp", "options": "/^P(90|95|99)$/"' in endpoint_table
+    assert "histogram_quantile(0.95" in endpoint_panel["targets"][3]["expr"]
+    assert "$latency_quantile" not in endpoint_table
     runner_table = panels["Runner inventory and health · P95"]
     assert runner_table["gridPos"]["w"] == 24
     assert "histogram_quantile(0.95" in runner_table["targets"][2]["expr"]
@@ -779,7 +705,7 @@ def test_observability_bundle_scrapes_with_auth_and_provisions_rules_and_dashboa
     )
     assert troubleshooting["uid"] == "tasklattice-guard-troubleshooting"
     assert [item["name"] for item in troubleshooting["templating"]["list"]][:3] == [
-        "guardrail", "integration", "runner",
+        "guardrail", "endpoint", "runner",
     ]
     troubleshooting_panels = {
         item["title"]: item for item in troubleshooting["panels"]
@@ -839,12 +765,12 @@ def test_observability_bundle_scrapes_with_auth_and_provisions_rules_and_dashboa
     entry_panel = all_troubleshooting_panels[
         "Global entry failures · authentication, routing, rejection"
     ]
-    assert "GuardRail and Integration filters intentionally do not apply" in entry_panel["description"]
+    assert "GuardRail and Endpoint filters intentionally do not apply" in entry_panel["description"]
     assert all('runner_id=~"$runner"' in target["expr"] for target in entry_panel["targets"])
     assert not any(
         variable in target["expr"]
         for target in entry_panel["targets"]
-        for variable in ("$guardrail", "$integration")
+        for variable in ("$guardrail", "$endpoint")
     )
     assert "$latency_quantile" not in json.dumps(parsed_dashboard)
     assert "or vector(0)" not in json.dumps(parsed_dashboard)

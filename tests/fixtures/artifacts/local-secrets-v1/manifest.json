@@ -3,6 +3,7 @@
   "artifact_id": "fixture-artifact-local-secrets-v1",
   "checksum": "cc3dcd5e05b3f7d9aa35c9e2d1d3d7ffa5f08fb851077c3638369b51e506c8e1",
   "compiler_version": "tasklattice-nemo-config-v21-dynamic-flow-targets",
+  "endpoint_id": "fixture-endpoint",
   "expected": {
     "safe_input": "NONE",
     "safe_output": "NONE",
@@ -13,7 +14,6 @@
   "generation": 1,
   "guardrail_id": "fixture-secrets",
   "guardrail_version": "20260904-010000.001Z",
-  "integration_id": "fixture-integration",
   "nemo_version": "0.24.0",
   "runtime_profile": "llmrails_colang1_standard"
 }

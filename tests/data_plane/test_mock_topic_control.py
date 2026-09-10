@@ -70,7 +70,7 @@ async def test_signed_native_topic_artifact_against_tcp_mock(tmp_path,scenario,t
         try:
             result = await asyncio.wait_for(GuardrailRuntimeService(engine,store).evaluate(ProtectionRequest(
                 phase='input',texts=(text,),call_id='topic-mock',
-                context=RequestContext(protocol='litellm',integration_id='fixture-integration'))), 8)
+                context=RequestContext(protocol='litellm',endpoint_id='fixture-endpoint'))), 8)
             assert registry.readiness()['ready']
             assert result.effective_release_id
             assert result.usage and result.usage.model_invocations >= 1

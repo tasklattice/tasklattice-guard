@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /** Opt-in real HTTP/DB/NeMo lifecycle regression. Creates isolated named records;
- * never changes Default, existing Policies, deployments, or model credentials. */
+ * never changes Default, existing Policies, routers, or model credentials. */
 import assert from "node:assert/strict";
 import { setTimeout as delay } from "node:timers/promises";
 

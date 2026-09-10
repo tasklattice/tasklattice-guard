@@ -1,7 +1,7 @@
 import * as controllerApi from "@/lib/controller-api";
 import type {
-  DeploymentRuntimeTrace,
-  DeploymentTraceFinding,
+  RouterRuntimeTrace,
+  RouterTraceFinding,
 } from "@/lib/api-types";
 
 export function stringValue(value: unknown): string | null {
@@ -38,7 +38,7 @@ export function isTimedOut(event: controllerApi.RuntimeEvent): boolean {
   return decision === "timeout" || decision === "timed_out" || event.metadata.timedOut === true || event.metadata.timed_out === true;
 }
 
-export function runtimeFindings(event: controllerApi.RuntimeEvent): DeploymentTraceFinding[] {
+export function runtimeFindings(event: controllerApi.RuntimeEvent): RouterTraceFinding[] {
   return arrayOfRecords(event.metadata.findings).map((finding, index) => {
     const verdict = stringValue(finding.verdict) ?? "unknown";
     const confidence = numberValue(finding.confidence);
@@ -50,8 +50,8 @@ export function runtimeFindings(event: controllerApi.RuntimeEvent): DeploymentTr
       created_at: event.occurredAt,
       guardrail_id: event.guardrailId,
       guardrail_version: event.guardrailVersion,
-      deployment_id: event.deploymentId,
-      integration_id: event.integrationId,
+      router_id: event.routerId,
+      endpoint_id: event.endpointId,
       phase: event.direction === "incoming" ? "input" : "output",
       severity: findingSeverity(verdict, confidence),
       risk,
@@ -74,7 +74,7 @@ export function runtimeFindings(event: controllerApi.RuntimeEvent): DeploymentTr
   });
 }
 
-export function runtimeTraceSteps(event: controllerApi.RuntimeEvent): DeploymentRuntimeTrace["steps"] {
+export function runtimeTraceSteps(event: controllerApi.RuntimeEvent): RouterRuntimeTrace["steps"] {
   return arrayOfRecords(event.metadata.trace).map((step, index) => ({
     id: stringValue(step.id) ?? `${event.id}:step:${index + 1}`,
     parent_id: stringValue(step.parentId) ?? stringValue(step.parent_id),
@@ -83,8 +83,8 @@ export function runtimeTraceSteps(event: controllerApi.RuntimeEvent): Deployment
     created_at: event.occurredAt,
     guardrail_id: event.guardrailId ?? "",
     guardrail_version: event.guardrailVersion ?? "",
-    deployment_id: event.deploymentId,
-    integration_id: event.integrationId,
+    router_id: event.routerId,
+    endpoint_id: event.endpointId,
     protocol: stringValue(event.metadata.protocol) ?? "unknown",
     phase: event.direction === "incoming" ? "input" : "output",
     kind: stringValue(step.kind) ?? "action",
@@ -108,7 +108,7 @@ export function runtimeTraceSteps(event: controllerApi.RuntimeEvent): Deployment
   }));
 }
 
-function findingSeverity(verdict: string, confidence: number | null): DeploymentTraceFinding["severity"] {
+function findingSeverity(verdict: string, confidence: number | null): RouterTraceFinding["severity"] {
   if (verdict === "error") return "critical";
   if (verdict === "unsafe" && confidence !== null && confidence >= 0.9) return "high";
   if (verdict === "unsafe" || (confidence !== null && confidence >= 0.7)) return "medium";

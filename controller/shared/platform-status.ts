@@ -33,7 +33,7 @@ export type ProtectionCoverage = {
 export type BasicProtectionSnapshot = {
   status: BasicProtectionStatus;
   guardrailStatus: "active" | "initializing" | "unavailable";
-  deploymentStatus: "active" | "initializing" | "unavailable";
+  routerStatus: "active" | "initializing" | "unavailable";
   activeVersion: string | null;
   modelIndependent: boolean | null;
   coverage: ProtectionCoverage | null;

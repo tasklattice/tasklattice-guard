@@ -107,11 +107,11 @@ const playgroundInteractionInput = z.object({
 const playgroundDraftInteractionInput = playgroundInteractionInput.omit({ guardrail_version: true }).extend({
   preview_id: z.string().uuid(),
 });
-const integrationInput = z.object({
+const endpointInput = z.object({
   name: z.string().trim().min(1).max(160),
   adapter: z.string().trim().min(1).max(80),
 });
-const integrationEnabledInput = z.object({ enabled: z.boolean() });
+const endpointEnabledInput = z.object({ enabled: z.boolean() });
 const deletionInput = z.object({
   reason: z.string().trim().min(1).max(1_000),
   confirmRecentTraffic: z.boolean().default(false),
@@ -129,18 +129,18 @@ const trafficScopeInput: z.ZodType<TrafficScope> = z.lazy(() => z.object({
   combinator: z.enum(["and", "or"]).default("and"),
   conditions: z.array(z.union([trafficConditionInput, trafficScopeInput])).max(16).default([]),
 }));
-const deploymentInput = z.object({
+const routerInput = z.object({
   name: z.string().trim().min(1).max(160),
   guardrailId: z.string().min(1),
-  integrationId: z.string().min(1),
+  endpointId: z.string().min(1),
   poolId: z.string().min(1).default("default"),
   trafficScope: trafficScopeInput.default({ combinator: "and", conditions: [] }),
   enabled: z.boolean().default(true),
 });
-const deploymentBindingsInput = deploymentInput.omit({ integrationId: true }).extend({ integrationIds: z.array(z.string().min(1)).min(1).max(50) });
-const deploymentEnabledInput = z.object({ enabled: z.boolean() });
-const deploymentScopeInput = z.object({ trafficScope: trafficScopeInput });
-const deploymentOrderInput = z.object({ deploymentIds: z.array(z.string().min(1)).min(1).max(100) });
+const routerBindingsInput = routerInput.omit({ endpointId: true }).extend({ endpointIds: z.array(z.string().min(1)).min(1).max(50) });
+const routerEnabledInput = z.object({ enabled: z.boolean() });
+const routerScopeInput = z.object({ trafficScope: trafficScopeInput });
+const routerOrderInput = z.object({ routerIds: z.array(z.string().min(1)).min(1).max(100) });
 const runnerPoolInput = z.object({
   desiredReplicas: z.number().int().min(1).max(1_000),
   safeRpsPerRunner: z.number().positive().max(1_000_000),
@@ -153,8 +153,8 @@ const runtimeEventInput = z.object({
   runnerId: z.string().min(1),
   guardrailId: z.string().optional(),
   guardrailVersion: guardrailVersionInput.optional(),
-  integrationId: z.string().optional(),
-  deploymentId: z.string().optional(),
+  endpointId: z.string().optional(),
+  routerId: z.string().optional(),
   direction: z.enum(["incoming", "outgoing"]),
   decision: z.string().min(1),
   durationMs: z.number().int().nonnegative(),
@@ -373,6 +373,11 @@ export function createHttpApp(input: {
   app.post("/api/v1/model-configuration/draft/assignments/:target/validate", authenticated, administrator, async (context) => {
     if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
     const target = modelAssignmentTargetSchema.parse(context.req.param("target"));
+    const raw = await context.req.text();
+    if (raw) {
+      const body = z.object({ modelId: z.string().uuid() }).parse(JSON.parse(raw));
+      return context.json(await input.models.previewAssignment(target, body.modelId, context.get("actor").id));
+    }
     return context.json(await input.models.validateAssignment(target, context.get("actor").id));
   });
   app.post("/api/v1/model-configuration/validate", authenticated, administrator, async (context) => {
@@ -687,39 +692,39 @@ export function createHttpApp(input: {
     }), 202);
   });
 
-  app.get("/api/v1/integrations", authenticated, async (context) => {
+  app.get("/api/v1/endpoints", authenticated, async (context) => {
     const [items, distribution] = await Promise.all([
-      input.service.listIntegrations(),
+      input.service.listEndpoints(),
       input.runnerControl.distributionStatus(),
     ]);
     return context.json({ items: items.map((item) => ({ ...item, ...distribution })) });
   });
-  app.post("/api/v1/integrations", authenticated, administrator, async (context) => {
-    const body = integrationInput.parse(await context.req.json());
-    const created = await input.service.createIntegration({ ...body, actorId: context.get("actor").id });
+  app.post("/api/v1/endpoints", authenticated, administrator, async (context) => {
+    const body = endpointInput.parse(await context.req.json());
+    const created = await input.service.createEndpoint({ ...body, actorId: context.get("actor").id });
     return context.json(await withDistribution(created, true), 201);
   });
-  app.get("/api/v1/integrations/:id", authenticated, async (context) => {
-    return context.json(await withDistribution(await input.service.getIntegration(context.req.param("id"))));
+  app.get("/api/v1/endpoints/:id", authenticated, async (context) => {
+    return context.json(await withDistribution(await input.service.getEndpoint(context.req.param("id"))));
   });
-  app.patch("/api/v1/integrations/:id", authenticated, administrator, async (context) => {
-    const body = integrationEnabledInput.parse(await context.req.json());
-    const updated = await input.service.setIntegrationEnabled({
+  app.patch("/api/v1/endpoints/:id", authenticated, administrator, async (context) => {
+    const body = endpointEnabledInput.parse(await context.req.json());
+    const updated = await input.service.setEndpointEnabled({
       id: context.req.param("id"),
       enabled: body.enabled,
       actorId: context.get("actor").id,
     });
     return context.json(await withDistribution(updated, true));
   });
-  app.post("/api/v1/integrations/:id/credentials", authenticated, administrator, async (context) => {
-    const updated = await input.service.rotateIntegrationCredential({
+  app.post("/api/v1/endpoints/:id/credentials", authenticated, administrator, async (context) => {
+    const updated = await input.service.rotateEndpointCredential({
       id: context.req.param("id"),
       actorId: context.get("actor").id,
     });
     return context.json(await withDistribution(updated, true), 201);
   });
-  app.delete("/api/v1/integrations/:id/credentials/:credentialId", authenticated, administrator, async (context) => {
-    await input.service.revokeIntegrationCredential({
+  app.delete("/api/v1/endpoints/:id/credentials/:credentialId", authenticated, administrator, async (context) => {
+    await input.service.revokeEndpointCredential({
       id: context.req.param("id"),
       credentialId: context.req.param("credentialId"),
       actorId: context.get("actor").id,
@@ -727,12 +732,12 @@ export function createHttpApp(input: {
     await input.runnerControl.distributeDesiredState();
     return context.body(null, 204);
   });
-  app.get("/api/v1/integrations/:id/deletion-impact", authenticated, administrator, async (context) => {
-    return context.json(await input.service.integrationDeletionImpact(context.req.param("id")));
+  app.get("/api/v1/endpoints/:id/deletion-impact", authenticated, administrator, async (context) => {
+    return context.json(await input.service.endpointDeletionImpact(context.req.param("id")));
   });
-  app.delete("/api/v1/integrations/:id", authenticated, administrator, async (context) => {
+  app.delete("/api/v1/endpoints/:id", authenticated, administrator, async (context) => {
     const body = deletionInput.parse(await context.req.json());
-    await input.service.softDeleteIntegration({ id: context.req.param("id"), actorId: context.get("actor").id, ...body });
+    await input.service.softDeleteEndpoint({ id: context.req.param("id"), actorId: context.get("actor").id, ...body });
     await input.runnerControl.distributeDesiredState();
     return context.body(null, 204);
   });
@@ -749,47 +754,47 @@ export function createHttpApp(input: {
     });
     return context.body(null, 204);
   });
-  app.get("/api/v1/deployments", authenticated, async (context) => context.json({ items: await input.service.listDeployments() }));
-  app.get("/api/v1/deployments/:id", authenticated, async (context) => context.json(await input.service.getDeployment(context.req.param("id"))));
-  app.get("/api/v1/deployments/:id/deletion-impact", authenticated, administrator, async (context) => {
-    return context.json(await input.service.deploymentDeletionImpact(context.req.param("id")));
+  app.get("/api/v1/routers", authenticated, async (context) => context.json({ items: await input.service.listRouters() }));
+  app.get("/api/v1/routers/:id", authenticated, async (context) => context.json(await input.service.getRouter(context.req.param("id"))));
+  app.get("/api/v1/routers/:id/deletion-impact", authenticated, administrator, async (context) => {
+    return context.json(await input.service.routerDeletionImpact(context.req.param("id")));
   });
-  app.post("/api/v1/deployments", authenticated, administrator, async (context) => {
-    const body = deploymentInput.parse(await context.req.json());
+  app.post("/api/v1/routers", authenticated, administrator, async (context) => {
+    const body = routerInput.parse(await context.req.json());
     assertTrafficScopeSupported(body.trafficScope);
-    const created = await input.service.createDeployment({ ...body, actorId: context.get("actor").id });
+    const created = await input.service.createRouter({ ...body, actorId: context.get("actor").id });
     await input.runnerControl.distributeDesiredState();
     return context.json(created, 201);
   });
-  app.post("/api/v1/deployment-bindings", authenticated, administrator, async (context) => {
-    const body = deploymentBindingsInput.parse(await context.req.json());
+  app.post("/api/v1/router-bindings", authenticated, administrator, async (context) => {
+    const body = routerBindingsInput.parse(await context.req.json());
     assertTrafficScopeSupported(body.trafficScope);
-    const items = await input.service.createDeploymentBindings({ ...body, actorId: context.get("actor").id });
+    const items = await input.service.createRouterBindings({ ...body, actorId: context.get("actor").id });
     await input.runnerControl.distributeDesiredState();
     return context.json({ items, count: items.length }, 201);
   });
-  app.patch("/api/v1/deployments/:id", authenticated, administrator, async (context) => {
-    const body = deploymentEnabledInput.parse(await context.req.json());
-    const updated = await input.service.setDeploymentEnabled({ id: context.req.param("id"), enabled: body.enabled, actorId: context.get("actor").id });
+  app.patch("/api/v1/routers/:id", authenticated, administrator, async (context) => {
+    const body = routerEnabledInput.parse(await context.req.json());
+    const updated = await input.service.setRouterEnabled({ id: context.req.param("id"), enabled: body.enabled, actorId: context.get("actor").id });
     await input.runnerControl.distributeDesiredState();
     return context.json(updated);
   });
-  app.put("/api/v1/deployments/:id/traffic-scope", authenticated, administrator, async (context) => {
-    const body = deploymentScopeInput.parse(await context.req.json());
+  app.put("/api/v1/routers/:id/traffic-scope", authenticated, administrator, async (context) => {
+    const body = routerScopeInput.parse(await context.req.json());
     assertTrafficScopeSupported(body.trafficScope);
-    const updated = await input.service.updateDeploymentTrafficScope({ id: context.req.param("id"), trafficScope: body.trafficScope, actorId: context.get("actor").id });
+    const updated = await input.service.updateRouterTrafficScope({ id: context.req.param("id"), trafficScope: body.trafficScope, actorId: context.get("actor").id });
     await input.runnerControl.distributeDesiredState();
     return context.json(updated);
   });
-  app.delete("/api/v1/deployments/:id", authenticated, administrator, async (context) => {
+  app.delete("/api/v1/routers/:id", authenticated, administrator, async (context) => {
     const body = deletionInput.parse(await context.req.json());
-    await input.service.softDeleteDeployment({ id: context.req.param("id"), actorId: context.get("actor").id, ...body });
+    await input.service.softDeleteRouter({ id: context.req.param("id"), actorId: context.get("actor").id, ...body });
     await input.runnerControl.distributeDesiredState();
     return context.body(null, 204);
   });
-  app.put("/api/v1/integrations/:integrationId/deployment-order", authenticated, administrator, async (context) => {
-    const body = deploymentOrderInput.parse(await context.req.json());
-    const items = await input.service.reorderDeploymentRoutes({ integrationId: context.req.param("integrationId"), deploymentIds: body.deploymentIds, actorId: context.get("actor").id });
+  app.put("/api/v1/endpoints/:endpointId/router-order", authenticated, administrator, async (context) => {
+    const body = routerOrderInput.parse(await context.req.json());
+    const items = await input.service.reorderRouterRoutes({ endpointId: context.req.param("endpointId"), routerIds: body.routerIds, actorId: context.get("actor").id });
     await input.runnerControl.distributeDesiredState();
     return context.json({ items, count: items.length });
   });
@@ -801,8 +806,8 @@ export function createHttpApp(input: {
     const query = z.object({
       limit: z.coerce.number().int().min(1).max(10_000).default(100),
       guardrailId: z.string().min(1).optional(),
-      deploymentId: z.string().min(1).optional(),
-      integrationId: z.string().min(1).optional(),
+      routerId: z.string().min(1).optional(),
+      endpointId: z.string().min(1).optional(),
       since: z.coerce.date().optional(),
       before: z.coerce.date().optional(),
       cursor: z.string().max(2048).optional(),
@@ -811,13 +816,14 @@ export function createHttpApp(input: {
       outcome: z.enum(['allow','block','transform','error']).optional(),
       captured: z.enum(['true']).transform(() => true).optional(),
       findingsOnly: z.enum(['true']).transform(() => true).optional(),
+      severity: z.enum(['critical','high','medium','low']).optional(),
     }).parse(context.req.query());
     return context.json(await input.service.queryRuntimeEvents(query));
   });
   app.get('/api/v1/runtime-events/:id', authenticated, async context => context.json(await input.service.getRuntimeEvent(context.req.param('id'), context.get('actor').role === 'admin')));
-  app.get('/api/v1/runtime-integrations', authenticated, async context => context.json(await input.service.runtimeIntegrationActivity()));
+  app.get('/api/v1/runtime-endpoints', authenticated, async context => context.json(await input.service.runtimeEndpointActivity()));
   app.get('/api/v1/runtime-metrics', authenticated, async context => {
-    const scope = z.object({ window: z.enum(['1h','24h','7d','15d','30d']).default('24h'), guardrailId:z.string().max(256).optional(), deploymentId:z.string().max(256).optional() }).parse(context.req.query());
+    const scope = z.object({ window: z.enum(['1h','24h','7d','15d','30d']).default('24h'), guardrailId:z.string().max(256).optional(), routerId:z.string().max(256).optional() }).parse(context.req.query());
     return context.json(await input.service.runtimeMetrics(scope));
   });
   app.get("/api/v1/audit-events", authenticated, async (context) => {
@@ -905,7 +911,7 @@ function trafficScopeFields() {
     field("tool.name", "request", "field", "tool.name", ["equals", "glob"]),
     field("target.environment", "request", "field", "target.environment", ["equals", "glob"]),
     field("auth.principal", "authentication", "field", "auth.principal", ["equals", "glob"]),
-    field("integration.id", "authentication", "field", "integration.id", ["equals"]),
+    field("endpoint.id", "authentication", "field", "endpoint.id", ["equals"]),
     field("http.method", "http", "field", "http.method", ["equals"], ["GET", "POST", "PUT", "PATCH", "DELETE"]),
     field("http.host", "http", "field", "http.host", ["equals", "glob"]),
     field("http.path", "http", "field", "http.path", ["equals", "starts_with", "glob"]),

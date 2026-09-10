@@ -3,7 +3,7 @@ syntax = "proto3";
 package tasklattice.guard.control.v1;
 
 import "artifact.proto";
-import "integration.proto";
+import "endpoint.proto";
 import "model.proto";
 import "routing.proto";
 import "validation.proto";
@@ -122,15 +122,15 @@ message DesiredState {
   // Complete artifact set required by this pool at generation.
   repeated Artifact artifacts = 2;
   repeated string disabled_guardrail_ids = 3;
-  repeated string disabled_integration_ids = 4;
-  repeated DeploymentRoute deployments = 5;
-  repeated IntegrationRuntime integrations = 6;
+  repeated string disabled_endpoint_ids = 4;
+  repeated RouterRoute routers = 5;
+  repeated EndpointRuntime endpoints = 6;
   map<string, string> guardrail_logging_levels = 7;
   DataPlaneModelConfiguration model_configuration = 8;
 }
 
 // ACK/NACK for the complete atomic desired-state generation. A NACK keeps the
-// prior artifacts, routes, integrations, and model Provider registry active.
+// prior artifacts, routes, endpoints, and model Provider registry active.
 message DesiredStateResult {
   string runner_id = 1;
   // Complete desired-state generation that was either applied or rejected.
@@ -142,23 +142,23 @@ message DesiredStateResult {
   string model_revision_id = 5;
 }
 
-// Ordered traffic route from one Integration to one immutable artifact.
-message DeploymentRoute {
-  string deployment_id = 1;
+// Ordered traffic route from one Endpoint to one immutable artifact.
+message RouterRoute {
+  string router_id = 1;
   string guardrail_id = 2;
   string artifact_id = 3;
-  string integration_id = 4;
-  // Ascending precedence within an Integration; the first matching route wins.
+  string endpoint_id = 4;
+  // Ascending precedence within an Endpoint; the first matching route wins.
   int32 route_order = 5;
   TrafficScope traffic_scope = 6;
 }
 
-// Runtime-only Integration projection; it contains no plaintext credential.
-message IntegrationRuntime {
-  string integration_id = 1;
+// Runtime-only Endpoint projection; it contains no plaintext credential.
+message EndpointRuntime {
+  string endpoint_id = 1;
   // Adapter IDs are an extensible registry, not a closed enum.
   string adapter = 2;
-  IntegrationVerification verification = 3;
+  EndpointVerification verification = 3;
 }
 
 // ACK/NACK for verifying, prewarming, and activating an artifact generation.

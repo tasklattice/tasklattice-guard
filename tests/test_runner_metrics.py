@@ -37,19 +37,19 @@ def test_guardrail_business_metrics_cover_allow_deny_transform_and_failure_modes
     )
     allow = ProtectionDecision(
         decision="allow", action="pass", guardrail_id="guardrail-1",
-        guardrail_version="20260904-020000.002Z", deployment_id="deployment-1",
+        guardrail_version="20260904-020000.002Z", router_id="router-1",
         # The runtime/route identity is deliberately different. Metrics must
         # retain the authenticated entrypoint identity supplied below.
-        integration_id="route-derived-must-not-win", coverage=coverage,
+        endpoint_id="route-derived-must-not-win", coverage=coverage,
     )
     deny = ProtectionDecision(
         decision="block", action="reject", guardrail_id="guardrail-1",
-        guardrail_version="20260904-020000.002Z", deployment_id="deployment-1",
+        guardrail_version="20260904-020000.002Z", router_id="router-1",
         coverage=coverage, usage=RuntimeUsage(fail_closed=True, queue_latency_ms=5),
     )
     transform = ProtectionDecision(
         decision="transform", action="redact", guardrail_id="guardrail-1",
-        guardrail_version="20260904-020000.002Z", deployment_id="deployment-1",
+        guardrail_version="20260904-020000.002Z", router_id="router-1",
         mode="detect",
         interventions=(AppliedIntervention(
             kind="redact", module_id="secrets", fragment_id="fragment-1",
@@ -68,25 +68,25 @@ def test_guardrail_business_metrics_cover_allow_deny_transform_and_failure_modes
 
     for decision in (allow, deny, transform):
         with metrics.request(
-            "runtime", "http", "input", integration_id="integration-authenticated",
+            "runtime", "http", "input", endpoint_id="endpoint-authenticated",
         ) as observation:
             observation.complete(decision)
 
     rendered = generate_latest(metrics.registry).decode()
-    assert 'coverage="complete",disposition="allow",enforcement_mode="enforce",failure_mode="normal",guardrail_id="guardrail-1",integration_id="integration-authenticated",phase="input",protocol="http",result="success",traffic_class="runtime"} 1.0' in rendered
+    assert 'coverage="complete",disposition="allow",endpoint_id="endpoint-authenticated",enforcement_mode="enforce",failure_mode="normal",guardrail_id="guardrail-1",phase="input",protocol="http",result="success",traffic_class="runtime"} 1.0' in rendered
     # A policy denial is a successful Guardrail execution, not a platform error.
-    assert 'coverage="complete",disposition="deny",enforcement_mode="enforce",failure_mode="fail_closed",guardrail_id="guardrail-1",integration_id="integration-authenticated",phase="input",protocol="http",result="success",traffic_class="runtime"} 1.0' in rendered
-    assert 'coverage="partial",disposition="transform",enforcement_mode="detect",failure_mode="fail_open",guardrail_id="guardrail-1",integration_id="integration-authenticated",phase="input",protocol="http",result="success",traffic_class="runtime"} 1.0' in rendered
-    assert 'guard_runner_guardrail_interventions_total{action="reject",guardrail_id="guardrail-1",integration_id="integration-authenticated",phase="input",protocol="http"} 1.0' in rendered
-    assert 'guard_runner_guardrail_interventions_total{action="redact",guardrail_id="guardrail-1",integration_id="integration-authenticated",phase="input",protocol="http"} 1.0' in rendered
-    assert 'guard_runner_guardrail_request_duration_seconds_count{disposition="deny",guardrail_id="guardrail-1",integration_id="integration-authenticated",phase="input",protocol="http",result="success",traffic_class="runtime"} 1.0' in rendered
-    assert 'guard_runner_guardrail_guarded_items_total{guardrail_id="guardrail-1",integration_id="integration-authenticated",phase="input",protocol="http"} 3.0' in rendered
-    assert 'guard_runner_guardrail_stage_duration_seconds_count{guardrail_id="guardrail-1",integration_id="integration-authenticated",phase="input",protocol="http",result="success",stage="runtime"} 1.0' in rendered
+    assert 'coverage="complete",disposition="deny",endpoint_id="endpoint-authenticated",enforcement_mode="enforce",failure_mode="fail_closed",guardrail_id="guardrail-1",phase="input",protocol="http",result="success",traffic_class="runtime"} 1.0' in rendered
+    assert 'coverage="partial",disposition="transform",endpoint_id="endpoint-authenticated",enforcement_mode="detect",failure_mode="fail_open",guardrail_id="guardrail-1",phase="input",protocol="http",result="success",traffic_class="runtime"} 1.0' in rendered
+    assert 'guard_runner_guardrail_interventions_total{action="reject",endpoint_id="endpoint-authenticated",guardrail_id="guardrail-1",phase="input",protocol="http"} 1.0' in rendered
+    assert 'guard_runner_guardrail_interventions_total{action="redact",endpoint_id="endpoint-authenticated",guardrail_id="guardrail-1",phase="input",protocol="http"} 1.0' in rendered
+    assert 'guard_runner_guardrail_request_duration_seconds_count{disposition="deny",endpoint_id="endpoint-authenticated",guardrail_id="guardrail-1",phase="input",protocol="http",result="success",traffic_class="runtime"} 1.0' in rendered
+    assert 'guard_runner_guardrail_guarded_items_total{endpoint_id="endpoint-authenticated",guardrail_id="guardrail-1",phase="input",protocol="http"} 3.0' in rendered
+    assert 'guard_runner_guardrail_stage_duration_seconds_count{endpoint_id="endpoint-authenticated",guardrail_id="guardrail-1",phase="input",protocol="http",result="success",stage="runtime"} 1.0' in rendered
     # Provider work is explicit external RPC work. It must not fall back to the
     # duration of local actions and therefore only the transform contributes.
-    assert 'guard_runner_guardrail_provider_work_duration_seconds_count{guardrail_id="guardrail-1",integration_id="integration-authenticated",phase="input",protocol="http"} 1.0' in rendered
-    assert 'guard_runner_guardrail_queue_wait_duration_seconds_count{guardrail_id="guardrail-1",integration_id="integration-authenticated",phase="input",protocol="http"} 2.0' in rendered
-    assert 'deployment_id="' not in rendered
+    assert 'guard_runner_guardrail_provider_work_duration_seconds_count{endpoint_id="endpoint-authenticated",guardrail_id="guardrail-1",phase="input",protocol="http"} 1.0' in rendered
+    assert 'guard_runner_guardrail_queue_wait_duration_seconds_count{endpoint_id="endpoint-authenticated",guardrail_id="guardrail-1",phase="input",protocol="http"} 2.0' in rendered
+    assert 'router_id="' not in rendered
     assert 'guardrail_version="' not in rendered
     assert "route-derived-must-not-win" not in rendered
     assert "guard_runner_runtime_requests_total" not in rendered
@@ -98,40 +98,40 @@ def test_guardrail_request_errors_keep_resolved_identity_and_unmatched_is_stable
 
     with pytest.raises(RuntimeError):
         with metrics.request(
-            "runtime", "a2a", "output", integration_id="integration-a2a",
+            "runtime", "a2a", "output", endpoint_id="endpoint-a2a",
         ) as observation:
             observation.resolve(SimpleNamespace(
                 plan=SimpleNamespace(guardrail_id="guardrail-resolved", guardrail_version="20260904-070000.007Z"),
-                deployment_id="deployment-resolved",
-                integration_id="route-derived-must-not-win",
+                router_id="router-resolved",
+                endpoint_id="route-derived-must-not-win",
             ))
             raise RuntimeError("provider failed with request-specific details")
 
     with pytest.raises(TimeoutError):
         with metrics.request(
-            "runtime", "http", "input", integration_id="integration-http",
+            "runtime", "http", "input", endpoint_id="endpoint-http",
         ) as observation:
             observation.set_identity(
                 guardrail_id="guardrail-timeout",
                 guardrail_version="20260904-030000.003Z",
-                deployment_id="deployment-timeout",
+                router_id="router-timeout",
             )
             raise TimeoutError("bounded runtime timeout")
 
     with metrics.request(
-        "runtime", "http", "input", integration_id="integration-catch-all",
+        "runtime", "http", "input", endpoint_id="endpoint-catch-all",
     ) as observation:
         observation.set_identity(
             guardrail_id="__unmatched__",
             guardrail_version="__unmatched__",
-            deployment_id="__unmatched__",
+            router_id="__unmatched__",
         )
         observation.complete(ProtectionDecision(decision="block", action="reject"))
 
     rendered = generate_latest(metrics.registry).decode()
-    assert 'coverage="unknown",disposition="unknown",enforcement_mode="enforce",failure_mode="normal",guardrail_id="guardrail-resolved",integration_id="integration-a2a",phase="output",protocol="a2a",result="error",traffic_class="runtime"} 1.0' in rendered
-    assert 'coverage="unknown",disposition="unknown",enforcement_mode="enforce",failure_mode="normal",guardrail_id="guardrail-timeout",integration_id="integration-http",phase="input",protocol="http",result="timeout",traffic_class="runtime"} 1.0' in rendered
-    assert 'coverage="unknown",disposition="deny",enforcement_mode="enforce",failure_mode="normal",guardrail_id="__unmatched__",integration_id="integration-catch-all",phase="input",protocol="http",result="success",traffic_class="runtime"} 1.0' in rendered
+    assert 'coverage="unknown",disposition="unknown",endpoint_id="endpoint-a2a",enforcement_mode="enforce",failure_mode="normal",guardrail_id="guardrail-resolved",phase="output",protocol="a2a",result="error",traffic_class="runtime"} 1.0' in rendered
+    assert 'coverage="unknown",disposition="unknown",endpoint_id="endpoint-http",enforcement_mode="enforce",failure_mode="normal",guardrail_id="guardrail-timeout",phase="input",protocol="http",result="timeout",traffic_class="runtime"} 1.0' in rendered
+    assert 'coverage="unknown",disposition="deny",endpoint_id="endpoint-catch-all",enforcement_mode="enforce",failure_mode="normal",guardrail_id="__unmatched__",phase="input",protocol="http",result="success",traffic_class="runtime"} 1.0' in rendered
     assert "route-derived-must-not-win" not in rendered
     assert "provider failed with request-specific details" not in rendered
 
@@ -141,20 +141,18 @@ def test_scoped_technical_failures_are_bounded_and_keep_guardrail_identity():
 
     with pytest.raises(TimeoutError):
         with metrics.request(
-            "runtime", "http", "input", integration_id="integration-1",
+            "runtime", "http", "input", endpoint_id="endpoint-1",
         ) as observation:
             observation.set_identity(
                 guardrail_id="guardrail-1", guardrail_version="20260904-040000.004Z",
-                deployment_id="deployment-1",
+                router_id="router-1",
             )
             observation.fail("provider", "timeout")
             raise TimeoutError("provider-specific secret must not become a label")
 
     rendered = generate_latest(metrics.registry).decode()
     assert (
-        'guard_runner_guardrail_execution_failures_total{guardrail_id="guardrail-1",'
-        'integration_id="integration-1",phase="input",protocol="http",'
-        'reason_class="timeout",result="timeout",stage="provider"} 1.0'
+        'guard_runner_guardrail_execution_failures_total{endpoint_id="endpoint-1",guardrail_id="guardrail-1",phase="input",protocol="http",reason_class="timeout",result="timeout",stage="provider"} 1.0'
     ) in rendered
     assert "provider-specific secret" not in rendered
 
@@ -174,7 +172,7 @@ def test_policy_and_protection_metrics_explain_module_risk_policy_and_failure():
     )
     decision = ProtectionDecision(
         decision="block", action="reject", guardrail_id="guardrail-1",
-        guardrail_version="20260904-010000.001Z", deployment_id="deployment-1",
+        guardrail_version="20260904-010000.001Z", router_id="router-1",
         findings=(finding,),
         assessments=(ModuleAssessment(
             module_id="interaction-safety", module="interaction_safety",
@@ -198,30 +196,22 @@ def test_policy_and_protection_metrics_explain_module_risk_policy_and_failure():
     )
 
     with metrics.request(
-        "runtime", "http", "input", integration_id="integration-1",
+        "runtime", "http", "input", endpoint_id="endpoint-1",
     ) as observation:
         observation.complete(decision)
 
     rendered = generate_latest(metrics.registry).decode()
     assert (
-        'guard_runner_guardrail_policy_triggers_total{action="reject",'
-        'disposition="deny",guardrail_id="guardrail-1",'
-        'integration_id="integration-1",module_id="interaction-safety",'
-        'phase="input",policy_id="policy-injection",protocol="http",'
-        'risk="prompt_injection",verdict="unsafe"} 1.0'
+        'guard_runner_guardrail_policy_triggers_total{action="reject",disposition="deny",endpoint_id="endpoint-1",guardrail_id="guardrail-1",module_id="interaction-safety",phase="input",policy_id="policy-injection",protocol="http",risk="prompt_injection",verdict="unsafe"} 1.0'
     ) in rendered
     assert (
-        'guard_runner_guardrail_protection_failures_total{action="PromptInjectionAction",'
-        'failure_mode="fail_closed",guardrail_id="guardrail-1",'
-        'integration_id="integration-1",module_id="interaction-safety",'
-        'phase="input",policy_id="policy-injection",protocol="http",'
-        'reason_class="timeout",stage="action"} 1.0'
+        'guard_runner_guardrail_protection_failures_total{action="PromptInjectionAction",endpoint_id="endpoint-1",failure_mode="fail_closed",guardrail_id="guardrail-1",module_id="interaction-safety",phase="input",policy_id="policy-injection",protocol="http",reason_class="timeout",stage="action"} 1.0'
     ) in rendered
     assert 'guard_runner_guardrail_incomplete_coverage_total{' in rendered
     assert 'module_id="interaction-safety"' in rendered
 
 
-def test_non_integration_requests_use_a_bounded_internal_identity():
+def test_non_endpoint_requests_use_a_bounded_internal_identity():
     metrics = RunnerMetrics(8)
 
     with metrics.request("controller", "playground", "input") as observation:
@@ -230,12 +220,12 @@ def test_non_integration_requests_use_a_bounded_internal_identity():
             action="pass",
             guardrail_id="guardrail-internal",
             guardrail_version="20260904-010000.001Z",
-            deployment_id="deployment-internal",
-            integration_id="decision-derived-must-not-win",
+            router_id="router-internal",
+            endpoint_id="decision-derived-must-not-win",
         ))
 
     rendered = generate_latest(metrics.registry).decode()
-    assert f'integration_id="{INTERNAL_METRIC_ID}"' in rendered
+    assert f'endpoint_id="{INTERNAL_METRIC_ID}"' in rendered
     assert "decision-derived-must-not-win" not in rendered
 
 
@@ -308,7 +298,7 @@ def test_model_call_metrics_keep_provider_outcome_and_retry_evidence():
     metrics = RunnerMetrics(8)
     labels = {
         "guardrail_id": "guardrail-1",
-        "integration_id": "integration-1",
+        "endpoint_id": "endpoint-1",
         "phase": "input",
         "action": "topic_judge",
         "provider": "nvidia",
@@ -333,16 +323,16 @@ def test_model_call_metrics_keep_provider_outcome_and_retry_evidence():
     )
 
     rendered = generate_latest(metrics.registry).decode()
-    assert 'error_type="action_deadline",guardrail_id="guardrail-1",integration_id="integration-1",model="topic-control",operation="topic_classification",phase="input",provider="nvidia",result="timeout"} 1.0' in rendered
-    assert 'guard_runner_model_call_duration_seconds_count{action="topic_judge",guardrail_id="guardrail-1"' in rendered
+    assert 'endpoint_id="endpoint-1",error_type="action_deadline",guardrail_id="guardrail-1",model="topic-control",operation="topic_classification",phase="input",provider="nvidia",result="timeout"} 1.0' in rendered
+    assert 'guard_runner_model_call_duration_seconds_count{action="topic_judge",endpoint_id="endpoint-1",guardrail_id="guardrail-1"' in rendered
     duration_series = next(
         line for line in rendered.splitlines()
         if line.startswith("guard_runner_model_call_duration_seconds_count{")
     )
     assert "error_type=" not in duration_series
     assert "operation=" not in duration_series
-    assert 'guard_runner_model_retries_total{action="topic_judge",guardrail_id="guardrail-1",integration_id="integration-1",model="topic-control",phase="input",provider="nvidia",reason="action_deadline"} 2.0' in rendered
-    assert 'guard_runner_model_in_flight{action="topic_judge",guardrail_id="guardrail-1",integration_id="integration-1",model="topic-control",phase="input",provider="nvidia"} 0.0' in rendered
+    assert 'guard_runner_model_retries_total{action="topic_judge",endpoint_id="endpoint-1",guardrail_id="guardrail-1",model="topic-control",phase="input",provider="nvidia",reason="action_deadline"} 2.0' in rendered
+    assert 'guard_runner_model_in_flight{action="topic_judge",endpoint_id="endpoint-1",guardrail_id="guardrail-1",model="topic-control",phase="input",provider="nvidia"} 0.0' in rendered
 
 
 @pytest.mark.asyncio
@@ -361,7 +351,7 @@ async def test_nemo_native_model_calls_use_the_same_scoped_metrics_and_wall_time
     metrics = RunnerMetrics(8)
     scope, token = activate_native_model_observation(
         guardrail_id="guardrail-native",
-        integration_id="integration-native",
+        endpoint_id="endpoint-native",
         phase="input",
         request_started_at=time.perf_counter(),
         observer=metrics,
@@ -380,5 +370,5 @@ async def test_nemo_native_model_calls_use_the_same_scoped_metrics_and_wall_time
     assert _provider_work_ms((), tuple(scope.calls)) == scope.calls[0].duration_ms
     assert _model_wait_wall_ms((), tuple(scope.calls)) == scope.calls[0].duration_ms
     rendered = generate_latest(metrics.registry).decode()
-    assert 'guard_runner_model_calls_total{action="nemo_content_safety",error_type="none",guardrail_id="guardrail-native",integration_id="integration-native",model="content-safety-model",operation="content_safety_input",phase="input",provider="nvidia",result="success"} 1.0' in rendered
-    assert 'guard_runner_model_tokens_total{action="nemo_content_safety",direction="input",guardrail_id="guardrail-native",integration_id="integration-native",model="content-safety-model",phase="input",provider="nvidia"} 40.0' in rendered
+    assert 'guard_runner_model_calls_total{action="nemo_content_safety",endpoint_id="endpoint-native",error_type="none",guardrail_id="guardrail-native",model="content-safety-model",operation="content_safety_input",phase="input",provider="nvidia",result="success"} 1.0' in rendered
+    assert 'guard_runner_model_tokens_total{action="nemo_content_safety",direction="input",endpoint_id="endpoint-native",guardrail_id="guardrail-native",model="content-safety-model",phase="input",provider="nvidia"} 40.0' in rendered

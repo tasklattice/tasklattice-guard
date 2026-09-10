@@ -60,7 +60,7 @@ async def test_signed_output_policy_stream_release_and_failure_retry(tmp_path, m
     app = FastAPI()
     app.include_router(RunnerAPI(GuardrailRuntimeService(engine, store, contexts=CallContextStore()),
         store, RunnerMetrics(4), telemetry, "fixture-stream", "fixture-controller-token").router)
-    endpoint = "/runtime/v1/integrations/fixture-integration/guardrails/output-stream"
+    endpoint = "/runtime/v1/endpoints/fixture-endpoint/guardrails/output-stream"
     try:
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://runner") as client:
             async def send(sequence):

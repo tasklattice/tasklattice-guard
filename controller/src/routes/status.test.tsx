@@ -86,7 +86,7 @@ const translations: Record<string, string> = {
   "platformStatus.reason.default_guardrail_unavailable": "The Default Guardrail is unavailable.",
   "platformStatus.controller": "Controller",
   "platformStatus.defaultGuardrail": "Default Guardrail",
-  "platformStatus.defaultRoute": "Catch-all deployment",
+  "platformStatus.defaultRoute": "Catch-all router",
   "platformStatus.defaultRunner": "GuardRails 0",
   "platformStatus.desiredGeneration": "Desired generation",
   "platformStatus.statusUnavailable": "Live status is unavailable",
@@ -116,7 +116,7 @@ const readyStatus: SystemStatus = {
     basicProtection: {
       status: "ready",
       guardrailStatus: "active",
-      deploymentStatus: "active",
+      routerStatus: "active",
       activeVersion: "20260904-093000.000Z",
       modelIndependent: true,
       coverage: { policyCount: 3, inputChecks: 3, outputChecks: 2, requiredModelBindings: [], hasUnknownDependencies: false },
@@ -204,7 +204,7 @@ describe("HealthPage", () => {
           ...readyStatus.components.basicProtection,
           status: "initializing",
           guardrailStatus: "initializing",
-          deploymentStatus: "initializing",
+          routerStatus: "initializing",
           activeVersion: null,
         },
         runnerFleet: {

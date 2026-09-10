@@ -1,6 +1,6 @@
 # Local Grafana is an anonymous debugging surface. Editor access is intentional
 # here because Grafana restricts Explore (used to expand Tempo traces) to
-# Editors. Never carry this local-only role into an internet-facing deployment.
+# Editors. Never carry this local-only role into an internet-facing router.
 grafana:
   grafana.ini:
     auth.anonymous:
@@ -32,7 +32,7 @@ grafana:
           spanEndTimeShift: 2m
           tags:
             - { key: guardrail.id, value: guardrail_id }
-            - { key: integration.id, value: integration_id }
+            - { key: endpoint.id, value: endpoint_id }
             - { key: runner.id, value: runner_id }
             - { key: gen_ai.provider.name, value: provider }
             - { key: gen_ai.request.model, value: model }

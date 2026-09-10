@@ -18,7 +18,7 @@ import {
   SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { listControllerDeployments, listControllerGuardrails, listControllerIntegrations } from "@/lib/controller-api";
+import { listControllerRouters, listControllerGuardrails, listControllerEndpoints } from "@/lib/controller-api";
 
 const navigation = [
   {
@@ -32,8 +32,8 @@ const navigation = [
   {
     label: "nav.runtime",
     items: [
-      { label: "nav.deployments", to: "/integration/routers", icon: Rocket, count: "deployments" },
-      { label: "nav.integrations", to: "/integration/endpoint", icon: Cable, count: "integrations" },
+      { label: "nav.routers", to: "/integration/routers", icon: Rocket, count: "routers" },
+      { label: "nav.endpoints", to: "/integration/endpoint", icon: Cable, count: "endpoints" },
     ],
   },
   {
@@ -51,12 +51,12 @@ export function ControlPlaneSidebar() {
   const pathname = useRouterState({ select: (routerState) => routerState.location.pathname });
   const settingsActive = pathname.startsWith("/settings/");
   const guardrails = useQuery({ queryKey: ["controller", "guardrails"], queryFn: listControllerGuardrails });
-  const deployments = useQuery({ queryKey: ["controller", "deployments"], queryFn: listControllerDeployments });
-  const integrations = useQuery({ queryKey: ["controller", "integrations"], queryFn: listControllerIntegrations });
+  const routers = useQuery({ queryKey: ["controller", "routers"], queryFn: listControllerRouters });
+  const endpoints = useQuery({ queryKey: ["controller", "endpoints"], queryFn: listControllerEndpoints });
   const counts: Record<string, number | undefined> = {
     guardrails: guardrails.data?.items.length,
-    deployments: deployments.data?.items.length,
-    integrations: integrations.data?.items.length,
+    routers: routers.data?.items.length,
+    endpoints: endpoints.data?.items.length,
   };
   return (
       <Sidebar collapsible="icon" className="border-r border-sidebar-border">

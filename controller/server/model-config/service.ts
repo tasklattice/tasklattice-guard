@@ -71,10 +71,11 @@ function unchangedRevision(draft: { id: string; rowVersion: string }) {
     sql`${modelConfigurationRevisions}.xmin::text = ${draft.rowVersion}`,
     eq(modelConfigurationRevisions.state, "draft"));
 }
-export type RailValidationEvidence = { passed: boolean; message: string; latencyMs: number };
+export type RailValidationEvidence = { passed: boolean; message: string; latencyMs: number; cases?: ModelValidationCheck["cases"] };
 export type RailValidator = (request: CapabilityValidationRequest) => Promise<RailValidationEvidence>;
 
 export class ModelConfigurationService {
+  private assignmentPreviews = new Map<string, { fingerprint: string; check: ModelValidationCheck; expiresAt: number }>();
   private activeCache: { id: string; configuration: ActiveModelConfiguration } | null = null;
   private railValidator: RailValidator | null = null;
   private readonly validationLeases = new Map<string, { provider: ProviderRow; expiresAt: number }>();
@@ -489,9 +490,35 @@ export class ModelConfigurationService {
     return publicRevision(updated);
   }
 
+  async previewAssignment(target: ModelAssignmentTarget, modelId: string, actorId: string) {
+    const draft = await this.ensureDraft(actorId);
+    const model = await this.model(modelId);
+    const provider = await this.provider(model.providerId);
+    if (!assignmentTargetAcceptsModel(target, model.profile, provider.kind)) {
+      throw new ValidationError(`${model.name} is incompatible with ${target}.`);
+    }
+    const result = await this.probeAssignment(target, provider, model);
+    const check: ModelValidationCheck = {
+      id: `probe:${target}:${modelId}`, scope: target === "control_plane" ? "model" : "capability",
+      evidenceKind: target === "control_plane" ? "model-probe" : "nemo-rail-v1",
+      status: result.passed ? "passed" : "failed", message: result.message, latencyMs: result.latencyMs, cases: result.cases ?? [],
+    };
+    for (const [key, value] of this.assignmentPreviews) {
+      if (value.expiresAt <= Date.now()) this.assignmentPreviews.delete(key);
+    }
+    this.assignmentPreviews.set(`${actorId}:${target}:${modelId}`, {
+      fingerprint: JSON.stringify([model, provider]), check, expiresAt: Date.now() + 10 * 60_000,
+    });
+    return publicRevision({ ...draft, validationReport: await this.reportFromChecks(
+      normalizeModelAssignments(draft.assignments),
+      [...(draft.validationReport?.checks ?? []).filter((item) => !checkBelongsToTarget(item, target)), check],
+    ) });
+  }
+
   async updateAssignment(target: ModelAssignmentTarget, modelId: string | null, actorId: string) {
     const draft = await this.ensureEditableDraft(actorId);
     const assignments = normalizeModelAssignments(draft.assignments);
+    let evidence: ModelValidationCheck | undefined;
     if (modelId) {
       const [model] = await this.db.select().from(modelDefinitions).where(eq(modelDefinitions.id, modelId));
       if (!model) throw new ValidationError(`Assigned Model was not found: ${modelId}.`);
@@ -499,11 +526,22 @@ export class ModelConfigurationService {
       if (!assignmentTargetAcceptsModel(target, model.profile, provider.kind)) {
         throw new ValidationError(`${model.name} (${model.profile}) cannot be assigned to ${target}.`);
       }
+      const preview = this.assignmentPreviews.get(`${actorId}:${target}:${modelId}`);
+      const savedId = target === "control_plane" ? assignments.controlPlane : assignments.bindings[target];
+      const savedCheck = savedId === modelId ? draft.validationReport?.checks.find((check) =>
+        check.id === `probe:${target}:${modelId}` && check.status === "passed"
+        && (target === "control_plane" || check.evidenceKind === "nemo-rail-v1")) : undefined;
+      evidence = preview && preview.expiresAt > Date.now() && preview.check.status === "passed"
+        && preview.fingerprint === JSON.stringify([model, provider]) ? preview.check : preview ? undefined : savedCheck;
+      if (!evidence) {
+        throw new ConflictError("Validate the selected Model successfully before saving.", "model_assignment_not_validated");
+      }
     }
     if (target === "control_plane") assignments.controlPlane = modelId;
     else assignments.bindings[target] = modelId;
 
     const checks = (draft.validationReport?.checks ?? []).filter((check) => !checkBelongsToTarget(check, target));
+    if (evidence) checks.push(evidence);
     checks.push({
       id: `assignment:${target}`,
       scope: "configuration",
@@ -556,7 +594,7 @@ export class ModelConfigurationService {
           evidenceKind: target === "control_plane" ? "model-probe" : "nemo-rail-v1",
           status: result.passed ? "passed" : "failed",
           message: result.message,
-          latencyMs: result.latencyMs,
+          latencyMs: result.latencyMs, cases: result.cases ?? [],
         });
       }
     }
@@ -685,9 +723,13 @@ export class ModelConfigurationService {
     if (!prior) throw new ConflictError("No previously active model configuration is available.", "model_configuration_rollback_unavailable");
     const draft = await this.ensureEditableDraft(actorId);
     await this.db.update(modelConfigurationRevisions).set({
-      assignments: normalizeModelAssignments(prior.assignments),
+      assignments: { ...normalizeModelAssignments(prior.assignments), controlPlane: normalizeModelAssignments(draft.assignments).controlPlane },
       state: "validated",
-      validationReport: prior.validationReport,
+      validationReport: await this.reportFromChecks(
+        { ...normalizeModelAssignments(prior.assignments), controlPlane: normalizeModelAssignments(draft.assignments).controlPlane },
+        [...(prior.validationReport?.checks ?? []).filter((check) => !checkBelongsToTarget(check, "control_plane")),
+          ...(draft.validationReport?.checks ?? []).filter((check) => checkBelongsToTarget(check, "control_plane"))],
+      ),
       validatedAt: prior.validatedAt,
       updatedAt: new Date(),
     }).where(eq(modelConfigurationRevisions.id, draft.id));
@@ -747,12 +789,15 @@ export class ModelConfigurationService {
   }
 
   async controlPlaneModel(_role: "policy_authoring" | "playground_chat") {
-    const configuration = await this.activeConfiguration();
-    if (!configuration) return null;
-    const modelId = configuration.assignments.controlPlane;
-    const model = configuration.models.find((item) => item.id === modelId);
-    if (!model) return null;
+    const [revision] = await this.db.select().from(modelConfigurationRevisions)
+      .orderBy(desc(modelConfigurationRevisions.revision)).limit(1);
+    if (!revision) return null;
+    const modelId = normalizeModelAssignments(revision.assignments).controlPlane;
+    if (!modelId || !revision.validationReport?.checks.some((check) =>
+      check.id === `probe:control_plane:${modelId}` && check.status === "passed")) return null;
+    const model = await this.model(modelId);
     const provider = await this.provider(model.providerId);
+    if (!assignmentTargetAcceptsModel("control_plane", model.profile, provider.kind)) return null;
     return {
       provider: provider.name,
       baseUrl: provider.baseUrl,
@@ -789,9 +834,7 @@ export class ModelConfigurationService {
   async statusSummary() {
     const active = await this.activeConfiguration();
     const byId = new Map(active?.models.map((item) => [item.id, item]) ?? []);
-    const control = active?.assignments.controlPlane
-      ? byId.get(active.assignments.controlPlane)
-      : null;
+    const control = await this.controlPlaneModel("playground_chat");
     const runtimeModels = capabilityBindingDefinitions.flatMap((binding) => {
       const modelId = active?.assignments.bindings[binding.id];
       const model = modelId ? byId.get(modelId) : undefined;
@@ -800,7 +843,7 @@ export class ModelConfigurationService {
     return {
       controlPlane: {
         status: control ? "configured" as const : "unconfigured" as const,
-        provider: control?.providerName ?? null,
+        provider: control?.provider ?? null,
         model: control?.model ?? null,
       },
       dataPlane: {
@@ -824,7 +867,7 @@ export class ModelConfigurationService {
       : [];
     const modelById = new Map(models.map((model) => [model.id, model]));
     const providerById = new Map(providers.map((provider) => [provider.id, provider]));
-    const probes = new Map<string, Awaited<ReturnType<ModelConfigurationService["probeModel"]>>>();
+    const probes = new Map<string, RailValidationEvidence>();
     const targets: Array<{ id: ModelAssignmentTarget; modelId: string | null; profiles: readonly ModelProfile[] }> = [
       { id: "control_plane", modelId: assignments.controlPlane, profiles: controlPlaneProfiles },
       ...capabilityBindingDefinitions.map((binding) => ({
@@ -872,7 +915,7 @@ export class ModelConfigurationService {
         evidenceKind: target.id === "control_plane" ? "model-probe" : "nemo-rail-v1",
         status: result.passed ? "passed" : "failed",
         message: result.message,
-        latencyMs: result.latencyMs,
+        latencyMs: result.latencyMs, cases: result.cases ?? [],
       });
     }
     const contractCoverage = [
@@ -890,7 +933,7 @@ export class ModelConfigurationService {
     ];
     const availableContracts = new Set(contractCoverage.map((item) => contractRailKey(item.contract, item.railType)));
     const policies = await this.policyCoverage(availableContracts);
-    const configuredFailures = checks.some((check) => check.status === "failed");
+    const configuredFailures = checks.some((check) => check.status === "failed" && !checkBelongsToTarget(check, "control_plane"));
     return {
       valid: !configuredFailures,
       checkedAt: new Date().toISOString(),
@@ -926,7 +969,6 @@ export class ModelConfigurationService {
       }),
     ];
     const assignedTargets: Array<[ModelAssignmentTarget, string | null]> = [
-      ["control_plane", assignments.controlPlane],
       ...capabilityBindingDefinitions.map((binding) => [binding.id, assignments.bindings[binding.id]] as [CapabilityBindingId, string | null]),
     ];
     const allAssignedTargetsPassed = assignedTargets.every(([target, id]) => {
@@ -942,7 +984,7 @@ export class ModelConfigurationService {
     });
     const availableContracts = new Set(contractCoverage.map((item) => contractRailKey(item.contract, item.railType)));
     return {
-      valid: allAssignedTargetsPassed && !checks.some((check) => check.status === "failed"),
+      valid: allAssignedTargetsPassed && !checks.some((check) => check.status === "failed" && !checkBelongsToTarget(check, "control_plane")),
       checkedAt: new Date().toISOString(),
       checks,
       contractCoverage: uniqueContractCoverage(contractCoverage),
@@ -1132,7 +1174,7 @@ export class ModelConfigurationService {
   private async ensureEditableDraft(actorId: string | null) {
     const existing = await this.ensureDraft(actorId);
     if (existing.state === "draft") return existing;
-    return this.createDraftFrom(existing.assignments, actorId);
+    return this.createDraftFrom(existing.assignments, actorId, existing.validationReport);
   }
 
   private async ensureDraft(actorId: string | null) {
@@ -1141,14 +1183,12 @@ export class ModelConfigurationService {
       .orderBy(desc(modelConfigurationRevisions.revision))
       .limit(1);
     if (draft) return draft;
-    const [active] = await this.db.select().from(modelConfigurationRevisions)
-      .where(eq(modelConfigurationRevisions.state, "active"))
-      .orderBy(desc(modelConfigurationRevisions.revision))
-      .limit(1);
-    return this.createDraftFrom(normalizeModelAssignments(active?.assignments), actorId);
+    const [latest] = await this.db.select().from(modelConfigurationRevisions)
+      .orderBy(desc(modelConfigurationRevisions.revision)).limit(1);
+    return this.createDraftFrom(normalizeModelAssignments(latest?.assignments), actorId, latest?.validationReport);
   }
 
-  private async createDraftFrom(assignments: ModelAssignments, actorId: string | null) {
+  private async createDraftFrom(assignments: ModelAssignments, actorId: string | null, validationReport: ModelValidationReport | null = null) {
     const rows = await this.db.select({ value: max(modelConfigurationRevisions.revision) })
       .from(modelConfigurationRevisions);
     const value = rows[0]?.value ?? 0;
@@ -1157,6 +1197,7 @@ export class ModelConfigurationService {
       revision: value + 1,
       state: "draft",
       assignments: normalizeModelAssignments(assignments),
+      validationReport,
       createdBy: actorId,
     }).returning(editableRevisionColumns);
     if (!created) throw new Error("Model configuration draft creation failed.");

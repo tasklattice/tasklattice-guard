@@ -2,7 +2,7 @@ import type { EnforcementAction } from "../../shared/enforcement-action.generate
 import type {
   GuardrailLifecycleState,
   GuardrailVersionState,
-  IntegrationLifecycleState,
+  EndpointLifecycleState,
   RunnerStatus,
   ValidationRunState,
 } from "../../shared/lifecycle";
@@ -72,6 +72,7 @@ export type ModelValidationReport = {
     message: string;
     latencyMs?: number;
     evidenceKind?: "model-probe" | "nemo-rail-v1";
+  cases?: Array<{ id: string; passed: boolean; inputContent: string; outputContent: string; expectedDecision: string; actualDecision: string; reason: string }>;
   }>;
   contractCoverage: Array<{ contract: string; bindingId: CapabilityBindingId | null; railType: ImplementedGuardrailRailType | null; source: "local" | "model"; modelId: string | null }>;
   policies: Array<{ id: string; name: string; status: "ready" | "blocked" | "unknown"; dependenciesComplete: boolean; missingContracts: string[] }>;
@@ -192,11 +193,11 @@ export type GuardrailPlanPreview = {
   estimated_critical_path_ms: number;
 };
 
-export type Integration = {
+export type Endpoint = {
   id: string;
   name: string;
   adapter: string;
-  status: IntegrationLifecycleState;
+  status: EndpointLifecycleState;
   createdAt: string;
   updatedAt: string;
   credential?: string;
@@ -204,11 +205,11 @@ export type Integration = {
   distributionStatus?: "ready" | "syncing";
 };
 
-export type Deployment = {
+export type Router = {
   id: string;
   name: string;
   guardrailId: string;
-  integrationId: string | null;
+  endpointId: string | null;
   poolId: string;
   guardrailVersion: string | null;
   routeOrder: number;
@@ -303,7 +304,7 @@ export type DeletionImpact = {
   windowMinutes: number;
   incomingRequestCount: number;
   lastRequestAt: string | null;
-  activeDeploymentCount: number;
+  activeRouterCount: number;
   telemetryFresh: boolean;
   telemetryWatermark: string | null;
   requiresSecondConfirmation: boolean;
@@ -316,8 +317,8 @@ export type RuntimeEvent = {
   runnerId: string;
   guardrailId: string | null;
   guardrailVersion: string | null;
-  integrationId: string | null;
-  deploymentId: string | null;
+  endpointId: string | null;
+  routerId: string | null;
   direction: "incoming" | "outgoing";
   decision: string;
   durationMs: number;
@@ -410,7 +411,7 @@ export const saveModelAssignments = (assignments: ModelAssignments) => requestCo
 export const validateModelConfiguration = () => requestController<ModelConfigurationRevision>("/api/v1/model-configuration/validate", json("POST"));
 export type ModelAssignmentTarget = "control_plane" | CapabilityBindingId;
 export const saveModelAssignment = (target: ModelAssignmentTarget, modelId: string | null) => requestController<ModelConfigurationRevision>(`/api/v1/model-configuration/draft/assignments/${encodeURIComponent(target)}`, json("PUT", { modelId }));
-export const validateModelAssignment = (target: ModelAssignmentTarget) => requestController<ModelConfigurationRevision>(`/api/v1/model-configuration/draft/assignments/${encodeURIComponent(target)}/validate`, json("POST"));
+export const validateModelAssignment = (target: ModelAssignmentTarget, modelId?: string) => requestController<ModelConfigurationRevision>(`/api/v1/model-configuration/draft/assignments/${encodeURIComponent(target)}/validate`, json("POST", modelId ? { modelId } : undefined));
 export const activateModelConfiguration = (revisionId: string) => requestController<ModelConfigurationView & { distribution: { desiredGeneration: number; distributionStatus: "ready" | "syncing" } }>(`/api/v1/model-configuration/${encodeURIComponent(revisionId)}/activate`, json("POST"));
 export const rollbackModelConfiguration = () => requestController<ModelConfigurationView & { distribution: { desiredGeneration: number; distributionStatus: "ready" | "syncing" } }>("/api/v1/model-configuration/rollback", json("POST"));
 export const listControllerGuardrails = () => requestController<Collection<Guardrail>>("/api/v1/guardrails");
@@ -423,22 +424,22 @@ export const rollbackControllerGuardrail = (id: string, version: string) => requ
 export const getControllerGuardrailDeletionImpact = (id: string) => requestController<DeletionImpact>(`/api/v1/guardrails/${encodeURIComponent(id)}/deletion-impact`);
 export const deleteControllerGuardrail = (id: string, input: { reason: string; confirmRecentTraffic: boolean; confirmationName?: string | undefined }) => requestController<void>(`/api/v1/guardrails/${encodeURIComponent(id)}`, json("DELETE", input));
 
-export const listControllerIntegrations = () => requestController<Collection<Integration>>("/api/v1/integrations");
-export const createControllerIntegration = (input: { name: string; adapter: string }) => requestController<Integration>("/api/v1/integrations", json("POST", input));
-export const getControllerIntegrationDeletionImpact = (id: string) => requestController<DeletionImpact>(`/api/v1/integrations/${encodeURIComponent(id)}/deletion-impact`);
-export const deleteControllerIntegration = (id: string, input: { reason: string; confirmRecentTraffic: boolean; confirmationName?: string | undefined }) => requestController<void>(`/api/v1/integrations/${encodeURIComponent(id)}`, json("DELETE", input));
+export const listControllerEndpoints = () => requestController<Collection<Endpoint>>("/api/v1/endpoints");
+export const createControllerEndpoint = (input: { name: string; adapter: string }) => requestController<Endpoint>("/api/v1/endpoints", json("POST", input));
+export const getControllerEndpointDeletionImpact = (id: string) => requestController<DeletionImpact>(`/api/v1/endpoints/${encodeURIComponent(id)}/deletion-impact`);
+export const deleteControllerEndpoint = (id: string, input: { reason: string; confirmRecentTraffic: boolean; confirmationName?: string | undefined }) => requestController<void>(`/api/v1/endpoints/${encodeURIComponent(id)}`, json("DELETE", input));
 
-export const listControllerDeployments = () => requestController<Collection<Deployment>>("/api/v1/deployments");
-export const createControllerDeployment = (input: Pick<Deployment, "name" | "guardrailId" | "poolId" | "trafficScope" | "enabled"> & { integrationId: string }) => requestController<Deployment>("/api/v1/deployments", json("POST", input));
-export const getControllerDeploymentDeletionImpact = (id: string) => requestController<DeletionImpact>(`/api/v1/deployments/${encodeURIComponent(id)}/deletion-impact`);
-export const deleteControllerDeployment = (id: string, input: { reason: string; confirmRecentTraffic: boolean; confirmationName?: string | undefined }) => requestController<void>(`/api/v1/deployments/${encodeURIComponent(id)}`, json("DELETE", input));
-export const setControllerDeploymentEnabled = (id: string, enabled: boolean) => requestController<Deployment>(`/api/v1/deployments/${encodeURIComponent(id)}`, json("PATCH", { enabled }));
-export const updateControllerDeploymentTrafficScope = (id: string, trafficScope: Record<string, unknown>) => requestController<Deployment>(`/api/v1/deployments/${encodeURIComponent(id)}/traffic-scope`, json("PUT", { trafficScope }));
-export const reorderControllerDeployments = (integrationId: string, deploymentIds: string[]) => requestController<Collection<Deployment>>(`/api/v1/integrations/${encodeURIComponent(integrationId)}/deployment-order`, json("PUT", { deploymentIds }));
+export const listControllerRouters = () => requestController<Collection<Router>>("/api/v1/routers");
+export const createControllerRouter = (input: Pick<Router, "name" | "guardrailId" | "poolId" | "trafficScope" | "enabled"> & { endpointId: string }) => requestController<Router>("/api/v1/routers", json("POST", input));
+export const getControllerRouterDeletionImpact = (id: string) => requestController<DeletionImpact>(`/api/v1/routers/${encodeURIComponent(id)}/deletion-impact`);
+export const deleteControllerRouter = (id: string, input: { reason: string; confirmRecentTraffic: boolean; confirmationName?: string | undefined }) => requestController<void>(`/api/v1/routers/${encodeURIComponent(id)}`, json("DELETE", input));
+export const setControllerRouterEnabled = (id: string, enabled: boolean) => requestController<Router>(`/api/v1/routers/${encodeURIComponent(id)}`, json("PATCH", { enabled }));
+export const updateControllerRouterTrafficScope = (id: string, trafficScope: Record<string, unknown>) => requestController<Router>(`/api/v1/routers/${encodeURIComponent(id)}/traffic-scope`, json("PUT", { trafficScope }));
+export const reorderControllerRouters = (endpointId: string, routerIds: string[]) => requestController<Collection<Router>>(`/api/v1/endpoints/${encodeURIComponent(endpointId)}/router-order`, json("PUT", { routerIds }));
 export const listRunnerPools = () => requestController<Collection<RunnerPool>>("/api/v1/runner-pools");
 export const updateRunnerPool = (id: string, input: Pick<RunnerPool, "desiredReplicas" | "safeRpsPerRunner" | "maxConcurrencyPerRunner">) => requestController<RunnerPool>(`/api/v1/runner-pools/${encodeURIComponent(id)}`, json("PATCH", input));
 export const removeRunnerInstance = (runnerId: string) => requestController<void>(`/api/v1/runner-instances/${encodeURIComponent(runnerId)}`, json("DELETE"));
-export const listRuntimeEvents = (limit = 100, filters: { guardrailId?: string; deploymentId?: string; integrationId?: string; since?: string; before?: string; cursor?: string; requestId?: string; direction?: string; outcome?: string; captured?: string; findingsOnly?: string } = {}, signal?: AbortSignal) => {
+export const listRuntimeEvents = (limit = 100, filters: { guardrailId?: string; routerId?: string; endpointId?: string; since?: string; before?: string; cursor?: string; requestId?: string; direction?: string; outcome?: string; captured?: string; findingsOnly?: string; severity?: string } = {}, signal?: AbortSignal) => {
   const query = new URLSearchParams({ limit: String(Math.min(500, Math.max(1, limit))) });
   for (const [key, value] of Object.entries(filters)) if (value) query.set(key, value);
   return requestController<Collection<RuntimeEvent>>(`/api/v1/runtime-events?${query.toString()}`, signal ? { signal } : undefined);

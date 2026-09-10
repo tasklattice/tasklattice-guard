@@ -4,11 +4,11 @@ TaskLattice Guard is split into exactly two application components:
 
 - **Guard Controller** — a TypeScript full-stack service (React, TanStack,
   Hono, Better Auth, Drizzle, PostgreSQL) that owns users, permissions,
-  Guardrails, Integrations, deployments, desired state, reconciliation, audit,
+  Guardrails, Endpoints, routers, desired state, reconciliation, audit,
   telemetry ingest, and capacity evaluation.
 - **Guard Runner** — a Python/FastAPI data plane powered by NVIDIA NeMo
   Guardrails. It receives signed immutable artifacts from Controller, prewarms
-  them, atomically activates generations, authenticates Integration traffic,
+  them, atomically activates generations, authenticates Endpoint traffic,
   and returns protection decisions.
 
 ## Architecture and HA boundary
@@ -46,7 +46,7 @@ path.
 The two call routes are deliberately separate:
 
 - **Data plane:** `AI Gateway -> Runtime Service -> Ready Runner`. The Runner
-  authenticates the Integration locally, resolves the Deployment, executes
+  authenticates the Endpoint locally, resolves the Router, executes
   NVIDIA NeMo Guardrails, and returns the protection decision. Kubernetes can
   select either Ready replica; no Runner Pod name is exposed upstream.
 - **Control plane:** `Browser -> Controller -> PostgreSQL`, plus the
@@ -61,7 +61,7 @@ The two call routes are deliberately separate:
 Redis belongs to the data-plane support path. It is not a general cache and
 does not select a Runner. The Redis key is a SHA-256 digest of `call_id`, and
 the value expires after five minutes. Its value contains the pinned
-Plan/Deployment/Integration resolution plus up to 20 messages and the input
+Plan/Router/Endpoint resolution plus up to 20 messages and the input
 content blocks required by an output check, so it can contain protected
 content. Production Redis must therefore be private, access controlled, and
 encrypted in transit. This shared context lets input and output checks use the
@@ -121,7 +121,7 @@ The browser never authors raw NeMo YAML or Colang.
 - Runner control uses a Runner token plus mutual TLS in production.
 - Artifacts use Controller-held Ed25519 private signing keys; Runners receive
   only the public key.
-- Integration credentials are shown once. Controller stores a SHA-256 verifier
+- Endpoint credentials are shown once. Controller stores a SHA-256 verifier
   and Runners authenticate locally.
 - Runtime Events contain metadata by default. When a Guardrail logging level
   qualifies for content capture, Runner encrypts the request/model content
@@ -355,10 +355,10 @@ This does not change Controller–Runner mTLS or other Providers' verification.
 
 ### Output streaming
 
-`POST /runtime/v1/integrations/{integration_id}/guardrails/output-stream`
+`POST /runtime/v1/endpoints/{endpoint_id}/guardrails/output-stream`
 accepts ordered output chunks. `full_buffered` and `window_buffered` hold text
 until an Output Rail decision exists; a blocked stream releases no text. With
-multiple Runner replicas, the stream buffer, sequence, pinned Deployment, and
+multiple Runner replicas, the stream buffer, sequence, pinned Router, and
 completion state live in Redis, so consecutive chunks may reach different Pods
 without losing order. Stream state is bounded by a TTL and keyed by a digest of
 the caller-provided stream ID.
@@ -372,6 +372,9 @@ development profiles are in
 [values-dev.yaml](charts/tali-guard/values-dev.yaml).
 
 Runtime endpoints are exposed by each Runner pool Service. The Controller
-Ingress exposes only the management UI/API; Integration runtime traffic does
+Ingress exposes only the management UI/API; Endpoint runtime traffic does
 not traverse Controller. Playground requests are the exception: Controller
 orchestrates their model call and invokes Runner's internal Guardrail endpoint.
+
+The [Traffic Router and Endpoint contract](docs/router-endpoint.md) documents the
+Integration resources, API paths, and coordinated rename migration.

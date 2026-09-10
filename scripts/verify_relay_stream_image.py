@@ -10,7 +10,7 @@ PROBE = (
     "import hashlib,importlib.machinery,json,pathlib; "
     "s=importlib.machinery.PathFinder.find_spec('litellm'); "
     "p=pathlib.Path(s.origin).parent/'proxy/guardrails/guardrail_hooks/tasklattice_guard'; "
-    "assert (p/'streaming.py').is_file(), 'Missing protected streaming integration'; "
+    "assert (p/'streaming.py').is_file(), 'Missing protected streaming endpoint'; "
     "print(json.dumps({str(f.relative_to(p)):hashlib.sha256(f.read_bytes()).hexdigest() "
     "for f in sorted(p.rglob('*.py'))},sort_keys=True))"
 )

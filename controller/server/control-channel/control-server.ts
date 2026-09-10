@@ -31,7 +31,7 @@ import { controlChannelOptions } from "./transport.js";
 import {
   artifactFromWire,
   artifactToWire,
-  integrationVerificationToWire,
+  endpointVerificationToWire,
   planToWire,
   trafficScopeToWire,
   validationCaseFromWire,
@@ -288,7 +288,7 @@ export class RunnerControlServer {
           && result.cases.some((item) => item.expectedDecision === "allow")
           && result.cases.some((item) => item.expectedDecision === "block")
           && result.cases.every((item) => item.passed && item.expectedDecision === item.actualDecision);
-        pending.finish({ passed, message: result.message, latencyMs: result.latencyMs });
+        pending.finish({ passed, message: result.message, latencyMs: result.latencyMs, cases: result.cases });
       }
     } else if (message.artifactResult) {
       // The following heartbeat advances applied_generation after an atomic
@@ -415,19 +415,19 @@ export class RunnerControlServer {
         generation: String(desired.generation),
         artifacts: desired.artifacts.map((artifact) => artifactToWire(artifact)),
         disabledGuardrailIds: desired.disabledGuardrailIds,
-        disabledIntegrationIds: desired.disabledIntegrationIds,
-        deployments: desired.deployments.map((deployment) => ({
-          deploymentId: deployment.deploymentId,
-          guardrailId: deployment.guardrailId,
-          artifactId: deployment.artifactId,
-          integrationId: deployment.integrationId ?? "",
-          routeOrder: deployment.routeOrder,
-          trafficScope: trafficScopeToWire(deployment.trafficScope),
+        disabledEndpointIds: desired.disabledEndpointIds,
+        routers: desired.routers.map((router) => ({
+          routerId: router.routerId,
+          guardrailId: router.guardrailId,
+          artifactId: router.artifactId,
+          endpointId: router.endpointId ?? "",
+          routeOrder: router.routeOrder,
+          trafficScope: trafficScopeToWire(router.trafficScope),
         })),
-        integrations: desired.integrations.map((integration) => ({
-          integrationId: integration.integrationId,
-          adapter: integration.adapter,
-          verification: integrationVerificationToWire(integration.verification),
+        endpoints: desired.endpoints.map((endpoint) => ({
+          endpointId: endpoint.endpointId,
+          adapter: endpoint.adapter,
+          verification: endpointVerificationToWire(endpoint.verification),
         })),
         guardrailLoggingLevels: desired.guardrailLoggingLevels,
         modelConfiguration: modelConfiguration ? {

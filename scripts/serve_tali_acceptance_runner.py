@@ -30,8 +30,8 @@ registry=NeMoRuntimeRegistry(store,providers,max_concurrency_per_guardrail=1)
 store.attach_registry(registry)
 desired=protocol.DesiredState.FromString(base64.b64decode((fixture/'desired-state.pb.b64').read_text()))
 desired.model_configuration.CopyFrom(config)
-integration=desired.integrations.add();integration.CopyFrom(desired.integrations[0]);integration.integration_id='quality-integration';integration.adapter='generic-http-guard'
-route=desired.deployments.add();route.CopyFrom(desired.deployments[0]);route.integration_id='quality-integration';route.deployment_id='quality-deployment'
+endpoint=desired.endpoints.add();endpoint.CopyFrom(desired.endpoints[0]);endpoint.endpoint_id='quality-endpoint';endpoint.adapter='generic-http-guard'
+route=desired.routers.add();route.CopyFrom(desired.routers[0]);route.endpoint_id='quality-endpoint';route.router_id='quality-router'
 store.apply(desired)
 engine=NeMoRuntime(registry)
 class Telemetry:

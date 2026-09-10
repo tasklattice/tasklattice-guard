@@ -3,6 +3,7 @@
   "artifact_id": "fixture-artifact-custom-dynamic-flow-events-v1",
   "checksum": "99b208e396283a13ebb84aa0f1926cc3ea69d5f8cd8e0cb53e473cd27de30378",
   "compiler_version": "tasklattice-nemo-config-v21-dynamic-flow-targets",
+  "endpoint_id": "fixture-endpoint",
   "expected": {
     "first_policy_marker": "check",
     "output_delivery": "full_buffered",
@@ -18,7 +19,6 @@
   "generation": 1,
   "guardrail_id": "fixture-secrets",
   "guardrail_version": "20260904-010000.001Z",
-  "integration_id": "fixture-integration",
   "nemo_version": "0.24.0",
   "runtime_profile": "llmrails_colang2_programmable",
   "scope": "Synthetic dynamic Flow lifecycle targets; same-named Policy-local helpers, ordered mutation/rejection, real NeMo, no models."

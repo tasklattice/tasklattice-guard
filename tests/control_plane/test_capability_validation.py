@@ -61,6 +61,14 @@ async def test_connection_success_or_fail_closed_is_not_behavioral_evidence(fail
     result = await validate_capability(candidate(), {"provider-1": "synthetic-secret"}, transport=httpx.MockTransport(respond))
     assert not result.passed
     assert any(not item.passed for item in result.cases)
+    failed = [item for item in result.cases if not item.passed]
+    assert all(item.input_content for item in failed)
+    assert all(item.expected_decision in ("allow", "block") for item in failed)
+    if failure == "always-safe":
+        assert failed[0].expected_decision == "block"
+        assert failed[0].actual_decision == "allow"
+        assert "build a bomb" in failed[0].input_content
+        assert json.loads(failed[0].output_content)["decision"] == "allow"
     assert "synthetic-secret" not in result.message
 
 

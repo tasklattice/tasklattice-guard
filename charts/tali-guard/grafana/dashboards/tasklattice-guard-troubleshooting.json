@@ -107,7 +107,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(guard_runner_guardrail_request_duration_seconds_bucket{traffic_class=\"runtime\",result=\"success\",guardrail_id!~\"__unmatched__|__unresolved__\",integration_id!~\"__unmatched__|__unresolved__\",guardrail_id=~\"$guardrail\",integration_id=~\"$integration\",runner_id=~\"$runner\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(guard_runner_guardrail_request_duration_seconds_bucket{traffic_class=\"runtime\",result=\"success\",guardrail_id!~\"__unmatched__|__unresolved__\",endpoint_id!~\"__unmatched__|__unresolved__\",guardrail_id=~\"$guardrail\",endpoint_id=~\"$endpoint\",runner_id=~\"$runner\"}[$__rate_interval])))",
           "instant": true,
           "range": false,
           "refId": "A"
@@ -174,7 +174,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "100 * (sum(rate(guard_runner_guardrail_requests_total{traffic_class=\"runtime\",result=\"error\",guardrail_id=~\"$guardrail\",integration_id=~\"$integration\",runner_id=~\"$runner\"}[$__rate_interval])) or 0 * sum(rate(guard_runner_guardrail_requests_total{traffic_class=\"runtime\",guardrail_id=~\"$guardrail\",integration_id=~\"$integration\",runner_id=~\"$runner\"}[$__rate_interval]))) / sum(rate(guard_runner_guardrail_requests_total{traffic_class=\"runtime\",guardrail_id=~\"$guardrail\",integration_id=~\"$integration\",runner_id=~\"$runner\"}[$__rate_interval]))",
+          "expr": "100 * (sum(rate(guard_runner_guardrail_requests_total{traffic_class=\"runtime\",result=\"error\",guardrail_id=~\"$guardrail\",endpoint_id=~\"$endpoint\",runner_id=~\"$runner\"}[$__rate_interval])) or 0 * sum(rate(guard_runner_guardrail_requests_total{traffic_class=\"runtime\",guardrail_id=~\"$guardrail\",endpoint_id=~\"$endpoint\",runner_id=~\"$runner\"}[$__rate_interval]))) / sum(rate(guard_runner_guardrail_requests_total{traffic_class=\"runtime\",guardrail_id=~\"$guardrail\",endpoint_id=~\"$endpoint\",runner_id=~\"$runner\"}[$__rate_interval]))",
           "instant": true,
           "range": false,
           "refId": "A"
@@ -241,7 +241,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "100 * (sum(rate(guard_runner_guardrail_requests_total{traffic_class=\"runtime\",result=\"timeout\",guardrail_id=~\"$guardrail\",integration_id=~\"$integration\",runner_id=~\"$runner\"}[$__rate_interval])) or 0 * sum(rate(guard_runner_guardrail_requests_total{traffic_class=\"runtime\",guardrail_id=~\"$guardrail\",integration_id=~\"$integration\",runner_id=~\"$runner\"}[$__rate_interval]))) / sum(rate(guard_runner_guardrail_requests_total{traffic_class=\"runtime\",guardrail_id=~\"$guardrail\",integration_id=~\"$integration\",runner_id=~\"$runner\"}[$__rate_interval]))",
+          "expr": "100 * (sum(rate(guard_runner_guardrail_requests_total{traffic_class=\"runtime\",result=\"timeout\",guardrail_id=~\"$guardrail\",endpoint_id=~\"$endpoint\",runner_id=~\"$runner\"}[$__rate_interval])) or 0 * sum(rate(guard_runner_guardrail_requests_total{traffic_class=\"runtime\",guardrail_id=~\"$guardrail\",endpoint_id=~\"$endpoint\",runner_id=~\"$runner\"}[$__rate_interval]))) / sum(rate(guard_runner_guardrail_requests_total{traffic_class=\"runtime\",guardrail_id=~\"$guardrail\",endpoint_id=~\"$endpoint\",runner_id=~\"$runner\"}[$__rate_interval]))",
           "instant": true,
           "range": false,
           "refId": "A"
@@ -309,7 +309,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "100 * (sum(rate(guard_runner_guardrail_model_wait_wall_duration_seconds_sum{guardrail_id=~\"$guardrail\",integration_id=~\"$integration\",runner_id=~\"$runner\"}[$__rate_interval])) or 0 * sum(rate(guard_runner_guardrail_request_duration_seconds_sum{traffic_class=\"runtime\",guardrail_id=~\"$guardrail\",integration_id=~\"$integration\",runner_id=~\"$runner\"}[$__rate_interval]))) / sum(rate(guard_runner_guardrail_request_duration_seconds_sum{traffic_class=\"runtime\",guardrail_id=~\"$guardrail\",integration_id=~\"$integration\",runner_id=~\"$runner\"}[$__rate_interval]))",
+          "expr": "100 * (sum(rate(guard_runner_guardrail_model_wait_wall_duration_seconds_sum{guardrail_id=~\"$guardrail\",endpoint_id=~\"$endpoint\",runner_id=~\"$runner\"}[$__rate_interval])) or 0 * sum(rate(guard_runner_guardrail_request_duration_seconds_sum{traffic_class=\"runtime\",guardrail_id=~\"$guardrail\",endpoint_id=~\"$endpoint\",runner_id=~\"$runner\"}[$__rate_interval]))) / sum(rate(guard_runner_guardrail_request_duration_seconds_sum{traffic_class=\"runtime\",guardrail_id=~\"$guardrail\",endpoint_id=~\"$endpoint\",runner_id=~\"$runner\"}[$__rate_interval]))",
           "instant": true,
           "range": false,
           "refId": "A"
@@ -372,7 +372,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum(rate(guard_runner_guardrail_requests_total{traffic_class=\"runtime\",failure_mode=\"fail_open\",guardrail_id=~\"$guardrail\",integration_id=~\"$integration\",runner_id=~\"$runner\"}[$__rate_interval]))",
+          "expr": "sum(rate(guard_runner_guardrail_requests_total{traffic_class=\"runtime\",failure_mode=\"fail_open\",guardrail_id=~\"$guardrail\",endpoint_id=~\"$endpoint\",runner_id=~\"$runner\"}[$__rate_interval]))",
           "instant": true,
           "range": false,
           "refId": "A"
@@ -386,7 +386,7 @@
         "type": "prometheus",
         "uid": "tasklattice-prometheus"
       },
-      "description": "Global pre-execution rejects on the selected Runner(s). GuardRail and Integration filters do not apply because identity is not trusted until authentication and route resolution succeed.",
+      "description": "Global pre-execution rejects on the selected Runner(s). GuardRail and Endpoint filters do not apply because identity is not trusted until authentication and route resolution succeed.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -528,35 +528,35 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(guard_runner_guardrail_request_duration_seconds_bucket{traffic_class=\"runtime\",result=\"success\",guardrail_id=~\"$guardrail\",integration_id=~\"$integration\",runner_id=~\"$runner\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(guard_runner_guardrail_request_duration_seconds_bucket{traffic_class=\"runtime\",result=\"success\",guardrail_id=~\"$guardrail\",endpoint_id=~\"$endpoint\",runner_id=~\"$runner\"}[$__rate_interval])))",
           "legendFormat": "E2E P95",
           "range": true,
           "refId": "A"
         },
         {
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(guard_runner_guardrail_model_wait_wall_duration_seconds_bucket{guardrail_id=~\"$guardrail\",integration_id=~\"$integration\",runner_id=~\"$runner\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(guard_runner_guardrail_model_wait_wall_duration_seconds_bucket{guardrail_id=~\"$guardrail\",endpoint_id=~\"$endpoint\",runner_id=~\"$runner\"}[$__rate_interval])))",
           "legendFormat": "model wait wall P95",
           "range": true,
           "refId": "B"
         },
         {
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(guard_runner_guardrail_provider_work_duration_seconds_bucket{guardrail_id=~\"$guardrail\",integration_id=~\"$integration\",runner_id=~\"$runner\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(guard_runner_guardrail_provider_work_duration_seconds_bucket{guardrail_id=~\"$guardrail\",endpoint_id=~\"$endpoint\",runner_id=~\"$runner\"}[$__rate_interval])))",
           "legendFormat": "provider work P95",
           "range": true,
           "refId": "C"
         },
         {
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(guard_runner_guardrail_queue_wait_duration_seconds_bucket{guardrail_id=~\"$guardrail\",integration_id=~\"$integration\",runner_id=~\"$runner\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(guard_runner_guardrail_queue_wait_duration_seconds_bucket{guardrail_id=~\"$guardrail\",endpoint_id=~\"$endpoint\",runner_id=~\"$runner\"}[$__rate_interval])))",
           "legendFormat": "queue P95",
           "range": true,
           "refId": "D"
         },
         {
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(guard_runner_guardrail_stage_duration_seconds_bucket{stage=\"action\",guardrail_id=~\"$guardrail\",integration_id=~\"$integration\",runner_id=~\"$runner\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(guard_runner_guardrail_stage_duration_seconds_bucket{stage=\"action\",guardrail_id=~\"$guardrail\",endpoint_id=~\"$endpoint\",runner_id=~\"$runner\"}[$__rate_interval])))",
           "legendFormat": "action P95",
           "range": true,
           "refId": "E"
@@ -616,7 +616,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (provider, model, action, le) (rate(guard_runner_model_call_duration_seconds_bucket{guardrail_id=~\"$guardrail\",integration_id=~\"$integration\",runner_id=~\"$runner\",provider=~\"$provider\",model=~\"$model\",action=~\"$action\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (provider, model, action, le) (rate(guard_runner_model_call_duration_seconds_bucket{guardrail_id=~\"$guardrail\",endpoint_id=~\"$endpoint\",runner_id=~\"$runner\",provider=~\"$provider\",model=~\"$model\",action=~\"$action\"}[$__rate_interval])))",
           "legendFormat": "{{provider}} / {{model}} · {{action}}",
           "range": true,
           "refId": "A"
@@ -687,7 +687,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum by (result, provider, model) (rate(guard_runner_model_calls_total{guardrail_id=~\"$guardrail\",integration_id=~\"$integration\",runner_id=~\"$runner\",provider=~\"$provider\",model=~\"$model\",action=~\"$action\"}[$__rate_interval]))",
+          "expr": "sum by (result, provider, model) (rate(guard_runner_model_calls_total{guardrail_id=~\"$guardrail\",endpoint_id=~\"$endpoint\",runner_id=~\"$runner\",provider=~\"$provider\",model=~\"$model\",action=~\"$action\"}[$__rate_interval]))",
           "legendFormat": "{{result}} · {{provider}}/{{model}}",
           "range": true,
           "refId": "A"
@@ -746,7 +746,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum by (runner_id, provider, model) (guard_runner_model_in_flight{guardrail_id=~\"$guardrail\",integration_id=~\"$integration\",runner_id=~\"$runner\",provider=~\"$provider\",model=~\"$model\",action=~\"$action\"})",
+          "expr": "sum by (runner_id, provider, model) (guard_runner_model_in_flight{guardrail_id=~\"$guardrail\",endpoint_id=~\"$endpoint\",runner_id=~\"$runner\",provider=~\"$provider\",model=~\"$model\",action=~\"$action\"})",
           "legendFormat": "{{runner_id}} · {{provider}}/{{model}}",
           "range": true,
           "refId": "A"
@@ -822,14 +822,14 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum by (reason, provider, model) (rate(guard_runner_model_retries_total{guardrail_id=~\"$guardrail\",integration_id=~\"$integration\",runner_id=~\"$runner\",provider=~\"$provider\",model=~\"$model\",action=~\"$action\"}[$__rate_interval]))",
+          "expr": "sum by (reason, provider, model) (rate(guard_runner_model_retries_total{guardrail_id=~\"$guardrail\",endpoint_id=~\"$endpoint\",runner_id=~\"$runner\",provider=~\"$provider\",model=~\"$model\",action=~\"$action\"}[$__rate_interval]))",
           "legendFormat": "retries · {{reason}} · {{provider}}/{{model}}",
           "range": true,
           "refId": "A"
         },
         {
           "editorMode": "code",
-          "expr": "sum(rate(guard_runner_model_backoff_duration_seconds_sum{guardrail_id=~\"$guardrail\",integration_id=~\"$integration\",runner_id=~\"$runner\",provider=~\"$provider\",model=~\"$model\",action=~\"$action\"}[$__rate_interval]))",
+          "expr": "sum(rate(guard_runner_model_backoff_duration_seconds_sum{guardrail_id=~\"$guardrail\",endpoint_id=~\"$endpoint\",runner_id=~\"$runner\",provider=~\"$provider\",model=~\"$model\",action=~\"$action\"}[$__rate_interval]))",
           "legendFormat": "backoff seconds/s",
           "range": true,
           "refId": "B"
@@ -885,7 +885,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum by (stage, reason_class, result) (rate(guard_runner_guardrail_execution_failures_total{guardrail_id=~\"$guardrail\",integration_id=~\"$integration\",runner_id=~\"$runner\"}[$__rate_interval]))",
+          "expr": "sum by (stage, reason_class, result) (rate(guard_runner_guardrail_execution_failures_total{guardrail_id=~\"$guardrail\",endpoint_id=~\"$endpoint\",runner_id=~\"$runner\"}[$__rate_interval]))",
           "legendFormat": "{{stage}} · {{reason_class}} · {{result}}",
           "range": true,
           "refId": "A"
@@ -915,7 +915,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum by (provider, model, action, operation, result, error_type) (increase(guard_runner_model_calls_total{guardrail_id=~\"$guardrail\",integration_id=~\"$integration\",runner_id=~\"$runner\",provider=~\"$provider\",model=~\"$model\",action=~\"$action\",result!=\"success\"}[$__range]))",
+          "expr": "sum by (provider, model, action, operation, result, error_type) (increase(guard_runner_model_calls_total{guardrail_id=~\"$guardrail\",endpoint_id=~\"$endpoint\",runner_id=~\"$runner\",provider=~\"$provider\",model=~\"$model\",action=~\"$action\",result!=\"success\"}[$__range]))",
           "format": "table",
           "instant": true,
           "range": false,
@@ -956,7 +956,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum by (disposition) (rate(guard_runner_guardrail_requests_total{traffic_class=\"runtime\",result=\"success\",guardrail_id=~\"$guardrail\",integration_id=~\"$integration\",runner_id=~\"$runner\"}[$__rate_interval]))",
+          "expr": "sum by (disposition) (rate(guard_runner_guardrail_requests_total{traffic_class=\"runtime\",result=\"success\",guardrail_id=~\"$guardrail\",endpoint_id=~\"$endpoint\",runner_id=~\"$runner\"}[$__rate_interval]))",
           "legendFormat": "{{disposition}}",
           "range": true,
           "refId": "A"
@@ -980,7 +980,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum by (disposition, module_id, risk, policy_id, action, verdict) (increase(guard_runner_guardrail_policy_triggers_total{guardrail_id=~\"$guardrail\",integration_id=~\"$integration\",runner_id=~\"$runner\",action=~\"$action\"}[$__range]))",
+          "expr": "sum by (disposition, module_id, risk, policy_id, action, verdict) (increase(guard_runner_guardrail_policy_triggers_total{guardrail_id=~\"$guardrail\",endpoint_id=~\"$endpoint\",runner_id=~\"$runner\",action=~\"$action\"}[$__range]))",
           "format": "table",
           "instant": true,
           "range": false,
@@ -1013,7 +1013,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum by (action) (rate(guard_runner_guardrail_interventions_total{guardrail_id=~\"$guardrail\",integration_id=~\"$integration\",runner_id=~\"$runner\",action=~\"$action\"}[$__rate_interval]))",
+          "expr": "sum by (action) (rate(guard_runner_guardrail_interventions_total{guardrail_id=~\"$guardrail\",endpoint_id=~\"$endpoint\",runner_id=~\"$runner\",action=~\"$action\"}[$__rate_interval]))",
           "legendFormat": "{{action}}",
           "range": true,
           "refId": "A"
@@ -1084,7 +1084,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum by (module_id, action, policy_id, failure_mode, reason_class) (rate(guard_runner_guardrail_protection_failures_total{guardrail_id=~\"$guardrail\",integration_id=~\"$integration\",runner_id=~\"$runner\",action=~\"$action\"}[$__rate_interval]))",
+          "expr": "sum by (module_id, action, policy_id, failure_mode, reason_class) (rate(guard_runner_guardrail_protection_failures_total{guardrail_id=~\"$guardrail\",endpoint_id=~\"$endpoint\",runner_id=~\"$runner\",action=~\"$action\"}[$__rate_interval]))",
           "legendFormat": "{{module_id}} · {{action}} · {{policy_id}} · {{failure_mode}} · {{reason_class}}",
           "range": true,
           "refId": "A"
@@ -1136,7 +1136,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum by (coverage, module_id, action, policy_id, failure_mode, reason_class) (increase(guard_runner_guardrail_incomplete_coverage_total{guardrail_id=~\"$guardrail\",integration_id=~\"$integration\",runner_id=~\"$runner\",action=~\"$action\"}[$__range]))",
+          "expr": "sum by (coverage, module_id, action, policy_id, failure_mode, reason_class) (increase(guard_runner_guardrail_incomplete_coverage_total{guardrail_id=~\"$guardrail\",endpoint_id=~\"$endpoint\",runner_id=~\"$runner\",action=~\"$action\"}[$__range]))",
           "format": "table",
           "instant": true,
           "range": false,
@@ -1151,7 +1151,7 @@
       "gridPos": {"h": 1, "w": 24, "x": 0, "y": 56},
       "id": 108,
       "panels": [],
-      "title": "Global entry path · Before GuardRail and Integration identity is trusted",
+      "title": "Global entry path · Before GuardRail and Endpoint identity is trusted",
       "type": "row"
     },
     {
@@ -1159,7 +1159,7 @@
         "type": "prometheus",
         "uid": "tasklattice-prometheus"
       },
-      "description": "Global pre-execution failures on the selected Runner(s). GuardRail and Integration filters intentionally do not apply: authentication and route resolution occur before those identities can be trusted. These failures are excluded from GuardRail availability.",
+      "description": "Global pre-execution failures on the selected Runner(s). GuardRail and Endpoint filters intentionally do not apply: authentication and route resolution occur before those identities can be trusted. These failures are excluded from GuardRail availability.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1270,7 +1270,7 @@
             "uid": "tasklattice-tempo"
           },
           "limit": 100,
-          "query": "{ resource.service.name = \"tasklattice.guard-runner\" && name = \"guardrail.request\" && span.guardrail.id =~ \"$guardrail\" && span.integration.id =~ \"$integration\" && resource.runner.id =~ \"$runner\" } | select(span.guardrail.id, span.integration.id, span.guardrail.result, span.guardrail.disposition, span.guardrail.duration_ms)",
+          "query": "{ resource.service.name = \"tasklattice.guard-runner\" && name = \"guardrail.request\" && span.guardrail.id =~ \"$guardrail\" && span.endpoint.id =~ \"$endpoint\" && resource.runner.id =~ \"$runner\" } | select(span.guardrail.id, span.endpoint.id, span.guardrail.result, span.guardrail.disposition, span.guardrail.duration_ms)",
           "queryType": "traceql",
           "refId": "A",
           "tableType": "traces"
@@ -1728,20 +1728,20 @@
           "type": "prometheus",
           "uid": "tasklattice-prometheus"
         },
-        "definition": "query_result(max by (integration_id, integration_name) (guard_controller_guardrail_integration_info{guardrail_id=~\"$guardrail\",status=\"active\"}))",
-        "description": "Active Integration binding for the selected GuardRail.",
+        "definition": "query_result(max by (endpoint_id, endpoint_name) (guard_controller_guardrail_endpoint_info{guardrail_id=~\"$guardrail\",status=\"active\"}))",
+        "description": "Active Endpoint binding for the selected GuardRail.",
         "hide": 0,
         "includeAll": true,
-        "label": "Integration",
+        "label": "Endpoint",
         "multi": true,
-        "name": "integration",
+        "name": "endpoint",
         "options": [],
         "query": {
-          "query": "query_result(max by (integration_id, integration_name) (guard_controller_guardrail_integration_info{guardrail_id=~\"$guardrail\",status=\"active\"}))",
+          "query": "query_result(max by (endpoint_id, endpoint_name) (guard_controller_guardrail_endpoint_info{guardrail_id=~\"$guardrail\",status=\"active\"}))",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,
-        "regex": "/integration_id=\"(?<value>[^\"]+)\".*integration_name=\"(?<text>[^\"]+)\"/",
+        "regex": "/endpoint_id=\"(?<value>[^\"]+)\".*endpoint_name=\"(?<text>[^\"]+)\"/",
         "sort": 1,
         "type": "query"
       },
@@ -1755,7 +1755,7 @@
           "type": "prometheus",
           "uid": "tasklattice-prometheus"
         },
-        "definition": "query_result(max by (runner_id) (guard_controller_runner_info * on (namespace, app_kubernetes_io_instance, pool) group_left max by (namespace, app_kubernetes_io_instance, pool) (guard_controller_guardrail_integration_info{guardrail_id=~\"$guardrail\",integration_id=~\"$integration\",status=\"active\"})))",
+        "definition": "query_result(max by (runner_id) (guard_controller_runner_info * on (namespace, app_kubernetes_io_instance, pool) group_left max by (namespace, app_kubernetes_io_instance, pool) (guard_controller_guardrail_endpoint_info{guardrail_id=~\"$guardrail\",endpoint_id=~\"$endpoint\",status=\"active\"})))",
         "description": "Runner serving the selected binding Pool.",
         "hide": 0,
         "includeAll": true,
@@ -1764,7 +1764,7 @@
         "name": "runner",
         "options": [],
         "query": {
-          "query": "query_result(max by (runner_id) (guard_controller_runner_info * on (namespace, app_kubernetes_io_instance, pool) group_left max by (namespace, app_kubernetes_io_instance, pool) (guard_controller_guardrail_integration_info{guardrail_id=~\"$guardrail\",integration_id=~\"$integration\",status=\"active\"})))",
+          "query": "query_result(max by (runner_id) (guard_controller_runner_info * on (namespace, app_kubernetes_io_instance, pool) group_left max by (namespace, app_kubernetes_io_instance, pool) (guard_controller_guardrail_endpoint_info{guardrail_id=~\"$guardrail\",endpoint_id=~\"$endpoint\",status=\"active\"})))",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,
@@ -1782,7 +1782,7 @@
           "type": "prometheus",
           "uid": "tasklattice-prometheus"
         },
-        "definition": "label_values(guard_runner_model_calls_total{guardrail_id=~\"$guardrail\",integration_id=~\"$integration\",runner_id=~\"$runner\"}, provider)",
+        "definition": "label_values(guard_runner_model_calls_total{guardrail_id=~\"$guardrail\",endpoint_id=~\"$endpoint\",runner_id=~\"$runner\"}, provider)",
         "description": "Debug-only provider filter.",
         "hide": 0,
         "includeAll": true,
@@ -1791,7 +1791,7 @@
         "name": "provider",
         "options": [],
         "query": {
-          "query": "label_values(guard_runner_model_calls_total{guardrail_id=~\"$guardrail\",integration_id=~\"$integration\",runner_id=~\"$runner\"}, provider)",
+          "query": "label_values(guard_runner_model_calls_total{guardrail_id=~\"$guardrail\",endpoint_id=~\"$endpoint\",runner_id=~\"$runner\"}, provider)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,
@@ -1809,7 +1809,7 @@
           "type": "prometheus",
           "uid": "tasklattice-prometheus"
         },
-        "definition": "label_values(guard_runner_model_calls_total{guardrail_id=~\"$guardrail\",integration_id=~\"$integration\",runner_id=~\"$runner\",provider=~\"$provider\"}, model)",
+        "definition": "label_values(guard_runner_model_calls_total{guardrail_id=~\"$guardrail\",endpoint_id=~\"$endpoint\",runner_id=~\"$runner\",provider=~\"$provider\"}, model)",
         "description": "Debug-only model filter.",
         "hide": 0,
         "includeAll": true,
@@ -1818,7 +1818,7 @@
         "name": "model",
         "options": [],
         "query": {
-          "query": "label_values(guard_runner_model_calls_total{guardrail_id=~\"$guardrail\",integration_id=~\"$integration\",runner_id=~\"$runner\",provider=~\"$provider\"}, model)",
+          "query": "label_values(guard_runner_model_calls_total{guardrail_id=~\"$guardrail\",endpoint_id=~\"$endpoint\",runner_id=~\"$runner\",provider=~\"$provider\"}, model)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,
@@ -1836,7 +1836,7 @@
           "type": "prometheus",
           "uid": "tasklattice-prometheus"
         },
-        "definition": "label_values(guard_runner_model_calls_total{guardrail_id=~\"$guardrail\",integration_id=~\"$integration\",runner_id=~\"$runner\",provider=~\"$provider\",model=~\"$model\"}, action)",
+        "definition": "label_values(guard_runner_model_calls_total{guardrail_id=~\"$guardrail\",endpoint_id=~\"$endpoint\",runner_id=~\"$runner\",provider=~\"$provider\",model=~\"$model\"}, action)",
         "description": "Debug-only GuardRail Action filter.",
         "hide": 0,
         "includeAll": true,
@@ -1845,7 +1845,7 @@
         "name": "action",
         "options": [],
         "query": {
-          "query": "label_values(guard_runner_model_calls_total{guardrail_id=~\"$guardrail\",integration_id=~\"$integration\",runner_id=~\"$runner\",provider=~\"$provider\",model=~\"$model\"}, action)",
+          "query": "label_values(guard_runner_model_calls_total{guardrail_id=~\"$guardrail\",endpoint_id=~\"$endpoint\",runner_id=~\"$runner\",provider=~\"$provider\",model=~\"$model\"}, action)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,

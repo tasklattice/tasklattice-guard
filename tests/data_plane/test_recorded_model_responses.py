@@ -86,7 +86,7 @@ async def test_frozen_output_artifact_with_recorded_real_classification(tmp_path
     try:
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://runner') as client:
             for index, part in enumerate(parts):
-                result = await client.post('/runtime/v1/integrations/fixture-integration/guardrails/output-stream',
+                result = await client.post('/runtime/v1/endpoints/fixture-endpoint/guardrails/output-stream',
                     headers={'x-api-key':RUNTIME_CREDENTIAL}, json={'stream_id':'recorded', 'sequence':index,
                     'text':part, 'final':index == len(parts)-1, 'protocol':'litellm',
                     'messages':[{'role':'user','content':'Please answer my question.'}]})

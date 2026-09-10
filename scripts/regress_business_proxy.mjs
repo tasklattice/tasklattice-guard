@@ -135,28 +135,28 @@ try {
     "Replay the current reviewed published revision, not an older artifact.");
   assert(published.plan.steps.length > 0 && published.plan.steps.every(step => step.capability === "builtin_content_filter"),
     "This zero-external-call regression only permits local Policy execution.");
-  const integration = (await api("/api/v1/integrations", { name: container, adapter: "litellm-generic-guardrail" }, 201)).result;
-  credential = integration.credential;
-  assert(credential, "Integration must return its one-time credential.");
-  const deployment = (await api("/api/v1/deployments", { name: container, guardrailId, integrationId: integration.id, poolId: "default", enabled: true,
+  const endpoint = (await api("/api/v1/endpoints", { name: container, adapter: "litellm-generic-guardrail" }, 201)).result;
+  credential = endpoint.credential;
+  assert(credential, "Endpoint must return its one-time credential.");
+  const router = (await api("/api/v1/routers", { name: container, guardrailId, endpointId: endpoint.id, poolId: "default", enabled: true,
     trafficScope: { combinator: "and", conditions: [] } }, 201)).result;
-  const verifyUrl = new URL(`/runtime/v1/integrations/${integration.id}/verify`, runner);
+  const verifyUrl = new URL(`/runtime/v1/endpoints/${endpoint.id}/verify`, runner);
   let ready = false;
   for (let attempt = 0; attempt < 60; attempt++) {
     const check = await fetch(verifyUrl, { method: "POST", headers: { "x-api-key": credential, "content-type": "application/json" }, body: "{}" });
     if (check.ok && (await check.json()).ready) { ready = true; break; }
     await delay(1_000);
   }
-  assert(ready, "Runner did not load the integration credential.");
+  assert(ready, "Runner did not load the endpoint credential.");
   const imageId = verifiedImage;
   const { stdout: containerId } = await exec("docker", ["run", "-d", "--name", container, "-p", `127.0.0.1:${proxyPort}:4000`,
     "--mount", `type=bind,source=${config},target=/tmp/replay.yaml,readonly`,
-    "-e", `TASKLATTICE_GUARD_API_BASE=http://host.docker.internal:${guardTransportPort}/runtime/v1/integrations/${integration.id}`,
+    "-e", `TASKLATTICE_GUARD_API_BASE=http://host.docker.internal:${guardTransportPort}/runtime/v1/endpoints/${endpoint.id}`,
     "-e", `TASKLATTICE_GUARD_API_KEY=${credential}`, "-e", `BUSINESS_REPLAY_BASE=http://host.docker.internal:${businessPort}/v1`,
     "-e", `REPLAY_PROXY_MASTER_KEY=${proxyKey}`, "-e", "LITELLM_LOCAL_MODEL_COST_MAP=True", "-e", "DISABLE_ADMIN_UI=true",
     verifiedImage, "--config", "/tmp/replay.yaml", "--host", "0.0.0.0", "--port", "4000"], { timeout: 30_000 });
   started = Boolean(containerId.trim());
-  report("proxy-starting", { image: imageId.trim(), integrationId: integration.id, deploymentId: deployment.id, guardrailId, version: guardrail.activeVersion });
+  report("proxy-starting", { image: imageId.trim(), endpointId: endpoint.id, routerId: router.id, guardrailId, version: guardrail.activeVersion });
   ready = false;
   for (let attempt = 0; attempt < 90; attempt++) {
     try { if ((await fetch(`http://127.0.0.1:${proxyPort}/health/liveliness`, { signal: AbortSignal.timeout(1_000) })).ok) { ready = true; break; } } catch { /* bounded startup wait */ }

@@ -9,7 +9,7 @@ vi.mock("react-i18next", () => ({
       "dashboard.degraded": "Degraded",
       "dashboard.healthFailClosed": "Fail-closed decisions were detected.",
       "dashboard.healthLatency": "Runtime latency is elevated.",
-      "dashboard.healthIntegration": `${values?.count ?? 0} integrations need attention.`,
+      "dashboard.healthEndpoint": `${values?.count ?? 0} endpoints need attention.`,
       "dashboard.healthSystem": "Check platform readiness; missing model capability is not established.",
       "dashboard.platformAttention": "Platform needs attention",
       "platformStatus.reason.runner_capacity_below_desired": "Serving capacity is below the desired replica count.",
@@ -22,7 +22,7 @@ const healthy: RuntimeHealthAlertMetrics = {
   system_status: "healthy",
   latency_slo: { p95_status: "healthy" },
   fail_closed_count: 0,
-  degraded_integrations: 0,
+  degraded_endpoints: 0,
 };
 
 describe("RuntimeHealthAlert", () => {
@@ -41,7 +41,7 @@ describe("RuntimeHealthAlert", () => {
       system_status: "degraded",
       latency_slo: { p95_status: "breached" },
       fail_closed_count: 2,
-      degraded_integrations: 1,
+      degraded_endpoints: 1,
     }} />);
 
     expect(screen.getByRole("alert").textContent).toContain("Degraded");

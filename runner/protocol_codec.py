@@ -115,21 +115,21 @@ def traffic_scope_from_proto(message: protocol.TrafficScope) -> dict[str, Any]:
     }
 
 
-def integration_verification_to_proto(
+def endpoint_verification_to_proto(
     value: Mapping[str, Any],
-) -> protocol.IntegrationVerification:
+) -> protocol.EndpointVerification:
     raw = value.get("credentials", [])
     if not isinstance(raw, list):
-        raise ValueError("Integration verification credentials must be a list.")
-    return protocol.IntegrationVerification(credentials=[
-        _message_from_mapping(protocol.IntegrationCredential, item, json_names=True)
+        raise ValueError("Endpoint verification credentials must be a list.")
+    return protocol.EndpointVerification(credentials=[
+        _message_from_mapping(protocol.EndpointCredential, item, json_names=True)
         for item in raw
         if isinstance(item, Mapping)
     ])
 
 
-def integration_verification_from_proto(
-    message: protocol.IntegrationVerification,
+def endpoint_verification_from_proto(
+    message: protocol.EndpointVerification,
 ) -> dict[str, Any]:
     return {
         "credentials": [

@@ -39,7 +39,7 @@ async def test_pii_full_buffering_all_character_and_utf8_boundaries(tmp_path, re
     app = FastAPI()
     app.include_router(RunnerAPI(GuardrailRuntimeService(engine,store),store,RunnerMetrics(4),
         Telemetry(),'stage-a-boundary','synthetic-controller-key').router)
-    endpoint = '/runtime/v1/integrations/fixture-integration/guardrails/output-stream'
+    endpoint = '/runtime/v1/endpoints/fixture-endpoint/guardrails/output-stream'
     try:
         async with tcp_server(app) as url, httpx.AsyncClient(base_url=url,trust_env=False,timeout=10) as client:
             async def check(parts, label, utf8_cut=0):

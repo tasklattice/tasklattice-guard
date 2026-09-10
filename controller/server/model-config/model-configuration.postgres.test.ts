@@ -1,3 +1,4 @@
+// @vitest-environment node
 // Opt-in real PostgreSQL semantics; never calls a Provider or changes public rows.
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
@@ -53,7 +54,34 @@ describe.skipIf(!url)("Model draft PostgreSQL optimistic locking", () => {
     return id;
   }
 
+  it('keeps saved Chat available across draft creation, Runner activation and rollback', async () => {
+    await seed();
+    await pool.query("UPDATE model_definition SET profile='generic-chat' WHERE id=$1", [modelId]);
+    const chat = new ModelConfigurationService(drizzle(pool, { schema }), 'synthetic-root',
+      resolve('../runner/toolkit/policy_library/assets'), vi.fn(async () =>
+        Response.json({ choices: [{ message: { content: "Hello" } }] })));
+    try {
+      await chat.previewAssignment('control_plane', modelId, 'synthetic-admin');
+      expect(await chat.controlPlaneModel('playground_chat')).toBeNull();
+      const saved = await chat.updateAssignment('control_plane', modelId, 'synthetic-admin');
+      expect(await chat.controlPlaneModel('playground_chat')).toMatchObject({ model: 'synthetic' });
+      expect((await pool.query('SELECT id FROM controller_outbox')).rows).toHaveLength(0);
+      await chat.beginActivation(saved.id, 'synthetic-admin');
+      await chat.view(); // Creating the next draft must retain Control Plane evidence.
+      expect(await chat.controlPlaneModel('playground_chat')).toMatchObject({ model: 'synthetic' });
+      await pool.query("INSERT INTO model_configuration_revision (id,revision,assignments,state) VALUES ($1,0,$2,'superseded')",
+        [randomUUID(), emptyModelAssignments()]);
+      await chat.rollback('synthetic-admin');
+      expect(await chat.controlPlaneModel('playground_chat')).toMatchObject({ model: 'synthetic' });
+      await chat.updateAssignment('control_plane', null, 'synthetic-admin');
+      expect(await chat.controlPlaneModel('playground_chat')).toBeNull();
+    } finally {
+      await pool.query("UPDATE model_definition SET profile='tali.qwen3guard.v1' WHERE id=$1", [modelId]);
+    }
+  });
+
   it('saves a genuinely new draft without an initial bulk-save workaround', async () => {
+    await service.previewAssignment('content_safety.input', modelId, 'synthetic-admin');
     const result = await service.updateAssignment('content_safety.input', modelId, 'synthetic-admin');
     expect(result.assignments.bindings['content_safety.input']).toBe(modelId);
     expect(result).not.toHaveProperty('rowVersion');
@@ -64,6 +92,7 @@ describe.skipIf(!url)("Model draft PostgreSQL optimistic locking", () => {
     const { rows: [row] } = await pool.query('SELECT updated_at FROM model_configuration_revision WHERE id=$1', [id]);
     const { rowCount } = await pool.query('SELECT id FROM model_configuration_revision WHERE id=$1 AND updated_at=$2', [id, row.updated_at]);
     expect(rowCount).toBe(0);
+    await service.previewAssignment('content_safety.input', modelId, 'synthetic-admin');
     const result = await service.updateAssignment('content_safety.input', modelId, 'synthetic-admin');
     expect(result.id).toBe(id);
     expect(result.assignments.bindings['content_safety.input']).toBe(modelId);
@@ -136,7 +165,6 @@ describe.skipIf(!url)("Model draft PostgreSQL optimistic locking", () => {
     await service.validateAssignment('content_safety.input', 'synthetic-admin');
     const second = await service.updateAssignment('content_safety.input', modelId, 'synthetic-admin');
     expect(second.id).not.toBe(first);
-    await service.validateAssignment('content_safety.input', 'synthetic-admin');
     await service.beginActivation(first, 'synthetic-admin');
     const replacement = await service.beginActivation(second.id, 'synthetic-admin');
     expect(replacement.state).toBe('activating');
@@ -154,7 +182,6 @@ describe.skipIf(!url)("Model draft PostgreSQL optimistic locking", () => {
     const first = await seed(true);
     await service.validateAssignment('content_safety.input', 'synthetic-admin');
     const next = await service.updateAssignment('content_safety.input', modelId, 'synthetic-admin');
-    await service.validateAssignment('content_safety.input', 'synthetic-admin');
     await service.beginActivation(first, 'synthetic-admin');
 
     async function waitUntil(condition: () => Promise<boolean>) {
@@ -212,6 +239,7 @@ describe.skipIf(!url)("Model draft PostgreSQL optimistic locking", () => {
 
   it('does not activate a partially passing configuration or invalidate its unrelated failure', async () => {
     const id = await seed(true);
+    await service.previewAssignment('content_safety.output', modelId, 'synthetic-admin');
     await service.updateAssignment('content_safety.output', modelId, 'synthetic-admin');
     service.setRailValidator(async ({ bindingId }) => ({
       passed: bindingId === 'content_safety.input', message: `Synthetic ${bindingId} result`, latencyMs: 1,
@@ -230,16 +258,15 @@ describe.skipIf(!url)("Model draft PostgreSQL optimistic locking", () => {
     expect(Number(state.desired_generation)).toBe(0);
   });
 
-  it('requires new Rail evidence after editing a previously validated assignment', async () => {
+  it('preserves validated Rail evidence when saving an unchanged assignment', async () => {
     const id = await seed(true);
     await service.validateAssignment('content_safety.input', 'synthetic-admin');
-    // Even selecting the same model again must not reuse the old target evidence.
+    // Saving unchanged settings preserves the successful validation.
     const edited = await service.updateAssignment('content_safety.input', modelId, 'synthetic-admin');
     // Validated revisions are immutable snapshots; editing forks a new draft.
     expect(edited.id).not.toBe(id);
-    expect(edited.state).toBe('draft');
-    expect(edited.validationReport?.valid).toBe(false);
-    await expect(service.beginActivation(edited.id, 'synthetic-admin')).rejects.toMatchObject({ code: 'model_configuration_not_validated' });
+    expect(edited.state).toBe('validated');
+    expect(edited.validationReport?.valid).toBe(true);
     expect((await pool.query('SELECT id FROM controller_outbox')).rows).toEqual([]);
   });
 

@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { Deployment, Guardrail, GuardrailFindingPage, GuardrailPolicyBinding, GuardrailVersion, GuardrailVersionDetail, Metrics, Policy, TestCase } from "@/lib/api";
+import type { Router, Guardrail, GuardrailFindingPage, GuardrailPolicyBinding, GuardrailVersion, GuardrailVersionDetail, Metrics, Policy, TestCase } from "@/lib/api";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { defaultGuardrailDraft, DEFAULT_GUARDRAIL_ID } from "../../server/domain/defaults";
 import { PolicyCatalog } from "../../server/policy-catalog/catalog";
@@ -33,17 +33,17 @@ vi.mock("@/components/dashboard/runtime-health-alert", () => ({ RuntimeHealthAle
 vi.mock("@/components/dashboard/runtime-metric-chart", () => ({ RuntimeMetricChart: () => <div>runtime-chart</div> }));
 vi.mock("@/lib/auth", () => ({ useAuth: () => ({ user: { role: "admin" } }) }));
 vi.mock("@/routes/create-guardrail-wizard", () => ({ CreateGuardrailWizard: () => null }));
-vi.mock("@/routes/deployments", () => ({
-  CreateDeploymentSheet: () => null,
-  TrafficScopeBadges: ({ deployment }: { deployment: Deployment }) => <span>{deployment.name} scope</span>,
+vi.mock("@/routes/routers", () => ({
+  CreateRouterSheet: () => null,
+  TrafficScopeBadges: ({ router }: { router: Router }) => <span>{router.name} scope</span>,
 }));
 
-const deployment: Deployment = {
-  id: "deployment-observed",
+const router: Router = {
+  id: "router-observed",
   name: "Observed traffic",
   guardrail_id: "guardrail-observed",
   guardrail_version: VERSION_ID,
-  integration_id: "integration-observed",
+  endpoint_id: "endpoint-observed",
   route_order: 1,
   traffic_scope: { combinator: "and", conditions: [{ field: "protocol", operator: "equals", value: "litellm" }] },
   enabled: true,
@@ -63,7 +63,7 @@ const deletableGuardrail = {
   updated_at: "2026-08-14T08:00:00Z",
   status: "protected",
   latest_validation_run: null,
-  deployment_count: 2,
+  router_count: 2,
   test_case_count: 0,
   excluded_test_case_count: 0,
   excluded_test_case_ids: [],
@@ -88,10 +88,10 @@ describe("Guardrail detail information hierarchy", () => {
       error_rate: 2.5,
       errors: 1,
       caller_distribution: [{
-        integration_id: "integration-observed",
-        integration_name: "Observed LiteLLM",
-        deployment_id: deployment.id,
-        deployment_name: deployment.name,
+        endpoint_id: "endpoint-observed",
+        endpoint_name: "Observed LiteLLM",
+        router_id: router.id,
+        router_name: router.name,
         protocol: "litellm",
         requests: 40,
         share: 100,
@@ -107,7 +107,7 @@ describe("Guardrail detail information hierarchy", () => {
     } as Metrics;
 
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(<QueryClientProvider client={client}><GuardrailRuntimeView guardrailId="guardrail-observed" metrics={metrics} loading={false} error={null} deployments={[deployment]} versions={[{
+    render(<QueryClientProvider client={client}><GuardrailRuntimeView guardrailId="guardrail-observed" metrics={metrics} loading={false} error={null} routers={[router]} versions={[{
       guardrail_id: "guardrail-observed",
       version: VERSION_ID,
       source_draft_version: 3,
@@ -137,8 +137,8 @@ describe("Guardrail detail information hierarchy", () => {
         created_at: "2026-08-16T09:46:46Z",
         guardrail_id: "guardrail-observed",
         guardrail_version: "20260816-094646.000Z",
-        deployment_id: null,
-        integration_id: null,
+        router_id: null,
+        endpoint_id: null,
         protocol: "playground",
         phase: "input",
         severity: "critical",
@@ -153,7 +153,7 @@ describe("Guardrail detail information hierarchy", () => {
     };
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
-    render(<QueryClientProvider client={client}><GuardrailFindingsView data={data} loading={false} error={null} policies={[]} deployments={[]} integrations={[]} window="24h" onWindowChange={() => undefined} /></QueryClientProvider>);
+    render(<QueryClientProvider client={client}><GuardrailFindingsView data={data} loading={false} error={null} policies={[]} routers={[]} endpoints={[]} window="24h" onWindowChange={() => undefined} /></QueryClientProvider>);
 
     expect(screen.getByText("guardrails.securityFindingsTitle")).toBeTruthy();
     expect(screen.getByText("harmful-request")).toBeTruthy();
@@ -168,8 +168,8 @@ describe("Guardrail detail information hierarchy", () => {
       created_at: "2026-08-16T09:46:46Z",
       guardrail_id: "guardrail-observed",
       guardrail_version: "20260816-094646.000Z",
-      deployment_id: null,
-      integration_id: null,
+      router_id: null,
+      endpoint_id: null,
       protocol: "http",
       phase: "output" as const,
       severity: "medium" as const,
@@ -191,14 +191,14 @@ describe("Guardrail detail information hierarchy", () => {
     };
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
-    const { container } = render(<QueryClientProvider client={client}><GuardrailFindingsView data={data} loading={false} error={null} policies={[]} deployments={[]} integrations={[]} window="24h" onWindowChange={() => undefined} /></QueryClientProvider>);
+    const { container } = render(<QueryClientProvider client={client}><GuardrailFindingsView data={data} loading={false} error={null} policies={[]} routers={[]} endpoints={[]} window="24h" onWindowChange={() => undefined} /></QueryClientProvider>);
 
     expect(container.querySelectorAll("article")).toHaveLength(2);
-    fireEvent.click(screen.getByRole("button", { name: "deploymentDetail.severity.critical0" }));
+    fireEvent.click(screen.getByRole("button", { name: "routerDetail.severity.critical0" }));
     expect(container.querySelectorAll("article")).toHaveLength(0);
     expect(screen.getByText("guardrails.noMatchingFindings")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "deploymentDetail.severity.medium2" }));
+    fireEvent.click(screen.getByRole("button", { name: "routerDetail.severity.medium2" }));
     expect(container.querySelectorAll("article")).toHaveLength(2);
   });
 
@@ -331,7 +331,7 @@ describe("Guardrail detail information hierarchy", () => {
         results: [],
         excluded_case_ids: [],
       },
-      deployment_count: 0,
+      router_count: 0,
       test_case_count: 5,
       excluded_test_case_count: 0,
       excluded_test_case_ids: [],
@@ -344,21 +344,21 @@ describe("Guardrail detail information hierarchy", () => {
     } satisfies Guardrail;
     const client = new QueryClient();
     const onOpenValidation = vi.fn();
-    const props = { guardrail: validatedGuardrail, policies: [], cases: [], casesLoading: false, activeVersion: undefined, deployments: [], onOpenValidation, onEdit: vi.fn(), onAddCase: vi.fn(), onCreateDeployment: vi.fn(), onChanged: async () => undefined };
+    const props = { guardrail: validatedGuardrail, policies: [], cases: [], casesLoading: false, activeVersion: undefined, routers: [], onOpenValidation, onEdit: vi.fn(), onAddCase: vi.fn(), onCreateRouter: vi.fn(), onChanged: async () => undefined };
 
     const view = render(<QueryClientProvider client={client}><DraftReleaseView {...props} /></QueryClientProvider>);
     expect(screen.getByRole("button", { name: "guardrails.publishVersion" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "guardrails.createDeployment" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "guardrails.createRouter" })).toBeNull();
     expect(screen.queryByRole("link", { name: "guardrails.openValidation" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "guardrails.openValidation" }));
     expect(onOpenValidation).toHaveBeenCalledWith(validatedGuardrail.latest_validation_run);
 
     view.rerender(<QueryClientProvider client={client}><DraftReleaseView {...props} guardrail={{ ...validatedGuardrail, published_current: true }} activeVersion={{ guardrail_id: validatedGuardrail.id, version: "20260814-080000.000Z", source_draft_version: 2, compiler_version: "compiler", plan_checksum: "plan", config_checksum: "config", created_at: "2026-08-14T08:00:00Z", active: true, runtime_engine: "llmrails", execution_mode: "nemo_only" }} /></QueryClientProvider>);
     expect(screen.queryByRole("button", { name: "guardrails.publishVersion" })).toBeNull();
-    expect(screen.getByRole("button", { name: "guardrails.createDeployment" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "guardrails.createRouter" })).toBeTruthy();
   });
 
-  it("lets the Default Guardrail edit and validate its draft without creating another Deployment", () => {
+  it("lets the Default Guardrail edit and validate its draft without creating another Router", () => {
     const defaultGuardrail = {
       id: "guardrail-default",
       name: "Default Guardrail",
@@ -370,7 +370,7 @@ describe("Guardrail detail information hierarchy", () => {
       updated_at: "2026-08-14T08:00:00Z",
       status: "needs_validation",
       latest_validation_run: null,
-      deployment_count: 1,
+      router_count: 1,
       test_case_count: 1,
       excluded_test_case_count: 0,
       excluded_test_case_ids: [],
@@ -385,14 +385,14 @@ describe("Guardrail detail information hierarchy", () => {
     const onEdit = vi.fn();
     const onRunValidation = vi.fn();
 
-    render(<QueryClientProvider client={client}><DraftReleaseView guardrail={defaultGuardrail} policies={[]} cases={[]} casesLoading={false} deployments={[]} onRunValidation={onRunValidation} onEdit={onEdit} onAddCase={vi.fn()} onCreateDeployment={vi.fn()} onChanged={async () => undefined} /></QueryClientProvider>);
+    render(<QueryClientProvider client={client}><DraftReleaseView guardrail={defaultGuardrail} policies={[]} cases={[]} casesLoading={false} routers={[]} onRunValidation={onRunValidation} onEdit={onEdit} onAddCase={vi.fn()} onCreateRouter={vi.fn()} onChanged={async () => undefined} /></QueryClientProvider>);
 
     expect(screen.queryByRole("link", { name: "guardrails.runReviewed" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "guardrails.runReviewed" }));
     expect(onRunValidation).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByRole("button", { name: "common.edit" }));
     expect(onEdit).toHaveBeenCalledOnce();
-    expect(screen.queryByRole("button", { name: "guardrails.createDeployment" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "guardrails.createRouter" })).toBeNull();
   });
 
   it("edits Topic Control without requiring a Guardrail business purpose", () => {
@@ -429,7 +429,7 @@ describe("Guardrail detail information hierarchy", () => {
     const run = { id: "failed-run", status: "failed", failure_reason: "No Evaluator Binding is available for content_safety.", metrics: { compliance_rate: 0 } } as NonNullable<Guardrail["latest_validation_run"]>;
     const guardrail = { ...deletableGuardrail, tested_current: false, published_current: false, latest_validation_run: run };
     const onOpenValidation = vi.fn();
-    render(<QueryClientProvider client={new QueryClient()}><DraftReleaseView guardrail={guardrail} policies={[]} cases={[]} casesLoading={false} deployments={[]} onOpenValidation={onOpenValidation} onEdit={vi.fn()} onAddCase={vi.fn()} onCreateDeployment={vi.fn()} onChanged={async () => undefined} /></QueryClientProvider>);
+    render(<QueryClientProvider client={new QueryClient()}><DraftReleaseView guardrail={guardrail} policies={[]} cases={[]} casesLoading={false} routers={[]} onOpenValidation={onOpenValidation} onEdit={vi.fn()} onAddCase={vi.fn()} onCreateRouter={vi.fn()} onChanged={async () => undefined} /></QueryClientProvider>);
     expect(screen.getByText(run.failure_reason!)).toBeTruthy();
     expect(screen.queryByText(/guardrails.lastValidationFailedDetail/)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "guardrails.openValidation" }));
@@ -458,7 +458,7 @@ describe("Guardrail detail information hierarchy", () => {
       })),
     };
     const client = new QueryClient();
-    render(<QueryClientProvider client={client}><DraftReleaseView guardrail={guardrail} policies={policies} cases={[]} casesLoading={false} deployments={[]} onEdit={vi.fn()} onAddCase={vi.fn()} onCreateDeployment={vi.fn()} onChanged={async () => undefined} /></QueryClientProvider>);
+    render(<QueryClientProvider client={client}><DraftReleaseView guardrail={guardrail} policies={policies} cases={[]} casesLoading={false} routers={[]} onEdit={vi.fn()} onAddCase={vi.fn()} onCreateRouter={vi.fn()} onChanged={async () => undefined} /></QueryClientProvider>);
 
     for (const binding of draft.policyBindings) {
       const policy = policies.find((item) => item.id === binding.policyId)!;
@@ -518,7 +518,7 @@ describe("Guardrail detail information hierarchy", () => {
 
   it("deletes directly after impact review when there was no recent incoming traffic", () => {
     const onConfirm = vi.fn();
-    render(<DeleteGuardrailSheet guardrail={deletableGuardrail} open impact={{ guardrail_id: deletableGuardrail.id, guardrail_name: deletableGuardrail.name, window_minutes: 30, incoming_request_count: 0, last_request_at: null, active_deployment_count: 2, telemetry_fresh: true, telemetry_watermark: "2026-08-20T10:00:00Z", requires_second_confirmation: false, requires_confirmation: false }} loading={false} deleting={false} error={null} onOpenChange={vi.fn()} onRetry={vi.fn()} onConfirm={onConfirm} />);
+    render(<DeleteGuardrailSheet guardrail={deletableGuardrail} open impact={{ guardrail_id: deletableGuardrail.id, guardrail_name: deletableGuardrail.name, window_minutes: 30, incoming_request_count: 0, last_request_at: null, active_router_count: 2, telemetry_fresh: true, telemetry_watermark: "2026-08-20T10:00:00Z", requires_second_confirmation: false, requires_confirmation: false }} loading={false} deleting={false} error={null} onOpenChange={vi.fn()} onRetry={vi.fn()} onConfirm={onConfirm} />);
 
     expect(screen.getByText("guardrails.deleteRetentionNote")).toBeTruthy();
     const deleteButton = screen.getByRole("button", { name: "guardrails.deleteConfirm" }) as HTMLButtonElement;
@@ -532,7 +532,7 @@ describe("Guardrail detail information hierarchy", () => {
 
   it("requires the Guardrail name in a second confirmation when traffic is recent", () => {
     const onConfirm = vi.fn();
-    render(<DeleteGuardrailSheet guardrail={deletableGuardrail} open impact={{ guardrail_id: deletableGuardrail.id, guardrail_name: deletableGuardrail.name, window_minutes: 30, incoming_request_count: 17, last_request_at: "2026-08-20T09:58:00Z", active_deployment_count: 2, telemetry_fresh: true, telemetry_watermark: "2026-08-20T10:00:00Z", requires_second_confirmation: true, requires_confirmation: true }} loading={false} deleting={false} error={null} onOpenChange={vi.fn()} onRetry={vi.fn()} onConfirm={onConfirm} />);
+    render(<DeleteGuardrailSheet guardrail={deletableGuardrail} open impact={{ guardrail_id: deletableGuardrail.id, guardrail_name: deletableGuardrail.name, window_minutes: 30, incoming_request_count: 17, last_request_at: "2026-08-20T09:58:00Z", active_router_count: 2, telemetry_fresh: true, telemetry_watermark: "2026-08-20T10:00:00Z", requires_second_confirmation: true, requires_confirmation: true }} loading={false} deleting={false} error={null} onOpenChange={vi.fn()} onRetry={vi.fn()} onConfirm={onConfirm} />);
 
     const continueButton = screen.getByRole("button", { name: "guardrails.continueDelete" }) as HTMLButtonElement;
     expect(continueButton.disabled).toBe(true);
@@ -552,7 +552,7 @@ describe("Guardrail detail information hierarchy", () => {
 
   it("blocks deletion when the protection check telemetry is stale", () => {
     const onConfirm = vi.fn();
-    render(<DeleteGuardrailSheet guardrail={deletableGuardrail} open impact={{ guardrail_id: deletableGuardrail.id, guardrail_name: deletableGuardrail.name, window_minutes: 30, incoming_request_count: 0, last_request_at: null, active_deployment_count: 0, telemetry_fresh: false, telemetry_watermark: null, requires_second_confirmation: false, requires_confirmation: false }} loading={false} deleting={false} error={null} onOpenChange={vi.fn()} onRetry={vi.fn()} onConfirm={onConfirm} />);
+    render(<DeleteGuardrailSheet guardrail={deletableGuardrail} open impact={{ guardrail_id: deletableGuardrail.id, guardrail_name: deletableGuardrail.name, window_minutes: 30, incoming_request_count: 0, last_request_at: null, active_router_count: 0, telemetry_fresh: false, telemetry_watermark: null, requires_second_confirmation: false, requires_confirmation: false }} loading={false} deleting={false} error={null} onOpenChange={vi.fn()} onRetry={vi.fn()} onConfirm={onConfirm} />);
 
     fireEvent.change(screen.getByLabelText("guardrails.deleteReason"), { target: { value: "No longer needed" } });
     expect(screen.getByText("guardrails.deleteTelemetryStale")).toBeTruthy();

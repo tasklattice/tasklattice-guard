@@ -43,7 +43,7 @@ async def test_real_action_failure_is_terminal_and_request_scoped(tmp_path, brok
     runtime = GuardrailRuntimeService(engine, store)
     async def evaluate(text):
         return await runtime.evaluate(ProtectionRequest(phase=phase, texts=(text,),
-            context=RequestContext(protocol="litellm", integration_id="fixture-integration")))
+            context=RequestContext(protocol="litellm", endpoint_id="fixture-endpoint")))
     try:
         failure = await evaluate("check")
         assert failure.decision == "block" and failure.usage.fail_closed
@@ -69,7 +69,7 @@ async def test_real_action_failure_does_not_release_buffered_http_stream(tmp_pat
     try:
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://runner") as client:
             async def send(sequence, text, final):
-                return await client.post("/runtime/v1/integrations/fixture-integration/guardrails/output-stream",
+                return await client.post("/runtime/v1/endpoints/fixture-endpoint/guardrails/output-stream",
                     headers={"x-api-key": RUNTIME_CREDENTIAL}, json={"stream_id": "action-failure",
                         "sequence": sequence, "text": text, "final": final, "protocol": "litellm"})
             first = await send(0, "ch", False)

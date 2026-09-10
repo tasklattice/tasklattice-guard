@@ -29,8 +29,8 @@ describe("production Controller gRPC transport budget", () => {
     const service = {
       registerRunner: vi.fn().mockResolvedValue(1),
       desiredStateForPool: vi.fn().mockResolvedValue({
-        generation: 1, artifacts: [], deployments: [], integrations: [],
-        disabledGuardrailIds: [desiredId], disabledIntegrationIds: [], guardrailLoggingLevels: {},
+        generation: 1, artifacts: [], routers: [], endpoints: [],
+        disabledGuardrailIds: [desiredId], disabledEndpointIds: [], guardrailLoggingLevels: {},
       }),
       disconnectRunner: vi.fn(),
       completeValidation: vi.fn(),

@@ -226,10 +226,10 @@ class _PreviewStore:
 
     def resolve_guardrail(self, guardrail_id: str, version: str) -> PlanResolution:
         plan = self.plan(guardrail_id, version)
-        deployment_id = f"playground-draft:{self._preview_id}"
+        router_id = f"playground-draft:{self._preview_id}"
         return PlanResolution(
             plan=plan,
-            deployment_id=deployment_id,
+            router_id=router_id,
             trace=(RuntimeTraceStep(
                 id=f"draft-preview:{self._preview_id}",
                 kind="preview",

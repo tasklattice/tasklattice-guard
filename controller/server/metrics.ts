@@ -33,10 +33,10 @@ export class ControllerMetrics {
   private readonly outboxOldestAge: Gauge<string>;
   private readonly controlConnected: Gauge<string>;
   private readonly guardrailInfo: Gauge<string>;
-  private readonly integrationInfo: Gauge<string>;
-  private readonly guardrailIntegrationInfo: Gauge<string>;
-  private readonly guardrailDeploymentInfo: Gauge<string>;
-  private readonly guardrailDeploymentReady: Gauge<string>;
+  private readonly endpointInfo: Gauge<string>;
+  private readonly guardrailEndpointInfo: Gauge<string>;
+  private readonly guardrailRouterInfo: Gauge<string>;
+  private readonly guardrailRouterReady: Gauge<string>;
 
   private readonly controlMessages: Counter<string>;
   private readonly heartbeats: Counter<string>;
@@ -139,25 +139,25 @@ export class ControllerMetrics {
       "Current non-deleted Guardrail product topology. Status is the persisted Guardrail lifecycle state.",
       ["guardrail_id", "guardrail_name", "status"],
     );
-    this.integrationInfo = this.gauge(
-      "guard_controller_integration_info",
-      "Current non-deleted Integration inventory, including valid Integrations with no observed traffic.",
-      ["integration_id", "integration_name", "adapter", "status"],
+    this.endpointInfo = this.gauge(
+      "guard_controller_endpoint_info",
+      "Current non-deleted Endpoint inventory, including valid Endpoints with no observed traffic.",
+      ["endpoint_id", "endpoint_name", "adapter", "status"],
     );
-    this.guardrailIntegrationInfo = this.gauge(
-      "guard_controller_guardrail_integration_info",
-      "Configured Guardrail-to-Integration routing topology by Runner pool, independent of observed traffic.",
-      ["guardrail_id", "integration_id", "integration_name", "pool", "status"],
+    this.guardrailEndpointInfo = this.gauge(
+      "guard_controller_guardrail_endpoint_info",
+      "Configured Guardrail-to-Endpoint routing topology by Runner pool, independent of observed traffic.",
+      ["guardrail_id", "endpoint_id", "endpoint_name", "pool", "status"],
     );
-    this.guardrailDeploymentInfo = this.gauge(
-      "guard_controller_guardrail_deployment_info",
-      "Current Guardrail Deployment topology and bounded effective status: disabled, inactive, offline, syncing, degraded, or active.",
-      ["guardrail_id", "guardrail_version", "deployment_id", "deployment_name", "pool", "status"],
+    this.guardrailRouterInfo = this.gauge(
+      "guard_controller_guardrail_router_info",
+      "Current Guardrail Router topology and bounded effective status: disabled, inactive, offline, syncing, degraded, or active.",
+      ["guardrail_id", "guardrail_version", "router_id", "router_name", "pool", "status"],
     );
-    this.guardrailDeploymentReady = this.gauge(
-      "guard_controller_guardrail_deployment_ready",
-      "Whether an active Guardrail Deployment has at least one serving Runner at the current desired generation.",
-      ["guardrail_id", "deployment_id"],
+    this.guardrailRouterReady = this.gauge(
+      "guard_controller_guardrail_router_ready",
+      "Whether an active Guardrail Router has at least one serving Runner at the current desired generation.",
+      ["guardrail_id", "router_id"],
     );
 
     this.controlMessages = this.counter(
@@ -266,32 +266,32 @@ export class ControllerMetrics {
           guardrail.status,
         ).set(1);
       }
-      for (const integration of snapshot.integrations) {
-        this.integrationInfo.labels(
-          integration.integrationId,
-          integration.integrationName,
-          integration.adapter,
-          integration.status,
+      for (const endpoint of snapshot.endpoints) {
+        this.endpointInfo.labels(
+          endpoint.endpointId,
+          endpoint.endpointName,
+          endpoint.adapter,
+          endpoint.status,
         ).set(1);
       }
-      for (const binding of snapshot.integrationBindings) {
-        this.guardrailIntegrationInfo.labels(
+      for (const binding of snapshot.endpointBindings) {
+        this.guardrailEndpointInfo.labels(
           binding.guardrailId,
-          binding.integrationId,
-          binding.integrationName,
+          binding.endpointId,
+          binding.endpointName,
           binding.poolId,
           binding.status,
         ).set(1);
       }
-      for (const deployment of snapshot.deployments) {
-        const pool = poolById.get(deployment.poolId);
+      for (const router of snapshot.routers) {
+        const pool = poolById.get(router.poolId);
         const hasServingRunner = pool?.instances.some((runner) => (
           servingRunnerStatuses.has(runner.status)
           && runner.appliedGeneration >= generation
         )) ?? false;
-        const ready = deployment.status === "active" && hasServingRunner;
-        const status = deployment.status !== "active"
-          ? deployment.status
+        const ready = router.status === "active" && hasServingRunner;
+        const status = router.status !== "active"
+          ? router.status
           : !pool || pool.capacity.readyRunners === 0
             ? "offline"
             : !hasServingRunner
@@ -299,17 +299,17 @@ export class ControllerMetrics {
               : pool.capacity.status === "degraded"
                 ? "degraded"
                 : "active";
-        this.guardrailDeploymentInfo.labels(
-          deployment.guardrailId,
-          deployment.guardrailVersion === null ? "unpublished" : String(deployment.guardrailVersion),
-          deployment.deploymentId,
-          deployment.deploymentName,
-          deployment.poolId,
+        this.guardrailRouterInfo.labels(
+          router.guardrailId,
+          router.guardrailVersion === null ? "unpublished" : String(router.guardrailVersion),
+          router.routerId,
+          router.routerName,
+          router.poolId,
           status,
         ).set(1);
-        this.guardrailDeploymentReady.labels(
-          deployment.guardrailId,
-          deployment.deploymentId,
+        this.guardrailRouterReady.labels(
+          router.guardrailId,
+          router.routerId,
         ).set(Number(ready));
       }
       return this.registry.metrics();
@@ -365,8 +365,8 @@ export class ControllerMetrics {
       this.poolStatus, this.poolBottleneck, this.runnerInfo, this.runnerAppliedGeneration,
       this.runnerGenerationLag, this.runnerHeartbeatAge, this.runnerTelemetryAge,
       this.outboxPending, this.outboxOldestAge, this.guardrailInfo,
-      this.integrationInfo, this.guardrailIntegrationInfo,
-      this.guardrailDeploymentInfo, this.guardrailDeploymentReady,
+      this.endpointInfo, this.guardrailEndpointInfo,
+      this.guardrailRouterInfo, this.guardrailRouterReady,
     ];
   }
 

@@ -74,22 +74,22 @@ async def test_fastapi_red_metrics_use_route_templates_not_request_ids() -> None
     registry = CollectorRegistry()
     app = FastAPI()
 
-    @app.get("/runtime/v1/integrations/{integration_id}/verify")
-    async def verify(integration_id: str):
-        return {"integration_id": integration_id}
+    @app.get("/runtime/v1/endpoints/{endpoint_id}/verify")
+    async def verify(endpoint_id: str):
+        return {"endpoint_id": endpoint_id}
 
     instrument_http_metrics(app, registry)
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://runner",
     ) as client:
         response = await client.get(
-            "/runtime/v1/integrations/caller-controlled-id/verify",
+            "/runtime/v1/endpoints/caller-controlled-id/verify",
         )
 
     assert response.status_code == 200
     rendered = generate_latest(registry).decode()
     assert (
-        'guard_runner_http_requests_total{handler="/runtime/v1/integrations/'
-        '{integration_id}/verify",method="GET",status="2xx"} 1.0'
+        'guard_runner_http_requests_total{handler="/runtime/v1/endpoints/'
+        '{endpoint_id}/verify",method="GET",status="2xx"} 1.0'
     ) in rendered
     assert "caller-controlled-id" not in rendered

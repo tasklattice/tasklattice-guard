@@ -18,10 +18,10 @@ const dispatchFailure = process.env.GUARD_REGRESSION_ACTION_DISPATCH_FAILURE ===
 const runId = process.env.GUARD_REGRESSION_RUN_ID || randomUUID();
 let cookie = "", credential = "";
 const report = (stage, data = {}) => console.log(JSON.stringify({ runId, stage, ...data }));
-async function call(base, path, body, expected = 200, integration = false) {
+async function call(base, path, body, expected = 200, endpoint = false) {
   const response = await fetch(new URL(path, base), { method: body === undefined ? "GET" : "POST",
     headers: { origin, "content-type": "application/json", ...(base === controller ? { cookie }
-      : integration ? { "x-api-key": credential } : { authorization: `Bearer ${token}` }) },
+      : endpoint ? { "x-api-key": credential } : { authorization: `Bearer ${token}` }) },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(30_000) });
   assert.equal(response.status, expected, `${path}: unexpected HTTP status`);
   return { response, data: await response.json() };
@@ -106,13 +106,13 @@ async function existingFixture(id) {
 }
 const { policy, guardrail, validation, publication, release } = process.env.GUARD_REGRESSION_GUARDRAIL_ID
   ? await existingFixture(process.env.GUARD_REGRESSION_GUARDRAIL_ID) : await publishFixture();
-const integration = (await call(controller, "/api/v1/integrations", { name: `Regression stream failure ${runId}`, adapter: "generic-http-guard" }, 201)).data;
-credential = integration.credential;
-const deployment = (await call(controller, "/api/v1/deployments", { name: `Regression stream failure ${runId}`, guardrailId: guardrail.id,
-  integrationId: integration.id, poolId: "default", enabled: true, trafficScope: { combinator: "and", conditions: [] } }, 201)).data;
-await until("integration convergence", async () => {
+const endpoint = (await call(controller, "/api/v1/endpoints", { name: `Regression stream failure ${runId}`, adapter: "generic-http-guard" }, 201)).data;
+credential = endpoint.credential;
+const router = (await call(controller, "/api/v1/routers", { name: `Regression stream failure ${runId}`, guardrailId: guardrail.id,
+  endpointId: endpoint.id, poolId: "default", enabled: true, trafficScope: { combinator: "and", conditions: [] } }, 201)).data;
+await until("endpoint convergence", async () => {
   // /verify is the LiteLLM credential probe, not a generic HTTP probe.
-  const response = await fetch(new URL(`/runtime/v1/integrations/${integration.id}/guardrails/evaluate`, runner), {
+  const response = await fetch(new URL(`/runtime/v1/endpoints/${endpoint.id}/guardrails/evaluate`, runner), {
     method: "POST", headers: { "x-api-key": credential, "content-type": "application/json" },
     body: JSON.stringify({ phase: "output", texts: [safe], protocol: "http", call_id: randomUUID() }), signal: AbortSignal.timeout(15_000) });
   assert([200, 401, 404, 503].includes(response.status), `Unexpected convergence status ${response.status}`);
@@ -130,7 +130,7 @@ for (const [text, expected, failure] of cases) {
   assert.equal(verdict.usage.model_invocations, 0);
   if (failure && dispatchFailure) assert(verdict.reason.includes("GuardRecordOwnedPolicyAction"), verdict.reason);
   const streamId = randomUUID();
-  const streamPath = `/runtime/v1/integrations/${integration.id}/guardrails/output-stream`;
+  const streamPath = `/runtime/v1/endpoints/${endpoint.id}/guardrails/output-stream`;
   const first = (await call(runner, streamPath, { stream_id: streamId, sequence: 0, text, final: false, protocol: "http" }, 200, true)).data;
   assert.equal(first.status, "buffering");
   assert.equal(first.released_text, "");
@@ -140,5 +140,5 @@ for (const [text, expected, failure] of cases) {
   report("case-passed", { scenario: text, expected, infrastructureFailure: Boolean(failure), streamHttpStatus: failure ? 502 : 200, modelInvocations: 0 });
 }
 report("passed", { dispatchFailure, policyId: policy.id, guardrailId: guardrail.id, version: publication.version, artifactId: release.artifactId,
-  checksum: release.artifact.checksum, validationId: validation.id, integrationId: integration.id, deploymentId: deployment.id,
+  checksum: release.artifact.checksum, validationId: validation.id, endpointId: endpoint.id, routerId: router.id,
   scope: "real persisted Policy, NeMo action failure, signed artifact, runtime stream HTTP; no mocked model or detector" });

@@ -42,7 +42,7 @@ import {
   createValidationRun,
   deleteGuardrail,
   excludeGuardrailTestCase,
-  getDeployments,
+  getRouters,
   getGuardrail,
   getGuardrailDeletionImpact,
   getGuardrailFindings,
@@ -50,7 +50,7 @@ import {
   getGuardrailVersions,
   getGuardrailLoggingSettings,
   getMetrics,
-  getIntegrations,
+  getEndpoints,
   getPolicies,
   getTestCases,
   getValidationRuns,
@@ -68,14 +68,14 @@ import {
   type MetricWindow,
   type Metrics,
   type LoggingLevel,
-  type DeploymentTraceFinding,
-  type Integration,
+  type RouterTraceFinding,
+  type Endpoint,
   type Policy,
   type TestCase,
   type ValidationRun,
 } from "@/lib/api";
 import { CreateGuardrailWizard } from "@/routes/create-guardrail-wizard";
-import { CreateDeploymentSheet, TrafficScopeBadges } from "@/routes/deployments";
+import { CreateRouterSheet, TrafficScopeBadges } from "@/routes/routers";
 import { GuardrailValidationHistory, ValidationDetailSheet } from "@/routes/validation";
 
 export { AddTestCaseSheet };
@@ -138,13 +138,13 @@ export function GuardrailDetailPage() {
   const versionsQuery = useQuery({ queryKey: queryKeys.guardrailVersions(guardrailId), queryFn: () => getGuardrailVersions(guardrailId) });
   const validationRunsQuery = useQuery({ queryKey: queryKeys.validationRuns(guardrailId), queryFn: () => getValidationRuns(guardrailId) });
   const testsQuery = useQuery({ queryKey: queryKeys.testCases(guardrailId), queryFn: () => getTestCases(guardrailId) });
-  const deploymentsQuery = useQuery({ queryKey: queryKeys.deployments, queryFn: getDeployments });
-  const integrationsQuery = useQuery({ queryKey: queryKeys.integrations, queryFn: getIntegrations });
+  const routersQuery = useQuery({ queryKey: queryKeys.routers, queryFn: getRouters });
+  const endpointsQuery = useQuery({ queryKey: queryKeys.endpoints, queryFn: getEndpoints });
   const [section, setSection] = useState("runtime");
   const [window, setWindow] = useState<MetricWindow>("24h");
   const [editOpen, setEditOpen] = useState(false);
   const [testOpen, setTestOpen] = useState(false);
-  const [deploymentOpen, setDeploymentOpen] = useState(false);
+  const [routerOpen, setRouterOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [validationConfirmOpen, setValidationConfirmOpen] = useState(false);
   const [selectedValidationRun, setSelectedValidationRun] = useState<ValidationRun | null>(null);
@@ -178,10 +178,11 @@ export function GuardrailDetailPage() {
     queryKey: queryKeys.metricsScope({ guardrailId, window }),
     queryFn: ({ signal }) => getMetrics({ guardrailId, window }, signal),
   });
-  const findingsPaging = useEventCursor(JSON.stringify([guardrailId, window]));
+  const [findingSeverity, setFindingSeverity] = useState<GuardrailFindingSeverityFilter>('all');
+  const findingsPaging = useEventCursor(JSON.stringify([guardrailId, window, findingSeverity]));
   const findingsQuery = useQuery({
-    queryKey: [...queryKeys.guardrailFindings(guardrailId, window), findingsPaging.cursor ?? null],
-    queryFn: ({ signal }) => getGuardrailFindings(guardrailId, window, 100, findingsPaging.cursor, signal),
+    queryKey: [...queryKeys.guardrailFindings(guardrailId, window), findingSeverity, findingsPaging.cursor ?? null],
+    queryFn: ({ signal }) => getGuardrailFindings(guardrailId, window, 100, findingsPaging.cursor, signal, findingSeverity),
     gcTime: 30_000,
   });
   const deletionImpactQuery = useQuery({
@@ -198,7 +199,7 @@ export function GuardrailDetailPage() {
       queryClient.removeQueries({ queryKey: queryKeys.guardrail(guardrailId) });
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.guardrails, exact: true }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.deployments }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.routers }),
         queryClient.invalidateQueries({ queryKey: queryKeys.metrics }),
         queryClient.invalidateQueries({ queryKey: queryKeys.auditEvents }),
       ]);
@@ -246,7 +247,7 @@ export function GuardrailDetailPage() {
   if (guardrailQuery.error || !guardrailQuery.data) return <div className="py-8"><ErrorNotice error={guardrailQuery.error ?? new Error(t("guardrails.notFound"))} /></div>;
   const guardrail = guardrailQuery.data;
   const policies = policiesQuery.data?.items ?? EMPTY_POLICIES;
-  const deployments = deploymentsQuery.data?.items.filter((item) => item.guardrail_id === guardrail.id) ?? [];
+  const routers = routersQuery.data?.items.filter((item) => item.guardrail_id === guardrail.id) ?? [];
   const canManageDraft = auth.user?.role === "admin" && isGuardrailDraftManageable(guardrail);
   const hasUnpublishedDraft = canManageDraft && !guardrail.published_current;
 
@@ -258,7 +259,7 @@ export function GuardrailDetailPage() {
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="font-display text-2xl font-semibold tracking-[-0.015em] sm:text-3xl">{guardrail.name}</h1>
             {activeVersion ? <Badge className="border-emerald-200 bg-emerald-50 font-mono text-[11px] text-emerald-700 hover:bg-emerald-50">{t("guardrails.activeVersion", { version: activeVersion.version })}</Badge> : <StateBadge state={guardrail.tested_current ? "ready" : "needs_validation"} />}
-            {deployments.length ? <StateBadge state="protected" /> : activeVersion ? <StateBadge state="ready" /> : null}
+            {routers.length ? <StateBadge state="protected" /> : activeVersion ? <StateBadge state="ready" /> : null}
             {guardrail.is_default ? <Badge variant="outline">{t("guardrails.defaultBadge")}</Badge> : guardrail.system_managed ? <Badge variant="outline">{t("guardrails.systemManaged")}</Badge> : null}
           </div>
           {hasUnpublishedDraft ? <button type="button" className="mt-3 inline-flex min-h-9 items-center gap-2 rounded-md bg-amber-50 px-3 text-xs font-medium text-amber-800 hover:bg-amber-100 focus-visible:outline-2 focus-visible:outline-ring" onClick={() => setSection("draft")}><Circle className="size-2.5 fill-current" />{t("guardrails.unpublishedDraft")}</button> : null}
@@ -287,10 +288,10 @@ export function GuardrailDetailPage() {
           </TabsList>
         </div>
         <TabsContent value="runtime" className="pt-5">
-          <GuardrailRuntimeView guardrailId={guardrail.id} metrics={metricsQuery.data} loading={metricsQuery.isLoading} error={metricsQuery.error} deployments={deployments} versions={guardrailVersions} window={window} onWindowChange={setWindow} />
+          <GuardrailRuntimeView guardrailId={guardrail.id} metrics={metricsQuery.data} loading={metricsQuery.isLoading} error={metricsQuery.error} routers={routers} versions={guardrailVersions} window={window} onWindowChange={setWindow} />
         </TabsContent>
         <TabsContent value="findings" className="pt-5">
-          <GuardrailFindingsView data={findingsQuery.data} loading={findingsQuery.isLoading} error={findingsQuery.error} policies={policies} deployments={deployments} integrations={integrationsQuery.data?.items ?? []} window={window} onWindowChange={setWindow} />
+          <GuardrailFindingsView data={findingsQuery.data} loading={findingsQuery.isLoading} error={findingsQuery.error} policies={policies} routers={routers} endpoints={endpointsQuery.data?.items ?? []} window={window} onWindowChange={setWindow} severity={findingSeverity} onSeverityChange={setFindingSeverity} />
           <EventPagination page={findingsPaging.page} busy={findingsQuery.isFetching} nextCursor={findingsQuery.data?.nextCursor} onNext={findingsPaging.next} onPrevious={findingsPaging.previous} onLatest={findingsPaging.latest} />
         </TabsContent>
         <TabsContent value="immutable" className="pt-5">
@@ -327,14 +328,14 @@ export function GuardrailDetailPage() {
           />
         </TabsContent>
         <TabsContent value="draft" className="pt-5">
-          <DraftReleaseView guardrail={guardrail} policies={policies} cases={testsQuery.data?.items ?? []} casesLoading={testsQuery.isLoading} activeVersion={activeVersion} versions={guardrailVersions} deployments={deployments} canManage={canManageDraft} validationRunning={validationMutation.isPending} onRunValidation={() => setValidationConfirmOpen(true)} onOpenValidation={setSelectedValidationRun} onEdit={() => setEditOpen(true)} onAddCase={() => setTestOpen(true)} onCreateDeployment={() => setDeploymentOpen(true)} onChanged={refresh} />
+          <DraftReleaseView guardrail={guardrail} policies={policies} cases={testsQuery.data?.items ?? []} casesLoading={testsQuery.isLoading} activeVersion={activeVersion} versions={guardrailVersions} routers={routers} canManage={canManageDraft} validationRunning={validationMutation.isPending} onRunValidation={() => setValidationConfirmOpen(true)} onOpenValidation={setSelectedValidationRun} onEdit={() => setEditOpen(true)} onAddCase={() => setTestOpen(true)} onCreateRouter={() => setRouterOpen(true)} onChanged={refresh} />
         </TabsContent>
       </Tabs>
 
       <EditGuardrailSheet guardrail={guardrail} policies={policies} open={editOpen} onOpenChange={setEditOpen} onSaved={async () => { setEditOpen(false); await refresh(); }} />
       <AddTestCaseSheet guardrail={guardrail} open={testOpen} onOpenChange={setTestOpen} onCreated={async () => { setTestOpen(false); await refresh(); }} />
       <ValidationDetailSheet run={selectedValidationRun} guardrail={guardrail} canManage={canManageDraft} running={validationMutation.isPending} onRunAgain={() => validationMutation.mutate()} onOpenTarget={openValidationTarget} onClose={() => setSelectedValidationRun(null)} />
-      <CreateDeploymentSheet open={deploymentOpen} onOpenChange={setDeploymentOpen} guardrails={[guardrail]} onCreated={async () => { setDeploymentOpen(false); await refresh(); }} />
+      <CreateRouterSheet open={routerOpen} onOpenChange={setRouterOpen} guardrails={[guardrail]} onCreated={async () => { setRouterOpen(false); await refresh(); }} />
       <ConfirmationSheet
         open={validationConfirmOpen}
         onOpenChange={setValidationConfirmOpen}
@@ -396,7 +397,7 @@ export function DeleteGuardrailSheet({ guardrail, open, impact, loading, deletin
     requiresConfirmation={requiresSecondConfirmation}
     impactItems={impact ? [
       { label: t("guardrails.recentIncomingRequests", { minutes: impact.window_minutes }), value: impact.incoming_request_count.toLocaleString(i18n.language) },
-      { label: t("guardrails.activeDeploymentsAffected"), value: impact.active_deployment_count.toLocaleString(i18n.language) },
+      { label: t("guardrails.activeRoutersAffected"), value: impact.active_router_count.toLocaleString(i18n.language) },
     ] : []}
     copy={{
       eyebrow: t("guardrails.deleteEyebrow"),
@@ -410,7 +411,7 @@ export function DeleteGuardrailSheet({ guardrail, open, impact, loading, deletin
       deletingLabel: t("guardrails.deleting"),
       confirmTitle: t("guardrails.deleteRecentTrafficTitle"),
       confirmDescription: t("guardrails.deleteRecentTrafficDescription", { count: impact?.incoming_request_count ?? 0, minutes: impact?.window_minutes ?? 30 }),
-      confirmWarning: t("guardrails.deleteStopsTraffic", { count: impact?.active_deployment_count ?? 0 }),
+      confirmWarning: t("guardrails.deleteStopsTraffic", { count: impact?.active_router_count ?? 0 }),
       typeNameLabel: t("guardrails.typeNameToConfirm", { name: guardrail.name }),
       protectedDeleteLabel: t("guardrails.deleteDespiteTraffic"),
       cancelLabel: t("common.cancel"),
@@ -430,7 +431,7 @@ export function DeleteGuardrailSheet({ guardrail, open, impact, loading, deletin
   />;
 }
 
-export function GuardrailRuntimeView({ guardrailId, metrics, loading, error, deployments, versions = [], window, onWindowChange }: { guardrailId: string; metrics?: Metrics; loading: boolean; error: unknown; deployments: Awaited<ReturnType<typeof getDeployments>>["items"]; versions?: GuardrailVersion[]; window: MetricWindow; onWindowChange: (window: MetricWindow) => void }) {
+export function GuardrailRuntimeView({ guardrailId, metrics, loading, error, routers, versions = [], window, onWindowChange }: { guardrailId: string; metrics?: Metrics; loading: boolean; error: unknown; routers: Awaited<ReturnType<typeof getRouters>>["items"]; versions?: GuardrailVersion[]; window: MetricWindow; onWindowChange: (window: MetricWindow) => void }) {
   const { t, i18n } = useTranslation();
   if (loading) return <Skeleton className="h-[38rem] rounded-xl" />;
   if (error || !metrics) return <ErrorNotice error={error ?? new Error(t("guardrails.runtimeUnavailable"))} />;
@@ -450,16 +451,18 @@ export function GuardrailRuntimeView({ guardrailId, metrics, loading, error, dep
         <RuntimeStat label={t("dashboard.errorRate")} value={metrics.total_decisions ? `${metrics.error_rate}%` : "—"} detail={t("guardrails.errorsInWindow", { count: metrics.errors })} />
       </dl>
       <RuntimeMetricChart metrics={metrics} />
-      <CallerDistribution metrics={metrics} deployments={deployments} versions={versions} />
+      <CallerDistribution metrics={metrics} routers={routers} versions={versions} />
     </div>
   );
 }
 
-type GuardrailFindingSeverityFilter = "all" | DeploymentTraceFinding["severity"];
+type GuardrailFindingSeverityFilter = "all" | RouterTraceFinding["severity"];
 
-export function GuardrailFindingsView({ data, loading, error, policies, deployments, integrations, window, onWindowChange }: { data?: GuardrailFindingPage; loading: boolean; error: unknown; policies: Policy[]; deployments: Awaited<ReturnType<typeof getDeployments>>["items"]; integrations: Integration[]; window: MetricWindow; onWindowChange: (window: MetricWindow) => void }) {
+export function GuardrailFindingsView({ data, loading, error, policies, routers, endpoints, window, onWindowChange, severity: controlledSeverity, onSeverityChange }: { data?: GuardrailFindingPage; loading: boolean; error: unknown; policies: Policy[]; routers: Awaited<ReturnType<typeof getRouters>>["items"]; endpoints: Endpoint[]; window: MetricWindow; onWindowChange: (window: MetricWindow) => void; severity?: GuardrailFindingSeverityFilter; onSeverityChange?: (severity: GuardrailFindingSeverityFilter) => void }) {
   const { t, i18n } = useTranslation();
-  const [severity, setSeverity] = useState<GuardrailFindingSeverityFilter>("all");
+  const [localSeverity, setLocalSeverity] = useState<GuardrailFindingSeverityFilter>('all');
+  const severity = controlledSeverity ?? localSeverity;
+  const setSeverity = onSeverityChange ?? setLocalSeverity;
   const findings = data?.items ?? [];
   const summary = data?.summary;
   const counts = useMemo(() => ({
@@ -483,10 +486,10 @@ export function GuardrailFindingsView({ data, loading, error, policies, deployme
 
     <dl className="grid overflow-hidden rounded-lg border border-border/65 bg-card sm:grid-cols-3 xl:grid-cols-6">
       <FindingStat label={t("guardrails.totalFindings")} value={summary?.total ?? 0} />
-      <FindingStat label={t("deploymentDetail.severity.critical")} value={summary?.critical ?? 0} danger={Boolean(summary?.critical)} />
-      <FindingStat label={t("deploymentDetail.severity.high")} value={summary?.high ?? 0} />
-      <FindingStat label={t("deploymentDetail.severity.medium")} value={summary?.medium ?? 0} />
-      <FindingStat label={t("deploymentDetail.severity.low")} value={summary?.low ?? 0} />
+      <FindingStat label={t("routerDetail.severity.critical")} value={summary?.critical ?? 0} danger={Boolean(summary?.critical)} />
+      <FindingStat label={t("routerDetail.severity.high")} value={summary?.high ?? 0} />
+      <FindingStat label={t("routerDetail.severity.medium")} value={summary?.medium ?? 0} />
+      <FindingStat label={t("routerDetail.severity.low")} value={summary?.low ?? 0} />
       <FindingStat label={t("guardrails.affectedInteractions")} value={summary?.affected_traces ?? 0} />
     </dl>
 
@@ -494,15 +497,15 @@ export function GuardrailFindingsView({ data, loading, error, policies, deployme
       <CardHeader className="border-b">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="flex items-start gap-3"><span className="grid size-9 shrink-0 place-items-center rounded-lg bg-red-50 text-red-700"><ShieldAlert className="size-4" /></span><div><CardTitle>{t("guardrails.findings")}</CardTitle><CardDescription className="mt-1 max-w-2xl leading-5">{t("guardrails.findingsPrivacy")}</CardDescription></div></div>
-          <div className="grid w-full grid-cols-2 gap-1 rounded-lg border bg-background p-1 sm:grid-cols-5 xl:w-auto" role="group" aria-label={t("guardrails.filterSeverity")}>{filters.map((filter) => <Button key={filter} type="button" size="sm" variant={severity === filter ? "secondary" : "ghost"} className="min-h-10 w-full gap-1 px-2.5" aria-pressed={severity === filter} onClick={() => setSeverity(filter)}><span>{filter === "all" ? t("guardrails.allSeverities") : t(`deploymentDetail.severity.${filter}`)}</span><span className="font-mono text-[10px] text-muted-foreground">{counts[filter]}</span></Button>)}</div>
+          <div className="grid w-full grid-cols-2 gap-1 rounded-lg border bg-background p-1 sm:grid-cols-5 xl:w-auto" role="group" aria-label={t("guardrails.filterSeverity")}>{filters.map((filter) => <Button key={filter} type="button" size="sm" variant={severity === filter ? "secondary" : "ghost"} className="min-h-10 w-full gap-1 px-2.5" aria-pressed={severity === filter} onClick={() => setSeverity(filter)}><span>{filter === "all" ? t("guardrails.allSeverities") : t(`routerDetail.severity.${filter}`)}</span><span className="font-mono text-[10px] text-muted-foreground">{counts[filter]}</span></Button>)}</div>
         </div>
       </CardHeader>
       <CardContent className="p-0">
         {loading ? <Skeleton className="m-4 h-56 rounded-lg" /> : error ? <div className="p-4"><ErrorNotice error={error} /></div> : visibleFindings.length ? <div className="divide-y">{visibleFindings.map((finding) => {
           const timestamp = formatEventTimestamp(finding.created_at, i18n.language);
-          const deployment = deployments.find((item) => item.id === finding.deployment_id);
-          const integration = integrations.find((item) => item.id === finding.integration_id);
-          const source = deployment?.name ?? integration?.name ?? (finding.protocol === "playground" ? t("guardrails.playgroundSource") : finding.protocol?.toUpperCase()) ?? t("guardrails.directRuntimeSource");
+          const router = routers.find((item) => item.id === finding.router_id);
+          const endpoint = endpoints.find((item) => item.id === finding.endpoint_id);
+          const source = router?.name ?? endpoint?.name ?? (finding.protocol === "playground" ? t("guardrails.playgroundSource") : finding.protocol?.toUpperCase()) ?? t("guardrails.directRuntimeSource");
           return <article key={`${finding.trace_id}:${finding.id}`} className="grid gap-3 px-4 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-5">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2"><GuardrailSeverityBadge severity={finding.severity} /><strong className="text-sm">{guardrailFindingTitle(finding, policies)}</strong></div>
@@ -520,8 +523,8 @@ export function GuardrailFindingsView({ data, loading, error, policies, deployme
 }
 
 function FindingStat({ label, value, danger = false }: { label: string; value: number; danger?: boolean }) { return <div className="border-b px-4 py-3 last:border-b-0 sm:border-r sm:[&:nth-child(3n)]:border-r-0 xl:border-b-0 xl:[&:nth-child(3n)]:border-r xl:last:border-r-0"><dt className="text-[11px] text-muted-foreground">{label}</dt><dd className={`mt-0.5 font-display text-xl font-semibold tabular-nums ${danger ? "text-red-700" : ""}`}>{value.toLocaleString()}</dd></div>; }
-function GuardrailSeverityBadge({ severity }: { severity: DeploymentTraceFinding["severity"] }) { const { t } = useTranslation(); const classes = { critical: "border-red-200 bg-red-50 text-red-700", high: "border-orange-200 bg-orange-50 text-orange-700", medium: "border-amber-200 bg-amber-50 text-amber-700", low: "border-slate-200 bg-slate-50 text-slate-700" }[severity]; return <Badge variant="outline" className={classes}>{t(`deploymentDetail.severity.${severity}`)}</Badge>; }
-function guardrailFindingTitle(finding: DeploymentTraceFinding, policies: Policy[]) { const policy = policies.find((item) => item.id === finding.policy_id); const rule = policy?.rules.find((item) => item.id === finding.rule_id); return rule?.name ?? policy?.name ?? finding.rule_id ?? finding.risk.replaceAll("_", " "); }
+function GuardrailSeverityBadge({ severity }: { severity: RouterTraceFinding["severity"] }) { const { t } = useTranslation(); const classes = { critical: "border-red-200 bg-red-50 text-red-700", high: "border-orange-200 bg-orange-50 text-orange-700", medium: "border-amber-200 bg-amber-50 text-amber-700", low: "border-slate-200 bg-slate-50 text-slate-700" }[severity]; return <Badge variant="outline" className={classes}>{t(`routerDetail.severity.${severity}`)}</Badge>; }
+function guardrailFindingTitle(finding: RouterTraceFinding, policies: Policy[]) { const policy = policies.find((item) => item.id === finding.policy_id); const rule = policy?.rules.find((item) => item.id === finding.rule_id); return rule?.name ?? policy?.name ?? finding.rule_id ?? finding.risk.replaceAll("_", " "); }
 
 function GuardrailLoggingCard({ guardrailId }: { guardrailId: string }) {
   const { t, i18n } = useTranslation();
@@ -587,9 +590,9 @@ function RuntimeStat({ label, value, detail }: { label: string; value: string; d
   return <div className="min-h-20 border-b px-4 py-3 last:border-b-0 sm:odd:border-r sm:[&:nth-child(3)]:border-b-0 xl:border-b-0 xl:border-r xl:odd:border-r xl:last:border-r-0"><dt className="text-xs font-medium text-muted-foreground">{label}</dt><dd className="mt-1 text-xl font-semibold tabular-nums">{value}</dd><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div>;
 }
 
-function CallerDistribution({ metrics, deployments, versions }: { metrics: Metrics; deployments: Awaited<ReturnType<typeof getDeployments>>["items"]; versions: GuardrailVersion[] }) {
+function CallerDistribution({ metrics, routers, versions }: { metrics: Metrics; routers: Awaited<ReturnType<typeof getRouters>>["items"]; versions: GuardrailVersion[] }) {
   const { t, i18n } = useTranslation();
-  return <Card size="sm" className="gap-0 overflow-hidden py-0 shadow-none"><CardHeader className="border-b px-4 py-3"><CardTitle className="text-sm">{t("guardrails.callersTitle")}</CardTitle><CardDescription className="text-xs leading-5">{t("guardrails.callersDescription")}</CardDescription></CardHeader>{metrics.caller_distribution.length ? <Table className="text-xs"><TableHeader><TableRow className="hover:bg-transparent"><TableHead className="h-9 pl-4">{t("guardrails.caller")}</TableHead><TableHead className="h-9">{t("guardrails.trafficScope")}</TableHead><TableHead className="h-9">{t("guardrails.volumeShare")}</TableHead><TableHead className="h-9">{t("guardrails.servedVersion")}</TableHead><TableHead className="h-9">{t("guardrails.outcome")}</TableHead><TableHead className="h-9">{t("dashboard.p95Latency")}</TableHead></TableRow></TableHeader><TableBody>{metrics.caller_distribution.map((item) => { const deployment = deployments.find((candidate) => candidate.id === item.deployment_id); return <TableRow key={`${item.integration_id}:${item.deployment_id}:${item.protocol}`}><TableCell className="py-2.5 pl-4 align-top"><strong className="text-sm font-medium">{item.integration_name}</strong><p className="mt-0.5 font-mono text-xs text-muted-foreground">{item.protocol}</p></TableCell><TableCell className="max-w-80 py-2.5 align-top"><p className="mb-1 text-xs font-medium">{item.deployment_name}</p>{deployment ? <TrafficScopeBadges deployment={deployment} /> : <span className="text-xs text-muted-foreground">{t("guardrails.unassignedTraffic")}</span>}</TableCell><TableCell className="py-2.5 align-top"><strong className="text-sm tabular-nums">{item.requests.toLocaleString(i18n.language)}</strong><div className="mt-1.5 flex items-center gap-2"><Progress className="h-1 w-16" value={item.share} /><span className="text-xs text-muted-foreground">{item.share}%</span></div></TableCell><TableCell className="py-2.5 align-top"><div className="flex flex-wrap gap-1">{item.guardrail_versions.map((version) => <Badge key={version} variant="outline" className="font-mono text-[10px]">{version}</Badge>)}</div></TableCell><TableCell className="py-2.5 align-top"><p className="text-xs">{t("guardrails.interventionSummary", { rate: item.intervention_rate })}</p><p className="mt-0.5 text-xs text-muted-foreground">{t("guardrails.errorSummary", { rate: item.error_rate })}</p></TableCell><TableCell className="py-2.5 align-top font-mono text-xs">{item.p95_latency_ms} ms</TableCell></TableRow>; })}</TableBody></Table> : <div className="px-4 pb-4"><EmptyState title={t("guardrails.noRuntimeCalls")} description={t("guardrails.noRuntimeCallsDescription")} /></div>}</Card>;
+  return <Card size="sm" className="gap-0 overflow-hidden py-0 shadow-none"><CardHeader className="border-b px-4 py-3"><CardTitle className="text-sm">{t("guardrails.callersTitle")}</CardTitle><CardDescription className="text-xs leading-5">{t("guardrails.callersDescription")}</CardDescription></CardHeader>{metrics.caller_distribution.length ? <Table className="text-xs"><TableHeader><TableRow className="hover:bg-transparent"><TableHead className="h-9 pl-4">{t("guardrails.caller")}</TableHead><TableHead className="h-9">{t("guardrails.trafficScope")}</TableHead><TableHead className="h-9">{t("guardrails.volumeShare")}</TableHead><TableHead className="h-9">{t("guardrails.servedVersion")}</TableHead><TableHead className="h-9">{t("guardrails.outcome")}</TableHead><TableHead className="h-9">{t("dashboard.p95Latency")}</TableHead></TableRow></TableHeader><TableBody>{metrics.caller_distribution.map((item) => { const router = routers.find((candidate) => candidate.id === item.router_id); return <TableRow key={`${item.endpoint_id}:${item.router_id}:${item.protocol}`}><TableCell className="py-2.5 pl-4 align-top"><strong className="text-sm font-medium">{item.endpoint_name}</strong><p className="mt-0.5 font-mono text-xs text-muted-foreground">{item.protocol}</p></TableCell><TableCell className="max-w-80 py-2.5 align-top"><p className="mb-1 text-xs font-medium">{item.router_name}</p>{router ? <TrafficScopeBadges router={router} /> : <span className="text-xs text-muted-foreground">{t("guardrails.unassignedTraffic")}</span>}</TableCell><TableCell className="py-2.5 align-top"><strong className="text-sm tabular-nums">{item.requests.toLocaleString(i18n.language)}</strong><div className="mt-1.5 flex items-center gap-2"><Progress className="h-1 w-16" value={item.share} /><span className="text-xs text-muted-foreground">{item.share}%</span></div></TableCell><TableCell className="py-2.5 align-top"><div className="flex flex-wrap gap-1">{item.guardrail_versions.map((version) => <Badge key={version} variant="outline" className="font-mono text-[10px]">{version}</Badge>)}</div></TableCell><TableCell className="py-2.5 align-top"><p className="text-xs">{t("guardrails.interventionSummary", { rate: item.intervention_rate })}</p><p className="mt-0.5 text-xs text-muted-foreground">{t("guardrails.errorSummary", { rate: item.error_rate })}</p></TableCell><TableCell className="py-2.5 align-top font-mono text-xs">{item.p95_latency_ms} ms</TableCell></TableRow>; })}</TableBody></Table> : <div className="px-4 pb-4"><EmptyState title={t("guardrails.noRuntimeCalls")} description={t("guardrails.noRuntimeCallsDescription")} /></div>}</Card>;
 }
 
 export function ImmutableVersionView({ detail, selectedVersion, versions, loading, comparisonDetail, comparisonActive, comparisonLoading, compareOptions, guardrailId, validation, onChanged, onOpenDraft, onOpenValidation, onSelectVersion, onStartCompare, onCompareBaseChange, onCloseCompare }: {
@@ -694,7 +697,7 @@ function ImmutablePosture({ detail }: { detail: GuardrailVersionDetail }) {
 
 function PinnedPolicies({ bindings }: { bindings: GuardrailVersionDetail["policy_bindings"] }) { const { t } = useTranslation(); return <section className="rounded-lg border p-4"><h3 className="text-sm font-semibold">{t("guardrails.pinnedPolicies")}</h3><div className="mt-3 divide-y">{bindings.map((binding) => <div key={`${binding.policy_id}@${binding.policy_version}`} className="py-3 first:pt-0 last:pb-0"><div className="flex flex-wrap items-center justify-between gap-2"><code className="text-xs">{binding.policy_id}@{binding.policy_version}</code><Badge variant="outline">{binding.action ?? t("guardrails.policyBehavior")}</Badge></div><p className="mt-2 text-xs text-muted-foreground">{t("guardrails.pinnedPolicyRules", { count: binding.enabled_rule_ids.length })}</p></div>)}</div></section>; }
 
-export function DraftReleaseView({ guardrail, policies, cases, casesLoading, activeVersion, versions, deployments, canManage, validationRunning = false, onRunValidation = () => undefined, onOpenValidation = () => undefined, onEdit, onAddCase, onCreateDeployment, onChanged }: { guardrail: Guardrail; policies: Policy[]; cases: TestCase[]; casesLoading: boolean; activeVersion?: GuardrailVersion; versions?: GuardrailVersion[]; deployments: Awaited<ReturnType<typeof getDeployments>>["items"]; canManage?: boolean; validationRunning?: boolean; onRunValidation?: () => void; onOpenValidation?: (run: ValidationRun) => void; onEdit: () => void; onAddCase: () => void; onCreateDeployment: () => void; onChanged: () => Promise<void> }) {
+export function DraftReleaseView({ guardrail, policies, cases, casesLoading, activeVersion, versions, routers, canManage, validationRunning = false, onRunValidation = () => undefined, onOpenValidation = () => undefined, onEdit, onAddCase, onCreateRouter, onChanged }: { guardrail: Guardrail; policies: Policy[]; cases: TestCase[]; casesLoading: boolean; activeVersion?: GuardrailVersion; versions?: GuardrailVersion[]; routers: Awaited<ReturnType<typeof getRouters>>["items"]; canManage?: boolean; validationRunning?: boolean; onRunValidation?: () => void; onOpenValidation?: (run: ValidationRun) => void; onEdit: () => void; onAddCase: () => void; onCreateRouter: () => void; onChanged: () => Promise<void> }) {
   const { t } = useTranslation();
   const [publishOpen, setPublishOpen] = useState(false);
   const [scopeChange, setScopeChange] = useState<{ caseId: string; action: "exclude" | "restore" } | null>(null);
@@ -755,7 +758,7 @@ export function DraftReleaseView({ guardrail, policies, cases, casesLoading, act
             <div className="mt-4 grid gap-2">
               {canManageDraft && !validated ? <Button className="min-h-11" disabled={validationRunning} onClick={onRunValidation}>{validationRunning ? <LoaderCircle className="animate-spin" /> : <FlaskConical />}{t(validationRunning ? "guardrails.runningValidation" : "guardrails.runReviewed")}</Button> : null}
               {canManageDraft && validated && !published && !compiling ? <Button className="min-h-11" disabled={publish.isPending} onClick={() => setPublishOpen(true)}>{publish.isPending ? <LoaderCircle className="animate-spin" /> : compileFailed ? <RotateCcw /> : <ShieldCheck />}{t(publish.isPending ? "guardrails.requestingCompilation" : compileFailed ? "guardrails.retryCompilation" : "guardrails.publishVersion")}</Button> : null}
-              {canManageDraft && published && !guardrail.is_default ? <Button className="min-h-11" onClick={onCreateDeployment}><Rocket />{t("guardrails.createDeployment")}</Button> : null}
+              {canManageDraft && published && !guardrail.is_default ? <Button className="min-h-11" onClick={onCreateRouter}><Rocket />{t("guardrails.createRouter")}</Button> : null}
               {canManageDraft ? <Button className="min-h-11" variant="outline" onClick={onEdit}><Pencil />{t("common.edit")}</Button> : null}
               {guardrail.latest_validation_run ? <Button className="min-h-11" variant="outline" onClick={() => onOpenValidation(guardrail.latest_validation_run!)}><FlaskConical />{t("guardrails.openValidation")}</Button> : null}
             </div>
@@ -773,7 +776,7 @@ export function DraftReleaseView({ guardrail, policies, cases, casesLoading, act
       <div className="mb-3"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("guardrails.releaseEvidenceEyebrow")}</p><h2 className="mt-1 text-base font-semibold">{t("guardrails.validationInputs")}</h2><p className="mt-1 text-xs text-muted-foreground">{t("guardrails.validationInputsDescription")}</p></div>
       <TestCases cases={cases} bindings={guardrail.policy_bindings} policies={policies} loading={casesLoading} onAdd={onAddCase} onExclude={(caseId) => setScopeChange({ caseId, action: "exclude" })} onRestore={(caseId) => setScopeChange({ caseId, action: "restore" })} busyCaseId={validationScope.isPending ? validationScope.variables?.caseId : undefined} />
     </section>
-    {deployments.length ? <Card className="shadow-none"><CardHeader className="py-4"><CardTitle>{t("guardrails.guardrailDeployments")}</CardTitle><CardDescription>{t("guardrails.guardrailDeploymentsDescription")}</CardDescription></CardHeader><CardContent className="space-y-2">{deployments.map((deployment) => <div key={deployment.id} className="rounded-lg border px-4 py-3"><div className="flex flex-wrap items-center justify-between gap-2"><strong className="text-sm font-medium">{deployment.name}</strong><Badge variant="outline" className="font-mono text-[10px]">{deployment.guardrail_version}</Badge></div><div className="mt-2"><TrafficScopeBadges deployment={deployment} /></div></div>)}</CardContent></Card> : null}
+    {routers.length ? <Card className="shadow-none"><CardHeader className="py-4"><CardTitle>{t("guardrails.guardrailRouters")}</CardTitle><CardDescription>{t("guardrails.guardrailRoutersDescription")}</CardDescription></CardHeader><CardContent className="space-y-2">{routers.map((router) => <div key={router.id} className="rounded-lg border px-4 py-3"><div className="flex flex-wrap items-center justify-between gap-2"><strong className="text-sm font-medium">{router.name}</strong><Badge variant="outline" className="font-mono text-[10px]">{router.guardrail_version}</Badge></div><div className="mt-2"><TrafficScopeBadges router={router} /></div></div>)}</CardContent></Card> : null}
   </div>
   <ConfirmationSheet
     open={publishOpen}

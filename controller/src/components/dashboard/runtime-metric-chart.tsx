@@ -132,7 +132,7 @@ function RuntimeMetricEmpty() {
       <span className="grid size-8 place-items-center rounded-md bg-muted text-muted-foreground"><Activity className="size-4" /></span>
       <h3 className="mt-3 text-sm font-semibold">{t("dashboard.noTrafficTitle")}</h3>
       <p className="mt-1.5 max-w-md text-sm leading-6 text-muted-foreground">{t("dashboard.noTrafficDescription")}</p>
-      <Button className="mt-4" variant="outline" asChild><Link to="/integration/routers">{t("dashboard.manageDeployments")}<ArrowRight /></Link></Button>
+      <Button className="mt-4" variant="outline" asChild><Link to="/integration/routers">{t("dashboard.manageRouters")}<ArrowRight /></Link></Button>
     </div>
   );
 }

@@ -8,6 +8,7 @@ import { Sheet, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHe
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 export function ValidationFailureEvidence({
+  examples,
   label,
   title,
   subject,
@@ -19,6 +20,7 @@ export function ValidationFailureEvidence({
   copyFailedMessage,
   closeLabel,
 }: {
+  examples?: Array<{ id: string; fields: Array<{ label: string; value: string }> }>;
   label: string;
   title: string;
   subject: string;
@@ -60,6 +62,13 @@ export function ValidationFailureEvidence({
       </SheetHeader>
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-6">
         {badge}
+        {examples?.map((example) => <section key={example.id} className="space-y-3 rounded-lg border p-4">
+          <h3 className="text-sm font-semibold [overflow-wrap:anywhere]">{example.id}</h3>
+          <dl className="space-y-3">{example.fields.map((field) => <div key={field.label}>
+            <dt className="mb-1 text-xs font-medium text-muted-foreground">{field.label}</dt>
+            <dd className="rounded-md bg-muted/40 p-3 font-mono text-xs leading-6 whitespace-pre-wrap [overflow-wrap:anywhere]">{field.value}</dd>
+          </div>)}</dl>
+        </section>)}
         <section aria-label={detailLabel}>
           <h3 className="mb-2 text-sm font-semibold">{detailLabel}</h3>
           <pre className="rounded-md border border-destructive/20 bg-destructive/5 p-4 font-mono text-xs leading-6 whitespace-pre-wrap [overflow-wrap:anywhere]">{message}</pre>
@@ -67,7 +76,7 @@ export function ValidationFailureEvidence({
       </div>
       <SheetFooter className="shrink-0 border-t p-4">
         <Button type="button" variant="outline" className="h-11" onClick={async () => {
-          try { await navigator.clipboard.writeText(message); toast.success(copiedMessage); }
+          try { await navigator.clipboard.writeText([message, ...(examples ?? []).map((example) => `${example.id}\n${example.fields.map((field) => `${field.label}: ${field.value}`).join("\n")}`)].join("\n\n")); toast.success(copiedMessage); }
           catch { toast.error(copyFailedMessage); }
         }}><Copy />{copyLabel}</Button>
       </SheetFooter>

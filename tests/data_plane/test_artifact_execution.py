@@ -56,7 +56,7 @@ async def test_runner_executes_a_precompiled_artifact_through_real_litellm_callb
     ).router)
     headers = {"x-api-key": RUNTIME_CREDENTIAL}
     endpoint = (
-        "/runtime/v1/integrations/fixture-integration/"
+        "/runtime/v1/endpoints/fixture-endpoint/"
         "beta/litellm_basic_guardrail_api"
     )
     try:
@@ -74,7 +74,7 @@ async def test_runner_executes_a_precompiled_artifact_through_real_litellm_callb
                 },
             )
             verification = await client.post(
-                "/runtime/v1/integrations/fixture-integration/verify",
+                "/runtime/v1/endpoints/fixture-endpoint/verify",
                 headers=headers,
                 json={},
             )
@@ -141,7 +141,7 @@ async def test_precompiled_ordered_artifact_forwards_redacted_content_before_lat
     try:
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://runner") as client:
             response = await client.post(
-                "/runtime/v1/integrations/fixture-integration/beta/litellm_basic_guardrail_api",
+                "/runtime/v1/endpoints/fixture-endpoint/beta/litellm_basic_guardrail_api",
                 headers={"x-api-key": RUNTIME_CREDENTIAL},
                 json={"input_type": input_type, "texts": ["Email alice@example.com; api_key=abcdefghijklmnopqrstuvwx"], "request_data": {}},
             )
@@ -168,7 +168,7 @@ def test_runner_rejects_a_corrupt_generation_and_keeps_last_known_good(
         store.apply(corrupt)
 
     assert store.generation == 1
-    assert store.resolve_guardrail("fixture-secrets", "20260904-010000.001Z").deployment_id == "fixture-deployment"
+    assert store.resolve_guardrail("fixture-secrets", "20260904-010000.001Z").router_id == "fixture-router"
     assert registry.readiness()["ready"] is True
 
 
@@ -181,7 +181,7 @@ async def test_frozen_default_artifact_forwards_complete_redactions_and_blocks_w
         GuardrailRuntimeService(engine, store, contexts=CallContextStore()),
         store, RunnerMetrics(4), telemetry, "fixture-runner", "controller-token",
     ).router)
-    endpoint = "/runtime/v1/integrations/fixture-integration/beta/litellm_basic_guardrail_api"
+    endpoint = "/runtime/v1/endpoints/fixture-endpoint/beta/litellm_basic_guardrail_api"
     samples = [
         ("Passport: E12345678", "Passport: [passport_china_REDACTED]"),
         ("Emirates ID: 784-1990-1234567-1", "Emirates ID: [uae_emirates_id_REDACTED]"),
@@ -235,8 +235,8 @@ def test_runner_restores_the_precompiled_last_known_good_without_controller(
 
     assert restarted.generation == 1
     assert restarted_registry.readiness()["ready"] is True
-    assert restarted.authenticate_integration(
-        "fixture-integration",
+    assert restarted.authenticate_endpoint(
+        "fixture-endpoint",
         RUNTIME_CREDENTIAL,
     )
 
@@ -268,7 +268,7 @@ async def test_stream_split_secret_uses_complete_response_contract(tmp_path):
     store, _registry, engine = _runtime(tmp_path)
     runtime = GuardrailRuntimeService(engine, store)
     request = ProtectionRequest(phase="output", texts=("",), call_id="split-secret",
-                                context=RequestContext(protocol="litellm", integration_id="fixture-integration"))
+                                context=RequestContext(protocol="litellm", endpoint_id="fixture-endpoint"))
     streams = OutputStreamSessionStore(window_characters=8)
     try:
         mode = runtime.output_delivery(request)
@@ -289,7 +289,7 @@ async def test_input_output_keeps_materialized_runtime_when_models_change(tmp_pa
     from runner.toolkit.runtime.contracts import ProtectionRequest, RequestContext
     store, registry, engine = _runtime(tmp_path)
     runtime = GuardrailRuntimeService(engine, store)
-    context = RequestContext(protocol="litellm", integration_id="fixture-integration")
+    context = RequestContext(protocol="litellm", endpoint_id="fixture-endpoint")
     original = store.resolve(context)
     old_instance = registry.acquire(original.plan, release_id=original.effective_release_id)[0]
     try:
@@ -374,7 +374,7 @@ async def test_same_precompiled_jailbreak_artifact_with_interchangeable_models(t
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://runner") as client:
             async def evaluate(text, direction="request"):
                 response = await client.post(
-                    "/runtime/v1/integrations/fixture-integration/beta/litellm_basic_guardrail_api",
+                    "/runtime/v1/endpoints/fixture-endpoint/beta/litellm_basic_guardrail_api",
                     headers={"x-api-key": RUNTIME_CREDENTIAL},
                     json={"input_type": direction, "texts": [text], "request_data": {}},
                 )

@@ -28,14 +28,14 @@ export function metricWindowMilliseconds(window: MetricWindow): number {
 }
 
 export const getGuardrailFindings = async (
-  guardrailId: string, window: MetricWindow, limit = 100, cursor?: string, signal?: AbortSignal,
+  guardrailId: string, window: MetricWindow, limit = 100, cursor?: string, signal?: AbortSignal, severity?: string,
 ): Promise<GuardrailFindingPage> => {
   const since = new Date(Date.now() - metricWindowMilliseconds(window)).toISOString();
   const [events, metrics] = await Promise.all([
-    controllerApi.listRuntimeEvents(limit, { guardrailId, since, findingsOnly: 'true', ...(cursor ? { cursor } : {}) }, signal),
+    controllerApi.listRuntimeEvents(limit, { guardrailId, since, findingsOnly: 'true', ...(cursor ? { cursor } : {}), ...(severity && severity !== 'all' ? { severity } : {}) }, signal),
     controllerApi.requestController<Metrics>(`/api/v1/runtime-metrics?${new URLSearchParams({guardrailId,window})}`, signal ? { signal } : undefined),
   ]);
-  const items = events.items.flatMap(runtimeFindings);
+  const items = events.items.flatMap(runtimeFindings).filter(f => !severity || severity === 'all' || f.severity === severity);
   if (!metrics.findings_summary) throw new Error("Runtime findings summary is unavailable. Update the Controller and retry.");
   return {
     items, count: items.length, nextCursor: events.nextCursor,
@@ -96,8 +96,8 @@ export function runtimeLogInteractions(events: controllerApi.RuntimeEvent[], fil
       completed_at: last.occurredAt,
       guardrail_id: first.guardrailId,
       guardrail_version: last.guardrailVersion,
-      deployment_id: last.deploymentId,
-      integration_id: last.integrationId,
+      router_id: last.routerId,
+      endpoint_id: last.endpointId,
       protocol: stringValue(last.metadata.protocol) ?? "unknown",
       outcome: worstOutcome(ordered.map((event) => event.decision)),
       capture_level: enumValue(last.metadata.captureLevel, ["info", "debug", "trace"]) ?? "info",
@@ -121,11 +121,11 @@ function runtimeLogContent(value: unknown): RuntimeLogInteraction["entries"][num
 }
 
 export async function getMetrics(filters: {
-  guardrailId?: string; deploymentId?: string; window?: MetricWindow;
+  guardrailId?: string; routerId?: string; window?: MetricWindow;
 } = {}, signal?: AbortSignal): Promise<Metrics> {
   const query = new URLSearchParams({ window: filters.window ?? "24h" });
   if (filters.guardrailId) query.set("guardrailId", filters.guardrailId);
-  if (filters.deploymentId) query.set("deploymentId", filters.deploymentId);
+  if (filters.routerId) query.set("routerId", filters.routerId);
   const [metrics, status] = await Promise.all([
     controllerApi.requestController<Omit<Metrics, "system_status" | "system_reasons">>(`/api/v1/runtime-metrics?${query}`, signal ? { signal } : undefined),
     controllerApi.getControllerSystemStatus(),

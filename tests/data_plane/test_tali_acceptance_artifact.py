@@ -38,7 +38,7 @@ async def test_frozen_acceptance_artifact_checks_both_directions(tmp_path, phase
         store,RunnerMetrics(4),telemetry,'test','test').router)
     try:
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url='http://runner') as client:
-            result=await client.post('/runtime/v1/integrations/fixture-integration/beta/litellm_basic_guardrail_api',
+            result=await client.post('/runtime/v1/endpoints/fixture-endpoint/beta/litellm_basic_guardrail_api',
                 headers={'x-api-key':RUNTIME_CREDENTIAL},json={'input_type':phase,'texts':['Synthetic acceptance text.']})
         assert result.status_code==200
         assert result.json()['action']==('BLOCKED' if unsafe else 'NONE')

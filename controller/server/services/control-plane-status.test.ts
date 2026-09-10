@@ -16,18 +16,18 @@ function serviceWithSelectResults(results: unknown[][]) {
 }
 
 const guardrail = { id: "guardrail-default", status: "active", draftRevision: 2, activeArtifactId: "artifact-1", activeVersion: "20260904-193000.000Z" };
-const deployment = { id: "deployment-default", enabled: true, guardrailId: guardrail.id,
+const router = { id: "router-default", enabled: true, guardrailId: guardrail.id,
   guardrailVersion: guardrail.activeVersion, poolId: "default", trafficScope: { combinator: "and", conditions: [] } };
 const version = { guardrailId: guardrail.id, version: guardrail.activeVersion, artifactId: "artifact-1", status: "ready", sourceDraftRevision: 1 };
 const artifact = { id: "artifact-1", guardrailId: guardrail.id, guardrailVersion: guardrail.activeVersion, checksum: "checksum", signature: "signature",
   plan: { steps: [{ contract_ref: "tali.guard.pii.exact.v1", phases: ["input", "output"], parameters: [["policy_id", "pii"]] }],
     policy_bindings: [{ policy_id: "pii" }] } };
-const activeResults = () => [[guardrail], [deployment], [], [], [version], [artifact]] as unknown[][];
+const activeResults = () => [[guardrail], [router], [], [], [version], [artifact]] as unknown[][];
 
 describe("Default Guardrail readiness", () => {
-  it("requires a ready signed artifact and the active catch-all deployment", async () => {
+  it("requires a ready signed artifact and the active catch-all router", async () => {
     await expect(serviceWithSelectResults(activeResults()).defaultGuardrailReadiness()).resolves.toEqual({
-      status: "ready", guardrailStatus: "active", deploymentStatus: "active", activeVersion: guardrail.activeVersion,
+      status: "ready", guardrailStatus: "active", routerStatus: "active", activeVersion: guardrail.activeVersion,
       modelIndependent: true,
       coverage: { policyCount: 1, inputChecks: 1, outputChecks: 1, requiredModelBindings: [], hasUnknownDependencies: false },
       draft: { revision: 2, activeRevision: 1, validationStatus: null, validationFailureReason: null },
@@ -64,7 +64,7 @@ describe("Default Guardrail readiness", () => {
   it("does not claim protection when the route is missing or the plan has no checks", async () => {
     const missingRoute = activeResults(); missingRoute[1] = [];
     await expect(serviceWithSelectResults(missingRoute).defaultGuardrailReadiness()).resolves.toMatchObject({
-      status: "unavailable", guardrailStatus: "active", deploymentStatus: "unavailable",
+      status: "unavailable", guardrailStatus: "active", routerStatus: "unavailable",
     });
     const emptyPlan = activeResults(); emptyPlan[5] = [{ ...artifact, plan: { steps: [], policy_bindings: [] } }];
     await expect(serviceWithSelectResults(emptyPlan).defaultGuardrailReadiness()).resolves.toMatchObject({ status: "unavailable", modelIndependent: null });

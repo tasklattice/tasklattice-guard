@@ -302,7 +302,7 @@ def _request_from_dict(value: object) -> ProtectionRequest:
         texts=tuple(str(item) for item in value.get("texts", ())),
         context=RequestContext(
             protocol=str(context.get("protocol", "http")),
-            integration_id=(str(context["integration_id"]) if context.get("integration_id") is not None else None),
+            endpoint_id=(str(context["endpoint_id"]) if context.get("endpoint_id") is not None else None),
             headers=tuple((str(key), str(item)) for key, item in context.get("headers", ())),
             jwt_claims=tuple((str(key), str(item)) for key, item in context.get("jwt_claims", ())),
             fields=tuple((str(key), str(item)) for key, item in context.get("fields", ())),
@@ -328,8 +328,8 @@ def _request_from_dict(value: object) -> ProtectionRequest:
 
 
 def _check_identity(pinned: ProtectionRequest, incoming: ProtectionRequest) -> None:
-    if incoming.phase != "output" or (pinned.call_id, pinned.context.integration_id, pinned.mode) != (
-        incoming.call_id, incoming.context.integration_id, incoming.mode,
+    if incoming.phase != "output" or (pinned.call_id, pinned.context.endpoint_id, pinned.mode) != (
+        incoming.call_id, incoming.context.endpoint_id, incoming.mode,
     ):
         raise ValueError("Output stream identity or enforcement mode changed. Start a new stream.")
 

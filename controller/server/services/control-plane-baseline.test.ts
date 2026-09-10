@@ -81,7 +81,7 @@ describe("Default baseline validation gate", () => {
       draftConfig: defaultGuardrailDraft(policies), excludedTestCaseIds: [],
     }) }]);
     expect(test.updates.some((item) => "activeArtifactId" in item.value || "activeVersion" in item.value)).toBe(false);
-    expect(test.inserts.some((item) => ["guardrail_version", "deployment"].includes(item.table))).toBe(false);
+    expect(test.inserts.some((item) => ["guardrail_version", "router"].includes(item.table))).toBe(false);
     expect(test.inserts).toContainEqual({ table: "guardrail_test_case", value: cases });
     expect(test.inserts).toContainEqual({ table: "audit_event", value: expect.objectContaining({
       kind: "guardrail.default.baseline_upgraded", detail: expect.objectContaining({
@@ -203,7 +203,7 @@ describe("Compiled artifact publication gate", () => {
     await test.service.acceptCompiledArtifact(input);
     expect(test.reads).toEqual([]);
     expect(test.updates).toContainEqual({ table: "guardrail_version", value: expect.objectContaining({ status: "ready" }) });
-    expect(test.updates.some((item) => item.table === "guardrail" || item.table === "deployment")).toBe(false);
+    expect(test.updates.some((item) => item.table === "guardrail" || item.table === "router")).toBe(false);
     expect(test.inserts).toContainEqual({ table: "audit_event", value: expect.objectContaining({
       kind: "guardrail.compiled", detail: expect.objectContaining({ activated: false }),
     }) });

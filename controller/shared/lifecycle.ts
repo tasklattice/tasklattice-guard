@@ -22,18 +22,18 @@ export type ValidationTerminalState = Extract<ValidationRunState, "passed" | "fa
 /** UI projection used when no persisted validation run exists yet. */
 export type ValidationRunDisplayState = "not_run" | ValidationRunState;
 
-/** Reversible enabled state of an Integration that has not been soft-deleted. */
-export const integrationLifecycleStates = ["active", "disabled"] as const;
-export type IntegrationLifecycleState = (typeof integrationLifecycleStates)[number];
+/** Reversible enabled state of an Endpoint that has not been soft-deleted. */
+export const endpointLifecycleStates = ["active", "disabled"] as const;
+export type EndpointLifecycleState = (typeof endpointLifecycleStates)[number];
 
-/** Setup progress shown by the Integration UI; it is not the persisted Integration lifecycle. */
-export const integrationSetupStates = ["applying", "awaiting_callback", "verified", "disabled"] as const;
-export type IntegrationSetupState = (typeof integrationSetupStates)[number];
+/** Setup progress shown by the Endpoint UI; it is not the persisted Endpoint lifecycle. */
+export const endpointSetupStates = ["applying", "awaiting_callback", "verified", "disabled"] as const;
+export type EndpointSetupState = (typeof endpointSetupStates)[number];
 
 /**
  * Derived Guardrail readiness shown in the UI. This is deliberately not a
  * resource lifecycle: it is recomputed from the current draft, active version,
- * and enabled deployment count.
+ * and enabled router count.
  */
 export const guardrailReadinessStates = ["needs_validation", "ready", "protected"] as const;
 export type GuardrailReadinessState = (typeof guardrailReadinessStates)[number];
@@ -79,8 +79,8 @@ export const validationRunTransitions = {
   failed: [],
 } as const satisfies Record<ValidationRunState, readonly ValidationRunState[]>;
 
-/** Disabling an Integration is reversible until the separate soft-delete overlay is set. */
-export const integrationLifecycleTransitions = {
+/** Disabling an Endpoint is reversible until the separate soft-delete overlay is set. */
+export const endpointLifecycleTransitions = {
   active: ["disabled"],
   disabled: ["active"],
-} as const satisfies Record<IntegrationLifecycleState, readonly IntegrationLifecycleState[]>;
+} as const satisfies Record<EndpointLifecycleState, readonly EndpointLifecycleState[]>;

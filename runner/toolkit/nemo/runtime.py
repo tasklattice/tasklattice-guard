@@ -246,8 +246,8 @@ class NeMoActionBridge:
         provider_latency_ms = 0
         request = self._request()
         module = self._module(binding)
-        integration_id = (
-            request.request_context.integration_id
+        endpoint_id = (
+            request.request_context.endpoint_id
             if request.request_context is not None
             else "__internal__"
         )
@@ -265,7 +265,7 @@ class NeMoActionBridge:
                 "guardrail.capability": binding.capability,
                 "guardrail.policy.id": binding.policy_id or "__none__",
                 "guardrail.action.timeout_ms": binding.timeout_ms,
-                "integration.id": integration_id or "__internal__",
+                "endpoint.id": endpoint_id or "__internal__",
             },
         ) as span:
             try:
@@ -836,9 +836,9 @@ class NeMoRuntime:
         request_context = request.request_context
         native_model_scope, native_model_token = activate_native_model_observation(
             guardrail_id=request.plan.guardrail_id,
-            integration_id=(
-                request_context.integration_id
-                if request_context is not None and request_context.integration_id
+            endpoint_id=(
+                request_context.endpoint_id
+                if request_context is not None and request_context.endpoint_id
                 else "__internal__"
             ),
             phase=request.phase,

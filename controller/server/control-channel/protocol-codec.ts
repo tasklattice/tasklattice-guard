@@ -2,7 +2,7 @@ import type { ActionBinding, ActionBinding__Output } from "../generated/control-
 import type { Artifact, Artifact__Output } from "../generated/control-protocol/tasklattice/guard/control/v1/Artifact.js";
 import type { ArtifactDependency, ArtifactDependency__Output } from "../generated/control-protocol/tasklattice/guard/control/v1/ArtifactDependency.js";
 import type { GuardrailPlan, GuardrailPlan__Output } from "../generated/control-protocol/tasklattice/guard/control/v1/GuardrailPlan.js";
-import type { IntegrationVerification } from "../generated/control-protocol/tasklattice/guard/control/v1/IntegrationVerification.js";
+import type { EndpointVerification } from "../generated/control-protocol/tasklattice/guard/control/v1/EndpointVerification.js";
 import type { PromptDefinition, PromptDefinition__Output } from "../generated/control-protocol/tasklattice/guard/control/v1/PromptDefinition.js";
 import type { RiskFinding__Output } from "../generated/control-protocol/tasklattice/guard/control/v1/RiskFinding.js";
 import type { RuntimeTraceStep__Output } from "../generated/control-protocol/tasklattice/guard/control/v1/RuntimeTraceStep.js";
@@ -219,7 +219,7 @@ export function trafficScopeToWire(value: unknown): TrafficScope {
   };
 }
 
-export function integrationVerificationToWire(value: unknown): IntegrationVerification {
+export function endpointVerificationToWire(value: unknown): EndpointVerification {
   const verification = record(value);
   return { credentials: records(verification.credentials).map((credential) => ({
     id: string(credential.id),

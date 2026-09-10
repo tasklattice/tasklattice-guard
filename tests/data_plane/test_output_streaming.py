@@ -27,7 +27,7 @@ async def test_default_frozen_artifact_buffers_before_releasing_without_models(t
     artifacts, _registry, engine = _runtime(tmp_path, fixture)
     runtime = GuardrailRuntimeService(engine, artifacts)
     req = ProtectionRequest(phase="output", texts=("",), call_id="default-buffered",
-        context=RequestContext(protocol="litellm", integration_id="fixture-integration"))
+        context=RequestContext(protocol="litellm", endpoint_id="fixture-endpoint"))
     streams = OutputStreamSessionStore(window_characters=4)
     try:
         mode = runtime.output_delivery(req)
@@ -53,8 +53,8 @@ def request() -> ProtectionRequest:
     return ProtectionRequest(
         phase="output",
         texts=("placeholder",),
-        context=RequestContext(protocol="http", integration_id="integration-1"),
-        call_id="integration-1:call-1",
+        context=RequestContext(protocol="http", endpoint_id="endpoint-1"),
+        call_id="endpoint-1:call-1",
     )
 
 

@@ -35,8 +35,8 @@ class RedisCallContextStore:
             "content_blocks": [asdict(item) for item in content_blocks],
             "resolution": {
                 "plan": asdict(resolution.plan),
-                "deployment_id": resolution.deployment_id,
-                "integration_id": resolution.integration_id,
+                "router_id": resolution.router_id,
+                "endpoint_id": resolution.endpoint_id,
                 "effective_release_id": resolution.effective_release_id,
                 "model_revision_id": resolution.model_revision_id,
                 "trace": [asdict(item) for item in resolution.trace],
@@ -57,11 +57,11 @@ class RedisCallContextStore:
             content_blocks=tuple(GuardContentBlock(**item) for item in payload.get("content_blocks", ())),
             resolution=PlanResolution(
                 plan=plan_from_dict(resolution["plan"]),
-                deployment_id=resolution["deployment_id"],
-                integration_id=resolution.get("integration_id"),
+                router_id=resolution["router_id"],
+                endpoint_id=resolution.get("endpoint_id"),
                 effective_release_id=resolution.get("effective_release_id"),
                 model_revision_id=resolution.get("model_revision_id"),
-                # Resolution trace is informational. The immutable deployment
+                # Resolution trace is informational. The immutable router
                 # and plan pin are the consistency contract across replicas.
                 trace=(),
             ),

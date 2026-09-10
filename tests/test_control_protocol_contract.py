@@ -8,8 +8,8 @@ from google.protobuf import descriptor_pb2
 
 from runner import generated as protocol
 from runner.protocol_codec import (
-    integration_verification_from_proto,
-    integration_verification_to_proto,
+    endpoint_verification_from_proto,
+    endpoint_verification_to_proto,
     plan_from_proto,
     plan_to_proto,
     traffic_scope_from_proto,
@@ -75,7 +75,7 @@ def test_control_protocol_contains_no_embedded_json_documents() -> None:
 
     assert "_json" not in sources
     runner_control = (PROTO_DIR / "runner_control.proto").read_text(encoding="utf-8")
-    for imported in ("artifact.proto", "integration.proto", "routing.proto", "validation.proto"):
+    for imported in ("artifact.proto", "endpoint.proto", "routing.proto", "validation.proto"):
         assert f'import "{imported}";' in runner_control
 
 
@@ -170,7 +170,7 @@ def test_guardrail_plan_has_a_lossless_binary_round_trip() -> None:
     assert plan_from_proto(decoded) == plan
 
 
-def test_nested_traffic_scope_and_integration_credentials_are_typed() -> None:
+def test_nested_traffic_scope_and_endpoint_credentials_are_typed() -> None:
     scope = {
         "combinator": "and",
         "conditions": [
@@ -195,8 +195,8 @@ def test_nested_traffic_scope_and_integration_credentials_are_typed() -> None:
     }
 
     assert traffic_scope_from_proto(traffic_scope_to_proto(scope)) == scope
-    assert integration_verification_from_proto(
-        integration_verification_to_proto(verification)
+    assert endpoint_verification_from_proto(
+        endpoint_verification_to_proto(verification)
     ) == verification
 
 

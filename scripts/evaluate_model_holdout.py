@@ -1,6 +1,6 @@
 """Opt-in deployed Guardrail quality replay. Never mock a safety verdict.
 
-Uses a reviewed, external corpus and an existing generic-http-guard Integration.
+Uses a reviewed, external corpus and an existing generic-http-guard Endpoint.
 No registration, compilation, publishing, retry, or generation occurs here.
 Reports full Guardrail decision quality, not isolated classifier accuracy.
 """
@@ -24,7 +24,7 @@ IDENTITY = ("guardrail_id", "guardrail_version", "effective_release_id", "model_
 
 
 def validate_corpus(corpus):
-    for field in (*IDENTITY, "integration_id", "reviewed_by", "reviewed_at", "dataset_version"):
+    for field in (*IDENTITY, "endpoint_id", "reviewed_by", "reviewed_at", "dataset_version"):
         if not isinstance(corpus.get(field), str) or not corpus[field].strip():
             raise ValueError(f"Missing corpus metadata: {field}")
     if not re.fullmatch(r"[a-f0-9]{64}", corpus.get("runtime_config_checksum", "")):
@@ -109,7 +109,7 @@ def summarize(corpus, rows):
 
 class NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, *args, **kwargs):
-        # Never forward the Integration credential to another URL.
+        # Never forward the Endpoint credential to another URL.
         return None
 
 
@@ -131,8 +131,8 @@ def main():
         raise ValueError("Use HTTPS or isolated loopback HTTP.")
     if os.environ.get("GUARD_HOLDOUT_ALLOW_MODEL_CALLS") != "1":
         raise ValueError("Real calls require GUARD_HOLDOUT_ALLOW_MODEL_CALLS=1.")
-    token = os.environ["GUARD_HOLDOUT_INTEGRATION_KEY"]
-    endpoint = args.runner.rstrip("/") + "/runtime/v1/integrations/" + quote(corpus["integration_id"], safe="") + "/guardrails/evaluate"
+    token = os.environ["GUARD_HOLDOUT_ENDPOINT_KEY"]
+    endpoint = args.runner.rstrip("/") + "/runtime/v1/endpoints/" + quote(corpus["endpoint_id"], safe="") + "/guardrails/evaluate"
     opener, rows = build_opener(NoRedirect()), []
     for case in corpus["cases"]:
         payload = {"phase": case["phase"], "texts": [case["content"]], "protocol": "http",

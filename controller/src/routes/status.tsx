@@ -135,7 +135,7 @@ export function HealthPage() {
                     <StatusDatum label={t("platformStatus.minimum.input")} value={coverage ? t("platformStatus.minimum.checks", { count: coverage.inputChecks }) : t("platformStatus.state.unknown")} />
                     <StatusDatum label={t("platformStatus.minimum.output")} value={coverage ? t("platformStatus.minimum.checks", { count: coverage.outputChecks }) : t("platformStatus.state.unknown")} />
                     <StatusDatum label={t("platformStatus.minimum.policies")} value={coverage ? String(coverage.policyCount) : t("platformStatus.state.unknown")} />
-                    <StatusDatum label={t("platformStatus.defaultRoute")} value={t(`platformStatus.state.${basicProtection?.deploymentStatus ?? "unknown"}`)} />
+                    <StatusDatum label={t("platformStatus.defaultRoute")} value={t(`platformStatus.state.${basicProtection?.routerStatus ?? "unknown"}`)} />
                   </dl>
                   <p className="mt-3 text-xs leading-5 text-muted-foreground">{t("platformStatus.minimum.evidence", { generation: snapshot.desiredGeneration })}</p>
                   {unpublishedDraft ? (

@@ -30,7 +30,7 @@ const definitions: TrafficScopeFieldDefinition[] = [
 ];
 
 describe("traffic scope model", () => {
-  it("reserves an empty expression for the product default Deployment", () => {
+  it("reserves an empty expression for the product default Router", () => {
     expect(isTrafficScopeValid({ combinator: "and", rules: [] }, definitions)).toBe(false);
   });
 
@@ -120,7 +120,7 @@ describe("traffic scope model", () => {
     });
   });
 
-  it("restores a persisted selector for Deployment editing", () => {
+  it("restores a persisted selector for Router editing", () => {
     const expression = {
       combinator: "and" as const,
       conditions: [

@@ -197,7 +197,7 @@ function AttentionPanel({ metrics }: { metrics: Metrics }) {
   if (!metrics.total_decisions) return <GettingStarted metrics={metrics} />;
   const items = [
     metrics.latency_slo.p95_status === "breached" ? { icon: TriangleAlert, title: t("dashboard.attentionLatency"), detail: t("dashboard.attentionLatencyDetail", { value: metrics.runtime_p95_ms }), to: "/logs" as const } : null,
-    metrics.degraded_integrations ? { icon: CircleAlert, title: t("dashboard.attentionIntegration"), detail: t("dashboard.attentionIntegrationDetail", { count: metrics.degraded_integrations }), to: "/integration/endpoint" as const } : null,
+    metrics.degraded_endpoints ? { icon: CircleAlert, title: t("dashboard.attentionEndpoint"), detail: t("dashboard.attentionEndpointDetail", { count: metrics.degraded_endpoints }), to: "/integration/endpoint" as const } : null,
     metrics.fail_closed_count ? { icon: ShieldCheck, title: t("dashboard.attentionFailClosed"), detail: t("dashboard.attentionFailClosedDetail", { count: metrics.fail_closed_count }), to: "/logs" as const } : null,
     metrics.guardrails_needing_test ? { icon: CircleAlert, title: t("dashboard.attentionTesting"), detail: t("dashboard.attentionTestingDetail", { count: metrics.guardrails_needing_test }), to: "/guardrails" as const } : null,
   ].filter(Boolean).slice(0, 3) as Array<{ icon: ComponentType<{ className?: string }>; title: string; detail: string; to: "/logs" | "/integration/endpoint" | "/guardrails" }>;
@@ -237,11 +237,11 @@ function GettingStarted({ metrics }: { metrics: Metrics }) {
   const { t } = useTranslation();
   const guardrailCreated = metrics.total_guardrails > 0;
   const guardrailTested = guardrailCreated && metrics.guardrails_needing_test < metrics.total_guardrails;
-  const deploymentCreated = metrics.total_deployments > 0;
+  const routerCreated = metrics.total_routers > 0;
   const steps = [
     [guardrailCreated, t("dashboard.guardrailCreated")],
     [guardrailTested, t("dashboard.guardrailTested")],
-    [deploymentCreated, t("dashboard.deploymentCreated")],
+    [routerCreated, t("dashboard.routerCreated")],
     [false, t("dashboard.protectLiveTraffic")],
   ] as const;
   return (
@@ -251,7 +251,7 @@ function GettingStarted({ metrics }: { metrics: Metrics }) {
         <div className="space-y-1">{steps.map(([done, label]) => <div key={label} className="flex min-h-10 items-center gap-3 rounded-lg px-2 text-sm"><span className={cn("grid size-5 place-items-center rounded-full", done ? "bg-emerald-50 text-emerald-700" : "text-muted-foreground")}>
           {done ? <Check className="size-3.5" /> : <Circle className="size-3.5" />}
         </span>{label}</div>)}</div>
-      <Button className="mt-auto w-full" variant="outline" asChild><Link to={guardrailCreated ? "/integration/routers" : "/guardrails"}>{guardrailCreated ? t("dashboard.createDeployment") : t("dashboard.createGuardrail")}<ArrowRight /></Link></Button>
+      <Button className="mt-auto w-full" variant="outline" asChild><Link to={guardrailCreated ? "/integration/routers" : "/guardrails"}>{guardrailCreated ? t("dashboard.createRouter") : t("dashboard.createGuardrail")}<ArrowRight /></Link></Button>
       </CardContent>
     </Card>
   );

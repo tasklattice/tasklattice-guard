@@ -24,7 +24,7 @@ from runner import generated as protocol
 from runner.compiler import DefaultRunnerCompiler
 from runner.toolkit.nemo.native_models import NativeRailModel
 from runner.protocol_codec import (
-    integration_verification_to_proto,
+    endpoint_verification_to_proto,
     plan_to_proto,
     traffic_scope_to_proto,
 )
@@ -336,21 +336,21 @@ def generate(fixture_name: str = FIXTURE_NAME) -> FixtureFiles:
     desired_state = protocol.DesiredState(
         generation=1,
         artifacts=[artifact],
-        deployments=[protocol.DeploymentRoute(
-            deployment_id="fixture-deployment",
+        routers=[protocol.RouterRoute(
+            router_id="fixture-router",
             guardrail_id="fixture-secrets",
             artifact_id=artifact.artifact_id,
-            integration_id="fixture-integration",
+            endpoint_id="fixture-endpoint",
             route_order=1,
             traffic_scope=traffic_scope_to_proto({
                 "combinator": "and",
                 "conditions": [],
             }),
         )],
-        integrations=[protocol.IntegrationRuntime(
-            integration_id="fixture-integration",
+        endpoints=[protocol.EndpointRuntime(
+            endpoint_id="fixture-endpoint",
             adapter="litellm-generic-guardrail",
-            verification=integration_verification_to_proto({
+            verification=endpoint_verification_to_proto({
                 "credentials": [{
                     "id": "fixture",
                     "sha256": hashlib.sha256(TEST_CREDENTIAL.encode()).hexdigest(),
@@ -371,7 +371,7 @@ def generate(fixture_name: str = FIXTURE_NAME) -> FixtureFiles:
         "nemo_version": artifact.nemo_version,
         "runtime_profile": artifact.runtime_profile,
         "checksum": artifact.checksum,
-        "integration_id": "fixture-integration",
+        "endpoint_id": "fixture-endpoint",
         "adapter": "litellm-generic-guardrail",
         "expected": {
             "safe_input": "NONE",

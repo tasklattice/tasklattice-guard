@@ -38,7 +38,7 @@ async def test_frozen_custom_source_keeps_literals_and_policy_ownership(tmp_path
     runtime = GuardrailRuntimeService(engine, store)
     try:
         result = await runtime.evaluate(ProtectionRequest(phase=phase, texts=(content,),
-            context=RequestContext(protocol="litellm", integration_id="fixture-integration")))
+            context=RequestContext(protocol="litellm", endpoint_id="fixture-endpoint")))
         assert registry.readiness()["ready"]
         assert result.decision == decision, result
         assert result.usage.model_invocations == 0 and not result.usage.fail_closed
@@ -59,7 +59,7 @@ async def test_frozen_custom_output_http_stream_waits_for_complete_source(tmp_pa
     try:
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://runner") as client:
             async def send(index):
-                response = await client.post("/runtime/v1/integrations/fixture-integration/guardrails/output-stream",
+                response = await client.post("/runtime/v1/endpoints/fixture-endpoint/guardrails/output-stream",
                     headers={"x-api-key": RUNTIME_CREDENTIAL}, json={"stream_id": "symbols", "sequence": index,
                         "text": fragments[index], "final": index == 1, "protocol": "litellm"})
                 assert response.status_code == 200, response.text

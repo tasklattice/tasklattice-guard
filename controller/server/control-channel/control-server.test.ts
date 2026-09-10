@@ -86,7 +86,7 @@ describe("Runner model-configuration convergence", () => {
     await handle(server, otherStream, result, other);
     expect(settled).not.toHaveBeenCalled();
     await handle(server, stream, result, connection);
-    expect((await pending).passed).toBe(complete);
+    expect(await pending).toMatchObject({ passed: complete, cases: result.capabilityValidationResult.cases });
     await server.stop();
   });
 
@@ -168,9 +168,9 @@ function serviceMock() {
       generation: 9,
       artifacts: [],
       disabledGuardrailIds: [],
-      disabledIntegrationIds: [],
-      deployments: [],
-      integrations: [],
+      disabledEndpointIds: [],
+      routers: [],
+      endpoints: [],
       guardrailLoggingLevels: {},
     }),
     desiredGeneration: vi.fn().mockResolvedValue(9),

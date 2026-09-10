@@ -156,7 +156,7 @@ def worker(payload):
                         try:
                             async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://runner") as client:
                                 for index, part in enumerate(parts):
-                                    response = await client.post("/runtime/v1/integrations/fixture-integration/guardrails/output-stream",
+                                    response = await client.post("/runtime/v1/endpoints/fixture-endpoint/guardrails/output-stream",
                                         headers={"x-api-key": "fixture-runtime-secret"}, json={"stream_id": "live",
                                             "sequence": index, "text": part, "final": index == len(parts) - 1,
                                             "protocol": "litellm", "messages": [{"role": "user", "content": "Please answer my question."}]})
