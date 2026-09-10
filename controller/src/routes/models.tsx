@@ -127,7 +127,7 @@ export function GuardrailCatalogPage() {
     if (!query.data?.draft.assignments) return;
     setAssignments(structuredClone(query.data.draft.assignments));
   }, [query.data?.draft.id, query.data?.draft.updatedAt]);
-  const dirty = Boolean(assignments && query.data && JSON.stringify(assignments) !== JSON.stringify(query.data.draft.assignments));
+  const dirty = Boolean(assignments && query.data && JSON.stringify(assignments.bindings) !== JSON.stringify(query.data.draft.assignments.bindings));
   const administrator = auth.user?.role === "admin";
   const refresh = async () => { await queryClient.invalidateQueries({ queryKey: configurationKey }); };
   const saveAssignmentMutation = useMutation({
@@ -205,18 +205,7 @@ export function GuardrailCatalogPage() {
         eyebrow={t("modelSettings.catalogEyebrow")}
         title={t("modelSettings.catalogTitle")}
         description={t("modelSettings.catalogPageDescription")}
-        action={(
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              className="h-11"
-              disabled={!administrator || operationPending || dirty || query.data.draft.state !== "validated" || !report?.valid || !hasRailEvidence}
-              onClick={() => activateMutation.mutate(query.data.draft.id)}
-            >
-              {activateMutation.isPending ? <LoaderCircle className="animate-spin" /> : <Play />}{t("modelSettings.activate")}
-            </Button>
-          </div>
-        )}
+
       />
       <SettingsNavigation />
 
@@ -244,6 +233,18 @@ export function GuardrailCatalogPage() {
       </div>
 
       <GuardrailCatalogSection
+        action={(
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              className="h-11"
+              disabled={!administrator || operationPending || dirty || query.data.draft.state !== "validated" || !report?.valid || !hasRailEvidence}
+              onClick={() => activateMutation.mutate(query.data.draft.id)}
+            >
+              {activateMutation.isPending ? <LoaderCircle className="animate-spin" /> : <Play />}{t("modelSettings.activate")}
+            </Button>
+          </div>
+        )}
         assignments={assignments}
         models={query.data.models}
         report={displayedReport}
@@ -335,14 +336,15 @@ function ControlPlaneSection({ models, selectedId, savedId, report, disabled, sa
         <AssignmentValidationStatus target="control_plane" model={selected} report={report} dirty={dirty} />
         <div className="flex flex-wrap gap-2 lg:justify-self-end">
           <Button type="button" variant="outline" className="h-11" disabled={disabled || !selected || saving || validating} onClick={onValidate}>{validating ? <LoaderCircle className="animate-spin" /> : <TestTube2 />}{t("modelSettings.validateAssignment")}</Button>
-          <Button type="button" className="h-11" disabled={disabled || saving || validating || (selectedId ? !report?.checks.some((check) => check.id === `probe:control_plane:${selectedId}` && check.status === "passed") : !dirty)} onClick={() => onSave(selectedId)}>{saving ? <LoaderCircle className="animate-spin" /> : <Save />}{t("modelSettings.saveAssignment")}</Button>
+          <Button type="button" className="h-11" disabled={disabled || saving || validating || (selectedId ? !report?.checks.some((check) => check.id === `probe:control_plane:${selectedId}` && check.status === "passed") : !dirty)} onClick={() => onSave(selectedId)}>{saving ? <LoaderCircle className="animate-spin" /> : <Play />}{t("modelSettings.activateControlPlane")}</Button>
         </div>
       </div>
     </section>
   );
 }
 
-function GuardrailCatalogSection({ assignments, savedAssignments, models, report, disabled, savingTarget, validatingTarget, onChange, onSave, onValidate }: {
+function GuardrailCatalogSection({ action, assignments, savedAssignments, models, report, disabled, savingTarget, validatingTarget, onChange, onSave, onValidate }: {
+  action: ReactNode;
   assignments: ModelAssignments;
   savedAssignments: ModelAssignments;
   models: ModelDefinition[];
@@ -374,9 +376,10 @@ function GuardrailCatalogSection({ assignments, savedAssignments, models, report
   });
   return (
     <section className="mt-6 overflow-hidden rounded-lg border bg-card" aria-labelledby="guardrail-catalog-title">
-      <div className="border-b px-5 py-4">
-        <h2 id="guardrail-catalog-title" className="text-base font-semibold">{t("modelSettings.catalogConfiguration")}</h2>
-        <p className="mt-1 max-w-4xl text-sm leading-6 text-muted-foreground">{t("modelSettings.catalogConfigurationDescription")}</p>
+      <div className="flex flex-wrap items-start justify-between gap-4 border-b px-5 py-4">
+        <div className="min-w-0 flex-1"><h2 id="guardrail-catalog-title" className="text-base font-semibold">{t("modelSettings.catalogConfiguration")}</h2>
+        <p className="mt-1 max-w-4xl text-sm leading-6 text-muted-foreground">{t("modelSettings.catalogConfigurationDescription")}</p></div>
+        {action}
       </div>
       <Tabs value={rail} onValueChange={(value) => setRail(value as ImplementedGuardrailRailType)}>
         <TabsList className="mx-5 mt-3">
@@ -478,6 +481,16 @@ function AssignmentValidationStatus({ target, model, report, dirty, binding }: {
     title={t("modelSettings.validationErrorTitle")}
     subject={`${target === "control_plane" ? t("modelSettings.controlPlaneModel") : binding ? capabilityTitle(t, binding) : target} · ${model.name}`}
     message={result.message}
+    examples={result.cases?.filter((item) => !item.passed).map((item) => ({
+      id: item.id,
+      fields: [
+        { label: t("modelSettings.exampleInput"), value: item.inputContent },
+        { label: t("modelSettings.exampleOutput"), value: item.outputContent || t("modelSettings.noExampleOutput") },
+        { label: t("modelSettings.actualDecision"), value: item.actualDecision },
+        { label: t("modelSettings.expectedDecision"), value: item.expectedDecision },
+        ...(item.reason ? [{ label: t("modelSettings.validationErrorDetail"), value: item.reason }] : []),
+      ],
+    }))}
     hint={t("modelSettings.validationErrorHint")}
     detailLabel={t("modelSettings.validationErrorDetail")}
     copyLabel={t("modelSettings.copyValidationError")}

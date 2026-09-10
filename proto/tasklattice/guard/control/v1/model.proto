@@ -69,4 +69,7 @@ message CapabilityValidationCase {
   string expected_decision = 2;
   string actual_decision = 3;
   bool passed = 4;
+  string input_content = 5;
+  string output_content = 6;
+  string reason = 7;
 }

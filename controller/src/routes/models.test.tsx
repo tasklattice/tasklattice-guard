@@ -168,7 +168,8 @@ describe("Models and Guardrail Catalog", () => {
 
   it("distributes the validated clean catalog revision in one click", async () => {
     renderPage(<GuardrailCatalogPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "modelSettings.activate" }));
+    const runner = (await screen.findByRole("heading", { name: "modelSettings.catalogConfiguration" })).closest("section")!;
+    fireEvent.click(within(runner).getByRole("button", { name: "modelSettings.activate" }));
     await waitFor(() => expect(activateModelConfiguration).toHaveBeenCalledWith("revision-2"));
   });
 
@@ -197,6 +198,31 @@ describe("Models and Guardrail Catalog", () => {
     await waitFor(() => expect(validateModelAssignment).toHaveBeenCalledWith("control_plane", expect.anything()));
   });
 
+  it("keeps Runner activation independent of an uncommitted Control Plane selection", async () => {
+    renderPage(<GuardrailCatalogPage />);
+    const section = (await screen.findByRole("heading", { name: "modelSettings.controlPlane" })).closest("section")!;
+    fireEvent.keyDown(within(section).getByRole("combobox"), { key: "ArrowDown" });
+    fireEvent.click(await screen.findByRole("option", { name: "modelSettings.notAssigned" }));
+    expect(screen.getByRole("button", { name: "modelSettings.activate" }).hasAttribute("disabled")).toBe(false);
+  });
+
+  it("activates Control Plane after validation without a Save step", async () => {
+    vi.mocked(validateModelAssignment).mockResolvedValue({ ...view.draft, validationReport: {
+      ...view.draft.validationReport!, checks: [{ id: "probe:control_plane:chat-model", scope: "model", status: "passed", message: "Passed" }],
+    } });
+    renderPage(<GuardrailCatalogPage />);
+    const section = (await screen.findByRole("heading", { name: "modelSettings.controlPlane" })).closest("section")!;
+    const activate = within(section).getByRole("button", { name: "modelSettings.activateControlPlane" });
+    expect(activate.hasAttribute("disabled")).toBe(true);
+    expect(within(section).queryByRole("button", { name: "modelSettings.saveAssignment" })).toBeNull();
+    fireEvent.click(within(section).getByRole("button", { name: "modelSettings.validateAssignment" }));
+    await waitFor(() => expect(activate.hasAttribute("disabled")).toBe(false));
+    expect(saveModelAssignment).not.toHaveBeenCalled();
+    fireEvent.click(activate);
+    await waitFor(() => expect(saveModelAssignment).toHaveBeenCalledWith("control_plane", "chat-model"));
+    expect(activateModelConfiguration).not.toHaveBeenCalled();
+  });
+
   it("keeps a failed validation response behind the red status control", async () => {
     const message = "Model probe returned HTTP 500 with a complete upstream diagnostic response.";
     vi.mocked(getModelConfiguration).mockResolvedValue({
@@ -207,7 +233,10 @@ describe("Models and Guardrail Catalog", () => {
         validationReport: {
           ...view.draft.validationReport!,
           valid: false,
-          checks: [{ id: "probe:content_safety.input:safety-model", scope: "capability", status: "failed", message }],
+          checks: [{ id: "probe:content_safety.input:safety-model", scope: "capability", status: "failed", message, cases: [
+            { id: "unsafe", passed: false, inputContent: "Unsafe example input", outputContent: "Unexpected output", expectedDecision: "block", actualDecision: "allow", reason: "Missed unsafe content" },
+            { id: "safe", passed: true, inputContent: "Passing example hidden", outputContent: "Safe", expectedDecision: "allow", actualDecision: "allow", reason: "" },
+          ] }],
         },
       },
     });
@@ -216,6 +245,11 @@ describe("Models and Guardrail Catalog", () => {
     expect(within(row).queryByText(message)).toBeNull();
     fireEvent.click(within(row).getAllByRole("button", { name: /modelSettings.probeFailed/ })[0]!);
     const inspector = screen.getByRole("dialog", { name: "modelSettings.validationErrorTitle" });
+    expect(within(inspector).getByText("Unsafe example input")).toBeTruthy();
+    expect(within(inspector).getByText("Unexpected output")).toBeTruthy();
+    expect(within(inspector).getByText("block")).toBeTruthy();
+    expect(within(inspector).getByText("allow")).toBeTruthy();
+    expect(within(inspector).queryByText("Passing example hidden")).toBeNull();
     expect(within(inspector).getByText(message)).toBeTruthy();
   });
 

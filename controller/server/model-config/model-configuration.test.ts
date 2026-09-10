@@ -119,6 +119,14 @@ describe("Capability configuration after registration", () => {
     expect(revision.validationReport?.checks).toContainEqual(expect.objectContaining({ evidenceKind: "nemo-rail-v1", status: "passed" }));
   });
 
+  it("retains failed sample evidence in assignment validation reports", async () => {
+    const { service } = setup("draft", true);
+    const cases = [{ id: "unsafe", passed: false, inputContent: "Unsafe input", outputContent: "Allowed output", expectedDecision: "block", actualDecision: "allow", reason: "Missed unsafe content" }];
+    service.setRailValidator(async () => ({ passed: false, message: "Sample failed", latencyMs: 2, cases }));
+    const revision = await service.validateAssignment("content_safety.input", "admin");
+    expect(revision.validationReport?.checks).toContainEqual(expect.objectContaining({ status: "failed", cases }));
+  });
+
   it("never substitutes a Controller model probe when the Runner validation fails", async () => {
     const { service, fetcher } = setup("draft", true);
     service.setRailValidator(async () => { throw new Error("Runner disconnected"); });

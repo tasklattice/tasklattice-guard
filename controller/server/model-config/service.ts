@@ -71,7 +71,7 @@ function unchangedRevision(draft: { id: string; rowVersion: string }) {
     sql`${modelConfigurationRevisions}.xmin::text = ${draft.rowVersion}`,
     eq(modelConfigurationRevisions.state, "draft"));
 }
-export type RailValidationEvidence = { passed: boolean; message: string; latencyMs: number };
+export type RailValidationEvidence = { passed: boolean; message: string; latencyMs: number; cases?: ModelValidationCheck["cases"] };
 export type RailValidator = (request: CapabilityValidationRequest) => Promise<RailValidationEvidence>;
 
 export class ModelConfigurationService {
@@ -501,7 +501,7 @@ export class ModelConfigurationService {
     const check: ModelValidationCheck = {
       id: `probe:${target}:${modelId}`, scope: target === "control_plane" ? "model" : "capability",
       evidenceKind: target === "control_plane" ? "model-probe" : "nemo-rail-v1",
-      status: result.passed ? "passed" : "failed", message: result.message, latencyMs: result.latencyMs,
+      status: result.passed ? "passed" : "failed", message: result.message, latencyMs: result.latencyMs, cases: result.cases ?? [],
     };
     for (const [key, value] of this.assignmentPreviews) {
       if (value.expiresAt <= Date.now()) this.assignmentPreviews.delete(key);
@@ -594,7 +594,7 @@ export class ModelConfigurationService {
           evidenceKind: target === "control_plane" ? "model-probe" : "nemo-rail-v1",
           status: result.passed ? "passed" : "failed",
           message: result.message,
-          latencyMs: result.latencyMs,
+          latencyMs: result.latencyMs, cases: result.cases ?? [],
         });
       }
     }
@@ -867,7 +867,7 @@ export class ModelConfigurationService {
       : [];
     const modelById = new Map(models.map((model) => [model.id, model]));
     const providerById = new Map(providers.map((provider) => [provider.id, provider]));
-    const probes = new Map<string, Awaited<ReturnType<ModelConfigurationService["probeModel"]>>>();
+    const probes = new Map<string, RailValidationEvidence>();
     const targets: Array<{ id: ModelAssignmentTarget; modelId: string | null; profiles: readonly ModelProfile[] }> = [
       { id: "control_plane", modelId: assignments.controlPlane, profiles: controlPlaneProfiles },
       ...capabilityBindingDefinitions.map((binding) => ({
@@ -915,7 +915,7 @@ export class ModelConfigurationService {
         evidenceKind: target.id === "control_plane" ? "model-probe" : "nemo-rail-v1",
         status: result.passed ? "passed" : "failed",
         message: result.message,
-        latencyMs: result.latencyMs,
+        latencyMs: result.latencyMs, cases: result.cases ?? [],
       });
     }
     const contractCoverage = [

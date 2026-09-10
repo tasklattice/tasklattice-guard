@@ -288,7 +288,7 @@ export class RunnerControlServer {
           && result.cases.some((item) => item.expectedDecision === "allow")
           && result.cases.some((item) => item.expectedDecision === "block")
           && result.cases.every((item) => item.passed && item.expectedDecision === item.actualDecision);
-        pending.finish({ passed, message: result.message, latencyMs: result.latencyMs });
+        pending.finish({ passed, message: result.message, latencyMs: result.latencyMs, cases: result.cases });
       }
     } else if (message.artifactResult) {
       // The following heartbeat advances applied_generation after an atomic

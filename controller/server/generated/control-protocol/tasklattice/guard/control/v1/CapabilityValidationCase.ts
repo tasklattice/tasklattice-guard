@@ -9,6 +9,9 @@ export interface CapabilityValidationCase {
   'expectedDecision'?: (string);
   'actualDecision'?: (string);
   'passed'?: (boolean);
+  'inputContent'?: (string);
+  'outputContent'?: (string);
+  'reason'?: (string);
 }
 
 /**
@@ -19,4 +22,7 @@ export interface CapabilityValidationCase__Output {
   'expectedDecision': (string);
   'actualDecision': (string);
   'passed': (boolean);
+  'inputContent': (string);
+  'outputContent': (string);
+  'reason': (string);
 }

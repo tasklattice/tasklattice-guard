@@ -72,6 +72,7 @@ export type ModelValidationReport = {
     message: string;
     latencyMs?: number;
     evidenceKind?: "model-probe" | "nemo-rail-v1";
+  cases?: Array<{ id: string; passed: boolean; inputContent: string; outputContent: string; expectedDecision: string; actualDecision: string; reason: string }>;
   }>;
   contractCoverage: Array<{ contract: string; bindingId: CapabilityBindingId | null; railType: ImplementedGuardrailRailType | null; source: "local" | "model"; modelId: string | null }>;
   policies: Array<{ id: string; name: string; status: "ready" | "blocked" | "unknown"; dependenciesComplete: boolean; missingContracts: string[] }>;

@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+from dataclasses import asdict
 import time
 
 import httpx
@@ -80,7 +82,13 @@ async def validate_capability(
                 if expected == "block":
                     passed = passed and any(item.verdict == "unsafe" for item in decision.findings)
                 result.cases.add(id=f"{contract}:{phase}:{name}", expected_decision=expected,
-                                 actual_decision=decision.decision, passed=passed)
+                                 actual_decision=decision.decision, passed=passed,
+                                 input_content=text, output_content=json.dumps({
+                                     "decision": decision.decision, "action": decision.action,
+                                     "texts": decision.texts, "reason": decision.reason,
+                                     "findings": [asdict(item) for item in decision.findings],
+                                 }, ensure_ascii=False, indent=2),
+                                 reason=decision.reason or "")
                 if not passed:
                     result.message += f"{phase}/{name}: expected {expected}, received {decision.decision}. {decision.reason or ''}\n"
             await runtime.shutdown()
@@ -98,6 +106,9 @@ async def validate_capability(
         for secret in credentials.values():
             if secret:
                 result.message = result.message.replace(secret, "[REDACTED]")
+                for case in result.cases:
+                    case.output_content = case.output_content.replace(secret, "[REDACTED]")
+                    case.reason = case.reason.replace(secret, "[REDACTED]")
         result.message = result.message[:8000]
     return result
 
