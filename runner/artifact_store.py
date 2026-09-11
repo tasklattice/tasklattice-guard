@@ -33,6 +33,7 @@ from .protocol_codec import (
     traffic_scope_from_proto,
 )
 from .serialization import plan_from_dict
+from .routing import RoutingError, select, validate_router
 
 
 logger = logging.getLogger("tasklattice.guard.runner.artifact_store")
@@ -76,6 +77,7 @@ class ArtifactStore:
         self._model_revision_id: str | None = None
         self._artifacts: dict[str, RuntimeArtifact] = {}
         self._routes: tuple[RouterRoute, ...] = ()
+        self._router_revisions: dict[str, Any] = {}
         self._endpoints: dict[str, dict[str, Any]] = {}
         self._logging_levels: dict[str, str] = {}
         self._persisted_state: protocol.DesiredState | None = self._read_snapshot()
@@ -124,14 +126,36 @@ class ArtifactStore:
     def active_plan_keys(self) -> tuple[tuple[str, str], ...]:
         with self._lock:
             active_artifact_ids = {route.artifact_id for route in self._routes}
+            active_artifact_ids.update(t.artifact_id for r in self._router_revisions.values() for route in r.routes for t in route.targets if t.weight_bps)
             return tuple(
                 (artifact.plan.guardrail_id, artifact.plan.guardrail_version)
                 for artifact_id, artifact in self._artifacts.items()
                 if artifact_id in active_artifact_ids
             )
 
+    def composed_endpoint(self, endpoint_id: str | None) -> bool:
+        with self._lock:
+            return bool(self._router_revisions) or bool(self._endpoints.get(endpoint_id, {}).get("_router_id"))
+
     def resolve(self, context: RequestContext) -> PlanResolution:
         with self._lock:
+            endpoint = self._endpoints.get(context.endpoint_id, {})
+            router_id = endpoint.get("_router_id")
+            if self._router_revisions or router_id:
+                router = self._router_revisions.get(router_id)
+                if router is None:
+                    raise RoutingError("endpoint_router_unavailable")
+                target, assignment = select(router, context)
+                artifact = self._artifacts.get(target.artifact_id)
+                if artifact is None:
+                    raise RoutingError("target_unavailable", assignment)
+                return PlanResolution(plan=artifact.plan, router_id=router.router_id,
+                    endpoint_id=context.endpoint_id, effective_release_id=self._release_id,
+                    model_revision_id=self._model_revision_id, route_assignment=assignment)
+            # Legacy snapshots are only accessible to internal/test callers;
+            # an unbound authenticated Endpoint never inherits a global Router.
+            if context.endpoint_id in self._endpoints:
+                raise RoutingError("endpoint_router_unavailable")
             candidates = tuple(
                 route
                 for route in self._routes
@@ -280,13 +304,20 @@ class ArtifactStore:
             )
             for item in desired_state.routers
         )
+        router_revisions = {}
+        for item in desired_state.router_revisions:
+            if item.router_id in router_revisions: raise ValueError("Duplicate Router ID.")
+            validate_router(item, staged)
+            snapshot = protocol.RouterRevision()
+            snapshot.CopyFrom(item)
+            router_revisions[item.router_id] = snapshot
         missing = {route.artifact_id for route in routes} - set(staged)
         if missing:
             raise ValueError("Desired state references unavailable Artifacts: " + ", ".join(sorted(missing)))
         endpoints: dict[str, dict[str, Any]] = {}
         for item in desired_state.endpoints:
             verification = endpoint_verification_from_proto(item.verification)
-            endpoints[item.endpoint_id] = {**verification, "_adapter": item.adapter}
+            endpoints[item.endpoint_id] = {**verification, "_adapter": item.adapter, "_router_id": item.router_id}
         registry = self._registry
         if registry is None:
             raise RuntimeError("NeMo Runtime Registry is not attached.")
@@ -316,6 +347,7 @@ class ArtifactStore:
         with self._lock:
             self._artifacts = staged
             self._routes = routes
+            self._router_revisions = router_revisions
             self._endpoints = endpoints
             self._logging_levels = dict(desired_state.guardrail_logging_levels)
             self._generation = generation

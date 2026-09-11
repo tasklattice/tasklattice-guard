@@ -14,7 +14,7 @@ export async function getSystemStatus(): Promise<SystemStatus> {
   return {
     status: runtimeHealthy ? "healthy" : "degraded",
     status_reason: runtimeHealthy ? "runtime_ready" : "default_runner_unavailable",
-    active_routers: routers.items.filter((item) => item.enabled).length,
+    active_routers: routers.items.filter((item) => item.activeRevision !== null && item.endpointIds.length > 0).length,
     enabled_endpoints: endpoints.items.filter((item) => item.status === "active").length,
     total_endpoints: endpoints.items.length,
     capabilities: {

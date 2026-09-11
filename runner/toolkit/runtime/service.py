@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import replace
+from datetime import UTC, datetime
 
 from .content_views import content_view, text_blocks
 from .context import CallContextStore
@@ -36,6 +38,47 @@ class GuardrailRuntimeService:
         self._runtime = runtime
         self._resolver = resolver
         self._contexts = contexts or CallContextStore()
+        self.routing_event_sink = None
+
+    def _resolve_call(self, request, *, require_existing=False, allow_new_output=False):
+        stored = self._contexts.get(request.call_id)
+        composed = getattr(self._resolver, "composed_endpoint", lambda _: False)(request.context.endpoint_id)
+        if stored is not None:
+            if stored.resolution.endpoint_id != request.context.endpoint_id:
+                from runner.routing import RoutingError
+                raise RoutingError("call_endpoint_mismatch")
+            return stored.resolution, stored
+        if require_existing or (composed and request.phase == "output" and request.call_id and not allow_new_output):
+            from runner.routing import RoutingError
+            raise RoutingError("call_context_expired: correlated output cannot be reassigned")
+        resolution = self._resolver.resolve(replace(request.context, call_id=request.call_id))
+        blocks = request.content_blocks or text_blocks(request.phase, request.texts,
+            request.context.value("field", "target_source") or "user_input")
+        stored = self._contexts.claim(request.call_id, request.messages, resolution, blocks)
+        if stored.resolution.endpoint_id != request.context.endpoint_id:
+            from runner.routing import RoutingError
+            raise RoutingError("call_endpoint_mismatch")
+        return stored.resolution, stored
+
+    async def publish_assignment(self, resolution, call_id):
+        if resolution.route_assignment and self.routing_event_sink:
+            a = resolution.route_assignment
+            await self.routing_event_sink({**a, "id": a["decisionId"] + ":assignment",
+                "eventType": "route_assignment", "callId": call_id or a["decisionId"],
+                "occurredAt": a["decisionAt"]})
+
+    async def complete_call(self, resolution, call_id, outcome, failure_reason=None):
+        if resolution.route_assignment and self.routing_event_sink:
+            a = resolution.route_assignment
+            now = datetime.now(UTC)
+            outcome = self._contexts.record_outcome(call_id, outcome)
+            event = {**a, "id": a["decisionId"] + ":completion",
+                "eventType": "completion", "callId": call_id or a["decisionId"],
+                "occurredAt": now.isoformat(), "outcome": outcome,
+                "durationMs": max(0, round((now-datetime.fromisoformat(a["decisionAt"])).total_seconds()*1000)),
+                **({"failureReason": failure_reason} if failure_reason else {})}
+            await self.routing_event_sink(self._contexts.finish(call_id, event))
+
 
     async def evaluate(
         self,
@@ -43,15 +86,28 @@ class GuardrailRuntimeService:
         *,
         on_resolved: Callable[[PlanResolution], None] | None = None,
     ) -> ProtectionDecision:
-        stored = self._contexts.get(request.call_id)
-        resolution = (
-            stored.resolution
-            if request.phase == "output" and stored is not None
-            else self._resolver.resolve(request.context)
-        )
+        try:
+            resolution, stored = self._resolve_call(request)
+        except Exception as error:
+            assignment = getattr(error, "assignment", None)
+            if assignment and self.routing_event_sink:
+                await self.routing_event_sink({**assignment, "id": assignment["decisionId"] + ":assignment",
+                    "eventType": "route_assignment", "callId": request.call_id or assignment["decisionId"],
+                    "occurredAt": assignment["decisionAt"]})
+            raise
         if on_resolved is not None:
             on_resolved(resolution)
-        return await self._evaluate_resolved(request, resolution, stored)
+        await self.publish_assignment(resolution, request.call_id)
+        try:
+            decision = await self._evaluate_resolved(request, resolution, stored)
+        except Exception as error:
+            await self.complete_call(resolution, request.call_id, "timeout" if isinstance(error, TimeoutError) else "error", type(error).__name__)
+            raise
+        outcome = "error" if decision.usage and decision.usage.fail_closed else "intervene" if decision.interventions and decision.decision != "block" else decision.decision
+        outcome = self._contexts.record_outcome(request.call_id, outcome)
+        if outcome in {"error", "block"} or (request.phase == "output" and request.context.value("field", "routing.stream") != "true"):
+            await self.complete_call(resolution, request.call_id, outcome)
+        return decision
 
     def output_delivery(
         self,
@@ -59,15 +115,17 @@ class GuardrailRuntimeService:
         *,
         on_resolved: Callable[[PlanResolution], None] | None = None,
         require_existing: bool = False,
+        allow_new_output: bool = False,
     ) -> OutputDeliveryMode:
         """Resolve and pin the delivery contract before the first output chunk is released."""
-        stored = self._contexts.get(request.call_id)
-        if require_existing and stored is None:
-            raise ValueError("The stream's pinned release expired or is unavailable. Start a new call; no output was released.")
-        resolution = stored.resolution if stored is not None else self._resolver.resolve(request.context)
+        resolution, stored = self._resolve_call(request, require_existing=require_existing, allow_new_output=allow_new_output)
         retain = getattr(self._resolver, "retain_release", None)
         if retain is not None:
-            retain(resolution.effective_release_id)
+            try:
+                retain(resolution.effective_release_id)
+            except LookupError as error:
+                from runner.routing import RoutingError
+                raise RoutingError("pinned_release_unavailable", resolution.route_assignment) from error
         self._contexts.put(request.call_id, stored.messages if stored else request.messages,
                            resolution, stored.content_blocks if stored else request.content_blocks)
         if on_resolved is not None:
@@ -125,6 +183,7 @@ class GuardrailRuntimeService:
                 output_delivery=resolution.plan.output_delivery,
                 effective_release_id=resolution.effective_release_id,
                 model_revision_id=resolution.model_revision_id,
+                route_assignment=resolution.route_assignment,
                 trace=resolution.trace,
                 mode=request.mode,
             )
@@ -235,6 +294,7 @@ class GuardrailRuntimeService:
             output_delivery=resolution.plan.output_delivery,
             effective_release_id=resolution.effective_release_id,
             model_revision_id=resolution.model_revision_id,
+            route_assignment=resolution.route_assignment,
             findings=tuple(findings),
             trace=tuple(trace),
             assessments=tuple(assessments),

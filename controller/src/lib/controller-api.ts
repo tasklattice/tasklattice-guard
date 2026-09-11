@@ -126,6 +126,7 @@ export type GuardrailDraftConfig = {
 };
 
 export type Guardrail = {
+  copyOrigin?: { sourceGuardrailId: string; sourceName: string; sourceVersion: string | null; sourceDraftRevision: number | null; copiedAt: string; contentDigest: string } | null;
   id: string;
   name: string;
   draftConfig: GuardrailDraftConfig;
@@ -146,6 +147,7 @@ export type Guardrail = {
 };
 
 export type GuardrailVersion = {
+  hasSourceSnapshot?: boolean;
   guardrailId: string;
   version: string;
   generation: number;
@@ -429,19 +431,13 @@ export const createControllerEndpoint = (input: { name: string; adapter: string 
 export const getControllerEndpointDeletionImpact = (id: string) => requestController<DeletionImpact>(`/api/v1/endpoints/${encodeURIComponent(id)}/deletion-impact`);
 export const deleteControllerEndpoint = (id: string, input: { reason: string; confirmRecentTraffic: boolean; confirmationName?: string | undefined }) => requestController<void>(`/api/v1/endpoints/${encodeURIComponent(id)}`, json("DELETE", input));
 
-export const listControllerRouters = () => requestController<Collection<Router>>("/api/v1/routers");
-export const createControllerRouter = (input: Pick<Router, "name" | "guardrailId" | "poolId" | "trafficScope" | "enabled"> & { endpointId: string }) => requestController<Router>("/api/v1/routers", json("POST", input));
-export const getControllerRouterDeletionImpact = (id: string) => requestController<DeletionImpact>(`/api/v1/routers/${encodeURIComponent(id)}/deletion-impact`);
-export const deleteControllerRouter = (id: string, input: { reason: string; confirmRecentTraffic: boolean; confirmationName?: string | undefined }) => requestController<void>(`/api/v1/routers/${encodeURIComponent(id)}`, json("DELETE", input));
-export const setControllerRouterEnabled = (id: string, enabled: boolean) => requestController<Router>(`/api/v1/routers/${encodeURIComponent(id)}`, json("PATCH", { enabled }));
-export const updateControllerRouterTrafficScope = (id: string, trafficScope: Record<string, unknown>) => requestController<Router>(`/api/v1/routers/${encodeURIComponent(id)}/traffic-scope`, json("PUT", { trafficScope }));
-export const reorderControllerRouters = (endpointId: string, routerIds: string[]) => requestController<Collection<Router>>(`/api/v1/endpoints/${encodeURIComponent(endpointId)}/router-order`, json("PUT", { routerIds }));
+export { listTrafficRouters as listControllerRouters } from "./traffic-routing-api";
 export const listRunnerPools = () => requestController<Collection<RunnerPool>>("/api/v1/runner-pools");
 export const updateRunnerPool = (id: string, input: Pick<RunnerPool, "desiredReplicas" | "safeRpsPerRunner" | "maxConcurrencyPerRunner">) => requestController<RunnerPool>(`/api/v1/runner-pools/${encodeURIComponent(id)}`, json("PATCH", input));
 export const removeRunnerInstance = (runnerId: string) => requestController<void>(`/api/v1/runner-instances/${encodeURIComponent(runnerId)}`, json("DELETE"));
-export const listRuntimeEvents = (limit = 100, filters: { guardrailId?: string; routerId?: string; endpointId?: string; since?: string; before?: string; cursor?: string; requestId?: string; direction?: string; outcome?: string; captured?: string; findingsOnly?: string; severity?: string } = {}, signal?: AbortSignal) => {
+export const listRuntimeEvents = (limit = 100, filters: { guardrailId?: string; routerId?: string; routeId?: string; targetId?: string; routerRevision?: number; endpointId?: string; until?: string; since?: string; before?: string; cursor?: string; requestId?: string; direction?: string; outcome?: string; captured?: string; findingsOnly?: string; severity?: string } = {}, signal?: AbortSignal) => {
   const query = new URLSearchParams({ limit: String(Math.min(500, Math.max(1, limit))) });
-  for (const [key, value] of Object.entries(filters)) if (value) query.set(key, value);
+  for (const [key, value] of Object.entries(filters)) if (value) query.set(key, String(value));
   return requestController<Collection<RuntimeEvent>>(`/api/v1/runtime-events?${query.toString()}`, signal ? { signal } : undefined);
 };
 export const getRuntimeEvent = (id: string, signal?: AbortSignal) => requestController<RuntimeEvent>(`/api/v1/runtime-events/${encodeURIComponent(id)}`, signal ? { signal } : undefined);

@@ -39,10 +39,11 @@ class RedisCallContextStore:
                 "endpoint_id": resolution.endpoint_id,
                 "effective_release_id": resolution.effective_release_id,
                 "model_revision_id": resolution.model_revision_id,
+                "route_assignment": resolution.route_assignment,
                 "trace": [asdict(item) for item in resolution.trace],
             },
         }
-        self._redis.setex(self._key(call_id), self._ttl_seconds, json.dumps(payload, separators=(",", ":")))
+        self._redis.set(self._key(call_id), json.dumps(payload, separators=(",", ":")), ex=self._ttl_seconds, nx=True)
 
     def get(self, call_id: str | None) -> CallContext | None:
         if not call_id:
@@ -61,12 +62,49 @@ class RedisCallContextStore:
                 endpoint_id=resolution.get("endpoint_id"),
                 effective_release_id=resolution.get("effective_release_id"),
                 model_revision_id=resolution.get("model_revision_id"),
+                route_assignment=resolution.get("route_assignment"),
                 # Resolution trace is informational. The immutable router
                 # and plan pin are the consistency contract across replicas.
                 trace=(),
             ),
+            outcome=payload.get("outcome", "allow"),
+            completion=payload.get("completion"),
             expires_at=time.monotonic() + self._ttl_seconds,
         )
+
+    def claim(self, call_id, messages, resolution, content_blocks=()) -> CallContext:
+        if not call_id:
+            return CallContext(messages=messages, content_blocks=content_blocks,
+                               resolution=resolution, expires_at=time.monotonic() + self._ttl_seconds)
+        self.put(call_id, messages, resolution, content_blocks)
+        item = self.get(call_id)
+        if item is None:
+            raise RuntimeError("Atomic call context claim expired; retry with a new call.")
+        return item
+
+    def record_outcome(self, call_id, outcome):
+        if not call_id: return outcome
+        return self._redis.eval("""
+            local raw = redis.call('GET', KEYS[1])
+            if not raw then return ARGV[1] end
+            local p = cjson.decode(raw)
+            local ranks = {allow=0, transform=1, intervene=2, block=3, error=4, timeout=4}
+            if ranks[ARGV[1]] > ranks[p.outcome or 'allow'] then p.outcome = ARGV[1] end
+            redis.call('SET', KEYS[1], cjson.encode(p), 'KEEPTTL')
+            return p.outcome or 'allow'
+        """, 1, self._key(call_id), outcome)
+
+    def finish(self, call_id, event):
+        if not call_id: return event
+        raw = self._redis.eval("""
+            local raw = redis.call('GET', KEYS[1])
+            if not raw then return ARGV[1] end
+            local p = cjson.decode(raw)
+            if not p.completion then p.completion = cjson.decode(ARGV[1]) end
+            redis.call('SET', KEYS[1], cjson.encode(p), 'KEEPTTL')
+            return cjson.encode(p.completion)
+        """, 1, self._key(call_id), json.dumps(event))
+        return json.loads(raw)
 
     @staticmethod
     def _key(call_id: str) -> str:

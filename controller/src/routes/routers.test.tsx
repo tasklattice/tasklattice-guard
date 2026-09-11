@@ -109,33 +109,20 @@ describe("Router Endpoint bindings", () => {
 
   afterEach(cleanup);
 
-  it("creates one independent all-traffic binding for every selected Gateway", async () => {
-    const onCreated = vi.fn();
+  it("renders Router creation as one page", async () => {
     renderWithProviders(
       <CreateRouterSheet
         open
         onOpenChange={vi.fn()}
-        guardrails={[guardrail]}
-        onCreated={onCreated}
+        onCreated={vi.fn()}
       />,
     );
 
-    fireEvent.change(await screen.findByPlaceholderText("Finance production traffic"), { target: { value: "Regional finance traffic" } });
-    const gatewaySelector = await screen.findByRole("combobox", { name: "Gateway Endpoints" });
-    fireEvent.focus(gatewaySelector);
-    fireEvent.click(await screen.findByRole("option", { name: /Gateway CN/ }));
-    await waitFor(() => expect(screen.getByRole("option", { name: /Gateway US/ })).toBeTruthy());
-    fireEvent.click(screen.getByRole("option", { name: /Gateway US/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Create 2 bindings" }));
-
-    await waitFor(() => expect(createBindingsMock).toHaveBeenCalledWith({
-      name: "Regional finance traffic",
-      guardrail_id: guardrail.id,
-      endpoint_ids: ["endpoint-cn", "endpoint-us"],
-      traffic_scope: { combinator: "and", conditions: [] },
-      enabled: true,
-    }));
-    await waitFor(() => expect(onCreated).toHaveBeenCalledOnce());
+    expect(await screen.findByRole("heading", { name: "Create Router" })).toBeTruthy();
+    expect(screen.getByLabelText("Router name")).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Source Endpoints" })).toBeTruthy();
+    expect(screen.getByText("Route settings")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Create Router" })).toBeTruthy();
   });
 
   it("labels Endpoint catch-all traffic separately from the system fallback", () => {

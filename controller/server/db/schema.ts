@@ -1,3 +1,4 @@
+import type { RouterDraft } from "../../shared/traffic-routing.js";
 import {
   bigint,
   boolean,
@@ -213,6 +214,8 @@ export const policyValidationRuns = pgTable("policy_validation_run", {
 }, (table) => [index("policy_validation_run_policy_idx").on(table.policyId, table.createdAt)]);
 
 export const guardrails = pgTable("guardrail", {
+  copyOrigin: jsonb("copy_origin").$type<Record<string, unknown>>(),
+  duplicateKey: text("duplicate_key").unique(),
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   draftConfig: jsonb("draft_config").$type<GuardrailDraftConfig>().notNull(),
@@ -232,6 +235,7 @@ export const guardrails = pgTable("guardrail", {
 }, (table) => [index("guardrail_status_idx").on(table.status)]);
 
 export const guardrailVersions = pgTable("guardrail_version", {
+  sourceSnapshot: jsonb("source_snapshot").$type<{ draftConfig: GuardrailDraftConfig; runtimeProfile: string; loggingLevel: string; excludedTestCaseIds: string[]; testCases?: Array<typeof testCases.$inferInsert> }>(),
   guardrailId: text("guardrail_id").notNull().references(() => guardrails.id),
   version: text("version").notNull(),
   generation: bigint("generation", { mode: "number" }).notNull(),
@@ -322,7 +326,29 @@ export const artifacts = pgTable("guardrail_artifact", {
   index("guardrail_artifact_version_idx").on(table.guardrailId, table.guardrailVersion),
 ]);
 
+export const trafficRouters = pgTable("traffic_router", {
+  id: text("id").primaryKey(), name: text("name").notNull(), description: text("description").notNull().default(""),
+  draftRevision: integer("draft_revision").notNull().default(1), draft: jsonb("draft").$type<RouterDraft>().notNull(),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }), rolloutError: text("rollout_error"),
+  activeRevision: integer("active_revision"), activeDraftRevision: integer("active_draft_revision"),
+  activeSnapshot: jsonb("active_snapshot").$type<RouterDraft>(), desiredGeneration: bigint("desired_generation", { mode: "number" }).notNull().default(0), createdAt, updatedAt,
+});
+export const trafficRouterRevisions = pgTable("traffic_router_revision", {
+  routerId: text("router_id").notNull().references(() => trafficRouters.id), revision: integer("revision").notNull(),
+  sourceDraftRevision: integer("source_draft_revision").notNull(), snapshot: jsonb("snapshot").$type<RouterDraft>().notNull(),
+  idempotencyKey: text("idempotency_key").notNull(), requestDraftRevision: integer("request_draft_revision").notNull(), rollbackRevision: integer("rollback_revision"), createdBy: text("created_by").notNull().references(() => user.id), createdAt,
+}, t => [primaryKey({ columns: [t.routerId, t.revision] }), uniqueIndex("traffic_router_revision_idempotency_idx").on(t.routerId, t.idempotencyKey)]);
+export const routeAssignments = pgTable("route_assignment", {
+  callId: text("call_id").notNull(), assignmentStatus: text("assignment_status").notNull(), failureReason: text("failure_reason"),
+  decisionId: text("decision_id").primaryKey(), routerId: text("router_id").notNull(), routerRevision: integer("router_revision").notNull(),
+  routeId: text("route_id").notNull(), targetId: text("target_id").notNull(), guardrailId: text("guardrail_id").notNull(), guardrailVersion: text("guardrail_version").notNull(),
+  endpointId: text("endpoint_id").notNull(), occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+  completionInferred: boolean("completion_inferred").notNull().default(false),
+  completedAt: timestamp("completed_at", { withTimezone: true }), outcome: text("outcome"), durationMs: integer("duration_ms"),
+}, t => [index("route_assignment_router_time_idx").on(t.routerId, t.occurredAt)]);
+
 export const endpoints = pgTable("endpoint", {
+  trafficRouterId: text("traffic_router_id").references(() => trafficRouters.id),
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   adapter: text("adapter").notNull(),

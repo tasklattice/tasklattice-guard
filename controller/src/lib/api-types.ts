@@ -449,6 +449,7 @@ export type TrafficScopeField = {
 };
 
 export type Guardrail = {
+  copy_origin?: import("./controller-api").Guardrail["copyOrigin"];
   id: string;
   name: string;
   allowed_topics: string[];

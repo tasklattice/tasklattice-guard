@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { analyzeComplianceDocuments, analyzeGuardrailIntent, excludeGuardrailTestCase, getRouterDeletionImpact, getIntentAnalysisStatus, publishProgrammablePolicy, updateGuardrail } from "./api";
+import { analyzeComplianceDocuments, analyzeGuardrailIntent, excludeGuardrailTestCase, getIntentAnalysisStatus, publishProgrammablePolicy, updateGuardrail } from "./api";
 
 describe("API error responses", () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -112,31 +112,4 @@ describe("API error responses", () => {
     expect(request.headers).toBeUndefined();
   });
 
-  it("turns an outdated Controller deletion-impact response into a recoverable error", async () => {
-    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
-      const path = String(input);
-      if (path.endsWith("/deletion-impact")) return new Response(JSON.stringify({}), { status: 200 });
-      if (path.endsWith("/routers")) return new Response(JSON.stringify({ items: [{
-        id: "router-1",
-        name: "Regional traffic",
-        guardrailId: "guardrail-1",
-        endpointId: "endpoint-1",
-        poolId: "default",
-        guardrailVersion: "20260904-010000.001Z",
-        routeOrder: 0,
-        enabled: true,
-        trafficScope: { combinator: "and", conditions: [] },
-        createdAt: "2026-08-24T08:00:00.000Z",
-        updatedAt: "2026-08-24T08:00:00.000Z",
-      }] }), { status: 200 });
-      return new Response(JSON.stringify({ items: [{
-        id: "guardrail-1",
-        activeVersion: "20260904-010000.001Z",
-      }] }), { status: 200 });
-    }));
-
-    await expect(getRouterDeletionImpact("router-1")).rejects.toThrow(
-      "Router deletion impact is unavailable",
-    );
-  });
 });

@@ -129,6 +129,9 @@ class RequestContext:
     protocol: str
     endpoint_id: str | None = None
     headers: tuple[tuple[str, str], ...] = ()
+    endpoint_request: tuple[tuple[str, str], ...] | None = None
+    business_request: tuple[tuple[str, str], ...] | None = None
+    call_id: str | None = None
     jwt_claims: tuple[tuple[str, str], ...] = ()
     fields: tuple[tuple[str, str], ...] = ()
 
@@ -639,6 +642,7 @@ class ProtectionDecision:
     content_results: tuple[ContentBlockResult, ...] = ()
     effective_release_id: str | None = None
     model_revision_id: str | None = None
+    route_assignment: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -649,6 +653,7 @@ class PlanResolution:
     trace: tuple[RuntimeTraceStep, ...] = ()
     effective_release_id: str | None = None
     model_revision_id: str | None = None
+    route_assignment: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)

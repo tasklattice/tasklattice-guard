@@ -213,7 +213,10 @@ export function trafficScopeToWire(value: unknown): TrafficScope {
       field: string(condition.field),
       key: string(condition.key),
       operator: wireEnum("TRAFFIC_OPERATOR", condition.operator),
-      value: string(condition.value),
+      value: Array.isArray(condition.value) ? "" : string(condition.value),
+      values: Array.isArray(condition.value) ? condition.value.map(string) : [],
+      requestSource: string(condition.requestSource),
+      caseSensitive: condition.caseSensitive !== false,
     })),
     groups: entries.filter((item) => "combinator" in item).map(trafficScopeToWire),
   };

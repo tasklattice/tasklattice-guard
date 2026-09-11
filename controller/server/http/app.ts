@@ -1,3 +1,5 @@
+import { routerDraftSchema, previewRouter, selectorFields, selectorFieldCatalog, RoutingEvaluationError, routingInputSchema } from "../../shared/traffic-routing.js";
+import { routingEventSchema } from "../services/traffic-routing.js";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -161,7 +163,7 @@ const runtimeEventInput = z.object({
   metadata: z.record(z.string(), z.unknown()).default({}),
 });
 const runtimeEventBatchInput = z.object({
-  events: z.array(runtimeEventInput).max(1_000),
+  events: z.array(z.union([routingEventSchema, runtimeEventInput])).max(1_000),
   runnerId: z.string().min(1).optional(),
   observedAt: z.coerce.date().optional(),
 }).superRefine((value, context) => {
@@ -611,6 +613,11 @@ export function createHttpApp(input: {
   app.get("/api/v1/guardrails/:id", authenticated, async (context) => {
     return context.json(await input.service.getGuardrail(context.req.param("id")));
   });
+  app.post("/api/v1/guardrails/:id/duplicate", authenticated, administrator, async context => {
+    const body = z.object({ name: z.string().trim().min(1).max(160), sourceVersion: guardrailVersionInput.optional(), sourceDraftRevision: z.number().int().positive().optional(), idempotencyKey: z.string().min(1).max(128) })
+      .refine(value => !(value.sourceVersion && value.sourceDraftRevision), "Choose one copy source").parse(await context.req.json());
+    return context.json(await input.service.duplicateGuardrail({ ...body, id: context.req.param("id"), actorId: context.get("actor").id }), 201);
+  });
   app.patch("/api/v1/guardrails/:id", authenticated, administrator, async (context) => {
     const body = guardrailUpdateInput.parse(await context.req.json());
     return context.json(await input.service.updateGuardrail({
@@ -754,49 +761,68 @@ export function createHttpApp(input: {
     });
     return context.body(null, 204);
   });
-  app.get("/api/v1/routers", authenticated, async (context) => context.json({ items: await input.service.listRouters() }));
-  app.get("/api/v1/routers/:id", authenticated, async (context) => context.json(await input.service.getRouter(context.req.param("id"))));
-  app.get("/api/v1/routers/:id/deletion-impact", authenticated, administrator, async (context) => {
-    return context.json(await input.service.routerDeletionImpact(context.req.param("id")));
+  app.get("/api/v1/routers", authenticated, async context => {
+    const items = await input.service.trafficRouting.list();
+    return context.json({ items, count: items.length });
   });
-  app.post("/api/v1/routers", authenticated, administrator, async (context) => {
-    const body = routerInput.parse(await context.req.json());
-    assertTrafficScopeSupported(body.trafficScope);
-    const created = await input.service.createRouter({ ...body, actorId: context.get("actor").id });
-    await input.runnerControl.distributeDesiredState();
-    return context.json(created, 201);
+  app.get("/api/v1/routers/:id", authenticated, async context => context.json(await input.service.trafficRouting.get(context.req.param("id"))));
+  app.post("/api/v1/routers", authenticated, administrator, async context => {
+    const body = z.object({ name: z.string().trim().min(1).max(160), description: z.string().max(2000).default(""), endpointIds: z.array(z.string().min(1)).max(128).default([]), draft: routerDraftSchema }).parse(await context.req.json());
+    return context.json(await input.service.trafficRouting.create(body.name, body.description, body.draft, context.get("actor").id, body.endpointIds), 201);
   });
-  app.post("/api/v1/router-bindings", authenticated, administrator, async (context) => {
-    const body = routerBindingsInput.parse(await context.req.json());
-    assertTrafficScopeSupported(body.trafficScope);
-    const items = await input.service.createRouterBindings({ ...body, actorId: context.get("actor").id });
-    await input.runnerControl.distributeDesiredState();
-    return context.json({ items, count: items.length }, 201);
+  app.patch("/api/v1/routers/:id", authenticated, administrator, async context => {
+    const body = z.object({ name: z.string().trim().min(1).max(160), description: z.string().max(2000).default("") }).parse(await context.req.json());
+    return context.json(await input.service.trafficRouting.rename(context.req.param("id"), body.name, body.description, context.get("actor").id));
   });
-  app.patch("/api/v1/routers/:id", authenticated, administrator, async (context) => {
-    const body = routerEnabledInput.parse(await context.req.json());
-    const updated = await input.service.setRouterEnabled({ id: context.req.param("id"), enabled: body.enabled, actorId: context.get("actor").id });
-    await input.runnerControl.distributeDesiredState();
-    return context.json(updated);
+  app.put("/api/v1/routers/:id/draft", authenticated, administrator, async context => {
+    const body = z.object({ expectedDraftRevision: z.number().int().positive(), draft: routerDraftSchema }).parse(await context.req.json());
+    return context.json(await input.service.trafficRouting.save(context.req.param("id"), body.expectedDraftRevision, body.draft, context.get("actor").id));
   });
-  app.put("/api/v1/routers/:id/traffic-scope", authenticated, administrator, async (context) => {
-    const body = routerScopeInput.parse(await context.req.json());
-    assertTrafficScopeSupported(body.trafficScope);
-    const updated = await input.service.updateRouterTrafficScope({ id: context.req.param("id"), trafficScope: body.trafficScope, actorId: context.get("actor").id });
-    await input.runnerControl.distributeDesiredState();
-    return context.json(updated);
-  });
-  app.delete("/api/v1/routers/:id", authenticated, administrator, async (context) => {
-    const body = deletionInput.parse(await context.req.json());
-    await input.service.softDeleteRouter({ id: context.req.param("id"), actorId: context.get("actor").id, ...body });
+  app.delete("/api/v1/routers/:id", authenticated, administrator, async context => {
+    await input.service.trafficRouting.remove(context.req.param("id"), context.get("actor").id);
     await input.runnerControl.distributeDesiredState();
     return context.body(null, 204);
   });
-  app.put("/api/v1/endpoints/:endpointId/router-order", authenticated, administrator, async (context) => {
-    const body = routerOrderInput.parse(await context.req.json());
-    const items = await input.service.reorderRouterRoutes({ endpointId: context.req.param("endpointId"), routerIds: body.routerIds, actorId: context.get("actor").id });
+  app.post("/api/v1/routers/:id/publish", authenticated, administrator, async context => {
+    const body = z.object({ expectedDraftRevision: z.number().int().positive(), idempotencyKey: z.string().min(1).max(128) }).parse(await context.req.json());
+    await input.service.trafficRouting.publish(context.req.param("id"), body.expectedDraftRevision, body.idempotencyKey, context.get("actor").id);
     await input.runnerControl.distributeDesiredState();
-    return context.json({ items, count: items.length });
+    return context.json(await input.service.trafficRouting.get(context.req.param("id")), 202);
+  });
+  app.post("/api/v1/routers/:id/rollback", authenticated, administrator, async context => {
+    const body = z.object({ expectedDraftRevision: z.number().int().positive(), idempotencyKey: z.string().min(1).max(128), revision: z.number().int().positive() }).parse(await context.req.json());
+    await input.service.trafficRouting.publish(context.req.param("id"), body.expectedDraftRevision, body.idempotencyKey, context.get("actor").id, body.revision);
+    await input.runnerControl.distributeDesiredState();
+    return context.json(await input.service.trafficRouting.get(context.req.param("id")), 202);
+  });
+  app.put("/api/v1/routers/:id/endpoints", authenticated, administrator, async context => {
+    const body = z.object({ endpointIds: z.array(z.string().min(1)).max(128) }).parse(await context.req.json());
+    await input.service.trafficRouting.bind(context.req.param("id"), body.endpointIds, context.get("actor").id);
+    await input.runnerControl.distributeDesiredState();
+    return context.json(await input.service.trafficRouting.get(context.req.param("id")));
+  });
+  app.get("/api/v1/routers/:id/revisions", authenticated, async context => context.json({ items: await input.service.trafficRouting.revisions(context.req.param("id")) }));
+  const distributionQuery = z.object({ hours: z.coerce.number().min(0.25).max(168).default(24), revision: z.coerce.number().int().positive().optional(), endpointId: z.string().min(1).optional() });
+  app.get("/api/v1/routers/:id/distribution", authenticated, async context => {
+    const q = distributionQuery.parse(context.req.query());
+    return context.json(await input.service.trafficRouting.distribution(context.req.param("id"), q.hours, q.revision, q.endpointId));
+  });
+  app.get("/api/v1/routers/:id/routes/:routeId/distribution", authenticated, async context => {
+    const q = distributionQuery.parse(context.req.query());
+    const result = await input.service.trafficRouting.distribution(context.req.param("id"), q.hours, q.revision, q.endpointId);
+    return context.json({ ...result, rows: result.rows.filter(row => row.routeId === context.req.param("routeId")) });
+  });
+  app.post("/api/v1/routers/:id/selector-preview", authenticated, async context => {
+    await input.service.trafficRouting.get(context.req.param("id"));
+    const body = z.object({ draft: routerDraftSchema, input: routingInputSchema }).parse(await context.req.json());
+    return context.json({ items: previewRouter(body.draft, body.input), simulation: true, normalizedInput: body.input });
+  });
+  app.get("/api/v1/traffic-selector-fields", authenticated, async context => {
+    const endpointIds = context.req.query("endpointIds")?.split(",").filter(Boolean);
+    const all = await input.service.listEndpoints();
+    const selected = endpointIds ? all.filter(e => endpointIds.includes(e.id)) : all;
+    const items = selectorFieldCatalog(selected);
+    return context.json({ items, endpoints: selected.map(e => ({ id: e.id, adapter: e.adapter })), count: items.length });
   });
   app.get("/api/v1/traffic-scope-fields", authenticated, (context) => {
     const items = trafficScopeFields();
@@ -807,6 +833,9 @@ export function createHttpApp(input: {
       limit: z.coerce.number().int().min(1).max(10_000).default(100),
       guardrailId: z.string().min(1).optional(),
       routerId: z.string().min(1).optional(),
+      routeId: z.string().min(1).optional(),
+      targetId: z.string().min(1).optional(),
+      routerRevision: z.coerce.number().int().positive().optional(),
       endpointId: z.string().min(1).optional(),
       since: z.coerce.date().optional(),
       before: z.coerce.date().optional(),
@@ -834,7 +863,10 @@ export function createHttpApp(input: {
   app.post("/api/internal/v1/runtime-events", runnerAuthentication(input.config.runnerToken), async (context) => {
     const body = runtimeEventBatchInput.parse(await context.req.json());
     try {
-      await input.service.recordRuntimeEvents(body.events);
+      const routing = body.events.filter(event => "eventType" in event);
+      const runtime = body.events.filter(event => "requestId" in event);
+      if (routing.length) await input.service.trafficRouting.recordEvents(routing);
+      await input.service.recordRuntimeEvents(runtime);
       if (body.runnerId) await input.service.recordTelemetryWatermark(body.runnerId);
       input.metrics.observeTelemetryBatch?.(
         "accepted", body.events.map((event) => event.occurredAt), body.events.length,
@@ -860,6 +892,7 @@ export function createHttpApp(input: {
     return context.notFound();
   });
   app.onError((error, context) => {
+    if (error instanceof RoutingEvaluationError) return context.json({ error: { code: error.code, message: error.message } }, 422);
     if (error instanceof ControllerError) {
       return context.json({ error: { code: error.code, message: error.message, detail: error.detail } }, error.status as 400);
     }

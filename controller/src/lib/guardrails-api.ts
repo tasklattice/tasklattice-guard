@@ -1,3 +1,4 @@
+import type { TrafficRouter } from "./traffic-routing-api";
 import * as controllerApi from "@/lib/controller-api";
 import type { ProtectionPreset } from "../../shared/protection-map";
 import {
@@ -116,6 +117,7 @@ function mapGuardrail(
   const published = value.status === "active" && value.activeVersion !== null;
   const publishedCurrent = published && value.activeSourceDraftRevision === value.draftRevision;
   return {
+    copy_origin: value.copyOrigin,
     id: value.id,
     name: value.name,
     allowed_topics: value.draftConfig.allowedTopics,
@@ -141,10 +143,10 @@ function mapGuardrail(
   };
 }
 
-function routerCounts(values: controllerApi.Router[]): Map<string, number> {
+function routerCounts(values: TrafficRouter[]): Map<string, number> {
   const result = new Map<string, number>();
   for (const router of values) {
-    if (router.enabled) result.set(router.guardrailId, (result.get(router.guardrailId) ?? 0) + 1);
+    for (const id of new Set(router.endpointIds.length ? router.activeSnapshot?.routes.filter(route => route.enabled).flatMap(route => route.targets.filter(target => target.weightBps > 0).map(target => target.guardrailId)) : [])) result.set(id, (result.get(id) ?? 0) + 1);
   }
   return result;
 }
@@ -164,7 +166,7 @@ export async function getGuardrail(id: string): Promise<Guardrail> {
     controllerApi.getControllerGuardrail(id),
     controllerApi.listControllerRouters(),
   ]);
-  const count = routers.items.filter((item) => item.enabled && item.guardrailId === id).length;
+  const count = routerCounts(routers.items).get(id) ?? 0;
   return mapGuardrail(guardrail, count, guardrail.versions.length);
 }
 

@@ -12,6 +12,10 @@ export interface EndpointRuntime {
    */
   'adapter'?: (string);
   'verification'?: (_tasklattice_guard_control_v1_EndpointVerification | null);
+  /**
+   * Explicit composed Router binding; empty rejects public traffic.
+   */
+  'routerId'?: (string);
 }
 
 /**
@@ -24,4 +28,8 @@ export interface EndpointRuntime__Output {
    */
   'adapter': (string);
   'verification': (_tasklattice_guard_control_v1_EndpointVerification__Output | null);
+  /**
+   * Explicit composed Router binding; empty rejects public traffic.
+   */
+  'routerId': (string);
 }

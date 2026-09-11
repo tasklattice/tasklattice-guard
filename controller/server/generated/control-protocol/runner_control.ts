@@ -16,6 +16,7 @@ import type { CapabilityValidationRequest as _tasklattice_guard_control_v1_Capab
 import type { CapabilityValidationResult as _tasklattice_guard_control_v1_CapabilityValidationResult, CapabilityValidationResult__Output as _tasklattice_guard_control_v1_CapabilityValidationResult__Output } from './tasklattice/guard/control/v1/CapabilityValidationResult.js';
 import type { CompileRequest as _tasklattice_guard_control_v1_CompileRequest, CompileRequest__Output as _tasklattice_guard_control_v1_CompileRequest__Output } from './tasklattice/guard/control/v1/CompileRequest.js';
 import type { CompileResult as _tasklattice_guard_control_v1_CompileResult, CompileResult__Output as _tasklattice_guard_control_v1_CompileResult__Output } from './tasklattice/guard/control/v1/CompileResult.js';
+import type { ComposedRoute as _tasklattice_guard_control_v1_ComposedRoute, ComposedRoute__Output as _tasklattice_guard_control_v1_ComposedRoute__Output } from './tasklattice/guard/control/v1/ComposedRoute.js';
 import type { ControllerMessage as _tasklattice_guard_control_v1_ControllerMessage, ControllerMessage__Output as _tasklattice_guard_control_v1_ControllerMessage__Output } from './tasklattice/guard/control/v1/ControllerMessage.js';
 import type { DataPlaneModelConfiguration as _tasklattice_guard_control_v1_DataPlaneModelConfiguration, DataPlaneModelConfiguration__Output as _tasklattice_guard_control_v1_DataPlaneModelConfiguration__Output } from './tasklattice/guard/control/v1/DataPlaneModelConfiguration.js';
 import type { DesiredState as _tasklattice_guard_control_v1_DesiredState, DesiredState__Output as _tasklattice_guard_control_v1_DesiredState__Output } from './tasklattice/guard/control/v1/DesiredState.js';
@@ -40,6 +41,7 @@ import type { PromptDefinition as _tasklattice_guard_control_v1_PromptDefinition
 import type { ProviderEvidence as _tasklattice_guard_control_v1_ProviderEvidence, ProviderEvidence__Output as _tasklattice_guard_control_v1_ProviderEvidence__Output } from './tasklattice/guard/control/v1/ProviderEvidence.js';
 import type { RegistrationAccepted as _tasklattice_guard_control_v1_RegistrationAccepted, RegistrationAccepted__Output as _tasklattice_guard_control_v1_RegistrationAccepted__Output } from './tasklattice/guard/control/v1/RegistrationAccepted.js';
 import type { RiskFinding as _tasklattice_guard_control_v1_RiskFinding, RiskFinding__Output as _tasklattice_guard_control_v1_RiskFinding__Output } from './tasklattice/guard/control/v1/RiskFinding.js';
+import type { RouterRevision as _tasklattice_guard_control_v1_RouterRevision, RouterRevision__Output as _tasklattice_guard_control_v1_RouterRevision__Output } from './tasklattice/guard/control/v1/RouterRevision.js';
 import type { RouterRoute as _tasklattice_guard_control_v1_RouterRoute, RouterRoute__Output as _tasklattice_guard_control_v1_RouterRoute__Output } from './tasklattice/guard/control/v1/RouterRoute.js';
 import type { RunnerControlClient as _tasklattice_guard_control_v1_RunnerControlClient, RunnerControlDefinition as _tasklattice_guard_control_v1_RunnerControlDefinition } from './tasklattice/guard/control/v1/RunnerControl.js';
 import type { RunnerHeartbeat as _tasklattice_guard_control_v1_RunnerHeartbeat, RunnerHeartbeat__Output as _tasklattice_guard_control_v1_RunnerHeartbeat__Output } from './tasklattice/guard/control/v1/RunnerHeartbeat.js';
@@ -57,6 +59,7 @@ import type { ValidationMetrics as _tasklattice_guard_control_v1_ValidationMetri
 import type { ValidationRequest as _tasklattice_guard_control_v1_ValidationRequest, ValidationRequest__Output as _tasklattice_guard_control_v1_ValidationRequest__Output } from './tasklattice/guard/control/v1/ValidationRequest.js';
 import type { ValidationResult as _tasklattice_guard_control_v1_ValidationResult, ValidationResult__Output as _tasklattice_guard_control_v1_ValidationResult__Output } from './tasklattice/guard/control/v1/ValidationResult.js';
 import type { ValidationTestCase as _tasklattice_guard_control_v1_ValidationTestCase, ValidationTestCase__Output as _tasklattice_guard_control_v1_ValidationTestCase__Output } from './tasklattice/guard/control/v1/ValidationTestCase.js';
+import type { WeightedTarget as _tasklattice_guard_control_v1_WeightedTarget, WeightedTarget__Output as _tasklattice_guard_control_v1_WeightedTarget__Output } from './tasklattice/guard/control/v1/WeightedTarget.js';
 
 type SubtypeConstructor<Constructor extends new (...args: any) => any, Subtype> = {
   new(...args: ConstructorParameters<Constructor>): Subtype;
@@ -84,6 +87,7 @@ export interface ProtoGrpcType {
           ClaimSupport: EnumTypeDefinition
           CompileRequest: MessageTypeDefinition<_tasklattice_guard_control_v1_CompileRequest, _tasklattice_guard_control_v1_CompileRequest__Output>
           CompileResult: MessageTypeDefinition<_tasklattice_guard_control_v1_CompileResult, _tasklattice_guard_control_v1_CompileResult__Output>
+          ComposedRoute: MessageTypeDefinition<_tasklattice_guard_control_v1_ComposedRoute, _tasklattice_guard_control_v1_ComposedRoute__Output>
           ContentView: EnumTypeDefinition
           ControllerMessage: MessageTypeDefinition<_tasklattice_guard_control_v1_ControllerMessage, _tasklattice_guard_control_v1_ControllerMessage__Output>
           DataPlaneModelConfiguration: MessageTypeDefinition<_tasklattice_guard_control_v1_DataPlaneModelConfiguration, _tasklattice_guard_control_v1_DataPlaneModelConfiguration__Output>
@@ -120,6 +124,7 @@ export interface ProtoGrpcType {
           RegistrationAccepted: MessageTypeDefinition<_tasklattice_guard_control_v1_RegistrationAccepted, _tasklattice_guard_control_v1_RegistrationAccepted__Output>
           RiskFinding: MessageTypeDefinition<_tasklattice_guard_control_v1_RiskFinding, _tasklattice_guard_control_v1_RiskFinding__Output>
           RouteDecision: EnumTypeDefinition
+          RouterRevision: MessageTypeDefinition<_tasklattice_guard_control_v1_RouterRevision, _tasklattice_guard_control_v1_RouterRevision__Output>
           RouterRoute: MessageTypeDefinition<_tasklattice_guard_control_v1_RouterRoute, _tasklattice_guard_control_v1_RouterRoute__Output>
           /**
            * RunnerControl is the only state-distribution channel between the control
@@ -149,6 +154,7 @@ export interface ProtoGrpcType {
           ValidationResult: MessageTypeDefinition<_tasklattice_guard_control_v1_ValidationResult, _tasklattice_guard_control_v1_ValidationResult__Output>
           ValidationStatus: EnumTypeDefinition
           ValidationTestCase: MessageTypeDefinition<_tasklattice_guard_control_v1_ValidationTestCase, _tasklattice_guard_control_v1_ValidationTestCase__Output>
+          WeightedTarget: MessageTypeDefinition<_tasklattice_guard_control_v1_WeightedTarget, _tasklattice_guard_control_v1_WeightedTarget__Output>
         }
       }
     }

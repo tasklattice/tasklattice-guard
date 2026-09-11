@@ -19,7 +19,8 @@ import { GuardrailVersionComparison, GuardrailVersionNavigator } from "@/compone
 import { GuardrailRegistry } from "@/components/guardrail-registry";
 import { getPolicyBindingValidation, PolicyBindingEditor } from "@/components/policy-binding-editor";
 import { ProtectionDependencies } from "@/components/protection-dependencies";
-import { ProtectedDeleteSheet } from "@/components/protected-delete-sheet";
+import { DeleteGuardrailSheet, type GuardrailDeletionConfirmation } from "@/components/guardrail-delete-sheet";
+export { DeleteGuardrailSheet } from "@/components/guardrail-delete-sheet";
 import { EmptyState, ErrorNotice, InfoNotice, PageHeader, StateBadge } from "@/components/product-shell";
 import { RuntimePostureFields } from "@/components/runtime-posture-fields";
 import { Badge } from "@/components/ui/badge";
@@ -60,7 +61,6 @@ import {
   updateGuardrail,
   updateGuardrailLoggingSettings,
   type Guardrail,
-  type GuardrailDeletionImpact,
   type GuardrailFindingPage,
   type GuardrailPolicyBinding,
   type GuardrailVersion,
@@ -81,12 +81,6 @@ import { GuardrailValidationHistory, ValidationDetailSheet } from "@/routes/vali
 export { AddTestCaseSheet };
 
 const EMPTY_POLICIES: Policy[] = [];
-
-type GuardrailDeletionConfirmation = {
-  reason: string;
-  confirm_recent_traffic: boolean;
-  confirmation_name?: string;
-};
 
 export function GuardrailsPage() {
   const { t } = useTranslation();
@@ -247,7 +241,7 @@ export function GuardrailDetailPage() {
   if (guardrailQuery.error || !guardrailQuery.data) return <div className="py-8"><ErrorNotice error={guardrailQuery.error ?? new Error(t("guardrails.notFound"))} /></div>;
   const guardrail = guardrailQuery.data;
   const policies = policiesQuery.data?.items ?? EMPTY_POLICIES;
-  const routers = routersQuery.data?.items.filter((item) => item.guardrail_id === guardrail.id) ?? [];
+  const routers = routersQuery.data?.items.filter((item) => item.activeSnapshot?.routes.some(route => route.enabled && route.targets.some(target => target.guardrailId === guardrail.id && target.weightBps > 0))) ?? [];
   const canManageDraft = auth.user?.role === "admin" && isGuardrailDraftManageable(guardrail);
   const hasUnpublishedDraft = canManageDraft && !guardrail.published_current;
 
@@ -262,6 +256,7 @@ export function GuardrailDetailPage() {
             {routers.length ? <StateBadge state="protected" /> : activeVersion ? <StateBadge state="ready" /> : null}
             {guardrail.is_default ? <Badge variant="outline">{t("guardrails.defaultBadge")}</Badge> : guardrail.system_managed ? <Badge variant="outline">{t("guardrails.systemManaged")}</Badge> : null}
           </div>
+          {guardrail.copy_origin && <p className="mt-2 text-sm text-muted-foreground">Copied from {guardrail.copy_origin.sourceName} · {guardrail.copy_origin.sourceVersion ?? `draft r${guardrail.copy_origin.sourceDraftRevision}`} · {guardrail.copy_origin.sourceGuardrailId}</p>}
           {hasUnpublishedDraft ? <button type="button" className="mt-3 inline-flex min-h-9 items-center gap-2 rounded-md bg-amber-50 px-3 text-xs font-medium text-amber-800 hover:bg-amber-100 focus-visible:outline-2 focus-visible:outline-ring" onClick={() => setSection("draft")}><Circle className="size-2.5 fill-current" />{t("guardrails.unpublishedDraft")}</button> : null}
         </div>
         <div className="flex flex-wrap gap-2">
@@ -335,7 +330,7 @@ export function GuardrailDetailPage() {
       <EditGuardrailSheet guardrail={guardrail} policies={policies} open={editOpen} onOpenChange={setEditOpen} onSaved={async () => { setEditOpen(false); await refresh(); }} />
       <AddTestCaseSheet guardrail={guardrail} open={testOpen} onOpenChange={setTestOpen} onCreated={async () => { setTestOpen(false); await refresh(); }} />
       <ValidationDetailSheet run={selectedValidationRun} guardrail={guardrail} canManage={canManageDraft} running={validationMutation.isPending} onRunAgain={() => validationMutation.mutate()} onOpenTarget={openValidationTarget} onClose={() => setSelectedValidationRun(null)} />
-      <CreateRouterSheet open={routerOpen} onOpenChange={setRouterOpen} guardrails={[guardrail]} onCreated={async () => { setRouterOpen(false); await refresh(); }} />
+      <CreateRouterSheet open={routerOpen} onOpenChange={setRouterOpen} onCreated={async () => { setRouterOpen(false); await refresh(); }} />
       <ConfirmationSheet
         open={validationConfirmOpen}
         onOpenChange={setValidationConfirmOpen}
@@ -364,71 +359,6 @@ export function GuardrailDetailPage() {
       />
     </section>
   );
-}
-
-export function DeleteGuardrailSheet({ guardrail, open, impact, loading, deleting, error, onOpenChange, onRetry, onConfirm }: {
-  guardrail: Guardrail;
-  open: boolean;
-  impact?: GuardrailDeletionImpact;
-  loading: boolean;
-  deleting: boolean;
-  error: Error | null;
-  onOpenChange: (open: boolean) => void;
-  onRetry: () => void;
-  onConfirm: (confirmation: GuardrailDeletionConfirmation) => void;
-}) {
-  const { t, i18n } = useTranslation();
-  const [reason, setReason] = useState("");
-  const telemetryFresh = Boolean(impact?.telemetry_fresh);
-  const requiresSecondConfirmation = Boolean(impact?.requires_second_confirmation);
-
-  useEffect(() => {
-    if (!open) setReason("");
-  }, [open]);
-
-  return <ProtectedDeleteSheet
-    open={open}
-    onOpenChange={onOpenChange}
-    entityName={guardrail.name}
-    loading={loading}
-    ready={telemetryFresh}
-    deleting={deleting}
-    error={impact && !telemetryFresh ? new Error(t("guardrails.deleteTelemetryStale")) : error}
-    requiresConfirmation={requiresSecondConfirmation}
-    impactItems={impact ? [
-      { label: t("guardrails.recentIncomingRequests", { minutes: impact.window_minutes }), value: impact.incoming_request_count.toLocaleString(i18n.language) },
-      { label: t("guardrails.activeRoutersAffected"), value: impact.active_router_count.toLocaleString(i18n.language) },
-    ] : []}
-    copy={{
-      eyebrow: t("guardrails.deleteEyebrow"),
-      title: t("guardrails.deleteDialogTitle"),
-      description: t("guardrails.deleteDialogDescription", { name: guardrail.name }),
-      protectedMessage: t("guardrails.recentTrafficWarning"),
-      clearMessage: t("guardrails.noRecentTraffic"),
-      retentionNote: t("guardrails.deleteRetentionNote"),
-      continueLabel: t("guardrails.continueDelete"),
-      deleteLabel: t("guardrails.deleteConfirm"),
-      deletingLabel: t("guardrails.deleting"),
-      confirmTitle: t("guardrails.deleteRecentTrafficTitle"),
-      confirmDescription: t("guardrails.deleteRecentTrafficDescription", { count: impact?.incoming_request_count ?? 0, minutes: impact?.window_minutes ?? 30 }),
-      confirmWarning: t("guardrails.deleteStopsTraffic", { count: impact?.active_router_count ?? 0 }),
-      typeNameLabel: t("guardrails.typeNameToConfirm", { name: guardrail.name }),
-      protectedDeleteLabel: t("guardrails.deleteDespiteTraffic"),
-      cancelLabel: t("common.cancel"),
-      backLabel: t("common.back"),
-      retryLabel: t("common.retry"),
-      reasonLabel: t("guardrails.deleteReason"),
-      reasonPlaceholder: t("guardrails.deleteReasonPlaceholder"),
-    }}
-    reason={reason}
-    onReasonChange={setReason}
-    onRetry={onRetry}
-    onConfirm={(confirmRecentTraffic, confirmationName) => onConfirm({
-      reason: reason.trim(),
-      confirm_recent_traffic: confirmRecentTraffic,
-      ...(confirmationName ? { confirmation_name: confirmationName } : {}),
-    })}
-  />;
 }
 
 export function GuardrailRuntimeView({ guardrailId, metrics, loading, error, routers, versions = [], window, onWindowChange }: { guardrailId: string; metrics?: Metrics; loading: boolean; error: unknown; routers: Awaited<ReturnType<typeof getRouters>>["items"]; versions?: GuardrailVersion[]; window: MetricWindow; onWindowChange: (window: MetricWindow) => void }) {
@@ -776,7 +706,7 @@ export function DraftReleaseView({ guardrail, policies, cases, casesLoading, act
       <div className="mb-3"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("guardrails.releaseEvidenceEyebrow")}</p><h2 className="mt-1 text-base font-semibold">{t("guardrails.validationInputs")}</h2><p className="mt-1 text-xs text-muted-foreground">{t("guardrails.validationInputsDescription")}</p></div>
       <TestCases cases={cases} bindings={guardrail.policy_bindings} policies={policies} loading={casesLoading} onAdd={onAddCase} onExclude={(caseId) => setScopeChange({ caseId, action: "exclude" })} onRestore={(caseId) => setScopeChange({ caseId, action: "restore" })} busyCaseId={validationScope.isPending ? validationScope.variables?.caseId : undefined} />
     </section>
-    {routers.length ? <Card className="shadow-none"><CardHeader className="py-4"><CardTitle>{t("guardrails.guardrailRouters")}</CardTitle><CardDescription>{t("guardrails.guardrailRoutersDescription")}</CardDescription></CardHeader><CardContent className="space-y-2">{routers.map((router) => <div key={router.id} className="rounded-lg border px-4 py-3"><div className="flex flex-wrap items-center justify-between gap-2"><strong className="text-sm font-medium">{router.name}</strong><Badge variant="outline" className="font-mono text-[10px]">{router.guardrail_version}</Badge></div><div className="mt-2"><TrafficScopeBadges router={router} /></div></div>)}</CardContent></Card> : null}
+    {routers.length ? <Card className="shadow-none"><CardHeader className="py-4"><CardTitle>{t("guardrails.guardrailRouters")}</CardTitle><CardDescription>{t("guardrails.guardrailRoutersDescription")}</CardDescription></CardHeader><CardContent className="space-y-2">{routers.map((router) => <div key={router.id} className="rounded-lg border px-4 py-3"><div className="flex flex-wrap items-center justify-between gap-2"><strong className="text-sm font-medium">{router.name}</strong><Badge variant="outline" className="font-mono text-[10px]">{router.activeRevision ? `r${router.activeRevision}` : "—"}</Badge></div><div className="mt-2"><TrafficScopeBadges router={router} /></div></div>)}</CardContent></Card> : null}
   </div>
   <ConfirmationSheet
     open={publishOpen}

@@ -16,6 +16,11 @@ enum TrafficOperator {
   TRAFFIC_OPERATOR_CONTAINS = 2;
   TRAFFIC_OPERATOR_STARTS_WITH = 3;
   TRAFFIC_OPERATOR_GLOB = 4;
+  TRAFFIC_OPERATOR_NOT_EQUALS = 5;
+  TRAFFIC_OPERATOR_IN = 6;
+  TRAFFIC_OPERATOR_NOT_IN = 7;
+  TRAFFIC_OPERATOR_EXISTS = 8;
+  TRAFFIC_OPERATOR_NOT_EXISTS = 9;
 }
 
 // One typed predicate evaluated against Endpoint request metadata.
@@ -27,6 +32,12 @@ message TrafficCondition {
   TrafficOperator operator = 3;
   // Literal comparison operand; GLOB uses Runner's documented glob syntax.
   string value = 4;
+  // Explicit HTTP source: endpoint_request or business_request; empty for non-HTTP fields.
+  string request_source = 5;
+  // Operands for IN and NOT_IN; scalar operators use value instead.
+  repeated string values = 6;
+  // Absence means case-sensitive; false uses ASCII-only case folding.
+  optional bool case_sensitive = 7;
 }
 
 // Conditions and nested groups are intentionally separate: AND/OR evaluation
@@ -36,4 +47,44 @@ message TrafficScope {
   TrafficCombinator combinator = 1;
   repeated TrafficCondition conditions = 2;
   repeated TrafficScope groups = 3;
+}
+
+// Immutable composed Router snapshot, shared by explicitly bound Endpoints.
+message RouterRevision {
+  string router_id = 1;
+  // Positive immutable Router revision, independent of desired generation.
+  int64 revision = 2;
+  // Published priority order, with exactly one unconditional fallback last.
+  repeated ComposedRoute routes = 3;
+  // hmac-sha256-v1 hashes a JSON array of call identity, revision and Route ID.
+  string assignment_algorithm = 4;
+  string assignment_key_id = 5;
+  // Secret HMAC key, at least 32 bytes; never exposed in telemetry.
+  bytes assignment_key = 6;
+}
+
+// One ordered selection rule and its complete weighted distribution.
+message ComposedRoute {
+  string route_id = 1;
+  string name = 2;
+  // normal or fallback; fallback must be enabled and unconditional.
+  string kind = 3;
+  bool enabled = 4;
+  // Explicit Endpoint scope; empty with all_endpoints=false matches no Endpoint.
+  repeated string endpoint_ids = 5;
+  TrafficScope traffic_scope = 6;
+  repeated WeightedTarget targets = 7;
+  // True denotes an unrestricted Endpoint scope.
+  bool all_endpoints = 8;
+}
+
+// A fixed immutable Guardrail version within a Route distribution.
+message WeightedTarget {
+  string target_id = 1;
+  string guardrail_id = 2;
+  // Fixed immutable Guardrail version; latest and empty are invalid.
+  string guardrail_version = 3;
+  string artifact_id = 4;
+  // Integer basis points in [0,10000]; each Route must total exactly 10000.
+  int32 weight_bps = 5;
 }

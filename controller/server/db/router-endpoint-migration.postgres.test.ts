@@ -16,7 +16,7 @@ describe.skipIf(!url)("Router / Endpoint database migration", () => {
     await admin.query(`CREATE SCHEMA "${namespace}"`);
     pool = new Pool({ connectionString: url, max: 1, options: `-c search_path=${namespace}` });
     const journal = JSON.parse(read("meta/_journal.json")) as { entries: { tag: string }[] };
-    for (const { tag } of journal.entries.filter(({ tag }) => tag !== "0008_router_endpoint")) {
+    for (const { tag } of journal.entries.filter(({ tag }) => tag < "0008_router_endpoint")) {
       await pool.query(read(`${tag}.sql`).replaceAll('"public".', `"${namespace}".`));
     }
     await pool.query(`

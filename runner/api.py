@@ -6,7 +6,7 @@ import json
 import os
 import time
 import uuid
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from typing import Any, Literal
 
 from fastapi import APIRouter, Header, HTTPException, Request
@@ -19,6 +19,7 @@ from runner.toolkit.runtime.contracts import GuardContentBlock, ProtectionDecisi
 from runner.toolkit.runtime.service import GuardrailRuntimeService
 
 from .artifact_store import ArtifactStore
+from .routing import RoutingError
 from .draft_preview import DraftPreviewRuntime
 from .metrics import (
     GuardrailRequestObservation,
@@ -57,6 +58,7 @@ class EvaluateRequest(BaseModel):
     path: str | None = None
     host: str | None = None
     jwt_claims: dict[str, str] = Field(default_factory=dict)
+    business_request: dict[str, str | list[str]] | None = None
     output_sink: Literal["display", "markdown", "html", "sql", "shell", "url", "json", "tool_argument"] | None = None
     content_type: str | None = Field(default=None, min_length=1, max_length=128)
     schema_id: str | None = Field(default=None, min_length=1, max_length=256)
@@ -152,7 +154,7 @@ class LiteLLMGuardrailRequest(BaseModel):
     tools: list[dict[str, Any]] | None = None
     texts: list[str] | None = None
     request_data: dict[str, Any] = Field(default_factory=dict)
-    request_headers: dict[str, str] | None = None
+    request_headers: dict[str, str | list[str]] | None = None
     litellm_version: str | None = None
     additional_provider_specific_params: dict[str, Any] | None = None
     tool_calls: list[dict[str, Any]] | None = None
@@ -210,6 +212,10 @@ class RunnerAPI:
         self._store = store
         self._metrics = metrics
         self._telemetry = telemetry
+        if isinstance(runtime, GuardrailRuntimeService):
+            async def routing_event_sink(event):
+                await telemetry.emit({**event, "runnerId": runner_id})
+            runtime.routing_event_sink = routing_event_sink
         self._runner_id = runner_id
         self._controller_token = controller_token
         self._runtime_log_encryption_key = runtime_log_encryption_key
@@ -269,6 +275,7 @@ class RunnerAPI:
         async def apply_litellm_guardrail(
             endpoint_id: str,
             payload: LiteLLMGuardrailRequest,
+            request: Request,
             x_api_key: str | None = Header(default=None),
         ) -> LiteLLMGuardrailResponse:
             phase = "input" if payload.input_type == "request" else "output"
@@ -283,7 +290,10 @@ class RunnerAPI:
                 raise HTTPException(status_code=409, detail="Endpoint adapter is not compatible with LiteLLM.")
             request_id = str(uuid.uuid4())
             started = time.perf_counter()
-            protection_request = _litellm_protection_request(payload, endpoint_id)
+            try:
+                protection_request = _litellm_protection_request(payload, endpoint_id, request)
+            except RoutingError as error:
+                raise HTTPException(status_code=503, detail=error.reason) from error
             decision = None
             with self._metrics.request(
                 "runtime", "litellm", phase, endpoint_id=endpoint_id,
@@ -311,6 +321,9 @@ class RunnerAPI:
                     self._metrics.observe_route("litellm", phase, route_matched)
                     observation.complete(decision)
                     return _litellm_response(decision)
+                except RoutingError as error:
+                    observation.fail("runtime", error.reason)
+                    raise HTTPException(status_code=503, detail=str(error)) from error
                 except Exception as error:
                     reason_class = _request_failure_reason(error)
                     observation.fail("runtime", reason_class)
@@ -352,7 +365,10 @@ class RunnerAPI:
             request_id = str(uuid.uuid4())
             started = time.perf_counter()
             decision = None
-            protection_request = _http_protection_request(payload, request, endpoint_id)
+            try:
+                protection_request = _http_protection_request(payload, request, endpoint_id)
+            except RoutingError as error:
+                raise HTTPException(status_code=503, detail=error.reason) from error
             with self._metrics.request(
                 "runtime", payload.protocol, payload.resolved_phase,
                 endpoint_id=endpoint_id,
@@ -381,6 +397,9 @@ class RunnerAPI:
                     )
                     observation.complete(decision)
                     return {**jsonable_encoder(asdict(decision)), "call_id": protection_request.call_id}
+                except RoutingError as error:
+                    observation.fail("runtime", error.reason)
+                    raise HTTPException(status_code=503, detail=str(error)) from error
                 except Exception as error:
                     reason_class = _request_failure_reason(error)
                     observation.fail("runtime", reason_class)
@@ -427,7 +446,7 @@ class RunnerAPI:
                     litellm_call_id=payload.call_id or payload.stream_id,
                     structured_messages=payload.messages, model=payload.model,
                     request_data=payload.request_data, request_headers=payload.request_headers,
-                ), endpoint_id)
+                ), endpoint_id, request)
             else:
                 evaluate_payload = EvaluateRequest(
                     phase="output", texts=[payload.text or " "],
@@ -436,11 +455,16 @@ class RunnerAPI:
                     model=payload.model, output_sink=payload.output_sink,
                 )
                 protection_request = _http_protection_request(evaluate_payload, request, endpoint_id)
+            protection_request = replace(protection_request, context=replace(protection_request.context,
+                fields=(*protection_request.context.fields, ("routing.stream", "true"))))
             try:
                 resolutions = []
                 mode = self._runtime.output_delivery(protection_request, on_resolved=resolutions.append,
-                                                     require_existing=payload.sequence > 0)
+                                                     require_existing=payload.sequence > 0,
+                                                     allow_new_output=payload.call_id is None)
                 resolution = resolutions[0]
+                if isinstance(self._runtime, GuardrailRuntimeService):
+                    await self._runtime.publish_assignment(resolution, protection_request.call_id)
                 contract = output_stream_contract(resolution.plan)
 
                 async def evaluate_candidate(candidate: ProtectionRequest) -> ProtectionDecision:
@@ -474,7 +498,15 @@ class RunnerAPI:
                     request=protection_request,
                     evaluate=evaluate_candidate,
                 )
+                if isinstance(self._runtime, GuardrailRuntimeService) and (result.final or result.terminate):
+                    await self._runtime.complete_call(resolution, protection_request.call_id,
+                        result.decision.decision if result.decision else "allow")
+            except RoutingError as error:
+                raise HTTPException(status_code=503, detail=error.reason) from error
             except OutputStreamEvaluationError as error:
+                if isinstance(self._runtime, GuardrailRuntimeService) and resolutions:
+                    await self._runtime.complete_call(resolutions[0], protection_request.call_id,
+                        "timeout" if error.timed_out else "error", type(error).__name__)
                 raise HTTPException(status_code=504 if error.timed_out else 502, detail=str(error)) from error
             except LookupError as error:
                 raise HTTPException(status_code=404, detail=str(error)) from error
@@ -926,10 +958,13 @@ def _http_protection_request(
             protocol=payload.protocol,
             endpoint_id=endpoint_id,
             headers=tuple(sorted(headers.items())),
-            jwt_claims=tuple(sorted(payload.jwt_claims.items())),
+            # Unverified endpoint assertions are not authenticated JWT claims.
+            jwt_claims=(),
             fields=tuple(sorted(fields.items())),
+            endpoint_request=_endpoint_source(request),
+            business_request=_source_pairs(payload.business_request),
         ),
-        call_id=f"{endpoint_id}:{external_call_id}" if external_call_id else None,
+        call_id=_scoped_call_id(endpoint_id, external_call_id),
         messages=tuple(payload.messages),
         mode=payload.mode,
         evidence_scope=payload.output_scope,
@@ -984,6 +1019,7 @@ def _request_content(request: ProtectionRequest) -> tuple[str, ...]:
 def _litellm_protection_request(
     payload: LiteLLMGuardrailRequest,
     endpoint_id: str,
+    request: Request | None = None,
 ) -> ProtectionRequest:
     headers = {
         str(key).lower(): str(value)
@@ -1041,11 +1077,13 @@ def _litellm_protection_request(
         context=RequestContext(
             protocol="litellm",
             endpoint_id=endpoint_id,
+            endpoint_request=_endpoint_source(request) if request is not None else None,
+            business_request=_source_pairs(payload.request_headers),
             headers=tuple(sorted(headers.items())),
             fields=tuple(sorted(fields.items())),
         ),
         call_id=(
-            f"{endpoint_id}:{payload.litellm_call_id}"
+            _scoped_call_id(endpoint_id, payload.litellm_call_id)
             if payload.litellm_call_id
             else None
         ),
@@ -1083,3 +1121,33 @@ def _request_failure_reason(error: Exception) -> str:
 def _iso_now() -> str:
     from datetime import datetime, timezone
     return datetime.now(timezone.utc).isoformat()
+
+
+def _scoped_call_id(endpoint_id: str, call_id: str | None) -> str | None:
+    if call_id is None: return None
+    prefix = endpoint_id + ":"
+    return call_id if call_id.startswith(prefix) else prefix + call_id
+
+
+def _source_pairs(source: dict[str, str | list[str]] | None) -> tuple[tuple[str, str], ...] | None:
+    if source is None: return None
+    pairs = []
+    if len(source) > 128: raise RoutingError("routing_input_error")
+    for key, raw in source.items():
+        name = key.lower()
+        if name in SENSITIVE_HEADERS: continue
+        values = raw if isinstance(raw, list) else [raw]
+        if len(values) > 64: raise RoutingError("routing_input_error")
+        for value in values:
+            if not isinstance(value, str) or len(value) > 2048: raise RoutingError("routing_input_error")
+            pairs.append((name, value.strip(" \t")))
+    return tuple(pairs)
+
+
+def _endpoint_source(request: Request) -> tuple[tuple[str, str], ...]:
+    headers: dict[str, list[str]] = {}
+    for key, value in request.headers.raw:
+        name = key.decode("latin-1").lower()
+        headers.setdefault(name, []).append(value.decode("latin-1"))
+    return (*(_source_pairs(headers) or ()), (":method", request.method),
+            (":path", request.url.path), (":host", request.url.hostname or ""))

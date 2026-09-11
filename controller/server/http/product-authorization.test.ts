@@ -49,10 +49,10 @@ const adminRoutes = [
   ["POST", "/endpoints/endpoint/credentials"], ["DELETE", "/endpoints/endpoint/credentials/credential"],
   ["GET", "/endpoints/endpoint/deletion-impact"], ["DELETE", "/endpoints/endpoint"],
   ["PATCH", "/runner-pools/pool"], ["DELETE", "/runner-instances/runner"],
-  ["POST", "/routers"], ["POST", "/router-bindings"],
-  ["PATCH", "/routers/router"], ["PUT", "/routers/router/traffic-scope"],
-  ["GET", "/routers/router/deletion-impact"], ["DELETE", "/routers/router"],
-  ["PUT", "/endpoints/endpoint/router-order"],
+  ["POST", "/routers"], ["PATCH", "/routers/router"],
+  ["PUT", "/routers/router/draft"], ["POST", "/routers/router/publish"],
+  ["POST", "/routers/router/rollback"], ["PUT", "/routers/router/endpoints"],
+  ["POST", "/guardrails/guard/duplicate"], ["DELETE", "/routers/router"],
 ] as const;
 
 function setup(role: string | null) {
