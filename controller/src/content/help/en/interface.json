@@ -1,0 +1,16 @@
+{
+  "title": "Help Center",
+  "description": "Understand TaskLattice Guard concepts and follow the right path for policy use, development, and production operations.",
+  "searchLabel": "Search help",
+  "searchPlaceholder": "Search docs…",
+  "searchHint": "Search product terms, procedures, runtime behavior, and troubleshooting.",
+  "clearSearch": "Clear search",
+  "noResultsTitle": "No matching help content",
+  "noResultsDescription": "Try a shorter concept such as Rail, Action, version, or router.",
+  "contents": "Contents",
+  "choosePath": "Choose your path",
+  "choosePathDescription": "Roles define a reading order, not a permission level. One person may use more than one path.",
+  "searchResults": "Search results",
+  "roleResults": "Role guides",
+  "glossaryResults": "Concept glossary"
+}

@@ -1,0 +1,52 @@
+---
+kind: "overview"
+id: "overview"
+title: "从业务策略到受保护流量"
+label: "系统背景"
+summary: "TaskLattice Guard 是独立的 Guardrail 决策服务。业务团队定义可理解的保护意图，系统把已验证版本编译为 NeMo Guardrails 配置，应用或网关在模型前后调用检查接口并执行返回的决策。"
+order: 1
+---
+
+### 一条请求如何被保护
+
+下面是产品对象与运行时对象之间的主链路。每一步都有明确的版本和审计边界。
+
+<FlowSteps>
+
+<FlowStep title="Endpoint">
+
+识别并认证调用 TaskLattice 的应用、Agent 或网关。
+
+</FlowStep>
+
+<FlowStep title="Router">
+
+在绑定的 Router 内按顺序匹配 Route，再按权重选择固定版本的 Guardrail Target。
+
+</FlowStep>
+
+<FlowStep title="Guardrail Version">
+
+固定所选 Policies、Rules、参数和编译结果，是发布与回滚单元。
+
+</FlowStep>
+
+<FlowStep title="NeMo Rail / Flow">
+
+在模型输入或输出阶段编排实际执行的检查。
+
+</FlowStep>
+
+<FlowStep title="Action">
+
+执行确定性检测、专用模型判断或内容变换，并返回结构化发现。
+
+</FlowStep>
+
+<FlowStep title="Decision & Evidence">
+
+返回放行、转换或阻断决策，按日志级别和内容采集设置记录运行证据。
+
+</FlowStep>
+
+</FlowSteps>

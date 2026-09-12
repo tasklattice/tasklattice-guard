@@ -449,3 +449,26 @@ describe("Endpoint onboarding", () => {
     }));
   });
 });
+
+describe("Endpoint request quality", () => {
+  it("shows observed success rate and detection P95 with a request sample", async () => {
+    getEndpointsMock.mockResolvedValue({ items: [endpoint({ request_count: 4, error_count: 1, detection_p95_ms: 90 })] });
+    renderWithProviders(<EndpointsPage />);
+    expect(await screen.findByText("75%")).toBeTruthy();
+    expect(screen.getByText("90 ms")).toBeTruthy();
+  });
+
+  it("does not label an idle, previously verified endpoint healthy", async () => {
+    getEndpointsMock.mockResolvedValue({ items: [endpoint({ setup_status: "verified", last_seen_at: "2026-08-12T08:00:00Z", runtime_status: "healthy" })] });
+    renderWithProviders(<EndpointsPage />);
+    expect(await screen.findByText("endpoints.noRequests")).toBeTruthy();
+    expect(screen.queryByText("100%")).toBeNull();
+    expect(screen.queryByText("Healthy")).toBeNull();
+  });
+
+  it("does not round rare failures to 100%", async () => {
+    getEndpointsMock.mockResolvedValue({ items: [endpoint({ request_count: 100000, error_count: 1 })] });
+    renderWithProviders(<EndpointsPage />);
+    expect(await screen.findByText("99.99%")).toBeTruthy();
+  });
+});

@@ -1,0 +1,285 @@
+---
+kind: "guide"
+id: "guide-operator"
+audience: "operator"
+label: "运维人员"
+title: "发布、路由并运维 NeMo Guardrails"
+summary: "适合平台工程、SRE 和安全运营人员。重点是可信身份、版本路由、运行健康、容量、回滚和证据。"
+outcome: "最终产出：可观测、可回滚且不会绕过 Guardrail 的生产流量路径。"
+order: 4
+---
+
+<a id="operator-metrics" />
+
+### 业务统计与 Prometheus Metrics
+
+Controller 和 Runner 都有指标。业务统计 API 与 Prometheus 采集接口的用途及凭据不同。
+
+**业务统计 JSON**
+
+当前 Controller 的 GET /api/v1/telemetry/metrics，使用个人 Token 的 runtime:read 权限或浏览器 Session。支持 window、guardrailId、routerId，业务数据来自上报事件。
+
+**Router 流量统计**
+
+GET /api/v1/routers/\{id\}/traffic-distribution，可按 Route 查询。使用 routers:read；它是历史流量，不是配置下发状态。
+
+**Controller /metrics**
+
+在 Controller HTTP 地址上采集，配置了 CONTROLLER_METRICS_TOKEN 时使用对应 Bearer Token。不要填写个人 Access Token。
+
+**Runner /metrics**
+
+在每个 Runner 的 HTTP 地址上采集（默认容器端口 8091），配置了 GUARD_METRICS_TOKEN 时使用对应 Bearer Token。Runner 地址以实际部署为准。
+
+
+> 页面链接使用当前 Controller 地址，不固定 localhost 或映射端口。Prometheus 链接在配置了采集凭据时直接打开会返回 401，请由采集器发送 Authorization 请求头。无流量或未采集执行证据时，检查统计结果的 data_availability。
+
+[业务统计 API 契约](/api/openapi.json?operationId=getTelemetryMetrics)
+
+[Controller Prometheus 指标](/metrics)
+
+[Runner 管理](/settings/runner)
+
+[系统健康](/settings/health)
+
+<a id="operator-runtime" />
+
+### 生产运行时边界
+
+控制面管理版本，NeMo 执行检查，应用或网关执行最终决策。
+
+- 发布时编译并验证不可变 NeMoConfigSnapshot，计算 checksum，再预热确切 runtime profile。
+- 活动版本常驻 runtime registry；生产请求不会在热路径临时构建运行时。
+- 简单计划可由编译器选择 Colang 1 standard profile；自定义可编程 Policy 使用 Colang 2。不要手工切换 profile。
+- 每个 Guardrail Version 有独立并发限制；排队时间计入请求总 deadline。
+- 必需检查的超时、队列超时或 Provider 错误会按版本化 fail-open/fail-closed 配置处理。
+
+<a id="operator-routing" />
+
+### Endpoint、Router、Route 与 Selector
+
+从 Endpoint 身份到 Traffic Router 路由：先确认流量身份，再按顺序匹配；不能用可伪造字段代替认证边界。
+
+1. **注册 Endpoint** — 为每个应用、Agent、网关或信任边界创建独立身份和凭据。
+
+2. **创建 Router** — 一个 Endpoint 最多绑定一个 Router；一个 Router 可服务多个 Endpoints。Router 内按 Route 顺序匹配 Selector，命中后按权重选择 Guardrail Target。
+
+3. **保留 fallback** — 无条件的 fallback Route 固定在最后。选择 latest 的 Target 会在 Router 发布时解析为确切版本，不会随 Guardrail 更新而自动切换。
+
+4. **验证可信上下文** — 使用实际协议支持的 Selector 字段。Endpoint 凭据建立身份；调用方传入的 headers 或 jwt_claims 不会自动成为已验证身份。
+
+[管理 Endpoints](/integration/endpoint)
+
+[管理 Traffic Routers](/integration/routers)
+
+<a id="operator-release-rollback" />
+
+### 安全发布与回滚
+
+区分 Guardrail 版本、Router revision 和 Runner 已应用的 generation；请求已接受不代表流量已切换。
+
+- 发布前确认当前 Validation Run 通过、checksum 已生成、依赖和专用模型可用。
+- 在 Settings / Health 查看运行健康，并在 Router Overview 核对 rolloutStatus 和 desiredGeneration。
+- Router 回滚会基于历史快照发布新的 revision；Guardrail 回滚重新激活已就绪的历史版本。已发布 Router 固定的 Guardrail Target 如需变更，应重新发布 Router。
+- 进行中的调用继续使用开始时固定的版本；Runner 应用新的 Router revision 后，新调用才使用新的路由快照。
+- 不要修改历史 artifact 或在进程外替换源码；任何语义变化都应创建新版本。
+
+[查看 Guardrails](/guardrails)
+
+[查看运行日志](/logs)
+
+<a id="router-rollout-states" />
+
+### Router 下发状态
+
+以下卡片解释状态含义，不表示当前系统的实时状态。Router 状态由 Controller 根据 revision、generation、Runner 确认与心跳推导；它不是 RouterRevision protobuf 中的生命周期枚举。
+
+<StateCards>
+
+<StateCard title="尚未发布" code="unpublished">
+
+<StateDetail label="含义">
+
+尚无活动 Router revision，路由配置尚未发布。
+
+</StateDetail>
+
+<StateDetail label="状态变化">
+
+首次发布生成 revision 和 desired generation，进入 distributing。
+
+</StateDetail>
+
+<StateDetail label="下一步">
+
+完成 Route 和 Target 配置后发布。
+
+</StateDetail>
+
+</StateCard>
+
+<StateCard title="正在下发" code="distributing">
+
+<StateDetail label="含义">
+
+已有活动 revision，但默认池 Runner 尚未全部确认当前 generation，或心跳已过期。
+
+</StateDetail>
+
+<StateDetail label="状态变化">
+
+所有 Runner 确认且心跳有效后进入 active；未收敛且存在下发错误时进入 failed。
+
+</StateDetail>
+
+<StateDetail label="下一步">
+
+检查 Runner 连接、预热过程及 desired/applied generation。
+
+</StateDetail>
+
+</StateCard>
+
+<StateCard title="已生效" code="active">
+
+<StateDetail label="含义">
+
+默认池至少有一个 Runner，所有 Runner 已应用目标 generation 或更新版本，且心跳有效。
+
+</StateDetail>
+
+<StateDetail label="状态变化">
+
+发布新 revision 后重新检查收敛；心跳过期或未应用新 generation 时不再视为 active。
+
+</StateDetail>
+
+<StateDetail label="下一步">
+
+观察流量和运行日志；进行中的调用仍使用开始时固定的版本。
+
+</StateDetail>
+
+</StateCard>
+
+<StateCard title="下发失败" code="failed">
+
+<StateDetail label="含义">
+
+当前 generation 尚未收敛，并记录了下发错误；不能据此认为所有 Runner 都已停止服务。
+
+</StateDetail>
+
+<StateDetail label="状态变化">
+
+修复后重新发布会清除旧错误并重新下发；全部 Runner 有效确认后进入 active。
+
+</StateDetail>
+
+<StateDetail label="下一步">
+
+查看 rolloutError 和 Runner 拒绝原因，修复依赖或配置后重新发布。
+
+</StateDetail>
+
+</StateCard>
+
+</StateCards>
+
+> 协议中的 DesiredStateResult.accepted 只有在整代配置预热并原子切换后才为 true。Runner 拒绝该代配置时，继续保留之前已应用的配置。这里的确认不同于发布 API 已接受请求。
+
+<a id="guardrail-build-states" />
+
+### Guardrail 编译状态
+
+编译状态与版本的 Active / Historical 选择、Router 的流量下发状态分开理解。
+
+<StateCards>
+
+<StateCard title="编译中" code="compiling" state="distributing">
+
+<StateDetail label="含义">
+
+正在构建 Guardrail 版本的不可变运行时产物。
+
+</StateDetail>
+
+<StateDetail label="状态变化">
+
+编译成功进入 ready，编译失败进入 failed。
+
+</StateDetail>
+
+<StateDetail label="下一步">
+
+等待完成；失败时查看编译错误。
+
+</StateDetail>
+
+</StateCard>
+
+<StateCard title="编译就绪" code="ready">
+
+<StateDetail label="含义">
+
+版本产物已就绪；这不代表 Router 已把流量切到该版本。
+
+</StateDetail>
+
+<StateDetail label="状态变化">
+
+版本可被选作发布或回滚目标；流量是否生效仍由 Router 下发状态决定。
+
+</StateDetail>
+
+<StateDetail label="下一步">
+
+如需变更已发布 Router 的固定 Target，重新发布 Router。
+
+</StateDetail>
+
+</StateCard>
+
+<StateCard title="编译失败" code="failed">
+
+<StateDetail label="含义">
+
+当前版本未成功生成可用产物。
+
+</StateDetail>
+
+<StateDetail label="状态变化">
+
+修复配置后重新发起编译，再检查新结果。
+
+</StateDetail>
+
+<StateDetail label="下一步">
+
+查看编译错误，修复 Policy、Rule 或依赖。
+
+</StateDetail>
+
+</StateCard>
+
+</StateCards>
+
+<a id="operator-troubleshooting" />
+
+### 故障处理顺序
+
+先判断路由与版本，再看 Rail、Action 和 Provider，最后看容量。
+
+1. **身份与路由** — 确认 Endpoint 已启用且凭据匹配、Router 绑定正确、Route 顺序与 Selector 可信字段符合预期。
+
+2. **版本状态** — 确认 Router 指向预期 Guardrail Version，checksum 与发布记录一致。
+
+3. **Rail 与 Action** — 从运行日志检查命中的 Policy、Rule、Rail、Action、实际 Decision 和延迟。
+
+4. **Provider 与依赖** — 确认专用 evaluator、模型、网络和 Secret 可用；不要用通用聊天模型冒充 runtime judge。
+
+5. **容量与超时** — 查看排队、Rail、Action 和 Provider 延迟，区分并发饱和、deadline 与真实检测失败。
+
+[查看运行日志](/logs)
+
+[查看 Endpoints](/integration/endpoint)

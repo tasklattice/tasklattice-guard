@@ -1,245 +1,141 @@
-import { useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ComponentProps } from "react";
 import { Link } from "@tanstack/react-router";
-import {
-  ArrowRight,
-  BookOpen,
-  CheckCircle2,
-  CircleHelp,
-  Code2,
-  Network,
-  Search,
-  ShieldCheck,
-  UserRound,
-  Wrench,
-} from "lucide-react";
+import { ArrowRight, ChevronRight, Search, X } from "lucide-react";
+import type { MDXComponents } from "mdx/types";
 import { useTranslation } from "react-i18next";
-
-import { PageHeader } from "@/components/product-shell";
-import { Badge } from "@/components/ui/badge";
+import { helpStructuralComponents } from "@/components/help/document-blocks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  getHelpContent,
-  searchHelpContent,
-  type GlossaryEntry,
-  type HelpArticle,
-  type HelpContent,
-  type HelpGuide,
-} from "@/features/help-content";
-import { cn } from "@/lib/utils";
+import { getHelpContent, searchHelpContent, type HelpContent, type HelpDocument } from "@/features/help-content";
 
-const ROLE_ICONS = { user: UserRound, developer: Code2, operator: Wrench } as const;
+
+function DocumentLink({ href = "", children, ...props }: ComponentProps<"a">) {
+  const className = "inline-flex min-h-11 items-center gap-1 rounded-md px-2 text-primary underline underline-offset-4 hover:bg-primary/5";
+  // Server documents must make an HTTP request rather than enter the SPA router.
+  return href.startsWith("/") && !href.startsWith("//") && !href.startsWith("/api/") && href !== "/metrics"
+    ? <Link {...props} to={href} className={className}>{children}<ArrowRight className="size-3.5 shrink-0" /></Link>
+    : <a {...props} href={href} className={className}>{children}<ArrowRight className="size-3.5 shrink-0" /></a>;
+}
+const mdxComponents: MDXComponents = {
+  ...helpStructuralComponents,
+  h2: props => <h2 {...props} className="mt-8 scroll-mt-24 text-xl font-semibold" />,
+  h3: props => <h3 {...props} className="mt-8 scroll-mt-24 border-t pt-6 text-lg font-semibold first:mt-0 first:border-0 first:pt-0" />,
+  p: props => <p {...props} className="mt-3 max-w-[80ch] text-sm leading-7 text-foreground/85" />,
+  ul: props => <ul {...props} className="mt-4 max-w-[80ch] list-disc space-y-2 pl-5 text-sm leading-7" />,
+  ol: props => <ol {...props} className="mt-4 max-w-[80ch] list-decimal space-y-3 pl-5 text-sm leading-7" />,
+  blockquote: props => <blockquote {...props} className="my-5 border-l-2 border-primary bg-primary/5 px-4 py-1 text-muted-foreground" />,
+  pre: props => <pre {...props} className="my-4 overflow-x-auto rounded-lg border bg-muted/30 p-4 text-xs leading-6" />,
+  code: ({ children, ...props }) => <code {...props}>{typeof children === "string" ? children.replaceAll("{controllerOrigin}", typeof window === "undefined" ? "$CONTROLLER_URL" : window.location.origin) : children}</code>,
+  a: DocumentLink,
+  table: props => <div className="my-4 overflow-x-auto"><table {...props} className="w-full border-collapse text-left text-sm" /></div>,
+  th: props => <th {...props} className="border bg-muted/30 px-3 py-2" />,
+  td: props => <td {...props} className="border px-3 py-2" />,
+};
+
+function DocumentSection({ document }: { document: HelpDocument }) {
+  const { Content } = document;
+  return <section id={document.id} className="scroll-mt-24 outline-none" tabIndex={-1}>
+    {document.label ? <p className="text-xs font-medium text-primary">{document.label}</p> : null}
+    <h2 className="mt-1 text-2xl font-semibold">{document.title}</h2>
+    <p className="mt-3 max-w-[80ch] text-sm leading-7 text-muted-foreground">{document.summary}</p>
+    {document.outcome ? <p className="mt-2 text-xs font-medium">{document.outcome}</p> : null}
+    <div className="mt-5"><Content components={mdxComponents} /></div>
+  </section>;
+}
+function HelpContents({ content, expanded, onToggle, onNavigate }: { content: HelpContent; expanded: Set<string>; onToggle: (id: string) => void; onNavigate: (id: string) => void }) {
+  const contentsId = useId();
+  const linkClass = "flex min-h-11 items-center rounded-md px-2 text-xs text-muted-foreground hover:bg-muted/60 hover:text-foreground focus-visible:outline-primary";
+  return <nav aria-label={content.labels.contents} className="space-y-1" onClick={event => { const link = (event.target as HTMLElement).closest("a"); if (link?.hash) { event.preventDefault(); onNavigate(decodeURIComponent(link.hash.slice(1))); } }}>
+    {[content.api, ...content.documents].map(document => <div key={document.id}>
+      <div className="flex items-center">
+        <a className={`${linkClass} min-w-0 flex-1 font-medium text-foreground`} href={`#${document.id}`}>{document.label ?? document.title}</a>
+        {document.sections.length > 0 ? <Button variant="ghost" size="icon" className="size-11 shrink-0" aria-label={document.label ?? document.title} aria-expanded={expanded.has(document.id)} aria-controls={`${contentsId}-${document.id}`} onClick={() => onToggle(document.id)}>
+          <ChevronRight aria-hidden="true" className={`size-4 ${expanded.has(document.id) ? "rotate-90" : ""}`} />
+        </Button> : null}
+      </div>
+      {document.sections.length > 0 ? <div id={`${contentsId}-${document.id}`} hidden={!expanded.has(document.id)} className="ml-2 border-l pl-2">{document.sections.map(section => <a key={section.id} className={linkClass} href={`#${section.id}`}>{section.title}</a>)}</div> : null}
+    </div>)}
+  </nav>;
+}
 
 export function HelpPage() {
   const { i18n } = useTranslation();
   const locale = i18n.language.toLowerCase().startsWith("zh") ? "zh-CN" : "en";
   const content = useMemo(() => getHelpContent(locale), [locale]);
+  const [expanded, setExpanded] = useState<Set<string>>(() => {
+    const anchor = typeof window === "undefined" ? "" : window.location.hash.slice(1);
+    return new Set([content.api, ...content.documents].filter(document => document.id === anchor || document.sections.some(section => section.id === anchor)).map(document => document.id));
+  });
+  function toggleContents(id: string) {
+    setExpanded(previous => {
+      const next = new Set(previous);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
   const [query, setQuery] = useState("");
-  const searching = Boolean(query.trim());
+  const [pendingAnchor, setPendingAnchor] = useState<string>();
+  const mobileContents = useRef<HTMLDetailsElement>(null);
   const results = useMemo(() => searchHelpContent(content, query), [content, query]);
-  const resultCount = results.guides.reduce((total, item) => total + item.articles.length, 0) + results.glossary.length;
+  const searching = Boolean(query.trim());
+  const { labels, api } = content;
+  const ApiContent = api.Content;
+  function navigate(id: string) {
+    const parent = [content.api, ...content.documents].find(document => document.id === id || document.sections.some(section => section.id === id));
+    if (parent) setExpanded(previous => new Set(previous).add(parent.id));
+    if (mobileContents.current) mobileContents.current.open = false;
+    setPendingAnchor(id);
+  }
+  useEffect(() => {
+    if (!pendingAnchor) return;
+    const frame = requestAnimationFrame(() => {
+      const target = document.getElementById(pendingAnchor);
+      if (target) {
+        target.tabIndex = -1;
+        target.focus({ preventScroll: true });
+        target.scrollIntoView({ block: "start" });
+        window.history.replaceState(window.history.state, "", `#${pendingAnchor}`);
+      }
+      setPendingAnchor(undefined);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [pendingAnchor]);
 
-  return (
-    <section className="py-6 sm:py-8">
-      <PageHeader title={content.title} description={content.description} />
-
-      <div className="mt-6 overflow-hidden rounded-xl border bg-card shadow-[var(--shadow-surface)]">
-        <div className="grid gap-5 p-5 sm:p-6 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-end">
-          <div className="min-w-0">
-            <div className="flex items-center gap-3">
-              <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><BookOpen className="size-5" /></span>
-              <div><h2 className="text-base font-semibold">{content.searchLabel}</h2><p className="mt-0.5 text-xs leading-5 text-muted-foreground">{content.searchHint}</p></div>
-            </div>
-            <label className="relative mt-4 block max-w-3xl">
-              <span className="sr-only">{content.searchLabel}</span>
-              <Search className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input value={query} onChange={(event) => setQuery(event.target.value)} className="min-h-12 bg-background pl-10 pr-24" placeholder={content.searchPlaceholder} />
-              {searching ? <Button type="button" variant="ghost" size="sm" className="absolute top-1/2 right-1 min-h-11 -translate-y-1/2 px-3 text-xs" onClick={() => setQuery("")}>{content.clearSearch}</Button> : null}
-            </label>
-          </div>
-          <div className="rounded-lg border bg-muted/20 px-4 py-3 text-xs leading-5 text-muted-foreground">
-            <strong className="block text-sm font-medium text-foreground">{content.choosePath}</strong>
-            <span className="mt-1 block">{content.choosePathDescription}</span>
-          </div>
-        </div>
-      </div>
-
-      {!searching ? <MobileContents content={content} /> : null}
-
-      <div className="mt-6 grid min-w-0 gap-8 lg:grid-cols-[15rem_minmax(0,1fr)] lg:items-start">
-        <aside className="sticky top-24 hidden max-h-[calc(100dvh-7rem)] overflow-y-auto pr-5 lg:block" aria-label={content.contents}>
-          <HelpContents content={content} />
-        </aside>
-        <div className="min-w-0">
-          {searching ? (
-            <SearchResults content={content} query={query} count={resultCount} guides={results.guides} glossary={results.glossary} onClear={() => setQuery("")} />
-          ) : (
-            <div className="space-y-12">
-              <Overview content={content} />
-              <RolePaths content={content} />
-              {content.guides.map((guide) => <GuideSection key={guide.id} content={content} guide={guide} />)}
-              <Glossary content={content} entries={content.glossary} />
-            </div>
-          )}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function MobileContents({ content }: { content: HelpContent }) {
-  return (
-    <details className="group mt-4 rounded-lg border bg-card lg:hidden">
-      <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between px-4 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
-        <span className="flex items-center gap-2"><CircleHelp className="size-4 text-primary" />{content.contents}</span>
-        <ArrowRight className="size-4 text-muted-foreground transition-transform group-open:rotate-90" />
-      </summary>
-      <div className="border-t p-4"><HelpContents content={content} compact /></div>
-    </details>
-  );
-}
-
-function HelpContents({ content, compact = false }: { content: HelpContent; compact?: boolean }) {
-  const linkClass = "flex min-h-11 items-center rounded-md px-2.5 text-xs text-muted-foreground outline-none hover:bg-muted/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring";
-  return (
-    <nav>
-      {!compact ? <h2 className="px-2.5 text-sm font-semibold">{content.contents}</h2> : null}
-      <div className={cn("space-y-4", !compact && "mt-3")}>
-        <div>
-          <a className={linkClass} href="#overview">{content.overviewTitle}</a>
-        </div>
-        {content.guides.map((guide) => (
-          <div key={guide.id}>
-            <a className={cn(linkClass, "font-medium text-foreground")} href={`#guide-${guide.id}`}>{guide.label}</a>
-            <div className="ml-2 border-l pl-2">
-              {guide.articles.map((article) => <a key={article.id} className={linkClass} href={`#${article.id}`}>{article.title}</a>)}
-            </div>
-          </div>
-        ))}
-        <div><a className={cn(linkClass, "font-medium text-foreground")} href="#glossary">{content.glossaryTitle}</a></div>
-      </div>
-    </nav>
-  );
-}
-
-function Overview({ content }: { content: HelpContent }) {
-  return (
-    <section id="overview" className="scroll-mt-24">
-      <p className="text-xs font-medium text-primary">{content.overviewLabel}</p>
-      <h2 className="mt-1.5 text-2xl font-semibold">{content.overviewTitle}</h2>
-      <p className="mt-3 max-w-4xl text-sm leading-7 text-muted-foreground">{content.overviewDescription}</p>
-      <div className="mt-6 rounded-xl border bg-card p-5 sm:p-6">
-        <div className="flex items-start gap-3"><Network className="mt-0.5 size-5 shrink-0 text-primary" /><div><h3 className="text-base font-semibold">{content.architectureTitle}</h3><p className="mt-1 text-sm leading-6 text-muted-foreground">{content.architectureDescription}</p></div></div>
-        <ol className="mt-5 grid gap-0 sm:grid-cols-2 xl:grid-cols-6">
-          {content.architecture.map((item, index) => (
-            <li key={item.name} className="relative border-l px-4 py-3 first:border-l-0 sm:[&:nth-child(odd)]:border-l-0 xl:[&:nth-child(odd)]:border-l xl:first:border-l-0">
-              <span className="font-mono text-[10px] text-primary">{String(index + 1).padStart(2, "0")}</span>
-              <strong className="mt-1 block text-sm font-medium">{item.name}</strong>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">{item.description}</p>
-            </li>
-          ))}
-        </ol>
-      </div>
-    </section>
-  );
-}
-
-function RolePaths({ content }: { content: HelpContent }) {
-  return (
-    <section aria-labelledby="role-paths-title">
-      <h2 id="role-paths-title" className="text-xl font-semibold">{content.choosePath}</h2>
-      <p className="mt-1 text-sm leading-6 text-muted-foreground">{content.choosePathDescription}</p>
-      <div className="mt-5 grid gap-3 md:grid-cols-3">
-        {content.guides.map((guide) => {
-          const Icon = ROLE_ICONS[guide.id];
-          return (
-            <a key={guide.id} href={`#guide-${guide.id}`} className="group flex min-h-44 flex-col rounded-xl border bg-card p-4 outline-none transition-[border-color,box-shadow] hover:border-primary/30 hover:shadow-sm focus-visible:ring-2 focus-visible:ring-ring">
-              <span className="grid size-9 place-items-center rounded-lg bg-muted text-primary"><Icon className="size-4.5" /></span>
-              <strong className="mt-4 text-sm font-semibold">{guide.label}</strong>
-              <span className="mt-1 text-xs leading-5 text-muted-foreground">{guide.summary}</span>
-              <span className="mt-auto flex items-center gap-1 pt-4 text-xs font-medium text-primary">{guide.title}<ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" /></span>
+  function directory() {
+    return <>
+      <label className="relative block shrink-0">
+        <span className="sr-only">{labels.searchLabel}</span>
+        <Search aria-hidden="true" className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Input type="search" value={query} onChange={event => setQuery(event.target.value)} className="h-11 bg-card pl-9 pr-11 [&::-webkit-search-cancel-button]:appearance-none" placeholder={labels.searchPlaceholder} />
+        {searching ? <Button variant="ghost" size="icon" aria-label={labels.clearSearch} className="absolute top-0 right-0 size-11" onClick={() => setQuery("")}><X className="size-4" /></Button> : null}
+      </label>
+      <div className="mt-3 min-h-0 overflow-y-auto overscroll-contain">
+        {searching ? <>
+          <p role="status" className="px-2 py-2 text-xs text-muted-foreground">{labels.searchResults} ({results.length})</p>
+          {!results.length ? <div className="px-2 py-4"><p className="text-sm font-medium">{labels.noResultsTitle}</p><p className="mt-2 text-xs leading-5 text-muted-foreground">{labels.noResultsDescription}</p></div> : null}
+          <nav aria-label={labels.searchResults}><ul className="space-y-1">{results.map(result => <li key={result.id}>
+            <a href={`#${result.id}`} className="block min-h-11 rounded-md p-2 hover:bg-muted/60 focus-visible:outline-primary" onClick={event => { event.preventDefault(); navigate(result.id); }}>
+              <span className="block text-[11px] text-muted-foreground">{result.documentTitle}</span>
+              <span className="mt-1 block text-sm font-medium text-primary">{result.title}</span>
             </a>
-          );
-        })}
+          </li>)}</ul></nav>
+        </> : <HelpContents content={content} expanded={expanded} onToggle={toggleContents} onNavigate={navigate} />}
       </div>
-    </section>
-  );
-}
+    </>;
+  }
 
-function GuideSection({ content, guide, articles = guide.articles }: { content: HelpContent; guide: HelpGuide; articles?: HelpArticle[] }) {
-  const Icon = ROLE_ICONS[guide.id];
-  return (
-    <section id={`guide-${guide.id}`} className="scroll-mt-24">
-      <header className="flex items-start gap-4">
-        <span className="grid size-11 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><Icon className="size-5" /></span>
-        <div className="min-w-0"><p className="text-xs font-medium text-primary">{content.guideLabel} / {guide.label}</p><h2 className="mt-1 text-2xl font-semibold">{guide.title}</h2><p className="mt-2 max-w-4xl text-sm leading-6 text-muted-foreground">{guide.summary}</p><p className="mt-2 text-xs font-medium text-foreground">{guide.outcome}</p></div>
-      </header>
-      <div className="mt-6 divide-y overflow-hidden rounded-xl border bg-card">
-        {articles.map((article) => <GuideArticle key={article.id} content={content} article={article} />)}
-      </div>
-    </section>
-  );
-}
-
-function GuideArticle({ content, article }: { content: HelpContent; article: HelpArticle }) {
-  return (
-    <article id={article.id} className="scroll-mt-24 p-5 sm:p-6">
-      <h3 className="text-lg font-semibold">{article.title}</h3>
-      <p className="mt-1 text-sm leading-6 text-muted-foreground">{article.summary}</p>
-      {article.paragraphs?.map((paragraph) => <p key={paragraph} className="mt-4 text-sm leading-7 text-foreground/85">{paragraph}</p>)}
-      {article.steps ? <StepList steps={article.steps} /> : null}
-      {article.bullets ? <ul className="mt-4 space-y-2">{article.bullets.map((bullet) => <li key={bullet} className="flex gap-2.5 text-sm leading-6 text-foreground/85"><CheckCircle2 className="mt-1 size-4 shrink-0 text-primary" /><span>{bullet}</span></li>)}</ul> : null}
-      {article.terms ? <TermRows label={content.keyConcepts} terms={article.terms} /> : null}
-      {article.note ? <div className="mt-5 border-l-2 border-primary bg-primary/[0.035] px-4 py-3 text-xs leading-6 text-muted-foreground">{article.note}</div> : null}
-      {article.links?.length ? <div className="mt-5 flex flex-wrap items-center gap-2"><span className="mr-1 text-xs text-muted-foreground">{content.relatedPages}</span>{article.links.map((link) => <Button key={link.to} size="sm" variant="outline" className="min-h-11" asChild><Link to={link.to}>{link.label}<ArrowRight /></Link></Button>)}</div> : null}
-    </article>
-  );
-}
-
-function StepList({ steps }: { steps: HelpArticle["steps"] }) {
-  return <ol className="mt-5 grid gap-3">{steps?.map((step, index) => <li key={step.title} className="grid grid-cols-[2rem_minmax(0,1fr)] gap-3"><span className="grid size-8 place-items-center rounded-full border bg-muted/30 font-mono text-xs text-primary">{index + 1}</span><div className="pt-1"><strong className="block text-sm font-medium">{step.title}</strong><p className="mt-1 text-xs leading-5 text-muted-foreground">{step.description}</p></div></li>)}</ol>;
-}
-
-function TermRows({ label, terms }: { label: string; terms: NonNullable<HelpArticle["terms"]> }) {
-  return (
-    <div className="mt-5 overflow-hidden rounded-lg border">
-      <p className="border-b bg-muted/25 px-4 py-2.5 text-xs font-medium text-muted-foreground">{label}</p>
-      <dl className="divide-y">{terms.map((term) => <div key={term.name} className="grid gap-1 px-4 py-3 sm:grid-cols-[10rem_minmax(0,1fr)] sm:gap-5"><dt className="font-mono text-xs font-medium text-foreground">{term.name}</dt><dd className="text-xs leading-5 text-muted-foreground">{term.description}</dd></div>)}</dl>
+  return <section className="py-4">
+    <header className="flex flex-wrap items-center justify-between gap-x-6 gap-y-1 border-b pb-3">
+      <h1 className="font-display text-2xl font-semibold tracking-tight">{labels.title}</h1>
+      <nav id={api.id} aria-label={api.title} className="flex scroll-mt-24 flex-wrap gap-x-1 [&>p]:mt-0 [&_a]:text-xs [&_a]:font-medium [&_a]:no-underline"><ApiContent components={mdxComponents} /></nav>
+    </header>
+    <details ref={mobileContents} className="mt-4 rounded-lg border bg-card px-3 lg:hidden">
+      <summary className="flex min-h-11 cursor-pointer list-item items-center py-3 text-sm font-medium">{labels.contents}</summary>
+      <div className="flex max-h-[60dvh] flex-col pb-3">{directory()}</div>
+    </details>
+    <div className="mt-5 grid min-w-0 gap-6 lg:grid-cols-[15rem_minmax(0,1fr)] lg:items-start">
+      <aside className="sticky top-20 hidden max-h-[calc(100dvh-6rem)] flex-col border-r pr-4 lg:flex">{directory()}</aside>
+      <div className="min-w-0 space-y-12 pb-8">{content.documents.map(document => <DocumentSection key={document.id} document={document} />)}</div>
     </div>
-  );
-}
-
-function Glossary({ content, entries }: { content: HelpContent; entries: GlossaryEntry[] }) {
-  return (
-    <section id="glossary" className="scroll-mt-24">
-      <p className="text-xs font-medium text-primary">{content.keyConcepts}</p>
-      <h2 className="mt-1.5 text-2xl font-semibold">{content.glossaryTitle}</h2>
-      <p className="mt-2 max-w-4xl text-sm leading-6 text-muted-foreground">{content.glossaryDescription}</p>
-      <div className="mt-6 divide-y overflow-hidden rounded-xl border bg-card">
-        {entries.map((entry) => <GlossaryRow key={entry.id} content={content} entry={entry} />)}
-      </div>
-    </section>
-  );
-}
-
-function GlossaryRow({ content, entry }: { content: HelpContent; entry: GlossaryEntry }) {
-  return (
-    <article id={`term-${entry.id}`} className="scroll-mt-24 grid gap-3 p-4 sm:grid-cols-[11rem_minmax(0,1fr)] sm:gap-6 sm:p-5">
-      <div><h3 className="font-mono text-sm font-medium">{entry.term}</h3>{entry.aliases.length ? <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{entry.aliases.join(" · ")}</p> : null}</div>
-      <div className="min-w-0"><p className="text-sm leading-6">{entry.definition}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{entry.background}</p><div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">{entry.audiences.map((audience) => <span key={audience}>{content.audienceLabels[audience]}</span>)}</div></div>
-    </article>
-  );
-}
-
-function SearchResults({ content, query, count, guides, glossary, onClear }: { content: HelpContent; query: string; count: number; guides: Array<{ guide: HelpGuide; articles: HelpArticle[] }>; glossary: GlossaryEntry[]; onClear: () => void }) {
-  if (!count) return <div className="flex min-h-80 flex-col items-center justify-center rounded-xl border border-dashed bg-card px-6 text-center"><Search className="size-7 text-muted-foreground" /><h2 className="mt-3 text-base font-semibold">{content.noResultsTitle}</h2><p className="mt-1 max-w-md text-sm leading-6 text-muted-foreground">{content.noResultsDescription}</p><Button className="mt-5 min-h-11" variant="outline" onClick={onClear}>{content.clearSearch}</Button></div>;
-  return (
-    <section aria-live="polite">
-      <div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-xs font-medium text-primary">{content.searchResults}</p><h2 className="mt-1 text-2xl font-semibold">“{query.trim()}”</h2></div><Badge variant="outline">{count}</Badge></div>
-      <div className="mt-7 space-y-10">
-        {guides.length ? <section><h3 className="text-sm font-semibold">{content.roleResults}</h3><div className="mt-3 space-y-6">{guides.map((item) => <GuideSection key={item.guide.id} content={content} guide={item.guide} articles={item.articles} />)}</div></section> : null}
-        {glossary.length ? <section><h3 className="text-sm font-semibold">{content.glossaryResults}</h3><div className="mt-3 divide-y overflow-hidden rounded-xl border bg-card">{glossary.map((entry) => <GlossaryRow key={entry.id} content={content} entry={entry} />)}</div></section> : null}
-      </div>
-    </section>
-  );
+  </section>;
 }

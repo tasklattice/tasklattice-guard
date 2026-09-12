@@ -53,6 +53,8 @@ import {
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
+const ENDPOINT_COLUMNS = "xl:grid-cols-[minmax(160px,1fr)_160px_160px_150px_120px_16px]";
+
 const ADAPTERS: ReadonlyArray<{ id: EndpointAdapterId; protocol: EndpointProtocol }> = [
   { id: "litellm-generic-guardrail", protocol: "litellm" },
   { id: "generic-http-guard", protocol: "http" },
@@ -72,7 +74,7 @@ export function EndpointsPage({ endpointId, onEndpointChange }: {
   const { t, i18n } = useTranslation();
   const auth = useAuth();
   const queryClient = useQueryClient();
-  const query = useQuery({ queryKey: queryKeys.endpoints, queryFn: getEndpoints });
+  const query = useQuery({ queryKey: queryKeys.endpoints, queryFn: getEndpoints, refetchInterval: 30_000 });
   const [createOpen, setCreateOpen] = useState(false);
   const [localSelected, setLocalSelected] = useState<Endpoint | null>(null);
   const linkedEndpoint = useQuery({
@@ -148,12 +150,12 @@ export function EndpointsPage({ endpointId, onEndpointChange }: {
             <span>{t("endpoints.listSummary", { total: endpoints.length, verified })}</span>
             {attention ? <span className="font-medium text-destructive">{t("endpoints.needsAttention", { count: attention })}</span> : null}
           </div>
-          <div className="hidden grid-cols-[minmax(220px,1fr)_190px_170px_140px_120px_24px] border-b bg-muted/20 px-5 py-3 text-xs font-medium text-muted-foreground lg:grid">
+          <div className={cn("hidden gap-4 border-b bg-muted/20 px-5 py-3 text-xs font-medium text-muted-foreground xl:grid", ENDPOINT_COLUMNS)}>
             <span>{t("endpoints.gatewayInstance")}</span>
             <span>{t("endpoints.setup")}</span>
+            <span>{t("endpoints.successRate24h")}</span>
+            <span>{t("endpoints.detectionP9524h")}</span>
             <span>{t("endpoints.lastCallback")}</span>
-            <span>{t("endpoints.traffic")}</span>
-            <span>{t("endpoints.health")}</span>
             <span />
           </div>
           <div className="divide-y divide-border">
@@ -218,7 +220,7 @@ function EndpointRow({ endpoint, onOpen }: { endpoint: Endpoint; onOpen: () => v
       type="button"
       onClick={onOpen}
       aria-label={t("endpoints.openEndpoint", { name: endpoint.name })}
-      className="group relative grid min-h-24 w-full gap-4 p-5 text-left transition-colors hover:bg-muted/40 focus-visible:outline-2 focus-visible:outline-ring lg:grid-cols-[minmax(220px,1fr)_190px_170px_140px_120px_24px] lg:items-center"
+      className={cn("group relative grid min-h-24 w-full gap-4 p-5 text-left transition-colors hover:bg-muted/40 focus-visible:outline-2 focus-visible:outline-ring xl:items-center", ENDPOINT_COLUMNS)}
     >
       <div className="min-w-0">
         <span className="flex items-center gap-2.5">
@@ -230,24 +232,38 @@ function EndpointRow({ endpoint, onOpen }: { endpoint: Endpoint; onOpen: () => v
         </span>
       </div>
       <ListDatum label={t("endpoints.setup")}><SetupBadge status={endpoint.setup_status} /></ListDatum>
+      <ListDatum label={t("endpoints.successRate24h")}><EndpointSuccessRate endpoint={endpoint} /></ListDatum>
+      <ListDatum label={t("endpoints.detectionP9524h")}>
+        <span className="text-xs tabular-nums" title={t("endpoints.detectionP95Explanation")}>
+          {endpoint.request_count > 0 && endpoint.detection_p95_ms != null ? `${endpoint.detection_p95_ms.toLocaleString(i18n.language)} ms` : "—"}
+        </span>
+      </ListDatum>
       <ListDatum label={t("endpoints.lastCallback")}>
         <time className="text-xs" dateTime={endpoint.last_seen_at ?? undefined} title={formatDate(endpoint.last_seen_at, i18n.language)}>
           {endpoint.last_seen_at ? formatRelativeDate(endpoint.last_seen_at, i18n.language) : t("endpoints.never")}
         </time>
       </ListDatum>
-      <ListDatum label={t("endpoints.traffic")}>
-        <span className="font-mono text-xs">{t("endpoints.requestErrorCount", { requests: endpoint.request_count, errors: endpoint.error_count })}</span>
-      </ListDatum>
-      <ListDatum label={t("endpoints.health")}><StateBadge state={endpoint.runtime_status} /></ListDatum>
-      <ChevronRight className="absolute right-4 top-5 size-4 text-muted-foreground lg:static" />
+      <ChevronRight className="absolute right-4 top-5 size-4 text-muted-foreground xl:static" />
     </button>
   );
 }
 
+function EndpointSuccessRate({ endpoint }: { endpoint: Endpoint }) {
+  const { t, i18n } = useTranslation();
+  if (!endpoint.request_count) return <span className="text-xs text-muted-foreground">{t("endpoints.noRequests")}</span>;
+  const successes = Math.max(0, Math.min(endpoint.request_count, endpoint.request_count - endpoint.error_count));
+  // Never round a non-zero failure rate up to a perfect 100%.
+  const percent = Math.floor(successes * 10_000 / endpoint.request_count) / 100;
+  return <span className="block text-xs" title={t("endpoints.successRateExplanation")}>
+    <span className="block font-medium tabular-nums">{percent.toLocaleString(i18n.language, { maximumFractionDigits: 2 })}%</span>
+    <span className="mt-1 block text-muted-foreground">{t("endpoints.requestSample", { count: endpoint.request_count.toLocaleString(i18n.language) })}</span>
+  </span>;
+}
+
 function ListDatum({ children, label }: { children: ReactNode; label: string }) {
   return (
-    <span className="grid grid-cols-[7rem_minmax(0,1fr)] items-center gap-3 text-muted-foreground lg:block lg:text-foreground">
-      <span className="text-xs font-medium text-muted-foreground lg:sr-only">{label}</span>
+    <span className="grid grid-cols-[7rem_minmax(0,1fr)] items-center gap-3 text-muted-foreground xl:block xl:text-foreground">
+      <span className="text-xs font-medium text-muted-foreground xl:sr-only">{label}</span>
       <span className="min-w-0">{children}</span>
     </span>
   );
@@ -384,7 +400,6 @@ function EndpointDetailContent({
             </div>
             <div className="flex items-center gap-2">
               <SetupBadge status={endpoint.setup_status} />
-              <StateBadge state={endpoint.runtime_status} />
             </div>
           </div>
           <dl className="divide-y divide-border">
@@ -445,8 +460,8 @@ function EndpointDetailContent({
           <dl className="divide-y divide-border">
             <Detail label={t("endpoints.inputCallback")}>{callbackTimestamp(endpoint.input_seen_at, i18n.language, t("endpoints.notReceived"))}</Detail>
             <Detail label={t("endpoints.outputCallback")}>{callbackTimestamp(endpoint.output_seen_at, i18n.language, t("endpoints.notReceived"))}</Detail>
-            <Detail label={t("endpoints.requests")} mono>{endpoint.request_count.toLocaleString(i18n.language)}</Detail>
-            <Detail label={t("endpoints.errors")} mono>{endpoint.error_count.toLocaleString(i18n.language)}</Detail>
+            <Detail label={t("endpoints.successRate24h")}><EndpointSuccessRate endpoint={endpoint} /></Detail>
+            <Detail label={t("endpoints.failedRequests24h")} mono>{endpoint.error_count.toLocaleString(i18n.language)}</Detail>
             <Detail label={t("endpoints.lastActivity")}>{endpoint.last_seen_at ? formatDate(endpoint.last_seen_at, i18n.language) : t("endpoints.noTraffic")}</Detail>
           </dl>
         </section>

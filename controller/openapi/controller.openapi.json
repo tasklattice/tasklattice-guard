@@ -7272,6 +7272,16 @@
       },
       "getTelemetryEndpointActivityResponse2ItemsItem": {
         "properties": {
+          "detection_p95_ms": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
           "error_count": {
             "type": "number"
           },
@@ -7357,7 +7367,8 @@
           "stream_final_check_seen_at",
           "last_error_at",
           "request_count",
-          "error_count"
+          "error_count",
+          "detection_p95_ms"
         ],
         "type": "object"
       },

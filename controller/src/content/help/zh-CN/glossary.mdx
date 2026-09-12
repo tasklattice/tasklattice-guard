@@ -1,0 +1,247 @@
+---
+kind: "glossary"
+id: "glossary"
+title: "概念词典"
+summary: "产品界面、API、运行日志和审计证据使用同一组术语。这里给出简短定义和它存在的原因。"
+order: 5
+---
+
+<a id="term-policy" />
+
+### Policy
+
+策略
+
+可复用的保护能力，包含一个或多个可执行 Rules 及其 Test Cases。
+
+Policy 与具体应用解耦，因此可以被多个 Guardrails 按版本复用。
+
+<a id="term-rule" />
+
+### Rule
+
+规则
+
+最小的产品级可执行行为，有稳定 ID、阶段、效果和实现映射。
+
+Rule ID 会贯穿 Policy、Guardrail binding、runtime finding 和 Validation result，避免不同 Flow 被错误合并。
+
+<a id="term-test-case" />
+
+### Test Case
+
+测试用例 · case
+
+输入或输出示例、期望 Decision，以及它验证的 Rule IDs。
+
+必需验收用例是发布 Gate；场景用例用于覆盖真实业务边界。
+
+<a id="term-guardrail" />
+
+### Guardrail
+
+安全护栏
+
+为一个业务场景组合版本化 Policies、Rules、参数和运行姿态的可发布对象。
+
+Policy 负责复用能力，Guardrail 负责场景组合和生命周期。
+
+<a id="term-policy-binding" />
+
+### Policy Binding
+
+策略绑定
+
+Guardrail 对某个 Policy Version 的固定引用，包含启用 Rules、Rails、参数和动作覆盖。
+
+绑定保证运行的正是审查时选择的行为。
+
+<a id="term-policy-version" />
+
+### Policy Version
+
+策略版本
+
+已发布、不可修改的 Policy 源码和运行契约快照。
+
+后续编辑产生新草稿和新版本，已有 Guardrails 不会被静默改变。
+
+<a id="term-guardrail-version" />
+
+### Guardrail Version
+
+护栏版本
+
+不可变的发布与回滚单元，包含编译 artifact、依赖和 checksum。
+
+发布后的 Router Target 固定到确切版本；回滚不会重写历史 artifact。
+
+<a id="term-rail" />
+
+### Rail
+
+input rail · output rail
+
+NeMo 在模型前或模型后执行安全逻辑的阶段。
+
+Input Rail 能在模型调用前阻断；Output Rail 能在交付前转换或阻断响应。
+
+<a id="term-flow" />
+
+### Flow
+
+Colang Flow · flow name
+
+Colang 中命名的编排单元，把事件、Actions 和决策组织成一个 Rail 行为。
+
+Policy Studio 的 Flow 名称必须与源码声明一致。
+
+<a id="term-colang" />
+
+### Colang
+
+Colang 1 · Colang 2
+
+NVIDIA NeMo Guardrails 的对话与安全编排语言。
+
+TaskLattice 编译器为简单内建计划选择 Colang 1；自定义 Policy 自动使用 Colang 2，开发者无需选择。
+
+<a id="term-action" />
+
+### Action
+
+Provider · Python Action · NeMo Action
+
+由 NeMo Flow 调用的版本化能力，执行检测、专用模型判断或内容变换。
+
+它不同于检测完成后的 Enforcement Action；只允许调用 Action Catalog 中已注册的版本。
+
+<a id="term-enforcement-action" />
+
+### 检测后处理
+
+Enforcement Action · 响应指令 · 不安全时
+
+Policy 决策后要求运行时或调用方采取的具体处理，例如脱敏、阻断或重新生成。
+
+它不是评估器 verdict，也不是 NeMo 调用的 Python Action；部分生命周期指令由集成调用方执行。
+
+<a id="term-action-reference" />
+
+### Action Reference
+
+Action 依赖
+
+Policy 对 Action 名称和精确版本的引用。
+
+发布前检查可用性、Rail 兼容性和契约，保证以后可复现。
+
+<a id="term-parameter" />
+
+### Binding Parameter
+
+绑定参数 · parameter
+
+Policy 暴露、由 Guardrail 绑定时解析的审查值。
+
+参数属于配置版本，不应从不可信的生产请求临时覆盖。
+
+<a id="term-validation-run" />
+
+### Validation Run
+
+验证记录
+
+当前草稿的 Test Cases 通过真实运行时执行后形成的不可变结果。
+
+只有当前 revision 的必需用例全部通过，才能发布。
+
+<a id="term-router" />
+
+### Traffic Router
+
+路由 · Router · route
+
+绑定一个或多个 Endpoints 的可发布路由配置，包含有序 Routes、Selectors 和加权 Guardrail Targets。
+
+Route 按顺序 first-match-wins；fallback 保持最后。Router 名称不可修改，配置通过草稿发布形成新 revision。
+
+<a id="term-endpoint" />
+
+### Endpoint
+
+端点 · adapter
+
+代表一个经过认证的应用、Agent 或网关实例。
+
+不同信任边界使用独立 Endpoint，避免身份、凭据和 call context 混用。
+
+<a id="term-traffic-scope" />
+
+### Selector
+
+Traffic Scope · 流量范围 · 路由条件
+
+基于可信请求事实构造的 AND/OR 路由表达式。
+
+Selector 定义 Route 的匹配条件；fallback 无条件匹配。可选字段取决于绑定 Endpoint 的协议能力，外部 headers 不天然可信。
+
+<a id="term-evidence" />
+
+### Evidence
+
+审计证据 · trace
+
+记录版本变化、验证、部署和脱敏运行决策的不可变证据。
+
+Evidence 默认不保存受保护请求或响应正文，但保留 Policy、Rule、版本、Decision 和延迟等判断依据。
+
+<a id="term-runtime-profile" />
+
+### Runtime Profile
+
+llmrails · iorails
+
+编译器选择的 NeMo 执行形态和 Colang 版本组合。
+
+Profile 是编译结果，不是日常用户选项；它由行为复杂度和执行边界决定。
+
+<a id="term-checksum" />
+
+### Checksum
+
+配置哈希 · SHA-256
+
+不可变编译配置的内容摘要。
+
+用于确认当前运行 artifact 与已发布版本完全一致。
+
+<a id="term-failure-mode" />
+
+### Failure Mode
+
+fail-open · fail-closed
+
+Action 超时或错误时的安全处理方式。
+
+fail-open 继续但记录错误；fail-closed 阻断。必需检查通常采用更保守的策略。
+
+<a id="term-output-delivery" />
+
+### Output Delivery
+
+interruptible · window buffered · full buffered
+
+模型输出在完成 Output Rail 检查前如何缓冲和交付。
+
+缓冲越完整，越能避免泄露后来被阻断的内容，但会增加首字延迟。
+
+<a id="term-decision" />
+
+### Decision
+
+allow · transform · block
+
+TaskLattice 对当前阶段的最终结论。
+
+调用方必须执行 Decision 和 action；它不是仅供展示的风险分数。

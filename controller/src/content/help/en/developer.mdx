@@ -1,0 +1,197 @@
+---
+kind: "guide"
+id: "guide-developer"
+audience: "developer"
+label: "Developer"
+title: "Author Policies and integrate protected traffic"
+summary: "For Policy, application, and gateway developers. Focus on versioned source, runtime contracts, test coverage, and decision handling."
+outcome: "Outcome: a reusable Policy Version or an Endpoint that correctly executes Guardrail decisions."
+order: 3
+---
+
+<a id="developer-api-access" />
+
+### Call Controller APIs: identity and permissions
+
+Use a personal Access Token to manage Guardrails, Routers, and other resources. Browser sign-in uses a session.
+
+Browser sessions and personal tokens are separate authentication methods. Creating, listing, and revoking tokens requires the owning account’s browser session. An existing token cannot issue another token.
+
+Controller management APIs and Runner checks use different credentials. Open Endpoints for protocol-specific invocation URLs and Endpoint credentials; a personal token does not replace those credentials.
+
+1. **Create a token** — Open Account → Access Tokens, choose module read/write grants and expiry. The secret is shown only once; store it securely.
+
+2. **Check identity** — Call GET /api/v1/account/identity with Authorization: Bearer \<token> to inspect the user and effectivePermissions.
+
+3. **Use the granted operations** — Grants cover all resources in selected modules. Write includes read; writes also require a current admin account. Invalid or expired credentials return 401; insufficient permissions return 403.
+
+```sh
+curl "{controllerOrigin}/api/v1/account/identity" \
+  -H "Authorization: Bearer $GUARD_ACCESS_TOKEN"
+```
+
+[Manage Access Tokens](/account/access-tokens)
+
+[Sign-in security](/account/security)
+
+[Management API reference](/api/docs)
+
+[Endpoint calls and credentials](/integration/endpoint)
+
+<a id="developer-api-contract" />
+
+### API contracts, resource paths, and retries
+
+Standard OpenAPI is generated from code. Look up product tags, permissions, request/response schemas, and retry rules for each operation.
+
+- Read /api/docs or import /api/openapi.json. /api/llms.txt is a compact agent index. Filter by module or operationId for a complete subset with its required schemas.
+- Tags group the product; x-token-permission defines authorization. Router traffic statistics have the telemetry tag but require routers:read.
+- Address Test Cases through /api/v1/guardrails/\{guardrailId\}/test-cases/\{caseId\}. Poll Policy validation by its returned runId; latest can switch to another task.
+- Edit Routers by reading, saving draft, requesting publication-preview, and publishing. Send the reviewed expectedDraftRevision and idempotencyKey; reusing a key with different content returns 409.
+- 202 acknowledges processing. Read the resource’s publication or validation state, and follow x-idempotency and x-retry-policy. POST is not universally safe to replay.
+- Old API paths have been removed. Use the current OpenAPI contract; resource references, lifecycle state, and concurrency checks also apply beyond JSON Schema.
+
+[Open API reference](/api/docs)
+
+[Full OpenAPI](/api/openapi.json)
+
+[Router API contract](/api/openapi.json?module=routers)
+
+[API agent index](/api/llms.txt)
+
+<a id="developer-policy-or-guardrail" />
+
+### Policy vs Guardrail vs Router
+
+Policies provide reusable behavior, Guardrails compose a scenario, and Routers route traffic.
+
+**Create a Policy**
+
+When you need a new executable capability, Colang Flow, Action dependency, or reusable parameter contract.
+
+**Create a Guardrail**
+
+When capabilities exist and a business scenario needs selected Policies, Rules, parameters, and posture.
+
+**Create a Router**
+
+When a published Guardrail must protect an Endpoint's traffic.
+
+
+[Open Policy Studio](/policy-library)
+
+[Manage Guardrails](/guardrails)
+
+<a id="developer-policy-runtime" />
+
+### Understand Policy Studio runtime configuration
+
+Rail, Flow, execution mode, Actions, and parameters form the Policy runtime contract.
+
+Custom Policies automatically use the Colang 2.x programmable runtime. Only registered, versioned Actions can be referenced; arbitrary Python upload is not supported.
+
+**Rail**
+
+NeMo execution phase. Input runs before the model; Output runs before model output is delivered.
+
+**Flow name**
+
+A named Flow declared in Colang. It must match source exactly and creates Rule ID flow/\{rail\}/\{flow_name\}.
+
+**detect mode**
+
+Evaluates and records safety; any unsafe result still applies the configured action.
+
+**mutate mode**
+
+The Flow may return effective replacement content such as redaction or rewrite.
+
+**Advanced runtime**
+
+Parallel group identifies safely concurrent bindings; timeout bounds execution. Failure mode governs errors.
+
+**Action dependencies**
+
+Registered provider names and exact versions invoked by the Flow.
+
+**Binding parameters**
+
+Reviewed values exposed by a Policy and resolved when a Guardrail pins its version.
+
+
+[Open Policy Library](/policy-library)
+
+<a id="developer-actions" />
+
+### The 8 post-evaluation directives
+
+An Enforcement Action is the intervention requested after a Policy decision; it is not a NeMo Action. Conflicts resolve to the highest-priority directive.
+
+**reject**
+
+Block the current phase. Do not call the model for rejected input or deliver rejected output.
+
+**redact**
+
+Mask sensitive spans with reviewed replacements and continue with the transformed content.
+
+**rewrite**
+
+Replace the current content with a complete reviewed replacement.
+
+**regenerate**
+
+Ask the owner of the model lifecycle to generate a new response.
+
+**redirect**
+
+Guide the interaction to an approved topic, flow, or replacement response.
+
+**fallback**
+
+Use an approved fallback response or degraded execution path.
+
+**clarify**
+
+Require more information from the user before the interaction continues.
+
+**pass**
+
+Record the finding without intervening in the content.
+
+
+> Priority: reject → clarify → fallback → regenerate → rewrite → redirect → redact → pass. TaskLattice is a decision service; callers must implement action/texts for lifecycle actions such as regenerate or fallback.
+
+<a id="developer-release-transfer" />
+
+### Test, publish, and transfer
+
+Successful compilation is not enough; every Flow-backed Rule needs a required Test Case.
+
+- A Test Case declares Rail, content, expected Decision, and covered Rule IDs.
+- Validate & run tests saves, compiles, and executes through real NeMo runtime.
+- Editing source, Rails, Actions, parameters, or tests invalidates the prior run.
+- Export packages carry editable definition, not another environment's validation or publication state.
+- Published Policy Versions are immutable.
+
+[View Validation in a Guardrail](/guardrails)
+
+[Open Policy Library](/policy-library)
+
+<a id="developer-endpoint" />
+
+### Execute decisions in an application or gateway
+
+The caller owns model invocation; TaskLattice returns explicit decisions at input and output boundaries.
+
+1. **Input check** — Stop before the model on block; use returned content on transform.
+
+2. **Model call** — The application or gateway still owns requests, retries, streaming, and business sessions.
+
+3. **Output check** — Check model output and never leak original content when blocked.
+
+4. **Call correlation** — Use a stable call ID so input and output remain pinned to one version.
+
+[Manage Endpoints](/integration/endpoint)
+
+[View Traffic Routers](/integration/routers)

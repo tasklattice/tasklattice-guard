@@ -1,5 +1,10 @@
 import { fileURLToPath, URL } from "node:url";
 
+import mdx from "@mdx-js/rollup";
+import remarkFrontmatter from "remark-frontmatter";
+import remarkMdxFrontmatter from "remark-mdx-frontmatter";
+import remarkGfm from "remark-gfm";
+import remarkHelpIndex from "./scripts/remark-help-index.mjs";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
@@ -10,11 +15,12 @@ export default defineConfig({
   resolve: {
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
   },
-  plugins: [tailwindcss(), react()],
+  plugins: [mdx({ remarkPlugins: [remarkFrontmatter, remarkMdxFrontmatter, remarkGfm, remarkHelpIndex] }), tailwindcss(), react()],
   server: {
     proxy: {
       "/api": controllerDevProxy,
       "/health": controllerDevProxy,
+      "/metrics": controllerDevProxy,
     },
   },
 });

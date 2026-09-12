@@ -52,7 +52,7 @@ function endpointEvents(value: controllerApi.Endpoint, events: controllerApi.Run
   return events.filter((event) => event.endpointId === value.id);
 }
 
-type EndpointActivity = Pick<Endpoint, 'first_seen_at' | 'last_seen_at' | 'input_seen_at' | 'output_seen_at' | 'stream_final_check_seen_at' | 'last_error_at' | 'request_count' | 'error_count'> & { id: string };
+type EndpointActivity = Pick<Endpoint, 'first_seen_at' | 'last_seen_at' | 'input_seen_at' | 'output_seen_at' | 'stream_final_check_seen_at' | 'last_error_at' | 'request_count' | 'error_count' | 'detection_p95_ms'> & { id: string };
 const getActivity = () => controllerApi.requestController<{ items: EndpointActivity[] }>('/api/v1/telemetry/endpoint-activity');
 
 function mapEndpoint(value: CurrentEndpoint, events: controllerApi.RuntimeEvent[], activity?: EndpointActivity): Endpoint {
@@ -93,7 +93,7 @@ function mapEndpoint(value: CurrentEndpoint, events: controllerApi.RuntimeEvent[
     setup: value.setup ?? endpointSetup(),
     created_at: value.createdAt,
     updated_at: value.updatedAt,
-    ...(activity ? { ...activity, runtime_status: activity.error_count ? 'degraded' as const : activity.last_seen_at ? 'healthy' as const : 'unknown' as const } : {}),
+    ...(activity ? { ...activity, runtime_status: activity.error_count ? 'degraded' as const : activity.request_count > 0 ? 'healthy' as const : 'unknown' as const } : {}),
   };
 }
 

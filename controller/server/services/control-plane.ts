@@ -7,7 +7,7 @@ import { boundedRead } from '../db/read-budget.js';
 import { asText, findingSeverity, increment, jsonAggregate, jsonArrayLength, jsonElements, jsonObject, jsonText, jsonValue, literal, lowerText, rowValue, scalar, timestampValue } from '../db/postgres-expressions.js';
 import { advisoryTransactionLock } from '../db/postgres-locks.js';
 
-import { and, asc, count, countDistinct, desc, eq, exists, gt, gte, inArray, isNotNull, isNull, lt, lte, max, min, ne, or, type SQL } from "drizzle-orm";
+import { and, asc, count, countDistinct, desc, eq, exists, gt, gte, inArray, isNotNull, isNull, lt, lte, max, min, ne, or, sql, type SQL } from "drizzle-orm";
 
 import type { ControllerConfig } from "../config.js";
 import type { ControllerDatabase } from "../db/client.js";
@@ -1373,16 +1373,20 @@ export class ControlPlaneService {
       const finalCheck = timestamp('final_activity', eq(jsonText(runtimeEvents.metadata, 'streamFinalCheck'), 'true'));
       const lastError = timestamp('error_activity', errors);
       const recentScope = and(scope, gte(runtimeEvents.occurredAt, new Date(Date.now() - 86_400_000)));
-      const recent = tx.select({ total: countDistinct(runtimeEvents.requestId).as('recent_request_count') })
+      const recent = tx.select({
+        total: countDistinct(runtimeEvents.requestId).as('recent_request_count'),
+        p95: sql<number | null>`percentile_disc(0.95) within group (order by ${runtimeEvents.durationMs}) filter (where ${runtimeEvents.durationMs} >= 0)`.as('recent_p95_ms'),
+      })
         .from(runtimeEvents).where(recentScope).as('recent_activity');
-      const recentErrors = tx.select({ total: count().as('recent_error_count') })
+      // A request can emit input/output events and multiple failures. Count it once.
+      const recentErrors = tx.select({ total: countDistinct(runtimeEvents.requestId).as('recent_error_count') })
         .from(runtimeEvents).where(and(recentScope, errors)).as('recent_errors');
       const join = eq(endpoints.id, endpoints.id);
       const items = await tx.select({
         id: endpoints.id, first_seen_at: first.at, last_seen_at: last.at,
         input_seen_at: incoming.at, output_seen_at: outgoing.at,
         stream_final_check_seen_at: finalCheck.at, last_error_at: lastError.at,
-        request_count: recent.total, error_count: recentErrors.total,
+        request_count: recent.total, error_count: recentErrors.total, detection_p95_ms: recent.p95,
       }).from(endpoints)
         .leftJoinLateral(first, join).leftJoinLateral(last, join)
         .leftJoinLateral(incoming, join).leftJoinLateral(outgoing, join)

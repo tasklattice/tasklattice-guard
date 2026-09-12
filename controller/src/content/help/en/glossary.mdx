@@ -1,0 +1,247 @@
+---
+kind: "glossary"
+id: "glossary"
+title: "Concept glossary"
+summary: "The product UI, API, runtime logs, and audit log use the same vocabulary. These definitions explain both meaning and purpose."
+order: 5
+---
+
+<a id="term-policy" />
+
+### Policy
+
+策略
+
+A reusable protection capability containing executable Rules and Test Cases.
+
+Policies are independent of applications so multiple Guardrails can pin and reuse them.
+
+<a id="term-rule" />
+
+### Rule
+
+规则
+
+The smallest product-level executable behavior with a stable ID and implementation mapping.
+
+The same Rule ID follows binding, runtime findings, and Validation results.
+
+<a id="term-test-case" />
+
+### Test Case
+
+测试用例 · case
+
+An input or output example, expected Decision, and the Rule IDs it validates.
+
+Required acceptance cases gate publication; scenarios cover business boundaries.
+
+<a id="term-guardrail" />
+
+### Guardrail
+
+安全护栏
+
+A publishable composition of versioned Policies, Rules, parameters, and runtime posture.
+
+Policies provide reusable behavior; Guardrails provide scenario lifecycle.
+
+<a id="term-policy-binding" />
+
+### Policy Binding
+
+策略绑定
+
+A Guardrail's pinned Policy Version plus enabled Rules, Rails, parameters, and action overrides.
+
+Bindings ensure runtime behavior is exactly what reviewers selected.
+
+<a id="term-policy-version" />
+
+### Policy Version
+
+策略版本
+
+An immutable published snapshot of Policy source and runtime contract.
+
+Later edits create new drafts and versions without silently changing existing Guardrails.
+
+<a id="term-guardrail-version" />
+
+### Guardrail Version
+
+护栏版本
+
+The immutable release and rollback unit containing compiled artifacts, dependencies, and checksum.
+
+Routers reference exact versions; rollback switches pointers instead of rewriting history.
+
+<a id="term-rail" />
+
+### Rail
+
+input rail · output rail
+
+A NeMo phase that runs safety logic before the model or before output delivery.
+
+Input can stop model invocation; Output can transform or block delivery.
+
+<a id="term-flow" />
+
+### Flow
+
+Colang Flow · flow name
+
+A named Colang orchestration unit that coordinates events, Actions, and decisions.
+
+The Policy Studio Flow name must match source declaration exactly.
+
+<a id="term-colang" />
+
+### Colang
+
+Colang 1 · Colang 2
+
+NVIDIA NeMo Guardrails' orchestration language.
+
+The compiler selects Colang 1 for supported simple plans; custom Policies use Colang 2 automatically.
+
+<a id="term-action" />
+
+### Action
+
+Provider · Python Action · NeMo Action
+
+A versioned capability invoked by a NeMo Flow for detection, specialized evaluation, or transformation.
+
+It is distinct from the post-evaluation Enforcement Action; only registered Action Catalog versions are allowed.
+
+<a id="term-enforcement-action" />
+
+### Enforcement Action
+
+Enforcement Action · 响应指令 · 不安全时
+
+The specific response requested after a Policy decision, such as redaction, rejection, or regeneration.
+
+It is neither an evaluator verdict nor a Python Action invoked by NeMo; some lifecycle directives are applied by the integrating caller.
+
+<a id="term-action-reference" />
+
+### Action Reference
+
+Action 依赖
+
+A Policy reference to an Action name and exact version.
+
+Publication checks availability, Rail compatibility, and contracts for reproducibility.
+
+<a id="term-parameter" />
+
+### Binding Parameter
+
+绑定参数 · parameter
+
+A reviewed Policy value resolved when a Guardrail pins its version.
+
+Parameters are versioned configuration and should not be overridden by untrusted runtime input.
+
+<a id="term-validation-run" />
+
+### Validation Run
+
+验证记录
+
+An immutable result from executing the current draft's Test Cases through the real runtime.
+
+All required cases for the current revision must pass before publication.
+
+<a id="term-router" />
+
+### Traffic Router
+
+路由 · Router · route
+
+A publishable configuration shared by bound Endpoints, containing ordered Routes, Selectors, and weighted Guardrail Targets.
+
+Routes are first-match-wins with fallback last. Router names are immutable; draft publication creates a new revision.
+
+<a id="term-endpoint" />
+
+### Endpoint
+
+端点 · adapter
+
+An authenticated application, agent, or gateway instance.
+
+Separate trust boundaries use separate Endpoints to isolate identity, credentials, and call context.
+
+<a id="term-traffic-scope" />
+
+### Selector
+
+Traffic Scope · 流量范围 · 路由条件
+
+An AND/OR route expression over trusted request facts.
+
+Selectors define Route matching; fallback is unconditional. Available fields depend on bound Endpoint protocols, and untrusted headers may be spoofed.
+
+<a id="term-evidence" />
+
+### Evidence
+
+审计证据 · trace
+
+Immutable records of versions, validation, router, and privacy-conscious runtime decisions.
+
+Content capture depends on logging level and encryption configuration; logs otherwise retain decision and version metadata.
+
+<a id="term-runtime-profile" />
+
+### Runtime Profile
+
+llmrails · iorails
+
+The compiler-selected NeMo engine and Colang execution shape.
+
+Profile is a compilation result, not an ordinary user setting.
+
+<a id="term-checksum" />
+
+### Checksum
+
+配置哈希 · SHA-256
+
+A content digest of immutable compiled configuration.
+
+It proves the running artifact exactly matches the published version.
+
+<a id="term-failure-mode" />
+
+### Failure Mode
+
+fail-open · fail-closed
+
+The safety behavior when an Action times out or errors.
+
+Fail-open continues with evidence; fail-closed blocks. Required checks commonly use conservative behavior.
+
+<a id="term-output-delivery" />
+
+### Output Delivery
+
+interruptible · window buffered · full buffered
+
+How model output is buffered before Output Rail checks finish.
+
+More buffering prevents leakage of later-blocked content but increases delivery latency.
+
+<a id="term-decision" />
+
+### Decision
+
+allow · transform · block
+
+TaskLattice's final conclusion for the current phase: allow, transform, or block.
+
+The caller must execute the Decision and action; it is not merely a displayed score.

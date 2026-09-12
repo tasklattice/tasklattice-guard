@@ -1,0 +1,52 @@
+---
+kind: "overview"
+id: "overview"
+title: "From business policy to protected traffic"
+label: "System background"
+summary: "TaskLattice Guard is an explicit Guardrail decision service. Teams define reviewable protection intent, the system compiles validated versions into NeMo Guardrails configuration, and applications or gateways call checks around the model and execute the returned decision."
+order: 1
+---
+
+### How one request is protected
+
+This is the main path from product objects to runtime execution. Every transition has a version and audit boundary.
+
+<FlowSteps>
+
+<FlowStep title="Endpoint">
+
+Identifies and authenticates the application, agent, or gateway calling TaskLattice.
+
+</FlowStep>
+
+<FlowStep title="Router">
+
+Matches ordered Routes in the bound Router, then selects a weighted Target pinned to a Guardrail Version.
+
+</FlowStep>
+
+<FlowStep title="Guardrail Version">
+
+Pins Policies, Rules, parameters, and compiled output as the release and rollback unit.
+
+</FlowStep>
+
+<FlowStep title="NeMo Rail / Flow">
+
+Orchestrates checks before the model or before its output is delivered.
+
+</FlowStep>
+
+<FlowStep title="Action">
+
+Runs local checks, specialized evaluators, or content transformations.
+
+</FlowStep>
+
+<FlowStep title="Decision & Evidence">
+
+Returns allow, transform, or block and records privacy-conscious evidence.
+
+</FlowStep>
+
+</FlowSteps>
