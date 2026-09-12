@@ -347,8 +347,31 @@ def generate(fixture_name: str = FIXTURE_NAME) -> FixtureFiles:
                 "conditions": [],
             }),
         )],
+        router_revisions=[protocol.RouterRevision(
+            router_id="fixture-router",
+            revision=1,
+            assignment_algorithm="hmac-sha256-v1",
+            assignment_key_id="fixture-v1",
+            assignment_key=hashlib.sha256(b"test-only-fixture-router-assignment").digest(),
+            routes=[protocol.ComposedRoute(
+                route_id="fixture-fallback",
+                name="Fixture fallback",
+                kind="fallback",
+                enabled=True,
+                all_endpoints=True,
+                traffic_scope=traffic_scope_to_proto({"combinator": "and", "conditions": []}),
+                targets=[protocol.WeightedTarget(
+                    target_id="fixture-target",
+                    guardrail_id=artifact.guardrail_id,
+                    guardrail_version=artifact.guardrail_version,
+                    artifact_id=artifact.artifact_id,
+                    weight_bps=10000,
+                )],
+            )],
+        )],
         endpoints=[protocol.EndpointRuntime(
             endpoint_id="fixture-endpoint",
+            router_id="fixture-router",
             adapter="litellm-generic-guardrail",
             verification=endpoint_verification_to_proto({
                 "credentials": [{

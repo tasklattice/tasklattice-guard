@@ -5,6 +5,12 @@ import type { Long } from '@grpc/proto-loader';
 
 /**
  * Immutable composed Router snapshot, shared by explicitly bound Endpoints.
+ * This message is runtime configuration, NOT the Controller lifecycle state.
+ * Controller derives unpublished/distributing/active/failed from the desired
+ * generation, Runner acknowledgements, fresh heartbeats and rejection evidence.
+ * See controller/shared/router-lifecycle.ts and docs/revision-lifecycle.zh-CN.md.
+ * Historical deletion never edits this snapshot; active/in-flight revisions
+ * must be retained. Rollback publishes a new Router revision, not an in-place edit.
  */
 export interface RouterRevision {
   'routerId'?: (string);
@@ -29,6 +35,12 @@ export interface RouterRevision {
 
 /**
  * Immutable composed Router snapshot, shared by explicitly bound Endpoints.
+ * This message is runtime configuration, NOT the Controller lifecycle state.
+ * Controller derives unpublished/distributing/active/failed from the desired
+ * generation, Runner acknowledgements, fresh heartbeats and rejection evidence.
+ * See controller/shared/router-lifecycle.ts and docs/revision-lifecycle.zh-CN.md.
+ * Historical deletion never edits this snapshot; active/in-flight revisions
+ * must be retained. Rollback publishes a new Router revision, not an in-place edit.
  */
 export interface RouterRevision__Output {
   'routerId': (string);

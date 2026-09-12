@@ -34,9 +34,13 @@ RUNTIME_CREDENTIAL = "fixture-runtime-secret"
 class Telemetry:
     def __init__(self) -> None:
         self.events: list[dict[str, object]] = []
+        self.routing_events: list[dict[str, object]] = []
 
     async def emit(self, event: dict[str, object]) -> None:
-        self.events.append(event)
+        if event.get("eventType") in {"route_assignment", "completion"}:
+            self.routing_events.append(event)
+        else:
+            self.events.append(event)
 
 
 @pytest.mark.asyncio
@@ -120,6 +124,7 @@ async def test_runner_executes_a_precompiled_artifact_through_real_litellm_callb
         assert blocked_input.json()["action"] == "BLOCKED"
         assert store.generation == 1
         assert registry.readiness()["ready"] is True
+        assert any(event["eventType"] == "route_assignment" for event in telemetry.routing_events)
         assert [event["direction"] for event in telemetry.events] == [
             "incoming",
             "outgoing",
@@ -271,7 +276,7 @@ async def test_stream_split_secret_uses_complete_response_contract(tmp_path):
                                 context=RequestContext(protocol="litellm", endpoint_id="fixture-endpoint"))
     streams = OutputStreamSessionStore(window_characters=8)
     try:
-        mode = runtime.output_delivery(request)
+        mode = runtime.output_delivery(request, allow_new_output=True)
         assert mode == "full_buffered"
         first = await streams.process(stream_key="split", sequence=0, text="api_key=", final=False,
                                       mode=mode, request=request, evaluate=runtime.evaluate)
