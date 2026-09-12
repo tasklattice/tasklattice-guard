@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { QueryBuilder, type RuleGroupType, type ValueEditorProps, type ActionProps } from 'react-querybuilder';
 import { QueryBuilderShadcn } from '@/components/query-builder';
@@ -12,11 +13,26 @@ export const newCondition = (): SelectorCondition => ({ field: 'http.header', ke
 export const leafCount = (group: SelectorExpression): number => group.conditions.reduce((n, c) => n + ('conditions' in c ? leafCount(c) : 1), 0);
 export function SelectorEditor({ value, onChange, fields = selectorFields }: { value: SelectorExpression; onChange: (value: SelectorExpression) => void; fields?: SelectorField[] }) {
   const t = useRoutingText();
+  // Preserve QueryBuilder's node IDs while editing; rebuilding from the domain
+  // expression on each keystroke remounts rule inputs and drops their focus.
+  const [query, setQuery] = useState(() => toQuery(value));
+  const acceptedValue = useRef(value);
+  useEffect(() => {
+    if (JSON.stringify(value) !== JSON.stringify(acceptedValue.current)) {
+      acceptedValue.current = value;
+      setQuery(toQuery(value));
+    }
+  }, [value]);
   const total = leafCount(value);
   return <QueryBuilderShadcn><QueryBuilder
     fields={fields.map(field => ({ name: field.id, label: field.label }))}
-    query={toQuery(value)}
-    onQueryChange={query => onChange(fromQuery(query))}
+    query={query}
+    onQueryChange={nextQuery => {
+      const nextValue = fromQuery(nextQuery);
+      setQuery(nextQuery);
+      acceptedValue.current = nextValue;
+      onChange(nextValue);
+    }}
     getOperators={name => (fields.find(field => field.id === name)?.operators ?? []).map(operator => ({ name: operator, label: operator }))}
     getDefaultValue={() => ({ key: '', requestSource: 'endpoint_request', value: '', caseSensitive: true })}
     combinators={[{ name: 'and', label: t('全部满足 · AND', 'All · AND') }, { name: 'or', label: t('任一满足 · OR', 'Any · OR') }]}
@@ -46,9 +62,9 @@ export function SelectorEditor({ value, onChange, fields = selectorFields }: { v
   /></QueryBuilderShadcn>;
 }
 export function toQuery(expression: SelectorExpression): RuleGroupType {
-  return { combinator: expression.combinator, rules: expression.conditions.map(condition =>
+  return { id: crypto.randomUUID(), combinator: expression.combinator, rules: expression.conditions.map(condition =>
     'conditions' in condition ? toQuery(condition) : {
-      field: condition.field, operator: condition.operator,
+      id: crypto.randomUUID(), field: condition.field, operator: condition.operator,
       value: { key: condition.key, requestSource: condition.requestSource, value: condition.value, caseSensitive: condition.caseSensitive },
     }) };
 }
@@ -84,14 +100,14 @@ function Condition({ value, fields, onChange }: { value: SelectorCondition; fiel
   return <div className="router-selector-value grid min-w-0 gap-3 sm:grid-cols-2">
     {field?.http && <Field label={t('HTTP 来源', 'HTTP source')}><NativeSelect value={value.requestSource ?? ''} onChange={e => onChange({ ...value, requestSource: e.target.value as SelectorCondition['requestSource'] })}><option value="" disabled>{t('选择来源', 'Choose source')}</option><option value="endpoint_request">{t('Endpoint 接入请求', 'Endpoint request')}</option><option value="business_request">{t('原始业务请求', 'Original business request')}</option></NativeSelect></Field>}
     {field?.customKey && <Field label={value.field === 'http.header' ? t('Header 名称', 'Header name') : t('属性名称', 'Attribute key')}><Input className="min-h-11" value={value.key ?? ''} onChange={e => onChange({ ...value, key: value.field === 'http.header' ? e.target.value.toLowerCase() : e.target.value })} placeholder={value.field === 'http.header' ? 'x-channel' : ''} /></Field>}
-    {!noValue && (multiple ? <div className="grid gap-2 sm:col-span-2">{values.map((v, i) => <div key={i} className="flex items-end gap-2"><div className="min-w-0 flex-1"><Field label={`${t('值', 'Value')} ${i + 1}`}><Input className="min-h-11" value={v} onChange={e => onChange({ ...value, value: values.map((s, n) => n === i ? e.target.value : s) })} /></Field></div><Button className="min-h-11" variant="outline" aria-label={`${t('删除值', 'Remove value')} ${i + 1}`} onClick={() => onChange({ ...value, value: values.filter((_, n) => n !== i) })}>−</Button></div>)}<Button type="button" className="min-h-11 justify-self-start" variant="outline" onClick={() => onChange({ ...value, value: [...values, ''] })}>{t('添加值', 'Add value')}</Button></div> : <Field label={t('值', 'Value')}><Input className="min-h-11" value={values[0] ?? ''} onChange={e => onChange({ ...value, value: e.target.value })} /></Field>)}
+    {!noValue && (multiple ? <div className="grid gap-2 sm:col-span-2">{values.map((v, i) => <div key={i} className="flex items-end gap-2"><div className="min-w-0 flex-1"><Field label={`${t('值', 'Value')} ${i + 1}`}><Input className="min-h-11" value={v} onChange={e => onChange({ ...value, value: values.map((s, n) => n === i ? e.target.value : s) })} /></Field></div><Button className="min-h-11" variant="destructive" aria-label={`${t('删除值', 'Remove value')} ${i + 1}`} onClick={() => onChange({ ...value, value: values.filter((_, n) => n !== i) })}>−</Button></div>)}<Button type="button" className="min-h-11 justify-self-start" variant="create" onClick={() => onChange({ ...value, value: [...values, ''] })}>{t('添加值', 'Add value')}</Button></div> : <Field label={t('值', 'Value')}><Input className="min-h-11" value={values[0] ?? ''} onChange={e => onChange({ ...value, value: e.target.value })} /></Field>)}
     {!noValue && <label className="flex min-h-11 items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" checked={value.caseSensitive !== false} onChange={e => onChange({ ...value, caseSensitive: e.target.checked })} />{t('区分大小写', 'Case sensitive')}</label>}
   </div>;
 }
 
 function SelectorAction({ className, handleOnClick, label, title, disabled, testID }: ActionProps) {
   const remove = testID === 'remove-rule' || testID === 'remove-group';
-  return <Button type="button" variant={remove ? 'ghost' : 'outline'}
+  return <Button type="button" variant={remove ? 'destructive' : 'create'}
     className={className} disabled={disabled} data-testid={testID}
     aria-label={typeof label === 'string' ? label : title} title={title}
     onClick={handleOnClick}>

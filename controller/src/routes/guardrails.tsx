@@ -1,3 +1,6 @@
+import { deleteControllerGuardrailVersion } from "@/lib/controller-api";
+import { MoreHorizontal as VersionActionsIcon } from "lucide-react";
+import { DropdownMenu as VersionMenu, DropdownMenuContent as VersionMenuContent, DropdownMenuItem as VersionMenuItem, DropdownMenuTrigger as VersionMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useEffect, useMemo, useRef, useState, type ReactNode, type MouseEvent } from "react";
 import { boundPolicy } from "@/lib/bound-policy";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -98,10 +101,10 @@ export function GuardrailsPage() {
 
   return (
     <section className="py-6 sm:py-8">
-      <PageHeader title={t("pages.guardrails.title")} description={t("guardrails.description")} action={auth.user?.role === "admin" ? <Button className="min-h-11" onClick={openCreation}><Plus />{t("guardrails.create")}</Button> : undefined} />
+      <PageHeader title={t("pages.guardrails.title")} description={t("guardrails.description")} action={auth.user?.role === "admin" ? <Button variant="create" className="min-h-11" onClick={openCreation}><Plus />{t("guardrails.create")}</Button> : undefined} />
       {query.error ? <div className="mt-5 space-y-3"><ErrorNotice error={query.error} /><Button type="button" variant="outline" className="min-h-11" disabled={query.isFetching} onClick={() => void query.refetch()}><RefreshCw className={query.isFetching ? "animate-spin motion-reduce:animate-none" : undefined} />{t("common.retry")}</Button></div> : null}
       {query.isPending ? <GuardrailRegistrySkeleton /> : null}
-      {!query.isPending && !guardrails.length ? <div className="mt-5"><EmptyState title={t("guardrails.emptyTitle")} description={t("guardrails.emptyDescription")} action={auth.user?.role === "admin" ? <Button onClick={openCreation}><Plus />{t("guardrails.createFirst")}</Button> : undefined} /></div> : null}
+      {!query.isPending && !guardrails.length ? <div className="mt-5"><EmptyState title={t("guardrails.emptyTitle")} description={t("guardrails.emptyDescription")} action={auth.user?.role === "admin" ? <Button variant="create" onClick={openCreation}><Plus />{t("guardrails.createFirst")}</Button> : undefined} /></div> : null}
       {guardrails.length ? <GuardrailRegistry guardrails={guardrails} onOpen={(guardrailId) => navigate({ to: "/guardrails/$guardrailId", params: { guardrailId } })} /> : null}
       <CreateGuardrailWizard open={createOpen} returnFocusRef={createOpener} onOpenChange={setCreateOpen} onCreated={async (id) => { setCreateOpen(false); await queryClient.invalidateQueries({ queryKey: queryKeys.guardrails }); navigate({ to: "/guardrails/$guardrailId", params: { guardrailId: id } }); }} />
     </section>
@@ -261,8 +264,8 @@ export function GuardrailDetailPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           {canManageDraft ? <Button asChild className="min-h-11" variant="outline"><Link to="/playground" search={{ guardrail: guardrail.id, target: "draft", version: undefined }}><FlaskConical />{t("guardrails.testDraft")}</Link></Button> : null}
-          {canManageDraft ? <Button className="min-h-11" variant="outline" onClick={() => setEditOpen(true)}><Pencil />{t("common.edit")}</Button> : null}
-          {auth.user?.role === "admin" && !guardrail.is_default ? <Button className="min-h-11 text-destructive hover:bg-destructive/10 hover:text-destructive" variant="outline" onClick={() => {
+          {canManageDraft ? <Button className="min-h-11" variant="edit" onClick={() => setEditOpen(true)}><Pencil />{t("common.edit")}</Button> : null}
+          {auth.user?.role === "admin" && !guardrail.is_default ? <Button className="min-h-11" variant="destructive" onClick={() => {
             deleteMutation.reset();
             queryClient.removeQueries({ queryKey: queryKeys.guardrailDeletionImpact(guardrailId), exact: true });
             setDeleteOpen(true);
@@ -546,6 +549,8 @@ export function ImmutableVersionView({ detail, selectedVersion, versions, loadin
 }) {
   const { t, i18n } = useTranslation();
   const auth = useAuth();
+  const [deleteVersion, setDeleteVersion] = useState<string | null>(null);
+  const removeVersion = useMutation({ mutationFn: (version: string) => deleteControllerGuardrailVersion(guardrailId, version), onSuccess: async () => { setDeleteVersion(null); await onChanged(); onOpenDraft(); } });
   const [rollbackVersion, setRollbackVersion] = useState<string | null>(null);
   const rollback = useMutation({ mutationFn: (version: string) => rollbackGuardrail(guardrailId, version), onSuccess: async () => { setRollbackVersion(null); toast.success(t("guardrails.rollbackSucceeded")); await onChanged(); }, onError: (error) => notifyError(error, t("guardrails.operationFailed")) });
   if (loading) return <Skeleton className="h-[34rem] rounded-xl" />;
@@ -578,7 +583,10 @@ export function ImmutableVersionView({ detail, selectedVersion, versions, loadin
               </div>
               <div className="flex flex-wrap gap-2">
                 {compareOptions.length ? <Button variant="outline" className="min-h-11" onClick={onStartCompare}><GitCompareArrows />{t("guardrails.compareWithPrevious")}</Button> : null}
-                {auth.user?.role === "admin" && !selectedVersion.active ? <Button variant="outline" className="min-h-11" disabled={rollback.isPending} onClick={() => setRollbackVersion(selectedVersion.version)}>{rollback.isPending ? <LoaderCircle className="animate-spin" /> : <History />}{t("guardrails.rollback")}</Button> : null}
+                {auth.user?.role === "admin" ? <VersionMenu><VersionMenuTrigger asChild><Button variant="ghost" className="size-11" aria-label="Version actions"><VersionActionsIcon /></Button></VersionMenuTrigger><VersionMenuContent align="end">
+                  <VersionMenuItem variant="edit" disabled={selectedVersion.active || rollback.isPending || removeVersion.isPending} onSelect={() => setRollbackVersion(selectedVersion.version)}><History />{t("guardrails.rollback")}</VersionMenuItem>
+                  <VersionMenuItem variant="destructive" disabled={selectedVersion.active || rollback.isPending || removeVersion.isPending} onSelect={() => { removeVersion.reset(); setDeleteVersion(selectedVersion.version); }}><Trash2 />Delete</VersionMenuItem>
+                </VersionMenuContent></VersionMenu> : null}
               </div>
             </div>
           </CardHeader>
@@ -605,6 +613,9 @@ export function ImmutableVersionView({ detail, selectedVersion, versions, loadin
   >
     <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950">{t("guardrails.confirmRollbackImpact")}</div>
     {rollback.error ? <p role="alert" className="rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">{rollback.error instanceof Error ? rollback.error.message : t("guardrails.operationFailed")}</p> : null}
+  </ConfirmationSheet>
+  <ConfirmationSheet open={deleteVersion !== null} onOpenChange={open => { if (!open) setDeleteVersion(null); }} eyebrow="Guardrail version" title={`Delete version ${deleteVersion ?? ""}?`} description="This permanently removes the historical version. Active, compiling, or referenced versions cannot be deleted. Audit evidence and artifacts are retained." cancelLabel={t("common.cancel")} confirmLabel="Delete version" variant="destructive" pending={removeVersion.isPending} onConfirm={() => { if (deleteVersion) removeVersion.mutate(deleteVersion); }}>
+    {removeVersion.error && <p role="alert" className="text-sm text-destructive">{removeVersion.error.message}</p>}
   </ConfirmationSheet></>;
 }
 
@@ -639,7 +650,10 @@ export function DraftReleaseView({ guardrail, policies, cases, casesLoading, act
   const compiling = currentRelease?.compile_status === "compiling";
   const compileFailed = currentRelease?.compile_status === "failed";
   const publish = useMutation({
-    mutationFn: () => publishGuardrail(guardrail.id),
+    mutationFn: () => {
+      if (guardrail.draft_revision === undefined) throw new Error("Reload the Guardrail draft before publishing.");
+      return publishGuardrail(guardrail.id, guardrail.draft_revision);
+    },
     onSuccess: async (version) => {
       setPublishOpen(false);
       toast.success(t("guardrails.publishSucceeded", { version: version.version }));
@@ -688,8 +702,8 @@ export function DraftReleaseView({ guardrail, policies, cases, casesLoading, act
             <div className="mt-4 grid gap-2">
               {canManageDraft && !validated ? <Button className="min-h-11" disabled={validationRunning} onClick={onRunValidation}>{validationRunning ? <LoaderCircle className="animate-spin" /> : <FlaskConical />}{t(validationRunning ? "guardrails.runningValidation" : "guardrails.runReviewed")}</Button> : null}
               {canManageDraft && validated && !published && !compiling ? <Button className="min-h-11" disabled={publish.isPending} onClick={() => setPublishOpen(true)}>{publish.isPending ? <LoaderCircle className="animate-spin" /> : compileFailed ? <RotateCcw /> : <ShieldCheck />}{t(publish.isPending ? "guardrails.requestingCompilation" : compileFailed ? "guardrails.retryCompilation" : "guardrails.publishVersion")}</Button> : null}
-              {canManageDraft && published && !guardrail.is_default ? <Button className="min-h-11" onClick={onCreateRouter}><Rocket />{t("guardrails.createRouter")}</Button> : null}
-              {canManageDraft ? <Button className="min-h-11" variant="outline" onClick={onEdit}><Pencil />{t("common.edit")}</Button> : null}
+              {canManageDraft && published && !guardrail.is_default ? <Button variant="create" className="min-h-11" onClick={onCreateRouter}><Rocket />{t("guardrails.createRouter")}</Button> : null}
+              {canManageDraft ? <Button className="min-h-11" variant="edit" onClick={onEdit}><Pencil />{t("common.edit")}</Button> : null}
               {guardrail.latest_validation_run ? <Button className="min-h-11" variant="outline" onClick={() => onOpenValidation(guardrail.latest_validation_run!)}><FlaskConical />{t("guardrails.openValidation")}</Button> : null}
             </div>
           </aside>
@@ -844,7 +858,7 @@ export function TestCases({ cases, bindings, policies, loading, onAdd, onExclude
             {group.kind === "policy" && item.excluded && onRestore ? <Button type="button" size="sm" variant="outline" className="min-h-11" disabled={busyCaseId === item.id} onClick={() => onRestore(item.id)}>{busyCaseId === item.id ? <LoaderCircle className="animate-spin" /> : <RotateCcw />}{t("guardrails.restoreTestCase")}</Button> : null}
             {group.kind === "policy" && !item.excluded && onExclude ? <Button type="button" size="sm" variant="outline" className="min-h-11 text-foreground" disabled={busyCaseId === item.id} onClick={() => onExclude(item.id)}>{busyCaseId === item.id ? <LoaderCircle className="animate-spin" /> : <Ban />}{t("guardrails.excludeTestCase")}</Button> : null}
           </article>)}</div> : <div className="px-4 py-4 pl-15"><p className="text-xs leading-5 text-muted-foreground">{group.kind === "policy" ? t("guardrails.noInheritedTests") : t("guardrails.noCustomTests")}</p></div>}
-          {group.kind === "guardrail" ? <div className="px-4 py-4 pl-15"><Button className="min-h-11" size="sm" variant="outline" onClick={onAdd}><Plus />{t("guardrails.addTestCase")}</Button></div> : null}
+          {group.kind === "guardrail" ? <div className="px-4 py-4 pl-15"><Button className="min-h-11" size="sm" variant="create" onClick={onAdd}><Plus />{t("guardrails.addTestCase")}</Button></div> : null}
         </div>
       </details>;
     })}</div>

@@ -13,7 +13,7 @@ import {
   TestTube2,
   Trash2,
 } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
@@ -121,17 +121,18 @@ export function GuardrailCatalogPage() {
   const queryClient = useQueryClient();
   const query = useQuery({ queryKey: configurationKey, queryFn: getModelConfiguration, refetchInterval: 10_000, retry: false });
   const [assignments, setAssignments] = useState<ModelAssignments | null>(null);
-  const [previewReport, setPreviewReport] = useState<ModelConfigurationView["draft"]["validationReport"]>(null);
+  const [previewReport, setPreviewReport] = useState<NonNullable<ModelConfigurationView["draft"]>["validationReport"]>(null);
+  const validationReceipts = useRef<Record<string, string | undefined>>({});
   const [pendingAction, setPendingAction] = useState<"activate" | "rollback" | null>(null);
   useEffect(() => {
-    if (!query.data?.draft.assignments) return;
+    if (!query.data?.draft?.assignments) return;
     setAssignments(structuredClone(query.data.draft.assignments));
-  }, [query.data?.draft.id, query.data?.draft.updatedAt]);
-  const dirty = Boolean(assignments && query.data && JSON.stringify(assignments.bindings) !== JSON.stringify(query.data.draft.assignments.bindings));
+  }, [query.data?.draft?.id, query.data?.draft?.updatedAt]);
+  const dirty = Boolean(assignments && query.data?.draft && JSON.stringify(assignments.bindings) !== JSON.stringify(query.data.draft.assignments.bindings));
   const administrator = auth.user?.role === "admin";
   const refresh = async () => { await queryClient.invalidateQueries({ queryKey: configurationKey }); };
   const saveAssignmentMutation = useMutation({
-    mutationFn: async ({ target, modelId }: { target: ModelAssignmentTarget; modelId: string | null }) => saveModelAssignment(target, modelId),
+    mutationFn: async ({ target, modelId }: { target: ModelAssignmentTarget; modelId: string | null }) => saveModelAssignment(target, modelId, validationReceipts.current[`${target}:${modelId}`]),
     onSuccess: async (revision, { target }) => { setAssignments(structuredClone(revision.assignments)); toast.success(t(target === "control_plane" ? "modelSettings.controlPlaneSaved" : "modelSettings.assignmentSaved")); await refresh(); },
     onError: (error) => toast.error(errorMessage(error)),
   });
@@ -142,6 +143,7 @@ export function GuardrailCatalogPage() {
     },
     onSuccess: async (revision, target) => {
       const modelId = target === "control_plane" ? assignments?.controlPlane : assignments?.bindings[target];
+      if (revision.validationId && modelId) validationReceipts.current[`${target}:${modelId}`] = revision.validationId;
       const passed = Boolean(modelId && revision.validationReport?.checks.some((check) => check.id === `probe:${target}:${modelId}` && check.status === "passed"));
       toast[passed ? "success" : "error"](t(passed ? "modelSettings.assignmentValidationPassed" : "modelSettings.assignmentValidationFailed"));
       setPreviewReport((previous) => ({
@@ -164,7 +166,10 @@ export function GuardrailCatalogPage() {
     onError: (error) => toast.error(errorMessage(error)),
   });
   const rollbackMutation = useMutation({
-    mutationFn: rollbackModelConfiguration,
+    mutationFn: () => {
+      if (!query.data?.rollbackTarget) throw new Error(t("modelSettings.noActiveRevision"));
+      return rollbackModelConfiguration(query.data.rollbackTarget);
+    },
     onSuccess: async () => { setPendingAction(null); toast.success(t("modelSettings.rollbackStarted")); await refresh(); },
     onError: (error) => toast.error(errorMessage(error)),
   });
@@ -174,14 +179,14 @@ export function GuardrailCatalogPage() {
   if (query.error || !query.data) {
     return <section className="py-8"><PageHeader title={t("modelSettings.catalogTitle")} description={t("modelSettings.catalogPageDescription")} /><div className="mt-6"><ErrorNotice error={query.error} /></div></section>;
   }
-  if (!assignments) return <ModelsSkeleton />;
+  if (!assignments || !query.data.draft) return <ModelsSkeleton />;
   const report = query.data.draft.validationReport;
   const displayedReport = previewReport ? { ...previewReport, checks: [
     ...(report?.checks ?? []).filter((check) => !previewReport.checks.some((preview) => preview.id === check.id)),
     ...previewReport.checks,
   ] } : report;
   const hasRailEvidence = capabilityBindingDefinitions.every((binding) => {
-    const modelId = query.data.draft.assignments.bindings[binding.id];
+    const modelId = query.data.draft!.assignments.bindings[binding.id];
     return !modelId || report?.checks.some((check) => check.id === `probe:${binding.id}:${modelId}` && check.status === "passed" && check.evidenceKind === "nemo-rail-v1");
   });
   const confirmationPending = activateMutation.isPending || rollbackMutation.isPending;
@@ -195,7 +200,7 @@ export function GuardrailCatalogPage() {
     setPendingAction(null);
   };
   const confirmPendingAction = () => {
-    if (pendingAction === "activate") activateMutation.mutate(query.data.draft.id);
+    if (pendingAction === "activate") activateMutation.mutate(query.data.draft!.id);
     if (pendingAction === "rollback") rollbackMutation.mutate();
   };
 
@@ -228,7 +233,7 @@ export function GuardrailCatalogPage() {
           {dirty ? <Badge variant="secondary">{t("modelSettings.unsaved")}</Badge> : null}
         </div>
         <div className="flex gap-2">
-          {query.data.active ? <Button type="button" variant="ghost" className="h-11" disabled={!administrator || operationPending} onClick={() => setPendingAction("rollback")}><RotateCcw />{t("modelSettings.rollback")}</Button> : null}
+          {query.data.rollbackTarget ? <Button type="button" variant="ghost" className="h-11" disabled={!administrator || operationPending} onClick={() => setPendingAction("rollback")}><RotateCcw />{t("modelSettings.rollback")}</Button> : null}
         </div>
       </div>
 
@@ -239,7 +244,7 @@ export function GuardrailCatalogPage() {
               type="button"
               className="h-11"
               disabled={!administrator || operationPending || dirty || query.data.draft.state !== "validated" || !report?.valid || !hasRailEvidence}
-              onClick={() => activateMutation.mutate(query.data.draft.id)}
+              onClick={() => activateMutation.mutate(query.data.draft!.id)}
             >
               {activateMutation.isPending ? <LoaderCircle className="animate-spin" /> : <Play />}{t("modelSettings.activate")}
             </Button>
@@ -299,7 +304,7 @@ function ControlPlaneSection({ models, selectedId, savedId, report, disabled, sa
   models: ModelDefinition[];
   selectedId: string | null;
   savedId: string | null;
-  report: ModelConfigurationView["draft"]["validationReport"];
+  report: NonNullable<ModelConfigurationView["draft"]>["validationReport"];
   disabled: boolean;
   saving: boolean;
   validating: boolean;
@@ -348,7 +353,7 @@ function GuardrailCatalogSection({ action, assignments, savedAssignments, models
   assignments: ModelAssignments;
   savedAssignments: ModelAssignments;
   models: ModelDefinition[];
-  report: ModelConfigurationView["draft"]["validationReport"];
+  report: NonNullable<ModelConfigurationView["draft"]>["validationReport"];
   disabled: boolean;
   savingTarget: ModelAssignmentTarget | null;
   validatingTarget: ModelAssignmentTarget | null;
@@ -415,7 +420,7 @@ type CapabilityRow = {
 function CapabilityBindingTable({ rows, savedAssignments, report, disabled, savingTarget, validatingTarget, onChange, onSave, onValidate }: {
   rows: CapabilityRow[];
   savedAssignments: ModelAssignments;
-  report: ModelConfigurationView["draft"]["validationReport"];
+  report: NonNullable<ModelConfigurationView["draft"]>["validationReport"];
   disabled: boolean;
   savingTarget: ModelAssignmentTarget | null;
   validatingTarget: ModelAssignmentTarget | null;
@@ -467,7 +472,7 @@ function capabilityTitle(t: ReturnType<typeof useTranslation>["t"], binding: Cap
 function AssignmentValidationStatus({ target, model, report, dirty, binding }: {
   target: ModelAssignmentTarget;
   model?: ModelDefinition;
-  report: ModelConfigurationView["draft"]["validationReport"];
+  report: NonNullable<ModelConfigurationView["draft"]>["validationReport"];
   dirty: boolean;
   binding?: CapabilityBindingDefinition;
 }) {
@@ -502,7 +507,7 @@ function AssignmentValidationStatus({ target, model, report, dirty, binding }: {
 }
 
 function AssignmentActions({ report, target, modelId, dirty, disabled, saving, validating, onSave, onValidate }: {
-  report: ModelConfigurationView["draft"]["validationReport"];
+  report: NonNullable<ModelConfigurationView["draft"]>["validationReport"];
   target: CapabilityBindingId;
   modelId: string | null;
   dirty: boolean;
@@ -551,7 +556,7 @@ function ResourceManagement({ resource, view, administrator, onChanged }: { reso
   });
   const pending = probeMutation.isPending || deleteMutation.isPending;
   const removalModelIds = new Set(removeTarget ? [removeTarget.id] : []);
-  const topicControlDraftUse = Boolean(view.draft.assignments.bindings["topic_control.input"] && removalModelIds.has(view.draft.assignments.bindings["topic_control.input"]));
+  const topicControlDraftUse = Boolean(view.draft?.assignments.bindings["topic_control.input"] && removalModelIds.has(view.draft?.assignments.bindings["topic_control.input"]));
   const topicControlActiveUse = Boolean(view.active?.assignments.bindings["topic_control.input"] && removalModelIds.has(view.active.assignments.bindings["topic_control.input"]));
   const topicControlUse = topicControlDraftUse || topicControlActiveUse;
   const assignmentTargets: Array<{ id: ModelAssignmentTarget; kind: "controlPlane" | "capability" }> = [
@@ -559,7 +564,7 @@ function ResourceManagement({ resource, view, administrator, onChanged }: { reso
     ...capabilityBindingDefinitions.map(({ id }) => ({ id, kind: "capability" as const })),
   ];
   const assignedTargets = assignmentTargets.filter(({ id }) => {
-    const draftModelId = id === "control_plane" ? view.draft.assignments.controlPlane : view.draft.assignments.bindings[id];
+    const draftModelId = id === "control_plane" ? view.draft?.assignments.controlPlane : view.draft?.assignments.bindings[id];
     const activeModelId = id === "control_plane" ? view.active?.assignments.controlPlane : view.active?.assignments.bindings[id];
     return Boolean((draftModelId && removalModelIds.has(draftModelId)) || (activeModelId && removalModelIds.has(activeModelId)));
   });
@@ -569,7 +574,7 @@ function ResourceManagement({ resource, view, administrator, onChanged }: { reso
       {resource === "provider" ? <ResourceSection
         title={t("modelSettings.providers")}
         description={t("modelSettings.providersDescription")}
-        action={<Button type="button" variant="outline" className="h-11" disabled={!administrator} onClick={() => { setInitialProviderId(undefined); setCreateMode("provider"); }}><Plus />{t("modelSettings.addProvider")}</Button>}
+        action={<Button type="button" variant="create" className="h-11" disabled={!administrator} onClick={() => { setInitialProviderId(undefined); setCreateMode("provider"); }}><Plus />{t("modelSettings.addProvider")}</Button>}
       >
         {view.providers.length ? (
           isMobile ? (
@@ -612,7 +617,7 @@ function ResourceManagement({ resource, view, administrator, onChanged }: { reso
       {resource === "model" ? <ResourceSection
         title={t("modelSettings.models")}
         description={t("modelSettings.modelsDescription")}
-        action={<div className="flex flex-wrap gap-2"><ModelProtocolSettings models={view.models} disabled={!administrator || pending} onChanged={onChanged} /><Button type="button" variant="outline" className="h-11" disabled={!administrator} onClick={() => { setInitialProviderId(undefined); setCreateMode("model"); }}><Plus />{t("modelSettings.addModel")}</Button></div>}
+        action={<div className="flex flex-wrap gap-2"><ModelProtocolSettings models={view.models} disabled={!administrator || pending} onChanged={onChanged} /><Button type="button" variant="create" className="h-11" disabled={!administrator} onClick={() => { setInitialProviderId(undefined); setCreateMode("model"); }}><Plus />{t("modelSettings.addModel")}</Button></div>}
       >
         {view.models.length ? (
           <Table className="min-w-[56rem] table-fixed">
@@ -730,7 +735,7 @@ function ResourceActions({ kind, name, pending, checking = false, onRetest, onRe
   return (
     <div className="flex justify-end gap-1">
       <Button type="button" variant={kind === "model" ? "outline" : "ghost"} className="h-11 min-w-11" aria-label={`${t(kind === "model" ? "modelSettings.testCall" : "modelSettings.retest")} ${name}`} disabled={pending} onClick={onRetest}>{checking ? <LoaderCircle className="animate-spin" /> : <RefreshCw />}{kind === "model" ? t("modelSettings.testCall") : null}</Button>
-      <Button type="button" size="icon-sm" className="size-11" variant="ghost" aria-label={`${t("common.remove")} ${name}`} disabled={pending} onClick={onRemove}><Trash2 /></Button>
+      <Button type="button" size="icon-sm" className="size-11" variant="destructive" aria-label={`${t("common.remove")} ${name}`} disabled={pending} onClick={onRemove}><Trash2 /></Button>
     </div>
   );
 }

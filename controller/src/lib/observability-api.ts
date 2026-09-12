@@ -33,7 +33,7 @@ export const getGuardrailFindings = async (
   const since = new Date(Date.now() - metricWindowMilliseconds(window)).toISOString();
   const [events, metrics] = await Promise.all([
     controllerApi.listRuntimeEvents(limit, { guardrailId, since, findingsOnly: 'true', ...(cursor ? { cursor } : {}), ...(severity && severity !== 'all' ? { severity } : {}) }, signal),
-    controllerApi.requestController<Metrics>(`/api/v1/runtime-metrics?${new URLSearchParams({guardrailId,window})}`, signal ? { signal } : undefined),
+    controllerApi.requestController<Metrics>(`/api/v1/telemetry/metrics?${new URLSearchParams({guardrailId,window})}`, signal ? { signal } : undefined),
   ]);
   const items = events.items.flatMap(runtimeFindings).filter(f => !severity || severity === 'all' || f.severity === severity);
   if (!metrics.findings_summary) throw new Error("Runtime findings summary is unavailable. Update the Controller and retry.");
@@ -127,7 +127,7 @@ export async function getMetrics(filters: {
   if (filters.guardrailId) query.set("guardrailId", filters.guardrailId);
   if (filters.routerId) query.set("routerId", filters.routerId);
   const [metrics, status] = await Promise.all([
-    controllerApi.requestController<Omit<Metrics, "system_status" | "system_reasons">>(`/api/v1/runtime-metrics?${query}`, signal ? { signal } : undefined),
+    controllerApi.requestController<Omit<Metrics, "system_status" | "system_reasons">>(`/api/v1/telemetry/metrics?${query}`, signal ? { signal } : undefined),
     controllerApi.getControllerSystemStatus(),
   ]);
   return { ...metrics, system_status: status.status === "healthy" ? "healthy" : "degraded", system_reasons: status.reasons };

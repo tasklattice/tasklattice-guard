@@ -21,10 +21,10 @@ app.use('/api/*', async (c,next) => {
   }
   await next();
 });
-app.get('/api/v1/runtime-metrics', async c => c.json(await service.runtimeMetrics(z.object({window:z.enum(['1h','24h','7d','15d','30d']).default('24h'),guardrailId:z.string().optional(),routerId:z.string().optional()}).parse(c.req.query()))));
-app.get('/api/v1/runtime-endpoints',async c=>c.json(await service.runtimeEndpointActivity()));
-app.get('/api/v1/runtime-events',async c=>c.json(await service.queryRuntimeEvents(z.object({limit:z.coerce.number().default(100),cursor:z.string().optional(),since:z.coerce.date().optional(),before:z.coerce.date().optional(),routerId:z.string().optional(),guardrailId:z.string().optional(),endpointId:z.string().optional(),requestId:z.string().optional(),direction:z.string().optional(),outcome:z.string().optional(),captured:z.enum(['true']).transform(()=>true).optional(),findingsOnly:z.enum(['true']).transform(()=>true).optional()}).parse(c.req.query()))));
-app.get('/api/v1/runtime-events/:id',async c=>c.json(await service.getRuntimeEvent(c.req.param('id'))));
+app.get('/api/v1/telemetry/metrics', async c => c.json(await service.runtimeMetrics(z.object({window:z.enum(['1h','24h','7d','15d','30d']).default('24h'),guardrailId:z.string().optional(),routerId:z.string().optional()}).parse(c.req.query()))));
+app.get('/api/v1/telemetry/endpoint-activity',async c=>c.json(await service.runtimeEndpointActivity()));
+app.get('/api/v1/telemetry/events',async c=>c.json(await service.queryRuntimeEvents(z.object({limit:z.coerce.number().default(100),cursor:z.string().optional(),since:z.coerce.date().optional(),before:z.coerce.date().optional(),routerId:z.string().optional(),guardrailId:z.string().optional(),endpointId:z.string().optional(),requestId:z.string().optional(),direction:z.string().optional(),outcome:z.string().optional(),captured:z.enum(['true']).transform(()=>true).optional(),findingsOnly:z.enum(['true']).transform(()=>true).optional()}).parse(c.req.query()))));
+app.get('/api/v1/telemetry/events/:id',async c=>c.json(await service.getRuntimeEvent(c.req.param('id'))));
 app.get('/api/*',async c=>{
   const url=new URL(c.req.url);const response=await fetch(upstream+url.pathname+url.search,{headers:{cookie:c.req.header('cookie')??''},signal:AbortSignal.timeout(30_000)});
   return new Response(response.body,{status:response.status,headers:{'content-type':response.headers.get('content-type')??'application/json'}});

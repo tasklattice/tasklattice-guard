@@ -1,3 +1,5 @@
+import { useNavigate } from "@tanstack/react-router";
+import { AccessTokens } from "@/components/account/access-tokens";
 import { useEffect, useState, type FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { KeyRound, Languages, ShieldCheck, UserRound } from "lucide-react";
@@ -18,7 +20,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { SupportedLanguage } from "@/i18n";
 import { useAuth } from "@/lib/auth";
 
-export function AccountPage() {
+export function AccountPage({ section = "general" }: { section?: "general" | "security" | "access-tokens" }) {
+  const navigate = useNavigate();
   const { t, i18n } = useTranslation();
   const { user, updateProfile } = useAuth();
   const [displayName, setDisplayName] = useState(user?.display_name ?? "");
@@ -51,11 +54,14 @@ export function AccountPage() {
     <section className="py-6 sm:py-8">
       <PageHeader title={t("account.title")} description={t("account.description")} />
 
-      <Tabs defaultValue="general" className="mt-6">
-        <TabsList aria-label={t("account.sections")}>
+      <Tabs value={section} onValueChange={value => void navigate({ to: value === "security" ? "/account/security" : value === "access-tokens" ? "/account/access-tokens" : "/account" })} className="mt-6">
+        <div className="overflow-x-auto">
+        <TabsList aria-label={t("account.sections")} className="min-w-max">
           <TabsTrigger value="general"><UserRound />{t("account.general")}</TabsTrigger>
           <TabsTrigger value="security"><KeyRound />{t("account.security")}</TabsTrigger>
+          <TabsTrigger value="access-tokens"><ShieldCheck />Access Tokens</TabsTrigger>
         </TabsList>
+        </div>
 
         <TabsContent value="general" className="mt-5">
           <div className="grid max-w-5xl gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.65fr)]">
@@ -151,6 +157,7 @@ export function AccountPage() {
             </CardContent>
           </Card>
         </TabsContent>
+        <TabsContent value="access-tokens" className="mt-5"><AccessTokens /></TabsContent>
       </Tabs>
 
       <ChangePasswordSheet open={passwordOpen} onOpenChange={setPasswordOpen} />

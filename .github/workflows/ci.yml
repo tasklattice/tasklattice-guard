@@ -40,6 +40,9 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras --frozen && npm ci --prefix controller --no-audit --no-fund
 
+      - name: Verify generated OpenAPI contract
+        run: npm run openapi:check --prefix controller
+
       - name: Test control-plane behavior and artifact production
         run: make test-control-plane
 

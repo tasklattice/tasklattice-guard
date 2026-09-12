@@ -58,8 +58,8 @@ describe("Policy catalog HTTP compatibility", () => {
   });
 
   it("provides authenticated preset previews with pinned ordinary Policy bindings", async () => {
-    expect((await appWithSession(null).request("/api/v1/protection-presets")).status).toBe(401);
-    const response = await appWithSession({ user: { id: "member-1", role: "user" } }).request("/api/v1/protection-presets");
+    expect((await appWithSession(null).request("/api/v1/policy-catalog/protection-presets")).status).toBe(401);
+    const response = await appWithSession({ user: { id: "member-1", role: "user" } }).request("/api/v1/policy-catalog/protection-presets");
     expect(response.status).toBe(200);
     const data = await response.json() as { directories: unknown[]; items: Array<{ id: string; policies: unknown[]; policyBindings: Array<{ policyId: string; policyVersion: string }> }> };
     expect(data.directories).toHaveLength(8);
@@ -73,7 +73,7 @@ describe("Policy catalog HTTP compatibility", () => {
   it("returns the standard not-found envelope and the Runner action catalog", async () => {
     const app = appWithSession({ user: { id: "member-1", role: "user" } });
     const missing = await app.request("/api/v1/policies/not-a-policy");
-    const actions = await app.request("/api/v1/actions");
+    const actions = await app.request("/api/v1/policy-catalog/actions");
 
     expect(missing.status).toBe(404);
     await expect(missing.json()).resolves.toMatchObject({ error: { code: "not_found" } });

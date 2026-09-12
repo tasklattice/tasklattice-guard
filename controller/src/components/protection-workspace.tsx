@@ -128,7 +128,7 @@ export function ProtectionOrderEditor({ bindings, policies, onChange }: {
           <div className="flex shrink-0 gap-1">
             <Button type="button" className="size-11 aria-disabled:opacity-50 aria-disabled:hover:bg-transparent" variant="ghost" size="icon" aria-disabled={index === 0} aria-label={t("protection.moveUp", { name })} onClick={event => move(index, -1, event.currentTarget)}><ArrowUp /></Button>
             <Button type="button" className="size-11 aria-disabled:opacity-50 aria-disabled:hover:bg-transparent" variant="ghost" size="icon" aria-disabled={index === bindings.length - 1} aria-label={t("protection.moveDown", { name })} onClick={event => move(index, 1, event.currentTarget)}><ArrowDown /></Button>
-            <Button type="button" className="size-11" variant="ghost" size="icon" aria-label={t("protection.remove", { name })} onClick={() => onChange(bindings.filter((item) => item.policy_id !== binding.policy_id))}><Trash2 /></Button>
+            <Button type="button" className="size-11" variant="destructive" size="icon" aria-label={t("protection.remove", { name })} onClick={() => onChange(bindings.filter((item) => item.policy_id !== binding.policy_id))}><Trash2 /></Button>
           </div>
         </li>;
       })}

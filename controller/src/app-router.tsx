@@ -1,4 +1,4 @@
-import { createBrowserHistory, createRootRoute, createRoute, createRouter, Navigate } from "@tanstack/react-router";
+import { createBrowserHistory, createRootRoute, createRoute, createRouter, Navigate, redirect, useRouterState } from "@tanstack/react-router";
 
 import { ControlPlaneLayout } from "@/routes/layout";
 import { GuardrailDetailPage, GuardrailsPage } from "@/routes/guardrails";
@@ -35,15 +35,38 @@ const playgroundSearch = (search: Record<string, unknown>) => {
 };
 const playgroundRoute = createRoute({ getParentRoute: () => rootRoute, path: "/playground", validateSearch: playgroundSearch, component: PlaygroundPage });
 const routersRoute = createRoute({ getParentRoute: () => rootRoute, path: "/integration/routers", component: RoutersPage });
-const routerDetailRoute = createRoute({ getParentRoute: () => rootRoute, path: "/integration/routers/$routerId", validateSearch: (search: Record<string, unknown>): { routeId?: string } => ({ routeId: typeof search.routeId === "string" ? search.routeId : undefined }), component: RouterDetailPage });
-const endpointRoute = createRoute({ getParentRoute: () => rootRoute, path: "/integration/endpoint", component: EndpointsPage });
+const routerDetailRoute = createRoute({ getParentRoute: () => rootRoute, path: "/integration/routers/$routerId", validateSearch: (search: Record<string, unknown>): { routeId?: string; tab?: string } => ({ routeId: typeof search.routeId === "string" ? search.routeId : undefined, tab: ['overview', 'endpoints', 'routing', 'monitoring', 'revisions'].includes(String(search.tab)) ? String(search.tab) : undefined }), component: RouterDetailPage });
+const endpointRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/integration/endpoint",
+  validateSearch: (search: Record<string, unknown>): { endpointId?: string } => ({
+    endpointId: typeof search.endpointId === "string" && search.endpointId.trim() ? search.endpointId : undefined,
+  }),
+  component: EndpointRoutePage,
+});
+function EndpointRoutePage() {
+  const { endpointId } = endpointRoute.useSearch();
+  const navigate = endpointRoute.useNavigate();
+  return <EndpointsPage endpointId={endpointId} onEndpointChange={(id) => {
+    // Closing a URL-driven sheet must not add a history entry that Back reopens.
+    if (id === endpointId) return;
+    void navigate({ search: (previous) => ({ ...previous, endpointId: id }), replace: id === undefined });
+  }} />;
+}
 const logsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/logs", validateSearch: (search: Record<string, unknown>): { routerId?: string; routeId?: string; targetId?: string; routerRevision?: number; since?: string; until?: string; endpointId?: string } => ({
   ...Object.fromEntries(['routerId', 'routeId', 'targetId', 'endpointId', 'since', 'until'].flatMap(key => typeof search[key] === 'string' ? [[key, search[key]]] : [])),
   ...(Number.isInteger(Number(search.routerRevision)) && Number(search.routerRevision) > 0 ? { routerRevision: Number(search.routerRevision) } : {}),
 }), component: LogsPage });
 const auditLogRoute = createRoute({ getParentRoute: () => rootRoute, path: "/audit-log", component: AuditLogPage });
 const usersRoute = createRoute({ getParentRoute: () => rootRoute, path: "/access", component: UsersPage });
-const accountRoute = createRoute({ getParentRoute: () => rootRoute, path: "/account", component: AccountPage });
+const accountRoute = createRoute({ getParentRoute: () => rootRoute, path: "/account", component: AccountRoutePage });
+function AccountRoutePage() {
+  const path = useRouterState({ select: state => state.location.pathname.replace(/\/$/, "") });
+  return <AccountPage section={path === "/account/security" ? "security" : path === "/account/access-tokens" ? "access-tokens" : "general"} />;
+}
+const accountSecurityRoute = createRoute({ getParentRoute: () => accountRoute, path: "security", component: () => null });
+const accountTokensRoute = createRoute({ getParentRoute: () => accountRoute, path: "access-tokens", component: () => null });
+const accountGeneralRoute = createRoute({ getParentRoute: () => accountRoute, path: "general", beforeLoad: () => { throw redirect({ to: "/account", replace: true }); } });
 const settingsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings", component: () => <Navigate to="/settings/health" replace /> });
 const healthRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/health", component: HealthPage });
 const runnerRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/runner", component: RunnerPage });
@@ -64,7 +87,7 @@ export const routeTree = rootRoute.addChildren([
   logsRoute,
   auditLogRoute,
   usersRoute,
-  accountRoute,
+  accountRoute.addChildren([accountSecurityRoute, accountTokensRoute, accountGeneralRoute]),
   settingsRoute,
   healthRoute,
   runnerRoute,
@@ -75,4 +98,3 @@ export const routeTree = rootRoute.addChildren([
 ]);
 export const router = createRouter({ routeTree, history: createBrowserHistory() });
 declare module "@tanstack/react-router" { interface Register { router: typeof router } }
-

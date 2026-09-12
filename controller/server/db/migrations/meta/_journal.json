@@ -71,6 +71,27 @@
       "when": 1789050000000,
       "tag": "0009_traffic_router_composition",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789140000000,
+      "tag": "0010_router_revision_context",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1789230000000,
+      "tag": "0011_personal_access_tokens",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1789233600000,
+      "tag": "0012_api_semantics",
+      "breakpoints": true
     }
   ]
 }

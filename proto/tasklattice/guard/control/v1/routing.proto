@@ -50,6 +50,12 @@ message TrafficScope {
 }
 
 // Immutable composed Router snapshot, shared by explicitly bound Endpoints.
+// This message is runtime configuration, NOT the Controller lifecycle state.
+// Controller derives unpublished/distributing/active/failed from the desired
+// generation, Runner acknowledgements, fresh heartbeats and rejection evidence.
+// See controller/shared/router-lifecycle.ts and docs/revision-lifecycle.zh-CN.md.
+// Historical deletion never edits this snapshot; active/in-flight revisions
+// must be retained. Rollback publishes a new Router revision, not an in-place edit.
 message RouterRevision {
   string router_id = 1;
   // Positive immutable Router revision, independent of desired generation.

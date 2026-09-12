@@ -121,13 +121,13 @@ describe("Models and Guardrail Catalog", () => {
     Element.prototype.scrollIntoView = vi.fn();
     vi.mocked(getModelConfiguration).mockReset().mockResolvedValue(view);
     vi.mocked(activateModelConfiguration).mockReset().mockResolvedValue({ ...view, distribution: { desiredGeneration: 7, distributionStatus: "ready" } });
-    vi.mocked(validateModelAssignment).mockReset().mockResolvedValue(view.draft);
+    vi.mocked(validateModelAssignment).mockReset().mockResolvedValue({ ...view.draft!, validationId: "candidate-validation" });
     vi.mocked(revalidateModelProvider).mockReset().mockResolvedValue(provider);
     vi.mocked(testModelConnection).mockReset().mockResolvedValue(safetyModel);
     vi.mocked(updateModelProviderCredential).mockReset().mockResolvedValue(provider);
     vi.mocked(deleteModelDefinition).mockReset().mockResolvedValue(undefined);
     vi.mocked(deleteModelProvider).mockReset().mockResolvedValue(undefined);
-    vi.mocked(saveModelAssignment).mockReset().mockResolvedValue(view.draft);
+    vi.mocked(saveModelAssignment).mockReset().mockResolvedValue({ ...view.draft!, validationId: "candidate-validation" });
     vi.mocked(discoverModelProvider).mockReset().mockResolvedValue({ providerId: provider.id, providerName: provider.name, models: [] });
     vi.mocked(toast.success).mockReset();
     vi.mocked(toast.error).mockReset();
@@ -148,7 +148,7 @@ describe("Models and Guardrail Catalog", () => {
   });
 
   it("validates the selected Model before enabling Save", async () => {
-    vi.mocked(validateModelAssignment).mockResolvedValue({
+    vi.mocked(validateModelAssignment).mockResolvedValue({ validationId: "candidate-validation",
       ...view.draft, validationReport: { ...view.draft.validationReport!, checks: [
         { id: "probe:jailbreak.input:safety-model", scope: "capability", status: "passed", evidenceKind: "nemo-rail-v1", message: "Passed" },
       ] },
@@ -163,7 +163,7 @@ describe("Models and Guardrail Catalog", () => {
     await waitFor(() => expect(save.hasAttribute("disabled")).toBe(false));
     expect(saveModelAssignment).not.toHaveBeenCalled();
     fireEvent.click(save);
-    await waitFor(() => expect(saveModelAssignment).toHaveBeenCalledWith("jailbreak.input", "safety-model"));
+    await waitFor(() => expect(saveModelAssignment).toHaveBeenCalledWith("jailbreak.input", "safety-model", "candidate-validation"));
   });
 
   it("distributes the validated clean catalog revision in one click", async () => {
@@ -207,7 +207,7 @@ describe("Models and Guardrail Catalog", () => {
   });
 
   it("activates Control Plane after validation without a Save step", async () => {
-    vi.mocked(validateModelAssignment).mockResolvedValue({ ...view.draft, validationReport: {
+    vi.mocked(validateModelAssignment).mockResolvedValue({ validationId: "candidate-validation", ...view.draft, validationReport: {
       ...view.draft.validationReport!, checks: [{ id: "probe:control_plane:chat-model", scope: "model", status: "passed", message: "Passed" }],
     } });
     renderPage(<GuardrailCatalogPage />);
@@ -219,7 +219,7 @@ describe("Models and Guardrail Catalog", () => {
     await waitFor(() => expect(activate.hasAttribute("disabled")).toBe(false));
     expect(saveModelAssignment).not.toHaveBeenCalled();
     fireEvent.click(activate);
-    await waitFor(() => expect(saveModelAssignment).toHaveBeenCalledWith("control_plane", "chat-model"));
+    await waitFor(() => expect(saveModelAssignment).toHaveBeenCalledWith("control_plane", "chat-model", "candidate-validation"));
     expect(activateModelConfiguration).not.toHaveBeenCalled();
   });
 

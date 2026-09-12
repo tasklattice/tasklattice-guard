@@ -96,7 +96,7 @@ Traffic Selector 的字段、HTTP Header 和布尔语义见第 5.4 节。Selecto
 
 ### 5.3 Fallback 与异常
 
-每个 Router 有且仅有一条 Fallback Route，固定末尾，不可停用、删除或配置条件，但可以编辑名字与加权目标。创建时由用户显式选择默认 Guardrail；选定后可预选其就绪版本，所选固定版本必须在表单中可见。不得自动选择列表中的第一个 Guardrail。
+每个 Router 有且仅有一条 Fallback Route，固定末尾，不可停用、删除、排序或配置条件。Fallback 只允许一个 Guardrail 目标，固定 100%。创建时由用户显式选择默认 Guardrail；选定后可预选其就绪版本，所选固定版本必须在表单中可见。不得自动选择列表中的第一个 Guardrail。
 
 Fallback 仅处理“没有普通条目命中”，不处理“目标执行失败”。命中目标不可用或执行错误时，返回明确的保护不可用错误并计入执行失败；不偷偷转去其他 Route、不重新抽签、不自动放行。Guardrail 自身的 block 是正常保护结果，不是运行错误。
 
@@ -177,7 +177,7 @@ Selector 不再包含 Endpoint 范围条件。Route 的输入天然来自 Router
 
 ## 6. Router 的编辑与发布
 
-Router 保存草稿和不可变发布 revision。新增、修改、排序、启停 Route、调整目标权重均先进入草稿，点击“发布配置”才影响新调用。名称作为管理元数据保存；Router 创建及编辑不提供 Description 输入；历史快照保留当时名称用于解释日志。
+Router 保存草稿和不可变发布 revision。新增、修改、排序、启停 Route、调整目标权重均先进入草稿，通过 Review changes → Publish revision 才影响新调用。名称作为管理元数据保存；Router 创建及编辑不提供 Description 输入；历史快照保留当时名称用于解释日志。
 
 发布检查条件结构、Fallback 唯一性、权重总和、目标引用与就绪状态、Endpoint 适配能力，并展示前后变化及影响范围。使用草稿版本号进行乐观并发控制；有冲突时保留本地编辑，要求重新加载比较，不能覆盖他人修改。
 
@@ -228,35 +228,28 @@ Guardrails 列表每行最右侧的省略号菜单提供唯一的 Duplicate 入�
 
 ### 8.2 Router 详情 `/integration/routers/:routerId`
 
-头部显示名称、来源 Endpoint 集合、当前生效 revision、草稿状态；主按钮为“发布配置”（无改动时禁用并说明原因）。主体分为“总览”“路由配置”“变更记录”。默认进入总览，头部有明确“编辑路由”入口。
+本节按 2026-09-12 的产品要求替换先前的详情页布局，完整实现说明和验收证据见 [Router Detail 重构](router-detail-redesign.zh-CN.md)。
 
-总览首屏结构如下，数值均为设计示例：
+固定 Tab 顺序为 **Overview / Endpoints / Routing / Revisions**，默认 Overview。详情页 Revision 标识复用 GuardRail 的 UTC 时间戳格式 `YYYYMMDD-HHmmss.SSSZ`，来自不可变 createdAt；内部 revision 序号仍用于 API、并发控制和日志关联。Shell、字体、颜色与组件体系沿用项目；Breadcrumb 显示 Router 名称。
 
-```text
-Support Traffic Router                 生效 r12    [编辑路由]
-接入：Customer API、Agent Gateway       最近 24h ▾
+- **Overview**：只读 Traffic Flow 是主视觉。所有当前绑定的 Endpoint 共用有序规则集，不能凭空画出 Endpoint 与某条规则的一对一归属。规则到目标的连接显示百分比和发布时固定版本。Fallback 独立最后一行。下方展示轻量来源、规则、当前部署与近期 revision 摘要；实际流量监控按需展开。
+- **Endpoints**：独立资源关系表，使用真实状态。Attach / Detach 在侧栏完成；来源不能属于其他 Router。点击 Endpoint 打开实际路由 `/integration/endpoint?endpointId=…` 的详情。绑定变更独立下发，不修改 Endpoint 自身属性。
+- **Routing**：默认只读已发布配置；无发布版本时展示草稿。Edit routing 进入本地 Draft Edit Mode，普通条目折叠展示，展开后展示 Selector → GuardRails 目标及比例图示。新增/编辑打开右侧 Sheet，上方 Selector、下方目标列表；确认后才加入/更新草稿，取消不留下空条目；复用原 Selector 与 Target 编辑器；支持 dnd-kit 指针及键盘排序、Duplicate / Delete。Duplicate 此处复制 Route 配置，不复制 Guardrail 实体。Fallback 不编号，不可删或排序，只能选择一个 100% 目标。错误定位到对应规则。
+- **Revisions**：只读部署历史、发布人、时间、diff、Endpoint 发布时快照和精确 Guardrail 版本。Restore 先把旧路由配置复制为客户端草稿，再 Review / Publish 创建新 revision；当前 Endpoint 绑定不自动恢复。旧 revision 不改变。
 
-总调用 100,000    已分配 100,000    Fallback 10%    执行错误 0.2%
+编辑流程统一为 **Edit routing → Review changes → Publish revision**。不展示 Save rules / Publish configuration 两个一级操作。Review 时调用现有保存草稿 API，再调用只读 preview 解析版本；保存失败保留本地编辑，preview 失败保留已保存草稿。发布 Sheet 显示真实差异、版本解析与来源范围；无原始 JSON 配置墙。取消编辑丢弃本地修改，Discard 恢复当前已发布配置，均明确确认。
 
-路由条目          调用量    占 Router 流量      目标实际分布
-01 VIP 请求       20,000        20%            A 90.5% / B 9.5%
-02 常规请求       70,000        70%            A 100%
-   Fallback       10,000        10%            Default 100%
+Draft Target 支持 `versionStrategy: latest | pinned`。新增目标默认 Latest when published。preview 返回解析后的固定版本；发布事务再次解析并检查与审查快照、Endpoint 集合一致，变化则返回冲突要求重审。Revision / activeSnapshot 均不保留 floating latest，编辑草稿仍保留用户策略。API 返回发布成功不代表 Runner 已应用，界面等待真实 rolloutStatus，不能直接宣称 Active。
 
-[调用量趋势：按 Route 堆叠]   数据更新于 14:32:10
-```
+新增 revision.context 保存发布时 Endpoint id/name/adapter 与 Guardrail id/name/version。旧 revision 的 context 为 null，显示不可用，绝不以当前绑定反填历史。发布后的 Endpoint 关系改变单独记录 audit event 的前后来源、Router revision 与 generation。具体请求实际选中的 Route / Target / Guardrail version 仍以运行日志为准，配置快照描述可能的执行路径。
 
-配置页使用同一顺序的 Route 表：优先级、条目名称、Traffic Selector 摘要、Distribution 目标与比例、启停状态、操作。摘要示例：“业务 Header x-channel = partner → A 70% / B 30%”。点击 Router 名称不会落到某条 Route；点击 Route 名称进入条目编辑侧栏，支持带 routeId 的深链接，仍处在父 Router 上下文。
-
-Route 编辑侧栏分为两块固定区域：**Traffic Selector · 从来源 Endpoint 选择流量**（字段条件构建器与测试预览）和 **Distribution · 分配目标**（Targets 权重表）。名称置于顶部。Header 条件行直接显示“来源 / Header 名 / 操作符 / 值”，不要求用户把 Header 写成隐藏的字段路径。每行 Target 显示 Guardrail 名称、固定版本、就绪状态与百分比输入；多目标区域显示权重总和，非法总和明确提示调整至 100%。支持“添加 Guardrail”。单目标时直接显示 100%。Guardrail Duplicate 不属于 Route 编辑流程，只在 Guardrail 创建入口提供。
-
-拖动或上下移动只改变 Route 顺序，键盘可操作；Fallback 固定底部。Route 开关只修改草稿，显示“待发布停用/启用”，不借用 Protected 标签。只读用户可以查看配置和监控，不能编辑或发布。
+窄屏保留拓扑三列并在局部水平滚动；普通规则表同样允许局部滚动，不把关系强行折叠成卡片。
 
 ### 8.3 监控下钻
 
 点击 Route 的调用量或分布条，查看该 Route 的 Target 明细：配置占比、实际占比、分配量、allow/block/transform/intervene、执行错误率、延迟。进一步点击目标进入带 Router、Route、Target、时间窗口筛选的调用日志。
 
-路由配置中看到的是草稿比例，总览看到的是实际运行数据；草稿比例不能覆盖监控中的运行配置。跨 revision 时显示“窗口包含多个配置版本”，可按 revision 筛选，再比较配置比例与实际比例。
+Routing 默认展示已发布配置，编辑时展示草稿比例；Overview 拓扑展示已发布配置比例，展开监控后看到实际运行数据；草稿比例不能覆盖监控中的运行配置。跨 revision 时显示“窗口包含多个配置版本”，可按 revision 筛选，再比较配置比例与实际比例。
 
 ### 8.4 状态与可用性
 
@@ -438,4 +431,3 @@ partner + cn 的调用只在 A/B 中选择；internal 的调用只在 B/C 中选
 - Router 创建请求超时后重试的幂等性：目前原子事务避免半创建，但没有创建幂等键契约。
 - 旧 description 字段以及协议中遗留的 Route Endpoint 范围字段的物理清理。
 - 文档禁止 Route 来源范围配置，但字段目录仍包含 endpoint.id；需在后续契约收敛中明确它是否仅为系统解释字段，不能把它当作已删除的 endpointScope。
-

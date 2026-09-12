@@ -53,7 +53,7 @@ function endpointEvents(value: controllerApi.Endpoint, events: controllerApi.Run
 }
 
 type EndpointActivity = Pick<Endpoint, 'first_seen_at' | 'last_seen_at' | 'input_seen_at' | 'output_seen_at' | 'stream_final_check_seen_at' | 'last_error_at' | 'request_count' | 'error_count'> & { id: string };
-const getActivity = () => controllerApi.requestController<{ items: EndpointActivity[] }>('/api/v1/runtime-endpoints');
+const getActivity = () => controllerApi.requestController<{ items: EndpointActivity[] }>('/api/v1/telemetry/endpoint-activity');
 
 function mapEndpoint(value: CurrentEndpoint, events: controllerApi.RuntimeEvent[], activity?: EndpointActivity): Endpoint {
   const adapter = endpointAdapter(value.adapter);

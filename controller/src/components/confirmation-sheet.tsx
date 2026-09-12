@@ -48,7 +48,7 @@ export function ConfirmationSheet({
       density="compact"
       footer={<>
         <Button type="button" variant="outline" disabled={pending} onClick={() => onOpenChange(false)}>{cancelLabel}</Button>
-        <Button type="button" variant={variant === "destructive" ? "destructive" : "default"} disabled={pending || confirmDisabled} onClick={onConfirm}>
+        <Button type="button" variant={variant === "destructive" ? "destructive" : variant === "warning" ? "edit" : "default"} disabled={pending || confirmDisabled} onClick={onConfirm}>
           {pending ? <LoaderCircle className="animate-spin motion-reduce:animate-none" /> : confirmIcon ?? <Icon />}
           {pending ? pendingLabel ?? confirmLabel : confirmLabel}
         </Button>

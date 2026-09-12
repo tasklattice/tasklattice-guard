@@ -1,3 +1,4 @@
+import { AccessTokenService } from "./services/access-tokens.js";
 import { serve, type ServerType } from "@hono/node-server";
 
 import { createAuth } from "./auth.js";
@@ -43,6 +44,7 @@ const playgroundRunner = new RunnerPlaygroundClient({
 const app = createHttpApp({
   config,
   auth,
+  accessTokens: new AccessTokenService(db),
   service,
   runnerControl,
   metrics,

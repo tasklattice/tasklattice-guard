@@ -1,3 +1,4 @@
+import type { RouterRolloutState } from "./router-lifecycle.js";
 import { z } from "zod";
 
 export const selectorOperators = ["equals", "not_equals", "in", "not_in", "contains", "starts_with", "glob", "exists", "not_exists"] as const;
@@ -66,7 +67,7 @@ export const selectorExpressionSchema = expressionSchema(1).superRefine((express
   const count = (g: SelectorExpression): number => g.conditions.reduce((n, c) => n + ("conditions" in c ? count(c) : 1), 0);
   if (count(expression) > routingLimits.maxConditions) ctx.addIssue({ code: "custom", message: "Maximum 16 conditions" });
 });
-export const targetSchema = z.object({ id: z.string().min(1).max(128), guardrailId: z.string().min(1).max(128), guardrailVersion: z.string().max(128), weightBps: z.number().int().min(0).max(10000) }).strict();
+export const targetSchema = z.object({ id: z.string().min(1).max(128), guardrailId: z.string().min(1).max(128), guardrailVersion: z.string().max(128), versionStrategy: z.enum(["latest", "pinned"]).optional(), weightBps: z.number().int().min(0).max(10000) }).strict();
 export const routeSchema = z.object({
   id: z.string().min(1).max(128), name: z.string().trim().min(1).max(160), kind: z.enum(["normal", "fallback"]), enabled: z.boolean(),
   selector: z.object({ expression: selectorExpressionSchema }).strict(),
@@ -79,7 +80,7 @@ export type RouterDraft = z.infer<typeof routerDraftSchema>;
 export type TrafficRouter = {
   id: string; name: string; description: string; draftRevision: number; draft: RouterDraft; activeRevision: number | null;
   activeDraftRevision: number | null; activeSnapshot: RouterDraft | null; desiredGeneration: number;
-  rolloutStatus: "unpublished" | "distributing" | "active" | "failed"; endpointIds: string[]; updatedAt: string;
+  rolloutStatus: RouterRolloutState; endpointIds: string[]; updatedAt: string;
 };
 export type SelectorField = { id: string; label: string; group: string; customKey?: boolean; http?: boolean; cardinality: "one" | "many"; operators: readonly string[]; valueType?: "string"; availableAt?: "first_assignment"; sourceDescription?: string };
 const strings = selectorOperators;
@@ -101,6 +102,7 @@ export function routingIssues(draft: RouterDraft, publish = false): string[] {
     if (ids.has(route.id)) errors.push(`${prefix}: duplicate Route ID`); ids.add(route.id);
     if (route.kind === "fallback") {
       fallbacks++;
+      if (publish && (route.targets.length !== 1 || route.targets[0]?.weightBps !== 10000)) errors.push(`${prefix}: Fallback requires exactly one Target at 100%`);
       if (index !== draft.routes.length - 1 || !route.enabled || route.selector.expression.conditions.length || route.selector.expression.combinator !== "and") errors.push(`${prefix}: Fallback must be enabled, unconditional and last`);
     } else if (publish && !route.selector.expression.conditions.length) errors.push(`${prefix}: add a Traffic Selector`);
     let leaves = 0;
@@ -126,9 +128,9 @@ export function routingIssues(draft: RouterDraft, publish = false): string[] {
     const targetIds = new Set<string>(), refs = new Set<string>();
     for (const t of route.targets) {
       if (targetIds.has(t.id)) errors.push(`${prefix}: duplicate Target ID`); targetIds.add(t.id);
-      const ref = JSON.stringify([t.guardrailId, t.guardrailVersion]);
+      const ref = JSON.stringify([t.guardrailId, t.versionStrategy === "latest" ? "latest" : t.guardrailVersion]);
       if (refs.has(ref)) errors.push(`${prefix}: duplicate Guardrail Version`); refs.add(ref);
-      if (publish && (!t.guardrailVersion.trim() || t.guardrailVersion.toLowerCase() === "latest")) errors.push(`${prefix}: pin a Guardrail Version`);
+      if (publish && t.versionStrategy !== "latest" && (!t.guardrailVersion.trim() || t.guardrailVersion.toLowerCase() === "latest")) errors.push(`${prefix}: pin a Guardrail Version`);
     }
     if (publish && (!route.targets.length || route.targets.reduce((sum, t) => sum + t.weightBps, 0) !== 10000)) errors.push(`${prefix}: target percentages must total 100%`);
   }

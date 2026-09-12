@@ -19,7 +19,6 @@ import type {
 } from "@/lib/api-types";
 
 export { listTrafficRouters as getRouters, getTrafficRouter as getRouter } from './traffic-routing-api';
-export const getTrafficScopeFields = (): Promise<Collection<TrafficScopeField>> => controllerApi.requestController<Collection<TrafficScopeField>>("/api/v1/traffic-scope-fields");
 
 export async function getRouterTraces(id: string, limit = 100, cursor?: string, signal?: AbortSignal, security?: { severity: string }): Promise<Collection<RouterRuntimeTrace>> {
   const safeLimit = Math.min(500, Math.max(1, limit));

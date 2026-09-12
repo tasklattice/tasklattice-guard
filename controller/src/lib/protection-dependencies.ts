@@ -57,6 +57,6 @@ export function dependencyAssignment(id: CapabilityBindingId, view: ModelConfigu
   // A failed/newer draft does not replace the last active runtime assignment.
   return (view.active && inspect(view.active, "active"))
     || (view.activating && inspect(view.activating, "activating"))
-    || inspect(view.draft, "draft")
+    || (view.draft && inspect(view.draft, "draft"))
     || { state: "missing" as const, modelName: null, checkedAt: null, revision: null };
 }

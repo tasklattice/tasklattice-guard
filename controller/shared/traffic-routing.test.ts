@@ -182,3 +182,30 @@ describe("capabilities and exact ordered preview", () => {
     expect(rows.map(r => r.state)).toEqual(["selected", "not_applicable", "not_evaluated"]);
   });
 });
+
+
+describe("publication target contracts", () => {
+  it("allows latest with empty version while undefined and explicit pinned require identities", () => {
+    const value = draft(); const target = value.routes[0]!.targets[0]!;
+    target.guardrailVersion = "";
+    expect(routingIssues(value, true).join(";")).toContain("pin a Guardrail Version");
+    target.versionStrategy = "pinned";
+    expect(routingIssues(value, true).join(";")).toContain("pin a Guardrail Version");
+    target.versionStrategy = "latest";
+    expect(routingIssues(value, true)).toEqual([]);
+  });
+  it("requires one 100% fallback target and preserves fallback topology", () => {
+    const value = draft(); const fallbackRoute = value.routes[0]!;
+    fallbackRoute.targets.push({ ...fallbackRoute.targets[0]!, id: "b", guardrailId: "b", weightBps: 0 });
+    expect(routingIssues(value)).toEqual([]);
+    expect(routingIssues(value, true).join(";")).toContain("exactly one Target at 100%");
+    fallbackRoute.targets.pop(); fallbackRoute.targets[0]!.weightBps = 9999;
+    expect(routingIssues(value, true).join(";")).toContain("exactly one Target at 100%");
+    fallbackRoute.targets[0]!.weightBps = 10000; fallbackRoute.enabled = false;
+    expect(routingIssues(value, true).join(";")).toContain("Fallback must be enabled, unconditional and last");
+    fallbackRoute.enabled = true; fallbackRoute.selector.expression = { combinator: "and", conditions: [{ field: "protocol", operator: "equals", value: "HTTP" }] };
+    expect(routingIssues(value, true).join(";")).toContain("Fallback must be enabled, unconditional and last");
+    fallbackRoute.selector.expression = group(); value.routes.push(route("after", group()));
+    expect(routingIssues(value, true).join(";")).toContain("Fallback must be enabled, unconditional and last");
+  });
+});

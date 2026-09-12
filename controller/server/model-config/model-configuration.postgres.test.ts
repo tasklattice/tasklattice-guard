@@ -23,7 +23,7 @@ describe.skipIf(!url)("Model draft PostgreSQL optimistic locking", () => {
     admin = new Pool({ connectionString: url, max: 1 });
     await admin.query(`CREATE SCHEMA "${namespace}"`);
     pool = new Pool({ connectionString: url, max: 2, application_name: namespace, options: `-c search_path=${namespace}` });
-    for (const table of ['model_configuration_revision', 'model_provider', 'model_definition', 'policy_version', 'audit_event', 'controller_state', 'controller_outbox']) {
+    for (const table of ['model_assignment_validation', 'model_configuration_revision', 'model_provider', 'model_definition', 'policy_version', 'audit_event', 'controller_state', 'controller_outbox']) {
       // LIKE copies structure/indexes, not data or foreign keys to public rows.
       await pool.query(`CREATE TABLE "${table}" (LIKE public."${table}" INCLUDING ALL)`);
     }
@@ -38,6 +38,7 @@ describe.skipIf(!url)("Model draft PostgreSQL optimistic locking", () => {
   });
   beforeEach(async () => {
     await pool.query('DELETE FROM model_configuration_revision');
+    await pool.query('DELETE FROM model_assignment_validation');
     await pool.query('DELETE FROM controller_outbox');
     await pool.query('DELETE FROM audit_event');
     await pool.query("INSERT INTO controller_state (id,desired_generation) VALUES ('singleton',0) ON CONFLICT (id) DO UPDATE SET desired_generation=0");
@@ -54,6 +55,40 @@ describe.skipIf(!url)("Model draft PostgreSQL optimistic locking", () => {
     return id;
   }
 
+  async function forkValidated(id: string) {
+    const nextId = randomUUID();
+    await pool.query("INSERT INTO model_configuration_revision (id,revision,assignments,state,validation_report,validated_at) SELECT $2,(SELECT max(revision)+1 FROM model_configuration_revision),assignments,'validated',validation_report,validated_at FROM model_configuration_revision WHERE id=$1", [id, nextId]);
+    return { id: nextId };
+  }
+
+  it('never creates a draft or advances activation during a read', async () => {
+    expect((await service.view()).draft).toBeNull();
+    expect((await pool.query('SELECT id FROM model_configuration_revision')).rows).toHaveLength(0);
+    const id = await seed();
+    await pool.query("UPDATE model_configuration_revision SET state='activating' WHERE id=$1", [id]);
+    expect((await service.view()).activating?.id).toBe(id);
+    expect((await pool.query('SELECT state FROM model_configuration_revision')).rows).toEqual([{ state: 'activating' }]);
+  });
+  it('shares validation receipts across instances and enforces ownership, expiry and model fingerprint', async () => {
+    await seed();
+    const receipt = await service.previewAssignment('content_safety.input', modelId, 'synthetic-admin');
+    const peer = new ModelConfigurationService(drizzle(pool, { schema }), 'synthetic-root', resolve('../runner/toolkit/policy_library/assets'));
+    await expect(peer.getAssignmentValidation('content_safety.input', receipt.validationId, 'other-actor')).rejects.toMatchObject({ code: 'not_found' });
+    await expect(peer.updateAssignment('content_safety.input', modelId, 'other-actor', receipt.validationId)).rejects.toMatchObject({ code: 'model_assignment_not_validated' });
+    await pool.query("UPDATE model_assignment_validation SET expires_at=now()-interval '1 minute' WHERE id=$1", [receipt.validationId]);
+    await expect(peer.updateAssignment('content_safety.input', modelId, 'synthetic-admin', receipt.validationId)).rejects.toMatchObject({ code: 'model_assignment_not_validated' });
+    await pool.query("UPDATE model_assignment_validation SET expires_at=now()+interval '10 minutes' WHERE id=$1", [receipt.validationId]);
+    await pool.query("UPDATE model_definition SET name='Changed' WHERE id=$1", [modelId]);
+    await expect(peer.updateAssignment('content_safety.input', modelId, 'synthetic-admin', receipt.validationId)).rejects.toMatchObject({ code: 'model_assignment_not_validated' });
+    const fresh = await service.previewAssignment('content_safety.input', modelId, 'synthetic-admin');
+    const saved = await peer.updateAssignment('content_safety.input', modelId, 'synthetic-admin', fresh.validationId);
+    expect(saved.assignments.bindings['content_safety.input']).toBe(modelId);
+    const before = (await pool.query('SELECT id FROM model_configuration_revision')).rows;
+    expect((await peer.updateAssignment('content_safety.input', modelId, 'synthetic-admin')).id).toBe(saved.id);
+    expect((await pool.query('SELECT id FROM model_configuration_revision')).rows).toEqual(before);
+    await pool.query("UPDATE model_definition SET name='Synthetic' WHERE id=$1", [modelId]);
+  });
+
   it('keeps saved Chat available across draft creation, Runner activation and rollback', async () => {
     await seed();
     await pool.query("UPDATE model_definition SET profile='generic-chat' WHERE id=$1", [modelId]);
@@ -61,9 +96,9 @@ describe.skipIf(!url)("Model draft PostgreSQL optimistic locking", () => {
       resolve('../runner/toolkit/policy_library/assets'), vi.fn(async () =>
         Response.json({ choices: [{ message: { content: "Hello" } }] })));
     try {
-      await chat.previewAssignment('control_plane', modelId, 'synthetic-admin');
+      const receipt1 = await chat.previewAssignment('control_plane', modelId, 'synthetic-admin');
       expect(await chat.controlPlaneModel('playground_chat')).toBeNull();
-      const saved = await chat.updateAssignment('control_plane', modelId, 'synthetic-admin');
+      const saved = await chat.updateAssignment('control_plane', modelId, 'synthetic-admin', receipt1.validationId);
       expect(await chat.controlPlaneModel('playground_chat')).toMatchObject({ model: 'synthetic' });
       expect((await pool.query('SELECT id FROM controller_outbox')).rows).toHaveLength(0);
       await chat.beginActivation(saved.id, 'synthetic-admin');
@@ -71,9 +106,9 @@ describe.skipIf(!url)("Model draft PostgreSQL optimistic locking", () => {
       expect(await chat.controlPlaneModel('playground_chat')).toMatchObject({ model: 'synthetic' });
       await pool.query("INSERT INTO model_configuration_revision (id,revision,assignments,state) VALUES ($1,0,$2,'superseded')",
         [randomUUID(), emptyModelAssignments()]);
-      await chat.rollback('synthetic-admin');
+      await chat.rollback('synthetic-admin', (await pool.query("SELECT id FROM model_configuration_revision WHERE state='superseded'")).rows[0].id);
       expect(await chat.controlPlaneModel('playground_chat')).toMatchObject({ model: 'synthetic' });
-      await chat.updateAssignment('control_plane', null, 'synthetic-admin');
+      await chat.updateAssignment('control_plane', null, 'synthetic-admin', receipt1.validationId);
       expect(await chat.controlPlaneModel('playground_chat')).toBeNull();
     } finally {
       await pool.query("UPDATE model_definition SET profile='tali.qwen3guard.v1' WHERE id=$1", [modelId]);
@@ -81,8 +116,8 @@ describe.skipIf(!url)("Model draft PostgreSQL optimistic locking", () => {
   });
 
   it('saves a genuinely new draft without an initial bulk-save workaround', async () => {
-    await service.previewAssignment('content_safety.input', modelId, 'synthetic-admin');
-    const result = await service.updateAssignment('content_safety.input', modelId, 'synthetic-admin');
+    const receipt2 = await service.previewAssignment('content_safety.input', modelId, 'synthetic-admin');
+    const result = await service.updateAssignment('content_safety.input', modelId, 'synthetic-admin', receipt2.validationId);
     expect(result.assignments.bindings['content_safety.input']).toBe(modelId);
     expect(result).not.toHaveProperty('rowVersion');
   });
@@ -92,8 +127,8 @@ describe.skipIf(!url)("Model draft PostgreSQL optimistic locking", () => {
     const { rows: [row] } = await pool.query('SELECT updated_at FROM model_configuration_revision WHERE id=$1', [id]);
     const { rowCount } = await pool.query('SELECT id FROM model_configuration_revision WHERE id=$1 AND updated_at=$2', [id, row.updated_at]);
     expect(rowCount).toBe(0);
-    await service.previewAssignment('content_safety.input', modelId, 'synthetic-admin');
-    const result = await service.updateAssignment('content_safety.input', modelId, 'synthetic-admin');
+    const receipt3 = await service.previewAssignment('content_safety.input', modelId, 'synthetic-admin');
+    const result = await service.updateAssignment('content_safety.input', modelId, 'synthetic-admin', receipt3.validationId);
     expect(result.id).toBe(id);
     expect(result.assignments.bindings['content_safety.input']).toBe(modelId);
   });
@@ -163,7 +198,7 @@ describe.skipIf(!url)("Model draft PostgreSQL optimistic locking", () => {
   it('still lets a different validated revision replace an unfinished activation', async () => {
     const first = await seed(true);
     await service.validateAssignment('content_safety.input', 'synthetic-admin');
-    const second = await service.updateAssignment('content_safety.input', modelId, 'synthetic-admin');
+    const second = await forkValidated(first);
     expect(second.id).not.toBe(first);
     await service.beginActivation(first, 'synthetic-admin');
     const replacement = await service.beginActivation(second.id, 'synthetic-admin');
@@ -181,7 +216,7 @@ describe.skipIf(!url)("Model draft PostgreSQL optimistic locking", () => {
     await pool.query("INSERT INTO model_configuration_revision (id,revision,assignments,state) VALUES ($1,0,$2,'active')", [original, emptyModelAssignments()]);
     const first = await seed(true);
     await service.validateAssignment('content_safety.input', 'synthetic-admin');
-    const next = await service.updateAssignment('content_safety.input', modelId, 'synthetic-admin');
+    const next = await forkValidated(first);
     await service.beginActivation(first, 'synthetic-admin');
 
     async function waitUntil(condition: () => Promise<boolean>) {
@@ -239,8 +274,8 @@ describe.skipIf(!url)("Model draft PostgreSQL optimistic locking", () => {
 
   it('does not activate a partially passing configuration or invalidate its unrelated failure', async () => {
     const id = await seed(true);
-    await service.previewAssignment('content_safety.output', modelId, 'synthetic-admin');
-    await service.updateAssignment('content_safety.output', modelId, 'synthetic-admin');
+    const receipt4 = await service.previewAssignment('content_safety.output', modelId, 'synthetic-admin');
+    await service.updateAssignment('content_safety.output', modelId, 'synthetic-admin', receipt4.validationId);
     service.setRailValidator(async ({ bindingId }) => ({
       passed: bindingId === 'content_safety.input', message: `Synthetic ${bindingId} result`, latencyMs: 1,
     }));
@@ -263,8 +298,8 @@ describe.skipIf(!url)("Model draft PostgreSQL optimistic locking", () => {
     await service.validateAssignment('content_safety.input', 'synthetic-admin');
     // Saving unchanged settings preserves the successful validation.
     const edited = await service.updateAssignment('content_safety.input', modelId, 'synthetic-admin');
-    // Validated revisions are immutable snapshots; editing forks a new draft.
-    expect(edited.id).not.toBe(id);
+    // An identical assignment preserves the snapshot without creating another draft.
+    expect(edited.id).toBe(id);
     expect(edited.state).toBe('validated');
     expect(edited.validationReport?.valid).toBe(true);
     expect((await pool.query('SELECT id FROM controller_outbox')).rows).toEqual([]);

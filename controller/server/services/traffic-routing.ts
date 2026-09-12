@@ -1,11 +1,19 @@
+import { routerRolloutState } from "../../shared/router-lifecycle.js";
 import { z } from "zod";
-import { randomUUID } from "node:crypto";
-import { and, asc, desc, eq, gte, isNull, lte, lt, sql } from "drizzle-orm";
+import { isDeepStrictEqual } from "node:util";
+import { createHash, randomUUID } from "node:crypto";
+import { and, asc, desc, eq, gte, inArray, isNull, lte, lt, sql } from "drizzle-orm";
 import type { ControllerDatabase } from "../db/client.js";
-import { auditEvents, controllerState, endpoints, guardrails, guardrailVersions, routeAssignments, runnerInstances, telemetryWatermarks, trafficRouters, trafficRouterRevisions } from "../db/schema.js";
+import { auditEvents, controllerState, endpoints, guardrails, guardrailVersions, routeAssignments, runnerInstances, telemetryWatermarks, trafficRouters, trafficRouterRevisions, type RouterRevisionContext } from "../db/schema.js";
 import { ConflictError, NotFoundError, ValidationError } from "../domain/errors.js";
 import { capabilityIssues, routingIssues, type RouterDraft } from "../../shared/traffic-routing.js";
 import { advisoryTransactionLock } from "../db/postgres-locks.js";
+
+function canonical(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  if (value && typeof value === "object") return `{${Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, child]) => `${JSON.stringify(key)}:${canonical(child)}`).join(",")}}`;
+  return JSON.stringify(value);
+}
 
 export const routingEventSchema = z.object({
   id: z.string().min(1).max(300), eventType: z.enum(["route_assignment", "completion"]),
@@ -23,6 +31,9 @@ export const routingEventSchema = z.object({
 });
 export type RoutingEvent = z.infer<typeof routingEventSchema>;
 
+const endpointContext = (rows: Array<{ id: string; name: string; adapter: string }>) =>
+  rows.map(({ id, name, adapter }) => ({ id, name, adapter })).sort((a, b) => a.id.localeCompare(b.id));
+
 type Tx = Parameters<Parameters<ControllerDatabase["transaction"]>[0]>[0];
 export class TrafficRoutingService {
   constructor(private db: ControllerDatabase) {}
@@ -33,7 +44,7 @@ export class TrafficRoutingService {
       this.db.select().from(runnerInstances).where(eq(runnerInstances.poolId, "default")),
     ]);
     return rows.map(r => ({ ...r, endpointIds: bindings.filter(e => e.routerId === r.id).map(e => e.id),
-      rolloutStatus: !r.activeRevision ? "unpublished" as const : runners.length && runners.every(x => x.appliedGeneration >= r.desiredGeneration && x.lastHeartbeatAt && Date.now() - x.lastHeartbeatAt.getTime() < 60000) ? "active" as const : r.rolloutError ? "failed" as const : "distributing" as const,
+      rolloutStatus: routerRolloutState(r, runners),
     }));
   }
   async get(id: string) {
@@ -60,7 +71,7 @@ export class TrafficRoutingService {
       for (const endpoint of selected) {
         await tx.update(endpoints).set({ trafficRouterId: id, updatedAt: new Date() }).where(eq(endpoints.id, endpoint.id));
       }
-      await this.audit(tx, id, actorId, "router.created", { name });
+      await this.audit(tx, id, actorId, "router.created", { name, endpointIds: requested, endpoints: endpointContext(selected) });
     });
     return this.get(id);
   }
@@ -68,6 +79,7 @@ export class TrafficRoutingService {
     const errors = routingIssues(draft);
     if (errors.length) throw new ValidationError(errors.join("; "));
     await this.db.transaction(async tx => {
+      await advisoryTransactionLock(tx, "traffic-router-bindings");
       const rows = await tx.update(trafficRouters).set({ draft, draftRevision: expectedDraftRevision + 1, updatedAt: new Date() })
         .where(and(eq(trafficRouters.id, id), eq(trafficRouters.draftRevision, expectedDraftRevision), isNull(trafficRouters.deletedAt))).returning();
       if (!rows.length) throw new ConflictError("Router draft changed. Reload and compare your changes.", "router_draft_conflict");
@@ -75,24 +87,66 @@ export class TrafficRoutingService {
     });
     return this.get(id);
   }
-  async rename(id: string, name: string, description: string, actorId: string) {
-    await this.db.transaction(async tx => {
-      const rows = await tx.update(trafficRouters).set({ name, description, updatedAt: new Date() }).where(and(eq(trafficRouters.id, id), isNull(trafficRouters.deletedAt))).returning();
-      if (!rows.length) throw new NotFoundError("Router", id);
-      await this.audit(tx, id, actorId, "router.renamed", { name, description });
-    });
-    return this.get(id);
+  private async resolvePublication(tx: Tx, id: string, draft: RouterDraft) {
+    const initialErrors = routingIssues(draft, true);
+    if (initialErrors.length) throw new ValidationError(initialErrors.join("; "));
+    const bound = await tx.select().from(endpoints).where(and(eq(endpoints.trafficRouterId, id), isNull(endpoints.deletedAt)));
+    const ids = [...new Set(draft.routes.flatMap(r => r.targets.map(t => t.guardrailId)))];
+    const versions = ids.length ? await tx.select({ id: guardrailVersions.guardrailId, version: guardrailVersions.version,
+      artifactId: guardrailVersions.artifactId, status: guardrailVersions.status, name: guardrails.name, deletedAt: guardrails.deletedAt })
+      .from(guardrailVersions).innerJoin(guardrails, eq(guardrails.id, guardrailVersions.guardrailId))
+      .where(inArray(guardrailVersions.guardrailId, ids))
+      .orderBy(desc(guardrailVersions.generation), asc(guardrailVersions.version)) : [];
+    const snapshot: RouterDraft = { routes: draft.routes.map(route => ({ ...route, targets: route.targets.map(target => {
+      const { versionStrategy, ...pinned } = target;
+      if (versionStrategy === "latest") {
+        // Generation is globally unique and monotonic; version labels are opaque strings.
+        const latest = versions.find(v => v.id === target.guardrailId && !v.deletedAt && v.status === "ready" && v.artifactId);
+        if (!latest) throw new ValidationError(`${route.name}: ${target.guardrailId} has no ready Guardrail Version`);
+        pinned.guardrailVersion = latest.version;
+      }
+      return pinned;
+    }) })) };
+    const errors = [...routingIssues(snapshot, true), ...capabilityIssues(snapshot, bound)];
+    if (errors.length) throw new ValidationError(errors.join("; "));
+    const context: RouterRevisionContext = { endpoints: endpointContext(bound), guardrails: [] };
+    const captured = new Set<string>();
+    for (const route of snapshot.routes) for (const target of route.targets) {
+      const version = versions.find(v => v.id === target.guardrailId && v.version === target.guardrailVersion);
+      if (route.enabled && target.weightBps > 0 && (!version?.artifactId || version.status !== "ready" || version.deletedAt)) {
+        throw new ValidationError(`${route.name}: ${target.guardrailId} ${target.guardrailVersion} is not a ready Guardrail Version`);
+      }
+      // Missing inactive references remain in snapshot, without invented metadata.
+      const key = JSON.stringify([target.guardrailId, target.guardrailVersion]);
+      if (version && !captured.has(key)) {
+        context.guardrails.push({ id: target.guardrailId, name: version.name, version: target.guardrailVersion });
+        captured.add(key);
+      }
+    }
+    return { snapshot, context, endpointIds: context.endpoints.map(e => e.id) };
   }
-  async publish(id: string, expectedDraftRevision: number, idempotencyKey: string, actorId: string, rollbackRevision?: number) {
-    await this.db.transaction(async tx => {
+  async preview(id: string, expectedDraftRevision: number) {
+    return this.db.transaction(async tx => {
+      const [router] = await tx.select().from(trafficRouters).where(and(eq(trafficRouters.id, id), isNull(trafficRouters.deletedAt)));
+      if (!router) throw new NotFoundError("Router", id);
+      if (router.draftRevision !== expectedDraftRevision) throw new ConflictError("Router draft changed; reload before reviewing.", "router_draft_conflict");
+      const { snapshot, endpointIds } = await this.resolvePublication(tx, id, router.draft);
+      return { draftRevision: router.draftRevision, snapshot, endpointIds };
+    }, { isolationLevel: "repeatable read", accessMode: "read only" });
+  }
+  async publish(id: string, expectedDraftRevision: number, idempotencyKey: string, actorId: string, rollbackRevision?: number, reviewedSnapshot?: RouterDraft, reviewedEndpointIds?: string[]) {
+    const requestDigest = createHash("sha256").update(canonical({ actorId, expectedDraftRevision, rollbackRevision: rollbackRevision ?? null, reviewedSnapshot: reviewedSnapshot ?? null, reviewedEndpointIds: reviewedEndpointIds ? [...new Set(reviewedEndpointIds)].sort() : null })).digest("hex");
+    const publication = await this.db.transaction(async tx => {
       await advisoryTransactionLock(tx, "traffic-router-bindings");
       const [router] = await tx.select().from(trafficRouters).where(eq(trafficRouters.id, id)).for("update");
       if (!router || router.deletedAt) throw new NotFoundError("Router", id);
       const [prior] = await tx.select().from(trafficRouterRevisions).where(and(eq(trafficRouterRevisions.routerId, id), eq(trafficRouterRevisions.idempotencyKey, idempotencyKey)));
       if (prior) {
-        if (prior.requestDraftRevision !== expectedDraftRevision || prior.rollbackRevision !== (rollbackRevision ?? null)) throw new ConflictError("Idempotency key belongs to another publish request.", "router_publish_key_conflict");
-        return;
+        if (prior.requestDigest !== requestDigest) throw new ConflictError("Idempotency key belongs to another publish request.", "router_publish_key_conflict");
+        return { revision: prior.revision, generation: prior.generation, replayed: true };
       }
+      const [deletedPublication] = await tx.select({ id: auditEvents.id }).from(auditEvents).where(and(eq(auditEvents.resourceId, id), eq(auditEvents.kind, "router.revision_deleted"), sql`${auditEvents.detail}->>'idempotencyKey' = ${idempotencyKey}`)).limit(1);
+      if (deletedPublication) throw new ConflictError("The revision created by this publication was deleted. Use a new publication key.", "router_revision_deleted");
       if (router.draftRevision !== expectedDraftRevision) throw new ConflictError("Router draft changed; reload before publishing.", "router_draft_conflict");
       let draft = router.draft;
       if (rollbackRevision !== undefined) {
@@ -100,31 +154,50 @@ export class TrafficRoutingService {
         if (!revision) throw new NotFoundError("Router revision", String(rollbackRevision));
         draft = revision.snapshot;
       }
-      const bound = await tx.select().from(endpoints).where(and(eq(endpoints.trafficRouterId, id), isNull(endpoints.deletedAt)));
-      const errors = [...routingIssues(draft, true), ...capabilityIssues(draft, bound)];
-      if (errors.length) throw new ValidationError(errors.join("; "));
-      for (const route of draft.routes) for (const target of route.targets) {
-        if (!route.enabled || target.weightBps === 0) continue;
-        const [version] = await tx.select({ artifactId: guardrailVersions.artifactId, status: guardrailVersions.status }).from(guardrailVersions)
-          .innerJoin(guardrails, and(eq(guardrails.id, guardrailVersions.guardrailId), isNull(guardrails.deletedAt)))
-          .where(and(eq(guardrailVersions.guardrailId, target.guardrailId), eq(guardrailVersions.version, target.guardrailVersion)));
-        if (!version?.artifactId || version.status !== "ready") throw new ValidationError(`${route.name}: ${target.guardrailId} ${target.guardrailVersion} is not a ready Guardrail Version`);
+      if ((reviewedSnapshot === undefined) !== (reviewedEndpointIds === undefined)) throw new ValidationError("Provide both reviewedSnapshot and reviewedEndpointIds.");
+      const resolved = await this.resolvePublication(tx, id, draft).catch(error => {
+        if (reviewedSnapshot !== undefined && error instanceof ValidationError) {
+          throw new ConflictError("Router publication is no longer valid. Review again before publishing.", "router_review_conflict");
+        }
+        throw error;
+      });
+      const { snapshot, context, endpointIds } = resolved;
+      if (reviewedSnapshot !== undefined && (!isDeepStrictEqual(snapshot, reviewedSnapshot) ||
+        !isDeepStrictEqual(endpointIds, [...new Set(reviewedEndpointIds!)].sort((a, b) => a.localeCompare(b))))) {
+        throw new ConflictError("Router publication changed since review. Review again before publishing.", "router_review_conflict");
       }
       const revision = (router.activeRevision ?? 0) + 1;
       const sourceDraftRevision = rollbackRevision === undefined ? router.draftRevision : router.draftRevision + 1;
-      await tx.insert(trafficRouterRevisions).values({ routerId: id, revision, sourceDraftRevision, snapshot: draft, idempotencyKey, requestDraftRevision: expectedDraftRevision, rollbackRevision: rollbackRevision ?? null, createdBy: actorId });
       const generation = await this.advance(tx);
-      await tx.update(trafficRouters).set({ draft, draftRevision: sourceDraftRevision, activeDraftRevision: sourceDraftRevision, activeRevision: revision, activeSnapshot: draft, rolloutError: null, desiredGeneration: generation, updatedAt: new Date() }).where(eq(trafficRouters.id, id));
-      await this.audit(tx, id, actorId, rollbackRevision ? "router.rolled_back" : "router.published", { revision, previous: router.activeSnapshot, snapshot: draft, endpointIds: bound.map(e => e.id) });
+      await tx.insert(trafficRouterRevisions).values({ routerId: id, revision, sourceDraftRevision, snapshot, context, idempotencyKey, requestDigest, generation, requestDraftRevision: expectedDraftRevision, rollbackRevision: rollbackRevision ?? null, createdBy: actorId });
+      await tx.update(trafficRouters).set({ draft: rollbackRevision === undefined ? router.draft : snapshot, draftRevision: sourceDraftRevision, activeDraftRevision: sourceDraftRevision, activeRevision: revision, activeSnapshot: snapshot, rolloutError: null, desiredGeneration: generation, updatedAt: new Date() }).where(eq(trafficRouters.id, id));
+      await this.audit(tx, id, actorId, rollbackRevision ? "router.rolled_back" : "router.published", { revision, previous: router.activeSnapshot, snapshot, endpointIds });
+      return { revision, generation, replayed: false };
     });
-    return this.get(id);
+    return { ...await this.get(id), publication: { ...publication, revisionUrl: `/api/v1/routers/${encodeURIComponent(id)}/revisions/${publication.revision}`, statusUrl: `/api/v1/routers/${encodeURIComponent(id)}` } };
   }
   async revisions(id: string) {
     await this.get(id);
     return this.db.select().from(trafficRouterRevisions).where(eq(trafficRouterRevisions.routerId, id)).orderBy(desc(trafficRouterRevisions.revision));
   }
-  async bind(id: string, endpointIds: string[], actorId: string) {
+  async deleteRevision(id: string, revision: number, actorId: string) {
     await this.db.transaction(async tx => {
+      await advisoryTransactionLock(tx, "traffic-router-bindings");
+      const [router] = await tx.select().from(trafficRouters).where(eq(trafficRouters.id, id)).for("update");
+      if (!router || router.deletedAt) throw new NotFoundError("Router", id);
+      const [record] = await tx.select().from(trafficRouterRevisions).where(and(eq(trafficRouterRevisions.routerId, id), eq(trafficRouterRevisions.revision, revision)));
+      if (!record) throw new NotFoundError("Router revision", String(revision));
+      if (router.activeRevision === revision) throw new ConflictError("The current Router revision cannot be deleted. Publish another revision first.", "revision_in_use");
+      const runners = await tx.select().from(runnerInstances).where(eq(runnerInstances.poolId, "default"));
+      if (routerRolloutState(router, runners) !== "active" || Date.now() - router.updatedAt.getTime() < 300000) throw new ConflictError("Wait for Runner convergence and the five-minute call retention window before deleting historical revisions.", "revision_in_use");
+      const [pending] = await tx.select().from(routeAssignments).where(and(eq(routeAssignments.routerId, id), eq(routeAssignments.routerRevision, revision), isNull(routeAssignments.completedAt), gte(routeAssignments.occurredAt, new Date(Date.now() - 300000)))).limit(1);
+      if (pending) throw new ConflictError("This revision still has in-flight calls.", "revision_in_use");
+      await this.audit(tx, id, actorId, "router.revision_deleted", { revision, snapshot: record.snapshot, context: record.context, idempotencyKey: record.idempotencyKey });
+      await tx.delete(trafficRouterRevisions).where(and(eq(trafficRouterRevisions.routerId, id), eq(trafficRouterRevisions.revision, revision)));
+    });
+  }
+  async bind(id: string, endpointIds: string[], actorId: string) {
+    const changed = await this.db.transaction(async tx => {
       await advisoryTransactionLock(tx, "traffic-router-bindings");
       const [router] = await tx.select().from(trafficRouters).where(eq(trafficRouters.id, id)).for("update");
       if (!router || router.deletedAt) throw new NotFoundError("Router", id);
@@ -132,6 +205,7 @@ export class TrafficRoutingService {
       const requested = [...new Set(endpointIds)];
       const selected = all.filter(e => requested.includes(e.id));
       if (selected.length !== requested.length) throw new ValidationError("Endpoint was not found.");
+      if (isDeepStrictEqual(all.filter(e => e.trafficRouterId === id).map(e => e.id).sort(), [...requested].sort())) return false;
       const errors = capabilityIssues(router.activeSnapshot ?? router.draft, selected);
       if (errors.length) throw new ValidationError(errors.join("; "));
       for (const endpoint of all) {
@@ -142,14 +216,17 @@ export class TrafficRoutingService {
       }
       const generation = await this.advance(tx);
       await tx.update(trafficRouters).set({ desiredGeneration: generation, rolloutError: null }).where(eq(trafficRouters.id, id));
-      await this.audit(tx, id, actorId, "router.source_endpoints_changed", { endpointIds: requested });
+      await this.audit(tx, id, actorId, "router.source_endpoints_changed", {
+        endpointIds: requested, routerRevision: router.activeRevision, generation,
+        previousEndpoints: endpointContext(all.filter(e => e.trafficRouterId === id)), endpoints: endpointContext(selected),
+      });
+      return true;
     });
-    return this.get(id);
+    return { ...await this.get(id), changed };
   }
   async distribution(id: string, hours: number, revision?: number, endpointId?: string) {
     await this.get(id);
     const until = new Date(), since = new Date(until.getTime() - hours * 3600000);
-    await this.expireCalls();
     const rows = await this.db.select({
       routeId: routeAssignments.routeId, targetId: routeAssignments.targetId, routerRevision: routeAssignments.routerRevision,
       guardrailId: routeAssignments.guardrailId, guardrailVersion: routeAssignments.guardrailVersion,
@@ -172,7 +249,7 @@ export class TrafficRoutingService {
       .where(and(eq(routeAssignments.routerId, id), gte(routeAssignments.occurredAt, since), lte(routeAssignments.occurredAt, until), revision ? eq(routeAssignments.routerRevision, revision) : undefined, endpointId ? eq(routeAssignments.endpointId, endpointId) : undefined))
       .groupBy(sql`date_bin(interval '15 minutes', ${routeAssignments.occurredAt}, timestamptz '2000-01-01')`, routeAssignments.routeId);
     return { since: since.toISOString(), until: until.toISOString(), rows, total, assigned: total - unassigned, unassigned, trend,
-      revisions: revisions.map(r => ({ revision: r.revision, snapshot: r.snapshot })),
+      revisions: revisions.map(r => ({ revision: r.revision, snapshot: r.snapshot, context: r.context })),
       telemetryFresh, completeness: telemetryFresh ? "current" : "delayed_or_unavailable", dataWatermark: dates.length ? new Date(Math.min(...dates)).toISOString() : null,
       unit: "logical_call", multipleRevisions: new Set(rows.map(r => r.routerRevision)).size > 1 };
   }

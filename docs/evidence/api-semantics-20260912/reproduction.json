@@ -1,0 +1,33 @@
+{
+  "environment": "isolated temporary PostgreSQL schema on review fixture database; schema removed after run",
+  "duplicateCaseDeletion": {
+    "rowsBeforeAndAfterIdenticalDeletes": [
+      2,
+      1,
+      0
+    ]
+  },
+  "repeatedEndpointPut": {
+    "generations": [
+      0,
+      1,
+      2
+    ]
+  },
+  "changedReviewWithSameKey": {
+    "accepted": true,
+    "activeRevision": 1
+  },
+  "oldPublishKeyReplay": {
+    "originalRevision": 1,
+    "returnedRevision": 2
+  },
+  "getCreatesDraft": {
+    "before": 0,
+    "after": 1
+  },
+  "getByRegularSessionFinalizesActivation": {
+    "before": "activating",
+    "after": "active"
+  }
+}

@@ -49,7 +49,7 @@ export function CreateRouterSheet({ open, onOpenChange, onCreated }: {
     eyebrow="Router" title={t('创建 Router', 'Create Router')}
     description={t('选择来源流量，按条件分发到 Guardrails。', 'Select incoming traffic and route it to Guardrails.')}
     footer={<><Button variant="outline" disabled={mutation.isPending} onClick={() => onOpenChange(false)}>{t('取消', 'Cancel')}</Button>
-      <Button disabled={!name.trim() || !endpointIds.length || issues.length > 0 || mutation.isPending || !routers.data || !endpoints.data}
+      <Button variant="create" disabled={!name.trim() || !endpointIds.length || issues.length > 0 || mutation.isPending || !routers.data || !endpoints.data}
         onClick={() => mutation.mutate()}>{mutation.isPending ? t('创建中…', 'Creating…') : t('创建 Router', 'Create Router')}</Button></>}>
     <div className="space-y-6">
       <Field label={t('Router 名称', 'Router name')}><Input autoFocus value={name} onChange={event => setName(event.target.value)} /></Field>
@@ -66,13 +66,13 @@ export function CreateRouterSheet({ open, onOpenChange, onCreated }: {
         {fields.error && <ErrorNotice error={fields.error} />}
         {routes.map((route, index) => <div key={route.id} className="space-y-4 rounded-lg border bg-card p-4">
           <div className="flex items-center justify-between"><h4 className="text-sm font-medium">Route {index + 1}</h4>
-            <Button variant="ghost" onClick={() => setRoutes(current => current.filter(item => item.id !== route.id))}>{t('删除规则', 'Remove route')}</Button></div>
+            <Button variant="destructive" onClick={() => setRoutes(current => current.filter(item => item.id !== route.id))}>{t('删除规则', 'Remove route')}</Button></div>
           <SelectorEditor value={route.selector.expression} fields={fields.data?.items}
             onChange={expression => updateRoute({ ...route, selector: { expression } })} />
           <div className="space-y-2 border-t pt-4"><h4 className="text-sm font-medium">{t('转发到', 'Forward to')}</h4>
             <TargetsEditor value={route.targets} onChange={targets => updateRoute({ ...route, targets })} /></div>
         </div>)}
-        <Button variant="outline" disabled={routes.length >= 127} onClick={() => setRoutes(current => [...current, { ...newRoute('normal'), name: `Route ${current.length + 1}` }])}>{t('添加 Route', 'Add route')}</Button>
+        <Button variant="create" disabled={routes.length >= 127} onClick={() => setRoutes(current => [...current, { ...newRoute('normal'), name: `Route ${current.length + 1}` }])}>{t('添加 Route', 'Add route')}</Button>
       </section>
       <section className="space-y-3 rounded-lg border bg-card p-4">
         <h3 className="text-sm font-medium">{t('其余流量', 'Unmatched traffic')}</h3>

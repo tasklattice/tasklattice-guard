@@ -5,12 +5,14 @@ Integration is the navigation group. Its two resources are:
 - **Endpoint**: an authenticated application, agent, or gateway connection, with an adapter and credentials.
 - **Traffic Router** (`Router` in code): an ordered Traffic Scope binding from one Endpoint to an immutable Guardrail Version. The system fallback Router has no Endpoint binding.
 
+For the current machine-readable management API, use Controller `/api/openapi.json?module=routers` or `/api/docs`. The generated contract is authoritative for methods, request bodies and responses.
+
 ## Current contracts
 
 | Layer | Traffic Router | Endpoint |
 | --- | --- | --- |
 | UI | `/integration/routers`, `/integration/routers/$routerId` | `/integration/endpoint` |
-| Management API | `/api/v1/routers`, `/api/v1/router-bindings` | `/api/v1/endpoints` |
+| Management API | `/api/v1/routers`, `/api/v1/routers/{id}/endpoints` | `/api/v1/endpoints` |
 | Database | `guardrail_router`, `router_id` | `endpoint`, `endpoint_id` |
 | Controller DTO | `Router`, `routerId` | `Endpoint`, `endpointId` |
 | Desired state | `routers`, `RouterRoute` | `endpoints`, `EndpointRuntime` |

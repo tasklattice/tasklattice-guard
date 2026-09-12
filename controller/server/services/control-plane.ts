@@ -19,6 +19,9 @@ import {
   routers,
   guardrails,
   guardrailVersions,
+  trafficRouters,
+  trafficRouterRevisions,
+  routeAssignments,
   endpoints,
   outboxEvents,
   policyRecords,
@@ -285,6 +288,12 @@ export class ControlPlaneService {
       });
       return (await tx.select().from(policyValidationRuns).where(eq(policyValidationRuns.id, runId)))[0]!;
     });
+  }
+
+  async getPolicyValidation(id: string, runId: string) {
+    const [run] = await this.db.select().from(policyValidationRuns).where(and(eq(policyValidationRuns.policyId, id), eq(policyValidationRuns.id, runId)));
+    if (!run) throw new NotFoundError("Policy validation run", runId);
+    return policyValidationPayload(run);
   }
 
   async latestPolicyValidation(id: string) {
@@ -594,12 +603,14 @@ export class ControlPlaneService {
     guardrailId: string;
     actorId: string;
     compilerAvailable: boolean;
+    expectedDraftRevision?: number;
   }) {
     return this.db.transaction(async (tx) => {
       const [guardrail] = await tx.select().from(guardrails).where(and(
         eq(guardrails.id, input.guardrailId), isNull(guardrails.deletedAt),
       )).for("update");
       if (!guardrail) throw new NotFoundError("Guardrail", input.guardrailId);
+      if (input.expectedDraftRevision !== undefined && input.expectedDraftRevision !== guardrail.draftRevision) throw new ConflictError("Guardrail draft changed. Review the current draft before publishing.", "guardrail_draft_conflict");
       const [latestValidation] = await tx.select().from(validationRuns).where(and(
         eq(validationRuns.guardrailId, input.guardrailId),
         eq(validationRuns.sourceDraftRevision, guardrail.draftRevision),
@@ -889,6 +900,31 @@ export class ControlPlaneService {
     });
   }
 
+  async deleteGuardrailVersion(input: { guardrailId: string; version: string; actorId: string }) {
+    await this.db.transaction(async tx => {
+      // Same lock ordering as composed Router publication: bindings, then resource.
+      await advisoryTransactionLock(tx, "traffic-router-bindings");
+      const [guardrail] = await tx.select().from(guardrails).where(and(eq(guardrails.id, input.guardrailId), isNull(guardrails.deletedAt))).for("update");
+      if (!guardrail) throw new NotFoundError("Guardrail", input.guardrailId);
+      const [version] = await tx.select().from(guardrailVersions).where(and(eq(guardrailVersions.guardrailId, input.guardrailId), eq(guardrailVersions.version, input.version)));
+      if (!version) throw new NotFoundError("Guardrail version", input.version);
+      if (guardrail.activeVersion === input.version || version.status === "compiling") throw new ConflictError("Active or compiling versions cannot be deleted.", "version_in_use");
+      if (Date.now() - guardrail.updatedAt.getTime() < 300000) throw new ConflictError("Wait for the five-minute call retention window before deleting a version.", "version_in_use");
+      const runners = await tx.select().from(runnerInstances).where(eq(runnerInstances.poolId, "default"));
+      if (runners.some(r => r.appliedGeneration < guardrail.desiredGeneration || !r.lastHeartbeatAt || Date.now() - r.lastHeartbeatAt.getTime() >= 60000)) throw new ConflictError("Wait for Runner convergence before deleting a version.", "version_in_use");
+      const references = (draft: { routes: Array<{ targets: Array<{ guardrailId: string; guardrailVersion?: string; versionStrategy?: string | undefined }> }> } | null) => draft?.routes.some(r => r.targets.some(t => t.guardrailId === input.guardrailId && (t.guardrailVersion === input.version || t.versionStrategy === "latest")));
+      const current = await tx.select().from(trafficRouters).where(isNull(trafficRouters.deletedAt));
+      const history = await tx.select().from(trafficRouterRevisions);
+      const legacy = await tx.select().from(routers).where(and(eq(routers.guardrailId, input.guardrailId), eq(routers.guardrailVersion, input.version), isNull(routers.deletedAt)));
+      if (legacy.length || current.some(r => references(r.draft) || references(r.activeSnapshot)) || history.some(r => references(r.snapshot))) throw new ConflictError("This version is referenced by Router drafts or published revisions. Remove those references first.", "version_in_use");
+      const [pending] = await tx.select().from(routeAssignments).where(and(eq(routeAssignments.guardrailId, input.guardrailId), eq(routeAssignments.guardrailVersion, input.version), isNull(routeAssignments.completedAt), gte(routeAssignments.occurredAt, new Date(Date.now() - 300000)))).limit(1);
+      if (pending) throw new ConflictError("This version has in-flight calls.", "version_in_use");
+      await tx.insert(auditEvents).values({ id: randomUUID(), kind: "guardrail.version_deleted", actorId: input.actorId, resourceType: "guardrail", resourceId: input.guardrailId, detail: { version: input.version, artifactId: version.artifactId } });
+      // Keep artifacts and telemetry: deleting a version must not purge evidence.
+      await tx.delete(guardrailVersions).where(and(eq(guardrailVersions.guardrailId, input.guardrailId), eq(guardrailVersions.version, input.version)));
+    });
+  }
+
   async rollbackGuardrail(input: { guardrailId: string; version: string; actorId: string }) {
     return this.db.transaction(async (tx) => {
       const [guardrail] = await tx.select().from(guardrails).where(and(
@@ -987,9 +1023,9 @@ export class ControlPlaneService {
     return { ...created, excluded: false };
   }
 
-  async deleteTestCase(input: { caseId: string; actorId: string }): Promise<void> {
+  async deleteTestCase(input: { guardrailId: string; caseId: string; actorId: string }): Promise<void> {
     await this.db.transaction(async (tx) => {
-      const [item] = await tx.select().from(testCases).where(eq(testCases.id, input.caseId)).limit(1).for("update");
+      const [item] = await tx.select().from(testCases).where(and(eq(testCases.guardrailId, input.guardrailId), eq(testCases.id, input.caseId))).limit(1).for("update");
       if (!item) throw new NotFoundError("Test Case", input.caseId);
       if (item.origin !== "custom") throw new ValidationError("Only custom Test Cases can be deleted. Exclude inherited Policy cases instead.");
       await tx.delete(testCases).where(and(eq(testCases.guardrailId, item.guardrailId), eq(testCases.id, item.id)));
@@ -1469,6 +1505,7 @@ export class ControlPlaneService {
     const uniqueEndpointIds = [...new Set(input.endpointIds)];
     if (!uniqueEndpointIds.length) throw new ValidationError("Select at least one Endpoint for a Router.");
     return this.db.transaction(async (tx) => {
+      await advisoryTransactionLock(tx, "traffic-router-bindings");
       const [guardrail] = await tx.select().from(guardrails).where(and(
         eq(guardrails.id, input.guardrailId), eq(guardrails.status, "active"), isNull(guardrails.deletedAt),
       ));

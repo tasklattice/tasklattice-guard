@@ -7,6 +7,8 @@ import type { IdentityUser } from "@/lib/identity-api";
 import { AccountPage } from "./account";
 
 const updateProfileMock = vi.fn();
+const navigateMock = vi.fn();
+vi.mock("@tanstack/react-router", () => ({ useNavigate: () => navigateMock }));
 
 const user: IdentityUser = {
   id: "user-admin",
@@ -64,9 +66,9 @@ vi.mock("@/lib/auth", () => ({
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
-function renderPage() {
+function renderPage(section: "general" | "security" = "general") {
   const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
-  return render(<QueryClientProvider client={client}><AccountPage /></QueryClientProvider>);
+  return render(<QueryClientProvider client={client}><AccountPage section={section} /></QueryClientProvider>);
 }
 
 describe("AccountPage", () => {
@@ -98,6 +100,9 @@ describe("AccountPage", () => {
     general.focus();
     fireEvent.keyDown(general, { key: "ArrowRight", code: "ArrowRight" });
 
+    await waitFor(() => expect(navigateMock).toHaveBeenCalledWith({ to: "/account/security" }));
+    cleanup();
+    renderPage("security");
     expect(await screen.findByText("Password & sessions")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Change password" })).toBeTruthy();
   });

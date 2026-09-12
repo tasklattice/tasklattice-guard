@@ -1,3 +1,4 @@
+import { EndpointProtocolIcon } from "@/components/endpoint-protocol-icon";
 import { useEffect, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -14,7 +15,6 @@ import {
   RefreshCw,
   ShieldCheck,
   Trash2,
-  Webhook,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
@@ -65,13 +65,28 @@ type EndpointDeletionConfirmation = {
   confirmation_name?: string;
 };
 
-export function EndpointsPage() {
+export function EndpointsPage({ endpointId, onEndpointChange }: {
+  endpointId?: string;
+  onEndpointChange?: (id: string | undefined) => void;
+} = {}) {
   const { t, i18n } = useTranslation();
   const auth = useAuth();
   const queryClient = useQueryClient();
   const query = useQuery({ queryKey: queryKeys.endpoints, queryFn: getEndpoints });
   const [createOpen, setCreateOpen] = useState(false);
-  const [selected, setSelected] = useState<Endpoint | null>(null);
+  const [localSelected, setLocalSelected] = useState<Endpoint | null>(null);
+  const linkedEndpoint = useQuery({
+    queryKey: queryKeys.endpoint(endpointId ?? ""),
+    queryFn: () => getEndpoint(endpointId!),
+    enabled: Boolean(endpointId),
+  });
+  const selected = onEndpointChange ? (endpointId ? linkedEndpoint.data ?? null : null) : localSelected;
+  function setSelected(endpoint: Endpoint | null) {
+    if (onEndpointChange) {
+      if (endpoint) queryClient.setQueryData(queryKeys.endpoint(endpoint.id), endpoint);
+      onEndpointChange(endpoint?.id);
+    } else setLocalSelected(endpoint);
+  }
   const [deleteTarget, setDeleteTarget] = useState<Endpoint | null>(null);
   const endpoints = query.data?.items ?? [];
   const verified = endpoints.filter((item) => item.setup_status === "verified").length;
@@ -121,7 +136,7 @@ export function EndpointsPage() {
       <PageHeader
         title={t("pages.endpoints.title")}
         description={t("endpoints.description")}
-        action={auth.user?.role === "admin" ? <Button className="min-h-11 self-start" onClick={() => setCreateOpen(true)}><Plus />{t("endpoints.register")}</Button> : undefined}
+        action={auth.user?.role === "admin" ? <Button variant="create" className="min-h-11 self-start" onClick={() => setCreateOpen(true)}><Plus />{t("endpoints.register")}</Button> : undefined}
       />
 
       {query.error ? <div className="mt-5"><ErrorNotice error={query.error} /></div> : null}
@@ -152,11 +167,18 @@ export function EndpointsPage() {
           <EmptyState
             title={t("endpoints.emptyTitle")}
             description={t("endpoints.emptyDescription")}
-            action={auth.user?.role === "admin" ? <Button onClick={() => setCreateOpen(true)}><Plus />{t("endpoints.register")}</Button> : undefined}
+            action={auth.user?.role === "admin" ? <Button variant="create" onClick={() => setCreateOpen(true)}><Plus />{t("endpoints.register")}</Button> : undefined}
           />
         </div>
       ) : null}
 
+      {endpointId && !selected && <EntitySheet
+        open onOpenChange={(open) => { if (!open) onEndpointChange?.(undefined); }}
+        eyebrow="Endpoint" title={t("pages.endpoints.title")} description={endpointId}
+        footer={<Button variant="outline" onClick={() => onEndpointChange?.(undefined)}>{t("common.close")}</Button>}
+      >
+        {linkedEndpoint.error ? <div className="space-y-3"><ErrorNotice error={linkedEndpoint.error} /><Button onClick={() => void linkedEndpoint.refetch()}>{t("common.retry")}</Button></div> : <Skeleton className="h-60" />}
+      </EntitySheet>}
       <EndpointDetail
         endpoint={selected}
         onOpenChange={(open) => !open && setSelected(null)}
@@ -200,7 +222,7 @@ function EndpointRow({ endpoint, onOpen }: { endpoint: Endpoint; onOpen: () => v
     >
       <div className="min-w-0">
         <span className="flex items-center gap-2.5">
-          <ProtocolIcon protocol={endpoint.protocol} size="sm" />
+          <EndpointProtocolIcon protocol={endpoint.protocol} size="sm" />
           <strong className="truncate text-sm font-medium">{endpoint.name}</strong>
         </span>
         <span className="mt-1.5 block truncate pl-9 text-xs text-muted-foreground">
@@ -325,7 +347,7 @@ function EndpointDetailContent({
       <Button variant="destructive" onClick={() => onOpenChange(false)}>{t("endpoints.leaveAndLoseKey")}</Button>
     </>
   ) : <>
-    {onDelete && (!oneTimeCredential || credentialSaved) ? <Button className="text-destructive hover:bg-destructive/10 hover:text-destructive" variant="outline" onClick={() => onDelete(endpoint)}><Trash2 />{t("endpoints.deleteAction")}</Button> : null}
+    {onDelete && (!oneTimeCredential || credentialSaved) ? <Button variant="destructive" onClick={() => onDelete(endpoint)}><Trash2 />{t("endpoints.deleteAction")}</Button> : null}
     <Button variant="outline" onClick={requestClose}>{t("common.close")}</Button>
   </>;
 
@@ -354,7 +376,7 @@ function EndpointDetailContent({
         <section className="overflow-hidden rounded-lg border bg-card">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-muted/30 p-4">
             <div className="flex items-center gap-3">
-              <ProtocolIcon protocol={endpoint.protocol} />
+              <EndpointProtocolIcon protocol={endpoint.protocol} />
               <div>
                 <p className="text-sm font-medium">{t(`endpoints.adapters.${endpoint.adapter_id}`)}</p>
                 <p className="mt-0.5 text-xs text-muted-foreground">{endpoint.id}</p>
@@ -616,7 +638,7 @@ export function CreateEndpointSheet({
           {closeWarning ? <SecretExitWarning /> : null}
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card px-4 py-3">
             <div className="flex min-w-0 items-center gap-3">
-              <ProtocolIcon protocol={endpoint.protocol} />
+              <EndpointProtocolIcon protocol={endpoint.protocol} />
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold">{endpoint.name}</p>
                 <p className="mt-0.5 truncate text-xs text-muted-foreground">{t(`endpoints.adapters.${endpoint.adapter_id}`)}</p>
@@ -1050,7 +1072,7 @@ function CredentialRow({
           <Button size="sm" variant="destructive" disabled={pending} onClick={onRevoke}><Trash2 />{t("endpoints.confirmRevoke")}</Button>
         </div>
       ) : (
-        <Button size="sm" variant="ghost" className="text-destructive" disabled={onlyCredential} onClick={onConfirm}><Trash2 />{t("endpoints.revoke")}</Button>
+        <Button size="sm" variant="destructive" disabled={onlyCredential} onClick={onConfirm}><Trash2 />{t("endpoints.revoke")}</Button>
       )}
     </div>
   );
@@ -1093,7 +1115,7 @@ function AdapterOption({ adapterId }: { adapterId: EndpointAdapterId }) {
   const adapter = adapterDefinition(adapterId);
   return (
     <span className="flex min-w-0 items-center gap-3">
-      <ProtocolIcon protocol={adapter.protocol} />
+      <EndpointProtocolIcon protocol={adapter.protocol} />
       <span className="min-w-0">
         <span className="block truncate text-sm font-medium text-foreground">{t(`endpoints.adapters.${adapterId}`)}</span>
         <span className="mt-0.5 block truncate text-xs font-normal text-muted-foreground">{t(`endpoints.adapterDescriptions.${adapterId}`)}</span>
@@ -1102,15 +1124,6 @@ function AdapterOption({ adapterId }: { adapterId: EndpointAdapterId }) {
   );
 }
 
-function ProtocolIcon({ protocol, size = "default" }: { protocol: EndpointProtocol; size?: "default" | "sm" }) {
-  const frameClassName = size === "sm" ? "size-7 rounded-md" : "size-10 rounded-lg";
-  const iconClassName = size === "sm" ? "size-4" : "size-5";
-  return (
-    <span className={`flex shrink-0 items-center justify-center overflow-hidden border border-border/80 bg-background shadow-xs ${frameClassName}`}>
-      {protocol === "litellm" ? <img alt="" src="/assets/integrations/litellm-train.webp" className="size-full object-cover" /> : protocol === "a2a" ? <img alt="" src="/assets/integrations/a2a-agent.png" className="size-full object-contain p-1" /> : <Webhook aria-hidden="true" className={`${iconClassName} text-primary`} />}
-    </span>
-  );
-}
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return <label className="grid min-w-0 gap-2 text-sm font-medium">{label}{children}</label>;

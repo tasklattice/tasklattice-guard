@@ -363,7 +363,7 @@ export function PolicyCard({ policy, onOpen, onExport, onDelete }: { policy: Pol
         <div className="mt-3 flex min-h-11 items-center justify-between gap-3 border-t pt-3">
           <span className="font-mono text-xs text-muted-foreground">v{policy.version}</span>
           <div className="flex items-center gap-1">
-            {onDelete ? <Button size="icon-sm" variant="ghost" className="min-h-11 min-w-11 text-muted-foreground hover:bg-destructive/10 hover:text-destructive" aria-label={t("policyLibrary.deletePolicyAria", { name: policy.name })} title={t("policyLibrary.deleteAction")} onClick={onDelete}><Trash2 /></Button> : null}
+            {onDelete ? <Button size="icon-sm" variant="destructive" className="min-h-11 min-w-11" aria-label={t("policyLibrary.deletePolicyAria", { name: policy.name })} title={t("policyLibrary.deleteAction")} onClick={onDelete}><Trash2 /></Button> : null}
             {onExport ? <Button size="sm" variant="outline" className="min-h-11" aria-label={t("policyLibrary.exportPolicyAria", { name: policy.name })} onClick={onExport}><Download />{t("policyLibrary.exportAction")}</Button> : null}
             <Button size="sm" variant="ghost" className="min-h-11" onClick={onOpen}>{t("policyLibrary.inspectPolicy")}<ChevronRight /></Button>
           </div>
@@ -388,7 +388,7 @@ export function PolicyDetail({ policy, onClose, onEdit, onExport, onDelete }: { 
       title={policy.name}
       description={policy.description}
       width="xl"
-      footer={policy.implementation === "nemo_native" ? <>{onDelete ? <Button className="mr-auto" variant="destructive" onClick={() => onDelete(policy)}><Trash2 />{t("policyLibrary.deleteAction")}</Button> : null}{onExport ? <Button variant="outline" onClick={() => onExport(policy)}><Download />{t("policyStudio.exportPolicy")}</Button> : null}{onEdit ? <Button onClick={(event) => onEdit(policy, event.currentTarget)}>{t("policyLibrary.editPolicy")}</Button> : <Button variant="outline" onClick={onClose}>{t("common.close")}</Button>}</> : <Button variant="outline" onClick={onClose}>{t("common.close")}</Button>}
+      footer={policy.implementation === "nemo_native" ? <>{onDelete ? <Button className="mr-auto" variant="destructive" onClick={() => onDelete(policy)}><Trash2 />{t("policyLibrary.deleteAction")}</Button> : null}{onExport ? <Button variant="outline" onClick={() => onExport(policy)}><Download />{t("policyStudio.exportPolicy")}</Button> : null}{onEdit ? <Button variant="edit" onClick={(event) => onEdit(policy, event.currentTarget)}>{t("policyLibrary.editPolicy")}</Button> : <Button variant="outline" onClick={onClose}>{t("common.close")}</Button>}</> : <Button variant="outline" onClick={onClose}>{t("common.close")}</Button>}
     >
       <div className="flex flex-wrap gap-2">
         <PolicySourceBadge source={policy.source} />

@@ -33,6 +33,7 @@ type MultiSelectComboboxProps = {
   placeholder?: string;
   searchPlaceholder?: string;
   showSelectedValues?: boolean;
+  selectionMode?: "multiple" | "single";
   value: readonly string[];
 };
 
@@ -53,9 +54,11 @@ export function MultiSelectCombobox({
   placeholder = "Select options…",
   searchPlaceholder = "Filter by name…",
   showSelectedValues = true,
+  selectionMode = "multiple",
   value,
 }: MultiSelectComboboxProps) {
   const { t, i18n } = useTranslation();
+  const single = selectionMode === "single";
   const generatedId = useId();
   const inputId = id ?? `${generatedId}-input`;
   const listboxId = `${inputId}-listbox`;
@@ -83,6 +86,13 @@ export function MultiSelectCombobox({
     focusInput();
   };
   const toggleOption = (option: MultiSelectOption) => {
+    if (single) {
+      if (option.disabled) return;
+      onValueChange([option.value]);
+      setQuery("");
+      setOpen(false);
+      return;
+    }
     if (isMultiSelectOptionDisabled(option, value, maxSelected)) return;
     const nextValue = value.includes(option.value)
       ? value.filter((selectedValue) => selectedValue !== option.value)
@@ -145,15 +155,17 @@ export function MultiSelectCombobox({
         <div
           className={cn(
             "flex min-h-12 w-full cursor-text flex-wrap items-center gap-2 rounded-lg border border-input bg-card px-2.5 py-2 shadow-xs transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/25",
+            single && "h-12 min-h-12 flex-nowrap py-0",
             disabled && "cursor-not-allowed bg-muted opacity-60",
             className,
           )}
           onClick={openOptions}
         >
-          {showSelectedValues && selectedOptions.map((option) => (
+          {!single && showSelectedValues && selectedOptions.map((option) => (
             <button
               key={option.value}
               type="button"
+              disabled={disabled}
               aria-label={t("common.multiSelect.remove", { name: option.label })}
               className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-md border border-primary/25 bg-primary/8 py-1 pr-2 pl-3 text-xs font-medium text-primary transition-colors hover:bg-primary/12 focus-visible:outline-2 focus-visible:outline-ring"
               onClick={(event) => {
@@ -166,7 +178,7 @@ export function MultiSelectCombobox({
               <X className="size-3.5 shrink-0" />
             </button>
           ))}
-          <span className="flex min-w-48 flex-1 items-center">
+          <span className={cn("flex flex-1 items-center", single ? "min-w-0" : "min-w-48")}>
             <input
               ref={inputRef}
               id={inputId}
@@ -178,7 +190,7 @@ export function MultiSelectCombobox({
               aria-haspopup="listbox"
               aria-label={ariaLabel}
               autoComplete="off"
-              className="h-8 min-w-0 flex-1 bg-transparent px-1 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed"
+              className="h-8 w-0 min-w-0 flex-1 truncate bg-transparent px-1 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed"
               disabled={disabled}
               onChange={(event) => {
                 setQuery(event.target.value);
@@ -187,7 +199,7 @@ export function MultiSelectCombobox({
               onFocus={() => setOpen(true)}
               onKeyDown={handleKeyDown}
               placeholder={selectedOptions.length ? searchPlaceholder : placeholder}
-              value={query}
+              value={single && !open ? selectedOptions[0]?.label ?? query : query}
             />
             <button
               type="button"
@@ -250,7 +262,7 @@ export function MultiSelectCombobox({
           {filteredOptions.length ? filteredOptions.map((option, index) => {
             const selected = value.includes(option.value);
             const active = index === activeIndex;
-            const optionDisabled = isMultiSelectOptionDisabled(option, value, maxSelected);
+            const optionDisabled = isMultiSelectOptionDisabled(option, value, single ? undefined : maxSelected);
             return (
               <button
                 key={option.value}

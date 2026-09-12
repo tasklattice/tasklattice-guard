@@ -86,12 +86,12 @@ describe("Guardrail Playground HTTP capability", () => {
       playgroundRunner: new RunnerPlaygroundClient({ baseUrl: "https://runtime.test", token: config.runnerToken, fetcher: runnerFetch }),
     });
 
-    const prepared = await app.request("/api/v1/playground/draft-previews/guardrail-draft", {
+    const prepared = await app.request("/api/v1/playground/guardrails/guardrail-draft/draft-previews", {
       method: "POST", headers: { "content-type": "application/json" }, body: "{}",
     });
     expect(prepared.status).toBe(201);
     const preview = await prepared.json() as { preview_id: string };
-    const interaction = await app.request("/api/v1/playground/draft-interactions/guardrail-draft", {
+    const interaction = await app.request("/api/v1/playground/guardrails/guardrail-draft/draft-interactions", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ preview_id: preview.preview_id, model_id: "deepseek-test", message: "hello draft", history: [] }),
@@ -125,7 +125,7 @@ describe("Guardrail Playground HTTP capability", () => {
       playgroundRunner: {} as RunnerPlaygroundClient,
     });
 
-    const response = await app.request("/api/v1/playground/draft-previews/guardrail-draft", { method: "POST" });
+    const response = await app.request("/api/v1/playground/guardrails/guardrail-draft/draft-previews", { method: "POST" });
     expect(response.status).toBe(403);
     expect(prepare).not.toHaveBeenCalled();
   });
@@ -185,7 +185,7 @@ describe("Guardrail Playground HTTP capability", () => {
     });
 
     const models = await app.request("/api/v1/playground/models");
-    const interaction = await app.request("/api/v1/playground/interactions/guardrail-default", {
+    const interaction = await app.request("/api/v1/playground/guardrails/guardrail-default/interactions", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -248,7 +248,7 @@ describe("Guardrail Playground HTTP capability", () => {
       playgroundRunner,
     });
 
-    const response = await app.request("/api/v1/playground/interactions/guardrail-default", {
+    const response = await app.request("/api/v1/playground/guardrails/guardrail-default/interactions", {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ guardrail_version: versionId, model_id: "deepseek-test", message: "secret", history: [] }),
     });

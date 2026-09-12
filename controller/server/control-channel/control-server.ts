@@ -109,6 +109,7 @@ export class RunnerControlServer {
       setInterval(() => void this.dispatchValidationRequests(), 1_000),
       setInterval(() => void this.dispatchDesiredStateChanges(), 1_000),
       setInterval(() => void this.reconcileAll(), 30_000),
+      setInterval(() => void this.service.trafficRouting?.expireCalls().catch(error => console.error("Traffic expiry failed", error)), 30_000),
       setInterval(() => void this.service.markStaleRunnersOffline(), this.config.offlineAfterSeconds * 1_000),
     ];
     for (const timer of this.timers) timer.unref();

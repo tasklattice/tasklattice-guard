@@ -54,6 +54,19 @@ export const user = pgTable("auth_user", {
   updatedAt,
 });
 
+export const personalAccessTokens = pgTable("personal_access_token", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  prefix: text("prefix").notNull(),
+  tokenHash: text("token_hash").notNull().unique(),
+  permissions: jsonb("permissions").$type<import("../../shared/access-tokens.js").TokenPermissions>().notNull(),
+  createdAt,
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+}, (table) => [index("personal_access_token_user_idx").on(table.userId)]);
+
 export const session = pgTable("auth_session", {
   id: text("id").primaryKey(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
@@ -157,6 +170,17 @@ export const modelDefinitions = pgTable("model_definition", {
   index("model_definition_provider_idx").on(table.providerId),
   index("model_definition_status_idx").on(table.status),
 ]);
+
+export const modelAssignmentValidations = pgTable("model_assignment_validation", {
+  id: text("id").primaryKey(),
+  actorId: text("actor_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  target: text("target").notNull(),
+  modelId: text("model_id").notNull().references(() => modelDefinitions.id, { onDelete: "cascade" }),
+  fingerprint: text("fingerprint").notNull(),
+  evidence: jsonb("evidence").$type<import("../model-config/domain.js").ModelValidationCheck>().notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  createdAt,
+}, t => [index("model_assignment_validation_lookup_idx").on(t.actorId, t.target, t.modelId, t.createdAt)]);
 
 export const modelConfigurationRevisions = pgTable("model_configuration_revision", {
   id: text("id").primaryKey(),
@@ -333,9 +357,18 @@ export const trafficRouters = pgTable("traffic_router", {
   activeRevision: integer("active_revision"), activeDraftRevision: integer("active_draft_revision"),
   activeSnapshot: jsonb("active_snapshot").$type<RouterDraft>(), desiredGeneration: bigint("desired_generation", { mode: "number" }).notNull().default(0), createdAt, updatedAt,
 });
+/** Metadata observed at publication, not the binding history of individual requests.
+ * Missing references on inactive targets have no metadata entry; their IDs remain in snapshot.
+ */
+export type RouterRevisionContext = {
+  endpoints: Array<{ id: string; name: string; adapter: string }>;
+  guardrails: Array<{ id: string; name: string; version: string }>;
+};
 export const trafficRouterRevisions = pgTable("traffic_router_revision", {
+  context: jsonb("context").$type<RouterRevisionContext>(),
   routerId: text("router_id").notNull().references(() => trafficRouters.id), revision: integer("revision").notNull(),
   sourceDraftRevision: integer("source_draft_revision").notNull(), snapshot: jsonb("snapshot").$type<RouterDraft>().notNull(),
+  requestDigest: text("request_digest"), generation: bigint("generation", { mode: "number" }),
   idempotencyKey: text("idempotency_key").notNull(), requestDraftRevision: integer("request_draft_revision").notNull(), rollbackRevision: integer("rollback_revision"), createdBy: text("created_by").notNull().references(() => user.id), createdAt,
 }, t => [primaryKey({ columns: [t.routerId, t.revision] }), uniqueIndex("traffic_router_revision_idempotency_idx").on(t.routerId, t.idempotencyKey)]);
 export const routeAssignments = pgTable("route_assignment", {

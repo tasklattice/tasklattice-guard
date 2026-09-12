@@ -137,7 +137,7 @@ const resources = {
       },
       account: {
         title: "Account",
-        description: "Manage your personal identity, interface preferences, and sign-in security.",
+        description: "Manage your profile, sign-in security, and API access.",
         sections: "Account sections",
         general: "General",
         security: "Security",
@@ -2919,7 +2919,7 @@ const resources = {
       },
       account: {
         title: "账户",
-        description: "管理你的个人身份、界面偏好和登录安全。",
+        description: "管理你的个人信息、登录安全和 API 访问权限。",
         sections: "账户设置分区",
         general: "常规",
         security: "安全",
