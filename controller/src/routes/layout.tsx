@@ -1,4 +1,6 @@
-import { Outlet, useRouterState } from "@tanstack/react-router";
+import { Link, Outlet, useRouterState } from "@tanstack/react-router";
+import { useQuery } from '@tanstack/react-query';
+import { getTrafficRouter, trafficRouterKeys } from '@/lib/traffic-routing-api';
 import { ShieldCheck } from "lucide-react";
 import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
@@ -45,6 +47,7 @@ export function ControlPlaneLayout() {
   const auth = useAuth();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const location = names[pathname]
+    ?? (pathname.startsWith("/account/") ? names["/account"] : undefined)
     ?? (pathname.startsWith("/guardrails/") ? names["/guardrails"] : undefined)
     ?? (pathname.startsWith("/integration/routers/") ? names["/integration/routers"] : undefined)
     ?? { page: "nav.dashboard" };
@@ -67,8 +70,10 @@ export function ControlPlaneLayout() {
                   <BreadcrumbItem className="hidden sm:inline-flex">{t(location.group)}</BreadcrumbItem>
                   <BreadcrumbSeparator className="hidden sm:block" />
                   <BreadcrumbItem className="min-w-0">
-                    <BreadcrumbPage className="truncate">{t(location.page)}</BreadcrumbPage>
+                    {pathname.startsWith('/integration/routers/') ? <Link to="/integration/routers" className="truncate">{t(location.page)}</Link> : pathname.startsWith("/account/") ? <Link to="/account" className="truncate">{t(location.page)}</Link> : <BreadcrumbPage className="truncate">{t(location.page)}</BreadcrumbPage>}
                   </BreadcrumbItem>
+                  {pathname.startsWith('/account/') && <><BreadcrumbSeparator /><BreadcrumbItem><BreadcrumbPage>{pathname === '/account/security' ? t('account.security') : 'Access Tokens'}</BreadcrumbPage></BreadcrumbItem></>}
+                  {pathname.startsWith('/integration/routers/') && <RouterNameBreadcrumb id={decodeURIComponent(pathname.split('/').at(-1)!)} />}
                 </BreadcrumbList>
               </Breadcrumb> : <span className="truncate text-sm font-medium text-foreground">{t(location.page)}</span>}
             </div>
@@ -82,4 +87,9 @@ export function ControlPlaneLayout() {
       </SidebarProvider>
     </TooltipProvider>
   );
+}
+
+function RouterNameBreadcrumb({id}:{id:string}) {
+  const query=useQuery({queryKey:trafficRouterKeys.detail(id),queryFn:()=>getTrafficRouter(id)});
+  return <><BreadcrumbSeparator/><BreadcrumbItem className="min-w-0"><BreadcrumbPage className="truncate">{query.data?.name ?? 'Router'}</BreadcrumbPage></BreadcrumbItem></>;
 }

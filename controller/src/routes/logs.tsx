@@ -1,3 +1,4 @@
+import { useSearch, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -46,6 +47,7 @@ type LogView = "interactions" | "checkpoints" | "system";
 
 export function LogsPage() {
   const { t } = useTranslation();
+  const routingFilters = useSearch({ from: "/logs" });
   const [tab, setTab] = useState<LogView>("interactions");
   const [guardrailId, setGuardrailId] = useState("all");
   const [window, setWindow] = useState<MetricWindow>("24h");
@@ -56,12 +58,13 @@ export function LogsPage() {
   const guardrailsQuery = useQuery({ queryKey: queryKeys.guardrails, queryFn: getGuardrails });
   const routersQuery = useQuery({ queryKey: queryKeys.routers, queryFn: getRouters });
   const scopedGuardrailId = guardrailId === "all" ? undefined : guardrailId;
-  const paging = useEventCursor(JSON.stringify([guardrailId, window, phase, outcome, tab]));
+  const paging = useEventCursor(JSON.stringify([guardrailId, window, phase, outcome, tab, routingFilters]));
   const eventsQuery = useQuery({
-    queryKey: [...queryKeys.runtimeEventsScope({ guardrailId: scopedGuardrailId, window, limit: 100 }), phase, outcome, tab, paging.cursor ?? null],
+    queryKey: [...queryKeys.runtimeEventsScope({ guardrailId: scopedGuardrailId, window, limit: 100 }), phase, outcome, tab, routingFilters, paging.cursor ?? null],
     queryFn: ({ signal }) => listRuntimeEvents(100, {
       guardrailId: scopedGuardrailId,
       since: new Date(Date.now() - metricWindowMilliseconds(window)).toISOString(),
+      ...routingFilters,
       ...(paging.cursor ? { cursor: paging.cursor } : {}),
       ...(phase === 'all' ? {} : { direction: phase === 'input' ? 'incoming' : 'outgoing' }),
       ...(outcome === 'all' ? {} : { outcome }),
@@ -89,6 +92,7 @@ export function LogsPage() {
   return (
     <section className="py-6 sm:py-8">
       <PageHeader title={t("pages.logs.title")} description={t("logs.description")} />
+      {routingFilters.routerId && <div className="my-3 rounded border p-3 text-sm">Router: {routingFilters.routerId} · Route: {routingFilters.routeId ?? "—"} · Target: {routingFilters.targetId ?? "—"} · r{routingFilters.routerRevision ?? "—"} · {routingFilters.since} – {routingFilters.until} <Link to="/logs" search={{}} className="ml-3 text-primary">Clear routing filters</Link></div>}
 
       {settingsQuery.data && settingsQuery.data.level !== "info" ? (
         <div className="mt-5 flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-950">

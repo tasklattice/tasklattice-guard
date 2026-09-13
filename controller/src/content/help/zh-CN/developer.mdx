@@ -1,0 +1,197 @@
+---
+kind: "guide"
+id: "guide-developer"
+audience: "developer"
+label: "开发者"
+title: "编写 Policy 并接入受保护流量"
+summary: "适合 Policy 开发者、应用开发者和网关集成开发者。重点是版本化源码、运行契约、测试覆盖和 API 决策处理。"
+outcome: "最终产出：可复用的 Policy Version，或一个正确执行 Guardrail 决策的 Endpoint。"
+order: 3
+---
+
+<a id="developer-api-access" />
+
+### 调用 Controller API：身份与权限
+
+使用个人 Access Token 管理 Guardrails、Routers 等系统资源；浏览器登录使用 Session。
+
+浏览器 Session 与个人 Token 是两种认证方式。Token 的创建、列表和撤销只接受所属账户的浏览器 Session，不能用已有 Token 签发新 Token。
+
+Controller 管理 API 与 Runner 检查 API 使用不同凭据。运行流量从 Endpoints 页面获取对应协议的调用地址和 Endpoint 凭据；个人 Token 不能替代 Endpoint 凭据。
+
+1. **创建 Token** — 进入 Account → Access Tokens，选择模块的 read 或 write 权限和有效期。创建后的密钥只显示一次，请妥善保存。
+
+2. **确认身份** — 通过 Authorization: Bearer \<token> 调用 GET /api/v1/account/identity，查看当前用户及 effectivePermissions。
+
+3. **按权限调用** — 授权覆盖选中模块的全部资源；write 同时包含 read，写操作还要求当前账户为管理员。无效或过期凭据返回 401，权限不足返回 403。
+
+```sh
+curl "{controllerOrigin}/api/v1/account/identity" \
+  -H "Authorization: Bearer $GUARD_ACCESS_TOKEN"
+```
+
+[管理 Access Tokens](/account/access-tokens)
+
+[登录安全](/account/security)
+
+[管理 API 文档](/api/docs)
+
+[Endpoint 调用与凭据](/integration/endpoint)
+
+<a id="developer-api-contract" />
+
+### API 文档、资源路径与重试
+
+标准 OpenAPI 从代码生成；操作的产品 Tag、权限、输入输出和重试规则都可查阅。
+
+- 人类阅读 /api/docs；模型和工具读取 /api/openapi.json。/api/llms.txt 提供紧凑索引，可按 module 或 operationId 获取包含所需 Schema 的完整子文档。
+- Tag 是产品分组，权限以 x-token-permission 为准。例如 Router 流量统计属于 telemetry Tag，但要求 routers:read。
+- Test Case 使用 /api/v1/guardrails/\{guardrailId\}/test-cases/\{caseId\} 定位；Policy 验证通过返回的固定 runId 查询，不能用 latest 跟踪自己的任务。
+- Router 编辑顺序为读取 → 保存 draft → publication-preview → publish。发布使用已审阅的 expectedDraftRevision 与 idempotencyKey；相同 key 携带不同内容会返回 409。
+- 202 表示已接受处理；继续读取对应资源的发布或验证状态。按各操作的 x-idempotency 和 x-retry-policy 重试，不能把所有 POST 当成可安全重放。
+- 旧 API 路径已移除。调用时以当前 OpenAPI 为准；JSON Schema 之外还会检查资源引用、当前状态和并发冲突。
+
+[打开 API 文档](/api/docs)
+
+[完整 OpenAPI](/api/openapi.json)
+
+[Router API 契约](/api/openapi.json?module=routers)
+
+[模型调用索引](/api/llms.txt)
+
+<a id="developer-policy-or-guardrail" />
+
+### 什么时候创建 Policy，什么时候创建 Guardrail
+
+Policy 解决复用行为，Guardrail 解决一个业务场景的组合与发布。
+
+**创建 Policy**
+
+当你需要新的可执行能力、Colang Flow、版本化 Action 依赖或可复用参数契约时。
+
+**创建 Guardrail**
+
+当能力已经存在，只需要为具体应用选择 Policies、Rules、参数、强度和交付方式时。
+
+**创建 Router**
+
+当 Guardrail 已发布，需要把某个 Endpoint 的一部分或全部流量路由到该版本时。
+
+
+[进入 Policy Studio](/policy-library)
+
+[管理 Guardrails](/guardrails)
+
+<a id="developer-policy-runtime" />
+
+### 理解 Policy Studio 的运行配置
+
+Rail、Flow、执行模式、Action 和参数共同组成 Policy 的运行契约。
+
+自定义 Policy 自动使用 Colang 2.x 可编程运行时，开发者不需要在 Colang 1 与 2 之间做选择。系统只允许调用已注册、带版本的 Actions，不接受任意 Python 上传。
+
+**Rail**
+
+NeMo 的执行阶段。Input Rail 在模型调用前检查用户输入；Output Rail 在模型响应交付前检查输出。
+
+**Flow 名称**
+
+Colang 源码中声明的命名 Flow。绑定名称必须与源码完全一致，并形成 Rule ID：flow/\{rail\}/\{flow_name\}。
+
+**执行模式：detect**
+
+只判断并记录安全状态，不把修改内容作为主要目的；不安全时仍按配置的 Action 执行。
+
+**执行模式：mutate**
+
+该 Flow 预期可能返回有效替换内容，例如脱敏或重写。
+
+**高级运行设置**
+
+parallel group 控制可安全并发的绑定；timeout 限制执行时间。超时及 provider error 按版本化 failure mode 处理。
+
+**Action 依赖**
+
+Flow 调用的注册 Provider 及其精确版本。发布前会检查存在性、Rail 兼容性和输入输出契约。
+
+**绑定参数**
+
+Policy 暴露给 Guardrail 的审查值。Guardrail 固定 Policy Version 时必须解析必填参数。
+
+
+[打开 Policy Library](/policy-library)
+
+<a id="developer-actions" />
+
+### “不安全时”的 8 种检测后处理
+
+检测后处理（Enforcement Action）表示 Policy 决策后希望运行时或调用方采取的干预，不是 NeMo Action。多项结果冲突时使用优先级最高的处理。
+
+**reject**
+
+阻断当前阶段。输入阶段不调用模型；输出阶段不交付原始响应。
+
+**redact**
+
+用经过审查的占位符或替换片段遮盖敏感内容，然后继续。
+
+**rewrite**
+
+使用评估器返回的完整替代内容替换当前内容。
+
+**regenerate**
+
+要求拥有模型调用生命周期的上游重新生成；独立检查 API 返回该指令，由调用方执行。
+
+**redirect**
+
+把交互引导到安全主题、流程或替代响应；通常需要提供替换内容。
+
+**fallback**
+
+使用预先批准的兜底响应或降级路径。
+
+**clarify**
+
+要求用户补充或澄清信息后再继续，适合意图不确定但不应直接放行的情况。
+
+**pass**
+
+记录发现但不执行内容干预；仅在明确接受该风险时使用。
+
+
+> 冲突优先级：reject → clarify → fallback → regenerate → rewrite → redirect → redact → pass。TaskLattice 是决策服务；regenerate、redirect、fallback、clarify 等动作是否真正改变交互，取决于调用方是否正确执行返回的 action/texts。
+
+<a id="developer-release-transfer" />
+
+### 测试、发布与跨环境迁移
+
+源码通过编译还不等于可以发布；每条 Flow-backed Rule 都需要必需 Test Case。
+
+- Test Case 必须指定 Rail、内容、期望 Decision 和 covered Rule IDs。
+- Validate & run tests 会先保存草稿、用生产编译器校验，再通过真实 NeMo runtime 执行测试。
+- 失败的当前草稿不能发布；修改源码、Rails、Actions、参数或测试后必须重新运行。
+- 导出包携带可编辑定义，不携带另一个环境的 Validation Run 或发布状态。目标环境必须重新验证。
+- 发布后的 Policy Version 不可变；后续修改形成新的 draft revision 和版本。
+
+[在 Guardrail 中查看 Validation](/guardrails)
+
+[打开 Policy Library](/policy-library)
+
+<a id="developer-endpoint" />
+
+### 应用与网关如何执行决策
+
+调用方拥有模型调用；TaskLattice 在输入和输出边界返回明确 Decision。
+
+1. **输入检查** — 发送用户输入和可信上下文。若 block/reject，停止并且不要调用模型；若 transform，使用返回内容调用模型。
+
+2. **模型调用** — 应用或网关继续拥有模型请求、重试、流式输出和业务会话。
+
+3. **输出检查** — 把完整或按配置缓冲的模型响应送入相同 Guardrail Version。阻断时不要泄露原始响应。
+
+4. **关联调用** — 使用稳定 call ID 关联输入与输出，保证两阶段固定到同一个版本；Endpoint 身份隔离不同网关。
+
+[管理 Endpoints](/integration/endpoint)
+
+[查看 Traffic Routers](/integration/routers)

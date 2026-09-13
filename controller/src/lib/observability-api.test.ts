@@ -87,7 +87,7 @@ describe("privacy-safe runtime observability", () => {
 
   it("marks legacy events as not collected instead of reporting a clean result", async () => {
     const legacy = { ...event, metadata: { protocol: "litellm", action: "allow" }, decision: "allow" };
-    vi.stubGlobal("fetch", vi.fn(async (path: string) => new Response(JSON.stringify(path.startsWith('/api/v1/runtime-metrics') ? {
+    vi.stubGlobal("fetch", vi.fn(async (path: string) => new Response(JSON.stringify(path.startsWith('/api/v1/telemetry/metrics') ? {
       total_decisions: 1, data_availability: { execution_evidence: 'not_collected' },
       findings_summary: { total: 0, critical: 0, high: 0, medium: 0, low: 0, affected_traces: 0, latest_at: null },
     } : { items: [legacy], count: 1 }), {

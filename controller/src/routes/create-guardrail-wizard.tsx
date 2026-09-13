@@ -428,7 +428,7 @@ export function CreateGuardrailWizard({
                 </button>;
               })}
             </section>
-            <Button variant="outline" className="mt-4 min-h-11" onClick={() => editPolicy(incompleteBindings[0]?.policy_id ?? null)}>{t("protection.wizard.editProtections")}</Button>
+            <Button variant="edit" className="mt-4 min-h-11" onClick={() => editPolicy(incompleteBindings[0]?.policy_id ?? null)}>{t("protection.wizard.editProtections")}</Button>
             {pendingPreset !== null ? <Button variant="outline" className="mt-4" onClick={() => changeStep(0)}>{t("protection.wizard.resolvePreset")}</Button> : null}
             <p className="mt-4 text-sm leading-6 text-muted-foreground">{t("protection.selectedNotValidated")}</p>
             {catalogReady ? <div className="mt-4"><ProtectionDependencies bindings={bindings} policies={policies} /></div> : null}

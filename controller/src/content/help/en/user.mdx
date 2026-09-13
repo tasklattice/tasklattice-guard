@@ -1,0 +1,75 @@
+---
+kind: "guide"
+id: "guide-user"
+audience: "user"
+label: "Everyday user"
+title: "Design, validate, and release protection"
+summary: "For security, compliance, product, and business owners. Focus on intent, reusable Policies, validation, and audit history."
+outcome: "Outcome: a tested Guardrail Version that a Router can reference."
+order: 2
+---
+
+<a id="user-lifecycle" />
+
+### Standard workflow: Policy to protection
+
+Reuse reviewed capabilities, then compose, validate, publish, and deploy.
+
+1. **Browse Policy Library** — Review purpose, Rules, parameters, and Test Cases.
+
+2. **Create a Guardrail** — Describe business boundaries and select Policy Versions, Rules, and Rails.
+
+3. **Run Validation** — Execute the current draft's Test Cases through the production-equivalent NeMo runtime.
+
+4. **Publish** — Freeze the passing draft as an immutable Guardrail Version.
+
+5. **Deploy** — Bind Endpoints to a Router, configure Route Selectors and weighted Targets, then publish and confirm Runner readiness.
+
+6. **Observe** — Use Playground, Runtime logs, Audit log, and metrics to verify real behavior.
+
+[Open Policy Library](/policy-library)
+
+[Manage Guardrails](/guardrails)
+
+[View Validation in a Guardrail](/guardrails)
+
+<a id="user-review-policy" />
+
+### How to read a Policy
+
+Do not stop at the name; inspect Rules, Test Cases, version, and parameters.
+
+- A Policy is a reusable capability, not an application router.
+- A Rule is the smallest executable behavior; disabling one changes compiled behavior.
+- A Test Case states whether a Rule or scenario should allow, transform, or block.
+- A Guardrail pins an immutable Policy Version.
+- Required parameters are resolved when the Policy is bound to a Guardrail.
+
+> Built-in and custom Policies use the same Policy → Rule → Test Case product model.
+
+[Browse Policy Library](/policy-library)
+
+<a id="user-decisions" />
+
+### Understand allow, transform, and block
+
+The final Decision is something the caller must execute, not merely a risk label.
+
+**Allow / pass**
+
+The content may continue to the next phase.
+
+**Transform**
+
+Use the returned redacted, rewritten, or otherwise transformed content.
+
+**Block / reject**
+
+Stop the phase. Do not call the model for blocked input or deliver blocked output.
+
+
+> Playground shows the input check, model call, and output check as one inspectable path.
+
+[Open Playground](/playground)
+
+[View runtime logs](/logs)

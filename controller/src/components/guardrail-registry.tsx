@@ -1,3 +1,5 @@
+import { GuardrailRowActions } from "./guardrail-row-actions";
+import { useAuth } from "@/lib/auth";
 import { Link } from "@tanstack/react-router";
 import { ShieldCheck } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -14,6 +16,7 @@ export function GuardrailRegistry({
   onOpen: (guardrailId: string) => void;
 }) {
   const { t, i18n } = useTranslation();
+  const canEdit = useAuth().user?.role === "admin";
 
   return (
     <section className="mt-5 min-w-0 overflow-hidden rounded-xl border bg-card shadow-xs">
@@ -28,6 +31,7 @@ export function GuardrailRegistry({
             <TableHead className="hidden w-20 md:table-cell">{t("guardrails.policies")}</TableHead>
             <TableHead className="hidden w-40 lg:table-cell">{t("guardrails.validation")}</TableHead>
             <TableHead className="hidden w-44 xl:table-cell">{t("guardrails.updated")}</TableHead>
+            {canEdit && <TableHead className="w-16"><span className="sr-only">{t("common.actions")}</span></TableHead>}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -66,6 +70,7 @@ export function GuardrailRegistry({
               <TableCell className="hidden text-xs text-muted-foreground xl:table-cell">
                 {new Date(guardrail.updated_at).toLocaleString(i18n.language)}
               </TableCell>
+              {canEdit && <TableCell className="text-right" onClick={event => event.stopPropagation()}><GuardrailRowActions guardrail={guardrail} /></TableCell>}
             </TableRow>
           ))}
         </TableBody>

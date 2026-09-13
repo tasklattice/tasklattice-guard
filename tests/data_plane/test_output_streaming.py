@@ -30,7 +30,7 @@ async def test_default_frozen_artifact_buffers_before_releasing_without_models(t
         context=RequestContext(protocol="litellm", endpoint_id="fixture-endpoint"))
     streams = OutputStreamSessionStore(window_characters=4)
     try:
-        mode = runtime.output_delivery(req)
+        mode = runtime.output_delivery(req, allow_new_output=True)
         assert mode == "full_buffered"
         # Even single-character chunks must not expose part of an identifier or
         # an injected instruction while the full-response check is pending.

@@ -92,6 +92,14 @@ async def test_stopped_tcp_replica_hands_pinned_checked_stream_to_second_runner(
                     })
 
                 async with tcp_server(apps[0]) as first_url:
+                    # Correlated output must reuse the assignment made on input.
+                    input_response = await client.post(
+                        first_url + "/runtime/v1/endpoints/fixture-endpoint/beta/litellm_basic_guardrail_api",
+                        headers={"x-api-key": RUNTIME_CREDENTIAL},
+                        json={"input_type": "request", "litellm_call_id": call_id,
+                              "texts": ["Tell me a story."], "request_data": {}},
+                    )
+                    assert input_response.status_code == 200, input_response.text
                     first_response = await send(first_url, 0)
                     assert first_response.status_code == 200, first_response.text
                     first = first_response.json()
@@ -115,8 +123,8 @@ async def test_stopped_tcp_replica_hands_pinned_checked_stream_to_second_runner(
                     assert contexts[0]._redis.pexpire(contexts[0]._key(scoped_call_id), 0)
                     calls_before = len(calls)
                     expired = await send(second_url, 1)
-                    assert expired.status_code == 409, expired.text
-                    assert "pinned release expired" in expired.json()["detail"]
+                    assert expired.status_code == 503, expired.text
+                    assert "call_context_expired" in expired.json()["detail"]
                     assert "released_text" not in expired.json()
                     assert len(calls) == calls_before
                     assert await streams[1]._redis.get(key) == before

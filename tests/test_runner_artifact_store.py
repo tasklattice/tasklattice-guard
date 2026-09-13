@@ -79,6 +79,18 @@ def test_runner_verifies_and_restores_complete_last_known_good(tmp_path):
         )],
     )
 
+    desired.endpoints[0].router_id = "composed"
+    desired.router_revisions.append(protocol.RouterRevision(
+        router_id="composed", revision=1, assignment_algorithm="hmac-sha256-v1",
+        assignment_key_id="v1", assignment_key=b"k" * 32,
+        routes=[protocol.ComposedRoute(route_id=old.router_id, name=old.router_id,
+            kind="normal" if old.router_id == "production" else "fallback", enabled=True,
+            all_endpoints=True, traffic_scope=old.traffic_scope,
+            targets=[protocol.WeightedTarget(target_id=old.router_id + "-target",
+                guardrail_id=artifact.guardrail_id, guardrail_version=artifact.guardrail_version,
+                artifact_id=artifact.artifact_id, weight_bps=10000)])
+            for old in reversed(desired.routers)]))
+
     first = ArtifactStore(public_path, tmp_path / "state")
     first_registry = Registry()
     first.attach_registry(first_registry)  # type: ignore[arg-type]
@@ -91,14 +103,15 @@ def test_runner_verifies_and_restores_complete_last_known_good(tmp_path):
         endpoint_id="endpoint-1",
         fields=(("target.environment", "production"),),
     ))
-    assert selected.router_id == "production"
+    assert selected.router_id == "composed"
+    assert selected.route_assignment["routeId"] == "production"
 
     restarted = ArtifactStore(public_path, tmp_path / "state")
     restarted_registry = Registry()
     restarted.attach_registry(restarted_registry)  # type: ignore[arg-type]
     assert restarted.generation == 7
     assert restarted.endpoint_adapter("endpoint-1") == "http"
-    assert restarted.resolve(RequestContext(protocol="http", endpoint_id="endpoint-1")).router_id == "fallback"
+    assert restarted.resolve(RequestContext(protocol="http", endpoint_id="endpoint-1")).route_assignment["routeId"] == "fallback"
     assert restarted_registry.reloads == 1
 
 
@@ -191,6 +204,7 @@ def _artifact() -> protocol.Artifact:
     artifact = protocol.Artifact()
     artifact.CopyFrom(state.artifacts[0])
     artifact.guardrail_id = "guardrail-1"
+    artifact.plan.guardrail_id = "guardrail-1"
     artifact.guardrail_version = "20260904-010000.001Z"
     artifact.generation = 7
     # The signed content changed above. The test signs it with its own ephemeral

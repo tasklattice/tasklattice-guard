@@ -146,10 +146,10 @@ describe("Controller/Runner control protocol", () => {
       ],
     })).toEqual({
       combinator: "TRAFFIC_COMBINATOR_AND",
-      conditions: [{ field: "header", key: "x-tenant", operator: "TRAFFIC_OPERATOR_EQUALS", value: "acme" }],
+      conditions: [{ field: "header", key: "x-tenant", operator: "TRAFFIC_OPERATOR_EQUALS", value: "acme", values: [], requestSource: "", caseSensitive: true }],
       groups: [{
         combinator: "TRAFFIC_COMBINATOR_OR",
-        conditions: [{ field: "path", key: "", operator: "TRAFFIC_OPERATOR_STARTS_WITH", value: "/agents" }],
+        conditions: [{ field: "path", key: "", operator: "TRAFFIC_OPERATOR_STARTS_WITH", value: "/agents", values: [], requestSource: "", caseSensitive: true }],
         groups: [],
       }],
     });

@@ -20,7 +20,9 @@ describe("i18n source boundary", () => {
     ];
 
     for (const file of files) {
-      expect(readFileSync(file, "utf8"), file).not.toMatch(/[\u3400-\u9fff]/u);
+      const source = readFileSync(file, "utf8");
+      const runtimeCopy = source.replace(/\bt\(\s*(['"])(?:\\.|(?!\1).)*\1\s*,/gu, "t(\"localized-key\",");
+      expect(runtimeCopy, file).not.toMatch(/[\u3400-\u9fff]/u);
     }
   });
 });

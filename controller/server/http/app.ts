@@ -1,3 +1,9 @@
+import { openApiDocument, apiReferenceHtml, apiAgentIndex } from "./openapi.js";
+import { allowsTokenPermission } from "../../shared/access-tokens.js";
+import type { AccessTokenService, TokenIdentity } from "../services/access-tokens.js";
+import { requiredTokenPermission } from "./token-permissions.js";
+import { routerDraftSchema, previewRouter, selectorFields, selectorFieldCatalog, RoutingEvaluationError, routingInputSchema } from "../../shared/traffic-routing.js";
+import { routingEventSchema } from "../services/traffic-routing.js";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -36,9 +42,10 @@ import { protectionDirectories } from "../../shared/protection-map.js";
 import { protectionPresets } from "../../shared/protection-presets.js";
 import { expandProtectionPreset } from "../policy-catalog/presets.js";
 
-type Actor = { id: string; role: string };
+type Actor = { id: string; role: string; tokenId?: string; permissions?: TokenIdentity["permissions"] };
 type Variables = { actor: Actor };
-const guardrailVersionInput = z.string().refine(isGuardrailVersionId, "Guardrail Version must be a canonical UTC timestamp.");
+const guardrailVersionInput = z.string().refine(isGuardrailVersionId, "Guardrail Version must be a canonical UTC timestamp.")
+  .describe("Immutable Guardrail Version ID in YYYYMMDD-HHmmss.SSSZ UTC format, for example 20260912-083000.123Z. Use a version returned by the API; numeric revisions and ISO date strings are not version IDs.");
 
 const guardrailPolicyBindingInput = z.object({
   policyId: z.string().trim().min(1).max(256),
@@ -161,7 +168,7 @@ const runtimeEventInput = z.object({
   metadata: z.record(z.string(), z.unknown()).default({}),
 });
 const runtimeEventBatchInput = z.object({
-  events: z.array(runtimeEventInput).max(1_000),
+  events: z.array(z.union([routingEventSchema, runtimeEventInput])).max(1_000),
   runnerId: z.string().min(1).optional(),
   observedAt: z.coerce.date().optional(),
 }).superRefine((value, context) => {
@@ -174,6 +181,7 @@ const modelCredentialRefsInput = z.object({ refs: z.array(z.string().uuid()).max
 export function createHttpApp(input: {
   config: ControllerConfig;
   auth: ControllerAuth;
+  accessTokens?: AccessTokenService;
   service: ControlPlaneService;
   runnerControl: RunnerControlServer;
   metrics: ControllerMetrics;
@@ -213,6 +221,13 @@ export function createHttpApp(input: {
     }
     return registerMetrics(context, next);
   });
+
+  app.get("/api/openapi.json", context => {
+    const document = openApiDocument({ module: context.req.query("module"), operationId: context.req.query("operationId") });
+    return document ? context.json(document) : context.json({ error: { code: "not_found", message: "API module or operation not found." } }, 404);
+  });
+  app.get("/api/docs", context => context.html(apiReferenceHtml()));
+  app.get("/api/llms.txt", context => context.text(apiAgentIndex()));
 
   app.get("/health/live", (context) => context.json({ status: "ok", component: "guard-controller" }));
   app.get("/health/ready", async (context) => {
@@ -295,20 +310,40 @@ export function createHttpApp(input: {
 
   app.on(["GET", "POST"], "/api/auth/*", (context) => input.auth.handler(context.req.raw));
 
-  const authenticated = authentication(input.auth);
+  const authenticated = authentication(input.auth, input.accessTokens);
   const administrator = authorization("admin");
+  const accountSession: MiddlewareHandler<{ Variables: Variables }> = async (context, next) => {
+    context.header("Cache-Control", "no-store");
+    if (context.get("actor").tokenId) throw new ControllerError("Use your browser session to manage access tokens.", 403, "session_required");
+    const origin = context.req.header("origin");
+    if (context.req.header("sec-fetch-site") === "cross-site" || (origin && !input.config.trustedOrigins.includes(origin)))
+      throw new ControllerError("Untrusted request origin.", 403, "forbidden");
+    if (!input.accessTokens) throw new ControllerError("Access tokens are unavailable.", 503, "access_tokens_unavailable");
+    await next();
+  };
+  app.get("/api/v1/account/access-tokens", authenticated, accountSession, async context =>
+    context.json({ items: await input.accessTokens!.list(context.get("actor").id) }));
+  app.post("/api/v1/account/access-tokens", authenticated, accountSession, async context => {
+    if (!context.req.header("content-type")?.toLowerCase().startsWith("application/json"))
+      throw new ControllerError("JSON content type is required.", 415, "unsupported_media_type");
+    return context.json(await input.accessTokens!.create(context.get("actor").id, await context.req.json()), 201);
+  });
+  app.delete("/api/v1/account/access-tokens/:id", authenticated, accountSession, async context => {
+    await input.accessTokens!.revoke(context.get("actor").id, context.req.param("id"));
+    return context.body(null, 204);
+  });
+  app.get("/api/v1/account/identity", authenticated, context => {
+    context.header("Cache-Control", "no-store");
+    const actor = context.get("actor");
+    return context.json({ userId: actor.id, role: actor.role, authentication: actor.tokenId ? "access_token" : "session",
+      tokenId: actor.tokenId ?? null, permissions: actor.permissions ?? null,
+      effectivePermissions: actor.permissions ? Object.fromEntries(Object.entries(actor.permissions).map(([module, access]) => [module, actor.role === "admin" ? access : "read"])) : null });
+  });
+
 
   app.get("/api/v1/model-configuration", authenticated, async (context) => {
     if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
-    const view = await input.models.view();
-    if (view.activating?.generation) {
-      const distribution = await input.runnerControl.distributionStatus();
-      if (distribution.distributionStatus === "ready" && distribution.desiredGeneration === view.activating.generation) {
-        await input.models.finalizeActivation(view.activating.id);
-        return context.json(await input.models.view());
-      }
-    }
-    return context.json(view);
+    return context.json(await input.models.view());
   });
   app.post("/api/v1/model-providers", authenticated, administrator, async (context) => {
     if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
@@ -318,19 +353,19 @@ export function createHttpApp(input: {
     if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
     return context.json(await input.models.updateProvider(context.req.param("id"), providerUpdateSchema.parse(await context.req.json()), context.get("actor").id));
   });
-  app.post("/api/v1/model-providers/discover", authenticated, administrator, async (context) => {
+  app.post("/api/v1/model-provider-discoveries", authenticated, administrator, async (context) => {
     if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
     return context.json(await input.models.discoverProviderDraft(providerInputSchema.parse(await context.req.json())));
   });
-  app.post("/api/v1/model-providers/register", authenticated, administrator, async (context) => {
+  app.post("/api/v1/model-provider-registrations", authenticated, administrator, async (context) => {
     if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
     return context.json(await input.models.registerProviderModels(providerRegistrationSchema.parse(await context.req.json()), context.get("actor").id), 201);
   });
-  app.post("/api/v1/model-providers/:id/validate", authenticated, administrator, async (context) => {
+  app.post("/api/v1/model-providers/:id/connection-tests", authenticated, administrator, async (context) => {
     if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
     return context.json(await input.models.revalidateProvider(context.req.param("id"), context.get("actor").id));
   });
-  app.post("/api/v1/model-providers/:id/discover", authenticated, administrator, async (context) => {
+  app.post("/api/v1/model-providers/:id/model-discoveries", authenticated, administrator, async (context) => {
     if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
     return context.json(await input.models.discoverProviderModels(context.req.param("id")));
   });
@@ -343,11 +378,11 @@ export function createHttpApp(input: {
     if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
     return context.json(await input.models.createModel(modelInputSchema.parse(await context.req.json()), context.get("actor").id), 201);
   });
-  app.post("/api/v1/models/:id/validate", authenticated, administrator, async (context) => {
+  app.post("/api/v1/models/:id/capability-tests", authenticated, administrator, async (context) => {
     if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
     return context.json(await input.models.revalidateModel(context.req.param("id"), context.get("actor").id));
   });
-  app.post("/api/v1/models/:id/test-connection", authenticated, administrator, async (context) => {
+  app.post("/api/v1/models/:id/connection-tests", authenticated, administrator, async (context) => {
     if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
     return context.json(await input.models.testModelConnection(context.req.param("id"), context.get("actor").id));
   });
@@ -367,24 +402,30 @@ export function createHttpApp(input: {
   app.put("/api/v1/model-configuration/draft/assignments/:target", authenticated, administrator, async (context) => {
     if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
     const target = modelAssignmentTargetSchema.parse(context.req.param("target"));
-    const body = z.object({ modelId: z.string().uuid().nullable() }).parse(await context.req.json());
-    return context.json(await input.models.updateAssignment(target, body.modelId, context.get("actor").id));
+    const body = z.object({ modelId: z.string().uuid().nullable(), validationId: z.string().uuid().optional() }).parse(await context.req.json());
+    return context.json(await input.models.updateAssignment(target, body.modelId, context.get("actor").id, body.validationId));
   });
-  app.post("/api/v1/model-configuration/draft/assignments/:target/validate", authenticated, administrator, async (context) => {
+  app.post("/api/v1/model-configuration/draft/assignments/:target/validations", authenticated, administrator, async context => {
     if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
     const target = modelAssignmentTargetSchema.parse(context.req.param("target"));
-    const raw = await context.req.text();
-    if (raw) {
-      const body = z.object({ modelId: z.string().uuid() }).parse(JSON.parse(raw));
-      return context.json(await input.models.previewAssignment(target, body.modelId, context.get("actor").id));
-    }
     return context.json(await input.models.validateAssignment(target, context.get("actor").id));
   });
-  app.post("/api/v1/model-configuration/validate", authenticated, administrator, async (context) => {
+  app.post("/api/v1/model-configuration/draft/assignments/:target/candidate-validations", authenticated, administrator, async context => {
+    if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
+    const target = modelAssignmentTargetSchema.parse(context.req.param("target"));
+    const body = z.object({ modelId: z.string().uuid() }).parse(await context.req.json());
+    return context.json(await input.models.previewAssignment(target, body.modelId, context.get("actor").id), 201);
+  });
+  app.get("/api/v1/model-configuration/draft/assignments/:target/candidate-validations/:validationId", authenticated, async context => {
+    if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
+    const target = modelAssignmentTargetSchema.parse(context.req.param("target"));
+    return context.json(await input.models.getAssignmentValidation(target, context.req.param("validationId"), context.get("actor").id));
+  });
+  app.post("/api/v1/model-configuration/draft/validations", authenticated, administrator, async (context) => {
     if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
     return context.json(await input.models.validateDraft(context.get("actor").id));
   });
-  app.post("/api/v1/model-configuration/:id/activate", authenticated, administrator, async (context) => {
+  app.post("/api/v1/model-configuration/revisions/:id/activate", authenticated, administrator, async (context) => {
     if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
     const revision = await input.models.beginActivation(context.req.param("id"), context.get("actor").id);
     const distribution = await input.runnerControl.distributeDesiredState("default", 10_000);
@@ -397,7 +438,8 @@ export function createHttpApp(input: {
   });
   app.post("/api/v1/model-configuration/rollback", authenticated, administrator, async (context) => {
     if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
-    const revision = await input.models.rollback(context.get("actor").id);
+    const body = z.object({ targetRevisionId: z.string().uuid() }).parse(await context.req.json());
+    const revision = await input.models.rollback(context.get("actor").id, body.targetRevisionId);
     const distribution = await input.runnerControl.distributeDesiredState("default", 10_000);
     if (distribution.distributionStatus === "ready") await input.models.finalizeActivation(revision.id);
     const view = await input.models.view();
@@ -411,7 +453,7 @@ export function createHttpApp(input: {
     const items = await input.service.listPolicies();
     return context.json({ items, count: items.length });
   });
-  app.get("/api/v1/protection-presets", authenticated, (context) => {
+  app.get("/api/v1/policy-catalog/protection-presets", authenticated, (context) => {
     const policies = policyCatalog.list();
     const items = protectionPresets.map((preset) => ({ ...preset, policyBindings: expandProtectionPreset(preset, policies) }));
     // This is a preview, not a save/activation or evidence that runtime checks passed.
@@ -430,31 +472,36 @@ export function createHttpApp(input: {
     await input.service.deletePolicy({ id: context.req.param("id"), actorId: context.get("actor").id });
     return context.body(null, 204);
   });
-  app.post("/api/v1/policies/:id/validate", authenticated, administrator, async (context) => {
+  app.get("/api/v1/policies/:id/draft/checks", authenticated, async (context) => {
     return context.json(await input.service.validatePolicy(context.req.param("id")));
   });
   app.get("/api/v1/policies/:id/validation-runs/latest", authenticated, async (context) => {
     return context.json(await input.service.latestPolicyValidation(context.req.param("id")));
   });
+  app.get("/api/v1/policies/:id/validation-runs/:runId", authenticated, async context =>
+    context.json(await input.service.getPolicyValidation(context.req.param("id"), context.req.param("runId"))));
   app.post("/api/v1/policies/:id/validation-runs", authenticated, administrator, async (context) => {
-    return context.json(await input.service.requestPolicyValidation({
+    const run = await input.service.requestPolicyValidation({
       id: context.req.param("id"), actorId: context.get("actor").id,
       compilerAvailable: input.runnerControl.hasDefaultCompiler(),
-    }), 202);
+    });
+    const statusUrl = `/api/v1/policies/${encodeURIComponent(context.req.param("id"))}/validation-runs/${encodeURIComponent(run.id)}`;
+    context.header("Location", statusUrl);
+    return context.json({ ...run, statusUrl }, 202);
   });
   app.post("/api/v1/policies/:id/publish", authenticated, administrator, async (context) => {
     const body = await context.req.text();
-    const request = z.object({ expectedDraftRevision: z.number().int().positive().optional() }).parse(body ? JSON.parse(body) : {});
+    const request = z.object({ expectedDraftRevision: z.number().int().positive() }).parse(body ? JSON.parse(body) : {});
     return context.json(await input.service.publishPolicy({ id: context.req.param("id"), actorId: context.get("actor").id,
       ...(request.expectedDraftRevision === undefined ? {} : { expectedDraftRevision: request.expectedDraftRevision }),
     }), 201);
   });
-  app.get("/api/v1/actions", authenticated, (context) => {
+  app.get("/api/v1/policy-catalog/actions", authenticated, (context) => {
     const items = actionCatalog();
     return context.json({ items, count: items.length });
   });
 
-  app.get("/api/v1/intent-analysis-status", authenticated, async (context) => {
+  app.get("/api/v1/authoring/capabilities", authenticated, async (context) => {
     const analyzer = await currentIntentAnalyzer();
     return context.json({
       available: analyzer !== null,
@@ -463,7 +510,7 @@ export function createHttpApp(input: {
       document_analysis_available: analyzer !== null,
     });
   });
-  app.post("/api/v1/intent-analyses", authenticated, administrator, async (context) => {
+  app.post("/api/v1/authoring/intent-analyses", authenticated, administrator, async (context) => {
     const intentAnalyzer = await currentIntentAnalyzer();
     if (!intentAnalyzer) {
       throw new ControllerError(
@@ -475,7 +522,7 @@ export function createHttpApp(input: {
     const body = intentAnalysisInput.parse(await context.req.json());
     return context.json(await intentAnalyzer.analyze(body));
   });
-  app.post("/api/v1/compliance-document-analyses", authenticated, administrator, async (context) => {
+  app.post("/api/v1/authoring/document-analyses", authenticated, administrator, async (context) => {
     const intentAnalyzer = await currentIntentAnalyzer();
     if (!intentAnalyzer) {
       throw new ControllerError("The control-plane assistant is not configured.", 503, "intent_analysis_unavailable");
@@ -502,7 +549,7 @@ export function createHttpApp(input: {
     const items = playgroundModel ? [playgroundModel.descriptor] : [];
     return context.json({ items, count: items.length });
   });
-  app.post("/api/v1/playground/draft-previews/:guardrailId", authenticated, administrator, async (context) => {
+  app.post("/api/v1/playground/guardrails/:guardrailId/draft-previews", authenticated, administrator, async (context) => {
     const playgroundModel = await currentPlaygroundModel();
     if (!playgroundModel || !playgroundRunner) {
       throw new ControllerError("Guardrail Playground has no model connection configured.", 503, "playground_unavailable");
@@ -535,7 +582,7 @@ export function createHttpApp(input: {
       throw error;
     }
   });
-  app.post("/api/v1/playground/draft-interactions/:guardrailId", authenticated, administrator, async (context) => {
+  app.post("/api/v1/playground/guardrails/:guardrailId/draft-interactions", authenticated, administrator, async (context) => {
     const playgroundModel = await currentPlaygroundModel();
     if (!playgroundModel || !playgroundRunner) {
       throw new ControllerError("Guardrail Playground has no model connection configured.", 503, "playground_unavailable");
@@ -569,7 +616,7 @@ export function createHttpApp(input: {
       history: body.history,
     }));
   });
-  app.post("/api/v1/playground/interactions/:guardrailId", authenticated, async (context) => {
+  app.post("/api/v1/playground/guardrails/:guardrailId/interactions", authenticated, async (context) => {
     const playgroundModel = await currentPlaygroundModel();
     if (!playgroundModel || !playgroundRunner) {
       throw new ControllerError("Guardrail Playground has no model connection configured.", 503, "playground_unavailable");
@@ -600,7 +647,7 @@ export function createHttpApp(input: {
       history: body.history,
     }));
   });
-  app.post("/api/v1/guardrail-plan-previews", authenticated, administrator, async (context) => {
+  app.post("/api/v1/authoring/plan-previews", authenticated, administrator, async (context) => {
     const body = guardrailInput.parse(await context.req.json());
     return context.json(await input.service.previewGuardrailPlan(body));
   });
@@ -611,6 +658,11 @@ export function createHttpApp(input: {
   app.get("/api/v1/guardrails/:id", authenticated, async (context) => {
     return context.json(await input.service.getGuardrail(context.req.param("id")));
   });
+  app.post("/api/v1/guardrails/:id/duplicate", authenticated, administrator, async context => {
+    const body = z.object({ name: z.string().trim().min(1).max(160), sourceVersion: guardrailVersionInput.optional(), sourceDraftRevision: z.number().int().positive().optional(), idempotencyKey: z.string().min(1).max(128) })
+      .refine(value => !(value.sourceVersion && value.sourceDraftRevision), "Choose one copy source").parse(await context.req.json());
+    return context.json(await input.service.duplicateGuardrail({ ...body, id: context.req.param("id"), actorId: context.get("actor").id }), 201);
+  });
   app.patch("/api/v1/guardrails/:id", authenticated, administrator, async (context) => {
     const body = guardrailUpdateInput.parse(await context.req.json());
     return context.json(await input.service.updateGuardrail({
@@ -618,14 +670,20 @@ export function createHttpApp(input: {
     }));
   });
   app.post("/api/v1/guardrails/:id/publish", authenticated, administrator, async (context) => {
+    const body = z.object({ expectedDraftRevision: z.number().int().positive() }).parse(await context.req.json());
     return context.json(await input.service.requestGuardrailPublish({
+      expectedDraftRevision: body.expectedDraftRevision,
       guardrailId: context.req.param("id"),
       actorId: context.get("actor").id,
       compilerAvailable: input.runnerControl.hasDefaultCompiler(),
     }), 202);
   });
-  app.post("/api/v1/guardrails/:id/rollback/:version", authenticated, administrator, async (context) => {
-    const version = guardrailVersionInput.parse(context.req.param("version"));
+  app.delete("/api/v1/guardrails/:id/versions/:version", authenticated, administrator, async context => {
+    await input.service.deleteGuardrailVersion({ guardrailId: context.req.param("id"), version: guardrailVersionInput.parse(context.req.param("version")), actorId: context.get("actor").id });
+    return context.body(null, 204);
+  });
+  app.post("/api/v1/guardrails/:id/rollback", authenticated, administrator, async (context) => {
+    const { version } = z.object({ version: guardrailVersionInput }).parse(await context.req.json());
     const result = await input.service.rollbackGuardrail({
       guardrailId: context.req.param("id"), version, actorId: context.get("actor").id,
     });
@@ -656,17 +714,17 @@ export function createHttpApp(input: {
     return context.body(null, 204);
   });
 
-  app.get("/api/v1/test-cases", authenticated, async (context) => {
-    const guardrailId = z.string().min(1).parse(context.req.query("guardrailId"));
+  app.get("/api/v1/guardrails/:guardrailId/test-cases", authenticated, async (context) => {
+    const guardrailId = context.req.param("guardrailId");
     const items = await input.service.listTestCases(guardrailId);
     return context.json({ items, count: items.length });
   });
-  app.post("/api/v1/test-cases", authenticated, administrator, async (context) => {
-    const body = testCaseInput.parse(await context.req.json());
-    return context.json(await input.service.createTestCase({ ...body, actorId: context.get("actor").id }), 201);
+  app.post("/api/v1/guardrails/:guardrailId/test-cases", authenticated, administrator, async (context) => {
+    const body = testCaseInput.omit({ guardrailId: true }).parse(await context.req.json());
+    return context.json(await input.service.createTestCase({ ...body, guardrailId: context.req.param("guardrailId"), actorId: context.get("actor").id }), 201);
   });
-  app.delete("/api/v1/test-cases/:caseId", authenticated, administrator, async (context) => {
-    await input.service.deleteTestCase({ caseId: context.req.param("caseId"), actorId: context.get("actor").id });
+  app.delete("/api/v1/guardrails/:guardrailId/test-cases/:caseId", authenticated, administrator, async (context) => {
+    await input.service.deleteTestCase({ guardrailId: context.req.param("guardrailId"), caseId: context.req.param("caseId"), actorId: context.get("actor").id });
     return context.body(null, 204);
   });
   app.patch("/api/v1/guardrails/:id/validation-scope", authenticated, administrator, async (context) => {
@@ -683,10 +741,9 @@ export function createHttpApp(input: {
   app.get("/api/v1/validation-runs/:runId", authenticated, async (context) => {
     return context.json(await input.service.getValidationRun(context.req.param("runId")));
   });
-  app.post("/api/v1/validation-runs", authenticated, administrator, async (context) => {
-    const body = validationRunInput.parse(await context.req.json());
+  app.post("/api/v1/guardrails/:guardrailId/validation-runs", authenticated, administrator, async (context) => {
     return context.json(await input.service.requestValidation({
-      guardrailId: body.guardrailId,
+      guardrailId: context.req.param("guardrailId"),
       actorId: context.get("actor").id,
       compilerAvailable: input.runnerControl.hasDefaultCompiler(),
     }), 202);
@@ -754,59 +811,88 @@ export function createHttpApp(input: {
     });
     return context.body(null, 204);
   });
-  app.get("/api/v1/routers", authenticated, async (context) => context.json({ items: await input.service.listRouters() }));
-  app.get("/api/v1/routers/:id", authenticated, async (context) => context.json(await input.service.getRouter(context.req.param("id"))));
-  app.get("/api/v1/routers/:id/deletion-impact", authenticated, administrator, async (context) => {
-    return context.json(await input.service.routerDeletionImpact(context.req.param("id")));
+  app.get("/api/v1/routers", authenticated, async context => {
+    const items = await input.service.trafficRouting.list();
+    return context.json({ items, count: items.length });
   });
-  app.post("/api/v1/routers", authenticated, administrator, async (context) => {
-    const body = routerInput.parse(await context.req.json());
-    assertTrafficScopeSupported(body.trafficScope);
-    const created = await input.service.createRouter({ ...body, actorId: context.get("actor").id });
-    await input.runnerControl.distributeDesiredState();
-    return context.json(created, 201);
+  app.get("/api/v1/routers/:id", authenticated, async context => context.json(await input.service.trafficRouting.get(context.req.param("id"))));
+  app.post("/api/v1/routers", authenticated, administrator, async context => {
+    const body = z.object({ name: z.string().trim().min(1).max(160), description: z.string().max(2000).default(""), endpointIds: z.array(z.string().min(1)).max(128).default([]), draft: routerDraftSchema }).parse(await context.req.json());
+    return context.json(await input.service.trafficRouting.create(body.name, body.description, body.draft, context.get("actor").id, body.endpointIds), 201);
   });
-  app.post("/api/v1/router-bindings", authenticated, administrator, async (context) => {
-    const body = routerBindingsInput.parse(await context.req.json());
-    assertTrafficScopeSupported(body.trafficScope);
-    const items = await input.service.createRouterBindings({ ...body, actorId: context.get("actor").id });
-    await input.runnerControl.distributeDesiredState();
-    return context.json({ items, count: items.length }, 201);
+  app.put("/api/v1/routers/:id/draft", authenticated, administrator, async context => {
+    const body = z.object({ expectedDraftRevision: z.number().int().positive(), draft: routerDraftSchema }).parse(await context.req.json());
+    return context.json(await input.service.trafficRouting.save(context.req.param("id"), body.expectedDraftRevision, body.draft, context.get("actor").id));
   });
-  app.patch("/api/v1/routers/:id", authenticated, administrator, async (context) => {
-    const body = routerEnabledInput.parse(await context.req.json());
-    const updated = await input.service.setRouterEnabled({ id: context.req.param("id"), enabled: body.enabled, actorId: context.get("actor").id });
-    await input.runnerControl.distributeDesiredState();
-    return context.json(updated);
-  });
-  app.put("/api/v1/routers/:id/traffic-scope", authenticated, administrator, async (context) => {
-    const body = routerScopeInput.parse(await context.req.json());
-    assertTrafficScopeSupported(body.trafficScope);
-    const updated = await input.service.updateRouterTrafficScope({ id: context.req.param("id"), trafficScope: body.trafficScope, actorId: context.get("actor").id });
-    await input.runnerControl.distributeDesiredState();
-    return context.json(updated);
-  });
-  app.delete("/api/v1/routers/:id", authenticated, administrator, async (context) => {
-    const body = deletionInput.parse(await context.req.json());
-    await input.service.softDeleteRouter({ id: context.req.param("id"), actorId: context.get("actor").id, ...body });
+  app.delete("/api/v1/routers/:id", authenticated, administrator, async context => {
+    await input.service.trafficRouting.remove(context.req.param("id"), context.get("actor").id);
     await input.runnerControl.distributeDesiredState();
     return context.body(null, 204);
   });
-  app.put("/api/v1/endpoints/:endpointId/router-order", authenticated, administrator, async (context) => {
-    const body = routerOrderInput.parse(await context.req.json());
-    const items = await input.service.reorderRouterRoutes({ endpointId: context.req.param("endpointId"), routerIds: body.routerIds, actorId: context.get("actor").id });
-    await input.runnerControl.distributeDesiredState();
-    return context.json({ items, count: items.length });
+  app.post("/api/v1/routers/:id/publication-preview", authenticated, administrator, async context => {
+    const body = z.object({ expectedDraftRevision: z.number().int().positive() }).parse(await context.req.json());
+    return context.json(await input.service.trafficRouting.preview(context.req.param("id"), body.expectedDraftRevision));
   });
-  app.get("/api/v1/traffic-scope-fields", authenticated, (context) => {
-    const items = trafficScopeFields();
-    return context.json({ items, count: items.length });
+  app.post("/api/v1/routers/:id/publish", authenticated, administrator, async context => {
+    const body = z.object({ expectedDraftRevision: z.number().int().positive(), idempotencyKey: z.string().min(1).max(128), reviewedSnapshot: routerDraftSchema.optional(), reviewedEndpointIds: z.array(z.string().min(1).max(256)).max(10000).optional() }).parse(await context.req.json());
+    const result = await input.service.trafficRouting.publish(context.req.param("id"), body.expectedDraftRevision, body.idempotencyKey, context.get("actor").id, undefined, body.reviewedSnapshot, body.reviewedEndpointIds);
+    if (!result.publication.replayed) await input.runnerControl.distributeDesiredState();
+    return context.json(result, 202);
   });
-  app.get("/api/v1/runtime-events", authenticated, async (context) => {
+  app.delete("/api/v1/routers/:id/revisions/:revision", authenticated, administrator, async context => {
+    await input.service.trafficRouting.deleteRevision(context.req.param("id"), z.coerce.number().int().positive().parse(context.req.param("revision")), context.get("actor").id);
+    return context.body(null, 204);
+  });
+  app.post("/api/v1/routers/:id/rollback", authenticated, administrator, async context => {
+    const body = z.object({ expectedDraftRevision: z.number().int().positive(), idempotencyKey: z.string().min(1).max(128), revision: z.number().int().positive() }).parse(await context.req.json());
+    const result = await input.service.trafficRouting.publish(context.req.param("id"), body.expectedDraftRevision, body.idempotencyKey, context.get("actor").id, body.revision);
+    if (!result.publication.replayed) await input.runnerControl.distributeDesiredState();
+    return context.json(result, 202);
+  });
+  app.put("/api/v1/routers/:id/endpoints", authenticated, administrator, async context => {
+    const body = z.object({ endpointIds: z.array(z.string().min(1)).max(128) }).parse(await context.req.json());
+    const result = await input.service.trafficRouting.bind(context.req.param("id"), body.endpointIds, context.get("actor").id);
+    if (result.changed) await input.runnerControl.distributeDesiredState();
+    return context.json(result);
+  });
+  app.get("/api/v1/routers/:id/revisions", authenticated, async context => context.json({ items: await input.service.trafficRouting.revisions(context.req.param("id")) }));
+  app.get("/api/v1/routers/:id/revisions/:revision", authenticated, async context => {
+    const revision = z.coerce.number().int().positive().parse(context.req.param("revision"));
+    const record = (await input.service.trafficRouting.revisions(context.req.param("id"))).find(item => item.revision === revision);
+    if (!record) throw new NotFoundError("Router revision", String(revision));
+    return context.json(record);
+  });
+  const distributionQuery = z.object({ hours: z.coerce.number().min(0.25).max(168).default(24), revision: z.coerce.number().int().positive().optional(), endpointId: z.string().min(1).optional() });
+  app.get("/api/v1/routers/:id/traffic-distribution", authenticated, async context => {
+    const q = distributionQuery.parse(context.req.query());
+    return context.json(await input.service.trafficRouting.distribution(context.req.param("id"), q.hours, q.revision, q.endpointId));
+  });
+  app.get("/api/v1/routers/:id/routes/:routeId/traffic-distribution", authenticated, async context => {
+    const q = distributionQuery.parse(context.req.query());
+    const result = await input.service.trafficRouting.distribution(context.req.param("id"), q.hours, q.revision, q.endpointId);
+    return context.json({ ...result, rows: result.rows.filter(row => row.routeId === context.req.param("routeId")) });
+  });
+  app.post("/api/v1/routers/:id/simulations", authenticated, async context => {
+    await input.service.trafficRouting.get(context.req.param("id"));
+    const body = z.object({ draft: routerDraftSchema, input: routingInputSchema }).parse(await context.req.json());
+    return context.json({ items: previewRouter(body.draft, body.input), simulation: true, normalizedInput: body.input });
+  });
+  app.get("/api/v1/routing/selector-fields", authenticated, async context => {
+    const endpointIds = context.req.query("endpointIds")?.split(",").filter(Boolean);
+    const all = await input.service.listEndpoints();
+    const selected = endpointIds ? all.filter(e => endpointIds.includes(e.id)) : all;
+    const items = selectorFieldCatalog(selected);
+    return context.json({ items, endpoints: selected.map(e => ({ id: e.id, adapter: e.adapter })), count: items.length });
+  });
+
+  app.get("/api/v1/telemetry/events", authenticated, async (context) => {
     const query = z.object({
       limit: z.coerce.number().int().min(1).max(10_000).default(100),
       guardrailId: z.string().min(1).optional(),
       routerId: z.string().min(1).optional(),
+      routeId: z.string().min(1).optional(),
+      targetId: z.string().min(1).optional(),
+      routerRevision: z.coerce.number().int().positive().optional(),
       endpointId: z.string().min(1).optional(),
       since: z.coerce.date().optional(),
       before: z.coerce.date().optional(),
@@ -820,9 +906,9 @@ export function createHttpApp(input: {
     }).parse(context.req.query());
     return context.json(await input.service.queryRuntimeEvents(query));
   });
-  app.get('/api/v1/runtime-events/:id', authenticated, async context => context.json(await input.service.getRuntimeEvent(context.req.param('id'), context.get('actor').role === 'admin')));
-  app.get('/api/v1/runtime-endpoints', authenticated, async context => context.json(await input.service.runtimeEndpointActivity()));
-  app.get('/api/v1/runtime-metrics', authenticated, async context => {
+  app.get('/api/v1/telemetry/events/:id', authenticated, async context => context.json(await input.service.getRuntimeEvent(context.req.param('id'), context.get('actor').role === 'admin')));
+  app.get('/api/v1/telemetry/endpoint-activity', authenticated, async context => context.json(await input.service.runtimeEndpointActivity()));
+  app.get('/api/v1/telemetry/metrics', authenticated, async context => {
     const scope = z.object({ window: z.enum(['1h','24h','7d','15d','30d']).default('24h'), guardrailId:z.string().max(256).optional(), routerId:z.string().max(256).optional() }).parse(context.req.query());
     return context.json(await input.service.runtimeMetrics(scope));
   });
@@ -834,7 +920,10 @@ export function createHttpApp(input: {
   app.post("/api/internal/v1/runtime-events", runnerAuthentication(input.config.runnerToken), async (context) => {
     const body = runtimeEventBatchInput.parse(await context.req.json());
     try {
-      await input.service.recordRuntimeEvents(body.events);
+      const routing = body.events.filter(event => "eventType" in event);
+      const runtime = body.events.filter(event => "requestId" in event);
+      if (routing.length) await input.service.trafficRouting.recordEvents(routing);
+      await input.service.recordRuntimeEvents(runtime);
       if (body.runnerId) await input.service.recordTelemetryWatermark(body.runnerId);
       input.metrics.observeTelemetryBatch?.(
         "accepted", body.events.map((event) => event.occurredAt), body.events.length,
@@ -860,6 +949,8 @@ export function createHttpApp(input: {
     return context.notFound();
   });
   app.onError((error, context) => {
+    if (error instanceof SyntaxError) return context.json({ error: { code: "invalid_json", message: "Request body must be valid JSON." } }, 400);
+    if (error instanceof RoutingEvaluationError) return context.json({ error: { code: error.code, message: error.message } }, 422);
     if (error instanceof ControllerError) {
       return context.json({ error: { code: error.code, message: error.message, detail: error.detail } }, error.status as 400);
     }
@@ -870,6 +961,8 @@ export function createHttpApp(input: {
     return context.json({ error: { code: "internal_error", message: "Internal Controller error." } }, 500);
   });
 
+  // Unknown API paths must never fall through to the SPA HTML response.
+  app.all("/api/*", context => context.json({ error: { code: "not_found", message: "API operation not found." } }, 404));
   const uiRoot = resolve(input.config.uiDist);
   if (existsSync(uiRoot)) {
     app.use("/assets/*", serveStatic({ root: uiRoot }));
@@ -879,8 +972,29 @@ export function createHttpApp(input: {
   return app;
 }
 
-function authentication(auth: ControllerAuth): MiddlewareHandler<{ Variables: Variables }> {
+function authentication(auth: ControllerAuth, tokens?: AccessTokenService): MiddlewareHandler<{ Variables: Variables }> {
   return async (context, next) => {
+    const authorizationHeader = context.req.header("authorization");
+    if (authorizationHeader !== undefined) {
+      // An explicit credential never falls back to a browser session.
+      context.header("Cache-Control", "no-store");
+      const match = /^Bearer ([^\s]+)$/i.exec(authorizationHeader);
+      const actor = match && tokens ? await tokens.authenticate(match[1]!) : null;
+      if (!actor) {
+        context.header("WWW-Authenticate", "Bearer");
+        return context.json({ error: { code: "unauthenticated", message: "Access token is invalid, expired, or revoked." } }, 401);
+      }
+      const permission = requiredTokenPermission(context.req.method, context.req.path);
+      if (context.req.path !== "/api/v1/account/identity" || context.req.method !== "GET") {
+        if (!permission || !allowsTokenPermission(actor.permissions, permission[2], permission[3], actor.role))
+          return context.json({ error: { code: "insufficient_token_permission", message: "This token does not allow the requested operation." } }, 403);
+      }
+      context.set("actor", actor);
+      await next();
+      if (!["GET", "HEAD"].includes(context.req.method))
+        await tokens!.recordRequest(actor, context.req.method, permission![1], context.res.status);
+      return;
+    }
     // Cookie-cached identity is suitable for rendering the shell, not for API
     // authority: revocation, expiry and role changes must use current DB state.
     const session = await auth.api.getSession({

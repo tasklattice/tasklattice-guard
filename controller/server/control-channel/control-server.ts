@@ -109,6 +109,7 @@ export class RunnerControlServer {
       setInterval(() => void this.dispatchValidationRequests(), 1_000),
       setInterval(() => void this.dispatchDesiredStateChanges(), 1_000),
       setInterval(() => void this.reconcileAll(), 30_000),
+      setInterval(() => void this.service.trafficRouting?.expireCalls().catch(error => console.error("Traffic expiry failed", error)), 30_000),
       setInterval(() => void this.service.markStaleRunnersOffline(), this.config.offlineAfterSeconds * 1_000),
     ];
     for (const timer of this.timers) timer.unref();
@@ -316,6 +317,10 @@ export class RunnerControlServer {
           }
         }
       } else {
+        await this.service.trafficRouting?.reportRolloutFailure?.(
+          generation, current.runnerId,
+          result.reason || `Runner ${current.runnerId} rejected desired generation ${generation}.`,
+        );
         if (result.modelRevisionId) {
           await this.models.failActivation(
             result.modelRevisionId,
@@ -386,10 +391,17 @@ export class RunnerControlServer {
   private async reconcile(connection: Connection): Promise<void> {
     const started = performance.now();
     try {
-      const [desired, modelConfiguration] = await Promise.all([
+      const [desiredUnknown, modelConfiguration] = await Promise.all([
         this.service.desiredStateForPool(connection.poolId),
         this.models.activeConfiguration(true),
       ]);
+      // The transaction wrapper intentionally exposes an opaque result type in
+      // the database adapter. Keep the wire projection typed at this boundary.
+      const desired = desiredUnknown as Awaited<ReturnType<ControlPlaneService["desiredStateForPool"]>> & {
+        routerRevisions?: Array<any>;
+        routers: Array<any>;
+        endpoints: Array<any>;
+      };
       if (connection.lastReconcileGeneration === desired.generation) {
         this.metrics.observeReconcile(connection.poolId, "noop", (performance.now() - started) / 1_000);
         return;
@@ -416,6 +428,22 @@ export class RunnerControlServer {
         artifacts: desired.artifacts.map((artifact) => artifactToWire(artifact)),
         disabledGuardrailIds: desired.disabledGuardrailIds,
         disabledEndpointIds: desired.disabledEndpointIds,
+        routerRevisions: (desired.routerRevisions ?? []).map((router) => ({
+          routerId: router.routerId, revision: String(router.revision),
+          assignmentAlgorithm: router.assignmentAlgorithm,
+          assignmentKeyId: router.assignmentKeyId, assignmentKey: router.assignmentKey,
+          routes: router.routes.map((route) => ({
+            routeId: route.id, name: route.name, kind: route.kind, enabled: route.enabled,
+            allEndpoints: true,
+            endpointIds: [],
+            trafficScope: trafficScopeToWire(route.selector.expression),
+            targets: route.targets.map((target) => ({
+              targetId: target.id, guardrailId: target.guardrailId,
+              guardrailVersion: target.guardrailVersion, artifactId: target.artifactId,
+              weightBps: target.weightBps,
+            })),
+          })),
+        })),
         routers: desired.routers.map((router) => ({
           routerId: router.routerId,
           guardrailId: router.guardrailId,
@@ -427,6 +455,7 @@ export class RunnerControlServer {
         endpoints: desired.endpoints.map((endpoint) => ({
           endpointId: endpoint.endpointId,
           adapter: endpoint.adapter,
+          routerId: endpoint.trafficRouterId ?? "",
           verification: endpointVerificationToWire(endpoint.verification),
         })),
         guardrailLoggingLevels: desired.guardrailLoggingLevels,

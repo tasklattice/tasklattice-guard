@@ -126,7 +126,7 @@ describe("Default baseline validation gate", () => {
     const stored = { ...baseline(), status: "active", activeVersion: "old", activeArtifactId: "old-artifact" };
     const validation = { id: "validation-new", status: "passed", createdAt: new Date("2026-09-06T01:00:00.001Z") };
     const plan = buildGuardrailPlan({ guardrailId: stored.id, guardrailVersion: "20260906-010000.001Z", draft: stored.draftConfig, policies });
-    const test = harness([[stored], [], [{ sourceDraftRevision: 1 }], [validation], [], [{ payload: { plan, runtimeProfile: "auto" } }]]);
+    const test = harness([[stored], [], [{ sourceDraftRevision: 1 }], [validation], [], [{ payload: { plan, runtimeProfile: "auto" } }], []]);
     await test.service.initialize();
     expect(test.reads).toEqual([]);
     expect(test.inserts).toContainEqual({ table: "guardrail_version", value: expect.objectContaining({
@@ -242,7 +242,7 @@ describe("Validated executable snapshot", () => {
   });
 
   it("publishes when the saved executable contract exactly matches what passed validation", async () => {
-    const test = harness([[baseline()], [validation], [], [{ payload: { plan, runtimeProfile: "auto" } }]]);
+    const test = harness([[baseline()], [validation], [], [{ payload: { plan, runtimeProfile: "auto" } }], []]);
     await expect(test.service.requestGuardrailPublish({ guardrailId: "guardrail-default", actorId: "admin", compilerAvailable: true }))
       .resolves.toMatchObject({ status: "compiling", version: "20260906-010000.001Z" });
     expect(test.inserts).toContainEqual({ table: "guardrail_version", value: expect.objectContaining({ plan }) });

@@ -1,0 +1,40 @@
+import { requestController, type Collection, type GuardrailDetail } from './controller-api';
+import type { RouterDraft, TrafficRouter, RoutingInput, SelectorField } from '../../shared/traffic-routing';
+export type { RouterDraft, TrafficRouter, TrafficRoute, RouteTarget, SelectorExpression, SelectorCondition, RoutingInput, SelectorField } from '../../shared/traffic-routing';
+export const trafficRouterKeys = { all: ['traffic-routers'] as const, detail: (id: string) => ['traffic-routers', id] as const };
+const path = (id: string) => `/api/v1/routers/${encodeURIComponent(id)}`;
+const json = (method: string, body: unknown): RequestInit => ({ method, body: JSON.stringify(body) });
+export const listTrafficRouters = () => requestController<Collection<TrafficRouter>>('/api/v1/routers');
+export const getTrafficRouter = (id: string) => requestController<TrafficRouter>(path(id));
+export const createTrafficRouter = (input: { name: string; description?: string; endpointIds?: string[]; draft: RouterDraft }) => requestController<TrafficRouter>('/api/v1/routers', json('POST', input));
+export const saveTrafficRouter = (id: string, expectedDraftRevision: number, draft: RouterDraft) => requestController<TrafficRouter>(`${path(id)}/draft`, json('PUT', { expectedDraftRevision, draft }));
+export const publishTrafficRouter = (id: string, expectedDraftRevision: number, idempotencyKey: string, review?: { reviewedSnapshot: RouterDraft; reviewedEndpointIds: string[] }) => requestController<TrafficRouter>(`${path(id)}/publish`, json('POST', { expectedDraftRevision, idempotencyKey, ...review }));
+export const rollbackTrafficRouter = (id: string, expectedDraftRevision: number, revision: number, idempotencyKey: string) => requestController<TrafficRouter>(`${path(id)}/rollback`, json('POST', { expectedDraftRevision, revision, idempotencyKey }));
+export const bindTrafficRouter = (id: string, endpointIds: string[]) => requestController<TrafficRouter>(`${path(id)}/endpoints`, json('PUT', { endpointIds }));
+/** Publish-time metadata only; null/absent means unknown, never resolve from current entities. */
+export type RouterRevisionContext = {
+  endpoints: Array<{ id: string; name: string; adapter: string }>;
+  guardrails: Array<{ id: string; name: string; version: string }>;
+};
+export type RouterRevision = { revision: number; sourceDraftRevision: number; snapshot: RouterDraft; context?: RouterRevisionContext | null; createdAt: string; createdBy: string | null };
+export const getRouterRevisions = (id: string) => requestController<Collection<RouterRevision>>(`${path(id)}/revisions`);
+export type DistributionRow = { routeId: string | null; targetId: string | null; routerRevision: number | null; guardrailId: string | null; guardrailVersion: string | null; assignmentStatus: "assigned" | "unassigned"; inferredCompletions: number; count: number; errors: number; completed: number; blocked: number; transformed: number; intervened: number; allowed: number; p95Ms: number | null };
+export type DistributionReport = { since: string; until: string; rows: DistributionRow[]; total: number; assigned?: number; unassigned?: number; dataWatermark: string | null; unit: string; multipleRevisions: boolean; freshness?: string; telemetryFresh: boolean; completeness: string; revisions: Array<{ revision: number; snapshot: RouterDraft; context?: RouterRevisionContext | null }>; trend?: Array<{ at: string; routeId: string | null; count: number }> };
+export const getRouterDistribution = (id: string, hours = 24, revision?: number, endpointId?: string) => {
+  const query = new URLSearchParams({ hours: String(hours) });
+  if (revision) query.set('revision', String(revision));
+  if (endpointId) query.set('endpointId', endpointId);
+  return requestController<DistributionReport>(`${path(id)}/traffic-distribution?${query}`);
+};
+export const getSelectorFields = (endpointIds: string[]) => requestController<Collection<SelectorField> & { capabilities?: unknown }>('/api/v1/routing/selector-fields?' + new URLSearchParams({ endpointIds: endpointIds.join(',') }));
+export type SelectorPreview = { routeId: string; independentMatch: boolean; received: boolean; blockedBy: string | null; state: string; matched: boolean; children: unknown[] };
+export const testTrafficSelector = (id: string, draft: RouterDraft, input: RoutingInput) => requestController<{ items: SelectorPreview[]; normalizedInput?: RoutingInput }>(`${path(id)}/simulations`, json('POST', { draft, input }));
+export type DuplicateSource = { sourceVersion: string; sourceDraftRevision?: never } | { sourceDraftRevision: number; sourceVersion?: never };
+export const duplicateGuardrail = (id: string, name: string, source: DuplicateSource, idempotencyKey: string) => requestController<GuardrailDetail>(`/api/v1/guardrails/${encodeURIComponent(id)}/duplicate`, json('POST', { name, ...source, idempotencyKey }));
+
+export const deleteTrafficRouter = (id: string) => requestController<void>(path(id), { method: "DELETE" });
+
+export type RouterPublicationPreview = { draftRevision: number; snapshot: RouterDraft; endpointIds: string[] };
+export const previewTrafficRouter = (id: string, expectedDraftRevision: number) => requestController<RouterPublicationPreview>(`${path(id)}/publication-preview`, json("POST", { expectedDraftRevision }));
+
+export const deleteRouterRevision = (id: string, revision: number) => requestController<void>(`${path(id)}/revisions/${revision}`, { method: "DELETE" });

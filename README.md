@@ -11,6 +11,20 @@ TaskLattice Guard is split into exactly two application components:
   them, atomically activates generations, authenticates Endpoint traffic,
   and returns protection decisions.
 
+## Controller API reference
+
+The Controller serves a code-generated OpenAPI 3.1 contract at `/api/openapi.json`,
+a browsable reference at `/api/docs`, and a compact agent index at `/api/llms.txt`.
+Use `?module=routers` or `?operationId=postRoutersByIdPublish` on the JSON endpoint
+to retrieve a complete subset with its referenced schemas and token permissions.
+
+Run `npm run openapi:generate --prefix controller` after API changes and commit
+[the generated contract](controller/openapi/controller.openapi.json). CI and server
+builds run `npm run openapi:check --prefix controller` to reject stale documents.
+See [the design review and calling conventions](docs/openapi-design-review.zh-CN.md)
+for scope and generation sources. See [the API contract conventions](docs/api-contract.zh-CN.md)
+for product tags, resource paths, authentication, idempotency, and retry behavior.
+
 ## Architecture and HA boundary
 
 Traffic flows from left to right. The AI Gateway calls the stable Runtime

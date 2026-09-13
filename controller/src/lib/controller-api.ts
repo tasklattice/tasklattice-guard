@@ -95,7 +95,8 @@ export type ModelConfigurationRevision = {
 export type ModelConfigurationView = {
   providers: ModelProvider[];
   models: ModelDefinition[];
-  draft: ModelConfigurationRevision;
+  draft: ModelConfigurationRevision | null;
+  rollbackTarget?: string | null;
   active: ModelConfigurationRevision | null;
   activating: ModelConfigurationRevision | null;
   failed: ModelConfigurationRevision | null;
@@ -126,6 +127,7 @@ export type GuardrailDraftConfig = {
 };
 
 export type Guardrail = {
+  copyOrigin?: { sourceGuardrailId: string; sourceName: string; sourceVersion: string | null; sourceDraftRevision: number | null; copiedAt: string; contentDigest: string } | null;
   id: string;
   name: string;
   draftConfig: GuardrailDraftConfig;
@@ -146,6 +148,7 @@ export type Guardrail = {
 };
 
 export type GuardrailVersion = {
+  hasSourceSnapshot?: boolean;
   guardrailId: string;
   version: string;
   generation: number;
@@ -394,33 +397,33 @@ export const getModelConfiguration = async () => {
 export type ProviderConnectionDraft = { name: string; kind: ModelProviderKind; baseUrl: string; apiKey: string; skipTlsVerify?: boolean };
 export type ProviderModelSelection = { name: string; model: string; profile: ModelProfile; timeoutSeconds: number; maxTokens: number };
 export type ProviderRegistrationResult = { provider: ModelProvider; models: ModelDefinition[]; failures: Array<{ model: ProviderModelSelection; message: string }> };
-export const discoverProviderDraft = (input: ProviderConnectionDraft) => requestController<Omit<DiscoveredProviderModels, "providerId">>("/api/v1/model-providers/discover", json("POST", input));
-export const registerProviderModels = (input: { connection: ProviderConnectionDraft; models: ProviderModelSelection[] }) => requestController<ProviderRegistrationResult>("/api/v1/model-providers/register", json("POST", input));
+export const discoverProviderDraft = (input: ProviderConnectionDraft) => requestController<Omit<DiscoveredProviderModels, "providerId">>("/api/v1/model-provider-discoveries", json("POST", input));
+export const registerProviderModels = (input: { connection: ProviderConnectionDraft; models: ProviderModelSelection[] }) => requestController<ProviderRegistrationResult>("/api/v1/model-provider-registrations", json("POST", input));
 export const createModelProvider = (input: { name: string; kind: ModelProviderKind; baseUrl: string; apiKey?: string; skipTlsVerify?: boolean }) => requestController<ModelProvider>("/api/v1/model-providers", json("POST", input));
 export const updateModelProviderCredential = (id: string, apiKey: string) => requestController<ModelProvider>(`/api/v1/model-providers/${encodeURIComponent(id)}`, json("PATCH", { apiKey }));
 export const updateProviderTls = (id: string, skipTlsVerify: boolean) => requestController<ModelProvider>(`/api/v1/model-providers/${encodeURIComponent(id)}`, json("PATCH", { skipTlsVerify }));
-export const revalidateModelProvider = (id: string) => requestController<ModelProvider>(`/api/v1/model-providers/${encodeURIComponent(id)}/validate`, json("POST"));
-export const discoverModelProvider = (id: string) => requestController<DiscoveredProviderModels>(`/api/v1/model-providers/${encodeURIComponent(id)}/discover`, json("POST"));
+export const revalidateModelProvider = (id: string) => requestController<ModelProvider>(`/api/v1/model-providers/${encodeURIComponent(id)}/connection-tests`, json("POST"));
+export const discoverModelProvider = (id: string) => requestController<DiscoveredProviderModels>(`/api/v1/model-providers/${encodeURIComponent(id)}/model-discoveries`, json("POST"));
 export const deleteModelProvider = (id: string) => requestController<void>(`/api/v1/model-providers/${encodeURIComponent(id)}`, json("DELETE"));
 export const createModelDefinition = (input: { providerId: string; name: string; model: string; profile: ModelProfile; timeoutSeconds: number; maxTokens: number }) => requestController<ModelDefinition>("/api/v1/models", json("POST", input));
 export const configureModelDefinition = (id: string, input: Pick<ModelDefinition, "profile" | "timeoutSeconds" | "maxTokens">) => requestController<ModelDefinition>(`/api/v1/models/${encodeURIComponent(id)}/protocol`, json("PUT", input));
-export const revalidateModelDefinition = (id: string) => requestController<ModelDefinition>(`/api/v1/models/${encodeURIComponent(id)}/validate`, json("POST"));
-export const testModelConnection = (id: string) => requestController<ModelDefinition>(`/api/v1/models/${encodeURIComponent(id)}/test-connection`, json("POST"));
+export const revalidateModelDefinition = (id: string) => requestController<ModelDefinition>(`/api/v1/models/${encodeURIComponent(id)}/capability-tests`, json("POST"));
+export const testModelConnection = (id: string) => requestController<ModelDefinition>(`/api/v1/models/${encodeURIComponent(id)}/connection-tests`, json("POST"));
 export const deleteModelDefinition = (id: string) => requestController<void>(`/api/v1/models/${encodeURIComponent(id)}`, json("DELETE"));
 export const saveModelAssignments = (assignments: ModelAssignments) => requestController<ModelConfigurationRevision>("/api/v1/model-configuration/draft", json("PUT", assignments));
-export const validateModelConfiguration = () => requestController<ModelConfigurationRevision>("/api/v1/model-configuration/validate", json("POST"));
+export const validateModelConfiguration = () => requestController<ModelConfigurationRevision>("/api/v1/model-configuration/draft/validations", json("POST"));
 export type ModelAssignmentTarget = "control_plane" | CapabilityBindingId;
-export const saveModelAssignment = (target: ModelAssignmentTarget, modelId: string | null) => requestController<ModelConfigurationRevision>(`/api/v1/model-configuration/draft/assignments/${encodeURIComponent(target)}`, json("PUT", { modelId }));
-export const validateModelAssignment = (target: ModelAssignmentTarget, modelId?: string) => requestController<ModelConfigurationRevision>(`/api/v1/model-configuration/draft/assignments/${encodeURIComponent(target)}/validate`, json("POST", modelId ? { modelId } : undefined));
-export const activateModelConfiguration = (revisionId: string) => requestController<ModelConfigurationView & { distribution: { desiredGeneration: number; distributionStatus: "ready" | "syncing" } }>(`/api/v1/model-configuration/${encodeURIComponent(revisionId)}/activate`, json("POST"));
-export const rollbackModelConfiguration = () => requestController<ModelConfigurationView & { distribution: { desiredGeneration: number; distributionStatus: "ready" | "syncing" } }>("/api/v1/model-configuration/rollback", json("POST"));
+export const saveModelAssignment = (target: ModelAssignmentTarget, modelId: string | null, validationId?: string) => requestController<ModelConfigurationRevision>(`/api/v1/model-configuration/draft/assignments/${encodeURIComponent(target)}`, json("PUT", { modelId, validationId }));
+export const validateModelAssignment = (target: ModelAssignmentTarget, modelId?: string) => requestController<ModelConfigurationRevision & { validationId?: string }>(`/api/v1/model-configuration/draft/assignments/${encodeURIComponent(target)}/${modelId ? "candidate-validations" : "validations"}`, json("POST", modelId ? { modelId } : undefined));
+export const activateModelConfiguration = (revisionId: string) => requestController<ModelConfigurationView & { distribution: { desiredGeneration: number; distributionStatus: "ready" | "syncing" } }>(`/api/v1/model-configuration/revisions/${encodeURIComponent(revisionId)}/activate`, json("POST"));
+export const rollbackModelConfiguration = (targetRevisionId: string) => requestController<ModelConfigurationView & { distribution: { desiredGeneration: number; distributionStatus: "ready" | "syncing" } }>("/api/v1/model-configuration/rollback", json("POST", { targetRevisionId }));
 export const listControllerGuardrails = () => requestController<Collection<Guardrail>>("/api/v1/guardrails");
 export const getControllerGuardrail = (id: string) => requestController<GuardrailDetail>(`/api/v1/guardrails/${encodeURIComponent(id)}`);
 export const createControllerGuardrail = (input: Pick<Guardrail, "name" | "draftConfig" | "runtimeProfile">) => requestController<Guardrail>("/api/v1/guardrails", json("POST", input));
-export const previewControllerGuardrailPlan = (input: Pick<Guardrail, "name" | "draftConfig" | "runtimeProfile">) => requestController<GuardrailPlanPreview>("/api/v1/guardrail-plan-previews", json("POST", input));
+export const previewControllerGuardrailPlan = (input: Pick<Guardrail, "name" | "draftConfig" | "runtimeProfile">) => requestController<GuardrailPlanPreview>("/api/v1/authoring/plan-previews", json("POST", input));
 export const updateControllerGuardrail = (id: string, input: Partial<Pick<Guardrail, "name" | "draftConfig" | "runtimeProfile">>) => requestController<Guardrail>(`/api/v1/guardrails/${encodeURIComponent(id)}`, json("PATCH", input));
-export const publishControllerGuardrail = (id: string) => requestController<{ status: string; version: string }>(`/api/v1/guardrails/${encodeURIComponent(id)}/publish`, json("POST"));
-export const rollbackControllerGuardrail = (id: string, version: string) => requestController<GuardrailVersion>(`/api/v1/guardrails/${encodeURIComponent(id)}/rollback/${encodeURIComponent(version)}`, json("POST"));
+export const publishControllerGuardrail = (id: string, expectedDraftRevision: number) => requestController<{ status: string; version: string }>(`/api/v1/guardrails/${encodeURIComponent(id)}/publish`, json("POST", { expectedDraftRevision }));
+export const rollbackControllerGuardrail = (id: string, version: string) => requestController<GuardrailVersion>(`/api/v1/guardrails/${encodeURIComponent(id)}/rollback`, json("POST", { version }));
 export const getControllerGuardrailDeletionImpact = (id: string) => requestController<DeletionImpact>(`/api/v1/guardrails/${encodeURIComponent(id)}/deletion-impact`);
 export const deleteControllerGuardrail = (id: string, input: { reason: string; confirmRecentTraffic: boolean; confirmationName?: string | undefined }) => requestController<void>(`/api/v1/guardrails/${encodeURIComponent(id)}`, json("DELETE", input));
 
@@ -429,20 +432,16 @@ export const createControllerEndpoint = (input: { name: string; adapter: string 
 export const getControllerEndpointDeletionImpact = (id: string) => requestController<DeletionImpact>(`/api/v1/endpoints/${encodeURIComponent(id)}/deletion-impact`);
 export const deleteControllerEndpoint = (id: string, input: { reason: string; confirmRecentTraffic: boolean; confirmationName?: string | undefined }) => requestController<void>(`/api/v1/endpoints/${encodeURIComponent(id)}`, json("DELETE", input));
 
-export const listControllerRouters = () => requestController<Collection<Router>>("/api/v1/routers");
-export const createControllerRouter = (input: Pick<Router, "name" | "guardrailId" | "poolId" | "trafficScope" | "enabled"> & { endpointId: string }) => requestController<Router>("/api/v1/routers", json("POST", input));
-export const getControllerRouterDeletionImpact = (id: string) => requestController<DeletionImpact>(`/api/v1/routers/${encodeURIComponent(id)}/deletion-impact`);
-export const deleteControllerRouter = (id: string, input: { reason: string; confirmRecentTraffic: boolean; confirmationName?: string | undefined }) => requestController<void>(`/api/v1/routers/${encodeURIComponent(id)}`, json("DELETE", input));
-export const setControllerRouterEnabled = (id: string, enabled: boolean) => requestController<Router>(`/api/v1/routers/${encodeURIComponent(id)}`, json("PATCH", { enabled }));
-export const updateControllerRouterTrafficScope = (id: string, trafficScope: Record<string, unknown>) => requestController<Router>(`/api/v1/routers/${encodeURIComponent(id)}/traffic-scope`, json("PUT", { trafficScope }));
-export const reorderControllerRouters = (endpointId: string, routerIds: string[]) => requestController<Collection<Router>>(`/api/v1/endpoints/${encodeURIComponent(endpointId)}/router-order`, json("PUT", { routerIds }));
+export { listTrafficRouters as listControllerRouters } from "./traffic-routing-api";
 export const listRunnerPools = () => requestController<Collection<RunnerPool>>("/api/v1/runner-pools");
 export const updateRunnerPool = (id: string, input: Pick<RunnerPool, "desiredReplicas" | "safeRpsPerRunner" | "maxConcurrencyPerRunner">) => requestController<RunnerPool>(`/api/v1/runner-pools/${encodeURIComponent(id)}`, json("PATCH", input));
 export const removeRunnerInstance = (runnerId: string) => requestController<void>(`/api/v1/runner-instances/${encodeURIComponent(runnerId)}`, json("DELETE"));
-export const listRuntimeEvents = (limit = 100, filters: { guardrailId?: string; routerId?: string; endpointId?: string; since?: string; before?: string; cursor?: string; requestId?: string; direction?: string; outcome?: string; captured?: string; findingsOnly?: string; severity?: string } = {}, signal?: AbortSignal) => {
+export const listRuntimeEvents = (limit = 100, filters: { guardrailId?: string; routerId?: string; routeId?: string; targetId?: string; routerRevision?: number; endpointId?: string; until?: string; since?: string; before?: string; cursor?: string; requestId?: string; direction?: string; outcome?: string; captured?: string; findingsOnly?: string; severity?: string } = {}, signal?: AbortSignal) => {
   const query = new URLSearchParams({ limit: String(Math.min(500, Math.max(1, limit))) });
-  for (const [key, value] of Object.entries(filters)) if (value) query.set(key, value);
-  return requestController<Collection<RuntimeEvent>>(`/api/v1/runtime-events?${query.toString()}`, signal ? { signal } : undefined);
+  for (const [key, value] of Object.entries(filters)) if (value) query.set(key, String(value));
+  return requestController<Collection<RuntimeEvent>>(`/api/v1/telemetry/events?${query.toString()}`, signal ? { signal } : undefined);
 };
-export const getRuntimeEvent = (id: string, signal?: AbortSignal) => requestController<RuntimeEvent>(`/api/v1/runtime-events/${encodeURIComponent(id)}`, signal ? { signal } : undefined);
+export const getRuntimeEvent = (id: string, signal?: AbortSignal) => requestController<RuntimeEvent>(`/api/v1/telemetry/events/${encodeURIComponent(id)}`, signal ? { signal } : undefined);
 export const listAuditEvents = (limit = 100) => requestController<Collection<AuditEvent>>(`/api/v1/audit-events?limit=${Math.min(500, Math.max(1, limit))}`);
+
+export const deleteControllerGuardrailVersion = (id: string, version: string) => requestController<void>(`/api/v1/guardrails/${encodeURIComponent(id)}/versions/${encodeURIComponent(version)}`, { method: "DELETE" });

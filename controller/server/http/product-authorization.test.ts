@@ -25,34 +25,34 @@ const config = loadConfig({
 // reject them before parsing data, invoking a model or reaching a mutation.
 const adminRoutes = [
   ["POST", "/model-providers"], ["PATCH", "/model-providers/provider"],
-  ["POST", "/model-providers/discover"], ["POST", "/model-providers/register"],
-  ["POST", "/model-providers/provider/validate"], ["POST", "/model-providers/provider/discover"],
+  ["POST", "/model-provider-discoveries"], ["POST", "/model-provider-registrations"],
+  ["POST", "/model-providers/provider/connection-tests"], ["POST", "/model-providers/provider/model-discoveries"],
   ["DELETE", "/model-providers/provider"], ["POST", "/models"],
-  ["POST", "/models/model/validate"], ["POST", "/models/model/test-connection"],
+  ["POST", "/models/model/capability-tests"], ["POST", "/models/model/connection-tests"],
   ["PUT", "/models/model/protocol"], ["DELETE", "/models/model"],
   ["PUT", "/model-configuration/draft"], ["PUT", "/model-configuration/draft/assignments/content_safety.input"],
-  ["POST", "/model-configuration/draft/assignments/content_safety.input/validate"],
-  ["POST", "/model-configuration/validate"], ["POST", "/model-configuration/revision/activate"],
+  ["POST", "/model-configuration/draft/assignments/content_safety.input/validations"],
+  ["POST", "/model-configuration/draft/validations"], ["POST", "/model-configuration/revisions/revision/activate"],
   ["POST", "/model-configuration/rollback"],
   ["POST", "/policies"], ["PATCH", "/policies/policy"], ["DELETE", "/policies/policy"],
-  ["POST", "/policies/policy/validate"], ["POST", "/policies/policy/validation-runs"],
-  ["POST", "/policies/policy/publish"], ["POST", "/intent-analyses"],
-  ["POST", "/compliance-document-analyses"],
-  ["POST", "/playground/draft-previews/guard"], ["POST", "/playground/draft-interactions/guard"],
-  ["POST", "/guardrail-plan-previews"], ["POST", "/guardrails"],
+  ["POST", "/policies/policy/validation-runs"],
+  ["POST", "/policies/policy/publish"], ["POST", "/authoring/intent-analyses"],
+  ["POST", "/authoring/document-analyses"],
+  ["POST", "/playground/guardrails/guard/draft-previews"], ["POST", "/playground/guardrails/guard/draft-interactions"],
+  ["POST", "/authoring/plan-previews"], ["POST", "/guardrails"],
   ["PATCH", "/guardrails/guard"], ["POST", "/guardrails/guard/publish"],
-  ["POST", "/guardrails/guard/rollback/20260906-010000.001Z"],
+  ["POST", "/guardrails/guard/rollback"],
   ["PATCH", "/guardrails/guard/logging"], ["GET", "/guardrails/guard/deletion-impact"],
-  ["DELETE", "/guardrails/guard"], ["POST", "/test-cases"], ["DELETE", "/test-cases/case"],
-  ["PATCH", "/guardrails/guard/validation-scope"], ["POST", "/validation-runs"],
+  ["DELETE", "/guardrails/guard"], ["POST", "/guardrails/guard/test-cases"], ["DELETE", "/guardrails/guard/test-cases/case"],
+  ["PATCH", "/guardrails/guard/validation-scope"], ["POST", "/guardrails/guard/validation-runs"],
   ["POST", "/endpoints"], ["PATCH", "/endpoints/endpoint"],
   ["POST", "/endpoints/endpoint/credentials"], ["DELETE", "/endpoints/endpoint/credentials/credential"],
   ["GET", "/endpoints/endpoint/deletion-impact"], ["DELETE", "/endpoints/endpoint"],
   ["PATCH", "/runner-pools/pool"], ["DELETE", "/runner-instances/runner"],
-  ["POST", "/routers"], ["POST", "/router-bindings"],
-  ["PATCH", "/routers/router"], ["PUT", "/routers/router/traffic-scope"],
-  ["GET", "/routers/router/deletion-impact"], ["DELETE", "/routers/router"],
-  ["PUT", "/endpoints/endpoint/router-order"],
+  ["POST", "/routers"],
+  ["PUT", "/routers/router/draft"], ["POST", "/routers/router/publish"], ["POST", "/routers/router/publication-preview"],
+  ["POST", "/routers/router/rollback"], ["PUT", "/routers/router/endpoints"],
+  ["POST", "/guardrails/guard/duplicate"], ["DELETE", "/routers/router"],
 ] as const;
 
 function setup(role: string | null) {
@@ -104,10 +104,10 @@ describe("Session freshness and read-only access", () => {
     const app = createHttpApp({ config, auth: auth as unknown as ControllerAuth,
       service: { requestGuardrailPublish: unexpected } as unknown as ControlPlaneService,
       runnerControl: { hasDefaultCompiler: () => true } as RunnerControlServer, metrics: {} as ControllerMetrics });
-    const response = await app.request("/api/v1/guardrails/guard/publish", { method: "POST", headers });
+    const response = await app.request("/api/v1/guardrails/guard/publish", { method: "POST", headers, body: JSON.stringify({ expectedDraftRevision: 1 }) });
     expect(response.status).toBe(state === "active" ? 202 : state === "demoted" ? 403 : 401);
     if (state === "active") expect(unexpected).toHaveBeenCalledExactlyOnceWith({
-      guardrailId: "guard", actorId: data.user![0]!.id, compilerAvailable: true,
+      guardrailId: "guard", actorId: data.user![0]!.id, compilerAvailable: true, expectedDraftRevision: 1,
     });
     else expect(unexpected).not.toHaveBeenCalled();
   });
@@ -128,13 +128,13 @@ describe("Session freshness and read-only access", () => {
 
   it("allows an authenticated user to inspect protection presets without write privileges", async () => {
     const { app, unexpected } = setup("user");
-    const response = await app.request("/api/v1/protection-presets");
+    const response = await app.request("/api/v1/policy-catalog/protection-presets");
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body.items.map((item: { id: string }) => item.id)).toEqual(expect.arrayContaining([
       "common-baseline", "banking-assistant", "securities-assistant", "internet-customer-support",
     ]));
     expect(unexpected).not.toHaveBeenCalled();
-    expect((await setup(null).app.request("/api/v1/protection-presets")).status).toBe(401);
+    expect((await setup(null).app.request("/api/v1/policy-catalog/protection-presets")).status).toBe(401);
   });
 });

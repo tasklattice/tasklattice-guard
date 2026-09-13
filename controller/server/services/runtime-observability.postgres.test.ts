@@ -99,6 +99,21 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('bounded runtime observability (
     expect(row.stream_final_check_seen_at).toEqual(row.first_seen_at);
   });
 
+  it('deduplicates failed requests, includes blocks as success, and computes detection P95', async () => {
+    await db.execute(sql`INSERT INTO endpoint(id,name,adapter) VALUES ('quality','Quality','test'), ('idle','Idle','test')`);
+    await db.execute(sql`INSERT INTO runtime_event(id,occurred_at,request_id,runner_id,endpoint_id,direction,decision,duration_ms,metadata) VALUES
+      ('quality-1',now(),'failed-request','runner','quality','incoming','error',10,'{}'),
+      ('quality-2',now(),'failed-request','runner','quality','outgoing','timeout',90,'{}'),
+      ('quality-3',now(),'blocked-request','runner','quality','incoming','block',20,'{}'),
+      ('quality-4',now(),'allowed-request','runner','quality','incoming','allow',30,'{}'),
+      ('quality-old',now()-interval '2 days','old-failure','runner','quality','incoming','error',9999,'{}'),
+      ('idle-old',now()-interval '8 days','idle-old','runner','idle','incoming','allow',99,'{}')`);
+    const freshService = Object.assign(Object.create(ControlPlaneService.prototype), { db }) as ControlPlaneService;
+    const result = await freshService.runtimeEndpointActivity();
+    expect(result.items.find(item => item.id === 'quality')).toMatchObject({ request_count: 3, error_count: 1, detection_p95_ms: 90 });
+    expect(result.items.find(item => item.id === 'idle')).toMatchObject({ request_count: 0, error_count: 0, detection_p95_ms: null });
+  });
+
   it('counts a policy step once instead of emitting duplicate name and guardrail groups', async () => {
     await db.execute(sql`INSERT INTO runtime_event(id,occurred_at,request_id,runner_id,guardrail_id,router_id,direction,decision,duration_ms,metadata) VALUES
       ('policy-proof',now(),'policy-proof','runner','guard','policy-proof','incoming','allow',5,

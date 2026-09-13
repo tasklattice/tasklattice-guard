@@ -1,0 +1,102 @@
+{
+  "environment": "http://localhost:38186",
+  "syntheticAccount": true,
+  "checks": [
+    {
+      "method": "GET",
+      "path": "/api/v1/account/identity",
+      "status": 200,
+      "contentType": "application/json"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/account/access-tokens",
+      "status": 200,
+      "contentType": "application/json"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/guardrails",
+      "status": 200,
+      "contentType": "application/json"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/guardrails/guardrail-default/test-cases",
+      "status": 200,
+      "contentType": "application/json"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/policies",
+      "status": 200,
+      "contentType": "application/json"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/routers",
+      "status": 200,
+      "contentType": "application/json"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/endpoints",
+      "status": 200,
+      "contentType": "application/json"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/model-configuration",
+      "status": 200,
+      "contentType": "application/json"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/telemetry/events",
+      "status": 200,
+      "contentType": "application/json"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/telemetry/metrics",
+      "status": 200,
+      "contentType": "application/json"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/telemetry/endpoint-activity",
+      "status": 200,
+      "contentType": "application/json"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/routing/selector-fields",
+      "status": 200,
+      "contentType": "application/json"
+    },
+    {
+      "method": "GET",
+      "path": "/api/openapi.json",
+      "status": 200,
+      "contentType": "application/json"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/whoami",
+      "status": 404,
+      "contentType": "application/json"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/test-cases",
+      "status": 404,
+      "contentType": "application/json"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/traffic-scope-fields",
+      "status": 404,
+      "contentType": "application/json"
+    }
+  ]
+}

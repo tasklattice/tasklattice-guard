@@ -24,19 +24,25 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\rrouting.proto\x12\x1ctasklattice.guard.control.v1\"~\n\x10TrafficCondition\x12\r\n\x05\x66ield\x18\x01 \x01(\t\x12\x0b\n\x03key\x18\x02 \x01(\t\x12?\n\x08operator\x18\x03 \x01(\x0e\x32-.tasklattice.guard.control.v1.TrafficOperator\x12\r\n\x05value\x18\x04 \x01(\t\"\xd3\x01\n\x0cTrafficScope\x12\x43\n\ncombinator\x18\x01 \x01(\x0e\x32/.tasklattice.guard.control.v1.TrafficCombinator\x12\x42\n\nconditions\x18\x02 \x03(\x0b\x32..tasklattice.guard.control.v1.TrafficCondition\x12:\n\x06groups\x18\x03 \x03(\x0b\x32*.tasklattice.guard.control.v1.TrafficScope*n\n\x11TrafficCombinator\x12\"\n\x1eTRAFFIC_COMBINATOR_UNSPECIFIED\x10\x00\x12\x1a\n\x16TRAFFIC_COMBINATOR_AND\x10\x01\x12\x19\n\x15TRAFFIC_COMBINATOR_OR\x10\x02*\xac\x01\n\x0fTrafficOperator\x12 \n\x1cTRAFFIC_OPERATOR_UNSPECIFIED\x10\x00\x12\x1b\n\x17TRAFFIC_OPERATOR_EQUALS\x10\x01\x12\x1d\n\x19TRAFFIC_OPERATOR_CONTAINS\x10\x02\x12 \n\x1cTRAFFIC_OPERATOR_STARTS_WITH\x10\x03\x12\x19\n\x15TRAFFIC_OPERATOR_GLOB\x10\x04\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\rrouting.proto\x12\x1ctasklattice.guard.control.v1\"\xd6\x01\n\x10TrafficCondition\x12\r\n\x05\x66ield\x18\x01 \x01(\t\x12\x0b\n\x03key\x18\x02 \x01(\t\x12?\n\x08operator\x18\x03 \x01(\x0e\x32-.tasklattice.guard.control.v1.TrafficOperator\x12\r\n\x05value\x18\x04 \x01(\t\x12\x16\n\x0erequest_source\x18\x05 \x01(\t\x12\x0e\n\x06values\x18\x06 \x03(\t\x12\x1b\n\x0e\x63\x61se_sensitive\x18\x07 \x01(\x08H\x00\x88\x01\x01\x42\x11\n\x0f_case_sensitive\"\xd3\x01\n\x0cTrafficScope\x12\x43\n\ncombinator\x18\x01 \x01(\x0e\x32/.tasklattice.guard.control.v1.TrafficCombinator\x12\x42\n\nconditions\x18\x02 \x03(\x0b\x32..tasklattice.guard.control.v1.TrafficCondition\x12:\n\x06groups\x18\x03 \x03(\x0b\x32*.tasklattice.guard.control.v1.TrafficScope\"\xc3\x01\n\x0eRouterRevision\x12\x11\n\trouter_id\x18\x01 \x01(\t\x12\x10\n\x08revision\x18\x02 \x01(\x03\x12;\n\x06routes\x18\x03 \x03(\x0b\x32+.tasklattice.guard.control.v1.ComposedRoute\x12\x1c\n\x14\x61ssignment_algorithm\x18\x04 \x01(\t\x12\x19\n\x11\x61ssignment_key_id\x18\x05 \x01(\t\x12\x16\n\x0e\x61ssignment_key\x18\x06 \x01(\x0c\"\xfd\x01\n\rComposedRoute\x12\x10\n\x08route_id\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x0c\n\x04kind\x18\x03 \x01(\t\x12\x0f\n\x07\x65nabled\x18\x04 \x01(\x08\x12\x14\n\x0c\x65ndpoint_ids\x18\x05 \x03(\t\x12\x41\n\rtraffic_scope\x18\x06 \x01(\x0b\x32*.tasklattice.guard.control.v1.TrafficScope\x12=\n\x07targets\x18\x07 \x03(\x0b\x32,.tasklattice.guard.control.v1.WeightedTarget\x12\x15\n\rall_endpoints\x18\x08 \x01(\x08\"}\n\x0eWeightedTarget\x12\x11\n\ttarget_id\x18\x01 \x01(\t\x12\x14\n\x0cguardrail_id\x18\x02 \x01(\t\x12\x19\n\x11guardrail_version\x18\x03 \x01(\t\x12\x13\n\x0b\x61rtifact_id\x18\x04 \x01(\t\x12\x12\n\nweight_bps\x18\x05 \x01(\x05*n\n\x11TrafficCombinator\x12\"\n\x1eTRAFFIC_COMBINATOR_UNSPECIFIED\x10\x00\x12\x1a\n\x16TRAFFIC_COMBINATOR_AND\x10\x01\x12\x19\n\x15TRAFFIC_COMBINATOR_OR\x10\x02*\xc1\x02\n\x0fTrafficOperator\x12 \n\x1cTRAFFIC_OPERATOR_UNSPECIFIED\x10\x00\x12\x1b\n\x17TRAFFIC_OPERATOR_EQUALS\x10\x01\x12\x1d\n\x19TRAFFIC_OPERATOR_CONTAINS\x10\x02\x12 \n\x1cTRAFFIC_OPERATOR_STARTS_WITH\x10\x03\x12\x19\n\x15TRAFFIC_OPERATOR_GLOB\x10\x04\x12\x1f\n\x1bTRAFFIC_OPERATOR_NOT_EQUALS\x10\x05\x12\x17\n\x13TRAFFIC_OPERATOR_IN\x10\x06\x12\x1b\n\x17TRAFFIC_OPERATOR_NOT_IN\x10\x07\x12\x1b\n\x17TRAFFIC_OPERATOR_EXISTS\x10\x08\x12\x1f\n\x1bTRAFFIC_OPERATOR_NOT_EXISTS\x10\tb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'routing_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
-  _globals['_TRAFFICCOMBINATOR']._serialized_start=389
-  _globals['_TRAFFICCOMBINATOR']._serialized_end=499
-  _globals['_TRAFFICOPERATOR']._serialized_start=502
-  _globals['_TRAFFICOPERATOR']._serialized_end=674
-  _globals['_TRAFFICCONDITION']._serialized_start=47
-  _globals['_TRAFFICCONDITION']._serialized_end=173
-  _globals['_TRAFFICSCOPE']._serialized_start=176
-  _globals['_TRAFFICSCOPE']._serialized_end=387
+  _globals['_TRAFFICCOMBINATOR']._serialized_start=1059
+  _globals['_TRAFFICCOMBINATOR']._serialized_end=1169
+  _globals['_TRAFFICOPERATOR']._serialized_start=1172
+  _globals['_TRAFFICOPERATOR']._serialized_end=1493
+  _globals['_TRAFFICCONDITION']._serialized_start=48
+  _globals['_TRAFFICCONDITION']._serialized_end=262
+  _globals['_TRAFFICSCOPE']._serialized_start=265
+  _globals['_TRAFFICSCOPE']._serialized_end=476
+  _globals['_ROUTERREVISION']._serialized_start=479
+  _globals['_ROUTERREVISION']._serialized_end=674
+  _globals['_COMPOSEDROUTE']._serialized_start=677
+  _globals['_COMPOSEDROUTE']._serialized_end=930
+  _globals['_WEIGHTEDTARGET']._serialized_start=932
+  _globals['_WEIGHTEDTARGET']._serialized_end=1057
 # @@protoc_insertion_point(module_scope)

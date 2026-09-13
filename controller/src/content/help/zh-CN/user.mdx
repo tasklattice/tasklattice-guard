@@ -1,0 +1,75 @@
+---
+kind: "guide"
+id: "guide-user"
+audience: "user"
+label: "普通用户"
+title: "设计、验证并发布保护策略"
+summary: "适合安全、合规、产品和业务负责人。重点是表达意图、复用 Policy、验证行为和检查证据。"
+outcome: "最终产出：一个经过测试、可以被 Router 引用的 Guardrail Version。"
+order: 2
+---
+
+<a id="user-lifecycle" />
+
+### 标准工作流：从 Policy 到保护
+
+先复用经过审查的能力，再组合、验证、发布和部署。
+
+1. **浏览 Policy Library** — 阅读 Policy 的用途、Rules、参数和 Test Cases，确认它能表达所需保护行为。
+
+2. **创建 Guardrail** — 描述业务用途和边界，选择 Policy Version，并确认实际启用的 Rules 与 Rails。
+
+3. **运行 Validation Run** — 让当前草稿的 Test Cases 通过与生产相同的 NeMo 运行时；失败结果也会保留为证据。
+
+4. **发布版本** — 把已通过验证的草稿固化为不可变 Guardrail Version。后续修改不会改变已有版本。
+
+5. **创建 Router** — 创建 Router，绑定 Endpoints，编辑 Route 的 Selector 与加权 Targets，审阅发布后确认 Runner 已生效。
+
+6. **观察与改进** — 在 Playground 进行端到端试用，并通过运行日志、审计日志和指标检查真实结果。
+
+[打开 Policy Library](/policy-library)
+
+[管理 Guardrails](/guardrails)
+
+[在 Guardrail 中查看 Validation](/guardrails)
+
+<a id="user-review-policy" />
+
+### 如何阅读一个 Policy
+
+不要只看名称；至少检查 Rules、Test Cases、版本和参数。
+
+- Policy 是可复用能力，不是某个应用的部署配置。
+- Rule 是最小可执行行为；禁用一条 Rule 会改变实际编译内容。
+- Test Case 说明该 Rule 或业务场景应该放行、转换还是阻断。
+- Policy Version 是不可变快照；Guardrail 会固定到确切版本。
+- 必填参数必须在绑定到 Guardrail 时解析，不能留到生产请求时临时决定。
+
+> 内建 Policy 由系统管理；自定义 Policy 由开发者在 Policy Studio 中维护。两者在 Guardrail 中使用相同的 Policy → Rule → Test Case 模型。
+
+[浏览 Policy Library](/policy-library)
+
+<a id="user-decisions" />
+
+### 理解放行、转换和阻断
+
+最终 Decision 是业务调用方必须执行的结果，不只是一个风险标签。
+
+**Allow / pass**
+
+内容可继续进入下一阶段；未触发需要执行的干预。
+
+**Transform**
+
+系统返回经过脱敏、重写或其他变换后的有效内容，调用方应使用返回内容。
+
+**Block / reject**
+
+停止当前阶段。输入被阻断时不应调用模型；输出被阻断时不应把原始响应交付给用户。
+
+
+> Playground 会展示模型前检查、模型调用和模型后检查的完整链路，适合在上线前确认调用方行为。
+
+[打开 Playground](/playground)
+
+[查看运行日志](/logs)

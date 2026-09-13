@@ -8,6 +8,7 @@ import type { CapabilityValidationRequest } from "../generated/control-protocol/
 import {
   auditEvents,
   controllerState,
+  modelAssignmentValidations,
   modelConfigurationRevisions,
   modelDefinitions,
   modelProviders,
@@ -75,7 +76,6 @@ export type RailValidationEvidence = { passed: boolean; message: string; latency
 export type RailValidator = (request: CapabilityValidationRequest) => Promise<RailValidationEvidence>;
 
 export class ModelConfigurationService {
-  private assignmentPreviews = new Map<string, { fingerprint: string; check: ModelValidationCheck; expiresAt: number }>();
   private activeCache: { id: string; configuration: ActiveModelConfiguration } | null = null;
   private railValidator: RailValidator | null = null;
   private readonly validationLeases = new Map<string, { provider: ProviderRow; expiresAt: number }>();
@@ -127,8 +127,7 @@ export class ModelConfigurationService {
     // A read must not mutate persisted revisions, but retired Models must not
     // be offered for new UI configuration.
     const models = storedModels.filter((model) => !isRetiredModel(model.model));
-    const draft = revisions.find((item) => item.state === "draft" || item.state === "validated")
-      ?? await this.ensureDraft(null);
+    const draft = revisions.find((item) => item.state === "draft" || item.state === "validated");
     const active = revisions.find((item) => item.state === "active") ?? null;
     const activating = revisions.find((item) => item.state === "activating") ?? null;
     const failed = revisions.find((item) => item.state === "failed") ?? null;
@@ -138,10 +137,11 @@ export class ModelConfigurationService {
         ...publicModel(model, providers.find((provider) => provider.id === model.providerId)),
         protocolEditable: !revisions.some((revision) => assignedModelIds(normalizeModelAssignments(revision.assignments)).includes(model.id)),
       })),
-      draft: publicRevision(draft),
+      draft: draft ? publicRevision(draft) : null,
       active: active ? publicRevision(active) : null,
       activating: activating ? publicRevision(activating) : null,
       failed: failed ? publicRevision(failed) : null,
+      rollbackTarget: revisions.find(item => item.state === "superseded")?.id ?? null,
     };
   }
 
@@ -474,6 +474,8 @@ export class ModelConfigurationService {
         throw new ValidationError(`${model.name} (${model.profile}) cannot be assigned to ${binding.id}.`);
       }
     }
+    const existing = await this.ensureDraft(actorId);
+    if (JSON.stringify(normalizeModelAssignments(existing.assignments)) === JSON.stringify(assignments)) return publicRevision(existing);
     const draft = await this.ensureEditableDraft(actorId);
     const [updated] = await this.db.update(modelConfigurationRevisions).set({
       assignments,
@@ -503,21 +505,26 @@ export class ModelConfigurationService {
       evidenceKind: target === "control_plane" ? "model-probe" : "nemo-rail-v1",
       status: result.passed ? "passed" : "failed", message: result.message, latencyMs: result.latencyMs, cases: result.cases ?? [],
     };
-    for (const [key, value] of this.assignmentPreviews) {
-      if (value.expiresAt <= Date.now()) this.assignmentPreviews.delete(key);
-    }
-    this.assignmentPreviews.set(`${actorId}:${target}:${modelId}`, {
-      fingerprint: JSON.stringify([model, provider]), check, expiresAt: Date.now() + 10 * 60_000,
-    });
-    return publicRevision({ ...draft, validationReport: await this.reportFromChecks(
+    const validationId = randomUUID();
+    const expiresAt = new Date(Date.now() + 10 * 60_000);
+    await this.db.insert(modelAssignmentValidations).values({ id: validationId, actorId, target, modelId,
+      fingerprint: JSON.stringify([model, provider]), evidence: check, expiresAt });
+    return { ...publicRevision({ ...draft, validationReport: await this.reportFromChecks(
       normalizeModelAssignments(draft.assignments),
       [...(draft.validationReport?.checks ?? []).filter((item) => !checkBelongsToTarget(item, target)), check],
-    ) });
+    ) }), validationId, expiresAt: expiresAt.toISOString() };
   }
 
-  async updateAssignment(target: ModelAssignmentTarget, modelId: string | null, actorId: string) {
-    const draft = await this.ensureEditableDraft(actorId);
-    const assignments = normalizeModelAssignments(draft.assignments);
+  async getAssignmentValidation(target: ModelAssignmentTarget, validationId: string, actorId: string) {
+    const [record] = await this.db.select().from(modelAssignmentValidations).where(and(eq(modelAssignmentValidations.id, validationId), eq(modelAssignmentValidations.actorId, actorId), eq(modelAssignmentValidations.target, target)));
+    if (!record) throw new NotFoundError("Model assignment validation", validationId);
+    return { id: record.id, target: record.target, modelId: record.modelId, evidence: record.evidence, expiresAt: record.expiresAt.toISOString(), expired: record.expiresAt.getTime() <= Date.now() };
+  }
+
+  async updateAssignment(target: ModelAssignmentTarget, modelId: string | null, actorId: string, validationId?: string) {
+    const existing = await this.ensureDraft(actorId);
+    const previous = normalizeModelAssignments(existing.assignments);
+    if ((target === "control_plane" ? previous.controlPlane : previous.bindings[target]) === modelId) return publicRevision(existing);
     let evidence: ModelValidationCheck | undefined;
     if (modelId) {
       const [model] = await this.db.select().from(modelDefinitions).where(eq(modelDefinitions.id, modelId));
@@ -526,17 +533,18 @@ export class ModelConfigurationService {
       if (!assignmentTargetAcceptsModel(target, model.profile, provider.kind)) {
         throw new ValidationError(`${model.name} (${model.profile}) cannot be assigned to ${target}.`);
       }
-      const preview = this.assignmentPreviews.get(`${actorId}:${target}:${modelId}`);
-      const savedId = target === "control_plane" ? assignments.controlPlane : assignments.bindings[target];
-      const savedCheck = savedId === modelId ? draft.validationReport?.checks.find((check) =>
-        check.id === `probe:${target}:${modelId}` && check.status === "passed"
-        && (target === "control_plane" || check.evidenceKind === "nemo-rail-v1")) : undefined;
-      evidence = preview && preview.expiresAt > Date.now() && preview.check.status === "passed"
-        && preview.fingerprint === JSON.stringify([model, provider]) ? preview.check : preview ? undefined : savedCheck;
+      const [preview] = validationId ? await this.db.select().from(modelAssignmentValidations).where(and(
+        eq(modelAssignmentValidations.id, validationId), eq(modelAssignmentValidations.actorId, actorId),
+        eq(modelAssignmentValidations.target, target), eq(modelAssignmentValidations.modelId, modelId),
+      )) : [];
+      evidence = preview && preview.expiresAt.getTime() > Date.now() && preview.evidence.status === "passed"
+        && preview.fingerprint === JSON.stringify([model, provider]) ? preview.evidence : undefined;
       if (!evidence) {
-        throw new ConflictError("Validate the selected Model successfully before saving.", "model_assignment_not_validated");
+        throw new ConflictError("Provide an unexpired successful validationId for this account, target and unchanged Model before saving.", "model_assignment_not_validated");
       }
     }
+    const draft = await this.ensureEditableDraft(actorId);
+    const assignments = normalizeModelAssignments(draft.assignments);
     if (target === "control_plane") assignments.controlPlane = modelId;
     else assignments.bindings[target] = modelId;
 
@@ -682,6 +690,7 @@ export class ModelConfigurationService {
       return updated!;
     });
     this.activeCache = null;
+    await this.ensureDraft(actorId);
     return publicRevision(activated);
   }
 
@@ -715,9 +724,9 @@ export class ModelConfigurationService {
     this.activeCache = null;
   }
 
-  async rollback(actorId: string) {
+  async rollback(actorId: string, targetRevisionId: string) {
     const [prior] = await this.db.select().from(modelConfigurationRevisions)
-      .where(eq(modelConfigurationRevisions.state, "superseded"))
+      .where(and(eq(modelConfigurationRevisions.id, targetRevisionId), eq(modelConfigurationRevisions.state, "superseded")))
       .orderBy(desc(modelConfigurationRevisions.activatedAt), desc(modelConfigurationRevisions.revision))
       .limit(1);
     if (!prior) throw new ConflictError("No previously active model configuration is available.", "model_configuration_rollback_unavailable");

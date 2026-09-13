@@ -4,6 +4,7 @@ import type { Artifact as _tasklattice_guard_control_v1_Artifact, Artifact__Outp
 import type { RouterRoute as _tasklattice_guard_control_v1_RouterRoute, RouterRoute__Output as _tasklattice_guard_control_v1_RouterRoute__Output } from '../../../../tasklattice/guard/control/v1/RouterRoute.js';
 import type { EndpointRuntime as _tasklattice_guard_control_v1_EndpointRuntime, EndpointRuntime__Output as _tasklattice_guard_control_v1_EndpointRuntime__Output } from '../../../../tasklattice/guard/control/v1/EndpointRuntime.js';
 import type { DataPlaneModelConfiguration as _tasklattice_guard_control_v1_DataPlaneModelConfiguration, DataPlaneModelConfiguration__Output as _tasklattice_guard_control_v1_DataPlaneModelConfiguration__Output } from '../../../../tasklattice/guard/control/v1/DataPlaneModelConfiguration.js';
+import type { RouterRevision as _tasklattice_guard_control_v1_RouterRevision, RouterRevision__Output as _tasklattice_guard_control_v1_RouterRevision__Output } from '../../../../tasklattice/guard/control/v1/RouterRevision.js';
 import type { Long } from '@grpc/proto-loader';
 
 /**
@@ -24,6 +25,7 @@ export interface DesiredState {
   'endpoints'?: (_tasklattice_guard_control_v1_EndpointRuntime)[];
   'guardrailLoggingLevels'?: ({[key: string]: string});
   'modelConfiguration'?: (_tasklattice_guard_control_v1_DataPlaneModelConfiguration | null);
+  'routerRevisions'?: (_tasklattice_guard_control_v1_RouterRevision)[];
 }
 
 /**
@@ -44,4 +46,5 @@ export interface DesiredState__Output {
   'endpoints': (_tasklattice_guard_control_v1_EndpointRuntime__Output)[];
   'guardrailLoggingLevels': ({[key: string]: string});
   'modelConfiguration': (_tasklattice_guard_control_v1_DataPlaneModelConfiguration__Output | null);
+  'routerRevisions': (_tasklattice_guard_control_v1_RouterRevision__Output)[];
 }

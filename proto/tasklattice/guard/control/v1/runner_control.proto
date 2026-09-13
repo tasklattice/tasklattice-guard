@@ -127,6 +127,7 @@ message DesiredState {
   repeated EndpointRuntime endpoints = 6;
   map<string, string> guardrail_logging_levels = 7;
   DataPlaneModelConfiguration model_configuration = 8;
+  repeated RouterRevision router_revisions = 9;
 }
 
 // ACK/NACK for the complete atomic desired-state generation. A NACK keeps the
@@ -159,6 +160,8 @@ message EndpointRuntime {
   // Adapter IDs are an extensible registry, not a closed enum.
   string adapter = 2;
   EndpointVerification verification = 3;
+  // Explicit composed Router binding; empty rejects public traffic.
+  string router_id = 4;
 }
 
 // ACK/NACK for verifying, prewarming, and activating an artifact generation.

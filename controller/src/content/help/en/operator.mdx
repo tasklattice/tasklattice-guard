@@ -1,0 +1,285 @@
+---
+kind: "guide"
+id: "guide-operator"
+audience: "operator"
+label: "Operator"
+title: "Release, route, and operate NeMo Guardrails"
+summary: "For platform engineering, SRE, and security operations. Focus on trusted identity, version routing, runtime health, capacity, rollback, and logs."
+outcome: "Outcome: an observable, rollback-safe production path that cannot bypass the Guardrail."
+order: 4
+---
+
+<a id="operator-metrics" />
+
+### Business statistics and Prometheus Metrics
+
+Both Controller and Runner expose metrics. Business statistics APIs and Prometheus scrapes have different purposes and credentials.
+
+**Business statistics JSON**
+
+GET /api/v1/telemetry/metrics on this Controller. Use a personal token with runtime:read or a browser session. Filter by window, guardrailId, and routerId. Statistics aggregate reported runtime events.
+
+**Router traffic statistics**
+
+GET /api/v1/routers/\{id\}/traffic-distribution, also available per Route. Requires routers:read and reports historical traffic, not configuration rollout status.
+
+**Controller /metrics**
+
+Scrape the Controller HTTP address. When CONTROLLER_METRICS_TOKEN is configured, send that Bearer token, not a personal Access Token.
+
+**Runner /metrics**
+
+Scrape each Runner HTTP address (default container port 8091). When GUARD_METRICS_TOKEN is configured, send that Bearer token. Use your deployed Runner addresses.
+
+
+> Links use this Controller’s address, without fixed localhost ports. Opening a protected Prometheus URL directly returns 401; configure the scraper’s Authorization header. Check data_availability when traffic or execution evidence is missing.
+
+[Business metrics API contract](/api/openapi.json?operationId=getTelemetryMetrics)
+
+[Controller Prometheus metrics](/metrics)
+
+[Manage Runners](/settings/runner)
+
+[System health](/settings/health)
+
+<a id="operator-runtime" />
+
+### Production runtime boundaries
+
+The control plane manages versions, NeMo executes checks, and callers execute final decisions.
+
+- Publishing validates an immutable NeMoConfigSnapshot, computes checksum, and prewarms the exact runtime profile.
+- Active versions stay resident; production requests do not build runtimes on the hot path.
+- The compiler chooses profiles. Custom programmable Policies use Colang 2.
+- Each Guardrail Version has independent concurrency admission and whole-request deadlines.
+- Required timeouts and provider errors follow versioned fail-open/fail-closed behavior.
+
+<a id="operator-routing" />
+
+### Endpoint, Router, Route, and Selector
+
+Authenticate traffic first, then match ordered routes. Do not use spoofable fields as a trust boundary.
+
+1. **Register Endpoint** — Create separate identity and credentials for each app, agent, gateway, or trust boundary.
+
+2. **Create Router** — Each Endpoint binds to at most one Router; a Router can serve several Endpoints. Match Route Selectors in order, then choose a weighted Guardrail Target.
+
+3. **Keep fallback** — Keep the unconditional fallback Route last. A latest Target resolves to an exact version at Router publication; later Guardrail releases do not silently change it.
+
+4. **Verify context** — Use Selector fields supported by the bound protocols. Endpoint credentials establish identity; caller-supplied headers or jwt_claims are not automatically verified identity.
+
+[Manage Endpoints](/integration/endpoint)
+
+[Manage Traffic Routers](/integration/routers)
+
+<a id="operator-release-rollback" />
+
+### Safe release and rollback
+
+Distinguish Guardrail versions, Router revisions, and the generation applied by each Runner. An accepted request is not proof of rollout.
+
+- Confirm the current Validation Run, checksum, dependencies, and specialized models.
+- Check Settings / Health and the Router Overview rollout status and desired generation.
+- Router rollback publishes a new revision from a historical snapshot. Guardrail rollback reactivates a ready version; changing a published Router’s pinned Guardrail Targets requires another Router publication.
+- In-flight calls retain their pinned version. New calls use the new routing snapshot after the Runner applies the Router revision.
+- Never patch historical artifacts; create a new version for semantic changes.
+
+[View Guardrails](/guardrails)
+
+[View runtime logs](/logs)
+
+<a id="router-rollout-states" />
+
+### Router rollout states
+
+These cards explain status meanings; they are not live system indicators. Controller derives Router status from revisions, generations, Runner acknowledgments, and heartbeats. It is not a lifecycle enum in the RouterRevision protobuf.
+
+<StateCards>
+
+<StateCard title="Not published" code="unpublished">
+
+<StateDetail label="Meaning">
+
+There is no active Router revision; routing configuration has not been published.
+
+</StateDetail>
+
+<StateDetail label="Transitions">
+
+The first publication creates a revision and desired generation, entering distributing.
+
+</StateDetail>
+
+<StateDetail label="Next step">
+
+Finish Routes and Targets, then publish.
+
+</StateDetail>
+
+</StateCard>
+
+<StateCard title="Distributing" code="distributing">
+
+<StateDetail label="Meaning">
+
+An active revision exists, but default-pool Runners have not all acknowledged the desired generation, or a heartbeat is stale.
+
+</StateDetail>
+
+<StateDetail label="Transitions">
+
+Fresh acknowledgments from every Runner yield active. An unconverged rollout with a recorded error yields failed.
+
+</StateDetail>
+
+<StateDetail label="Next step">
+
+Inspect Runner connectivity, prewarming, and desired/applied generations.
+
+</StateDetail>
+
+</StateCard>
+
+<StateCard title="Active" code="active">
+
+<StateDetail label="Meaning">
+
+The default pool contains at least one Runner; every Runner has applied the desired generation or newer and has a fresh heartbeat.
+
+</StateDetail>
+
+<StateDetail label="Transitions">
+
+A new publication requires convergence again. Stale heartbeats or unapplied generations invalidate active status.
+
+</StateDetail>
+
+<StateDetail label="Next step">
+
+Monitor traffic and runtime logs. In-flight calls retain the version pinned at their start.
+
+</StateDetail>
+
+</StateCard>
+
+<StateCard title="Rollout failed" code="failed">
+
+<StateDetail label="Meaning">
+
+The desired generation has not converged and a rollout error is recorded. This does not imply that every Runner has stopped serving.
+
+</StateDetail>
+
+<StateDetail label="Transitions">
+
+Publishing again clears the old error and retries distribution. Fresh convergence from all Runners yields active.
+
+</StateDetail>
+
+<StateDetail label="Next step">
+
+Inspect rolloutError and Runner rejection reasons; fix dependencies or configuration, then publish again.
+
+</StateDetail>
+
+</StateCard>
+
+</StateCards>
+
+> DesiredStateResult.accepted is true only after the entire generation is prewarmed and atomically applied. A Runner that rejects a generation retains its previously applied configuration. This acknowledgment differs from the publish API accepting a request.
+
+<a id="guardrail-build-states" />
+
+### Guardrail compilation states
+
+Compilation status is separate from Active / Historical version selection and from Router traffic rollout.
+
+<StateCards>
+
+<StateCard title="Compiling" code="compiling" state="distributing">
+
+<StateDetail label="Meaning">
+
+The immutable runtime artifact for a Guardrail version is being built.
+
+</StateDetail>
+
+<StateDetail label="Transitions">
+
+Successful compilation yields ready; a compilation error yields failed.
+
+</StateDetail>
+
+<StateDetail label="Next step">
+
+Wait for completion and inspect compilation errors if it fails.
+
+</StateDetail>
+
+</StateCard>
+
+<StateCard title="Ready" code="ready">
+
+<StateDetail label="Meaning">
+
+The version artifact is ready. This does not mean Router traffic has switched to it.
+
+</StateDetail>
+
+<StateDetail label="Transitions">
+
+The version can be selected for publication or rollback; Router rollout determines traffic activation.
+
+</StateDetail>
+
+<StateDetail label="Next step">
+
+Publish the Router again to change its pinned Guardrail Target.
+
+</StateDetail>
+
+</StateCard>
+
+<StateCard title="Compilation failed" code="failed">
+
+<StateDetail label="Meaning">
+
+The version did not produce a usable artifact.
+
+</StateDetail>
+
+<StateDetail label="Transitions">
+
+Fix the configuration and start compilation again, then inspect the new result.
+
+</StateDetail>
+
+<StateDetail label="Next step">
+
+Read the compilation error and fix the Policy, Rule, or dependency.
+
+</StateDetail>
+
+</StateCard>
+
+</StateCards>
+
+<a id="operator-troubleshooting" />
+
+### Troubleshooting order
+
+Check routing and version first, then Rail, Action, provider, and capacity.
+
+1. **Identity and route** — Confirm Endpoint state and credentials, Router binding, Route order, and trusted Selector fields.
+
+2. **Version** — Confirm the expected Guardrail Version and checksum.
+
+3. **Rail and Action** — Inspect Policy, Rule, Rail, Action, Decision, and latency in Runtime logs.
+
+4. **Provider** — Check specialized evaluators, models, networking, and Secrets.
+
+5. **Capacity** — Separate queue saturation, deadlines, and provider latency from true policy failures.
+
+[View runtime logs](/logs)
+
+[View Endpoints](/integration/endpoint)

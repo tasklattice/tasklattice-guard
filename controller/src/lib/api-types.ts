@@ -449,6 +449,7 @@ export type TrafficScopeField = {
 };
 
 export type Guardrail = {
+  copy_origin?: import("./controller-api").Guardrail["copyOrigin"];
   id: string;
   name: string;
   allowed_topics: string[];
@@ -831,6 +832,8 @@ export type Endpoint = {
   last_error_at: string | null;
   request_count: number;
   error_count: number;
+  /** P95 per recorded detection event in the last 24 hours; null when unavailable. */
+  detection_p95_ms?: number | null;
   setup: EndpointSetup;
   created_at: string;
   updated_at: string;

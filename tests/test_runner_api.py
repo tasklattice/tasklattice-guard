@@ -74,7 +74,7 @@ class StreamingRuntime:
         self.mode = mode
         self.requests = []
 
-    def output_delivery(self, _request, *, on_resolved=None, require_existing=False):
+    def output_delivery(self, _request, *, on_resolved=None, require_existing=False, allow_new_output=False):
         from runner.toolkit.runtime.contracts import GuardrailPlanSnapshot, PlanResolution
         if on_resolved:
             on_resolved(PlanResolution(plan=GuardrailPlanSnapshot(
@@ -484,7 +484,7 @@ async def test_http_adapter_preserves_structured_grounding_and_a2a_routing_facts
     assert runtime.request.context.protocol == "a2a"
     assert runtime.request.context.value("field", "a2a.operation") == "tasks/send"
     assert runtime.request.context.value("field", "a2a.version") == "1.0"
-    assert runtime.request.context.value("jwt_claim", "tenant") == "tenant-a"
+    assert runtime.request.context.value("jwt_claim", "tenant") is None  # Caller assertions are not verified identity.
     assert runtime.request.context.value("header", "authorization") is None
     assert [item.id for item in runtime.request.content_blocks] == ["query", "source", "answer"]
     assert runtime.request.evidence_scope == "full"

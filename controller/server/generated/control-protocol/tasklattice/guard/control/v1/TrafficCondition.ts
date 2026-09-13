@@ -19,6 +19,19 @@ export interface TrafficCondition {
    * Literal comparison operand; GLOB uses Runner's documented glob syntax.
    */
   'value'?: (string);
+  /**
+   * Explicit HTTP source: endpoint_request or business_request; empty for non-HTTP fields.
+   */
+  'requestSource'?: (string);
+  /**
+   * Operands for IN and NOT_IN; scalar operators use value instead.
+   */
+  'values'?: (string)[];
+  /**
+   * Absence means case-sensitive; false uses ASCII-only case folding.
+   */
+  'caseSensitive'?: (boolean);
+  '_caseSensitive'?: "caseSensitive";
 }
 
 /**
@@ -38,4 +51,17 @@ export interface TrafficCondition__Output {
    * Literal comparison operand; GLOB uses Runner's documented glob syntax.
    */
   'value': (string);
+  /**
+   * Explicit HTTP source: endpoint_request or business_request; empty for non-HTTP fields.
+   */
+  'requestSource': (string);
+  /**
+   * Operands for IN and NOT_IN; scalar operators use value instead.
+   */
+  'values': (string)[];
+  /**
+   * Absence means case-sensitive; false uses ASCII-only case folding.
+   */
+  'caseSensitive'?: (boolean);
+  '_caseSensitive'?: "caseSensitive";
 }

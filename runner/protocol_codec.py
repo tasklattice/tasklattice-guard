@@ -92,6 +92,10 @@ def traffic_scope_to_proto(value: Mapping[str, Any]) -> protocol.TrafficScope:
         if "combinator" in item:
             groups.append(traffic_scope_to_proto(item))
         else:
+            item = dict(item)
+            if isinstance(item.get("value"), list): item["values"] = item.pop("value")
+            for camel, snake in (("requestSource", "request_source"), ("caseSensitive", "case_sensitive")):
+                if camel in item: item[snake] = item.pop(camel)
             conditions.append(_message_from_mapping(protocol.TrafficCondition, item))
     return protocol.TrafficScope(
         combinator=_enum_number(
@@ -110,7 +114,8 @@ def traffic_scope_from_proto(message: protocol.TrafficScope) -> dict[str, Any]:
             message.combinator,
         ),
         "conditions": [
-            _message_to_mapping(item) for item in message.conditions
+            {key: value for key, value in _message_to_mapping(item).items()
+             if not (key in {"request_source", "values"} and not value)} for item in message.conditions
         ] + [traffic_scope_from_proto(item) for item in message.groups],
     }
 

@@ -266,3 +266,54 @@
     animation-iteration-count: 1 !important;
   }
 }
+
+/* Scope layout overrides to the Router editor. The query-builder vendor CSS
+   is unlayered, so these rules also stay unlayered. */
+.router-selector .ruleGroup .rule {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 2.75rem;
+  border: 1px solid var(--border);
+  background: var(--card);
+  align-items: start;
+  gap: 0.75rem;
+  min-width: 0;
+}
+.router-selector .rule > * { min-width: 0; }
+.router-selector .router-selector-field,
+.router-selector .router-selector-operator {
+  width: 100%;
+  min-height: 2.75rem;
+}
+.router-selector .router-selector-value {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  width: 100%;
+  font-size: 0.875rem;
+  line-height: 1.5rem;
+}
+.router-selector .router-selector-remove {
+  grid-column: 3;
+  grid-row: 1;
+  width: 2.75rem;
+  min-height: 2.75rem;
+  padding: 0;
+}
+.router-selector .ruleGroup-header {
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.router-selector .ruleGroup-header > button {
+  width: auto;
+  min-height: 2.75rem;
+}
+.router-selector .ruleGroup-header > .ruleGroup-combinators {
+  width: 12rem;
+  max-width: 100%;
+}
+@media (max-width: 480px) {
+  .router-selector .ruleGroup .rule { grid-template-columns: minmax(0, 1fr) 2.75rem; }
+  .router-selector .router-selector-field { grid-column: 1; }
+  .router-selector .router-selector-operator { grid-column: 1; grid-row: 2; }
+  .router-selector .router-selector-remove { grid-column: 2; }
+  .router-selector .router-selector-value { grid-row: 3; }
+}

@@ -1,81 +1,48 @@
 import { describe, expect, it } from "vitest";
-
-import { getHelpContent, searchHelpContent } from "@/features/help-content";
+import { renderToStaticMarkup } from "react-dom/server";
+import { createElement } from "react";
+import { helpStructuralComponents } from "../components/help/document-blocks";
+import { getHelpContent, searchHelpContent } from "./help-content";
 import { enforcementActionConflictOrder, enforcementActionDisplayOrder } from "../../shared/enforcement-action.generated";
 
-describe("help center content", () => {
-  it("provides a complete role path for users, developers, and operators in both locales", () => {
-    for (const locale of ["zh-CN", "en"] as const) {
-      const content = getHelpContent(locale);
-
-      expect(content.guides.map((guide) => guide.id)).toEqual(["user", "developer", "operator"]);
-      expect(content.guides.every((guide) => guide.articles.length >= 3)).toBe(true);
-      expect(content.architecture.length).toBeGreaterThanOrEqual(6);
+describe("MDX Help documents", () => {
+  it.each(["zh-CN", "en"] as const)("compiles %s content with stable anchors and matching search sections", locale => {
+    const content = getHelpContent(locale);
+    expect(content.guides.map(guide => guide.audience)).toEqual(["user", "developer", "operator"]);
+    expect(content.documents).toHaveLength(5);
+    for (const doc of [content.api, ...content.documents]) {
+      expect(doc.title).toBeTruthy();
+      const html = renderToStaticMarkup(createElement(doc.Content, { components: helpStructuralComponents }));
+      for (const section of doc.sections) {
+        expect(html).toContain(`id="${section.id}"`);
+        expect(section.text).toContain(section.title);
+      }
     }
+    const api = renderToStaticMarkup(createElement(content.api.Content));
+    for (const path of ["/account/access-tokens", "/api/docs", "/api/openapi.json", "/api/llms.txt"]) expect(api).toContain(`href="${path}"`);
   });
-
-  it("documents every Policy Studio runtime concept and unsafe action", () => {
+  it.each(["zh-CN", "en"] as const)("keeps %s action documentation aligned with the wire contract", locale => {
+    const section = getHelpContent(locale).guides.find(guide => guide.audience === "developer")!.sections.find(section => section.id === "developer-actions")!;
+    for (const action of enforcementActionDisplayOrder) expect(section.text).toContain(action);
+    expect(section.text).toContain(enforcementActionConflictOrder.join(" → "));
+  });
+  it("finds Markdown body text, aliases, API paths and code examples without a manual index", () => {
     const content = getHelpContent("zh-CN");
-    const developer = content.guides.find((guide) => guide.id === "developer");
-    const runtime = developer?.articles.find((article) => article.id === "developer-policy-runtime");
-    const actions = developer?.articles.find((article) => article.id === "developer-actions");
-
-    expect(runtime?.terms?.map((term) => term.name)).toEqual(expect.arrayContaining([
-      "Rail",
-      "Flow 名称",
-      "执行模式：detect",
-      "执行模式：mutate",
-      "高级运行设置",
-      "Action 依赖",
-      "绑定参数",
-    ]));
-    expect(runtime?.paragraphs?.join(" ")).toContain("自动使用 Colang 2.x");
-    expect(actions?.terms?.map((term) => term.name)).toEqual(enforcementActionDisplayOrder);
-    expect(actions?.note).toContain(enforcementActionConflictOrder.join(" → "));
+    expect(searchHelpContent(content, "Session").map(result => result.id)).toContain("developer-api-access");
+    expect(searchHelpContent(content, "GUARD_ACCESS_TOKEN").map(result => result.id)).toContain("developer-api-access");
+    expect(searchHelpContent(content, "Prometheus").map(result => result.id)).toContain("operator-metrics");
+    expect(searchHelpContent(content, "Traffic Scope").map(result => result.id)).toContain("term-traffic-scope");
+    expect(searchHelpContent(content, "不存在的搜索条目")).toEqual([]);
   });
-
-  it("keeps lifecycle, runtime, routing, and evidence concepts discoverable", () => {
-    const content = getHelpContent("zh-CN");
-    const ids = content.glossary.map((entry) => entry.id);
-
-    expect(ids).toEqual(expect.arrayContaining([
-      "policy",
-      "rule",
-      "test-case",
-      "guardrail",
-      "policy-binding",
-      "policy-version",
-      "guardrail-version",
-      "rail",
-      "flow",
-      "colang",
-      "action",
-      "enforcement-action",
-      "action-reference",
-      "parameter",
-      "validation-run",
-      "router",
-      "endpoint",
-      "traffic-scope",
-      "evidence",
-      "runtime-profile",
-      "checksum",
-      "failure-mode",
-      "output-delivery",
-      "decision",
-    ]));
-  });
-
-  it("searches articles and the glossary across aliases and descriptions", () => {
-    const chinese = getHelpContent("zh-CN");
-    const railResults = searchHelpContent(chinese, "Rail");
-    const routerResults = searchHelpContent(chinese, "Router");
-
-    expect(railResults.guides.flatMap((result) => result.articles.map((article) => article.id))).toContain("developer-policy-runtime");
-    expect(railResults.guides.flatMap((result) => result.articles.map((article) => article.id))).not.toContain("user-lifecycle");
-    expect(railResults.glossary.map((entry) => entry.id)).toContain("rail");
-    expect(railResults.glossary.map((entry) => entry.id)).not.toContain("guardrail");
-    expect(routerResults.glossary.map((entry) => entry.id)).toContain("router");
-    expect(routerResults.guides.flatMap((result) => result.articles.map((article) => article.id))).toContain("operator-routing");
+  it.each(["zh-CN", "en"] as const)("indexes %s state card titles and wire codes from MDX", locale => {
+    const content = getHelpContent(locale);
+    for (const code of ["unpublished", "distributing", "active", "failed"]) {
+      expect(searchHelpContent(content, code).map(result => result.id)).toContain("router-rollout-states");
+    }
+    expect(searchHelpContent(content, "compiling").map(result => result.id)).toContain("guardrail-build-states");
+    const operator = content.guides.find(guide => guide.audience === "operator")!;
+    const html = renderToStaticMarkup(createElement(operator.Content, { components: helpStructuralComponents }));
+    expect(html.match(/<dl /g)).toHaveLength(7);
+    expect(html).toContain(locale === "zh-CN" ? "下一步" : "Next step");
   });
 });

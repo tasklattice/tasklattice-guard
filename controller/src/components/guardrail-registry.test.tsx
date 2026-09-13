@@ -12,6 +12,8 @@ vi.mock("@tanstack/react-router", () => ({
   ),
 }));
 
+vi.mock("@/lib/auth", () => ({ useAuth: () => ({ user: { role: "viewer" } }) }));
+
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (key: string, values?: Record<string, string | number>) => {

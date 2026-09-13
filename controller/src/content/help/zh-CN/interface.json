@@ -1,0 +1,16 @@
+{
+  "title": "帮助中心",
+  "description": "理解 TaskLattice Guard 的核心概念，并按你的职责完成策略设计、开发集成和生产运维。",
+  "searchLabel": "搜索帮助文档",
+  "searchPlaceholder": "搜索文档…",
+  "searchHint": "可搜索产品术语、操作步骤、运行时行为和故障处理。",
+  "clearSearch": "清除搜索",
+  "noResultsTitle": "没有匹配的帮助内容",
+  "noResultsDescription": "尝试更短的概念名称，例如 Rail、Action、版本或路由。",
+  "contents": "文档目录",
+  "choosePath": "选择你的使用路径",
+  "choosePathDescription": "角色不是权限等级，而是阅读顺序。一个人可以同时使用多条路径。",
+  "searchResults": "搜索结果",
+  "roleResults": "角色指南",
+  "glossaryResults": "概念词典"
+}

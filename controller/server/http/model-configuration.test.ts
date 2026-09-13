@@ -47,6 +47,13 @@ const revision = {
 const view = { providers: [], models: [], draft: revision, active: null, activating: null, failed: null };
 
 describe("Model configuration HTTP routes", () => {
+  it("keeps GET read-only even when a regular session observes a ready activation", async () => {
+    const models = { view: vi.fn().mockResolvedValue({ ...view, activating: { ...revision, state: "activating", generation: 9 } }), finalizeActivation: vi.fn() };
+    const runner = { distributionStatus: vi.fn().mockResolvedValue({ distributionStatus: "ready", desiredGeneration: 9 }) };
+    expect((await appWith("user", models, runner).request("/api/v1/model-configuration")).status).toBe(200);
+    expect(models.finalizeActivation).not.toHaveBeenCalled();
+    expect(runner.distributionStatus).not.toHaveBeenCalled();
+  });
   it("only lets administrators configure a registered model protocol", async () => {
     const input = { profile: "tali.qwen3guard.v1", timeoutSeconds: 20, maxTokens: 512 };
     const models = { configureModel: vi.fn().mockResolvedValue({ id: "model-1", status: "pending", ...input }) };
@@ -60,7 +67,7 @@ describe("Model configuration HTTP routes", () => {
     const models = { discoverProviderDraft: vi.fn(), registerProviderModels: vi.fn() };
     const app = appWith("user", models);
     for (const action of ["discover", "register"]) {
-      const response = await app.request(`/api/v1/model-providers/${action}`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+      const response = await app.request(`/api/v1/${action === "discover" ? "model-provider-discoveries" : "model-provider-registrations"}`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
       expect(response.status).toBe(403);
     }
     expect(models.discoverProviderDraft).not.toHaveBeenCalled();
@@ -72,10 +79,10 @@ describe("Model configuration HTTP routes", () => {
     const selection = { name: "DeepSeek Chat", model: "deepseek-chat", profile: "generic-chat", timeoutSeconds: 20, maxTokens: 512 };
     const models = { discoverProviderDraft: vi.fn().mockResolvedValue({ models: [] }), registerProviderModels: vi.fn().mockResolvedValue({ models: [], failures: [] }) };
     const app = appWith("admin", models);
-    const discovery = await app.request("/api/v1/model-providers/discover", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(connection) });
+    const discovery = await app.request("/api/v1/model-provider-discoveries", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(connection) });
     expect(discovery.status).toBe(200);
     expect(models.discoverProviderDraft).toHaveBeenCalledWith({ ...connection, skipTlsVerify: false });
-    const result = await app.request("/api/v1/model-providers/register", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ connection, models: [selection] }) });
+    const result = await app.request("/api/v1/model-provider-registrations", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ connection, models: [selection] }) });
     expect(result.status).toBe(201);
     expect(models.registerProviderModels).toHaveBeenCalledWith({ connection: { ...connection, skipTlsVerify: false }, models: [selection] }, "admin-1");
   });
@@ -97,8 +104,8 @@ describe("Model configuration HTTP routes", () => {
     expect((await app.request("/api/v1/model-configuration/draft/assignments/content_safety.input", {
       method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ modelId }),
     })).status).toBe(200);
-    expect(models.updateAssignment).toHaveBeenCalledWith("content_safety.input", modelId, "admin-1");
-    expect((await app.request("/api/v1/model-configuration/draft/assignments/content_safety.input/validate", { method: "POST" })).status).toBe(200);
+    expect(models.updateAssignment).toHaveBeenCalledWith("content_safety.input", modelId, "admin-1", undefined);
+    expect((await app.request("/api/v1/model-configuration/draft/assignments/content_safety.input/validations", { method: "POST" })).status).toBe(200);
     expect(models.validateAssignment).toHaveBeenCalledWith("content_safety.input", "admin-1");
   });
 
@@ -114,11 +121,11 @@ describe("Model configuration HTTP routes", () => {
 
   it("routes model-call checks separately from capability validation", async () => {
     const models = { testModelConnection: vi.fn().mockResolvedValue({ connectionStatus: "validated", status: "pending" }), revalidateModel: vi.fn() };
-    const response = await appWith("admin", models).request("/api/v1/models/model-1/test-connection", { method: "POST" });
+    const response = await appWith("admin", models).request("/api/v1/models/model-1/connection-tests", { method: "POST" });
     expect(response.status).toBe(200);
     expect(models.testModelConnection).toHaveBeenCalledWith("model-1", "admin-1");
     expect(models.revalidateModel).not.toHaveBeenCalled();
-    expect((await appWith("user", models).request("/api/v1/models/model-1/test-connection", { method: "POST" })).status).toBe(403);
+    expect((await appWith("user", models).request("/api/v1/models/model-1/connection-tests", { method: "POST" })).status).toBe(403);
     expect(models.testModelConnection).toHaveBeenCalledOnce();
   });
 
@@ -133,7 +140,7 @@ describe("Model configuration HTTP routes", () => {
     };
     const app = appWith("admin", models);
 
-    const response = await app.request(`/api/v1/model-providers/${providerId}/discover`, { method: "POST" });
+    const response = await app.request(`/api/v1/model-providers/${providerId}/model-discoveries`, { method: "POST" });
 
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ providerId, models: [{ id: "nvidia/llama-3.1-nemotron-safety-guard-8b-v3" }] });
@@ -150,7 +157,7 @@ describe("Model configuration HTTP routes", () => {
     const app = appWith("admin", models, {
       distributeDesiredState: vi.fn().mockResolvedValue({ desiredGeneration: 9, distributionStatus: "syncing" }),
     });
-    const response = await app.request(`/api/v1/model-configuration/${revision.id}/activate`, { method: "POST" });
+    const response = await app.request(`/api/v1/model-configuration/revisions/${revision.id}/activate`, { method: "POST" });
     expect(response.status).toBe(409);
     expect(JSON.stringify(await response.json())).toContain("Provider prewarm failed");
   });
@@ -166,7 +173,7 @@ describe("Model configuration HTTP routes", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(assignments),
     });
-    const validated = await app.request("/api/v1/model-configuration/validate", {
+    const validated = await app.request("/api/v1/model-configuration/draft/validations", {
       method: "POST",
     });
 
@@ -187,7 +194,7 @@ describe("Model configuration HTTP routes", () => {
       distributeDesiredState: vi.fn().mockResolvedValue({ desiredGeneration: 9, distributionStatus: "ready" }),
     });
 
-    const response = await app.request(`/api/v1/model-configuration/${revision.id}/activate`, { method: "POST" });
+    const response = await app.request(`/api/v1/model-configuration/revisions/${revision.id}/activate`, { method: "POST" });
 
     expect(response.status).toBe(200);
     expect(models.finalizeActivation).toHaveBeenCalledWith(revision.id);

@@ -1,3 +1,4 @@
+import { EndpointProtocolIcon } from "@/components/endpoint-protocol-icon";
 import { useEffect, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -14,7 +15,6 @@ import {
   RefreshCw,
   ShieldCheck,
   Trash2,
-  Webhook,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
@@ -53,6 +53,8 @@ import {
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
+const ENDPOINT_COLUMNS = "xl:grid-cols-[minmax(160px,1fr)_160px_160px_150px_120px_16px]";
+
 const ADAPTERS: ReadonlyArray<{ id: EndpointAdapterId; protocol: EndpointProtocol }> = [
   { id: "litellm-generic-guardrail", protocol: "litellm" },
   { id: "generic-http-guard", protocol: "http" },
@@ -65,13 +67,28 @@ type EndpointDeletionConfirmation = {
   confirmation_name?: string;
 };
 
-export function EndpointsPage() {
+export function EndpointsPage({ endpointId, onEndpointChange }: {
+  endpointId?: string;
+  onEndpointChange?: (id: string | undefined) => void;
+} = {}) {
   const { t, i18n } = useTranslation();
   const auth = useAuth();
   const queryClient = useQueryClient();
-  const query = useQuery({ queryKey: queryKeys.endpoints, queryFn: getEndpoints });
+  const query = useQuery({ queryKey: queryKeys.endpoints, queryFn: getEndpoints, refetchInterval: 30_000 });
   const [createOpen, setCreateOpen] = useState(false);
-  const [selected, setSelected] = useState<Endpoint | null>(null);
+  const [localSelected, setLocalSelected] = useState<Endpoint | null>(null);
+  const linkedEndpoint = useQuery({
+    queryKey: queryKeys.endpoint(endpointId ?? ""),
+    queryFn: () => getEndpoint(endpointId!),
+    enabled: Boolean(endpointId),
+  });
+  const selected = onEndpointChange ? (endpointId ? linkedEndpoint.data ?? null : null) : localSelected;
+  function setSelected(endpoint: Endpoint | null) {
+    if (onEndpointChange) {
+      if (endpoint) queryClient.setQueryData(queryKeys.endpoint(endpoint.id), endpoint);
+      onEndpointChange(endpoint?.id);
+    } else setLocalSelected(endpoint);
+  }
   const [deleteTarget, setDeleteTarget] = useState<Endpoint | null>(null);
   const endpoints = query.data?.items ?? [];
   const verified = endpoints.filter((item) => item.setup_status === "verified").length;
@@ -121,7 +138,7 @@ export function EndpointsPage() {
       <PageHeader
         title={t("pages.endpoints.title")}
         description={t("endpoints.description")}
-        action={auth.user?.role === "admin" ? <Button className="min-h-11 self-start" onClick={() => setCreateOpen(true)}><Plus />{t("endpoints.register")}</Button> : undefined}
+        action={auth.user?.role === "admin" ? <Button variant="create" className="min-h-11 self-start" onClick={() => setCreateOpen(true)}><Plus />{t("endpoints.register")}</Button> : undefined}
       />
 
       {query.error ? <div className="mt-5"><ErrorNotice error={query.error} /></div> : null}
@@ -133,12 +150,12 @@ export function EndpointsPage() {
             <span>{t("endpoints.listSummary", { total: endpoints.length, verified })}</span>
             {attention ? <span className="font-medium text-destructive">{t("endpoints.needsAttention", { count: attention })}</span> : null}
           </div>
-          <div className="hidden grid-cols-[minmax(220px,1fr)_190px_170px_140px_120px_24px] border-b bg-muted/20 px-5 py-3 text-xs font-medium text-muted-foreground lg:grid">
+          <div className={cn("hidden gap-4 border-b bg-muted/20 px-5 py-3 text-xs font-medium text-muted-foreground xl:grid", ENDPOINT_COLUMNS)}>
             <span>{t("endpoints.gatewayInstance")}</span>
             <span>{t("endpoints.setup")}</span>
+            <span>{t("endpoints.successRate24h")}</span>
+            <span>{t("endpoints.detectionP9524h")}</span>
             <span>{t("endpoints.lastCallback")}</span>
-            <span>{t("endpoints.traffic")}</span>
-            <span>{t("endpoints.health")}</span>
             <span />
           </div>
           <div className="divide-y divide-border">
@@ -152,11 +169,18 @@ export function EndpointsPage() {
           <EmptyState
             title={t("endpoints.emptyTitle")}
             description={t("endpoints.emptyDescription")}
-            action={auth.user?.role === "admin" ? <Button onClick={() => setCreateOpen(true)}><Plus />{t("endpoints.register")}</Button> : undefined}
+            action={auth.user?.role === "admin" ? <Button variant="create" onClick={() => setCreateOpen(true)}><Plus />{t("endpoints.register")}</Button> : undefined}
           />
         </div>
       ) : null}
 
+      {endpointId && !selected && <EntitySheet
+        open onOpenChange={(open) => { if (!open) onEndpointChange?.(undefined); }}
+        eyebrow="Endpoint" title={t("pages.endpoints.title")} description={endpointId}
+        footer={<Button variant="outline" onClick={() => onEndpointChange?.(undefined)}>{t("common.close")}</Button>}
+      >
+        {linkedEndpoint.error ? <div className="space-y-3"><ErrorNotice error={linkedEndpoint.error} /><Button onClick={() => void linkedEndpoint.refetch()}>{t("common.retry")}</Button></div> : <Skeleton className="h-60" />}
+      </EntitySheet>}
       <EndpointDetail
         endpoint={selected}
         onOpenChange={(open) => !open && setSelected(null)}
@@ -196,11 +220,11 @@ function EndpointRow({ endpoint, onOpen }: { endpoint: Endpoint; onOpen: () => v
       type="button"
       onClick={onOpen}
       aria-label={t("endpoints.openEndpoint", { name: endpoint.name })}
-      className="group relative grid min-h-24 w-full gap-4 p-5 text-left transition-colors hover:bg-muted/40 focus-visible:outline-2 focus-visible:outline-ring lg:grid-cols-[minmax(220px,1fr)_190px_170px_140px_120px_24px] lg:items-center"
+      className={cn("group relative grid min-h-24 w-full gap-4 p-5 text-left transition-colors hover:bg-muted/40 focus-visible:outline-2 focus-visible:outline-ring xl:items-center", ENDPOINT_COLUMNS)}
     >
       <div className="min-w-0">
         <span className="flex items-center gap-2.5">
-          <ProtocolIcon protocol={endpoint.protocol} size="sm" />
+          <EndpointProtocolIcon protocol={endpoint.protocol} size="sm" />
           <strong className="truncate text-sm font-medium">{endpoint.name}</strong>
         </span>
         <span className="mt-1.5 block truncate pl-9 text-xs text-muted-foreground">
@@ -208,24 +232,38 @@ function EndpointRow({ endpoint, onOpen }: { endpoint: Endpoint; onOpen: () => v
         </span>
       </div>
       <ListDatum label={t("endpoints.setup")}><SetupBadge status={endpoint.setup_status} /></ListDatum>
+      <ListDatum label={t("endpoints.successRate24h")}><EndpointSuccessRate endpoint={endpoint} /></ListDatum>
+      <ListDatum label={t("endpoints.detectionP9524h")}>
+        <span className="text-xs tabular-nums" title={t("endpoints.detectionP95Explanation")}>
+          {endpoint.request_count > 0 && endpoint.detection_p95_ms != null ? `${endpoint.detection_p95_ms.toLocaleString(i18n.language)} ms` : "—"}
+        </span>
+      </ListDatum>
       <ListDatum label={t("endpoints.lastCallback")}>
         <time className="text-xs" dateTime={endpoint.last_seen_at ?? undefined} title={formatDate(endpoint.last_seen_at, i18n.language)}>
           {endpoint.last_seen_at ? formatRelativeDate(endpoint.last_seen_at, i18n.language) : t("endpoints.never")}
         </time>
       </ListDatum>
-      <ListDatum label={t("endpoints.traffic")}>
-        <span className="font-mono text-xs">{t("endpoints.requestErrorCount", { requests: endpoint.request_count, errors: endpoint.error_count })}</span>
-      </ListDatum>
-      <ListDatum label={t("endpoints.health")}><StateBadge state={endpoint.runtime_status} /></ListDatum>
-      <ChevronRight className="absolute right-4 top-5 size-4 text-muted-foreground lg:static" />
+      <ChevronRight className="absolute right-4 top-5 size-4 text-muted-foreground xl:static" />
     </button>
   );
 }
 
+function EndpointSuccessRate({ endpoint }: { endpoint: Endpoint }) {
+  const { t, i18n } = useTranslation();
+  if (!endpoint.request_count) return <span className="text-xs text-muted-foreground">{t("endpoints.noRequests")}</span>;
+  const successes = Math.max(0, Math.min(endpoint.request_count, endpoint.request_count - endpoint.error_count));
+  // Never round a non-zero failure rate up to a perfect 100%.
+  const percent = Math.floor(successes * 10_000 / endpoint.request_count) / 100;
+  return <span className="block text-xs" title={t("endpoints.successRateExplanation")}>
+    <span className="block font-medium tabular-nums">{percent.toLocaleString(i18n.language, { maximumFractionDigits: 2 })}%</span>
+    <span className="mt-1 block text-muted-foreground">{t("endpoints.requestSample", { count: endpoint.request_count.toLocaleString(i18n.language) })}</span>
+  </span>;
+}
+
 function ListDatum({ children, label }: { children: ReactNode; label: string }) {
   return (
-    <span className="grid grid-cols-[7rem_minmax(0,1fr)] items-center gap-3 text-muted-foreground lg:block lg:text-foreground">
-      <span className="text-xs font-medium text-muted-foreground lg:sr-only">{label}</span>
+    <span className="grid grid-cols-[7rem_minmax(0,1fr)] items-center gap-3 text-muted-foreground xl:block xl:text-foreground">
+      <span className="text-xs font-medium text-muted-foreground xl:sr-only">{label}</span>
       <span className="min-w-0">{children}</span>
     </span>
   );
@@ -325,7 +363,7 @@ function EndpointDetailContent({
       <Button variant="destructive" onClick={() => onOpenChange(false)}>{t("endpoints.leaveAndLoseKey")}</Button>
     </>
   ) : <>
-    {onDelete && (!oneTimeCredential || credentialSaved) ? <Button className="text-destructive hover:bg-destructive/10 hover:text-destructive" variant="outline" onClick={() => onDelete(endpoint)}><Trash2 />{t("endpoints.deleteAction")}</Button> : null}
+    {onDelete && (!oneTimeCredential || credentialSaved) ? <Button variant="destructive" onClick={() => onDelete(endpoint)}><Trash2 />{t("endpoints.deleteAction")}</Button> : null}
     <Button variant="outline" onClick={requestClose}>{t("common.close")}</Button>
   </>;
 
@@ -354,7 +392,7 @@ function EndpointDetailContent({
         <section className="overflow-hidden rounded-lg border bg-card">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-muted/30 p-4">
             <div className="flex items-center gap-3">
-              <ProtocolIcon protocol={endpoint.protocol} />
+              <EndpointProtocolIcon protocol={endpoint.protocol} />
               <div>
                 <p className="text-sm font-medium">{t(`endpoints.adapters.${endpoint.adapter_id}`)}</p>
                 <p className="mt-0.5 text-xs text-muted-foreground">{endpoint.id}</p>
@@ -362,7 +400,6 @@ function EndpointDetailContent({
             </div>
             <div className="flex items-center gap-2">
               <SetupBadge status={endpoint.setup_status} />
-              <StateBadge state={endpoint.runtime_status} />
             </div>
           </div>
           <dl className="divide-y divide-border">
@@ -423,8 +460,8 @@ function EndpointDetailContent({
           <dl className="divide-y divide-border">
             <Detail label={t("endpoints.inputCallback")}>{callbackTimestamp(endpoint.input_seen_at, i18n.language, t("endpoints.notReceived"))}</Detail>
             <Detail label={t("endpoints.outputCallback")}>{callbackTimestamp(endpoint.output_seen_at, i18n.language, t("endpoints.notReceived"))}</Detail>
-            <Detail label={t("endpoints.requests")} mono>{endpoint.request_count.toLocaleString(i18n.language)}</Detail>
-            <Detail label={t("endpoints.errors")} mono>{endpoint.error_count.toLocaleString(i18n.language)}</Detail>
+            <Detail label={t("endpoints.successRate24h")}><EndpointSuccessRate endpoint={endpoint} /></Detail>
+            <Detail label={t("endpoints.failedRequests24h")} mono>{endpoint.error_count.toLocaleString(i18n.language)}</Detail>
             <Detail label={t("endpoints.lastActivity")}>{endpoint.last_seen_at ? formatDate(endpoint.last_seen_at, i18n.language) : t("endpoints.noTraffic")}</Detail>
           </dl>
         </section>
@@ -616,7 +653,7 @@ export function CreateEndpointSheet({
           {closeWarning ? <SecretExitWarning /> : null}
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card px-4 py-3">
             <div className="flex min-w-0 items-center gap-3">
-              <ProtocolIcon protocol={endpoint.protocol} />
+              <EndpointProtocolIcon protocol={endpoint.protocol} />
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold">{endpoint.name}</p>
                 <p className="mt-0.5 truncate text-xs text-muted-foreground">{t(`endpoints.adapters.${endpoint.adapter_id}`)}</p>
@@ -816,8 +853,8 @@ function SetupFacts({ endpoint }: { endpoint: Endpoint }) {
       <div><dt className="text-muted-foreground">{t("endpoints.defaultBehavior")}</dt><dd className="mt-1 font-medium">{t(setup.default_on ? "endpoints.defaultOn" : "endpoints.requestSelected")}</dd></div>
       <div><dt className="text-muted-foreground">{t("endpoints.failureBehavior")}</dt><dd className="mt-1 font-medium">{t(setup.unreachable_fallback === "fail_closed" ? "endpoints.failClosed" : "endpoints.failOpen")} · {t(setup.fail_on_error ? "endpoints.blockOnError" : "endpoints.allowOnError")}</dd></div>
     </dl><dl className="grid gap-3 border-t pt-3 text-xs sm:grid-cols-3">
-      {[{ label: "Input", seen: endpoint.input_seen_at }, { label: "Output", seen: endpoint.output_seen_at }, { label: "Stream", seen: endpoint.stream_final_check_seen_at }].map(({ label, seen }) => <div key={label}><dt className="text-muted-foreground">{label}</dt><dd className="mt-1"><StateBadge state={seen ? "ready" : "unknown"} label={t(seen ? (label === "Stream" ? "endpoints.streamFinalObserved" : "endpoints.railObserved") : "endpoints.railNotObserved")} /></dd></div>)}
-    </dl></div>
+        {[{ label: "Input", seen: endpoint.input_seen_at }, { label: "Output", seen: endpoint.output_seen_at }, { label: "Stream", seen: endpoint.stream_final_check_seen_at }].map(({ label, seen }) => <div key={label}><dt className="text-muted-foreground">{label}</dt><dd className="mt-1"><StateBadge state={seen ? "ready" : "unknown"} label={t(seen ? (label === "Stream" ? "endpoints.streamFinalObserved" : "endpoints.railObserved") : "endpoints.railNotObserved")} /></dd></div>)}
+      </dl></div>
   );
 }
 
@@ -1050,7 +1087,7 @@ function CredentialRow({
           <Button size="sm" variant="destructive" disabled={pending} onClick={onRevoke}><Trash2 />{t("endpoints.confirmRevoke")}</Button>
         </div>
       ) : (
-        <Button size="sm" variant="ghost" className="text-destructive" disabled={onlyCredential} onClick={onConfirm}><Trash2 />{t("endpoints.revoke")}</Button>
+        <Button size="sm" variant="destructive" disabled={onlyCredential} onClick={onConfirm}><Trash2 />{t("endpoints.revoke")}</Button>
       )}
     </div>
   );
@@ -1093,7 +1130,7 @@ function AdapterOption({ adapterId }: { adapterId: EndpointAdapterId }) {
   const adapter = adapterDefinition(adapterId);
   return (
     <span className="flex min-w-0 items-center gap-3">
-      <ProtocolIcon protocol={adapter.protocol} />
+      <EndpointProtocolIcon protocol={adapter.protocol} />
       <span className="min-w-0">
         <span className="block truncate text-sm font-medium text-foreground">{t(`endpoints.adapters.${adapterId}`)}</span>
         <span className="mt-0.5 block truncate text-xs font-normal text-muted-foreground">{t(`endpoints.adapterDescriptions.${adapterId}`)}</span>
@@ -1102,15 +1139,6 @@ function AdapterOption({ adapterId }: { adapterId: EndpointAdapterId }) {
   );
 }
 
-function ProtocolIcon({ protocol, size = "default" }: { protocol: EndpointProtocol; size?: "default" | "sm" }) {
-  const frameClassName = size === "sm" ? "size-7 rounded-md" : "size-10 rounded-lg";
-  const iconClassName = size === "sm" ? "size-4" : "size-5";
-  return (
-    <span className={`flex shrink-0 items-center justify-center overflow-hidden border border-border/80 bg-background shadow-xs ${frameClassName}`}>
-      {protocol === "litellm" ? <img alt="" src="/assets/endpoints/litellm-train.webp" className="size-full object-cover" /> : protocol === "a2a" ? <img alt="" src="/assets/endpoints/a2a-agent.png" className="size-full object-contain p-1" /> : <Webhook aria-hidden="true" className={`${iconClassName} text-primary`} />}
-    </span>
-  );
-}
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return <label className="grid min-w-0 gap-2 text-sm font-medium">{label}{children}</label>;

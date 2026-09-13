@@ -87,7 +87,7 @@ async def test_signed_preset_cases_through_actual_adapter(tmp_path, preset):
                     "/runtime/v1/endpoints/fixture-endpoint/beta/litellm_basic_guardrail_api",
                     headers={"x-api-key": "fixture-runtime-secret"},
                     json={"input_type": "request" if case["phase"] == "input" else "response",
-                          "litellm_call_id": case["id"], "texts": [case["content"]], "request_data": {}},
+                          "texts": [case["content"]], "request_data": {}},
                 )
                 assert response.status_code == 200, response.text
                 result = response.json()
@@ -114,6 +114,7 @@ async def test_every_frozen_output_case_is_equivalent_when_split_across_stream_c
             if case["phase"] != "output":
                 continue
             request = ProtectionRequest(phase="output", texts=(case["content"],), call_id=case["id"], context=context)
+            runtime.output_delivery(request, allow_new_output=True)
             whole = await runtime.evaluate(request)
             assert whole.decision == case["expectedDecision"]
             assert whole.usage is not None and whole.usage.model_invocations == 0
