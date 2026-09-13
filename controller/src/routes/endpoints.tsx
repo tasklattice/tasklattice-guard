@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import { EndpointProtocolIcon } from "@/components/endpoint-protocol-icon";
 import { useEffect, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -378,6 +379,7 @@ function EndpointDetailContent({
       footer={footer}
     >
       <div className="space-y-5">
+        <Button asChild variant="outline" className="min-h-11"><Link to="/playground" search={{ mode: "advanced", endpoint: endpoint.id }}>{t("playground.advancedMode")} · Endpoint</Link></Button>
         {query.error ? <ErrorNotice error={query.error} /> : null}
         {closeWarning ? <SecretExitWarning /> : null}
         {oneTimeCredential ? (

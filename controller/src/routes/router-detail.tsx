@@ -220,6 +220,7 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
       <PageHeader
         title={router.name}
         description="Manage traffic routing from incoming Endpoints to GuardRails."
+        action={<Button asChild variant="outline" className="min-h-11"><Link to="/playground" search={{ mode: "advanced", router: router.id }}>Test Router</Link></Button>}
       />
       <div className="space-y-2 text-sm">
         <RouterStatus

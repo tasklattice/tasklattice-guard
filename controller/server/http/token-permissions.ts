@@ -71,6 +71,7 @@ export const tokenRoutePermissions: ReadonlyArray<readonly [string, string, Toke
   ["DELETE", "/api/v1/endpoints/:id/credentials/:credentialId", "endpoints", "write"],
   ["GET", "/api/v1/endpoints/:id/deletion-impact", "endpoints", "read"],
   ["DELETE", "/api/v1/endpoints/:id", "endpoints", "write"],
+  ["POST", "/api/v1/playground/path-tests", "playground", "write"],
   ["GET", "/api/v1/runner-pools", "runners", "read"],
   ["PATCH", "/api/v1/runner-pools/:id", "runners", "write"],
   ["DELETE", "/api/v1/runner-instances/:runnerId", "runners", "write"],

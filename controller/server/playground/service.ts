@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { z } from "zod";
+import { parseHttpRequest, requestSource, type PathTestInput, type PathTestResult } from "../../shared/playground-path.js";
 
 import { ControllerError, ValidationError } from "../domain/errors.js";
 import { providerFetch } from "../model-config/provider-fetch.js";
@@ -211,6 +212,52 @@ export class RunnerPlaygroundClient {
     this.#baseUrl = input.baseUrl.replace(/\/+$/, "");
     this.#token = input.token;
     this.#fetch = input.fetcher ?? globalThis.fetch;
+  }
+
+  async testPath(input: PathTestInput): Promise<PathTestResult> {
+    const parsed = parseHttpRequest(input.request);
+    const started = performance.now();
+    let path: string;
+    let headers: Record<string, string>;
+    let body: string;
+    if (input.target === "router") {
+      path = `/internal/v1/playground/routers/${encodeURIComponent(input.targetId)}/test`;
+      headers = { authorization: `Bearer ${this.#token}`, "content-type": "application/json" };
+      body = JSON.stringify({ revision: input.expectedRevision, endpoint_id: input.endpointId,
+        action: input.action, call_id: input.callId, fields: { protocol: "http", ...input.fields },
+        business_request: requestSource(parsed), endpoint_request: input.endpointRequest,
+        text: parsed.body });
+    } else {
+      const prefix = `/runtime/v1/endpoints/${encodeURIComponent(input.targetId)}`;
+      const allowed = [`${prefix}/guardrails/evaluate`, `${prefix}/beta/litellm_basic_guardrail_api`];
+      if (parsed.method !== "POST" || !allowed.includes(parsed.path)) {
+        throw new ValidationError("Use the selected Endpoint's POST evaluation path. Arbitrary URLs and query strings are not supported.");
+      }
+      path = parsed.path;
+      headers = {};
+      for (const [name, values] of Object.entries(parsed.headers)) {
+        if (["authorization", "cookie", "proxy-authorization", "connection", "content-length", "transfer-encoding", "x-api-key"].includes(name)) continue;
+        if (values.length > 1) throw new ValidationError("Repeated Endpoint headers are not supported by this test transport.");
+        headers[name] = values[0] ?? "";
+      }
+      headers["x-api-key"] = input.credential || parsed.headers["x-api-key"]?.[0] || "";
+      headers["content-type"] ??= "application/json";
+      body = parsed.body;
+    }
+    try {
+      const response = await this.#fetch(`${this.#baseUrl}${path}`, {
+        method: "POST", headers, body, redirect: "error", signal: AbortSignal.timeout(60_000),
+      });
+      const raw: unknown = await response.json();
+      const result = raw && typeof raw === "object" && !Array.isArray(raw) ? raw as Record<string, unknown> : { response: raw };
+      const runnerId = response.headers.get("x-guard-runner-id");
+      if (runnerId) result.runnerId = runnerId;
+      const assignment = response.headers.get("x-guard-route-assignment");
+      if (assignment) { try { result.assignment = JSON.parse(assignment); } catch { /* Older Runner metadata may be unavailable. */ } }
+      return { target: input.target, source: "runner", status: response.status, durationMs: Math.round(performance.now() - started), callId: input.callId, body: result };
+    } catch {
+      throw new ControllerError("Runner path test failed or timed out. Check Runner connectivity and retry.", 502, "playground_runner_unavailable");
+    }
   }
 
   async evaluate(input: {

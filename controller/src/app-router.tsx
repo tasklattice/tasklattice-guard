@@ -26,9 +26,12 @@ const guardrailsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/g
 const guardrailDetailRoute = createRoute({ getParentRoute: () => rootRoute, path: "/guardrails/$guardrailId", component: GuardrailDetailPage });
 const policyLibraryRoute = createRoute({ getParentRoute: () => rootRoute, path: "/policy-library", validateSearch: policyLibrarySearch, component: PolicyLibraryPage });
 const guardrailSearch = (search: Record<string, unknown>) => ({ guardrail: typeof search.guardrail === "string" ? search.guardrail : undefined });
-const playgroundSearch = (search: Record<string, unknown>) => {
+const playgroundSearch = (search: Record<string, unknown>): { guardrail?: string; target?: "draft"; version?: string; mode?: "advanced"; router?: string; endpoint?: string } => {
   return {
     ...guardrailSearch(search),
+    mode: search.mode === "advanced" ? "advanced" as const : undefined,
+    router: typeof search.router === "string" ? search.router : undefined,
+    endpoint: typeof search.endpoint === "string" ? search.endpoint : undefined,
     target: search.target === "draft" ? "draft" as const : undefined,
     version: isGuardrailVersionId(search.version) ? search.version : undefined,
   };

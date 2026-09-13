@@ -33,7 +33,7 @@ from .protocol_codec import (
     traffic_scope_from_proto,
 )
 from .serialization import plan_from_dict
-from .routing import RoutingError, select, validate_router
+from .routing import RoutingError, select, validate_router, selector_matches, condition_matches
 
 
 logger = logging.getLogger("tasklattice.guard.runner.artifact_store")
@@ -136,6 +136,36 @@ class ArtifactStore:
     def composed_endpoint(self, endpoint_id: str | None) -> bool:
         with self._lock:
             return bool(self._router_revisions) or bool(self._endpoints.get(endpoint_id, {}).get("_router_id"))
+
+    def preview_router(self, router_id: str, revision: int, context: RequestContext) -> dict:
+        """Inspect the loaded snapshot using exactly the runtime selector and allocator."""
+        with self._lock:
+            router = self._router_revisions.get(router_id)
+            if router is None or router.revision != revision:
+                raise RoutingError("router_revision_unavailable: wait for Runner synchronization")
+            if self._endpoints.get(context.endpoint_id, {}).get("_router_id") != router_id:
+                raise RoutingError("endpoint_router_unavailable")
+            target, assignment = select(router, context)
+            def explain(group):
+                return [{"combinator": c["combinator"], "matched": selector_matches(c, context), "children": explain(c)}
+                        if "conditions" in c else {**c, "matched": condition_matches(c, context)}
+                        for c in group["conditions"]]
+            rows = []
+            selected = False
+            for route in router.routes:
+                applies = route.enabled and (route.all_endpoints or context.endpoint_id in route.endpoint_ids)
+                matches = applies and selector_matches(traffic_scope_from_proto(route.traffic_scope), context)
+                received = matches and not selected
+                rows.append({"routeId": route.route_id, "name": route.name,
+                             "matched": matches, "received": received,
+                             "children": explain(traffic_scope_from_proto(route.traffic_scope)) if applies else [],
+                             "state": "not_applicable" if not applies else "not_evaluated" if selected else "selected" if received else "not_matched",
+                             "targets": [{"guardrailId": t.guardrail_id, "guardrailVersion": t.guardrail_version,
+                                          "weightBps": t.weight_bps} for t in route.targets]})
+                selected = selected or received
+            if target.artifact_id not in self._artifacts:
+                raise RoutingError("target_unavailable", assignment)
+            return {"assignment": assignment, "rules": rows, "generation": self._generation}
 
     def resolve(self, context: RequestContext) -> PlanResolution:
         with self._lock:
