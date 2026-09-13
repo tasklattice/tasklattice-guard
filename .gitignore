@@ -16,7 +16,7 @@ dist/
 .kube-cache/
 .kubeconfig-kind
 data/
-controller/node_modules/
+node_modules/
 controller/dist/
 controller/dist-server/
 controller/*.tsbuildinfo
