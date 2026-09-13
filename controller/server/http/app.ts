@@ -1,3 +1,4 @@
+import { pathTestSchema, parseHttpRequest, requestSource } from "../../shared/playground-path.js";
 import { openApiDocument, apiReferenceHtml, apiAgentIndex } from "./openapi.js";
 import { allowsTokenPermission } from "../../shared/access-tokens.js";
 import type { AccessTokenService, TokenIdentity } from "../services/access-tokens.js";
@@ -871,6 +872,32 @@ export function createHttpApp(input: {
     const q = distributionQuery.parse(context.req.query());
     const result = await input.service.trafficRouting.distribution(context.req.param("id"), q.hours, q.revision, q.endpointId);
     return context.json({ ...result, rows: result.rows.filter(row => row.routeId === context.req.param("routeId")) });
+  });
+  app.post("/api/v1/playground/path-tests", authenticated, async context => {
+    const body = pathTestSchema.parse(await context.req.json());
+    let parsed, businessRequest;
+    try { parsed = parseHttpRequest(body.request); businessRequest = requestSource(parsed); } catch (error) { throw new ValidationError(error instanceof Error ? error.message : "Invalid HTTP request."); }
+    if (body.target === "router") {
+      const router = await input.service.trafficRouting.get(body.targetId);
+      if (body.configuration === "draft") {
+        if (body.action !== "simulate") throw new ValidationError("Draft routing can only be simulated.");
+        if (body.expectedRevision !== router.draftRevision) throw new ValidationError("Router draft changed. Reload before testing.");
+        const normalized = routingInputSchema.parse({ endpointId: body.endpointId || "simulated-endpoint", fields: { protocol: "http", ...body.fields }, business_request: businessRequest, endpoint_request: body.endpointRequest });
+        const rules = previewRouter(router.draft, normalized);
+        const winner = router.draft.routes.find(route => rules.some(row => row.routeId === route.id && row.received));
+        return context.json({ target: body.target, source: "controller-draft", status: 200, durationMs: 0, callId: body.callId,
+          body: { simulation: true, rules, candidates: winner?.targets ?? [], draftRevision: router.draftRevision,
+            note: "Draft matching only. Target weights are candidates; no runtime assignment or GuardRail execution." } });
+      }
+      if (!router.activeRevision || router.activeRevision !== body.expectedRevision) throw new ValidationError("Published Router revision changed. Reload before testing.");
+      if (!router.endpointIds.includes(body.endpointId)) throw new ValidationError("Select an Endpoint bound to this Router.");
+      routingInputSchema.parse({ endpointId: body.endpointId, fields: body.fields, business_request: businessRequest, endpoint_request: body.endpointRequest });
+    } else {
+      await input.service.getEndpoint(body.targetId);
+      if (body.configuration !== "published" || body.action !== "execute") throw new ValidationError("Endpoint tests execute the deployed configuration.");
+    }
+    if (!playgroundRunner) throw new ControllerError("Runner is not configured.", 503, "playground_runner_unavailable");
+    return context.json(await playgroundRunner.testPath(body));
   });
   app.post("/api/v1/routers/:id/simulations", authenticated, async context => {
     await input.service.trafficRouting.get(context.req.param("id"));

@@ -9,7 +9,7 @@ import uuid
 from dataclasses import asdict, replace
 from typing import Any, Literal
 
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, Header, HTTPException, Request, Response
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -222,6 +222,8 @@ class RunnerAPI:
         self._draft_previews = draft_previews
         self._output_streams = output_streams or OutputStreamSessionStore()
         self._register()
+        from .path_testing import register_path_testing
+        register_path_testing(self)
 
     def _trace_request_id(self, fallback: str) -> str:
         """Prefer the active trace id without requiring legacy metric fakes to expose one."""
@@ -276,6 +278,7 @@ class RunnerAPI:
             endpoint_id: str,
             payload: LiteLLMGuardrailRequest,
             request: Request,
+            response: Response,
             x_api_key: str | None = Header(default=None),
         ) -> LiteLLMGuardrailResponse:
             phase = "input" if payload.input_type == "request" else "output"
@@ -320,6 +323,7 @@ class RunnerAPI:
                         )
                     self._metrics.observe_route("litellm", phase, route_matched)
                     observation.complete(decision)
+                    self._path_response_headers(response, decision)
                     return _litellm_response(decision)
                 except RoutingError as error:
                     observation.fail("runtime", error.reason)
@@ -348,6 +352,7 @@ class RunnerAPI:
             endpoint_id: str,
             payload: EvaluateRequest,
             request: Request,
+            response: Response,
             x_api_key: str | None = Header(default=None),
         ):
             expected_adapter = "a2a-guard" if payload.protocol == "a2a" else "generic-http-guard"
@@ -396,6 +401,7 @@ class RunnerAPI:
                         payload.protocol, payload.resolved_phase, route_matched,
                     )
                     observation.complete(decision)
+                    self._path_response_headers(response, decision)
                     return {**jsonable_encoder(asdict(decision)), "call_id": protection_request.call_id}
                 except RoutingError as error:
                     observation.fail("runtime", error.reason)
@@ -686,6 +692,11 @@ class RunnerAPI:
         expected = f"Bearer {self._controller_token}"
         if authorization is None or not hmac.compare_digest(authorization, expected):
             raise HTTPException(status_code=401, detail="Controller authentication failed.")
+
+    def _path_response_headers(self, response: Response, decision: ProtectionDecision) -> None:
+        response.headers["x-guard-runner-id"] = self._runner_id
+        if decision.route_assignment:
+            response.headers["x-guard-route-assignment"] = json.dumps(decision.route_assignment, ensure_ascii=True, separators=(",", ":"))
 
     async def _emit_telemetry(
         self,
