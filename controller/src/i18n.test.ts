@@ -48,6 +48,21 @@ describe("Policy Library jurisdiction translations", () => {
 });
 
 describe("Controller operations translations", () => {
+  it("provides Playground mode copy for the page and Endpoint shortcut in both languages", async () => {
+    const { default: i18n } = await import("./i18n");
+    const en = i18n.getFixedT("en");
+    const zh = i18n.getFixedT("zh-CN");
+    expect(en("playground.advancedMode")).toBe("Advanced mode");
+    expect(zh("playground.advancedMode")).toBe("高级模式");
+    expect(en("playground.simpleMode")).toBe("Simple mode");
+    expect(zh("playground.simpleMode")).toBe("普通模式");
+    for (const language of ["en", "zh-CN"]) {
+      for (const key of ["modeLabel", "advancedDescription"]) {
+        expect(i18n.exists(`playground.${key}`, { lng: language, fallbackLng: false })).toBe(true);
+      }
+    }
+  });
+
   it("keeps Runner and activity copy in the shared resource catalog", async () => {
     const { default: i18n } = await import("./i18n");
     const en = i18n.getFixedT("en");

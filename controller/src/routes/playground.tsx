@@ -1,6 +1,5 @@
 import { AdvancedPlayground } from "@/components/playground/advanced-playground";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { useRoutingText } from "@/components/traffic-routing/form";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -39,7 +38,6 @@ type PlaygroundTargetSelection =
 export function PlaygroundPage() {
   const { t } = useTranslation();
   const auth = useAuth();
-  const text = useRoutingText();
   const [advanced, setAdvanced] = useState(
     () =>
       new URLSearchParams(window.location.search).get("mode") === "advanced",
@@ -108,19 +106,16 @@ export function PlaygroundPage() {
         title={t("pages.playground.title")}
         description={
           advanced
-            ? text(
-                "构建 HTTP 请求，验证 Router 分配和 Endpoint 检测结果。",
-                "Build an HTTP request to inspect Router assignments and Endpoint evaluations.",
-              )
+            ? t("playground.advancedDescription")
             : t("pages.playground.description")
         }
         action={
-          <TabsList aria-label={text("Playground 模式", "Playground mode")}>
+          <TabsList aria-label={t("playground.modeLabel")}>
             <TabsTrigger value="simple">
-              {text("普通模式", "Simple mode")}
+              {t("playground.simpleMode")}
             </TabsTrigger>
             <TabsTrigger value="advanced">
-              {text("高级模式", "Advanced mode")}
+              {t("playground.advancedMode")}
             </TabsTrigger>
           </TabsList>
         }

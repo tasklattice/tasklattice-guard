@@ -754,6 +754,10 @@ const resources = {
       },
       playground: {
         sessionTitle: "Protected chat",
+        modeLabel: "Playground mode",
+        simpleMode: "Simple mode",
+        advancedMode: "Advanced mode",
+        advancedDescription: "Build an HTTP request to inspect Router assignments and Endpoint evaluations.",
         active: "Active",
         sessionDescription: "The selected Guardrail checks every request before the model and every response before it reaches you.",
         selectedGuardrail: "Selected Guardrail",
@@ -3542,6 +3546,10 @@ const resources = {
       },
       playground: {
         sessionTitle: "受保护的聊天",
+        modeLabel: "Playground 模式",
+        simpleMode: "普通模式",
+        advancedMode: "高级模式",
+        advancedDescription: "构建 HTTP 请求，验证 Router 分配和 Endpoint 检测结果。",
         active: "进行中",
         sessionDescription: "所选 Guardrail 会在请求到达模型前、响应返回给你前分别执行检查。",
         selectedGuardrail: "已选 Guardrail",

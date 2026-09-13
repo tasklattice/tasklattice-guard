@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { createMemoryHistory, createRootRoute, createRouter, RouterContextProvider } from "@tanstack/react-router";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -21,6 +22,7 @@ vi.mock("react-i18next", () => ({
         "common.back": "Back",
         "common.close": "Close",
         "common.retry": "Retry",
+        "playground.advancedMode": "Advanced mode",
         "endpoints.register": "Add endpoint",
         "endpoints.registering": "Registering…",
         "endpoints.registerDescription": "Register one concrete AI Gateway instance.",
@@ -190,7 +192,8 @@ function registration(overrides: Partial<Endpoint> = {}): EndpointRegistration {
 
 function renderWithProviders(node: React.ReactNode) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-  return render(<QueryClientProvider client={client}>{node}</QueryClientProvider>);
+  const router = createRouter({ routeTree: createRootRoute(), history: createMemoryHistory({ initialEntries: ["/integration/endpoint"] }) });
+  return render(<QueryClientProvider client={client}><RouterContextProvider router={router}>{node}</RouterContextProvider></QueryClientProvider>);
 }
 
 describe("Endpoint onboarding", () => {
@@ -405,6 +408,11 @@ describe("Endpoint onboarding", () => {
     renderWithProviders(<EndpointsPage />);
 
     fireEvent.click(await screen.findByText(item.name));
+    const playgroundLink = await screen.findByRole("link", { name: "Advanced mode · Endpoint" });
+    const playgroundUrl = new URL(playgroundLink.getAttribute("href")!, "http://localhost");
+    expect(playgroundUrl.pathname).toBe("/playground");
+    expect(playgroundUrl.searchParams.get("mode")).toBe("advanced");
+    expect(playgroundUrl.searchParams.get("endpoint")).toBe(item.id);
     fireEvent.click(await screen.findByRole("button", { name: "endpoints.deleteAction" }));
     await waitFor(() => expect(getEndpointDeletionImpactMock).toHaveBeenCalledTimes(1));
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
