@@ -1,7 +1,7 @@
 TaskLattice Guard installed two application component types:
 
   Controller: {{ include "tali-guard.controllerName" . }}
-  GuardRails 0: {{ include "tali-guard.defaultRunnerName" . }} (2 replicas by default)
+  GuardRails 0: {{ include "tali-guard.defaultRunnerName" . }} ({{ .Values.runner.default.replicaCount }} replicas)
 
 GuardRails 0 is the mandatory baseline and authoritative NeMo compiler.
 Its PodDisruptionBudget keeps at least one Runner available.

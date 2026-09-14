@@ -37,7 +37,8 @@ runner:
     tag: dev
     pullPolicy: Never
   default:
-    replicaCount: 2
+    # One Runner is sufficient for local development; production defaults to two.
+    replicaCount: 1
   service:
     public:
       enabled: true
@@ -61,8 +62,8 @@ postgresql:
     enabled: true
     size: 2Gi
 
-# Two GuardRails 0 replicas must share input/output call-version context. This
-# local Redis is infrastructure only; production uses runner.callContextRedisUrl.
+# Keep shared input/output call-version context available when scaling locally.
+# This Redis is infrastructure only; production uses runner.callContextRedisUrl.
 redis:
   enabled: true
   image:

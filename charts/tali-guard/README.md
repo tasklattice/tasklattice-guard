@@ -21,10 +21,10 @@ Guard application components.
 | Purpose | Default image/configuration | Required |
 | --- | --- | --- |
 | Controller | `ghcr.io/tasklattice/tali-guard-controller:0.2.0` | Yes, exactly one replica |
-| Runner | `ghcr.io/tasklattice/tali-guard-runner:0.2.0` | Yes, GuardRails 0 >= 2 replicas |
+| Runner | `ghcr.io/tasklattice/tali-guard-runner:0.2.0` | Yes, minimum 1; production defaults to 2 replicas |
 | PostgreSQL | External PostgreSQL 14+ | Yes |
 | Development PostgreSQL | `postgres:17-alpine` | Only when `postgresql.enabled=true` |
-| Development Redis | `redis:7.4-alpine` | Local two-replica GuardRails 0 only |
+| Development Redis | `redis:7.4-alpine` | Included locally to support scaling beyond one Runner |
 | Redis | `runner.callContextRedisUrl` | Only when any Runner pool has more than one replica |
 
 Endpoint setup instructions always target the stable Runtime Service through
@@ -225,7 +225,8 @@ helm upgrade --install tali-guard ./charts/tali-guard \
 ## Scaling contract
 
 Controller remains one replica in this chart version. GuardRails 0 defaults to
-two StatefulSet replicas with `minAvailable: 1`; the generated Pods are
+one StatefulSet replica in `values-dev.yaml` and two in production `values.yaml`,
+with a minimum of one replica and `minAvailable: 1`; the production Pods are
 `<release>-tali-guard-runner-0` and `-1`. Scale the data plane with
 `runner.default.replicaCount` and `runner.pools`. Production must set
 `runner.callContextRedisUrl` when any pool has more than one replica so

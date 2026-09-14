@@ -101,8 +101,8 @@ app.kubernetes.io/part-of: tasklattice-guard
 {{- if ne (int .Values.controller.replicaCount) 1 }}
 {{- fail "controller.replicaCount must be 1 in this release; Runner pools provide the horizontal data-plane scale" }}
 {{- end }}
-{{- if lt (int .Values.runner.default.replicaCount) 2 }}
-{{- fail "runner.default.replicaCount must be at least 2 so GuardRails 0 can keep one Runner available during rolling updates" }}
+{{- if lt (int .Values.runner.default.replicaCount) 1 }}
+{{- fail "runner.default.replicaCount must be at least 1; GuardRails 0 is the mandatory baseline Runner pool" }}
 {{- end }}
 {{- if and .Values.database.url .Values.database.existingSecret }}
 {{- fail "set either database.url or database.existingSecret, not both" }}

@@ -329,16 +329,16 @@ def test_endpoint_tracks_runner_service_namespace_and_port():
     )
 
 
-def test_guardrails_zero_cannot_drop_below_two_replicas():
+def test_guardrails_zero_cannot_drop_below_one_replica():
     result = subprocess.run(
-        ["helm", "template", "contract", str(CHART), *REQUIRED, "--set", "runner.default.replicaCount=1"],
+        ["helm", "template", "contract", str(CHART), *REQUIRED, "--set", "runner.default.replicaCount=0"],
         check=False,
         capture_output=True,
         text=True,
     )
 
     assert result.returncode != 0
-    assert "GuardRails 0" in result.stderr or "minimum: got 1, want 2" in result.stderr
+    assert "GuardRails 0" in result.stderr or "minimum: got 0, want 1" in result.stderr
 
 
 def test_controller_is_singleton_in_this_release():
@@ -383,7 +383,7 @@ def test_development_values_are_self_contained_and_keep_two_app_components():
     runner_workload = next(item for item in stateful_sets if item["metadata"]["name"] == "tali-guard-runner")
     runner_pod = runner_workload["spec"]["template"]["spec"]
     assert runner_workload["spec"]["serviceName"] == "tali-guard-runner-headless"
-    assert runner_workload["spec"]["replicas"] == 2
+    assert runner_workload["spec"]["replicas"] == 1
     assert runner_pod["containers"][0]["image"].endswith(":dev")
     assert controller_pod["containers"][0]["image"].endswith(":dev")
     controller_env = {item["name"]: item for item in controller_pod["containers"][0]["env"]}

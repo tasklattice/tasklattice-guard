@@ -1,46 +1,125 @@
 {
   "$schema": "https://json-schema.org/draft-07/schema#",
   "type": "object",
-  "required": ["controller", "runner", "database", "postgresql", "redis", "security"],
+  "required": [
+    "controller",
+    "runner",
+    "database",
+    "postgresql",
+    "redis",
+    "security"
+  ],
   "properties": {
-    "nameOverride": {"type": "string"},
-    "fullnameOverride": {"type": "string"},
-    "imagePullSecrets": {"type": "array"},
-    "rolloutRevision": {"type": "string"},
+    "nameOverride": {
+      "type": "string"
+    },
+    "fullnameOverride": {
+      "type": "string"
+    },
+    "imagePullSecrets": {
+      "type": "array"
+    },
+    "rolloutRevision": {
+      "type": "string"
+    },
     "controller": {
       "type": "object",
-      "required": ["replicaCount", "image", "publicUrl", "trustedOrigins", "auth", "service"],
+      "required": [
+        "replicaCount",
+        "image",
+        "publicUrl",
+        "trustedOrigins",
+        "auth",
+        "service"
+      ],
       "properties": {
-        "replicaCount": {"type": "integer", "minimum": 1, "maximum": 1},
-        "publicUrl": {"type": "string", "pattern": "^https?://"},
+        "replicaCount": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1
+        },
+        "publicUrl": {
+          "type": "string",
+          "pattern": "^https?://"
+        },
         "trustedOrigins": {
           "type": "array",
           "minItems": 1,
-          "items": {"type": "string", "pattern": "^https?://"}
+          "items": {
+            "type": "string",
+            "pattern": "^https?://"
+          }
         },
         "auth": {
           "type": "object",
-          "required": ["minPasswordLength", "allowLocalDefaultCredentials"],
+          "required": [
+            "minPasswordLength",
+            "allowLocalDefaultCredentials"
+          ],
           "properties": {
-            "minPasswordLength": {"type": "integer", "minimum": 5, "maximum": 128},
-            "allowLocalDefaultCredentials": {"type": "boolean"}
+            "minPasswordLength": {
+              "type": "integer",
+              "minimum": 5,
+              "maximum": 128
+            },
+            "allowLocalDefaultCredentials": {
+              "type": "boolean"
+            }
           }
         },
-        "image": {"$ref": "#/definitions/image"},
+        "image": {
+          "$ref": "#/definitions/image"
+        },
         "service": {
           "type": "object",
-          "required": ["type", "httpPort", "grpcPort", "public"],
+          "required": [
+            "type",
+            "httpPort",
+            "grpcPort",
+            "public"
+          ],
           "properties": {
-            "type": {"type": "string", "enum": ["ClusterIP", "NodePort", "LoadBalancer"]},
-            "httpPort": {"type": "integer", "minimum": 1, "maximum": 65535},
-            "grpcPort": {"type": "integer", "minimum": 1, "maximum": 65535},
+            "type": {
+              "type": "string",
+              "enum": [
+                "ClusterIP",
+                "NodePort",
+                "LoadBalancer"
+              ]
+            },
+            "httpPort": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "grpcPort": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
             "public": {
               "type": "object",
-              "required": ["enabled", "type", "port"],
+              "required": [
+                "enabled",
+                "type",
+                "port"
+              ],
               "properties": {
-                "enabled": {"type": "boolean"},
-                "type": {"type": "string", "enum": ["NodePort", "LoadBalancer"]},
-                "port": {"type": "integer", "minimum": 1, "maximum": 65535}
+                "enabled": {
+                  "type": "boolean"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "NodePort",
+                    "LoadBalancer"
+                  ]
+                },
+                "port": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 65535
+                }
               }
             }
           }
@@ -49,237 +128,570 @@
     },
     "runner": {
       "type": "object",
-      "required": ["image", "default", "pools", "service", "callContextRedisUrl"],
+      "required": [
+        "image",
+        "default",
+        "pools",
+        "service",
+        "callContextRedisUrl"
+      ],
       "properties": {
-        "image": {"$ref": "#/definitions/image"},
+        "image": {
+          "$ref": "#/definitions/image"
+        },
         "default": {
           "type": "object",
-          "required": ["replicaCount", "maxConcurrency"],
+          "required": [
+            "replicaCount",
+            "maxConcurrency"
+          ],
           "properties": {
-            "replicaCount": {"type": "integer", "minimum": 2},
-            "maxConcurrency": {"type": "integer", "minimum": 1}
+            "replicaCount": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "maxConcurrency": {
+              "type": "integer",
+              "minimum": 1
+            }
           }
         },
         "pools": {
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["name", "replicaCount", "maxConcurrency", "resources"],
+            "required": [
+              "name",
+              "replicaCount",
+              "maxConcurrency",
+              "resources"
+            ],
             "properties": {
-              "name": {"type": "string", "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"},
-              "replicaCount": {"type": "integer", "minimum": 1},
-              "maxConcurrency": {"type": "integer", "minimum": 1},
-              "compilerCapable": {"type": "boolean"}
-            }
-          }
-        },
-        "service": {
-          "type": "object",
-          "required": ["type", "port", "public"],
-          "properties": {
-            "type": {"type": "string", "enum": ["ClusterIP", "NodePort", "LoadBalancer"]},
-            "port": {"type": "integer", "minimum": 1, "maximum": 65535},
-            "public": {
-              "type": "object",
-              "required": ["enabled", "type", "port"],
-              "properties": {
-                "enabled": {"type": "boolean"},
-                "type": {"type": "string", "enum": ["NodePort", "LoadBalancer"]},
-                "port": {"type": "integer", "minimum": 1, "maximum": 65535}
+              "name": {
+                "type": "string",
+                "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+              },
+              "replicaCount": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "maxConcurrency": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "compilerCapable": {
+                "type": "boolean"
               }
             }
           }
         },
-        "callContextRedisUrl": {"type": "string"}
+        "service": {
+          "type": "object",
+          "required": [
+            "type",
+            "port",
+            "public"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "ClusterIP",
+                "NodePort",
+                "LoadBalancer"
+              ]
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "public": {
+              "type": "object",
+              "required": [
+                "enabled",
+                "type",
+                "port"
+              ],
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "NodePort",
+                    "LoadBalancer"
+                  ]
+                },
+                "port": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 65535
+                }
+              }
+            }
+          }
+        },
+        "callContextRedisUrl": {
+          "type": "string"
+        }
       }
     },
     "database": {
       "type": "object",
-      "required": ["url", "existingSecret", "secretKey"],
+      "required": [
+        "url",
+        "existingSecret",
+        "secretKey"
+      ],
       "properties": {
-        "url": {"type": "string"},
-        "existingSecret": {"type": "string"},
-        "secretKey": {"type": "string", "minLength": 1}
+        "url": {
+          "type": "string"
+        },
+        "existingSecret": {
+          "type": "string"
+        },
+        "secretKey": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "postgresql": {
       "type": "object",
-      "required": ["enabled", "image", "auth", "service", "persistence"],
+      "required": [
+        "enabled",
+        "image",
+        "auth",
+        "service",
+        "persistence"
+      ],
       "properties": {
-        "enabled": {"type": "boolean"},
-        "image": {"$ref": "#/definitions/image"},
+        "enabled": {
+          "type": "boolean"
+        },
+        "image": {
+          "$ref": "#/definitions/image"
+        },
         "auth": {
           "type": "object",
-          "required": ["database", "username", "password", "passwordKey"],
+          "required": [
+            "database",
+            "username",
+            "password",
+            "passwordKey"
+          ],
           "properties": {
-            "database": {"type": "string", "minLength": 1},
-            "username": {"type": "string", "minLength": 1},
-            "password": {"type": "string"},
-            "passwordKey": {"type": "string", "minLength": 1}
+            "database": {
+              "type": "string",
+              "minLength": 1
+            },
+            "username": {
+              "type": "string",
+              "minLength": 1
+            },
+            "password": {
+              "type": "string"
+            },
+            "passwordKey": {
+              "type": "string",
+              "minLength": 1
+            }
           }
         },
         "service": {
           "type": "object",
-          "required": ["port"],
-          "properties": {"port": {"type": "integer", "minimum": 1, "maximum": 65535}}
+          "required": [
+            "port"
+          ],
+          "properties": {
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            }
+          }
         },
         "persistence": {
           "type": "object",
-          "required": ["enabled", "size", "storageClass"],
+          "required": [
+            "enabled",
+            "size",
+            "storageClass"
+          ],
           "properties": {
-            "enabled": {"type": "boolean"},
-            "size": {"type": "string", "minLength": 1},
-            "storageClass": {"type": "string"}
+            "enabled": {
+              "type": "boolean"
+            },
+            "size": {
+              "type": "string",
+              "minLength": 1
+            },
+            "storageClass": {
+              "type": "string"
+            }
           }
         }
       }
     },
     "redis": {
       "type": "object",
-      "required": ["enabled", "image", "service", "resources"],
+      "required": [
+        "enabled",
+        "image",
+        "service",
+        "resources"
+      ],
       "properties": {
-        "enabled": {"type": "boolean"},
-        "image": {"$ref": "#/definitions/image"},
+        "enabled": {
+          "type": "boolean"
+        },
+        "image": {
+          "$ref": "#/definitions/image"
+        },
         "service": {
           "type": "object",
-          "required": ["port"],
-          "properties": {"port": {"type": "integer", "minimum": 1, "maximum": 65535}}
+          "required": [
+            "port"
+          ],
+          "properties": {
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            }
+          }
         },
-        "resources": {"type": "object"}
+        "resources": {
+          "type": "object"
+        }
       }
     },
     "observability": {
       "type": "object",
-      "required": ["performanceDebug", "tracing", "profiling", "slo", "serviceMonitor", "prometheusRule", "grafanaDashboard"],
+      "required": [
+        "performanceDebug",
+        "tracing",
+        "profiling",
+        "slo",
+        "serviceMonitor",
+        "prometheusRule",
+        "grafanaDashboard"
+      ],
       "properties": {
         "performanceDebug": {
           "type": "object",
-          "required": ["enabled"],
+          "required": [
+            "enabled"
+          ],
           "properties": {
-            "enabled": {"type": "boolean"}
+            "enabled": {
+              "type": "boolean"
+            }
           }
         },
         "tracing": {
           "type": "object",
-          "required": ["enabled", "otlpEndpoint", "sampleRatio"],
+          "required": [
+            "enabled",
+            "otlpEndpoint",
+            "sampleRatio"
+          ],
           "properties": {
-            "enabled": {"type": "boolean"},
-            "otlpEndpoint": {"type": "string"},
-            "sampleRatio": {"type": "number", "minimum": 0, "maximum": 1}
+            "enabled": {
+              "type": "boolean"
+            },
+            "otlpEndpoint": {
+              "type": "string"
+            },
+            "sampleRatio": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
           }
         },
         "profiling": {
           "type": "object",
-          "required": ["enabled", "serverAddress", "sampleRate"],
+          "required": [
+            "enabled",
+            "serverAddress",
+            "sampleRate"
+          ],
           "properties": {
-            "enabled": {"type": "boolean"},
-            "serverAddress": {"type": "string"},
-            "sampleRate": {"type": "integer", "minimum": 1, "maximum": 1000}
+            "enabled": {
+              "type": "boolean"
+            },
+            "serverAddress": {
+              "type": "string"
+            },
+            "sampleRate": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000
+            }
           }
         },
         "slo": {
           "type": "object",
-          "required": ["availabilityTarget", "runtimeP90Seconds", "runtimeP95Seconds", "runtimeP99Seconds", "completeCoverageTarget", "burnRateFast", "burnRateSlow", "heartbeatMaxAgeSeconds", "telemetryMaxAgeSeconds", "pipelineMaxAgeSeconds"],
+          "required": [
+            "availabilityTarget",
+            "runtimeP90Seconds",
+            "runtimeP95Seconds",
+            "runtimeP99Seconds",
+            "completeCoverageTarget",
+            "burnRateFast",
+            "burnRateSlow",
+            "heartbeatMaxAgeSeconds",
+            "telemetryMaxAgeSeconds",
+            "pipelineMaxAgeSeconds"
+          ],
           "properties": {
-            "availabilityTarget": {"type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1},
-            "runtimeP90Seconds": {"type": "number", "exclusiveMinimum": 0},
-            "runtimeP95Seconds": {"type": "number", "exclusiveMinimum": 0},
-            "runtimeP99Seconds": {"type": "number", "exclusiveMinimum": 0},
-            "completeCoverageTarget": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
-            "burnRateFast": {"type": "number", "exclusiveMinimum": 0},
-            "burnRateSlow": {"type": "number", "exclusiveMinimum": 0},
-            "heartbeatMaxAgeSeconds": {"type": "number", "exclusiveMinimum": 0},
-            "telemetryMaxAgeSeconds": {"type": "number", "exclusiveMinimum": 0},
-            "pipelineMaxAgeSeconds": {"type": "number", "exclusiveMinimum": 0}
+            "availabilityTarget": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "exclusiveMaximum": 1
+            },
+            "runtimeP90Seconds": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "runtimeP95Seconds": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "runtimeP99Seconds": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "completeCoverageTarget": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1
+            },
+            "burnRateFast": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "burnRateSlow": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "heartbeatMaxAgeSeconds": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "telemetryMaxAgeSeconds": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "pipelineMaxAgeSeconds": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
           }
         },
         "serviceMonitor": {
           "type": "object",
-          "required": ["enabled", "interval", "scrapeTimeout", "labels"],
+          "required": [
+            "enabled",
+            "interval",
+            "scrapeTimeout",
+            "labels"
+          ],
           "properties": {
-            "enabled": {"type": "boolean"},
-            "interval": {"type": "string", "pattern": "^[0-9]+(ms|s|m|h)$"},
-            "scrapeTimeout": {"type": "string", "pattern": "^[0-9]+(ms|s|m|h)$"},
-            "labels": {"type": "object"}
+            "enabled": {
+              "type": "boolean"
+            },
+            "interval": {
+              "type": "string",
+              "pattern": "^[0-9]+(ms|s|m|h)$"
+            },
+            "scrapeTimeout": {
+              "type": "string",
+              "pattern": "^[0-9]+(ms|s|m|h)$"
+            },
+            "labels": {
+              "type": "object"
+            }
           }
         },
         "prometheusRule": {
           "type": "object",
-          "required": ["enabled", "labels"],
+          "required": [
+            "enabled",
+            "labels"
+          ],
           "properties": {
-            "enabled": {"type": "boolean"},
-            "labels": {"type": "object"}
+            "enabled": {
+              "type": "boolean"
+            },
+            "labels": {
+              "type": "object"
+            }
           }
         },
         "grafanaDashboard": {
           "type": "object",
-          "required": ["enabled", "labels", "annotations"],
+          "required": [
+            "enabled",
+            "labels",
+            "annotations"
+          ],
           "properties": {
-            "enabled": {"type": "boolean"},
-            "labels": {"type": "object"},
-            "annotations": {"type": "object"}
+            "enabled": {
+              "type": "boolean"
+            },
+            "labels": {
+              "type": "object"
+            },
+            "annotations": {
+              "type": "object"
+            }
           }
         }
       }
     },
     "security": {
       "type": "object",
-      "required": ["customCa", "metrics", "bootstrapAdmin", "controlSecret", "runtimeLogs", "artifactSigning", "controlTls"],
+      "required": [
+        "customCa",
+        "metrics",
+        "bootstrapAdmin",
+        "controlSecret",
+        "runtimeLogs",
+        "artifactSigning",
+        "controlTls"
+      ],
       "properties": {
         "customCa": {
           "type": "object",
-          "required": ["existingSecret", "certificateKey"],
+          "required": [
+            "existingSecret",
+            "certificateKey"
+          ],
           "properties": {
-            "existingSecret": {"type": "string"},
-            "certificateKey": {"type": "string", "minLength": 1}
+            "existingSecret": {
+              "type": "string"
+            },
+            "certificateKey": {
+              "type": "string",
+              "minLength": 1
+            }
           }
         },
         "metrics": {
           "type": "object",
-          "required": ["existingSecret", "tokenKey"],
+          "required": [
+            "existingSecret",
+            "tokenKey"
+          ],
           "properties": {
-            "existingSecret": {"type": "string"},
-            "tokenKey": {"type": "string", "minLength": 1}
+            "existingSecret": {
+              "type": "string"
+            },
+            "tokenKey": {
+              "type": "string",
+              "minLength": 1
+            }
           }
         },
         "bootstrapAdmin": {
           "type": "object",
-          "required": ["existingSecret", "email", "password", "name", "emailKey", "passwordKey", "nameKey"],
+          "required": [
+            "existingSecret",
+            "email",
+            "password",
+            "name",
+            "emailKey",
+            "passwordKey",
+            "nameKey"
+          ],
           "properties": {
-            "existingSecret": {"type": "string"},
-            "email": {"type": "string"},
-            "password": {"type": "string"},
-            "name": {"type": "string", "minLength": 1}
+            "existingSecret": {
+              "type": "string"
+            },
+            "email": {
+              "type": "string"
+            },
+            "password": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1
+            }
           }
         },
         "controlSecret": {
           "type": "object",
-          "required": ["existingSecret", "runnerTokenKey", "betterAuthSecretKey"],
-          "properties": {"existingSecret": {"type": "string"}}
+          "required": [
+            "existingSecret",
+            "runnerTokenKey",
+            "betterAuthSecretKey"
+          ],
+          "properties": {
+            "existingSecret": {
+              "type": "string"
+            }
+          }
         },
         "runtimeLogs": {
           "type": "object",
-          "required": ["existingSecret", "encryptionKeyKey"],
+          "required": [
+            "existingSecret",
+            "encryptionKeyKey"
+          ],
           "properties": {
-            "existingSecret": {"type": "string"},
-            "encryptionKeyKey": {"type": "string", "minLength": 1}
+            "existingSecret": {
+              "type": "string"
+            },
+            "encryptionKeyKey": {
+              "type": "string",
+              "minLength": 1
+            }
           }
         },
         "artifactSigning": {
           "type": "object",
-          "required": ["existingSecret", "privateKey", "publicKey", "privateKeyKey", "publicKeyKey"],
+          "required": [
+            "existingSecret",
+            "privateKey",
+            "publicKey",
+            "privateKeyKey",
+            "publicKeyKey"
+          ],
           "properties": {
-            "existingSecret": {"type": "string"},
-            "privateKey": {"type": "string"},
-            "publicKey": {"type": "string"}
+            "existingSecret": {
+              "type": "string"
+            },
+            "privateKey": {
+              "type": "string"
+            },
+            "publicKey": {
+              "type": "string"
+            }
           }
         },
         "controlTls": {
           "type": "object",
-          "required": ["existingSecret", "autoGenerate", "caKey", "controllerCertificateKey", "controllerPrivateKeyKey", "runnerCertificateKey", "runnerPrivateKeyKey"],
+          "required": [
+            "existingSecret",
+            "autoGenerate",
+            "caKey",
+            "controllerCertificateKey",
+            "controllerPrivateKeyKey",
+            "runnerCertificateKey",
+            "runnerPrivateKeyKey"
+          ],
           "properties": {
-            "existingSecret": {"type": "string"},
-            "autoGenerate": {"type": "boolean"}
+            "existingSecret": {
+              "type": "string"
+            },
+            "autoGenerate": {
+              "type": "boolean"
+            }
           }
         }
       }
@@ -288,11 +700,28 @@
   "definitions": {
     "image": {
       "type": "object",
-      "required": ["repository", "tag", "pullPolicy"],
+      "required": [
+        "repository",
+        "tag",
+        "pullPolicy"
+      ],
       "properties": {
-        "repository": {"type": "string", "minLength": 1},
-        "tag": {"type": "string", "minLength": 1},
-        "pullPolicy": {"type": "string", "enum": ["Always", "IfNotPresent", "Never"]}
+        "repository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tag": {
+          "type": "string",
+          "minLength": 1
+        },
+        "pullPolicy": {
+          "type": "string",
+          "enum": [
+            "Always",
+            "IfNotPresent",
+            "Never"
+          ]
+        }
       }
     }
   }
