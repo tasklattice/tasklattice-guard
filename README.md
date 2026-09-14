@@ -1,394 +1,105 @@
 # TaskLattice Guard
 
-TaskLattice Guard is split into exactly two application components:
+**Configurable input and output protection for AI applications and gateways.**
 
-- **Guard Controller** — a TypeScript full-stack service (React, TanStack,
-  Hono, Better Auth, Drizzle, PostgreSQL) that owns users, permissions,
-  Guardrails, Endpoints, routers, desired state, reconciliation, audit,
-  telemetry ingest, and capacity evaluation.
-- **Guard Runner** — a Python/FastAPI data plane powered by NVIDIA NeMo
-  Guardrails. It receives signed immutable artifacts from Controller, prewarms
-  them, atomically activates generations, authenticates Endpoint traffic,
-  and returns protection decisions.
+TaskLattice Guard helps teams control what reaches their AI models and what
+comes back to users. It checks prompts and responses against your policies,
+then returns an allow, block, or text-replacement result for your application
+or gateway to apply.
 
-## Controller API reference
+It combines a web console for designing, testing, and publishing protection
+with a runtime API for checking live traffic—including streamed responses.
+Teams can manage different protection configurations for different applications
+without embedding policy logic in every gateway.
 
-The Controller serves a code-generated OpenAPI 3.1 contract at `/api/openapi.json`,
-a browsable reference at `/api/docs`, and a compact agent index at `/api/llms.txt`.
-Use `?module=routers` or `?operationId=postRoutersByIdPublish` on the JSON endpoint
-to retrieve a complete subset with its referenced schemas and token permissions.
+## What you can do
 
-Run `npm run openapi:generate --prefix controller` after API changes and commit
-[the generated contract](controller/openapi/controller.openapi.json). CI and server
-builds run `npm run openapi:check --prefix controller` to reject stale documents.
-See [the design review and calling conventions](docs/openapi-design-review.zh-CN.md)
-for scope and generation sources. See [the API contract conventions](docs/api-contract.zh-CN.md)
-for product tags, resource paths, authentication, idempotency, and retry behavior.
+- **Protect prompts and responses.** Check for sensitive data, prompt injection,
+  harmful content, and application-specific restrictions using configurable
+  local rules and model-backed checks.
+- **Build and test your own protection.** Compose versioned Policies into a
+  Guardrail, tune rules and actions, and validate changes before publishing.
+- **Route traffic to the right Guardrail.** Match request characteristics such
+  as headers or model names, then distribute matching calls across Guardrail
+  versions with configurable percentages.
+- **Try changes before enforcing them.** Use Playground to inspect behavior,
+  or integrate in dry run so your gateway observes results without changing
+  the application response.
+- **Understand what happened.** Inspect runtime decisions, routing distribution,
+  validation results, and publication history in the console.
 
-## Architecture and HA boundary
+The included Default Guardrail provides local checks without a detection-model
+setup. Model-backed protection can be configured separately. Coverage depends
+on the policies you enable and the content you submit; streamed output may
+need to be buffered when a policy requires the complete response.
 
-Traffic flows from left to right. The AI Gateway calls the stable Runtime
-Service directly; Controller and PostgreSQL never enter the synchronous data
-path.
+## How it fits into your application
+
+Your application or gateway calls Guard before sending input to a model and
+before delivering its output. Guard checks the content; your integration applies
+the returned decision.
 
 ```text
- External clients                      Kubernetes cluster
-                                      ┌───────────────────────────────────────────────────────┐
- ┌──────────────────────┐             │ CONTROL PLANE              DATA PLANE                 │
- │ AI App / LiteLLM /   │             │                                                       │
- │ compatible AI GW     │             │ ┌──────────────────┐       ┌───────────────────────┐  │
- └──────────┬───────────┘             │ │ Guard Controller │◀─────▶│ Guard Runner          │  │
-            │                         │ │ UI / API / Auth   │ gRPC  │ StatefulSet           │  │
-            │                         │ │ Reconciliation    │ mTLS  │                       │  │
-            │                         │ └─────────┬────────┘       │ tali-guard-runner-0   │  │
-            │                         │           │                │ tali-guard-runner-1   │  │
-            │                         │           ▼                └───────────┬───────────┘  │
-            │                         │ ┌──────────────────┐                   │              │
-            │                         │ │ PostgreSQL       │           ┌───────▼────────┐     │
-            │                         │ │ desired state    │           │ Shared Redis   │     │
-            │                         │ │ audit / metadata │           │ call_id context│     │
-            │                         │ └──────────────────┘           └────────────────┘     │
-            │                         │                                                       │
-            └── input / output check ─┼────▶ Runtime Service :8091 ────────▶ Ready Runner     │
-                                      │                                                       │
- ┌──────────────────────┐             │                                                       │
- │ Operators / Browser  │── HTTPS ────┼────▶ Guard Controller                               │
- └──────────────────────┘             │                                                       │
-                                      └───────────────────────────────────────────────────────┘
+Your application or AI gateway
+  ├─ Check input with Guard → apply the decision → call your model
+  └─ Check model output with Guard → apply the decision → deliver to the user
 ```
 
-The two call routes are deliberately separate:
+Three concepts connect configuration to live traffic:
 
-- **Data plane:** `AI Gateway -> Runtime Service -> Ready Runner`. The Runner
-  authenticates the Endpoint locally, resolves the Router, executes
-  NVIDIA NeMo Guardrails, and returns the protection decision. Kubernetes can
-  select either Ready replica; no Runner Pod name is exposed upstream.
-- **Control plane:** `Browser -> Controller -> PostgreSQL`, plus the
-  Runner-initiated gRPC/mTLS stream between Runner and Controller. Controller
-  sends desired generations, signed artifacts, compile requests, and Validation
-  requests. Runner returns registration, heartbeat/load summaries, compile and
-  Validation results, and artifact ACK/NACK on that stream. Runtime Event
-  telemetry uses a separate authenticated internal HTTP endpoint; Runner writes
-  events to a local WAL and retries delivery outside the synchronous request
-  path.
+| Concept | Purpose |
+| --- | --- |
+| **Guardrail** | The protection to apply: selected Policies, settings, and a published version |
+| **Router** | The routing configuration: which requests match each Route and which Guardrail versions receive them |
+| **Endpoint** | The runtime integration identity: a base URL and credential, bound to a Router |
 
-Redis belongs to the data-plane support path. It is not a general cache and
-does not select a Runner. The Redis key is a SHA-256 digest of `call_id`, and
-the value expires after five minutes. Its value contains the pinned
-Plan/Router/Endpoint resolution plus up to 20 messages and the input
-content blocks required by an output check, so it can contain protected
-content. Production Redis must therefore be private, access controlled, and
-encrypted in transit. This shared context lets input and output checks use the
-same immutable Guardrail generation when Kubernetes sends them to different
-replicas. PostgreSQL remains the authoritative control-plane store.
+A typical workflow is to configure and validate a Guardrail, publish it, create
+an Endpoint and bind it to a Router, then review and publish the routing
+configuration. Use Playground and the integration guide's verification examples
+to check the path before sending application traffic.
 
-The chart provides rolling-update availability and single-Pod fault tolerance
-with two stable StatefulSet replicas, readiness-gated Runtime Service
-endpoints, a `minAvailable: 1` PDB, `minReadySeconds: 5`, and a drain window. A
-synchronized Runner keeps serving its last-known-good generation during a
-temporary Controller outage, and an invalid artifact is rejected without
-replacing the active generation.
+Guard has two application components: **Controller** hosts the console and
+management API; **Runner**, powered by NVIDIA NeMo Guardrails, executes checks.
+Live Endpoint checks call Runner directly. See [architecture](docs/architecture.md)
+for the implementation and deployment boundaries.
 
-This is not complete infrastructure HA: the chart does not currently spread
-Runner Pods across nodes or failure domains, and the PDB protects only against
-voluntary disruptions. Production HA also requires failure-domain scheduling,
-enough spare cluster capacity, and externally managed HA PostgreSQL and Redis.
-The development PostgreSQL and Redis are single-replica dependencies.
+## Try it locally
 
-The current chart also runs one Controller replica. Controller isolation keeps
-already synchronized Runners serving during a Controller outage, but the
-management UI/API, publishing, reconciliation, and telemetry ingest remain
-unavailable until Controller returns.
-
-## Guardrail lifecycle
-
-The authoritative state vocabulary, lifecycle diagrams, and derived UI status
-rules are documented in [State ownership and lifecycles](docs/architecture.md#state-ownership-and-lifecycles).
-
-1. An administrator creates a product-level Guardrail draft in Controller.
-2. Controller converts selected protections into a canonical immutable plan.
-3. Publishing requires a healthy GuardRails 0 Runner.
-4. GuardRails 0 compiles the plan with the NeMo toolkit and returns an
-   artifact candidate.
-5. Controller recomputes its checksum, signs it with Ed25519, stores the
-   immutable artifact, and advances desired generation.
-6. Target Runner pools verify checksum and signature, prewarm all referenced
-   artifacts, then atomically switch generation. NACK preserves the previous
-   generation.
-
-The browser never authors raw NeMo YAML or Colang.
-
-## Identity and security
-
-- Human authentication, sessions, password hashing, password changes, roles,
-  and account administration are delegated to **Better Auth** in Controller.
-- The OrbStack/local baseline login is username `admin` and password `admin`.
-  Controller maps that username to the internal Better Auth identity
-  `admin@tasklattice.local`; these local-only credentials must not be used in
-  production.
-- Production has no default credentials. Its bootstrap administrator is created
-  through Better Auth from a strong deployment Secret, with a default minimum
-  password length of 12.
-- Bootstrap is idempotent: it creates a missing administrator but never resets
-  an existing administrator's password during Controller startup. Passwords
-  changed through Better Auth therefore survive restarts and upgrades.
-- Runner control uses a Runner token plus mutual TLS in production.
-- Artifacts use Controller-held Ed25519 private signing keys; Runners receive
-  only the public key.
-- Endpoint credentials are shown once. Controller stores a SHA-256 verifier
-  and Runners authenticate locally.
-- Runtime Events contain metadata by default. When a Guardrail logging level
-  qualifies for content capture, Runner encrypts the request/model content
-  before writing its WAL or sending it to Controller; PostgreSQL stores the
-  resulting ciphertext rather than plaintext.
-
-## Capacity and observability
-
-Runner heartbeat summaries include request/error/timeout deltas, inflight and
-maximum concurrency, p95 latency, cgroup-normalized process CPU and memory, active
-Guardrails, real admission-queue depth, observation interval, compile load, and
-applied generation. Controller calculates RPS using the actual observation
-window, weights error ratios by request volume, preserves worst-Runner latency,
-and includes queue/concurrency/resource pressure in replica guidance. Safe RPS
-per Runner remains an operator-provided planning value, and recommended replica
-count remains guidance rather than an automatic scaling decision.
-
-- Controller metrics: `GET /metrics` on port `8080`
-- Runner metrics: `GET /metrics` on port `8091`
-- Capacity API: `GET /api/v1/runner-pools`
-
-Helm protects both metrics endpoints with a retained, dedicated Bearer Secret
-and configures ServiceMonitor to use it. Standalone deployments can set
-`CONTROLLER_METRICS_TOKEN` and `GUARD_METRICS_TOKEN`; leaving them unset keeps
-the local endpoint unauthenticated for backward-compatible development only.
-
-The Prometheus contract separates technical execution results from firewall
-decisions and adds control convergence, artifact delivery, WAL/outbox age, and
-evidence freshness. Production defaults create ServiceMonitors,
-PrometheusRules, and the Grafana dashboard ConfigMap; the Debug profile adds
-100% tracing and continuous profiling. See
-[observability/README.md](observability/README.md)
-for installation, metric semantics, alert budgets, and the unavoidable upstream
-bypass-denominator boundary.
-
-If any Runner pool has more than one replica, Redis is required for shared
-input/output call-version pinning.
-
-## Local development
-
-Requirements: Python 3.13, uv, Node.js 24, npm, PostgreSQL, and OpenSSL.
-
-```bash
-make sync
-openssl genpkey -algorithm ED25519 -out /tmp/guard-private.pem
-openssl pkey -in /tmp/guard-private.pem -pubout -out /tmp/guard-public.pem
-```
-
-Create `.env` from [`.env.example`](.env.example), create the PostgreSQL
-database, then run Controller and Runner in separate terminals:
-
-```bash
-make controller-dev
-make runner-run
-```
-
-Controller runs database migrations and idempotently creates the bootstrap
-administrator through Better Auth. With the example local configuration, sign
-in as `admin` / `admin`; the corresponding internal Better Auth email is
-`admin@tasklattice.local`. The test suite is split into independent control
-plane, data plane, Controller/Runner communication, and contract gates; see
-[Test architecture](docs/testing.md). Run all automated checks with:
-
-```bash
-make test
-```
-
-Controller/Runner messages are defined once under
-`proto/tasklattice/guard/control/v1/`. After changing a protocol file, regenerate
-the checked-in Python and TypeScript bindings and verify them with:
-
-```bash
-make proto-generate
-make proto-check
-```
-
-The protocol contains typed business messages rather than JSON documents. See
-[`docs/architecture.md`](docs/architecture.md#control-protocol) for contract
-ownership and extension rules.
-
-## Kubernetes deployment
-
-The Default Guardrail composes 18 complete, existing local Policies and requires
-no model configuration. It includes `Baseline PII Protection`, `Pattern Matching`,
-and the local abuse, harm, bias,
-and prompt-injection Policies. Each Policy retains all of its Rules, actions,
-input/output scope, and Test Cases; Default owns its Policy order, local Rule
-order, and reviewed composition expectations, not a separate Rule allowlist.
-Policy identities and versions remain in the
-compiled bindings and inherited tests for inspection in the Guardrail console.
-
-`Advanced PII Protection (Australia)` remains available in the Policy Library,
-but is not bound to Default: 45 of its 47 detectors overlap with Pattern
-Matching. Baseline PII retains credential rejection and spaced Australian tax
-IDs that would otherwise be lost by using Pattern Matching alone. This is a
-Guardrail-local change only; no template Rules, actions, ordering, or Test Cases
-are modified, and no inherited tests are explicitly excluded.
-
-The complete `Pattern Matching` Policy covers passport formats, identity and
-financial identifiers, contact information, credentials, and addresses on input
-and output. Its existing IP, URL, business-identifier, and protected-class-word
-redactions also apply; Default does not silently narrow the Policy. These are
-local format/context checks, not exhaustive or semantic PII detection.
-
-On Controller startup, an uncustomized Default is reconciled against the bundled
-Policy catalog and recompiled if its bindings change, including Policy versions
-or Rule membership. User-customized Defaults are preserved. Publishing a custom
-Policy does not currently hot-update existing Guardrails.
-
-Guardrails execute Policy bindings in list order. A binding's optional `ruleOrder`
-lists stable Rule IDs to execute first; unlisted Rules retain their pinned template
-order afterward. Duplicate/unknown IDs are rejected. `enabledRuleIds` controls
-membership independently. Redaction changes the text seen by subsequent Rules;
-rejection stops subsequent execution. Rule action overrides take precedence over
-Policy overrides, then the template action. Compilation preserves that order
-across local, model-backed, and programmable Policies instead of sorting actions
-by severity or running independent copies of the original text in parallel.
-
-The bundled acceptance tests retain their original expectations and source Rule
-identity. A binding's optional `testCaseOverrides`, keyed by inherited source Case
-ID, supplies a reviewed Guardrail composition expectation: source Policy version,
-reason, final decision, expected Policy/Rule matches, and exact complete output
-(required for transformations). A stale version, disabled expected Rule, missing
-review, or unsafe-to-allow override is rejected. Overrides are frozen in each
-Validation request/result; original expectations remain inspectable. No override
-is inferred from an observed runtime result. Editing the draft invalidates the
-previous Validation/release gate.
-
-For catalog `1.95.0`, Default retains all 140 inherited cases and passes all 140
-without model calls or excluded tests. Its explicit order checks credentials and
-complete identifiers before broad phone/number patterns. It preserves ordinary
-phone redaction instead of changing phone Rules to rejection. Control-plane tests
-separately verify original Rule contracts, compilation/order and composition
-assertions. Data-plane tests load the signed `default-local-v1` artifact without
-compiling it, then exercise input/output callbacks, complete redaction, benign
-forwarding, and rejection.
-
-The self-contained OrbStack profile builds both images and upgrades or installs Controller,
-two GuardRails 0 Runners, development PostgreSQL and Redis, bootstrap identity,
-artifact signing, and control-channel mTLS with:
+With this repository checked out, enable OrbStack Kubernetes and have Docker,
+Helm, `kubectl`, and `make` available. From the repository root, run:
 
 ```bash
 make helm-install
 ```
 
-This single command upgrades an existing release or installs a missing one, then
-waits for workload readiness. It does not uninstall the release or clear data.
+This builds the local images, installs or upgrades the development deployment,
+and waits for workload readiness. Open [the console](http://localhost:38081)
+and sign in with `admin` / `admin`. These credentials belong to the local
+profile only; an existing account keeps its password if you have changed it.
 
-Use `make helm-install-debug` for the same OrbStack deployment with the
-`values-debug.yaml` overlay and all performance diagnostics enabled.
+Start with the Default Guardrail to explore local protection, then configure
+model-backed checks as needed. See the [local installation guide](charts/tali-guard/README.md#orbstacklocal-installation)
+for service addresses and deployment status.
 
-The Helm install command does not read model configuration or credentials from
-`.env` and does not create Provider Secrets. Runtime model configuration has four
-separate UI owners:
+Prefer to run the services from source? Follow the
+[development guide](docs/development.md). For a shared or production environment,
+use the [production deployment guide](charts/tali-guard/README.md#production-installation).
 
-| Settings page | Responsibility |
+## Documentation
+
+| I want to… | Guide |
 | --- | --- |
-| Health | Global Controller, baseline Guardrail, Runner convergence, and active model-binding readiness |
-| Providers | Endpoint, encrypted credential, discovery, connectivity, and Provider-scoped TLS policy |
-| Models | Registered inventory plus one real callability check per physical model |
-| Guardrail Catalog | Rail-specific model assignment, behavioral validation, Save, and activation |
+| Integrate an application or gateway | [Runtime API, streaming, dry run, and verification](docs/gateway-integration.md) |
+| Configure protection and validation | [Policies, the Default Guardrail, and execution order](docs/guardrail-policies.md) |
+| Connect models for protection checks | [Providers, Models, and Guardrail Catalog](docs/model-configuration.md) |
+| Route traffic across Guardrails | [Routes, selectors, and weighted distribution](docs/router-route-weighted-distribution-design.md) |
+| Test a Router or Endpoint | [Playground advanced path testing](docs/playground-advanced-mode.md) |
+| Publish, restore, or delete versions | [Revision lifecycles](docs/revision-lifecycle.md) |
+| Automate management operations | [Controller API conventions](docs/api-contract.md) and [Access Tokens](docs/account-access-tokens.md) |
+| Deploy and operate Guard | [Helm deployment](charts/tali-guard/README.md), [operations and security](docs/operations.md), and [observability](observability/README.md) |
+| Develop or understand the internals | [Development and tests](docs/development.md) and [architecture](docs/architecture.md) |
 
-A callable model is not automatically used by a Rail. The active Guardrail
-Catalog revision maps a stable binding such as `content_safety.input`,
-`content_safety.output`, or `jailbreak.input` to one registered model. One model
-may serve multiple bindings when its explicit protocol profile supports each
-contract. Input and Output assignments remain independent.
-
-DeepSeek Providers are control-plane-only. Controller rejects DeepSeek as a
-Data Plane assignment and projects only models referenced by active Data Plane
-bindings—and only their credentials—to Runner. Data Plane Rails must use a
-purpose-built or bounded low-parameter model. This boundary is enforced by the
-API and desired-state protocol, not only by filtering a browser dropdown.
-
-The current executable Rail surface is Input and Output. Retrieval, Dialog, and
-Execution are reserved manifest values for later expansion; adding them extends
-the shared binding manifest without changing Provider, Model, Policy, or
-Guardrail ownership.
-
-### Dedicated JailbreakDetect or a chat-based judge
-
-`nvidia/nemoguard-jailbreak-detect` is an additional implementation of the existing
-`tali.guard.jailbreak.v1` capability, alongside an OpenAI-compatible chat judge and
-Qwen3Guard. It does not add a new scenario, modify Policies, or recompile Guardrail
-artifacts when the selected detector changes.
-
-- **NVIDIA hosted:** use the existing NVIDIA NIM Provider
-  (`https://integrate.api.nvidia.com/v1`). Discovery includes JailbreakDetect as a
-  supported endpoint candidate even when it is absent from the chat catalog.
-  Registration makes an actual call; a catalog entry does not prove availability.
-  Only this exact public NVIDIA origin is mapped to the official security API.
-- **Self-hosted NIM:** register a Provider using its full
-  `https://your-nim-host/v1/classify` URL. Discovery checks that classifier directly;
-  a Chat Completions or `/models` endpoint is not required. Custom gateway prefixes
-  remain intact and never redirect to NVIDIA's public service.
-- Register the model in **Models**, then select it for **Jailbreak detection** in
-  **Guardrail Catalog → Input**, validate, save, and activate. The protocol is inferred for the
-  canonical model ID; deployment aliases can use the existing protocol settings.
-  Any chat model that supports OpenAI-compatible Chat Completions can instead use
-  the `tali.openai-compatible-jailbreak.v1` profile and must return `SAFE` or
-  `JAILBREAK` for the supplied classification prompt.
-
-The dedicated client sends raw user input as `{"input":"..."}` and strictly
-checks the native `jailbreak` boolean and finite `[-1, 1]` `score`. It uses the
-service's boolean decision, not an invented local threshold. It does not send
-chat prompts, model IDs, or generation parameters. **Models → Test call** checks
-the response envelope only; **Guardrail Catalog → Validate** runs both benign and
-jailbreak smoke samples. These samples do not constitute a comprehensive accuracy
-benchmark. Classification errors remain errors and follow the Guardrail's failure
-policy; they never become a safe verdict. This detector is input-only.
-
-Tests are separated by architectural ownership: Controller tests cover registration,
-endpoint routing, validation, and assignment; Runner tests load the frozen signed
-`jailbreak-v1` artifact and exercise both detectors through the real runtime API
-without importing the compiler or contacting external model services. Both sides
-also test Provider-scoped self-signed TLS behavior.
-
-Protocol references: [NVIDIA hosted classification API](https://docs.api.nvidia.com/nim/reference/nvidia-nemoguard-jailbreak-detect-infer)
-and [self-hosted NIM request/response examples](https://docs.nvidia.com/nim/nemoguard-jailbreakdetect/latest/getting-started.html).
-
-For a trusted Provider using a private CA or self-signed HTTPS certificate,
-enable **Skip TLS certificate verification** under **Settings → Providers**.
-The switch appears below the HTTPS Base URL during registration; saved Providers
-have a **TLS settings** action. It defaults to off and applies only to that
-Provider's discovery, detector validation, and Control Plane/Data Plane model
-requests. Enabling it skips certificate-chain and hostname checks, not HTTPS
-encryption. Changes are persisted and sent to active Runners; test affected models
-again in Models and revalidate their bindings in Guardrail Catalog because previous
-connection and validation evidence is cleared.
-This does not change Controller–Runner mTLS or other Providers' verification.
-
-### Output streaming
-
-`POST /runtime/v1/endpoints/{endpoint_id}/guardrails/output-stream`
-accepts ordered output chunks. `full_buffered` and `window_buffered` hold text
-until an Output Rail decision exists; a blocked stream releases no text. With
-multiple Runner replicas, the stream buffer, sequence, pinned Router, and
-completion state live in Redis, so consecutive chunks may reach different Pods
-without losing order. Stream state is bounded by a TTL and keyed by a digest of
-the caller-provided stream ID.
-
-Production keeps PostgreSQL and secrets externally managed. Image definitions,
-dependency contracts, direct Helm commands, and the production, Debug, and
-development profiles are in
-[charts/tali-guard/README.md](charts/tali-guard/README.md),
-[values.yaml](charts/tali-guard/values.yaml),
-[values-debug.yaml](charts/tali-guard/values-debug.yaml), and
-[values-dev.yaml](charts/tali-guard/values-dev.yaml).
-
-Runtime endpoints are exposed by each Runner pool Service. The Controller
-Ingress exposes only the management UI/API; Endpoint runtime traffic does
-not traverse Controller. Playground requests are the exception: Controller
-orchestrates their model call and invokes Runner's internal Guardrail endpoint.
-
-The [Traffic Router and Endpoint contract](docs/router-endpoint.md) documents the
-Integration resources, API paths, and coordinated rename migration.
+A running Controller also serves an interactive API reference at `/api/docs`,
+its OpenAPI contract at `/api/openapi.json`, and an agent-oriented index at
+`/api/llms.txt`. These describe the management API; application checks use the
+separate runtime integration guide above.

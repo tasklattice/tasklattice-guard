@@ -1,466 +1,258 @@
 # Guard Controller and Guard Runner
 
-## Decision
+Architecture checked against the repository on 2026-09-14.
 
-TaskLattice Guard has exactly two application component types:
+## Components and ownership
 
-1. **Guard Controller** is the TypeScript control plane. It serves the React
-   and TanStack management UI, delegates human identity to Better Auth, owns
-   PostgreSQL state, creates desired generations, reconciles Runner state,
-   retains audit/runtime metadata, and evaluates pool capacity.
-2. **Guard Runner** is the Python data plane. It receives immutable signed
-   artifacts, instantiates NVIDIA NeMo Guardrails, authenticates Endpoint
-   requests locally, serves traffic, and exports load/telemetry summaries.
+TaskLattice Guard has two application component types:
 
-`GuardRails 0` is the mandatory baseline runtime and authoritative NeMo
-compiler. The wire/storage ID `default` remains internal compatibility state;
-it is not a product or Kubernetes name. This is a Runner role, not a third
-component.
+| Component | Owns | Source |
+| --- | --- | --- |
+| **Guard Controller** | React/TanStack UI, Hono management API, Better Auth identity, PostgreSQL state, publication, reconciliation, audit, runtime logs, capacity recommendations | `controller/` |
+| **Guard Runner** | FastAPI runtime API, local Endpoint authentication, routing, NVIDIA NeMo Guardrails compilation/evaluation, artifact activation, telemetry export | `runner/` |
+
+`GuardRails 0` is the mandatory compiler-capable Runner pool, identified
+internally as `default`. It is a Runner role. NeMo code lives in
+`runner/toolkit/`; Controller does not load NeMo, and Runner receives no
+Controller database credentials. PostgreSQL, Redis, and observability backends
+are supporting dependencies.
 
 ## Deployment topology
 
-The smallest highly available installation contains three application Pods:
+The chart runs one Controller and at least two GuardRails 0 Runners. Every
+Runner pool is a StatefulSet with stable ordinal identities. A stable Runtime
+Service balances across ready replicas with `sessionAffinity: None`; a private
+headless Service provides StatefulSet identity. Upstreams use the Runtime
+Service, not individual Pod names.
 
 ```text
-1 × Guard Controller
-2 × GuardRails 0 Runner (internal pool=default, compiler-capable=true)
+AI Gateway / LiteLLM / AI App -> Runtime Service -> Guard Runner -> NeMo / models
+                                                       |
+                                                       +-> Redis call/stream state
+
+Operator / API client -> Guard Controller -> PostgreSQL
+                              ^      |
+                              |      +-> Runner internal HTTP API (Playground)
+                              |
+                       Runner-initiated gRPC stream
+                       + separate HTTP telemetry/credential requests
 ```
 
-Additional pool replicas are more Guard Runner Pods. Controller is deployed as
-one replica in this release. Every Runner pool is a StatefulSet, so an instance
-keeps the same ordinal Pod name and Runner ID across restarts and image rollouts.
-GuardRails 0 has two desired replicas and `minAvailable: 1`; ordered rolling
-replacement therefore retains a ready data-plane endpoint. Runner pools may
-scale horizontally. A pool with more than one replica must use Redis for shared
-input/output call-version pinning.
+Production Endpoint checks bypass Controller and PostgreSQL. Playground is an
+explicit exception: Controller orchestrates model calls and invokes Runner
+checks, including isolated draft previews and path tests.
 
-PostgreSQL, Redis, and observability backends are dependencies, not additional
-TaskLattice Guard application components.
+The baseline provides data-plane rolling-update availability using two Runner
+replicas, readiness checks, `minReadySeconds: 5`, a `minAvailable: 1` PDB, and a
+drain window. It does not provide complete infrastructure HA: Controller is a
+single replica, the chart does not enforce placement across failure domains,
+and development PostgreSQL/Redis are single replicas. Production HA requires
+appropriate scheduling, spare capacity, and HA dependencies.
 
-Each pool is addressed by a stable logical Runtime Service. Pod names and
-Runner identities are control-plane observability details and are not exposed
-to upstreams. Kubernetes uses ordinary balancing (`sessionAffinity: None`);
-`call_id` plus the required Redis context provides input/output generation
-pinning when a pool has multiple replicas. A separate private headless Service
-governs StatefulSet identity and is never used as the Endpoint endpoint.
+Already synchronized Runners can serve their last-known-good generation during
+a temporary Controller outage. Management, publication, reconciliation, and
+telemetry ingest depend on Controller availability. Runner state uses an
+`emptyDir` in the chart; local recovery data does not survive Pod replacement.
+See the [deployment guide](../charts/tali-guard/README.md) for configuration.
 
-The LiteLLM adapter exposes the LiteLLM Basic Guardrail API below the stable
-Endpoint base URL. It converts LiteLLM request/response callbacks into the
-Runner's internal protection contract and maps decisions back to `NONE`,
-`BLOCKED`, or `GUARDRAIL_INTERVENED`.
+## Resources and routing
 
-## Source ownership
+| Resource | Responsibility |
+| --- | --- |
+| Policy | Versioned Rules, actions, parameters, and test cases |
+| Guardrail | Ordered Policy composition, draft validation, immutable compiled versions |
+| Router | Ordered Routes selecting weighted, fixed Guardrail versions in a published Revision |
+| Endpoint | Runtime integration configuration, credentials, and explicit Router binding |
+| Provider / Model / Guardrail Catalog | Provider connectivity, physical model callability, and validated Rail assignment respectively |
 
-| Directory | Owner | Contents |
-| --- | --- | --- |
-| `controller/` | Controller | React/TanStack UI, Hono API, Better Auth, Drizzle schema/migrations, reconciliation |
-| `runner/` | Runner | FastAPI host, control client, telemetry, artifact store, NeMo compiler/runtime toolkit |
-| `proto/` | Shared transport contract | Versioned, strongly typed Controller/Runner gRPC protocol |
-| `scripts/` | Contract generation | Deterministic language binding generation and stale-output checks for Proto contracts |
-| `charts/` | Deployment | Images, dependencies, Secrets, Services and workload topology |
+Policies and Rules execute in configured order. Rejection stops execution;
+transformations change the content seen by subsequent Rules. Guardrail identity
+has no separate business-purpose field; natural-language/document input helps
+author Policies rather than becoming an implicit runtime prompt.
 
-The Runner-only NeMo code is nested under `runner/toolkit/`; it is not a third
-service or a Python control plane. Controller contains no Python/NeMo runtime
-code, while Runner receives no Controller database or human-authentication
-code.
+A Router Revision contains ordered matching Routes with exactly one enabled,
+unconditional fallback last. Each Route distributes traffic using integer
+weights totaling 10,000 basis points. Publishing resolves draft version choices
+to immutable Guardrail versions and artifacts. Assignment uses versioned HMAC
+hashing of call identity, Router revision, and Route ID; retained call context
+pins the selection for subsequent checks.
 
-## Ownership boundary
+Router publication checks the reviewed draft, uses an idempotency key, stores a
+new immutable Revision, and advances desired generation. `activeRevision` is
+Controller's desired revision; Runner acknowledgements determine deployment
+status. Activating another Guardrail version does not rewrite versions pinned in
+published Router Revisions.
 
-| Concern | Controller | Runner |
-| --- | --- | --- |
-| React/TanStack UI | Owns | None |
-| Users, sessions, roles | Better Auth | None |
-| Guardrail/Endpoint desired state | Owns | Read-only projection |
-| NeMo compilation | Dispatches and signs | GuardRails 0 compiles |
-| Runtime authentication | Issues verifier | Enforces locally |
-| Runtime traffic | Never in hot path | Owns |
-| Audit and runtime metadata retention | Owns | WAL and batch export |
-| Capacity | Aggregates and recommends | Reports load |
-
-Runner never receives database credentials. Controller never loads NeMo or
-serves a protection request.
-
-## Rail and model-binding boundary
-
-Provider connectivity, physical Model callability, and Rail behavior are three
-different facts. Controller stores them separately and exposes Rail assignment
-through a versioned Guardrail Catalog revision. Each assignment is a stable
-`capability.rail` binding, for example `content_safety.input` or
-`content_safety.output`, rather than an implicit capability attached to a Model.
-
-Guardrails are named, versioned compositions of Policy bindings. There is no
-Guardrail-level description, business-purpose field, or immutable-purpose lock.
-The selected Policies, Rule ordering and overrides define protection behavior.
-Optional natural-language or document input helps author Policies; it is not
-stored as a Guardrail identity or injected into runtime prompts. Topic Control
-uses its configured allowed topics. Migration `0003_remove_guardrail_purpose`
-deletes the obsolete description column and draft purpose details. It advances
-draft revisions so old validation results cannot authorize a changed draft;
-historical signed artifacts are not rewritten.
-
-The shared binding manifest currently executes Input and Output Rails. It also
-reserves Retrieval, Dialog, and Execution as future Rail types, so later support
-adds new manifest entries and runtime implementations without changing Provider,
-Model, Policy, or Guardrail identity. Policy order and Rule order still determine
-execution; a reject terminates the sequence, while a transformation continues
-with transformed content.
-
-Control-plane-only Provider kinds are enforced when a Model is registered,
-assigned, validated, activated, and serialized into desired state. In particular,
-DeepSeek may power Controller authoring and intent understanding but cannot be
-bound to a Data Plane Rail. Controller sends Runner only the models referenced by
-active Data Plane bindings and resolves only those credentials.
-
-Catalog validation is an isolated `CapabilityValidationRequest` on the existing
-typed control channel. The Default Runner compiles a single binding with the
-production NeMo compiler and exercises safe and unsafe samples through its actual
-Input or Output Rail. Evidence is scoped to `capability.rail` and every advertised
-contract; a shared Model cannot transfer evidence between Rails. Provider
-credentials are fetched with a 95-second, candidate-scoped lease, never embedded
-in commands or artifacts. Validation neither activates a revision nor emits
-customer traffic. Old connection/profile probes do not authorize activation.
-These samples verify execution and protocol semantics, not comprehensive model
-quality. Grounding and formal reasoning require Policy-specific sources or formal
-policy references; generic probes deliberately cannot certify those bindings.
-
-### Effective releases and streaming
-
-The Runner pins an **effective release**, derived from desired-state generation,
-signed artifact checksums, and the complete model configuration. Redis call
-contexts carry both that identity and the Model revision. Old materialized NeMo
-runtimes remain leased across updates; they are retired only after leases and
-in-flight evaluations drain. Output never silently switches to newer models.
-On a fresh replica that cannot serve an old release, the call fails closed and
-must restart. Redis context sharing alone does not replicate historical runtime
-clients; uninterrupted in-flight migration across cold rollouts is not promised.
-
-The HTTP/A2A output-stream endpoint accepts ordered chunks. It is **not** an
-upstream generation proxy or an SSE endpoint. The endpoint must use a stable
-`call_id` and `stream_id`, serialize increasing `sequence` values, await each
-result, and forward only `released_text`. It must send `final=true` on completion
-and cancel generation on `terminate=true` or transport failure. A lost response
-must not cause speculative raw-text delivery or sequence advancement.
-
-`full_buffered` checks the whole response before releasing text. Incremental
-content-safety checks evaluate accumulated output, and `window_buffered` retains
-one window across chunk boundaries. `interruptible` checks each chunk before
-releasing it, with previous output as context. Neither incremental mode can recall
-earlier text if later context changes the verdict. Pattern/PII, transformations,
-grounding, and arbitrary Policy programs therefore use complete-response checks;
-the immutable plan determines this fallback, not model callability. The API
-returns requested/effective delivery modes, the reason, and effective release ID.
-Timeouts do not consume sequences or duplicate accumulated text on retry.
-
-Endpoint UI distinguishes Input checks, Output checks, and final Stream checks
-observed in retained telemetry. These observations are not proof that the caller
-forwarded transformations or cancelled its upstream. A LiteLLM pre/post callback
-or an endpoint connectivity test alone never proves incremental stream protection.
+The routing contract is defined in
+[routing.proto](../proto/tasklattice/guard/control/v1/routing.proto). See
+[revision lifecycles](revision-lifecycle.md) for rollback and deletion, and
+[API conventions](api-contract.md) for management API semantics. Controller
+serves its generated OpenAPI contract at `/api/openapi.json` and reference UI at
+`/api/docs`.
 
 ## Control protocol
 
-Runner initiates a long-lived gRPC connection to Controller. Production uses a
-Runner token plus mutual TLS. A stream begins with registration, followed by
-heartbeat/load reports, artifact ACK/NACK messages, and compile results.
+Runner initiates a long-lived gRPC stream authenticated with a Runner token and,
+in production, mutual TLS. It registers first, then sends heartbeats, load,
+compile/validation results, and ACK/NACK messages. Controller sends desired
+state, compile/validation requests, and drain commands.
 
-The checked-in files under `proto/tasklattice/guard/control/v1/` are the single
-source of truth for every value transported between Controller and Runner. The
-protocol is split by domain while keeping one versioned package:
+[Proto contracts](../proto/tasklattice/guard/control/v1/) are authoritative for
+this gRPC channel:
 
-- `runner_control.proto` owns the stream service and message envelopes.
-- `runtime.proto` owns the immutable Guardrail Plan and policy bindings.
-- `artifact.proto` owns compilation requests/results and signed artifacts.
-- `evaluation.proto` owns findings and runtime trace evidence.
-- `routing.proto` and `endpoint.proto` own traffic selection and runtime
-  authentication projections.
-- `validation.proto` owns validation requests, cases, metrics, and results.
-- `common.proto` owns enums reused across those domains.
-- `enforcement_action.proto` owns the closed post-evaluation vocabulary used by
-  the protocol, UI, HTTP DTOs, and Python runtime. Its declaration order is the
-  product display order, its numeric values are conflict priorities, and its
-  comments are the canonical semantic descriptions.
+| Files | Contract |
+| --- | --- |
+| `runner_control.proto` | Stream envelopes, registration, load, desired state |
+| `runtime.proto`, `artifact.proto` | Guardrail Plans, compilation, signed artifacts |
+| `routing.proto`, `endpoint.proto` | Router Revisions, traffic selection, credential verifiers |
+| `model.proto` | Model runtimes, Rail bindings, model configuration, capability validation |
+| `evaluation.proto`, `validation.proto` | Evaluation evidence and validation runs |
+| `common.proto`, `enforcement_action.proto` | Shared enums and enforcement semantics |
 
-Business objects are typed messages and enums; the stream does not embed JSON
-documents. Registry identifiers such as adapter names and runtime profiles
-remain strings so a new Provider or model implementation can be plugged in
-without changing the protocol. `config_yaml` and `colang_content` are compiled
-NeMo artifacts, not alternate business-object encodings, and therefore remain
-opaque text payloads.
+Business envelopes use typed messages. Compiled NeMo YAML/Colang remain opaque
+text, and fields such as `CapabilityValidationCase.output_content` explicitly
+carry JSON-encoded diagnostic evidence. Proto does not define every HTTP
+exchange between the components: runtime-event batches and model-credential
+resolution use separate authenticated Controller HTTP endpoints; Playground
+also uses Runner HTTP APIs.
 
-Protocol comments are part of the contract and are emitted into generated
-language documentation. Every top-level message, enum, and service must explain
-its domain role. Every optional field must define what absence means, and fields
-carrying time, units, ranges, deltas, generations, signatures, or result-state
-semantics must document those constraints. Descriptor-based tests enforce this
-minimum; obvious identifiers may remain self-describing.
+Generated bindings live in `runner/generated/` and
+`controller/server/generated/control-protocol/`, with domain conversion in the
+protocol boundary codecs. Enforcement-action helpers are also generated from
+Proto. Contract comments document field semantics, absence, units, and ranges.
+Run `make proto-generate` after changes and `make proto-check` to detect stale
+outputs. Management OpenAPI has separate `openapi:generate` and `openapi:check`
+scripts in `controller/`.
 
-Generated Python bindings live under `runner/generated/`. Generated TypeScript
-types live under `controller/server/generated/control-protocol/`. Application
-code imports those outputs and translates domain objects only in the two
-protocol boundary codecs; it must not hand-maintain a second wire interface.
-The lowercase TypeScript and Python `EnforcementAction` helpers are also
-generated directly from the Proto descriptor; they are not a second contract.
-Run `make proto-generate` after changing a contract and `make proto-check` in CI
-to reject stale generated code. This release intentionally has no legacy wire
-fields or dual-read/dual-write compatibility path.
+## Publication and model execution
 
-Controller sends desired generations, signed artifacts, compile commands, and
-drain commands. A Runner verifies checksum and Ed25519 signature, stages and
-prewarms every referenced artifact, and then atomically changes generation.
-NACK leaves the previous generation active. The last-known-good desired state
-is persisted locally so temporary Controller outages do not interrupt traffic.
+1. Controller validates the current Guardrail draft and builds a canonical Plan.
+   The browser does not submit raw NeMo YAML or Colang for publication.
+2. A healthy GuardRails 0 Runner compiles the Plan with the pinned NeMo toolkit.
+3. Controller verifies the returned checksum, signs the artifact with Ed25519,
+   stores it, marks the version `ready`, and advances desired state as applicable.
+4. Target Runners verify checksums/signatures, stage and prewarm the complete
+   desired state, then atomically activate it. NACK preserves the previous state.
 
-PostgreSQL desired state is authoritative; the stream accelerates convergence.
+A version's `ready` build status does not imply Runner deployment convergence.
+PostgreSQL is authoritative; the stream accelerates convergence.
+
+Provider connectivity, model callability, and Rail validation are separate
+checks. Guardrail Catalog revisions assign models to stable bindings such as
+`content_safety.input` and `content_safety.output`. Input and Output execute
+today; Retrieval, Dialog, and Execution are reserved Rail types. DeepSeek
+Providers are control-plane-only. The active data-plane projection includes
+only models referenced by its bindings; credentials are resolved separately and
+are not embedded in artifacts or desired-state snapshots.
+
+Capability validation compiles and exercises a candidate binding through the
+actual NeMo runtime, using a short-lived, candidate-scoped credential lease.
+Evidence belongs to that binding and its contracts. It neither activates the
+candidate nor certifies comprehensive model quality; grounding and formal
+reasoning also require Policy-specific sources or references.
+
+NeMo executes versioned Evaluation Contracts through local evaluators and
+`GuardEvaluateAction@1.0.0`. Evaluator profiles define compatible contracts,
+prompts/parsers, and transport; model clients perform I/O. Fallback is limited to
+compatible contracts. Artifacts pin behavior and dependencies, while active
+bindings select physical models. Semantic PII results without trustworthy span
+offsets redact the complete evaluated content block.
+
+## Effective releases and streaming
+
+Each call pins an effective release derived from desired generation, signed
+artifact checksums, and model configuration. Old materialized runtimes remain
+leased until their calls drain. A replica unable to serve the pinned release
+fails closed; shared Redis does not replicate historical model clients or
+guarantee uninterrupted calls across cold rollouts.
+
+Every pool with multiple replicas requires Redis. Call context is keyed by a
+SHA-256 digest of `call_id`, with a default five-minute TTL. It includes routing
+and release identity, up to 20 messages, and input content blocks. Stream state
+also retains output buffers, sequence, and completion state with an idle TTL.
+These values can contain protected content and are JSON, not application-level
+encrypted payloads. Production Redis needs private access, authentication, and
+transport encryption.
+
+The output-stream API accepts ordered chunks; it does not proxy upstream
+text generation or serve SSE. Callers must retain `call_id` and `stream_id`,
+submit increasing sequences serially, await each response, forward only
+`released_text`, and send `final=true` on completion. They must cancel upstream
+generation on `terminate=true` or transport failure. Lost responses must not
+cause speculative text delivery or sequence advancement.
+
+`full_buffered` checks the complete response. Incremental modes release checked
+text with bounded buffering; they cannot recall text released before later
+context changes a verdict. Policies requiring complete-response checks force
+the effective mode to full buffering. The API reports requested/effective modes,
+fallback reason, and effective release. LiteLLM pre/post callbacks or a successful
+connectivity check alone do not prove incremental stream protection.
 
 ## State ownership and lifecycles
 
-State names have one owner and one semantic axis:
+[Controller lifecycle vocabulary](../controller/shared/lifecycle.ts) owns
+Guardrail, version, validation, Endpoint, and Runner states.
+[Router rollout logic](../controller/shared/router-lifecycle.ts) separately owns
+Router deployment projections. Values on the gRPC wire are defined in Proto.
 
-- Controller persistence, HTTP DTOs, and UI projections import their
-  vocabulary from `controller/shared/lifecycle.ts`.
-- Values transported between Controller and Runner are defined only in Proto.
-- A lifecycle state is stored and changes through commands. A projection is
-  recomputed from other facts and must not be treated as a writable lifecycle.
-
-Guardrail resource state and immutable version state are separate. Compiling a
-new version does not take an already active Guardrail out of service.
-
-```mermaid
-stateDiagram-v2
-  direction LR
-  [*] --> draft: create
-  draft --> active: activate ready version
-  active --> active: activate another ready version
-  draft --> disabled: soft delete
-  active --> disabled: soft delete
-  disabled --> [*]
-```
-
-```mermaid
-stateDiagram-v2
-  direction LR
-  [*] --> compiling
-  compiling --> ready: accepted artifact
-  compiling --> failed: rejected compile
-  ready --> [*]
-  failed --> [*]
-```
-
-Validation runs are persisted independently from Guardrail publication. A
-Runner result can win the race with the best-effort `running` write, so direct
-queued-to-terminal completion is part of the contract rather than an invalid
-state.
-
-```mermaid
-stateDiagram-v2
-  direction LR
-  [*] --> queued
-  queued --> running: dispatched
-  queued --> passed: fast accepted result
-  queued --> failed: rejection or fast failed result
-  running --> passed: executed and passed
-  running --> failed: executed and failed
-  passed --> [*]
-  failed --> [*]
-```
-
-Runner status is a compact projection of two axes. `syncing` and `offline`
-describe reconciliation/connectivity. Once synchronized, `ready`, `busy`, and
-`saturated` describe pressure. Registration is a stream event, not a durable
-state.
-
-```mermaid
-stateDiagram-v2
-  direction LR
-  [*] --> syncing: connect behind desired generation
-  [*] --> ready: connect synchronized
-  syncing --> ready: generation applied
-  ready --> busy: pressure >= 70%
-  busy --> ready: pressure < 70%
-  busy --> saturated: queue > 10 or pressure >= 90%
-  saturated --> busy: pressure < 90%
-  ready --> saturated: queue > 10 or pressure >= 90%
-  saturated --> ready: pressure < 70%
-  ready --> syncing: desired generation advances
-  busy --> syncing: desired generation advances
-  saturated --> syncing: desired generation advances
-  syncing --> offline: disconnect or stale heartbeat
-  ready --> offline: disconnect or stale heartbeat
-  busy --> offline: disconnect or stale heartbeat
-  saturated --> offline: disconnect or stale heartbeat
-  offline --> syncing: reconnect behind
-  offline --> ready: reconnect synchronized
-```
-
-An Endpoint's `active`/`disabled` lifecycle is a reversible operational
-toggle. Soft deletion is a separate terminal overlay (`deleted_at` plus
-`status=disabled`), after which enable/disable commands no longer select it.
-
-```mermaid
-stateDiagram-v2
-  direction LR
-  [*] --> active: create
-  active --> disabled: disable
-  disabled --> active: enable
-  active --> deleted: soft delete
-  disabled --> deleted: soft delete
-  deleted --> [*]
-```
-
-The UI's Guardrail readiness is a derived view, not another state machine:
-
-| Derived value | Exact condition |
+| State axis | Meaning |
 | --- | --- |
-| `needs_validation` | The active version does not represent the current draft. |
-| `ready` | The current draft is active, with no enabled router. |
-| `protected` | The current draft is active, with at least one enabled router. |
+| Guardrail resource | `draft` or `active`; `disabled` is terminal after soft deletion |
+| Guardrail version | `compiling` -> `ready` or `failed`; compilation does not interrupt an already active version |
+| Validation run | `queued` -> `running` -> `passed` or `failed`; a fast result may complete directly from `queued` |
+| Endpoint | Reversible `active` / `disabled` until terminal soft deletion |
+| Runner | `syncing` / `offline` reflect convergence/connectivity; synchronized Runners report `ready`, `busy`, or `saturated` pressure |
+| Router rollout | `unpublished`, `distributing`, `active`, or `failed`, derived from publication, generation, fresh Runner ACKs, and errors |
 
-Similarly, `not_run` is an empty validation-history projection rather than a
-persisted validation state. Endpoint setup progress is separate from the
-Endpoint lifecycle.
+UI readiness (`needs_validation`, `ready`, `protected`), empty validation history
+(`not_run`), and Endpoint setup progress are derived views, not writable resource
+lifecycles. Router rollout can return from `active` to `distributing` when Runner
+heartbeats expire or replicas fall behind.
 
-## Guardrail publication
+Guardrail and Endpoint soft deletion checks recent traffic and telemetry
+freshness. Recent traffic requires explicit second confirmation and the exact
+resource name; the API records a reason and preserves versions, artifacts, and
+audit/runtime evidence. Historical version deletion is a separate operation
+with reference, convergence, and in-flight retention checks. Router rollback
+publishes a new Revision; Guardrail rollback activates an existing ready version.
+See [revision lifecycles](revision-lifecycle.md) for the exact constraints.
 
-1. An administrator selects product protections in Controller.
-2. Controller creates a canonical immutable plan. The browser cannot submit raw
-   NeMo YAML or Colang.
-3. Publication requires a healthy GuardRails 0 Runner.
-4. GuardRails 0 compiles through the pinned NeMo toolkit.
-5. Controller verifies the returned checksum, signs the artifact, stores it,
-   and advances desired generation.
-6. Target Runner pools prewarm and ACK the generation before it becomes ready.
+## Identity, secrets, and retained data
 
-## NeMo evaluation boundary
+- Better Auth owns human identity, sessions, passwords, and roles. Local
+  OrbStack credentials are `admin` / `admin`; production requires a strong
+  bootstrap Secret. Bootstrap creates a missing identity without resetting an
+  existing password.
+- Management API clients can use personal Access Tokens with module permissions,
+  expiry, and revocation. Effective permissions are bounded by the user's current
+  role. These tokens are separate from Endpoint credentials and Runner tokens.
+  See [Access Tokens](account-access-tokens.md).
+- Endpoint credentials are shown once; Controller stores SHA-256 verifiers and
+  projects them to Runners for local authentication. Controller holds the artifact
+  signing private key; Runners receive the verification public key.
+- Runtime events contain bounded metadata by default. When the Guardrail logging
+  level qualifies and an encryption key is configured, Runner encrypts captured
+  before/after content with AES-GCM before writing the WAL or exporting it.
+  Controller stores ciphertext and decrypts content for authorized reads.
+- Runtime logs and routing events are batched from the local Runner WAL to
+  Controller over authenticated HTTP outside the synchronous protection path.
+  Redis call/stream content has the separate retention boundary described above.
 
-NeMo Guardrails remains the Runner's core rail and Action runtime. The product-facing
-Guardrail Catalog classifies business protections separately from low-level execution
-capabilities, so categories do not require one NeMo Action class per risk. New artifacts bind
-PII, content-safety, and jailbreak Evaluation Contracts to one versioned Action:
+## Capacity and verification
 
-```text
-Policy Template / Guardrail Draft
-                |
-                v
-     Evaluation Contract graph
-      | contract_ref + trigger
-      |-- tali.guard.pii.exact.v1 ----------> local PII evaluator
-      |        `-- uncertain triggers semantic contract
-      |-- tali.guard.pii.semantic.v1 -------+
-      |-- tali.guard.content-safety.v1 -----+--> GuardEvaluateAction@1.0.0
-      `-- tali.guard.jailbreak.v1 ----------+            |
-                                                         v
-                                              Evaluator Binding
-                                        profile_ref + model_ref + priority
-                                                         |
-                                   +---------------------+------------------+
-                                   |                                        |
-                                   v                                        v
-                         Evaluator Profile                         Model Runtime
-                    prompt / parser / contracts            endpoint / client / model
-                                   |                                        |
-                                   +---------------------+------------------+
-                                                         |
-                                                         v
-                                              Model client or test mock
-```
+Runner heartbeats report load, resource pressure, latency, error/timeout deltas,
+compile load, applied generation, and the observation interval. Controller
+aggregates interval-correct RPS, weighted errors, worst-Runner latency, headroom,
+and queue-aware replica recommendations. Scaling remains the responsibility of
+Kubernetes/Helm or an external autoscaler.
 
-The Evaluation Contract is the stable product/runtime boundary. A trigger graph
-expresses when a dependent contract runs; it does not imply that every request
-must call both a local evaluator and a model. Exact local PII findings stop the
-graph immediately, ordinary text stays local, and only an `uncertain` result
-activates `tali.guard.pii.semantic.v1`.
+Metrics distinguish policy decisions from technical failures and expose control
+convergence and telemetry freshness. See the
+[observability contract](../observability/README.md) for metrics and alerts.
 
-The Evaluator Binding owns compatibility and fallback scope. Qwen3Guard's
-profile supports content safety, jailbreak, and semantic PII. Llama Guard 3's
-profile currently supports content safety only. Consequently Llama can be a
-lower-priority binding for `tali.guard.content-safety.v1`, but it cannot be a
-global backup for the Qwen jailbreak or PII bindings. The Runner rejects a
-binding when its Profile does not declare the requested contract.
-
-Model-family semantics and transport are separate plugins. A
-`ConfiguredSafetyModelProvider` composes one `ModelProtocolAdapter` (prompt and
-response parsing) with one `ModelClient` (I/O). The built-in deployment client
-is selected from the Evaluator Profile's explicit transport metadata. Most
-Profiles use OpenAI Chat Completions; the dedicated JailbreakDetect Profile uses
-its native classification client. Tests and non-OpenAI/local runtimes can inject
-a different client without changing the Qwen, Llama, or taxonomy adapters.
-
-A model PII hit cannot claim span-level precision: because the generation
-protocol returns no trustworthy offsets, the runtime conservatively redacts the
-complete evaluated content block. Local and in-memory mock evaluators implement
-the same request/result contract as remote model evaluators, so configuration,
-routing, parsing, fallback, and RTT behavior can be tested without live model
-Endpoints.
-
-Released artifacts pin `GuardEvaluateAction@1.0.0`, capability, contract,
-trigger, and timeout. They do not pin a physical model. The active Evaluator
-Bindings select the replaceable runtime model when the artifact executes.
-
-## Protected soft deletion
-
-Guardrails and Endpoints share one side-sheet interaction and one deletion
-contract. Controller evaluates incoming runtime events from the previous 30
-minutes. Stale telemetry fails closed while active routers exist.
-
-If recent traffic exists, deletion requires both an explicit second-confirm
-flag and the exact resource name. The API validates both; this is not only a
-browser-side guard. A non-empty reason is always recorded.
-
-Deletion sets the resource to `disabled`, records deletion metadata, disables
-related routers, and advances desired generation. It never deletes or
-rewrites audit events, runtime events, Guardrail versions, or artifacts.
-
-## Identity and secrets
-
-- Better Auth owns human sign-in, password hashing, sessions, password changes,
-  roles, and administrator APIs.
-- The OrbStack/local baseline exposes username `admin` and password `admin`.
-  Controller normalizes that username to the internal Better Auth email
-  `admin@tasklattice.local`; this compatibility identity is local-only.
-- Production has no default credentials. Its first administrator is created
-  idempotently through Better Auth from a strong deployment Secret, using the
-  default minimum password length of 12.
-- Bootstrap only creates a missing identity. Controller startup never resets an
-  existing administrator's password, so a Better Auth password change survives
-  restarts and upgrades.
-- Endpoint credentials are shown once. Controller stores only a SHA-256
-  verifier and projects it to Runners.
-- Controller owns the artifact-signing private key. Runners receive only the
-  public key.
-- Runtime telemetry stores bounded metadata, never prompt or model content.
-
-## Capacity contract
-
-Every Runner heartbeat reports applied generation, inflight/max concurrency,
-queue depth, request/error/timeout deltas, p95 latency, CPU, memory, active
-Guardrails, compile queue depth, and the exact observation interval. Controller
-aggregates these per pool into ready replicas, interval-correct RPS, safe
-capacity, per-resource utilization, request-weighted error rate, worst-Runner
-latency, headroom, and a queue-aware recommended replica count.
-
-Controller exposes the aggregation through the UI, API, and Prometheus. Scaling
-execution remains the responsibility of Kubernetes/Helm or an external
-autoscaler. Prometheus also exposes firewall decisions separately from technical
-errors, plus control-channel convergence and evidence-pipeline freshness. The
-deployment and dashboard contract is documented in `observability/README.md`.
-
-## Acceptance baseline
-
-A release is acceptable when all of the following hold:
-
-- Helm rejects fewer than two GuardRails 0 replicas, Controller replicas other than one,
-  missing production control-channel mTLS, and multi-replica pools without
-  Redis.
-- Controller and GuardRails 0 become ready and converge on the same desired
-  generation.
-- GuardRails 0 compiles a product plan; all Runners verify and activate the
-  signed artifact.
-- Runtime traffic is accepted directly by Runner and produces metadata-only
-  telemetry.
-- Endpoint setup exposes the Runtime Service DNS name, never an individual
-  Runner identity, and LiteLLM can authenticate it through `/verify`.
-- Recent traffic blocks a deletion without second confirmation and with a
-  mismatched resource name.
-- Confirmed deletion disables the resource/router while artifacts,
-  runtime events, and audit events remain present.
-- Controller and Runner images build independently; TypeScript type checks,
-  UI/server tests, Python Runner tests, and Helm lint pass.
+Architecture acceptance covers chart topology/Redis/mTLS constraints, independent
+component builds, signed artifact verification and atomic activation, direct
+Runner traffic, pinned call/stream behavior, authenticated telemetry with encrypted
+content capture, and deletion evidence retention. Run the relevant Controller,
+Runner, protocol, and Helm checks through the repository's Makefile and package
+scripts; this document is not a test-results ledger.

@@ -2605,9 +2605,9 @@ Five presets still compose real pinned Policies; the common baseline remains
 shared and model-free. No generic Relay Router change was introduced.
 
 A fresh main `tali` desktop audit found a remaining semantic error, also noted
-in an older audit: before Apply, the template preview said "已选择 10 项" while
+in an older audit: before Apply, the template preview said "10 items selected" while
 the actual stepper correctly said unselected. `ProtectionPresetPicker` now uses
-"包含 / 未包含" (`included / Not included`) only in the preview. Actual selected
+"Included / Not included" (`included / Not included`) only in the preview. Actual selected
 counts and application feedback retain their existing wording and behavior.
 No binding, Policy, model assignment, order, or release contract changed.
 
