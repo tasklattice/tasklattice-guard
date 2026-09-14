@@ -17,18 +17,18 @@ export function routingSnapshotText(snapshot: RouterDraft | null, names: Array<{
   })), null, 2);
 }
 
-// Product convention: additions are red, removals green. Keep +/- markers
-// and an explicit legend, since this differs from conventional Git colors.
+// Follow Git diff colors: additions are green, removals red.
+// Keep +/- markers and an explicit legend alongside the colors.
 const colors = {
   diffViewerBackground: 'var(--card)', diffViewerColor: 'var(--foreground)',
-  addedBackground: 'color-mix(in srgb, var(--destructive) 12%, var(--card))',
+  addedBackground: 'color-mix(in srgb, #16a34a 12%, var(--card))',
   addedColor: 'var(--foreground)',
-  removedBackground: 'color-mix(in srgb, #16a34a 12%, var(--card))',
+  removedBackground: 'color-mix(in srgb, var(--destructive) 12%, var(--card))',
   removedColor: 'var(--foreground)',
-  wordAddedBackground: 'color-mix(in srgb, var(--destructive) 28%, var(--card))',
-  wordRemovedBackground: 'color-mix(in srgb, #16a34a 28%, var(--card))',
-  addedGutterBackground: 'color-mix(in srgb, var(--destructive) 18%, var(--card))',
-  removedGutterBackground: 'color-mix(in srgb, #16a34a 18%, var(--card))',
+  wordAddedBackground: 'color-mix(in srgb, #16a34a 28%, var(--card))',
+  wordRemovedBackground: 'color-mix(in srgb, var(--destructive) 28%, var(--card))',
+  addedGutterBackground: 'color-mix(in srgb, #16a34a 18%, var(--card))',
+  removedGutterBackground: 'color-mix(in srgb, var(--destructive) 18%, var(--card))',
   gutterBackground: 'var(--muted)', gutterColor: 'var(--muted-foreground)',
   addedGutterColor: 'var(--foreground)', removedGutterColor: 'var(--foreground)',
   codeFoldBackground: 'var(--muted)', codeFoldContentColor: 'var(--muted-foreground)',
@@ -39,7 +39,7 @@ export function Changes({ before, after, names }: { before: RouterDraft | null; 
   return <section className="min-w-0 space-y-3" aria-label="Routing configuration diff">
     <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
       <h3 className="font-medium">Routing changes · {changes.length}</h3>
-      <div className="flex gap-3 text-xs"><span className="rounded bg-destructive/15 px-2 py-1">+ Added · red</span><span className="rounded bg-green-600/15 px-2 py-1">− Removed · green</span></div>
+      <div className="flex gap-3 text-xs"><span className="rounded bg-green-600/15 px-2 py-1">+ Added · green</span><span className="rounded bg-destructive/15 px-2 py-1">− Removed · red</span></div>
     </div>
     <p className="text-xs text-muted-foreground">Before → After · Line numbers show the previous and proposed configuration.</p>
     <div className="min-w-0 overflow-x-auto rounded-lg border text-xs [&_table]:w-full [&_table]:table-fixed [&_pre]:whitespace-pre-wrap [&_pre]:[overflow-wrap:anywhere]">

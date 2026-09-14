@@ -9,8 +9,8 @@ it('renders both removed and added values using the real diff viewer', async () 
  render(<Changes before={before} after={after} names={[]} />);
  await waitFor(() => expect(screen.getByRole('table').textContent).toContain('v1'));
  expect(screen.getByRole('table').textContent).toContain('v2');
- expect(screen.getByText('+ Added · red')).toBeTruthy();
- expect(screen.getByText('− Removed · green')).toBeTruthy();
+ expect(screen.getByText('+ Added · green')).toBeTruthy();
+ expect(screen.getByText('− Removed · red')).toBeTruthy();
 });
 it('preserves order, complete selectors, identities and weights in the compared text', () => {
  const text = routingSnapshotText(before, [{id: 'g', name: 'Main Guardrail'}]);
