@@ -2230,12 +2230,14 @@ export class ControlPlaneService {
     return updated;
   }
 
-  async removeRunnerInstance(input: { runnerId: string; actorId: string }): Promise<void> {
-    await this.db.transaction(async (tx) => {
+  async removeRunnerInstance(input: { runnerId: string; actorId: string; force?: boolean; bootId?: string }): Promise<{ bootId: string }> {
+    if (input.force && !input.bootId) throw new ValidationError("Force removal requires the Runner boot ID.");
+    return this.db.transaction(async (tx) => {
       const [removed] = await tx.delete(runnerInstances)
         .where(and(
           eq(runnerInstances.runnerId, input.runnerId),
-          eq(runnerInstances.status, "offline"),
+          input.force ? inArray(runnerInstances.status, ["offline", "syncing"]) : eq(runnerInstances.status, "offline"),
+          input.bootId ? eq(runnerInstances.bootId, input.bootId) : undefined,
         ))
         .returning();
 
@@ -2245,6 +2247,11 @@ export class ControlPlaneService {
           .where(eq(runnerInstances.runnerId, input.runnerId))
           .limit(1);
         if (!existing) throw new NotFoundError("Runner", input.runnerId);
+        if (input.force) throw new ConflictError(
+          "Runner state or registration changed. Refresh before forcing removal; serving Runners cannot be removed.",
+          "runner_removal_conflict",
+          { runnerId: input.runnerId, status: existing.status },
+        );
         throw new ConflictError(
           "Only an offline Runner registration can be removed.",
           "runner_not_offline",
@@ -2259,12 +2266,14 @@ export class ControlPlaneService {
         resourceType: "runner_instance",
         resourceId: removed.runnerId,
         detail: {
+          ...(input.force ? { force: true, status: removed.status, appliedGeneration: removed.appliedGeneration, desiredGeneration: removed.desiredGeneration } : {}),
           bootId: removed.bootId,
           poolId: removed.poolId,
           lastHeartbeatAt: removed.lastHeartbeatAt.toISOString(),
           disconnectedAt: removed.disconnectedAt?.toISOString() ?? null,
         },
       });
+      return { bootId: removed.bootId };
     });
   }
 

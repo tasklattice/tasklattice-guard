@@ -435,7 +435,10 @@ export const deleteControllerEndpoint = (id: string, input: { reason: string; co
 export { listTrafficRouters as listControllerRouters } from "./traffic-routing-api";
 export const listRunnerPools = () => requestController<Collection<RunnerPool>>("/api/v1/runner-pools");
 export const updateRunnerPool = (id: string, input: Pick<RunnerPool, "desiredReplicas" | "safeRpsPerRunner" | "maxConcurrencyPerRunner">) => requestController<RunnerPool>(`/api/v1/runner-pools/${encodeURIComponent(id)}`, json("PATCH", input));
-export const removeRunnerInstance = (runnerId: string) => requestController<void>(`/api/v1/runner-instances/${encodeURIComponent(runnerId)}`, json("DELETE"));
+export const removeRunnerInstance = (runnerId: string, options?: { force: true; bootId: string }) => {
+  const query = options ? `?${new URLSearchParams({ force: "true", bootId: options.bootId })}` : "";
+  return requestController<void>(`/api/v1/runner-instances/${encodeURIComponent(runnerId)}${query}`, json("DELETE"));
+};
 export const listRuntimeEvents = (limit = 100, filters: { guardrailId?: string; routerId?: string; routeId?: string; targetId?: string; routerRevision?: number; endpointId?: string; until?: string; since?: string; before?: string; cursor?: string; requestId?: string; direction?: string; outcome?: string; captured?: string; findingsOnly?: string; severity?: string } = {}, signal?: AbortSignal) => {
   const query = new URLSearchParams({ limit: String(Math.min(500, Math.max(1, limit))) });
   for (const [key, value] of Object.entries(filters)) if (value) query.set(key, String(value));

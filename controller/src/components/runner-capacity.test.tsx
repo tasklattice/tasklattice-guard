@@ -31,6 +31,11 @@ vi.mock("react-i18next", () => ({
         "runners.convergence.runner.syncing": "Syncing",
         "runners.convergence.runner.unavailable": "Not connected",
         "runners.removeAria": "Remove {{runnerId}}",
+        "runners.forceRemoveAria": "Force remove {{runnerId}}",
+        "runners.forceRemove": "Force remove Runner",
+        "runners.forceRemoved": "Runner registration forcibly removed",
+        "runners.removal.forceTitle": "Force remove this Runner?",
+        "runners.removal.forceWarning": "A running Runner can reconnect and register again; this does not stop its process or delete its Pod.",
         "runners.removal.title": "Remove this offline Runner?",
         "runners.removal.retentionNote": "The Runner pool, Kubernetes workload, runtime events, and audit history remain.",
         "runners.removal.delete": "Remove Runner",
@@ -135,6 +140,7 @@ describe("Runner capacity removal", () => {
 
     const [removeOffline] = await screen.findAllByRole("button", { name: "Remove runner-offline" });
     expect(screen.queryByRole("button", { name: "Remove runner-ready" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Force remove runner-ready" })).toBeNull();
 
     fireEvent.click(removeOffline);
     expect(screen.getByText("Remove this offline Runner?")).toBeTruthy();
@@ -174,6 +180,46 @@ describe("Runner configuration convergence", () => {
   });
 
   afterEach(cleanup);
+
+  it.each([0, 1])("offers force removal during initialization/sync (applied=%s)", async (appliedGeneration) => {
+    mocks.listRunnerPools.mockResolvedValue({ items: [{ ...runnerPool, instances: [{
+      ...runnerPool.instances[1]!, status: "syncing", appliedGeneration,
+    }] }] });
+    renderPage();
+
+    const buttons = await screen.findAllByRole("button", { name: "Force remove runner-ready" });
+    expect(buttons).toHaveLength(2);
+    fireEvent.click(buttons[appliedGeneration]!);
+    expect(screen.getByText("Force remove this Runner?")).toBeTruthy();
+    expect(screen.getByText(/does not stop its process or delete its Pod/)).toBeTruthy();
+    expect(mocks.removeRunnerInstance).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Force remove Runner" }));
+
+    await waitFor(() => expect(mocks.removeRunnerInstance).toHaveBeenCalledWith("runner-ready", { force: true, bootId: "boot-ready" }));
+    await waitFor(() => expect(screen.queryByText("Force remove this Runner?")).toBeNull());
+  });
+
+  it("hides force removal from members", async () => {
+    mocks.role = "member";
+    mocks.listRunnerPools.mockResolvedValue({ items: [{ ...runnerPool, instances: [{
+      ...runnerPool.instances[1]!, status: "syncing", appliedGeneration: 0,
+    }] }] });
+    renderPage();
+    await screen.findAllByText("runner-ready");
+    expect(screen.queryByRole("button", { name: /Force remove/ })).toBeNull();
+  });
+
+  it("keeps a failed force removal open when the Runner has recovered", async () => {
+    mocks.listRunnerPools.mockResolvedValue({ items: [{ ...runnerPool, instances: [{
+      ...runnerPool.instances[1]!, status: "syncing", appliedGeneration: 0,
+    }] }] });
+    mocks.removeRunnerInstance.mockRejectedValue(new Error("Runner state or registration changed."));
+    renderPage();
+    fireEvent.click((await screen.findAllByRole("button", { name: "Force remove runner-ready" }))[0]!);
+    fireEvent.click(screen.getByRole("button", { name: "Force remove Runner" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("Runner state or registration changed.");
+    expect(screen.getByText("Force remove this Runner?")).toBeTruthy();
+  });
 
   it("summarizes convergence across connected Runners and separates an offline registration", async () => {
     renderPage();

@@ -806,10 +806,16 @@ export function createHttpApp(input: {
     return context.json(await input.service.updateRunnerPool({ id: context.req.param("id"), actorId: context.get("actor").id, ...body }));
   });
   app.delete("/api/v1/runner-instances/:runnerId", authenticated, administrator, async (context) => {
-    await input.service.removeRunnerInstance({
+    const query = z.object({
+      force: z.enum(["true", "false"]).default("false"),
+      bootId: z.string().min(1).max(256).optional(),
+    }).refine(value => value.force !== "true" || Boolean(value.bootId), "Force removal requires the Runner boot ID.").parse(context.req.query());
+    const removed = await input.service.removeRunnerInstance({
       runnerId: context.req.param("runnerId"),
       actorId: context.get("actor").id,
+      ...(query.force === "true" ? { force: true, bootId: query.bootId! } : {}),
     });
+    if (query.force === "true") input.runnerControl.removeRunnerConnection(context.req.param("runnerId"), removed.bootId);
     return context.body(null, 204);
   });
   app.get("/api/v1/routers", authenticated, async context => {

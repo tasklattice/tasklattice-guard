@@ -19,6 +19,31 @@ const config = loadConfig({
 });
 
 describe("Runner instance management HTTP routes", () => {
+  it("force-removes a syncing registration and closes only the removed boot's connection", async () => {
+    const removeRunnerInstance = vi.fn().mockResolvedValue({ bootId: "boot-1" });
+    const removeRunnerConnection = vi.fn();
+    const app = appWith({ user: { id: "admin-1", role: "admin" } }, { removeRunnerInstance }, { removeRunnerConnection });
+    const response = await app.request("/api/v1/runner-instances/runner-syncing?force=true&bootId=boot-1", { method: "DELETE" });
+    expect(response.status).toBe(204);
+    expect(removeRunnerInstance).toHaveBeenCalledWith({ runnerId: "runner-syncing", actorId: "admin-1", force: true, bootId: "boot-1" });
+    expect(removeRunnerConnection).toHaveBeenCalledWith("runner-syncing", "boot-1");
+  });
+
+  it.each(["force=true", "force=invalid&bootId=boot-1"])("rejects invalid force removal parameters (%s)", async (query) => {
+    const removeRunnerInstance = vi.fn();
+    const app = appWith({ user: { id: "admin-1", role: "admin" } }, { removeRunnerInstance });
+    const response = await app.request(`/api/v1/runner-instances/runner-syncing?${query}`, { method: "DELETE" });
+    expect(response.status).toBe(400);
+    expect(removeRunnerInstance).not.toHaveBeenCalled();
+  });
+
+  it("does not let a member force-remove a syncing Runner", async () => {
+    const removeRunnerInstance = vi.fn();
+    const app = appWith({ user: { id: "member-1", role: "user" } }, { removeRunnerInstance });
+    const response = await app.request("/api/v1/runner-instances/runner-syncing?force=true&bootId=boot-1", { method: "DELETE" });
+    expect(response.status).toBe(403);
+    expect(removeRunnerInstance).not.toHaveBeenCalled();
+  });
   it("does not allow a member to remove a Runner registration", async () => {
     const removeRunnerInstance = vi.fn();
     const app = appWith({ user: { id: "member-1", role: "user" } }, { removeRunnerInstance });
@@ -46,6 +71,7 @@ describe("Runner instance management HTTP routes", () => {
 function appWith(
   session: { user: { id: string; role: string } } | null,
   service: Partial<ControlPlaneService>,
+  runnerControl: Partial<RunnerControlServer> = {},
 ) {
   const auth = {
     api: { getSession: vi.fn().mockResolvedValue(session) },
@@ -55,7 +81,7 @@ function appWith(
     config,
     auth,
     service: service as ControlPlaneService,
-    runnerControl: {} as RunnerControlServer,
+    runnerControl: runnerControl as RunnerControlServer,
     metrics: {} as ControllerMetrics,
   });
 }

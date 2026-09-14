@@ -127,6 +127,22 @@ export class RunnerControlServer {
     return [...this.connections.values()].some((item) => item.poolId === "default" && item.compilerCapable);
   }
 
+  removeRunnerConnection(runnerId: string, bootId: string): void {
+    const connection = this.connections.get(runnerId);
+    if (!connection || connection.bootId !== bootId) return;
+    this.releaseConnection(connection);
+    connection.stream.end();
+  }
+
+  private releaseConnection(connection: Connection): void {
+    this.connections.delete(connection.runnerId);
+    this.metrics.controlConnection(connection.poolId, false);
+    for (const validation of this.railValidations.values()) {
+      if (validation.runnerId === connection.runnerId && validation.bootId === connection.bootId)
+        validation.finish({ passed: false, message: "Runner disconnected during Rail validation.", latencyMs: 0 });
+    }
+  }
+
   async distributeDesiredState(poolId = "default", timeoutMs = 2_500): Promise<{
     desiredGeneration: number;
     distributionStatus: "ready" | "syncing";
@@ -189,16 +205,9 @@ export class RunnerControlServer {
       });
     });
     const disconnected = () => {
-      if (!connection) return;
-      for (const validation of this.railValidations.values()) {
-        if (validation.runnerId === connection.runnerId && validation.bootId === connection.bootId)
-          validation.finish({ passed: false, message: "Runner disconnected during Rail validation.", latencyMs: 0 });
-      }
-      const current = this.connections.get(connection.runnerId);
-      if (current?.bootId === connection.bootId) {
-        this.connections.delete(connection.runnerId);
-        this.metrics.controlConnection(connection.poolId, false);
-      }
+      // A removed/replaced stream may close after the same process reconnects.
+      if (!connection || this.connections.get(connection.runnerId) !== connection) return;
+      this.releaseConnection(connection);
       void this.service.disconnectRunner(connection.runnerId, connection.bootId);
     };
     stream.once("end", disconnected);
@@ -249,6 +258,7 @@ export class RunnerControlServer {
       return connection;
     }
     if (!current) throw new Error("Runner must register before sending control messages.");
+    if (this.connections.get(current.runnerId) !== current) return null;
     if (message.heartbeat) {
       const heartbeat = message.heartbeat;
       if (heartbeat.runnerId !== current.runnerId || heartbeat.bootId !== current.bootId) {
@@ -395,6 +405,7 @@ export class RunnerControlServer {
         this.service.desiredStateForPool(connection.poolId),
         this.models.activeConfiguration(true),
       ]);
+      if (this.connections.get(connection.runnerId) !== connection) return;
       // The transaction wrapper intentionally exposes an opaque result type in
       // the database adapter. Keep the wire projection typed at this boundary.
       const desired = desiredUnknown as Awaited<ReturnType<ControlPlaneService["desiredStateForPool"]>> & {

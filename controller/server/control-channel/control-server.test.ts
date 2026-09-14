@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { EventEmitter } from "node:events";
 
 import { describe, expect, it, vi } from "vitest";
 
@@ -62,6 +63,43 @@ const activeConfiguration = (revisionId: string, revision: number) => ({
 });
 
 describe("Runner model-configuration convergence", () => {
+  it("force removal releases the stream, ignores late messages and preserves a reconnected boot", async () => {
+    const service = serviceMock();
+    const models = { activeConfiguration: vi.fn().mockResolvedValue(null), finalizeActivation: vi.fn() };
+    const metrics = metricsMock();
+    const server = new RunnerControlServer(config, service as unknown as ControlPlaneService,
+      metrics as unknown as ControllerMetrics, models as unknown as ModelConfigurationService);
+    const connect = (stream: ReturnType<typeof streamMock>) => (server as unknown as { connect: (stream: unknown) => void }).connect(stream);
+    const stream = streamMock();
+    connect(stream);
+    const hello = registration("compiler");
+    hello.registration.compilerCapable = true;
+    stream.emit("data", hello);
+    await vi.waitFor(() => expect(stream.write).toHaveBeenCalledTimes(2));
+    expect(server.hasDefaultCompiler()).toBe(true);
+
+    server.removeRunnerConnection("compiler", "different-boot");
+    expect(stream.end).not.toHaveBeenCalled();
+    server.removeRunnerConnection("compiler", "boot-compiler");
+    expect(stream.end).toHaveBeenCalledOnce();
+    expect(server.hasDefaultCompiler()).toBe(false);
+
+    const replacement = streamMock();
+    connect(replacement);
+    replacement.emit("data", hello);
+    await vi.waitFor(() => expect(replacement.write).toHaveBeenCalledTimes(2));
+    stream.emit("close");
+    stream.emit("end");
+    stream.emit("data", desiredResult("compiler", true));
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(service.disconnectRunner).not.toHaveBeenCalled();
+    expect(models.finalizeActivation).not.toHaveBeenCalled();
+    expect(server.hasDefaultCompiler()).toBe(true);
+    expect(replacement.end).not.toHaveBeenCalled();
+    replacement.emit("close");
+    replacement.emit("end");
+    expect(service.disconnectRunner).toHaveBeenCalledOnce();
+  });
   it.each([true, false])("accepts Rail evidence only from the assigned Runner with both verdicts (complete=%s)", async (complete) => {
     const models = { activeConfiguration: vi.fn().mockResolvedValue(null) };
     const server = new RunnerControlServer(config, serviceMock() as unknown as ControlPlaneService,
@@ -190,7 +228,10 @@ function metricsMock() {
 }
 
 function streamMock() {
-  return { write: vi.fn(), end: vi.fn() };
+  return Object.assign(new EventEmitter(), {
+    write: vi.fn(), end: vi.fn(),
+    metadata: { get: () => [`Bearer ${config.runnerToken}`] },
+  });
 }
 
 function registration(runnerId: string) {

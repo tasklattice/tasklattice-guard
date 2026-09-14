@@ -77,7 +77,7 @@ export function RunnerCapacitySection({ showHeader = true }: { showHeader?: bool
             </div>
             <div className="hidden overflow-x-auto lg:block">
               <Table className="min-w-[64rem]">
-                <TableHeader><TableRow><TableHead>Runner</TableHead><TableHead>{t("runners.columns.runtimeState")}</TableHead><TableHead>{t("runners.columns.configurationSync")}</TableHead><TableHead>{t("runners.columns.inflightQueue")}</TableHead><TableHead>CPU / Memory</TableHead><TableHead>{t("runners.columns.lastHeartbeat")}</TableHead><TableHead className="w-14"><span className="sr-only">{t("runners.columns.actions")}</span></TableHead></TableRow></TableHeader>
+                <TableHeader><TableRow><TableHead>Runner</TableHead><TableHead>{t("runners.columns.runtimeState")}</TableHead><TableHead>{t("runners.columns.configurationSync")}</TableHead><TableHead>{t("runners.columns.inflightQueue")}</TableHead><TableHead>CPU / Memory</TableHead><TableHead>{t("runners.columns.lastHeartbeat")}</TableHead><TableHead>{t("runners.columns.actions")}</TableHead></TableRow></TableHeader>
                 <TableBody>
                   {pool.instances.map((runner) => (
                     <TableRow key={runner.runnerId}>
@@ -88,13 +88,13 @@ export function RunnerCapacitySection({ showHeader = true }: { showHeader?: bool
                       <TableCell>{Math.round((runner.load?.cpuUtilization ?? 0) * 100)}% / {Math.round((runner.load?.memoryUtilization ?? 0) * 100)}%</TableCell>
                       <TableCell className="text-xs text-muted-foreground">{formatDate(runner.lastHeartbeatAt, i18n.language)}</TableCell>
                       <TableCell className="text-right">
-                        {auth.user?.role === "admin" && runner.status === "offline" ? <Button
+                        {auth.user?.role === "admin" && (runner.status === "offline" || runner.status === "syncing") ? <Button
                           type="button"
                           size="icon"
                           variant="ghost"
                           className="size-11 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                          aria-label={t("runners.removeAria", { runnerId: runner.runnerId })}
-                          title={t("runners.removeOffline")}
+                          aria-label={t(runner.status === "syncing" ? "runners.forceRemoveAria" : "runners.removeAria", { runnerId: runner.runnerId })}
+                          title={t(runner.status === "syncing" ? "runners.forceRemove" : "runners.removeOffline")}
                           onClick={() => setRemoving({ runner, poolName: pool.name })}
                         ><Trash2 /></Button> : null}
                       </TableCell>
@@ -119,13 +119,13 @@ export function RunnerCapacitySection({ showHeader = true }: { showHeader?: bool
                     <RunnerDatum label="CPU / Memory" value={`${Math.round((runner.load?.cpuUtilization ?? 0) * 100)}% / ${Math.round((runner.load?.memoryUtilization ?? 0) * 100)}%`} />
                     <RunnerDatum label={t("runners.columns.lastHeartbeat")} value={formatDate(runner.lastHeartbeatAt, i18n.language)} />
                   </dl>
-                  {auth.user?.role === "admin" && runner.status === "offline" ? <Button
+                  {auth.user?.role === "admin" && (runner.status === "offline" || runner.status === "syncing") ? <Button
                     type="button"
                     variant="outline"
                     className="mt-4 min-h-11 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                    aria-label={t("runners.removeAria", { runnerId: runner.runnerId })}
+                    aria-label={t(runner.status === "syncing" ? "runners.forceRemoveAria" : "runners.removeAria", { runnerId: runner.runnerId })}
                     onClick={() => setRemoving({ runner, poolName: pool.name })}
-                  ><Trash2 />{t("runners.removeOffline")}</Button> : null}
+                  ><Trash2 />{t(runner.status === "syncing" ? "runners.forceRemove" : "runners.removeOffline")}</Button> : null}
                 </div>
               ))}
             </div>
@@ -273,10 +273,13 @@ function RemoveRunnerSheet({
   onRemoved: () => void;
 }) {
   const { t, i18n } = useTranslation();
+  const force = target?.runner.status === "syncing";
   const mutation = useMutation({
-    mutationFn: () => removeRunnerInstance(target!.runner.runnerId),
+    mutationFn: () => force
+      ? removeRunnerInstance(target!.runner.runnerId, { force: true, bootId: target!.runner.bootId })
+      : removeRunnerInstance(target!.runner.runnerId),
     onSuccess: () => {
-      toast.success(t("runners.removed"));
+      toast.success(t(force ? "runners.forceRemoved" : "runners.removed"));
       onRemoved();
     },
   });
@@ -288,25 +291,25 @@ function RemoveRunnerSheet({
     onOpenChange={onOpenChange}
     entityName={runner.runnerId}
     loading={false}
-    ready={runner.status === "offline"}
+    ready={runner.status === "offline" || force}
     requiresConfirmation={false}
     deleting={mutation.isPending}
     error={mutation.error instanceof Error ? mutation.error : null}
     onRetry={() => mutation.reset()}
     onConfirm={() => mutation.mutate()}
     impactItems={[
-      { label: t("runners.currentState"), value: t("runners.offline") },
+      { label: t("runners.currentState"), value: <StateBadge state={runner.status} /> },
       { label: t("runners.columns.lastHeartbeat"), value: formatDate(runner.lastHeartbeatAt, i18n.language) },
     ]}
     copy={{
       eyebrow: `${poolName} / ${runner.runnerId}`,
-      title: t("runners.removal.title"),
-      description: t("runners.removal.description"),
+      title: t(force ? "runners.removal.forceTitle" : "runners.removal.title"),
+      description: t(force ? "runners.removal.forceDescription" : "runners.removal.description"),
       protectedMessage: t("runners.removal.protectedMessage"),
-      clearMessage: t("runners.removal.clearMessage"),
+      clearMessage: t(force ? "runners.removal.forceWarning" : "runners.removal.clearMessage"),
       retentionNote: t("runners.removal.retentionNote"),
       continueLabel: t("runners.removal.continue"),
-      deleteLabel: t("runners.removal.delete"),
+      deleteLabel: t(force ? "runners.forceRemove" : "runners.removal.delete"),
       deletingLabel: t("runners.removal.deleting"),
       confirmTitle: t("runners.removal.confirmTitle"),
       confirmDescription: runner.runnerId,

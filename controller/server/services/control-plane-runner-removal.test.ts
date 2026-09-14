@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import { PgDialect } from "drizzle-orm/pg-core";
+import type { SQL } from "drizzle-orm";
 
 import type { ControllerConfig } from "../config.js";
 import type { ControllerDatabase } from "../db/client.js";
@@ -22,17 +24,19 @@ describe("Runner registration removal", () => {
     expect(db.transaction).not.toHaveBeenCalled();
   });
 
-  it("removes only the current registration and records immutable audit context", async () => {
+  it.each([false, true])("removes only the current registration and records immutable audit context (force=%s)", async (force) => {
     const removed = {
       runnerId: "runner-offline",
       bootId: "boot-1",
       poolId: "default",
-      status: "offline",
+      status: force ? "syncing" : "offline",
+      appliedGeneration: 0,
+      desiredGeneration: 2,
       lastHeartbeatAt: new Date("2026-08-20T10:00:00.000Z"),
       disconnectedAt: new Date("2026-08-20T10:00:30.000Z"),
     };
     const returning = vi.fn().mockResolvedValue([removed]);
-    const deleteWhere = vi.fn(() => ({ returning }));
+    const deleteWhere = vi.fn((_condition: SQL) => ({ returning }));
     const deleteRow = vi.fn(() => ({ where: deleteWhere }));
     const auditValues = vi.fn().mockResolvedValue(undefined);
     const insert = vi.fn(() => ({ values: auditValues }));
@@ -44,9 +48,13 @@ describe("Runner registration removal", () => {
     await new ControlPlaneService(db, {} as ControllerConfig).removeRunnerInstance({
       runnerId: removed.runnerId,
       actorId: "admin-1",
+      ...(force ? { force: true, bootId: removed.bootId } : {}),
     });
 
     expect(deleteRow).toHaveBeenCalledOnce();
+    const condition = new PgDialect().sqlToQuery(deleteWhere.mock.calls[0]![0]);
+    expect(condition.params).toEqual(force ? [removed.runnerId, "offline", "syncing", removed.bootId] : [removed.runnerId, "offline"]);
+    if (force) expect(condition.sql).toContain('"runner_instance"."boot_id" =');
     expect(insert).toHaveBeenCalledOnce();
     expect(auditValues).toHaveBeenCalledWith(expect.objectContaining({
       kind: "runner_instance.removed",
@@ -54,6 +62,7 @@ describe("Runner registration removal", () => {
       resourceType: "runner_instance",
       resourceId: removed.runnerId,
       detail: {
+        ...(force ? { force: true, status: "syncing", appliedGeneration: 0, desiredGeneration: 2 } : {}),
         bootId: removed.bootId,
         poolId: removed.poolId,
         lastHeartbeatAt: "2026-08-20T10:00:00.000Z",
@@ -62,7 +71,7 @@ describe("Runner registration removal", () => {
     }));
   });
 
-  it("rejects removing a Runner that has reconnected", async () => {
+  it.each([false, true])("rejects removing a Runner that has recovered (force=%s)", async (force) => {
     const returning = vi.fn().mockResolvedValue([]);
     const tx = {
       delete: vi.fn(() => ({ where: vi.fn(() => ({ returning })) })),
@@ -82,10 +91,11 @@ describe("Runner registration removal", () => {
     const removal = new ControlPlaneService(db, {} as ControllerConfig).removeRunnerInstance({
       runnerId: "runner-ready",
       actorId: "admin-1",
+      ...(force ? { force: true, bootId: "old-boot" } : {}),
     });
 
     await expect(removal).rejects.toMatchObject({
-      code: "runner_not_offline",
+      code: force ? "runner_removal_conflict" : "runner_not_offline",
       status: 409,
     });
     expect(tx.insert).not.toHaveBeenCalled();
