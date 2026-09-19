@@ -42,8 +42,10 @@ export const updateMe = async (input: { display_name?: string; preferred_languag
     ...(input.preferred_language ? { preferredLanguage: input.preferred_language } : {}),
   });
   if (result.error) throw new Error(result.error.message || "Profile update failed.");
-  if (!result.data) throw new Error("Better Auth did not return the updated user.");
-  return { user: identityUser(result.data) };
+  // updateUser returns only a status; reload the persisted user from the session.
+  const session = await getAuthStatus();
+  if (!session.user) throw new Error("Session ended after profile update.");
+  return { user: session.user };
 };
 
 export const changePassword = async (input: { current_password: string; new_password: string }) => {
