@@ -7,7 +7,7 @@ import { boundedRead } from '../db/read-budget.js';
 import { asText, findingSeverity, increment, jsonAggregate, jsonArrayLength, jsonElements, jsonObject, jsonText, jsonValue, literal, lowerText, rowValue, scalar, timestampValue } from '../db/postgres-expressions.js';
 import { advisoryTransactionLock } from '../db/postgres-locks.js';
 
-import { and, asc, count, countDistinct, desc, eq, exists, gt, gte, inArray, isNotNull, isNull, lt, lte, max, min, ne, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, countDistinct, desc, eq, exists, getTableColumns, gt, gte, inArray, isNotNull, isNull, lt, lte, max, min, ne, or, sql, type SQL } from "drizzle-orm";
 
 import type { ControllerConfig } from "../config.js";
 import type { ControllerDatabase } from "../db/client.js";
@@ -1346,9 +1346,15 @@ export class ControlPlaneService {
   }
 
   async getRuntimeEvent(id: string, includeContent = false) {
-    const [item] = await boundedRead(this.db, tx => tx.select().from(runtimeEvents).where(eq(runtimeEvents.id, id)).limit(1));
+    // Exclude large bodies in SQL, before the database driver allocates them in Node.
+    const metadata = includeContent ? runtimeEvents.metadata : sql<Record<string, unknown>>`(${runtimeEvents.metadata} - 'contentCiphertext' - 'contentBefore' - 'contentAfter' - 'httpRequest') || jsonb_build_object('contentAvailable',
+      (${this.runtimeLogEncryptionKey !== null} AND coalesce(${runtimeEvents.metadata}->>'contentCiphertext', '') <> '')
+      OR ${runtimeEvents.metadata}->'contentBefore' IS NOT NULL AND ${runtimeEvents.metadata}->'contentBefore' <> 'null'::jsonb
+      OR ${runtimeEvents.metadata}->'httpRequest' IS NOT NULL AND ${runtimeEvents.metadata}->'httpRequest' <> 'null'::jsonb
+      OR ${runtimeEvents.metadata}->'contentAfter' IS NOT NULL AND ${runtimeEvents.metadata}->'contentAfter' <> 'null'::jsonb)`;
+    const [item] = await boundedRead(this.db, tx => tx.select({ ...getTableColumns(runtimeEvents), metadata }).from(runtimeEvents).where(eq(runtimeEvents.id, id)).limit(1));
     if (!item) throw new NotFoundError("Runtime event", id);
-    const { contentCiphertext: _ciphertext, contentBefore: _before, contentAfter: _after, ...safe } = item.metadata;
+    const { contentCiphertext: _ciphertext, contentBefore: _before, contentAfter: _after, httpRequest: _httpRequest, ...safe } = item.metadata;
     return { ...item, metadata: includeContent ? decryptRuntimeEventMetadata(item.metadata, this.runtimeLogEncryptionKey) : safe };
   }
 
@@ -3165,12 +3171,13 @@ function validateBindingGraph(draft: ProgrammablePolicyDraft): void {
 
 function decryptRuntimeEventMetadata(value: Record<string, unknown>, key: Buffer | null): Record<string, unknown> {
   const decrypted = decryptRuntimeLogPayload(value.contentCiphertext, key);
-  if (!decrypted) return value;
   const { contentCiphertext: _ciphertext, ...metadata } = value;
+  if (!decrypted) return { ...metadata, contentAvailable: Boolean(metadata.httpRequest || metadata.contentBefore || metadata.contentAfter) };
   return {
     ...metadata,
     contentBefore: decrypted.contentBefore ?? null,
     contentAfter: decrypted.contentAfter ?? null,
+    httpRequest: decrypted.httpRequest ?? null,
     contentAvailable: true,
   };
 }

@@ -444,7 +444,7 @@ export const listRuntimeEvents = (limit = 100, filters: { guardrailId?: string; 
   for (const [key, value] of Object.entries(filters)) if (value) query.set(key, String(value));
   return requestController<Collection<RuntimeEvent>>(`/api/v1/telemetry/events?${query.toString()}`, signal ? { signal } : undefined);
 };
-export const getRuntimeEvent = (id: string, signal?: AbortSignal) => requestController<RuntimeEvent>(`/api/v1/telemetry/events/${encodeURIComponent(id)}`, signal ? { signal } : undefined);
+export const getRuntimeEvent = (id: string, signal?: AbortSignal, includeContent = false) => requestController<RuntimeEvent>(`/api/v1/telemetry/events/${encodeURIComponent(id)}${includeContent ? "?includeContent=true" : ""}`, signal ? { signal } : undefined);
 export const listAuditEvents = (limit = 100) => requestController<Collection<AuditEvent>>(`/api/v1/audit-events?limit=${Math.min(500, Math.max(1, limit))}`);
 
 export const deleteControllerGuardrailVersion = (id: string, version: string) => requestController<void>(`/api/v1/guardrails/${encodeURIComponent(id)}/versions/${encodeURIComponent(version)}`, { method: "DELETE" });

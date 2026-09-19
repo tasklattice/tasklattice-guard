@@ -344,6 +344,7 @@ class RunnerAPI:
                         started=started,
                         decision=decision,
                         content_before=protection_request.texts,
+                        http_request=request,
                         observation=observation,
                     )
 
@@ -422,6 +423,7 @@ class RunnerAPI:
                         started=started,
                         decision=decision,
                         content_before=_request_content(protection_request),
+                        http_request=request,
                         observation=observation,
                     )
 
@@ -490,6 +492,7 @@ class RunnerAPI:
                             started=started,
                             decision=decision,
                             content_before=candidate.texts,
+                            http_request=request,
                             stream_metadata={"streamId": payload.stream_id, "streamSequence": payload.sequence,
                                              "streamFinalCheck": payload.final and decision is not None,
                                              "effectiveOutputDelivery": mode},
@@ -600,6 +603,7 @@ class RunnerAPI:
                         started=started,
                         decision=decision,
                         content_before=protection_request.texts,
+                        http_request=request,
                         observation=observation,
                     )
 
@@ -710,6 +714,7 @@ class RunnerAPI:
         started: float,
         decision: ProtectionDecision | None,
         content_before: tuple[str, ...] = (),
+        http_request: Request | None = None,
         observation: GuardrailRequestObservation | None = None,
         stream_metadata: dict[str, Any] | None = None,
     ) -> None:
@@ -744,6 +749,7 @@ class RunnerAPI:
                     phase,
                     content_before,
                     decision.texts or content_before,
+                    await _runtime_http_request(http_request) if http_request is not None else None,
                 )
             if decision.guardrail_id:
                 event["guardrailId"] = decision.guardrail_id
@@ -880,11 +886,13 @@ def _encrypt_runtime_log_content(
     phase: Literal["input", "output"],
     before: tuple[str, ...],
     after: tuple[str, ...],
+    http_request: dict[str, Any] | None = None,
 ) -> str:
     role = "user_input" if phase == "input" else "model_output"
     payload = {
         "contentBefore": _runtime_log_blocks(before, role),
         "contentAfter": _runtime_log_blocks(after, role),
+        **({"httpRequest": http_request} if http_request is not None else {}),
     }
     nonce = os.urandom(12)
     encrypted = AESGCM(key).encrypt(
@@ -899,6 +907,30 @@ def _encrypt_runtime_log_content(
         base64.b64encode(tag).decode(),
         base64.b64encode(ciphertext).decode(),
     ))
+
+
+async def _runtime_http_request(request: Request) -> dict[str, Any]:
+    """Keep the received HTTP body byte-for-byte; never retain transport credentials."""
+    headers = []
+    redacted = set()
+    for name, value in request.scope.get("headers", []):
+        header = name.decode("latin-1")
+        if header.lower() in SENSITIVE_HEADERS:
+            redacted.add(header)
+            text = "[REDACTED]"
+        else:
+            text = value.decode("latin-1")
+        headers.append([header, text])
+    path = request.scope.get("raw_path", request.url.path.encode()).decode("latin-1")
+    query = request.scope.get("query_string", b"").decode("latin-1")
+    return {
+        "method": request.method,
+        "target": path + (f"?{query}" if query else ""),
+        "httpVersion": request.scope.get("http_version", "1.1"),
+        "headers": headers,
+        "bodyBase64": base64.b64encode(await request.body()).decode("ascii"),
+        "redactedHeaders": sorted(redacted),
+    }
 
 
 def _runtime_log_blocks(values: tuple[str, ...], role: str) -> list[dict[str, Any]]:

@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode, type MouseEvent }
 import { boundPolicy } from "@/lib/bound-policy";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { EventPagination, useEventCursor } from '@/components/event-pagination';
-import { Link, useNavigate, useParams } from "@tanstack/react-router";
+import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { Activity, ArrowLeft, ArrowUpRight, Ban, Check, ChevronDown, Circle, CircleAlert, FlaskConical, GitCompareArrows, History, LoaderCircle, LockKeyhole, Pencil, Plus, RefreshCw, Rocket, RotateCcw, Save, ScrollText, ShieldAlert, ShieldCheck, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -137,7 +137,9 @@ export function GuardrailDetailPage() {
   const testsQuery = useQuery({ queryKey: queryKeys.testCases(guardrailId), queryFn: () => getTestCases(guardrailId) });
   const routersQuery = useQuery({ queryKey: queryKeys.routers, queryFn: getRouters });
   const endpointsQuery = useQuery({ queryKey: queryKeys.endpoints, queryFn: getEndpoints });
-  const [section, setSection] = useState("runtime");
+  const search = useSearch({ from: "/guardrails/$guardrailId" });
+  const section = search.tab ?? "runtime";
+  const setSection = (tab: string) => void navigate({ to: "/guardrails/$guardrailId", params: { guardrailId }, search: { tab } });
   const [window, setWindow] = useState<MetricWindow>("24h");
   const [editOpen, setEditOpen] = useState(false);
   const [testOpen, setTestOpen] = useState(false);
@@ -446,7 +448,7 @@ export function GuardrailFindingsView({ data, loading, error, policies, routers,
               <p className="mt-2 break-all font-mono text-[11px] text-muted-foreground">{finding.policy_id ?? "—"}{finding.rule_id ? ` · ${finding.rule_id}` : ""}</p>
               <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground"><span>{t("guardrails.sourceLabel")}: <strong className="font-medium text-foreground">{source}</strong></span><span>{t("guardrails.versionLabel")}: <code>{finding.guardrail_version ?? "—"}</code></span><span>{t("guardrails.phaseLabel")}: <code>{finding.phase}</code></span><span>{t("guardrails.confidenceLabel")}: <code>{finding.confidence === null ? "—" : `${Math.round(finding.confidence * 100)}%`}</code></span></div>
             </div>
-            <time className="self-start font-mono text-[11px] text-muted-foreground" dateTime={finding.created_at}><span className="sm:hidden">{timestamp.date} · </span>{timestamp.time}<span className="hidden sm:mt-1 sm:block sm:text-right">{timestamp.date}</span></time>
+            <div className="flex items-center gap-3 sm:flex-col sm:items-end"><time className="self-start font-mono text-[11px] text-muted-foreground" dateTime={finding.created_at}><span className="sm:hidden">{timestamp.date} · </span>{timestamp.time}<span className="hidden sm:mt-1 sm:block sm:text-right">{timestamp.date}</span></time><Button asChild variant="outline" size="sm" className="min-h-11"><Link to="/logs" search={{ requestId: finding.trace_id, checkpointId: finding.event_id, guardrailId: finding.guardrail_id ?? undefined }}><ScrollText />{t("logs.viewLog")}</Link></Button></div>
           </article>;
         })}</div> : <div className="flex min-h-56 flex-col items-center justify-center px-6 py-10 text-center"><span className="grid size-10 place-items-center rounded-full bg-muted text-muted-foreground"><ShieldCheck className="size-5" /></span><p className="mt-3 text-sm font-medium">{t(findings.length ? "guardrails.noMatchingFindings" : data?.collection_status === "not_collected" ? "guardrails.findingsNotCollected" : data?.collection_status === "no_events" ? "guardrails.noRuntimeEvidence" : "guardrails.noSecurityFindings")}</p><p className="mt-1 max-w-lg text-xs leading-5 text-muted-foreground">{t(findings.length ? "guardrails.noMatchingFindingsDescription" : data?.collection_status === "not_collected" ? "guardrails.findingsNotCollectedDescription" : data?.collection_status === "no_events" ? "guardrails.noRuntimeEvidenceDescription" : "guardrails.noSecurityFindingsDescription")}</p></div>}
         {!loading && !error && data && data.summary.total > data.count ? <div className="border-t bg-muted/20 px-4 py-3 text-xs text-muted-foreground">{t("guardrails.findingsTruncated", { shown: data.count, total: data.summary.total })}</div> : null}

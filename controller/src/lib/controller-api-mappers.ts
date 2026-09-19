@@ -46,6 +46,7 @@ export function runtimeFindings(event: controllerApi.RuntimeEvent): RouterTraceF
     const taxonomyId = stringValue(finding.taxonomyId) ?? "TALI-BUSINESS-POLICY";
     return {
       id: stringValue(finding.id) ?? `${event.id}:finding:${index + 1}`,
+      event_id: event.id,
       trace_id: event.requestId,
       created_at: event.occurredAt,
       guardrail_id: event.guardrailId,

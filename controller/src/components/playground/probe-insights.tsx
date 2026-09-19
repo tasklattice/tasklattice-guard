@@ -1,4 +1,5 @@
-import { CheckCircle2, ChevronDown, CircleAlert, ListTree, SearchCheck, ShieldAlert } from "lucide-react";
+import { ExecutionTrace, playgroundTraceSteps } from "@/components/execution-trace";
+import { CheckCircle2, CircleAlert, SearchCheck, ShieldAlert } from "lucide-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -37,20 +38,9 @@ export function FindingsPanel({ result }: { result: PlaygroundCheckResult | null
 
 export function ExecutionTracePanel({ result }: { result: PlaygroundCheckResult | null }) {
   const { t } = useTranslation();
-  return (
-    <section className="overflow-hidden rounded-xl border bg-card shadow-xs">
-      <details className="group">
-        <summary className="flex min-h-14 cursor-pointer list-none items-center gap-3 px-4 focus-visible:outline-2 focus-visible:outline-ring [&::-webkit-details-marker]:hidden">
-          <span className="text-muted-foreground"><ListTree className="size-4" /></span>
-          <div className="min-w-0 flex-1"><h2 className="text-sm font-semibold">{t("playground.executionTrace")}</h2><p className="mt-0.5 text-[11px] text-muted-foreground">{result ? t("playground.matchedSteps", { count: result.trace_summary.matched_steps }) : t("playground.traceCollapsedHint")}</p></div>
-          <ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
-        </summary>
-        <div className="border-t bg-muted/[0.08] p-3">
-          {result ? result.trace.length ? <div className="space-y-2">{result.trace.map((step) => <div key={step.id} className="rounded-lg border bg-card p-3"><div className="flex items-center gap-2"><span className="rounded border bg-muted/40 px-1.5 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">{step.kind ?? t("playground.step")}</span><strong className="min-w-0 flex-1 truncate text-xs font-medium">{step.name}</strong><span className="font-mono text-xs text-muted-foreground">{step.duration_ms} ms</span></div><p className="mt-1.5 text-[11px] leading-5 text-muted-foreground">{step.detail}</p><p className="mt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{step.verdict ?? step.status}</p></div>)}</div> : <PanelEmpty text={t("playground.noTraceSteps")} /> : <PanelEmpty text={t("playground.runToSeeTrace")} />}
-        </div>
-      </details>
-    </section>
-  );
+  return result
+    ? <ExecutionTrace key={result.trace_id} steps={playgroundTraceSteps(result.trace)} />
+    : <PanelEmpty text={t("playground.runToSeeTrace")} />;
 }
 
 function PanelHeader({ icon, title, meta }: { icon: ReactNode; title: string; meta?: string }) {

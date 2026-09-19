@@ -15,6 +15,7 @@ import type {
   Metrics,
   MetricWindow,
   RuntimeLogInteraction,
+  RuntimeHttpRequest,
 } from "@/lib/api-types";
 
 export function metricWindowMilliseconds(window: MetricWindow): number {
@@ -47,6 +48,7 @@ export const getGuardrailFindings = async (
 function runtimeLogEntry(event: controllerApi.RuntimeEvent): RuntimeLogInteraction["entries"][number] {
   const before = runtimeLogContent(event.metadata.contentBefore);
   const after = runtimeLogContent(event.metadata.contentAfter);
+  const httpRequest = runtimeHttpRequest(event.metadata.httpRequest);
   return {
     id: event.id,
     trace_id: event.requestId,
@@ -58,9 +60,10 @@ function runtimeLogEntry(event: controllerApi.RuntimeEvent): RuntimeLogInteracti
     latency_ms: event.durationMs,
     timed_out: isTimedOut(event),
     detail: `Runner ${event.runnerId} reported ${event.direction} decision “${event.decision}” in ${event.durationMs} ms.`,
+    http_request: httpRequest,
     content_before: before,
     content_after: after,
-    content_available: Boolean(event.metadata.contentAvailable) && (before !== null || after !== null),
+    content_available: Boolean(event.metadata.contentAvailable),
     findings: runtimeFindings(event),
     steps: runtimeTraceSteps(event),
   };
@@ -72,12 +75,13 @@ function worstOutcome(values: string[]): string {
 }
 
 export function runtimeLogInteractions(events: controllerApi.RuntimeEvent[], filters: {
+  includeUncaptured?: boolean;
   phase?: "input" | "output";
   outcome?: "allow" | "transform" | "block" | "error";
 } = {}): RuntimeLogInteraction[] {
   const matching = events
     .filter((event): event is controllerApi.RuntimeEvent & { guardrailId: string } => Boolean(event.guardrailId))
-    .filter((event) => event.metadata.runtimeLogCaptured === true)
+    .filter((event) => filters.includeUncaptured || event.metadata.runtimeLogCaptured === true)
     .filter((event) => !filters.phase || (event.direction === "incoming" ? "input" : "output") === filters.phase)
     .filter((event) => !filters.outcome || normalizeOutcome(event.decision) === filters.outcome);
   const grouped = new Map<string, typeof matching>();
@@ -104,6 +108,21 @@ export function runtimeLogInteractions(events: controllerApi.RuntimeEvent[], fil
       entries: ordered.map(runtimeLogEntry),
     };
   }).sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at));
+}
+
+function runtimeHttpRequest(value: unknown): RuntimeHttpRequest | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const request = value as Record<string, unknown>;
+  if (typeof request.method !== "string" || typeof request.target !== "string" ||
+      typeof request.httpVersion !== "string" || typeof request.bodyBase64 !== "string" ||
+      !Array.isArray(request.headers) || !request.headers.every(header =>
+        Array.isArray(header) && header.length === 2 && header.every(part => typeof part === "string"))) return null;
+  try { atob(request.bodyBase64); } catch { return null; }
+  return {
+    method: request.method, target: request.target, httpVersion: request.httpVersion,
+    headers: request.headers as [string, string][], bodyBase64: request.bodyBase64,
+    redactedHeaders: arrayOfStrings(request.redactedHeaders),
+  };
 }
 
 function runtimeLogContent(value: unknown): RuntimeLogInteraction["entries"][number]["content_before"] {

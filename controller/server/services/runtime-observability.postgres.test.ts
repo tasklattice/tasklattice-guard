@@ -19,7 +19,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('bounded runtime observability (
     await db.execute(sql`INSERT INTO runtime_event(id,occurred_at,request_id,runner_id,guardrail_id,router_id,direction,decision,duration_ms,metadata)
       SELECT 'event-'||lpad(n::text,6,'0'),now()-interval '1 hour','request-'||n,'runner','guard','router','incoming',
         CASE WHEN n%2=0 THEN 'block' ELSE 'allow' END,n,
-        jsonb_build_object('captureLevel','trace','contentBefore',repeat('private content',2500),'contentCiphertext','private ciphertext',
+        jsonb_build_object('captureLevel','trace','contentBefore',repeat('private content',2500),'contentCiphertext','private ciphertext','httpRequest',jsonb_build_object('bodyBase64',repeat('aaaa',1000)),
           'trace',jsonb_build_array(jsonb_build_object('kind','action','name','same-action','policyId','same-policy','durationMs',n,'outcome','safe')),
           'findings', CASE WHEN n%2=0 THEN jsonb_build_array(jsonb_build_object('risk','test','verdict','unsafe','confidence',.95,'evidence',repeat('private evidence',100))) ELSE '[]'::jsonb END,
           'usage',jsonb_build_object('model_invocations',1))
@@ -62,6 +62,8 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('bounded runtime observability (
     expect(detail.metadata.trace).toHaveLength(1);
     expect(detail.metadata).not.toHaveProperty('contentBefore');
     expect(detail.metadata).not.toHaveProperty('contentCiphertext');
+    expect(detail.metadata).not.toHaveProperty('httpRequest');
+    expect(detail.metadata.contentAvailable).toBe(true);
   });
 
   it('finds older critical events before applying the page limit', async () => {

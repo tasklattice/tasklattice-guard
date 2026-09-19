@@ -233,7 +233,20 @@ See [revision lifecycles](revision-lifecycle.md) for the exact constraints.
 - Runtime events contain bounded metadata by default. When the Guardrail logging
   level qualifies and an encryption key is configured, Runner encrypts captured
   before/after content with AES-GCM before writing the WAL or exporting it.
-  Controller stores ciphertext and decrypts content for authorized reads.
+  The same encrypted payload includes the HTTP request received at the Runner:
+  method, target, HTTP version, ordered headers (including duplicates), and the
+  complete body bytes. Authentication header values are replaced with
+  `[REDACTED]` before encryption. Controller exposes this envelope only on
+  administrator detail reads with `includeContent=true`; lists and ordinary
+  detail reads exclude it in SQL, before allocating a body in Controller.
+  Opening an Item loads metadata and Trace only. Expanding a content panel or
+  clicking download fetches that checkpoint's body on demand; closing the panel's
+  sheet aborts pending reads and releases its content. Previews are bounded to
+  64 KiB with limits on JSON tokens and nesting; downloads remain complete.
+  The console displays only the body, formatting and highlighting valid JSON
+  without changing numeric precision. HTTP downloads retain the captured body
+  bytes and headers. Older records without an HTTP envelope offer retained-text
+  downloads only; missing headers and original bodies cannot be reconstructed.
 - Runtime logs and routing events are batched from the local Runner WAL to
   Controller over authenticated HTTP outside the synchronous protection path.
   Redis call/stream content has the separate retention boundary described above.

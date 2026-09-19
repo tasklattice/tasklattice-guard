@@ -702,3 +702,36 @@ async def test_internal_api_uses_bounded_sentinel_and_rejected_ids_never_reach_b
     rendered = generate_latest(metrics.registry).decode()
     assert attacker_controlled_id not in rendered
     assert f'endpoint_id="{INTERNAL_METRIC_ID}"' in rendered
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path,payload,credential", [
+    ("/internal/v1/guardrails/guardrail-1/evaluate", {"phase": "input", "texts": ["你好 " * 3000], "guardrail_version": "20260904-020000.002Z"}, ("authorization", "Bearer controller-token")),
+    ("/runtime/v1/endpoints/endpoint-http/guardrails/evaluate", {"phase": "input", "texts": ["你好 " * 3000]}, ("x-api-key", "valid-secret")),
+    ("/runtime/v1/endpoints/endpoint-1/beta/litellm_basic_guardrail_api", {"input_type": "request", "texts": ["你好 " * 3000]}, ("x-api-key", "valid-secret")),
+])
+async def test_runtime_encrypts_complete_http_request_without_truncating_body(path, payload, credential):
+    telemetry = Telemetry()
+    app = FastAPI()
+    key = b"runtime-log-encryption-key-32b!!"
+    app.include_router(RunnerAPI(Runtime(), Store(), Metrics(), telemetry, "runner", "controller-token", key).router)
+    body = (json.dumps(payload, ensure_ascii=False, indent=3) + "\n").encode("utf-8")
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://runner") as client:
+        response = await client.post(path + "?test=one%20two", content=body,
+            headers=[credential, ("content-type", "application/json"), ("x-request-tag", "first"), ("x-request-tag", "second"), ("cookie", "session=private")])
+    assert response.status_code == 200, response.text
+    metadata = telemetry.events[0]["metadata"]
+    assert "httpRequest" not in metadata
+    assert "你好" not in json.dumps(metadata, ensure_ascii=False)
+    prefix, nonce, tag, ciphertext = metadata["contentCiphertext"].split(":")
+    decrypted = json.loads(AESGCM(key).decrypt(base64.b64decode(nonce), base64.b64decode(ciphertext) + base64.b64decode(tag), prefix.encode()))
+    request = decrypted["httpRequest"]
+    assert request["method"] == "POST"
+    assert request["target"] == path + "?test=one%20two"
+    assert request["httpVersion"] == "1.1"
+    assert base64.b64decode(request["bodyBase64"]) == body
+    assert [header for header in request["headers"] if header[0] == "x-request-tag"] == [["x-request-tag", "first"], ["x-request-tag", "second"]]
+    assert [credential[0], "[REDACTED]"] in request["headers"]
+    assert ["cookie", "[REDACTED]"] in request["headers"]
+    assert "private" not in json.dumps(request)
+    assert credential[1] not in json.dumps(request)

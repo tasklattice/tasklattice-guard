@@ -5,7 +5,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { RuntimeLogInteraction } from "@/lib/api";
 
-import { buildTraceForest, RuntimeCheckpoint, CheckpointHistory, RuntimeLogSheet } from "./logs";
+import { buildTraceForest } from "@/components/execution-trace";
+import { RuntimeCheckpoint, RuntimeLogSheet } from "@/components/runtime-log-sheet";
+import { CheckpointHistory } from "./logs";
 
 vi.mock("react-i18next", () => ({
   initReactI18next: { type: "3rdParty", init: () => undefined },
@@ -78,7 +80,7 @@ const baseProps = {
 
 describe('request checkpoint browsing', () => {
   afterEach(() => { cleanup(); vi.restoreAllMocks(); });
-  it('loads only the expanded checkpoint and can browse beyond the original list page', async () => {
+  it('automatically loads the first checkpoint and loads the next page without a second click', async () => {
     const event = (id: string): controllerApi.RuntimeEvent => ({
       id, occurredAt: interaction.created_at, requestId: interaction.id, runnerId:'runner',
       guardrailId:interaction.guardrail_id,guardrailVersion:interaction.guardrail_version,
@@ -90,18 +92,88 @@ describe('request checkpoint browsing', () => {
       : {items:[event('first-checkpoint'),event('second-checkpoint')],nextCursor:'older'});
     const detail = vi.spyOn(controllerApi,'getRuntimeEvent').mockImplementation(async id => event(id));
     const client = new QueryClient({defaultOptions:{queries:{retry:false}}});
-    render(<QueryClientProvider client={client}><RuntimeLogSheet interaction={interaction} open admin guardrailName={baseProps.guardrailName} routerName={baseProps.routerName} onOpenChange={() => {}} /></QueryClientProvider>);
-    const first=await screen.findByRole('button',{name:/first-checkpoint/});
-    expect(detail).not.toHaveBeenCalled();
-    fireEvent.click(first);
+    render(<QueryClientProvider client={client}><RuntimeLogSheet requestId={interaction.id} guardrailId={interaction.guardrail_id} open admin guardrailName={baseProps.guardrailName} routerName={baseProps.routerName} onOpenChange={() => {}} /></QueryClientProvider>);
+    await screen.findByRole('button',{name:/first-checkpoint/});
     await waitFor(() => expect(detail).toHaveBeenCalledTimes(1));
     expect(detail).toHaveBeenCalledWith('first-checkpoint',expect.any(AbortSignal));
     fireEvent.click(screen.getByRole('button',{name:'eventPagination.next'}));
-    expect(await screen.findByRole('button',{name:/older-checkpoint/})).toBeTruthy();
+    await waitFor(() => expect(detail).toHaveBeenCalledWith('older-checkpoint', expect.any(AbortSignal)));
     expect(list).toHaveBeenLastCalledWith(100,expect.objectContaining({requestId:interaction.id,guardrailId:interaction.guardrail_id,cursor:'older'}),expect.any(AbortSignal));
-    expect(detail).toHaveBeenCalledTimes(1);
+    expect(detail).toHaveBeenCalledTimes(2);
     client.clear();
   });
+  it('loads an uncaptured finding checkpoint without requiring it on the current list page', async () => {
+    vi.spyOn(controllerApi, 'listRuntimeEvents').mockResolvedValue({ items: [], nextCursor: null });
+    const detail = vi.spyOn(controllerApi, 'getRuntimeEvent').mockResolvedValue({
+      id: 'finding-event', requestId: interaction.id, guardrailId: interaction.guardrail_id,
+      guardrailVersion: interaction.guardrail_version, occurredAt: interaction.created_at,
+      runnerId: 'runner', routerId: null, endpointId: null, direction: 'incoming', decision: 'block', durationMs: 5,
+      metadata: { trace: [{ id: 'span', name: 'Retained metadata', status: 'block', durationMs: 5 }] },
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><RuntimeLogSheet requestId={interaction.id} guardrailId={interaction.guardrail_id} checkpointId="finding-event" open admin guardrailName={baseProps.guardrailName} routerName={baseProps.routerName} onOpenChange={() => {}} /></QueryClientProvider>);
+    expect(await screen.findByText('Retained metadata')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'logs.requestContent' }));
+    expect(screen.getByText('logs.contentNotCaptured')).toBeTruthy();
+    expect(detail).toHaveBeenCalledWith('finding-event', expect.any(AbortSignal));
+    client.clear();
+  });
+
+  it('opens metadata only, requests body on expansion, and releases it when switching checkpoints', async () => {
+    vi.spyOn(controllerApi, 'listRuntimeEvents').mockResolvedValue({ items: [], nextCursor: null });
+    const detail = vi.spyOn(controllerApi, 'getRuntimeEvent').mockImplementation(async (id, _signal, includeContent) => ({
+      id, requestId: interaction.id, guardrailId: interaction.guardrail_id,
+      occurredAt: interaction.created_at, runnerId: 'runner', guardrailVersion: interaction.guardrail_version,
+      routerId: null, endpointId: null, direction: 'incoming', decision: 'allow', durationMs: 1,
+      metadata: { contentAvailable: true, ...(includeContent ? { contentBefore: [{ id: 'body', text: 'Lazy body', role: 'user', source: 'user' }] } : {}) },
+    }));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const props = { requestId: interaction.id, guardrailId: interaction.guardrail_id, open: true, admin: true, guardrailName: baseProps.guardrailName, routerName: baseProps.routerName, onOpenChange: () => {} };
+    const view = render(<QueryClientProvider client={client}><RuntimeLogSheet {...props} checkpointId="one" /></QueryClientProvider>);
+    const originalRequest = await screen.findByRole('button', { name: 'logs.requestContent' });
+    expect(detail.mock.calls.map(call => [call[0], call[2]])).toEqual([['one', undefined]]);
+    expect(screen.queryByText('Lazy body')).toBeNull();
+    fireEvent.click(originalRequest);
+    expect(await screen.findByText('Lazy body')).toBeTruthy();
+    expect(detail.mock.calls.map(call => [call[0], call[2]])).toEqual([['one', undefined], ['one', true]]);
+    fireEvent.click(screen.getByRole('button', { name: 'logs.requestContent' }));
+    fireEvent.click(screen.getByRole('button', { name: 'logs.requestContent' }));
+    expect(detail).toHaveBeenCalledTimes(2);
+    view.rerender(<QueryClientProvider client={client}><RuntimeLogSheet {...props} checkpointId="two" /></QueryClientProvider>);
+    await waitFor(() => expect(detail).toHaveBeenCalledTimes(3));
+    const toggle = await screen.findByRole('button', { name: 'logs.requestContent' });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByText('Lazy body')).toBeNull();
+    expect(detail.mock.calls[2]?.[2]).toBeUndefined();
+    view.unmount();
+    client.clear();
+  });
+
+  it('shows an unavailable state for an expired request', async () => {
+    vi.spyOn(controllerApi, 'listRuntimeEvents').mockResolvedValue({ items: [], nextCursor: null });
+    const detail = vi.spyOn(controllerApi, 'getRuntimeEvent');
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><RuntimeLogSheet requestId="expired" open admin guardrailName={baseProps.guardrailName} routerName={baseProps.routerName} onOpenChange={() => {}} /></QueryClientProvider>);
+    expect(await screen.findByText('logs.recordUnavailable')).toBeTruthy();
+    expect(detail).not.toHaveBeenCalled();
+    client.clear();
+  });
+
+  it('offers retry after a detail failure and rejects a checkpoint from another request', async () => {
+    vi.spyOn(controllerApi, 'listRuntimeEvents').mockResolvedValue({ items: [], nextCursor: null });
+    const detail = vi.spyOn(controllerApi, 'getRuntimeEvent').mockRejectedValueOnce(new Error('Temporary detail failure')).mockResolvedValue({
+      id: 'wrong-event', requestId: 'different-request', guardrailId: interaction.guardrail_id,
+      metadata: { runtimeLogCaptured: true },
+    } as controllerApi.RuntimeEvent);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><RuntimeLogSheet requestId={interaction.id} checkpointId="wrong-event" open admin guardrailName={baseProps.guardrailName} routerName={baseProps.routerName} onOpenChange={() => {}} /></QueryClientProvider>);
+    expect(await screen.findByText('Temporary detail failure')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'common.retry' }));
+    expect(await screen.findByText('logs.checkpointMismatch')).toBeTruthy();
+    expect(detail).toHaveBeenCalledTimes(2);
+    client.clear();
+  });
+
 });
 
 describe("CheckpointHistory", () => {

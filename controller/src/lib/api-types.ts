@@ -99,6 +99,7 @@ export type RuntimeFinding = {
 };
 
 export type RuntimeTraceStep = {
+  parallel_group?: string | null;
   id: string;
   kind?: string;
   name: string;
@@ -316,6 +317,7 @@ export type RouterDeletionImpact = {
 };
 
 export type RouterTraceFinding = {
+  event_id?: string;
   id: string;
   trace_id: string;
   created_at: string;
@@ -877,7 +879,17 @@ export type RuntimeLogContentBlock = {
   truncated: boolean;
 };
 
+export type RuntimeHttpRequest = {
+  method: string;
+  target: string;
+  httpVersion: string;
+  headers: [string, string][];
+  bodyBase64: string;
+  redactedHeaders: string[];
+};
+
 export type RuntimeLogEntry = {
+  http_request?: RuntimeHttpRequest | null;
   id: string;
   trace_id: string;
   created_at: string;

@@ -5,7 +5,7 @@ import time
 import uuid
 from typing import Literal
 
-from fastapi import Header, HTTPException
+from fastapi import Header, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -27,7 +27,7 @@ class RouterPathRequest(BaseModel):
 
 def register_path_testing(api):
     @api.router.post("/internal/v1/playground/routers/{router_id}/test")
-    async def test_router(router_id: str, payload: RouterPathRequest, authorization: str | None = Header(default=None)):
+    async def test_router(router_id: str, payload: RouterPathRequest, request: Request, authorization: str | None = Header(default=None)):
         if authorization is None or not hmac.compare_digest(authorization, f"Bearer {api._controller_token}"):
             raise HTTPException(status_code=401, detail="Controller authentication failed.")
         from .api import _source_pairs, _scoped_call_id
@@ -63,7 +63,7 @@ def register_path_testing(api):
                     finally:
                         await api._emit_telemetry(request_id=str(uuid.uuid4()), call_id=call_id,
                             endpoint_id=payload.endpoint_id, phase="input", protocol="playground", mode="enforce",
-                            started=started, decision=decision, content_before=(payload.text,), observation=observation)
+                            started=started, decision=decision, content_before=(payload.text,), http_request=request, observation=observation)
             return jsonable_encoder({**preview, "runnerId": api._runner_id, "simulation": payload.action == "simulate",
                                      "decision": asdict(decision) if decision is not None else None})
         except RoutingError as error:

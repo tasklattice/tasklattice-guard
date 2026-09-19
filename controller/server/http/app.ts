@@ -939,7 +939,10 @@ export function createHttpApp(input: {
     }).parse(context.req.query());
     return context.json(await input.service.queryRuntimeEvents(query));
   });
-  app.get('/api/v1/telemetry/events/:id', authenticated, async context => context.json(await input.service.getRuntimeEvent(context.req.param('id'), context.get('actor').role === 'admin')));
+  app.get('/api/v1/telemetry/events/:id', authenticated, async context => {
+    const query = z.object({ includeContent: z.enum(['true', 'false']).default('false') }).parse(context.req.query());
+    return context.json(await input.service.getRuntimeEvent(context.req.param('id'), query.includeContent === 'true' && context.get('actor').role === 'admin'));
+  });
   app.get('/api/v1/telemetry/endpoint-activity', authenticated, async context => context.json(await input.service.runtimeEndpointActivity()));
   app.get('/api/v1/telemetry/metrics', authenticated, async context => {
     const scope = z.object({ window: z.enum(['1h','24h','7d','15d','30d']).default('24h'), guardrailId:z.string().max(256).optional(), routerId:z.string().max(256).optional() }).parse(context.req.query());

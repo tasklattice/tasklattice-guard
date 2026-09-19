@@ -61,3 +61,23 @@ describe("Runner telemetry channel", () => {
     expect(response.status).toBe(400);
   });
 });
+
+
+describe("runtime content opt-in", () => {
+  it.each([
+    ["admin", "", false],
+    ["admin", "?includeContent=false", false],
+    ["admin", "?includeContent=true", true],
+    ["user", "?includeContent=true", false],
+  ])("%s reading %s only decrypts when explicitly authorized", async (role, query, includeContent) => {
+    const getRuntimeEvent = vi.fn().mockResolvedValue({ id: "event", metadata: {} });
+    const app = createHttpApp({ config,
+      auth: { api: { getSession: vi.fn().mockResolvedValue({ user: { id: "reader", role } }) } } as unknown as ControllerAuth,
+      service: { getRuntimeEvent } as unknown as ControlPlaneService,
+      runnerControl: {} as RunnerControlServer, metrics: {} as ControllerMetrics,
+    });
+    const response = await app.request(`/api/v1/telemetry/events/event${query}`);
+    expect(response.status).toBe(200);
+    expect(getRuntimeEvent).toHaveBeenCalledWith("event", includeContent);
+  });
+});

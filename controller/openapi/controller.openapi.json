@@ -7391,6 +7391,19 @@
         ],
         "type": "object"
       },
+      "getTelemetryEventsByIdQuery": {
+        "properties": {
+          "includeContent": {
+            "default": "false",
+            "enum": [
+              "true",
+              "false"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "getTelemetryEventsByIdResponse": {
         "properties": {
           "decision": {
@@ -16652,7 +16665,7 @@
         },
         "x-product-area": "Observability",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#948",
+        "x-source": "server/http/app.ts#951",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -29390,7 +29403,7 @@
         },
         "x-product-area": "Observability",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#943",
+        "x-source": "server/http/app.ts#946",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -29708,6 +29721,19 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "includeContent",
+            "required": false,
+            "schema": {
+              "default": "false",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -29998,7 +30024,7 @@
         },
         "x-product-area": "Observability",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#944",
+        "x-source": "server/http/app.ts#947",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",

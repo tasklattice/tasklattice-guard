@@ -23,7 +23,7 @@ const rootRoute = createRootRoute({ component: ControlPlaneLayout });
 const indexRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", component: () => <Navigate to="/dashboard" replace /> });
 const dashboardRoute = createRoute({ getParentRoute: () => rootRoute, path: "/dashboard", component: DashboardPage });
 const guardrailsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/guardrails", component: GuardrailsPage });
-const guardrailDetailRoute = createRoute({ getParentRoute: () => rootRoute, path: "/guardrails/$guardrailId", component: GuardrailDetailPage });
+const guardrailDetailRoute = createRoute({ getParentRoute: () => rootRoute, path: "/guardrails/$guardrailId", validateSearch: (search: Record<string, unknown>): { tab?: string } => ({ tab: ["runtime", "findings", "immutable", "validation", "draft"].includes(String(search.tab)) ? String(search.tab) : undefined }), component: GuardrailDetailPage });
 const policyLibraryRoute = createRoute({ getParentRoute: () => rootRoute, path: "/policy-library", validateSearch: policyLibrarySearch, component: PolicyLibraryPage });
 const guardrailSearch = (search: Record<string, unknown>) => ({ guardrail: typeof search.guardrail === "string" ? search.guardrail : undefined });
 const playgroundSearch = (search: Record<string, unknown>): { guardrail?: string; target?: "draft"; version?: string; mode?: "advanced"; router?: string; endpoint?: string } => {
@@ -56,8 +56,9 @@ function EndpointRoutePage() {
     void navigate({ search: (previous) => ({ ...previous, endpointId: id }), replace: id === undefined });
   }} />;
 }
-const logsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/logs", validateSearch: (search: Record<string, unknown>): { routerId?: string; routeId?: string; targetId?: string; routerRevision?: number; since?: string; until?: string; endpointId?: string } => ({
-  ...Object.fromEntries(['routerId', 'routeId', 'targetId', 'endpointId', 'since', 'until'].flatMap(key => typeof search[key] === 'string' ? [[key, search[key]]] : [])),
+const logsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/logs", validateSearch: (search: Record<string, unknown>): { tab?: "interactions" | "checkpoints" | "system"; requestId?: string; checkpointId?: string; guardrailId?: string; routerId?: string; routeId?: string; targetId?: string; routerRevision?: number; since?: string; until?: string; endpointId?: string } => ({
+  tab: search.tab === "checkpoints" || search.tab === "system" ? search.tab : undefined,
+  ...Object.fromEntries(['requestId', 'checkpointId', 'guardrailId', 'routerId', 'routeId', 'targetId', 'endpointId', 'since', 'until'].flatMap(key => typeof search[key] === 'string' && search[key].trim() ? [[key, search[key]]] : [])),
   ...(Number.isInteger(Number(search.routerRevision)) && Number(search.routerRevision) > 0 ? { routerRevision: Number(search.routerRevision) } : {}),
 }), component: LogsPage });
 const auditLogRoute = createRoute({ getParentRoute: () => rootRoute, path: "/audit-log", component: AuditLogPage });
