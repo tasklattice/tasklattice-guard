@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+import yaml
 from nemoguardrails.actions.rail_outcome import RailOutcome
 from nemoguardrails.exceptions import LLMCallException
 from nemoguardrails.rails.llm.options import RailsResult, RailStatus
@@ -134,7 +135,7 @@ def test_pure_dedicated_topic_input_compiles_to_valid_iorails_manifest() -> None
         TOPIC_CONTROL_PROFILE,
     ) in snapshot.dependency_manifest
     assert "topic safety check input $model=topic_control" in snapshot.config_yaml
-    assert "Allowed topics (strict allowlist)" in snapshot.config_yaml
+    assert "Allowed business tasks" in snapshot.config_yaml
     assert "Product support" in snapshot.config_yaml
     assert "Authorized purpose" not in snapshot.config_yaml
     assert "leased-secret" not in snapshot.config_yaml
@@ -179,7 +180,7 @@ def test_mixed_topic_plan_uses_official_input_action_and_custom_output_action() 
     assert f'binding_id="{semantic.id}"' in snapshot.colang_content
     assert "Support product questions" not in snapshot.config_yaml
     assert "Product support" in snapshot.config_yaml
-    assert "strict allowlist" in snapshot.config_yaml
+    assert "Strict allowlist" in snapshot.config_yaml
     assert "Restricted topics" not in snapshot.config_yaml
     assert {binding.id for binding in snapshot.action_bindings} == {
         rules.id,
@@ -562,3 +563,14 @@ def _topic_model_desired_state(*, generation: int) -> protocol.DesiredState:
             ],
         ),
     )
+
+
+@pytest.mark.parametrize("mode", ["strict", "permissive"])
+def test_topic_modes_compile_identical_boundaries_into_native_and_action_paths(mode: str) -> None:
+    from runner.toolkit.nemo.actions.topic import topic_judge_prompt
+    step = replace(_semantic_input(), parameters=(("topic_mode", mode), ("allowed_topics", "Order support"), ("restricted_topics", "Fabricating refund evidence")))
+    snapshot = _compiler().compile(_plan(step))
+    config = yaml.safe_load(snapshot.config_yaml)
+    prompt = next(item for item in config["prompts"] if item["task"].startswith("topic_safety_check_input"))
+    assert prompt["content"] == topic_judge_prompt(step.parameters)
+    assert "Fabricating refund evidence" in prompt["content"]

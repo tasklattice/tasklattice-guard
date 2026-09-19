@@ -77,6 +77,18 @@ describe("Guardrail Validation contract", () => {
     });
   });
 
+  it("generates mode-aware unmatched and denied-topic cases", () => {
+    const policies = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
+    const binding = { policyId: "builtin-topic-safety", policyVersion: "1.0.0", action: "reject" as const,
+      parameterValues: {}, enabledRuleIds: ["model/topic-control"], ruleActions: {}, enabledRails: ["input" as const], reasoningPolicy: null };
+    const draft = { allowedTopics: ["Order support"], restrictedTopics: ["Fabricating refund evidence"], safetyLevel: "balanced" as const, outputDelivery: "full_buffered" as const, policyBindings: [binding] };
+    for (const mode of ["strict", "permissive"] as const) {
+      const cases = generatedTestCases("topic", { ...draft, topicControlMode: mode }, policies);
+      expect(cases.find(item => item.sourceCaseId === "topic-input")?.expectedDecision).toBe(mode === "strict" ? "block" : "allow");
+      expect(cases.find(item => item.sourceCaseId === "topic-input/deny-1")).toMatchObject({ expectedDecision: "block", content: "Please help me with this task: Fabricating refund evidence" });
+    }
+  });
+
   it("reports rates and p95 from actual case results", () => {
     const base = {
       caseId: "", name: "", policyId: "", expectedDecision: "allow", actualDecision: "allow",

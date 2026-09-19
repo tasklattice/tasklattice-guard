@@ -43,7 +43,7 @@ export type GuardrailPolicyBindingConfig = {
 /** Controller-owned product draft expressed only as Policy bindings. */
 export type GuardrailDraftConfig = {
   allowedTopics: string[];
-  /** @deprecated Topic Control is allowlist-only; retained only to read older drafts. */
+  topicControlMode?: "strict" | "permissive";
   restrictedTopics: string[];
   policyBindings: GuardrailPolicyBindingConfig[];
   safetyLevel: "balanced" | "strict";
@@ -125,10 +125,8 @@ export function normalizeGuardrailDraft(value: unknown): GuardrailDraftConfig {
   }
   return {
     allowedTopics: stringArray(source.allowedTopics),
-    // Topic Control is intentionally allowlist-only. Keep the serialized field
-    // empty so older drafts remain readable without preserving deny-list
-    // semantics in newly compiled versions.
-    restrictedTopics: [],
+    restrictedTopics: stringArray(source.restrictedTopics),
+    topicControlMode: source.topicControlMode === "permissive" ? "permissive" : "strict",
     policyBindings: Array.isArray(source.policyBindings)
       ? source.policyBindings.map(normalizeBinding)
       : [],
@@ -192,8 +190,8 @@ export function buildGuardrailPlan(input: {
     }, binding, policy });
   }
 
-  if (resolved.some(({ capability }) => capability.capability === "topic_control" || capability.capability === "company_policy") && !draft.allowedTopics.length) {
-    throw new Error("Topic Control requires at least one allowed topic. Requests outside this allowlist are off-topic.");
+  if (resolved.some(({ capability }) => capability.capability === "topic_control" || capability.capability === "company_policy") && draft.topicControlMode !== "permissive" && !draft.allowedTopics.length) {
+    throw new Error("Strict Topic Control requires at least one allowed topic. Unlisted tasks are off-topic.");
   }
 
   const steps: PlanStep[] = [];
@@ -272,8 +270,8 @@ export function buildGuardrailPlan(input: {
   return {
     guardrail_id: input.guardrailId,
     guardrail_version: input.guardrailVersion,
-    compiler_version: "tasklattice-controller-plan-v8-effective-policy-parameters",
-    topic_control_mode: "allowlist",
+    compiler_version: "tasklattice-controller-plan-v9-topic-boundaries",
+    topic_control_mode: draft.topicControlMode ?? "strict",
     safety_level: draft.safetyLevel,
     output_delivery: draft.outputDelivery,
     steps,
@@ -334,8 +332,9 @@ function parametersFor(
   }
   if (capabilityId === "topic_control" || capabilityId === "company_policy") {
     return [
-      ["topic_mode", "allowlist"],
+      ["topic_mode", draft.topicControlMode ?? "strict"],
       ["allowed_topics", draft.allowedTopics.join("\n")],
+      ["restricted_topics", draft.restrictedTopics.join("\n")],
     ];
   }
   if (capabilityId === "contextual_grounding") {

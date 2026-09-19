@@ -6,6 +6,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { ControllerRequestError } from "@/lib/controller-api";
 
 export function PageHeader({
   eyebrow,
@@ -96,8 +97,15 @@ export function ErrorNotice({ error }: { error: unknown }) {
     <Alert variant="destructive">
       <AlertCircle />
       <AlertTitle>{t("common.requestFailed")}</AlertTitle>
-      <AlertDescription className="text-destructive/80">
-        {error instanceof Error ? error.message : t("common.unknownError")}
+      <AlertDescription className="min-w-0 text-destructive/80">
+        <p className="whitespace-pre-wrap break-words">{error instanceof Error ? error.message : t("common.unknownError")}</p>
+        {error instanceof ControllerRequestError ? <>
+          <p className="mt-1 text-xs">HTTP {error.status}{error.code ? ` · ${error.code}` : ""}</p>
+          {error.detail && typeof error.detail === "object" && Object.keys(error.detail).length > 0 ? <details open className="mt-3 min-w-0 w-full">
+            <summary className="cursor-pointer text-sm font-medium">{t("common.errorDetails")}</summary>
+            <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-md border border-current/20 p-3 text-xs [overflow-wrap:anywhere]">{JSON.stringify(error.detail, null, 2)}</pre>
+          </details> : null}
+        </> : null}
       </AlertDescription>
     </Alert>
   );

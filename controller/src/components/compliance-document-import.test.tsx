@@ -56,6 +56,7 @@ vi.mock("react-i18next", () => ({
 const analysis: ComplianceDocumentAnalysis = {
   summary: "Support customer service while protecting account data.",
   allowed_topics: ["Customer support"],
+  restricted_topics: [],
   restricted_topics: ["Credential disclosure"],
   recommended_policy_ids: ["baseline-pii-protection"],
   review_notes: ["Confirm the complete identifier scope."],
@@ -81,7 +82,7 @@ const policy = {
   name: "Baseline PII Protection",
 } as Policy;
 
-function renderImport(onApply = vi.fn()) {
+function renderImport(onApply = vi.fn(), applyBlockedReason: (analysis: ComplianceDocumentAnalysis) => string | null = () => null) {
   const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
   return {
     onApply,
@@ -95,6 +96,7 @@ function renderImport(onApply = vi.fn()) {
           policies={[policy]}
           resetKey={1}
           onApply={onApply}
+          applyBlockedReason={applyBlockedReason}
         />
       </QueryClientProvider>,
     ),
@@ -104,6 +106,18 @@ function renderImport(onApply = vi.fn()) {
 describe("Compliance document import", () => {
   beforeEach(() => { analyzeMock.mockReset(); });
   afterEach(() => { cleanup(); onlineManager.setOnline(true); });
+
+  it("keeps document analysis available but blocks applying unavailable runtime capabilities", async () => {
+    analyzeMock.mockResolvedValue(analysis);
+    const { onApply } = renderImport(vi.fn(), () => "Topic Control model is unavailable");
+    fireEvent.change(document.querySelector<HTMLInputElement>('input[type="file"]')!, { target: { files: [new File(["Synthetic policy"], "policy.txt")] } });
+    fireEvent.click(screen.getByRole("button", { name: "Analyze 1 documents" }));
+    await screen.findByText("Topic Control model is unavailable");
+    const apply = screen.getByRole("button", { name: "Apply proposal" });
+    expect(apply.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(apply);
+    expect(onApply).not.toHaveBeenCalled();
+  });
 
   it("reports offline analysis immediately and never starts it on reconnect", async () => {
     analyzeMock.mockRejectedValue(new Error('Connection lost'));

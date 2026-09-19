@@ -456,6 +456,7 @@ export type Guardrail = {
   name: string;
   allowed_topics: string[];
   restricted_topics: string[];
+  topic_control_mode?: "strict" | "permissive";
   policy_bindings: GuardrailPolicyBinding[];
   safety_level: SafetyLevel;
   output_delivery: OutputDelivery;
@@ -1157,6 +1158,8 @@ export type IntentAnalysis = {
   summary: string;
   structured_purpose: PolicyIntentDetails;
   allowed_topics: string[];
+  restricted_topics: string[];
+  topic_control_mode?: "strict" | "permissive";
   review_notes: string[];
 };
 export type ComplianceDocumentSource = {

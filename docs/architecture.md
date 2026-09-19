@@ -269,3 +269,53 @@ Runner traffic, pinned call/stream behavior, authenticated telemetry with encryp
 content capture, and deletion evidence retention. Run the relevant Controller,
 Runner, protocol, and Helm checks through the repository's Makefile and package
 scripts; this document is not a test-results ledger.
+
+
+## Topic Control boundaries
+
+Topic Control drafts carry `allowedTopics`, `restrictedTopics`, and
+`topicControlMode` (`strict` or `permissive`). New drafts and intent analyses
+default to permissive mode. Existing drafts without a mode
+remain strict. A denied task takes precedence over an allowed task. Strict mode
+requires every substantive requested task to fit the allow-list; permissive mode
+allows unmatched tasks after denied-topic checks. Other safety Policies and
+fail-closed handling of model errors remain in effect.
+
+The authoring UI uses one intent description with placeholder examples for the
+business purpose, allowed tasks, prohibited behavior, and exceptions. The configured
+control-plane AI returns editable `allowed_topics` and `restricted_topics` lists;
+the user-selected mode is preserved, and applying the proposal is explicit.
+Document analysis extracts both lists from source evidence. Draft editing,
+candidate previews, immutable plans and both NeMo topic execution paths preserve
+the same configuration. New modes always request semantic judgment; merely
+mentioning an allowed phrase cannot skip denied-topic evaluation. Existing
+immutable artifacts marked `topic_mode=allowlist` retain their legacy behavior
+until a new version is published. Semantic classification is probabilistic;
+Policy validation includes mode-aware unmatched-topic and denied-topic cases.
+
+
+Intent and document authoring use at least a 60-second model timeout, or the
+configured model timeout when longer, because structured proposals take longer
+than short connection probes. Timeout failures return HTTP 504; upstream HTTP,
+transport, response decoding, and proposal validation failures return HTTP 502
+with a distinct `stage`. Administrator responses include provider/model,
+endpoint, a diagnostic ID, elapsed time, upstream status/request ID when
+available, and redacted response/validation evidence. The UI preserves the
+message and displays expandable diagnostic details. Server logs retain only
+correlation and timing metadata, never prompt/document or response content.
+A socket disconnect before TLS establishment is retried once within the same
+request deadline. Certificate errors, provider HTTP failures, timeouts, and
+response validation failures are not retried automatically.
+
+
+Guardrail creation checks the active `topic_control.input` assignment on the
+Configure protections step. Missing, unverified, failed or inactive assignments
+keep Topic Control visible with a setup explanation, but disable model-dependent
+Policy selection and topic boundary authoring. Local keyword Policies remain
+selectable. Preset selections are preserved and removable; unavailable topic
+bindings block candidate preview and creation. Both intent and document authoring
+entry points are hidden until the runtime capability is ready. The five protection
+sections are Safety & attacks, Data & privacy, Business rules, Topic Control and
+Correctness checks. Classification follows policy purpose; model readiness is a
+separate state. Local keyword rules remain under Business rules. Availability refreshes while the
+wizard is open; the control-plane authoring model is not runtime capability evidence.

@@ -10,7 +10,7 @@ from .names import ACTION_TOPIC_RULES
 
 
 class TopicRulesActionProvider:
-    """Fast-path explicit allowlist matches before semantic topic judging."""
+    """Require semantic judgment for strict/permissive policies; retain legacy artifacts."""
 
     name = ACTION_TOPIC_RULES
     version = "1.0.0"
@@ -22,14 +22,14 @@ class TopicRulesActionProvider:
         allowed = _policy_lines(parameters.get("allowed_topics", ""))
         content = _normalize_topic(request.content)
         allowed_matches = tuple(item for item in allowed if item in content)
-        if allowed_matches:
+        if parameters.get("topic_mode") == "allowlist" and allowed_matches:
             return action_result(
                 request,
                 "safe",
                 request.content,
                 reason="The request directly matched an explicitly allowed topic.",
             )
-        reason = "The request did not directly match the topic allowlist; primary intent needs semantic review."
+        reason = "Topic allowlist and deny-list boundaries require semantic review of all requested tasks; an allowed keyword cannot bypass denied topics."
         return action_result(
             request,
             "uncertain",

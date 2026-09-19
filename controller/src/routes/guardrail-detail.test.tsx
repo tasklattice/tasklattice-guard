@@ -421,7 +421,10 @@ describe("Guardrail detail information hierarchy", () => {
     expect(screen.getByText("guardrails.topicAllowlist")).toBeTruthy();
     expect(screen.getByText("guardrails.topicAllowlistRequired")).toBeTruthy();
     expect(screen.queryByText("guardrails.restrictedDomains")).toBeNull();
-    expect(screen.queryByText("legacy restricted topic")).toBeNull();
+    expect(screen.getByDisplayValue("legacy restricted topic")).toBeTruthy();
+    fireEvent.change(screen.getByRole("combobox", { name: "topicControl.mode" }), { target: { value: "permissive" } });
+    expect(screen.queryByText("guardrails.topicAllowlistRequired")).toBeNull();
+    fireEvent.change(screen.getByRole("combobox", { name: "topicControl.mode" }), { target: { value: "strict" } });
     expect(screen.getByRole("button", { name: "common.save" }).hasAttribute("disabled")).toBe(true);
   });
 

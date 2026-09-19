@@ -132,7 +132,7 @@ describe("Controller Guardrail plan", () => {
     expect(plan).toMatchObject({
       guardrail_id: "guardrail-1",
       guardrail_version: "20260904-030000.003Z",
-      compiler_version: "tasklattice-controller-plan-v8-effective-policy-parameters",
+      compiler_version: "tasklattice-controller-plan-v9-topic-boundaries",
       safety_level: "strict",
     });
     expect(plan.steps).toEqual(expect.arrayContaining([
@@ -358,10 +358,14 @@ describe("Controller Guardrail plan", () => {
       draft,
     });
     const parameters = Object.fromEntries((plan.steps as Array<{ parameters: Array<[string, string]> }>)[0]!.parameters);
-    expect(plan).toMatchObject({ topic_control_mode: "allowlist" });
-    expect(parameters).toMatchObject({ topic_mode: "allowlist", allowed_topics: "Order status\nReturns" });
-    expect(parameters).not.toHaveProperty("restricted_topics");
+    expect(plan).toMatchObject({ topic_control_mode: "strict" });
+    expect(parameters).toMatchObject({ topic_mode: "strict", allowed_topics: "Order status\nReturns" });
+    expect(parameters.restricted_topics).toBe("legacy deny-list value");
     expect(Object.keys(parameters).some((key) => key.startsWith("purpose"))).toBe(false);
+
+    const permissive = buildGuardrailPlan({ guardrailId: "permissive", guardrailVersion: "20260905-010000.001Z", draft: { ...draft, topicControlMode: "permissive", allowedTopics: [] } });
+    expect(permissive.topic_control_mode).toBe("permissive");
+    expect(Object.fromEntries(permissive.steps[0]!.parameters)).toMatchObject({ topic_mode: "permissive", restricted_topics: "legacy deny-list value" });
 
     draft.allowedTopics = [];
     expect(() => buildGuardrailPlan({ guardrailId: "topic-allowlist", guardrailVersion: "20260905-010000.001Z", draft }))

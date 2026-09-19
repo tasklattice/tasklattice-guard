@@ -30,6 +30,7 @@ const analysis = {
     out_of_scope: "Medical or chemical-process advice",
   },
   allowed_topics: ["Financial analysis", "Financial reporting"],
+  restricted_topics: ["Medical advice"],
   review_notes: [],
 };
 
@@ -77,6 +78,7 @@ describe("Intent analysis HTTP API", () => {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           purpose: "Finance analysts use this assistant for approved reporting only.",
+          topicControlMode: "permissive",
           language: "en",
         }),
       });
@@ -85,6 +87,7 @@ describe("Intent analysis HTTP API", () => {
     await expect(response.json()).resolves.toEqual(analysis);
     expect(analyzer.analyze).toHaveBeenCalledWith({
       purpose: "Finance analysts use this assistant for approved reporting only.",
+      topicControlMode: "permissive",
       language: "en",
     });
   });
@@ -153,6 +156,7 @@ function fakeAnalyzer(): IntentAnalyzer {
     analyzeDocuments: vi.fn().mockResolvedValue({
       summary: "Privacy requirements.",
       allowed_topics: [],
+      restricted_topics: [],
       requirements: [{
         title: "Redact identifiers",
         description: "Identifiers must be redacted.",

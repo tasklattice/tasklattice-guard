@@ -26,6 +26,7 @@ from ..nemo.action_registry import (
 )
 from ..nemo.artifacts import config_checksum
 from ..nemo.actions.names import ACTION_RECORD_OWNED_POLICY
+from ..nemo.actions.topic import topic_judge_prompt
 from ..nemo.native_models import TOPIC_CONTROL_MODEL_TYPE, TOPIC_CONTROL_PROFILE
 from ..runtime.contracts import (
     GuardrailPhase,
@@ -40,7 +41,7 @@ from .domain import PolicyDraft, PlanCompilationError, RailBinding
 from .policy_sources import FLOW_ID_EVENTS, expand_policy_parameters, link_policy_source, literal_flow_target, parse_source_tree, symbol_name
 
 
-NEMO_COMPILER_VERSION = "tasklattice-nemo-config-v21-dynamic-flow-targets"
+NEMO_COMPILER_VERSION = "tasklattice-nemo-config-v22-topic-boundaries"
 
 _COLANG1_STANDARD_ACTIONS = {
     ACTION_EVALUATE,
@@ -385,19 +386,10 @@ class NeMoConfigCompiler:
                 if step.contract_ref == "tali.guard.topic-control.semantic.v1"
                 and "input" in step.phases
             )
-            parameters = dict(topic_step.parameters)
             prompts.append(
                 {
                     "task": "topic_safety_check_input $model=topic_control",
-                    "content": "\n".join(
-                        (
-                            "You are the topic policy evaluator for an enterprise assistant.",
-                            "Allowed topics (strict allowlist):",
-                            parameters.get("allowed_topics", ""),
-                            "Anything whose primary task is not listed above is off-topic.",
-                            "Classify the primary requested task, not entities merely mentioned as context.",
-                        )
-                    ),
+                    "content": topic_judge_prompt(topic_step.parameters),
                     "max_tokens": 10,
                 }
             )

@@ -95,7 +95,8 @@ describe("Generated OpenAPI contract", () => {
     expect(validate(publish.requestBody.content["application/json"].schema, { expectedDraftRevision: 0, idempotencyKey: "review-1" }).valid).toBe(false);
     expect(publish.responses[202].description).toContain("does not guarantee");
     const intent = contract.paths["/api/v1/authoring/intent-analyses"].post.requestBody.content["application/json"].schema;
-    expect(validate(intent, { purpose: "Block unsafe user requests and protect personal information." }).valid).toBe(true);
+    expect(validate(intent, { purpose: "Explain account features", deniedPurpose: "Refuse unauthorized account access", topicControlMode: "permissive" }).valid).toBe(true);
+    expect(validate(intent, { purpose: "Explain account features" }).valid).toBe(true);
     const version = contract.components.schemas.deleteGuardrailsByIdVersionsByVersionParamVersion;
     expect(version.description).toContain("YYYYMMDD-HHmmss.SSSZ");
     expect(version["x-runtime-validation"]).toBeDefined();

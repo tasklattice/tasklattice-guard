@@ -48,7 +48,13 @@ export function generatedTestCases(
       if (!enabledRails.has(item.phase)) return [];
       const phase = item.phase;
       if (item.covered_rule_ids.length && !item.covered_rule_ids.some((id) => enabledRules.has(id))) return [];
-      const expanded = policy.id === PHRASE_POLICY_ID
+      const topicCase = policy.id === "builtin-topic-safety" && item.id === "topic-input";
+      const topicAction = binding.ruleActions["model/topic-control"] ?? binding.action ?? "redirect";
+      const topicBlockedDecision = topicAction === "reject" ? "block" as const : "intervene" as const;
+      const expanded = topicCase ? [
+        { ...item, expected_decision: draft.topicControlMode === "permissive" ? "allow" as const : topicBlockedDecision },
+        ...draft.restrictedTopics.map((topic, index) => ({ ...item, id: `${item.id}/deny-${index + 1}`, name: `Denied topic: ${topic}`, content: `Please help me with this task: ${topic}`, expected_decision: topicBlockedDecision })),
+      ] : policy.id === PHRASE_POLICY_ID
         ? parsePhraseEntries(binding.parameterValues[PHRASE_PARAMETER] ?? "").map((entry) => ({
             ...item, id: `${item.id}/${entry.id}`, name: `${item.name}: ${entry.phrase}`,
             content: entry.phrase,

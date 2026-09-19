@@ -105,6 +105,7 @@ export type ModelConfigurationView = {
 export type GuardrailDraftConfig = {
   allowedTopics: string[];
   restrictedTopics: string[];
+  topicControlMode?: "strict" | "permissive";
   policyBindings: Array<{
     policyId: string;
     policyVersion: string;
@@ -338,6 +339,13 @@ export type AuditEvent = {
   occurredAt: string;
 };
 
+export class ControllerRequestError extends Error {
+  constructor(message: string, readonly status: number, readonly code?: string, readonly detail?: unknown) {
+    super(message);
+    this.name = "ControllerRequestError";
+  }
+}
+
 export async function requestController<T>(path: string, init?: RequestInit): Promise<T> {
   const formData = typeof FormData !== "undefined" && init?.body instanceof FormData;
   const response = await fetch(path, {
@@ -347,17 +355,21 @@ export async function requestController<T>(path: string, init?: RequestInit): Pr
     headers: init?.body && !formData ? { "content-type": "application/json", ...init.headers } : init?.headers,
   });
   if (response.status === 204) return undefined as T;
-  const payload = await response.json().catch(() => ({})) as { error?: { message?: string; detail?: unknown }; detail?: unknown; message?: string };
+  const rawResponse = response.ok ? undefined : response.clone?.();
+  const payload = await response.json().catch(async () => ({ message: await rawResponse?.text().catch(() => "") })) as { error?: { code?: string; message?: string; detail?: unknown }; detail?: unknown; message?: string };
   if (!response.ok) {
     // A forbidden write may mean the user's role changed. Recheck identity,
     // without treating every 403 as a logout or retrying the rejected write.
     if (response.status === 401 || response.status === 403) window.dispatchEvent(new CustomEvent("tasklattice:unauthorized"));
-    throw new Error(formatApiError(payload.error?.detail ?? payload.error?.message ?? payload.detail ?? payload.message, response.status));
+    throw new ControllerRequestError(
+      formatApiError(payload.error?.detail ?? payload.detail) ?? payload.error?.message ?? payload.message ?? `Request failed with status ${response.status}.`,
+      response.status, payload.error?.code, payload.error?.detail ?? payload.detail,
+    );
   }
   return payload as T;
 }
 
-function formatApiError(detail: unknown, status: number): string {
+function formatApiError(detail: unknown): string | undefined {
   if (typeof detail === "string" && detail.trim()) return detail;
   if (Array.isArray(detail)) {
     const messages = detail.map((item) => {
@@ -377,7 +389,7 @@ function formatApiError(detail: unknown, status: number): string {
     if (typeof issue.msg === "string" && issue.msg) return issue.msg;
     if (typeof issue.message === "string" && issue.message) return issue.message;
   }
-  return `Request failed with status ${status}.`;
+  return undefined;
 }
 
 const json = (method: string, body?: unknown): RequestInit => ({ method, body: body === undefined ? undefined : JSON.stringify(body) });

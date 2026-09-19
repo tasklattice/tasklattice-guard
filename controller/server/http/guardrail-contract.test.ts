@@ -64,20 +64,20 @@ describe("Guardrail HTTP contract", () => {
     expect(createGuardrail).not.toHaveBeenCalled();
   });
 
-  it("rejects the retired restricted-topic contract", async () => {
-    const createGuardrail = vi.fn();
+  it("accepts denied topics and the selected mode", async () => {
+    const createGuardrail = vi.fn().mockResolvedValue({ id: "created" });
     const response = await appWith(createGuardrail).request("/api/v1/guardrails", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         name: "Support",
-        draftConfig: { ...draftConfig, restrictedTopics: ["Medical advice"] },
+        draftConfig: { ...draftConfig, restrictedTopics: ["Medical advice"], topicControlMode: "permissive" },
         runtimeProfile: "auto",
       }),
     });
 
-    expect(response.status).toBe(400);
-    expect(createGuardrail).not.toHaveBeenCalled();
+    expect(response.status).toBe(201);
+    expect(createGuardrail).toHaveBeenCalledWith(expect.objectContaining({ draftConfig: expect.objectContaining({ restrictedTopics: ["Medical advice"], topicControlMode: "permissive" }) }));
   });
 });
 

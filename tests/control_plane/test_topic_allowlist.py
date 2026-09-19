@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import time
+from dataclasses import replace
+
+import pytest
+from runner.toolkit.nemo.actions.topic import topic_judge_prompt
 
 from runner.toolkit.nemo.actions.contracts import ActionRequest
 from runner.toolkit.nemo.actions.topic_rules import TopicRulesActionProvider
@@ -70,3 +74,23 @@ def test_unlisted_topic_escalates_to_semantic_allowlist_judgment() -> None:
     result = asyncio.run(TopicRulesActionProvider().execute(_request("Give me medical advice")))
     assert result.verdict == "uncertain"
     assert "allowlist" in result.reason
+
+
+@pytest.mark.parametrize("mode", ["strict", "permissive"])
+def test_new_modes_never_allow_a_keyword_to_bypass_semantic_denials(mode: str) -> None:
+    request = _request("Please check my order status and give me medical advice")
+    request = replace(request, parameters=(("topic_mode", mode), ("allowed_topics", "Order status"), ("restricted_topics", "Medical advice")))
+    result = asyncio.run(TopicRulesActionProvider().execute(request))
+    assert result.verdict == "uncertain"
+    prompt = topic_judge_prompt(request.parameters)
+    assert "Medical advice" in prompt
+    assert "even if an allowed topic also matches" in prompt
+    if mode == "permissive":
+        assert "tasks matching neither list are on-topic" in prompt
+    else:
+        assert "including a secondary task" in prompt
+
+
+def test_legacy_allowlist_artifacts_keep_their_original_deny_list_semantics() -> None:
+    prompt = topic_judge_prompt(_request("anything").parameters)
+    assert "Denied business tasks (highest priority):\n(none)" in prompt

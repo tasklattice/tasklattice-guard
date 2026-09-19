@@ -122,6 +122,7 @@ function mapGuardrail(
     name: value.name,
     allowed_topics: value.draftConfig.allowedTopics,
     restricted_topics: value.draftConfig.restrictedTopics,
+    topic_control_mode: value.draftConfig.topicControlMode ?? "strict",
     policy_bindings: value.draftConfig.policyBindings.map(fromCurrentBinding),
     safety_level: value.draftConfig.safetyLevel,
     output_delivery: value.draftConfig.outputDelivery,
@@ -173,6 +174,8 @@ export async function getGuardrail(id: string): Promise<Guardrail> {
 export async function createGuardrail(input: {
   name: string;
   allowed_topics?: string[];
+  restricted_topics?: string[];
+  topic_control_mode?: "strict" | "permissive";
   policy_bindings: GuardrailPolicyBinding[];
   safety_level?: SafetyLevel;
   output_delivery?: OutputDelivery;
@@ -181,7 +184,8 @@ export async function createGuardrail(input: {
     name: input.name,
     draftConfig: {
       allowedTopics: input.allowed_topics ?? [],
-      restrictedTopics: [],
+      restrictedTopics: input.restricted_topics ?? [],
+      topicControlMode: input.topic_control_mode ?? "permissive",
       policyBindings: input.policy_bindings.map(toCurrentBinding),
       safetyLevel: input.safety_level ?? "balanced",
       outputDelivery: input.output_delivery ?? "window_buffered",
@@ -193,19 +197,20 @@ export async function createGuardrail(input: {
 
 export const updateGuardrail = (
   id: string,
-  input: Partial<Pick<Guardrail, "name" | "allowed_topics" | "policy_bindings" | "safety_level" | "output_delivery">>,
+  input: Partial<Pick<Guardrail, "name" | "allowed_topics" | "restricted_topics" | "topic_control_mode" | "policy_bindings" | "safety_level" | "output_delivery">>,
 ) => updateGuardrailDraft(id, input);
 
 async function updateGuardrailDraft(
   id: string,
-  input: Partial<Pick<Guardrail, "name" | "allowed_topics" | "policy_bindings" | "safety_level" | "output_delivery">>,
+  input: Partial<Pick<Guardrail, "name" | "allowed_topics" | "restricted_topics" | "topic_control_mode" | "policy_bindings" | "safety_level" | "output_delivery">>,
 ): Promise<Guardrail> {
   const current = await controllerApi.getControllerGuardrail(id);
   const updated = await controllerApi.updateControllerGuardrail(id, {
     ...(input.name !== undefined ? { name: input.name } : {}),
     draftConfig: {
       allowedTopics: input.allowed_topics ?? current.draftConfig.allowedTopics,
-      restrictedTopics: [],
+      restrictedTopics: input.restricted_topics ?? current.draftConfig.restrictedTopics,
+      topicControlMode: input.topic_control_mode ?? current.draftConfig.topicControlMode ?? "strict",
       policyBindings: (input.policy_bindings ?? current.draftConfig.policyBindings.map(fromCurrentBinding)).map(toCurrentBinding),
       safetyLevel: input.safety_level ?? current.draftConfig.safetyLevel,
       outputDelivery: input.output_delivery ?? current.draftConfig.outputDelivery,
@@ -370,6 +375,8 @@ export const rollbackGuardrail = (guardrailId: string, version: string) =>
 export function previewGuardrailCandidate(input: {
   name: string;
   allowed_topics?: string[];
+  restricted_topics?: string[];
+  topic_control_mode?: "strict" | "permissive";
   policy_bindings: GuardrailPolicyBinding[];
   safety_level?: SafetyLevel;
   output_delivery?: OutputDelivery;
@@ -378,7 +385,8 @@ export function previewGuardrailCandidate(input: {
     name: input.name,
     draftConfig: {
       allowedTopics: input.allowed_topics ?? [],
-      restrictedTopics: [],
+      restrictedTopics: input.restricted_topics ?? [],
+      topicControlMode: input.topic_control_mode ?? "permissive",
       policyBindings: input.policy_bindings.map(toCurrentBinding),
       safetyLevel: input.safety_level ?? "balanced",
       outputDelivery: input.output_delivery ?? "full_buffered",
@@ -435,7 +443,7 @@ export async function runProgrammablePolicyValidation(id: string): Promise<Polic
 export const publishProgrammablePolicy = (id: string, expectedDraftRevision: number) => controllerApi.requestController<ProgrammablePolicyVersion>(`/api/v1/policies/${encodeURIComponent(id)}/publish`, { method: "POST", body: JSON.stringify({ expectedDraftRevision }) });
 
 export const getIntentAnalysisStatus = () => controllerApi.requestController<IntentAnalysisStatus>("/api/v1/authoring/capabilities");
-export const analyzeGuardrailIntent = (input: { purpose: string; language: "en" | "zh-CN" }) => controllerApi.requestController<IntentAnalysis>("/api/v1/authoring/intent-analyses", {
+export const analyzeGuardrailIntent = (input: { purpose: string; deniedPurpose?: string; topicControlMode: "strict" | "permissive"; language: "en" | "zh-CN" }) => controllerApi.requestController<IntentAnalysis>("/api/v1/authoring/intent-analyses", {
   method: "POST",
   body: JSON.stringify(input),
 });

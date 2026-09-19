@@ -72,7 +72,8 @@ const guardrailPolicyBindingInput = z.object({
 });
 const guardrailDraftInput = z.strictObject({
   allowedTopics: z.array(z.string().trim().min(1).max(500)).max(256).default([]),
-  restrictedTopics: z.array(z.never()).max(0, "Topic Control is allowlist-only; restricted topics are not accepted.").default([]),
+  restrictedTopics: z.array(z.string().trim().min(1).max(500)).max(256).default([]),
+  topicControlMode: z.enum(["strict", "permissive"]).default("permissive"),
   policyBindings: z.array(guardrailPolicyBindingInput).min(1).max(128),
   safetyLevel: z.enum(["balanced", "strict"]).default("balanced"),
   outputDelivery: z.enum(["interruptible", "window_buffered", "full_buffered"]).default("full_buffered"),
@@ -84,7 +85,9 @@ const guardrailInput = z.strictObject({
 });
 const guardrailUpdateInput = guardrailInput.partial();
 const intentAnalysisInput = z.object({
-  purpose: z.string().trim().min(20).max(2_000),
+  purpose: z.string().trim().min(1).max(2_000),
+  deniedPurpose: z.string().trim().min(1).max(2_000).optional(),
+  topicControlMode: z.enum(["strict", "permissive"]).default("permissive"),
   language: z.enum(["en", "zh-CN"]).default("en"),
 });
 const loggingInput = z.object({ level: z.enum(["info", "debug", "trace"]), acknowledgeCost: z.boolean().default(false) });
@@ -203,7 +206,8 @@ export function createHttpApp(input: {
   const playgroundRunner = input.playgroundRunner ?? null;
   const currentIntentAnalyzer = async () => {
     const configured = await input.models?.controlPlaneModel("policy_authoring");
-    return configured ? new OpenAICompatibleIntentAnalyzer(configured) : legacyIntentAnalyzer;
+    // Authoring produces full structured proposals, unlike short model probes.
+    return configured ? new OpenAICompatibleIntentAnalyzer({ ...configured, timeoutMs: Math.max(configured.timeoutMs, 60_000) }) : legacyIntentAnalyzer;
   };
   const currentPlaygroundModel = async () => {
     const configured = await input.models?.controlPlaneModel("playground_chat");
@@ -988,6 +992,11 @@ export function createHttpApp(input: {
     if (error instanceof SyntaxError) return context.json({ error: { code: "invalid_json", message: "Request body must be valid JSON." } }, 400);
     if (error instanceof RoutingEvaluationError) return context.json({ error: { code: error.code, message: error.message } }, 422);
     if (error instanceof ControllerError) {
+      if (error instanceof IntentAnalysisError) {
+        const { diagnosticId, provider, model, stage, upstreamStatus, elapsedMs, timeoutMs } = error.detail;
+        // Correlate failures without persisting user prompts, documents or provider response bodies.
+        console.error(JSON.stringify({ event: "intent_analysis_failed", diagnosticId, provider, model, stage, upstreamStatus, elapsedMs, timeoutMs, status: error.status }));
+      }
       return context.json({ error: { code: error.code, message: error.message, detail: error.detail } }, error.status as 400);
     }
     if (error instanceof z.ZodError) {

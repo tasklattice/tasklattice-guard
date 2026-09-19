@@ -2,6 +2,16 @@ export const protectionEn = {
   wizard: {
     search: "Search protections", all: "All protections", selectedOnly: "Selected ({{count}})", noMatches: "No matching protections. Change the search or show all protections.",
     protections: "Configure protections", protectionsHint: "Select the Policies you need. Open Configure only to adjust rules, actions or required fields.",
+    sections: {
+      navigation: "Protection categories", safety: "Safety & attacks", privacy: "Data & privacy", business: "Business rules", topics: "Topic Control", reliability: "Correctness checks",
+      safetyHint: "Select protections for harmful content, prompt attacks, and code injection.",
+      privacyHint: "Choose how to detect and protect personal data, credentials, and sensitive identifiers.",
+      businessHint: "Configure keyword filters, industry rules, and business restrictions. Local rules do not require a Topic Control model.",
+      topicsHint: "Set the assistant’s allowed and denied tasks, and choose how to handle unmatched topics. Requires an active Topic Control model.",
+      reliabilityHint: "Enable checks for answer grounding and formal business rules. Configure the evidence and model dependencies each check requires.",
+      selected: "{{count}} selected", unavailable: "Unavailable", notEnabled: "Not enabled", configuration: "Rule settings",
+      selectionHint: "Check an item to enable it. Open Configure to adjust its rules and actions.",
+    },
     groups: { safety: "Safety & attacks", privacy: "Data & privacy", business: "Business controls", reliability: "Answer reliability" },
     configured: "Configured · not validated", configure: "Configure", configurePolicy: "Configure {{name}}", fixPolicy: "Configure {{name}} · needs attention",
     selectionSummary: "{{count}} selected · {{pending}} need configuration", emptyGroup: "No published Policies in this group yet.",
@@ -90,6 +100,16 @@ export const protectionZh = {
   wizard: {
     search: "搜索防护", all: "全部防护", selectedOnly: "已选（{{count}}）", noMatches: "没有匹配的防护，可修改搜索条件或切换到全部防护。",
     protections: "配置防护", protectionsHint: "选择需要的 Policy；需要调整规则、处理方式或必填项时，再展开配置。",
+    sections: {
+      navigation: "防护分类", safety: "安全与攻击", privacy: "数据与隐私", business: "业务规则", topics: "Topic Control", reliability: "正确性检查",
+      safetyHint: "选择有害内容、提示攻击和代码注入等安全防护。",
+      privacyHint: "配置个人信息、凭据和敏感标识符的检测与保护方式。",
+      businessHint: "配置关键词过滤、行业规则和业务限制。本地规则不依赖 Topic Control 模型。",
+      topicsHint: "定义助手允许和拒绝的任务，以及未匹配主题的处理方式。需要已启用的 Topic Control 模型。",
+      reliabilityHint: "按需启用回答依据核查和业务逻辑校验，并配置各项检查所需的证据与模型。",
+      selected: "已选 {{count}} 项", unavailable: "能力不可用", notEnabled: "未启用", configuration: "规则与处理方式",
+      selectionHint: "勾选即启用；需要调整具体规则和处理方式时，再展开配置。",
+    },
     groups: { safety: "安全与攻击", privacy: "数据与隐私", business: "业务控制", reliability: "回答可靠性" },
     configured: "已配置 · 未验证", configure: "配置", configurePolicy: "配置 {{name}}", fixPolicy: "配置 {{name}} · 待处理",
     selectionSummary: "已选 {{count}} 项 · {{pending}} 项待配置", emptyGroup: "此分组暂无已发布的 Policy。",

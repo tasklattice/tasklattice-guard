@@ -1,3 +1,4 @@
+import { TopicControlFields, type TopicControlMode } from "@/components/topic-control-fields";
 import { deleteControllerGuardrailVersion } from "@/lib/controller-api";
 import { MoreHorizontal as VersionActionsIcon } from "lucide-react";
 import { DropdownMenu as VersionMenu, DropdownMenuContent as VersionMenuContent, DropdownMenuItem as VersionMenuItem, DropdownMenuTrigger as VersionMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -871,6 +872,8 @@ export function EditGuardrailSheet({ guardrail, policies, open, onOpenChange, on
   const { t } = useTranslation();
   const [name, setName] = useState(guardrail.name);
   const [allowed, setAllowed] = useState(guardrail.allowed_topics.join("\n"));
+  const [denied, setDenied] = useState(guardrail.restricted_topics.join("\n"));
+  const [topicMode, setTopicMode] = useState<TopicControlMode>(guardrail.topic_control_mode ?? "strict");
   const [bindings, setBindings] = useState(guardrail.policy_bindings);
   const [level, setLevel] = useState(guardrail.safety_level);
   const [delivery, setDelivery] = useState(guardrail.output_delivery);
@@ -878,6 +881,8 @@ export function EditGuardrailSheet({ guardrail, policies, open, onOpenChange, on
     if (open) {
       setName(guardrail.name);
       setAllowed(guardrail.allowed_topics.join("\n"));
+      setDenied(guardrail.restricted_topics.join("\n"));
+      setTopicMode(guardrail.topic_control_mode ?? "strict");
       setBindings(guardrail.policy_bindings);
       setLevel(guardrail.safety_level);
       setDelivery(guardrail.output_delivery);
@@ -887,6 +892,8 @@ export function EditGuardrailSheet({ guardrail, policies, open, onOpenChange, on
     mutationFn: () => updateGuardrail(guardrail.id, {
       name,
       allowed_topics: lines(allowed),
+      restricted_topics: lines(denied),
+      topic_control_mode: topicMode,
       policy_bindings: bindings,
       safety_level: level,
       output_delivery: delivery,
@@ -895,10 +902,11 @@ export function EditGuardrailSheet({ guardrail, policies, open, onOpenChange, on
     onError: (error) => notifyError(error, t("guardrails.operationFailed")),
   });
   const dirty = name !== guardrail.name || allowed !== guardrail.allowed_topics.join("\n")
+    || denied !== guardrail.restricted_topics.join("\n") || topicMode !== (guardrail.topic_control_mode ?? "strict")
     || level !== guardrail.safety_level || delivery !== guardrail.output_delivery
     || JSON.stringify(bindings) !== JSON.stringify(guardrail.policy_bindings);
   const topicControlEnabled = hasTopicControlBinding(bindings, policies);
-  const allowedTopicsMissing = topicControlEnabled && !lines(allowed).length;
+  const allowedTopicsMissing = topicControlEnabled && topicMode === "strict" && !lines(allowed).length;
   const parameterErrors = bindings.flatMap((binding) => {
     const policy = boundPolicy(policies, binding);
     if (!policy) return [t("guardrailWizard.nextBlocked.policyUnavailable", { name: `${binding.policy_id}@${binding.policy_version}` })];
@@ -911,7 +919,7 @@ export function EditGuardrailSheet({ guardrail, policies, open, onOpenChange, on
       <section className="rounded-xl border bg-card p-4">
         <h3 className="text-sm font-semibold">{t("guardrails.topicAllowlist")}</h3>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">{t("guardrails.topicAllowlistDescription")}</p>
-        <div className="mt-4"><Field label={`${t("guardrails.allowedDomains")}${topicControlEnabled ? " *" : ""}`}><Textarea className="min-h-28" value={allowed} onChange={(event) => setAllowed(event.target.value)} placeholder={t("guardrails.topicAllowlistPlaceholder")} /></Field></div>
+        <div className="mt-4"><TopicControlFields allowed={allowed} denied={denied} mode={topicMode} onAllowedChange={setAllowed} onDeniedChange={setDenied} onModeChange={setTopicMode} allowedLabel={t("guardrails.allowedDomains")} /></div>
         {allowedTopicsMissing ? <p role="alert" className="mt-2 flex items-start gap-2 text-xs leading-5 text-destructive"><CircleAlert className="mt-0.5 size-4 shrink-0" />{t("guardrails.topicAllowlistRequired")}</p> : null}
       </section>
       <RuntimePostureFields safetyLevel={level} outputDelivery={delivery} onSafetyLevelChange={setLevel} onOutputDeliveryChange={setDelivery} />
