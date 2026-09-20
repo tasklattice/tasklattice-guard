@@ -10,6 +10,7 @@ from prometheus_client.openmetrics.exposition import CONTENT_TYPE_LATEST, genera
 from runner.toolkit.nemo.action_registry import action_providers
 from runner.toolkit.nemo.registry import NeMoRuntimeRegistry
 from runner.toolkit.nemo.runtime import NeMoRuntime
+from runner.toolkit.policy_library.registry import registry as policy_registry
 from runner.toolkit.runtime.context import CallContextStore
 from runner.toolkit.runtime.service import GuardrailRuntimeService
 
@@ -30,6 +31,9 @@ from .telemetry import RuntimeTelemetryExporter
 
 def create_app(settings: RunnerSettings | None = None) -> FastAPI:
     configured = settings or RunnerSettings.from_env()
+    # Reject incompatible bundled assets before reporting a healthy Runner.
+    # Otherwise lazy catalog loading turns every local check into fail-closed.
+    policy_registry()
     observability = configure_observability(configured)
     store = ArtifactStore(configured.artifact_public_key_path, configured.artifact_state_path)
     providers = action_providers(*runtime_action_providers(configured))

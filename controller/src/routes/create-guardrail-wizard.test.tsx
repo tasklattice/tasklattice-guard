@@ -92,7 +92,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
     createGuardrail: (...args: unknown[]) => apiMocks.createGuardrail(...args),
     getIntentAnalysisStatus: (...args: unknown[]) => apiMocks.getIntentStatus(...args),
     getPolicies: (...args: unknown[]) => apiMocks.getPolicies(...args),
-    getProtectionPresets: (...args: unknown[]) => apiMocks.getPresets(...args),
+    getGuardrailProfiles: (...args: unknown[]) => apiMocks.getPresets(...args),
     previewGuardrailCandidate: (...args: unknown[]) => apiMocks.preview(...args),
   };
 });
@@ -272,6 +272,62 @@ describe("Create Guardrail wizard", () => {
     expect(screen.getByRole("button", { name: "Review draft" }).hasAttribute("disabled")).toBe(false);
   });
 
+  it.each(["contextual_grounding", "automated_reasoning"])("blocks unavailable %s selection and removes preset bindings before preview", async capability => {
+    const check: Policy = { ...policy, id: 'builtin-' + capability.replaceAll('_', '-'), name: capability,
+      protection: { ...policy.protection!, directory: "answer_reliability", modelCapabilities: [capability] } };
+    const checkBinding = { ...binding, policy_id: check.id };
+    apiMocks.getPolicies.mockResolvedValue({ items: [policy, check], count: 2 });
+    apiMocks.getPresets.mockResolvedValue({ items: [{ id: "checks", name: "Correctness preset", bindings: [binding, checkBinding], limitations: [] }] });
+    renderWizard();
+    fireEvent.change(screen.getByPlaceholderText("Customer data protection"), { target: { value: "Checks" } });
+    fireEvent.click(screen.getByRole("button", { name: "Configure protections" }));
+    await selectSection("Correctness checks");
+    expect(screen.getByRole("tab", { name: /Correctness checks/ }).textContent).toContain("Unavailable");
+    expect(screen.getByRole("checkbox", { name: capability }).hasAttribute("disabled")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: protectionEn.start }));
+    fireEvent.keyDown(await screen.findByRole("combobox"), { key: "ArrowDown" });
+    fireEvent.click(await screen.findByRole("option", { name: "Correctness preset" }));
+    fireEvent.click(screen.getByRole("button", { name: "Configure protections" }));
+    await selectSection("Correctness checks");
+    const checkbox = screen.getByRole("checkbox", { name: capability });
+    expect(checkbox.hasAttribute("disabled")).toBe(false);
+    expect(screen.getByRole("button", { name: 'Configure ' + capability, exact: true }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "Review draft" }).hasAttribute("disabled")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Review & create" }));
+    expect(apiMocks.preview).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Create draft" }).hasAttribute("disabled")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Configure protections" }));
+    await selectSection("Correctness checks");
+    fireEvent.click(screen.getByRole("checkbox", { name: capability }));
+    fireEvent.click(screen.getByRole("button", { name: "Review draft" }));
+    await waitFor(() => expect(apiMocks.preview).toHaveBeenCalledWith(expect.objectContaining({ policy_bindings: [binding] })));
+  });
+
+  it("loads the General default Profile and lists all Profiles with tags in one dropdown", async () => {
+    apiMocks.getPresets.mockResolvedValue({ items: [
+      { id: "general", name: "General Profile", category: "general", categoryName: "General", isDefault: true, bindings: [binding], limitations: [] },
+      { id: "bank-alternate", name: "Alternate banking", category: "banking", categoryName: "Banking", isDefault: false, bindings: [binding], limitations: [] },
+      { id: "bank-default", name: "Default banking", category: "banking", categoryName: "Banking", isDefault: true, bindings: [configuredRequiredBinding], limitations: [] },
+    ] });
+    renderWizard();
+    expect(await screen.findByText("Profile applied · 1 Policies selected")).toBeTruthy();
+    expect(screen.getByRole("combobox").textContent).toContain("General Profile");
+    expect(screen.queryByRole("group", { name: "Industry or use case" })).toBeNull();
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Profile", exact: true }), { key: "ArrowDown" });
+    expect(await screen.findByRole("option", { name: /Alternate banking.*Banking/ })).toBeTruthy();
+    fireEvent.click(screen.getByRole("option", { name: /Default banking.*Banking.*Default/ }));
+    expect(screen.getByRole("combobox").textContent).toContain("Default banking");
+    fireEvent.click(screen.getByRole("button", { name: protectionEn.wizard.addPreset }));
+    expect(screen.getByText("Profile applied · 2 Policies selected")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: protectionEn.wizard.undoPreset }));
+    expect(screen.getByRole("combobox").textContent).toContain("General Profile");
+    fireEvent.keyDown(screen.getByRole("combobox"), { key: "ArrowDown" });
+    fireEvent.click(await screen.findByRole("option", { name: "Start blank" }));
+    fireEvent.click(screen.getByRole("button", { name: protectionEn.wizard.replacePreset }));
+    expect(screen.getByRole("combobox").textContent).toBe("Start blank");
+    expect(screen.getByText("Profile applied · 0 Policies selected")).toBeTruthy();
+  });
+
   it("applies the first preset immediately, resolves later changes explicitly, and supports undo", async () => {
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
     apiMocks.getPresets.mockResolvedValue({ items: [
@@ -286,12 +342,12 @@ describe("Create Guardrail wizard", () => {
       fireEvent.click(await screen.findByRole("option", { name }));
     }
     await choose("Banking preset");
-    expect(screen.getByText("Preset applied · 1 Policies selected")).toBeTruthy();
+    expect(screen.getByText("Profile applied · 1 Policies selected")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Apply preset" })).toBeNull();
     await choose("Internet preset");
     expect(screen.getByRole("button", { name: "Next" }).hasAttribute("disabled")).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: protectionEn.wizard.addPreset }));
-    expect(screen.getByText("Preset applied · 2 Policies selected")).toBeTruthy();
+    expect(screen.getByText("Profile applied · 2 Policies selected")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: protectionEn.wizard.undoPreset }));
     expect(picker.textContent).toBe("Banking preset");
     await choose("Internet preset");

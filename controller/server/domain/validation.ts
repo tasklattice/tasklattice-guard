@@ -4,6 +4,7 @@ import type { PolicyDto } from "../policy-catalog/catalog.js";
 import type { ProgrammablePolicySnapshot } from "../policy-studio/model.js";
 import { normalizeGuardrailDraft, type GuardrailDraftConfig, type ValidationExpectationOverride } from "./guardrail-plan.js";
 import { PHRASE_PARAMETER, PHRASE_POLICY_ID, parsePhraseEntries } from "../../shared/phrase-policy.js";
+import { isSplitTopicPolicy, TOPIC_ALLOW_RULE, TOPIC_DENY_RULE, topicLines, topicPolicyValues } from "../../shared/topic-policy.js";
 import type { ValidationCaseResult, ValidationMetrics } from "./models.js";
 
 export type StoredTestCaseInput = {
@@ -37,9 +38,9 @@ export function generatedTestCases(
   programmablePolicies: readonly ProgrammablePolicySnapshot[] = [],
 ): StoredTestCaseInput[] {
   const draft = normalizeGuardrailDraft(draftValue);
-  const byId = new Map(policies.map((item) => [item.id, item]));
+  const byId = new Map(policies.flatMap(item => [item, ...(item.published_versions ?? [])]).map(item => [`${item.id}@${item.version}`, item]));
   const declarative = draft.policyBindings.flatMap((binding) => {
-    const policy = byId.get(binding.policyId);
+    const policy = byId.get(`${binding.policyId}@${binding.policyVersion}`);
     if (!policy) return [];
     const enabledRails = new Set(binding.enabledRails.length ? binding.enabledRails : policy.rails);
     const enabledRules = new Set(binding.enabledRuleIds);
@@ -51,7 +52,11 @@ export function generatedTestCases(
       const topicCase = policy.id === "builtin-topic-safety" && item.id === "topic-input";
       const topicAction = binding.ruleActions["model/topic-control"] ?? binding.action ?? "redirect";
       const topicBlockedDecision = topicAction === "reject" ? "block" as const : "intervene" as const;
-      const expanded = topicCase ? [
+      const topicValues = topicPolicyValues(binding.parameterValues);
+      const expanded = isSplitTopicPolicy(binding.policyId, binding.policyVersion) ? item.covered_rule_ids.includes(TOPIC_DENY_RULE)
+        ? topicLines(topicValues.denied).map((topic, index) => ({ ...item, id: `${item.id}/${index + 1}`, name: `Denied topic: ${topic}`, content: `Please help me with this task: ${topic}`, expected_decision: "block" as const }))
+        : [{ ...item, expected_decision: topicValues.mode === "permissive" ? "allow" as const : (binding.ruleActions[TOPIC_ALLOW_RULE] ?? binding.action ?? "redirect") === "reject" ? "block" as const : "intervene" as const }]
+        : topicCase ? [
         { ...item, expected_decision: draft.topicControlMode === "permissive" ? "allow" as const : topicBlockedDecision },
         ...draft.restrictedTopics.map((topic, index) => ({ ...item, id: `${item.id}/deny-${index + 1}`, name: `Denied topic: ${topic}`, content: `Please help me with this task: ${topic}`, expected_decision: topicBlockedDecision })),
       ] : policy.id === PHRASE_POLICY_ID

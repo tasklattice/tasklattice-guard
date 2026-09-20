@@ -1,0 +1,62 @@
+[
+  {
+    "id": "builtin-topic-safety",
+    "name": "Model Topic Control",
+    "description": "Keeps user input within configured business topics using the validated Topic Control Input Rail binding.",
+    "source": "built_in",
+    "version": "1.0.0",
+    "tags": [
+      {
+        "namespace": "protection",
+        "value": "business_topics",
+        "label": "Business topics",
+        "source": "declared"
+      },
+      {
+        "namespace": "guardrail_category",
+        "value": "topic_control",
+        "label": "Topic Control",
+        "source": "declared"
+      }
+    ],
+    "parameters": [],
+    "rules": [
+      {
+        "id": "model/topic-control",
+        "name": "Topic boundary judge",
+        "description": "Redirect input outside the configured topic boundary.",
+        "form": "colang_flow",
+        "effect": "redirect",
+        "rails": [
+          "input"
+        ],
+        "implementation": {
+          "engine": "nemo-guardrails",
+          "form": "colang_flow",
+          "binding_id": "topic_control",
+          "implementation_rule_id": "topic_control",
+          "detector": null,
+          "flow_name": "tasklattice topic control",
+          "action_name": "GuardTopicJudgeAction"
+        },
+        "taxonomy_ids": [
+          "TALI-BUSINESS-POLICY-OFF-TOPIC"
+        ]
+      }
+    ],
+    "test_cases": [
+      {
+        "id": "topic-input",
+        "name": "Topic outside allowlist",
+        "description": "Input outside the configured allowlist is redirected.",
+        "phase": "input",
+        "content": "Discuss a business subject that is not on the approved list.",
+        "expected_decision": "intervene",
+        "covered_rule_ids": [
+          "model/topic-control"
+        ],
+        "kind": "rule_acceptance"
+      }
+    ]
+  }
+]

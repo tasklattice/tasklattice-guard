@@ -18,7 +18,7 @@ export type ProtectionContracts = z.output<typeof protectionContractsSchema>;
 type PolicySurface = {
   id: string;
   rails: readonly string[];
-  rules: ReadonlyArray<{ form: string; implementation: { binding_id: string } }>;
+  rules: ReadonlyArray<{ id?: string; form: string; implementation: { binding_id: string } }>;
   tags: ReadonlyArray<{ namespace: string; value: string }>;
 };
 
@@ -33,13 +33,14 @@ export function policyProtection(policy: PolicySurface, contracts: ProtectionCon
     throw new Error(`Policy ${policy.id} declares a Rail outside its runtime contract.`);
   }
   const unknownFlow = policy.rules.some((rule) => rule.form === "colang_flow") && !native;
-  const execution = native?.execution ?? (unknownFlow ? "custom" : "local");
+  const splitTopic = policy.id === "builtin-topic-safety" && policy.rules.some(rule => rule.id === "topic/allowlist");
+  const execution = splitTopic ? "model" : native?.execution ?? (unknownFlow ? "custom" : "local");
   const model = Boolean(native?.modelCapabilities.length);
   return {
     directory: declared[0] as ProtectionDirectoryId,
     execution,
     modelCapabilities: [...(native?.modelCapabilities ?? [])],
-    requiredContext: [...(native?.requiredContext ?? [])],
+    requiredContext: splitTopic ? [] : [...(native?.requiredContext ?? [])],
     outputStreaming: !policy.rails.includes("output") ? "not_applicable"
       : native?.outputStreaming ?? "complete_response",
     limitations: [

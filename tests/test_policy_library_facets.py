@@ -58,3 +58,24 @@ def test_local_content_filter_executes_policy_rails_without_a_model() -> None:
     assert result.verdict == "unsafe"
     assert result.findings[0].rule_id == "keyword/blocked-words"
     assert result.findings[0].recommended_action == "reject"
+
+
+def test_topic_parameter_defaults_do_not_break_unrelated_local_rules() -> None:
+    # Load the actual shared assets: a new model Policy must not break the
+    # lazily initialized catalog used by model-free Profile protections.
+    from runner.toolkit.policy_library import policy
+    from runner.toolkit.policy_library.loader import load_builtin_policies
+
+    loaded = PolicyLibraryRegistry(load_builtin_policies())
+    topic = loaded.policy("builtin-topic-safety")
+    assert {item.name: item.default for item in topic.parameters} == {
+        "allowed_topics": "", "denied_topics": "", "topic_mode": "permissive",
+    }
+    assert all(item.placeholder == "" for item in topic.parameters)
+    credentials = policy("local-credentials")
+    case = next(item for item in credentials.test_cases
+                if "credentials-api-keys/aws_access_key" in item.covered_rule_ids and item.phase == "input")
+    result = BuiltinContentFilter().evaluate(text=case.content, phase="input", policies=(credentials.id,))
+    assert result.verdict == "unsafe"
+    assert any(item.policy_id == credentials.id and item.rule_id == "credentials-api-keys/aws_access_key"
+               for item in result.findings)

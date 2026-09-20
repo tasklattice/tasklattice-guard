@@ -64,3 +64,10 @@ export type ProtectionPreset = {
   optionalPolicyIds: string[];
   limitations: string[];
 };
+
+/** A database-backed, versioned starting configuration for one industry or use case. */
+export type GuardrailProfile = ProtectionPreset & {
+  category: string;
+  categoryName: string;
+  isDefault: boolean;
+};

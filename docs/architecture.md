@@ -319,3 +319,34 @@ sections are Safety & attacks, Data & privacy, Business rules, Topic Control and
 Correctness checks. Classification follows policy purpose; model readiness is a
 separate state. Local keyword rules remain under Business rules. Availability refreshes while the
 wizard is open; the control-plane authoring model is not runtime capability evidence.
+
+Contextual Grounding and Automated Reasoning independently require a verified,
+active `contextual_grounding.output` or `automated_reasoning.output` assignment.
+Creation and draft editing disable unavailable checks and their configuration,
+while allowing existing bindings to be removed. Preset and document proposals
+cannot bypass this requirement, and unavailable bindings block preview/save.
+A control-plane model or connection-only probe is not capability evidence.
+Grounding additionally needs query/source content; reasoning needs a versioned
+formal policy and a compatible reasoning service, not a generic chat endpoint.
+
+### Guardrail Profiles
+
+A Profile is a preconfigured starting template, distinct from a Guardrail draft
+and from an evaluator/model profile. `guardrail_profile` stores its category,
+default flag, enabled state, display order, and versioned definition, including
+ordered Policy/version references, Rails and parameter values. Migration 0013
+seeds defaults for General, Banking, Securities, Internet support and Singapore
+finance. Its partial unique index allows one enabled default per category.
+Seeds run once through the migration journal; runtime startup never replaces
+operator changes. Add new defaults through a migration, not a request-time seed.
+
+`GET /api/v1/guardrail-profiles` reads enabled records from PostgreSQL on each
+request and expands their pinned Policy references. The legacy
+`/api/v1/policy-catalog/protection-presets` route remains a database-backed alias.
+Both require authenticated Policies read access. Profile application copies
+bindings into the draft; later Profile changes do not rewrite existing Guardrails.
+The UI initially loads the General default and lists all Profiles in one dropdown,
+with the name followed by industry/use-case and default tags. It preserves
+explicit append/replace/cancel/undo behavior.
+Choosing blank is respected. Runtime model availability gates still apply to
+all selected bindings, including those inherited from a Profile.

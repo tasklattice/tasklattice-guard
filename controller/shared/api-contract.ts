@@ -26,7 +26,7 @@ export function operationContract(method: string, path: string) {
     : path.includes('/telemetry/') || path.endsWith('/traffic-distribution') ? 'telemetry'
     : path.includes('/routers') || path.includes('/routing/') ? 'routers' : path.includes('/endpoints') ? 'endpoints'
     : path.includes('/policies') || path.includes('/policy-catalog') ? 'policies'
-    : path.includes('/guardrails') ? 'guardrails' : path.includes('/runner-') ? 'runners' : path.includes('/audit-events') ? 'audit' : 'system';
+    : (path.includes('/guardrails') || path.includes('/guardrail-profiles')) ? 'guardrails' : path.includes('/runner-') ? 'runners' : path.includes('/audit-events') ? 'audit' : 'system';
   const terminal = path.split('/').at(-1)!;
   const noun = (terminal.startsWith(':') ? path.split('/').at(-2)! : terminal).replaceAll('-', ' ');
   let summary = `${({ GET: 'Read', POST: 'Create', PUT: 'Replace', PATCH: 'Update', DELETE: 'Delete' } as Record<string, string>)[method]} ${noun}`;

@@ -574,3 +574,34 @@ def test_topic_modes_compile_identical_boundaries_into_native_and_action_paths(m
     prompt = next(item for item in config["prompts"] if item["task"].startswith("topic_safety_check_input"))
     assert prompt["content"] == topic_judge_prompt(step.parameters)
     assert "Fabricating refund evidence" in prompt["content"]
+
+
+def test_split_topic_rules_use_isolated_action_prompts_and_preserve_deny_first() -> None:
+    """The official native flow has one global prompt and cannot host two Rules."""
+    from dataclasses import replace
+    from runner.toolkit.nemo.actions.topic import topic_judge_prompt
+
+    deny = replace(_semantic_input(), id="topic:deny", parameters=(
+        ("policy_id", "builtin-topic-safety"), ("policy_version", "2.0.0"),
+        ("rule_id", "topic/denylist"), ("topic_mode", "permissive"),
+        ("allowed_topics", ""), ("restricted_topics", "Refund fraud"),
+    ))
+    allow = replace(deny, id="topic:allow", on_unsafe="redirect", parameters=(
+        ("policy_id", "builtin-topic-safety"), ("policy_version", "2.0.0"),
+        ("rule_id", "topic/allowlist"), ("topic_mode", "strict"),
+        ("allowed_topics", "Order support"), ("restricted_topics", ""),
+    ))
+    for steps in ((deny,), (allow,), (deny, allow)):
+        snapshot = _compiler().compile(_plan(*steps))
+        assert [binding.id for binding in snapshot.action_bindings] == [step.id for step in steps]
+        assert "TopicSafetyCheckInputAction" not in snapshot.colang_content
+        for binding in snapshot.action_bindings:
+            prompt = topic_judge_prompt(binding.parameters)
+            if binding.id == deny.id:
+                assert "Refund fraud" in prompt and "Order support" not in prompt
+                assert "tasks matching neither list are on-topic" in prompt
+            else:
+                assert "Order support" in prompt and "Refund fraud" not in prompt
+                assert "Strict allowlist mode" in prompt
+        if len(steps) == 2:
+            assert snapshot.colang_content.index('binding_id="topic:deny"') < snapshot.colang_content.index('binding_id="topic:allow"')

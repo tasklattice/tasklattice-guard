@@ -103,6 +103,7 @@ type PolicyParameter = z.output<typeof parameterSchema>;
 
 export type PolicyTag = z.output<typeof tagSchema> & { id: string };
 export type PolicyDto = {
+  published_versions?: PolicyDto[];
   implementation: "rules";
   id: string;
   name: string;
@@ -125,6 +126,7 @@ export type PolicyDto = {
 export const POLICY_CATALOG_FILE_NAMES = [
   "builtin_policies.json",
   "local_content_filters.json",
+  "legacy_topic_policies.json",
   "model_capability_policies.json",
   "focused_policies.json",
   "configurable_policies.json",
@@ -180,7 +182,10 @@ export class PolicyCatalog {
       for (const policy of readPolicyAssets(path)) {
         // The focused local-filter collection intentionally replaces a legacy
         // definition when it reuses a public Policy ID.
-        merged.set(policy.id, normalizePolicy(policy, contracts));
+        const normalized = normalizePolicy(policy, contracts);
+        const previous = merged.get(policy.id);
+        if (policy.id === "builtin-topic-safety" && previous && previous.version !== policy.version) normalized.published_versions = [previous];
+        merged.set(policy.id, normalized);
       }
     }
     return new PolicyCatalog(merged);

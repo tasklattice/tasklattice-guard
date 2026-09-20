@@ -1,10 +1,11 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import type { TestCaseResult, ValidationRun } from "@/lib/api";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
-import { DetailFact, filterValidationRuns, GuardrailValidationHistory, TestCaseResultRow, ValidationCaseResults } from "./validation";
+import { DetailFact, filterValidationRuns, GuardrailValidationHistory, TestCaseResultRow, ValidationCaseResults, ValidationDetailSheet } from "./validation";
 
 vi.mock("@/components/add-test-case-sheet", () => ({ AddTestCaseSheet: () => null }));
 vi.mock("react-i18next", () => ({
@@ -109,6 +110,24 @@ describe("Validation Run acceptance evidence", () => {
   });
   afterAll(() => vi.unstubAllGlobals());
   afterEach(cleanup);
+
+  it("blocks running from history while dependency repair is required", () => {
+    const onRun = vi.fn();
+    render(<GuardrailValidationHistory runs={[validationRun]} loading={false} error={null} canManage running={false} blockedReason="Remove Topic Control first" onRun={onRun} onOpen={vi.fn()} onOpenTarget={vi.fn()} />);
+    const button = screen.getByRole("button", { name: "Run Validation" });
+    expect(button.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(button);
+    expect(onRun).not.toHaveBeenCalled();
+  });
+
+  it("shows the recorded execution failure and disables rerun for current dependency blockers", () => {
+    const onRunAgain = vi.fn();
+    render(<QueryClientProvider client={new QueryClient()}><TooltipProvider><ValidationDetailSheet run={{ ...validationRun, status: "failed", failure_reason: "Topic model assignment is missing", results: [] }} canManage running={false} blockedReason="Remove Topic Control first" onRunAgain={onRunAgain} onClose={vi.fn()} /></TooltipProvider></QueryClientProvider>);
+    expect(screen.getByText("Topic model assignment is missing")).toBeTruthy();
+    expect(screen.getByText("Remove Topic Control first")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "validation.runAgain" }));
+    expect(onRunAgain).not.toHaveBeenCalled();
+  });
 
   it("filters Validation Runs by the exact Guardrail ID", () => {
     const otherRun = { ...validationRun, id: "validation-banker-001", guardrail_id: "guardrail-banker", status: "failed" as const };

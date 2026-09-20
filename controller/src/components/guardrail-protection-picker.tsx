@@ -8,6 +8,7 @@ import type { GuardrailPolicyBinding, Policy } from "@/lib/api";
 import { PolicyBindingEditor, defaultPolicyBinding } from "./policy-binding-editor";
 import { Checkbox } from "./ui/checkbox";
 import { Button } from "./ui/button";
+import { Badge } from "./ui/badge";
 import { Input } from "./ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 
@@ -30,7 +31,7 @@ export function protectionSection(policy: Policy): ProtectionSection {
 }
 
 
-export function GuardrailProtectionPicker({ policies, bindings, onChange, issueFor, expanded, onExpand, businessControls, unavailableReason, section, onSectionChange, topicUnavailable = false }: {
+export function GuardrailProtectionPicker({ policies, bindings, onChange, issueFor, expanded, onExpand, businessControls, correctnessControls, correctnessStatus, unavailableReason, section, onSectionChange, topicUnavailable = false }: {
   policies: Policy[];
   bindings: GuardrailPolicyBinding[];
   onChange: (bindings: GuardrailPolicyBinding[]) => void;
@@ -38,6 +39,8 @@ export function GuardrailProtectionPicker({ policies, bindings, onChange, issueF
   expanded: string | null;
   onExpand: (id: string | null) => void;
   businessControls: ReactNode;
+  correctnessControls?: ReactNode;
+  correctnessStatus?: "available" | "partial" | "unavailable";
   unavailableReason?: (policy: Policy) => string | null;
   section: ProtectionSection;
   onSectionChange: (section: ProtectionSection) => void;
@@ -91,7 +94,11 @@ export function GuardrailProtectionPicker({ policies, bindings, onChange, issueF
       <TabsList aria-label={t("protection.wizard.sections.navigation")} className="grid h-auto w-full grid-cols-2 gap-1 sm:sticky sm:top-0 sm:z-10 md:grid-cols-3 xl:grid-cols-5 rounded-lg border bg-background p-1 shadow-sm">
         {sections.map(({ id, icon: Icon }) => <TabsTrigger key={id} value={id} className="h-auto min-h-16 min-w-0 flex-col items-start gap-2 rounded-md px-2 py-3 whitespace-normal text-left data-[state=active]:bg-primary/10 data-[state=active]:text-primary after:hidden last:col-span-2 md:last:col-span-1 sm:px-3">
           <span className="flex items-center gap-2 text-sm font-semibold sm:text-base"><Icon className="hidden size-4 sm:block" />{t(`protection.wizard.sections.${id}`)}</span>
-          <span className="flex items-center gap-1 text-xs font-normal text-muted-foreground">{id === "topics" && topicUnavailable ? <><LockKeyhole className="size-3" />{t("protection.wizard.sections.unavailable")}</> : t("protection.wizard.sections.selected", { count: selectedCount(id) })}</span>
+          {(id === "topics" && topicUnavailable) || (id === "reliability" && correctnessStatus === "unavailable")
+            ? <Badge variant="destructive"><LockKeyhole aria-hidden="true" />{t("protection.wizard.sections.unavailable")}</Badge>
+            : id === "reliability" && correctnessStatus === "partial"
+              ? <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400">{t("protection.wizard.sections.partial")}</Badge>
+              : <span className="text-xs font-normal text-muted-foreground">{t("protection.wizard.sections.selected", { count: selectedCount(id) })}</span>}
         </TabsTrigger>)}
       </TabsList>
       <TabsContent value={section} className="space-y-5">
@@ -99,7 +106,7 @@ export function GuardrailProtectionPicker({ policies, bindings, onChange, issueF
           <h4 className="text-xl font-semibold tracking-tight">{t(`protection.wizard.sections.${section}`)}</h4>
           <p className="text-sm leading-6 text-muted-foreground">{t(`protection.wizard.sections.${section}Hint`)}</p>
         </header>
-        {section === "topics" ? businessControls : null}
+        {section === "topics" ? businessControls : section === "reliability" ? correctnessControls : null}
         {sectionItems.length ? <>
           <div className="flex flex-wrap gap-2">
             <Input className="min-h-11 min-w-0 flex-1 basis-48 bg-card" aria-label={t("protection.wizard.search")} placeholder={t("protection.wizard.search")} value={query} onChange={event => setQuery(event.target.value)} />

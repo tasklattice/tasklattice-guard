@@ -36,17 +36,121 @@
   {
     "id": "builtin-topic-safety",
     "name": "Model Topic Control",
-    "description": "Keeps user input within configured business topics using the validated Topic Control Input Rail binding.",
-    "source": "built_in", "version": "1.0.0",
-    "tags": [{"namespace":"protection","value":"business_topics","label":"Business topics","source":"declared"},{ "namespace": "guardrail_category", "value": "topic_control", "label": "Topic Control", "source": "declared" }],
-    "parameters": [],
-    "rules": [{
-      "id": "model/topic-control", "name": "Topic boundary judge", "description": "Redirect input outside the configured topic boundary.",
-      "form": "colang_flow", "effect": "redirect", "rails": ["input"],
-      "implementation": { "engine": "nemo-guardrails", "form": "colang_flow", "binding_id": "topic_control", "implementation_rule_id": "topic_control", "detector": null, "flow_name": "tasklattice topic control", "action_name": "GuardTopicJudgeAction" },
-      "taxonomy_ids": ["TALI-BUSINESS-POLICY-OFF-TOPIC"]
-    }],
-    "test_cases": [{ "id": "topic-input", "name": "Topic outside allowlist", "description": "Input outside the configured allowlist is redirected.", "phase": "input", "content": "Discuss a business subject that is not on the approved list.", "expected_decision": "intervene", "covered_rule_ids": ["model/topic-control"], "kind": "rule_acceptance" }]
+    "description": "Configure independent allowlist and denylist Rules. Denied tasks take precedence; Intention analysis helps fill these Policy settings.",
+    "source": "built_in",
+    "version": "2.0.0",
+    "tags": [
+      {
+        "namespace": "protection",
+        "value": "business_topics",
+        "label": "Business topics",
+        "source": "declared"
+      },
+      {
+        "namespace": "guardrail_category",
+        "value": "topic_control",
+        "label": "Topic Control",
+        "source": "declared"
+      }
+    ],
+    "parameters": [
+      {
+        "name": "allowed_topics",
+        "label": "Allowed topics",
+        "kind": "textarea",
+        "required": false,
+        "default": "",
+        "description": "Topics for the Allowlist Rule, one per line."
+      },
+      {
+        "name": "denied_topics",
+        "label": "Denied topics",
+        "kind": "textarea",
+        "required": false,
+        "default": "",
+        "description": "Topics for the Denylist Rule, one per line."
+      },
+      {
+        "name": "topic_mode",
+        "label": "Allowlist mode",
+        "kind": "text",
+        "required": false,
+        "default": "permissive",
+        "description": "strict or permissive. Applies only when the Allowlist Rule is enabled."
+      }
+    ],
+    "rules": [
+      {
+        "id": "topic/denylist",
+        "name": "Denylist",
+        "description": "Block a request when any task matches a denied topic. Evaluated before the Allowlist Rule.",
+        "form": "colang_flow",
+        "effect": "reject",
+        "rails": [
+          "input"
+        ],
+        "implementation": {
+          "engine": "nemo-guardrails",
+          "form": "colang_flow",
+          "binding_id": "topic_control",
+          "implementation_rule_id": "topic_control",
+          "detector": null,
+          "flow_name": "tasklattice topic control",
+          "action_name": "GuardTopicJudgeAction"
+        },
+        "taxonomy_ids": [
+          "TALI-BUSINESS-POLICY-OFF-TOPIC"
+        ]
+      },
+      {
+        "id": "topic/allowlist",
+        "name": "Allowlist",
+        "description": "In strict mode, redirect tasks outside the allowed topics. In permissive mode, unmatched tasks may continue.",
+        "form": "colang_flow",
+        "effect": "redirect",
+        "rails": [
+          "input"
+        ],
+        "implementation": {
+          "engine": "nemo-guardrails",
+          "form": "colang_flow",
+          "binding_id": "topic_control",
+          "implementation_rule_id": "topic_control",
+          "detector": null,
+          "flow_name": "tasklattice topic control",
+          "action_name": "GuardTopicJudgeAction"
+        },
+        "taxonomy_ids": [
+          "TALI-BUSINESS-POLICY-OFF-TOPIC"
+        ]
+      }
+    ],
+    "test_cases": [
+      {
+        "id": "topic-denied",
+        "name": "Denied topic",
+        "description": "An explicitly denied task is blocked.",
+        "phase": "input",
+        "content": "Please help me with this task: {{denied_topics}}",
+        "expected_decision": "block",
+        "covered_rule_ids": [
+          "topic/denylist"
+        ],
+        "kind": "rule_acceptance"
+      },
+      {
+        "id": "topic-unlisted",
+        "name": "Unlisted topic",
+        "description": "Unlisted tasks follow the Allowlist mode.",
+        "phase": "input",
+        "content": "Discuss a business subject that is not on the approved list.",
+        "expected_decision": "intervene",
+        "covered_rule_ids": [
+          "topic/allowlist"
+        ],
+        "kind": "rule_acceptance"
+      }
+    ]
   },
   {
     "id": "builtin-pii",

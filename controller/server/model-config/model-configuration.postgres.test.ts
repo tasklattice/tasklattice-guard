@@ -89,6 +89,22 @@ describe.skipIf(!url)("Model draft PostgreSQL optimistic locking", () => {
     await pool.query("UPDATE model_definition SET name='Synthetic' WHERE id=$1", [modelId]);
   });
 
+  it('persists both PII Rail bindings across validated draft forks and fresh service reads', async () => {
+    const first = await seed();
+    await pool.query("UPDATE model_configuration_revision SET state='validated' WHERE id=$1", [first]);
+    for (const target of ['pii_semantic.input', 'pii_semantic.output'] as const) {
+      const receipt = await service.previewAssignment(target, modelId, 'synthetic-admin');
+      const saved = await service.updateAssignment(target, modelId, 'synthetic-admin', receipt.validationId);
+      expect(saved.assignments.bindings[target]).toBe(modelId);
+      const reader = new ModelConfigurationService(drizzle(pool, { schema }), 'synthetic-root', resolve('../runner/toolkit/policy_library/assets'));
+      expect((await reader.view()).draft?.assignments.bindings[target]).toBe(modelId);
+    }
+    expect((await service.view()).draft?.assignments.bindings).toMatchObject({
+      'pii_semantic.input': modelId, 'pii_semantic.output': modelId,
+      'content_safety.input': null,
+    });
+  });
+
   it('keeps saved Chat available across draft creation, Runner activation and rollback', async () => {
     await seed();
     await pool.query("UPDATE model_definition SET profile='generic-chat' WHERE id=$1", [modelId]);

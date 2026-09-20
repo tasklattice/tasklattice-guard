@@ -528,3 +528,15 @@ export const schema = {
   auditEvents,
   outboxEvents,
 };
+
+export const guardrailProfiles = pgTable("guardrail_profile", {
+  id: text("id").primaryKey(),
+  category: text("category").notNull(),
+  categoryName: text("category_name").notNull(),
+  isDefault: boolean("is_default").notNull().default(false),
+  enabled: boolean("enabled").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+  definition: jsonb("definition").$type<Omit<import("../../shared/protection-map.js").ProtectionPreset, "id">>().notNull(),
+  createdAt,
+  updatedAt,
+}, table => [uniqueIndex("guardrail_profile_category_default_idx").on(table.category).where(sql`${table.isDefault} AND ${table.enabled}`)]);

@@ -26,6 +26,7 @@ export const tokenRoutePermissions: ReadonlyArray<readonly [string, string, Toke
   ["POST", "/api/v1/model-configuration/revisions/:id/activate", "models", "write"],
   ["POST", "/api/v1/model-configuration/rollback", "models", "write"],
   ["GET", "/api/v1/policies", "policies", "read"],
+  ["GET", "/api/v1/guardrail-profiles", "policies", "read"],
   ["GET", "/api/v1/policy-catalog/protection-presets", "policies", "read"],
   ["GET", "/api/v1/policies/:id", "policies", "read"],
   ["POST", "/api/v1/policies", "policies", "write"],

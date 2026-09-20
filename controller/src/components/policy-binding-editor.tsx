@@ -1,3 +1,5 @@
+import { isSplitTopicPolicy, TOPIC_ALLOW_RULE, topicMissingParameters } from "../../shared/topic-policy";
+import { TopicPolicyRules } from "./topic-policy-rules";
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ArrowDown, ArrowUp, ChevronDown, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -20,6 +22,7 @@ export function PolicyBindingEditor({
   onChange,
   showSelector = true,
   embedded = false,
+  unavailableReason,
 }: {
   policies: Policy[];
   value: GuardrailPolicyBinding[];
@@ -27,6 +30,7 @@ export function PolicyBindingEditor({
   showSelector?: boolean;
   /** The containing Policy row already owns the disclosure and heading. */
   embedded?: boolean;
+  unavailableReason?: (policy: Policy) => string | null;
 }) {
   const { t } = useTranslation();
   const movedControl = useRef<HTMLButtonElement | null>(null);
@@ -65,8 +69,8 @@ export function PolicyBindingEditor({
     return {
       value: policy.id,
       label: policy.name,
-      description: policy.description,
-      disabled: !bindable,
+      description: unavailableReason?.(policy) ?? policy.description,
+      disabled: !bindable || (Boolean(unavailableReason?.(policy)) && !binding),
       keywords: [
         policy.id,
         ...policy.tags.map((tag) => tag.label),
@@ -80,14 +84,14 @@ export function PolicyBindingEditor({
         ...(!bindable ? [t("guardrailWizard.publishPolicyFirst")] : []),
       ].join(" · "),
     };
-  }), [policies, value, t]);
+  }), [policies, value, t, unavailableReason]);
 
   function selectPolicies(nextIds: string[]) {
     onChange(nextIds.map((policyId) => {
       const existing = value.find((binding) => binding.policy_id === policyId);
       if (existing) return existing;
       const policy = policies.find((item) => item.id === policyId);
-      return policy ? defaultPolicyBinding(policy) : null;
+      return policy && !unavailableReason?.(policy) ? defaultPolicyBinding(policy) : null;
     }).filter((binding): binding is GuardrailPolicyBinding => binding !== null));
   }
 
@@ -129,6 +133,12 @@ export function PolicyBindingEditor({
               if (!policy) return <li key={binding.policy_id} role="alert" className="flex min-w-0 flex-wrap items-center justify-between gap-3 p-4 text-sm text-destructive">
                 <p className="min-w-0 flex-1 break-words">{t("guardrailWizard.nextBlocked.policyUnavailable", { name: `${binding.policy_id}@${binding.policy_version}` })}</p>
                 <Button variant="outline" className="min-h-11" onClick={() => onChange(value.filter((item) => item.policy_id !== binding.policy_id))}>{t("common.remove")}</Button>
+              </li>;
+              const splitTopic = isSplitTopicPolicy(policy.id, policy.version);
+              const unavailable = unavailableReason?.(policy);
+              if (unavailable) return <li key={binding.policy_id} className="flex min-w-0 flex-wrap items-center justify-between gap-3 p-4">
+                <div className="min-w-0 flex-1"><h4 className="text-sm font-semibold">{policy.name}</h4><p role="status" className="mt-1 text-sm text-muted-foreground">{unavailable}</p></div>
+                <Button variant="outline" className="min-h-11" aria-label={t("protection.remove", { name: policy.name })} onClick={() => onChange(value.filter(item => item.policy_id !== binding.policy_id))}>{t("common.remove")}</Button>
               </li>;
               const validation = getPolicyBindingValidation(binding, policy);
               const validationLabel = validation.missingRequiredParameters.length
@@ -180,7 +190,7 @@ export function PolicyBindingEditor({
                   </>}
                 >
                   <div className="space-y-5 border-t bg-muted/[0.12] p-4">
-                    <section className="space-y-3">
+                    {splitTopic ? <TopicPolicyRules binding={binding} policy={policy} onChange={patch => update(binding.policy_id, patch)} /> : <section className="space-y-3">
                       <div>
                         <h4 className="text-xs font-semibold">{t("protection.ruleOrder")}</h4>
                         <p className="mt-1 text-xs leading-5 text-muted-foreground">{t("protection.ruleOrderHint")}</p>
@@ -211,19 +221,19 @@ export function PolicyBindingEditor({
                           );
                         })}
                       </div>
-                    </section>
+                    </section>}
                     <section className="space-y-3">
                       <div>
                         <h4 className="text-xs font-semibold">{t("guardrailWizard.behaviorTitle")}</h4>
                         <p className="mt-1 text-xs leading-5 text-muted-foreground">{t("guardrailWizard.behaviorDescription")}</p>
                       </div>
                       <div className="grid gap-4 sm:grid-cols-2">
-                        <Field label={t("guardrailWizard.policyAction")}>
+                        {!splitTopic ? <Field label={t("guardrailWizard.policyAction")}>
                           <Select value={binding.action ?? "policy_default"} onValueChange={(selected) => update(binding.policy_id, { action: selected === "policy_default" ? null : selected as EnforcementAction })}>
                             <SelectTrigger className="min-h-11 bg-card"><SelectValue /></SelectTrigger>
                             <SelectContent><SelectItem value="policy_default">{t("guardrailWizard.usePolicyBehavior")}</SelectItem>{enforcementActions.map((action) => <SelectItem key={action} value={action}>{action}</SelectItem>)}</SelectContent>
                           </Select>
-                        </Field>
+                        </Field> : null}
                         <div>
                           <Label>{t("protection.inspectDirection")}</Label>
                           <div className="mt-2 flex min-h-11 flex-wrap items-center gap-2">
@@ -236,7 +246,7 @@ export function PolicyBindingEditor({
                       </div>
                     </section>
 
-                    {policy.parameters.length || binding.policy_id === "builtin-automated-reasoning" ? (
+                    {!splitTopic && (policy.parameters.length || binding.policy_id === "builtin-automated-reasoning") ? (
                       <section className="space-y-3">
                         <div>
                           <h4 className="text-xs font-semibold">{t("guardrailWizard.inputsTitle")}</h4>
@@ -300,7 +310,7 @@ export function defaultPolicyBinding(policy: Policy): GuardrailPolicyBinding {
     policy_version: policy.version,
     action: null,
     parameter_values: Object.fromEntries(policy.parameters.filter((parameter) => parameter.default != null).map((parameter) => [parameter.name, parameter.default ?? ""])),
-    enabled_rule_ids: policy.rules.map((rule) => rule.id),
+    enabled_rule_ids: isSplitTopicPolicy(policy.id, policy.version) ? [TOPIC_ALLOW_RULE] : policy.rules.map((rule) => rule.id),
     rule_actions: {},
     enabled_rails: policy.rails,
     reasoning_policy: policy.id === "builtin-automated-reasoning" ? { policy_id: "", policy_version: "", confidence_threshold: 0.8 } : null,
@@ -308,12 +318,13 @@ export function defaultPolicyBinding(policy: Policy): GuardrailPolicyBinding {
 }
 
 export function getPolicyBindingValidation(binding: GuardrailPolicyBinding, policy: Policy) {
+  const topicMissing = isSplitTopicPolicy(policy.id, policy.version) ? topicMissingParameters(binding.parameter_values, binding.enabled_rule_ids) : [];
   const missingRequiredParameters = policy.parameters.filter((parameter) => {
     const value = binding.parameter_values[parameter.name] ?? parameter.default ?? "";
     if (parameter.kind === "phrase_entries") {
       try { parsePhraseEntries(value); return false; } catch { return true; }
     }
-    return parameter.required && !value.trim();
+    return topicMissing.includes(parameter.name) || parameter.required && !value.trim();
   });
   return {
     missingRequiredParameters,

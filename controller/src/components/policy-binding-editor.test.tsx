@@ -136,6 +136,20 @@ describe("PolicyBindingEditor", () => {
   });
   afterEach(cleanup);
 
+  it("disables unavailable choices and keeps an existing binding removable without exposing settings", () => {
+    const onChange = vi.fn();
+    const unavailableReason = () => "Grounding model unavailable";
+    const { rerender } = render(<PolicyBindingEditor policies={[policy]} value={[]} onChange={onChange} unavailableReason={unavailableReason} />);
+    fireEvent.click(screen.getByRole("combobox", { name: "Select Policies" }));
+    expect(screen.getByRole("option", { name: new RegExp(policy.name) }).getAttribute("aria-disabled")).toBe("true");
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Select Policies" }), { key: "Escape" });
+    rerender(<PolicyBindingEditor policies={[policy]} value={[defaultPolicyBinding(policy)]} onChange={onChange} unavailableReason={unavailableReason} showSelector={false} />);
+    expect(screen.getByText("Grounding model unavailable")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Review Rule details for/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: new RegExp(policy.name) }));
+    expect(onChange).toHaveBeenCalledWith([]);
+  });
+
   it("distinguishes Rule defaults, inherited Policy actions and explicit Rule overrides", () => {
     const onChange = vi.fn();
     let binding = defaultPolicyBinding(policy);

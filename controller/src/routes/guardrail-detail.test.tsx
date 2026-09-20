@@ -9,6 +9,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { defaultGuardrailDraft, DEFAULT_GUARDRAIL_ID } from "../../server/domain/defaults";
 import { PolicyCatalog } from "../../server/policy-catalog/catalog";
 import * as api from "@/lib/api";
+import * as controllerApi from "@/lib/controller-api";
 import { defaultPolicyBinding } from "@/components/policy-binding-editor";
 
 import { DeleteGuardrailSheet, DraftReleaseView, EditGuardrailSheet, GuardrailFindingsView, GuardrailRuntimeView, ImmutableVersionView, TestCases } from "./guardrails";
@@ -77,6 +78,36 @@ const deletableGuardrail = {
 
 describe("Guardrail detail information hierarchy", () => {
   afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+
+  it.each(["shortcut", "policy"])("hides Topic Control settings when removed via %s and saves only after explicit Save", async removal => {
+    vi.spyOn(controllerApi, "getModelConfiguration").mockResolvedValue({ models: [], active: null, draft: null, activating: null } as unknown as controllerApi.ModelConfigurationView);
+    const catalog = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
+    const policies = ["local-credentials", "builtin-topic-safety"].map(id => { const latest = catalog.find(item => item.id === id)!; return id === "builtin-topic-safety" ? latest.published_versions![0]! : latest; });
+    const bindings = policies.map(defaultPolicyBinding);
+    const guardrail = { ...deletableGuardrail, topic_control_mode: "permissive" as const, policy_bindings: bindings };
+    const update = vi.spyOn(api, "updateGuardrail").mockResolvedValue(guardrail);
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })}><TooltipProvider><EditGuardrailSheet guardrail={guardrail} policies={policies} open onOpenChange={vi.fn()} onSaved={vi.fn()} /></TooltipProvider></QueryClientProvider>);
+    const remove = await screen.findByRole("button", { name: "protection.validationReadiness.removeTopic" });
+    expect(screen.getByRole("heading", { name: "guardrails.topicAllowlist" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "common.save" }).hasAttribute("disabled")).toBe(true);
+    fireEvent.click(removal === "shortcut" ? remove : screen.getByRole("button", { name: `protection.remove name:${policies[1]!.name}` }));
+    expect(screen.queryByRole("heading", { name: "guardrails.topicAllowlist" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "topicControl.mode" })).toBeNull();
+    expect(update).not.toHaveBeenCalled();
+    expect(guardrail.policy_bindings).toEqual(bindings);
+    expect(screen.getByRole("button", { name: "common.save" }).hasAttribute("disabled")).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "common.save" }));
+    await waitFor(() => expect(update).toHaveBeenCalledWith(guardrail.id, expect.objectContaining({ policy_bindings: [bindings[0]] })));
+  });
+
+  it("hides retained topic values when reopening a draft without Topic Control", () => {
+    const policy = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list().find(item => item.id === "local-credentials")!;
+    const guardrail = { ...deletableGuardrail, allowed_topics: ["Kubernetes"], restricted_topics: ["Investments"], policy_bindings: [defaultPolicyBinding(policy)] };
+    render(<QueryClientProvider client={new QueryClient()}><TooltipProvider><EditGuardrailSheet guardrail={guardrail} policies={[policy]} open onOpenChange={vi.fn()} onSaved={vi.fn()} /></TooltipProvider></QueryClientProvider>);
+    expect(screen.queryByRole("heading", { name: "guardrails.topicAllowlist" })).toBeNull();
+    expect(screen.queryByDisplayValue("Kubernetes")).toBeNull();
+    expect(screen.queryByDisplayValue("Investments")).toBeNull();
+  });
 
   it("makes caller distribution the primary runtime evidence", () => {
     const metrics = {

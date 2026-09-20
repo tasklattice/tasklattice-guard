@@ -40,8 +40,6 @@ import {
 import { isGuardrailVersionId } from "../../shared/guardrail-version.js";
 import type { PlatformStatusSnapshot } from "../../shared/platform-status.js";
 import { protectionDirectories } from "../../shared/protection-map.js";
-import { protectionPresets } from "../../shared/protection-presets.js";
-import { expandProtectionPreset } from "../policy-catalog/presets.js";
 
 type Actor = { id: string; role: string; tokenId?: string; permissions?: TokenIdentity["permissions"] };
 type Variables = { actor: Actor };
@@ -458,9 +456,13 @@ export function createHttpApp(input: {
     const items = await input.service.listPolicies();
     return context.json({ items, count: items.length });
   });
-  app.get("/api/v1/policy-catalog/protection-presets", authenticated, (context) => {
-    const policies = policyCatalog.list();
-    const items = protectionPresets.map((preset) => ({ ...preset, policyBindings: expandProtectionPreset(preset, policies) }));
+  app.get("/api/v1/guardrail-profiles", authenticated, async (context) => {
+    const items = await input.service.listGuardrailProfiles();
+    return context.json({ directories: protectionDirectories, items, count: items.length });
+  });
+  // Compatibility route for existing API clients; both paths read the database.
+  app.get("/api/v1/policy-catalog/protection-presets", authenticated, async (context) => {
+    const items = await input.service.listGuardrailProfiles();
     // This is a preview, not a save/activation or evidence that runtime checks passed.
     return context.json({ directories: protectionDirectories, items, count: items.length });
   });

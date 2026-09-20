@@ -9,7 +9,7 @@ export const queryKeys = {
   guardrailVersions: (id: string) => ["resources", "guardrail-versions", id] as const,
   guardrailVersion: (id: string, version: string) => ["resources", "guardrail-versions", id, version] as const,
   policies: ["resources", "policies"] as const,
-  protectionPresets: ["resources", "protection-presets"] as const,
+  guardrailProfiles: ["resources", "guardrail-profiles"] as const,
   policy: (id: string) => ["resources", "policies", id] as const,
   actionCatalog: ["resources", "actions"] as const,
   intentAnalysisStatus: ["resources", "intent-analysis-status"] as const,

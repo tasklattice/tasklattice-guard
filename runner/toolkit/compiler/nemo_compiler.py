@@ -41,7 +41,7 @@ from .domain import PolicyDraft, PlanCompilationError, RailBinding
 from .policy_sources import FLOW_ID_EVENTS, expand_policy_parameters, link_policy_source, literal_flow_target, parse_source_tree, symbol_name
 
 
-NEMO_COMPILER_VERSION = "tasklattice-nemo-config-v22-topic-boundaries"
+NEMO_COMPILER_VERSION = "tasklattice-nemo-config-v23-topic-rules"
 
 _COLANG1_STANDARD_ACTIONS = {
     ACTION_EVALUATE,
@@ -367,6 +367,9 @@ class NeMoConfigCompiler:
             step.capability == "topic_control"
             and step.contract_ref == "tali.guard.topic-control.semantic.v1"
             and step.on_unsafe == "reject"
+            # The official topic flow shares one global prompt. Split Rules need
+            # binding-scoped prompts so a deny check cannot reuse allow settings.
+            and dict(step.parameters).get("rule_id") not in {"topic/allowlist", "topic/denylist"}
             and phase == "input"
             and TOPIC_CONTROL_MODEL_TYPE in self._model_types
         ):
@@ -383,8 +386,7 @@ class NeMoConfigCompiler:
             topic_step = next(
                 step
                 for step in plan.steps
-                if step.contract_ref == "tali.guard.topic-control.semantic.v1"
-                and "input" in step.phases
+                if "input" in step.phases and self._native_flow(step, "input") is not None
             )
             prompts.append(
                 {

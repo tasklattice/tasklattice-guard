@@ -1,3 +1,4 @@
+import { defaultGuardrailProfiles } from "../../shared/guardrail-profiles.js";
 // @vitest-environment node
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -58,7 +59,7 @@ const adminRoutes = [
 function setup(role: string | null) {
   const getSession = vi.fn().mockResolvedValue(role === null ? null : { user: { id: "actor", role } });
   const unexpected = vi.fn(() => { throw new Error("Protected service was reached"); });
-  const service = new Proxy({}, { get: () => unexpected });
+  const service = new Proxy({}, { get: (_, key) => key === "listGuardrailProfiles" ? async () => defaultGuardrailProfiles : unexpected });
   const app = createHttpApp({ config,
     auth: { api: { getSession }, handler: vi.fn() } as unknown as ControllerAuth,
     service: service as ControlPlaneService, runnerControl: service as RunnerControlServer,

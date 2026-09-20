@@ -56,8 +56,9 @@ class PolicyParameterSpec:
     label: str
     kind: str
     required: bool
-    placeholder: str
+    placeholder: str = ""
     description: str = ""
+    default: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

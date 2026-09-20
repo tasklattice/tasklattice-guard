@@ -34,7 +34,7 @@ describe("Controller Guardrail plan", () => {
   });
 
   it.each([
-    "builtin-content-safety", "builtin-jailbreak", "builtin-topic-safety", "builtin-pii",
+    "builtin-content-safety", "builtin-jailbreak", "builtin-pii",
     "builtin-company-policy", "builtin-contextual-grounding", "builtin-automated-reasoning",
   ])("compiles the catalog Rule override for %s without changing the source Policy", (id) => {
     const policies = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
@@ -132,7 +132,7 @@ describe("Controller Guardrail plan", () => {
     expect(plan).toMatchObject({
       guardrail_id: "guardrail-1",
       guardrail_version: "20260904-030000.003Z",
-      compiler_version: "tasklattice-controller-plan-v9-topic-boundaries",
+      compiler_version: "tasklattice-controller-plan-v10-topic-rules",
       safety_level: "strict",
     });
     expect(plan.steps).toEqual(expect.arrayContaining([
@@ -223,7 +223,7 @@ describe("Controller Guardrail plan", () => {
           ruleActions: {}, enabledRails: ["input"], reasoningPolicy: null,
         }],
       },
-    })).toThrow(/version/i);
+    })).toThrow(/unavailable/i);
   });
 
   it.each(["interruptible", "window_buffered", "full_buffered"] as const)(

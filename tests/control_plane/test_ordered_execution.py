@@ -246,3 +246,52 @@ flow a_second $text
             assert provider.calls == [("before", "alpha beta"), ("after", "CUSTOM [B]")]
     finally:
         await previews.shutdown()
+
+
+@pytest.mark.parametrize("enabled,denied,expected,calls", [
+    (["topic/denylist", "topic/allowlist"], True, "block", ["topic/denylist"]),
+    (["topic/denylist", "topic/allowlist"], False, "allow", ["topic/denylist", "topic/allowlist"]),
+    (["topic/allowlist"], True, "allow", ["topic/allowlist"]),
+    (["topic/denylist"], False, "allow", ["topic/denylist"]),
+])
+async def test_split_topic_rules_short_circuit_and_trace_their_own_identity(enabled, denied, expected, calls):
+    from runner.toolkit.nemo.actions.names import ACTION_TOPIC_JUDGE
+
+    class RecordingTopic:
+        name = ACTION_TOPIC_JUDGE
+        version = "1.0.0"
+        capabilities = frozenset({"topic_control"})
+        rails = frozenset({"input"})
+
+        def __init__(self):
+            self.calls = []
+
+        async def execute(self, request):
+            rule = dict(request.parameters)["rule_id"]
+            self.calls.append(rule)
+            unsafe = denied and rule == "topic/denylist"
+            return action_result(request, "unsafe" if unsafe else "safe", request.content,
+                findings=(RiskFinding(risk="topic_control", taxonomy_id=taxonomy_for_evaluator("topic_control"),
+                    verdict="unsafe", confidence=1.0, evidence="Synthetic topic test", recommended_action="reject"),) if unsafe else ())
+
+    plan = chain_plan([(rule, "", "", "reject") for rule in enabled], "input")
+    for step in plan["steps"]:
+        step.update(capability="topic_control", contract_ref="tali.guard.topic-control.semantic.v1",
+            parameters=[["policy_id", "builtin-topic-safety"], ["policy_version", "2.0.0"], ["rule_id", step["id"]]])
+    plan["policy_bindings"] = [{"policy_id": "builtin-topic-safety", "policy_version": "2.0.0",
+        "enabled_rule_ids": enabled, "enabled_rails": ["input"], "parameter_values": [], "rule_actions": []}]
+    provider = RecordingTopic()
+    previews = DraftPreviewRuntime(DefaultRunnerCompiler(), action_providers(provider))
+    try:
+        result = await previews.evaluate(
+            ProtectionRequest(phase="input", texts=("Order support and fraud",), context=RequestContext(protocol="playground")),
+            preview_id="split", guardrail_id="ordered", draft_revision=1, candidate_version="20260904-010000.001Z",
+            plan=plan, runtime_profile="auto")
+        assert not result.usage.fail_closed, result.reason
+        assert result.decision == expected
+        assert provider.calls == calls
+        assert [step.id.removeprefix("nemo:action:") for step in result.trace if step.kind == "action"] == calls
+        if denied and "topic/denylist" in enabled:
+            assert any(finding.rule_id == "topic/denylist" for finding in result.findings)
+    finally:
+        await previews.shutdown()

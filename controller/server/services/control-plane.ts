@@ -1,3 +1,5 @@
+import { readGuardrailProfiles } from "./guardrail-profiles.js";
+import { expandProtectionPreset } from "../policy-catalog/presets.js";
 import { TrafficRoutingService } from "./traffic-routing.js";
 import { createHash, createPrivateKey, randomUUID, sign } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -114,6 +116,12 @@ export class ControlPlaneService {
   async desiredGeneration(): Promise<number> {
     const [state] = await this.db.select().from(controllerState).where(eq(controllerState.id, "singleton"));
     return state?.desiredGeneration ?? 0;
+  }
+
+  async listGuardrailProfiles() {
+    const profiles = await readGuardrailProfiles(this.db);
+    const policies = await this.listPolicies();
+    return profiles.map(profile => ({ ...profile, policyBindings: expandProtectionPreset(profile, policies) }));
   }
 
   async listPolicies() {

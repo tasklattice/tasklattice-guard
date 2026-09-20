@@ -2,6 +2,7 @@ import type { PolicyDto } from "../policy-catalog/catalog.js";
 import type { ProgrammablePolicySnapshot } from "../policy-studio/model.js";
 import { flowRuleId } from "../policy-studio/model.js";
 import { PHRASE_PARAMETER, PHRASE_POLICY_ID, parsePhraseEntries } from "../../shared/phrase-policy.js";
+import { isSplitTopicPolicy, TOPIC_ALLOW_RULE, TOPIC_DENY_RULE, topicMissingParameters, topicPolicyValues } from "../../shared/topic-policy.js";
 import {
   enforcementActions,
   type EnforcementAction,
@@ -146,7 +147,7 @@ export function buildGuardrailPlan(input: {
   programmablePolicies?: readonly ProgrammablePolicySnapshot[];
 }): Record<string, unknown> {
   const draft = normalizeGuardrailDraft(input.draft);
-  const policyById = new Map((input.policies ?? []).map((item) => [item.id, item]));
+  const policyById = new Map((input.policies ?? []).flatMap(item => [item, ...(item.published_versions ?? [])]).map(item => [`${item.id}@${item.version}`, item]));
   const programmableByKey = new Map((input.programmablePolicies ?? []).map((item) => [`${item.policy_id}@${item.version}`, item]));
   const bindings = draft.policyBindings;
   if (!bindings.length) throw new Error("Select at least one Policy before compiling a Guardrail.");
@@ -171,7 +172,7 @@ export function buildGuardrailPlan(input: {
       if (native) resolved.push({ capability: native, binding });
       continue;
     }
-    const catalogPolicy = policyById.get(binding.policyId);
+    const catalogPolicy = policyById.get(`${binding.policyId}@${binding.policyVersion}`);
     if (input.policies !== undefined) {
       if (!catalogPolicy) throw new Error(`Policy ${binding.policyId}@${binding.policyVersion} is unavailable in the Controller catalog.`);
       validateCatalogBinding(binding, catalogPolicy);
@@ -190,7 +191,7 @@ export function buildGuardrailPlan(input: {
     }, binding, policy });
   }
 
-  if (resolved.some(({ capability }) => capability.capability === "topic_control" || capability.capability === "company_policy") && draft.topicControlMode !== "permissive" && !draft.allowedTopics.length) {
+  if (resolved.some(({ capability, binding }) => !isSplitTopicPolicy(binding.policyId, binding.policyVersion) && (capability.capability === "topic_control" || capability.capability === "company_policy")) && draft.topicControlMode !== "permissive" && !draft.allowedTopics.length) {
     throw new Error("Strict Topic Control requires at least one allowed topic. Unlisted tasks are off-topic.");
   }
 
@@ -202,15 +203,16 @@ export function buildGuardrailPlan(input: {
     // the content produced by every earlier Policy, even across module types.
     const declarative = policy ? [{ binding, policy }] : [];
     const nativePolicy = programmableByKey.get(`${binding.policyId}@${binding.policyVersion}`);
-    const catalogNative = !policy && !nativePolicy ? policyById.get(binding.policyId) : undefined;
+    const catalogNative = !policy && !nativePolicy ? policyById.get(`${binding.policyId}@${binding.policyVersion}`) : undefined;
+    const splitTopic = isSplitTopicPolicy(binding.policyId, binding.policyVersion);
     // Catalog-native Policies expose one detector Rule. Its local override
     // must change the executable step, not merely the binding audit snapshot.
     // Refuse an ambiguous future catalog shape rather than silently choosing
     // one of several Rules for the same detector.
-    if (catalogNative && catalogNative.rules.length !== 1) {
+    if (catalogNative && catalogNative.rules.length !== 1 && !splitTopic) {
       throw new Error(`Native Policy ${binding.policyId} must declare exactly one detector Rule.`);
     }
-    const catalogRule = catalogNative?.rules[0];
+    const catalogRule = splitTopic ? undefined : catalogNative?.rules[0];
     const phases = phasesFor(definition, binding, declarative).filter((phase) => !nativePolicy || nativePolicy.rail_bindings.some((rail) => (
       rail.rail_type === phase && binding.enabledRuleIds.includes(flowRuleId(phase, rail.flow_name))
     ))).filter((phase) => !catalogRule || (binding.enabledRuleIds.includes(catalogRule.id) && catalogRule.rails.includes(phase)));
@@ -221,7 +223,16 @@ export function buildGuardrailPlan(input: {
     ];
     const prefix = `${definition.capability}:${binding.policyId}`;
     const policySteps: PlanStep[] = [];
-    const groups = nativePolicy ? phases.map((phase) => {
+    const values = topicPolicyValues(binding.parameterValues);
+    // Deny-first is the Policy's semantic contract, independent of display order.
+    const groups: Array<{ prefix: string; phases: Array<"input" | "output">; action: EnforcementAction; parameters?: Array<[string, string]> }> = splitTopic ? [TOPIC_DENY_RULE, TOPIC_ALLOW_RULE].filter(id => binding.enabledRuleIds.includes(id)).map(id => ({
+      prefix: `${prefix}:${id}`, phases,
+      action: id === TOPIC_DENY_RULE ? "reject" as EnforcementAction : binding.ruleActions[id] ?? binding.action ?? "redirect" as EnforcementAction,
+      parameters: [["policy_id", binding.policyId], ["policy_version", binding.policyVersion], ["rule_id", id],
+        ["topic_mode", id === TOPIC_DENY_RULE ? "permissive" : values.mode],
+        ["allowed_topics", id === TOPIC_ALLOW_RULE ? values.allowed : ""],
+        ["restricted_topics", id === TOPIC_DENY_RULE ? values.denied : ""]] as Array<[string, string]>,
+    })) : nativePolicy ? phases.map((phase) => {
       const rail = nativePolicy.rail_bindings.find((item) => item.rail_type === phase && binding.enabledRuleIds.includes(flowRuleId(phase, item.flow_name)))!;
       return {
         prefix: `${prefix}:${phase}`, phases: [phase],
@@ -229,7 +240,8 @@ export function buildGuardrailPlan(input: {
       };
     }) : [{ prefix, phases, action: (catalogRule ? binding.ruleActions[catalogRule.id] : undefined)
       ?? binding.action ?? (catalogRule?.effect as EnforcementAction | undefined) ?? definition.defaultAction }];
-    for (const group of groups) for (const evaluation of definition.evaluations) {
+    const evaluations = splitTopic ? [always("semantic", contracts.topicSemantic, true)] : definition.evaluations;
+    for (const group of groups) for (const evaluation of evaluations) {
       policySteps.push({
         id: `${group.prefix}:${evaluation.idSuffix}`,
         capability: definition.capability,
@@ -245,7 +257,7 @@ export function buildGuardrailPlan(input: {
                 : evaluation.after.verdicts,
             }
           : { type: "always" },
-        parameters,
+        parameters: group.parameters ?? parameters,
       });
     }
     steps.push(...policySteps);
@@ -270,7 +282,7 @@ export function buildGuardrailPlan(input: {
   return {
     guardrail_id: input.guardrailId,
     guardrail_version: input.guardrailVersion,
-    compiler_version: "tasklattice-controller-plan-v9-topic-boundaries",
+    compiler_version: "tasklattice-controller-plan-v10-topic-rules",
     topic_control_mode: draft.topicControlMode ?? "strict",
     safety_level: draft.safetyLevel,
     output_delivery: draft.outputDelivery,
@@ -367,6 +379,12 @@ function stringValue(value: unknown): string {
 }
 
 function validateCatalogBinding(binding: GuardrailPolicyBindingConfig, policy: PolicyDto): void {
+  if (isSplitTopicPolicy(binding.policyId, binding.policyVersion)) {
+    const missing = topicMissingParameters(binding.parameterValues, binding.enabledRuleIds);
+    if (missing.length) throw new Error(`Topic Control requires configuration for enabled Rules: ${missing.join(", ")}.`);
+    if (binding.parameterValues.topic_mode && !["strict", "permissive"].includes(binding.parameterValues.topic_mode)) throw new Error("Topic Control Allowlist mode must be strict or permissive.");
+    if (binding.ruleActions[TOPIC_DENY_RULE] && binding.ruleActions[TOPIC_DENY_RULE] !== "reject") throw new Error("The Topic Control Denylist Rule must reject denied tasks.");
+  }
   if (policy.id === PHRASE_POLICY_ID) parsePhraseEntries(binding.parameterValues[PHRASE_PARAMETER] ?? "");
   if (binding.policyVersion !== policy.version) throw new Error(`Policy ${policy.id} must pin catalog version ${policy.version}; received ${binding.policyVersion}.`);
   const enabledRails = binding.enabledRails.length ? binding.enabledRails : policy.rails;

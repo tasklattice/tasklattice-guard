@@ -1,6 +1,6 @@
 import type { TrafficRouter } from "./traffic-routing-api";
 import * as controllerApi from "@/lib/controller-api";
-import type { ProtectionPreset } from "../../shared/protection-map";
+import type { GuardrailProfile, ProtectionPreset } from "../../shared/protection-map";
 import {
   arrayOfRecords,
   arrayOfStrings,
@@ -411,9 +411,10 @@ export async function getGuardrailCompilePreview(id: string): Promise<GuardrailC
 }
 
 export const getPolicies = () => controllerApi.requestController<Collection<Policy>>("/api/v1/policies");
-export type ProtectionPresetPreview = ProtectionPreset & { bindings: GuardrailPolicyBinding[] };
-export async function getProtectionPresets(): Promise<Collection<ProtectionPresetPreview>> {
-  const result = await controllerApi.requestController<Collection<ProtectionPreset & { policyBindings: CurrentPolicyBinding[] }>>("/api/v1/policy-catalog/protection-presets");
+export type GuardrailProfilePreview = ProtectionPreset & Partial<Pick<GuardrailProfile, "category" | "categoryName" | "isDefault">> & { bindings: GuardrailPolicyBinding[] };
+export type ProtectionPresetPreview = GuardrailProfilePreview;
+export async function getGuardrailProfiles(): Promise<Collection<ProtectionPresetPreview>> {
+  const result = await controllerApi.requestController<Collection<GuardrailProfile & { policyBindings: CurrentPolicyBinding[] }>>("/api/v1/guardrail-profiles");
   return { ...result, items: result.items.map(({ policyBindings, ...preset }) => ({ ...preset, bindings: policyBindings.map(fromCurrentBinding) })) };
 }
 export const getPolicy = (id: string) => controllerApi.requestController<Policy>(`/api/v1/policies/${encodeURIComponent(id)}`);

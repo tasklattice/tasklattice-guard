@@ -2260,6 +2260,11 @@ def _binding_policy_rule_identity(
             if selected is not None and len(selected.enabled_rule_ids) == 1
             else None
         )
+        compiled_rule = dict(binding.parameters).get("rule_id")
+        if (binding.policy_id == "builtin-topic-safety" and binding.policy_version == "2.0.0"
+                and selected is not None and compiled_rule in selected.enabled_rule_ids
+                and compiled_rule in {"topic/allowlist", "topic/denylist"}):
+            rule_id = compiled_rule
         return (
             binding.policy_id,
             rule_id,
