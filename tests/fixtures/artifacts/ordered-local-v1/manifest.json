@@ -1,8 +1,8 @@
 {
   "adapter": "litellm-generic-guardrail",
   "artifact_id": "fixture-artifact-ordered-local-v1",
-  "checksum": "400868348847afb2e102698a5147f709db7a1d74f157857e713364fdf6080d8d",
-  "compiler_version": "tasklattice-nemo-config-v21-dynamic-flow-targets",
+  "checksum": "fd0ef5f4e55a2bd43097aa7a87d31df5319627d21d8850346574193d8e342be5",
+  "compiler_version": "tasklattice-nemo-config-v23-topic-rules",
   "endpoint_id": "fixture-endpoint",
   "expected": {
     "redacted_input": "GUARDRAIL_INTERVENED",

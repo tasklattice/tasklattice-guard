@@ -22,7 +22,12 @@ def policy_protection(item: PolicySpec) -> dict:
     native = contracts["nativePolicies"].get(item.id, {})
     if native and set(item.rails).difference(native["rails"]):
         raise ValueError(f"Policy {item.id} declares a Rail outside its runtime contract.")
-    execution = native.get("execution", "custom" if "colang_flow" in item.forms else "local")
+    # Topic Control v2 owns its scope in independent Rule parameters. Only
+    # legacy versions depend on the request's allowed_topics context.
+    split_topic = item.id == "builtin-topic-safety" and any(
+        rule.id == "topic/allowlist" for rule in item.rules
+    )
+    execution = "model" if split_topic else native.get("execution", "custom" if "colang_flow" in item.forms else "local")
     limitations = []
     if execution == "local":
         limitations.append("Matches configured local patterns; it does not provide comprehensive semantic detection.")
@@ -38,7 +43,7 @@ def policy_protection(item: PolicySpec) -> dict:
         "directory": directory,
         "execution": execution,
         "modelCapabilities": native.get("modelCapabilities", []),
-        "requiredContext": native.get("requiredContext", []),
+        "requiredContext": [] if split_topic else native.get("requiredContext", []),
         "outputStreaming": "not_applicable" if "output" not in item.rails else native.get("outputStreaming", "complete_response"),
         "limitations": limitations,
     }
