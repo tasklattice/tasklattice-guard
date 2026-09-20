@@ -78,7 +78,7 @@ security:
     name: Local Administrator
   controlTls:
     # Internal gRPC still requires the Runner Token, but no TLS certificates.
-    enabled: false
+    enabled: true
 
 ingress:
   enabled: false

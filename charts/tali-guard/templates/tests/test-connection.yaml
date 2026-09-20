@@ -11,16 +11,35 @@ metadata:
 spec:
   restartPolicy: Never
   automountServiceAccountToken: false
-  securityContext: { runAsNonRoot: true, runAsUser: 65534, runAsGroup: 65534 }
+  securityContext: {{- toYaml .Values.podSecurityContext | nindent 4 }}
+  {{- with .Values.imagePullSecrets }}
+  imagePullSecrets: {{- toYaml . | nindent 4 }}
+  {{- end }}
   containers:
     - name: health
-      image: busybox:1.37
-      securityContext:
-        allowPrivilegeEscalation: false
-        capabilities: { drop: ["ALL"] }
-        readOnlyRootFilesystem: true
-      command: [/bin/sh, -ec]
+      image: {{ include "tali-guard.controllerImage" . | quote }}
+      imagePullPolicy: {{ .Values.controller.image.pullPolicy }}
+      securityContext: {{- toYaml .Values.securityContext | nindent 8 }}
+      command: [node, --input-type=module, -e]
       args:
         - |
-          wget -qO- http://{{ include "tali-guard.controllerName" . }}:8080/health/ready | grep -q 'guard-controller'
-          wget -qO- http://{{ include "tali-guard.runtimeName" . }}:8091/health/live | grep -q 'guard-runner'
+          const checks = [
+            [process.argv[1], "guard-controller", "ready"],
+            [process.argv[2], "guard-runner", "ok"],
+          ];
+          try {
+            for (const [url, component, status] of checks) {
+              const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
+              if (!response.ok) throw new Error(`${component}: HTTP ${response.status} from ${url}`);
+              const body = await response.json();
+              if (body?.component !== component || body?.status !== status) {
+                throw new Error(`${component}: unexpected health response from ${url}`);
+              }
+              console.log(`${component}: ${status}`);
+            }
+          } catch (error) {
+            console.error(`Health check failed: ${error.message}`);
+            process.exitCode = 1;
+          }
+        - http://{{ include "tali-guard.controllerName" . }}:8080/health/ready
+        - http://{{ include "tali-guard.runtimeName" . }}:8091/health/live

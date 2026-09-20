@@ -443,8 +443,10 @@ authentication and artifact signatures stay enabled. The local `values-dev.yaml`
 already selects that mode and includes a bootstrap password hash and dependencies.
 Set it to `true` to enable automatic mTLS without any other certificate settings.
 
-The initialization Job and PostgreSQL readiness init container share
-`controller.image` and `imagePullSecrets`. There are four local deployment images:
+The initialization Job, PostgreSQL readiness init container, and Helm test Pod
+share `controller.image`, its pull policy, and `imagePullSecrets`. The Helm test
+uses Node.js HTTP health checks, so it needs no BusyBox or other tools image.
+There are four local deployment images:
 Controller, Runner, PostgreSQL and Redis. Use newly built/published Controller
 images containing these runtime scripts; older releases do not contain them.
 

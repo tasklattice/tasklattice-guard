@@ -531,7 +531,8 @@ def test_development_values_are_self_contained_and_keep_two_app_components():
         signing_volume = next(volume for volume in pod["volumes"] if volume["name"] == "artifact-signing")
         assert signing_volume["secret"]["secretName"] == "tali-guard-artifact-signing"
     assert "tali-guard-control-tls" not in secrets
-    assert controller_env["CONTROLLER_GRPC_TRANSPORT"]["value"] == "plaintext"
+    expected_transport = "mtls" if load_values(DEV_VALUES)["security"]["controlTls"]["enabled"] else "plaintext"
+    assert controller_env["CONTROLLER_GRPC_TRANSPORT"]["value"] == expected_transport
     assert any(item.get("kind") == "Job" and item["metadata"]["name"] == "tali-guard-bootstrap" for item in documents)
 
 
@@ -547,13 +548,17 @@ def test_initialization_reuses_the_controller_image_including_registry_overrides
     main = controller["containers"][0]
     wait = controller["initContainers"][0]
     init = bootstrap["containers"][0]
-    for container in (main, wait, init):
+    health_pod = next(item for item in documents if item["kind"] == "Pod" and item["metadata"]["annotations"].get("helm.sh/hook") == "test")["spec"]
+    health = health_pod["containers"][0]
+    for container in (main, wait, init, health):
         assert container["image"] == "registry.example.test/guard/controller:test-release"
         assert container["imagePullPolicy"] == "IfNotPresent"
     assert wait["env"] == [next(env for env in main["env"] if env["name"] == "CONTROLLER_DATABASE_URL")]
     assert wait["command"] == ["node", "/opt/tasklattice/guard-controller/scripts/runtime/wait-for-postgresql.mjs"]
     assert init["command"] == ["node", "/opt/tasklattice/guard-controller/scripts/runtime/bootstrap-secrets.mjs"]
     assert controller["imagePullSecrets"] == [{"name": "registry-login"}]
+    assert health_pod["imagePullSecrets"] == controller["imagePullSecrets"]
+    assert health_pod["automountServiceAccountToken"] is False
     service_account = next(item for item in documents if item["kind"] == "ServiceAccount" and item["metadata"]["name"] == bootstrap["serviceAccountName"])
     assert service_account["imagePullSecrets"] == controller["imagePullSecrets"]
     images = {
@@ -562,7 +567,8 @@ def test_initialization_reuses_the_controller_image_including_registry_overrides
         for field in ("containers", "initContainers")
         for container in item["spec"]["template"]["spec"].get(field, [])
     }
-    assert len(images) == 4  # Controller, Runner, PostgreSQL and Redis only.
+    images.update(container["image"] for item in documents if item["kind"] == "Pod" for container in item["spec"]["containers"])
+    assert len(images) == 4  # Including Helm test: Controller, Runner, PostgreSQL and Redis only.
 
 
 def test_production_profile_does_not_install_development_postgresql():
@@ -991,9 +997,9 @@ def test_bootstrap_rejects_malformed_or_ambiguous_hash():
 
 
 def test_plaintext_bootstrap_renders_no_private_keys_or_random_secret_material():
-    first = render_dev("--set", "runner.pools[0].name=extra", "--set", "runner.pools[0].replicaCount=1",
+    first = render_dev("--set", "security.controlTls.enabled=false", "--set", "runner.pools[0].name=extra", "--set", "runner.pools[0].replicaCount=1",
                        "--set", "runner.pools[0].maxConcurrency=32", "--set-json", "runner.pools[0].resources={}")
-    second = render_dev("--set", "runner.pools[0].name=extra", "--set", "runner.pools[0].replicaCount=1",
+    second = render_dev("--set", "security.controlTls.enabled=false", "--set", "runner.pools[0].name=extra", "--set", "runner.pools[0].replicaCount=1",
                         "--set", "runner.pools[0].maxConcurrency=32", "--set-json", "runner.pools[0].resources={}")
     assert first == second  # Stable offline rendering for repeated ArgoCD syncs.
     assert "BEGIN" not in json.dumps(first)
@@ -1057,3 +1063,40 @@ def test_controller_config_changes_trigger_rollout_without_replacing_owner():
     assert configs[0]["data"] != configs[1]["data"]
     pods = [next(item for item in docs if item["kind"] == "Deployment" and item["metadata"]["name"].endswith("controller"))["spec"]["template"] for docs in (original, changed)]
     assert pods[0]["metadata"]["annotations"]["checksum/controller-config"] != pods[1]["metadata"]["annotations"]["checksum/controller-config"]
+
+
+def test_helm_health_script_checks_http_status_and_component():
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from threading import Thread
+
+    documents = render()
+    health = next(item for item in documents if item["kind"] == "Pod" and item["metadata"]["annotations"].get("helm.sh/hook") == "test")["spec"]["containers"][0]
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(503 if self.path == "/unavailable" else 200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            body = {"status": "ready", "component": "guard-controller"} if self.path == "/controller" else {"status": "ok", "component": "guard-runner"}
+            self.wfile.write(json.dumps(body).encode())
+
+        def log_message(self, *_args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    try:
+        for controller_path, expected_code, error in [("/controller", 0, None), ("/unavailable", 1, "HTTP 503"), ("/wrong-component", 1, "unexpected health response")]:
+            result = subprocess.run([*health["command"], health["args"][0], base + controller_path, base + "/runner"], capture_output=True, text=True, timeout=15)
+            assert result.returncode == expected_code, result.stderr
+            if error:
+                assert error in result.stderr
+            else:
+                assert "guard-controller: ready" in result.stdout
+                assert "guard-runner: ok" in result.stdout
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
