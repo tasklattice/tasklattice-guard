@@ -1,3 +1,4 @@
+{{- include "tali-guard.defaults" . -}}
 {{- include "tali-guard.validateValues" . }}
 apiVersion: apps/v1
 kind: Deployment
@@ -7,7 +8,7 @@ metadata:
     {{- include "tali-guard.commonLabels" . | nindent 4 }}
     app.kubernetes.io/component: controller
 spec:
-  replicas: {{ .Values.controller.replicaCount }}
+  replicas: 1
   selector:
     matchLabels: &selector
       app.kubernetes.io/instance: {{ .Release.Name }}
@@ -15,6 +16,7 @@ spec:
   template:
     metadata:
       annotations:
+        checksum/controller-config: {{ include "tali-guard.controllerConfig" . | sha256sum }}
       {{- with .Values.rolloutRevision }}
         tasklattice.io/rollout-revision: {{ . | quote }}
       {{- end }}
@@ -32,43 +34,34 @@ spec:
       {{- if .Values.postgresql.enabled }}
       initContainers:
         - name: wait-for-postgresql
-          image: "{{ .Values.postgresql.image.repository }}:{{ .Values.postgresql.image.tag }}"
-          imagePullPolicy: {{ .Values.postgresql.image.pullPolicy }}
+          image: {{ include "tali-guard.controllerImage" . | quote }}
+          imagePullPolicy: {{ .Values.controller.image.pullPolicy }}
           securityContext: {{- toYaml .Values.securityContext | nindent 12 }}
-          command:
-            - /bin/sh
-            - -ec
-            - >-
-              until pg_isready
-              --host={{ include "tali-guard.postgresqlName" . }}
-              --port={{ .Values.postgresql.service.port }}
-              --username={{ .Values.postgresql.auth.username }}
-              --dbname={{ .Values.postgresql.auth.database }};
-              do sleep 2; done
+          command: [node, /opt/tasklattice/guard-controller/scripts/runtime/wait-for-postgresql.mjs]
           env:
-            - name: PGPASSWORD
+            - name: CONTROLLER_DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "tali-guard.postgresqlName" . }}
-                  key: {{ .Values.postgresql.auth.passwordKey }}
+                  name: {{ include "tali-guard.databaseSecretName" . }}
+                  key: {{ .Values.database.secretKey }}
           volumeMounts:
             - { name: tmp, mountPath: /tmp }
       {{- end }}
       containers:
         - name: controller
-          image: "{{ .Values.controller.image.repository }}:{{ default .Chart.AppVersion .Values.controller.image.tag }}"
+          image: {{ include "tali-guard.controllerImage" . | quote }}
           imagePullPolicy: {{ .Values.controller.image.pullPolicy }}
           securityContext: {{- toYaml .Values.securityContext | nindent 12 }}
           ports:
             - { name: http, containerPort: 8080, protocol: TCP }
             - { name: grpc, containerPort: 9090, protocol: TCP }
           env:
-            - { name: NODE_ENV, value: production }
-            - { name: CONTROLLER_PUBLIC_URL, value: {{ .Values.controller.publicUrl | quote }} }
-            - { name: CONTROLLER_RUNTIME_SERVICE_URL, value: {{ include "tali-guard.defaultRuntimeServiceUrl" . | quote }} }
-            - { name: BETTER_AUTH_TRUSTED_ORIGINS, value: {{ join "," .Values.controller.trustedOrigins | quote }} }
-            - { name: BETTER_AUTH_MIN_PASSWORD_LENGTH, value: {{ .Values.controller.auth.minPasswordLength | quote }} }
-            - { name: CONTROLLER_ALLOW_LOCAL_DEFAULT_CREDENTIALS, value: {{ .Values.controller.auth.allowLocalDefaultCredentials | quote }} }
+            {{- $config := include "tali-guard.controllerConfig" . | fromYaml }}
+            {{- range $key, $_ := $config.data }}
+            - name: {{ $key }}
+              valueFrom:
+                configMapKeyRef: { name: {{ $config.metadata.name }}, key: {{ $key }} }
+            {{- end }}
             - name: CONTROLLER_DATABASE_URL
               valueFrom: { secretKeyRef: { name: {{ include "tali-guard.databaseSecretName" . }}, key: {{ .Values.database.secretKey }} } }
             - name: CONTROLLER_RUNNER_TOKEN
@@ -81,19 +74,29 @@ spec:
               valueFrom: { secretKeyRef: { name: {{ include "tali-guard.runtimeLogSecretName" . }}, key: {{ .Values.security.runtimeLogs.encryptionKeyKey }} } }
             - name: CONTROLLER_BOOTSTRAP_ADMIN_EMAIL
               valueFrom: { secretKeyRef: { name: {{ include "tali-guard.bootstrapAdminSecretName" . }}, key: {{ .Values.security.bootstrapAdmin.emailKey }} } }
+            {{- if or .Values.security.bootstrapAdmin.existingSecret (not .Values.security.bootstrapAdmin.passwordHash) }}
             - name: CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD
-              valueFrom: { secretKeyRef: { name: {{ include "tali-guard.bootstrapAdminSecretName" . }}, key: {{ .Values.security.bootstrapAdmin.passwordKey }} } }
+              valueFrom: { secretKeyRef: { name: {{ include "tali-guard.bootstrapAdminSecretName" . }}, key: {{ .Values.security.bootstrapAdmin.passwordKey }}, optional: true } }
+            {{- end }}
+            {{- if or .Values.security.bootstrapAdmin.existingSecret .Values.security.bootstrapAdmin.passwordHash }}
+            - name: CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD_HASH
+              valueFrom: { secretKeyRef: { name: {{ include "tali-guard.bootstrapAdminSecretName" . }}, key: {{ .Values.security.bootstrapAdmin.passwordHashKey }}, optional: true } }
+            {{- end }}
             - name: CONTROLLER_BOOTSTRAP_ADMIN_NAME
               valueFrom: { secretKeyRef: { name: {{ include "tali-guard.bootstrapAdminSecretName" . }}, key: {{ .Values.security.bootstrapAdmin.nameKey }} } }
             - { name: CONTROLLER_ARTIFACT_SIGNING_KEY_PATH, value: /var/run/tasklattice/artifact/private-key.pem }
+            {{- if .Values.security.controlTls.enabled }}
             - { name: CONTROLLER_GRPC_TLS_CERT_PATH, value: /var/run/tasklattice/control-tls/tls.crt }
             - { name: CONTROLLER_GRPC_TLS_KEY_PATH, value: /var/run/tasklattice/control-tls/tls.key }
             - { name: CONTROLLER_GRPC_TLS_CLIENT_CA_PATH, value: /var/run/tasklattice/control-tls/ca.crt }
+            {{- end }}
             - { name: CONTROLLER_PROTO_PATH, value: /opt/tasklattice/guard-controller/proto/tasklattice/guard/control/v1/runner_control.proto }
             - { name: CONTROLLER_UI_DIST, value: /opt/tasklattice/guard-controller/dist }
           volumeMounts:
             - { name: artifact-signing, mountPath: /var/run/tasklattice/artifact, readOnly: true }
+            {{- if .Values.security.controlTls.enabled }}
             - { name: control-tls, mountPath: /var/run/tasklattice/control-tls, readOnly: true }
+            {{- end }}
             {{- if .Values.security.customCa.existingSecret }}
             - { name: custom-ca, mountPath: /etc/ssl/certs/tasklattice-custom-ca.crt, subPath: tasklattice-custom-ca.crt, readOnly: true }
             {{- end }}
@@ -108,6 +111,7 @@ spec:
             secretName: {{ include "tali-guard.artifactSigningSecretName" . }}
             items:
               - { key: {{ .Values.security.artifactSigning.privateKeyKey }}, path: private-key.pem }
+        {{- if .Values.security.controlTls.enabled }}
         - name: control-tls
           secret:
             secretName: {{ include "tali-guard.controlTlsSecretName" . }}
@@ -115,6 +119,7 @@ spec:
               - { key: {{ .Values.security.controlTls.caKey }}, path: ca.crt }
               - { key: {{ .Values.security.controlTls.controllerCertificateKey }}, path: tls.crt }
               - { key: {{ .Values.security.controlTls.controllerPrivateKeyKey }}, path: tls.key }
+        {{- end }}
         {{- if .Values.security.customCa.existingSecret }}
         - name: custom-ca
           secret:

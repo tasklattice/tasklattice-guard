@@ -13,7 +13,9 @@ import { RunnerControlServer } from "./control-server.js";
 import { CONTROL_MESSAGE_MAX_BYTES, controlChannelOptions } from "./transport.js";
 
 const config = loadConfig({
-  NODE_ENV: "test",
+  NODE_ENV: "production",
+  CONTROLLER_GRPC_TRANSPORT: "plaintext",
+  CONTROLLER_METRICS_TOKEN: "metrics-token-that-is-at-least-32-characters",
   CONTROLLER_DATABASE_URL: "postgresql://controller:controller@localhost/controller",
   CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters",
   CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/controller-signing-key.pem",
@@ -22,6 +24,39 @@ const config = loadConfig({
 });
 
 describe("production Controller gRPC transport budget", () => {
+  it.each([undefined, "Bearer wrong-token"])("rejects unauthenticated plaintext connections (%s)", async (authorization) => {
+    const service = { registerRunner: vi.fn() };
+    const metrics = { observeControlMessage: vi.fn() };
+    const server = new RunnerControlServer(config, service as unknown as ControlPlaneService,
+      metrics as unknown as ControllerMetrics,
+      {} as ModelConfigurationService);
+    const grpcServer = (server as unknown as { grpc: Server }).grpc;
+    const port = await new Promise<number>((resolvePort, reject) => {
+      grpcServer.bindAsync("127.0.0.1:0", (server as unknown as { credentials: () => ServerCredentials }).credentials(), (error, value) => {
+        if (error) reject(error); else resolvePort(value);
+      });
+    });
+    const descriptor = loadPackageDefinition(loadSync(config.protoPath, {
+      includeDirs: [dirname(config.protoPath)], longs: String, enums: String, defaults: true, oneofs: true,
+    })) as unknown as ProtoGrpcType;
+    const client = new descriptor.tasklattice.guard.control.v1.RunnerControl(
+      `127.0.0.1:${port}`, credentials.createInsecure(), controlChannelOptions,
+    );
+    const metadata = new Metadata();
+    if (authorization) metadata.set("authorization", authorization);
+    const stream = client.Connect(metadata, { deadline: Date.now() + 2_000 });
+    try {
+      const error = new Promise<{ code: number; details: string }>((resolveError) => stream.once("error", resolveError));
+      stream.write({ registration: { runnerId: "unauthorized", bootId: "boot", poolId: "default" } });
+      await expect(error).resolves.toMatchObject({ code: status.UNAUTHENTICATED, details: "Runner authentication failed." });
+      expect(service.registerRunner).not.toHaveBeenCalled();
+    } finally {
+      stream.cancel();
+      client.close();
+      grpcServer.forceShutdown();
+    }
+  });
+
   it.each([false, true])("preserves large evidence and rejects oversized messages (oversized=%s)", async (oversized) => {
     // Synthetic content tests transport integrity, not detector correctness.
     const evidence = "x".repeat(oversized ? CONTROL_MESSAGE_MAX_BYTES : 5 * 1024 * 1024) + "END";
@@ -46,7 +81,7 @@ describe("production Controller gRPC transport budget", () => {
     // database/outbox timers unrelated to this socket-level regression.
     const grpcServer = (server as unknown as { grpc: Server }).grpc;
     const port = await new Promise<number>((resolvePort, reject) => {
-      grpcServer.bindAsync("127.0.0.1:0", ServerCredentials.createInsecure(), (error, value) => {
+      grpcServer.bindAsync("127.0.0.1:0", (server as unknown as { credentials: () => ServerCredentials }).credentials(), (error, value) => {
         if (error) reject(error); else resolvePort(value);
       });
     });

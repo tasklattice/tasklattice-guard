@@ -187,7 +187,9 @@ export class RunnerControlServer {
     if (authorization !== `Bearer ${this.config.runnerToken}`) {
       this.metrics.observeControlMessage("received", "authentication", "rejected");
       const error = Object.assign(new Error("Runner authentication failed."), { code: status.UNAUTHENTICATED });
-      stream.destroy(error);
+      // grpc-js sends the final gRPC status from its error handler. Destroying
+      // the duplex stream here can leave the client waiting until its deadline.
+      stream.emit("error", error);
       return;
     }
     let connection: Connection | null = null;
@@ -566,8 +568,8 @@ export class RunnerControlServer {
         true,
       );
     }
-    if (this.config.nodeEnv === "production") {
-      throw new Error("Controller gRPC mTLS certificate, key, and client CA are required in production.");
+    if (this.config.grpcTransport === "mtls") {
+      throw new Error("Controller gRPC mTLS certificate, key, and client CA are required in mtls mode.");
     }
     return ServerCredentials.createInsecure();
   }

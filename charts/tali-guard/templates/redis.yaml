@@ -1,3 +1,4 @@
+{{- include "tali-guard.defaults" . -}}
 {{- if .Values.redis.enabled }}
 apiVersion: v1
 kind: Service
@@ -12,7 +13,7 @@ spec:
     app.kubernetes.io/instance: {{ .Release.Name }}
     app.kubernetes.io/component: redis
   ports:
-    - { name: redis, port: {{ .Values.redis.service.port }}, targetPort: redis }
+    - { name: redis, port: 6379, targetPort: redis }
 ---
 apiVersion: apps/v1
 kind: Deployment

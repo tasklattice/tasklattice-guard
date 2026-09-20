@@ -92,8 +92,10 @@ serves its generated OpenAPI contract at `/api/openapi.json` and reference UI at
 
 ## Control protocol
 
-Runner initiates a long-lived gRPC stream authenticated with a Runner token and,
-in production, mutual TLS. It registers first, then sends heartbeats, load,
+Runner initiates a long-lived gRPC stream authenticated with a Runner token.
+Production defaults to mutual TLS; explicitly disabling `security.controlTls.enabled`
+selects plaintext gRPC without changing Token authentication or artifact signing.
+It registers first, then sends heartbeats, load,
 compile/validation results, and ACK/NACK messages. Controller sends desired
 state, compile/validation requests, and drain commands.
 
@@ -220,7 +222,7 @@ See [revision lifecycles](revision-lifecycle.md) for the exact constraints.
 ## Identity, secrets, and retained data
 
 - Better Auth owns human identity, sessions, passwords, and roles. Local
-  OrbStack credentials are `admin` / `admin`; production requires a strong
+  OrbStack credentials are `admin` / `Password`; production requires a strong
   bootstrap Secret. Bootstrap creates a missing identity without resetting an
   existing password.
 - Management API clients can use personal Access Tokens with module permissions,

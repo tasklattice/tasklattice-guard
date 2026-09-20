@@ -22,13 +22,14 @@ ENV NODE_ENV=production \
     TALI_HELM_CHART=/opt/tali/helm/tali-guard.tgz
 WORKDIR /opt/tasklattice/guard-controller
 RUN apt-get update \
-    && apt-get install --yes --no-install-recommends antiword ca-certificates \
+    && apt-get install --yes --no-install-recommends antiword ca-certificates openssl \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --uid 65532 --no-create-home controller
 COPY --link --from=build /build/controller/package.json ./
 COPY --link --from=build /build/controller/node_modules ./node_modules
 COPY --link --from=build /build/controller/dist ./dist
 COPY --link --from=build /build/controller/dist-server ./dist-server
+COPY --link --from=build /build/controller/scripts/runtime ./scripts/runtime
 COPY --link --from=build /build/controller/server/db/migrations ./server/db/migrations
 COPY --link --from=build /build/proto ./proto
 COPY --link runner/toolkit/policy_library/assets ./policy-catalog

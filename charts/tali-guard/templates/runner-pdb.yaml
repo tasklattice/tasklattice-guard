@@ -1,3 +1,4 @@
+{{- include "tali-guard.defaults" . -}}
 {{- $root := . -}}
 {{- $default := dict "name" "default" "replicaCount" .Values.runner.default.replicaCount -}}
 {{- $pools := concat (list $default) .Values.runner.pools -}}

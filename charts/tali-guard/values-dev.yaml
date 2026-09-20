@@ -1,12 +1,14 @@
 # Self-contained local development profile (OrbStack, Docker Desktop, kind).
-# Do not use these credentials or signing keys in a shared/production cluster.
+# Internal Secrets are generated once by a Helm hook; mTLS is disabled locally.
 #
 # Build the two local images first:
-#   make images
+#   npm run images:build:dev
 #
-# Then upgrade (or install) everything required by the baseline deployment:
+# Upgrade (or install); the chart initializes its own internal Secrets:
 #   bash scripts/helm-upgrade.sh tali-guard ./charts/tali-guard orbstack tali \
 #     --values ./charts/tali-guard/values-dev.yaml --wait --timeout 5m
+
+rolloutRevision: ""
 
 fullnameOverride: tali-guard
 
@@ -16,13 +18,9 @@ controller:
     tag: dev
     # OrbStack shares locally built Docker images with Kubernetes.
     pullPolicy: Never
-  publicUrl: http://localhost:38081
-  trustedOrigins:
+  publicUrl:
     - http://localhost:38081
-  auth:
-    # Preserve admin/admin without weakening normal Better Auth password rules.
-    minPasswordLength: 12
-    allowLocalDefaultCredentials: true
+    - http://localhost:8092
   # Keep the internal HTTP/gRPC Service private and publish only Controller
   # HTTP. This avoids exposing gRPC or colliding with tali-relay on 38080/9090.
   service:
@@ -73,25 +71,14 @@ redis:
 
 security:
   bootstrapAdmin:
-    # Better Auth hashes this password when it creates the development account.
+    # Import the offline hash when creating the development account.
     email: admin@tasklattice.local
-    password: admin
+    # Offline Better Auth hash for the local initial admin / password login.
+    passwordHash: "0a23d43dc81c52d322fbf3f52b2858bb:563bdba4c8dd2c5a6bf67ddb82e6111c41e14b3462c5e3cabf6442d6b529be9ddabd22391d9b1dc2b0e8f4841454786a440d58703dd5a3c417accb84947dcf31"
     name: Local Administrator
-  artifactSigning:
-    # Fixed development-only Ed25519 pair so Controller and Runner share the
-    # same trust root immediately after a Helm install.
-    privateKey: |
-      -----BEGIN PRIVATE KEY-----
-      MC4CAQAwBQYDK2VwBCIEIAZDWsrK8/8d5HNbtnw1I5QIXxMtRbOv/THBKte8OeP4
-      -----END PRIVATE KEY-----
-    publicKey: |
-      -----BEGIN PUBLIC KEY-----
-      MCowBQYDK2VwAyEAOw4OIsngbM/Uas1vfTJHFPUVV8MRVhWQePD2N6VG6CI=
-      -----END PUBLIC KEY-----
   controlTls:
-    # Helm generates a private CA and both certificates on first install, then
-    # reuses the retained Secret on upgrades.
-    autoGenerate: true
+    # Internal gRPC still requires the Runner Token, but no TLS certificates.
+    enabled: false
 
 ingress:
   enabled: false

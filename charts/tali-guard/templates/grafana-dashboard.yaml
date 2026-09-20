@@ -1,3 +1,4 @@
+{{- include "tali-guard.defaults" . -}}
 {{- if or .Values.observability.performanceDebug.enabled .Values.observability.grafanaDashboard.enabled }}
 apiVersion: v1
 kind: ConfigMap

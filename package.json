@@ -1,0 +1,42 @@
+{
+  "name": "tasklattice-guard",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "sync": "uv sync --all-extras --frozen && npm ci --prefix controller",
+    "dev": "npm run dev:controller",
+    "dev:setup": "npm run dev:setup --prefix controller",
+    "dev:controller": "npm run dev --prefix controller",
+    "dev:ui": "npm run dev:ui --prefix controller",
+    "dev:runner": "node --env-file-if-exists=.env scripts/project-commands.mjs runner",
+    "build": "npm run build --prefix controller",
+    "build:controller": "npm run build",
+    "start": "npm run start --prefix controller",
+    "typecheck": "npm run typecheck --prefix controller",
+    "test": "npm run test:cli && npm run test:contracts && npm run test:control-plane && npm run test:data-plane && npm run test:e2e && npm run typecheck && npm run build",
+    "test:cli": "node --test scripts/project-commands.test.mjs controller/scripts/dev-setup.test.mjs",
+    "test:control-plane": ".venv/bin/python scripts/generate_test_artifacts.py --check && .venv/bin/python -m pytest -q -m control_plane && npm run test:control-plane --prefix controller",
+    "test:data-plane": ".venv/bin/python -m pytest -q -m data_plane",
+    "test:e2e": ".venv/bin/python -m pytest -q -m e2e",
+    "test:contracts": "node scripts/project-commands.mjs test-contracts",
+    "proto:generate": ".venv/bin/python scripts/generate_control_protocol.py",
+    "proto:check": ".venv/bin/python scripts/generate_control_protocol.py --check",
+    "openapi:generate": "npm run openapi:generate --prefix controller",
+    "openapi:check": "npm run openapi:check --prefix controller",
+    "images:build:dev": "node scripts/project-commands.mjs images",
+    "images:build:dev:controller": "node scripts/project-commands.mjs images controller",
+    "images:build:dev:runner": "node scripts/project-commands.mjs images runner",
+    "helm:package": "node scripts/project-commands.mjs helm-package",
+    "helm:lint": "node scripts/project-commands.mjs helm-lint",
+    "helm:template": "node scripts/project-commands.mjs helm-template",
+    "helm:deploy:dev": "node scripts/project-commands.mjs helm-deploy",
+    "helm:deploy:dev:debug": "node scripts/project-commands.mjs helm-deploy-debug",
+    "helm:status": "node scripts/project-commands.mjs helm-status",
+    "helm:test": "node scripts/project-commands.mjs helm-test",
+    "helm:delete:dev": "node scripts/project-commands.mjs helm-delete"
+  }
+}

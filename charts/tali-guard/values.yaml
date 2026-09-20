@@ -4,51 +4,28 @@
 #   1. PostgreSQL 14+ through database.url or database.existingSecret.
 #   2. A bootstrap administrator Secret, or inline bootstrap values supplied by
 #      a secret values file.
-#   3. An Ed25519 artifact-signing key pair.
-#   4. A CA and mTLS certificates for the Controller/Runner control channel.
-#   5. Redis because GuardRails 0 runs two replicas by default.
+#   3. Redis because GuardRails 0 runs two replicas by default.
+# Internal signing keys, tokens, CA and mTLS certificates initialize automatically.
 #
-# For a self-contained local/OrbStack installation use values-dev.yaml.
+# For local deployment use values-dev.yaml; optional tuning is in values-advanced.yaml.
+# Internal ports and Controller replica count are fixed by the chart.
 
 nameOverride: ""
 fullnameOverride: ""
 imagePullSecrets: []
 
-# Changes to this value update the Controller and every Runner Pod template.
-# It is used by the local Make target to roll moving :dev image tags.
-rolloutRevision: ""
-
 controller:
   # Controller owns UI, API, Better Auth, desired state and reconciliation.
   # The read-only Policy Catalog used by the restored product UI is bundled in
   # the Controller image; it does not add another runtime service or volume.
-  # It is intentionally a singleton in this chart version.
-  replicaCount: 1
+  # Controller runs as a singleton. Image tags default to Chart.appVersion.
   image:
     repository: ghcr.io/tasklattice/tali-guard-controller
-    tag: "0.2.0"
     pullPolicy: IfNotPresent
-  publicUrl: https://guard.example.com
-  trustedOrigins:
+  # First URL is the auth base URL; all URLs become trusted origins.
+  # Ingress defaults to the distinct hostnames. A single string is also supported.
+  publicUrl:
     - https://guard.example.com
-  auth:
-    # Production password policy. The local profile overrides this only for
-    # the legacy admin/admin development account.
-    minPasswordLength: 12
-    # Allows exactly admin@tasklattice.local/admin only on a loopback public
-    # URL. Keep false outside the self-contained local profile.
-    allowLocalDefaultCredentials: false
-  service:
-    # Internal UI/API and Runner control-channel Service. Ingress targets this
-    # Service; it stays private even when local public HTTP is enabled below.
-    type: ClusterIP
-    httpPort: 8080
-    grpcPort: 9090
-    public:
-      # Optional HTTP-only Service for local clusters without Ingress.
-      enabled: false
-      type: LoadBalancer
-      port: 38081
   resources:
     requests:
       cpu: 100m
@@ -63,7 +40,6 @@ runner:
   # expose a Runner Pod name or identity to an upstream caller.
   image:
     repository: ghcr.io/tasklattice/tali-guard-runner
-    tag: "0.2.0"
     pullPolicy: IfNotPresent
   default:
     # Two stable ordinal Pods plus a minAvailable=1 PDB keep runtime traffic
@@ -80,17 +56,6 @@ runner:
   # component. StatefulSet ordinals keep Runner IDs and Pod names stable across
   # restarts. Each item requires name, replicaCount, maxConcurrency and resources.
   pools: []
-  service:
-    # Stable in-cluster data-plane endpoint. Kubernetes balances requests over
-    # ready replicas; correctness never depends on client-IP/session affinity.
-    type: ClusterIP
-    port: 8091
-    public:
-      # Optional host-facing endpoint for local clusters. Production callers
-      # should use the ClusterIP Service or a separately managed gateway.
-      enabled: false
-      type: LoadBalancer
-      port: 38082
   # Production should set an externally managed Redis URL whenever any Runner
   # pool has more than one replica. The local profile instead enables the
   # development Redis dependency below.
@@ -121,8 +86,6 @@ postgresql:
     username: guard
     password: ""
     passwordKey: postgres-password
-  service:
-    port: 5432
   persistence:
     enabled: true
     size: 2Gi
@@ -143,8 +106,6 @@ redis:
     repository: redis
     tag: "7.4-alpine"
     pullPolicy: IfNotPresent
-  service:
-    port: 6379
   resources:
     requests:
       cpu: 25m
@@ -154,77 +115,19 @@ redis:
       memory: 128Mi
 
 security:
-  # Optional CA used to verify HTTPS model Provider certificates. The same
-  # externally managed Secret is mounted into the Linux certificate directory
-  # of the Controller and every Runner. The Secret value must be PEM encoded.
-  customCa:
-    existingSecret: ""
-    certificateKey: ca.crt
-  metrics:
-    # Helm creates and retains a dedicated scrape token by default. Prometheus
-    # receives it through ServiceMonitor without reusing the control token.
-    existingSecret: ""
-    tokenKey: metrics-token
-  bootstrapAdmin:
-    # Prefer an existing Secret with email/password/name keys in production.
-    # Inline values are supported for values-dev.yaml and private values files.
-    existingSecret: ""
-    email: ""
-    password: ""
-    name: Administrator
-    emailKey: email
-    passwordKey: password
-    nameKey: name
-  controlSecret:
-    # When omitted, Helm creates and retains a random Runner token and Better
-    # Auth secret. Set existingSecret when secrets are managed externally.
-    existingSecret: ""
-    runnerTokenKey: runner-token
-    betterAuthSecretKey: better-auth-secret
-  runtimeLogs:
-    # Content captured by qualifying Runtime Logs is encrypted in Runner before
-    # transport. Helm creates and retains a random key unless one is supplied.
-    existingSecret: ""
-    encryptionKeyKey: encryption-key
-  artifactSigning:
-    # The key pair must be Ed25519 PEM. Production should use existingSecret;
-    # inline keys exist only to make the local profile self-contained.
-    existingSecret: ""
-    privateKey: ""
-    publicKey: ""
-    privateKeyKey: private-key.pem
-    publicKeyKey: public-key.pem
+  # Internal credentials and the persistent CA are initialized automatically.
+  # Disable mTLS only when you want token-authenticated plaintext gRPC.
   controlTls:
-    # Production must provide an existing Secret. Development may set
-    # autoGenerate=true; Helm then generates and retains a private CA plus
-    # Controller server and Runner client certificates.
-    existingSecret: ""
-    autoGenerate: false
-    caKey: ca.crt
-    controllerCertificateKey: tls.crt
-    controllerPrivateKeyKey: tls.key
-    runnerCertificateKey: runner.crt
-    runnerPrivateKeyKey: runner.key
+    enabled: true
+  bootstrapAdmin:
+    email: ""
+    passwordHash: ""
+    name: Administrator
 
 serviceAccount:
   create: true
-  automount: false
   annotations: {}
   name: ""
-
-podSecurityContext:
-  runAsNonRoot: true
-  runAsUser: 65532
-  runAsGroup: 65532
-  fsGroup: 65532
-  seccompProfile:
-    type: RuntimeDefault
-
-securityContext:
-  allowPrivilegeEscalation: false
-  capabilities:
-    drop: ["ALL"]
-  readOnlyRootFilesystem: true
 
 ingress:
   # Ingress exposes only Controller UI/API. Runtime traffic enters through the
@@ -232,7 +135,6 @@ ingress:
   enabled: false
   className: ""
   annotations: {}
-  host: guard.example.com
   tls: []
 
 # Production observability defaults. The production installation contract
@@ -256,30 +158,13 @@ observability:
   tracing:
     enabled: false
     otlpEndpoint: ""
-    sampleRatio: 0.1
   # Continuous profiling is intentionally independent from trace sampling.
   # When both are enabled, sampled spans carry profile correlation labels.
   profiling:
     enabled: false
     serverAddress: ""
-    sampleRate: 100
-  # SLO and staleness budgets consumed by PrometheusRule. Tune these against
-  # the latency and evidence-retention contract offered to upstream callers.
-  slo:
-    availabilityTarget: 0.999
-    runtimeP90Seconds: 1.0
-    runtimeP95Seconds: 2.5
-    runtimeP99Seconds: 5.0
-    completeCoverageTarget: 1.0
-    burnRateFast: 14.4
-    burnRateSlow: 6
-    heartbeatMaxAgeSeconds: 30
-    telemetryMaxAgeSeconds: 60
-    pipelineMaxAgeSeconds: 60
   serviceMonitor:
     enabled: true
-    interval: 15s
-    scrapeTimeout: 10s
     labels: {}
   prometheusRule:
     enabled: true

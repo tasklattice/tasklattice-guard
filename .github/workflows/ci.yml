@@ -43,8 +43,11 @@ jobs:
       - name: Verify generated OpenAPI contract
         run: npm run openapi:check --prefix controller
 
+      - name: Test developer commands
+        run: npm run test:cli
+
       - name: Test control-plane behavior and artifact production
-        run: make test-control-plane
+        run: npm run test:control-plane
 
       - name: Typecheck and build Controller
         working-directory: controller
@@ -83,13 +86,18 @@ jobs:
           enable-cache: true
           cache-dependency-glob: uv.lock
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+
       - name: Install dependencies
         run: uv sync --all-extras --frozen
 
       - name: Execute precompiled artifacts in Runner
         env:
           GUARD_TEST_REDIS_URL: redis://127.0.0.1:${{ job.services.redis.ports[6379] }}/0
-        run: make test-data-plane
+        run: npm run test:data-plane
 
   runner-communication:
     name: Controller / Runner communication
@@ -110,11 +118,16 @@ jobs:
           enable-cache: true
           cache-dependency-glob: uv.lock
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+
       - name: Install dependencies
         run: uv sync --all-extras --frozen
 
       - name: Test the real gRPC control stream and ACK/NACK lifecycle
-        run: make test-e2e
+        run: npm run test:e2e
 
   contracts-and-deployment:
     name: Contracts and deployment
@@ -151,7 +164,7 @@ jobs:
         run: uv sync --all-extras --frozen && npm ci --prefix controller --no-audit --no-fund
 
       - name: Verify protocol, suite boundaries, and deployment contracts
-        run: make test-contracts
+        run: npm run test:contracts
 
       - name: Package chart for runtime image
         run: bash scripts/package-runtime-chart.sh 0.0.0-ci

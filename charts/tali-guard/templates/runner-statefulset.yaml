@@ -1,3 +1,4 @@
+{{- include "tali-guard.defaults" . -}}
 {{- $root := . -}}
 {{- $default := dict "name" "default" "replicaCount" .Values.runner.default.replicaCount "maxConcurrency" .Values.runner.default.maxConcurrency "compilerCapable" true "resources" .Values.runner.default.resources -}}
 {{- $pools := concat (list $default) .Values.runner.pools -}}
@@ -57,8 +58,8 @@ spec:
             - { name: GUARD_RUNNER_POOL_ID, value: {{ $pool.name | quote }} }
             - { name: GUARD_RUNNER_COMPILER_CAPABLE, value: {{ default false $pool.compilerCapable | quote }} }
             - { name: GUARD_RUNNER_MAX_CONCURRENCY, value: {{ $pool.maxConcurrency | quote }} }
-            - { name: GUARD_CONTROLLER_TARGET, value: {{ printf "%s:%v" (include "tali-guard.controllerName" $root) $root.Values.controller.service.grpcPort | quote }} }
-            - { name: GUARD_CONTROLLER_TELEMETRY_ENDPOINT, value: {{ printf "http://%s:%v/api/internal/v1/runtime-events" (include "tali-guard.controllerName" $root) $root.Values.controller.service.httpPort | quote }} }
+            - { name: GUARD_CONTROLLER_TARGET, value: {{ printf "%s:%v" (include "tali-guard.controllerName" $root) 9090 | quote }} }
+            - { name: GUARD_CONTROLLER_TELEMETRY_ENDPOINT, value: {{ printf "http://%s:%v/api/internal/v1/runtime-events" (include "tali-guard.controllerName" $root) 8080 | quote }} }
             {{- if or $root.Values.observability.performanceDebug.enabled $root.Values.observability.tracing.enabled }}
             - { name: OTEL_EXPORTER_OTLP_ENDPOINT, value: {{ required "observability.tracing.otlpEndpoint is required when tracing or performanceDebug is enabled" $root.Values.observability.tracing.otlpEndpoint | quote }} }
             - { name: OTEL_TRACES_SAMPLER, value: parentbased_traceidratio }
@@ -79,15 +80,19 @@ spec:
             - name: MODEL_GUARDRAILS_RUNTIME_LOG_ENCRYPTION_KEY
               valueFrom: { secretKeyRef: { name: {{ include "tali-guard.runtimeLogSecretName" $root }}, key: {{ $root.Values.security.runtimeLogs.encryptionKeyKey }} } }
             - { name: GUARD_ARTIFACT_PUBLIC_KEY_PATH, value: /var/run/tasklattice/artifact/public-key.pem }
+            {{- if $root.Values.security.controlTls.enabled }}
             - { name: GUARD_CONTROLLER_CA_PATH, value: /var/run/tasklattice/control-tls/ca.crt }
             - { name: GUARD_RUNNER_CLIENT_CERT_PATH, value: /var/run/tasklattice/control-tls/runner.crt }
             - { name: GUARD_RUNNER_CLIENT_KEY_PATH, value: /var/run/tasklattice/control-tls/runner.key }
+            {{- end }}
             {{- with include "tali-guard.callContextRedisUrl" $root }}
             - { name: GUARD_RUNNER_CALL_CONTEXT_REDIS_URL, value: {{ . | quote }} }
             {{- end }}
           volumeMounts:
             - { name: artifact-signing, mountPath: /var/run/tasklattice/artifact, readOnly: true }
+            {{- if $root.Values.security.controlTls.enabled }}
             - { name: control-tls, mountPath: /var/run/tasklattice/control-tls, readOnly: true }
+            {{- end }}
             {{- if $root.Values.security.customCa.existingSecret }}
             - { name: custom-ca, mountPath: /etc/ssl/certs/tasklattice-custom-ca.crt, subPath: tasklattice-custom-ca.crt, readOnly: true }
             {{- end }}
@@ -109,6 +114,7 @@ spec:
             secretName: {{ include "tali-guard.artifactSigningSecretName" $root }}
             items:
               - { key: {{ $root.Values.security.artifactSigning.publicKeyKey }}, path: public-key.pem }
+        {{- if $root.Values.security.controlTls.enabled }}
         - name: control-tls
           secret:
             secretName: {{ include "tali-guard.controlTlsSecretName" $root }}
@@ -116,6 +122,7 @@ spec:
               - { key: {{ $root.Values.security.controlTls.caKey }}, path: ca.crt }
               - { key: {{ $root.Values.security.controlTls.runnerCertificateKey }}, path: runner.crt }
               - { key: {{ $root.Values.security.controlTls.runnerPrivateKeyKey }}, path: runner.key }
+        {{- end }}
         {{- if $root.Values.security.customCa.existingSecret }}
         - name: custom-ca
           secret:

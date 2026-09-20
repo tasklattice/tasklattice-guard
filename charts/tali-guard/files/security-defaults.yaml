@@ -1,0 +1,42 @@
+# Internal defaults. Normal deployments configure only controlTls.enabled and the administrator.
+bootstrap:
+  enabled: true
+customCa:
+  existingSecret: ''
+  certificateKey: ca.crt
+metrics:
+  existingSecret: ''
+  tokenKey: metrics-token
+bootstrapAdmin:
+  existingSecret: ''
+  email: ''
+  password: ''
+  passwordHash: ''
+  name: Administrator
+  emailKey: email
+  passwordKey: password
+  passwordHashKey: password-hash
+  nameKey: name
+controlSecret:
+  existingSecret: ''
+  runnerTokenKey: runner-token
+  betterAuthSecretKey: better-auth-secret
+runtimeLogs:
+  existingSecret: ''
+  encryptionKeyKey: encryption-key
+artifactSigning:
+  existingSecret: ''
+  privateKey: ''
+  publicKey: ''
+  privateKeyKey: private-key.pem
+  publicKeyKey: public-key.pem
+controlTls:
+  enabled: true
+  existingSecret: ''
+  autoGenerate: true
+  caKey: ca.crt
+  controllerCertificateKey: tls.crt
+  controllerPrivateKeyKey: tls.key
+  runnerCertificateKey: runner.crt
+  runnerPrivateKeyKey: runner.key
+  caPrivateKeyKey: ca.key

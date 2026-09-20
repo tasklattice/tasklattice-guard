@@ -1,8 +1,9 @@
+{{- include "tali-guard.defaults" . -}}
 {{- if .Values.ingress.enabled }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ include "tali-guard.controllerName" . }}
+  name: {{ include "tali-guard.controllerName" $ }}
   labels:
     {{- include "tali-guard.commonLabels" . | nindent 4 }}
   {{- with .Values.ingress.annotations }}
@@ -16,13 +17,15 @@ spec:
   tls: {{- toYaml . | nindent 4 }}
   {{- end }}
   rules:
-    - host: {{ .Values.ingress.host | quote }}
+    {{- range (include "tali-guard.ingressHosts" . | fromJsonArray) }}
+    - host: {{ . | quote }}
       http:
         paths:
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: {{ include "tali-guard.controllerName" . }}
+                name: {{ include "tali-guard.controllerName" $ }}
                 port: { name: http }
+    {{- end }}
 {{- end }}

@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { bootstrapPasswordHashPattern } from "./bootstrap-password.js";
+
 const modelRuntime = z.object({
   id: z.string().trim().min(1),
   client: z.literal("openai_chat").default("openai_chat"),
@@ -98,6 +100,7 @@ const environmentSchema = z.object({
   CONTROLLER_HTTP_PORT: z.coerce.number().int().positive().default(8080),
   CONTROLLER_GRPC_HOST: z.string().default("0.0.0.0"),
   CONTROLLER_GRPC_PORT: z.coerce.number().int().positive().default(9090),
+  CONTROLLER_GRPC_TRANSPORT: z.enum(["mtls", "plaintext"]).optional(),
   CONTROLLER_GRPC_TLS_CERT_PATH: z.string().optional(),
   CONTROLLER_GRPC_TLS_KEY_PATH: z.string().optional(),
   CONTROLLER_GRPC_TLS_CLIENT_CA_PATH: z.string().optional(),
@@ -125,6 +128,7 @@ const environmentSchema = z.object({
     .transform((value) => value === "true"),
   CONTROLLER_BOOTSTRAP_ADMIN_EMAIL: z.string().email().optional(),
   CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD: z.string().min(1).optional(),
+  CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD_HASH: z.string().regex(bootstrapPasswordHashPattern, "Expected a Better Auth scrypt password hash.").optional(),
   CONTROLLER_BOOTSTRAP_ADMIN_NAME: z.string().min(1).default("Administrator"),
   MODEL_GUARDRAILS_CONTROL_PLANE_AI_BASE_URL: z.string().trim().optional(),
   MODEL_GUARDRAILS_CONTROL_PLANE_AI_MODEL: z.string().min(1).optional(),
@@ -143,6 +147,13 @@ const environmentSchema = z.object({
   MODEL_GUARDRAILS_EVALUATOR_BINDINGS_JSON: z.string().default("[]"),
   MODEL_GUARDRAILS_AUTOMATED_REASONING_ENDPOINT_URL: z.string().trim().optional(),
 }).superRefine((value, context) => {
+  const tlsPaths = [value.CONTROLLER_GRPC_TLS_CERT_PATH, value.CONTROLLER_GRPC_TLS_KEY_PATH, value.CONTROLLER_GRPC_TLS_CLIENT_CA_PATH];
+  if (tlsPaths.some(Boolean) && !tlsPaths.every(Boolean)) {
+    context.addIssue({ code: "custom", message: "Controller gRPC TLS certificate, key, and client CA must be configured together." });
+  }
+  if (value.CONTROLLER_GRPC_TRANSPORT === "plaintext" && tlsPaths.some(Boolean)) {
+    context.addIssue({ code: "custom", message: "Plaintext gRPC cannot be combined with TLS certificate paths." });
+  }
   const publicHostname = new URL(value.CONTROLLER_PUBLIC_URL).hostname;
   const isLoopback = ["localhost", "127.0.0.1", "::1"].includes(publicHostname);
   const isLocalDefault = value.CONTROLLER_ALLOW_LOCAL_DEFAULT_CREDENTIALS
@@ -165,11 +176,14 @@ const environmentSchema = z.object({
       message: "Local default credentials may only be enabled for a loopback Controller URL.",
     });
   }
-  if (Boolean(value.CONTROLLER_BOOTSTRAP_ADMIN_EMAIL) !== Boolean(value.CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD)) {
+  if (Boolean(value.CONTROLLER_BOOTSTRAP_ADMIN_EMAIL) !== Boolean(value.CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD || value.CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD_HASH)) {
     context.addIssue({
       code: "custom",
-      message: "CONTROLLER_BOOTSTRAP_ADMIN_EMAIL and CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD must be configured together.",
+      message: "Bootstrap email requires either CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD or CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD_HASH, and vice versa.",
     });
+  }
+  if (value.CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD && value.CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD_HASH) {
+    context.addIssue({ code: "custom", message: "Bootstrap password and passwordHash are mutually exclusive." });
   }
   if (
     value.CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD
@@ -234,6 +248,7 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env) {
     nodeEnv: parsed.NODE_ENV,
     http: { host: parsed.CONTROLLER_HTTP_HOST, port: parsed.CONTROLLER_HTTP_PORT },
     grpc: { host: parsed.CONTROLLER_GRPC_HOST, port: parsed.CONTROLLER_GRPC_PORT },
+    grpcTransport: parsed.CONTROLLER_GRPC_TRANSPORT ?? (parsed.CONTROLLER_GRPC_TLS_CERT_PATH || parsed.NODE_ENV === "production" ? "mtls" : "plaintext"),
     grpcTls: parsed.CONTROLLER_GRPC_TLS_CERT_PATH && parsed.CONTROLLER_GRPC_TLS_KEY_PATH && parsed.CONTROLLER_GRPC_TLS_CLIENT_CA_PATH
       ? {
           certPath: parsed.CONTROLLER_GRPC_TLS_CERT_PATH,
@@ -255,10 +270,11 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env) {
     trustedOrigins: parsed.BETTER_AUTH_TRUSTED_ORIGINS.split(",").map((item) => item.trim()).filter(Boolean),
     minPasswordLength: parsed.BETTER_AUTH_MIN_PASSWORD_LENGTH,
     allowLocalDefaultCredentials: parsed.CONTROLLER_ALLOW_LOCAL_DEFAULT_CREDENTIALS,
-    bootstrapAdmin: parsed.CONTROLLER_BOOTSTRAP_ADMIN_EMAIL && parsed.CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD
+    bootstrapAdmin: parsed.CONTROLLER_BOOTSTRAP_ADMIN_EMAIL && (parsed.CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD || parsed.CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD_HASH)
       ? {
           email: parsed.CONTROLLER_BOOTSTRAP_ADMIN_EMAIL,
-          password: parsed.CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD,
+          ...(parsed.CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD ? { password: parsed.CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD } : {}),
+          ...(parsed.CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD_HASH ? { passwordHash: parsed.CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD_HASH } : {}),
           name: parsed.CONTROLLER_BOOTSTRAP_ADMIN_NAME,
         }
       : null,

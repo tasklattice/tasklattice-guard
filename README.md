@@ -69,13 +69,16 @@ With this repository checked out, enable OrbStack Kubernetes and have Docker,
 Helm, `kubectl`, and `make` available. From the repository root, run:
 
 ```bash
-make helm-install
+npm run helm:deploy:dev
 ```
 
 This builds the local images, installs or upgrades the development deployment,
 and waits for workload readiness. Open [the console](http://localhost:38081)
-and sign in with `admin` / `admin`. These credentials belong to the local
+and sign in with `admin` / `password`. These credentials belong to the local
 profile only; an existing account keeps its password if you have changed it.
+The local profile uses Token-authenticated gRPC without mTLS. A chart bootstrap
+Job creates internal Secrets, so no External Secrets operator or private key in
+Values is required.
 
 Start with the Default Guardrail to explore local protection, then configure
 model-backed checks as needed. See the [local installation guide](charts/tali-guard/README.md#orbstacklocal-installation)

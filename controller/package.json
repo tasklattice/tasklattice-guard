@@ -4,14 +4,15 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch server/index.ts",
-    "dev:ui": "vite --host 0.0.0.0 --port 8092",
+    "dev": "tsx watch --env-file-if-exists=../.env server/index.ts",
+    "dev:ui": "node --env-file-if-exists=../.env node_modules/vite/bin/vite.js --host 0.0.0.0 --port 8092",
     "build": "npm run build:ui && npm run build:server",
     "build:ui": "tsc -b tsconfig.app.json && vite build",
     "build:server": "npm run openapi:check && tsc -p tsconfig.server.json",
-    "start": "node dist-server/server/index.js",
+    "start": "node --env-file-if-exists=../.env dist-server/server/index.js",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx server/db/migrate.ts",
+    "auth:hash-password": "node scripts/hash-bootstrap-password.mjs",
     "auth:bootstrap": "tsx server/bootstrap-admin.ts",
     "typecheck": "tsc -b tsconfig.app.json --pretty false && tsc -p tsconfig.server.json --noEmit --pretty false",
     "test": "vitest run --environment jsdom",
@@ -19,7 +20,9 @@
     "test:server": "vitest run server",
     "audit:production": "npm audit --omit=dev --omit=optional",
     "openapi:generate": "node --import tsx scripts/generate-openapi.mjs",
-    "openapi:check": "node --import tsx scripts/generate-openapi.mjs --check"
+    "openapi:check": "node --import tsx scripts/generate-openapi.mjs --check",
+    "dev:setup": "node scripts/dev-setup.mjs",
+    "predev": "node --env-file-if-exists=../.env scripts/check-dev-env.mjs"
   },
   "dependencies": {
     "@assistant-ui/react": "^0.15.14",

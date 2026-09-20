@@ -1,0 +1,51 @@
+# Automatically loaded by templates. Advanced values override these defaults.
+rolloutRevision: ''
+controller:
+  auth:
+    minPasswordLength: 12
+    allowLocalDefaultCredentials: false
+  service:
+    type: ClusterIP
+    public:
+      enabled: false
+      type: LoadBalancer
+      port: 38081
+runner:
+  service:
+    type: ClusterIP
+    public:
+      enabled: false
+      type: LoadBalancer
+      port: 38082
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: true
+observability:
+  slo:
+    availabilityTarget: 0.999
+    runtimeP90Seconds: 1.0
+    runtimeP95Seconds: 2.5
+    runtimeP99Seconds: 5.0
+    completeCoverageTarget: 1.0
+    burnRateFast: 14.4
+    burnRateSlow: 6
+    heartbeatMaxAgeSeconds: 30
+    telemetryMaxAgeSeconds: 60
+    pipelineMaxAgeSeconds: 60
+  tracing:
+    sampleRatio: 0.1
+  profiling:
+    sampleRate: 100
+  serviceMonitor:
+    interval: 15s
+    scrapeTimeout: 10s

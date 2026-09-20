@@ -1,3 +1,4 @@
+{{- include "tali-guard.defaults" . -}}
 apiVersion: v1
 kind: Service
 metadata:
@@ -12,8 +13,8 @@ spec:
     app.kubernetes.io/instance: {{ .Release.Name }}
     app.kubernetes.io/component: controller
   ports:
-    - { name: http, port: {{ .Values.controller.service.httpPort }}, targetPort: http }
-    - { name: grpc, port: {{ .Values.controller.service.grpcPort }}, targetPort: grpc }
+    - { name: http, port: 8080, targetPort: http }
+    - { name: grpc, port: 9090, targetPort: grpc }
 {{- if .Values.controller.service.public.enabled }}
 ---
 apiVersion: v1
@@ -56,7 +57,7 @@ spec:
     app.kubernetes.io/component: runner
     tasklattice.io/runner-pool: {{ $pool.name | quote }}
   ports:
-    - { name: runtime, port: {{ $root.Values.runner.service.port }}, targetPort: runtime }
+    - { name: runtime, port: 8091, targetPort: runtime }
 ---
 apiVersion: v1
 kind: Service
@@ -74,7 +75,7 @@ spec:
     app.kubernetes.io/component: runner
     tasklattice.io/runner-pool: {{ $pool.name | quote }}
   ports:
-    - { name: runtime, port: {{ $root.Values.runner.service.port }}, targetPort: runtime }
+    - { name: runtime, port: 8091, targetPort: runtime }
 {{- end }}
 {{- if .Values.runner.service.public.enabled }}
 ---

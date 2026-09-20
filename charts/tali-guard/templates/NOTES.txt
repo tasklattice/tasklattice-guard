@@ -1,3 +1,4 @@
+{{- include "tali-guard.defaults" . -}}
 TaskLattice Guard installed two application component types:
 
   Controller: {{ include "tali-guard.controllerName" . }}
@@ -25,10 +26,12 @@ Development Redis call-context dependency:
 
 Controller UI/API:
 
-  {{ .Values.controller.publicUrl }}
-  curl {{ trimSuffix "/" .Values.controller.publicUrl }}/api/v1/system/status
+{{ range (include "tali-guard.publicUrls" . | fromJsonArray) }}
+  {{ . }}
+{{ end }}
+  curl {{ trimSuffix "/" (include "tali-guard.primaryPublicUrl" .) }}/api/v1/system/status
 
-Runner data-plane traffic enters through the stable service/{{ include "tali-guard.runtimeName" . }} on port {{ .Values.runner.service.port }}.
+Runner data-plane traffic enters through the stable service/{{ include "tali-guard.runtimeName" . }} on port 8091.
 Upstream callers never address an individual Runner Pod.
 {{- if .Values.runner.service.public.enabled }}
 

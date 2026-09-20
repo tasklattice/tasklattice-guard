@@ -1,3 +1,4 @@
+{{- include "tali-guard.defaults" . -}}
 {{- if .Values.postgresql.enabled }}
 apiVersion: v1
 kind: Service
@@ -13,7 +14,7 @@ spec:
     app.kubernetes.io/component: postgresql
   ports:
     - name: postgresql
-      port: {{ .Values.postgresql.service.port }}
+      port: 5432
       targetPort: postgresql
 ---
 apiVersion: apps/v1

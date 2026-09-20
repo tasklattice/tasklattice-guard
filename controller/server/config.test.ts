@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { hashPassword } from "better-auth/crypto";
 
 import { loadConfig } from "./config.js";
 
@@ -166,5 +167,50 @@ describe("Controller config", () => {
         profile_ref: "tali.llama-guard-3.v1", model_ref: "missing", priority: 10,
       }]),
     }).modelConnections.dataPlane.models).toEqual([{ id: "llama", model: "meta-llama/Llama-Guard-3-8B" }]);
+  });
+});
+
+
+describe("bootstrap passwordHash configuration", () => {
+  it("accepts a hash without a plaintext password", async () => {
+    const passwordHash = await hashPassword("Password");
+    const config = loadConfig({ ...requiredEnvironment,
+      CONTROLLER_BOOTSTRAP_ADMIN_EMAIL: "admin@example.test",
+      CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD_HASH: passwordHash,
+    });
+    expect(config.bootstrapAdmin).toMatchObject({ email: "admin@example.test", passwordHash });
+    expect(config.bootstrapAdmin).not.toHaveProperty("password");
+    expect(() => loadConfig({ ...requiredEnvironment,
+      CONTROLLER_BOOTSTRAP_ADMIN_EMAIL: "admin@example.test",
+      CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD_HASH: passwordHash,
+      CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD: "another-password",
+    })).toThrow(/mutually exclusive/);
+    expect(() => loadConfig({ ...requiredEnvironment,
+      CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD_HASH: passwordHash,
+    })).toThrow(/Bootstrap email/);
+  });
+
+  it("rejects malformed hashes and missing credentials", () => {
+    expect(() => loadConfig({ ...requiredEnvironment,
+      CONTROLLER_BOOTSTRAP_ADMIN_EMAIL: "admin@example.test",
+      CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD_HASH: "not-a-password-hash",
+    })).toThrow(/scrypt/);
+    expect(() => loadConfig({ ...requiredEnvironment,
+      CONTROLLER_BOOTSTRAP_ADMIN_EMAIL: "admin@example.test",
+    })).toThrow(/Bootstrap email/);
+  });
+});
+
+
+describe("explicit control-channel transport", () => {
+  it("defaults production to mTLS and allows an explicit plaintext choice", () => {
+    const environment = { ...requiredEnvironment, NODE_ENV: "production", CONTROLLER_METRICS_TOKEN: "metrics-token-at-least-32-characters" };
+    expect(loadConfig(environment).grpcTransport).toBe("mtls");
+    expect(loadConfig({ ...environment, CONTROLLER_GRPC_TRANSPORT: "plaintext" })).toMatchObject({ grpcTransport: "plaintext", grpcTls: null, nodeEnv: "production" });
+  });
+
+  it("rejects incomplete certificates and conflicting plaintext settings", () => {
+    expect(() => loadConfig({ ...requiredEnvironment, CONTROLLER_GRPC_TLS_CERT_PATH: "/cert" })).toThrow(/configured together/);
+    expect(() => loadConfig({ ...requiredEnvironment, CONTROLLER_GRPC_TRANSPORT: "plaintext", CONTROLLER_GRPC_TLS_CERT_PATH: "/cert", CONTROLLER_GRPC_TLS_KEY_PATH: "/key", CONTROLLER_GRPC_TLS_CLIENT_CA_PATH: "/ca" })).toThrow(/Plaintext gRPC/);
   });
 });

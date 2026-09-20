@@ -45,7 +45,7 @@ Recovers the TaskLattice Guard local host-mode stack by:
 
 Options:
   --no-ui      Skip the Vite UI server on port 8092
-  --no-sync    Skip "make sync"
+  --no-sync    Skip "npm run sync"
   --dry-run    Print actions without executing them
   --help       Show this help text
 EOF
@@ -140,6 +140,19 @@ write_env_value() {
   mv "${temp_file}" "${ENV_FILE}"
 }
 
+remove_env_value() {
+  local key="$1"
+  local temp_file
+  if [[ "${DRY_RUN}" -eq 1 ]]; then
+    printf '+ remove_env %s\n' "${key}"
+    return 0
+  fi
+  backup_env_once
+  temp_file="$(mktemp)"
+  awk -F= -v key="${key}" '$1 != key { print }' "${ENV_FILE}" > "${temp_file}"
+  mv "${temp_file}" "${ENV_FILE}"
+}
+
 random_secret() {
   openssl rand -hex 24
 }
@@ -215,9 +228,13 @@ normalize_local_env() {
   write_env_value "CONTROLLER_PUBLIC_URL" "http://localhost:${CONTROLLER_HTTP_PORT}"
   write_env_value "CONTROLLER_RUNTIME_SERVICE_URL" "http://localhost:${RUNNER_HTTP_PORT}"
   write_env_value "BETTER_AUTH_TRUSTED_ORIGINS" "http://localhost:${CONTROLLER_HTTP_PORT},http://localhost:${UI_HTTP_PORT}"
-  write_env_value "CONTROLLER_ALLOW_LOCAL_DEFAULT_CREDENTIALS" "true"
+  write_env_value "CONTROLLER_ALLOW_LOCAL_DEFAULT_CREDENTIALS" "false"
   write_env_value "CONTROLLER_BOOTSTRAP_ADMIN_EMAIL" "admin@tasklattice.local"
-  write_env_value "CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD" "admin"
+  # Reuse the reviewed local bootstrap hash; avoid maintaining a second password.
+  local bootstrap_hash
+  bootstrap_hash="$(node -e 'const fs = require("node:fs"); const match = fs.readFileSync(process.argv[1], "utf8").match(/passwordHash: "([a-f0-9:]+)"/); if (!match) process.exit(1); process.stdout.write(match[1]);' "${ROOT_DIR}/charts/tali-guard/values-dev.yaml")"
+  remove_env_value "CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD"
+  write_env_value "CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD_HASH" "${bootstrap_hash}"
   write_env_value "CONTROLLER_BOOTSTRAP_ADMIN_NAME" "Local Administrator"
 
   write_env_value "GUARD_RUNNER_ID" "local-default-1"
@@ -370,7 +387,7 @@ sync_dependencies() {
     return 0
   fi
   log "Syncing Python and controller dependencies"
-  run make -C "${ROOT_DIR}" sync
+  run npm --prefix "${ROOT_DIR}" run sync
 }
 
 start_background_service() {
@@ -479,7 +496,7 @@ EOF
     printf '[recover] UI:         http://127.0.0.1:%s\n' "${UI_HTTP_PORT}"
   fi
   cat <<EOF
-[recover] Login:      admin / admin
+[recover] Initial login: admin / password (existing accounts are not reset)
 [recover] Logs:       ${LOG_DIR}
 
 [recover] Notes:

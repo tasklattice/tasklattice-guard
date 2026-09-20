@@ -12,7 +12,7 @@ installation, dependency settings, and production Secrets.
   expiry, and revocation. Effective permissions are limited by the owner's
   current role. These are separate from Runner tokens and Endpoint credentials;
   see [Access Tokens](account-access-tokens.md).
-- The OrbStack/local baseline login is username `admin` and password `admin`.
+- The OrbStack/local baseline login is username `admin` and password `password`.
   Controller maps that username to the internal Better Auth identity
   `admin@tasklattice.local`; these local-only credentials must not be used in
   production.
@@ -22,7 +22,9 @@ installation, dependency settings, and production Secrets.
 - Bootstrap is idempotent: it creates a missing administrator but never resets
   an existing administrator's password during Controller startup. Passwords
   changed through Better Auth therefore survive restarts and upgrades.
-- Runner control uses a Runner token plus mutual TLS in production.
+- Runner control uses a Runner token plus mutual TLS by default. The shared
+  initialization Job creates and retains its CA/credentials in Namespace-owned
+  Secrets; removing workloads or the release does not remove those credentials.
 - Artifacts use Controller-held Ed25519 private signing keys; Runners receive
   only the public key.
 - Endpoint credentials are shown once. Controller stores a SHA-256 verifier
@@ -95,9 +97,11 @@ the distinction between enforce, dry run, and fail-open behavior.
 - [Production values](../charts/tali-guard/values.yaml): externally managed
   dependencies and Secrets, plus production observability defaults.
 - [Local values](../charts/tali-guard/values-dev.yaml): bundled development
-  PostgreSQL/Redis and local-only credentials.
+  PostgreSQL/Redis, an offline bootstrap password hash, and certificate-free
+  Token-authenticated control traffic. The chart generates internal keys/tokens
+  in a bootstrap Job; production keeps mTLS enabled by default.
 - [Debug overlay](../charts/tali-guard/values-debug.yaml): additional tracing and
-  profiling; use `make helm-install-debug` for the local OrbStack deployment.
+  profiling; use `npm run helm:deploy:dev:debug` for the local OrbStack deployment.
 
 The Helm installer does not read model credentials from `.env` or create
 Provider Secrets. Configure Providers, Models, and protection assignments

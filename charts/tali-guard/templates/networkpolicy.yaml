@@ -1,3 +1,4 @@
+{{- include "tali-guard.defaults" . -}}
 {{- if .Values.networkPolicy.enabled }}
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -42,6 +43,6 @@ spec:
               app.kubernetes.io/instance: {{ .Release.Name }}
               app.kubernetes.io/component: runner
       ports:
-        - { protocol: TCP, port: {{ .Values.redis.service.port }} }
+        - { protocol: TCP, port: 6379 }
 {{- end }}
 {{- end }}
