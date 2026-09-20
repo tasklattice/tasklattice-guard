@@ -125,23 +125,15 @@ def test_deployment_errors_are_returned_without_reinstall_or_force(
 
 
 @pytest.mark.parametrize("suffix", ["", "-debug"])
-def test_make_helm_install_builds_then_upserts_and_waits_for_readiness(suffix: str):
+def test_make_helm_install_forwards_to_the_npm_entry_point(suffix: str):
+    # Build ordering, flags and failure behavior are exercised by the Node CLI
+    # tests; Make is now only a compatibility alias.
     result = subprocess.run(
-        ["make", "--no-print-directory", "-n", f"helm-install{suffix}", "HELM_ROLLOUT_REVISION=regression"],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-        check=True,
+        ["make", "--no-print-directory", "-n", f"helm-install{suffix}"],
+        cwd=ROOT, capture_output=True, text=True, check=True,
     )
-    assert result.stdout.count("bash scripts/helm-upgrade.sh") == 1
-    assert result.stdout.index("docker build") < result.stdout.index("bash scripts/helm-upgrade.sh")
-    assert "helm upgrade --install" not in result.stdout
-    assert "--wait" in result.stdout
-    assert "--timeout 5m" in result.stdout
-    assert "MODEL_GUARDRAILS_" not in result.stdout
-    assert "create secret generic" not in result.stdout
-    if suffix:
-        assert "--values charts/tali-guard/values-debug.yaml" in result.stdout
+    command = "npm run helm:deploy:dev" + (":debug" if suffix else "")
+    assert result.stdout.strip() == command
 
 
 @pytest.mark.skipif(

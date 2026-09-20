@@ -66,6 +66,7 @@ try {
     case 'helm-test': await run('helm', ['test', release, '--kube-context', context, '--namespace', namespace, '--logs', ...args]); break;
     case 'helm-delete': await run('helm', ['uninstall', release, '--kube-context', context, '--namespace', namespace, ...args]); break;
     case 'test-contracts':
+      await run(process.execPath, ['--test', 'scripts/project-commands.test.mjs']);
       await run('.venv/bin/python', ['scripts/generate_control_protocol.py', '--check']);
       await run('.venv/bin/python', ['-m', 'pytest', '-q', '-m', 'contract', ...args]);
       await lint([]);

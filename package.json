@@ -18,7 +18,7 @@
     "start": "npm run start --prefix controller",
     "typecheck": "npm run typecheck --prefix controller",
     "test": "npm run test:cli && npm run test:contracts && npm run test:control-plane && npm run test:data-plane && npm run test:e2e && npm run typecheck && npm run build",
-    "test:cli": "node --test scripts/project-commands.test.mjs controller/scripts/dev-setup.test.mjs",
+    "test:cli": "node --test scripts/project-commands.test.mjs controller/scripts/dev-setup.node-test.mjs",
     "test:control-plane": ".venv/bin/python scripts/generate_test_artifacts.py --check && .venv/bin/python -m pytest -q -m control_plane && npm run test:control-plane --prefix controller",
     "test:data-plane": ".venv/bin/python -m pytest -q -m data_plane",
     "test:e2e": ".venv/bin/python -m pytest -q -m e2e",
