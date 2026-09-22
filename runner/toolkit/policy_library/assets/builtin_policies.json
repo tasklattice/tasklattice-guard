@@ -10,17 +10,17 @@
       },
       "jurisdiction": { "en": "Australia; applicability depends on the entity, data and processing context.", "zh": "澳大利亚；具体适用性取决于组织主体、数据及处理场景。" },
       "provenance": {
-        "en": "Built-in TaskLattice catalog asset: runner/toolkit/policy_library/assets/builtin_policies.json. Executes local Rules through the NeMo Guardrails runtime. The catalog version alone does not establish an upstream source or legal review.",
-        "zh": "来自 TaskLattice 内置目录文件 runner/toolkit/policy_library/assets/builtin_policies.json，通过 NeMo Guardrails 运行本地 Rules。目录版本号本身不构成上游来源证明或法律核验记录。"
+        "en": "TaskLattice maintains this built-in Policy definition, Rule grouping, Australian reference mapping, and Test Cases in runner/toolkit/policy_library/assets/builtin_policies.json. Regulatory references are selected independently from implementation lineage.",
+        "zh": "TaskLattice 在 runner/toolkit/policy_library/assets/builtin_policies.json 中维护此内置 Policy 的定义、Rule 分组、澳大利亚参考映射和 Test Cases。监管参考与实现沿革分别选择。"
       },
       "maintainer": "TaskLattice",
       "upstream_status": {
-        "en": "The repository documents LiteLLM-derived material for 22 local content-filter modules in THIRD_PARTY_NOTICES.md. The complete upstream lineage of this composite Policy has not yet been verified; it is not claimed to be wholly original or an unchanged upstream policy.",
-        "zh": "仓库 THIRD_PARTY_NOTICES.md 记录了 22 个本地内容过滤模块所使用的 LiteLLM 来源材料。本组合策略的完整上游沿革尚未核验，不宣称全部原创或与上游策略完全一致。"
+        "en": "Implementation lineage is repository-maintained. Where third-party detector material is incorporated, THIRD_PARTY_NOTICES.md is authoritative. That technical lineage is not the Policy's regulatory basis or a compliance mapping.",
+        "zh": "实现沿革由仓库维护。若包含第三方检测器材料，以 THIRD_PARTY_NOTICES.md 为准。该技术沿革不是此 Policy 的监管依据，也不构成合规映射。"
       },
       "license_status": {
-        "en": "Consult THIRD_PARTY_NOTICES.md for bundled MIT-licensed LiteLLM material. Policy-specific attribution and licensing scope remain pending verification; no additional license grant is asserted here.",
-        "zh": "所含 LiteLLM MIT 许可材料的声明见 THIRD_PARTY_NOTICES.md。本策略逐项归属及许可适用范围待核验，此处不作额外许可授权声明。"
+        "en": "The Policy definition follows the repository license and THIRD_PARTY_NOTICES.md for incorporated material. External regulatory and industry references grant no software rights.",
+        "zh": "Policy 定义遵循仓库许可；所含材料受 THIRD_PARTY_NOTICES.md 约束。外部监管及行业参考不授予软件权利。"
       },
       "references": [
         {
@@ -69,7 +69,7 @@
         "notes": { "en": "Engineering reviewed the repository provenance, official reference targets and technical scope. Legal applicability and clause-level compliance conclusions still require qualified independent review.", "zh": "工程团队已审查仓库来源、官方参考目标和技术范围。法律适用性及条款级合规结论仍需具备资质的独立审查。" }
       }
     },
-    "description": "Protects Australian-specific identifiers, international employee data, financial information, credentials, protected class information, and industry-specific sensitive data.",
+    "description": "Screens and redacts configured Australian identifiers, international employee data, financial information, credentials, protected-class terms, and selected industry-sensitive data. This is a technical exposure-reduction control, not legal compliance.",
     "source": "built_in",
     "version": "1.95.0",
     "tags": [{"namespace":"protection","value":"privacy","label":"Privacy & sensitive information","source":"declared"},
@@ -8261,7 +8261,7 @@
   {
     "id": "eu-ai-act-article5",
     "name": "EU AI Act Article 5 — Prohibited Practices",
-    "description": "Comprehensive EU AI Act Article 5 compliance covering all prohibited AI practices. Includes 5 dedicated sub-guardrails per language (English + French) for: subliminal manipulation (Art. 5.1a), vulnerability exploitation (Art. 5.1b), social scoring (Art. 5.1c), emotion recognition in workplace/education (Art. 5.1f), and biometric categorization & predictive profiling (Art. 5.1d/g/h). Uses conditional matching (identifier word + context word).",
+    "description": "Screens selected English and French phrases related to five EU AI Act Article 5 topics: manipulation, vulnerability exploitation, social scoring, emotion recognition, and biometric categorization or profiling. This technical filter does not determine legal scope, exceptions, or compliance.",
     "source": "built_in",
     "version": "1.95.0",
     "tags": [{"namespace":"protection","value":"business_rules","label":"Business & industry rules","source":"declared"},
@@ -9944,7 +9944,7 @@
   {
     "id": "gdpr-eu-pii-protection",
     "name": "GDPR Art. 32 — EU PII Protection",
-    "description": "GDPR Article 32 compliance for EU personal data protection. Masks French national IDs (NIR/INSEE), EU IBANs, French phone numbers, EU VAT numbers, EU passport numbers, and email addresses. Suitable for applications processing EU citizen data requiring GDPR compliance.",
+    "description": "Masks configured French and EU identifier formats as a supporting security measure in GDPR-related deployments. Identifier matching alone does not satisfy Article 32 or other GDPR obligations.",
     "source": "built_in",
     "version": "1.95.0",
     "tags": [{"namespace":"protection","value":"privacy","label":"Privacy & sensitive information","source":"declared"},
@@ -34036,7 +34036,7 @@
   {
     "id": "mas-ai-risk-management",
     "name": "Singapore MAS — AI Risk Management for Financial Institutions",
-    "description": "Monetary Authority of Singapore (MAS) AI Risk Management for Financial Institutions alignment. Covers 5 enforceable obligation areas: fairness & bias in financial decisions, transparency & explainability of AI models, human oversight for consequential actions, data governance for financial customer data, and model security against adversarial attacks. Based on Guidelines on Artificial Intelligence Risk Management (MAS), and aligned with the 2018 FEAT Principles and Project MindForge. Zero-cost keyword-based detection.",
+    "description": "Screens phrases related to fairness, transparency, human oversight, data governance, and model security in Singapore financial-services AI. This keyword filter is a reference control; it does not implement or establish compliance with MAS requirements.",
     "source": "built_in",
     "version": "1.95.0",
     "tags": [{"namespace":"protection","value":"business_rules","label":"Business & industry rules","source":"declared"},
@@ -34772,7 +34772,7 @@
   {
     "id": "pdpa-singapore",
     "name": "Singapore PDPA — Personal Data Protection",
-    "description": "Singapore Personal Data Protection Act (PDPA) compliance. Covers 5 obligation areas: personal identifier collection (s.13 Consent), sensitive data profiling (Advisory Guidelines), Do Not Call Registry violations (Part IX), overseas data transfers (s.26), and automated profiling without human oversight (Model AI Governance Framework). Also includes regex-based PII detection for NRIC/FIN, Singapore phone numbers, postal codes, passports, UEN, and bank account numbers. Zero-cost keyword-based detection.",
+    "description": "Screens selected Singapore identifier formats and phrases related to consent, sensitive-data profiling, Do Not Call requests, overseas transfers, and automated profiling. It does not determine PDPA applicability or compliance.",
     "source": "built_in",
     "version": "1.95.0",
     "tags": [{"namespace":"protection","value":"privacy","label":"Privacy & sensitive information","source":"declared"},
@@ -36473,8 +36473,8 @@
   },
   {
     "id": "uae-regulatory-compliance",
-    "name": "UAE Regulatory Compliance",
-    "description": "Compliance with UAE Federal Decree-Law No. 45/2021 (Data Protection) and Federal Decree-Law No. 2/2015 (Anti-Discrimination). Protects Emirates ID numbers, UAE phone numbers, and ensures cultural sensitivity including royal family references and religious content policies.",
+    "name": "UAE Regulatory Reference Controls",
+    "description": "Screens selected UAE identifier formats and cultural-sensitivity or anti-discrimination phrases as reference controls. It does not determine the applicability of UAE law or establish regulatory compliance.",
     "source": "built_in",
     "version": "1.95.0",
     "tags": [{"namespace":"protection","value":"business_rules","label":"Business & industry rules","source":"declared"},

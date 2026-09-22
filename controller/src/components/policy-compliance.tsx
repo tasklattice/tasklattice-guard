@@ -52,6 +52,7 @@ export const PolicyCompliancePanel = memo(function PolicyCompliancePanel({ polic
     </section>
     <section className="space-y-3 border-t pt-5">
       <h3 className="font-semibold">{t(`${key}.references`)}</h3>
+      <p className="text-xs text-muted-foreground">{t(`${key}.referenceNotice`)}</p>
       {!data.references.length ? <p className="text-muted-foreground">{t(`${key}.noExternalReferences`)}</p> : null}
       {data.references.map(reference => <article key={reference.url} className="space-y-2 border-l-2 pl-4">
         <ExternalPolicyLink href={reference.url}>{reference.title}</ExternalPolicyLink>

@@ -11,14 +11,14 @@ import { PolicyCatalog } from "./catalog.js";
 const assetDirectory = resolve("../runner/toolkit/policy_library/assets");
 
 describe("Policy catalog", () => {
-  it("documents every built-in Policy with version-bound sources and real Rule references", () => {
-    const policies = PolicyCatalog.load(assetDirectory).list();
+  it("documents every built-in Policy and separates implementation lineage from industry context", () => {
+    const catalog = PolicyCatalog.load(assetDirectory);
+    const policies = catalog.list();
     expect(policies).toHaveLength(69);
     for (const policy of policies) {
       expect(policy.compliance?.policy_version, policy.id).toBe(policy.version);
       expect(policy.compliance?.provenance.en, policy.id).toBeTruthy();
       expect(policy.compliance?.provenance.zh, policy.id).toBeTruthy();
-      expect(policy.compliance?.references.length, policy.id).toBeGreaterThan(0);
       const ids = new Set(policy.rules.map(rule => rule.id));
       for (const entry of [...policy.compliance!.references, ...policy.compliance!.coverage]) {
         expect(entry.rule_ids.length, policy.id).toBeGreaterThan(0);
@@ -26,8 +26,25 @@ describe("Policy catalog", () => {
       }
     }
     expect(policies.filter(policy => policy.compliance).length).toBe(69);
-    expect(PolicyCatalog.load(assetDirectory).get("builtin-content-safety")?.compliance?.references[0]?.url).toContain("docs.nvidia.com");
-    expect(PolicyCatalog.load(assetDirectory).get("filter-denied-medical-advice")?.compliance?.references[0]?.url).toContain("github.com/BerriAI/litellm");
+    expect(policies.filter(policy => policy.compliance?.references.length).length).toBe(60);
+    expect(catalog.get("builtin-content-safety")?.compliance?.references[0]?.url).toContain("nist.gov");
+    expect(catalog.get("filter-denied-medical-advice")?.compliance).toMatchObject({
+      references: [expect.objectContaining({ url: expect.stringContaining("who.int") })],
+      upstream_status: { en: expect.stringContaining("not the Policy's compliance authority"), zh: expect.stringContaining("不是此 Policy 的合规权威") },
+    });
+    expect(catalog.get("mas-ai-risk-management")?.compliance?.references[0]?.url).toContain("aiverifyfoundation.sg");
+    expect(catalog.get("topic-filtering")?.compliance?.references).toEqual([]);
+  });
+
+  it("never presents software dependencies or the retired MAS page as compliance references", () => {
+    const references = PolicyCatalog.load(assetDirectory).list().flatMap(policy => policy.compliance?.references ?? []);
+    const urls = references.map(reference => reference.url);
+    expect(urls.some(url => /github\.com\/BerriAI|docs\.nvidia\.com/.test(url))).toBe(false);
+    expect(urls).not.toEqual(expect.arrayContaining([
+      "https://www.mas.gov.sg/publications/monographs-or-information-paper/2018/feat-principles",
+      "https://www.imda.gov.sg/resources/press-releases-factsheets-and-speeches/factsheets/2024/model-ai-governance-framework-for-generative-ai",
+    ]));
+    expect(references.every(reference => /NIST|OWASP|WHO|UNICEF|EUR-Lex|Government|Commission|Authority|Council|Committee|Organization|Foundation|Register|Association/.test(`${reference.publisher} ${reference.title}`))).toBe(true);
   });
   it("keeps the compressed documentation overhead bounded", () => {
     const policies = PolicyCatalog.load(assetDirectory).list();

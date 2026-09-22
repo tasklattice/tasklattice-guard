@@ -4335,7 +4335,7 @@
   {
     "id": "singapore-financial-conduct",
     "name": "Singapore financial AI reference controls",
-    "description": "Reviewed local financial-conduct phrases inspired by the existing MAS reference collection. Does not implement decision fairness, human oversight, legal compliance or certification.",
+    "description": "Local financial-conduct phrases related to fairness, transparency, human oversight, and data governance. Does not implement decision fairness, human oversight, legal compliance, or certification.",
     "source": "built_in",
     "version": "2.0.0",
     "tags": [

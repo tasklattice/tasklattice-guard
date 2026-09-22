@@ -12,6 +12,7 @@ const policy = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/asse
 it("renders version-bound provenance, blue external references, Rules, limits and review evidence", () => {
   render(<PolicyCompliancePanel policy={policy} />);
   expect(screen.getByText(policy.compliance!.summary.en)).toBeTruthy();
+  expect(screen.getByText("policyLibrary.compliance.referenceNotice")).toBeTruthy();
   expect(screen.getByText("policyLibrary.compliance.reviewed")).toBeTruthy();
   expect(screen.getByText("TaskLattice Engineering")).toBeTruthy();
   expect(screen.getAllByText("TFN (Australian Tax File Number)").length).toBeGreaterThan(0);
@@ -30,7 +31,7 @@ it("labels external links and renders Chinese documentation without claiming cer
   expect(screen.getByText(policy.compliance!.review.notes.zh)).toBeTruthy();
   expect(screen.getAllByText("policyLibrary.compliance.externalLink")).toHaveLength(policy.compliance!.references.length);
 });
-it("explains when a customer-authored Policy declares no external references", () => {
+it("explains when a Policy has no relevant external reference", () => {
   render(<PolicyCompliancePanel policy={{ ...policy, compliance: { ...policy.compliance!, references: [] } }} />);
   expect(screen.getByText("policyLibrary.compliance.noExternalReferences")).toBeTruthy();
   expect(screen.queryByRole("link")).toBeNull();

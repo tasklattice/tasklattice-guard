@@ -952,8 +952,8 @@ const resources = {
         compliance: {
           title: "Sources & compliance context", empty: "Sources and compliance documentation have not been provided for this Policy version. No compliance claim is implied.",
           version: "Policy version", pending: "Pending review", reviewed: "Documentation reviewed · not certified",
-          provenance: "Policy provenance", maintainer: "Documentation maintainer", upstream: "Upstream attribution", license: "License and attribution",
-          references: "Legal and standards references", rules: "Related Rules", external: "(opens in a new tab)", externalLink: "External link", noExternalReferences: "No external legal, standards, or upstream reference is declared for this customer-authored Policy.",
+          provenance: "Policy provenance", maintainer: "Documentation maintainer", upstream: "Implementation lineage", license: "License and attribution",
+          references: "Regulatory and industry context", referenceNotice: "These documents provide context; they are not the implementation source, an endorsement, or proof of compliance.", rules: "Related Rules", external: "(opens in a new tab)", externalLink: "External link", noExternalReferences: "No relevant external regulatory or industry reference is declared for this Policy.",
           coverage: "Coverage examples and boundaries", limitations: "What this Policy does not establish",
           review: "Review record", date: "Last formal review", reviewer: "Reviewer", notReviewed: "Not yet reviewed",
         },
@@ -3805,8 +3805,8 @@ const resources = {
         compliance: {
           title: "来源与合规说明", empty: "此 Policy 版本尚未提供来源与合规说明，不代表任何合规声明。",
           version: "Policy 版本", pending: "待审查", reviewed: "说明已审查 · 非认证",
-          provenance: "策略来源", maintainer: "说明维护方", upstream: "上游来源", license: "许可与归属",
-          references: "法规与标准参考", rules: "关联 Rules", external: "（在新页签中打开）", externalLink: "站外链接", noExternalReferences: "此客户自建 Policy 未声明站外法规、标准或上游参考。",
+          provenance: "策略来源", maintainer: "说明维护方", upstream: "实现沿革", license: "许可与归属",
+          references: "监管与行业背景", referenceNotice: "这些文件仅提供背景，不是实现来源、机构背书或合规证明。", rules: "关联 Rules", external: "（在新页签中打开）", externalLink: "站外链接", noExternalReferences: "此 Policy 未声明相关的站外监管或行业参考。",
           coverage: "覆盖示例与边界", limitations: "本策略不能证明的事项",
           review: "核验记录", date: "最近正式审查日期", reviewer: "审查方", notReviewed: "尚未审查",
         },
