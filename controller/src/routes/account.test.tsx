@@ -90,8 +90,7 @@ describe("AccountPage", () => {
     fireEvent.change(screen.getByLabelText("Display name"), { target: { value: "Guard Operator" } });
     expect(save.disabled).toBe(false);
     fireEvent.click(save);
-    expect(updateProfileMock).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
 
     await waitFor(() => expect(updateProfileMock).toHaveBeenCalledWith({
       display_name: "Guard Operator",
@@ -113,7 +112,7 @@ describe("AccountPage", () => {
     expect(screen.getByRole("button", { name: "Change password" })).toBeTruthy();
   });
 
-  it("saves a language change through the status-only API and closes confirmation", async () => {
+  it("saves a language change directly through the status-only API", async () => {
     authClientMock.updateUser.mockResolvedValue({ data: { status: true }, error: null });
     authClientMock.getSession.mockResolvedValue({ data: { user: {
       id: user.id, name: user.display_name, email: user.email, role: user.role,
@@ -130,11 +129,8 @@ describe("AccountPage", () => {
       fireEvent.keyDown(screen.getByRole("combobox", { name: "Interface language" }), { key: "Enter" });
       fireEvent.click(await screen.findByRole("option", { name: "common.chinese" }));
       fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
-      expect(updateProfileMock).not.toHaveBeenCalled();
-      fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
-      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-      expect(authClientMock.updateUser).toHaveBeenCalledWith({ name: user.display_name, preferredLanguage: "zh-CN" });
+      await waitFor(() => expect(authClientMock.updateUser).toHaveBeenCalledWith({ name: user.display_name, preferredLanguage: "zh-CN" }));
       expect(authClientMock.getSession).toHaveBeenCalledWith({ query: { disableCookieCache: true } });
       expect(screen.queryByRole("alert")).toBeNull();
     } finally {
