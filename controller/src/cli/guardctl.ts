@@ -98,9 +98,70 @@ function buildQs(flags: Record<string, string>, allowList: string[]): string {
   return str ? `?${str}` : '';
 }
 
+const TABLE_PREVIEW_ROWS = 20;
+let lastShowArgs: string[] | null = null;
+
 function printJson(data: any) {
   if (data === null || data === undefined) return;
   console.log(JSON.stringify(data, null, 2));
+}
+
+function scalar(value: any): string {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  return JSON.stringify(value, null, 2);
+}
+
+type TableColumn = { label: string; value: (row: any) => any };
+
+function renderTable(title: string, rows: any[], columns: TableColumn[], detail = false) {
+  console.log(`\n${title}`);
+  if (!rows.length) { console.log('(none)'); return; }
+  const shown = detail ? rows : rows.slice(0, TABLE_PREVIEW_ROWS);
+  const values = shown.map((row) => columns.map((column) => scalar(column.value(row)).replace(/\s+/g, ' ')));
+  const widths = columns.map((column, index) => Math.max(column.label.length, ...values.map((row) => row[index].length)));
+  console.log(columns.map((column, index) => column.label.padEnd(widths[index])).join(' | '));
+  console.log(widths.map((width) => '-'.repeat(width)).join('-+-'));
+  values.forEach((row) => console.log(row.map((value, index) => value.padEnd(widths[index])).join(' | ')));
+  if (!detail && rows.length > shown.length) console.log(`Showing ${shown.length} of ${rows.length}. Press d or use --detail for all rows.`);
+}
+
+function listItems(data: any): any[] {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.items)) return data.items;
+  return data === null || data === undefined ? [] : [data];
+}
+
+function flattenFields(value: any, prefix = ''): Array<{ field: string; value: string }> {
+  if (value === null || value === undefined || typeof value !== 'object') return [{ field: prefix || 'value', value: scalar(value) }];
+  if (Array.isArray(value)) {
+    if (!value.length) return [{ field: prefix, value: '(none)' }];
+    return value.flatMap((item, index) => flattenFields(item, `${prefix}[${index}]`));
+  }
+  return Object.entries(value).flatMap(([key, item]) => flattenFields(item, prefix ? `${prefix}.${key}` : key));
+}
+
+function printRunnerPools(data: any, detail: boolean) {
+  const pools = listItems(data);
+  renderTable('Runner pools', pools, [
+    { label: 'ID', value: (p) => p.id }, { label: 'NAME', value: (p) => p.name },
+    { label: 'DEFAULT', value: (p) => p.isDefault }, { label: 'DESIRED', value: (p) => p.desiredReplicas },
+    { label: 'READY/TOTAL', value: (p) => `${p.capacity?.readyRunners ?? 0}/${p.capacity?.totalRunners ?? p.instances?.length ?? 0}` },
+    { label: 'SAFE RPS/RUNNER', value: (p) => p.safeRpsPerRunner },
+    { label: 'CURRENT/CAPACITY RPS', value: (p) => `${p.capacity?.currentRps ?? 0}/${p.capacity?.safeRpsCapacity ?? 0}` },
+    { label: 'UTILIZATION', value: (p) => `${Math.round((p.capacity?.utilization ?? 0) * 100)}%` },
+    { label: 'HEADROOM RPS', value: (p) => p.capacity?.headroomRps ?? 0 },
+  ], detail);
+  const runners = pools.flatMap((pool) => (pool.instances ?? []).map((runner: any) => ({ ...runner, poolName: pool.name })));
+  renderTable('Runner instances', runners, [
+    { label: 'POOL', value: (r) => r.poolName ?? r.poolId }, { label: 'RUNNER ID', value: (r) => r.runnerId },
+    { label: 'STATUS', value: (r) => r.status }, { label: 'RUNNER', value: (r) => r.runnerVersion },
+    { label: 'NEMO', value: (r) => r.nemoVersion }, { label: 'COMPILER', value: (r) => r.compilerCapable },
+    { label: 'GENERATION', value: (r) => `${r.appliedGeneration ?? 0}/${r.desiredGeneration ?? 0}` },
+    { label: 'INFLIGHT/MAX', value: (r) => `${r.load?.inflight ?? 0}/${r.load?.maxConcurrency ?? r.maxConcurrency ?? 0}` },
+    { label: 'QUEUE', value: (r) => r.load?.queueDepth ?? 0 }, { label: 'LAST HEARTBEAT', value: (r) => r.lastHeartbeatAt },
+  ], detail);
 }
 
 function outputJson(data: any, path?: string) {
@@ -114,6 +175,62 @@ function outputJson(data: any, path?: string) {
   }
   writeFileSync(resolve(process.cwd(), path), `${JSON.stringify(data, null, 2)}\n`, 'utf8');
   console.log(`Wrote full output to ${resolve(process.cwd(), path)}`);
+}
+
+function outputHuman(resource: string, data: any, detail = false) {
+  if (resource === 'runner-pools' || resource === 'runners') { printRunnerPools(data, detail); return; }
+  const rows = listItems(data);
+  const columns: Record<string, TableColumn[]> = {
+    providers: [
+      { label: 'ID', value: (r) => r.id }, { label: 'NAME', value: (r) => r.name }, { label: 'KIND', value: (r) => r.kind },
+      { label: 'STATUS', value: (r) => r.status }, { label: 'BASE URL', value: (r) => r.baseUrl },
+      { label: 'CREDENTIAL', value: (r) => r.credentialHint }, { label: 'LATENCY MS', value: (r) => r.validationLatencyMs },
+    ],
+    models: [
+      { label: 'ID', value: (r) => r.id }, { label: 'NAME', value: (r) => r.name }, { label: 'PROVIDER', value: (r) => r.providerName },
+      { label: 'MODEL', value: (r) => r.model }, { label: 'PROFILE', value: (r) => r.profile }, { label: 'STATUS', value: (r) => r.status },
+    ],
+    policies: [
+      { label: 'ID', value: (r) => r.id }, { label: 'NAME', value: (r) => r.name }, { label: 'STATUS', value: (r) => r.status },
+      { label: 'VERSION', value: (r) => r.activeVersion ?? r.version }, { label: 'UPDATED', value: (r) => r.updatedAt },
+    ],
+    guardrails: [
+      { label: 'ID', value: (r) => r.id }, { label: 'NAME', value: (r) => r.name }, { label: 'STATUS', value: (r) => r.status },
+      { label: 'ACTIVE VERSION', value: (r) => r.activeVersion }, { label: 'DRAFT', value: (r) => r.draftRevision },
+      { label: 'GENERATION', value: (r) => r.desiredGeneration }, { label: 'TESTS', value: (r) => r.testCaseCount },
+    ],
+    endpoints: [
+      { label: 'ID', value: (r) => r.id }, { label: 'NAME', value: (r) => r.name }, { label: 'ADAPTER', value: (r) => r.adapter },
+      { label: 'STATUS', value: (r) => r.status }, { label: 'GENERATION', value: (r) => r.desiredGeneration },
+      { label: 'DISTRIBUTION', value: (r) => r.distributionStatus },
+    ],
+    routers: [
+      { label: 'ID', value: (r) => r.id }, { label: 'NAME', value: (r) => r.name }, { label: 'STATUS', value: (r) => r.status },
+      { label: 'ENDPOINTS', value: (r) => r.endpointIds?.length ?? (r.endpointId ? 1 : 0) },
+      { label: 'DRAFT', value: (r) => r.draftRevision }, { label: 'ACTIVE', value: (r) => r.activeRevision },
+      { label: 'GENERATION', value: (r) => r.desiredGeneration },
+    ],
+    routes: [
+      { label: 'ID', value: (r) => r.id }, { label: 'NAME', value: (r) => r.name }, { label: 'ENABLED', value: (r) => r.enabled },
+      { label: 'ORDER', value: (r) => r.order ?? r.routeOrder }, { label: 'TARGETS', value: (r) => r.targets?.length ?? 0 },
+      { label: 'FALLBACK', value: (r) => r.fallback ?? r.isFallback },
+    ],
+    'telemetry-events': [
+      { label: 'TIME', value: (r) => r.occurredAt }, { label: 'REQUEST', value: (r) => r.requestId }, { label: 'RUNNER', value: (r) => r.runnerId },
+      { label: 'ROUTER', value: (r) => r.routerId }, { label: 'GUARDRAIL', value: (r) => r.guardrailId },
+      { label: 'DIRECTION', value: (r) => r.direction }, { label: 'DECISION', value: (r) => r.decision ?? r.outcome },
+      { label: 'MS', value: (r) => r.durationMs },
+    ],
+    'audit-events': [
+      { label: 'TIME', value: (r) => r.occurredAt }, { label: 'KIND', value: (r) => r.kind }, { label: 'ACTOR', value: (r) => r.actorId },
+      { label: 'RESOURCE', value: (r) => `${r.resourceType ?? ''}/${r.resourceId ?? ''}` },
+    ],
+  };
+  const selected = columns[resource];
+  if (selected) { renderTable(resource, rows, selected, detail); return; }
+  renderTable(resource, flattenFields(data), [
+    { label: 'FIELD', value: (r) => r.field }, { label: 'VALUE', value: (r) => r.value },
+  ], detail);
 }
 
 const { url: resolvedUrl, source: urlSource } = resolveBaseUrl();
@@ -240,10 +357,11 @@ async function handleShow(args: string[]) {
     console.log('  telemetry-events [filters...] | telemetry-event <event-id>');
     console.log('  telemetry-metrics [--router <id>] [--guardrail <id>] [--window 1h|24h|7d|15d|30d]');
     console.log('  endpoint-activity | audit-events [--limit <n>]');
-    console.log('  Add --output <file> (or --out <file>) to write the full JSON response to a file.');
+    console.log('  Add --detail for the full table, or --output <file> (--out <file>) for full JSON.');
     return;
   }
   const { positional, flags } = parseFlags(args);
+  lastShowArgs = [...args];
   const resource = positional[0];
   const p1 = positional[1];
   const p2 = positional[2];
@@ -326,7 +444,8 @@ async function handleShow(args: string[]) {
       if (res?.ok && res?.data) {
         const routes = res.data.routes ?? res.data.draft?.routes ?? res.data.active?.routes ?? null;
         if (routes) {
-          outputJson(routes, flags.output ?? flags.out);
+          if (flags.output ?? flags.out) outputJson(routes, flags.output ?? flags.out);
+          else outputHuman('routes', routes, flags.detail === 'true');
           return;
         } else {
           console.log('No routes field found in Router payload; falling back to full resource:');
@@ -390,7 +509,8 @@ async function handleShow(args: string[]) {
 
   if (!res) return;
   if (res.ok) {
-    outputJson(res.data, flags.output ?? flags.out);
+    if (flags.output ?? flags.out) outputJson(res.data, flags.output ?? flags.out);
+    else outputHuman(resource, res.data, flags.detail === 'true');
   } else if (res.error) {
     console.error(`Network Error: ${res.error}`);
   } else {
@@ -422,6 +542,7 @@ async function handleCommand(line: string) {
     console.log('  enable                       Sign in as administrator');
     console.log('  disable                      Drop back to read-only credentials');
     console.log('  show <resource> ...          Read a resource; run "show" for list');
+    console.log('  d | detail                   Repeat the last show with all rows');
     console.log('  exit | quit                  Close the CLI');
     return;
   }
@@ -508,6 +629,15 @@ async function handleCommand(line: string) {
 
   if (cmd === 'show') {
     await handleShow(args);
+    return;
+  }
+
+  if (cmd === 'd' || cmd === 'detail') {
+    if (!lastShowArgs) {
+      console.log('No previous show command. Run show <resource> first.');
+      return;
+    }
+    await handleShow([...lastShowArgs.filter((arg) => !arg.startsWith('--detail')), '--detail']);
     return;
   }
 

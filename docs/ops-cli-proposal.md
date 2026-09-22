@@ -170,10 +170,14 @@ show endpoint-activity
 show audit-events [--limit <n>]
 ```
 
-Any `show` command accepts `--output <file>` (or `--out <file>`) to write the
-complete pretty-printed JSON response without terminal truncation. Relative
-paths are resolved from the current directory; `--output -` keeps the output
-on stdout.
+`show` commands render resource-aware text tables with columns chosen for each
+resource. Runner pool output has separate pool-capacity and Runner-instance
+tables, while complex single resources use a complete field/value table. Long
+lists show a 20-row preview; press `d` (or run `detail`) to repeat the last
+`show` with all rows, or pass `--detail` directly. Any `show` command also accepts
+`--output <file>` (or `--out <file>`) to write the complete pretty-printed JSON
+response without terminal truncation. Relative paths are resolved from the
+current directory; `--output -` keeps the output on stdout.
 
 For `show routes`, the client reads the Router’s draft, active snapshot, or
 selected Revision; it does not invent a global route endpoint.

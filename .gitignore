@@ -10,6 +10,7 @@ build/
 dist/
 *.egg-info/
 .DS_Store
+/AGENTS.md
 .env
 .local-secrets/
 .tasklattice-recovery/
