@@ -170,6 +170,11 @@ show endpoint-activity
 show audit-events [--limit <n>]
 ```
 
+Any `show` command accepts `--output <file>` (or `--out <file>`) to write the
+complete pretty-printed JSON response without terminal truncation. Relative
+paths are resolved from the current directory; `--output -` keeps the output
+on stdout.
+
 For `show routes`, the client reads the Router’s draft, active snapshot, or
 selected Revision; it does not invent a global route endpoint.
 

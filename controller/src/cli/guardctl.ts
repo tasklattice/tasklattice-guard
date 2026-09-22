@@ -1,6 +1,6 @@
 import readline from 'readline';
 import axios, { AxiosRequestConfig } from 'axios';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -101,6 +101,19 @@ function buildQs(flags: Record<string, string>, allowList: string[]): string {
 function printJson(data: any) {
   if (data === null || data === undefined) return;
   console.log(JSON.stringify(data, null, 2));
+}
+
+function outputJson(data: any, path?: string) {
+  if (!path) {
+    printJson(data);
+    return;
+  }
+  if (path === '-') {
+    printJson(data);
+    return;
+  }
+  writeFileSync(resolve(process.cwd(), path), `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+  console.log(`Wrote full output to ${resolve(process.cwd(), path)}`);
 }
 
 const { url: resolvedUrl, source: urlSource } = resolveBaseUrl();
@@ -227,6 +240,7 @@ async function handleShow(args: string[]) {
     console.log('  telemetry-events [filters...] | telemetry-event <event-id>');
     console.log('  telemetry-metrics [--router <id>] [--guardrail <id>] [--window 1h|24h|7d|15d|30d]');
     console.log('  endpoint-activity | audit-events [--limit <n>]');
+    console.log('  Add --output <file> (or --out <file>) to write the full JSON response to a file.');
     return;
   }
   const { positional, flags } = parseFlags(args);
@@ -312,7 +326,7 @@ async function handleShow(args: string[]) {
       if (res?.ok && res?.data) {
         const routes = res.data.routes ?? res.data.draft?.routes ?? res.data.active?.routes ?? null;
         if (routes) {
-          console.log(JSON.stringify(routes, null, 2));
+          outputJson(routes, flags.output ?? flags.out);
           return;
         } else {
           console.log('No routes field found in Router payload; falling back to full resource:');
@@ -376,7 +390,7 @@ async function handleShow(args: string[]) {
 
   if (!res) return;
   if (res.ok) {
-    printJson(res.data);
+    outputJson(res.data, flags.output ?? flags.out);
   } else if (res.error) {
     console.error(`Network Error: ${res.error}`);
   } else {
