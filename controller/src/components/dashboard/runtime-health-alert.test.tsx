@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { RuntimeHealthAlert, type RuntimeHealthAlertMetrics } from "./runtime-health-alert";
@@ -27,6 +27,21 @@ const healthy: RuntimeHealthAlertMetrics = {
 
 describe("RuntimeHealthAlert", () => {
   afterEach(cleanup);
+
+  it("dismisses the same condition across polling and reappears for a new problem or recurrence", () => {
+    const capacity = { ...healthy, system_status: "degraded" as const, system_reasons: ["runner_capacity_below_desired" as const, "runner_configuration_syncing" as const] };
+    const view = render(<RuntimeHealthAlert metrics={capacity} />);
+    fireEvent.click(screen.getByRole("button", { name: "common.close" }));
+    expect(screen.queryByRole("alert")).toBeNull();
+    view.rerender(<RuntimeHealthAlert metrics={{ ...capacity, system_reasons: [...capacity.system_reasons].reverse() }} />);
+    expect(screen.queryByRole("alert")).toBeNull();
+    view.rerender(<RuntimeHealthAlert metrics={{ ...capacity, fail_closed_count: 1 }} />);
+    expect(screen.getByRole("alert").textContent).toContain("Fail-closed");
+    fireEvent.click(screen.getByRole("button", { name: "common.close" }));
+    view.rerender(<RuntimeHealthAlert metrics={healthy} />);
+    view.rerender(<RuntimeHealthAlert metrics={capacity} />);
+    expect(screen.getByRole("alert").textContent).toContain("Platform needs attention");
+  });
 
   it("renders nothing when the runtime is healthy", () => {
     const view = render(<RuntimeHealthAlert metrics={healthy} />);

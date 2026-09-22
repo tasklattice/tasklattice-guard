@@ -1,4 +1,5 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { modelBindingChanges, partialModelActivationSchema, type PartialModelActivation } from "../../shared/model-activation.js";
 
 import { and, asc, desc, eq, getTableColumns, inArray, max, ne, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -70,7 +71,7 @@ const editableRevisionColumns = {
 function unchangedRevision(draft: { id: string; rowVersion: string }) {
   return and(eq(modelConfigurationRevisions.id, draft.id),
     sql`${modelConfigurationRevisions}.xmin::text = ${draft.rowVersion}`,
-    eq(modelConfigurationRevisions.state, "draft"));
+    inArray(modelConfigurationRevisions.state, ["draft", "validated"]));
 }
 export type RailValidationEvidence = { passed: boolean; message: string; latencyMs: number; cases?: ModelValidationCheck["cases"] };
 export type RailValidator = (request: CapabilityValidationRequest) => Promise<RailValidationEvidence>;
@@ -122,7 +123,7 @@ export class ModelConfigurationService {
     const [providers, storedModels, revisions] = await Promise.all([
       this.db.select().from(modelProviders).orderBy(asc(modelProviders.name)),
       this.db.select().from(modelDefinitions).orderBy(asc(modelDefinitions.name)),
-      this.db.select().from(modelConfigurationRevisions).orderBy(desc(modelConfigurationRevisions.revision)),
+      this.db.select().from(modelConfigurationRevisions).where(ne(modelConfigurationRevisions.state, "superseded")).orderBy(desc(modelConfigurationRevisions.revision)),
     ]);
     // A read must not mutate persisted revisions, but retired Models must not
     // be offered for new UI configuration.
@@ -141,7 +142,6 @@ export class ModelConfigurationService {
       active: active ? publicRevision(active) : null,
       activating: activating ? publicRevision(activating) : null,
       failed: failed ? publicRevision(failed) : null,
-      rollbackTarget: revisions.find(item => item.state === "superseded")?.id ?? null,
     };
   }
 
@@ -637,80 +637,81 @@ export class ModelConfigurationService {
     return publicRevision(updated);
   }
 
-  async beginActivation(revisionId: string, actorId: string) {
-    const [revision] = await this.db.select().from(modelConfigurationRevisions)
-      .where(eq(modelConfigurationRevisions.id, revisionId));
-    if (!revision) throw new NotFoundError("Model configuration revision", revisionId);
-    if (revision.state !== "validated" || !revision.validationReport?.valid) {
-      throw new ConflictError("Only a successfully validated model configuration can be activated.", "model_configuration_not_validated");
-    }
-    if (!(await this.reportFromChecks(normalizeModelAssignments(revision.assignments), revision.validationReport.checks)).valid) {
-      throw new ConflictError("Validate each assigned Input/Output Rail on a Runner before activation. Legacy model probes are not Rail evidence.", "model_configuration_not_validated");
-    }
-    const activated = await this.db.transaction(async (tx) => {
-      const [state] = await tx.update(controllerState)
-        .set({ desiredGeneration: sql`${controllerState.desiredGeneration} + 1`, updatedAt: new Date() })
-        .where(eq(controllerState.id, "singleton"))
-        .returning({ desiredGeneration: controllerState.desiredGeneration });
+  async applyConfiguration(actorId: string, raw: PartialModelActivation) {
+    const selection = partialModelActivationSchema.parse(raw);
+    const activated = await this.db.transaction(async tx => {
+      // Match activation/finalization lock order. Never merge against an in-flight revision.
+      const [state] = await tx.select().from(controllerState).where(eq(controllerState.id, "singleton")).for("update");
       if (!state) throw new Error("Controller desired state is unavailable.");
-      // The Controller row serializes activations, but both requests may have
-      // passed preflight before acquiring it. Consume the validated snapshot
-      // atomically; a losing request rolls back its generation increment.
-      const [updated] = await tx.update(modelConfigurationRevisions).set({
-        state: "activating",
-        generation: state.desiredGeneration,
-        failureReason: null,
-        updatedAt: new Date(),
-      }).where(and(
-        eq(modelConfigurationRevisions.id, revisionId),
-        eq(modelConfigurationRevisions.state, "validated"),
-      )).returning();
-      if (!updated) {
-        throw new ConflictError("Only a successfully validated model configuration can be activated.", "model_configuration_not_validated");
+      const [pending] = await tx.select().from(modelConfigurationRevisions).where(eq(modelConfigurationRevisions.state, "activating")).limit(1);
+      if (pending) throw new ConflictError("Wait for the current activation to finish before applying more changes.", "model_configuration_activation_pending");
+      const [draft] = await tx.select().from(modelConfigurationRevisions)
+        .where(inArray(modelConfigurationRevisions.state, ["draft", "validated"]))
+        .orderBy(desc(modelConfigurationRevisions.revision)).limit(1).for("update");
+      if (!draft) throw new ConflictError("No saved configuration is available to apply.", "model_configuration_changed");
+      const [active] = await tx.select().from(modelConfigurationRevisions).where(eq(modelConfigurationRevisions.state, "active")).limit(1);
+      if (revisionReviewToken(draft) !== selection.expectedDraftToken || (active?.id ?? null) !== selection.expectedActiveId) {
+        throw new ConflictError("The reviewed configuration changed. Review the latest changes again.", "model_configuration_changed");
       }
-      await tx.update(modelConfigurationRevisions).set({
-        state: "failed",
-        failureReason: "A newer model configuration activation replaced this attempt.",
-        updatedAt: new Date(),
-      }).where(and(eq(modelConfigurationRevisions.state, "activating"), ne(modelConfigurationRevisions.id, revisionId)));
-      await tx.insert(outboxEvents).values({
-        id: randomUUID(),
-        kind: "runner.desired_state_changed",
-        aggregateId: revisionId,
-        payload: { resourceType: "model_configuration", revisionId, generation: state.desiredGeneration },
-      });
-      await tx.insert(auditEvents).values({
-        id: randomUUID(),
-        kind: "model_configuration.activation_started",
-        actorId,
-        resourceType: "model_configuration",
-        resourceId: revisionId,
-        detail: { revision: revision.revision, generation: state.desiredGeneration },
-      });
-      return updated!;
+      const proposed = normalizeModelAssignments(draft.assignments);
+      const assignments = normalizeModelAssignments(active?.assignments);
+      const changes = modelBindingChanges(proposed, assignments, draft.validationReport?.checks ?? []);
+      const selected = new Set(selection.bindingIds);
+      if (selection.bindingIds.some(id => !changes.some(change => change.id === id && change.ready))) {
+        throw new ConflictError("Only changed bindings with successful Runner Rail validation can be applied.", "model_configuration_not_validated");
+      }
+      for (const id of selected) assignments.bindings[id] = proposed.bindings[id];
+      const checks = [
+        ...(active?.validationReport?.checks ?? []).filter(check => !selection.bindingIds.some(id => checkBelongsToTarget(check, id))),
+        ...(draft.validationReport?.checks ?? []).filter(check => selection.bindingIds.some(id => checkBelongsToTarget(check, id))),
+      ];
+      const report = await this.reportFromChecks(assignments, checks, tx);
+      if (!report.valid) throw new ConflictError("The merged Runner configuration is not valid. Validate the selected bindings again.", "model_configuration_not_validated");
+      // Discard obsolete attempts/history, retaining only the current config and latest edits.
+      const [maximum] = await tx.select({ value: max(modelConfigurationRevisions.revision) }).from(modelConfigurationRevisions);
+      await tx.delete(modelConfigurationRevisions).where(and(
+        ne(modelConfigurationRevisions.id, draft.id),
+        ne(modelConfigurationRevisions.id, active?.id ?? ""),
+      ));
+      const generation = state.desiredGeneration + 1;
+      const id = randomUUID();
+      const [snapshot] = await tx.insert(modelConfigurationRevisions).values({
+        id, revision: (maximum?.value ?? 0) + 1, state: "activating", assignments,
+        validationReport: report, validatedAt: new Date(report.checkedAt), generation, createdBy: actorId,
+      }).returning();
+      await tx.update(controllerState).set({ desiredGeneration: generation, updatedAt: new Date() }).where(eq(controllerState.id, "singleton"));
+      await tx.insert(outboxEvents).values({ id: randomUUID(), kind: "runner.desired_state_changed", aggregateId: id,
+        payload: { resourceType: "model_configuration", revisionId: id, generation } });
+      await tx.insert(auditEvents).values({ id: randomUUID(), kind: "model_configuration.activation_started", actorId,
+        resourceType: "model_configuration", resourceId: id,
+        detail: { generation, sourceDraftId: draft.id, previousActiveId: active?.id ?? null,
+          changes: changes.filter(change => selected.has(change.id)).map(change => ({ bindingId: change.id, previousModelId: change.current, modelId: change.next })) } });
+      // Keep the original draft and all unselected edits; the next diff is against the new Active snapshot.
+      return snapshot!;
     });
     this.activeCache = null;
-    await this.ensureDraft(actorId);
     return publicRevision(activated);
   }
 
   async finalizeActivation(revisionId: string): Promise<void> {
     await this.db.transaction(async (tx) => {
-      // Use the same lock order as beginActivation. A delayed ACK must not
-      // reactivate a revision that a newer activation has already replaced.
+      // A unique synchronization ID prevents delayed ACKs from replacing a newer config.
       const [state] = await tx.select({ id: controllerState.id }).from(controllerState)
         .where(eq(controllerState.id, "singleton")).for("update");
       if (!state) throw new Error("Controller desired state is unavailable.");
       const [revision] = await tx.select().from(modelConfigurationRevisions)
         .where(eq(modelConfigurationRevisions.id, revisionId)).for("update");
       if (!revision || revision.state !== "activating") return;
-      await tx.update(modelConfigurationRevisions).set({ state: "superseded", updatedAt: new Date() })
-        .where(and(eq(modelConfigurationRevisions.state, "active"), ne(modelConfigurationRevisions.id, revisionId)));
+      // Replace the current configuration; do not retain restorable historical versions.
+      await tx.delete(modelConfigurationRevisions)
+        .where(and(inArray(modelConfigurationRevisions.state, ["active", "superseded", "failed"]), ne(modelConfigurationRevisions.id, revisionId)));
       await tx.update(modelConfigurationRevisions).set({
         state: "active",
         activatedAt: new Date(),
         updatedAt: new Date(),
       }).where(eq(modelConfigurationRevisions.id, revisionId));
+      await tx.insert(auditEvents).values({ id: randomUUID(), kind: "model_configuration.applied", actorId: revision.createdBy,
+        resourceType: "model_configuration", resourceId: revisionId, detail: { generation: revision.generation } });
     });
     this.activeCache = null;
   }
@@ -722,27 +723,6 @@ export class ModelConfigurationService {
       updatedAt: new Date(),
     }).where(and(eq(modelConfigurationRevisions.id, revisionId), eq(modelConfigurationRevisions.state, "activating")));
     this.activeCache = null;
-  }
-
-  async rollback(actorId: string, targetRevisionId: string) {
-    const [prior] = await this.db.select().from(modelConfigurationRevisions)
-      .where(and(eq(modelConfigurationRevisions.id, targetRevisionId), eq(modelConfigurationRevisions.state, "superseded")))
-      .orderBy(desc(modelConfigurationRevisions.activatedAt), desc(modelConfigurationRevisions.revision))
-      .limit(1);
-    if (!prior) throw new ConflictError("No previously active model configuration is available.", "model_configuration_rollback_unavailable");
-    const draft = await this.ensureEditableDraft(actorId);
-    await this.db.update(modelConfigurationRevisions).set({
-      assignments: { ...normalizeModelAssignments(prior.assignments), controlPlane: normalizeModelAssignments(draft.assignments).controlPlane },
-      state: "validated",
-      validationReport: await this.reportFromChecks(
-        { ...normalizeModelAssignments(prior.assignments), controlPlane: normalizeModelAssignments(draft.assignments).controlPlane },
-        [...(prior.validationReport?.checks ?? []).filter((check) => !checkBelongsToTarget(check, "control_plane")),
-          ...(draft.validationReport?.checks ?? []).filter((check) => checkBelongsToTarget(check, "control_plane"))],
-      ),
-      validatedAt: prior.validatedAt,
-      updatedAt: new Date(),
-    }).where(eq(modelConfigurationRevisions.id, draft.id));
-    return this.beginActivation(draft.id, actorId);
   }
 
   async activeConfiguration(includeActivating = false): Promise<ActiveModelConfiguration | null> {
@@ -798,7 +778,9 @@ export class ModelConfigurationService {
   }
 
   async controlPlaneModel(_role: "policy_authoring" | "playground_chat") {
+    // Chat applies on save independently of Runner synchronization attempts.
     const [revision] = await this.db.select().from(modelConfigurationRevisions)
+      .where(inArray(modelConfigurationRevisions.state, ["draft", "validated"]))
       .orderBy(desc(modelConfigurationRevisions.revision)).limit(1);
     if (!revision) return null;
     const modelId = normalizeModelAssignments(revision.assignments).controlPlane;
@@ -952,16 +934,16 @@ export class ModelConfigurationService {
     };
   }
 
-  private async reportFromChecks(assignments: ModelAssignments, checks: ModelValidationCheck[]): Promise<ModelValidationReport> {
+  private async reportFromChecks(assignments: ModelAssignments, checks: ModelValidationCheck[], database: Pick<ControllerDatabase, "select"> = this.db): Promise<ModelValidationReport> {
     assignments = normalizeModelAssignments(assignments);
     const ids = [...new Set(assignedModelIds(assignments))];
     const models = ids.length
-      ? await this.db.select().from(modelDefinitions).where(inArray(modelDefinitions.id, ids))
+      ? await database.select().from(modelDefinitions).where(inArray(modelDefinitions.id, ids))
       : [];
     const modelById = new Map(models.map((model) => [model.id, model]));
     const providerIds = [...new Set(models.map((model) => model.providerId))];
     const providers = providerIds.length
-      ? await this.db.select().from(modelProviders).where(inArray(modelProviders.id, providerIds))
+      ? await database.select().from(modelProviders).where(inArray(modelProviders.id, providerIds))
       : [];
     const providerById = new Map(providers.map((provider) => [provider.id, provider]));
     const contractCoverage = [
@@ -997,13 +979,13 @@ export class ModelConfigurationService {
       checkedAt: new Date().toISOString(),
       checks,
       contractCoverage: uniqueContractCoverage(contractCoverage),
-      policies: await this.policyCoverage(availableContracts),
+      policies: await this.policyCoverage(availableContracts, database),
     };
   }
 
-  private async policyCoverage(available: Set<string>): Promise<PolicyCoverage[]> {
+  private async policyCoverage(available: Set<string>, database: Pick<ControllerDatabase, "select"> = this.db): Promise<PolicyCoverage[]> {
     const catalog = PolicyCatalog.load(this.policyCatalogDirectory).list();
-    const custom = await this.db.select().from(policyVersions).orderBy(desc(policyVersions.version));
+    const custom = await database.select().from(policyVersions).orderBy(desc(policyVersions.version));
     const latestCustom = new Map<string, typeof custom[number]>();
     for (const version of custom) if (!latestCustom.has(version.policyId)) latestCustom.set(version.policyId, version);
     return [
@@ -1181,9 +1163,7 @@ export class ModelConfigurationService {
   }
 
   private async ensureEditableDraft(actorId: string | null) {
-    const existing = await this.ensureDraft(actorId);
-    if (existing.state === "draft") return existing;
-    return this.createDraftFrom(existing.assignments, actorId, existing.validationReport);
+    return this.ensureDraft(actorId);
   }
 
   private async ensureDraft(actorId: string | null) {
@@ -1260,10 +1240,14 @@ function publicModel(model: ModelRow, provider?: ProviderRow) {
   };
 }
 
+function revisionReviewToken(revision: typeof modelConfigurationRevisions.$inferSelect) {
+  return createHash("sha256").update(JSON.stringify([revision.id, revision.state, revision.assignments, revision.validationReport, revision.updatedAt])).digest("hex");
+}
+
 function publicRevision(revision: typeof modelConfigurationRevisions.$inferSelect) {
   return {
     id: revision.id,
-    revision: revision.revision,
+    reviewToken: revisionReviewToken(revision),
     state: revision.state,
     generation: revision.generation,
     assignments: normalizeModelAssignments(revision.assignments),

@@ -150,14 +150,14 @@ describe("Model configuration HTTP routes", () => {
   it("returns a conflict when Runner rejects an activation", async () => {
     const failed = { ...revision, state: "failed", failureReason: "Provider prewarm failed." };
     const models = {
-      beginActivation: vi.fn().mockResolvedValue({ ...revision, state: "activating", generation: 9 }),
+      applyConfiguration: vi.fn().mockResolvedValue({ ...revision, state: "activating", generation: 9 }),
       finalizeActivation: vi.fn(),
       view: vi.fn().mockResolvedValue({ ...view, failed }),
     };
     const app = appWith("admin", models, {
       distributeDesiredState: vi.fn().mockResolvedValue({ desiredGeneration: 9, distributionStatus: "syncing" }),
     });
-    const response = await app.request(`/api/v1/model-configuration/revisions/${revision.id}/activate`, { method: "POST" });
+    const response = await app.request('/api/v1/model-configuration/apply', { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ bindingIds: ['content_safety.input'], expectedDraftToken: 'token', expectedActiveId: null }) });
     expect(response.status).toBe(409);
     expect(JSON.stringify(await response.json())).toContain("Provider prewarm failed");
   });
@@ -183,10 +183,34 @@ describe("Model configuration HTTP routes", () => {
     expect(models.validateDraft).toHaveBeenCalledWith("admin-1");
   });
 
+  it("forwards selected bindings and review preconditions and finalizes the new snapshot", async () => {
+    const selection = { bindingIds: ["content_safety.input"], expectedDraftToken: "review-token", expectedActiveId: null };
+    const models = {
+      applyConfiguration: vi.fn().mockResolvedValue({ ...revision, id: "new-snapshot", state: "activating", generation: 9 }),
+      finalizeActivation: vi.fn(), view: vi.fn().mockResolvedValue(view),
+    };
+    const app = appWith("admin", models, { distributeDesiredState: vi.fn().mockResolvedValue({ desiredGeneration: 9, distributionStatus: "ready" }) });
+    const response = await app.request('/api/v1/model-configuration/apply', {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(selection),
+    });
+    expect(response.status).toBe(200);
+    expect(models.applyConfiguration).toHaveBeenCalledWith("admin-1", selection);
+    expect(models.finalizeActivation).toHaveBeenCalledWith("new-snapshot");
+  });
+
+  it.each([[], ["control_plane"], ["content_safety.input", "content_safety.input"]])("rejects invalid activation selection %j", async bindingIds => {
+    const models = { applyConfiguration: vi.fn() };
+    const response = await appWith("admin", models).request('/api/v1/model-configuration/apply', {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ bindingIds, expectedDraftToken: "token", expectedActiveId: null }),
+    });
+    expect(response.status).toBe(400);
+    expect(models.applyConfiguration).not.toHaveBeenCalled();
+  });
+
   it("finalizes an activation only after Runner distribution reports ready", async () => {
     const activeView = { ...view, draft: { ...revision, state: "draft" }, active: { ...revision, state: "active" } };
     const models = {
-      beginActivation: vi.fn().mockResolvedValue({ ...revision, state: "activating", generation: 9 }),
+      applyConfiguration: vi.fn().mockResolvedValue({ ...revision, state: "activating", generation: 9 }),
       finalizeActivation: vi.fn(),
       view: vi.fn().mockResolvedValue(activeView),
     };
@@ -194,10 +218,14 @@ describe("Model configuration HTTP routes", () => {
       distributeDesiredState: vi.fn().mockResolvedValue({ desiredGeneration: 9, distributionStatus: "ready" }),
     });
 
-    const response = await app.request(`/api/v1/model-configuration/revisions/${revision.id}/activate`, { method: "POST" });
+    const response = await app.request('/api/v1/model-configuration/apply', { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ bindingIds: ['content_safety.input'], expectedDraftToken: 'token', expectedActiveId: null }) });
 
     expect(response.status).toBe(200);
     expect(models.finalizeActivation).toHaveBeenCalledWith(revision.id);
+  });
+
+  it.each(['/api/v1/model-configuration/rollback', '/api/v1/model-configuration/revisions/old/activate'])("removes the historical operation %s", async path => {
+    expect((await appWith('admin', {}).request(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })).status).toBe(404);
   });
 
   it("leases only allow-listed credentials to an authenticated Runner", async () => {

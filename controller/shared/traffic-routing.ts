@@ -161,6 +161,13 @@ export function selectorFieldCatalog(endpoints: SelectorEndpoint[]) {
     availableEndpoints: endpoints.filter(endpoint => endpointSelectorCapabilities(endpoint).some(c => c.field === field.id && c.availableAt === "first_assignment")).map(e => e.id),
   }));
 }
+/** Only offer fields supplied at first assignment by every selected Endpoint.
+ * Before binding, offer the common built-in adapter fields rather than unsupported options.
+ */
+export function selectableSelectorFields(endpoints: SelectorEndpoint[]) {
+  const scope = endpoints.length ? endpoints : ["HTTP", "LITELLM", "A2A"].map(adapter => ({ id: adapter, adapter }));
+  return selectorFieldCatalog(scope).filter(field => scope.every(endpoint => field.availableEndpoints.includes(endpoint.id)));
+}
 export function capabilityIssues(draft: RouterDraft, endpoints: SelectorEndpoint[]): string[] {
   const parsed = routerDraftSchema.safeParse(draft);
   if (!parsed.success) return parsed.error.issues.map(issue => `schema: ${issue.path.join(".")}: ${issue.message}`);

@@ -156,6 +156,10 @@ describe("Guardrail detail information hierarchy", () => {
     expect(screen.getByText("Observed traffic scope")).toBeTruthy();
     expect(screen.getByText(VERSION_ID)).toBeTruthy();
     expect(screen.getByText("runtime-chart")).toBeTruthy();
+    expect(screen.getByText("guardrails.runtimeEvidencePrivacyTitle")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "common.close" }));
+    expect(screen.queryByText("guardrails.runtimeEvidencePrivacyTitle")).toBeNull();
+    expect(screen.getByText("runtime-chart")).toBeTruthy();
   });
 
   it("aggregates privacy-safe findings from Playground on the Guardrail", () => {

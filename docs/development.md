@@ -4,6 +4,18 @@ Run TaskLattice Guard from source, execute its test suites, and update generated
 contracts. For a complete local Kubernetes installation, use the
 [Helm guide](../charts/tali-guard/README.md#orbstacklocal-installation).
 
+## UI platform scope
+
+The Controller console targets **desktop browsers only**. Future features and
+fixes do not require phone/mobile layout compatibility, touch-specific interaction
+support, mobile screenshots or mobile regression acceptance. See the
+[design contract](protection-productization.md#platform-scope-desktop-only).
+
+Continue verifying desktop primary/error/recovery paths, keyboard accessibility,
+focus, browser zoom and layout at desktop window sizes. Existing mobile styles
+and historical tests may remain; this is a scope change, not a request to remove
+working code. Feature-specific QA instructions must follow this desktop-only scope.
+
 ## Run from source
 
 Requirements: Python 3.13, uv, Node.js 24+, npm, and PostgreSQL.

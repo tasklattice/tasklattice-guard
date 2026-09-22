@@ -18,8 +18,14 @@ export function RuntimeHealthAlert({ metrics }: { metrics: RuntimeHealthAlertMet
 
   if (!detailKey) return null;
 
+  // Keep a dismissed warning hidden across polling of the same condition, but
+  // surface a changed condition. Recovery unmounts Alert and resets dismissal.
+  const noticeKey = JSON.stringify([detailKey, detailKey === "dashboard.healthSystem"
+    ? [...new Set(metrics.system_reasons?.filter(reason => reason !== "all_required_components_ready") ?? [])].sort()
+    : []]);
+
   return (
-    <Alert className="border-amber-200 bg-amber-50/70 text-amber-950">
+    <Alert key={noticeKey} dismissible className="border-amber-200 bg-amber-50/70 text-amber-950">
       <TriangleAlert />
       <AlertTitle>{t(detailKey === "dashboard.healthSystem" ? "dashboard.platformAttention" : "dashboard.degraded")}</AlertTitle>
       <AlertDescription className="text-amber-900/75">{detailKey === "dashboard.healthSystem" && metrics.system_reasons?.some(reason => reason !== "all_required_components_ready")

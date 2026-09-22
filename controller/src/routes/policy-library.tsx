@@ -32,6 +32,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PolicyCompliancePanel } from "@/components/policy-compliance";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { queryKeys } from "@/features/query-keys";
 import { useAuth } from "@/lib/auth";
@@ -399,6 +400,7 @@ export function PolicyDetail({ policy, onClose, onEdit, onExport, onDelete }: { 
           <TabsList aria-label={t("policyLibrary.detailViews")} className="min-w-max">
             <TabsTrigger value="policy">{t("policyLibrary.tabs.policy")}</TabsTrigger>
             <TabsTrigger value="validation">{t("policyLibrary.tabs.testCases")}</TabsTrigger>
+            <TabsTrigger value="compliance">{t("policyLibrary.tabs.compliance")}</TabsTrigger>
             <TabsTrigger aria-label={t("policyLibrary.tabs.implementation")} value="implementation"><span aria-hidden className="sm:hidden">{t("policyLibrary.tabs.implementationShort")}</span><span aria-hidden className="hidden sm:inline">{t("policyLibrary.tabs.implementation")}</span></TabsTrigger>
           </TabsList>
         </div>
@@ -412,6 +414,7 @@ export function PolicyDetail({ policy, onClose, onEdit, onExport, onDelete }: { 
           <RuleList policy={policy} />
         </TabsContent>
         <TabsContent value="validation" className="pt-3 sm:pt-4"><PolicyTestCases policy={policy} /></TabsContent>
+        <TabsContent value="compliance" className="pt-3 sm:pt-4"><PolicyCompliancePanel policy={policy} /></TabsContent>
         <TabsContent value="implementation" className="pt-3 sm:pt-4"><Implementation policy={policy} /></TabsContent>
       </Tabs>
     </EntitySheet>

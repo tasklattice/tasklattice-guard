@@ -80,7 +80,9 @@ export type ModelValidationReport = {
 
 export type ModelConfigurationRevision = {
   id: string;
-  revision: number;
+  reviewToken?: string;
+  /** Legacy field; current API exposes configuration state, not version history. */
+  revision?: number;
   state: "draft" | "validated" | "activating" | "active" | "superseded" | "failed";
   generation: number | null;
   assignments: ModelAssignments;
@@ -96,7 +98,6 @@ export type ModelConfigurationView = {
   providers: ModelProvider[];
   models: ModelDefinition[];
   draft: ModelConfigurationRevision | null;
-  rollbackTarget?: string | null;
   active: ModelConfigurationRevision | null;
   activating: ModelConfigurationRevision | null;
   failed: ModelConfigurationRevision | null;
@@ -427,8 +428,7 @@ export const validateModelConfiguration = () => requestController<ModelConfigura
 export type ModelAssignmentTarget = "control_plane" | CapabilityBindingId;
 export const saveModelAssignment = (target: ModelAssignmentTarget, modelId: string | null, validationId?: string) => requestController<ModelConfigurationRevision>(`/api/v1/model-configuration/draft/assignments/${encodeURIComponent(target)}`, json("PUT", { modelId, validationId }));
 export const validateModelAssignment = (target: ModelAssignmentTarget, modelId?: string) => requestController<ModelConfigurationRevision & { validationId?: string }>(`/api/v1/model-configuration/draft/assignments/${encodeURIComponent(target)}/${modelId ? "candidate-validations" : "validations"}`, json("POST", modelId ? { modelId } : undefined));
-export const activateModelConfiguration = (revisionId: string) => requestController<ModelConfigurationView & { distribution: { desiredGeneration: number; distributionStatus: "ready" | "syncing" } }>(`/api/v1/model-configuration/revisions/${encodeURIComponent(revisionId)}/activate`, json("POST"));
-export const rollbackModelConfiguration = (targetRevisionId: string) => requestController<ModelConfigurationView & { distribution: { desiredGeneration: number; distributionStatus: "ready" | "syncing" } }>("/api/v1/model-configuration/rollback", json("POST", { targetRevisionId }));
+export const applyModelConfiguration = (selection: import("../../shared/model-activation").PartialModelActivation) => requestController<ModelConfigurationView & { distribution: { desiredGeneration: number; distributionStatus: "ready" | "syncing" } }>("/api/v1/model-configuration/apply", json("POST", selection));
 export const listControllerGuardrails = () => requestController<Collection<Guardrail>>("/api/v1/guardrails");
 export const getControllerGuardrail = (id: string) => requestController<GuardrailDetail>(`/api/v1/guardrails/${encodeURIComponent(id)}`);
 export const createControllerGuardrail = (input: Pick<Guardrail, "name" | "draftConfig" | "runtimeProfile">) => requestController<Guardrail>("/api/v1/guardrails", json("POST", input));

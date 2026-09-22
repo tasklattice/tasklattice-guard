@@ -32,6 +32,8 @@ vi.mock("react-i18next", () => ({
         "policyLibrary.detailViews": "Policy detail views",
         "policyLibrary.tabs.policy": "Policy",
         "policyLibrary.tabs.testCases": "Test Cases",
+        "policyLibrary.tabs.compliance": "Sources & Compliance",
+        "policyLibrary.compliance.empty": "Sources and compliance documentation have not been provided for this Policy version.",
         "policyLibrary.tabs.implementation": "NeMo implementation",
         "policyLibrary.ruleListTitle": "Rules ({{count}})",
         "policyLibrary.ruleListDescription": "Each Rule is linked to Test Cases.",
@@ -150,7 +152,7 @@ function clickTab(tab: HTMLElement) {
 describe("Policy detail", () => {
   afterEach(cleanup);
 
-  it("presents Policy, testable Rules, Test Cases, and NeMo implementation as three views", () => {
+  it("presents Policy, Test Cases, Sources & Compliance, and NeMo implementation in order", () => {
     render(<PolicyDetail policy={policy} onClose={vi.fn()} onEdit={vi.fn()} />);
 
     expect(screen.getByRole("heading", { name: "Competitor Discussion Policy" })).toBeTruthy();
@@ -166,6 +168,10 @@ describe("Policy detail", () => {
     expect(screen.getByText("Test Cases (2)")).toBeTruthy();
     expect(screen.getByText("Block airline comparison")).toBeTruthy();
     expect(screen.getByText("Allow destination question")).toBeTruthy();
+
+    expect(screen.getAllByRole("tab").map(tab => tab.textContent)).toEqual(["Policy", "Test Cases", "Sources & Compliance", expect.stringContaining("NeMo implementation")]);
+    clickTab(screen.getByRole("tab", { name: "Sources & Compliance" }));
+    expect(screen.getByText("Sources and compliance documentation have not been provided for this Policy version.")).toBeTruthy();
 
     clickTab(screen.getByRole("tab", { name: "NeMo implementation" }));
     expect(screen.getByRole("heading", { name: "NeMo Guardrails implementation" })).toBeTruthy();

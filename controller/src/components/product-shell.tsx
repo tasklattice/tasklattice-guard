@@ -114,12 +114,14 @@ export function ErrorNotice({ error }: { error: unknown }) {
 export function InfoNotice({
   title,
   children,
+  dismissible = false,
 }: {
   title?: string;
   children: ReactNode;
+  dismissible?: boolean;
 }) {
   return (
-    <Alert className="border-primary/20 bg-primary/[0.04] text-foreground">
+    <Alert dismissible={dismissible} className="border-primary/20 bg-primary/[0.04] text-foreground">
       <Info className="text-primary" />
       {title ? <AlertTitle>{title}</AlertTitle> : null}
       <AlertDescription className="leading-5 text-muted-foreground">{children}</AlertDescription>

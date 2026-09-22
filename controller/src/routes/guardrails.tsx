@@ -391,7 +391,7 @@ export function GuardrailRuntimeView({ guardrailId, metrics, loading, error, rou
         <div><h2 className="text-base font-semibold">{t("guardrails.runtimeTitle")}</h2><p className="mt-0.5 text-xs text-muted-foreground">{t("guardrails.runtimeDescription")}</p></div>
         <Select value={window} onValueChange={(value) => onWindowChange(value as MetricWindow)}><SelectTrigger className="h-9 w-full bg-card sm:w-40" aria-label={t("dashboard.timeRangeFilter")}><SelectValue /></SelectTrigger><SelectContent>{(["1h", "24h", "7d", "15d", "30d"] as MetricWindow[]).map((value) => <SelectItem key={value} value={value}>{t(`dashboard.windows.${value}`)}</SelectItem>)}</SelectContent></Select>
       </div>
-      <InfoNotice title={t("guardrails.runtimeEvidencePrivacyTitle")}>{t("guardrails.runtimeEvidencePrivacyDescription")}</InfoNotice>
+      <InfoNotice dismissible title={t("guardrails.runtimeEvidencePrivacyTitle")}>{t("guardrails.runtimeEvidencePrivacyDescription")}</InfoNotice>
       {metrics.data_availability?.runtime_events === "truncated" || metrics.data_availability?.execution_evidence === "partial" || metrics.data_availability?.execution_evidence === "not_collected" ? <InfoNotice title={t("guardrails.runtimeEvidencePartialTitle")}>{t("guardrails.runtimeEvidencePartialDescription", { returned: metrics.data_availability.returned_events, total: metrics.data_availability.matching_events })}</InfoNotice> : null}
       <RuntimeHealthAlert metrics={metrics} />
       <dl className="grid overflow-hidden rounded-lg border border-border/65 bg-card sm:grid-cols-2 xl:grid-cols-4">

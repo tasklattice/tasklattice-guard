@@ -6,12 +6,13 @@ import 'react-querybuilder/dist/query-builder.css';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Field, NativeSelect, useRoutingText } from './form';
-import { selectorFields } from '../../../shared/traffic-routing';
+import { selectorFields, selectableSelectorFields } from '../../../shared/traffic-routing';
 import type { SelectorCondition, SelectorExpression, SelectorField } from '@/lib/traffic-routing-api';
 
 export const newCondition = (): SelectorCondition => ({ field: 'http.header', key: '', requestSource: 'business_request', operator: 'equals', value: '', caseSensitive: true });
 export const leafCount = (group: SelectorExpression): number => group.conditions.reduce((n, c) => n + ('conditions' in c ? leafCount(c) : 1), 0);
-export function SelectorEditor({ value, onChange, fields = selectorFields }: { value: SelectorExpression; onChange: (value: SelectorExpression) => void; fields?: SelectorField[] }) {
+const defaultSelectorFields = selectableSelectorFields([]);
+export function SelectorEditor({ value, onChange, fields = defaultSelectorFields }: { value: SelectorExpression; onChange: (value: SelectorExpression) => void; fields?: SelectorField[] }) {
   const t = useRoutingText();
   // Preserve QueryBuilder's node IDs while editing; rebuilding from the domain
   // expression on each keystroke remounts rule inputs and drops their focus.

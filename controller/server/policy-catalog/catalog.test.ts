@@ -1,4 +1,7 @@
-import { resolve } from "node:path";
+import { resolve, join } from "node:path";
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { policyComplianceSchema } from "../../shared/policy-compliance.js";
 
 import { describe, expect, it } from "vitest";
 
@@ -7,6 +10,37 @@ import { PolicyCatalog } from "./catalog.js";
 const assetDirectory = resolve("../runner/toolkit/policy_library/assets");
 
 describe("Policy catalog", () => {
+  it("preserves version-bound compliance documentation with real Rule references", () => {
+    const catalog = PolicyCatalog.load(assetDirectory);
+    const policy = catalog.get("advanced-au-pii-protection")!;
+    expect(policy.compliance?.policy_version).toBe(policy.version);
+    expect(policy.compliance?.review).toMatchObject({ status: "pending", reviewed_on: null, reviewer: null });
+    const ids = new Set(policy.rules.map(rule => rule.id));
+    for (const entry of [...policy.compliance!.references, ...policy.compliance!.coverage]) {
+      expect(entry.rule_ids.every(id => ids.has(id))).toBe(true);
+    }
+    expect(catalog.get("builtin-content-safety")?.compliance).toBeUndefined();
+  });
+  it.each(["version", "rule"])("rejects stale compliance %s references", kind => {
+    const directory = mkdtempSync(join(tmpdir(), "guard-compliance-"));
+    try {
+      cpSync(assetDirectory, directory, { recursive: true });
+      const file = join(directory, "builtin_policies.json");
+      const assets = JSON.parse(readFileSync(file, "utf8"));
+      const policy = assets.find((item: { id: string }) => item.id === "advanced-au-pii-protection");
+      if (kind === "version") policy.compliance.policy_version = "older-version";
+      else policy.compliance.references[0].rule_ids = ["missing-rule"];
+      writeFileSync(file, JSON.stringify(assets));
+      expect(() => PolicyCatalog.load(directory)).toThrow(kind === "version" ? /version mismatch/ : /Unknown compliance Rule/);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("requires safe links and evidence for reviewed documentation", () => {
+    const documentation = PolicyCatalog.load(assetDirectory).get("advanced-au-pii-protection")!.compliance!;
+    expect(policyComplianceSchema.safeParse({ ...documentation, review: { ...documentation.review, status: "reviewed" } }).success).toBe(false);
+    expect(policyComplianceSchema.safeParse({ ...documentation, references: [{ ...documentation.references[0], url: "javascript:alert(1)" }] }).success).toBe(false);
+  });
+
   it("merges both canonical asset collections and applies focused overrides", () => {
     const catalog = PolicyCatalog.load(assetDirectory);
     const policies = catalog.list();

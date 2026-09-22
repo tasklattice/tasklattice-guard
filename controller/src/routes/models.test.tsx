@@ -5,7 +5,7 @@ import type { AnchorHTMLAttributes, ReactNode } from "react";
 import { toast } from "sonner";
 
 import {
-  activateModelConfiguration,
+  applyModelConfiguration as activateModelConfiguration,
   deleteModelDefinition,
   deleteModelProvider,
   discoverModelProvider,
@@ -32,7 +32,7 @@ vi.mock("@/lib/controller-api", async (importOriginal) => {
   return {
     ...original,
     getModelConfiguration: vi.fn(),
-    activateModelConfiguration: vi.fn(),
+    applyModelConfiguration: vi.fn(),
     deleteModelDefinition: vi.fn(),
     deleteModelProvider: vi.fn(),
     validateModelAssignment: vi.fn(),
@@ -92,7 +92,7 @@ const now = "2026-09-01T00:00:00Z";
 const view: ModelConfigurationView = {
   providers: [provider], models: [chatModel, safetyModel],
   draft: {
-    id: "revision-2", revision: 2, state: "validated", generation: null, assignments,
+    id: "revision-2", reviewToken: "review-token", revision: 2, state: "validated", generation: null, assignments,
     validationReport: {
       valid: true, checkedAt: now,
       checks: [
@@ -173,11 +173,40 @@ describe("Models and Guardrail Catalog", () => {
     fireEvent.click(within(runner).getByRole("button", { name: "modelSettings.reviewActivation" }));
     expect(activateModelConfiguration).not.toHaveBeenCalled();
     const review = await screen.findByRole("dialog");
-    expect(within(review).getByText("modelSettings.savedDraftRevision 2")).toBeTruthy();
+    expect(within(review).getAllByText("modelSettings.pendingConfiguration")).toHaveLength(2);
+    expect(within(review).queryByRole("button", { name: /rollback/i })).toBeNull();
     expect(within(review).getAllByText("Qwen Guard").length).toBe(2);
     expect(within(review).queryByText("Authoring model")).toBeNull();
     fireEvent.click(within(review).getByRole("button", { name: "modelSettings.activateRevisionAction" }));
-    await waitFor(() => expect(activateModelConfiguration).toHaveBeenCalledWith("revision-2"));
+    await waitFor(() => expect(activateModelConfiguration).toHaveBeenCalledWith({
+      bindingIds: ["content_safety.input", "content_safety.output"], expectedDraftToken: "review-token", expectedActiveId: null,
+    }));
+  });
+
+  it("applies only ready changes from an invalid draft and allows deselecting ready bindings", async () => {
+    const configured = structuredClone(view);
+    configured.draft!.state = "draft";
+    configured.draft!.validationReport!.valid = false;
+    configured.draft!.assignments.bindings["jailbreak.input"] = "safety-model";
+    configured.draft!.validationReport!.checks.push({ id: "probe:jailbreak.input:safety-model", scope: "capability", status: "failed", evidenceKind: "nemo-rail-v1", message: "Not ready" });
+    vi.mocked(getModelConfiguration).mockResolvedValue(configured);
+    renderPage(<GuardrailCatalogPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "modelSettings.reviewActivation" }));
+    const review = await screen.findByRole("dialog");
+    expect(within(review).getByRole("checkbox", { name: "modelSettings.applyBinding jailbreak.input" }).hasAttribute("disabled")).toBe(true);
+    fireEvent.click(within(review).getByRole("checkbox", { name: "modelSettings.applyBinding content_safety.output" }));
+    fireEvent.click(within(review).getByRole("button", { name: "modelSettings.activateRevisionAction" }));
+    await waitFor(() => expect(activateModelConfiguration).toHaveBeenCalledWith({
+      bindingIds: ["content_safety.input"], expectedDraftToken: "review-token", expectedActiveId: null,
+    }));
+  });
+
+  it("disables apply when all ready changes are deselected", async () => {
+    renderPage(<GuardrailCatalogPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "modelSettings.reviewActivation" }));
+    const review = await screen.findByRole("dialog");
+    for (const checkbox of within(review).getAllByRole("checkbox")) fireEvent.click(checkbox);
+    expect(within(review).getByRole("button", { name: "modelSettings.activateRevisionAction" }).hasAttribute("disabled")).toBe(true);
   });
 
   it("shows active bindings and removals alongside the saved draft", async () => {
@@ -189,8 +218,8 @@ describe("Models and Guardrail Catalog", () => {
     expect(screen.queryByText("modelSettings.runnerConfiguration")).toBeNull();
     expect(screen.queryByText("modelSettings.viewSavedConfiguration")).toBeNull();
     fireEvent.click(await screen.findByRole("button", { name: "modelSettings.reviewActivation" }));
-    expect(screen.getByText("modelSettings.currentRunnerRevision 1")).toBeTruthy();
-    expect(screen.getByText("modelSettings.savedDraftRevision 2")).toBeTruthy();
+    expect(screen.getByText("modelSettings.currentConfiguration")).toBeTruthy();
+    expect(screen.getAllByText("modelSettings.pendingConfiguration")).toHaveLength(2);
     expect(screen.getByText("modelSettings.bindingRemoved")).toBeTruthy();
     expect(activateModelConfiguration).not.toHaveBeenCalled();
   });
@@ -205,7 +234,7 @@ describe("Models and Guardrail Catalog", () => {
     vi.mocked(getModelConfiguration).mockResolvedValue(newer);
     await act(async () => { await client!.refetchQueries(); });
     expect(await within(review).findByText("modelSettings.activationReviewChanged")).toBeTruthy();
-    expect(within(review).getByText("modelSettings.savedDraftRevision 2")).toBeTruthy();
+    expect(within(review).getAllByText("modelSettings.pendingConfiguration")).toHaveLength(2);
     const confirm = within(review).getByRole("button", { name: "modelSettings.activateRevisionAction" });
     expect(confirm.hasAttribute("disabled")).toBe(true);
     fireEvent.click(confirm);
@@ -219,6 +248,7 @@ describe("Models and Guardrail Catalog", () => {
     configured.active.assignments.bindings["content_safety.input"] = "old-model";
     configured.active.assignments.bindings["jailbreak.input"] = "safety-model";
     configured.draft!.assignments.bindings["pii_semantic.input"] = "safety-model";
+    configured.draft!.validationReport!.checks.push({ id: "probe:pii_semantic.input:safety-model", scope: "capability", status: "passed", evidenceKind: "nemo-rail-v1", message: "Passed" });
     vi.mocked(getModelConfiguration).mockResolvedValue(configured);
     renderPage(<GuardrailCatalogPage />);
     fireEvent.click(await screen.findByRole("button", { name: "modelSettings.reviewActivation" }));
@@ -247,7 +277,7 @@ describe("Models and Guardrail Catalog", () => {
     fireEvent.click(await screen.findByRole("button", { name: "modelSettings.reviewActivation" }));
     const review = await screen.findByRole("dialog");
     expect(within(review).getByText("modelSettings.emptyRunnerConfiguration")).toBeTruthy();
-    expect(within(review).getByText("modelSettings.noActiveRevision")).toBeTruthy();
+    expect(within(review).getByText("modelSettings.noActiveConfiguration")).toBeTruthy();
     expect(activateModelConfiguration).not.toHaveBeenCalled();
   });
 

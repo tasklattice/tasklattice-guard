@@ -621,6 +621,7 @@ export type PolicyParameter = {
 };
 
 export type Policy = {
+  compliance?: import("../../shared/policy-compliance").PolicyCompliance;
   implementation: "rules" | "nemo_native";
   id: string;
   name: string;

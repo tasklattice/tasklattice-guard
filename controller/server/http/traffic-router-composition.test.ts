@@ -32,6 +32,24 @@ export function setupRoutingHttp(role: string | null = "admin") {
 }
 
 describe("Composed Router HTTP contract", () => {
+  it.each([
+    ['litellm', ['litellm.team_id', 'litellm.api_key_alias', 'litellm.user_id'], ['a2a.version']],
+    ['a2a', ['a2a.version', 'a2a.operation'], ['litellm.team_id']],
+    ['http', ['http.header'], ['litellm.team_id', 'a2a.version']],
+    ['litellm,a2a', ['protocol', 'model'], ['litellm.team_id', 'a2a.version']],
+  ])('offers only common supported Selector fields for %s', async (ids, supported, unsupported) => {
+    const { send, listEndpoints } = setupRoutingHttp();
+    listEndpoints.mockResolvedValue([{ id: 'http', adapter: 'HTTP' }, { id: 'litellm', adapter: 'LITELLM' }, { id: 'a2a', adapter: 'A2A' }]);
+    const response = await send('GET', `/routing/selector-fields?endpointIds=${ids}`);
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    const fields = body.items.map((field: { id: string }) => field.id);
+    expect(fields).toEqual(expect.arrayContaining(supported));
+    for (const field of [...unsupported, 'litellm.version', 'output.sink', 'output.content_type', 'output.schema_id', 'auth.jwt_claim', 'adapter.field']) {
+      expect(fields).not.toContain(field);
+    }
+    expect(body.count).toBe(fields.length);
+  });
   it.each(["/routers", "/routers/router", "/routers/router/revisions", "/routers/router/traffic-distribution", "/routers/router/routes/fallback/traffic-distribution", "/routing/selector-fields"])("requires authentication but allows viewer reads: %s", async path => {
     expect((await setupRoutingHttp(null).send("GET", path)).status).toBe(401);
     expect((await setupRoutingHttp("user").send("GET", path)).status).toBe(200);

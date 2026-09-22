@@ -99,6 +99,13 @@
       "when": 1789862400000,
       "tag": "0013_guardrail_profiles",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1789866000000,
+      "tag": "0014_current_model_configuration",
+      "breakpoints": true
     }
   ]
 }

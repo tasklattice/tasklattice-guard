@@ -1,10 +1,25 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ControllerRequestError } from "@/lib/controller-api";
-import { ErrorNotice } from "./product-shell";
+import { ErrorNotice, InfoNotice } from "./product-shell";
 
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 afterEach(cleanup);
+
+describe("dismissible notices", () => {
+  it("closes only the selected notice and stays closed on rerender", () => {
+    const notices = <><InfoNotice dismissible title="Privacy">Privacy details</InfoNotice><InfoNotice title="Other">Other details</InfoNotice></>;
+    const view = render(notices);
+    const close = screen.getByRole("button", { name: "common.close" });
+    expect(close.getAttribute("type")).toBe("button");
+    fireEvent.click(close);
+    expect(screen.queryByText("Privacy details")).toBeNull();
+    expect(screen.getByText("Other details")).toBeTruthy();
+    view.rerender(notices);
+    expect(screen.queryByText("Privacy details")).toBeNull();
+    expect(screen.queryByRole("button", { name: "common.close" })).toBeNull();
+  });
+});
 
 describe("ErrorNotice diagnostics", () => {
   it("shows the message, Controller status, and complete upstream evidence as text", () => {

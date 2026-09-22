@@ -2,6 +2,73 @@
   {
     "id": "advanced-au-pii-protection",
     "name": "Advanced PII Protection (Australia)",
+    "compliance": {
+      "policy_version": "1.95.0",
+      "summary": {
+        "en": "Text-pattern detection and redaction can help reduce exposure of personal identifiers. This Policy is a supporting technical control, not a determination of legal compliance or regulatory certification.",
+        "zh": "通过文本模式检测与脱敏，辅助降低个人标识符的暴露风险。本策略是辅助性技术控制，不代表法律合规结论或监管认证。"
+      },
+      "jurisdiction": { "en": "Australia; applicability depends on the entity, data and processing context.", "zh": "澳大利亚；具体适用性取决于组织主体、数据及处理场景。" },
+      "provenance": {
+        "en": "Built-in TaskLattice catalog asset: runner/toolkit/policy_library/assets/builtin_policies.json. Executes local Rules through the NeMo Guardrails runtime. The catalog version alone does not establish an upstream source or legal review.",
+        "zh": "来自 TaskLattice 内置目录文件 runner/toolkit/policy_library/assets/builtin_policies.json，通过 NeMo Guardrails 运行本地 Rules。目录版本号本身不构成上游来源证明或法律核验记录。"
+      },
+      "maintainer": "TaskLattice",
+      "upstream_status": {
+        "en": "The repository documents LiteLLM-derived material for 22 local content-filter modules in THIRD_PARTY_NOTICES.md. The complete upstream lineage of this composite Policy has not yet been verified; it is not claimed to be wholly original or an unchanged upstream policy.",
+        "zh": "仓库 THIRD_PARTY_NOTICES.md 记录了 22 个本地内容过滤模块所使用的 LiteLLM 来源材料。本组合策略的完整上游沿革尚未核验，不宣称全部原创或与上游策略完全一致。"
+      },
+      "license_status": {
+        "en": "Consult THIRD_PARTY_NOTICES.md for bundled MIT-licensed LiteLLM material. Policy-specific attribution and licensing scope remain pending verification; no additional license grant is asserted here.",
+        "zh": "所含 LiteLLM MIT 许可材料的声明见 THIRD_PARTY_NOTICES.md。本策略逐项归属及许可适用范围待核验，此处不作额外许可授权声明。"
+      },
+      "references": [
+        {
+          "title": "Australian Privacy Principles — APP 11",
+          "url": "https://www.oaic.gov.au/privacy/australian-privacy-principles-guidelines/chapter-11-app-11-security-of-personal-information",
+          "publisher": "Office of the Australian Information Commissioner (OAIC)",
+          "provision": "APP 11.1 — Security of personal information",
+          "relevance": {
+            "en": "OAIC describes reasonable steps to protect personal information, including against unauthorised disclosure. Redacting detected identifiers can contribute to exposure reduction, but does not implement all APP 11 obligations or establish applicability.",
+            "zh": "OAIC 指引说明应采取合理措施保护个人信息，包括防止未经授权的披露。对检出的标识符脱敏可辅助减少暴露，但不实现 APP 11 的全部义务，也不判定其适用性。"
+          },
+          "rule_ids": ["au-pii-tax-identifiers/au_tfn", "au-pii-tax-identifiers/au_medicare", "au-pii-passports/passport_australia"]
+        },
+        {
+          "title": "Privacy (Tax File Number) Rule 2015",
+          "url": "https://www.legislation.gov.au/F2015L00249/latest/text",
+          "publisher": "Federal Register of Legislation",
+          "provision": "TFN information handling — contextual reference, not a clause-level compliance mapping",
+          "relevance": {
+            "en": "A relevant legal reference when handling tax file number information. The TFN Rule detector screens contextual text patterns only; it does not determine lawful collection, use, disclosure, retention or the organisation's obligations.",
+            "zh": "处理税号信息时的相关法律参考。TFN 检测规则仅筛查带上下文的文本模式，不判断收集、使用、披露、留存的合法性或组织的具体义务。"
+          },
+          "rule_ids": ["au-pii-tax-identifiers/au_tfn"]
+        }
+      ],
+      "coverage": [
+        {
+          "rule_ids": ["au-pii-tax-identifiers/au_tfn"],
+          "description": { "en": "Matches configured 8–9 digit TFN patterns near tax-file context and replaces matches with the configured redaction marker on the input rail.", "zh": "在 input rail 上识别税号上下文附近的已配置 8–9 位 TFN 模式，并替换为配置的脱敏标记。" }
+        },
+        {
+          "rule_ids": ["au-pii-tax-identifiers/au_medicare", "au-pii-passports/passport_australia"],
+          "description": { "en": "Screens configured Medicare and Australian passport patterns. These are selected examples, not a complete inventory of the Policy's Rules; see the Policy tab for the full list.", "zh": "筛查已配置的 Medicare 及澳大利亚护照模式。这些是覆盖示例，并非全部 Rules；完整列表见 Policy 页签。" }
+        }
+      ],
+      "limitations": [
+        { "en": "Pattern matching can produce false positives and false negatives; it does not verify identifier authenticity or ownership.", "zh": "模式匹配可能误报或漏报，不验证标识符的真实性或归属。" },
+        { "en": "Does not establish consent, lawful processing, access control, retention, cross-border transfer compliance or incident-response readiness.", "zh": "不证明已满足同意、合法处理、访问控制、数据留存、跨境传输合规或事件响应要求。" },
+        { "en": "Replacing text is not proof of irreversible de-identification under APP 11.2. Copies, logs, other channels and re-identification risk need separate controls.", "zh": "文本替换不能证明满足 APP 11.2 的去标识化要求；副本、日志、其他通道及再识别风险需单独控制。" },
+        { "en": "Passing Test Cases demonstrates only the tested behaviour. Official links may change; obtain qualified review before relying on this mapping for compliance decisions.", "zh": "Test Cases 通过仅说明已测试行为符合预期。官方链接内容可能更新；将此映射用于合规决策前，应取得具备资质人员的审查。" }
+      ],
+      "review": {
+        "status": "pending",
+        "reviewed_on": null,
+        "reviewer": null,
+        "notes": { "en": "Initial engineering documentation with official references. Full provenance, legal applicability and clause-level coverage have not received formal review.", "zh": "这是附官方参考的初始工程说明。完整来源沿革、法律适用性及条款级覆盖尚未经过正式审查。" }
+      }
+    },
     "description": "Protects Australian-specific identifiers, international employee data, financial information, credentials, protected class information, and industry-specific sensitive data.",
     "source": "built_in",
     "version": "1.95.0",

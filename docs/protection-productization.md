@@ -167,9 +167,23 @@ implied by this implementation task.
 Audience: business application owners and platform administrators. Page type:
 guided workflow inside the existing product console. Mode: release_gate.
 Primary job: choose useful protection without understanding model protocols or
-Colang. Desktop uses a stable full protection stepper and focused work area;
-mobile support and mobile acceptance are excluded by user instruction. Reuse existing
-components/tokens. Per-step states: not enabled, selected, missing parameters,
+Colang. Desktop uses a stable full protection stepper and focused work area.
+
+### Platform scope: desktop only
+
+By user instruction, all future Controller UI work targets desktop browsers only.
+Phone/mobile compatibility, touch-specific interactions, narrow-screen layouts,
+mobile screenshots and mobile acceptance/regression checks are not requirements
+or release gates. This applies across the console, including Policy inspection,
+model configuration, Routing and Playground, not only this workflow.
+
+Preserve desktop keyboard accessibility, focus management, browser zoom, readable
+content and desktop-window overflow/error/recovery checks. Existing mobile code
+may remain; removing it is not required by this scope change. Historical mobile
+QA entries below are evidence of past work, not ongoing support commitments.
+Mobile support may be reintroduced only through an explicit scope change.
+
+Reuse existing components/tokens. Per-step states: not enabled, selected, missing parameters,
 dependency unavailable; none of these imply runtime validation success.
 
 The final review shows actual Input and Output coverage, ordered execution,

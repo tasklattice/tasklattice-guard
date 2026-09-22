@@ -3,7 +3,8 @@ import { openApiDocument, apiReferenceHtml, apiAgentIndex } from "./openapi.js";
 import { allowsTokenPermission } from "../../shared/access-tokens.js";
 import type { AccessTokenService, TokenIdentity } from "../services/access-tokens.js";
 import { requiredTokenPermission } from "./token-permissions.js";
-import { routerDraftSchema, previewRouter, selectorFields, selectorFieldCatalog, RoutingEvaluationError, routingInputSchema } from "../../shared/traffic-routing.js";
+import { partialModelActivationSchema } from "../../shared/model-activation.js";
+import { routerDraftSchema, previewRouter, selectorFields, selectableSelectorFields, RoutingEvaluationError, routingInputSchema } from "../../shared/traffic-routing.js";
 import { routingEventSchema } from "../services/traffic-routing.js";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
@@ -428,26 +429,15 @@ export function createHttpApp(input: {
     if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
     return context.json(await input.models.validateDraft(context.get("actor").id));
   });
-  app.post("/api/v1/model-configuration/revisions/:id/activate", authenticated, administrator, async (context) => {
+  app.post("/api/v1/model-configuration/apply", authenticated, administrator, async (context) => {
     if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
-    const revision = await input.models.beginActivation(context.req.param("id"), context.get("actor").id);
+    const selection = partialModelActivationSchema.parse(await context.req.json());
+    const revision = await input.models.applyConfiguration(context.get("actor").id, selection);
     const distribution = await input.runnerControl.distributeDesiredState("default", 10_000);
     if (distribution.distributionStatus === "ready") await input.models.finalizeActivation(revision.id);
     const view = await input.models.view();
     if (view.failed?.id === revision.id) {
       throw new ConflictError(view.failed.failureReason || "Runner rejected the Model configuration.", "model_configuration_runner_rejected");
-    }
-    return context.json({ ...view, distribution }, distribution.distributionStatus === "ready" ? 200 : 202);
-  });
-  app.post("/api/v1/model-configuration/rollback", authenticated, administrator, async (context) => {
-    if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
-    const body = z.object({ targetRevisionId: z.string().uuid() }).parse(await context.req.json());
-    const revision = await input.models.rollback(context.get("actor").id, body.targetRevisionId);
-    const distribution = await input.runnerControl.distributeDesiredState("default", 10_000);
-    if (distribution.distributionStatus === "ready") await input.models.finalizeActivation(revision.id);
-    const view = await input.models.view();
-    if (view.failed?.id === revision.id) {
-      throw new ConflictError(view.failed.failureReason || "Runner rejected the rollback Model configuration.", "model_configuration_runner_rejected");
     }
     return context.json({ ...view, distribution }, distribution.distributionStatus === "ready" ? 200 : 202);
   });
@@ -920,7 +910,7 @@ export function createHttpApp(input: {
     const endpointIds = context.req.query("endpointIds")?.split(",").filter(Boolean);
     const all = await input.service.listEndpoints();
     const selected = endpointIds ? all.filter(e => endpointIds.includes(e.id)) : all;
-    const items = selectorFieldCatalog(selected);
+    const items = selectableSelectorFields(selected);
     return context.json({ items, endpoints: selected.map(e => ({ id: e.id, adapter: e.adapter })), count: items.length });
   });
 
