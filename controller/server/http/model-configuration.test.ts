@@ -94,6 +94,26 @@ describe("Model configuration HTTP routes", () => {
     expect(await response.json()).toMatchObject({ draft: { revision: 1 }, providers: [] });
   });
 
+  it("lists the safe provider and model projections for authenticated readers", async () => {
+    const models = {
+      view: vi.fn().mockResolvedValue({
+        ...view,
+        providers: [{ id: "provider-1", name: "Private gateway" }],
+        models: [{ id: "model-1", name: "Safety model" }],
+      }),
+    };
+    const app = appWith("user", models);
+
+    const providers = await app.request("/api/v1/model-providers");
+    const listedModels = await app.request("/api/v1/models");
+
+    expect(providers.status).toBe(200);
+    expect(await providers.json()).toEqual([{ id: "provider-1", name: "Private gateway" }]);
+    expect(listedModels.status).toBe(200);
+    expect(await listedModels.json()).toEqual([{ id: "model-1", name: "Safety model" }]);
+    expect(models.view).toHaveBeenCalledTimes(2);
+  });
+
   it("routes save and validation to one assignment target", async () => {
     const models = {
       updateAssignment: vi.fn().mockResolvedValue(revision),

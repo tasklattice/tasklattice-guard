@@ -12,6 +12,7 @@ dist/
 .DS_Store
 .env
 .local-secrets/
+.tasklattice-recovery/
 .kube-home/
 .kube-cache/
 .kubeconfig-kind

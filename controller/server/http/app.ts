@@ -375,6 +375,16 @@ export function createHttpApp(input: {
     await input.models.deleteProvider(context.req.param("id"), context.get("actor").id);
     return context.body(null, 204);
   });
+  app.get("/api/v1/model-providers", authenticated, async (context) => {
+    if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
+    const view = await input.models.view();
+    return context.json(view.providers);
+  });
+  app.get("/api/v1/models", authenticated, async (context) => {
+    if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
+    const view = await input.models.view();
+    return context.json(view.models);
+  });
   app.post("/api/v1/models", authenticated, administrator, async (context) => {
     if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
     return context.json(await input.models.createModel(modelInputSchema.parse(await context.req.json()), context.get("actor").id), 201);
