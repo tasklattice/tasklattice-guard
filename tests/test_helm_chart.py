@@ -125,7 +125,11 @@ def test_minimum_install_has_controller_and_two_stable_guardrails_zero_runners()
     assert runner["spec"]["minReadySeconds"] == 5
     runner_pod_spec = runner["spec"]["template"]["spec"]
     assert runner_pod_spec["terminationGracePeriodSeconds"] == 30
-    assert runner_pod_spec["containers"][0]["lifecycle"]["preStop"]["exec"]["command"] == [
+    runner_container = runner_pod_spec["containers"][0]
+    assert runner_container["startupProbe"]["timeoutSeconds"] == 10
+    assert runner_container["readinessProbe"]["timeoutSeconds"] == 10
+    assert runner_container["livenessProbe"]["timeoutSeconds"] == 10
+    assert runner_container["lifecycle"]["preStop"]["exec"]["command"] == [
         "/bin/sh", "-c", "sleep 5",
     ]
     assert deployments[0]["spec"]["replicas"] + runner["spec"]["replicas"] == 3
