@@ -30,11 +30,16 @@ def test_phrase_policy_owns_results_and_preserves_order(phase):
     assert [f.recommended_action for f in blocked.findings] == ["reject"]
 
 
-def test_rule_override_and_skip_apply_to_the_owned_sequence():
-    assert evaluate("private", policy_rule_actions={POLICY: {RULE: "reject"}}).findings[0].recommended_action == "reject"
-    skipped = evaluate("private", policy_rule_actions={POLICY: {RULE: "pass"}})
+@pytest.mark.parametrize("phase", ["input", "output"])
+def test_rule_override_records_matches_and_disabled_rules_skip_detection(phase):
+    assert evaluate("private", phase=phase, policy_rule_actions={POLICY: {RULE: "reject"}}).findings[0].recommended_action == "reject"
+    observed = evaluate("private", phase=phase, policy_rule_actions={POLICY: {RULE: "pass"}})
+    assert observed.verdict == "unsafe" and observed.content == "private"
+    assert observed.findings
+    assert all((f.policy_id, f.rule_id, f.recommended_action) == (POLICY, RULE, "pass") for f in observed.findings)
+    skipped = evaluate("private", phase=phase, enabled_rules={POLICY: ()})
     assert skipped.verdict == "safe" and skipped.content == "private"
-    assert evaluate("private", enabled_rules={POLICY: ()}).verdict == "safe"
+    assert not skipped.findings
 
 
 @pytest.mark.parametrize("text", ["ordinary support request", "a privateer", "如何申请账户？"])
