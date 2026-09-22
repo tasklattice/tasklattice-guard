@@ -1,6 +1,7 @@
 import { resolve, join } from "node:path";
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { gzipSync } from "node:zlib";
 import { policyComplianceSchema } from "../../shared/policy-compliance.js";
 
 import { describe, expect, it } from "vitest";
@@ -10,17 +11,31 @@ import { PolicyCatalog } from "./catalog.js";
 const assetDirectory = resolve("../runner/toolkit/policy_library/assets");
 
 describe("Policy catalog", () => {
-  it("preserves version-bound compliance documentation with real Rule references", () => {
-    const catalog = PolicyCatalog.load(assetDirectory);
-    const policy = catalog.get("advanced-au-pii-protection")!;
-    expect(policy.compliance?.policy_version).toBe(policy.version);
-    expect(policy.compliance?.review).toMatchObject({ status: "pending", reviewed_on: null, reviewer: null });
-    const ids = new Set(policy.rules.map(rule => rule.id));
-    for (const entry of [...policy.compliance!.references, ...policy.compliance!.coverage]) {
-      expect(entry.rule_ids.every(id => ids.has(id))).toBe(true);
+  it("documents every built-in Policy with version-bound sources and real Rule references", () => {
+    const policies = PolicyCatalog.load(assetDirectory).list();
+    expect(policies).toHaveLength(69);
+    for (const policy of policies) {
+      expect(policy.compliance?.policy_version, policy.id).toBe(policy.version);
+      expect(policy.compliance?.provenance.en, policy.id).toBeTruthy();
+      expect(policy.compliance?.provenance.zh, policy.id).toBeTruthy();
+      expect(policy.compliance?.references.length, policy.id).toBeGreaterThan(0);
+      const ids = new Set(policy.rules.map(rule => rule.id));
+      for (const entry of [...policy.compliance!.references, ...policy.compliance!.coverage]) {
+        expect(entry.rule_ids.length, policy.id).toBeGreaterThan(0);
+        expect(entry.rule_ids.every(id => ids.has(id)), policy.id).toBe(true);
+      }
     }
-    expect(catalog.get("builtin-content-safety")?.compliance).toBeUndefined();
+    expect(policies.filter(policy => policy.compliance).length).toBe(69);
+    expect(PolicyCatalog.load(assetDirectory).get("builtin-content-safety")?.compliance?.references[0]?.url).toContain("docs.nvidia.com");
+    expect(PolicyCatalog.load(assetDirectory).get("filter-denied-medical-advice")?.compliance?.references[0]?.url).toContain("github.com/BerriAI/litellm");
   });
+  it("keeps the compressed documentation overhead bounded", () => {
+    const policies = PolicyCatalog.load(assetDirectory).list();
+    const withDocumentation = gzipSync(JSON.stringify(policies)).byteLength;
+    const withoutDocumentation = gzipSync(JSON.stringify(policies.map(({ compliance: _compliance, ...policy }) => policy))).byteLength;
+    expect(withDocumentation - withoutDocumentation).toBeLessThan(45_000);
+  });
+
   it.each(["version", "rule"])("rejects stale compliance %s references", kind => {
     const directory = mkdtempSync(join(tmpdir(), "guard-compliance-"));
     try {
@@ -37,7 +52,7 @@ describe("Policy catalog", () => {
 
   it("requires safe links and evidence for reviewed documentation", () => {
     const documentation = PolicyCatalog.load(assetDirectory).get("advanced-au-pii-protection")!.compliance!;
-    expect(policyComplianceSchema.safeParse({ ...documentation, review: { ...documentation.review, status: "reviewed" } }).success).toBe(false);
+    expect(policyComplianceSchema.safeParse({ ...documentation, review: { ...documentation.review, reviewer: null } }).success).toBe(false);
     expect(policyComplianceSchema.safeParse({ ...documentation, references: [{ ...documentation.references[0], url: "javascript:alert(1)" }] }).success).toBe(false);
   });
 

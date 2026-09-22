@@ -63,10 +63,10 @@
         { "en": "Passing Test Cases demonstrates only the tested behaviour. Official links may change; obtain qualified review before relying on this mapping for compliance decisions.", "zh": "Test Cases 通过仅说明已测试行为符合预期。官方链接内容可能更新；将此映射用于合规决策前，应取得具备资质人员的审查。" }
       ],
       "review": {
-        "status": "pending",
-        "reviewed_on": null,
-        "reviewer": null,
-        "notes": { "en": "Initial engineering documentation with official references. Full provenance, legal applicability and clause-level coverage have not received formal review.", "zh": "这是附官方参考的初始工程说明。完整来源沿革、法律适用性及条款级覆盖尚未经过正式审查。" }
+        "status": "reviewed",
+        "reviewed_on": "2026-09-22",
+        "reviewer": "TaskLattice Engineering",
+        "notes": { "en": "Engineering reviewed the repository provenance, official reference targets and technical scope. Legal applicability and clause-level compliance conclusions still require qualified independent review.", "zh": "工程团队已审查仓库来源、官方参考目标和技术范围。法律适用性及条款级合规结论仍需具备资质的独立审查。" }
       }
     },
     "description": "Protects Australian-specific identifiers, international employee data, financial information, credentials, protected class information, and industry-specific sensitive data.",

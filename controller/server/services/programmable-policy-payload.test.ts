@@ -35,6 +35,7 @@ describe("Selectable custom Policy version boundary", () => {
       updated_at: publishedAt.toISOString() });
     expect(payload.rules[0]?.implementation.flow_name).toBe("published_check");
     expect(payload.test_cases[0]?.id).toBe("published-case");
+    expect(payload.compliance).toMatchObject({ policy_version: "2", maintainer: "published owner", references: [], review: { status: "pending" } });
     expect(payload.implementation_detail).toMatchObject({ name: record.name, description: record.description, owner: record.owner,
       draft: record.draft, draft_revision: 3, updated_at: editedAt.toISOString() });
   });

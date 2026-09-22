@@ -3630,6 +3630,9 @@
       },
       "getPoliciesResponseItemsItem2": {
         "properties": {
+          "compliance": {
+            "$ref": "#/components/schemas/getPoliciesResponseItemsItemCompliance"
+          },
           "description": {
             "type": "string"
           },
@@ -3754,6 +3757,7 @@
           "description",
           "source",
           "version",
+          "compliance",
           "draft_revision",
           "owner",
           "updated_at",
@@ -4367,6 +4371,9 @@
       },
       "getPoliciesResponseItemsItem2Published_versionsItem": {
         "properties": {
+          "compliance": {
+            "$ref": "#/components/schemas/getPoliciesResponseItemsItemCompliance"
+          },
           "description": {
             "type": "string"
           },
@@ -4478,6 +4485,7 @@
           "description",
           "source",
           "version",
+          "compliance",
           "owner",
           "updated_at",
           "tags",

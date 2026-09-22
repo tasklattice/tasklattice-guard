@@ -6,6 +6,7 @@ import { policyComplianceSchema, type PolicyCompliance } from "../../shared/poli
 import { guardrailCategoryIds } from "../../shared/guardrail-catalog.js";
 import type { PolicyProtection } from "../../shared/protection-map.js";
 import { policyProtection, protectionContractsSchema, type ProtectionContracts } from "./protection.js";
+import { builtInPolicyCompliance } from "./compliance.js";
 
 const railTypeSchema = z.enum(["input", "retrieval", "dialog", "execution", "output"]);
 const ruleFormSchema = z.enum(["regex", "keyword", "category", "code_block", "competitor_intent", "colang_flow"]);
@@ -185,7 +186,7 @@ export class PolicyCatalog {
       for (const policy of readPolicyAssets(path)) {
         // The focused local-filter collection intentionally replaces a legacy
         // definition when it reuses a public Policy ID.
-        const normalized = normalizePolicy(policy, contracts);
+        const normalized = normalizePolicy(policy, contracts, fileName);
         const previous = merged.get(policy.id);
         if (policy.id === "builtin-topic-safety" && previous && previous.version !== policy.version) normalized.published_versions = [previous];
         merged.set(policy.id, normalized);
@@ -213,11 +214,12 @@ function readPolicyAssets(path: string): PolicyAsset[] {
   }
 }
 
-function normalizePolicy(policy: PolicyAsset, contracts: ProtectionContracts): PolicyDto {
-  if (policy.compliance) {
-    if (policy.compliance.policy_version !== policy.version) throw new Error(`Compliance version mismatch for ${policy.id}`);
+function normalizePolicy(policy: PolicyAsset, contracts: ProtectionContracts, sourceFile: string): PolicyDto {
+  const compliance = policyComplianceSchema.parse(policy.compliance ?? builtInPolicyCompliance(policy, sourceFile));
+  if (compliance) {
+    if (compliance.policy_version !== policy.version) throw new Error(`Compliance version mismatch for ${policy.id}`);
     const ruleIds = new Set(policy.rules.map(rule => rule.id));
-    for (const entry of [...policy.compliance.references, ...policy.compliance.coverage]) {
+    for (const entry of [...compliance.references, ...compliance.coverage]) {
       if (entry.rule_ids.some(id => !ruleIds.has(id))) throw new Error(`Unknown compliance Rule reference for ${policy.id}`);
     }
   }
@@ -241,7 +243,7 @@ function normalizePolicy(policy: PolicyAsset, contracts: ProtectionContracts): P
     description: policy.description,
     source: policy.source,
     version: policy.version,
-    ...(policy.compliance ? { compliance: policy.compliance } : {}),
+    compliance,
     tags: [...tags.values()],
     parameters: policy.parameters,
     rails: RAIL_ORDER.filter((rail) => configuredRails.has(rail)),

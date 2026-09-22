@@ -53,6 +53,7 @@ import { buildGuardrailPlan, normalizeGuardrailDraft, type GuardrailDraftConfig 
 import type { CompiledArtifactInput, DeletionImpact, RuntimeEventInput, ValidationCaseResult, ValidationMetrics } from "../domain/models.js";
 import { applyValidationOverrides, emptyValidationMetrics, generatedTestCases } from "../domain/validation.js";
 import { PolicyCatalog } from "../policy-catalog/catalog.js";
+import { customPolicyCompliance } from "../policy-catalog/compliance.js";
 import { registeredAction } from "../action-catalog/catalog.js";
 import type { ValidationTerminalState } from "../../shared/lifecycle.js";
 import { guardrailCategoryLabels } from "../../shared/guardrail-catalog.js";
@@ -2961,6 +2962,11 @@ function programmablePolicySurface(
     description: latest?.snapshot.description ?? record.description,
     source: "custom" as const,
     version: String(latest?.version ?? 0),
+    compliance: customPolicyCompliance({
+      id: record.id, name: latest?.snapshot.name ?? record.name,
+      description: latest?.snapshot.description ?? record.description,
+      version: String(latest?.version ?? 0), rules,
+    }, latest?.snapshot.owner ?? record.owner),
     draft_revision: record.draftRevision,
     owner: latest?.snapshot.owner ?? record.owner,
     updated_at: (latest?.publishedAt ?? record.updatedAt).toISOString(),
