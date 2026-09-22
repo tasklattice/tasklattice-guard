@@ -48,8 +48,9 @@ describe("Policy catalog HTTP compatibility", () => {
     const collection = await listResponse.json() as { count: number; items: Array<{ id: string; test_count: number }> };
 
     expect(listResponse.status).toBe(200);
-    expect(collection.count).toBe(69);
-    expect(collection.items).toHaveLength(69);
+    expect(collection.count).toBe(71);
+    expect(collection.items).toHaveLength(71);
+    expect(collection.items.some((item) => ["mas-ai-risk-management", "singapore-financial-conduct"].includes(item.id))).toBe(false);
     expect(collection.items.find((item) => item.id === "pattern-matching")?.test_count).toBeGreaterThan(0);
 
     const detailResponse = await app.request("/api/v1/policies/pattern-matching");
@@ -65,7 +66,7 @@ describe("Policy catalog HTTP compatibility", () => {
     expect(response.status).toBe(200);
     const data = await response.json() as { directories: unknown[]; items: Array<{ id: string; policies: unknown[]; policyBindings: Array<{ policyId: string; policyVersion: string }> }> };
     expect(data.directories).toHaveLength(8);
-    expect(data.items).toHaveLength(5);
+    expect(data.items).toHaveLength(7);
     for (const preset of data.items) {
       expect(preset.policyBindings).toHaveLength(preset.policies.length);
       expect(preset.policyBindings.every((binding) => binding.policyVersion.length > 0)).toBe(true);
@@ -83,10 +84,12 @@ describe("Policy catalog HTTP compatibility", () => {
   it("returns the standard not-found envelope and the Runner action catalog", async () => {
     const app = appWithSession({ user: { id: "member-1", role: "user" } });
     const missing = await app.request("/api/v1/policies/not-a-policy");
+    const retired = await app.request("/api/v1/policies/singapore-financial-conduct");
     const actions = await app.request("/api/v1/policy-catalog/actions");
 
     expect(missing.status).toBe(404);
     await expect(missing.json()).resolves.toMatchObject({ error: { code: "not_found" } });
+    expect(retired.status).toBe(404);
     expect(actions.status).toBe(200);
     await expect(actions.json()).resolves.toMatchObject({
       count: 12,

@@ -29,7 +29,9 @@ PASSPORT_ALIASES = {
 def test_materialized_focused_policies_are_current() -> None:
     root = Path(__file__).resolve().parents[2]
     subprocess.run(["node", "scripts/build_protection_library.mjs", "--check"], cwd=root, check=True, capture_output=True)
-    assert len(FOCUSED) == 23
+    assert len(FOCUSED) == 22
+    assert "mas-ai-risk-management" not in CATALOG
+    assert "singapore-financial-conduct" not in CATALOG
     for policy in FOCUSED:
         assert policy.parameters == ()
         assert set(policy.rails) == {"input", "output"}

@@ -22,6 +22,8 @@ describe.skipIf(!url)("Database-backed Guardrail Profiles", () => {
     await admin.query(`CREATE SCHEMA "${namespace}"`);
     pool = new Pool({ connectionString: url, max: 1, options: `-c search_path=${namespace}` });
     await pool.query(readFileSync(new URL("../db/migrations/0013_guardrail_profiles.sql", import.meta.url), "utf8"));
+    await pool.query(readFileSync(new URL("../db/migrations/0015_china_mainland_guardrail_profiles.sql", import.meta.url), "utf8"));
+    await pool.query(readFileSync(new URL("../db/migrations/0016_retire_unverified_singapore_financial_policies.sql", import.meta.url), "utf8"));
   });
   afterAll(async () => {
     await pool?.end();
@@ -30,10 +32,14 @@ describe.skipIf(!url)("Database-backed Guardrail Profiles", () => {
   });
   it("seeds one default for each supported industry or use case with pinned executable bindings", async () => {
     const profiles = await readGuardrailProfiles(drizzle(pool, { schema }));
-    expect(profiles).toHaveLength(5);
-    expect(new Set(profiles.map(profile => profile.category)).size).toBe(5);
+    expect(profiles).toHaveLength(7);
+    expect(new Set(profiles.map(profile => profile.category)).size).toBe(7);
     expect(profiles.every(profile => profile.isDefault)).toBe(true);
     for (const profile of profiles) expect(expandProtectionPreset(profile, catalog.list()).map(binding => binding.policyId)).toEqual(profile.policies.map(policy => policy.policyId));
+    const singapore = profiles.find(profile => profile.id === "singapore-financial-assistant")!;
+    expect(singapore.version).toBe("1.0.1");
+    expect(singapore.policies.some(policy => policy.policyId === "singapore-financial-conduct")).toBe(false);
+    expect(singapore.limitations.join(" ")).toContain("No MAS-specific control");
   });
   it("enforces one enabled default per category", async () => {
     await expect(pool.query("INSERT INTO guardrail_profile (id,category,category_name,is_default,definition) SELECT 'duplicate',category,category_name,true,definition FROM guardrail_profile WHERE id='common-baseline'"))

@@ -14,7 +14,7 @@ describe("Policy catalog", () => {
   it("documents every built-in Policy and separates implementation lineage from industry context", () => {
     const catalog = PolicyCatalog.load(assetDirectory);
     const policies = catalog.list();
-    expect(policies).toHaveLength(69);
+    expect(policies).toHaveLength(71);
     for (const policy of policies) {
       expect(policy.compliance?.policy_version, policy.id).toBe(policy.version);
       expect(policy.compliance?.provenance.en, policy.id).toBeTruthy();
@@ -25,21 +25,25 @@ describe("Policy catalog", () => {
         expect(entry.rule_ids.every(id => ids.has(id)), policy.id).toBe(true);
       }
     }
-    expect(policies.filter(policy => policy.compliance).length).toBe(69);
-    expect(policies.filter(policy => policy.compliance?.references.length).length).toBe(60);
+    expect(policies.filter(policy => policy.compliance).length).toBe(71);
+    expect(policies.filter(policy => policy.compliance?.references.length).length).toBe(61);
     expect(catalog.get("builtin-content-safety")?.compliance?.references[0]?.url).toContain("nist.gov");
     expect(catalog.get("filter-denied-medical-advice")?.compliance).toMatchObject({
       references: [expect.objectContaining({ url: expect.stringContaining("who.int") })],
       upstream_status: { en: expect.stringContaining("not the Policy's compliance authority"), zh: expect.stringContaining("不是此 Policy 的合规权威") },
     });
-    expect(catalog.get("mas-ai-risk-management")?.compliance?.references[0]?.url).toContain("aiverifyfoundation.sg");
+    expect(catalog.get("mas-ai-risk-management")).toBeUndefined();
+    expect(catalog.get("singapore-financial-conduct")).toBeUndefined();
+    expect(catalog.get("china-personal-identifiers")?.compliance?.references[0]?.url).toContain("flk.npc.gov.cn/detail");
+    expect(catalog.get("china-banking-assistant-boundaries")?.compliance?.references[0]?.url).toContain("std.samr.gov.cn/hb/search/stdHBDetailed");
+    expect(catalog.get("china-organization-identifiers")?.compliance?.references).toEqual([]);
     expect(catalog.get("topic-filtering")?.compliance?.references).toEqual([]);
   });
 
-  it("never presents software dependencies or the retired MAS page as compliance references", () => {
+  it("never presents software dependencies, the retired MAS page, or AI Verify as compliance references", () => {
     const references = PolicyCatalog.load(assetDirectory).list().flatMap(policy => policy.compliance?.references ?? []);
     const urls = references.map(reference => reference.url);
-    expect(urls.some(url => /github\.com\/BerriAI|docs\.nvidia\.com/.test(url))).toBe(false);
+    expect(urls.some(url => /github\.com\/BerriAI|docs\.nvidia\.com|aiverifyfoundation\.sg/.test(url))).toBe(false);
     expect(urls).not.toEqual(expect.arrayContaining([
       "https://www.mas.gov.sg/publications/monographs-or-information-paper/2018/feat-principles",
       "https://www.imda.gov.sg/resources/press-releases-factsheets-and-speeches/factsheets/2024/model-ai-governance-framework-for-generative-ai",
@@ -77,8 +81,8 @@ describe("Policy catalog", () => {
     const catalog = PolicyCatalog.load(assetDirectory);
     const policies = catalog.list();
 
-    expect(policies).toHaveLength(69);
-    expect(new Set(policies.map((policy) => policy.id)).size).toBe(69);
+    expect(policies).toHaveLength(71);
+    expect(new Set(policies.map((policy) => policy.id)).size).toBe(71);
     expect(catalog.get("builtin-content-safety")).toMatchObject({ rails: ["input", "output"], test_count: 2 });
     expect(catalog.get("competitor-mention-detection")).toMatchObject({
       name: "Competitor Name Blocking",
@@ -112,13 +116,12 @@ describe("Policy catalog", () => {
 
     expect(catalog.get("eu-ai-act-article5")?.tags).toEqual(expect.arrayContaining([expect.objectContaining({ id: "framework:eu-ai-act" })]));
     expect(catalog.get("gdpr-eu-pii-protection")?.tags).toEqual(expect.arrayContaining([expect.objectContaining({ id: "framework:gdpr" })]));
-    expect(catalog.get("mas-ai-risk-management")?.tags).toEqual(expect.arrayContaining([expect.objectContaining({ id: "framework:mas-ai-risk" })]));
     expect(catalog.get("pdpa-singapore")?.tags).toEqual(expect.arrayContaining([expect.objectContaining({ id: "framework:pdpa" })]));
 
     const jurisdictions = new Set(
       catalog.list().flatMap((policy) => policy.tags.filter((tag) => tag.namespace === "jurisdiction").map((tag) => tag.value)),
     );
-    expect(jurisdictions).toEqual(new Set(["au", "eu", "sg", "singapore", "uae"]));
+    expect(jurisdictions).toEqual(new Set(["au", "cn", "eu", "sg", "singapore", "uae"]));
   });
 
   it("uses the reviewed Policy facets and canonical NeMo Rail terminology", () => {

@@ -37,6 +37,33 @@ describe("Protection presets", () => {
     expect(plan.policy_bindings).toHaveLength(bindings.length);
   });
 
+  it("does not offer retired, unverified MAS-labelled phrase collections", () => {
+    const retired = new Set(["mas-ai-risk-management", "singapore-financial-conduct"]);
+    expect(policies.some(policy => retired.has(policy.id))).toBe(false);
+    for (const preset of protectionPresets) {
+      expect(preset.policies.some(policy => retired.has(policy.policyId))).toBe(false);
+      expect(preset.optionalPolicyIds.some(policyId => retired.has(policyId))).toBe(false);
+    }
+    const singapore = protectionPresets.find(preset => preset.id === "singapore-financial-assistant")!;
+    expect(singapore.version).toBe("1.0.1");
+    expect(singapore.limitations.join(" ")).toContain("No MAS-specific control");
+  });
+
+  it("keeps China mainland Profiles runtime-bounded and model integrations optional", () => {
+    const general = protectionPresets.find(preset => preset.id === "china-mainland-runtime")!;
+    const banking = protectionPresets.find(preset => preset.id === "china-banking-assistant")!;
+    expect(expandProtectionPreset(general, policies).map(binding => binding.policyId)).toEqual([
+      "local-credentials", "local-passports", "china-personal-identifiers", "china-prompt-manipulation",
+    ]);
+    expect(expandProtectionPreset(banking, policies).map(binding => binding.policyId)).toEqual([
+      "local-credentials", "local-passports", "china-personal-identifiers", "china-prompt-manipulation", "china-banking-assistant-boundaries",
+    ]);
+    expect(general.optionalPolicyIds).toEqual(expect.arrayContaining(["builtin-content-safety", "builtin-contextual-grounding", "china-organization-identifiers"]));
+    expect(general.limitations.join(" ")).toContain("Runtime Enforced");
+    expect(general.limitations.join(" ")).toContain("Requires Integration");
+    expect(general.limitations.join(" ")).toContain("Governance Only");
+  });
+
   it("shares the baseline without overwriting user changes when switching scenarios", () => {
     const bank = expandProtectionPreset(protectionPresets[1]!, policies);
     bank[0]!.ruleActions[bank[0]!.enabledRuleIds[0]!] = "redact";

@@ -51,6 +51,7 @@ vi.mock("react-i18next", () => ({
         "policyLibrary.effectLabel": "Effect",
         "policyLibrary.runtimeManaged": "Runtime managed",
         "policyLibrary.jurisdictions.au": "Australia",
+        "policyLibrary.jurisdictions.cn": "China mainland",
         "policyLibrary.forms.category": "Category",
         "policyLibrary.railTypes.input": "Input rail",
         "policyLibrary.railTiming.input": "Before the main model",
@@ -250,8 +251,9 @@ describe("Catalog filtering", () => {
   const tag = (namespace: "jurisdiction" | "framework" | "collection" | "domain", value: string) => ({ id: `${namespace}:${value}`, namespace, value, label: value, source: "declared" as const });
   const australia: Policy = { ...policy, id: "au", tags: [tag("jurisdiction", "au"), tag("framework", "owasp-llm-2025")] };
   const singapore: Policy = { ...policy, id: "sg", source: "custom", tags: [tag("jurisdiction", "singapore"), tag("framework", "pdpa")] };
+  const china: Policy = { ...policy, id: "cn", tags: [tag("jurisdiction", "cn"), tag("framework", "pipl")] };
   const eu: Policy = { ...policy, id: "eu", tags: [tag("jurisdiction", "eu"), tag("framework", "gdpr")] };
-  const items = [australia, singapore, eu];
+  const items = [australia, singapore, china, eu];
 
   it("unions choices within a group and intersects groups, protection and search", () => {
     expect(filterCatalogPolicies(items, null, new Set(["jurisdiction:au", "jurisdiction:sg"]))).toEqual([australia, singapore]);
@@ -264,7 +266,7 @@ describe("Catalog filtering", () => {
   it("keeps regions discoverable, merges Singapore aliases and omits removed facets", () => {
     const alias: Policy = { ...singapore, id: "alias", tags: [tag("jurisdiction", "sg"), tag("jurisdiction", "singapore"), tag("collection", "old"), tag("domain", "finance")] };
     const facets = tagFacets([...items, alias]);
-    expect(facets.get("jurisdiction")?.map((tag) => tag.value)).toEqual(["au", "eu", "sg"]);
+    expect(facets.get("jurisdiction")?.map((tag) => tag.value)).toEqual(["au", "cn", "eu", "sg"]);
     expect(facets.get("jurisdiction")?.find((tag) => tag.value === "sg")?.count).toBe(2);
     expect(facets.has("collection")).toBe(false);
     expect(facets.has("domain")).toBe(false);
@@ -273,6 +275,14 @@ describe("Catalog filtering", () => {
     expect(scoped.get("jurisdiction")?.find((tag) => tag.value === "au")?.count).toBe(0);
     expect(scoped.get("jurisdiction")?.find((tag) => tag.value === "sg")?.count).toBe(1);
     expect(tagFacets([australia]).get("source")?.find((tag) => tag.value === "custom")?.count).toBe(0);
+  });
+
+  it("shows mainland China as a localized jurisdiction with its flag", () => {
+    render(<TagFilters facets={tagFacets([china])} selected={new Set()} onChange={vi.fn()} />);
+
+    const label = screen.getByText("China mainland");
+    expect(label.parentElement?.textContent).toBe("🇨🇳China mainland");
+    expect(screen.getByRole("checkbox", { name: /China mainland/ })).toBeTruthy();
   });
 
   it("clears the protection selection together with checkbox selections", () => {

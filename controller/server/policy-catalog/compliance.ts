@@ -20,6 +20,14 @@ const official = (title: string, url: string, publisher: string, provision: stri
 // separate from implementation lineage and never imply that a detector was
 // authored, approved, or certified by the referenced organisation.
 const sources = {
+  chinaPipl: official("中华人民共和国个人信息保护法 (Personal Information Protection Law)", "https://flk.npc.gov.cn/detail?id=ff8081817b6472a3017b656cc2040044&title=%E4%B8%AD%E5%8D%8E%E4%BA%BA%E6%B0%91%E5%85%B1%E5%92%8C%E5%9B%BD%E4%B8%AA%E4%BA%BA%E4%BF%A1%E6%81%AF%E4%BF%9D%E6%8A%A4%E6%B3%95", "Standing Committee of the National People's Congress", "Articles 4, 28 and 51 — personal information, sensitive personal information and security measures", bilingual(
+    "The law provides mainland-China context for personal information, including specific identity and financial-account information. Redacting selected identifier patterns can support data-minimisation and security controls, but it does not determine legal scope, sensitivity, processing basis, consent, purpose, retention, cross-border duties, or PIPL compliance.",
+    "该法为中国大陆个人信息处理提供背景，其中包括特定身份及金融账户信息。对特定标识符模式进行脱敏可辅助数据最小化与安全控制，但不能判断法律适用范围、敏感性、处理依据、同意、目的、保存期限、跨境义务或是否符合《个人信息保护法》。",
+  )),
+  chinaFinancialAi: official("JR/T 0221-2021 — 人工智能算法金融应用评价规范", "https://std.samr.gov.cn/hb/search/stdHBDetailed?id=BF61550E44D6DEDDE05397BE0A0A63D6", "People's Bank of China / National Financial Standardization Technical Committee", "Financial AI application evaluation requirements and methods", bilingual(
+    "This financial-sector standard supplies evaluation and governance context for AI algorithms used in finance. The Policy only screens selected credential-theft, evasion and misleading-claim phrases; it does not implement the standard's evaluation method, make financial decisions, perform KYC/AML, or establish conformity.",
+    "该金融行业标准为金融领域人工智能算法提供评价与治理背景。本 Policy 仅筛查特定的凭据骗取、规避检查及误导性承诺措辞；它不实现该标准的评价方法，不作出金融决策，不执行 KYC/AML，也不证明符合该标准。",
+  )),
   nistPii: official("NIST SP 800-122 — Protecting the Confidentiality of Personally Identifiable Information", "https://csrc.nist.gov/pubs/sp/800/122/final", "National Institute of Standards and Technology", "PII protection guidance", bilingual(
     "This guidance provides privacy and security context for reducing PII exposure. Pattern detection is only one possible safeguard and does not implement the full guidance.",
     "该指引为减少 PII 暴露提供隐私与安全背景。模式检测仅是可能采用的保护措施之一，不能实现指引的全部要求。",
@@ -72,10 +80,6 @@ const sources = {
     "Identifier redaction can be one security measure. It does not by itself satisfy Article 32 or obligations concerning lawful basis, rights, governance, transfers, or breach response.",
     "标识符脱敏可以是安全措施之一，但不能单独满足第 32 条，也不能满足合法依据、权利、治理、传输或泄露响应等义务。",
   )),
-  singaporeAi: official("Model AI Governance Framework for Generative AI", "https://aiverifyfoundation.sg/resources/mgf-gen-ai/", "AI Verify Foundation and Infocomm Media Development Authority", "Singapore generative-AI governance framework", bilingual(
-    "This is broader Singapore governance context for accountability, data, trusted development, testing and security. It is not a MAS rule and does not substantiate MAS-specific compliance.",
-    "这是关于问责、数据、可信开发、测试与安全的新加坡广义治理背景；它不是 MAS 规则，也不能证明符合 MAS 特定义务。",
-  )),
   pdpa: official("Personal Data Protection Act", "https://www.pdpc.gov.sg/overview-of-pdpa/the-legislation/personal-data-protection-act", "Personal Data Protection Commission Singapore", "Singapore personal-data legislation overview", bilingual(
     "The Rules can flag selected identifiers or risky requests. They do not determine consent, purpose limitation, transfer obligations, Do Not Call duties, or PDPA compliance.",
     "Rules 可标记特定标识符或风险请求，但不判断同意、目的限制、传输义务、谢绝来电义务或 PDPA 合规性。",
@@ -114,11 +118,9 @@ type SourceKey = keyof typeof sources;
 const industrySourceByPolicy: Partial<Record<string, SourceKey>> = {
   "eu-ai-act-article5": "euAiAct",
   "gdpr-eu-pii-protection": "gdpr",
-  "mas-ai-risk-management": "singaporeAi",
   "pdpa-singapore": "pdpa",
   "singapore-customer-identifiers": "pdpa",
   "singapore-data-use-boundaries": "pdpa",
-  "singapore-financial-conduct": "singaporeAi",
   "airline-passenger-data-protection-uae": "uae",
   "uae-regulatory-compliance": "uae",
   "aviation-operations-security": "iataCybersecurity",
@@ -128,6 +130,8 @@ const industrySourceByPolicy: Partial<Record<string, SourceKey>> = {
   "banking-customer-protection": "bisCustomerDueDiligence",
   "securities-market-integrity": "asic",
   "internet-account-abuse": "nistIdentity",
+  "china-personal-identifiers": "chinaPipl",
+  "china-banking-assistant-boundaries": "chinaFinancialAi",
   "claims-agent-safety": "whoHealth",
   "filter-denied-medical-advice": "whoHealth",
   "filter-harmful-child-safety": "unicefChildren",
@@ -145,6 +149,7 @@ const policiesWithoutExternalMapping = new Set([
   "builtin-topic-safety",
   "configured-phrase-filter",
   "competitor-mention-detection",
+  "china-organization-identifiers",
   "filter-denied-financial-advice",
   "filter-denied-legal-advice",
   "keyword-blocking",
@@ -179,6 +184,11 @@ function provenance(sourceFile: string): { provenance: Text; upstream: Text; lic
     provenance: bilingual("TaskLattice maintains this focused Policy and its business-purpose grouping. Regulatory or industry context is selected independently from the detector implementation.", "TaskLattice 维护此聚焦 Policy 及其业务用途分组。监管或行业背景与检测器实现相互独立地选择。"),
     upstream: bilingual("Implementation lineage is repository-maintained. Where detector material was incorporated from a third party, THIRD_PARTY_NOTICES.md remains authoritative; that lineage is not a compliance mapping.", "实现沿革由仓库维护。若检测器材料包含第三方内容，以 THIRD_PARTY_NOTICES.md 为准；该沿革不构成合规映射。"),
     license: bilingual("Distributed under the repository license, subject to THIRD_PARTY_NOTICES.md for incorporated material. External regulatory and industry references grant no software rights.", "依据仓库许可分发；所含材料受 THIRD_PARTY_NOTICES.md 约束。外部监管及行业参考不授予软件权利。"),
+  };
+  if (sourceFile === "china_policies.json") return {
+    provenance: bilingual("TaskLattice maintains this China-mainland runtime Policy and its deterministic Test Cases. Regulatory and standards references are documented separately and are not the source of the detector implementation.", "TaskLattice 维护此中国大陆运行时 Policy 及其确定性 Test Cases。监管与标准参考单独记录，并非检测器实现的来源。"),
+    upstream: bilingual("The implementation is repository-maintained and does not copy a regulator's rule set or claim regulator approval. Checksum algorithms validate syntax only.", "实现由仓库维护，未复制监管机构规则集，也不声称获得监管认可。校验算法仅验证格式。"),
+    license: bilingual("The implementation follows the repository license. Linked laws and standards are contextual references and grant no software rights.", "实现遵循仓库许可。所链接法律及标准仅为背景参考，不授予软件权利。"),
   };
   if (sourceFile === "model_capability_policies.json") return {
     provenance: bilingual("TaskLattice maintains this capability contract. It invokes a configured model through the local runtime; results depend on the selected provider, model profile and validation evidence.", "TaskLattice 维护此能力契约。它通过本地运行时调用已配置模型；结果取决于所选 Provider、模型 Profile 和验证证据。"),

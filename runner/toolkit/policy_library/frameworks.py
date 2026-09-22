@@ -41,9 +41,6 @@ OWASP_LLM_2025_POLICY_IDS = frozenset(
         # Scoped runtime assurance for LLM09 Misinformation.
         "builtin-contextual-grounding",
         "builtin-automated-reasoning",
-        # Financial-sector controls that include model-security, poisoning,
-        # exfiltration, and governance indicators.
-        "mas-ai-risk-management",
     }
 )
 

@@ -13,6 +13,8 @@ const profileIcons: Record<string, LucideIcon> = {
   securities: ChartNoAxesCombined,
   internet: Headset,
   singapore_finance: Globe2,
+  china_mainland: Globe2,
+  china_banking: Landmark,
 };
 
 export function GuardrailProfilePicker({ presets, selected, pending, onSelect, onResolve }: {
@@ -22,7 +24,7 @@ export function GuardrailProfilePicker({ presets, selected, pending, onSelect, o
   const { t } = useTranslation();
   const id = useId();
   const profile = presets.find(item => item.id === (pending ?? selected));
-  const knownCategories = ["general", "banking", "securities", "internet", "singapore_finance"];
+  const knownCategories = ["general", "banking", "securities", "internet", "singapore_finance", "china_mainland", "china_banking"];
   const blankLabel = <span className="flex items-center gap-2"><FilePlus2 aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />{t("protection.blank")}</span>;
   const profileLabel = (item: GuardrailProfilePreview) => {
     const Icon = profileIcons[item.category ?? item.industry] ?? ShieldCheck;

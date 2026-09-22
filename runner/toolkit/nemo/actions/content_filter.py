@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import unicodedata
+from datetime import date
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any, Iterable, Mapping
@@ -141,6 +142,10 @@ _COMPETITOR_DESTINATION = re.compile(
     r"\b(?:visa|airport|weather|documents?|entry|connection time)\b",
     re.IGNORECASE,
 )
+_CN_RESIDENT_ID_WEIGHTS = (7, 9, 10, 5, 8, 4, 2, 1, 6, 3, 7, 9, 10, 5, 8, 4, 2)
+_CN_RESIDENT_ID_CHECKS = "10X98765432"
+_CN_USCC_ALPHABET = "0123456789ABCDEFGHJKLMNPQRTUWXY"
+_CN_USCC_WEIGHTS = (1, 3, 9, 27, 19, 26, 16, 17, 20, 29, 25, 13, 8, 24, 10, 30, 28)
 
 
 @dataclass(frozen=True, slots=True)
@@ -544,14 +549,20 @@ class BuiltinContentFilter:
         spans = [
             (match.start(), match.end())
             for match in regex.finditer(text)
-            if context_matches is None
-            or rule.context_max_gap_words is None
-            or self._near_context(
-                match.start(),
-                match.end(),
-                context_matches,
-                text,
-                rule.context_max_gap_words,
+            if self._valid_pattern_candidate(
+                rule.implementation.detector,
+                match.group(0),
+            )
+            and (
+                context_matches is None
+                or rule.context_max_gap_words is None
+                or self._near_context(
+                    match.start(),
+                    match.end(),
+                    context_matches,
+                    text,
+                    rule.context_max_gap_words,
+                )
             )
         ]
         if rule.allow_word_numbers:
@@ -576,6 +587,64 @@ class BuiltinContentFilter:
                     continue
                 spans.append((match.start(), match.end()))
         return self._merge_spans(spans)
+
+    @staticmethod
+    def _valid_pattern_candidate(detector: str | None, value: str) -> bool:
+        if detector == "cn_resident_identity_card":
+            normalized = value.upper()
+            if (
+                len(normalized) != 18
+                or not normalized.isascii()
+                or not normalized[:17].isdigit()
+            ):
+                return False
+            try:
+                date(
+                    int(normalized[6:10]),
+                    int(normalized[10:12]),
+                    int(normalized[12:14]),
+                )
+            except ValueError:
+                return False
+            checksum = sum(
+                int(character) * weight
+                for character, weight in zip(
+                    normalized[:17],
+                    _CN_RESIDENT_ID_WEIGHTS,
+                    strict=True,
+                )
+            )
+            return normalized[-1] == _CN_RESIDENT_ID_CHECKS[checksum % 11]
+        if detector == "cn_unified_social_credit_code":
+            normalized = value.upper()
+            if len(normalized) != 18 or any(
+                character not in _CN_USCC_ALPHABET for character in normalized
+            ):
+                return False
+            checksum = sum(
+                _CN_USCC_ALPHABET.index(character) * weight
+                for character, weight in zip(
+                    normalized[:17],
+                    _CN_USCC_WEIGHTS,
+                    strict=True,
+                )
+            )
+            expected = _CN_USCC_ALPHABET[(31 - checksum % 31) % 31]
+            return normalized[-1] == expected
+        if detector == "luhn":
+            digits = "".join(character for character in value if character.isdigit())
+            if not digits or not digits.isascii():
+                return False
+            total = 0
+            for index, character in enumerate(reversed(digits)):
+                digit = int(character)
+                if index % 2:
+                    digit *= 2
+                    if digit > 9:
+                        digit -= 9
+                total += digit
+            return total % 10 == 0
+        return True
 
     @staticmethod
     def _near_context(

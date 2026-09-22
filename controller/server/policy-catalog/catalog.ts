@@ -133,6 +133,7 @@ export const POLICY_CATALOG_FILE_NAMES = [
   "legacy_topic_policies.json",
   "model_capability_policies.json",
   "focused_policies.json",
+  "china_policies.json",
   "configurable_policies.json",
 ] as const;
 
@@ -166,7 +167,6 @@ const OWASP_LLM_2025_POLICY_IDS = new Set([
   "block-code-execution",
   "builtin-contextual-grounding",
   "builtin-automated-reasoning",
-  "mas-ai-risk-management",
 ]);
 
 export class PolicyCatalog {

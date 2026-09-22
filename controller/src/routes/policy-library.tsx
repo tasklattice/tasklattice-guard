@@ -56,6 +56,7 @@ const POLICY_FACET_ORDER = ["source", "framework", "jurisdiction"];
 type CatalogFacetTag = Omit<PolicyTag, "namespace"> & { namespace: PolicyTag["namespace"] | "source"; count?: number };
 const JURISDICTION_FLAGS: Record<string, string> = {
   au: "🇦🇺",
+  cn: "🇨🇳",
   eu: "🇪🇺",
   sg: "🇸🇬",
   uae: "🇦🇪",

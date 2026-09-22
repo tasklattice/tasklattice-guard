@@ -11,7 +11,7 @@ export const protectionEn = {
     states: { missing: "No model is assigned.", unverified: "The assigned model has no verified capability evidence.", failed: "Model capability validation failed.", validated: "The model is validated but has not been activated on the Runner.", activating: "Model activation on the Runner has not completed." },
     failureTitle: "Validation execution failed", noFailureDetail: "This historical run failed without recording a failure reason or Case results. Its original cause cannot be determined from this record. Check the current draft dependencies before retrying.",
   },
-  profile: { category: "Industry or use case", select: "Select a Profile", default: "Default Profile", defaultTag: "Default", enables: "Enables {{count}} Policies", blankHint: "No Profile selected. Choose protections manually in the next step.", categories: { general: "General", banking: "Banking", securities: "Securities", internet: "Internet support", singapore_finance: "Singapore finance" } },
+  profile: { category: "Industry or use case", select: "Select a Profile", default: "Default Profile", defaultTag: "Default", enables: "Enables {{count}} Policies", blankHint: "No Profile selected. Choose protections manually in the next step.", categories: { general: "General", banking: "Banking", securities: "Securities", internet: "Internet support", singapore_finance: "Singapore finance", china_mainland: "China mainland", china_banking: "China mainland banking" } },
   correctness: {
     contextual_grounding: "Contextual Grounding", automated_reasoning: "Automated Reasoning",
     contextual_groundingHint: "Requires a validated, active Grounding Judge model, a query, and grounding sources. The Settings workflow for validating and adding new Grounding bindings is not yet available.",
@@ -135,7 +135,7 @@ export const protectionZh = {
     states: { missing: "未配置对应模型。", unverified: "已绑定模型，但缺少有效的能力验证。", failed: "模型能力验证失败。", validated: "模型已通过验证，但尚未在 Runner 上启用。", activating: "模型尚未完成 Runner 启用。" },
     failureTitle: "Validation 执行失败", noFailureDetail: "这次历史执行失败，但未记录具体失败原因和用例结果，无法从这条记录确定原始原因。请检查当前草稿的依赖后再重试。",
   },
-  profile: { category: "行业或使用场景", select: "选择 Profile", default: "默认 Profile", defaultTag: "默认", enables: "预启用 {{count}} 项 Policy", blankHint: "未选择 Profile，可在下一步手动选择防护。", categories: { general: "通用", banking: "银行", securities: "证券", internet: "互联网客服", singapore_finance: "新加坡金融" } },
+  profile: { category: "行业或使用场景", select: "选择 Profile", default: "默认 Profile", defaultTag: "默认", enables: "预启用 {{count}} 项 Policy", blankHint: "未选择 Profile，可在下一步手动选择防护。", categories: { general: "通用", banking: "银行", securities: "证券", internet: "互联网客服", singapore_finance: "新加坡金融", china_mainland: "中国大陆", china_banking: "中国大陆银行" } },
   correctness: {
     contextual_grounding: "Contextual Grounding", automated_reasoning: "Automated Reasoning",
     contextual_groundingHint: "需要已验证并启用的 Grounding Judge 模型，以及请求中的问题和参考资料。设置页暂未开放新增 Grounding 绑定所需的专项验证流程。",

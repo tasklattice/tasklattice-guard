@@ -133,6 +133,7 @@ describe("Session freshness and read-only access", () => {
     const body = await response.json();
     expect(body.items.map((item: { id: string }) => item.id)).toEqual(expect.arrayContaining([
       "common-baseline", "banking-assistant", "securities-assistant", "internet-customer-support",
+      "china-mainland-runtime", "china-banking-assistant",
     ]));
     expect(unexpected).not.toHaveBeenCalled();
     expect((await setup(null).app.request("/api/v1/policy-catalog/protection-presets")).status).toBe(401);

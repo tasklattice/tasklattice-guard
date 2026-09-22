@@ -7,7 +7,7 @@ certification, legal opinion, or runtime enforcement mechanism.
 
 ## Coverage and source model
 
-All 69 built-in Policies receive version-bound documentation from
+All 71 built-in Policies receive version-bound documentation from
 `controller/server/policy-catalog/compliance.ts`. Explicit asset metadata takes
 precedence; the detailed Australia PII mapping remains embedded in
 `builtin_policies.json`.
@@ -26,12 +26,23 @@ implementation lineage and license attribution, with an explicit statement that 
 not the Policy's industry basis, compliance authority, or runtime dependency.
 
 The contextual reference catalog currently uses material from NIST, OWASP, WHO,
-UNICEF, EUR-Lex, OAIC, the Australian legislation register, PDPC, IMDA, the UAE
-government, PCI SSC, ASIC, the Basel Committee, IATA, and the AI Verify Foundation. Reference prose explains
-why the document is relevant and what the technical Policy does **not** implement.
-Singapore financial-AI Policies use the current AI Verify Foundation/IMDA governance framework
-only as broader Singapore context and explicitly do not present it as a MAS rule or
-proof of MAS compliance.
+UNICEF, EUR-Lex, OAIC, the Australian legislation register, China's National People's
+Congress and national standards platforms, PDPC, the UAE government, PCI SSC, ASIC,
+the Basel Committee, and IATA. Reference prose explains why the document is relevant
+and what the technical Policy does **not** implement.
+
+The AI Verify Foundation site is no longer used as an external compliance reference.
+Although its framework was previously described only as broad Singapore context, its
+non-regulator domain and lack of a direct relationship to the financial phrase Rules
+made that mapping ambiguous.
+
+`mas-ai-risk-management` was a LiteLLM-derived phrase collection, and
+`singapore-financial-conduct` was TaskLattice's focused split of four of those Rules.
+The upstream material used MAS-labelled names, but the Rules had no verified,
+Rule-level mapping to an authoritative MAS publication. Both Policies were therefore
+retired from the catalog and removed from all current Profiles rather than being
+presented as regulator-defined or compliance-backed controls. Historical signed
+artifacts remain immutable, but these IDs cannot be selected for new Guardrails.
 
 Not every business filter has a legitimate external mapping. Topic filters,
 competitor terms, configured phrases, and similar organisation-defined controls show
@@ -51,6 +62,9 @@ The schema is `controller/shared/policy-compliance.ts`.
 - Do not treat a software repository, runtime framework, or model provider as a
   compliance source.
 - Do not add an unrelated standard merely to avoid an empty reference list.
+- A Policy or Rule named after a regulator, law, or standard must have a verified,
+  directly relevant authoritative source and reviewed Rule-level mapping; otherwise
+  remove that claim or retire the Policy from new selection.
 - References are contextual unless a provision is explicitly identified. They never
   imply authorship, endorsement, certification, or complete implementation.
 - Reference existing Rule IDs in `references` and `coverage`; unknown IDs fail catalog
@@ -85,7 +99,7 @@ The inspector is memoized, builds its Rule-name index once, and renders only the
 selected Policy tab. Shared source text compresses efficiently; a regression test caps
 the gzip overhead for all built-in compliance metadata at 45 KB.
 
-Tests require 69/69 built-in Policies to have bilingual, version-bound documentation
+Tests require 71/71 built-in Policies to have bilingual, version-bound documentation
 and valid Rule references. They verify industry mappings, intentional empty mappings,
 custom provenance, unsafe links, missing/stale metadata, Chinese rendering, external
 link semantics, and the exclusion of software dependencies and the retired MAS URL.

@@ -41,6 +41,7 @@ describe("Policy Library jurisdiction translations", () => {
 
     expect(t("policyLibrary.tagNamespaces.jurisdiction")).toBe("适用地区");
     expect(t("policyLibrary.jurisdictions.au")).toBe("澳大利亚");
+    expect(t("policyLibrary.jurisdictions.cn")).toBe("中国大陆");
     expect(t("policyLibrary.jurisdictions.eu")).toBe("欧盟");
     expect(t("policyLibrary.jurisdictions.sg")).toBe("新加坡");
     expect(t("policyLibrary.jurisdictions.uae")).toBe("阿联酋");
