@@ -144,7 +144,7 @@ export function generatedTestCases(
 }
 
 /** Preserve template assertions in storage; freeze reviewed local overlays into each run. */
-export function applyValidationOverrides<T extends { id: string; sourcePolicyId: string | null; sourcePolicyVersion: string | null; sourceCaseId: string | null; expectedDecision: string }>(cases: readonly T[], draftValue: GuardrailDraftConfig): Array<T & { expectationOverride?: ValidationExpectationOverride }> {
+export function applyValidationOverrides<T extends { id: string; sourcePolicyId: string | null; sourcePolicyVersion: string | null; sourceCaseId: string | null; expectedDecision: string; coveredRuleIds?: string[]; content?: string }>(cases: readonly T[], draftValue: GuardrailDraftConfig): Array<T & { expectationOverride?: ValidationExpectationOverride }> {
   const draft = normalizeGuardrailDraft(draftValue);
   const bindings = new Map(draft.policyBindings.map((binding) => [binding.policyId, binding]));
   for (const binding of draft.policyBindings) {
@@ -155,7 +155,19 @@ export function applyValidationOverrides<T extends { id: string; sourcePolicyId:
         throw new Error(`Review the stale expectation override for ${binding.policyId}/${caseId} after changing Policy version.`);
       }
       if (source.expectedDecision !== "allow" && override.expectedDecision === "allow") {
-        throw new Error(`Cannot weaken an unsafe inherited Test Case to allow: ${binding.policyId}/${caseId}. Use an explicit scoped exclusion instead.`);
+        // Observation-only is an explicit action contract, not a discarded
+        // unsafe test: every covered detector must still match, and the full
+        // original content must survive unchanged.
+        const recordsOnly = Boolean(source.coveredRuleIds?.length)
+          && source.coveredRuleIds!.every((ruleId) =>
+            (binding.ruleActions[ruleId] ?? binding.action) === "pass"
+            && override.expectedMatches.some((match) => match.policyId === binding.policyId && match.ruleId === ruleId))
+          && override.expectedMatches.every((match) => {
+            const target = bindings.get(match.policyId);
+            return target && (target.ruleActions[match.ruleId] ?? target.action) === "pass";
+          })
+          && typeof source.content === "string" && override.expectedOutputContent === source.content;
+        if (!recordsOnly) throw new Error(`Cannot weaken an unsafe inherited Test Case to allow: ${binding.policyId}/${caseId}. Observation-only expectations require explicit pass actions, retained Rule matches and unchanged content.`);
       }
       for (const match of override.expectedMatches) {
         if (!bindings.get(match.policyId)?.enabledRuleIds.includes(match.ruleId)) {

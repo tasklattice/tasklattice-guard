@@ -2366,6 +2366,8 @@ const resources = {
         findingsTruncated: "Showing the latest {{shown}} of {{total}} findings.",
         loggingTitle: "Prompt History logging",
         loggingLevel: "Logging level",
+        loggingScopeHint: "Logging levels control history capture, not whether a Rule blocks a request. Observation-only findings remain visible in Security at every level.",
+        observationOnly: "Recorded only",
         loggingLevels: {
           info: { description: "Production default. Stores detailed history only for blocked, failed, timed-out, or fail-closed checkpoints." },
           debug: { description: "Stores Info events plus content transformations for short-term investigation." },
@@ -5206,6 +5208,8 @@ const resources = {
         findingsTruncated: "显示最近 {{shown}} 条，共 {{total}} 条发现。",
         loggingTitle: "Prompt 历史日志",
         loggingLevel: "日志等级",
+        loggingScopeHint: "日志等级控制历史采集范围，不改变规则是否拦截请求。仅记录的命中在所有日志等级下均可在 Security 查看。",
+        observationOnly: "仅记录",
         loggingLevels: {
           info: { description: "生产默认等级。仅为阻断、失败、超时或 fail-closed 的检查点保存详细历史。" },
           debug: { description: "在 Info 基础上额外保存内容转换，适合短期问题排查。" },

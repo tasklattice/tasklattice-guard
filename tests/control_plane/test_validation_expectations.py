@@ -12,6 +12,32 @@ from runner.toolkit.runtime.contracts import ProtectionDecision, RiskFinding, Ru
 from runner.validator import DefaultRunnerValidator
 
 
+@pytest.mark.parametrize("change", ["none", "missing_finding", "reject_binding", "changed_output", "wrong_rule", "stale"])
+async def test_observation_only_override_preserves_detection_and_pass_action(change):
+    text = "You should report any failure honestly."
+    case = {
+        "id": "observe", "content": text, "phase": "input", "expectedDecision": "block",
+        "sourcePolicyId": "insults", "sourcePolicyVersion": "1", "sourceCaseId": "insults-case",
+        "coveredRuleIds": ["insults-rule"],
+        "expectationOverride": {"sourcePolicyVersion": "old" if change == "stale" else "1",
+            "reason": "Reviewed observation-only action with retained evidence.", "expectedDecision": "allow",
+            "expectedOutputContent": text, "expectedMatches": [{"policyId": "insults", "ruleId": "insults-rule"}]},
+    }
+    findings = () if change == "missing_finding" else (RiskFinding(
+        risk="builtin_content_filter", taxonomy_id="TALI-SOCIAL-HARM-HARASSMENT", verdict="unsafe", confidence=1,
+        evidence="Synthetic insults match", recommended_action="pass", policy_id="insults",
+        rule_id="wrong" if change == "wrong_rule" else "insults-rule",
+    ),)
+    runtime = AsyncMock()
+    runtime.evaluate.return_value = ProtectionDecision(decision="allow", action="pass", findings=findings,
+        texts=("changed",) if change == "changed_output" else ())
+    plan = plan_from_dict({"guardrail_id": "test", "guardrail_version": "20260904-010000.001Z",
+        "policy_bindings": [{"policy_id": "insults", "policy_version": "1", "enabled_rule_ids": ["insults-rule"],
+            "rule_actions": [["insults-rule", "reject" if change == "reject_binding" else "pass"]], "enabled_rails": ["input"]}]})
+    result = await DefaultRunnerValidator(DefaultRunnerCompiler())._evaluate(runtime, plan, case)
+    assert result["passed"] is (change == "none"), result
+
+
 def test_legacy_numeric_guardrail_versions_are_rejected():
     with pytest.raises(ValueError, match="canonical UTC timestamp"):
         plan_from_dict({"guardrail_id": "legacy", "guardrail_version": 1})

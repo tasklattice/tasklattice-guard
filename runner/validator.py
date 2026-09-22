@@ -160,14 +160,27 @@ class DefaultRunnerValidator:
                 (_record(item).get("policyId"), _record(item).get("ruleId"))
                 for item in _list(override.get("expectedMatches"))
             }
+            bindings = {binding.policy_id: binding for binding in plan.policy_bindings}
+            records_only = (
+                expected == "allow" and bool(covered)
+                and {(source_policy_id, rule_id) for rule_id in covered}.issubset(expected_matches)
+                and override.get("expectedOutputContent") == content
+                and all(
+                    policy_id in bindings
+                    and rule_id in bindings[policy_id].enabled_rule_ids
+                    and dict(bindings[policy_id].rule_actions).get(rule_id, bindings[policy_id].action) == "pass"
+                    for policy_id, rule_id in expected_matches
+                )
+                and all(item.get("recommended_action") == "pass" for item in findings)
+            )
             valid_override = (
                 bool(_string(override.get("reason")).strip())
                 and override.get("sourcePolicyVersion") == case.get("sourcePolicyVersion")
-                and (bool(expected_matches) if expected != "allow" else template_expected == "allow")
+                and (bool(expected_matches) if expected != "allow" else template_expected == "allow" or records_only)
                 and (expected != "transform" or "expectedOutputContent" in override)
             )
             rule_contract = valid_override and (
-                expected_matches.issubset(actual_matches) if expected != "allow" else not actual_matches
+                expected_matches.issubset(actual_matches) if expected != "allow" or records_only else not actual_matches
             )
             if not valid_override:
                 assertion_failures.append("The reviewed expectation is invalid or stale.")

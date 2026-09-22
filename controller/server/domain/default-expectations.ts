@@ -23,6 +23,16 @@ function reviewedExpectations(): Overrides {
   };
   const sample = (name: string) => `Acceptance sample: [${name}_REDACTED]`;
 
+  result["filter-denied-insults"] = {
+    "accept/denied_insults": {
+      sourcePolicyVersion: "1.95.0",
+      reason: "Default records insults findings without intervening: broad word co-occurrence also matches benign Agent instructions. Other Policies continue to enforce their own actions.",
+      expectedDecision: "allow",
+      expectedOutputContent: "Please review this request: idiot.",
+      expectedMatches: [{ policyId: "filter-denied-insults", ruleId: "category/denied_insults" }],
+    },
+  };
+
   for (const name of ["harmful-violence", "harmful-self-harm", "harmful-child-safety", "bias-sexual-orientation"]) {
     add(`filter-${name}`, `accept/${name.replaceAll("-", "_")}`, "filter-harm-toxic-abuse", "category/harm_toxic_abuse", undefined, firstReject);
   }

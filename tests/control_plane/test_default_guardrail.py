@@ -218,6 +218,37 @@ def test_inherited_rule_acceptance_is_independent_of_composition(default_baselin
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("phase", ["input", "output"])
+async def test_default_records_insults_and_still_enforces_later_policies(default_plan: dict, phase: str) -> None:
+    previews = DraftPreviewRuntime(DefaultRunnerCompiler(), action_providers(*local_action_providers()))
+    try:
+        for text, expected in (
+            ("You should report any failure honestly.", "allow"),
+            ("Please review this request: idiot.", "allow"),
+            ("You should report any failure honestly. AKIA0000000000000000", "block"),
+            ("You should report any failure honestly. Passport: E12345678", "transform"),
+        ):
+            result = await previews.evaluate(
+                ProtectionRequest(phase=phase, texts=(text,), context=RequestContext(protocol="playground")),
+                preview_id=f"default-observe-{phase}", guardrail_id="guardrail-default", draft_revision=1,
+                candidate_version="20260904-010000.001Z", plan=default_plan, runtime_profile="auto",
+            )
+            assert result.decision == expected, result.reason
+            observed = [f for f in result.findings if f.policy_id == "filter-denied-insults"]
+            assert observed and all(f.recommended_action == "pass" for f in observed)
+            assert observed[0].rule_id == "category/denied_insults"
+            if expected == "allow":
+                assert result.action == "pass" and result.texts == ()
+            elif expected == "block":
+                assert any(f.policy_id == "local-credentials" and f.recommended_action == "reject" for f in result.findings)
+            else:
+                assert result.texts == ("You should report any failure honestly. Passport: [passport_china_REDACTED]",)
+            assert not result.usage.fail_closed and result.usage.model_invocations == 0
+    finally:
+        await previews.shutdown()
+
+
+@pytest.mark.asyncio
 async def test_default_validation_passes_all_reviewed_composition_cases(default_baseline: dict) -> None:
     cases = default_baseline["cases"]
     # Exercise the real TS codec -> Protobuf bytes -> Python codec boundary,
@@ -277,7 +308,10 @@ async def test_focused_default_replays_every_frozen_legacy_case(default_plan: di
                 candidate_version="20260904-010000.001Z", plan=default_plan, runtime_profile="auto",
             )
             identity = (case["policyId"], case["caseId"])
-            assert result.decision == case["expectedDecision"], (identity, result)
+            # The frozen migration fixture remains unchanged; insults now has
+            # an explicitly reviewed observation-only Default contract.
+            expected_decision = "allow" if identity == ("filter-denied-insults", "accept/denied_insults") else case["expectedDecision"]
+            assert result.decision == expected_decision, (identity, result)
             if result.decision == "transform":
                 assert result.texts == (expected_output,), (identity, result.texts, expected_output)
             assert result.findings and all(finding.policy_id in {

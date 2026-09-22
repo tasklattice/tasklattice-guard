@@ -2904,8 +2904,9 @@ def _runtime_action(item):
         recommended = tuple(
             finding.recommended_action
             for finding in item.result.findings
-            if finding.recommended_action != "pass"
         )
+        # Explicit pass findings must not fall back to the binding's reject
+        # action. Only a result with no findings inherits that fallback.
         return _ordered_action(recommended) if recommended else item.binding.on_unsafe
     severity = {
         "too_complex": 0,

@@ -8,7 +8,8 @@ export const DEFAULT_ROUTER_ID = "router-default";
 export const DEFAULT_ROUTER_NAME = "Default Router";
 
 // Default is a composition of complete, model-free Policies, not a separate
-// Rule collection. Policy definitions own their Rules, phases, and actions.
+// Rule collection. Policy definitions own their Rules, phases, and actions;
+// reviewed Default-local overrides can retain findings without enforcement.
 // Focused bindings replace the three mixed legacy collections. Credentials
 // precede numeric redaction; complete payment values precede broad tax formats;
 // contextual bank/travel/government identifiers precede broad contact formats.
@@ -75,7 +76,9 @@ export function defaultGuardrailDraft(policies: readonly PolicyDto[]): Guardrail
       enabledRuleIds: policy.rules.map((rule) => rule.id),
       ruleOrder: [],
       testCaseOverrides: defaultTestCaseOverrides(policy.id),
-      ruleActions: {},
+      ruleActions: policy.id === "filter-denied-insults"
+        ? { "category/denied_insults": "pass" as const }
+        : {},
       enabledRails: [...policy.rails],
       reasoningPolicy: null,
     };

@@ -9,6 +9,24 @@ import { protectionPresets } from "../../shared/protection-presets.js";
 import { expandProtectionPreset } from "../policy-catalog/presets.js";
 
 describe("Guardrail Validation contract", () => {
+  it("requires explicit pass actions, the original match and unchanged output for observation-only acceptance", () => {
+    const policies = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
+    const draft = defaultGuardrailDraft(policies);
+    const cases = generatedTestCases("guardrail-1", draft, policies);
+    const observed = applyValidationOverrides(cases, draft).find(item => item.sourcePolicyId === "filter-denied-insults")!;
+    expect(observed.expectedDecision).toBe("block");
+    expect(observed.expectationOverride).toMatchObject({ expectedDecision: "allow", expectedOutputContent: observed.content,
+      expectedMatches: [{ policyId: "filter-denied-insults", ruleId: "category/denied_insults" }] });
+    for (const change of ["action", "match", "content"] as const) {
+      const changed = structuredClone(draft);
+      const binding = changed.policyBindings.find(item => item.policyId === "filter-denied-insults")!;
+      const overlay = binding.testCaseOverrides!["accept/denied_insults"]!;
+      if (change === "action") binding.ruleActions = {};
+      if (change === "match") overlay.expectedMatches = [{ policyId: "local-credentials", ruleId: "unrelated" }];
+      if (change === "content") overlay.expectedOutputContent = "changed";
+      expect(() => applyValidationOverrides(cases, changed)).toThrow(/Cannot weaken/);
+    }
+  });
   it("does not generate Output assertions after the user selects Input-only protection", () => {
     const policies = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
     const binding = expandProtectionPreset(protectionPresets[0]!, policies)[0]!;

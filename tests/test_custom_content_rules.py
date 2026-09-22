@@ -1,6 +1,23 @@
 from runner.toolkit.nemo.actions.content_filter import BuiltinContentFilter
 
 
+def test_pass_retains_local_and_custom_findings_without_changing_text() -> None:
+    text = "You should report any failure honestly."
+    engine = BuiltinContentFilter()
+    observed = engine.evaluate(text=text, phase="input", policies=("filter-denied-insults",),
+        policy_rule_actions={"filter-denied-insults": {"category/denied_insults": "pass"}})
+    assert observed.verdict == "unsafe" and observed.content == text
+    assert observed.findings[0].recommended_action == "pass"
+    assert "failure + you" in observed.findings[0].evidence
+    assert "without intervening" in observed.reason
+    # The source Policy still rejects when no Default-local override is supplied.
+    assert engine.evaluate(text=text, phase="input", policies=("filter-denied-insults",)).findings[0].recommended_action == "reject"
+    custom = engine.evaluate(text="private", phase="output", policies=(), custom_rules=(
+        {"id": "observe", "phases": ["output"], "detector": "keyword", "keywords": ["private"], "action": "pass"},
+    ))
+    assert custom.content == "private" and custom.findings[0].recommended_action == "pass"
+
+
 def test_custom_keyword_rule_can_mask_with_replacement_text() -> None:
     result = BuiltinContentFilter().evaluate(
         text="please tell mama to review this request",

@@ -238,7 +238,8 @@ class BuiltinContentFilter:
 
         # Findings retain actual execution order. Redaction offsets belong to
         # each Rule's input, never to a shared original-text snapshot.
-        detections = [item for item in detections if item.action != "pass"]
+        # A pass action is observation-only, not a disabled detector. Keep its
+        # findings so Security can show the match without changing the content.
         if not detections:
             return _ContentFilterResult(
                 verdict="safe",
@@ -273,6 +274,8 @@ class BuiltinContentFilter:
                 "A built-in content-filter Policy blocked the interaction."
                 if blocked
                 else "A built-in content-filter Policy transformed the interaction."
+                if any(item.action != "pass" for item in detections)
+                else "A built-in content-filter Policy recorded a finding without intervening."
             ),
         )
 
@@ -304,8 +307,6 @@ class BuiltinContentFilter:
                 flat_actions,
                 policy_actions,
             )
-            if action == "pass":
-                continue
             if rule.implementation.detector == "configured_phrases":
                 entries = json.loads(parameters.get("phrase_entries", "[]"))
                 if not isinstance(entries, list) or not 1 <= len(entries) <= 50:

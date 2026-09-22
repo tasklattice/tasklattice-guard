@@ -12,7 +12,7 @@ import * as api from "@/lib/api";
 import * as controllerApi from "@/lib/controller-api";
 import { defaultPolicyBinding } from "@/components/policy-binding-editor";
 
-import { DeleteGuardrailSheet, DraftReleaseView, EditGuardrailSheet, GuardrailFindingsView, GuardrailRuntimeView, ImmutableVersionView, TestCases } from "./guardrails";
+import { DeleteGuardrailSheet, DraftReleaseView, EditGuardrailSheet, GuardrailFindingsView, GuardrailLoggingCard, GuardrailRuntimeView, ImmutableVersionView, TestCases } from "./guardrails";
 
 const VERSION_ID = "20260813-080000.000Z";
 
@@ -78,6 +78,21 @@ const deletableGuardrail = {
 
 describe("Guardrail detail information hierarchy", () => {
   afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+
+  it("loads the Guardrail logging level and recovers from a failed settings request", async () => {
+    const load = vi.spyOn(api, "getGuardrailLoggingSettings")
+      .mockRejectedValueOnce(new Error("Logging temporarily unavailable"))
+      .mockResolvedValue({ guardrail_id: "guardrail-default", level: "info", updated_at: "2026-09-22T00:00:00Z",
+        updated_by: null, retention_days: 30, content_capture_enabled: true });
+    const save = vi.spyOn(api, "updateGuardrailLoggingSettings");
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><GuardrailLoggingCard guardrailId="guardrail-default" /></QueryClientProvider>);
+    await screen.findByText("Logging temporarily unavailable");
+    fireEvent.click(screen.getByRole("button", { name: "common.retry" }));
+    await screen.findByRole("heading", { name: "guardrails.loggingTitle" });
+    expect(screen.getByRole("combobox", { name: "guardrails.loggingLevel" }).textContent).toBe("INFO");
+    expect(load).toHaveBeenCalledWith("guardrail-default");
+    expect(save).not.toHaveBeenCalled();
+  });
 
   it.each(["shortcut", "policy"])("hides Topic Control settings when removed via %s and saves only after explicit Save", async removal => {
     vi.spyOn(controllerApi, "getModelConfiguration").mockResolvedValue({ models: [], active: null, draft: null, activating: null } as unknown as controllerApi.ModelConfigurationView);

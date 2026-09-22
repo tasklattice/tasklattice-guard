@@ -83,7 +83,7 @@ describe("Default Guardrail baseline", () => {
     expect(policies).toEqual(originalCatalog);
   });
 
-  it("composes complete Policies without disabling Rules or changing template actions", () => {
+  it("composes complete Policies with only the reviewed Default-local insults observation override", () => {
     const draft = defaultGuardrailDraft(policies);
 
     expect(draft.policyBindings.map((binding) => binding.policyId)).toEqual(expectedPolicyIds);
@@ -97,7 +97,7 @@ describe("Default Guardrail baseline", () => {
         enabledRuleIds: policy.rules.map((rule) => rule.id),
         ruleOrder: [],
         testCaseOverrides: binding.testCaseOverrides,
-        ruleActions: {},
+        ruleActions: policy.id === "filter-denied-insults" ? { "category/denied_insults": "pass" } : {},
         enabledRails: policy.rails,
         reasoningPolicy: null,
       });
@@ -198,7 +198,7 @@ describe("Default Guardrail baseline", () => {
       parameter_values: Object.entries(binding.parameterValues),
       enabled_rule_ids: binding.enabledRuleIds,
       rule_order: binding.ruleOrder ?? [],
-      rule_actions: [],
+      rule_actions: Object.entries(binding.ruleActions),
       enabled_rails: binding.enabledRails,
     })));
     expect(plan.modules.map((item) => item.phase)).toEqual(draft.policyBindings.flatMap((binding) => binding.enabledRails));
