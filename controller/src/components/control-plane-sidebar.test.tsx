@@ -39,14 +39,15 @@ describe("ControlPlaneSidebar", () => {
     expect(screen.queryByRole("link", { name: "Deployments" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Integrations" })).toBeNull();
 
-    const help = screen.getByRole("link", { name: "Help center" });
+    const help = screen.getByRole("link", { name: "Documentation" });
     const settings = screen.getByRole("link", { name: "Settings" });
     expect(help.closest('[data-sidebar="footer"]')).toBe(settings.closest('[data-sidebar="footer"]'));
+    expect(help.getAttribute("href")).toBe("/document");
     expect(settings.getAttribute("href")).toBe("/settings/health");
     expect(settings.getAttribute("aria-haspopup")).toBeNull();
     expect(settings.querySelectorAll("svg")).toHaveLength(1);
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(document.body.textContent).toContain("Help center");
+    expect(document.body.textContent).toContain("Documentation");
 
     const links = screen.getAllByRole("link");
     expect(links.slice(0, 4).map((link) => link.textContent?.trim())).toEqual([

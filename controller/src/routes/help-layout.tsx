@@ -26,7 +26,7 @@ export function HelpLayout() {
         </Link>
         <div className="flex items-center gap-3">
           <select aria-label={t("common.language")} value={locale} onChange={event => void setLanguage(event.target.value as SupportedLanguage)} className="min-h-11 rounded-md border bg-background px-3 text-sm focus-visible:outline-primary">
-            <option value="zh-CN">简体中文</option>
+            <option value="zh-CN">{t("common.chinese")}</option>
             <option value="en">English</option>
           </select>
           <Link to="/dashboard" className="inline-flex min-h-11 items-center gap-2 rounded-md px-2 text-sm text-muted-foreground hover:bg-muted focus-visible:outline-primary">
