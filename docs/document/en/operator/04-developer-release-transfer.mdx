@@ -1,0 +1,31 @@
+---
+id: "developer-release-transfer"
+title: "Test, publish, and transfer a custom Policy"
+summary: "Test the current Policy draft, publish an immutable Policy Version, and revalidate after moving to another environment."
+order: 3
+---
+This article is about a **custom Policy authored in Policy Studio**. **Testing** validates the current Policy draft, its Flows, Action dependencies, and Test Cases. **Publishing** turns the validated draft into an immutable **Policy Version**. This does not publish a Guardrail Version or move Endpoint traffic.
+
+<a id="policy-test-draft" />
+
+## Test the current Policy draft
+
+1. Add required Test Cases for every Flow-backed Rule. Specify the Input or Output Rail, content, expected `allow`/`block`/`transform` Decision, and covered Rule ID. Include normal, unsafe, and likely false-positive examples. For an Output Rail, “Your order arrives tomorrow” should pass, while a response exposing a customer ID should mask or block as configured.
+2. Click **Validate & run tests**. The console saves and checks the draft. A healthy default Runner then validates the Colang source and Action dependencies with the actual NeMo compiler and executes the cases. Metadata checks or successful compilation alone are not evidence that the behavior is correct.
+3. Review each case's actual Decision, matched Rule, failure reason, and latency. Required cases must pass for the current `draft revision`. Editing source, Rails, Actions, parameters, directory, or tests creates a new draft and makes the previous Validation Run stale; run it again.
+
+<a id="policy-publish-version" />
+
+## Publish an immutable Policy Version
+
+After validation passes, review the Policy name, Rails, Action dependencies, Test Cases, and timeout budget in Policy Studio, then publish the current draft. The platform creates an immutable Policy Version with a checksum for that revision. Later edits create a new draft and version without rewriting the old one. A Guardrail Binding explicitly selects the Policy Version and resolves required parameters.
+
+**Publishing the Policy does not protect business traffic yet.** Bind it to a Guardrail, validate and publish a Guardrail Version, route an Endpoint through a published Router to that version, and confirm Runner has applied the new configuration. See [build and publish a Guardrail](#user-lifecycle) and [Endpoint and Routing](#operator-routing).
+
+<a id="policy-transfer-environments" />
+
+## Revalidate when moving between environments
+
+An export package carries editable Policy definitions, including source, bindings, and tests. It does not carry the source environment's Validation Run or publication status, nor the destination's Actions and models. After import, check exact Action names and versions, Provider/Model capabilities, and parameters. Rerun Test Cases and publish a new Policy Version in the destination environment. A pass in the source environment is not publication evidence in the destination.
+
+[Open Policy Library](/policy-library)

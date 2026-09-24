@@ -1,0 +1,42 @@
+---
+id: "operator-create-policy"
+title: "Create a Policy: turn a business need into a check"
+summary: "Understand how Colang Flows, Rails, Actions, and Rules work together before creating a reusable check in Policy Studio."
+order: 2
+---
+First decide whether an existing Policy needs different binding parameters or whether a new reusable check is missing. Change Guardrail Binding parameters or Rules for the former. Create a Policy for the latter. For example, if several applications need to detect requests to reveal a system prompt, make that detection reusable instead of encoding it separately in each Router.
+
+<a id="operator-policy-mechanism" />
+
+## How a business requirement becomes a check
+
+Consider “customer-support responses must not reveal customer IDs.” The **content to check** is a model response, so this belongs on the Output Rail. Next choose the **detection method**: a stable ID format may use an existing detector, while a semantic judgment needs a registered Action or specialized model. A custom Policy's Colang Flow orchestrates the call and records the result; the Action performs detection or transformation. A sentence saying “do not reveal IDs” does not create a detector by itself.
+
+The parts have distinct responsibilities:
+
+1. **Colang source declares a Flow**, such as `check_customer_id`, that calls a capability and handles its result. Policy Studio uses Colang 2.x. NeMo parses the source during runtime validation; undefined Flows, unreferenced Actions, and forbidden imports are rejected.
+2. **A Rail Binding attaches the Flow to input or output**, selects `detect` (record a judgment) or `mutate` (possibly return replacement content), and sets the unsafe directive, timeout, and failure behavior. Rail and Flow name form a stable Rule ID, such as `flow/output/check_customer_id`, for test results and runtime evidence.
+3. **Action References pin callable capabilities by name and version**. The Flow may call registered detectors or model-backed capabilities from the Action Catalog. A custom Policy cannot upload arbitrary Python to Runner. Guardrail Binding resolves reviewed parameters and pins them with the version; live requests cannot override them.
+4. **Test Cases demonstrate behavior**. A normal order response should pass; a response containing a customer ID should transform or block as configured. Add look-alike values that must not match and failure cases such as Action timeout. Each case specifies a Rail, expected Decision, and covered Rule ID.
+
+The execution relationship for a custom Rule is **Policy Version → Rule (a Flow on an Input or Output Rail) → registered Action/model produces a finding → post-match directive → Decision**. A Policy defines the default directive, which a Guardrail Binding may override for an application; Endpoint and Router decide which requests use which Guardrail Version. See the full [Policy–Rule–implementation–directive model](#glossary-definition). The Catalog also contains six [Rule implementation forms](#term-rule-implementation), such as `regex` and `keyword`, but custom programmable authoring in Policy Studio uses `colang_flow`; the six forms are not six editor modes here.
+
+<a id="operator-policy-create" />
+
+## Create it in Policy Studio
+
+The current console provides **New Policy** in the [Policy Library](/policy-library), and requires administrator access. Work through these decisions:
+
+1. **State its purpose and boundary**: explain what it detects, what it does not detect, choose a protection directory, and decide whether it runs on the input or output Rail.
+2. **Define a Flow and Rule**: custom Policies use Colang 2.x. The bound Flow name must match the source and produces stable Rule ID `flow/{rail}/{flow_name}`. Arbitrary Python upload is not supported.
+3. **Declare dependencies**: select registered, version-pinned Actions. For model-backed checks, have the platform manager prepare a compatible Provider, Model, and capability binding first. Dependent Flows must appear earlier in the same Rail and cannot form a cycle.
+4. **Configure behavior and parameters**: distinguish `detect` from `mutate`, which may return replacement text. Review the unsafe directive, timeout, `fail_open`/`fail_closed`, and parameters exposed to the Guardrail Binding.
+5. **Add Test Cases**: cover normal input, content that should block or transform, and boundary cases. Each case records a Rail, expected Decision, and covered Rule IDs.
+
+<a id="operator-policy-release" />
+
+## Validate, publish, and use it
+
+The next article, [test, publish, and transfer a custom Policy](#developer-release-transfer), explains the validation gate and version semantics. After publishing a Policy Version, bind that exact version in a Guardrail draft and resolve required parameters. Publishing a Policy alone does not cause Endpoint traffic to be checked. Editing the Policy creates a new draft and version; an existing Guardrail pinned to the old version does not change silently.
+
+An export package contains editable definitions, not validation evidence. In another environment, recheck Action and model dependencies, rerun tests, and publish there.

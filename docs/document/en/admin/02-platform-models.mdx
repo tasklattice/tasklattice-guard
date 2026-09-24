@@ -1,0 +1,24 @@
+---
+id: "platform-models"
+title: "Configure Providers, Models, and protection capabilities"
+summary: "Connect a Provider, register and test a Model, then assign a compatible Model to the Rail that needs it."
+order: 1
+---
+The default Guardrail's local checks do not require a detection model. Configure one when a selected Policy depends on model-backed evaluation. **A callable Model** and **a Rail actively using it** are different states.
+
+<a id="platform-model-steps" />
+
+## Configure in dependency order
+
+1. Register the service URL and credentials in [Providers](/settings/providers), then check connectivity. Private-CA and related TLS settings apply only to that Provider; retest affected Models after changes.
+2. Register a physical model in [Models](/settings/models) and make a real test call. Discovery alone does not prove callability.
+3. In [Guardrail Catalog](/settings/guardrail-catalog), assign a Model to a capability such as `content_safety.input` or `jailbreak.input`. Input and Output bindings are independent and the protocol must fit the capability contract.
+4. Validate behavioral samples, save and activate the assignment, then confirm Runner application in [platform health](/settings/health). A Models test call alone does not prove that content-safety or jailbreak behavior passes validation.
+
+<a id="platform-model-boundary" />
+
+## Control-plane and data-plane boundary
+
+The DeepSeek Provider is currently control-plane only; it cannot be assigned to a data-plane Rail. The data plane uses supported dedicated or bounded low-parameter models. Controller distributes only the Models and credentials referenced by active data-plane bindings to Runners. A **model capability binding** in Guardrail Catalog is distinct from a reusable **Policy** in Policy Library: the former supplies a detection dependency, while the latter defines protection behavior.
+
+The repository's `docs/model-configuration.md` retains detailed deployment and protocol notes.

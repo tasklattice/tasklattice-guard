@@ -1,0 +1,56 @@
+---
+id: "user-review-policy"
+title: "How to understand a Policy"
+summary: "Use its protection goal, Rules, Test Cases, version, and binding parameters to understand what it actually does."
+order: 1
+---
+To understand a Policy, start with the risk it addresses, then inspect how it checks content and which examples demonstrate the behavior. Finally, confirm the version your application actually binds. The name alone does not define its coverage.
+
+- A Policy is a reusable capability, not an application router.
+- A Rule is the smallest executable behavior; disabling one changes compiled behavior.
+- A Test Case states whether a Rule or scenario should allow, transform, or block.
+- A Guardrail pins an immutable Policy Version.
+- Required parameters are resolved when the Policy is bound to a Guardrail.
+
+> Built-in Policies are system managed; an operator with administrator access can maintain custom Policies in Policy Studio. Both use the same Policy → Rule → Test Case model.
+
+[Browse Policy Library](/policy-library)
+
+<a id="developer-policy-runtime" />
+
+## Understand Policy Studio runtime configuration
+
+Rail, Flow, execution mode, Actions, and parameters form the Policy runtime contract.
+
+Custom Policies automatically use the Colang 2.x programmable runtime. Only registered, versioned Actions can be referenced; arbitrary Python upload is not supported.
+
+**Rail**
+
+NeMo execution phase. Input runs before the model; Output runs before model output is delivered.
+
+**Flow name**
+
+A named Flow declared in Colang. It must match source exactly and creates Rule ID `flow/{rail}/{flow_name}`.
+
+**detect mode**
+
+Evaluates and records safety; any unsafe result still applies the configured action.
+
+**mutate mode**
+
+The Flow may return effective replacement content such as redaction or rewrite.
+
+**Advanced runtime**
+
+Parallel group identifies safely concurrent bindings; timeout bounds execution. Failure mode governs errors.
+
+**Action dependencies**
+
+Registered provider names and exact versions invoked by the Flow.
+
+**Binding parameters**
+
+Reviewed values exposed by a Policy and resolved when a Guardrail pins its version.
+
+
+[Open Policy Library](/policy-library)

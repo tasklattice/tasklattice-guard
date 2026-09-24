@@ -1,0 +1,24 @@
+---
+id: "platform-access"
+title: "Accounts, credentials, and audit"
+summary: "Separate browser sessions, personal management Tokens, Endpoint credentials, and Runner credentials by purpose."
+order: 2
+---
+Platform management controls both who can change configuration and how services authenticate. Do not reuse a credential across unrelated call paths.
+
+<a id="admin-governance" />
+
+## Four identities
+
+| Identity or credential | Used for | Not used for |
+| --- | --- | --- |
+| Browser session | Signing in to the management console and acting with current account permissions | Application runtime checks |
+| Personal Access Token | Automating Controller management APIs within role, module permission, and expiry limits | Replacing Endpoint credentials |
+| Endpoint credential | Calling Runner check APIs from an application or AI Gateway, isolated by Endpoint | Signing in or issuing personal Tokens |
+| Runner control credential | Controlled Controller-to-Runner connection and configuration distribution | Business application requests |
+
+<a id="platform-audit" />
+
+## Manage and verify
+
+Assign responsibilities in [accounts and permissions](/access), and review personal Token expiry and revocation. Endpoint credentials are shown only once at creation; give them to the associated application or gateway and rotate them when needed. Use the [audit log](/audit-log) for configuration changes and [runtime logs](/logs) for request decisions and findings. Audit records, Runner health, and business Decisions answer separate questions.

@@ -77,7 +77,12 @@ const runnerRoute = createRoute({ getParentRoute: () => rootRoute, path: "/setti
 const providersRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/providers", component: ProvidersPage });
 const modelsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/models", component: ModelsPage });
 const guardrailCatalogRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/guardrail-catalog", component: GuardrailCatalogPage });
-const helpRoute = createRoute({ getParentRoute: () => rootRoute, path: "/help", component: HelpPage });
+const documentRoute = createRoute({ getParentRoute: () => rootRoute, path: "/document", component: HelpPage });
+function LegacyHelpRedirect() {
+  const hash = useRouterState({ select: state => state.location.hash });
+  return <Navigate to="/document" hash={hash} replace />;
+}
+const helpRoute = createRoute({ getParentRoute: () => rootRoute, path: "/help", component: LegacyHelpRedirect });
 export const routeTree = rootRoute.addChildren([
   indexRoute,
   dashboardRoute,
@@ -98,6 +103,7 @@ export const routeTree = rootRoute.addChildren([
   providersRoute,
   modelsRoute,
   guardrailCatalogRoute,
+  documentRoute,
   helpRoute,
 ]);
 export const router = createRouter({ routeTree, history: createBrowserHistory() });

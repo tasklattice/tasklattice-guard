@@ -1,0 +1,54 @@
+---
+id: "operator-metrics"
+title: "Business statistics and Prometheus Metrics"
+summary: "Both Controller and Runner expose metrics. Business statistics APIs and Prometheus scrapes have different purposes and credentials."
+order: 5
+---
+Both Controller and Runner expose metrics. Business statistics APIs and Prometheus scrapes have different purposes and credentials.
+
+**Business statistics JSON**
+
+GET `/api/v1/telemetry/metrics` on this Controller. Use a personal token with `runtime:read` or a browser session. Filter by window, `guardrailId`, and `routerId`. Statistics aggregate reported runtime events.
+
+**Router traffic statistics**
+
+GET `/api/v1/routers/{id}/traffic-distribution`, also available per Route. Requires `routers:read` and reports historical traffic, not configuration rollout status.
+
+**Controller /metrics**
+
+Scrape the Controller HTTP address. When `CONTROLLER_METRICS_TOKEN` is configured, send that Bearer token, not a personal Access Token.
+
+**Runner /metrics**
+
+Scrape each Runner HTTP address (default container port 8091). When `GUARD_METRICS_TOKEN` is configured, send that Bearer token. Use your deployed Runner addresses.
+
+
+> Links use this Controller’s address, without fixed localhost ports. Opening a protected Prometheus URL directly returns 401; configure the scraper’s Authorization header. Check `data_availability` when traffic or execution evidence is missing.
+
+[Business metrics API contract](/api/openapi.json?operationId=getTelemetryMetrics)
+
+[Controller Prometheus metrics](/metrics)
+
+[Manage Runners](/settings/runner)
+
+[System health](/settings/health)
+
+<a id="operator-troubleshooting" />
+
+## Troubleshooting order
+
+Check routing and version first, then Rail, Action, provider, and capacity.
+
+1. **Identity and route** — Confirm Endpoint state and credentials, Router binding, Route order, and trusted Selector fields.
+
+2. **Version** — Confirm the expected Guardrail Version and checksum.
+
+3. **Rail and Action** — Inspect Policy, Rule, Rail, Action, Decision, and latency in Runtime logs.
+
+4. **Provider** — Check specialized evaluators, models, networking, and Secrets.
+
+5. **Capacity** — Separate queue saturation, deadlines, and provider latency from true policy failures.
+
+[View runtime logs](/logs)
+
+[View Endpoints](/integration/endpoint)

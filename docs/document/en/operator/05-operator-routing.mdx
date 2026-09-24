@@ -1,0 +1,75 @@
+---
+id: "operator-routing"
+title: "Endpoint and Routing"
+summary: "Give an application an Endpoint identity, match requests by model or other supported fields, and use weighted Targets to select one or more Guardrail Versions."
+outcome: "Outcome: selected model requests reach published Guardrail Versions, with canary shares and Runner rollout verified."
+order: 4
+---
+**Endpoint identifies who is requesting a check; Routing selects the Guardrail for that request.** For example, a support AI Gateway uses its own Endpoint. When the adapter extracts `model = gateway-model-alias`, a Router sends that request to a published version of the “support assistant protection” Guardrail. This applies protection to selected model requests without forcing every application to use the same checks.
+
+<a id="operator-routing-setup" />
+
+## Choose which Guardrail checks which requests
+
+1. **Register an Endpoint** for each app, agent, or gateway, with its own identity and runtime credentials. A support gateway and an internal test gateway use different Endpoints. A caller-supplied header is not a substitute for Endpoint authentication.
+2. **Bind the Endpoint to a published Router**. An Endpoint can bind to at most one Router; a Router may serve several Endpoints. The gateway then uses that Endpoint to check content before and after the model call.
+3. **Add a Route** with a Selector for the traffic to protect. For example, match an adapter-extracted `model = gateway-model-alias`, perhaps together with `endpoint.id` or `protocol`. Available fields depend on the bound Endpoint's adapter capabilities. Caller-supplied headers or `jwt_claims` are not automatically trusted identity. Routes are checked in order; the first match wins.
+4. **Choose a Guardrail Target**: select a published Guardrail Version and give a single Target 100% of matching traffic. Two Targets weighted 90%/10% split matching requests between two versions; **each request chooses one Target**. To run several checks on one request, combine Policies inside one Guardrail.
+5. **Keep the final fallback and preview**. Requests not matched earlier reach the unconditional fallback. Use the Route's **Test matching** preview before publication, then publish the Router and inspect Runner rollout.
+
+A Target set to `latest` resolves to an exact Guardrail Version when the Router is published. Publishing a later Guardrail Version does not silently change that Router's target.
+
+[Manage Endpoints](/integration/endpoint)
+
+[Manage Traffic Routers](/integration/routers)
+
+<a id="operator-canary-release" />
+
+## Canary release: split one Route across Guardrails
+
+Suppose a support gateway currently uses **“Support Protection · Stable” Guardrail v3** and wants to try a stricter **“Support Protection · Candidate” Guardrail v1**. To check only a small share of support-model requests with the candidate, add two weighted Targets to the **same Route**. This does not run both Guardrails on every request:
+
+| Route match | Target | Weight | What happens |
+| --- | --- | --- | --- |
+| `model = gateway-model-alias` | Support Protection · Stable v3 | 90% | About nine in ten new logical calls matching this Route choose the stable Guardrail |
+| The same Route | Support Protection · Candidate v1 | 10% | About one in ten matching calls choose the candidate Guardrail |
+
+The percentages are **shares within this Route**, not shares of the entire Router or all Endpoints; Target weights must total 100%. The Router takes the first matching Route in order, then assigns **one** Target to the logical call. Input and output checks retain the same call identity and pinned version; input cannot use Stable while output unexpectedly switches to Candidate. Weighted routing is not a fixed user cohort, and a small sample will not necessarily produce an exact 90%/10% split.
+
+Follow this sequence:
+
+1. **Prepare the candidate**: Validate and publish exact versions of both Guardrails. Confirm the candidate's Rules, dependencies, and model capabilities are ready. Record each Guardrail ID and Version.
+2. **Edit the same Route's Targets**: In [Traffic Routers](/integration/routers) → Routing, keep the support Route's Selector and add a second Target. Set the weights to 90% and 10%. Check earlier Route precedence and the final fallback. Publishing a shared Router affects every Endpoint bound to it.
+3. **Preview and publish the Router**: Use **Test matching** to check that a sample request reaches this Route; that preview only tests matching, does not execute a Guardrail, and does not prove actual traffic shares. Choose **Review changes** to save and preview the draft. Review Target Guardrail IDs, pinned Versions, weights, and Endpoint bindings, then publish a new Router revision. Treat new calls as canary traffic only after Runners apply the desired generation.
+4. **Observe real outcomes**: In the Router's **Monitoring** tab, filter by revision and Endpoint. Compare configured and actual Target shares, assignment counts, block/transform results, errors, and latency. Use [runtime logs](/logs) to find false positives in the candidate. Telemetry may lag, and actual shares fluctuate with small samples.
+5. **Increase or revert**: If results are acceptable, move through Stable/Candidate shares such as 75%/25%, 50%/50%, and 0%/100%. Review and publish a new Router revision each time, then verify Runner rollout. If the candidate causes problems, set it to 0% and Stable to 100% and publish again, or roll back from a historical Router revision. Rollback also publishes a new revision; it does not mutate history. In-flight calls retain the Target chosen when they began.
+
+This canary compares **different protection plans on different calls**. To run several checks on the same model request, combine Policies inside one Guardrail instead of expecting weighted Targets to run serially.
+
+<a id="operator-release-rollback" />
+
+## Verify rollout and know how to roll back
+
+These three identifiers answer different questions: a **Guardrail Version** fixes “what to check”, a **Router revision** fixes “where traffic goes”, and the **generation applied by a Runner** tells you “which batch of configuration this execution node actually has”. For example, publishing Guardrail v2 and a new Router revision does not mean traffic has switched while Runners still have the old generation.
+
+- Confirm the current Validation Run, checksum, dependencies, and specialized models.
+- Check Settings / Health and the Router Overview rollout status and desired generation.
+- Router rollback publishes a new revision from a historical snapshot. Guardrail rollback reactivates a ready version; changing a published Router’s pinned Guardrail Targets requires another Router publication.
+- In-flight calls retain their pinned version. New calls use the new routing snapshot after the Runner applies the Router revision.
+- Never patch historical artifacts; create a new version for semantic changes.
+
+[View Guardrails](/guardrails)
+
+[View runtime logs](/logs)
+
+<a id="operator-runtime" />
+
+## Production runtime boundaries
+
+The control plane manages versions, NeMo executes checks, and callers execute final decisions.
+
+- Publishing validates an immutable NeMoConfigSnapshot, computes checksum, and prewarms the exact runtime profile.
+- Active versions stay resident; production requests do not build runtimes on the hot path.
+- The compiler chooses profiles. Custom programmable Policies use Colang 2.
+- Each Guardrail Version has independent concurrency admission and whole-request deadlines.
+- Required timeouts and provider errors follow versioned fail-open/fail-closed behavior.

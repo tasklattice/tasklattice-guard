@@ -1,0 +1,29 @@
+---
+id: "developer-endpoint"
+title: "Integration overview: control plane and data plane"
+summary: "Use Controller APIs in your editing workflow, or route an AI Gateway or Agent's model calls through runtime checks. The two paths have different APIs, credentials, and responsibilities."
+outcome: "Choose whether you are integrating configuration and publication or live model traffic, then follow the matching guide."
+order: 0
+---
+“Integrating Guard” can mean two different things. **Control-plane integration** handles how protection configuration is edited, validated, and published. **Data-plane integration** handles whether one model request may continue, must change, or must stop. For example, an internal Policy editor can call Controller APIs to publish a Guardrail; a customer-service AI Gateway asks Guard to check each model call. You can implement both, but publishing a configuration does not by itself protect the gateway's traffic.
+
+<a id="developer-two-planes" />
+## Choose the path you need
+
+| | Control-plane integration | Data-plane integration |
+| --- | --- | --- |
+| Typical client | Custom editor, approval workflow, CI/CD, or configuration automation | LiteLLM, a custom AI Gateway, or an Agent or application that calls a model directly |
+| API | Controller `/api/v1/...` management APIs | Runtime check APIs at the application's Endpoint |
+| Identity | Personal Access Token with the required module grants; browser console uses a session | Endpoint runtime credential in `x-api-key` |
+| Result | Drafts, validation results, published versions, and routing configuration | Check result, replacement text, or releasable streamed text for this call |
+| Boundary | Does not own model calls or enforce each runtime result | Does not edit or publish Policy, Guardrail, or Router configuration |
+
+<a id="developer-handoff" />
+## Where the two paths meet
+
+1. Operations prepares and publishes Policy, Guardrail, and Router versions, then creates or binds an Endpoint. [Control-plane integration](#developer-api-access) can bring these operations into a custom editor and approval workflow.
+2. The platform confirms the published configuration has reached the Runner and supplies the Endpoint URL and runtime credential to the application, Agent, or gateway.
+3. The client follows [data-plane integration](#developer-runtime) to check the actual submitted input and output of each model call and enforce the returned block, replacement, or allow result.
+4. Use real requests to compare runtime records with what the client ultimately delivered. **Published** means an executable version exists; **distributed** means the Runner has applied it; **protected** also requires the caller to submit traffic and enforce results.
+
+A Controller Personal Access Token cannot authenticate runtime checks, and an Endpoint credential cannot change control-plane resources. The published configuration and request context select the Guardrail Version and Route; self-reported request fields alone do not create a trusted identity.

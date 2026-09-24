@@ -1,0 +1,41 @@
+---
+id: "term-endpoint"
+title: "Endpoints: application identity and integration"
+summary: "Understand the LiteLLM, generic HTTP, and A2A Endpoint types, plus credentials, Router binding, and integration health."
+order: 6
+---
+<strong>What:</strong> An authenticated application, agent, or gateway identity with a protocol entry point; it can bind to one Traffic Router.
+
+<strong>Why:</strong> Separate trust boundaries need separate credentials and call context. Caller-supplied headers are not identity.
+
+<strong>How:</strong> Operations creates and issues Endpoint credentials; the integrator calls the matching protocol and verifies setup and runtime health.
+
+<strong>Example:</strong> A support application and an internal test gateway use separate Endpoint credentials, so runtime records can distinguish their calls.
+
+<a id="endpoint-integration-types" />
+
+## Three supported integration types
+
+The type selected when creating an Endpoint is its **data-plane integration protocol**, not a different kind of Guardrail. All three use their own Endpoint credentials and can bind to a Traffic Router; the Router then selects the Guardrail Version for a request.
+
+| Type | Intended client | How it submits checks |
+| --- | --- | --- |
+| **TaskLattice Guard for LiteLLM** (`litellm-generic-guardrail`) | A LiteLLM AI Gateway, or a custom gateway or Agent willing to implement the LiteLLM Generic Guardrail HTTP contract | Configure the Endpoint URL and Secret; call `/beta/litellm_basic_guardrail_api` before a model call and before delivering its complete output. A custom client does not have to run LiteLLM internally, but must follow this request and response contract. |
+| **Generic HTTP Guard API** (`generic-http-guard`) | A custom AI Gateway, application, or Agent that wants a vendor-neutral check request | Authenticate to `/guardrails/evaluate` with the Endpoint credential, specify `protocol: "http"` and the input or output phase, then enforce the result in the client. |
+| **A2A Guard API** (`a2a-guard`) | An A2A client that needs to inspect agent-to-agent messages | Also call `/guardrails/evaluate`, but specify `protocol: "a2a"` and provide A2A operation, context ID, or task ID where relevant. |
+
+<strong>Which one to choose:</strong> Use the LiteLLM type for an existing LiteLLM gateway. A custom gateway can either implement the LiteLLM Generic Guardrail contract or choose generic HTTP and map its own request and response structures. Choose A2A for agent-to-agent messages. <strong>The Endpoint type and call protocol must match</strong>: a generic HTTP Endpoint cannot be called through the LiteLLM callback path. See [data-plane responsibilities](#developer-runtime) and [LiteLLM-contract request examples](#gateway-connect).
+
+<a id="state-endpoint" />
+
+## Endpoint enablement, setup, and health
+
+<StateMachineDiagram kind="endpoint" locale="en" />
+
+Endpoint has a reversible persisted active ↔ disabled state; soft deletion is a separate overlay. `applying / awaiting_callback / verified / disabled` describe setup progress, while runtime health such as `healthy / waiting / degraded` is observed independently. Neither replaces credentials, Router binding, or real traffic checks. Issuing, rotating, or revoking credentials is also independent of enablement.
+
+<a id="state-credentials" />
+
+## Credentials and per-request results are not resource states
+
+Personal Access Tokens are valid, expired, or revoked according to expiry and revocation timestamps; Endpoint credentials have separate issuance and revocation records. Neither is the lifecycle of a Guardrail or Router. Allow, transform, and block are Decisions for one request, not automatic green or red states on a resource.

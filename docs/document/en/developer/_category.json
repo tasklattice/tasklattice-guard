@@ -1,0 +1,5 @@
+{
+  "title": "Integration guides",
+  "description": "Integrate editing and publication through Controller APIs, or protect gateway and Agent model calls through runtime checks.",
+  "order": 3
+}

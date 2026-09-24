@@ -1,0 +1,35 @@
+---
+id: "concept-logs"
+title: "Runtime logs: verify protection ran"
+summary: "Use interactions, checkpoints, and system events to inspect real request outcomes, versions, and evidence."
+order: 3
+---
+Runtime logs answer “which protection handled this request, and what happened?” For example, if a support application reports that an ordinary order question was blocked, filter by Guardrail, time range, and Blocked outcome. Open the interaction to inspect the Guardrail Version, input or output checkpoint, matching Rule, and execution steps. Router publication status says whether configuration was distributed; a runtime record shows what happened to one request.
+
+<a id="runtime-log-views" />
+
+## What the three views show
+
+| View | Question it answers |
+| --- | --- |
+| **Interactions** | Was the protected request allowed, transformed, blocked, or failed overall? |
+| **Guardrail checkpoints** | Which input or output check produced that result? |
+| **System events** | What content-free metadata did the Runner report, such as Router, decision, and latency? Request and response bodies are not shown here. |
+
+The page filters by Guardrail, time range, direction, and outcome. Entering from Router Monitoring can also supply Route, Target, and revision filters. There is no standalone Endpoint filter on this page; correlate a caller using request IDs, routing context, and the integrating client's records.
+
+<a id="term-evidence" />
+
+## Evidence: execution evidence
+
+Evidence comprises findings, matching Policy/Rule, execution steps, and version information left by a check to explain its Decision. Start with the outcome and matching Rule, then inspect the pinned version, Runner, errors, and latency. One Blocked record does not mean the entire Guardrail is unhealthy.
+
+<a id="runtime-log-capture" />
+
+## Why a request may be missing
+
+The logging level controls which checkpoints are retained: the production-default **Info** mainly records blocked or failed traffic; **Debug** also records transformations; **Trace** records every inbound and outbound checkpoint. A missing detailed record for an ordinary request does not by itself prove that protection was bypassed. Check the time range, Guardrail, and direction, then compare Router Monitoring and the client's request ID.
+
+Request and response bodies are not stored by default. When content capture is enabled, retained bodies are encrypted and only administrators can decrypt them in log details. The System events view never displays bodies.
+
+[Open runtime logs](/logs)

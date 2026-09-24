@@ -14,9 +14,11 @@ const controllerDevProxy = process.env.CONTROLLER_DEV_PROXY ?? "http://127.0.0.1
 export default defineConfig({
   resolve: {
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
+    dedupe: ["react", "react-dom"],
   },
   plugins: [mdx({ remarkPlugins: [remarkFrontmatter, remarkMdxFrontmatter, remarkGfm, remarkHelpIndex] }), tailwindcss(), react()],
   server: {
+    fs: { allow: [fileURLToPath(new URL("..", import.meta.url))] },
     proxy: {
       "/api": controllerDevProxy,
       "/health": controllerDevProxy,

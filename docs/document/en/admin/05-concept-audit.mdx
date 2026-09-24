@@ -1,0 +1,25 @@
+---
+id: "concept-audit"
+title: "Audit log: trace management changes"
+summary: "Trace control-plane changes by actor, time, and resource, then verify rollout and runtime results."
+order: 4
+---
+Audit log answers “which person or system did what to which resource, and when?” Control-plane events such as Policy validation, Guardrail publication, Router rollback, and credential changes help reconstruct the order of changes. Per-request Decisions are in [runtime logs](#concept-logs), not in this log.
+
+<a id="audit-how-to-use" />
+
+## Follow a change through to real traffic
+
+If a Router moves traffic from Guardrail v1 to v2:
+
+1. Search the audit log by time, **person/system**, and resource ID for the Router publication or rollback event. Open its details to inspect the event kind, actor, and any additional information. System-initiated events show System as their actor.
+2. In [Traffic Routers](/integration/routers), inspect the new revision, Target, and Runner rollout status. An audit event proves a management action occurred, not that Runners applied it.
+3. In [runtime logs](#concept-logs), filter by Guardrail and time range to inspect real requests after the change and confirm their pinned versions and Decisions.
+
+<a id="audit-scope" />
+
+## Scope of the page
+
+The current audit page loads the latest **500** events and then applies search and time filters to those loaded records. “All time” does not mean the page contains a complete history. A missing older event does not prove that the change never happened.
+
+[Open audit log](/audit-log)

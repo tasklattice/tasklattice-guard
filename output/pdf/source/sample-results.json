@@ -1,0 +1,29 @@
+{
+  "evidence_kind": "illustrative",
+  "report_id": "TLG-DEMO-20260924-001",
+  "date": "2026-09-24",
+  "profiles": [
+    {"id":"C0","name":"业务基线","attacks":2130,"task_success":9880,"fpr_count":0,"p95_first":420,"p95_complete":1450,"cost":0.00},
+    {"id":"C1","name":"本地规则","attacks":690,"task_success":9860,"fpr_count":40,"p95_first":1460,"p95_complete":1480,"cost":0.05},
+    {"id":"C2","name":"语义防护","attacks":220,"task_success":9800,"fpr_count":100,"p95_first":1600,"p95_complete":1620,"cost":0.31},
+    {"id":"C3","name":"银行业务边界","attacks":190,"task_success":9770,"fpr_count":150,"p95_first":1660,"p95_complete":1690,"cost":0.41},
+    {"id":"C4","name":"高敏感配置","attacks":140,"task_success":9440,"fpr_count":490,"p95_first":2070,"p95_complete":2100,"cost":0.93}
+  ],
+  "attack_n":5000,
+  "benign_n":10000,
+  "families":[
+    {"name":"直接指令覆盖","baseline":540,"guarded":15,"n":1000},
+    {"name":"编码与混淆","baseline":470,"guarded":32,"n":1000},
+    {"name":"多轮诱导","baseline":450,"guarded":65,"n":1000},
+    {"name":"角色与权限伪装","baseline":390,"guarded":43,"n":1000},
+    {"name":"上下文指令诱导","baseline":280,"guarded":35,"n":1000}
+  ],
+  "content_detection":{"tp":3896,"fn":104,"fp":60,"tn":3940},
+  "pii":{"input_leaks":4,"output_leaks":8,"n_each":4000},
+  "load":[
+    {"rps":20,"goodput":19.4,"p95":1510,"errors":0.0},
+    {"rps":40,"goodput":38.7,"p95":1540,"errors":0.0},
+    {"rps":80,"goodput":77.2,"p95":1690,"errors":0.1},
+    {"rps":120,"goodput":102.0,"p95":2240,"errors":0.8}
+  ]
+}

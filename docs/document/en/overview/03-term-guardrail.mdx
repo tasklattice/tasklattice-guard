@@ -1,0 +1,267 @@
+---
+id: "term-guardrail"
+title: "Guardrails: protection plans"
+summary: "Compose pinned Policies, validate and publish protection plans; understand Bindings, Decisions, and protection states."
+order: 2
+---
+<strong>What:</strong> A Guardrail is a protection plan for one application. For example, a support-assistant Guardrail might check for jailbreak attempts and sensitive information in replies. In configuration, it uses Policy Bindings to pin Policy Versions and select Rules, Rails, parameters, and post-evaluation directives. It also owns a draft, validation records, and publishable versions.
+
+<strong>Why:</strong> Policies are reusable across applications; a Guardrail assembles them into a reviewable, releasable, rollback-safe protection boundary. It is neither one Rule nor a traffic Router.
+
+<strong>How:</strong> Select Policy Versions and parameters in the draft, run Validation, publish an immutable Guardrail Version, then route Endpoint traffic to that version. A published Route reference can make the UI show protected, but publication alone does not mean Runners have applied it.
+
+<a id="glossary-resource-map" />
+
+## Resource relationship map
+
+<ResourceMap locale="en" />
+
+<strong>Keep the two relationships separate:</strong> Guardrails bind Policy Versions; Policies contain Rules and Test Cases. Rules map to implementations, while Test Cases verify behavior. A production call moves from Endpoint through Router to a pinned Guardrail Version; the Runner returns Decision and Evidence.
+
+<a id="glossary-term-guardrail" />
+
+## Guardrail
+
+A protection plan for one business scenario. It pins Policy Versions, enabled Rules, Rails, and parameters, then publishes an immutable Guardrail Version after validation. See the [product introduction](#term-guardrail) for the full relationship.
+
+<a id="term-policy-binding" />
+
+## Policy Binding
+
+<strong>What:</strong> A Guardrail reference to one Policy Version plus enabled Rules, Rails, resolved parameters, and directive overrides. Think of it as “how this protection plan uses this capability”.
+
+<strong>Why:</strong> It turns reusable capability into reviewed scenario-specific behavior.
+
+<strong>How:</strong> Configure it in a Guardrail draft, resolve required parameters, validate, then freeze it within a Guardrail Version.
+
+<strong>Example:</strong> Two support applications use the same keyword Policy Version but supply different `blocked_words` in their Bindings.
+
+<a id="term-parameter" />
+
+## Binding Parameter
+
+Binding parameter · reviewed value
+
+A reviewed Policy value resolved when a Guardrail pins its version.
+
+Parameters are versioned configuration and should not be overridden by untrusted runtime input.
+
+For example, an administrator can set `blocked_words` to a list before publishing; a user request cannot rewrite that list at runtime.
+
+<a id="term-guardrail-version" />
+
+## Guardrail Version
+
+<strong>What:</strong> An immutable published Guardrail snapshot with pinned Policy Bindings, Rules, parameters, compiled artifact, dependencies, and checksum.
+
+<strong>Why:</strong> It is the release and rollback unit. Router Targets resolve to exact versions, never a mutable draft at request time.
+
+<strong>How:</strong> Wait for compilation to become ready, publish a Router Revision that references it, and check Runner convergence. To roll back, activate a ready historical version and republish Routers whose pinned Targets must change.
+
+<strong>Example:</strong> Publishing Guardrail v2 does not switch a Router still pinned to v1; review and republish the Router to change production traffic.
+
+<a id="term-validation-run" />
+
+## Validation Run
+
+Validation record
+
+An immutable result from executing the current draft's Test Cases through the real runtime.
+
+All required cases for the current revision must pass before publication.
+
+<a id="term-checksum" />
+
+## Checksum
+
+Configuration hash · SHA-256
+
+A content digest of immutable compiled configuration.
+
+It proves the running artifact exactly matches the published version.
+
+<a id="user-decisions" />
+
+## Decision: allow, transform, and block
+
+The final Decision is something the caller must execute, not merely a risk label.
+
+**Allow / pass**
+
+The content may continue to the next phase.
+
+**Transform**
+
+Use the returned redacted, rewritten, or otherwise transformed content.
+
+**Block / reject**
+
+Stop the phase. Do not call the model for blocked input or deliver blocked output.
+
+
+> Playground shows the input check, model call, and output check as one inspectable path.
+
+[Open Playground](/playground)
+
+[View runtime logs](/logs)
+
+<a id="term-decision" />
+
+## Decision runtime semantics
+
+allow · transform · block
+
+TaskLattice's final conclusion for the current phase: allow, transform, or block.
+
+The caller must execute the Decision and action; it is not merely a displayed score.
+
+<a id="term-enforcement-action" />
+
+## Enforcement Action
+
+Enforcement Action · post-detection directive
+
+The specific response requested after a Rule matches, such as redaction, rejection, or regeneration. The Policy provides the Rule default, which a Guardrail Binding may override. See [post-match Rule directives](#term-rule-actions) for all eight values and their precedence.
+
+It is neither an evaluator verdict nor a Python Action invoked by NeMo; some lifecycle directives are applied by the integrating caller.
+
+<a id="term-output-delivery" />
+
+## Output Delivery
+
+interruptible · window buffered · full buffered
+
+How model output is buffered before Output Rail checks finish.
+
+More buffering prevents leakage of later-blocked content but increases delivery latency.
+
+<a id="term-failure-mode" />
+
+## Failure Mode
+
+fail-open · fail-closed
+
+The safety behavior when an Action times out or errors.
+
+Fail-open continues with evidence; fail-closed blocks. Required checks commonly use conservative behavior.
+
+<a id="concept-boundaries" />
+
+## Authentication, configuration, and execution boundaries
+
+The control plane manages Policy, Guardrail, and Router versions. Runners execute checks. Applications and gateways own model calls and enforce the returned Decision. Personal Access Tokens for management APIs and Endpoint credentials for runtime checks have different purposes and cannot be exchanged. Caller-supplied headers or claims are not automatically trusted identity.
+
+Read the role guides as a handoff from **configuration and validation → Endpoint credential assignment → application integration → traffic publication → observation and iteration**. The sidebar stays ordered by day-to-day responsibility.
+
+
+<a id="glossary-states" />
+
+## Guardrail state machines
+
+<StateLegend locale="en" />
+
+Color reinforces text: amber means work is in progress or has not converged; green means passed or active; red means failed or action is needed; gray means draft, historical, intentionally disabled, or not started. <strong>Resource lifecycle, immutable-version build state, Runner health, and per-request Decision are separate axes.</strong>
+
+Follow one release to keep them apart: Guardrail Version **ready** means the protection artifact compiled; a published Route reference can make the Guardrail list show **protected**; Router **active** means default-pool Runners acknowledged the target generation. Finally, check the Endpoint and runtime logs to see whether real requests used that protection.
+
+<a id="state-guardrail-readiness" />
+
+### Guardrail display state: needs testing, ready, protected
+
+<StateMachineDiagram kind="guardrail-readiness" locale="en" />
+
+<strong>Protected (<code>protected</code>)</strong> is a UI projection: the current draft has an active published version, and an enabled Route in a published Router snapshot references this Guardrail as a positive-weight Target. The list currently also requires that Router to have at least one bound Endpoint. Adding a Guardrail to an unpublished Router draft, a disabled Route, or a zero-weight Target does not yield protected. Removing the last qualifying reference returns the list state to ready. Editing the Guardrail draft makes the current draft diverge from the active version, so the list shows needs testing even while an older version may still serve traffic.
+
+<strong>This is not a traffic-health verdict:</strong> protected reports a configuration reference, not completed Runner rollout, Endpoint availability, or observed requests. The detail page also shows a separate Route-reference badge. Check Router rollout, Endpoint, and runtime logs to verify actual delivery.
+
+<a id="state-guardrail" />
+
+### Guardrail resource lifecycle
+
+<StateMachineDiagram kind="guardrail-lifecycle" locale="en" />
+
+The persisted resource path is draft → active → disabled, with draft → disabled also allowed; disabled is terminal for that resource. Publishing and activating a ready version moves the resource to active. Unlike Endpoint disabling, soft deletion is not a reversible toggle. The <strong>derived display states</strong> `needs_validation / ready / protected` above coexist with this persisted lifecycle. Protected is the Route-reference display state.
+
+<a id="state-guardrail-version" />
+
+### Guardrail Version build and active pointer
+
+<StateMachineDiagram kind="guardrail-version" locale="en" />
+
+A version compiles to ready or failed. Terminal contents are immutable. `active / historical` describes which ready Version the Guardrail selects, <strong>not</strong> compilation state. Ready means an artifact exists; a Router must still reference the exact version and Runners must apply it. Rollback switches the active pointer without rewriting historical artifacts.
+
+<a id="guardrail-build-states" />
+
+### Guardrail compilation states
+
+Compilation status is separate from Active / Historical version selection and from Router traffic rollout.
+
+<StateCards>
+
+<StateCard title="Compiling" code="compiling" state="distributing">
+
+<StateDetail label="Meaning">
+
+The immutable runtime artifact for a Guardrail version is being built.
+
+</StateDetail>
+
+<StateDetail label="Transitions">
+
+Successful compilation yields ready; a compilation error yields failed.
+
+</StateDetail>
+
+<StateDetail label="Next step">
+
+Wait for completion and inspect compilation errors if it fails.
+
+</StateDetail>
+
+</StateCard>
+
+<StateCard title="Ready" code="ready">
+
+<StateDetail label="Meaning">
+
+The version artifact is ready. This does not mean Router traffic has switched to it.
+
+</StateDetail>
+
+<StateDetail label="Transitions">
+
+The version can be selected for publication or rollback; Router rollout determines traffic activation.
+
+</StateDetail>
+
+<StateDetail label="Next step">
+
+Publish the Router again to change its pinned Guardrail Target.
+
+</StateDetail>
+
+</StateCard>
+
+<StateCard title="Compilation failed" code="failed">
+
+<StateDetail label="Meaning">
+
+The version did not produce a usable artifact.
+
+</StateDetail>
+
+<StateDetail label="Transitions">
+
+Fix the configuration and start compilation again, then inspect the new result.
+
+</StateDetail>
+
+<StateDetail label="Next step">
+
+Read the compilation error and fix the Policy, Rule, or dependency.
+
+</StateDetail>
+
+</StateCard>
+
+</StateCards>

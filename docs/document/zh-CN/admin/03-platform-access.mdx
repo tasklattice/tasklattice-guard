@@ -1,0 +1,24 @@
+---
+id: "platform-access"
+title: "账户、凭据与审计"
+summary: "区分浏览器会话、个人管理 Token、Endpoint 凭据和 Runner 凭据，并按用途审查权限。"
+order: 2
+---
+平台管理既管理谁能修改配置，也管理不同服务如何认证。不要把一种凭据复制到另一条调用链路里。
+
+<a id="admin-governance" />
+
+## 四类身份
+
+| 身份或凭据 | 用途 | 不应用于 |
+| --- | --- | --- |
+| 浏览器 Session | 登录管理控制台、按当前账户权限操作 | 应用的运行时检查 |
+| 个人 Access Token | 自动化调用 Controller 管理 API；受账户角色、模块权限和有效期限制 | 代替 Endpoint 凭据 |
+| Endpoint 凭据 | 应用或 AI Gateway 调用 Runner 检查接口；按 Endpoint 隔离 | 登录控制台或签发个人 Token |
+| Runner 控制凭据 | Controller 与 Runner 的受控连接和配置下发 | 业务应用请求 |
+
+<a id="platform-audit" />
+
+## 管理与核对
+
+在[账户与权限](/access)分配管理职责，定期查看个人 Token 的有效期和撤销情况。Endpoint 凭据在创建时只显示一次，应交给对应的应用或网关并按需轮换。配置变更通过[审计日志](/audit-log)核对；请求结果和保护发现则到[运行日志](/logs)查看。审计记录、Runner 健康和业务请求 Decision 分别回答不同的问题，不能互相代替。

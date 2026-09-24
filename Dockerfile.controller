@@ -7,6 +7,7 @@ WORKDIR /build/controller
 COPY --link controller/package.json controller/package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm,sharing=locked npm ci --no-audit --no-fund
 COPY --link controller ./
+COPY --link docs/document /build/docs/document
 COPY --link proto /build/proto
 RUN npm run build
 RUN npm prune --omit=dev --omit=optional --no-audit --no-fund

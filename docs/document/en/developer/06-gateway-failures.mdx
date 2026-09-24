@@ -1,0 +1,44 @@
+---
+id: "gateway-failures"
+title: "Data-plane protocol: failure handling and production checks"
+summary: "Handle normal blocks, check failures, Dry Run, and Fail Open separately, then verify actual client delivery."
+order: 5
+---
+A safe integration depends on what the gateway actually delivers for each result, not just whether a request succeeded. Guard runtime evidence records its check result; it does not by itself prove that your gateway blocked or replaced application content.
+
+<a id="gateway-failure-modes" />
+
+## Four different cases
+
+| Case | Meaning |
+| --- | --- |
+| Valid `NONE` | No intervention for this check; use the submitted original text |
+| Valid `BLOCKED` or replacement | Normal protection result; block or replace as directed, without invoking Fail Open |
+| Non-2xx, timeout, invalid JSON, or invalid response | No valid check result; apply an explicit failure policy |
+| Dry Run | The gateway still checks and records results while the application may continue with original content; this is gateway behavior, not a server parameter |
+
+**Fail Closed** stops the application flow without a valid check result. **Fail Open** permits continuation only when the check itself fails; it cannot turn a valid `BLOCKED` into allow. The server has no `dry_run: true` switch. Implement observation mode in the gateway and record Guard decisions separately from actual delivery.
+
+<a id="gateway-errors" />
+
+## Diagnose common failures
+
+- **401**: check the Endpoint URL and credential; do not substitute a personal Access Token.
+- **409**: protocol, stream sequence, identity, terminal-state, or capacity conflict; inspect `detail` and never assume a replay succeeded.
+- **422**: invalid request fields, enums, or shapes; the content has not passed a valid check.
+- **503**: routing, call context, or pinned version unavailable; changing the call ID cannot restore the same call.
+- **502 / 504 on streams**: check failure or timeout, not a normal `blocked` result.
+
+Input and Output use the same Endpoint and call ID with consistent routing context. An expired associated context must not silently select another version for Output. After a stream request was sent but its response was lost, do not blindly retry the chunk or start a new stream and claim it is a continuation.
+
+<a id="gateway-production-check" />
+
+## Before production
+
+1. Confirm `/verify`, then test gateway behavior with content that should allow, block, and replace.
+2. Parse action even after HTTP 200; never send blocked Input to a model or blocked Output to a client, and map replacements back to their original positions.
+3. Keep one call ID across Input and Output; deliver only `released_text` on streams, and handle sequence, `final`, and termination correctly.
+4. Select Fail Open / Fail Closed and Dry Run explicitly; compare gateway delivery logs with Guard runtime evidence.
+5. Confirm published versions, Runner convergence, model dependencies, state lifetimes, and shared state across replicas with platform management.
+
+The repository's `docs/gateway-integration.md` retains full field tables, protocol boundaries, and executable verification scripts. This article highlights the behavior contract needed for integration.

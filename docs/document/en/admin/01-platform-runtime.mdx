@@ -1,0 +1,40 @@
+---
+id: "platform-runtime"
+title: "Platform components, Runners, and runtime health"
+summary: "Separate Controller, Runner, and gateway responsibilities, including Runner and model configuration states."
+order: 0
+---
+Platform management ensures that the service can execute protection. Controller stores configuration, manages versions, and distributes desired state. Runners authenticate Endpoint requests, execute the deployed checks, and report runtime state. An application or AI Gateway calls the runtime service for production checks while retaining ownership of model calls.
+
+<a id="platform-components" />
+
+## Three boundaries to know
+
+- **Controller** manages Policies, Guardrails, Endpoints, Routers, Providers, Models, and the versions sent to Runners.
+- **Runner** loads signed protection artifacts, applies target generations, executes input or output checks, and acknowledges configuration through heartbeats.
+- **Application or AI Gateway** submits text for checks and enforces each Decision. Runner does not own the application's business session.
+
+<a id="platform-health" />
+
+## Where to inspect health
+
+Start with [platform health](/settings/health) for Controller, baseline protection, Runner convergence, and model capability readiness. Then use [Runner](/settings/runner) for instance synchronization and capacity. A Router is **active** only when the default pool has at least one Runner and every target Runner has acknowledged the desired generation with a fresh heartbeat. A single ready Runner does not prove Router activation.
+
+If a publication remains distributing or failed, compare desired and applied generations, Runner heartbeats, and rejection reasons. Then inspect protection artifacts, model dependencies, and capacity. See [runtime and publication states](#state-router).
+
+<a id="state-runner" />
+
+## Runner synchronization and capacity
+
+<StateMachineDiagram kind="runner" locale="en" />
+
+Runner status combines <strong>configuration reconciliation</strong> and <strong>capacity pressure</strong>, rather than one persisted linear state machine: it is syncing before the desired generation is applied, then ready, busy, or saturated according to load; disconnection or stale heartbeats yield offline; reconnecting requires generation convergence again. Router active requires valid acknowledgments from all default-pool Runners. One Runner being ready does not prove rollout.
+
+<a id="state-models" />
+
+## Providers, Models, and model configuration
+
+<StateMachineDiagram kind="model-probe" locale="en" />
+<StateMachineDiagram kind="model-revision" locale="en" />
+
+Provider and Model validation states are pending, validated, or failed. Configuration or protocol changes reset relevant checks to pending until reprobed. Model transport checks and capability validation are separate. Editable model-assignment revisions move between draft and validated. Applying reviewed changes creates an activating snapshot, which becomes active after Runner convergence or failed on activation error. Replacing an active snapshot creates another revision rather than editing it in place.

@@ -1,0 +1,5 @@
+{
+  "title": "核心产品概念",
+  "description": "从真实请求认识 Guardrails、Policy Library、Playground、Routers 与 Endpoints；Rule、版本、决策和状态作为相关对象的子概念。",
+  "order": 0
+}

@@ -1,0 +1,5 @@
+{
+  "title": "Core product concepts",
+  "description": "Learn Guardrails, Policy Library, Playground, Routers, and Endpoints through a real request; Rules, versions, Decisions, and states live with their parent objects.",
+  "order": 0
+}

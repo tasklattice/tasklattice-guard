@@ -1,0 +1,54 @@
+---
+id: "operator-metrics"
+title: "业务统计与 Prometheus Metrics"
+summary: "Controller 和 Runner 都有指标。业务统计 API 与 Prometheus 采集接口的用途及凭据不同。"
+order: 5
+---
+Controller 和 Runner 都有指标。业务统计 API 与 Prometheus 采集接口的用途及凭据不同。
+
+**业务统计 JSON**
+
+当前 Controller 的 GET `/api/v1/telemetry/metrics`，使用个人 Token 的 `runtime:read` 权限或浏览器 Session。支持 window、`guardrailId`、`routerId`，业务数据来自上报事件。
+
+**Router 流量统计**
+
+GET `/api/v1/routers/{id}/traffic-distribution`，可按 Route 查询。使用 `routers:read`；它是历史流量，不是配置下发状态。
+
+**Controller /metrics**
+
+在 Controller HTTP 地址上采集，配置了 `CONTROLLER_METRICS_TOKEN` 时使用对应 Bearer Token。不要填写个人 Access Token。
+
+**Runner /metrics**
+
+在每个 Runner 的 HTTP 地址上采集（默认容器端口 8091），配置了 `GUARD_METRICS_TOKEN` 时使用对应 Bearer Token。Runner 地址以实际部署为准。
+
+
+> 页面链接使用当前 Controller 地址，不固定 localhost 或映射端口。Prometheus 链接在配置了采集凭据时直接打开会返回 401，请由采集器发送 Authorization 请求头。无流量或未采集执行证据时，检查统计结果的 `data_availability`。
+
+[业务统计 API 契约](/api/openapi.json?operationId=getTelemetryMetrics)
+
+[Controller Prometheus 指标](/metrics)
+
+[Runner 管理](/settings/runner)
+
+[系统健康](/settings/health)
+
+<a id="operator-troubleshooting" />
+
+## 故障处理顺序
+
+先判断路由与版本，再看 Rail、Action 和 Provider，最后看容量。
+
+1. **身份与路由** — 确认 Endpoint 已启用且凭据匹配、Router 绑定正确、Route 顺序与 Selector 可信字段符合预期。
+
+2. **版本状态** — 确认 Router 指向预期 Guardrail Version，checksum 与发布记录一致。
+
+3. **Rail 与 Action** — 从运行日志检查命中的 Policy、Rule、Rail、Action、实际 Decision 和延迟。
+
+4. **Provider 与依赖** — 确认专用 evaluator、模型、网络和 Secret 可用；不要用通用聊天模型冒充 runtime judge。
+
+5. **容量与超时** — 查看排队、Rail、Action 和 Provider 延迟，区分并发饱和、deadline 与真实检测失败。
+
+[查看运行日志](/logs)
+
+[查看 Endpoints](/integration/endpoint)

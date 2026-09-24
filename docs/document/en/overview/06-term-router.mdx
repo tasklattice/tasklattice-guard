@@ -1,0 +1,133 @@
+---
+id: "term-router"
+title: "Traffic Routers: routing and rollout"
+summary: "Understand Routes, Selectors, Targets, Router revisions, and Runner application."
+order: 5
+---
+<strong>What:</strong> A publishable configuration that sends one or more Endpoints to Guardrail Versions through ordered Routes, Selectors, and weighted Targets.
+
+<strong>Why:</strong> Versioned protection is separate from traffic switching, enabling gradual release, rollback, and audit. Routes are first-match-wins with fallback last.
+
+<strong>How:</strong> Save and preview a draft, publish an immutable Router Revision, then wait for Runners to apply the desired generation before calling it active.
+
+<strong>Example:</strong> One Route can send 90% of traffic to Guardrail v1 and 10% to v2 for a gradual rollout. The Selector and Route order still determine which Route matches.
+
+<a id="term-traffic-scope" />
+
+## Selector
+
+Traffic scope · route condition
+
+An AND/OR route expression over trusted request facts.
+
+Selectors define Route matching; fallback is unconditional. Available fields depend on bound Endpoint protocols, and untrusted headers may be spoofed.
+
+For example, choose a Route by authenticated `endpoint.id` or protocol type `protocol`; if no condition matches, the final fallback Route applies.
+
+<a id="state-router" />
+
+## Router rollout state machine
+
+<StateMachineDiagram kind="router" locale="en" />
+
+Router state is <strong>not stored in Router Revision</strong>. Controller derives it from activeRevision, desiredGeneration, default-pool Runner acknowledgments, and fresh heartbeats: no publication is unpublished; publication or rollback creates a revision and generation and enters distributing; at least one Runner and all fresh acknowledgments at or above target generation yield active; an unconverged rollout with rolloutError yields failed. Republish clears the error and distributes again. Stale heartbeats or a new Runner that has not caught up can move active back to distributing (or failed if an error remains). Historical revisions are not proof of successful deployment.
+
+<a id="router-rollout-states" />
+
+### Router rollout states in detail
+
+These cards explain status meanings; they are not live system indicators. Controller derives Router status from revisions, generations, Runner acknowledgments, and heartbeats. It is not a lifecycle enum in the RouterRevision protobuf.
+
+<StateCards>
+
+<StateCard title="Not published" code="unpublished">
+
+<StateDetail label="Meaning">
+
+There is no active Router revision; routing configuration has not been published.
+
+</StateDetail>
+
+<StateDetail label="Transitions">
+
+The first publication creates a revision and desired generation, entering distributing.
+
+</StateDetail>
+
+<StateDetail label="Next step">
+
+Finish Routes and Targets, then publish.
+
+</StateDetail>
+
+</StateCard>
+
+<StateCard title="Distributing" code="distributing">
+
+<StateDetail label="Meaning">
+
+An active revision exists, but default-pool Runners have not all acknowledged the desired generation, or a heartbeat is stale.
+
+</StateDetail>
+
+<StateDetail label="Transitions">
+
+Fresh acknowledgments from every Runner yield active. An unconverged rollout with a recorded error yields failed.
+
+</StateDetail>
+
+<StateDetail label="Next step">
+
+Inspect Runner connectivity, prewarming, and desired/applied generations.
+
+</StateDetail>
+
+</StateCard>
+
+<StateCard title="Active" code="active">
+
+<StateDetail label="Meaning">
+
+The default pool contains at least one Runner; every Runner has applied the desired generation or newer and has a fresh heartbeat.
+
+</StateDetail>
+
+<StateDetail label="Transitions">
+
+A new publication requires convergence again. Stale heartbeats or unapplied generations invalidate active status.
+
+</StateDetail>
+
+<StateDetail label="Next step">
+
+Monitor traffic and runtime logs. In-flight calls retain the version pinned at their start.
+
+</StateDetail>
+
+</StateCard>
+
+<StateCard title="Rollout failed" code="failed">
+
+<StateDetail label="Meaning">
+
+The desired generation has not converged and a rollout error is recorded. This does not imply that every Runner has stopped serving.
+
+</StateDetail>
+
+<StateDetail label="Transitions">
+
+Publishing again clears the old error and retries distribution. Fresh convergence from all Runners yields active.
+
+</StateDetail>
+
+<StateDetail label="Next step">
+
+Inspect rolloutError and Runner rejection reasons; fix dependencies or configuration, then publish again.
+
+</StateDetail>
+
+</StateCard>
+
+</StateCards>
+
+> DesiredStateResult.accepted is true only after the entire generation is prewarmed and atomically applied. A Runner that rejects a generation retains its previously applied configuration. This acknowledgment differs from the publish API accepting a request.

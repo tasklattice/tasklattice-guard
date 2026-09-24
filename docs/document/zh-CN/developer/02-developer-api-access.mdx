@@ -1,0 +1,51 @@
+---
+id: "developer-api-access"
+title: "控制面集成：把配置接入编辑与发布流程"
+summary: "用 Controller 管理 API 将 Policy、Guardrail、Router 的草稿、验证和发布接入自己的编辑器、审批流或自动化。"
+outcome: "最终产出：有权限、有审阅步骤、能追踪版本与异步状态的配置工作流。"
+order: 1
+---
+假设团队已有一个内部 Policy 编辑器：业务人员在那里提交“订单助手不得泄露手机号”的规则，审批人核对测试样例，平台再发布。编辑器不必复制 Guard 的控制台；它可以调用现有 Controller API，读取对象、保存草稿、触发验证，并在审批后发布版本。**这条链路管理保护配置，不承接实际的大模型请求。**
+
+<a id="developer-control-workflow" />
+## 把自己的编辑流程映射到 Controller
+
+1. **读取并显示当前状态**：用 `GET /api/v1/policies/{id}`、`GET /api/v1/guardrails/{id}` 等接口读取现有对象与版本。不要只维护一份与 Controller 脱节的本地副本。
+2. **保存候选配置**：按对应资源的 OpenAPI 定义创建或更新 Policy、Guardrail 草稿；让使用者看得出“草稿”和“已发布版本”的差别。若要改 Router，先读取当前 draft，再调用 `PUT /api/v1/routers/{id}/draft`，处理并发修订号。
+3. **验证并审阅**：提交 Test Cases、启动 Validation Run，按返回的 `runId` 查询结果。Router 发布前调用 `POST /api/v1/routers/{id}/publication-preview`，核对确切的 Guardrail Version 和 Endpoint 绑定。验证通过或预览成功都不等于已经发布。
+4. **发布并确认**：由具备权限的操作者明确批准后调用对应的 publish API。Router 发布携带审阅过的 `expectedDraftRevision` 与 `idempotencyKey`；收到 `202` 后继续查询发布与下发状态。版本或绑定在审阅后变化时，应重新审阅，不能悄悄改用新修订号。
+
+例如，可以让 CI 在合并配置变更时创建草稿并运行验证，但把生产发布留给审批步骤。Controller 负责校验权限、资源引用和版本约束；**你的系统负责**编辑体验、变更来源、审批规则、并发冲突呈现，以及向操作者展示最终状态。
+
+<a id="developer-control-auth" />
+## 身份和凭据属于控制面
+
+浏览器控制台用 Session 登录。自建后端或自动化可使用所属账户创建的个人 Access Token：在 Account → Access Tokens 选择模块的 read/write 权限和有效期，密钥只显示一次。创建、列出和撤销 Token 需要所属账户的浏览器 Session；已有 Token 不能再签发 Token。不要把个人 Token 放进面向终端用户的浏览器代码。
+
+先用 `Authorization: Bearer <token>` 调用 `GET /api/v1/account/identity`，确认 `effectivePermissions`。授权覆盖选中模块的资源；write 包含 read，写操作还要求当前账户为管理员。凭据无效或过期返回 `401`，权限不足返回 `403`。
+
+```sh
+curl "{controllerOrigin}/api/v1/account/identity" \
+  -H "Authorization: Bearer $GUARD_ACCESS_TOKEN"
+```
+
+Endpoint 的运行时 `x-api-key` 只供[数据面检查](#developer-runtime)，不能修改 Controller 配置；个人 Access Token 也不能代替 Endpoint 凭据检查模型请求。
+
+[管理 Access Tokens](/account/access-tokens)
+
+[登录安全](/account/security)
+
+<a id="developer-api-contract" />
+## 以 OpenAPI 为契约，保留重试边界
+
+`/api/docs` 适合人工查阅，`/api/openapi.json` 可供自己的编辑器或工具生成客户端，`/api/llms.txt` 是紧凑索引。每个操作的 `x-token-permission`、`x-idempotency` 和 `x-retry-policy` 分别说明权限、重复请求语义和重试规则。Tag 是产品分组，不等于权限分组。
+
+网络超时不能证明写入没有执行；不能把所有 `POST` 都当作可安全重放。尤其发布 Router 时，要保留同一个 `idempotencyKey` 和请求内容，并核对返回的发布身份。详见[版本化契约与重试](#api-contract-retries)。
+
+[管理 API 文档](/api/docs)
+
+[完整 OpenAPI](/api/openapi.json)
+
+[Router API 契约](/api/openapi.json?module=routers)
+
+[模型调用索引](/api/llms.txt)

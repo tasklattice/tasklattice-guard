@@ -1,0 +1,38 @@
+---
+id: "api-contract-retries"
+title: "Versioned contracts and retries"
+summary: "Use the current OpenAPI contract to distinguish permissions, idempotency keys, asynchronous state, and safe retries."
+order: 1
+---
+Before calling an API operation, check its permissions, idempotency, and retry guidance in OpenAPI. A network timeout means the client did not receive a result; it does not prove that the server did nothing.
+
+<a id="api-contract-annotations" />
+## Read the three OpenAPI annotations
+
+- `x-token-permission` identifies the required module and read or write permission.
+- `x-idempotency` describes what happens when the same request is sent again. For example, Router publication identifies duplicate requests with the `idempotencyKey` in the request body.
+- `x-retry-policy` tells you whether to read the current state first or retry, and which request values must remain unchanged.
+
+These `x-` fields describe an OpenAPI operation; they are **not** HTTP headers to send. Follow the request definition for the operation's actual parameters.
+
+<a id="api-contract-async" />
+## Check the result after `202`
+
+`202 Accepted` means the request was accepted, but asynchronous work may still be running. For example, after starting a Guardrail validation run, use the returned `runId` with `GET /api/v1/validation-runs/{runId}` to read its result. Do not report “validation passed” based on `202` alone.
+
+<a id="api-contract-router-publish" />
+## Publish a Router by revision, then decide whether to retry
+
+1. Read the Router and confirm the current draft and its revision.
+2. Save the draft with `PUT /api/v1/routers/{id}/draft`. If the response is lost, read the draft again and compare its contents. Do not substitute a newer `expectedDraftRevision` without review.
+3. Call `POST /api/v1/routers/{id}/publication-preview` and review the versions and Endpoint bindings that will be published. A repeated preview may differ if those references changed.
+4. Call `POST /api/v1/routers/{id}/publish` with the reviewed `expectedDraftRevision` and `idempotencyKey` in the request body.
+
+If the publish request times out or its response is lost, retry with **the same `idempotencyKey` and the same request content**, then inspect `publication.replayed` and the original publication revision. Do not issue a new key blindly. Check `x-retry-policy` for every other `POST`: starting a validation run, for example, is not guaranteed to be idempotent and must not be automatically retried after an uncertain response.
+
+<a id="api-contract-resource-ids" />
+## Find results by resource ID
+
+Address a Test Case through `/api/v1/guardrails/{guardrailId}/test-cases/{caseId}`. Query a validation run with its returned `runId`. A Test Case's `caseId` is not a validation run's `runId`.
+
+[Full OpenAPI](/api/openapi.json)

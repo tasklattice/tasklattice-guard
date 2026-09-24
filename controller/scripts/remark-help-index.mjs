@@ -5,6 +5,7 @@ export default function remarkHelpIndex() {
     const ids = new Set();
     let pendingId;
     let section;
+    let introText = '';
     const plain = node => node.type === 'yaml' || node.type === 'mdxjsEsm' ? ''
       : typeof node.value === 'string' ? node.value
       : [
@@ -28,13 +29,14 @@ export default function remarkHelpIndex() {
         if (!id || ids.has(id)) throw new Error(`Help heading requires a unique ID: ${title}`);
         ids.add(id);
         node.data = { ...node.data, hProperties: { ...node.data?.hProperties, id } };
-        section = { id, title, text: title };
+        section = { id, title, text: title, depth: node.depth };
         sections.push(section);
       } else if (section) section.text += ` ${plain(node)}`;
+      else introText += ` ${plain(node)}`;
       return true;
     });
     const searchText = tree.children.map(plain).join(' ');
-    const exports = { sections, searchText };
+    const exports = { sections, searchText, introText };
     tree.children.push({ type: 'mdxjsEsm', value: '', data: { estree: {
       type: 'Program', sourceType: 'module', body: Object.entries(exports).map(([name, value]) => ({
         type: 'ExportNamedDeclaration', specifiers: [], source: null,

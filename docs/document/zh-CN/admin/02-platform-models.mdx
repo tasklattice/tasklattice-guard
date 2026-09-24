@@ -1,0 +1,24 @@
+---
+id: "platform-models"
+title: "配置 Provider、Model 与保护能力"
+summary: "连接 Provider、注册并测试 Model，再把兼容模型分配给需要它的 Rail。"
+order: 1
+---
+默认 Guardrail 的本地检查不要求先配置检测模型。只有选用的 Policy 依赖模型判断时，才需要完成 Provider、Model 和保护能力绑定。**模型能调用**与**某个 Rail 已使用它**是两件事。
+
+<a id="platform-model-steps" />
+
+## 按依赖顺序配置
+
+1. 在 [Providers](/settings/providers) 注册模型服务地址与凭据，检查连接。私有 CA 等 TLS 设置只作用于该 Provider；变更后要重新测试受影响模型。
+2. 在 [Models](/settings/models) 注册物理模型并执行真实的调用检查。目录里能发现模型，不代表它已经可用。
+3. 在 [Guardrail Catalog](/settings/guardrail-catalog) 为具体能力绑定模型，例如 `content_safety.input` 或 `jailbreak.input`。输入和输出绑定独立，模型协议必须符合该能力的契约。
+4. 验证绑定的行为样例，保存并激活配置，再到[平台健康](/settings/health)确认 Runner 已应用。只在 Models 页面测试连接，不等于内容安全或越狱检测已通过行为验证。
+
+<a id="platform-model-boundary" />
+
+## 控制面与数据面的边界
+
+DeepSeek Provider 当前只用于控制面，不能被分配到数据面 Rail。数据面使用受支持的专用或有边界的低参数模型；Controller 只将活动数据面绑定实际引用的模型及凭据下发给 Runner。Guardrail Catalog 的**模型能力绑定**与 Policy Library 中的**可复用 Policy**也不是同一对象：前者提供检测依赖，后者定义要执行的保护行为。
+
+更细的部署与模型协议说明保存在仓库的 `docs/model-configuration.md`。

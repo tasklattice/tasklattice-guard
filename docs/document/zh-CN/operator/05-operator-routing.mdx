@@ -1,0 +1,75 @@
+---
+id: "operator-routing"
+title: "Endpoint 与 Routing"
+summary: "为应用建立 Endpoint 身份，按模型等请求条件选择 Route，并用加权 Target 将流量指向一个或多个 Guardrail Version。"
+outcome: "最终产出：特定模型请求会命中已发布的 Guardrail Version；灰度比例和 Runner 下发状态都能核对。"
+order: 4
+---
+**Endpoint 识别是谁在请求检查；Routing 决定这次请求交给哪套 Guardrail。** 例如客服 AI Gateway 使用自己的 Endpoint：请求中的模型字段是 `gateway-model-alias` 时，Router 将它交给“客服助手保护方案”Guardrail 的已发布版本。这样可以针对特定的大模型请求启用保护，而不必让所有应用使用同一套检查。
+
+<a id="operator-routing-setup" />
+
+## 指定哪些请求由哪个 Guardrail 检查
+
+1. **先注册 Endpoint**：为应用、Agent 或网关创建独立身份和运行时凭据。客服网关与内部测试网关分别使用各自的 Endpoint；不能用请求中可伪造的 header 代替 Endpoint 认证。
+2. **将 Endpoint 绑定到已发布 Router**：一个 Endpoint 最多绑定一个 Router；一个 Router 可服务多个 Endpoints。绑定生效后，网关在模型调用前后使用该 Endpoint 发起检查。
+3. **在 Router 中添加 Route**：用 Selector 描述要保护的流量。例如选择适配器可提取的 `model = gateway-model-alias`，也可结合 `endpoint.id` 或 `protocol` 缩小范围。可用字段取决于绑定 Endpoint 的协议能力；调用方传入的 headers 或 `jwt_claims` 不会自动成为可信身份。Router 按顺序匹配 Route，第一条命中的 Route 生效。
+4. **把 Route 指向 Guardrail Target**：选择已发布的 Guardrail Version，单一 Target 设为 100%。如果配置 90%／10% 两个 Target，是将命中的请求分流到两个版本，**每次请求只选一个 Target**；想对同一次请求执行多项检查，应将多个 Policies 组合在同一个 Guardrail 中。
+5. **保留最后的 fallback 并预览**：未命中前面 Route 的请求会进入无条件 fallback。发布前用 Route 的 **Test matching** 预览示例请求会命中哪条规则；然后发布 Router 并检查 Runner 的下发状态。
+
+选择 `latest` 的 Target 也会在 Router 发布时解析为确切 Guardrail Version；日后 Guardrail 发布新版，不会悄悄改变已发布 Router 的目标。
+
+[管理 Endpoints](/integration/endpoint)
+
+[管理 Traffic Routers](/integration/routers)
+
+<a id="operator-canary-release" />
+
+## 灰度发布：同一条 Route 分流到不同 Guardrails
+
+假设客服网关现在使用 **“客服保护·稳定” Guardrail v3**，准备试用规则更严格的 **“客服保护·候选” Guardrail v1**。希望只有一小部分客服模型请求先接受新方案检查，就在**同一条 Route** 下配置两个 Target，而不是把两套 Guardrails 同时应用到每次请求：
+
+| Route 匹配条件 | Target | 权重 | 本次调用会怎样 |
+| --- | --- | --- | --- |
+| `model = gateway-model-alias` | 客服保护·稳定 v3 | 90% | 约九成命中该 Route 的新逻辑调用选用稳定方案 |
+| 同一条 Route | 客服保护·候选 v1 | 10% | 约一成命中该 Route 的新逻辑调用选用候选方案 |
+
+这里的百分比是**这条 Route 内的分配权重**，不是整个 Router 或所有 Endpoints 的流量占比；两个权重必须合计 100%。Router 先按顺序找到第一条匹配的 Route，再为这次逻辑调用选择**一个** Target。输入和输出检查沿用同一调用身份与固定版本，不会在输入走稳定方案、输出临时切到候选方案。权重不是按用户固定分组；少量请求的实际比例也不一定恰好是 90%／10%。
+
+按下面的顺序操作：
+
+1. **准备候选版本**：先让两个 Guardrails 都通过当前验证并发布确切版本，确认候选方案的规则、依赖和模型能力已就绪。记录稳定版和候选版的 Guardrail ID 与 Version。
+2. **编辑同一条 Route 的 Targets**：在 [Traffic Routers](/integration/routers) 的 Routing 页面，找到客服请求使用的 Route，保持 Selector 不变，添加第二个 Target，分别设置 90% 和 10%。检查其他 Route 的优先级以及最后的 fallback；共享 Router 的发布会影响所有绑定的 Endpoints。
+3. **预览后发布 Router**：先用 **Test matching** 检查示例请求是否命中这条 Route；它只测试匹配，不执行 Guardrail，也不能证明真实分流比例。点击 **Review changes** 保存并预览草稿，核对 Target 的 Guardrail ID、固定 Version、权重和 Endpoint 绑定，再发布新的 Router revision。等目标 generation 被 Runner 应用后，才把新调用视为进入灰度。
+4. **观察真实效果**：在 Router 的 **Monitoring** 中按 revision 和 Endpoint 查看 Target 的配置占比与实际占比、分配量、阻断／转换结果、错误率和延迟；结合[运行日志](/logs)检查候选方案是否误拦正常问题。统计可能延迟，小样本的实际占比也会波动。
+5. **扩大或回退**：表现符合预期时，按“稳定／候选”75%／25%、50%／50%、0%／100% 等阶段调整权重；每次都审阅并发布新的 Router revision，确认 Runner 收敛。出现问题时，把候选 Target 调为 0%、稳定 Target 调为 100% 并重新发布，或从历史 Router revision 回滚；回滚本身也会发布新的 revision，不会修改历史版本。进行中的调用仍沿用开始时固定的目标。
+
+这种灰度用于比较**两套保护方案对不同调用的表现**。如果业务要求同一次模型请求同时执行多项检查，应把多个 Policies 组合进同一个 Guardrail，而不是期待加权 Targets 串行执行。
+
+<a id="operator-release-rollback" />
+
+## 确认路由已生效，并知道如何回滚
+
+这三个编号回答不同问题：**Guardrail Version** 固定“检查什么”，**Router revision** 固定“流量去哪”，**Runner 已应用的 generation** 表示“执行节点实际拿到了哪批配置”。例如 Guardrail v2 和新 Router revision 都已发布，但 Runner 仍在应用旧 generation 时，不能宣称新流量已经切换。
+
+- 发布前确认当前 Validation Run 通过、checksum 已生成、依赖和专用模型可用。
+- 在 Settings / Health 查看运行健康，并在 Router Overview 核对 rolloutStatus 和 desiredGeneration。
+- Router 回滚会基于历史快照发布新的 revision；Guardrail 回滚重新激活已就绪的历史版本。已发布 Router 固定的 Guardrail Target 如需变更，应重新发布 Router。
+- 进行中的调用继续使用开始时固定的版本；Runner 应用新的 Router revision 后，新调用才使用新的路由快照。
+- 不要修改历史 artifact 或在进程外替换源码；任何语义变化都应创建新版本。
+
+[查看 Guardrails](/guardrails)
+
+[查看运行日志](/logs)
+
+<a id="operator-runtime" />
+
+## 生产运行时边界
+
+控制面管理版本，NeMo 执行检查，应用或网关执行最终决策。
+
+- 发布时编译并验证不可变 NeMoConfigSnapshot，计算 checksum，再预热确切 runtime profile。
+- 活动版本常驻 runtime registry；生产请求不会在热路径临时构建运行时。
+- 简单计划可由编译器选择 Colang 1 standard profile；自定义可编程 Policy 使用 Colang 2。不要手工切换 profile。
+- 每个 Guardrail Version 有独立并发限制；排队时间计入请求总 deadline。
+- 必需检查的超时、队列超时或 Provider 错误会按版本化 fail-open/fail-closed 配置处理。

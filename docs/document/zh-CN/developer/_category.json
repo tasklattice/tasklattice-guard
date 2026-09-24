@@ -1,0 +1,5 @@
+{
+  "title": "集成参考",
+  "description": "控制面通过 Controller API 集成编辑与发布，数据面让网关或 Agent 的模型请求经过运行时检查。",
+  "order": 3
+}

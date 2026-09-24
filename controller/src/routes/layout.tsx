@@ -20,6 +20,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/lib/auth";
 import { LoginPage } from "@/routes/login";
+import { HelpLayout } from "@/routes/help-layout";
 
 const names: Record<string, { group?: string; page: string }> = {
   "/": { page: "nav.dashboard" },
@@ -39,7 +40,7 @@ const names: Record<string, { group?: string; page: string }> = {
   "/settings/providers": { group: "nav.settings", page: "nav.providers" },
   "/settings/models": { group: "nav.settings", page: "nav.models" },
   "/settings/guardrail-catalog": { group: "nav.settings", page: "nav.guardrailCatalog" },
-  "/help": { group: "nav.helpResources", page: "nav.helpCenter" },
+  "/document": { group: "nav.helpResources", page: "nav.helpCenter" },
 };
 
 export function ControlPlaneLayout() {
@@ -55,6 +56,7 @@ export function ControlPlaneLayout() {
     return <div className="flex min-h-dvh items-center justify-center bg-background"><div className="flex items-center gap-3 text-sm text-muted-foreground"><ShieldCheck className="size-5 animate-pulse text-primary" />{t("auth.sessionLoading")}</div></div>;
   }
   if (!auth.status?.authenticated || !auth.user) return <LoginPage />;
+  if (["/document", "/help"].includes(pathname.replace(/\/$/, ""))) return <HelpLayout />;
 
   return (
     <TooltipProvider>

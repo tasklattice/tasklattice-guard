@@ -1,0 +1,267 @@
+---
+id: "term-guardrail"
+title: "Guardrails：保护方案"
+summary: "组合固定版本的 Policy，验证并发布保护方案；理解 Binding、Decision 与保护状态。"
+order: 2
+---
+<strong>是什么：</strong>Guardrail 是给某个应用使用的一套保护方案。例如“客服助手保护方案”可同时检查越狱输入和回复中的敏感信息。配置上，它通过 Policy Binding 固定多个 Policy Version，并选择启用的 Rules、Rails、参数和检测后处理；还维护草稿、验证记录和可发布版本。
+
+<strong>为什么：</strong>Policy 可以跨应用复用，Guardrail 则把能力组合成某个应用可审查、可发布、可回滚的具体保护边界。它不是单条 Rule，也不是流量路由。
+
+<strong>怎么用：</strong>在 Guardrail 草稿中选定 Policy Versions 和参数，运行 Validation Run，通过后发布不可变 Guardrail Version；再由 Router 将 Endpoint 流量指向该版本。Route 的已发布引用可让前端显示“保护中”，但发布版本不等于 Runner 已经应用。
+
+<a id="glossary-resource-map" />
+
+## 资源互联地图
+
+<ResourceMap locale="zh-CN" />
+
+<strong>两条关系不要混淆：</strong>Guardrail 通过 Binding 引用 Policy Version；Policy 包含 Rules 和 Test Cases。Rule 映射到具体实现，测试用例验证预期行为。生产请求从 Endpoint 经 Router 命中固定的 Guardrail Version，Runner 执行后返回 Decision 和 Evidence。
+
+<a id="glossary-term-guardrail" />
+
+## Guardrail
+
+面向一个业务场景的保护方案：固定所需 Policy Versions、启用的 Rules、Rails 和参数，验证后发布不可变 Guardrail Version。完整关系见[产品介绍](#term-guardrail)。
+
+<a id="term-policy-binding" />
+
+## Policy Binding
+
+<strong>是什么：</strong>Guardrail 对一个 Policy Version 的固定引用，连同启用的 Rules、Rails、参数和动作覆盖。可以把它理解为“在这套保护方案里如何使用这项能力”。
+
+<strong>为什么：</strong>把可复用能力落实为某个场景的审查值，保证运行行为与发布时一致。
+
+<strong>怎么用：</strong>在 Guardrail 草稿中设置并解析必填参数，验证通过后随 Guardrail Version 固化。
+
+<strong>例子：</strong>两个客服应用都使用同一版关键词 Policy，但在各自的 Binding 中填写不同的 `blocked_words`。
+
+<a id="term-parameter" />
+
+## Binding Parameter
+
+绑定参数 · parameter
+
+Policy 暴露、由 Guardrail 绑定时解析的审查值。
+
+参数属于配置版本，不应从不可信的生产请求临时覆盖。
+
+例如 `blocked_words` 可以由管理员在发布前填写为一个词表；用户请求不能临时改写这个词表。
+
+<a id="term-guardrail-version" />
+
+## Guardrail Version
+
+<strong>是什么：</strong>Guardrail 草稿通过验证后发布的不可变快照，包含固定的 Policy Bindings、Rules、参数、编译 artifact、依赖和 checksum。
+
+<strong>为什么：</strong>它是发布与回滚单元；Router Target 必须解析到确切版本，不能靠“最新草稿”处理生产请求。
+
+<strong>怎么用：</strong>等待编译 ready，再发布引用它的 Router Revision；需要回滚时激活已就绪的历史版本，并检查 Router 固定目标是否也要重新发布。
+
+<strong>例子：</strong>即使已发布 Guardrail v2，仍指向 v1 的 Router 不会自动切到 v2；要改变生产流量，需检查并重新发布 Router。
+
+<a id="term-validation-run" />
+
+## Validation Run
+
+验证记录
+
+当前草稿的 Test Cases 通过真实运行时执行后形成的不可变结果。
+
+只有当前 revision 的必需用例全部通过，才能发布。
+
+<a id="term-checksum" />
+
+## Checksum
+
+配置哈希 · SHA-256
+
+不可变编译配置的内容摘要。
+
+用于确认当前运行 artifact 与已发布版本完全一致。
+
+<a id="user-decisions" />
+
+## Decision：放行、转换与阻断
+
+最终 Decision 是业务调用方必须执行的结果，不只是一个风险标签。
+
+**Allow / pass**
+
+内容可继续进入下一阶段；未触发需要执行的干预。
+
+**Transform**
+
+系统返回经过脱敏、重写或其他变换后的有效内容，调用方应使用返回内容。
+
+**Block / reject**
+
+停止当前阶段。输入被阻断时不应调用模型；输出被阻断时不应把原始响应交付给用户。
+
+
+> Playground 会展示模型前检查、模型调用和模型后检查的完整链路，适合在上线前确认调用方行为。
+
+[打开 Playground](/playground)
+
+[查看运行日志](/logs)
+
+<a id="term-decision" />
+
+## Decision 的运行语义
+
+allow · transform · block
+
+TaskLattice 对当前阶段的最终结论。
+
+调用方必须执行 Decision 和 action；它不是仅供展示的风险分数。
+
+<a id="term-enforcement-action" />
+
+## 检测后处理
+
+Enforcement Action · 响应指令 · 不安全时
+
+Rule 命中后要求运行时或调用方采取的具体处理，例如脱敏、阻断或重新生成。Policy 为 Rule 定义默认值；Guardrail Binding 可覆盖。完整的八种处理与优先级见[Rule 命中后如何处理](#term-rule-actions)。
+
+它不是评估器 verdict，也不是 NeMo 调用的 Python Action；部分生命周期指令由集成调用方执行。
+
+<a id="term-output-delivery" />
+
+## Output Delivery
+
+interruptible · window buffered · full buffered
+
+模型输出在完成 Output Rail 检查前如何缓冲和交付。
+
+缓冲越完整，越能避免泄露后来被阻断的内容，但会增加首字延迟。
+
+<a id="term-failure-mode" />
+
+## Failure Mode
+
+fail-open · fail-closed
+
+Action 超时或错误时的安全处理方式。
+
+fail-open 继续但记录错误；fail-closed 阻断。必需检查通常采用更保守的策略。
+
+<a id="concept-boundaries" />
+
+## 认证、配置与执行的边界
+
+控制面管理 Policy、Guardrail 和 Router 版本；运行检查由 Runner 完成；应用或网关拥有模型调用，并负责执行返回的 Decision。管理 API 的个人 Access Token 与运行检查的 Endpoint 凭据用途不同，不能互换。调用方传入的 headers 或声明也不会自动成为可信身份。
+
+阅读下面的角色指南时，可以按 **配置与验证 → 分配 Endpoint 凭据 → 应用接入 → 路由发布 → 观察与迭代** 理解交接顺序；侧边栏仍按日常查阅职责排列。
+
+
+<a id="glossary-states" />
+
+## Guardrail 的状态机
+
+<StateLegend locale="zh-CN" />
+
+状态颜色表达语义，不替代文字。黄色表示工作进行或配置尚未收敛；绿色表示已通过或已生效；红色表示失败或需要处理；灰色表示草稿、历史、主动停用或尚未开始。<strong>资源生命周期、不可变版本的构建状态、Runner 健康和一次请求的 Decision 是不同轴，不能互相代替。</strong>
+
+用同一个发布过程理解这些状态：Guardrail Version **ready** 只说明保护内容已编译好；被已发布 Route 引用后，Guardrail 列表可以显示 **protected（保护中）**；Router **active** 才说明目标 generation 已被默认池 Runner 确认。最后还要看 Endpoint 和运行日志，才能知道是否真的有请求经过这套保护。
+
+<a id="state-guardrail-readiness" />
+
+### Guardrail 展示状态：需要测试、就绪、保护中
+
+<StateMachineDiagram kind="guardrail-readiness" locale="zh-CN" />
+
+<strong>保护中（<code>protected</code>）</strong>是前端状态：当前草稿已有活动的已发布版本，且已发布 Router 快照中有启用的 Route，以正权重 Target 引用这个 Guardrail。列表目前还要求该 Router 绑定至少一个 Endpoint。只有把 Guardrail 放进 Router 草稿、未发布 Route，或权重为 0 的 Target，都不会进入保护中。移除最后一处有效引用后回到就绪；修改 Guardrail 草稿后，由于当前草稿不再对应活动版本，列表显示需要测试，即使旧版本仍可能处理流量。
+
+<strong>这不是流量健康结论：</strong>保护中说明有配置引用，不证明 Router 已完成 Runner 下发、Endpoint 可用或已经收到请求。详情页还单独展示 Route 引用徽标；查看实际生效情况应同时检查 Router rollout、Endpoint 和运行日志。
+
+<a id="state-guardrail" />
+
+### Guardrail 资源生命周期
+
+<StateMachineDiagram kind="guardrail-lifecycle" locale="zh-CN" />
+
+Guardrail 资源的持久状态是 draft → active → disabled，也允许 draft → disabled；disabled 对该资源是终态。发布并激活就绪版本使资源进入 active；停用或软删除后的状态不可按 Endpoint 的方式直接恢复。上方的 `needs_validation / ready / protected` 是<strong>派生展示状态</strong>，`protected` 正是 Route 引用时显示的“保护中”；它与这里的持久生命周期同时存在。
+
+<a id="state-guardrail-version" />
+
+### Guardrail Version 构建与活动指针
+
+<StateMachineDiagram kind="guardrail-version" locale="zh-CN" />
+
+版本从 compiling 走向 ready 或 failed，终态内容不可原地修改。`active / historical` 是 Guardrail 选择哪一个 ready Version 的<strong>活动指针</strong>，不是版本构建状态。ready 只表示 artifact 可用；Router 还需引用确切版本并完成 Runner 下发。回滚切换活动指针，不重写历史 artifact。
+
+<a id="guardrail-build-states" />
+
+### Guardrail 编译状态
+
+编译状态与版本的 Active / Historical 选择、Router 的流量下发状态分开理解。
+
+<StateCards>
+
+<StateCard title="编译中" code="compiling" state="distributing">
+
+<StateDetail label="含义">
+
+正在构建 Guardrail 版本的不可变运行时产物。
+
+</StateDetail>
+
+<StateDetail label="状态变化">
+
+编译成功进入 ready，编译失败进入 failed。
+
+</StateDetail>
+
+<StateDetail label="下一步">
+
+等待完成；失败时查看编译错误。
+
+</StateDetail>
+
+</StateCard>
+
+<StateCard title="编译就绪" code="ready">
+
+<StateDetail label="含义">
+
+版本产物已就绪；这不代表 Router 已把流量切到该版本。
+
+</StateDetail>
+
+<StateDetail label="状态变化">
+
+版本可被选作发布或回滚目标；流量是否生效仍由 Router 下发状态决定。
+
+</StateDetail>
+
+<StateDetail label="下一步">
+
+如需变更已发布 Router 的固定 Target，重新发布 Router。
+
+</StateDetail>
+
+</StateCard>
+
+<StateCard title="编译失败" code="failed">
+
+<StateDetail label="含义">
+
+当前版本未成功生成可用产物。
+
+</StateDetail>
+
+<StateDetail label="状态变化">
+
+修复配置后重新发起编译，再检查新结果。
+
+</StateDetail>
+
+<StateDetail label="下一步">
+
+查看编译错误，修复 Policy、Rule 或依赖。
+
+</StateDetail>
+
+</StateCard>
+
+</StateCards>

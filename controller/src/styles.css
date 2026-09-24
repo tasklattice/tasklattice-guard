@@ -267,6 +267,18 @@
   }
 }
 
+/* Keep code terms distinct from prose without changing fenced code blocks. */
+.document-article :not(pre) > code {
+  border: 1px solid var(--border);
+  border-radius: 0.25rem;
+  background: var(--muted);
+  padding: 0.1em 0.3em;
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  overflow-wrap: anywhere;
+  box-decoration-break: clone;
+}
+
 /* Scope layout overrides to the Router editor. The query-builder vendor CSS
    is unlayered, so these rules also stay unlayered. */
 .router-selector .ruleGroup .rule {

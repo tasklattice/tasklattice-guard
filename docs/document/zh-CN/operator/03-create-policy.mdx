@@ -1,0 +1,42 @@
+---
+id: "operator-create-policy"
+title: "自建 Policy：把业务要求变成可执行检查"
+summary: "理解 Colang Flow、Rail、Action 和 Rule 如何协作，再在 Policy Studio 创建可复用的检查能力。"
+order: 2
+---
+先问一个问题：现有 Policy 只是参数不合适，还是缺少新的检测行为？前者通常在 Guardrail Binding 中调整参数或 Rule；只有确实缺少可复用能力时才自建 Policy。例如多个应用都需要判断“要求泄露系统提示词”这一意图，就适合把检测做成一项 Policy，而不是分别写进每个 Router。
+
+<a id="operator-policy-mechanism" />
+
+## 技术原理：从业务要求到检查结果
+
+以“客服回复不得泄露客户编号”为例，先确定 **检查对象** 是模型回复，所以选择 Output Rail；再确定 **判断方式**：结构固定的编号可用已有检测能力，复杂语义则需要已注册的 Action 或专用模型。自建 Policy 的 Colang Flow 负责组织调用和记录结果，Action 负责具体检测或变换。只写“禁止泄露”这样的描述，不会自动产生识别能力。
+
+这条链路中的对象各有职责：
+
+1. **Colang 源码声明 Flow**，例如 `check_customer_id`，说明收到文本后调用什么能力、如何处理其结果。Policy Studio 使用 Colang 2.x；源码由 NeMo 解析，未声明的 Flow、未列入依赖的 Action 或不允许的导入会在运行验证时被拒绝。
+2. **Rail Binding 将 Flow 接到输入或输出阶段**，并指定 `detect`（记录判断）或 `mutate`（可能产生替换内容）、不安全时的处理指令、超时和失败方式。由 Rail 与 Flow 名称形成稳定 Rule ID，例如 `flow/output/check_customer_id`。Rule ID 供测试结果和运行记录追溯。
+3. **Action Reference 固定可调用能力的名称和版本**。Flow 可以调用 Action Catalog 中已经注册的检测器或模型能力；自建 Policy 不能上传任意 Python 来扩展 Runner。参数在 Guardrail Binding 中解析并随版本固定，不能由生产请求临时改写。
+4. **Test Case 证明预期行为**。正常订单回复应放行；包含客户编号的回复应按配置转换或阻断；还要覆盖相似但不应命中的编号、Action 超时等边界。测试写明 Rail、期望 Decision 和覆盖的 Rule ID。
+
+因此，一条自建 Rule 的执行关系是 **Policy Version → Rule（Input／Output Rail 上的 Flow）→ 已注册 Action／模型给出检测结果 → 命中后处理 → Decision**。Policy 定义默认处理，Guardrail Binding 可按应用覆盖；Endpoint 与 Router 决定哪些请求使用哪个 Guardrail Version。完整概念链见[Policy、Rule、实现与处理](#glossary-definition)。Catalog 有 `regex`、`keyword` 等[六种 Rule 实现](#term-rule-implementation)，但 Policy Studio 的自建可编程路径使用 `colang_flow`，不要把六种形式误认为这里可以直接选择的六种编辑器。
+
+<a id="operator-policy-create" />
+
+## 在 Policy Studio 创建
+
+当前控制台的“新建 Policy”入口位于 [Policy Library](/policy-library)，需要管理员权限。创建时按以下顺序核对：
+
+1. **说明用途与边界**：写清它检测什么、不检测什么，选择保护目录，并确定适用的输入或输出阶段（Rail）。
+2. **定义 Flow 和 Rule**：自定义 Policy 使用 Colang 2.x。Flow 名称必须与源码一致；绑定后形成稳定的 Rule ID `flow/{rail}/{flow_name}`。不支持上传任意 Python 作为执行逻辑。
+3. **声明运行依赖**：如需调用 Action，选择已注册且固定版本的 Action；需要模型时，先让平台管理人员准备兼容的 Provider、Model 和能力绑定。依赖的 Flow 要放在同一 Rail 的前面，不能形成循环。
+4. **设置行为和参数**：区分只检测的 `detect` 与可能返回替换内容的 `mutate`；声明不安全时的处理指令、超时、`fail_open`／`fail_closed` 和可供 Guardrail 绑定的参数。
+5. **添加 Test Cases**：同时覆盖正常输入、应阻断或转换的输入，以及边界样例。每条用例写明 Rail、期望 Decision 和覆盖的 Rule IDs。
+
+<a id="operator-policy-release" />
+
+## 验证、发布、使用
+
+下一篇[自建 Policy 的测试、发布与跨环境迁移](#developer-release-transfer)说明验证门槛和版本语义。发布 Policy Version 后，还要在 Guardrail 草稿中绑定确切版本并解析必填参数；单独发布 Policy 不会使任何 Endpoint 请求自动开始检查。修改 Policy 会形成新的草稿和版本，不会暗中改变已绑定旧版的 Guardrail。
+
+跨环境导入的是可编辑定义，不是验证结果；目标环境需要重新检查 Action 和模型依赖、运行测试并发布。

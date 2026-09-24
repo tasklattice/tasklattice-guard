@@ -1,0 +1,58 @@
+---
+id: "gateway-connect"
+title: "数据面协议：连接、输入与完整输出"
+summary: "LiteLLM 或自研网关只需实现 LiteLLM Generic Guardrail HTTP 契约，无需在网关里运行 LiteLLM。"
+order: 3
+---
+运行时使用 **LiteLLM Generic Guardrail** 协议作为接入契约；这是协议名称，不要求你的网关采用 LiteLLM 实现。直接调用模型的 Agent 也可按相同的 HTTP 契约接入。运维人员提供 Endpoint 基础地址和该 Endpoint 的运行时 Token。以下示例针对文本的输入检查与完整输出检查；生产中仍要由接入方把检查结果映射回自己的请求和响应结构。先了解[数据面职责与边界](#developer-runtime)。
+
+<a id="gateway-connection" />
+
+## 准备连接参数
+
+```bash
+export TALI_GUARD_ENDPOINT='https://guard-runtime.example.com/runtime/v1/endpoints/<endpoint_id>'
+export TALI_GUARD_TOKEN='<runtime-token>'
+```
+
+将 Token 放在 `x-api-key`，不要使用管理控制台的个人 Access Token，也不要把它当作上游模型密钥。先验证凭据和协议：
+
+```bash
+curl -sS --fail-with-body -X POST "${TALI_GUARD_ENDPOINT%/}/verify" \
+  -H "x-api-key: $TALI_GUARD_TOKEN" \
+  -H 'Content-Type: application/json' -d '{}'
+```
+
+成功返回中的 `ready: true` 只证明 Endpoint 凭据和协议兼容，不代表所有 Policy 或模型依赖都已就绪，也不代表后续内容会被放行。
+
+<a id="gateway-checks" />
+
+## 先检查输入，再检查输出
+
+为**每次新的模型调用**生成新的非空 `litellm_call_id`。把真实待检查文本放入 `texts`；`structured_messages` 只是上下文，不能替代 `texts`。
+
+```bash
+curl -sS --fail-with-body -X POST "${TALI_GUARD_ENDPOINT%/}/beta/litellm_basic_guardrail_api" \
+  -H "x-api-key: $TALI_GUARD_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"input_type":"request","litellm_call_id":"call-123","texts":["Please summarize this report."],"structured_messages":[{"role":"user","content":"Please summarize this report."}],"model":"gateway-model-alias"}'
+```
+
+仅在输入检查允许继续后调用模型。完整输出要先缓存、检查，再交付；使用**相同 Endpoint 和 `litellm_call_id`**，并保持路由元数据一致：
+
+```bash
+curl -sS --fail-with-body -X POST "${TALI_GUARD_ENDPOINT%/}/beta/litellm_basic_guardrail_api" \
+  -H "x-api-key: $TALI_GUARD_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"input_type":"response","litellm_call_id":"call-123","texts":["Here is the generated response."],"model":"gateway-model-alias"}'
+```
+
+<a id="gateway-actions" />
+
+## HTTP 200 之后仍要读取 action
+
+| 返回的 `action` | 输入阶段 | 输出阶段 |
+| --- | --- | --- |
+| `NONE` | 使用原输入调用模型 | 交付原输出 |
+| `BLOCKED` | 不调用模型 | 不交付被阻断的输出 |
+| `GUARDRAIL_INTERVENED` | 用返回的 `texts` 替换对应输入 | 交付返回的 `texts`，不交付原输出 |
+
+替换数组必须与提交的 `texts` 数量、位置一致；空字符串也是有效替换。未知 action、无效 JSON 或错误的替换数量都属于检查失败，不能默认当作 `NONE`。对流式模型输出请使用[流式输出检查](#gateway-stream)，不要先把未经检查的 chunk 直接交给客户端。

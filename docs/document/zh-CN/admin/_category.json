@@ -1,0 +1,5 @@
+{
+  "title": "平台管理",
+  "description": "认识 Controller 和 Runner，配置模型、账户与权限，并通过运行日志和审计日志核对实际执行与管理变更。",
+  "order": 2
+}

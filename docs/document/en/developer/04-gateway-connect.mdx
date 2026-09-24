@@ -1,0 +1,58 @@
+---
+id: "gateway-connect"
+title: "Data-plane protocol: connect, input, and complete output"
+summary: "LiteLLM and custom gateways implement the same LiteLLM Generic Guardrail HTTP contract; the gateway does not need to run LiteLLM."
+order: 3
+---
+The runtime exposes the **LiteLLM Generic Guardrail** protocol as its integration contract. This names the protocol; your gateway does not have to use LiteLLM internally. An Agent that calls a model directly can also implement the same HTTP contract. Operations supplies an Endpoint base URL and runtime Token for that Endpoint. These examples cover text Input and complete Output checks. The client still maps results back into its own request and response structures. Start with the [data-plane responsibilities and boundaries](#developer-runtime).
+
+<a id="gateway-connection" />
+
+## Prepare the connection
+
+```bash
+export TALI_GUARD_ENDPOINT='https://guard-runtime.example.com/runtime/v1/endpoints/<endpoint_id>'
+export TALI_GUARD_TOKEN='<runtime-token>'
+```
+
+Send the Token in `x-api-key`. It is neither a personal management Access Token nor an upstream model key. Verify the credential and protocol first:
+
+```bash
+curl -sS --fail-with-body -X POST "${TALI_GUARD_ENDPOINT%/}/verify" \
+  -H "x-api-key: $TALI_GUARD_TOKEN" \
+  -H 'Content-Type: application/json' -d '{}'
+```
+
+`ready: true` proves Endpoint credential and protocol compatibility only. It does not prove every Policy or model dependency is ready, or that later content will be allowed.
+
+<a id="gateway-checks" />
+
+## Check input, then output
+
+Generate a new non-empty `litellm_call_id` for **each model call**. Put actual content to inspect in `texts`; `structured_messages` supplies context and never replaces `texts`.
+
+```bash
+curl -sS --fail-with-body -X POST "${TALI_GUARD_ENDPOINT%/}/beta/litellm_basic_guardrail_api" \
+  -H "x-api-key: $TALI_GUARD_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"input_type":"request","litellm_call_id":"call-123","texts":["Please summarize this report."],"structured_messages":[{"role":"user","content":"Please summarize this report."}],"model":"gateway-model-alias"}'
+```
+
+Call the model only after the Input check permits continuation. Buffer complete model output until it has been checked, then deliver it. Use the **same Endpoint and `litellm_call_id`**, with consistent routing metadata:
+
+```bash
+curl -sS --fail-with-body -X POST "${TALI_GUARD_ENDPOINT%/}/beta/litellm_basic_guardrail_api" \
+  -H "x-api-key: $TALI_GUARD_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"input_type":"response","litellm_call_id":"call-123","texts":["Here is the generated response."],"model":"gateway-model-alias"}'
+```
+
+<a id="gateway-actions" />
+
+## Read action even after HTTP 200
+
+| Returned `action` | Input behavior | Output behavior |
+| --- | --- | --- |
+| `NONE` | Call the model with original input | Deliver original output |
+| `BLOCKED` | Do not call the model | Do not deliver blocked output |
+| `GUARDRAIL_INTERVENED` | Replace the corresponding input with returned `texts` | Deliver returned `texts`, not original output |
+
+The replacement array must match the number and positions of submitted `texts`; an empty string is a valid replacement. Unknown actions, invalid JSON, and mismatched replacement counts are check failures, never an implicit `NONE`. For streamed model output use [streaming output checks](#gateway-stream); do not forward unchecked chunks directly to the client.

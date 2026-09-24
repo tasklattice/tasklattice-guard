@@ -1,0 +1,31 @@
+---
+id: "developer-release-transfer"
+title: "自建 Policy 的测试、发布与跨环境迁移"
+summary: "测试的是当前 Policy 草稿，发布的是不可变 Policy Version；迁移到新环境后必须重新验证。"
+order: 3
+---
+本文的主体是 **Policy Studio 中自建的 Policy**。**测试** 指对当前 Policy 草稿的 Flow、Action 依赖和 Test Cases 运行验证；**发布** 指把通过验证的草稿固定成不可变 **Policy Version**。这里尚未发布 Guardrail Version，也没有切换 Endpoint 流量。
+
+<a id="policy-test-draft" />
+
+## 测试当前 Policy 草稿
+
+1. 为每条 Flow 对应的 Rule 添加必需 Test Case，写明 Input 或 Output Rail、待检查内容、期望 `allow`／`block`／`transform`，以及覆盖的 Rule ID。正常、违规和容易误判的样例都要有。例如输出“您的订单明天送达”应放行；输出包含客户编号时，应按配置遮盖或阻断。
+2. 点击 **Validate & run tests**。控制台先保存草稿并检查配置；健康的默认 Runner 再用实际 NeMo 编译器验证 Colang 源码与 Action 依赖，并执行用例。只通过字段检查或源码编译，都不能代替运行结果。
+3. 查看每个用例的实际 Decision、命中 Rule、失败原因和耗时。当前 `draft revision` 的必需用例全部通过，才能继续发布。修改源码、Rail、Action、参数、目录或测试会形成新草稿，旧 Validation Run 立即失效，需重跑。
+
+<a id="policy-publish-version" />
+
+## 发布不可变 Policy Version
+
+验证通过后在 Policy Studio 审查名称、Rails、Action 依赖、Test Cases 和超时预算，再发布当前草稿。平台为该 revision 创建带 checksum 的不可变 Policy Version；后续编辑会产生新的草稿和版本，不会改写旧版本。Guardrail Binding 必须显式选择需要的 Policy Version，必填参数也要在绑定时解析。
+
+**Policy 发布成功不等于业务请求已经受保护。** 还要将其绑定到 Guardrail，验证并发布 Guardrail Version；然后让 Endpoint 通过已发布 Router 指向它，并确认 Runner 应用新配置。步骤分别见[构建并发布 Guardrail](#user-lifecycle)与[Endpoint 与 Routing](#operator-routing)。
+
+<a id="policy-transfer-environments" />
+
+## 跨环境迁移时重新验证
+
+导出包携带可编辑的 Policy 定义，包括源码、绑定和测试，不携带源环境的 Validation Run、发布状态或目标环境中的 Action／模型。导入后先核对 Action 名称和精确版本、Provider/Model 能力以及参数，再运行目标环境的 Test Cases，并在该环境发布新的 Policy Version。不要把“源环境已通过”当作目标环境的发布依据。
+
+[打开 Policy Library](/policy-library)

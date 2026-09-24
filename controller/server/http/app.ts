@@ -1003,6 +1003,9 @@ export function createHttpApp(input: {
   const uiRoot = resolve(input.config.uiDist);
   if (existsSync(uiRoot)) {
     app.use("/assets/*", serveStatic({ root: uiRoot }));
+    app.use("/docs/diagrams/*", serveStatic({ root: uiRoot }));
+    app.get("/docs/diagrams/*", context => context.text("Not found", 404));
+    app.get("/favicon.svg", serveStatic({ root: uiRoot, path: "favicon.svg" }));
     app.get("/favicon.ico", serveStatic({ root: uiRoot, path: "favicon.ico" }));
     app.get("*", serveStatic({ root: uiRoot, path: "index.html" }));
   }

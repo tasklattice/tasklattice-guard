@@ -1,0 +1,32 @@
+---
+id: "developer-runtime"
+title: "Data-plane integration: protect gateway and Agent model calls"
+summary: "Make LiteLLM, a custom AI Gateway, or an Agent that calls a model directly check input and output before delivery, then enforce the returned result."
+outcome: "Outcome: real model traffic is checked, and blocks or replacements change actual model calls or client delivery."
+order: 2
+---
+Data-plane integration happens **on the path of every model call**. For example, before a customer-service Agent sends “Find my order” to a model, it submits the actual input for inspection; after generation, it checks the output before delivery. The integration point can be a central AI Gateway or an Agent or application that calls the model directly. LiteLLM is a common gateway, but not a prerequisite: a custom client only needs to implement the documented HTTP contract and delivery rules.
+
+<a id="developer-runtime-flow" />
+## How one model call passes through Guard
+
+1. Operations supplies an Endpoint URL bound to a Router and its **runtime credential**. The platform confirms the target Guardrail Version and Runner are ready. Do not use a Controller Personal Access Token here.
+2. The gateway or Agent extracts `texts` from the content it would really send to the model and checks the **input** with the Endpoint credential. On `BLOCKED`, stop before the model call; on `GUARDRAIL_INTERVENED`, replace the corresponding input with returned `texts`; use the original input only on `NONE`.
+3. The integrating client calls its upstream model and remains responsible for model credentials, business sessions, timeouts, retries, and cancellation. Guard does not proxy that model request.
+4. Check the **output** before delivery. Buffer complete output until its check finishes; for streaming output, submit ordered new text and deliver only Guard's `released_text`. Input and output use the same Endpoint and `litellm_call_id` and consistent routing metadata so both phases remain pinned to the same version.
+
+See [connection, input, and complete output checks](#gateway-connect) for request and `action` shapes, and [streaming output checks](#gateway-stream) for incremental delivery.
+
+<a id="developer-runtime-boundary" />
+## Responsibility and coverage boundaries
+
+**Guard owns** checks of submitted text against the published Router and Guardrail Version, returns decisions or releasable streamed text, and records runtime evidence. It cannot see messages, images, or tool results that you did not submit. It does not call your model, emit application SSE, cancel generation, or retract already delivered text.
+
+**The gateway or Agent owns** extracting and submitting the actual content, validating response shapes, enforcing each `action`, and deciding when to call the model or deliver output. HTTP `200` means the check API succeeded; it **does not mean the content is allowed**. Check failures differ from a valid `BLOCKED` result. Fail Open, Fail Closed, and Dry Run are delivery choices that the client must make explicitly and verify; see [failure handling and production checks](#gateway-failures).
+
+Endpoint identity comes from its runtime credential. Request `model`, headers, and user claims may provide routing or check context, but merely supplying them does not make them trusted identity. The control plane edits and publishes configuration; the data plane executes configuration that has taken effect. To change a Policy or Route, return to [control-plane integration](#developer-api-access).
+
+<a id="developer-enforce-results" />
+## Enforce results after a Rule matches
+
+A Policy Rule defines a default directive, which a Guardrail Binding may override. See [post-match Rule directives](#term-rule-actions) for the eight values and their priority. A data-plane client does not select a Rule's implementation form, but it must enforce this call's result: `BLOCKED` stops the current phase, `GUARDRAIL_INTERVENED` uses returned `texts`, and only `NONE` uses the original content. Interaction directives such as `regenerate`, `fallback`, and `clarify` also need implementation by the client that owns model calls or user dialogue. Merely recording Guard's finding does not complete that work.

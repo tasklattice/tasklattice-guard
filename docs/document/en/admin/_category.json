@@ -1,0 +1,5 @@
+{
+  "title": "Platform management",
+  "description": "Understand Controller and Runner, configure models, accounts, and access, then verify execution and management changes in runtime and audit logs.",
+  "order": 2
+}

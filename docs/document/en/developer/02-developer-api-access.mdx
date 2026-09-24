@@ -1,0 +1,51 @@
+---
+id: "developer-api-access"
+title: "Control-plane integration: editing and publication workflows"
+summary: "Use Controller management APIs to bring Policy, Guardrail, and Router drafts, validation, and publication into a custom editor, approval flow, or automation."
+outcome: "Outcome: an authorized, reviewed configuration workflow that tracks versions and asynchronous state."
+order: 1
+---
+Suppose your team already has an internal Policy editor. A business user proposes a rule against revealing customer phone numbers, a reviewer checks the test cases, and the platform publishes it. The editor does not need to duplicate Guard's console: it can call existing Controller APIs to read objects, save drafts, start validation, and publish after approval. **This path manages protection configuration; it does not carry live model requests.**
+
+<a id="developer-control-workflow" />
+## Map your editing flow to Controller operations
+
+1. **Read current state**: Use `GET /api/v1/policies/{id}`, `GET /api/v1/guardrails/{id}`, and related operations to show current objects and versions. Do not rely on a disconnected local copy.
+2. **Save a candidate**: Create or update Policy and Guardrail drafts according to each resource's OpenAPI schema. Show users the difference between a draft and a published version. For Router changes, read the draft before `PUT /api/v1/routers/{id}/draft` and handle revision conflicts.
+3. **Validate and review**: Submit Test Cases, start a Validation Run, and use its returned `runId` to retrieve the result. Before Router publication, call `POST /api/v1/routers/{id}/publication-preview` and review the exact Guardrail Version and Endpoint bindings. A passing validation or preview does not publish anything.
+4. **Publish and confirm**: Call the appropriate publish API only after an authorized operator approves. Router publication includes the reviewed `expectedDraftRevision` and `idempotencyKey`. After `202`, read publication and rollout status. If versions or bindings change after review, review them again rather than silently adopting a new revision.
+
+For example, CI can create a draft and run validation when a configuration change is merged, while a separate approval step controls production publication. Controller checks permissions, resource references, and version constraints. **Your system owns** its editing experience, change provenance, approval rules, conflict presentation, and final status shown to operators.
+
+<a id="developer-control-auth" />
+## Control-plane identity and credentials
+
+The browser console authenticates with a session. A custom backend or automation can use a Personal Access Token created by its owning account: choose module read/write grants and expiry under Account → Access Tokens. The secret is shown once. Creating, listing, and revoking tokens requires that account's browser session; an existing token cannot mint another token. Keep personal tokens out of end-user browser code.
+
+Call `GET /api/v1/account/identity` with `Authorization: Bearer <token>` first and inspect `effectivePermissions`. Grants cover resources in the selected modules; write includes read, and writes also require a current admin account. Invalid or expired credentials return `401`; insufficient permission returns `403`.
+
+```sh
+curl "{controllerOrigin}/api/v1/account/identity" \
+  -H "Authorization: Bearer $GUARD_ACCESS_TOKEN"
+```
+
+An Endpoint runtime `x-api-key` is only for [data-plane checks](#developer-runtime), not Controller configuration. A Personal Access Token cannot replace an Endpoint credential for model-request checks.
+
+[Manage Access Tokens](/account/access-tokens)
+
+[Sign-in security](/account/security)
+
+<a id="developer-api-contract" />
+## Follow OpenAPI and preserve retry boundaries
+
+Humans can read `/api/docs`; custom editors and tools can import `/api/openapi.json`, while `/api/llms.txt` provides a compact index. Each operation's `x-token-permission`, `x-idempotency`, and `x-retry-policy` describe its grant, duplicate-request semantics, and retry guidance. Tags group product capabilities, not permissions.
+
+A timeout does not prove that a write did not happen; `POST` is not universally safe to replay. For Router publication, preserve the same `idempotencyKey` and request content and inspect the returned publication identity. See [versioned contracts and retries](#api-contract-retries).
+
+[Management API reference](/api/docs)
+
+[Full OpenAPI](/api/openapi.json)
+
+[Router API contract](/api/openapi.json?module=routers)
+
+[API agent index](/api/llms.txt)

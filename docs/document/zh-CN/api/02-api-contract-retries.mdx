@@ -1,0 +1,38 @@
+---
+id: "api-contract-retries"
+title: "版本化契约与重试"
+summary: "以当前 OpenAPI 为准，区分权限、幂等键、异步状态与安全重试。"
+order: 1
+---
+调用 API 前，先查看该操作在 OpenAPI 中的权限、幂等和重试说明。网络超时只表示客户端没有收到结果，不代表服务端没有执行。
+
+<a id="api-contract-annotations" />
+## 先读懂 OpenAPI 中的三个标记
+
+- `x-token-permission`：调用此操作所需的模块和读写权限。
+- `x-idempotency`：重复发送相同请求时，服务端会如何处理。例如，Router 发布使用请求体中的 `idempotencyKey` 识别重复发布。
+- `x-retry-policy`：请求结果不确定时，该先查询状态，还是可以重试，以及重试时必须保持哪些内容不变。
+
+这三个 `x-` 字段是 OpenAPI 对操作的说明，**不是**需要随请求发送的 HTTP Header。具体参数以对应操作的请求定义为准。
+
+<a id="api-contract-async" />
+## 收到 `202` 后继续查询
+
+`202 Accepted` 表示请求已被接受，异步工作可能仍在进行。例如，创建 Guardrail 验证任务后，使用响应中的 `runId` 请求 `GET /api/v1/validation-runs/{runId}`，查看任务结果。不要仅凭 `202` 就向用户报告“验证通过”。
+
+<a id="api-contract-router-publish" />
+## Router 发布：按版本操作，再决定是否重试
+
+1. 读取 Router，确认当前草稿及其修订号。
+2. 保存草稿：`PUT /api/v1/routers/{id}/draft`。如果响应丢失，先重新读取草稿并比较内容；不要未经审阅就换用更新的 `expectedDraftRevision`。
+3. 请求 `POST /api/v1/routers/{id}/publication-preview`，检查这次要发布的版本和 Endpoint 绑定。重新预览时，引用的版本或绑定可能已经变化，需再次审阅结果。
+4. 发布：`POST /api/v1/routers/{id}/publish`，在请求体中带上已审阅的 `expectedDraftRevision` 和 `idempotencyKey`。
+
+如果发布请求超时或响应丢失，使用**相同的 `idempotencyKey` 和相同的请求内容**重试，再检查返回的 `publication.replayed` 与原发布修订号。不要直接生成新键重新发布。其他 `POST` 是否能重试，要分别查看其 `x-retry-policy`；例如创建验证任务不保证幂等，结果不明时不能自动重发。
+
+<a id="api-contract-resource-ids" />
+## 用资源 ID 找到结果
+
+Test Case 使用 `/api/v1/guardrails/{guardrailId}/test-cases/{caseId}` 定位；验证任务使用返回的 `runId` 查询。不要把 Test Case 的 `caseId` 当成验证任务的 `runId`。
+
+[完整 OpenAPI](/api/openapi.json)

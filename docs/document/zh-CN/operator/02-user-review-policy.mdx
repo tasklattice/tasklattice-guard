@@ -1,0 +1,56 @@
+---
+id: "user-review-policy"
+title: "如何理解一条 Policy？"
+summary: "从保护目标、Rule、Test Case、版本和绑定参数判断一条 Policy 实际会做什么。"
+order: 1
+---
+理解一条 Policy，先问它要解决什么风险，再看它如何检查、用什么样例证明效果，最后确认应用实际绑定的是哪个版本。不要只根据名称判断保护范围。
+
+- Policy 是可复用能力，不是某个应用的部署配置。
+- Rule 是最小可执行行为；禁用一条 Rule 会改变实际编译内容。
+- Test Case 说明该 Rule 或业务场景应该放行、转换还是阻断。
+- Policy Version 是不可变快照；Guardrail 会固定到确切版本。
+- 必填参数必须在绑定到 Guardrail 时解析，不能留到生产请求时临时决定。
+
+> 内建 Policy 由系统管理；拥有管理员权限的运维人员可以在 Policy Studio 中维护自定义 Policy。两者在 Guardrail 中使用相同的 Policy → Rule → Test Case 模型。
+
+[浏览 Policy Library](/policy-library)
+
+<a id="developer-policy-runtime" />
+
+## 理解 Policy Studio 的运行配置
+
+Rail、Flow、执行模式、Action 和参数共同组成 Policy 的运行契约。
+
+自定义 Policy 自动使用 Colang 2.x 可编程运行时，开发者不需要在 Colang 1 与 2 之间做选择。系统只允许调用已注册、带版本的 Actions，不接受任意 Python 上传。
+
+**Rail**
+
+NeMo 的执行阶段。Input Rail 在模型调用前检查用户输入；Output Rail 在模型响应交付前检查输出。
+
+**Flow 名称**
+
+Colang 源码中声明的命名 Flow。绑定名称必须与源码完全一致，并形成 Rule ID：`flow/{rail}/{flow_name}`。
+
+**执行模式：detect**
+
+只判断并记录安全状态，不把修改内容作为主要目的；不安全时仍按配置的 Action 执行。
+
+**执行模式：mutate**
+
+该 Flow 预期可能返回有效替换内容，例如脱敏或重写。
+
+**高级运行设置**
+
+parallel group 控制可安全并发的绑定；timeout 限制执行时间。超时及 provider error 按版本化 failure mode 处理。
+
+**Action 依赖**
+
+Flow 调用的注册 Provider 及其精确版本。发布前会检查存在性、Rail 兼容性和输入输出契约。
+
+**绑定参数**
+
+Policy 暴露给 Guardrail 的审查值。Guardrail 固定 Policy Version 时必须解析必填参数。
+
+
+[打开 Policy Library](/policy-library)

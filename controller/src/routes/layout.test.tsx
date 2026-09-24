@@ -30,6 +30,7 @@ vi.mock("@/components/ui/sidebar", () => ({
   SidebarTrigger: () => <button type="button">Toggle navigation</button>,
 }));
 vi.mock("@/routes/login", () => ({ LoginPage: () => null }));
+vi.mock("@/routes/help-layout", () => ({ HelpLayout: () => <main>Standalone documentation</main> }));
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -74,5 +75,14 @@ describe("ControlPlaneLayout", () => {
 
     expect(screen.getByText("Settings")).toBeTruthy();
     expect(screen.getByText("Runner")).toBeTruthy();
+  });
+
+  it.each(["/document", "/document/"])("renders %s without the management shell", (path) => {
+    pathname = path;
+    render(<ControlPlaneLayout />);
+
+    expect(screen.getByText("Standalone documentation")).toBeTruthy();
+    expect(screen.queryByText("Navigation")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Account menu · header" })).toBeNull();
   });
 });

@@ -1,0 +1,40 @@
+---
+id: "platform-runtime"
+title: "平台组件、Runner 与运行健康"
+summary: "区分 Controller、Runner 与网关的职责，并理解 Runner 和模型配置状态。"
+order: 0
+---
+平台管理关注服务本身是否具备执行保护的条件：Controller 保存配置、管理版本并把目标配置下发给 Runner；Runner 认证 Endpoint 请求、执行已下发的检查并回报运行状态。应用或 AI Gateway 直接调用运行时服务完成生产检查，模型调用仍由应用或网关负责。
+
+<a id="platform-components" />
+
+## 先认识三个边界
+
+- **Controller**：管理 Policy、Guardrail、Endpoint、Router、Provider 和 Model 等资源，生成待下发的版本与配置。
+- **Runner**：加载已签名的保护产物，应用目标 generation，执行输入或输出检查；心跳和应用确认可用于判断是否跟上最新配置。
+- **应用或 AI Gateway**：提交需要检查的文本，按 Decision 决定是否调用模型、替换内容或停止交付。Runner 不接管应用的业务会话。
+
+<a id="platform-health" />
+
+## 看哪些页面
+
+先在[平台健康](/settings/health)查看 Controller、默认保护、Runner 收敛和模型能力的总体状态；再到[Runner](/settings/runner)查看实例同步和容量。Router 的 **active** 要求默认池中至少有一个 Runner，并且所有目标实例都确认目标 generation 且心跳有效。单个 Runner 显示 ready，不等于某个 Router 已经 active。
+
+若发布后一直 distributing 或 failed，先对照目标与已应用的 generation、Runner 心跳及拒绝原因；再检查保护产物、模型依赖和容量。状态变化详见[运行与发布状态](#state-router)。
+
+<a id="state-runner" />
+
+## Runner 同步与容量
+
+<StateMachineDiagram kind="runner" locale="zh-CN" />
+
+Runner 状态同时反映<strong>配置同步</strong>与<strong>容量压力</strong>，不是只能沿图中单向前进的持久状态机：期望 generation 未应用时 syncing；同步后随负载在 ready、busy、saturated 之间变化；失联或心跳失效为 offline；重新连接需再次确认 generation。Router active 要求默认池 Runner 对目标 generation 全部有效确认，单个 Runner 的 ready 不足以证明路由已经生效。
+
+<a id="state-models" />
+
+## Provider、Model 与模型配置
+
+<StateMachineDiagram kind="model-probe" locale="zh-CN" />
+<StateMachineDiagram kind="model-revision" locale="zh-CN" />
+
+Provider 和 Model 的验证状态是 pending、validated 或 failed；配置或协议变化会把相关检查重置为 pending，重新探测后才更新。Model 的连接检查与能力验证也分开。模型分配配置的可编辑 revision 在 draft 与 validated 之间往返；选择已验证的变更应用时创建 activating 快照，Runner 收敛后变成 active，应用失败则 failed。已应用快照的替换是新的 revision，不在旧快照上修改。

@@ -1,0 +1,25 @@
+---
+id: "concept-audit"
+title: "审计日志：追溯管理变更"
+summary: "按操作者、时间和资源追溯控制面变更，再核对下发与运行结果。"
+order: 4
+---
+审计日志回答“谁或哪个系统在什么时候，对哪个资源做了什么”。例如 Policy 验证、Guardrail 发布、Router 回滚或凭据变更，这些控制面事件可以用来还原变更顺序。它不记录每次模型请求的 Decision；这类结果要看[运行日志](#concept-logs)。
+
+<a id="audit-how-to-use" />
+
+## 从一次变更查到真实流量
+
+例如某个 Router 将流量从 Guardrail v1 切到 v2：
+
+1. 在审计日志按时间、**人员／系统**和资源 ID 查找 Router 的发布或回滚事件，打开详情核对事件类型、操作者与附加信息。有些事件由系统执行，操作者会显示为“系统”。
+2. 到 [Traffic Routers](/integration/routers) 核对新 revision、Target 和 Runner 下发状态。审计事件证明发生了管理动作，不证明 Runner 已应用。
+3. 到[运行日志](#concept-logs)按 Guardrail 和时间范围查看切换后的真实请求，确认其固定版本与决策。
+
+<a id="audit-scope" />
+
+## 页面记录的范围
+
+当前审计页加载最新 **500** 条事件，再在这些记录里做搜索和时间筛选；“全部时间”也只覆盖已加载的记录，不等于完整历史。找不到旧事件时，不能据此断定变更从未发生。
+
+[打开审计日志](/audit-log)

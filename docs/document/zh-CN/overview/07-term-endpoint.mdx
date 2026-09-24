@@ -1,0 +1,41 @@
+---
+id: "term-endpoint"
+title: "Endpoints：应用身份与接入"
+summary: "认识 LiteLLM、通用 HTTP、A2A 三种 Endpoint 接入类型，以及凭据、Router 绑定和接入健康。"
+order: 6
+---
+<strong>是什么：</strong>应用、Agent 或网关的认证身份及其协议接入点，可绑定一个 Traffic Router。
+
+<strong>为什么：</strong>不同信任边界要隔离凭据和调用上下文，不能把外部 header 当成认证身份。
+
+<strong>怎么用：</strong>运维人员创建并发放 Endpoint 凭据；集成方使用对应协议调用检查接口，再核对接入验证和运行健康。
+
+<strong>例子：</strong>客服应用和内部测试网关分别使用自己的 Endpoint 凭据，运行日志才能区分是谁发起检查。
+
+<a id="endpoint-integration-types" />
+
+## 支持哪三种接入类型
+
+创建 Endpoint 时选择的是**数据面接入协议**，不是三种不同的 Guardrail。三种类型都使用各自的 Endpoint 凭据认证，都可以绑定 Traffic Router；Router 再决定请求命中哪个 Guardrail Version。
+
+| 接入类型 | 适合谁 | 如何送检 |
+| --- | --- | --- |
+| **LiteLLM 的 TaskLattice Guard**（`litellm-generic-guardrail`） | 使用 LiteLLM 的 AI Gateway；也适合愿意实现 LiteLLM Generic Guardrail HTTP 契约的自研网关或 Agent | 配置 Endpoint 地址和 Secret，在模型调用前、完整输出交付前调用 `/beta/litellm_basic_guardrail_api`。自研接入方不必在内部运行 LiteLLM，但必须遵守该请求与响应契约。 |
+| **通用 HTTP Guard API**（`generic-http-guard`） | 自研 AI Gateway、应用或 Agent，希望使用厂商中立的检查请求 | 用 Endpoint 凭据调用 `/guardrails/evaluate`，在请求中指定 `protocol: "http"` 及输入或输出阶段；接入方负责根据结果决定是否调用模型或交付内容。 |
+| **A2A Guard API**（`a2a-guard`） | 需要检查 Agent 之间消息的 A2A 接入方 | 同样调用 `/guardrails/evaluate`，但指定 `protocol: "a2a"`，并按需提供 A2A operation、context ID 和 task ID 等上下文。 |
+
+<strong>怎么选：</strong>已有 LiteLLM 就选 LiteLLM 类型；自研网关可以实现 LiteLLM Generic Guardrail 契约，也可以选通用 HTTP 类型，按自己的请求/响应结构完成映射；检查 Agent 间消息则选 A2A。<strong>接入类型与调用协议必须一致</strong>：例如通用 HTTP Endpoint 不能用 LiteLLM 的回调路径代替调用。详见[数据面集成边界](#developer-runtime)和[LiteLLM 契约的请求示例](#gateway-connect)。
+
+<a id="state-endpoint" />
+
+## Endpoint 启停、接入与健康
+
+<StateMachineDiagram kind="endpoint" locale="zh-CN" />
+
+Endpoint 的持久启停状态 active ↔ disabled，可由运维人员恢复；软删除是另一个覆盖条件，不等同于 disabled。`applying / awaiting_callback / verified / disabled` 是接入设置进度，`healthy / waiting / degraded` 等运行健康来自观察，均不能替代认证凭据、Router 绑定或实际流量检查。凭据签发、轮换和撤销也独立于 Endpoint 的启停状态。
+
+<a id="state-credentials" />
+
+## 凭据与请求结果不是资源状态
+
+个人 Access Token 的有效、过期和撤销由有效期与撤销时间判断；Endpoint 凭据有自己的签发与撤销记录。它们都不是 Guardrail 或 Router 的生命周期。一次检查的 allow、transform、block 是该次请求的 Decision，不会自动让某个资源进入绿色或红色状态。

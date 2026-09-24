@@ -1,0 +1,41 @@
+---
+id: "gateway-stream"
+title: "数据面协议：流式输出检查"
+summary: "按顺序提交新增文本，只向客户端交付 Runner 返回的 released_text。"
+order: 4
+---
+模型以 chunk 输出时，先完成输入检查，再使用同一 Endpoint 把每个新增文本片段提交给 `POST {endpoint}/guardrails/output-stream`。这个接口是 **JSON 请求 → JSON 响应**，不是 SSE 或 WebSocket；网关自行维护面向客户端的流。
+
+<a id="gateway-stream-request" />
+
+## 提交有序增量
+
+```json
+{"protocol":"litellm","call_id":"call-123","stream_id":"stream-456","sequence":0,"text":"Hello ","final":false}
+```
+
+- `protocol` 明确传 `litellm`；省略时的默认值不适用于此 Endpoint。
+- `call_id` 使用输入检查的 `litellm_call_id`；每条新输出流生成新的 `stream_id`，结束后不复用。
+- `sequence` 从 0 开始逐次加 1；同一条流一次只提交一个在途请求。
+- `text` 只包含本次**新增**内容，不要提交累计前缀。正常结束时必须发送 `final: true`；最后一次可以用空字符串。
+
+<a id="gateway-stream-delivery" />
+
+## 只交付 released_text
+
+每次响应先校验 `stream_id`、`sequence`、`next_sequence`、字段类型及实际 `mode`，然后只把 `released_text` 追加交付一次。原始模型 chunk 和嵌套诊断字段都不是交付许可。
+
+| `status` | 网关行为 |
+| --- | --- |
+| `buffering` | 不交付新文本，继续等待下一段或最终提交 |
+| `released` | 只交付这次的 `released_text`，按序继续 |
+| `completed` | 交付剩余 `released_text` 后正常结束，不再提交 |
+| `blocked` | 不交付新文本；停止流和客户端交付，如可行则取消上游生成 |
+
+实际 `mode` 由已发布 Policy 决定：`full_buffered` 等最终检查后才释放；`window_buffered` 可能逐段释放并保留尾部；`interruptible` 可以每次检查后释放，但后续阻断无法撤回已交付文本。若业务要求整条回答都通过后才展示，必须确认实际模式为 `full_buffered`。不能靠请求字段自行选择模式。
+
+<a id="gateway-stream-end" />
+
+## 正常结束与异常中止
+
+模型正常完成后，即使最后没有新增文本，也要提交 `final: true` 并等待有效的 `completed` 响应，才能宣称受保护地完成。`[DONE]`、SSE 关闭或连接断开都不能替代这个提交。`terminate: true` 可能在 `final: false` 时出现；此后不要再发送 chunk。请求超时或响应丢失时，不要盲目重放：服务端可能已经接受该 sequence，协议没有通用的幂等重试或恢复游标。详见[失败处理与上线检查](#gateway-failures)。

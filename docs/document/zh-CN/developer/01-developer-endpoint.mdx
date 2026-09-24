@@ -1,0 +1,29 @@
+---
+id: "developer-endpoint"
+title: "集成概览：控制面与数据面"
+summary: "用 Controller API 把配置接入自己的工作流，或让 AI Gateway、Agent 的模型请求经过运行时检查；两条链路使用不同的 API、凭据和责任边界。"
+outcome: "先确定要集成的是配置与发布流程，还是实际的模型请求；再按对应路径实施。"
+order: 0
+---
+“集成 Guard”可能指两件不同的事。**控制面集成**处理“保护规则如何被编辑、验证和发布”；**数据面集成**处理“某次模型请求是否应该继续、修改或阻断”。例如，你可以在内部 Policy 编辑器中调用 Controller API 发布一个 Guardrail；客服 AI Gateway 则在每次调用模型前后请求 Guard 检查。两个集成都可以做，但完成前者不会自动让客服流量受到保护。
+
+<a id="developer-two-planes" />
+## 先选要接入的链路
+
+| | 控制面集成 | 数据面集成 |
+| --- | --- | --- |
+| 常见接入方 | 自建编辑器、审批流、CI/CD 或配置自动化 | LiteLLM、自研 AI Gateway、直接调用模型的 Agent 或应用 |
+| 调用什么 | Controller 的 `/api/v1/...` 管理 API | 分配给应用的运行时 Endpoint 检查 API |
+| 使用什么身份 | 有相应模块权限的个人 Access Token；浏览器控制台使用 Session | Endpoint 的运行时凭据 `x-api-key` |
+| 得到什么 | 草稿、验证结果、已发布版本和路由配置 | 本次输入或输出的检查结果、替换文本或可交付的流式文本 |
+| 不负责什么 | 不接管每次模型调用，也不替应用执行检查结果 | 不编辑或发布 Policy、Guardrail、Router 配置 |
+
+<a id="developer-handoff" />
+## 两条链路在哪里交接
+
+1. 运维人员在控制面准备 Policy、Guardrail 和 Router，验证并发布版本，为接入方创建或绑定 Endpoint；如需自动化，可通过[控制面集成](#developer-api-access)把这些操作纳入自己的编辑与审批流程。
+2. 平台确认发布配置已下发到 Runner，并把 Endpoint 地址及运行时凭据交给应用、Agent 或网关。
+3. 接入方按[数据面集成](#developer-runtime)检查每次实际提交的输入和输出，执行返回的阻断、替换或放行结果。
+4. 用真实请求核对运行记录和最终交付行为。**已发布**说明有可执行版本；**已下发**说明 Runner 接受了配置；**受到保护**还要求调用方实际送检并执行结果。
+
+Controller 的个人 Access Token 不能用于运行时检查；Endpoint 凭据也不能用于修改控制面资源。选择了哪个 Guardrail Version、哪条 Route，由已发布配置和请求上下文决定，接入方不能只凭请求中的自报字段获得可信身份。

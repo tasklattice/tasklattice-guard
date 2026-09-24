@@ -1,0 +1,26 @@
+---
+id: "user-lifecycle"
+title: "构建并发布 Guardrail"
+summary: "选择 Policy，创建 Guardrail 草稿，验证并发布版本，再让业务流量使用它。"
+outcome: "最终产出：已验证、已发布并可通过 Router 接入流量的 Guardrail Version。"
+order: 0
+---
+保护一个业务场景时，先复用经过审查的 Policy，再组合、验证和发布 Guardrail。当前控制台的创建与发布入口需要管理员权限；这里按运维任务组织操作步骤，不代表所有登录角色都能执行写入。
+
+1. **浏览 Policy Library** — 阅读 Policy 的用途、Rules、参数和 Test Cases，确认它能表达所需保护行为。
+
+2. **创建 Guardrail** — 描述业务用途和边界，选择 Policy Version，并确认实际启用的 Rules 与 Rails。
+
+3. **运行 Validation Run** — 让当前草稿的 Test Cases 通过与生产相同的 NeMo 运行时；失败结果也会保留为证据。
+
+4. **发布版本** — 把已通过验证的草稿固化为不可变 Guardrail Version。后续修改不会改变已有版本。
+
+5. **接入业务流量** — 为应用准备 Endpoint，把 Router 的 Route 指向该固定版本，发布后确认 Runner 已应用目标配置。
+
+6. **复盘与改进** — 在 Playground 试用行为，根据运行日志与审计证据调整下一版策略。
+
+[打开 Policy Library](/policy-library)
+
+[管理 Guardrails](/guardrails)
+
+[在 Guardrail 中查看 Validation](/guardrails)

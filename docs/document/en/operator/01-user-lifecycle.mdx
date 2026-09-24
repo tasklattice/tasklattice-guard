@@ -1,0 +1,26 @@
+---
+id: "user-lifecycle"
+title: "Build and publish a Guardrail"
+summary: "Select Policies, create a Guardrail draft, validate and publish a version, then route traffic to it."
+outcome: "Outcome: a validated, published Guardrail Version ready to receive traffic through a Router."
+order: 0
+---
+To protect a business scenario, reuse reviewed Policies before composing, validating, and publishing a Guardrail. The current console requires administrator access to create and publish; this section groups operational tasks rather than granting write access to every sign-in role.
+
+1. **Browse Policy Library** — Review purpose, Rules, parameters, and Test Cases.
+
+2. **Create a Guardrail** — Describe business boundaries and select Policy Versions, Rules, and Rails.
+
+3. **Run Validation** — Execute the current draft's Test Cases through the production-equivalent NeMo runtime.
+
+4. **Publish** — Freeze the passing draft as an immutable Guardrail Version.
+
+5. **Connect business traffic** — Prepare an Endpoint, target the pinned version from a Router Route, publish, and confirm that Runners applied the target configuration.
+
+6. **Review and improve** — Try the behavior in Playground and use runtime and audit evidence to plan the next policy version.
+
+[Open Policy Library](/policy-library)
+
+[Manage Guardrails](/guardrails)
+
+[View Validation in a Guardrail](/guardrails)
