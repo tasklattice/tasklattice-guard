@@ -6,28 +6,107 @@
     "source": "built_in",
     "version": "1.0.0",
     "tags": [
-      { "namespace": "protection", "value": "content_filters", "label": "Words & content filters", "source": "declared" },
-      { "namespace": "collection", "value": "configurable-protection", "label": "Configurable protection", "source": "declared" },
-      { "namespace": "guardrail_category", "value": "content_safety", "label": "Content Safety", "source": "declared" }
+      {
+        "namespace": "protection",
+        "value": "content_filters",
+        "label": "Words & content filters",
+        "source": "declared"
+      },
+      {
+        "namespace": "collection",
+        "value": "configurable-protection",
+        "label": "Configurable protection",
+        "source": "declared"
+      },
+      {
+        "namespace": "guardrail_category",
+        "value": "content_safety",
+        "label": "Content Safety",
+        "source": "declared"
+      }
     ],
+    "safety_level": "balanced",
+    "output_delivery": "full_buffered",
     "parameters": [
-      { "name": "phrase_entries", "label": "Phrases and actions", "kind": "phrase_entries", "required": true, "placeholder": "", "description": "Entries run in order within this Policy. Replacement text continues to the next entry; a block ends execution." }
+      {
+        "name": "phrase_entries",
+        "label": "Phrases and actions",
+        "kind": "phrase_entries",
+        "required": true,
+        "placeholder": "",
+        "description": "Entries run in order within this Policy. Replacement text continues to the next entry; a block ends execution."
+      }
+    ],
+    "test_cases": [
+      {
+        "id": "accept/phrases/input",
+        "name": "Configured phrase acceptance",
+        "description": "Expanded into one acceptance case per configured phrase by Controller.",
+        "phase": "input",
+        "content": "{{phrase_entries}}",
+        "expected_decision": "block",
+        "covered_rule_ids": [
+          "configured/phrases"
+        ],
+        "kind": "rule_acceptance",
+        "required": true,
+        "parameter_names": [
+          "phrase_entries"
+        ],
+        "group": "Configured phrases"
+      },
+      {
+        "id": "accept/phrases/output",
+        "name": "Configured phrase acceptance",
+        "description": "Expanded into one acceptance case per configured phrase by Controller.",
+        "phase": "output",
+        "content": "{{phrase_entries}}",
+        "expected_decision": "block",
+        "covered_rule_ids": [
+          "configured/phrases"
+        ],
+        "kind": "rule_acceptance",
+        "required": true,
+        "parameter_names": [
+          "phrase_entries"
+        ],
+        "group": "Configured phrases"
+      }
     ],
     "rules": [
       {
         "id": "configured/phrases",
         "name": "Configured phrase sequence",
-        "description": "Execute the reviewed phrase entries. Each entry specifies block or replacement; a Rule action override applies to the entire sequence.",
-        "form": "keyword", "effect": "reject",
-        "risk_severity": "low", "rails": ["input", "output"],
-        "implementation": { "engine": "nemo-guardrails", "form": "keyword", "binding_id": "configured-phrase-filter", "implementation_rule_id": "phrases", "detector": "configured_phrases", "action_name": "GuardContentFilterAction" },
-        "taxonomy_ids": ["TALI-BUSINESS-POLICY"]
+        "description": "Materialize one ordinary keyword Rule per configured entry, with its own handling and risk level.",
+        "detector": {
+          "ref": "text/keyword",
+          "version": "1.0.0"
+        },
+        "effect": "reject",
+        "risk_severity": "low",
+        "rails": [
+          "input",
+          "output"
+        ],
+        "implementation": {
+          "engine": "nemo-guardrails",
+          "detector": "keyword",
+          "flow_name": null,
+          "action_name": "GuardContentFilterAction",
+          "execution": "local",
+          "binding_id": "configured-phrase-filter",
+          "implementation_rule_id": "phrases"
+        },
+        "taxonomy_ids": [
+          "TALI-BUSINESS-POLICY"
+        ],
+        "rule_expansion": {
+          "parameter": "phrase_entries",
+          "text_field": "phrase",
+          "action_field": "action",
+          "replacement_field": "replacement"
+        }
       }
-    ],
-    "test_cases": [
-      { "id": "accept/phrases/input", "name": "Configured phrase acceptance", "description": "Expanded into one acceptance case per configured phrase by Controller.", "phase": "input", "content": "{{phrase_entries}}", "expected_decision": "block", "covered_rule_ids": ["configured/phrases"], "group": "Configured phrases", "kind": "rule_acceptance", "required": true, "parameter_names": ["phrase_entries"] },
-      { "id": "accept/phrases/output", "name": "Configured phrase acceptance", "description": "Expanded into one acceptance case per configured phrase by Controller.", "phase": "output", "content": "{{phrase_entries}}", "expected_decision": "block", "covered_rule_ids": ["configured/phrases"], "group": "Configured phrases", "kind": "rule_acceptance", "required": true, "parameter_names": ["phrase_entries"] }
-    ],
-    "safety_level": "balanced", "output_delivery": "full_buffered"
+    ]
   }
 ]

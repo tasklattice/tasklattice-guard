@@ -5,11 +5,12 @@ export function resourceMapCopy(locale: HelpVisualLocale) {
   const zh = locale === "zh-CN";
   return {
     title: zh ? "Guardrail 资源互联地图" : "Guardrail resource relationship map",
-    implementation: zh ? "实现形式" : "implementation",
+    implementation: zh ? "检测器与处理" : "detector and handling",
+    ruleContract: zh ? "检查阶段 · 检测器 · 安全分级 · 命中后处理" : "Stage · detector · risk level · handling",
     testCases: zh ? "Test Case 验证行为" : "Test Cases verify behavior",
     caption: zh
-      ? "Policy 包含多条 Rule 和 Test Cases，每条 Rule 选择一种实现形式；Guardrail 通过 Binding 固定多个 Policy Version。上下两排的 Guardrail Version 是同一个不可变版本。"
-      : "A Policy contains Rules and Test Cases; each Rule selects an implementation form. A Guardrail pins multiple Policy Versions through Bindings. Guardrail Version is the same immutable version in both lanes.",
+      ? "Policy 包含多条 Rule 和 Test Cases，每条 Rule 引用检测器并指定命中后处理；Guardrail 通过 Binding 固定多个 Policy Version。上下两排的 Guardrail Version 是同一个不可变版本。"
+      : "A Policy contains Rules and Test Cases; each Rule references a detector and declares post-match handling. A Guardrail pins multiple Policy Versions through Bindings. Guardrail Version is the same immutable version in both lanes.",
     lanes: [
       { title: zh ? "定义与发布" : "Define and publish", nodes: [
         { title: "Policy", detail: zh ? "可复用的检测能力" : "Reusable detection capability" },

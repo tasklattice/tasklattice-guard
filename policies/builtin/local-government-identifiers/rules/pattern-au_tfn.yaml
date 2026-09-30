@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: pattern/au_tfn
+name: TFN (Australian Tax File Number)
+description: Detects Australian Tax File Numbers (8-9 digits) only when near TFN/tax file context to avoid
+  false positives on arbitrary numbers
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b\d{8,9}\b
+    context_expression: \b(?:TFN|T\.F\.N\.|tax\s*file\s*(?:number|no\.?)|tax\s*file\s*#?|ATO\s*number)\b
+    context_max_gap_words: 1
+on_match:
+  action: redact
+  replacement: '[au_tfn_REDACTED]'
+runtime_adapter:
+  binding_id: local-government-identifiers
+  implementation_rule_id: au_tfn
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-PII
+risk_level: medium

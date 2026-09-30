@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: airline-pnr-skywards-pii/skywards_number
+name: Emirates Skywards / Frequent Flyer Number
+description: Detects Emirates Skywards frequent flyer numbers (9-10 digits, optional EK prefix) when near
+  loyalty/frequent flyer context
+stages:
+- input
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b(?:EK\s?)?\d{9,10}\b
+    context_expression: \b(?:[Ss]kywards|frequent\s*flyer|FF\s*(?:number|no|#)|loyalty\s*(?:number|id|member)|member\s*(?:number|id|#)|miles\s*(?:account|number)|tier\s*(?:number|status))\b
+on_match:
+  action: redact
+  replacement: '[skywards_number_REDACTED]'
+runtime_adapter:
+  binding_id: airline-pnr-skywards-pii
+  implementation_rule_id: skywards_number
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-PII
+risk_level: medium

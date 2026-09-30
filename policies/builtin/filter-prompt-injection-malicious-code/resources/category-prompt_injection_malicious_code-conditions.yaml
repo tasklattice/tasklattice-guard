@@ -1,0 +1,36 @@
+- rm -rf
+- rm -f
+- chmod 777
+- chmod +x
+- sudo
+- su root
+- curl | bash
+- curl | sh
+- wget -O -
+- wget | sh
+- /etc/passwd
+- /etc/shadow
+- mkfs
+- dd if=
+- '> /dev/sda'
+- fork bomb
+- crontab
+- nc -e
+- netcat
+- ncat
+- reverse shell
+- powershell -enc
+- powershell -e
+- base64 -d
+- base64 --decode
+- <script>
+- 'javascript:'
+- onerror=
+- onload=
+- document.cookie
+- innerHTML
+- __import__
+- os.system
+- subprocess
+- os.popen
+- importlib

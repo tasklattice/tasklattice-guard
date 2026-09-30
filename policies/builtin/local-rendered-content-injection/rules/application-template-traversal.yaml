@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: application/template-traversal
+name: Template object traversal
+description: Matches this reviewed text pattern, not arbitrary semantic variants.
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: (?i)\{\{[^}]{0,200}(?:__class__|__globals__|__subclasses__)[^}]{0,200}\}\}
+on_match:
+  action: reject
+runtime_adapter:
+  binding_id: local-rendered-content-injection
+  implementation_rule_id: application/template-traversal
+metadata:
+  taxonomy_ids:
+  - TALI-MODEL-SECURITY
+risk_level: high

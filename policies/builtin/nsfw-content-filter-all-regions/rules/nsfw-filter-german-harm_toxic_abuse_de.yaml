@@ -1,0 +1,87 @@
+id: nsfw-filter-german/harm_toxic_abuse_de
+name: Harm Toxic Abuse De
+description: ''
+stages:
+- input
+detector:
+  ref: text/conditions
+  version: 1.0.0
+  parameters:
+    detector_options:
+      match:
+        keywords:
+        - analritter
+        - arsch
+        - arschficker
+        - arschlecker
+        - arschloch
+        - bimbo
+        - bratze
+        - bumsen
+        - bonze
+        - dödel
+        - fick
+        - ficken
+        - flittchen
+        - fotze
+        - fratze
+        - hackfresse
+        - hure
+        - hurensohn
+        - ische
+        - kackbratze
+        - kacke
+        - kacken
+        - kackwurst
+        - kampflesbe
+        - kanake
+        - kimme
+        - lümmel
+        - milf
+        - möpse
+        - morgenlatte
+        - möse
+        - mufti
+        - muschi
+        - nackt
+        - neger
+        - nigger
+        - nippel
+        - nutte
+        - onanieren
+        - orgasmus
+        - pimmel
+        - pimpern
+        - pinkeln
+        - pissen
+        - pisser
+        - popel
+        - poppen
+        - porno
+        - reudig
+        - rosette
+        - schabracke
+        - schlampe
+        - scheiße
+        - scheisser
+        - schiesser
+        - schnackeln
+        - schwanzlutscher
+        - schwuchtel
+        - tittchen
+        - titten
+        - vögeln
+        - vollpfosten
+        - wichse
+        - wichsen
+        - wichser
+on_match:
+  action: reject
+  replacement: null
+runtime_adapter:
+  binding_id: nsfw-filter-german
+  implementation_rule_id: harm_toxic_abuse_de
+metadata:
+  taxonomy_ids:
+  - TALI-SOCIAL-HARM-HARASSMENT
+risk_level: medium

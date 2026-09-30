@@ -1,0 +1,131 @@
+id: category/prompt_injection_sql
+name: Prompt Injection Sql
+description: Detects SQL injection attempts embedded in prompts
+stages:
+- input
+- output
+detector:
+  ref: text/conditions
+  version: 1.0.0
+  parameters:
+    detector_options:
+      match:
+        all:
+        - not:
+            contains:
+            - SQL tutorial
+            - learn SQL
+            - explain SQL
+            - what is SQL injection
+            - SQL syntax
+            - SQL documentation
+            - database design
+            - SQL best practices
+            - SQL injection prevention
+            - protect against SQL injection
+            - how to prevent
+            - how to protect
+            - how to defend
+            - parameterized query
+            - parameterized queries
+            - prepared statement
+            - prepared statements
+            - SQL training
+            - database course
+            - how to sanitize
+            - how to validate
+            - research on
+            - security research
+            - security audit
+            - penetration testing
+        - any:
+          - within_sentence:
+              all:
+              - contains:
+                - SELECT
+                - INSERT
+                - UPDATE
+                - DELETE
+                - DROP
+                - ALTER
+                - CREATE
+                - EXEC
+                - EXECUTE
+                - TRUNCATE
+                - GRANT
+                - REVOKE
+                - UNION
+                - SHUTDOWN
+              - keywords:
+                - 1=1
+                - OR true
+                - OR 1
+                - --
+                - xp_cmdshell
+                - information_schema
+                - sys.tables
+                - sysobjects
+                - pg_catalog
+                - pg_tables
+                - INTO OUTFILE
+                - INTO DUMPFILE
+                - LOAD_FILE
+                - BENCHMARK
+                - WAITFOR
+                - HAVING 1=1
+                - ORDER BY 1
+                - schema_name
+                - '@@version'
+                - drop table
+                - drop database
+                - drop schema
+                - truncate table
+                - delete from
+                - alter table
+                - union select
+                - union all select
+                - grant all
+          - keywords:
+            - '''; DROP TABLE'
+            - '''; DELETE FROM'
+            - ''' OR ''1''=''1'
+            - ''' OR 1=1--'
+            - ''' OR 1=1 --'
+            - UNION SELECT * FROM
+            - UNION ALL SELECT
+            - '''; EXEC xp_cmdshell'
+            - 1; DROP TABLE
+            - ''' UNION SELECT NULL'
+            - ''' UNION SELECT'
+            - UNION SELECT NULL
+            - SELECT password FROM
+            - DELETE FROM users
+            - DROP DATABASE
+            - DROP TABLE users
+            - ''' OR ''''='''
+            - admin'--
+            - 1' OR '1'='1
+            - INFORMATION_SCHEMA.TABLES
+            - INFORMATION_SCHEMA.COLUMNS
+            - INTO OUTFILE
+            - INTO DUMPFILE
+            - LOAD_FILE
+            - WAITFOR DELAY
+            - '''; SHUTDOWN --'
+            - '''; EXEC sp_'
+            - xp_cmdshell
+            - sp_addlogin
+            - sp_addsrvrolemember
+            - ORDER BY 1--
+            - GROUP BY 1--
+            - HAVING 1=1
+on_match:
+  action: reject
+  replacement: null
+runtime_adapter:
+  binding_id: prompt_injection_sql
+  implementation_rule_id: prompt_injection_sql
+metadata:
+  taxonomy_ids:
+  - TALI-TOOL-SECURITY-UNAUTHORIZED-EXECUTION
+risk_level: high

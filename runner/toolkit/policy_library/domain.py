@@ -1,20 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Literal
+from dataclasses import dataclass, field
+from typing import Any, Literal
 
 from ..runtime.contracts import OutputDeliveryMode, RailType, SafetyLevel
 
 
 PolicySource = Literal["built_in", "custom"]
-PolicyRuleForm = Literal[
-    "regex",
-    "keyword",
-    "category",
-    "code_block",
-    "competitor_intent",
-    "colang_flow",
-]
 PolicyRail = RailType
 PolicyTestDecision = Literal["allow", "block", "transform", "intervene"]
 PolicyTestKind = Literal["rule_acceptance", "scenario"]
@@ -66,7 +58,7 @@ class PolicyImplementationRef:
     """Technical provenance for one Rule; not another product hierarchy."""
 
     engine: str
-    form: PolicyRuleForm
+    execution: Literal["local", "platform", "programmable"]
     binding_id: str
     implementation_rule_id: str
     detector: str | None = None
@@ -75,16 +67,25 @@ class PolicyImplementationRef:
 
 
 @dataclass(frozen=True, slots=True)
+class PolicyDetectorRef:
+    ref: str
+    version: str
+
+
+@dataclass(frozen=True, slots=True)
 class PolicyRuleSpec:
     id: str
     name: str
     description: str
-    form: PolicyRuleForm
+    detector: PolicyDetectorRef
     effect: str
     rails: tuple[PolicyRail, ...]
     implementation: PolicyImplementationRef
     taxonomy_ids: tuple[str, ...]
     risk_severity: str | None = None
+    detector_options: dict[str, Any] = field(default_factory=dict)
+    rule_expansion: dict[str, str] | None = None
+    validators: tuple[dict[str, Any], ...] = ()
     expression: str | None = None
     context_expression: str | None = None
     context_max_gap_words: int | None = None
@@ -145,8 +146,8 @@ class PolicySpec:
         return tuple(sorted({rule.effect for rule in self.rules}))
 
     @property
-    def forms(self) -> tuple[PolicyRuleForm, ...]:
-        return tuple(sorted({rule.form for rule in self.rules}))
+    def detectors(self) -> tuple[str, ...]:
+        return tuple(sorted({rule.detector.ref for rule in self.rules}))
 
     @property
     def test_count(self) -> int:

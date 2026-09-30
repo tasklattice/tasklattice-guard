@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: international-pii-identifiers/br_cpf_unformatted
+name: CPF - Brazilian Personal Tax ID (Unformatted)
+description: Detects Brazilian CPF numbers without formatting (11 digits)
+stages:
+- input
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b\d{11}\b
+on_match:
+  action: redact
+  replacement: '[br_cpf_unformatted_REDACTED]'
+runtime_adapter:
+  binding_id: international-pii-identifiers
+  implementation_rule_id: br_cpf_unformatted
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-PII
+risk_level: medium

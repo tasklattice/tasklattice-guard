@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: pattern/sg_nric
+name: NRIC/FIN (Singapore National ID)
+description: Detects Singapore NRIC and FIN numbers (S/T for citizens/PRs, F/G/M for foreigners + 7 digits
+  + checksum letter)
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b[STFGM]\d{7}[A-Z]\b
+on_match:
+  action: redact
+  replacement: '[sg_nric_REDACTED]'
+runtime_adapter:
+  binding_id: pattern-matching
+  implementation_rule_id: sg_nric
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-PII
+risk_level: medium

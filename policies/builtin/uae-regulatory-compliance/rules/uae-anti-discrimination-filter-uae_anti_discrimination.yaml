@@ -1,0 +1,82 @@
+id: uae-anti-discrimination-filter/uae_anti_discrimination
+name: UAE Anti Discrimination
+description: Blocks content violating UAE Federal anti-discrimination laws (Decree-Law No. 2/2015)
+stages:
+- input
+detector:
+  ref: text/conditions
+  version: 1.0.0
+  parameters:
+    detector_options:
+      match:
+        all:
+        - not:
+            contains:
+            - anti-discrimination
+            - equal rights
+            - diversity and inclusion
+            - tolerance
+            - coexistence
+            - uae year of tolerance
+            - human rights
+            - what is
+            - explain
+            - history of
+            - education
+            - awareness
+            - compliance training
+        - any:
+          - within_sentence:
+              all:
+              - contains:
+                - emirati
+                - emiratis
+                - expatriate
+                - expat
+                - migrant worker
+                - laborer
+                - domestic worker
+                - nationality
+                - religion
+                - race
+                - ethnicity
+                - caste
+                - sect
+              - keywords:
+                - inferior
+                - superior
+                - subhuman
+                - uncivilized
+                - backward
+                - primitive
+                - servant class
+                - slave
+                - slavery
+                - second class
+                - second-class citizen
+                - don't belong
+                - go back to
+                - deport
+                - hate
+                - hatred
+                - incite
+                - incitement
+                - sedition
+                - sectarian
+          - keywords:
+            - racial superiority
+            - ethnic cleansing
+            - sectarian violence
+            - incite hatred
+            - incite discrimination
+            - religious hatred
+on_match:
+  action: reject
+  replacement: null
+runtime_adapter:
+  binding_id: uae-anti-discrimination-filter
+  implementation_rule_id: uae_anti_discrimination
+metadata:
+  taxonomy_ids:
+  - TALI-SOCIAL-HARM-DISCRIMINATION
+risk_level: medium

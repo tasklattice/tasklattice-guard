@@ -2,6 +2,7 @@ import type { PolicyDto } from "../policy-catalog/catalog.js";
 import type { ProgrammablePolicySnapshot } from "../policy-studio/model.js";
 import { flowRuleId } from "../policy-studio/model.js";
 import { PHRASE_PARAMETER, PHRASE_POLICY_ID, parsePhraseEntries } from "../../shared/phrase-policy.js";
+import { materializePolicyRules } from "./policy-rules.js";
 import { isSplitTopicPolicy, TOPIC_ALLOW_RULE, TOPIC_DENY_RULE, topicMissingParameters, topicPolicyValues } from "../../shared/topic-policy.js";
 import {
   enforcementActions,
@@ -179,12 +180,21 @@ export function buildGuardrailPlan(input: {
     }
     const native = capabilityByPolicyId.get(binding.policyId);
     if (native) {
+      // Until platform-native plans are fully Rule-driven, never accept source
+      // detector changes that this adapter path would otherwise silently ignore.
+      if (catalogPolicy) validateNativeDetectorContract(catalogPolicy, native.capability);
       resolved.push({ capability: native, binding });
       continue;
     }
-    const policy = catalogPolicy;
+    let policy = catalogPolicy;
     if (!policy) throw new Error(`Policy ${binding.policyId}@${binding.policyVersion} is unavailable in the Controller catalog.`);
     if (input.policies === undefined) validateCatalogBinding(binding, policy);
+    binding.parameterValues = {
+      ...Object.fromEntries(policy.parameters.flatMap((parameter) => parameter.default == null ? [] : [[parameter.name, parameter.default]])),
+      ...binding.parameterValues,
+    };
+    policy = materializePolicyRules(policy, binding);
+    policyById.set(`${policy.id}@${policy.version}`, policy);
     resolved.push({ capability: {
       capability: "builtin_content_filter", policyId: "", defaultPhases: ["input", "output"],
       defaultAction: "reject", evaluations: [always("rules", contracts.contentFilter)], module: "interaction_safety",
@@ -282,7 +292,7 @@ export function buildGuardrailPlan(input: {
   return {
     guardrail_id: input.guardrailId,
     guardrail_version: input.guardrailVersion,
-    compiler_version: "tasklattice-controller-plan-v10-topic-rules",
+    compiler_version: "tasklattice-controller-plan-v14-policy-rule-boundaries",
     topic_control_mode: draft.topicControlMode ?? "strict",
     safety_level: draft.safetyLevel,
     output_delivery: draft.outputDelivery,
@@ -323,6 +333,23 @@ export function buildGuardrailPlan(input: {
   };
 }
 
+function validateNativeDetectorContract(policy: PolicyDto, capability: string): void {
+  const profiles: Record<string, string> = {
+    topic_control: "topic-classification", company_policy: "topic-classification",
+    content_safety: "safety-classification", jailbreak: "jailbreak-classification", pii: "pii-classification",
+  };
+  for (const rule of policy.rules) {
+    if (rule.implementation.execution !== "platform") continue;
+    const expected = profiles[capability];
+    if (expected && (rule.detector.ref !== "model/classifier" || rule.detector_options.profile !== expected)) {
+      throw new Error(`Policy ${policy.id} requires the ${expected} detector contract.`);
+    }
+    const ref = capability === "contextual_grounding" ? "model/grounding"
+      : capability === "automated_reasoning" ? "service/formal-verification" : null;
+    if (ref && rule.detector.ref !== ref) throw new Error(`Policy ${policy.id} requires detector ${ref}.`);
+  }
+}
+
 function parametersFor(
   capabilityId: string,
   binding: GuardrailPolicyBindingConfig,
@@ -332,6 +359,13 @@ function parametersFor(
   if (capabilityId === "builtin_content_filter") {
     return [
       ["policy_versions_json", JSON.stringify(Object.fromEntries(declarative.map((item) => [item.binding.policyId, item.policy.version])))],
+      // A published Guardrail owns its Rule definitions. Catalog changes or
+      // custom package replacement must not mutate an already compiled plan.
+      ["policy_definitions_json", JSON.stringify(Object.fromEntries(declarative.map(({ policy }) => [policy.id, {
+        id: policy.id, name: policy.name, description: policy.description, source: policy.source, version: policy.version,
+        tags: policy.tags.map(({ id: _id, ...tag }) => tag), parameters: policy.parameters,
+        rules: policy.rules, test_cases: policy.test_cases, safety_level: policy.safety_level, output_delivery: policy.output_delivery,
+      }])))],
       ["policy_ids", declarative.map((item) => item.binding.policyId).join("\n")],
       ["enabled_rules_json", JSON.stringify(Object.fromEntries(declarative.map((item) => [item.binding.policyId, item.binding.enabledRuleIds])))],
       ["rule_order_json", JSON.stringify(Object.fromEntries(declarative.map((item) => [item.binding.policyId, item.binding.ruleOrder ?? []])))],
@@ -340,7 +374,7 @@ function parametersFor(
       ["rule_actions_json", JSON.stringify(Object.fromEntries(declarative.map(({ binding: item, policy }) => [
         item.policyId,
         Object.fromEntries(policy.rules.filter((rule) => item.enabledRuleIds.includes(rule.id))
-          .filter((rule) => policy.id !== PHRASE_POLICY_ID || item.ruleActions[rule.id] != null || item.action != null).map((rule) => [
+          .map((rule) => [
           rule.id, item.ruleActions[rule.id] ?? item.action ?? rule.effect,
         ])),
       ])))],

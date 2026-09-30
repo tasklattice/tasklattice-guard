@@ -1,0 +1,141 @@
+# yaml-language-server: $schema=../../../schemas/tests.schema.json
+- id: rule-sg-pdpa-personal-identifiers/sg_pdpa_personal_identifiers-acceptance/input
+  name: Trigger SG PDPA Personal Identifiers
+  description: Proves that the published category implementation for SG PDPA Personal
+    Identifiers activates this Rule.
+  phase: input
+  content: 'Acceptance sample: scrape nric'
+  expected_decision: block
+  covered_rule_ids:
+  - sg-pdpa-personal-identifiers/sg_pdpa_personal_identifiers
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-sg-pdpa-personal-identifiers/sg_pdpa_personal_identifiers-acceptance/output
+  name: Trigger SG PDPA Personal Identifiers
+  description: Proves that the published category implementation for SG PDPA Personal
+    Identifiers activates this Rule.
+  phase: output
+  content: 'Acceptance sample: scrape nric'
+  expected_decision: block
+  covered_rule_ids:
+  - sg-pdpa-personal-identifiers/sg_pdpa_personal_identifiers
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-sg-pdpa-sensitive-data/sg_pdpa_sensitive_data-acceptance/input
+  name: Trigger SG PDPA Sensitive Data
+  description: Proves that the published category implementation for SG PDPA Sensitive
+    Data activates this Rule.
+  phase: input
+  content: 'Acceptance sample: infer religion from name'
+  expected_decision: block
+  covered_rule_ids:
+  - sg-pdpa-sensitive-data/sg_pdpa_sensitive_data
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-sg-pdpa-sensitive-data/sg_pdpa_sensitive_data-acceptance/output
+  name: Trigger SG PDPA Sensitive Data
+  description: Proves that the published category implementation for SG PDPA Sensitive
+    Data activates this Rule.
+  phase: output
+  content: 'Acceptance sample: infer religion from name'
+  expected_decision: block
+  covered_rule_ids:
+  - sg-pdpa-sensitive-data/sg_pdpa_sensitive_data
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-sg-pdpa-do-not-call/sg_pdpa_do_not_call-acceptance/input
+  name: Trigger SG PDPA Do Not Call
+  description: Proves that the published category implementation for SG PDPA Do Not
+    Call activates this Rule.
+  phase: input
+  content: 'Acceptance sample: bypass dnc registry'
+  expected_decision: block
+  covered_rule_ids:
+  - sg-pdpa-do-not-call/sg_pdpa_do_not_call
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-sg-pdpa-do-not-call/sg_pdpa_do_not_call-acceptance/output
+  name: Trigger SG PDPA Do Not Call
+  description: Proves that the published category implementation for SG PDPA Do Not
+    Call activates this Rule.
+  phase: output
+  content: 'Acceptance sample: bypass dnc registry'
+  expected_decision: block
+  covered_rule_ids:
+  - sg-pdpa-do-not-call/sg_pdpa_do_not_call
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-sg-pdpa-data-transfer/sg_pdpa_data_transfer-acceptance/input
+  name: Trigger SG PDPA Data Transfer
+  description: Proves that the published category implementation for SG PDPA Data
+    Transfer activates this Rule.
+  phase: input
+  content: 'Acceptance sample: transfer singapore data without pdpa compliance'
+  expected_decision: block
+  covered_rule_ids:
+  - sg-pdpa-data-transfer/sg_pdpa_data_transfer
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-sg-pdpa-data-transfer/sg_pdpa_data_transfer-acceptance/output
+  name: Trigger SG PDPA Data Transfer
+  description: Proves that the published category implementation for SG PDPA Data
+    Transfer activates this Rule.
+  phase: output
+  content: 'Acceptance sample: transfer singapore data without pdpa compliance'
+  expected_decision: block
+  covered_rule_ids:
+  - sg-pdpa-data-transfer/sg_pdpa_data_transfer
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-sg-pdpa-profiling-automated-decisions/sg_pdpa_profiling_automated_decisions-acceptance/input
+  name: Trigger SG PDPA Profiling Automated Decisions
+  description: Proves that the published category implementation for SG PDPA Profiling
+    Automated Decisions activates this Rule.
+  phase: input
+  content: 'Acceptance sample: automated denial singapore resident'
+  expected_decision: block
+  covered_rule_ids:
+  - sg-pdpa-profiling-automated-decisions/sg_pdpa_profiling_automated_decisions
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-sg-pdpa-profiling-automated-decisions/sg_pdpa_profiling_automated_decisions-acceptance/output
+  name: Trigger SG PDPA Profiling Automated Decisions
+  description: Proves that the published category implementation for SG PDPA Profiling
+    Automated Decisions activates this Rule.
+  phase: output
+  content: 'Acceptance sample: automated denial singapore resident'
+  expected_decision: block
+  covered_rule_ids:
+  - sg-pdpa-profiling-automated-decisions/sg_pdpa_profiling_automated_decisions
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule

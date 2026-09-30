@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: banking/return-guarantee
+name: Unqualified investment guarantees
+description: Matches this reviewed text pattern, not arbitrary semantic variants.
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: (?i)\b(?:I|we)\s+guarantee\s+(?:a\s+)?(?:[0-9]+%\s+)?(?:profit|returns?)\b|(?:我|我们)保证(?:稳赚不赔|投资收益|盈利)
+on_match:
+  action: reject
+runtime_adapter:
+  binding_id: banking-customer-protection
+  implementation_rule_id: banking/return-guarantee
+metadata:
+  taxonomy_ids:
+  - TALI-BUSINESS-POLICY
+risk_level: low

@@ -23,7 +23,7 @@ def evaluate(text, entries=ENTRIES, phase="input", **kwargs):
 def test_phrase_policy_owns_results_and_preserves_order(phase):
     result = evaluate("a private label", phase=phase)
     assert result.content == "a public label"
-    assert [(f.policy_id, f.rule_id, f.recommended_action) for f in result.findings] == [(POLICY, RULE, "redact")]
+    assert [(f.policy_id, f.rule_id, f.recommended_action) for f in result.findings] == [(POLICY, RULE + "/mask", "redact")]
     assert "mask" in result.findings[0].evidence
     blocked = evaluate("a private label", list(reversed(ENTRIES)), phase)
     assert blocked.content == "a private label"
@@ -36,7 +36,7 @@ def test_rule_override_records_matches_and_disabled_rules_skip_detection(phase):
     observed = evaluate("private", phase=phase, policy_rule_actions={POLICY: {RULE: "pass"}})
     assert observed.verdict == "unsafe" and observed.content == "private"
     assert observed.findings
-    assert all((f.policy_id, f.rule_id, f.recommended_action) == (POLICY, RULE, "pass") for f in observed.findings)
+    assert [(f.policy_id, f.rule_id, f.recommended_action) for f in observed.findings] == [(POLICY, RULE + "/mask", "pass"), (POLICY, RULE + "/block", "pass")]
     skipped = evaluate("private", phase=phase, enabled_rules={POLICY: ()})
     assert skipped.verdict == "safe" and skipped.content == "private"
     assert not skipped.findings

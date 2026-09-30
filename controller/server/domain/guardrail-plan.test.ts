@@ -7,6 +7,36 @@ import { programmablePolicyDraftSchema, type ProgrammablePolicySnapshot } from "
 import { defaultGuardrailDraft } from "./defaults.js";
 
 describe("Controller Guardrail plan", () => {
+  it("rejects a classifier change that the native adapter cannot execute", () => {
+    const policies = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
+    const policy = policies.find(item => item.id === "builtin-content-safety")!;
+    policy.rules[0]!.detector_options = { profile: "topic-classification" };
+    const binding = { ...nativeBinding(policy.id), policyVersion: policy.version,
+      enabledRuleIds: policy.rules.map(rule => rule.id), enabledRails: ["input"] };
+    expect(() => buildGuardrailPlan({ guardrailId: "invalid-profile", guardrailVersion: "v1", policies,
+      draft: { allowedTopics: [], restrictedTopics: [], safetyLevel: "balanced", outputDelivery: "full_buffered", policyBindings: [binding] },
+    })).toThrow("requires the safety-classification detector contract");
+  });
+  it("pins local Rule definitions and parameter defaults without changing the source Policy", () => {
+    const policies = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
+    const policy = policies.find(item => item.id === "keyword-blocking")!;
+    policy.parameters[0]!.default = "private";
+    const before = structuredClone(policy);
+    const binding = { ...nativeBinding(policy.id), policyVersion: policy.version,
+      enabledRuleIds: policy.rules.map(rule => rule.id), enabledRails: ["input"] as const };
+    const build = () => buildGuardrailPlan({ guardrailId: "pinned", guardrailVersion: "v1", policies,
+      draft: { allowedTopics: [], restrictedTopics: [], safetyLevel: "balanced", outputDelivery: "full_buffered", policyBindings: [{ ...binding, enabledRails: [...binding.enabledRails] }] } });
+    const plan = build();
+    const parameters = Object.fromEntries((plan.steps as Array<{ parameters: Array<[string, string]> }>)[0]!.parameters);
+    const pinned = JSON.parse(parameters.policy_definitions_json!)[policy.id];
+    expect(pinned.rules).toEqual(before.rules);
+    expect(pinned.version).toBe(before.version);
+    expect(JSON.parse(parameters.policy_parameters_json!)).toEqual({ [policy.id]: { blocked_words: "private" } });
+    expect(policy).toEqual(before);
+    policy.rules[0]!.effect = "pass";
+    expect(pinned.rules[0].effect).toBe(before.rules[0]!.effect);
+    expect(build()).not.toEqual(plan);
+  });
   it("materializes pinned custom Policy defaults while preserving explicit values and the source draft", () => {
     const snapshot: ProgrammablePolicySnapshot = {
       ...programmablePolicyDraftSchema.parse({
@@ -132,7 +162,7 @@ describe("Controller Guardrail plan", () => {
     expect(plan).toMatchObject({
       guardrail_id: "guardrail-1",
       guardrail_version: "20260904-030000.003Z",
-      compiler_version: "tasklattice-controller-plan-v10-topic-rules",
+      compiler_version: "tasklattice-controller-plan-v14-policy-rule-boundaries",
       safety_level: "strict",
     });
     expect(plan.steps).toEqual(expect.arrayContaining([

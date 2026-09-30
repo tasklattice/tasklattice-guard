@@ -1,0 +1,123 @@
+id: category/prompt_injection_system_prompt
+name: Prompt Injection System Prompt
+description: Detects attempts to extract, reveal, or override system prompts and instructions
+stages:
+- input
+- output
+detector:
+  ref: text/conditions
+  version: 1.0.0
+  parameters:
+    detector_options:
+      match:
+        all:
+        - not:
+            contains:
+            - prompt engineering tutorial
+            - explain system prompts
+            - what is a system prompt
+            - how to write a system prompt
+            - system prompt best practices
+            - prompt design
+            - prompt template
+            - prompt engineering
+            - chatbot development
+            - LLM security research
+        - any:
+          - within_sentence:
+              all:
+              - contains:
+                - reveal
+                - show
+                - print
+                - output
+                - display
+                - tell me
+                - repeat
+                - disclose
+                - share
+                - give me
+                - what is
+                - what are
+                - list
+                - write out
+                - copy
+                - paste
+                - recite
+                - read back
+                - type out
+                - echo
+              - keywords:
+                - system prompt
+                - system message
+                - system instructions
+                - initial instructions
+                - initial prompt
+                - hidden instructions
+                - hidden prompt
+                - original prompt
+                - original instructions
+                - pre-prompt
+                - preprompt
+                - meta-prompt
+                - meta prompt
+                - developer instructions
+                - developer prompt
+                - above instructions
+                - previous instructions
+                - prior instructions
+                - opening message
+                - configuration prompt
+                - base prompt
+                - root prompt
+                - master prompt
+                - custom instructions
+                - secret instructions
+                - confidential instructions
+                - internal instructions
+                - rules you follow
+                - guidelines you follow
+                - instructions you were given
+                - prompt you were given
+          - keywords:
+            - ignore previous instructions
+            - ignore all instructions
+            - ignore all previous instructions
+            - ignore prior instructions
+            - ignore above instructions
+            - ignore the above
+            - disregard previous instructions
+            - disregard all instructions
+            - disregard above
+            - disregard your instructions
+            - forget your instructions
+            - forget all instructions
+            - forget everything above
+            - forget your previous instructions
+            - override your instructions
+            - override previous instructions
+            - you are now
+            - new persona
+            - act as DAN
+            - you are DAN
+            - switch to a new persona
+            - new role assignment
+            - your new instructions are
+            - your new role is
+            - repeat your system prompt
+            - print your system prompt
+            - show me your system prompt
+            - output your instructions
+            - what was your system prompt
+            - reveal your prompt
+            - display your instructions
+on_match:
+  action: reject
+  replacement: null
+runtime_adapter:
+  binding_id: prompt_injection_system_prompt
+  implementation_rule_id: prompt_injection_system_prompt
+metadata:
+  taxonomy_ids:
+  - TALI-MODEL-SECURITY
+risk_level: high

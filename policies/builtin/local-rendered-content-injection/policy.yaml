@@ -1,0 +1,32 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: local-rendered-content-injection
+  name: Rendered content injection
+  description: Screen active HTML and template-object traversal signatures. Always keep output encoding,
+    sandboxing and least-privilege tools; this filter does not make arbitrary content safe to execute.
+  source: built_in
+  version: 2.0.0
+  tags:
+  - namespace: protection
+    value: application_injection
+    label: Code & application injection
+    source: declared
+  - namespace: guardrail_category
+    value: agentic_security
+    label: Agentic Security
+    source: declared
+  - namespace: collection
+    value: focused-protection
+    label: Focused protection
+    source: declared
+  safety_level: balanced
+  output_delivery: full_buffered
+parameters: []
+rules:
+- rules/application-active-html.yaml
+- rules/application-template-traversal.yaml
+tests:
+- tests/acceptance.yaml
+- tests/regression.yaml

@@ -1,0 +1,60 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: claims-agent-safety
+  name: Claims Agent Chatbot Safety
+  description: Comprehensive safety guardrails for healthcare claims agent chatbots. Blocks fraud coaching
+    (exaggeration, document forgery), PHI disclosure without authorization, prior-auth gaming (code manipulation,
+    medical necessity misrepresentation), system override injection (prompt injection, role impersonation),
+    and medical advice in claims context (diagnosis, treatment recommendations).
+  source: built_in
+  version: 1.95.0
+  tags:
+  - namespace: protection
+    value: business_rules
+    label: Business & industry rules
+    source: declared
+  - namespace: guardrail_category
+    value: agentic_security
+    label: Agentic Security
+    source: declared
+  - namespace: domain
+    value: health-insurance
+    label: Health Insurance
+    source: declared
+  - namespace: rail
+    value: input
+    label: Input rail
+    source: derived
+  - namespace: implementation
+    value: category
+    label: Category
+    source: derived
+  safety_level: balanced
+  output_delivery: window_buffered
+parameters: []
+rules:
+- rules/claims-fraud-coaching-filter-claims_fraud_coaching.yaml
+- rules/claims-phi-disclosure-filter-claims_phi_disclosure.yaml
+- rules/claims-prior-auth-gaming-filter-claims_prior_auth_gaming.yaml
+- rules/claims-system-override-filter-claims_system_override.yaml
+- rules/claims-medical-advice-filter-claims_medical_advice.yaml
+tests:
+- tests/acceptance.yaml
+resources:
+- resources/claims-fraud-coaching-filter-claims_fraud_coaching-identifiers.yaml
+- resources/claims-fraud-coaching-filter-claims_fraud_coaching-conditions.yaml
+- resources/claims-fraud-coaching-filter-claims_fraud_coaching-always_block.yaml
+- resources/claims-phi-disclosure-filter-claims_phi_disclosure-conditions.yaml
+- resources/claims-phi-disclosure-filter-claims_phi_disclosure-always_block.yaml
+- resources/claims-phi-disclosure-filter-claims_phi_disclosure-exceptions.yaml
+- resources/claims-prior-auth-gaming-filter-claims_prior_auth_gaming-identifiers.yaml
+- resources/claims-prior-auth-gaming-filter-claims_prior_auth_gaming-conditions.yaml
+- resources/claims-prior-auth-gaming-filter-claims_prior_auth_gaming-always_block.yaml
+- resources/claims-prior-auth-gaming-filter-claims_prior_auth_gaming-exceptions.yaml
+- resources/claims-system-override-filter-claims_system_override-conditions.yaml
+- resources/claims-system-override-filter-claims_system_override-always_block.yaml
+- resources/claims-medical-advice-filter-claims_medical_advice-conditions.yaml
+- resources/claims-medical-advice-filter-claims_medical_advice-always_block.yaml
+- resources/claims-medical-advice-filter-claims_medical_advice-exceptions.yaml

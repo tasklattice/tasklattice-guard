@@ -1,0 +1,49 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: topic-filtering
+  name: Topic Filtering
+  description: Restricts AI responses to only approved topics. Blocks off-topic requests like news, politics,
+    entertainment, and general knowledge questions. Useful for chatbots that should stay focused on a
+    specific domain.
+  source: built_in
+  version: 1.95.0
+  tags:
+  - namespace: protection
+    value: business_topics
+    label: Business topics
+    source: declared
+  - namespace: guardrail_category
+    value: topic_control
+    label: Topic Control
+    source: declared
+  - namespace: rail
+    value: input
+    label: Input rail
+    source: derived
+  - namespace: implementation
+    value: category
+    label: Category
+    source: derived
+  - namespace: implementation
+    value: keyword
+    label: Keyword
+    source: derived
+  safety_level: balanced
+  output_delivery: window_buffered
+parameters: []
+rules:
+- rules/topic-restriction-filter-blocked-word-1.yaml
+- rules/topic-restriction-filter-blocked-word-2.yaml
+- rules/topic-restriction-filter-blocked-word-3.yaml
+- rules/topic-restriction-filter-blocked-word-4.yaml
+- rules/topic-restriction-filter-blocked-word-5.yaml
+- rules/topic-restriction-filter-blocked-word-6.yaml
+- rules/topic-restriction-filter-blocked-word-7.yaml
+- rules/topic-restriction-filter-blocked-word-8.yaml
+- rules/topic-restriction-filter-blocked-word-9.yaml
+- rules/topic-restriction-filter-blocked-word-10.yaml
+- rules/topic-restriction-filter-off_topic.yaml
+tests:
+- tests/acceptance.yaml

@@ -1,0 +1,90 @@
+schema_version: 2
+collections:
+- asset: builtin_policies.json
+  policies:
+  - builtin/advanced-au-pii-protection
+  - builtin/airline-off-topic-restriction
+  - builtin/airline-passenger-data-protection-uae
+  - builtin/aviation-operations-security
+  - builtin/baseline-pii-protection
+  - builtin/claims-agent-safety
+  - builtin/eu-ai-act-article5
+  - builtin/gdpr-eu-pii-protection
+  - builtin/nsfw-content-filter-all-regions
+  - builtin/nsfw-content-filter-australia
+  - builtin/nsfw-content-filter-basic
+  - builtin/prompt-injection-protection
+  - builtin/pdpa-singapore
+  - builtin/topic-filtering
+  - builtin/uae-regulatory-compliance
+- asset: local_content_filters.json
+  policies:
+  - builtin/filter-denied-financial-advice
+  - builtin/filter-denied-insults
+  - builtin/filter-denied-legal-advice
+  - builtin/filter-denied-medical-advice
+  - builtin/filter-harmful-violence
+  - builtin/filter-harmful-self-harm
+  - builtin/filter-harmful-child-safety
+  - builtin/filter-harmful-illegal-weapons
+  - builtin/filter-bias-gender
+  - builtin/filter-bias-racial
+  - builtin/filter-bias-religious
+  - builtin/filter-bias-sexual-orientation
+  - builtin/filter-prompt-injection-jailbreak
+  - builtin/filter-prompt-injection-data-exfiltration
+  - builtin/filter-prompt-injection-sql
+  - builtin/filter-prompt-injection-malicious-code
+  - builtin/filter-prompt-injection-system-prompt
+  - builtin/filter-harm-toxic-abuse
+  - builtin/pattern-matching
+  - builtin/keyword-blocking
+  - builtin/block-code-execution
+  - builtin/competitor-mention-detection
+- asset: legacy_topic_policies.json
+  policies:
+  - builtin/builtin-topic-safety/history/1.0.0
+- asset: model_capability_policies.json
+  policies:
+  - builtin/builtin-content-safety
+  - builtin/builtin-jailbreak
+  - builtin/builtin-topic-safety
+  - builtin/builtin-pii
+  - builtin/builtin-company-policy
+  - builtin/builtin-contextual-grounding
+  - builtin/builtin-automated-reasoning
+- asset: focused_policies.json
+  policies:
+  - builtin/local-credentials
+  - builtin/local-prompt-manipulation
+  - builtin/local-sql-injection
+  - builtin/local-code-injection
+  - builtin/local-payment-data
+  - builtin/local-contact-data
+  - builtin/local-passports
+  - builtin/singapore-customer-identifiers
+  - builtin/singapore-data-use-boundaries
+  - builtin/banking-customer-protection
+  - builtin/securities-market-integrity
+  - builtin/internet-account-abuse
+  - builtin/local-rendered-content-injection
+  - builtin/local-government-identifiers
+  - builtin/local-passport-formats
+  - builtin/local-regional-contact-formats
+  - builtin/local-bank-account-formats
+  - builtin/local-travel-identifiers
+  - builtin/local-network-addresses
+  - builtin/local-sensitive-attribute-terms
+  - builtin/local-risk-content-terms
+  - builtin/local-australian-tax-health-identifiers
+- asset: china_policies.json
+  policies:
+  - builtin/china-personal-identifiers
+  - builtin/china-organization-identifiers
+  - builtin/china-prompt-manipulation
+  - builtin/china-banking-assistant-boundaries
+- asset: configurable_policies.json
+  policies:
+  - builtin/configured-phrase-filter
+- asset: custom_policies.json
+  policies: []

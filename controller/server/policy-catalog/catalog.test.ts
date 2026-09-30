@@ -11,9 +11,26 @@ import { PolicyCatalog } from "./catalog.js";
 const assetDirectory = resolve("../runner/toolkit/policy_library/assets");
 
 describe("Policy catalog", () => {
+  it("loads imported local Policies as unreviewed custom definitions and rejects platform impersonation", () => {
+    const directory = mkdtempSync(join(tmpdir(), "guard-imported-"));
+    try {
+      cpSync(assetDirectory, directory, { recursive: true });
+      const template = JSON.parse(readFileSync(join(directory, "local_content_filters.json"), "utf8"))[0];
+      const imported = { ...template, id: "customer-authored", source: "custom", compliance: undefined };
+      const file = join(directory, "custom_policies.json");
+      writeFileSync(file, JSON.stringify([imported]));
+      const policy = PolicyCatalog.load(directory).get(imported.id)!;
+      expect(policy.source).toBe("custom");
+      expect(policy.compliance?.review).toMatchObject({ status: "pending", reviewed_on: null, reviewer: null });
+      for (const mutation of [{ id: template.id }, { id: "builtin-secrets" }, { source: "built_in" }, { compliance: {} }]) {
+        writeFileSync(file, JSON.stringify([{ ...imported, ...mutation }]));
+        expect(() => PolicyCatalog.load(directory)).toThrow();
+      }
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
   it("documents every built-in Policy and separates implementation lineage from industry context", () => {
     const catalog = PolicyCatalog.load(assetDirectory);
-    const policies = catalog.list();
+    const policies = catalog.list().filter(policy => policy.source === "built_in");
     expect(policies).toHaveLength(71);
     for (const policy of policies) {
       expect(policy.compliance?.policy_version, policy.id).toBe(policy.version);
@@ -51,7 +68,7 @@ describe("Policy catalog", () => {
     expect(references.every(reference => /NIST|OWASP|WHO|UNICEF|EUR-Lex|Government|Commission|Authority|Council|Committee|Organization|Foundation|Register|Association/.test(`${reference.publisher} ${reference.title}`))).toBe(true);
   });
   it("keeps the compressed documentation overhead bounded", () => {
-    const policies = PolicyCatalog.load(assetDirectory).list();
+    const policies = PolicyCatalog.load(assetDirectory).list().filter(policy => policy.source === "built_in");
     const withDocumentation = gzipSync(JSON.stringify(policies)).byteLength;
     const withoutDocumentation = gzipSync(JSON.stringify(policies.map(({ compliance: _compliance, ...policy }) => policy))).byteLength;
     // This is a transfer-size budget, not a byte-exact compression snapshot.
@@ -87,8 +104,8 @@ describe("Policy catalog", () => {
     const catalog = PolicyCatalog.load(assetDirectory);
     const policies = catalog.list();
 
-    expect(policies).toHaveLength(71);
-    expect(new Set(policies.map((policy) => policy.id)).size).toBe(71);
+    expect(policies.filter(policy => policy.source === "built_in")).toHaveLength(71);
+    expect(new Set(policies.map((policy) => policy.id)).size).toBe(policies.length);
     expect(catalog.get("builtin-content-safety")).toMatchObject({ rails: ["input", "output"], test_count: 2 });
     expect(catalog.get("competitor-mention-detection")).toMatchObject({
       name: "Competitor Name Blocking",
@@ -103,7 +120,7 @@ describe("Policy catalog", () => {
     expect(policy).toBeDefined();
     expect(policy?.rails).toEqual(["input", "output"]);
     expect(policy?.effects).toEqual(["redact"]);
-    expect(policy?.forms).toEqual(["regex"]);
+    expect(policy?.detectors).toEqual(["text/regex"]);
     expect(policy?.test_count).toBe(policy?.test_cases.length);
     expect(policy?.tags).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: "framework:owasp-llm-2025", label: "OWASP LLM 2025" }),
@@ -125,7 +142,7 @@ describe("Policy catalog", () => {
     expect(catalog.get("pdpa-singapore")?.tags).toEqual(expect.arrayContaining([expect.objectContaining({ id: "framework:pdpa" })]));
 
     const jurisdictions = new Set(
-      catalog.list().flatMap((policy) => policy.tags.filter((tag) => tag.namespace === "jurisdiction").map((tag) => tag.value)),
+      catalog.list().filter(policy => policy.source === "built_in").flatMap((policy) => policy.tags.filter((tag) => tag.namespace === "jurisdiction").map((tag) => tag.value)),
     );
     expect(jurisdictions).toEqual(new Set(["au", "cn", "eu", "sg", "singapore", "uae"]));
   });

@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: cn-prompt-security/unrestricted-mode
+name: Chinese unrestricted-mode request
+description: Rejects selected explicit Chinese requests to enter jailbreak, developer, or unrestricted
+  mode. It is a phrase control, not a semantic jailbreak detector.
+stages:
+- input
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: (?:进入|开启|切换到).{0,4}(?:越狱|无限制|开发者)模式
+on_match:
+  action: reject
+runtime_adapter:
+  binding_id: china-prompt-manipulation
+  implementation_rule_id: cn-prompt-security/unrestricted-mode
+metadata:
+  taxonomy_ids:
+  - TALI-MODEL-SECURITY-JAILBREAK
+risk_level: high

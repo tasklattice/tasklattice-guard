@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=../../../schemas/tests.schema.json
+- id: accept/harm_toxic_abuse
+  name: Detect Toxic & Abusive Language
+  description: Required acceptance case for the imported local category.
+  phase: input
+  content: The message contains 1m1j.
+  expected_decision: block
+  covered_rule_ids:
+  - category/harm_toxic_abuse
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/harm_toxic_abuse/output
+  name: Detect Toxic & Abusive Language
+  description: Required acceptance case for the imported local category.
+  phase: output
+  content: The message contains 1m1j.
+  expected_decision: block
+  covered_rule_ids:
+  - category/harm_toxic_abuse
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule

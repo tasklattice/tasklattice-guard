@@ -1,0 +1,32 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: local-bank-account-formats
+  name: Regional bank account formats
+  description: Redact contextual Singapore and Canadian bank-account formats. This is not account validation
+    or payment authorization.
+  source: built_in
+  version: 2.0.0
+  tags:
+  - namespace: protection
+    value: privacy
+    label: Privacy & sensitive information
+    source: declared
+  - namespace: guardrail_category
+    value: pii_detection
+    label: PII Detection
+    source: declared
+  - namespace: collection
+    value: focused-protection
+    label: Focused protection
+    source: declared
+  safety_level: balanced
+  output_delivery: full_buffered
+parameters: []
+rules:
+- rules/pattern-ca_bank_account.yaml
+- rules/pattern-sg_bank_account.yaml
+tests:
+- tests/acceptance.yaml
+- tests/regression.yaml

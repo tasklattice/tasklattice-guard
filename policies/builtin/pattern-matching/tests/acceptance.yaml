@@ -1,0 +1,2133 @@
+# yaml-language-server: $schema=../../../schemas/tests.schema.json
+- id: accept/us_ssn
+  name: Detect SSN (Social Security Number)
+  description: Required acceptance case for PII Patterns.
+  phase: input
+  content: 'Acceptance sample: 111-11-1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/us_ssn
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/us_ssn_no_dash
+  name: Detect SSN (No Dashes)
+  description: Required acceptance case for PII Patterns.
+  phase: input
+  content: 'Acceptance sample: 111111111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/us_ssn_no_dash
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/email
+  name: Detect Email Address
+  description: Required acceptance case for PII Patterns.
+  phase: input
+  content: 'Acceptance sample: A@A.AA'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/email
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/us_phone
+  name: Detect Phone Number (US)
+  description: Required acceptance case for PII Patterns.
+  phase: input
+  content: 'Acceptance sample: +1 (000) 000 0000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/us_phone
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/visa
+  name: Detect Credit Card (Visa)
+  description: Required acceptance case for Payment Card Patterns.
+  phase: input
+  content: 'Acceptance sample: 4111 1111 1111 1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/visa
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/mastercard
+  name: Detect Credit Card (Mastercard)
+  description: Required acceptance case for Payment Card Patterns.
+  phase: input
+  content: 'Acceptance sample: 5111 1111 1111 1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/mastercard
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/amex
+  name: Detect Credit Card (American Express)
+  description: Required acceptance case for Payment Card Patterns.
+  phase: input
+  content: 'Acceptance sample: 3411 111111 11111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/amex
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/discover
+  name: Detect Credit Card (Discover)
+  description: Required acceptance case for Payment Card Patterns.
+  phase: input
+  content: 'Acceptance sample: 6011 1111 1111 1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/discover
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/credit_card
+  name: Detect Credit Card (Any)
+  description: Required acceptance case for Payment Card Patterns.
+  phase: input
+  content: 'Acceptance sample: 4111 1111 1111 1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/credit_card
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/aws_access_key
+  name: Detect AWS Access Key
+  description: Required acceptance case for Credential Patterns.
+  phase: input
+  content: 'Acceptance sample: AKIA0000000000000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/aws_access_key
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/aws_secret_key
+  name: Detect AWS Secret Key
+  description: Required acceptance case for Credential Patterns.
+  phase: input
+  content: 'Acceptance sample: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/aws_secret_key
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/github_token
+  name: Detect GitHub Token
+  description: Required acceptance case for Credential Patterns.
+  phase: input
+  content: 'Acceptance sample: ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/github_token
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/slack_token
+  name: Detect Slack Token
+  description: Required acceptance case for Credential Patterns.
+  phase: input
+  content: 'Acceptance sample: xoxp-0000000000-0000000000-aaaaaaaaaaaaaaaaaaaaaaaa'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/slack_token
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/generic_api_key
+  name: Detect API Key (Generic)
+  description: Required acceptance case for Credential Patterns.
+  phase: input
+  content: 'Acceptance sample: API-KEY ''AAAAAAAAAAAAAAAAAAAA'''
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/generic_api_key
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/ipv4
+  name: Detect IP Address (IPv4)
+  description: Required acceptance case for Network Patterns.
+  phase: input
+  content: 'Acceptance sample: 250.250.250.250'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/ipv4
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/ipv6
+  name: Detect IP Address (IPv6)
+  description: Required acceptance case for Network Patterns.
+  phase: input
+  content: 'Acceptance sample: 0:0:0:0:0:0:0:0'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/ipv6
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/url
+  name: Detect URL
+  description: Required acceptance case for Network Patterns.
+  phase: input
+  content: The private endpoint is https://example.com/internal.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/url
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/passport_us
+  name: Detect Passport (US)
+  description: Required acceptance case for PII Patterns.
+  phase: input
+  content: 'Acceptance sample: A00000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/passport_us
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/passport_uk
+  name: Detect Passport (UK)
+  description: Required acceptance case for PII Patterns.
+  phase: input
+  content: 'Acceptance sample: 000000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/passport_uk
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/passport_germany
+  name: Detect Passport (Germany)
+  description: Required acceptance case for PII Patterns.
+  phase: input
+  content: 'Acceptance sample: CCCCCCCCC'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/passport_germany
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/passport_france
+  name: Detect Passport (France)
+  description: Required acceptance case for PII Patterns.
+  phase: input
+  content: 'Acceptance sample: 00AA00000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/passport_france
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/passport_netherlands
+  name: Detect Passport (Netherlands)
+  description: Required acceptance case for PII Patterns.
+  phase: input
+  content: 'Acceptance sample: AAAAAAAA0'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/passport_netherlands
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/passport_canada
+  name: Detect Passport (Canada)
+  description: Required acceptance case for PII Patterns.
+  phase: input
+  content: 'Acceptance sample: AA000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/passport_canada
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/passport_india
+  name: Detect Passport (India)
+  description: Required acceptance case for PII Patterns.
+  phase: input
+  content: 'Acceptance sample: A0000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/passport_india
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/passport_australia
+  name: Detect Passport (Australia)
+  description: Required acceptance case for PII Patterns.
+  phase: input
+  content: 'Acceptance sample: A0000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/passport_australia
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/passport_china
+  name: Detect Passport (China)
+  description: Required acceptance case for PII Patterns.
+  phase: input
+  content: 'Acceptance sample: E00000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/passport_china
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/passport_japan
+  name: Detect Passport (Japan)
+  description: Required acceptance case for PII Patterns.
+  phase: input
+  content: 'Acceptance sample: AA0000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/passport_japan
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/gender_sexual_orientation
+  name: Detect Gender & Sexual Orientation (Protected Class)
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: input
+  content: 'Acceptance sample: non-binary'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/gender_sexual_orientation
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/race_ethnicity_national_origin
+  name: Detect Race, Ethnicity & National Origin (Protected Class)
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: input
+  content: 'Acceptance sample: caucasian'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/race_ethnicity_national_origin
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/religion
+  name: Detect Religion & Creed (Protected Class)
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: input
+  content: 'Acceptance sample: christians'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/religion
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/age_discrimination
+  name: Detect Age-Related Terms (Protected Class)
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: input
+  content: 'Acceptance sample: elderly'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/age_discrimination
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/disability
+  name: Detect Disability Status (Protected Class)
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: input
+  content: 'Acceptance sample: disabled'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/disability
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/marital_family_status
+  name: Detect Marital & Family Status (Protected Class)
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: input
+  content: 'Acceptance sample: married'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/marital_family_status
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/military_status
+  name: Detect Military Status (Protected Class)
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: input
+  content: 'Acceptance sample: veterans'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/military_status
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/public_assistance
+  name: Detect Public Assistance Status (Protected Class)
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: input
+  content: 'Acceptance sample: welfare'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/public_assistance
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/weapons_firearms
+  name: Detect Weapons & Firearms
+  description: Required acceptance case for Dangerous Content.
+  phase: input
+  content: The firearm was found in the room.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/weapons_firearms
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/weapons_other
+  name: Detect Other Weapons
+  description: Required acceptance case for Dangerous Content.
+  phase: input
+  content: The suspect carried a switchblade.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/weapons_other
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/explosives
+  name: Detect Explosives & Bombs
+  description: Required acceptance case for Dangerous Content - High Risk.
+  phase: input
+  content: Instructions for a pipe bomb are prohibited.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/explosives
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/violence_threats
+  name: Detect Violence & Threats
+  description: Required acceptance case for Dangerous Content - High Risk.
+  phase: input
+  content: They sent a death threat yesterday.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/violence_threats
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/terrorism
+  name: Detect Terrorism & Extremism
+  description: Required acceptance case for Dangerous Content - High Risk.
+  phase: input
+  content: The message promoted a terrorist attack.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/terrorism
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/self_harm_suicide
+  name: Detect Self-Harm & Suicide
+  description: Required acceptance case for Dangerous Content - Crisis.
+  phase: input
+  content: The message says I want to die.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/self_harm_suicide
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/illegal_activities
+  name: Detect Illegal Activities
+  description: Required acceptance case for Dangerous Content - Illegal.
+  phase: input
+  content: The request describes money laundering.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/illegal_activities
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/harassment_hate
+  name: Detect Harassment & Hate Speech
+  description: Required acceptance case for Dangerous Content - High Risk.
+  phase: input
+  content: The account was used for doxxing.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/harassment_hate
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/nl_bsn_contextual
+  name: Detect BSN (Dutch Citizen Service Number)
+  description: Required acceptance case for PII Patterns.
+  phase: input
+  content: 'Acceptance sample: BSN 000000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/nl_bsn_contextual
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/br_cpf
+  name: Detect CPF - Brazilian Personal Tax ID (Formatted)
+  description: Required acceptance case for Brazilian PII Patterns.
+  phase: input
+  content: 'Acceptance sample: 111.111.111-11'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_cpf
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/br_cpf_unformatted
+  name: Detect CPF - Brazilian Personal Tax ID (Unformatted)
+  description: Required acceptance case for Brazilian PII Patterns.
+  phase: input
+  content: 'Acceptance sample: 11111111111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_cpf_unformatted
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/br_phone_landline
+  name: Detect Brazilian Phone Number (Landline)
+  description: Required acceptance case for Brazilian PII Patterns.
+  phase: input
+  content: 'Acceptance sample: (11) 91111-1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_phone_landline
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/br_phone_mobile
+  name: Detect Brazilian Mobile Phone Number
+  description: Required acceptance case for Brazilian PII Patterns.
+  phase: input
+  content: 'Acceptance sample: +1 (11) 91111-1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_phone_mobile
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/br_cep
+  name: Detect CEP - Brazilian Zip / Postal Code
+  description: Required acceptance case for Brazilian PII Patterns.
+  phase: input
+  content: 'Acceptance sample: 11111-111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_cep
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/br_cnpj
+  name: Detect CNPJ - Brazilian Company Tax ID
+  description: Required acceptance case for Brazilian PII Patterns.
+  phase: input
+  content: 'Acceptance sample: 11.111.111/1111-11'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_cnpj
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/br_rg
+  name: Detect RG - Brazilian National Identity Card (SP, RJ, MG)
+  description: Required acceptance case for Brazilian PII Patterns.
+  phase: input
+  content: 'Acceptance sample: 1.111.111-1'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_rg
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/au_tfn
+  name: Detect TFN (Australian Tax File Number)
+  description: Required acceptance case for PII Patterns.
+  phase: input
+  content: Tax file number 111111111.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/au_tfn
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/au_abn
+  name: Detect ABN (Australian Business Number)
+  description: Required acceptance case for PII Patterns.
+  phase: input
+  content: 'Acceptance sample: 11 111 111 111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/au_abn
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/au_medicare
+  name: Detect Medicare Number (Australia)
+  description: Required acceptance case for PII Patterns.
+  phase: input
+  content: 'Acceptance sample: 1111 11111 1'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/au_medicare
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/iban
+  name: Detect IBAN (International Bank Account Number)
+  description: Required acceptance case for Payment Card Patterns.
+  phase: input
+  content: 'Acceptance sample: AA11AAAAAAAAAAA'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/iban
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/fr_nir
+  name: Detect NIR/INSEE (French Social Security Number)
+  description: Required acceptance case for EU PII Patterns.
+  phase: input
+  content: 'Acceptance sample: 100010000000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/fr_nir
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/eu_iban_enhanced
+  name: Detect IBAN (Enhanced EU Format)
+  description: Required acceptance case for EU PII Patterns.
+  phase: input
+  content: 'Acceptance sample: AA00AAAA0000000A'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/eu_iban_enhanced
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/fr_phone
+  name: Detect Phone Number (France)
+  description: Required acceptance case for EU PII Patterns.
+  phase: input
+  content: 'Acceptance sample: +33100000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/fr_phone
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/eu_vat
+  name: Detect VAT Number (EU)
+  description: Required acceptance case for EU PII Patterns.
+  phase: input
+  content: 'Acceptance sample: VAT AT00000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/eu_vat
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/eu_passport_generic
+  name: Detect Passport Number (EU Generic)
+  description: Required acceptance case for EU PII Patterns.
+  phase: input
+  content: 'Acceptance sample: passport 00AA00000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/eu_passport_generic
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/fr_postal_code
+  name: Detect Postal Code (France)
+  description: Required acceptance case for EU PII Patterns.
+  phase: input
+  content: 'Acceptance sample: code postal 00000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/fr_postal_code
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/street_address
+  name: Detect Street Address
+  description: Required acceptance case for PII Patterns.
+  phase: input
+  content: 'Acceptance sample: 1 AA Street'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/street_address
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/airline_pnr
+  name: Detect Airline PNR / Booking Reference
+  description: Required acceptance case for Aviation PII Patterns.
+  phase: input
+  content: 'Acceptance sample: PNR AAAAAA'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/airline_pnr
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/skywards_number
+  name: Detect Emirates Skywards / Frequent Flyer Number
+  description: Required acceptance case for Aviation PII Patterns.
+  phase: input
+  content: 'Acceptance sample: Skywards EK 111111111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/skywards_number
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/uae_emirates_id
+  name: Detect UAE Emirates ID
+  description: Required acceptance case for UAE PII Patterns.
+  phase: input
+  content: 'Acceptance sample: 784-1111-1111111-1'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/uae_emirates_id
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/uae_phone
+  name: Detect Phone Number (UAE)
+  description: Required acceptance case for UAE PII Patterns.
+  phase: input
+  content: 'Acceptance sample: +971 2 111 1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/uae_phone
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/flight_number
+  name: Detect Airline Flight Number
+  description: Required acceptance case for Aviation PII Patterns.
+  phase: input
+  content: 'Acceptance sample: flight EK 1'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/flight_number
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/sg_nric
+  name: Detect NRIC/FIN (Singapore National ID)
+  description: Required acceptance case for Singapore PII Patterns.
+  phase: input
+  content: 'Acceptance sample: S1111111A'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/sg_nric
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/sg_phone
+  name: Detect Phone Number (Singapore)
+  description: Required acceptance case for Singapore PII Patterns.
+  phase: input
+  content: 'Acceptance sample: +65 6111 1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/sg_phone
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/sg_postal_code
+  name: Detect Postal Code (Singapore)
+  description: Required acceptance case for Singapore PII Patterns.
+  phase: input
+  content: 'Acceptance sample: postal code 011111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/sg_postal_code
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/passport_singapore
+  name: Detect Passport (Singapore)
+  description: Required acceptance case for Singapore PII Patterns.
+  phase: input
+  content: 'Acceptance sample: passport E1111111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/passport_singapore
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/sg_uen
+  name: Detect UEN (Singapore Unique Entity Number)
+  description: Required acceptance case for Singapore PII Patterns.
+  phase: input
+  content: 'Acceptance sample: UEN 11111111A'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/sg_uen
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/sg_bank_account
+  name: Detect Bank Account (Singapore)
+  description: Required acceptance case for Singapore PII Patterns.
+  phase: input
+  content: 'Acceptance sample: bank account 111-11111-1'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/sg_bank_account
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/ca_sin
+  name: Detect SIN (Canadian Social Insurance Number)
+  description: Required acceptance case for Canadian PII Patterns.
+  phase: input
+  content: Social insurance number 123-456-789.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/ca_sin
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/ca_ohip
+  name: Detect OHIP (Ontario Health Insurance Plan Number)
+  description: Required acceptance case for Canadian PII Patterns.
+  phase: input
+  content: OHIP number 1234-567-890 AB.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/ca_ohip
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/ca_on_drivers_licence
+  name: Detect Driver's Licence (Ontario)
+  description: Required acceptance case for Canadian PII Patterns.
+  phase: input
+  content: Driver's licence A1234-56789-01234.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/ca_on_drivers_licence
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/ca_immigration_doc
+  name: Detect Immigration Document (Canada IRCC)
+  description: Required acceptance case for Canadian PII Patterns.
+  phase: input
+  content: UCI 1234-5678-90.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/ca_immigration_doc
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/ca_bank_account
+  name: Detect Bank Account (Canada)
+  description: Required acceptance case for Canadian PII Patterns.
+  phase: input
+  content: Bank account 12345-001-1234567.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/ca_bank_account
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/ca_postal_code
+  name: Detect Postal Code (Canada)
+  description: Required acceptance case for Canadian PII Patterns.
+  phase: input
+  content: Postal code M5V 3A8.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/ca_postal_code
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/uoft_student_id
+  name: Detect Student/Employee Number (University of Toronto)
+  description: Required acceptance case for Canadian Institutional Identifiers (FIPPA).
+  phase: input
+  content: University of Toronto student number 1000000000.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/uoft_student_id
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/uoft_utorid
+  name: Detect UTORid (University of Toronto Login)
+  description: Required acceptance case for Canadian Institutional Identifiers (FIPPA).
+  phase: input
+  content: UTORid smith123.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/uoft_utorid
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/uoft_tcard
+  name: Detect TCard Number (University of Toronto Campus ID)
+  description: Required acceptance case for Canadian Institutional Identifiers (FIPPA).
+  phase: input
+  content: TCard number 1234567890123456.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/uoft_tcard
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/us_ssn/output
+  name: Detect SSN (Social Security Number)
+  description: Required acceptance case for PII Patterns.
+  phase: output
+  content: 'Acceptance sample: 111-11-1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/us_ssn
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/us_ssn_no_dash/output
+  name: Detect SSN (No Dashes)
+  description: Required acceptance case for PII Patterns.
+  phase: output
+  content: 'Acceptance sample: 111111111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/us_ssn_no_dash
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/email/output
+  name: Detect Email Address
+  description: Required acceptance case for PII Patterns.
+  phase: output
+  content: 'Acceptance sample: A@A.AA'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/email
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/us_phone/output
+  name: Detect Phone Number (US)
+  description: Required acceptance case for PII Patterns.
+  phase: output
+  content: 'Acceptance sample: +1 (000) 000 0000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/us_phone
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/visa/output
+  name: Detect Credit Card (Visa)
+  description: Required acceptance case for Payment Card Patterns.
+  phase: output
+  content: 'Acceptance sample: 4111 1111 1111 1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/visa
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/mastercard/output
+  name: Detect Credit Card (Mastercard)
+  description: Required acceptance case for Payment Card Patterns.
+  phase: output
+  content: 'Acceptance sample: 5111 1111 1111 1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/mastercard
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/amex/output
+  name: Detect Credit Card (American Express)
+  description: Required acceptance case for Payment Card Patterns.
+  phase: output
+  content: 'Acceptance sample: 3411 111111 11111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/amex
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/discover/output
+  name: Detect Credit Card (Discover)
+  description: Required acceptance case for Payment Card Patterns.
+  phase: output
+  content: 'Acceptance sample: 6011 1111 1111 1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/discover
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/credit_card/output
+  name: Detect Credit Card (Any)
+  description: Required acceptance case for Payment Card Patterns.
+  phase: output
+  content: 'Acceptance sample: 4111 1111 1111 1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/credit_card
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/aws_access_key/output
+  name: Detect AWS Access Key
+  description: Required acceptance case for Credential Patterns.
+  phase: output
+  content: 'Acceptance sample: AKIA0000000000000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/aws_access_key
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/aws_secret_key/output
+  name: Detect AWS Secret Key
+  description: Required acceptance case for Credential Patterns.
+  phase: output
+  content: 'Acceptance sample: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/aws_secret_key
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/github_token/output
+  name: Detect GitHub Token
+  description: Required acceptance case for Credential Patterns.
+  phase: output
+  content: 'Acceptance sample: ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/github_token
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/slack_token/output
+  name: Detect Slack Token
+  description: Required acceptance case for Credential Patterns.
+  phase: output
+  content: 'Acceptance sample: xoxp-0000000000-0000000000-aaaaaaaaaaaaaaaaaaaaaaaa'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/slack_token
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/generic_api_key/output
+  name: Detect API Key (Generic)
+  description: Required acceptance case for Credential Patterns.
+  phase: output
+  content: 'Acceptance sample: API-KEY ''AAAAAAAAAAAAAAAAAAAA'''
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/generic_api_key
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/ipv4/output
+  name: Detect IP Address (IPv4)
+  description: Required acceptance case for Network Patterns.
+  phase: output
+  content: 'Acceptance sample: 250.250.250.250'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/ipv4
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/ipv6/output
+  name: Detect IP Address (IPv6)
+  description: Required acceptance case for Network Patterns.
+  phase: output
+  content: 'Acceptance sample: 0:0:0:0:0:0:0:0'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/ipv6
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/url/output
+  name: Detect URL
+  description: Required acceptance case for Network Patterns.
+  phase: output
+  content: The private endpoint is https://example.com/internal.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/url
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/passport_us/output
+  name: Detect Passport (US)
+  description: Required acceptance case for PII Patterns.
+  phase: output
+  content: 'Acceptance sample: A00000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/passport_us
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/passport_uk/output
+  name: Detect Passport (UK)
+  description: Required acceptance case for PII Patterns.
+  phase: output
+  content: 'Acceptance sample: 000000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/passport_uk
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/passport_germany/output
+  name: Detect Passport (Germany)
+  description: Required acceptance case for PII Patterns.
+  phase: output
+  content: 'Acceptance sample: CCCCCCCCC'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/passport_germany
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/passport_france/output
+  name: Detect Passport (France)
+  description: Required acceptance case for PII Patterns.
+  phase: output
+  content: 'Acceptance sample: 00AA00000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/passport_france
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/passport_netherlands/output
+  name: Detect Passport (Netherlands)
+  description: Required acceptance case for PII Patterns.
+  phase: output
+  content: 'Acceptance sample: AAAAAAAA0'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/passport_netherlands
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/passport_canada/output
+  name: Detect Passport (Canada)
+  description: Required acceptance case for PII Patterns.
+  phase: output
+  content: 'Acceptance sample: AA000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/passport_canada
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/passport_india/output
+  name: Detect Passport (India)
+  description: Required acceptance case for PII Patterns.
+  phase: output
+  content: 'Acceptance sample: A0000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/passport_india
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/passport_australia/output
+  name: Detect Passport (Australia)
+  description: Required acceptance case for PII Patterns.
+  phase: output
+  content: 'Acceptance sample: A0000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/passport_australia
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/passport_china/output
+  name: Detect Passport (China)
+  description: Required acceptance case for PII Patterns.
+  phase: output
+  content: 'Acceptance sample: E00000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/passport_china
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/passport_japan/output
+  name: Detect Passport (Japan)
+  description: Required acceptance case for PII Patterns.
+  phase: output
+  content: 'Acceptance sample: AA0000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/passport_japan
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/gender_sexual_orientation/output
+  name: Detect Gender & Sexual Orientation (Protected Class)
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: output
+  content: 'Acceptance sample: non-binary'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/gender_sexual_orientation
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/race_ethnicity_national_origin/output
+  name: Detect Race, Ethnicity & National Origin (Protected Class)
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: output
+  content: 'Acceptance sample: caucasian'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/race_ethnicity_national_origin
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/religion/output
+  name: Detect Religion & Creed (Protected Class)
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: output
+  content: 'Acceptance sample: christians'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/religion
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/age_discrimination/output
+  name: Detect Age-Related Terms (Protected Class)
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: output
+  content: 'Acceptance sample: elderly'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/age_discrimination
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/disability/output
+  name: Detect Disability Status (Protected Class)
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: output
+  content: 'Acceptance sample: disabled'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/disability
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/marital_family_status/output
+  name: Detect Marital & Family Status (Protected Class)
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: output
+  content: 'Acceptance sample: married'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/marital_family_status
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/military_status/output
+  name: Detect Military Status (Protected Class)
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: output
+  content: 'Acceptance sample: veterans'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/military_status
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/public_assistance/output
+  name: Detect Public Assistance Status (Protected Class)
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: output
+  content: 'Acceptance sample: welfare'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/public_assistance
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/weapons_firearms/output
+  name: Detect Weapons & Firearms
+  description: Required acceptance case for Dangerous Content.
+  phase: output
+  content: The firearm was found in the room.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/weapons_firearms
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/weapons_other/output
+  name: Detect Other Weapons
+  description: Required acceptance case for Dangerous Content.
+  phase: output
+  content: The suspect carried a switchblade.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/weapons_other
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/explosives/output
+  name: Detect Explosives & Bombs
+  description: Required acceptance case for Dangerous Content - High Risk.
+  phase: output
+  content: Instructions for a pipe bomb are prohibited.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/explosives
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/violence_threats/output
+  name: Detect Violence & Threats
+  description: Required acceptance case for Dangerous Content - High Risk.
+  phase: output
+  content: They sent a death threat yesterday.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/violence_threats
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/terrorism/output
+  name: Detect Terrorism & Extremism
+  description: Required acceptance case for Dangerous Content - High Risk.
+  phase: output
+  content: The message promoted a terrorist attack.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/terrorism
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/self_harm_suicide/output
+  name: Detect Self-Harm & Suicide
+  description: Required acceptance case for Dangerous Content - Crisis.
+  phase: output
+  content: The message says I want to die.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/self_harm_suicide
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/illegal_activities/output
+  name: Detect Illegal Activities
+  description: Required acceptance case for Dangerous Content - Illegal.
+  phase: output
+  content: The request describes money laundering.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/illegal_activities
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/harassment_hate/output
+  name: Detect Harassment & Hate Speech
+  description: Required acceptance case for Dangerous Content - High Risk.
+  phase: output
+  content: The account was used for doxxing.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/harassment_hate
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/nl_bsn_contextual/output
+  name: Detect BSN (Dutch Citizen Service Number)
+  description: Required acceptance case for PII Patterns.
+  phase: output
+  content: 'Acceptance sample: BSN 000000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/nl_bsn_contextual
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/br_cpf/output
+  name: Detect CPF - Brazilian Personal Tax ID (Formatted)
+  description: Required acceptance case for Brazilian PII Patterns.
+  phase: output
+  content: 'Acceptance sample: 111.111.111-11'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_cpf
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/br_cpf_unformatted/output
+  name: Detect CPF - Brazilian Personal Tax ID (Unformatted)
+  description: Required acceptance case for Brazilian PII Patterns.
+  phase: output
+  content: 'Acceptance sample: 11111111111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_cpf_unformatted
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/br_phone_landline/output
+  name: Detect Brazilian Phone Number (Landline)
+  description: Required acceptance case for Brazilian PII Patterns.
+  phase: output
+  content: 'Acceptance sample: (11) 91111-1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_phone_landline
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/br_phone_mobile/output
+  name: Detect Brazilian Mobile Phone Number
+  description: Required acceptance case for Brazilian PII Patterns.
+  phase: output
+  content: 'Acceptance sample: +1 (11) 91111-1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_phone_mobile
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/br_cep/output
+  name: Detect CEP - Brazilian Zip / Postal Code
+  description: Required acceptance case for Brazilian PII Patterns.
+  phase: output
+  content: 'Acceptance sample: 11111-111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_cep
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/br_cnpj/output
+  name: Detect CNPJ - Brazilian Company Tax ID
+  description: Required acceptance case for Brazilian PII Patterns.
+  phase: output
+  content: 'Acceptance sample: 11.111.111/1111-11'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_cnpj
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/br_rg/output
+  name: Detect RG - Brazilian National Identity Card (SP, RJ, MG)
+  description: Required acceptance case for Brazilian PII Patterns.
+  phase: output
+  content: 'Acceptance sample: 1.111.111-1'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_rg
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/au_tfn/output
+  name: Detect TFN (Australian Tax File Number)
+  description: Required acceptance case for PII Patterns.
+  phase: output
+  content: Tax file number 111111111.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/au_tfn
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/au_abn/output
+  name: Detect ABN (Australian Business Number)
+  description: Required acceptance case for PII Patterns.
+  phase: output
+  content: 'Acceptance sample: 11 111 111 111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/au_abn
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/au_medicare/output
+  name: Detect Medicare Number (Australia)
+  description: Required acceptance case for PII Patterns.
+  phase: output
+  content: 'Acceptance sample: 1111 11111 1'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/au_medicare
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/iban/output
+  name: Detect IBAN (International Bank Account Number)
+  description: Required acceptance case for Payment Card Patterns.
+  phase: output
+  content: 'Acceptance sample: AA11AAAAAAAAAAA'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/iban
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/fr_nir/output
+  name: Detect NIR/INSEE (French Social Security Number)
+  description: Required acceptance case for EU PII Patterns.
+  phase: output
+  content: 'Acceptance sample: 100010000000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/fr_nir
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/eu_iban_enhanced/output
+  name: Detect IBAN (Enhanced EU Format)
+  description: Required acceptance case for EU PII Patterns.
+  phase: output
+  content: 'Acceptance sample: AA00AAAA0000000A'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/eu_iban_enhanced
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/fr_phone/output
+  name: Detect Phone Number (France)
+  description: Required acceptance case for EU PII Patterns.
+  phase: output
+  content: 'Acceptance sample: +33100000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/fr_phone
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/eu_vat/output
+  name: Detect VAT Number (EU)
+  description: Required acceptance case for EU PII Patterns.
+  phase: output
+  content: 'Acceptance sample: VAT AT00000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/eu_vat
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/eu_passport_generic/output
+  name: Detect Passport Number (EU Generic)
+  description: Required acceptance case for EU PII Patterns.
+  phase: output
+  content: 'Acceptance sample: passport 00AA00000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/eu_passport_generic
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/fr_postal_code/output
+  name: Detect Postal Code (France)
+  description: Required acceptance case for EU PII Patterns.
+  phase: output
+  content: 'Acceptance sample: code postal 00000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/fr_postal_code
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/street_address/output
+  name: Detect Street Address
+  description: Required acceptance case for PII Patterns.
+  phase: output
+  content: 'Acceptance sample: 1 AA Street'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/street_address
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/airline_pnr/output
+  name: Detect Airline PNR / Booking Reference
+  description: Required acceptance case for Aviation PII Patterns.
+  phase: output
+  content: 'Acceptance sample: PNR AAAAAA'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/airline_pnr
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/skywards_number/output
+  name: Detect Emirates Skywards / Frequent Flyer Number
+  description: Required acceptance case for Aviation PII Patterns.
+  phase: output
+  content: 'Acceptance sample: Skywards EK 111111111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/skywards_number
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/uae_emirates_id/output
+  name: Detect UAE Emirates ID
+  description: Required acceptance case for UAE PII Patterns.
+  phase: output
+  content: 'Acceptance sample: 784-1111-1111111-1'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/uae_emirates_id
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/uae_phone/output
+  name: Detect Phone Number (UAE)
+  description: Required acceptance case for UAE PII Patterns.
+  phase: output
+  content: 'Acceptance sample: +971 2 111 1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/uae_phone
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/flight_number/output
+  name: Detect Airline Flight Number
+  description: Required acceptance case for Aviation PII Patterns.
+  phase: output
+  content: 'Acceptance sample: flight EK 1'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/flight_number
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/sg_nric/output
+  name: Detect NRIC/FIN (Singapore National ID)
+  description: Required acceptance case for Singapore PII Patterns.
+  phase: output
+  content: 'Acceptance sample: S1111111A'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/sg_nric
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/sg_phone/output
+  name: Detect Phone Number (Singapore)
+  description: Required acceptance case for Singapore PII Patterns.
+  phase: output
+  content: 'Acceptance sample: +65 6111 1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/sg_phone
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/sg_postal_code/output
+  name: Detect Postal Code (Singapore)
+  description: Required acceptance case for Singapore PII Patterns.
+  phase: output
+  content: 'Acceptance sample: postal code 011111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/sg_postal_code
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/passport_singapore/output
+  name: Detect Passport (Singapore)
+  description: Required acceptance case for Singapore PII Patterns.
+  phase: output
+  content: 'Acceptance sample: passport E1111111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/passport_singapore
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/sg_uen/output
+  name: Detect UEN (Singapore Unique Entity Number)
+  description: Required acceptance case for Singapore PII Patterns.
+  phase: output
+  content: 'Acceptance sample: UEN 11111111A'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/sg_uen
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/sg_bank_account/output
+  name: Detect Bank Account (Singapore)
+  description: Required acceptance case for Singapore PII Patterns.
+  phase: output
+  content: 'Acceptance sample: bank account 111-11111-1'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/sg_bank_account
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/ca_sin/output
+  name: Detect SIN (Canadian Social Insurance Number)
+  description: Required acceptance case for Canadian PII Patterns.
+  phase: output
+  content: Social insurance number 123-456-789.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/ca_sin
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/ca_ohip/output
+  name: Detect OHIP (Ontario Health Insurance Plan Number)
+  description: Required acceptance case for Canadian PII Patterns.
+  phase: output
+  content: OHIP number 1234-567-890 AB.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/ca_ohip
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/ca_on_drivers_licence/output
+  name: Detect Driver's Licence (Ontario)
+  description: Required acceptance case for Canadian PII Patterns.
+  phase: output
+  content: Driver's licence A1234-56789-01234.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/ca_on_drivers_licence
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/ca_immigration_doc/output
+  name: Detect Immigration Document (Canada IRCC)
+  description: Required acceptance case for Canadian PII Patterns.
+  phase: output
+  content: UCI 1234-5678-90.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/ca_immigration_doc
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/ca_bank_account/output
+  name: Detect Bank Account (Canada)
+  description: Required acceptance case for Canadian PII Patterns.
+  phase: output
+  content: Bank account 12345-001-1234567.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/ca_bank_account
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/ca_postal_code/output
+  name: Detect Postal Code (Canada)
+  description: Required acceptance case for Canadian PII Patterns.
+  phase: output
+  content: Postal code M5V 3A8.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/ca_postal_code
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/uoft_student_id/output
+  name: Detect Student/Employee Number (University of Toronto)
+  description: Required acceptance case for Canadian Institutional Identifiers (FIPPA).
+  phase: output
+  content: University of Toronto student number 1000000000.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/uoft_student_id
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/uoft_utorid/output
+  name: Detect UTORid (University of Toronto Login)
+  description: Required acceptance case for Canadian Institutional Identifiers (FIPPA).
+  phase: output
+  content: UTORid smith123.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/uoft_utorid
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/uoft_tcard/output
+  name: Detect TCard Number (University of Toronto Campus ID)
+  description: Required acceptance case for Canadian Institutional Identifiers (FIPPA).
+  phase: output
+  content: TCard number 1234567890123456.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/uoft_tcard
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule

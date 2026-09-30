@@ -1,0 +1,95 @@
+id: eu-ai-act-art5-manipulation/eu_ai_act_art5_manipulation
+name: EU AI Act Art5 Manipulation
+description: Art. 5.1(a) — Blocks subliminal manipulation, deceptive AI techniques, and covert behavioral
+  influence
+stages:
+- input
+detector:
+  ref: text/conditions
+  version: 1.0.0
+  parameters:
+    detector_options:
+      match:
+        all:
+        - not:
+            contains:
+            - research on
+            - study on
+            - academic
+            - thesis on
+            - explain
+            - what is
+            - article 5
+            - prohibited by
+            - detect dark pattern
+            - audit for
+            - compliance monitoring
+            - ethical review
+            - how to prevent
+            - how to avoid
+        - any:
+          - within_sentence:
+              all:
+              - contains:
+                - build
+                - create
+                - develop
+                - design
+                - implement
+                - deploy
+                - launch
+                - use
+                - manipulate
+                - influence
+                - persuade
+                - nudge
+                - coerce
+                - exploit
+                - target
+                - embed
+                - inject
+                - insert
+              - keywords:
+                - subliminal
+                - subliminal message
+                - subliminal advertising
+                - subliminal technique
+                - subliminal signal
+                - subliminal stimulus
+                - subliminal perception
+                - subliminal cue
+                - subconscious
+                - subconscious manipulation
+                - subconscious influence
+                - subconscious persuasion
+                - below conscious awareness
+                - behavior manipulation
+                - behavioral manipulation
+                - behavioral distortion
+                - manipulative design
+                - dark pattern
+                - deceptive pattern
+                - deceptive design
+                - coercive design
+                - impair decision
+                - distort decision
+                - undermine autonomy
+                - override consent
+                - bypass rational
+          - keywords:
+            - subliminal manipulation system
+            - subliminal advertising system
+            - covert behavioral manipulation
+            - subconscious manipulation tool
+            - deceptive ai manipulation
+            - dark pattern ai system
+on_match:
+  action: reject
+  replacement: null
+runtime_adapter:
+  binding_id: eu-ai-act-art5-manipulation
+  implementation_rule_id: eu_ai_act_art5_manipulation
+metadata:
+  taxonomy_ids:
+  - TALI-BUSINESS-POLICY
+risk_level: low

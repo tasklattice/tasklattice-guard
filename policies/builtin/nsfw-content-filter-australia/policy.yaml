@@ -1,0 +1,55 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: nsfw-content-filter-australia
+  name: NSFW Content Filter (Australia)
+  description: Blocks profanity, sexual content, NSFW requests, self-harm content, and child safety violations
+    using English and Australian-specific slang. Protects against inappropriate content including sexual
+    solicitation, explicit content, Australian profanity, self-harm, and content involving minors.
+  source: built_in
+  version: 1.95.0
+  tags:
+  - namespace: protection
+    value: content_safety
+    label: Content safety
+    source: declared
+  - namespace: guardrail_category
+    value: content_safety
+    label: Content Safety
+    source: declared
+  - namespace: jurisdiction
+    value: au
+    label: Australia
+    source: declared
+  - namespace: rail
+    value: input
+    label: Input rail
+    source: derived
+  - namespace: implementation
+    value: category
+    label: Category
+    source: derived
+  safety_level: balanced
+  output_delivery: window_buffered
+parameters: []
+rules:
+- rules/nsfw-content-filter-english-harm_toxic_abuse.yaml
+- rules/nsfw-content-filter-australian-harm_toxic_abuse_au.yaml
+- rules/nsfw-self-harm-filter-harmful_self_harm.yaml
+- rules/nsfw-child-safety-filter-harmful_child_safety.yaml
+- rules/nsfw-racial-bias-filter-bias_racial.yaml
+tests:
+- tests/acceptance.yaml
+resources:
+- resources/nsfw-content-filter-english-harm_toxic_abuse-keywords.yaml
+- resources/nsfw-content-filter-australian-harm_toxic_abuse_au-keywords.yaml
+- resources/nsfw-self-harm-filter-harmful_self_harm-keywords.yaml
+- resources/nsfw-child-safety-filter-harmful_child_safety-identifiers.yaml
+- resources/nsfw-child-safety-filter-harmful_child_safety-conditions.yaml
+- resources/nsfw-child-safety-filter-harmful_child_safety-always_block.yaml
+- resources/nsfw-child-safety-filter-harmful_child_safety-exceptions.yaml
+- resources/nsfw-racial-bias-filter-bias_racial-identifiers.yaml
+- resources/nsfw-racial-bias-filter-bias_racial-conditions.yaml
+- resources/nsfw-racial-bias-filter-bias_racial-always_block.yaml
+- resources/nsfw-racial-bias-filter-bias_racial-exceptions.yaml

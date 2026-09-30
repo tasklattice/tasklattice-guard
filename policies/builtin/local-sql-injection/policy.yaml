@@ -1,0 +1,38 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: local-sql-injection
+  name: SQL injection patterns
+  description: Local SQL injection signatures. These are content checks, not a replacement for parameterized
+    queries or database authorization.
+  source: built_in
+  version: 2.0.0
+  tags:
+  - namespace: protection
+    value: application_injection
+    label: Code & application injection
+    source: declared
+  - namespace: guardrail_category
+    value: agentic_security
+    label: Agentic Security
+    source: declared
+  - namespace: collection
+    value: focused-protection
+    label: Focused protection
+    source: declared
+  safety_level: balanced
+  output_delivery: full_buffered
+parameters: []
+rules:
+- rules/sql-injection-blocker-blocked-word-1.yaml
+- rules/sql-injection-blocker-blocked-word-2.yaml
+- rules/sql-injection-blocker-blocked-word-3.yaml
+- rules/sql-injection-blocker-blocked-word-4.yaml
+- rules/sql-injection-blocker-blocked-word-5.yaml
+- rules/sql-injection-blocker-blocked-word-6.yaml
+- rules/sql-injection-blocker-blocked-word-7.yaml
+- rules/sql-injection-blocker-blocked-word-8.yaml
+tests:
+- tests/acceptance.yaml
+- tests/regression.yaml

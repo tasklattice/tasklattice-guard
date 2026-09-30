@@ -1,0 +1,56 @@
+id: category/bias_gender
+name: Bias Gender
+description: Detects gender-based discriminatory language, stereotypes, and biased content
+stages:
+- input
+- output
+detector:
+  ref: text/conditions
+  version: 1.0.0
+  parameters:
+    detector_options:
+      match:
+        all:
+        - not:
+            contains:
+            - gender equality
+            - gender diversity
+            - gender studies
+            - gender gap
+            - gender discrimination
+            - combat gender
+            - address gender
+            - research shows
+            - study found
+            - gender identity
+            - gender expression
+            - transgender
+            - gender neutral
+            - women's rights
+            - women's health
+            - men's health
+            - gender bias
+            - gender equity
+        - keywords:
+          - women
+          - woman
+          - men
+          - man
+          - female
+          - females
+          - male
+          - males
+          - girl
+          - girls
+          - boy
+          - boys
+on_match:
+  action: reject
+  replacement: null
+runtime_adapter:
+  binding_id: bias_gender
+  implementation_rule_id: bias_gender
+metadata:
+  taxonomy_ids:
+  - TALI-SOCIAL-HARM-DISCRIMINATION
+risk_level: medium

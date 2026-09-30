@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: pattern/passport_germany
+name: Passport (Germany)
+description: German passport numbers (9 alphanumeric, no vowels)
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b[CFGHJKLMNPRTVWXYZ0-9]{9}\b
+on_match:
+  action: redact
+  replacement: '[passport_germany_REDACTED]'
+runtime_adapter:
+  binding_id: local-passport-formats
+  implementation_rule_id: passport_germany
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-PII
+risk_level: medium

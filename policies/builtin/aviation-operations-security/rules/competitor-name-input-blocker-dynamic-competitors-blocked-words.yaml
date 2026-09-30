@@ -1,0 +1,22 @@
+id: competitor-name-input-blocker/dynamic-competitors-blocked-words
+name: Competitors Blocked Words
+description: Resolved from reviewed Policy parameters.
+stages:
+- input
+detector:
+  ref: text/keyword
+  version: 1.0.0
+  parameters:
+    detector_options:
+      terms:
+        parameter: competitors
+on_match:
+  action: reject
+  replacement: null
+runtime_adapter:
+  binding_id: competitor-name-input-blocker
+  implementation_rule_id: dynamic-competitors-blocked-words
+metadata:
+  taxonomy_ids:
+  - TALI-BUSINESS-POLICY-OFF-TOPIC
+risk_level: low

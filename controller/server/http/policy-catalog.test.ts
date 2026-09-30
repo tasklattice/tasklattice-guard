@@ -45,11 +45,12 @@ describe("Policy catalog HTTP compatibility", () => {
   it("serves the normalized collection and a Policy detail", async () => {
     const app = appWithSession({ user: { id: "member-1", role: "user" } });
     const listResponse = await app.request("/api/v1/policies");
-    const collection = await listResponse.json() as { count: number; items: Array<{ id: string; test_count: number }> };
+    const collection = await listResponse.json() as { count: number; items: Array<{ id: string; source: string; test_count: number }> };
 
     expect(listResponse.status).toBe(200);
-    expect(collection.count).toBe(71);
-    expect(collection.items).toHaveLength(71);
+    expect(collection.count).toBe(PolicyCatalog.load(config.policyCatalogDir).list().length);
+    expect(collection.items).toHaveLength(collection.count);
+    expect(collection.items.filter(item => item.source === "built_in")).toHaveLength(71);
     expect(collection.items.some((item) => ["mas-ai-risk-management", "singapore-financial-conduct"].includes(item.id))).toBe(false);
     expect(collection.items.find((item) => item.id === "pattern-matching")?.test_count).toBeGreaterThan(0);
 

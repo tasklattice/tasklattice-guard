@@ -1,0 +1,49 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: nsfw-content-filter-basic
+  name: NSFW Content Filter (Basic)
+  description: Basic NSFW content filtering for English only. Blocks profanity, sexual content, slurs,
+    solicitation, explicit requests, self-harm content, and child safety violations. Suitable for most
+    applications requiring content moderation.
+  source: built_in
+  version: 1.95.0
+  tags:
+  - namespace: protection
+    value: content_safety
+    label: Content safety
+    source: declared
+  - namespace: guardrail_category
+    value: content_safety
+    label: Content Safety
+    source: declared
+  - namespace: rail
+    value: input
+    label: Input rail
+    source: derived
+  - namespace: implementation
+    value: category
+    label: Category
+    source: derived
+  safety_level: balanced
+  output_delivery: window_buffered
+parameters: []
+rules:
+- rules/nsfw-content-filter-english-only-harm_toxic_abuse.yaml
+- rules/nsfw-self-harm-filter-basic-harmful_self_harm.yaml
+- rules/nsfw-child-safety-filter-basic-harmful_child_safety.yaml
+- rules/nsfw-racial-bias-filter-basic-bias_racial.yaml
+tests:
+- tests/acceptance.yaml
+resources:
+- resources/nsfw-content-filter-english-only-harm_toxic_abuse-keywords.yaml
+- resources/nsfw-self-harm-filter-basic-harmful_self_harm-keywords.yaml
+- resources/nsfw-child-safety-filter-basic-harmful_child_safety-identifiers.yaml
+- resources/nsfw-child-safety-filter-basic-harmful_child_safety-conditions.yaml
+- resources/nsfw-child-safety-filter-basic-harmful_child_safety-always_block.yaml
+- resources/nsfw-child-safety-filter-basic-harmful_child_safety-exceptions.yaml
+- resources/nsfw-racial-bias-filter-basic-bias_racial-identifiers.yaml
+- resources/nsfw-racial-bias-filter-basic-bias_racial-conditions.yaml
+- resources/nsfw-racial-bias-filter-basic-bias_racial-always_block.yaml
+- resources/nsfw-racial-bias-filter-basic-bias_racial-exceptions.yaml

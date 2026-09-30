@@ -1,0 +1,118 @@
+id: airline-brand-protection-filter/airline_brand_protection
+name: Airline Brand Protection
+description: Prevents AI from generating fake incident reports, unauthorized airline statements, or reputation-damaging
+  content
+stages:
+- output
+detector:
+  ref: text/conditions
+  version: 1.0.0
+  parameters:
+    detector_options:
+      match:
+        all:
+        - not:
+            contains:
+            - how safe is
+            - safety record
+            - safety rating
+            - what is the baggage
+            - historical
+            - aviation history
+            - customer review
+            - customer service
+            - feedback
+            - improve
+            - complaint resolution
+        - any:
+          - within_sentence:
+              all:
+              - contains:
+                - airline
+                - carrier
+                - airways
+                - flight
+                - flights
+                - emirates
+                - etihad
+                - qatar airways
+              - keywords:
+                - crashed
+                - crash landing
+                - emergency landing
+                - engine failure
+                - engine fire
+                - depressurization
+                - hull breach
+                - mayday
+                - mid-air collision
+                - near miss
+                - fatality
+                - fatalities
+                - dead passengers
+                - casualties
+                - official statement
+                - spokesperson said
+                - press release
+                - confirms
+                - announces
+                - announced today
+                - breaking news
+                - just in
+                - breaking
+                - statement from
+                - scandal
+                - cover up
+                - coverup
+                - lawsuit
+                - class action
+                - mistreatment
+                - safety violation
+                - whistleblower
+                - banned
+                - grounded fleet
+                - recall
+                - boycott
+                - worst airline
+                - unsafe
+                - dangerous
+                - negligence
+                - consider etihad
+                - try qatar
+                - switch to
+                - better value
+                - better product
+                - best product
+                - caught up
+                - competitors have
+                - recommend qatar
+                - recommend etihad
+                - consider switching
+                - crew roster
+                - crew schedule
+                - crew list
+                - pilot names
+                - gate assignment
+                - cabin crew
+          - keywords:
+            - plane crash
+            - flight crashed
+            - mid-air collision
+            - passengers dead
+            - confirms fatalities
+            - safety scandal
+            - fleet grounded
+            - crew roster
+            - crew schedule
+            - pilot names
+            - gate assignment
+on_match:
+  action: reject
+  replacement: null
+runtime_adapter:
+  binding_id: airline-brand-protection-filter
+  implementation_rule_id: airline_brand_protection
+metadata:
+  taxonomy_ids:
+  - TALI-BUSINESS-POLICY
+risk_level: low

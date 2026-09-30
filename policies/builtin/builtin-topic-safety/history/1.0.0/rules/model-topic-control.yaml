@@ -1,0 +1,19 @@
+id: model/topic-control
+name: Topic boundary judge
+description: Redirect input outside the configured topic boundary.
+stages:
+- input
+detector:
+  ref: model/classifier
+  version: 1.0.0
+  parameters:
+    profile: topic-classification
+on_match:
+  action: redirect
+runtime_adapter:
+  binding_id: topic_control
+  implementation_rule_id: topic_control
+metadata:
+  taxonomy_ids:
+  - TALI-BUSINESS-POLICY-OFF-TOPIC
+risk_level: low

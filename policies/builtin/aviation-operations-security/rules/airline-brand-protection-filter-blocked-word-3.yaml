@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: airline-brand-protection-filter/blocked-word-3
+name: '{{brand_name}} crash landing'
+description: Fake incident
+stages:
+- output
+detector:
+  ref: text/keyword
+  version: 1.0.0
+  parameters:
+    keywords:
+    - - '{{brand_name}} crash landing'
+      - medium
+on_match:
+  action: reject
+  replacement: null
+runtime_adapter:
+  binding_id: airline-brand-protection-filter
+  implementation_rule_id: blocked-word-3
+metadata:
+  taxonomy_ids:
+  - TALI-BUSINESS-POLICY
+risk_level: low

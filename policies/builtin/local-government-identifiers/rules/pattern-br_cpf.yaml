@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: pattern/br_cpf
+name: CPF - Brazilian Personal Tax ID (Formatted)
+description: Detects Brazilian CPF numbers (XXX.XXX.XXX-XX or XXX.XXX.XXX/XX format)
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \d{3}\.\d{3}\.\d{3}(-|/)\d{2}
+on_match:
+  action: redact
+  replacement: '[br_cpf_REDACTED]'
+runtime_adapter:
+  binding_id: local-government-identifiers
+  implementation_rule_id: br_cpf
+metadata:
+  taxonomy_ids:
+  - TALI-BUSINESS-POLICY
+risk_level: low

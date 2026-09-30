@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: protected-class-information/age_discrimination
+name: Age-Related Terms (Protected Class)
+description: Detects age-related terms - protected under ECOA for applicants 62+
+stages:
+- input
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b(elderly|senior\s+citizens?|seniors?|old\s+age|aged\s+\d+|retirees?|retired|pensioners?|baby\s+boomers?|boomers?|geriatric|over\s+the\s+hill|too\s+old|too\s+young|young\s+person|millennials?|gen[-
+      ]?z|junior|age\s+discrimination|ageism|years?\s+old|\d+\s*years?\s*old|over\s+\d+|under\s+\d+|older\s+workers?|older\s+employees?|older\s+candidates?|in\s+their\s+\d{2}s?|date\s+of\s+birth|DOB|birth\s*date|born\s+in\s+\d{4}|age\s+\d{2,3})\b
+on_match:
+  action: redact
+  replacement: '[PROTECTED_CLASS_INFO_REDACTED]'
+runtime_adapter:
+  binding_id: protected-class-information
+  implementation_rule_id: age_discrimination
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-SENSITIVE-ATTRIBUTE
+risk_level: medium

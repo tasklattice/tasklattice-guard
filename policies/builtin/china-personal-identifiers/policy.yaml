@@ -1,0 +1,42 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: china-personal-identifiers
+  name: China personal identifiers
+  description: Local redaction for selected China mainland resident ID, mobile and labelled UnionPay card
+    patterns. This is bounded data-loss screening, not identification, consent management, sensitive-personal-information
+    governance, or PIPL compliance.
+  source: built_in
+  version: 1.0.0
+  tags:
+  - namespace: protection
+    value: privacy
+    label: Privacy & sensitive information
+    source: declared
+  - namespace: guardrail_category
+    value: pii_detection
+    label: PII Detection
+    source: declared
+  - namespace: collection
+    value: china-mainland
+    label: China mainland runtime controls
+    source: declared
+  - namespace: jurisdiction
+    value: cn
+    label: China mainland
+    source: declared
+  - namespace: framework
+    value: pipl-cn
+    label: PIPL (China)
+    source: declared
+  safety_level: balanced
+  output_delivery: full_buffered
+parameters: []
+rules:
+- rules/cn-personal-information-resident-identity-card.yaml
+- rules/cn-personal-information-mainland-mobile.yaml
+- rules/cn-personal-information-unionpay-card.yaml
+tests:
+- tests/acceptance.yaml
+- tests/regression.yaml

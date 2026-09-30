@@ -1,0 +1,225 @@
+# yaml-language-server: $schema=../../../schemas/tests.schema.json
+- id: rule-sql-injection-blocker/blocked-word-1-acceptance/input
+  name: Trigger DROP TABLE
+  description: Proves that the published keyword implementation for DROP TABLE activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: DROP TABLE'
+  expected_decision: block
+  covered_rule_ids:
+  - sql-injection-blocker/blocked-word-1
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-sql-injection-blocker/blocked-word-1-acceptance/output
+  name: Trigger DROP TABLE
+  description: Proves that the published keyword implementation for DROP TABLE activates
+    this Rule.
+  phase: output
+  content: 'Acceptance sample: DROP TABLE'
+  expected_decision: block
+  covered_rule_ids:
+  - sql-injection-blocker/blocked-word-1
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-sql-injection-blocker/blocked-word-2-acceptance/input
+  name: Trigger DELETE FROM
+  description: Proves that the published keyword implementation for DELETE FROM activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: DELETE FROM'
+  expected_decision: block
+  covered_rule_ids:
+  - sql-injection-blocker/blocked-word-2
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-sql-injection-blocker/blocked-word-2-acceptance/output
+  name: Trigger DELETE FROM
+  description: Proves that the published keyword implementation for DELETE FROM activates
+    this Rule.
+  phase: output
+  content: 'Acceptance sample: DELETE FROM'
+  expected_decision: block
+  covered_rule_ids:
+  - sql-injection-blocker/blocked-word-2
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-sql-injection-blocker/blocked-word-3-acceptance/input
+  name: Trigger INSERT INTO
+  description: Proves that the published keyword implementation for INSERT INTO activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: INSERT INTO'
+  expected_decision: block
+  covered_rule_ids:
+  - sql-injection-blocker/blocked-word-3
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-sql-injection-blocker/blocked-word-3-acceptance/output
+  name: Trigger INSERT INTO
+  description: Proves that the published keyword implementation for INSERT INTO activates
+    this Rule.
+  phase: output
+  content: 'Acceptance sample: INSERT INTO'
+  expected_decision: block
+  covered_rule_ids:
+  - sql-injection-blocker/blocked-word-3
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-sql-injection-blocker/blocked-word-4-acceptance/input
+  name: Trigger UNION SELECT
+  description: Proves that the published keyword implementation for UNION SELECT activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: UNION SELECT'
+  expected_decision: block
+  covered_rule_ids:
+  - sql-injection-blocker/blocked-word-4
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-sql-injection-blocker/blocked-word-4-acceptance/output
+  name: Trigger UNION SELECT
+  description: Proves that the published keyword implementation for UNION SELECT activates
+    this Rule.
+  phase: output
+  content: 'Acceptance sample: UNION SELECT'
+  expected_decision: block
+  covered_rule_ids:
+  - sql-injection-blocker/blocked-word-4
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-sql-injection-blocker/blocked-word-5-acceptance/input
+  name: Trigger OR 1=1
+  description: Proves that the published keyword implementation for OR 1=1 activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: OR 1=1'
+  expected_decision: block
+  covered_rule_ids:
+  - sql-injection-blocker/blocked-word-5
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-sql-injection-blocker/blocked-word-5-acceptance/output
+  name: Trigger OR 1=1
+  description: Proves that the published keyword implementation for OR 1=1 activates
+    this Rule.
+  phase: output
+  content: 'Acceptance sample: OR 1=1'
+  expected_decision: block
+  covered_rule_ids:
+  - sql-injection-blocker/blocked-word-5
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-sql-injection-blocker/blocked-word-6-acceptance/input
+  name: Trigger '; --
+  description: Proves that the published keyword implementation for '; -- activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: ''; --'
+  expected_decision: block
+  covered_rule_ids:
+  - sql-injection-blocker/blocked-word-6
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-sql-injection-blocker/blocked-word-6-acceptance/output
+  name: Trigger '; --
+  description: Proves that the published keyword implementation for '; -- activates
+    this Rule.
+  phase: output
+  content: 'Acceptance sample: ''; --'
+  expected_decision: block
+  covered_rule_ids:
+  - sql-injection-blocker/blocked-word-6
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-sql-injection-blocker/blocked-word-7-acceptance/input
+  name: Trigger 1=1; --
+  description: Proves that the published keyword implementation for 1=1; -- activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: 1=1; --'
+  expected_decision: block
+  covered_rule_ids:
+  - sql-injection-blocker/blocked-word-7
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-sql-injection-blocker/blocked-word-7-acceptance/output
+  name: Trigger 1=1; --
+  description: Proves that the published keyword implementation for 1=1; -- activates
+    this Rule.
+  phase: output
+  content: 'Acceptance sample: 1=1; --'
+  expected_decision: block
+  covered_rule_ids:
+  - sql-injection-blocker/blocked-word-7
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-sql-injection-blocker/blocked-word-8-acceptance/input
+  name: Trigger SELECT * FROM
+  description: Proves that the published keyword implementation for SELECT * FROM
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: SELECT * FROM'
+  expected_decision: block
+  covered_rule_ids:
+  - sql-injection-blocker/blocked-word-8
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-sql-injection-blocker/blocked-word-8-acceptance/output
+  name: Trigger SELECT * FROM
+  description: Proves that the published keyword implementation for SELECT * FROM
+    activates this Rule.
+  phase: output
+  content: 'Acceptance sample: SELECT * FROM'
+  expected_decision: block
+  covered_rule_ids:
+  - sql-injection-blocker/blocked-word-8
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule

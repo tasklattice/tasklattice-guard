@@ -1,0 +1,49 @@
+- id: accept/code-execution
+  name: Block an executable Python request
+  description: Required acceptance case for executable fenced code.
+  phase: input
+  content: 'Please run this code:
+
+    ```python
+
+    print(''hello'')
+
+    ```'
+  expected_decision: block
+  covered_rule_ids:
+  - code/execution
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/code-execution/output
+  name: Block an executable Python request
+  description: Required acceptance case for executable fenced code.
+  phase: output
+  content: 'Please run this code:
+
+    ```python
+
+    print(''hello'')
+
+    ```'
+  expected_decision: block
+  covered_rule_ids:
+  - code/execution
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/explicit-execution
+  name: Block an explicit execution request
+  phase: input
+  content: Please run the tests
+  expected_decision: block
+  covered_rule_ids:
+  - code/execution-request
+  kind: rule_acceptance
+  scope: rule
+  description: A plain execution request is detected independently of its handling
+    action.

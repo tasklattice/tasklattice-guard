@@ -1,0 +1,49 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: builtin-topic-safety
+  name: Model Topic Control
+  description: Configure independent allowlist and denylist Rules. Denied tasks take precedence; Intention
+    analysis helps fill these Policy settings.
+  source: built_in
+  version: 2.0.0
+  tags:
+  - namespace: protection
+    value: business_topics
+    label: Business topics
+    source: declared
+  - namespace: guardrail_category
+    value: topic_control
+    label: Topic Control
+    source: declared
+parameters:
+- name: allowed_topics
+  label: Allowed topics
+  kind: textarea
+  required: false
+  default: ''
+  description: Topics for the Allowlist Rule, one per line.
+- name: denied_topics
+  label: Denied topics
+  kind: textarea
+  required: false
+  default: ''
+  description: Topics for the Denylist Rule, one per line.
+- name: topic_mode
+  label: Allowlist mode
+  kind: text
+  required: false
+  default: permissive
+  description: strict or permissive. Applies only when the Allowlist Rule is enabled.
+rules:
+- rules/topic-denylist.yaml
+- rules/topic-allowlist.yaml
+tests:
+- tests/acceptance.yaml
+testing:
+  parameters:
+    allowed_topics: Customer support
+    denied_topics: Investment advice
+history:
+- history/1.0.0

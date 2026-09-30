@@ -1,0 +1,130 @@
+id: eu-ai-act-art5-biometric-profiling/eu_ai_act_art5_biometric_profiling
+name: EU AI Act Art5 Biometric Profiling
+description: Art. 5.1(d)(g)(h) — Blocks biometric categorization, facial recognition databases, and predictive
+  profiling
+stages:
+- input
+detector:
+  ref: text/conditions
+  version: 1.0.0
+  parameters:
+    detector_options:
+      match:
+        all:
+        - not:
+            contains:
+            - research on
+            - study on
+            - academic
+            - thesis on
+            - explain
+            - what is
+            - article 5
+            - prohibited by
+            - audit for bias
+            - detect discrimination
+            - compliance monitoring
+            - ethical review
+            - fairness testing
+            - movie
+            - game
+            - forensic
+            - missing person
+            - targeted search
+        - any:
+          - within_sentence:
+              all:
+              - contains:
+                - build
+                - create
+                - develop
+                - design
+                - implement
+                - score
+                - rank
+                - rate
+                - assess
+                - evaluate
+                - classify
+                - profile
+                - grade
+                - categorize
+                - recognize
+                - detect
+                - identify
+                - infer
+                - deduce
+                - predict
+                - determine
+                - analyze
+                - scrape
+                - collect
+                - harvest
+              - keywords:
+                - race from face
+                - race from facial
+                - race from biometric
+                - race from image
+                - race from photo
+                - ethnicity from face
+                - ethnicity from facial
+                - ethnicity from biometric
+                - ethnicity from image
+                - ethnicity from photo
+                - racial classification
+                - ethnic classification
+                - political views from
+                - political opinions from
+                - political affiliation from
+                - political belief from
+                - political orientation from
+                - sexual orientation from
+                - sexual preference from
+                - religion from biometric
+                - religion from face
+                - religious beliefs from
+                - religious affiliation from
+                - faith from biometric
+                - facial recognition database
+                - facial image database
+                - face scraping
+                - facial image scraping
+                - facial recognition training data
+                - biometric database from internet
+                - biometric database from cctv
+                - crime prediction
+                - criminal behavior
+                - criminal prediction
+                - recidivism
+                - recidivism prediction
+                - crime risk score
+                - criminal risk assessment
+                - crime probability
+                - criminal profiling
+                - employee performance prediction
+                - worker performance prediction
+                - termination prediction
+                - attrition prediction from behavior
+          - keywords:
+            - infer race from face
+            - predict race from facial
+            - infer ethnicity from biometric
+            - predict political opinions from
+            - biometric categorization system
+            - predictive policing
+            - predictive policing algorithm
+            - crime prediction algorithm
+            - recidivism prediction
+            - facial recognition database scraping
+            - untargeted facial image scraping
+            - mass biometric surveillance
+on_match:
+  action: reject
+  replacement: null
+runtime_adapter:
+  binding_id: eu-ai-act-art5-biometric-profiling
+  implementation_rule_id: eu_ai_act_art5_biometric_profiling
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-BIOMETRIC
+risk_level: high

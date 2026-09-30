@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: pattern/br_rg
+name: RG - Brazilian National Identity Card (SP, RJ, MG)
+description: Detects Brazilian RG identity card numbers (common pattern for SP, RJ, MG states)
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b\d{1,2}\.\d{3}\.\d{3}-[\dXx]\b
+on_match:
+  action: redact
+  replacement: '[br_rg_REDACTED]'
+runtime_adapter:
+  binding_id: pattern-matching
+  implementation_rule_id: br_rg
+metadata:
+  taxonomy_ids:
+  - TALI-BUSINESS-POLICY
+risk_level: low

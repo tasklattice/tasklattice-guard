@@ -1,0 +1,115 @@
+id: category/denied_medical_advice
+name: Denied Medical Advice
+description: Detects requests for medical advice, diagnosis, or treatment recommendations that should
+  be provided by licensed healthcare professionals
+stages:
+- input
+- output
+detector:
+  ref: text/conditions
+  version: 1.0.0
+  parameters:
+    detector_options:
+      match:
+        all:
+        - not:
+            contains:
+            - medical history
+            - medical research
+            - medical studies
+            - according to research
+            - research shows
+            - studies show
+            - consult a doctor
+            - consult your doctor
+            - see a doctor
+            - see your doctor
+            - talk to your doctor
+            - speak with your doctor
+            - ask your doctor
+            - visit your doctor
+            - contact your doctor
+            - call your doctor
+            - medical professional
+            - healthcare provider
+            - healthcare professional
+            - seek medical attention
+            - seek medical advice
+            - emergency medical
+            - call emergency
+            - call 911
+            - go to hospital
+            - visit hospital
+            - go to the emergency
+            - medical emergency
+            - general information
+            - general health information
+            - educational purposes
+            - for educational purposes
+            - not medical advice
+            - this is not medical advice
+            - not a substitute for
+            - medical documentation
+            - medical terminology
+            - medical terms
+            - anatomy and physiology
+            - medical science
+            - public health
+            - health education
+            - wellness information
+            - preventive care
+            - healthy lifestyle
+            - medical disclaimer
+            - how does
+            - what is
+            - what are
+            - explain
+            - definition of
+            - means
+            - cancer research
+            - diabetes research
+            - mental health awareness
+        - keywords:
+          - diagnose
+          - diagnosis
+          - doctor
+          - physician
+          - medication
+          - medicine
+          - prescription
+          - prescribe
+          - drug
+          - drugs
+          - treatment
+          - treat
+          - cure
+          - surgery
+          - symptoms
+          - symptom
+          - disease
+          - illness
+          - condition
+          - cancer
+          - diabetes
+          - depression
+          - anxiety
+          - adhd
+          - bipolar
+          - psychiatric
+          - vaccine
+          - vaccination
+          - dosage
+          - dose
+          - injury
+          - treatment
+          - injection
+on_match:
+  action: reject
+  replacement: null
+runtime_adapter:
+  binding_id: denied_medical_advice
+  implementation_rule_id: denied_medical_advice
+metadata:
+  taxonomy_ids:
+  - TALI-PROFESSIONAL-ADVICE-MEDICAL
+risk_level: medium

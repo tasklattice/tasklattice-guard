@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: aviation-ops-data-protection/blocked-word-4
+name: pilot roster
+description: Pilot scheduling data
+stages:
+- input
+detector:
+  ref: text/keyword
+  version: 1.0.0
+  parameters:
+    keywords:
+    - - pilot roster
+      - medium
+on_match:
+  action: reject
+  replacement: null
+runtime_adapter:
+  binding_id: aviation-ops-data-protection
+  implementation_rule_id: blocked-word-4
+metadata:
+  taxonomy_ids:
+  - TALI-BUSINESS-POLICY
+risk_level: low

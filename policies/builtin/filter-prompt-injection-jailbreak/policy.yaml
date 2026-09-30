@@ -1,0 +1,44 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: filter-prompt-injection-jailbreak
+  name: Prompt Injection Jailbreak
+  description: Detects jailbreak attempts including DAN, roleplay attacks, and safety bypass requests
+  source: built_in
+  version: 1.95.0
+  tags:
+  - namespace: protection
+    value: attacks_and_abuse
+    label: Attacks & abuse
+    source: declared
+  - namespace: collection
+    value: local-content-filter
+    label: Local Content Filter
+    source: declared
+  - namespace: guardrail_category
+    value: jailbreak_protection
+    label: Jailbreak Protection
+    source: declared
+  - namespace: implementation
+    value: category
+    label: Category
+    source: derived
+  - namespace: rail
+    value: input
+    label: Input rail
+    source: derived
+  - namespace: rail
+    value: output
+    label: Output rail
+    source: derived
+  safety_level: balanced
+  output_delivery: window_buffered
+parameters: []
+rules:
+- rules/category-prompt_injection_jailbreak.yaml
+tests:
+- tests/acceptance.yaml
+resources:
+- resources/category-prompt_injection_jailbreak-conditions.yaml
+- resources/category-prompt_injection_jailbreak-always_block.yaml

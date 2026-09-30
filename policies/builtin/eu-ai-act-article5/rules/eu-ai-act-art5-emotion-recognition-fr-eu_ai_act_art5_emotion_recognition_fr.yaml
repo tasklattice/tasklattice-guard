@@ -1,0 +1,124 @@
+id: eu-ai-act-art5-emotion-recognition-fr/eu_ai_act_art5_emotion_recognition_fr
+name: EU AI Act Art5 Emotion Recognition Fr
+description: Art. 5.1(f) — Bloque la reconnaissance des émotions et l'analyse des sentiments au travail
+  et dans l'éducation
+stages:
+- input
+detector:
+  ref: text/conditions
+  version: 1.0.0
+  parameters:
+    detector_options:
+      match:
+        all:
+        - not:
+            contains:
+            - recherche sur
+            - étude sur
+            - académique
+            - thèse sur
+            - mémoire sur
+            - expliquer
+            - qu'est-ce que
+            - c'est quoi
+            - article 5
+            - interdit par
+            - prohibé par
+            - surveillance de conformité
+            - contrôle de conformité
+            - examen éthique
+            - dans un film
+            - dans le film
+            - jeu vidéo
+            - retour client
+            - médical
+            - raison de sécurité
+            - somnolence du conducteur
+            - fatigue du pilote
+        - any:
+          - within_sentence:
+              all:
+              - contains:
+                - construire
+                - créer
+                - développer
+                - concevoir
+                - implémenter
+                - mettre en place
+                - déployer
+                - installer
+                - reconnaître
+                - détecter
+                - identifier
+                - inférer
+                - déduire
+                - prédire
+                - déterminer
+                - analyser
+                - mesurer
+                - surveiller
+                - monitorer
+                - évaluer
+                - classifier
+                - repérer
+                - déceler
+              - keywords:
+                - émotion des employés
+                - émotion des salariés
+                - humeur des employés
+                - humeur des salariés
+                - sentiment des employés
+                - sentiment des salariés
+                - état émotionnel employés
+                - état émotionnel salariés
+                - ressenti des employés
+                - ressenti des salariés
+                - émotion des travailleurs
+                - émotion du personnel
+                - humeur des travailleurs
+                - sentiment des travailleurs
+                - état émotionnel travailleurs
+                - émotion au travail
+                - émotions au travail
+                - humeur au travail
+                - sentiment au travail
+                - émotion au bureau
+                - humeur au bureau
+                - émotion des étudiants
+                - émotion des élèves
+                - humeur des étudiants
+                - sentiment des étudiants
+                - sentiment des élèves
+                - état émotionnel étudiants
+                - ressenti des étudiants
+                - émotion en classe
+                - émotions en classe
+                - humeur en classe
+                - sentiment en classe
+                - émotion à l'école
+                - émotion en cours
+                - émotion des candidats
+                - sentiment des candidats
+                - émotion en entretien
+                - sentiment en entretien
+          - keywords:
+            - reconnaissance d'émotions au travail
+            - détection d'émotions des employés
+            - détection d'émotions des salariés
+            - reconnaissance d'émotions en classe
+            - détection d'émotions des étudiants
+            - détection d'émotions des élèves
+            - surveillance des émotions au travail
+            - suivi des émotions des employés
+            - système d'analyse du sentiment des employés
+            - surveillance des émotions en classe
+on_match:
+  action: reject
+  replacement: null
+runtime_adapter:
+  binding_id: eu-ai-act-art5-emotion-recognition-fr
+  implementation_rule_id: eu_ai_act_art5_emotion_recognition_fr
+metadata:
+  taxonomy_ids:
+  - TALI-BUSINESS-POLICY
+risk_level: low

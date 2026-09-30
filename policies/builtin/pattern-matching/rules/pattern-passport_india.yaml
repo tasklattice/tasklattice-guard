@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: pattern/passport_india
+name: Passport (India)
+description: Indian passport numbers (1 letter + 7 digits)
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b[A-Z][0-9]{7}\b
+on_match:
+  action: redact
+  replacement: '[passport_india_REDACTED]'
+runtime_adapter:
+  binding_id: pattern-matching
+  implementation_rule_id: passport_india
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-PII
+risk_level: medium

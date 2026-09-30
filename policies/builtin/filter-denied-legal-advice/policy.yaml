@@ -1,0 +1,45 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: filter-denied-legal-advice
+  name: Denied Legal Advice
+  description: Detects requests for legal advice, representation, or legal strategy that should be provided
+    by licensed attorneys
+  source: built_in
+  version: 1.95.0
+  tags:
+  - namespace: protection
+    value: business_rules
+    label: Business & industry rules
+    source: declared
+  - namespace: collection
+    value: local-content-filter
+    label: Local Content Filter
+    source: declared
+  - namespace: guardrail_category
+    value: content_safety
+    label: Content Safety
+    source: declared
+  - namespace: implementation
+    value: category
+    label: Category
+    source: derived
+  - namespace: rail
+    value: input
+    label: Input rail
+    source: derived
+  - namespace: rail
+    value: output
+    label: Output rail
+    source: derived
+  safety_level: balanced
+  output_delivery: window_buffered
+parameters: []
+rules:
+- rules/category-denied_legal_advice.yaml
+tests:
+- tests/acceptance.yaml
+resources:
+- resources/category-denied_legal_advice-keywords.yaml
+- resources/category-denied_legal_advice-exceptions.yaml

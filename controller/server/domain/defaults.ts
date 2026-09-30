@@ -63,7 +63,7 @@ export function defaultGuardrailDraft(policies: readonly PolicyDto[]): Guardrail
     if (!policy) throw new Error(`Default Guardrail Policy ${policyId} is missing from the Runner catalog.`);
     if (!policy.rules.length) throw new Error(`Default Guardrail Policy ${policyId} has no Rules.`);
     if (policy.protection.execution !== "local" || policy.protection.modelCapabilities.length
-      || policy.rules.some((rule) => rule.form === "colang_flow")) {
+      || policy.rules.some((rule) => rule.implementation.execution !== "local")) {
       throw new Error(`Default Guardrail Policy ${policyId} must execute locally without a Model or an unverified custom flow.`);
     }
     return {

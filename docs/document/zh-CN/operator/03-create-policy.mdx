@@ -1,10 +1,33 @@
 ---
 id: "operator-create-policy"
 title: "自建 Policy：把业务要求变成可执行检查"
-summary: "理解 Colang Flow、Rail、Action 和 Rule 如何协作，再在 Policy Studio 创建可复用的检查能力。"
+summary: "从业务要求拆分 Rule，选择检测器、检查阶段和处理方式，再用测试证明预期行为。"
 order: 2
 ---
 先问一个问题：现有 Policy 只是参数不合适，还是缺少新的检测行为？前者通常在 Guardrail Binding 中调整参数或 Rule；只有确实缺少可复用能力时才自建 Policy。例如多个应用都需要判断“要求泄露系统提示词”这一意图，就适合把检测做成一项 Policy，而不是分别写进每个 Router。
+
+<a id="operator-policy-declarative" />
+
+## 声明式 Policy：先定义规则，再选择如何检查
+
+内建 Policy 和自建 Policy 都使用目录包：一条 Policy 一个目录，一条 Rule 一个 YAML 文件，由 `policy.yaml` 列出规则顺序、测试与资源，统一编译生成运行目录。开发一条 Policy 时，按 **用途 → 多条 Rule → 检测器和参数 → 命中后处理 → 测试** 组织，不需要先学习 Colang。
+
+例如“客服回复不得泄露客户编号，也不得出现内部密钥标签”，可以拆成两条 Output Rule：第一条用 `text/regex@1.0.0` 检查 `CUS-123456` 这样的固定格式，命中时遮盖；第二条用 `text/keyword@1.0.0` 检查 `INTERNAL_SECRET`，命中时阻断。每条 Rule 独立声明风险级别。规则按顺序执行，下一条读取前一条处理后的文本，阻断会结束检查。
+
+Rule 用例用 `scope: rule` 单独验证检测；组合场景用 `scope: policy` 验证完整顺序。测试可以断言 Decision、替换后的精确文本和实际命中的 Rule ID。每条 Rule 的每个阶段都必须有验收用例。
+
+完整示例位于 `policies/examples/customer-information`。在仓库根目录可以运行：
+
+```bash
+npm run policies:validate -- policies/examples/customer-information
+npm run policies:test -- policies/examples/customer-information
+npm run policies:import -- policies/examples/customer-information
+npm run policies:export -- policies/custom/customer-information --output /tmp/customer-information.zip
+```
+
+导入只接受 `source: custom`，不能覆盖平台内建 ID。目录或 ZIP 包导入后写入 `policies/custom/<id>/`；重新构建并启动 Controller 后，可在 Policy Library 查看并绑定到 Guardrail。**导入不是发布**：还需要完成 Guardrail 测试与发布及路由发布。新版内容须使用新版本号，已发布 Guardrail 保留自己的规则快照。
+
+这条开发路径支持本地检测器的目录／ZIP 导入导出；`npm run policies:regression` 运行全部源包回归，模型用例明确标记为未执行，需在已配置模型的环境中另行测试。新建模型检测器和控制台 YAML 编辑尚未接入。下面介绍的 Policy Studio 仍是当前可编程编辑流程，它的导入按钮使用可编程策略 JSON 包。两种包不能混用。
 
 <a id="operator-policy-mechanism" />
 
@@ -19,7 +42,7 @@ order: 2
 3. **Action Reference 固定可调用能力的名称和版本**。Flow 可以调用 Action Catalog 中已经注册的检测器或模型能力；自建 Policy 不能上传任意 Python 来扩展 Runner。参数在 Guardrail Binding 中解析并随版本固定，不能由生产请求临时改写。
 4. **Test Case 证明预期行为**。正常订单回复应放行；包含客户编号的回复应按配置转换或阻断；还要覆盖相似但不应命中的编号、Action 超时等边界。测试写明 Rail、期望 Decision 和覆盖的 Rule ID。
 
-因此，一条自建 Rule 的执行关系是 **Policy Version → Rule（Input／Output Rail 上的 Flow）→ 已注册 Action／模型给出检测结果 → 命中后处理 → Decision**。Policy 定义默认处理，Guardrail Binding 可按应用覆盖；Endpoint 与 Router 决定哪些请求使用哪个 Guardrail Version。完整概念链见[Policy、Rule、实现与处理](#glossary-definition)。Catalog 有 `regex`、`keyword` 等[六种 Rule 实现](#term-rule-implementation)，但 Policy Studio 的自建可编程路径使用 `colang_flow`，不要把六种形式误认为这里可以直接选择的六种编辑器。
+因此，一条自建 Rule 的执行关系是 **Policy Version → Rule（Input／Output Rail 上的 Flow）→ 已注册 Action／模型给出检测结果 → 命中后处理 → Decision**。Policy 定义默认处理，Guardrail Binding 可按应用覆盖；Endpoint 与 Router 决定哪些请求使用哪个 Guardrail Version。完整概念链见[Policy、Rule、实现与处理](#glossary-definition)。声明式目录包统一使用[检测器引用](#term-rule-implementation)；这里描述的 Policy Studio 可编程路径仍以 Flow 作为实现入口。两种入口不能混用导入格式。
 
 <a id="operator-policy-create" />
 

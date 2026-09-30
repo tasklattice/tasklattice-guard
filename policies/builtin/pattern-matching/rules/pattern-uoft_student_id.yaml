@@ -1,0 +1,24 @@
+id: pattern/uoft_student_id
+name: Student/Employee Number (University of Toronto)
+description: Detects University of Toronto student and employee numbers (10-digit,
+  prefix '10'). Subject to Ontario FIPPA.
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b10\d{8}\b
+    context_expression: \b(?:student\s*id\s*number|student\s*number|employee\s*id\s*number|employee\s*number|student\s*id|employee\s*id|utorid|uoft\s*id|university\s*of\s*toronto|u\s*of\s*t)\b
+    context_max_gap_words: 1
+on_match:
+  action: redact
+  replacement: '[uoft_student_id_REDACTED]'
+runtime_adapter:
+  binding_id: pattern-matching
+  implementation_rule_id: uoft_student_id
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-PII
+risk_level: medium

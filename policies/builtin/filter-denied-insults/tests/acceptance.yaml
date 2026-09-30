@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=../../../schemas/tests.schema.json
+- id: accept/denied_insults
+  name: Detect Insults & Personal Attacks
+  description: Required acceptance case for the imported local category.
+  phase: input
+  content: 'Please review this request: idiot.'
+  expected_decision: block
+  covered_rule_ids:
+  - category/denied_insults
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/denied_insults/output
+  name: Detect Insults & Personal Attacks
+  description: Required acceptance case for the imported local category.
+  phase: output
+  content: 'Please review this request: idiot.'
+  expected_decision: block
+  covered_rule_ids:
+  - category/denied_insults
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule

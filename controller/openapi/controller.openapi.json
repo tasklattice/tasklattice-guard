@@ -419,7 +419,7 @@
             ]
           },
           "detail": {
-            "$ref": "#/components/schemas/getPoliciesByIdTestRunsLatestResponse2ResultsItemTraceItem"
+            "$ref": "#/components/schemas/getPoliciesResponseItemsItemRulesItemDetector_options"
           },
           "id": {
             "type": "string"
@@ -1740,7 +1740,7 @@
             "type": "boolean"
           },
           "plan": {
-            "$ref": "#/components/schemas/getPoliciesByIdTestRunsLatestResponse2ResultsItemTraceItem"
+            "$ref": "#/components/schemas/getPoliciesResponseItemsItemRulesItemDetector_options"
           },
           "runtimeProfile": {
             "type": "string"
@@ -1823,7 +1823,7 @@
             "type": "string"
           },
           "plan": {
-            "$ref": "#/components/schemas/getPoliciesByIdTestRunsLatestResponse2ResultsItemTraceItem"
+            "$ref": "#/components/schemas/getPoliciesResponseItemsItemRulesItemDetector_options"
           },
           "prompts": {
             "items": {
@@ -2312,7 +2312,7 @@
           },
           "findings": {
             "items": {
-              "$ref": "#/components/schemas/getPoliciesByIdTestRunsLatestResponse2ResultsItemTraceItem"
+              "$ref": "#/components/schemas/getPoliciesResponseItemsItemRulesItemDetector_options"
             },
             "type": "array"
           },
@@ -2409,7 +2409,7 @@
           },
           "trace": {
             "items": {
-              "$ref": "#/components/schemas/getPoliciesByIdTestRunsLatestResponse2ResultsItemTraceItem"
+              "$ref": "#/components/schemas/getPoliciesResponseItemsItemRulesItemDetector_options"
             },
             "type": "array"
           },
@@ -3530,7 +3530,7 @@
           },
           "trace": {
             "items": {
-              "$ref": "#/components/schemas/getPoliciesByIdTestRunsLatestResponse2ResultsItemTraceItem"
+              "$ref": "#/components/schemas/getPoliciesResponseItemsItemRulesItemDetector_options"
             },
             "type": "array"
           }
@@ -3552,12 +3552,6 @@
           "matched_rule_ids",
           "trace"
         ],
-        "type": "object"
-      },
-      "getPoliciesByIdTestRunsLatestResponse2ResultsItemTraceItem": {
-        "additionalProperties": {
-          "description": "Application-defined JSON value."
-        },
         "type": "object"
       },
       "getPoliciesResponse": {
@@ -3593,22 +3587,14 @@
           "description": {
             "type": "string"
           },
-          "effects": {
+          "detectors": {
             "items": {
               "type": "string"
             },
             "type": "array"
           },
-          "forms": {
+          "effects": {
             "items": {
-              "enum": [
-                "category",
-                "code_block",
-                "colang_flow",
-                "competitor_intent",
-                "keyword",
-                "regex"
-              ],
               "type": "string"
             },
             "type": "array"
@@ -3709,7 +3695,7 @@
           "parameters",
           "rails",
           "effects",
-          "forms",
+          "detectors",
           "rules",
           "test_cases",
           "test_count",
@@ -3727,6 +3713,12 @@
           "description": {
             "type": "string"
           },
+          "detectors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "draft_revision": {
             "type": "number"
           },
@@ -3742,13 +3734,6 @@
                 "reject",
                 "rewrite"
               ],
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "forms": {
-            "items": {
-              "const": "colang_flow",
               "type": "string"
             },
             "type": "array"
@@ -3856,7 +3841,7 @@
           "parameters",
           "rails",
           "effects",
-          "forms",
+          "detectors",
           "rules",
           "test_cases",
           "test_count",
@@ -4496,6 +4481,12 @@
           "description": {
             "type": "string"
           },
+          "detectors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "effects": {
             "items": {
               "enum": [
@@ -4508,13 +4499,6 @@
                 "reject",
                 "rewrite"
               ],
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "forms": {
-            "items": {
-              "const": "colang_flow",
               "type": "string"
             },
             "type": "array"
@@ -4611,7 +4595,7 @@
           "parameters",
           "rails",
           "effects",
-          "forms",
+          "detectors",
           "rules",
           "test_cases",
           "test_count",
@@ -4677,6 +4661,12 @@
           "description": {
             "type": "string"
           },
+          "detector": {
+            "$ref": "#/components/schemas/getPoliciesResponseItemsItem2Published_versionsItemRulesItemDetector"
+          },
+          "detector_options": {
+            "$ref": "#/components/schemas/getPoliciesResponseItemsItem2Published_versionsItemRulesItemDetector_options"
+          },
           "effect": {
             "enum": [
               "clarify",
@@ -4696,10 +4686,6 @@
           },
           "expression": {
             "type": "null"
-          },
-          "form": {
-            "const": "colang_flow",
-            "type": "string"
           },
           "id": {
             "type": "string"
@@ -4762,19 +4748,29 @@
               }
             ]
           },
+          "rule_expansion": {
+            "type": "null"
+          },
           "severity_threshold": {
             "type": "null"
+          },
+          "validators": {
+            "items": false,
+            "type": "array"
           }
         },
         "required": [
           "id",
           "name",
           "description",
-          "form",
+          "detector",
           "effect",
           "risk_severity",
           "rails",
           "implementation",
+          "validators",
+          "detector_options",
+          "rule_expansion",
           "expression",
           "context_expression",
           "redaction",
@@ -4786,6 +4782,24 @@
           "exceptions",
           "phrase_patterns"
         ],
+        "type": "object"
+      },
+      "getPoliciesResponseItemsItem2Published_versionsItemRulesItemDetector": {
+        "properties": {
+          "ref": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref",
+          "version"
+        ],
+        "type": "object"
+      },
+      "getPoliciesResponseItemsItem2Published_versionsItemRulesItemDetector_options": {
         "type": "object"
       },
       "getPoliciesResponseItemsItem2Published_versionsItemRulesItemImplementation": {
@@ -4802,11 +4816,11 @@
           "engine": {
             "type": "string"
           },
-          "flow_name": {
+          "execution": {
+            "const": "programmable",
             "type": "string"
           },
-          "form": {
-            "const": "colang_flow",
+          "flow_name": {
             "type": "string"
           },
           "implementation_rule_id": {
@@ -4815,7 +4829,7 @@
         },
         "required": [
           "engine",
-          "form",
+          "execution",
           "binding_id",
           "implementation_rule_id",
           "detector",
@@ -5404,6 +5418,12 @@
           "description": {
             "type": "string"
           },
+          "detector": {
+            "$ref": "#/components/schemas/getPoliciesResponseItemsItemRulesItemDetector"
+          },
+          "detector_options": {
+            "$ref": "#/components/schemas/getPoliciesResponseItemsItemRulesItemDetector_options"
+          },
           "effect": {
             "type": "string"
           },
@@ -5422,17 +5442,6 @@
                 "type": "string"
               }
             ]
-          },
-          "form": {
-            "enum": [
-              "category",
-              "code_block",
-              "colang_flow",
-              "competitor_intent",
-              "keyword",
-              "regex"
-            ],
-            "type": "string"
           },
           "id": {
             "type": "string"
@@ -5521,6 +5530,16 @@
               }
             ]
           },
+          "rule_expansion": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/getPoliciesResponseItemsItemRulesItemRule_expansion"
+              }
+            ]
+          },
           "severity_threshold": {
             "anyOf": [
               {
@@ -5536,17 +5555,36 @@
               "type": "string"
             },
             "type": "array"
+          },
+          "validators": {
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/getPoliciesResponseItemsItemRulesItemValidatorsItem"
+                },
+                {
+                  "$ref": "#/components/schemas/getPoliciesResponseItemsItemRulesItemValidatorsItem2"
+                },
+                {
+                  "$ref": "#/components/schemas/getPoliciesResponseItemsItemRulesItemValidatorsItem3"
+                }
+              ]
+            },
+            "type": "array"
           }
         },
         "required": [
           "id",
           "name",
           "description",
-          "form",
+          "detector",
           "effect",
           "risk_severity",
           "rails",
           "implementation",
+          "validators",
+          "detector_options",
+          "rule_expansion",
           "expression",
           "context_expression",
           "context_max_gap_words",
@@ -5561,6 +5599,27 @@
           "phrase_patterns",
           "taxonomy_ids"
         ],
+        "type": "object"
+      },
+      "getPoliciesResponseItemsItemRulesItemDetector": {
+        "properties": {
+          "ref": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref",
+          "version"
+        ],
+        "type": "object"
+      },
+      "getPoliciesResponseItemsItemRulesItemDetector_options": {
+        "additionalProperties": {
+          "description": "Application-defined JSON value."
+        },
         "type": "object"
       },
       "getPoliciesResponseItemsItemRulesItemImplementation": {
@@ -5591,6 +5650,14 @@
           "engine": {
             "type": "string"
           },
+          "execution": {
+            "enum": [
+              "local",
+              "platform",
+              "programmable"
+            ],
+            "type": "string"
+          },
           "flow_name": {
             "anyOf": [
               {
@@ -5601,29 +5668,101 @@
               }
             ]
           },
-          "form": {
-            "enum": [
-              "category",
-              "code_block",
-              "colang_flow",
-              "competitor_intent",
-              "keyword",
-              "regex"
-            ],
-            "type": "string"
-          },
           "implementation_rule_id": {
             "type": "string"
           }
         },
         "required": [
           "engine",
-          "form",
+          "execution",
           "binding_id",
           "implementation_rule_id",
           "detector",
           "flow_name",
           "action_name"
+        ],
+        "type": "object"
+      },
+      "getPoliciesResponseItemsItemRulesItemRule_expansion": {
+        "properties": {
+          "action_field": {
+            "type": "string"
+          },
+          "parameter": {
+            "type": "string"
+          },
+          "replacement_field": {
+            "type": "string"
+          },
+          "text_field": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "parameter",
+          "text_field",
+          "action_field",
+          "replacement_field"
+        ],
+        "type": "object"
+      },
+      "getPoliciesResponseItemsItemRulesItemValidatorsItem": {
+        "properties": {
+          "format": {
+            "const": "YYYYMMDD",
+            "type": "string"
+          },
+          "start": {
+            "type": "number"
+          },
+          "type": {
+            "const": "date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "start",
+          "format"
+        ],
+        "type": "object"
+      },
+      "getPoliciesResponseItemsItemRulesItemValidatorsItem2": {
+        "properties": {
+          "alphabet": {
+            "type": "string"
+          },
+          "check_characters": {
+            "type": "string"
+          },
+          "type": {
+            "const": "weighted_checksum",
+            "type": "string"
+          },
+          "weights": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "type",
+          "alphabet",
+          "weights",
+          "check_characters"
+        ],
+        "type": "object"
+      },
+      "getPoliciesResponseItemsItemRulesItemValidatorsItem3": {
+        "properties": {
+          "type": {
+            "const": "luhn",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
         ],
         "type": "object"
       },
@@ -7794,7 +7933,7 @@
         "properties": {
           "items": {
             "items": {
-              "$ref": "#/components/schemas/getPoliciesByIdTestRunsLatestResponse2ResultsItemTraceItem"
+              "$ref": "#/components/schemas/getPoliciesResponseItemsItemRulesItemDetector_options"
             },
             "type": "array"
           }
@@ -7978,7 +8117,7 @@
             "type": "string"
           },
           "metadata": {
-            "$ref": "#/components/schemas/getPoliciesByIdTestRunsLatestResponse2ResultsItemTraceItem"
+            "$ref": "#/components/schemas/getPoliciesResponseItemsItemRulesItemDetector_options"
           },
           "occurredAt": {
             "format": "date-time",
@@ -8180,7 +8319,7 @@
             "type": "string"
           },
           "metadata": {
-            "$ref": "#/components/schemas/getPoliciesByIdTestRunsLatestResponse2ResultsItemTraceItem"
+            "$ref": "#/components/schemas/getPoliciesResponseItemsItemRulesItemDetector_options"
           },
           "occurredAt": {
             "format": "date-time",
@@ -11269,7 +11408,7 @@
             "type": "string"
           },
           "plan": {
-            "$ref": "#/components/schemas/getPoliciesByIdTestRunsLatestResponse2ResultsItemTraceItem"
+            "$ref": "#/components/schemas/getPoliciesResponseItemsItemRulesItemDetector_options"
           },
           "runtimeProfile": {
             "type": "string"
@@ -13386,7 +13525,7 @@
       "postPlaygroundPathTestsResponse2": {
         "properties": {
           "body": {
-            "$ref": "#/components/schemas/getPoliciesByIdTestRunsLatestResponse2ResultsItemTraceItem"
+            "$ref": "#/components/schemas/getPoliciesResponseItemsItemRulesItemDetector_options"
           },
           "callId": {
             "type": "string"

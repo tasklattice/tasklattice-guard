@@ -259,8 +259,8 @@ async def test_default_validation_passes_all_reviewed_composition_cases(default_
     ).validate(envelope.validation_request)
     conflicts = [item for item in results if not item["passed"]]
     assert status == "passed", conflicts
-    assert metrics["total"] == len(cases) == 321
-    assert metrics["passed"] == 321
+    assert metrics["total"] == len(cases) == 336
+    assert metrics["passed"] == 336
     assert not conflicts
     assert all(case["required"] for case in cases)
     cases_by_id = {case["id"]: case for case in cases}

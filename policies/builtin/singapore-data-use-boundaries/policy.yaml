@@ -1,0 +1,43 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: singapore-data-use-boundaries
+  name: Singapore data-use boundaries
+  description: Local phrase checks for personal-data misuse, unsolicited contact and profiling requests.
+    Does not determine consent, cross-border legality or regulatory compliance.
+  source: built_in
+  version: 2.0.0
+  tags:
+  - namespace: protection
+    value: business_rules
+    label: Business & industry rules
+    source: declared
+  - namespace: guardrail_category
+    value: topic_control
+    label: Topic Control
+    source: declared
+  - namespace: collection
+    value: focused-protection
+    label: Focused protection
+    source: declared
+  - namespace: jurisdiction
+    value: singapore
+    label: Singapore
+    source: declared
+  safety_level: balanced
+  output_delivery: full_buffered
+parameters: []
+rules:
+- rules/sg-pdpa-personal-identifiers-sg_pdpa_personal_identifiers.yaml
+- rules/sg-pdpa-sensitive-data-sg_pdpa_sensitive_data.yaml
+- rules/sg-pdpa-do-not-call-sg_pdpa_do_not_call.yaml
+- rules/sg-pdpa-data-transfer-sg_pdpa_data_transfer.yaml
+- rules/sg-pdpa-profiling-automated-decisions-sg_pdpa_profiling_automated_decisions.yaml
+tests:
+- tests/acceptance.yaml
+- tests/regression.yaml
+resources:
+- resources/sg-pdpa-sensitive-data-sg_pdpa_sensitive_data-identifiers.yaml
+- resources/sg-pdpa-data-transfer-sg_pdpa_data_transfer-conditions.yaml
+- resources/sg-pdpa-profiling-automated-decisions-sg_pdpa_profiling_automated_decisions-conditions.yaml

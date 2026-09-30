@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: keyword/blocked-words
+name: Reviewed blocked words
+description: Matches the configured line-separated keyword list.
+stages:
+- input
+- output
+detector:
+  ref: text/keyword
+  version: 1.0.0
+  parameters:
+    keywords:
+    - - '{{blocked_words}}'
+      - medium
+on_match:
+  action: reject
+  replacement: '[KEYWORD_REDACTED]'
+runtime_adapter:
+  binding_id: keyword-blocking
+  implementation_rule_id: blocked-words
+metadata:
+  taxonomy_ids:
+  - TALI-BUSINESS-POLICY
+risk_level: low

@@ -1,0 +1,295 @@
+# yaml-language-server: $schema=../../../schemas/tests.schema.json
+- id: rule-airline-pnr-skywards-pii/airline_pnr-acceptance
+  name: Trigger Airline PNR / Booking Reference
+  description: Proves that the published regex implementation for Airline PNR / Booking
+    Reference activates this Rule.
+  phase: input
+  content: 'Acceptance sample: PNR AAAAAA'
+  expected_decision: transform
+  covered_rule_ids:
+  - airline-pnr-skywards-pii/airline_pnr
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-airline-pnr-skywards-pii/skywards_number-acceptance
+  name: Trigger Emirates Skywards / Frequent Flyer Number
+  description: Proves that the published regex implementation for Emirates Skywards
+    / Frequent Flyer Number activates this Rule.
+  phase: input
+  content: 'Acceptance sample: Skywards EK 111111111'
+  expected_decision: transform
+  covered_rule_ids:
+  - airline-pnr-skywards-pii/skywards_number
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-airline-passport-multinational/passport_us-acceptance
+  name: Trigger Passport (US)
+  description: Proves that the published regex implementation for Passport (US) activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: A00000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - airline-passport-multinational/passport_us
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-airline-passport-multinational/passport_uk-acceptance
+  name: Trigger Passport (UK)
+  description: Proves that the published regex implementation for Passport (UK) activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: 000000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - airline-passport-multinational/passport_uk
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-airline-passport-multinational/passport_germany-acceptance
+  name: Trigger Passport (Germany)
+  description: Proves that the published regex implementation for Passport (Germany)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: CCCCCCCCC'
+  expected_decision: transform
+  covered_rule_ids:
+  - airline-passport-multinational/passport_germany
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-airline-passport-multinational/passport_france-acceptance
+  name: Trigger Passport (France)
+  description: Proves that the published regex implementation for Passport (France)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: 00AA00000'
+  expected_decision: transform
+  covered_rule_ids:
+  - airline-passport-multinational/passport_france
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-airline-passport-multinational/passport_india-acceptance
+  name: Trigger Passport (India)
+  description: Proves that the published regex implementation for Passport (India)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: A0000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - airline-passport-multinational/passport_india
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-airline-passport-multinational/passport_china-acceptance
+  name: Trigger Passport (China)
+  description: Proves that the published regex implementation for Passport (China)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: E00000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - airline-passport-multinational/passport_china
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-airline-passport-multinational/passport_australia-acceptance
+  name: Trigger Passport (Australia)
+  description: Proves that the published regex implementation for Passport (Australia)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: A0000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - airline-passport-multinational/passport_australia
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-airline-passport-multinational/passport_japan-acceptance
+  name: Trigger Passport (Japan)
+  description: Proves that the published regex implementation for Passport (Japan)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: AA0000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - airline-passport-multinational/passport_japan
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-airline-passport-multinational/passport_canada-acceptance
+  name: Trigger Passport (Canada)
+  description: Proves that the published regex implementation for Passport (Canada)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: AA000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - airline-passport-multinational/passport_canada
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-airline-passport-multinational/passport_netherlands-acceptance
+  name: Trigger Passport (Netherlands)
+  description: Proves that the published regex implementation for Passport (Netherlands)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: AAAAAAAA0'
+  expected_decision: transform
+  covered_rule_ids:
+  - airline-passport-multinational/passport_netherlands
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-airline-passport-multinational/uae_emirates_id-acceptance
+  name: Trigger UAE Emirates ID
+  description: Proves that the published regex implementation for UAE Emirates ID
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: 784-1111-1111111-1'
+  expected_decision: transform
+  covered_rule_ids:
+  - airline-passport-multinational/uae_emirates_id
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-airline-payment-financial/credit_card-acceptance
+  name: Trigger Credit Card (Any)
+  description: Proves that the published regex implementation for Credit Card (Any)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: 4111 1111 1111 1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - airline-payment-financial/credit_card
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-airline-payment-financial/visa-acceptance
+  name: Trigger Credit Card (Visa)
+  description: Proves that the published regex implementation for Credit Card (Visa)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: 4111 1111 1111 1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - airline-payment-financial/visa
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-airline-payment-financial/mastercard-acceptance
+  name: Trigger Credit Card (Mastercard)
+  description: Proves that the published regex implementation for Credit Card (Mastercard)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: 5111 1111 1111 1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - airline-payment-financial/mastercard
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-airline-payment-financial/amex-acceptance
+  name: Trigger Credit Card (American Express)
+  description: Proves that the published regex implementation for Credit Card (American
+    Express) activates this Rule.
+  phase: input
+  content: 'Acceptance sample: 3411 111111 11111'
+  expected_decision: transform
+  covered_rule_ids:
+  - airline-payment-financial/amex
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-airline-payment-financial/iban-acceptance
+  name: Trigger IBAN (International Bank Account Number)
+  description: Proves that the published regex implementation for IBAN (International
+    Bank Account Number) activates this Rule.
+  phase: input
+  content: 'Acceptance sample: AA11AAAAAAAAAAA'
+  expected_decision: transform
+  covered_rule_ids:
+  - airline-payment-financial/iban
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-airline-contact-info-uae/email-acceptance
+  name: Trigger Email Address
+  description: Proves that the published regex implementation for Email Address activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: A@A.AA'
+  expected_decision: transform
+  covered_rule_ids:
+  - airline-contact-info-uae/email
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-airline-contact-info-uae/uae_phone-acceptance
+  name: Trigger Phone Number (UAE)
+  description: Proves that the published regex implementation for Phone Number (UAE)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: +971 2 111 1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - airline-contact-info-uae/uae_phone
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-airline-contact-info-uae/us_phone-acceptance
+  name: Trigger Phone Number (US)
+  description: Proves that the published regex implementation for Phone Number (US)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: +1 (000) 000 0000'
+  expected_decision: transform
+  covered_rule_ids:
+  - airline-contact-info-uae/us_phone
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule

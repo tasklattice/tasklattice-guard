@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: pattern/gender_sexual_orientation
+name: Gender & Sexual Orientation (Protected Class)
+description: Detects gender identity and sexual orientation terms - protected under fair lending regulations
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b(non-?binary|enby|genderqueer|genderfluid|gender-?fluid|agender|bigender|pangender|two-?spirit|trans(gender|sexual|masc|fem)?|cis(gender)?|intersex|MTF|FTM|AMAB|AFAB|assigned\s+(male|female)\s+at\s+birth|gay|lesbian|bisexual|pansexual|omnisexual|polysexual|asexual|aromantic|demisexual|heterosexual|homosexual|queer|LGBTQ\+?|LGBT\+?|LGBTQIA\+?|same-?sex|opposite-?sex|sexual\s+orientation|sexual\s+preference|gender\s+identity|sex\s+change|gender\s+reassignment|gender\s+confirmation|sexual\s+minority|he\/him|she\/her|they\/them|xe\/xem|ze\/zir|wom[ae]ns?|females?|males?)\b
+on_match:
+  action: redact
+  replacement: '[gender_sexual_orientation_REDACTED]'
+runtime_adapter:
+  binding_id: pattern-matching
+  implementation_rule_id: gender_sexual_orientation
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-SENSITIVE-ATTRIBUTE
+risk_level: medium

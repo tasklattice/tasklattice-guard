@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: protected-class-information/marital_family_status
+name: Marital & Family Status (Protected Class)
+description: Detects marital and family status terms - protected under ECOA
+stages:
+- input
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b(married|unmarried|single|divorced|separated|widowed|widow|widower|spouse|husband|wife|domestic\s+partner|civil\s+union|common[-
+      ]?law|marital\s+status|maiden\s+name|alimony|child\s+support|custody|pregnant|pregnancy|maternity|paternity|expecting|family\s+status|number\s+of\s+children|dependents|childless|child[-
+      ]?free|single\s+parent|single\s+mother|single\s+father|unwed|out\s+of\s+wedlock|illegitimate|family\s+planning|birth\s+control|fertility|IVF|adoption|adopted|foster\s+parent|guardian)\b
+on_match:
+  action: redact
+  replacement: '[PROTECTED_CLASS_INFO_REDACTED]'
+runtime_adapter:
+  binding_id: protected-class-information
+  implementation_rule_id: marital_family_status
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-SENSITIVE-ATTRIBUTE
+risk_level: medium

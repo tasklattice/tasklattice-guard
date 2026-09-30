@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: prompt-injection-blocker/blocked-word-6
+name: override your system prompt
+description: Prompt injection attempt
+stages:
+- input
+detector:
+  ref: text/keyword
+  version: 1.0.0
+  parameters:
+    keywords:
+    - - override your system prompt
+      - medium
+on_match:
+  action: reject
+  replacement: null
+runtime_adapter:
+  binding_id: prompt-injection-blocker
+  implementation_rule_id: blocked-word-6
+metadata:
+  taxonomy_ids:
+  - TALI-MODEL-SECURITY-PROMPT-INJECTION
+risk_level: high

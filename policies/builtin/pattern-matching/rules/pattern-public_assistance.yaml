@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: pattern/public_assistance
+name: Public Assistance Status (Protected Class)
+description: Detects public assistance terms - protected under ECOA
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b(welfare|public\s+assistance|food\s+stamps|SNAP|WIC|TANF|medicaid|section\s+8|housing\s+voucher|subsidized\s+housing|public\s+housing|government\s+benefits|social\s+services|unemployment\s+(benefits|insurance)|UI\s+benefits|EBT|benefit\s+recipient)\b
+on_match:
+  action: redact
+  replacement: '[public_assistance_REDACTED]'
+runtime_adapter:
+  binding_id: pattern-matching
+  implementation_rule_id: public_assistance
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-SENSITIVE-ATTRIBUTE
+risk_level: medium

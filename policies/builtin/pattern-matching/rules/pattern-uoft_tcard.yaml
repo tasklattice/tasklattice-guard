@@ -1,0 +1,24 @@
+id: pattern/uoft_tcard
+name: TCard Number (University of Toronto Campus ID)
+description: Detects University of Toronto TCard campus ID card numbers (16-digit).
+  Context keywords are critical to distinguish from payment card numbers.
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b\d{16}\b
+    context_expression: \b(?:tcard\s*number|t-card\s*number|tcard|t-card|campus\s*card|campus\s*id|university\s*card)\b
+    context_max_gap_words: 1
+on_match:
+  action: redact
+  replacement: '[uoft_tcard_REDACTED]'
+runtime_adapter:
+  binding_id: pattern-matching
+  implementation_rule_id: uoft_tcard
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-PII
+risk_level: medium

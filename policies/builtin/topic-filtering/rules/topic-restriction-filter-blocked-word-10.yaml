@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: topic-restriction-filter/blocked-word-10
+name: sports scores
+description: 'Off-topic: sports'
+stages:
+- input
+detector:
+  ref: text/keyword
+  version: 1.0.0
+  parameters:
+    keywords:
+    - - sports scores
+      - medium
+on_match:
+  action: reject
+  replacement: null
+runtime_adapter:
+  binding_id: topic-restriction-filter
+  implementation_rule_id: blocked-word-10
+metadata:
+  taxonomy_ids:
+  - TALI-BUSINESS-POLICY-OFF-TOPIC
+risk_level: low

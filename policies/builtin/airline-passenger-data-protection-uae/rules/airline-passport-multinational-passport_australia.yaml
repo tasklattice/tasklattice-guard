@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: airline-passport-multinational/passport_australia
+name: Passport (Australia)
+description: Australian passport numbers (1 letter + 7 digits)
+stages:
+- input
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b[A-Z][0-9]{7}\b
+on_match:
+  action: redact
+  replacement: '[passport_australia_REDACTED]'
+runtime_adapter:
+  binding_id: airline-passport-multinational
+  implementation_rule_id: passport_australia
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-PII
+risk_level: medium

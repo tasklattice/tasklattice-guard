@@ -571,7 +571,7 @@ export type PolicyTag = {
 
 export type PolicyRuleImplementation = {
   engine: string;
-  form: "regex" | "keyword" | "category" | "code_block" | "competitor_intent" | "colang_flow";
+  execution: "local" | "platform" | "programmable";
   binding_id: string;
   implementation_rule_id: string;
   detector: string | null;
@@ -583,11 +583,14 @@ export type PolicyRule = {
   id: string;
   name: string;
   description: string;
-  form: "regex" | "keyword" | "category" | "code_block" | "competitor_intent" | "colang_flow";
+  detector: { ref: string; version: string };
   effect: string;
   risk_severity?: RiskSeverity | null;
   rails: NativeRailType[];
   implementation: PolicyRuleImplementation;
+  detector_options: Record<string, unknown>;
+  rule_expansion: { parameter: string; text_field: string; action_field: string; replacement_field: string } | null;
+  validators: import("../../shared/pattern-validator").PatternValidator[];
   expression: string | null;
   context_expression: string | null;
   context_max_gap_words?: number | null;
@@ -638,7 +641,7 @@ export type Policy = {
   parameters: PolicyParameter[];
   rails: NativeRailType[];
   effects: string[];
-  forms: PolicyRule["form"][];
+  detectors: string[];
   rules: PolicyRule[];
   test_cases: PolicyTestCase[];
   test_count: number;

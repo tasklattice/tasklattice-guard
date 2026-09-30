@@ -1,0 +1,33 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: local-australian-tax-health-identifiers
+  name: Australian tax & health identifiers
+  description: Recognize TFN, ABN and Medicare formats, including spaced TFNs near tax context. Numeric
+    formats can overlap other identifiers; matching does not validate an identifier.
+  source: built_in
+  version: 2.0.0
+  tags:
+  - namespace: protection
+    value: privacy
+    label: Privacy & sensitive information
+    source: declared
+  - namespace: guardrail_category
+    value: pii_detection
+    label: PII Detection
+    source: declared
+  - namespace: collection
+    value: focused-protection
+    label: Focused protection
+    source: declared
+  safety_level: balanced
+  output_delivery: full_buffered
+parameters: []
+rules:
+- rules/au-pii-tax-identifiers-au_tfn.yaml
+- rules/au-pii-tax-identifiers-au_abn.yaml
+- rules/au-pii-tax-identifiers-au_medicare.yaml
+tests:
+- tests/acceptance.yaml
+- tests/regression.yaml

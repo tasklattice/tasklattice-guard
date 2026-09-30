@@ -1,0 +1,24 @@
+id: pattern/uoft_utorid
+name: UTORid (University of Toronto Login)
+description: Detects University of Toronto UTORid login identifiers (e.g. smithj12).
+  Context keywords are essential due to the generic format.
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b[a-z]{2,6}\d{1,4}\b
+    context_expression: \b(?:utorid|utoid|utor\s*id|uoft\s*login|university\s*of\s*toronto\s*login|acorn\s*login|acorn\s*portal|quercus\s*login|quercus\s*course|portal\s*login|weblogin|shibboleth)\b
+    context_max_gap_words: 1
+on_match:
+  action: redact
+  replacement: '[uoft_utorid_REDACTED]'
+runtime_adapter:
+  binding_id: local-government-identifiers
+  implementation_rule_id: uoft_utorid
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-PII
+risk_level: medium

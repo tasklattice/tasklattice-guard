@@ -1,0 +1,31 @@
+id: airline-off-topic-filter/airline_off_topic_restriction
+name: Airline Off Topic Restriction
+description: Inline keyword category bundled with this Policy.
+stages:
+- input
+detector:
+  ref: text/conditions
+  version: 1.0.0
+  parameters:
+    detector_options:
+      match:
+        keywords:
+        - write source code
+        - medical diagnosis
+        - legal advice
+        - investment advice
+        - political campaign
+        - cryptocurrency trading
+        - weapon instructions
+        - explicit adult content
+        - celebrity gossip
+on_match:
+  action: reject
+  replacement: null
+runtime_adapter:
+  binding_id: airline-off-topic-filter
+  implementation_rule_id: airline_off_topic_restriction
+metadata:
+  taxonomy_ids:
+  - TALI-BUSINESS-POLICY-OFF-TOPIC
+risk_level: low

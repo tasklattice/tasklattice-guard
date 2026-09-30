@@ -1,0 +1,143 @@
+id: claims-medical-advice-filter/claims_medical_advice
+name: Claims Medical Advice
+description: Detects medical advice requests while allowing legitimate claims-related medical terminology
+stages:
+- input
+detector:
+  ref: text/conditions
+  version: 1.0.0
+  parameters:
+    detector_options:
+      match:
+        all:
+        - not:
+            contains:
+            - does my plan cover
+            - is covered
+            - covered under
+            - coverage
+            - copay
+            - coinsurance
+            - deductible
+            - out-of-pocket
+            - in-network
+            - out-of-network
+            - formulary
+            - what does diagnosis code
+            - what does cpt code
+            - code mean
+            - code on my claim
+            - file a claim
+            - submit a claim
+            - claim was denied
+            - explanation of benefits
+            - eob
+            - how many visits
+            - benefit
+            - reimbursed
+            - wellness benefit
+            - preventive care
+            - maternity care
+            - health savings account
+            - hsa
+            - what documentation
+            - pre-certification
+            - referral
+            - provider
+            - find an in-network
+            - plan include
+            - plan allow
+            - plan benefits
+            - generic and brand-name
+        - any:
+          - regex: \b(?:should I|do you think|do you recommend)\b.{0,30}\b(?:take|stop|start|try|get|have|need|use)\b.{0,20}\b(?:medication|medicine|drug|surgery|treatment|therapy|vaccine|supplement)\b
+          - regex: \b(?:what|which)\b.{0,10}\b(?:treatment|medication|medicine|drug|therapy)\b.{0,15}\b(?:recommend|best|should|suggest)\b
+          - regex: \bis\b.{0,5}\b(?:my|this|the)\b.{0,20}\b(?:serious|dangerous|normal|concerning|worrying)\b
+          - within_sentence:
+              all:
+              - contains:
+                - should i
+                - do you think
+                - do you recommend
+                - what do you recommend
+                - recommend
+                - is it safe
+                - is my
+                - can you diagnose
+                - can you prescribe
+                - diagnose what
+                - best medicine
+                - best treatment
+                - what dosage
+                - what supplement
+                - what vaccine
+                - what natural remedies
+                - how long should i wait
+                - something i should worry
+              - keywords:
+                - symptoms
+                - condition
+                - diagnosis
+                - treatment
+                - medication
+                - medicine
+                - surgery
+                - pain
+                - injury
+                - cancer
+                - depression
+                - anxiety
+                - adhd
+                - blood pressure
+                - blood sugar
+                - prescription
+                - drug
+                - ibuprofen
+                - acetaminophen
+                - physical therapy
+                - chiropractic
+                - radiation
+                - chemotherapy
+                - migraines
+                - herniated disc
+                - side effects
+                - chest pain
+                - sprained
+                - vaccine
+                - exercise
+                - knee surgery
+                - lump
+                - test results
+          - keywords:
+            - what condition do you think i have
+            - can you diagnose
+            - diagnose what's wrong
+            - based on my symptoms
+            - is my injury serious
+            - need surgery
+            - stop taking my
+            - what dosage
+            - best medicine for
+            - indicate cancer
+            - signs of adhd
+            - can you prescribe
+            - should i go to the emergency room
+            - is it safe to combine
+            - blood sugar level of
+            - side effects i should expect
+            - should i use heat or ice
+            - what natural remedies
+            - what supplement should
+            - what vaccine should
+            - radiation therapy or chemotherapy better
+            - is it safe to combine these two medications
+on_match:
+  action: reject
+  replacement: null
+runtime_adapter:
+  binding_id: claims-medical-advice-filter
+  implementation_rule_id: claims_medical_advice
+metadata:
+  taxonomy_ids:
+  - TALI-PROFESSIONAL-ADVICE-MEDICAL
+risk_level: medium

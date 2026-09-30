@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: network-infrastructure-pii/ipv4
+name: IP Address (IPv4)
+description: Detects IPv4 addresses
+stages:
+- input
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b
+on_match:
+  action: redact
+  replacement: '[INTERNAL_IP_REDACTED]'
+runtime_adapter:
+  binding_id: network-infrastructure-pii
+  implementation_rule_id: ipv4
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-PII
+risk_level: medium

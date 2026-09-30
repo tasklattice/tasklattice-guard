@@ -2,15 +2,16 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { z } from "zod";
+import { patternValidatorSchema } from "../../shared/pattern-validator.js";
 import { riskSeverities } from "../../shared/security-severity.js";
 import { policyComplianceSchema, type PolicyCompliance } from "../../shared/policy-compliance.js";
 import { guardrailCategoryIds } from "../../shared/guardrail-catalog.js";
 import type { PolicyProtection } from "../../shared/protection-map.js";
 import { policyProtection, protectionContractsSchema, type ProtectionContracts } from "./protection.js";
-import { builtInPolicyCompliance } from "./compliance.js";
+import { builtInPolicyCompliance, customPolicyCompliance } from "./compliance.js";
 
 const railTypeSchema = z.enum(["input", "retrieval", "dialog", "execution", "output"]);
-const ruleFormSchema = z.enum(["regex", "keyword", "category", "code_block", "competitor_intent", "colang_flow"]);
+const detectorReferenceSchema = z.object({ ref: z.string().min(1), version: z.string().min(1) });
 const policyTagNamespaceSchema = z.enum([
   "protection",
   "guardrail_category",
@@ -42,7 +43,7 @@ const parameterSchema = z.object({
 });
 const implementationSchema = z.object({
   engine: z.string().min(1),
-  form: ruleFormSchema,
+  execution: z.enum(["local", "platform", "programmable"]),
   binding_id: z.string().min(1),
   implementation_rule_id: z.string().min(1),
   detector: z.string().nullable().default(null),
@@ -54,11 +55,14 @@ const ruleSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
   description: z.string(),
-  form: ruleFormSchema,
+  detector: detectorReferenceSchema,
   effect: z.string().min(1),
   risk_severity: z.enum(riskSeverities).nullable().default(null),
   rails: z.array(railTypeSchema),
   implementation: implementationSchema,
+  validators: z.array(patternValidatorSchema).default([]),
+  detector_options: z.record(z.string(), z.unknown()).default({}),
+  rule_expansion: z.object({ parameter: z.string(), text_field: z.string(), action_field: z.string(), replacement_field: z.string() }).nullable().default(null),
   expression: z.string().nullable().default(null),
   context_expression: z.string().nullable().default(null),
   context_max_gap_words: z.number().int().nonnegative().nullable().default(null),
@@ -120,7 +124,7 @@ export type PolicyDto = {
   parameters: PolicyParameter[];
   rails: Array<z.output<typeof railTypeSchema>>;
   effects: string[];
-  forms: Array<z.output<typeof ruleFormSchema>>;
+  detectors: string[];
   rules: PolicyRule[];
   test_cases: PolicyTestCase[];
   test_count: number;
@@ -137,6 +141,7 @@ export const POLICY_CATALOG_FILE_NAMES = [
   "focused_policies.json",
   "china_policies.json",
   "configurable_policies.json",
+  "custom_policies.json",
 ] as const;
 
 const RAIL_ORDER: PolicyDto["rails"] = ["input", "retrieval", "dialog", "execution", "output"];
@@ -186,6 +191,9 @@ export class PolicyCatalog {
     for (const fileName of POLICY_CATALOG_FILE_NAMES) {
       const path = join(directory, fileName);
       for (const policy of readPolicyAssets(path)) {
+        if (fileName === "custom_policies.json" && (policy.source !== "custom" || merged.has(policy.id) || contracts.nativePolicies[policy.id] || policy.compliance != null || policy.rules.some(rule => rule.implementation.execution !== "local"))) {
+          throw new Error(`Invalid imported Policy origin or identity: ${policy.id}`);
+        }
         // The focused local-filter collection intentionally replaces a legacy
         // definition when it reuses a public Policy ID.
         const normalized = normalizePolicy(policy, contracts, fileName);
@@ -217,7 +225,9 @@ function readPolicyAssets(path: string): PolicyAsset[] {
 }
 
 function normalizePolicy(policy: PolicyAsset, contracts: ProtectionContracts, sourceFile: string): PolicyDto {
-  const compliance = policyComplianceSchema.parse(policy.compliance ?? builtInPolicyCompliance(policy, sourceFile));
+  const compliance = policyComplianceSchema.parse(policy.source === "custom"
+    ? customPolicyCompliance(policy, "Policy package author")
+    : policy.compliance ?? builtInPolicyCompliance(policy, sourceFile));
   if (compliance) {
     if (compliance.policy_version !== policy.version) throw new Error(`Compliance version mismatch for ${policy.id}`);
     const ruleIds = new Set(policy.rules.map(rule => rule.id));
@@ -237,7 +247,7 @@ function normalizePolicy(policy: PolicyAsset, contracts: ProtectionContracts, so
 
   const configuredRails = new Set(policy.rules.flatMap((rule) => rule.rails));
   const effects = [...new Set(policy.rules.map((rule) => rule.effect))].sort();
-  const forms = [...new Set(policy.rules.map((rule) => rule.form))].sort();
+  const detectors = [...new Set(policy.rules.map((rule) => rule.detector.ref))].sort();
   return {
     implementation: "rules",
     id: policy.id,
@@ -250,7 +260,7 @@ function normalizePolicy(policy: PolicyAsset, contracts: ProtectionContracts, so
     parameters: policy.parameters,
     rails: RAIL_ORDER.filter((rail) => configuredRails.has(rail)),
     effects,
-    forms,
+    detectors,
     rules: policy.rules,
     test_cases: policy.test_cases,
     test_count: policy.test_cases.length,

@@ -1,0 +1,26 @@
+id: competitor-comparison-output-filter/dynamic-competitor-comparison-words
+name: Competitor Comparison Words
+description: Resolved from reviewed Policy parameters.
+stages:
+- output
+detector:
+  ref: text/keyword
+  version: 1.0.0
+  parameters:
+    detector_options:
+      terms:
+        parameter: competitors
+        templates:
+        - '{{item}} is better'
+        - '{{item}} vs {{brand_name}}'
+        - better than {{brand_name}}
+on_match:
+  action: reject
+  replacement: null
+runtime_adapter:
+  binding_id: competitor-comparison-output-filter
+  implementation_rule_id: dynamic-competitor-comparison-words
+metadata:
+  taxonomy_ids:
+  - TALI-BUSINESS-POLICY-OFF-TOPIC
+risk_level: low

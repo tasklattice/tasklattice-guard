@@ -1,0 +1,63 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: airline-passenger-data-protection-uae
+  name: Airline Passenger Data Protection (UAE)
+  description: Protects airline passenger PII including PNR/booking references, multi-national passport
+    numbers, frequent flyer (Skywards) numbers, payment cards, IBANs, Emirates ID, UAE phone numbers,
+    and email addresses. Designed for UAE-based airlines operating global routes.
+  source: built_in
+  version: 1.95.0
+  tags:
+  - namespace: protection
+    value: privacy
+    label: Privacy & sensitive information
+    source: declared
+  - namespace: guardrail_category
+    value: pii_detection
+    label: PII Detection
+    source: declared
+  - namespace: domain
+    value: aviation
+    label: Aviation
+    source: declared
+  - namespace: jurisdiction
+    value: uae
+    label: United Arab Emirates
+    source: declared
+  - namespace: rail
+    value: input
+    label: Input rail
+    source: derived
+  - namespace: implementation
+    value: regex
+    label: Regex
+    source: derived
+  safety_level: balanced
+  output_delivery: window_buffered
+parameters: []
+rules:
+- rules/airline-pnr-skywards-pii-airline_pnr.yaml
+- rules/airline-pnr-skywards-pii-skywards_number.yaml
+- rules/airline-passport-multinational-passport_us.yaml
+- rules/airline-passport-multinational-passport_uk.yaml
+- rules/airline-passport-multinational-passport_germany.yaml
+- rules/airline-passport-multinational-passport_france.yaml
+- rules/airline-passport-multinational-passport_india.yaml
+- rules/airline-passport-multinational-passport_china.yaml
+- rules/airline-passport-multinational-passport_australia.yaml
+- rules/airline-passport-multinational-passport_japan.yaml
+- rules/airline-passport-multinational-passport_canada.yaml
+- rules/airline-passport-multinational-passport_netherlands.yaml
+- rules/airline-passport-multinational-uae_emirates_id.yaml
+- rules/airline-payment-financial-credit_card.yaml
+- rules/airline-payment-financial-visa.yaml
+- rules/airline-payment-financial-mastercard.yaml
+- rules/airline-payment-financial-amex.yaml
+- rules/airline-payment-financial-iban.yaml
+- rules/airline-contact-info-uae-email.yaml
+- rules/airline-contact-info-uae-uae_phone.yaml
+- rules/airline-contact-info-uae-us_phone.yaml
+tests:
+- tests/acceptance.yaml

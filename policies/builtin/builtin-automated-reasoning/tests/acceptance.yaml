@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=../../../schemas/tests.schema.json
+- id: reasoning-output
+  name: Policy contradiction
+  description: Output contradicting the formal policy is rewritten.
+  phase: output
+  content: A response that contradicts the pinned policy.
+  expected_decision: transform
+  covered_rule_ids:
+  - model/automated-reasoning
+  kind: rule_acceptance
+  scope: rule

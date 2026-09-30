@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=../../../schemas/tests.schema.json
+- id: uscc-invalid-checksum
+  name: Do not redact an invalid organization-code checksum
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: input
+  content: 统一社会信用代码：91999999GUARD00002
+  expected_decision: allow
+  covered_rule_ids: []
+  group: Protection contract
+  kind: scenario
+  required: true
+  parameter_names: []
+- id: uscc-without-context
+  name: Do not redact an unlabelled organization code
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: output
+  content: 参考值 91999999GUARD00001
+  expected_decision: allow
+  covered_rule_ids: []
+  group: Protection contract
+  kind: scenario
+  required: true
+  parameter_names: []

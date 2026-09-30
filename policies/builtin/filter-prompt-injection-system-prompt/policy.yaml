@@ -1,0 +1,44 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: filter-prompt-injection-system-prompt
+  name: Prompt Injection System Prompt
+  description: Detects attempts to extract, reveal, or override system prompts and instructions
+  source: built_in
+  version: 1.95.0
+  tags:
+  - namespace: protection
+    value: attacks_and_abuse
+    label: Attacks & abuse
+    source: declared
+  - namespace: collection
+    value: local-content-filter
+    label: Local Content Filter
+    source: declared
+  - namespace: guardrail_category
+    value: agentic_security
+    label: Agentic Security
+    source: declared
+  - namespace: implementation
+    value: category
+    label: Category
+    source: derived
+  - namespace: rail
+    value: input
+    label: Input rail
+    source: derived
+  - namespace: rail
+    value: output
+    label: Output rail
+    source: derived
+  safety_level: balanced
+  output_delivery: window_buffered
+parameters: []
+rules:
+- rules/category-prompt_injection_system_prompt.yaml
+tests:
+- tests/acceptance.yaml
+resources:
+- resources/category-prompt_injection_system_prompt-conditions.yaml
+- resources/category-prompt_injection_system_prompt-always_block.yaml

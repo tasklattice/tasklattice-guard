@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: pattern/self_harm_suicide
+name: Self-Harm & Suicide
+description: Detects self-harm and suicide terminology - recommend human review
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b(suicid(e|al)|kill\s+myself|end\s+(my|it\s+all)|take\s+my\s+(own\s+)?life|don'?t\s+want\s+to\s+live|want\s+to\s+die|better\s+off\s+dead|no\s+reason\s+to\s+live|nothing\s+to\s+live\s+for|end\s+the\s+pain|self[-
+      ]?harm|cut(ting)?\s+myself|slit\s+(my\s+)?wrists|overdose|OD|hang\s+myself|jump\s+off|jump\s+from|bridge\s+jump|train\s+tracks|pills\s+to\s+die|lethal\s+dose|LD50|how\s+to\s+kill\s+(myself|yourself)|suicide\s+method|painless\s+death|exit\s+bag|helium\s+hood|suicide\s+note|goodbye\s+letter|final\s+letter|last\s+words|pro[-
+      ]?ana|pro[- ]?mia|thinspiration|self[- ]?starv(e|ation)|purging)\b
+on_match:
+  action: redact
+  replacement: '[self_harm_suicide_REDACTED]'
+runtime_adapter:
+  binding_id: local-risk-content-terms
+  implementation_rule_id: self_harm_suicide
+metadata:
+  taxonomy_ids:
+  - TALI-SELF-HARM
+risk_level: high

@@ -1,0 +1,113 @@
+# yaml-language-server: $schema=../../../schemas/tests.schema.json
+- id: rule-uae-data-protection-pii/uae_emirates_id-acceptance
+  name: Trigger UAE Emirates ID
+  description: Proves that the published regex implementation for UAE Emirates ID
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: 784-1111-1111111-1'
+  expected_decision: transform
+  covered_rule_ids:
+  - uae-data-protection-pii/uae_emirates_id
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-uae-data-protection-pii/uae_phone-acceptance
+  name: Trigger Phone Number (UAE)
+  description: Proves that the published regex implementation for Phone Number (UAE)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: +971 2 111 1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - uae-data-protection-pii/uae_phone
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-uae-data-protection-pii/email-acceptance
+  name: Trigger Email Address
+  description: Proves that the published regex implementation for Email Address activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: A@A.AA'
+  expected_decision: transform
+  covered_rule_ids:
+  - uae-data-protection-pii/email
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-uae-data-protection-pii/iban-acceptance
+  name: Trigger IBAN (International Bank Account Number)
+  description: Proves that the published regex implementation for IBAN (International
+    Bank Account Number) activates this Rule.
+  phase: input
+  content: 'Acceptance sample: AA11AAAAAAAAAAA'
+  expected_decision: transform
+  covered_rule_ids:
+  - uae-data-protection-pii/iban
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-uae-data-protection-pii/credit_card-acceptance
+  name: Trigger Credit Card (Any)
+  description: Proves that the published regex implementation for Credit Card (Any)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: 4111 1111 1111 1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - uae-data-protection-pii/credit_card
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-uae-data-protection-pii/uae_po_box-acceptance
+  name: Trigger UAE Po Box
+  description: Proves that the published regex implementation for UAE Po Box activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: P.O. Box 1'
+  expected_decision: transform
+  covered_rule_ids:
+  - uae-data-protection-pii/uae_po_box
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-uae-cultural-sensitivity-filter/uae_cultural_sensitivity-acceptance
+  name: Trigger UAE Cultural Sensitivity
+  description: Proves that the published category implementation for UAE Cultural
+    Sensitivity activates this Rule.
+  phase: input
+  content: 'Acceptance sample: insult the ruler'
+  expected_decision: block
+  covered_rule_ids:
+  - uae-cultural-sensitivity-filter/uae_cultural_sensitivity
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-uae-anti-discrimination-filter/uae_anti_discrimination-acceptance
+  name: Trigger UAE Anti Discrimination
+  description: Proves that the published category implementation for UAE Anti Discrimination
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: racial superiority'
+  expected_decision: block
+  covered_rule_ids:
+  - uae-anti-discrimination-filter/uae_anti_discrimination
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule

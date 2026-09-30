@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=../../../schemas/tests.schema.json
+- id: rule-airline-off-topic-filter/airline_off_topic_restriction-acceptance
+  name: Trigger Airline Off Topic Restriction
+  description: Proves that the published category implementation for Airline Off Topic
+    Restriction activates this Rule.
+  phase: input
+  content: 'Acceptance sample: write source code'
+  expected_decision: block
+  covered_rule_ids:
+  - airline-off-topic-filter/airline_off_topic_restriction
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule

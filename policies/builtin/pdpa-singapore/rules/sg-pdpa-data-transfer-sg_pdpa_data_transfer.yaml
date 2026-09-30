@@ -1,0 +1,78 @@
+id: sg-pdpa-data-transfer/sg_pdpa_data_transfer
+name: SG PDPA Data Transfer
+description: PDPA s.26 — Blocks unprotected overseas transfer of Singapore personal data without adequate
+  safeguards
+stages:
+- input
+detector:
+  ref: text/conditions
+  version: 1.0.0
+  parameters:
+    detector_options:
+      match:
+        all:
+        - not:
+            contains:
+            - binding corporate rules
+            - data processing agreement
+            - adequacy decision
+            - explicit consent
+            - pdpa compliant
+            - model contractual clauses
+            - encrypted transfer
+            - standard contractual clauses
+            - explain
+            - what is
+            - how to comply
+            - compliance review
+        - any:
+          - within_sentence:
+              all:
+              - contains:
+                - singapore personal data
+                - singaporean data
+                - singapore user data
+                - singapore customer data
+                - sg user records
+                - sg resident data
+                - pdpa data
+                - singapore employee data
+                - pdpa
+              - keywords:
+                - transfer overseas
+                - transfer abroad
+                - send overseas
+                - send offshore
+                - export
+                - move to server
+                - replicate to
+                - sync to
+                - migrate to
+                - copy to
+                - without protection
+                - without agreement
+                - without safeguards
+                - unprotected transfer
+                - unencrypted
+                - no safeguards
+                - no agreement
+                - without pdpa
+                - backup to foreign
+                - store offshore
+                - cloud without
+          - keywords:
+            - transfer singapore data without pdpa compliance
+            - send personal data overseas unencrypted
+            - bypass transfer limitation
+            - export singapore data without safeguards
+            - move singapore user data offshore unprotected
+on_match:
+  action: reject
+  replacement: null
+runtime_adapter:
+  binding_id: sg-pdpa-data-transfer
+  implementation_rule_id: sg_pdpa_data_transfer
+metadata:
+  taxonomy_ids:
+  - TALI-BUSINESS-POLICY
+risk_level: low

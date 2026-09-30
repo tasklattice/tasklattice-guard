@@ -1,0 +1,120 @@
+id: category/denied_legal_advice
+name: Denied Legal Advice
+description: Detects requests for legal advice, representation, or legal strategy that should be provided
+  by licensed attorneys
+stages:
+- input
+- output
+detector:
+  ref: text/conditions
+  version: 1.0.0
+  parameters:
+    detector_options:
+      match:
+        all:
+        - not:
+            contains:
+            - consult a lawyer
+            - consult an attorney
+            - consult your lawyer
+            - consult your attorney
+            - hire a lawyer
+            - hire an attorney
+            - find a lawyer
+            - find an attorney
+            - seek legal counsel
+            - seek legal advice
+            - get legal advice
+            - legal professional
+            - qualified attorney
+            - licensed lawyer
+            - licensed attorney
+            - legal representation
+            - retain counsel
+            - contact a lawyer
+            - contact an attorney
+            - speak with attorney
+            - speak with lawyer
+            - talk to a lawyer
+            - talk to an attorney
+            - legal consultation
+            - attorney consultation
+            - legal education
+            - legal studies
+            - law school
+            - legal research
+            - legal terminology
+            - legal terms
+            - legal system
+            - court system
+            - legal process
+            - legal procedure
+            - general legal information
+            - general information
+            - educational purposes
+            - for educational purposes
+            - not legal advice
+            - this is not legal advice
+            - not a substitute for
+            - legal disclaimer
+            - legal history
+            - legal precedent
+            - case law
+            - supreme court
+            - constitutional law
+            - legal rights awareness
+            - know your rights
+            - civil rights
+            - human rights
+            - legal framework
+            - how does
+            - what is
+            - what are
+            - explain
+            - definition of
+            - means
+            - criminal justice system
+            - immigration system
+        - keywords:
+          - lawyer
+          - attorney
+          - lawsuit
+          - sue
+          - suing
+          - court
+          - trial
+          - case
+          - contract
+          - litigation
+          - plead
+          - guilty
+          - divorce
+          - custody
+          - immigration
+          - visa
+          - asylum
+          - deportation
+          - criminal
+          - charges
+          - arrest
+          - warrant
+          - sentence
+          - prosecution
+          - bankruptcy
+          - patent
+          - trademark
+          - copyright
+          - settlement
+          - defendant
+          - plaintiff
+          - testimony
+on_match:
+  action: reject
+  replacement: null
+runtime_adapter:
+  binding_id: denied_legal_advice
+  implementation_rule_id: denied_legal_advice
+metadata:
+  taxonomy_ids:
+  - TALI-PROFESSIONAL-ADVICE-LEGAL
+risk_level: medium

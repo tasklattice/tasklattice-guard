@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: application/active-html
+name: Active HTML payload
+description: Matches this reviewed text pattern, not arbitrary semantic variants.
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: '(?i)<\s*script\b|\bon(?:error|load)\s*=|javascript\s*:'
+on_match:
+  action: reject
+runtime_adapter:
+  binding_id: local-rendered-content-injection
+  implementation_rule_id: application/active-html
+metadata:
+  taxonomy_ids:
+  - TALI-MODEL-SECURITY
+risk_level: high

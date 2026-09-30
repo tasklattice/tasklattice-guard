@@ -8,6 +8,7 @@ import { queryKeys } from "@/features/query-keys";
 
 import { CreateGuardrailWizard } from "./create-guardrail-wizard";
 import { protectionEn } from "../protection-i18n";
+import configurablePolicies from "../../../runner/toolkit/policy_library/assets/configurable_policies.json";
 
 const apiMocks = vi.hoisted(() => ({
   analyzeIntent: vi.fn(),
@@ -137,7 +138,7 @@ const policy = {
   parameters: [],
   rails: ["input", "output"],
   effects: ["block"],
-  forms: ["keyword"],
+  detectors: ["text/keyword"],
   rules: [{ id: "topic-rule" }],
   test_cases: [],
   test_count: 1,
@@ -491,7 +492,7 @@ describe("Create Guardrail wizard", () => {
       ...policy, id: "configured-phrase-filter", name: "Phrase filters", version: "1.0.0",
       protection: { ...policy.protection!, directory: "content_filters" },
       parameters: [{ name: "phrase_entries", label: "Phrases and actions", kind: "phrase_entries", required: true, description: "" }],
-      rules: [{ id: "configured/phrases", name: "Configured phrase sequence", form: "keyword", effect: "reject", rails: ["input", "output"], implementation: { detector: "configured_phrases" } }],
+      rules: configurablePolicies.find(item => item.id === "configured-phrase-filter")!.rules,
     } as Policy;
     apiMocks.getPolicies.mockResolvedValue({ items: [policy, phrasePolicy] });
     renderWizard();

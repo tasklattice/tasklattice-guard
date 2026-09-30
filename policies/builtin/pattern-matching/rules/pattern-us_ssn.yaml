@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: pattern/us_ssn
+name: SSN (Social Security Number)
+description: Detects US Social Security Numbers (XXX-XX-XXXX format)
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b\d{3}-\d{2}-\d{4}\b
+on_match:
+  action: redact
+  replacement: '[us_ssn_REDACTED]'
+runtime_adapter:
+  binding_id: pattern-matching
+  implementation_rule_id: us_ssn
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-PII
+risk_level: medium

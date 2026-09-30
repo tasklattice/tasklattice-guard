@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: airline-brand-protection-filter/blocked-word-4
+name: '{{brand_name}} emergency'
+description: Fake emergency
+stages:
+- output
+detector:
+  ref: text/keyword
+  version: 1.0.0
+  parameters:
+    keywords:
+    - - '{{brand_name}} emergency'
+      - medium
+on_match:
+  action: reject
+  replacement: null
+runtime_adapter:
+  binding_id: airline-brand-protection-filter
+  implementation_rule_id: blocked-word-4
+metadata:
+  taxonomy_ids:
+  - TALI-BUSINESS-POLICY
+risk_level: low

@@ -1,0 +1,119 @@
+id: claims-system-override-filter/claims_system_override
+name: Claims System Override
+description: Detects system override injection, unauthorized role impersonation, and claims rule bypass
+  attempts
+stages:
+- input
+detector:
+  ref: text/conditions
+  version: 1.0.0
+  parameters:
+    detector_options:
+      match:
+        all:
+        - not:
+            contains:
+            - how does
+            - how do i
+            - what is the
+            - what are the
+            - what are my rights
+            - can you explain
+            - explain why
+            - appeals process
+            - file a grievance
+            - escalate
+            - dispute
+            - i'm the policyholder
+            - manual review of my denied
+            - reprocess my claim because
+            - contact the third-party
+            - external review
+            - provider to dispute
+            - check if a specific service
+            - how are claim payments calculated
+        - any:
+          - regex: \b(?:override|bypass|ignore|disable|skip|remove)\b.{0,15}\b(?:the|all|my|any|your)\b.{0,20}\b(?:rules|limit|check|denial|exclusion|restriction|requirement|detection)\b
+          - regex: \byou are now\b.{0,20}\b(?:admin|unrestricted|unfiltered|mode)\b
+          - within_sentence:
+              all:
+              - contains:
+                - override
+                - overriding
+                - bypass
+                - bypassing
+                - ignore
+                - disable
+                - disabling
+                - disregard
+                - skip
+                - remove
+                - turn off
+                - force
+                - force-approve
+                - pretend
+                - modify
+                - modifying
+              - keywords:
+                - adjudication rules
+                - adjudication
+                - claims processing rules
+                - processing rules
+                - fraud detection
+                - fraud detection system
+                - coverage limitations
+                - auto-deny
+                - auto-deny rules
+                - medical review
+                - guardrails
+                - deductible requirement
+                - deductible
+                - coordination of benefits
+                - timely filing
+                - timely filing limit
+                - out-of-network denial
+                - plan exclusions
+                - fee schedule
+                - restrictions
+                - all pending claims
+          - keywords:
+            - override the claims
+            - bypass the fraud detection
+            - ignore the coverage
+            - disable the auto-deny
+            - skip the medical review
+            - turn off all guardrails
+            - without restrictions
+            - force-approve
+            - approve all pending claims
+            - admin mode
+            - unrestricted claims processor
+            - reprocess as in-network
+            - override my system prompt
+            - ignore your instructions
+            - reveal the claims processing algorithm
+            - i'm the plan administrator
+            - as the employer
+            - i'm from the corporate hr
+            - as a third-party administrator
+            - as the broker
+            - i'm a vendor
+            - as the union representative
+            - i'm the patient's employer
+            - grant me full access
+            - see the diagnosis details for my employees
+            - medical conditions have they claimed
+            - individual claim details for this group
+            - claims filed by our members
+            - claims records
+            - automatically approve all
+on_match:
+  action: reject
+  replacement: null
+runtime_adapter:
+  binding_id: claims-system-override-filter
+  implementation_rule_id: claims_system_override
+metadata:
+  taxonomy_ids:
+  - TALI-MODEL-SECURITY-PROMPT-INJECTION
+risk_level: high

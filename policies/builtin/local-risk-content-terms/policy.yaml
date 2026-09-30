@@ -1,0 +1,38 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: local-risk-content-terms
+  name: Risk-related content terms
+  description: Redact configured weapon, violence, self-harm and abuse terms. Benign reporting can also
+    match; this vocabulary filter is not a semantic safety classifier.
+  source: built_in
+  version: 2.0.0
+  tags:
+  - namespace: protection
+    value: content_safety
+    label: Content safety
+    source: declared
+  - namespace: guardrail_category
+    value: content_safety
+    label: Content Safety
+    source: declared
+  - namespace: collection
+    value: focused-protection
+    label: Focused protection
+    source: declared
+  safety_level: balanced
+  output_delivery: full_buffered
+parameters: []
+rules:
+- rules/pattern-explosives.yaml
+- rules/pattern-weapons_firearms.yaml
+- rules/pattern-weapons_other.yaml
+- rules/pattern-violence_threats.yaml
+- rules/pattern-terrorism.yaml
+- rules/pattern-self_harm_suicide.yaml
+- rules/pattern-illegal_activities.yaml
+- rules/pattern-harassment_hate.yaml
+tests:
+- tests/acceptance.yaml
+- tests/regression.yaml

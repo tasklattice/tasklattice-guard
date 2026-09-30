@@ -1,0 +1,24 @@
+id: pattern/eu_vat
+name: VAT Number (EU)
+description: Detects EU VAT identification numbers (2-letter country code + 8-12 alphanumeric
+  characters covering all EU member states)
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b(AT|BE|BG|CY|CZ|DE|DK|EE|EL|ES|FI|FR|HR|HU|IE|IT|LT|LU|LV|MT|NL|PL|PT|RO|SE|SI|SK)[0-9A-Z]{8,12}\b
+    context_expression: \b(?:VAT|V\.A\.T\.|TVA|IVA|BTW|MWST|value\s*added\s*tax|tax\s*number|tax\s*id|fiscal\s*number|fiscal\s*code)\b
+    context_max_gap_words: 1
+on_match:
+  action: redact
+  replacement: '[eu_vat_REDACTED]'
+runtime_adapter:
+  binding_id: local-government-identifiers
+  implementation_rule_id: eu_vat
+metadata:
+  taxonomy_ids:
+  - TALI-BUSINESS-POLICY
+risk_level: low

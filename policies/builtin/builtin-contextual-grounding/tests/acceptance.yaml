@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=../../../schemas/tests.schema.json
+- id: grounding-output
+  name: Unsupported output
+  description: Unsupported output is regenerated.
+  phase: output
+  content: A claim not present in the provided context.
+  expected_decision: intervene
+  covered_rule_ids:
+  - model/contextual-grounding
+  kind: rule_acceptance
+  scope: rule

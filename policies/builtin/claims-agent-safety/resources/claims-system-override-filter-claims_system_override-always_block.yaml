@@ -1,0 +1,60 @@
+- - override the claims
+  - high
+- - bypass the fraud detection
+  - high
+- - ignore the coverage
+  - high
+- - disable the auto-deny
+  - high
+- - skip the medical review
+  - high
+- - turn off all guardrails
+  - high
+- - without restrictions
+  - high
+- - force-approve
+  - high
+- - approve all pending claims
+  - high
+- - admin mode
+  - high
+- - unrestricted claims processor
+  - high
+- - reprocess as in-network
+  - high
+- - override my system prompt
+  - high
+- - ignore your instructions
+  - high
+- - reveal the claims processing algorithm
+  - high
+- - i'm the plan administrator
+  - high
+- - as the employer
+  - high
+- - i'm from the corporate hr
+  - high
+- - as a third-party administrator
+  - high
+- - as the broker
+  - high
+- - i'm a vendor
+  - high
+- - as the union representative
+  - high
+- - i'm the patient's employer
+  - high
+- - grant me full access
+  - high
+- - see the diagnosis details for my employees
+  - high
+- - medical conditions have they claimed
+  - high
+- - individual claim details for this group
+  - high
+- - claims filed by our members
+  - high
+- - claims records
+  - high
+- - automatically approve all
+  - high

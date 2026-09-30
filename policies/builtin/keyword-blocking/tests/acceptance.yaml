@@ -1,0 +1,29 @@
+# yaml-language-server: $schema=../../../schemas/tests.schema.json
+- id: accept/blocked-words
+  name: Detect a reviewed blocked phrase
+  description: Required acceptance case for the configured deny-list.
+  phase: input
+  content: The phrase {{blocked_words}} is prohibited.
+  expected_decision: block
+  covered_rule_ids:
+  - keyword/blocked-words
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names:
+  - blocked_words
+  scope: rule
+- id: accept/blocked-words/output
+  name: Detect a reviewed blocked phrase
+  description: Required acceptance case for the configured deny-list.
+  phase: output
+  content: The phrase {{blocked_words}} is prohibited.
+  expected_decision: block
+  covered_rule_ids:
+  - keyword/blocked-words
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names:
+  - blocked_words
+  scope: rule

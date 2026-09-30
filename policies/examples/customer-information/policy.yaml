@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: customer-information
+  name: 客服信息保护
+  description: 遮盖固定格式的客户编号，并阻断内部密钥标签。
+  source: custom
+  version: 1.0.0
+  tags:
+  - namespace: protection
+    value: privacy
+    label: Privacy & sensitive information
+  - namespace: guardrail_category
+    value: pii_detection
+    label: PII Detection
+  output_delivery: full_buffered
+execution:
+  mode: sequential
+  input: previous_output
+  stop_on: reject
+rules:
+- rules/customer-id.yaml
+- rules/internal-secret.yaml
+tests:
+- tests/acceptance.yaml
+- tests/regression.yaml

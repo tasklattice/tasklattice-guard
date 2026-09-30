@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: cn-banking/misleading-return-guarantee
+name: Assistant investment-return guarantee
+description: Rejects selected positive response claims that a named product or the bank guarantees principal,
+  profit, or return. It does not assess suitability, disclosure completeness, product terms, or financial-advice
+  legality.
+stages:
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: (?:本产品|该产品|我们|我行)(?![^，。！？]{0,6}(?:无法|不能|不会|不|未)).{0,6}(?:保证|承诺).{0,10}(?:保本|收益|回报|盈利)|(?:本产品|该产品).{0,6}稳赚不赔|(?i:\b(?:this
+      product|our bank|we)\s+guarantees?\s+(?:your\s+)?(?:principal|profit|returns?)\b)
+on_match:
+  action: reject
+runtime_adapter:
+  binding_id: china-banking-assistant-boundaries
+  implementation_rule_id: cn-banking/misleading-return-guarantee
+metadata:
+  taxonomy_ids:
+  - TALI-PROFESSIONAL-ADVICE-FINANCIAL
+  - TALI-BUSINESS-POLICY
+risk_level: high

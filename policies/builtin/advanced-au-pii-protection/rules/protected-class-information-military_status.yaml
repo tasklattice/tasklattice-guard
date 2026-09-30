@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: protected-class-information/military_status
+name: Military Status (Protected Class)
+description: Detects military status terms - protected under SCRA and MLA
+stages:
+- input
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b(veterans?|military|armed\s+forces|army|navy|air\s+force|marines?(?:\s+corps)?|coast\s+guard|national\s+guard|reserves?(?:ist)?|active\s+duty|router|deployed|enlisted|commissioned|honorable\s+discharge|dishonorable\s+discharge|VA\s+benefits|GI\s+bill|military\s+service|service\s+members?|servicemembers?|SCRA|MLA|military\s+lending)\b
+on_match:
+  action: redact
+  replacement: '[PROTECTED_CLASS_INFO_REDACTED]'
+runtime_adapter:
+  binding_id: protected-class-information
+  implementation_rule_id: military_status
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-SENSITIVE-ATTRIBUTE
+risk_level: medium

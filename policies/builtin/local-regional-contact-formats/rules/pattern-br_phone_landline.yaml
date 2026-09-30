@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: pattern/br_phone_landline
+name: Brazilian Phone Number (Landline)
+description: Detects Brazilian landline phone numbers with optional area code
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: (?:\(?\d{2}\)?\s?)?(?:9\d{4}|\d{4})-?\d{4}
+on_match:
+  action: redact
+  replacement: '[br_phone_landline_REDACTED]'
+runtime_adapter:
+  binding_id: local-regional-contact-formats
+  implementation_rule_id: br_phone_landline
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-PII
+risk_level: medium

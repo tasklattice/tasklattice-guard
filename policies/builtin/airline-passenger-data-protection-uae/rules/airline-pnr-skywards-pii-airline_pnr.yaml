@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: airline-pnr-skywards-pii/airline_pnr
+name: Airline PNR / Booking Reference
+description: Detects airline PNR / booking references (6 uppercase alpha characters) when near booking
+  context
+stages:
+- input
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b[A-Z]{6}\b
+    context_expression: \b(?:PNR|booking\s*(?:reference|ref|code|number|confirmation)|reservation\s*(?:code|number|ref)|record\s*locator|confirmation\s*(?:code|number)|itinerary\s*(?:number|ref))\b
+on_match:
+  action: redact
+  replacement: '[airline_pnr_REDACTED]'
+runtime_adapter:
+  binding_id: airline-pnr-skywards-pii
+  implementation_rule_id: airline_pnr
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-PII
+risk_level: medium

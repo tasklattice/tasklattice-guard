@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: code-injection-blocker/blocked-word-7
+name: subprocess.call(
+description: Command injection
+stages:
+- input
+- output
+detector:
+  ref: text/keyword
+  version: 1.0.0
+  parameters:
+    keywords:
+    - - subprocess.call(
+      - medium
+on_match:
+  action: reject
+  replacement: null
+runtime_adapter:
+  binding_id: local-code-injection
+  implementation_rule_id: blocked-word-7
+metadata:
+  taxonomy_ids:
+  - TALI-TOOL-SECURITY-UNAUTHORIZED-EXECUTION
+risk_level: high

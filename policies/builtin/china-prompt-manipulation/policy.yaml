@@ -1,0 +1,37 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: china-prompt-manipulation
+  name: Chinese prompt manipulation
+  description: Local screening for selected explicit Chinese instruction-override, prompt-extraction and
+    jailbreak-mode phrases. It is a defense-in-depth control and does not eliminate prompt injection.
+  source: built_in
+  version: 1.0.0
+  tags:
+  - namespace: protection
+    value: attacks_and_abuse
+    label: Attacks & abuse
+    source: declared
+  - namespace: guardrail_category
+    value: jailbreak_protection
+    label: Jailbreak Protection
+    source: declared
+  - namespace: collection
+    value: china-mainland
+    label: China mainland runtime controls
+    source: declared
+  - namespace: jurisdiction
+    value: cn
+    label: China mainland
+    source: declared
+  safety_level: balanced
+  output_delivery: window_buffered
+parameters: []
+rules:
+- rules/cn-prompt-security-instruction-override.yaml
+- rules/cn-prompt-security-prompt-extraction.yaml
+- rules/cn-prompt-security-unrestricted-mode.yaml
+tests:
+- tests/acceptance.yaml
+- tests/regression.yaml

@@ -1,0 +1,176 @@
+id: category/harmful_illegal_weapons
+name: Harmful Illegal Weapons
+description: Detects content related to illegal weapons, explosives, and dangerous materials
+stages:
+- input
+- output
+detector:
+  ref: text/conditions
+  version: 1.0.0
+  parameters:
+    detector_options:
+      match:
+        all:
+        - not:
+            contains:
+            - bomb disposal
+            - bomb squad
+            - explosive ordnance disposal
+            - eod
+            - historical
+            - educational
+            - safety training
+            - weapons history
+            - weapons education
+            - explosive safety
+            - bomb detection
+            - bomb threat
+            - report bomb
+            - reporting bomb
+        - keywords:
+          - make a bomb
+          - build a bomb
+          - create explosive
+          - homemade bomb
+          - pipe bomb
+          - pressure cooker bomb
+          - fertilizer bomb
+          - car bomb
+          - suicide bomb
+          - explosive device
+          - bomb instructions
+          - bomb recipe
+          - bomb tutorial
+          - homemade explosive
+          - illegal firearm
+          - unregistered gun
+          - make poison
+          - create poison
+          - homemade poison
+          - lethal poison
+          - chemical weapon
+          - biological weapon
+          - ricin
+          - cyanide poison
+          - how to make a bomb
+          - how to build a bomb
+          - how to create explosive
+          - bomb making instructions
+          - bomb making tutorial
+          - homemade explosive recipe
+          - how to make poison
+          - how to create poison
+          - undetectable poison
+          - untraceable weapon
+          - 3d print gun
+          - 3d printed gun
+          - 3d printing gun
+          - make bomb
+          - making bomb
+          - build explosive
+          - building explosive
+          - create weapon
+          - creating weapon
+          - manufacture explosive
+          - manufacturing explosive
+          - manufactured explosive
+          - construct bomb
+          - constructing bomb
+          - constructed bomb
+          - fertilizer explosive
+          - pressure cooker explosive
+          - pipe explosive
+          - homemade weapon
+          - ingredients bomb
+          - bomb ingredients
+          - instructions explosive
+          - explosive instructions
+          - improvised explosive device
+          - ied instructions
+          - make ied
+          - build ied
+          - nail bomb
+          - shrapnel bomb
+          - dirty bomb
+          - radiological weapon
+          - nuclear weapon
+          - molotov cocktail
+          - incendiary device
+          - fire bomb
+          - napalm recipe
+          - thermite recipe
+          - ammonium nitrate bomb
+          - anfo explosive
+          - c4 explosive
+          - semtex explosive
+          - tnt recipe
+          - dynamite recipe
+          - plastic explosive
+          - det cord
+          - detonator instructions
+          - remote detonator
+          - timer bomb
+          - time bomb
+          - letter bomb
+          - package bomb
+          - mail bomb
+          - anthrax weapon
+          - bioweapon
+          - weaponized anthrax
+          - weaponized smallpox
+          - nerve agent
+          - sarin gas
+          - vx gas
+          - mustard gas
+          - chlorine gas weapon
+          - poison gas
+          - ricin poison
+          - ricin extraction
+          - ricin recipe
+          - botulinum toxin weapon
+          - arsenic poison
+          - thallium poison
+          - polonium poison
+          - undetectable poison recipe
+          - untraceable poison
+          - silent weapon
+          - suppressor gun
+          - silencer gun
+          - homemade silencer
+          - homemade suppressor
+          - ghost gun
+          - unregistered weapon
+          - untraceable gun
+          - illegal gun
+          - black market gun
+          - black market weapons
+          - buy illegal gun
+          - buy illegal weapon
+          - automatic weapon conversion
+          - full auto conversion
+          - machine gun conversion
+          - bump stock
+          - binary trigger
+          - explosive ammunition
+          - armor piercing rounds
+          - cop killer bullets
+          - illegal ammunition
+          - bomb
+          - explosive
+          - grenade
+          - landmine
+          - ammunition
+          - firearm
+          - gun
+          - rifle
+          - poison
+on_match:
+  action: reject
+  replacement: null
+runtime_adapter:
+  binding_id: harmful_illegal_weapons
+  implementation_rule_id: harmful_illegal_weapons
+metadata:
+  taxonomy_ids:
+  - TALI-PHYSICAL-HARM-WEAPONS
+risk_level: high

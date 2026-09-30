@@ -57,6 +57,32 @@ See the [deployment guide](../charts/tali-guard/README.md) for configuration.
 
 ## Resources and routing
 
+### Policy source packages
+
+Policy authoring uses one directory per Policy and one YAML file per Rule.
+The `policy.yaml` manifest explicitly owns Rule order, tests, resources and
+optional documentation. Built-in and custom packages use the same schema,
+coverage checks and detector adapter registry. See the [authoring guide](../policies/README.md)
+for the directory contract and commands.
+
+`scripts/policy_sources.py` resolves package-local resources and compiles the
+sources into the shared JSON catalog. Runtime requests never parse source
+YAML. Controller pins local Policy definitions and resolved parameters into
+the Guardrail plan; Runner uses that snapshot instead of looking up mutable
+catalog definitions during execution. Existing native model capabilities
+continue through their registered platform adapters.
+
+Package regression runs the actual Controller plan builder and NeMo runtime.
+Rule-scoped cases isolate selected Rules; Policy-scoped cases preserve the
+complete sequence. Assertions include decisions, exact transformed text and
+ordered Rule matches. CI checks generated catalog drift and runs local cases;
+model-dependent cases are explicitly `not_run` until tested in a configured
+model environment. Custom package transfer uses directory import or a ZIP
+containing declared files, file hashes and detector dependencies. Import does
+not publish or activate a Guardrail.
+
+### Runtime resources
+
 | Resource | Responsibility |
 | --- | --- |
 | Policy | Versioned Rules, actions, parameters, and test cases |
@@ -352,3 +378,17 @@ with the name followed by industry/use-case and default tags. It preserves
 explicit append/replace/cancel/undo behavior.
 Choosing blank is respected. Runtime model availability gates still apply to
 all selected bindings, including those inherited from a Profile.
+
+### Unified Rule detector contract
+
+Policy source packages use one Rule contract: stages, a versioned detector reference with parameters, and post-match handling. The compiled Rule retains `detector.ref` and `detector.version`; the former `form` enum and Policy `forms` aggregate are removed. Catalog/API discovery exposes `detectors` instead. Internal `implementation.execution` routes local checks, platform capabilities, and existing programmable Flows; it is not another author-facing Rule type. Local content filtering dispatches on the resolved detector and uses common Rule ordering, effect application, and rejection handling. Unknown local detectors raise an error instead of silently passing. Registered adapters own NeMo bindings, while source packages cannot supply executable code.
+
+Pattern detection uses `text/regex` with optional candidate validators (`date`, `weighted_checksum`, `luhn`). Business-specific identifier formats, date offsets, alphabets, weights, and check-character maps live in the Policy Rule. Controller snapshots retain the validated configuration, and Runner applies every configured check to both literal and normalized number candidates before recording a match. Country-specific detector entries and dispatch branches are removed; adding a format supported by these algorithms needs Rule data and regression cases, not another runtime detector.
+
+### Rule detection and Gateway directives
+
+A Policy is a collection of Rules plus metadata, resources and tests. Each Rule is the smallest business-processing unit and owns its stages, detector configuration, risk level and on-match directive. LocalDetector accepts only technical DetectorInput and returns evidence/spans; the Policy executor separately attaches Rule identity, pinned risk and handling requirements. Detection must not branch on a handling action. Runner may compute a replacement view for subsequent checks, but Gateway/application enforcement remains authoritative for the actual model request and delivery.
+
+Local category heuristics and competitor vocabulary are now source-owned text/conditions predicates. Code structure and execution-request detection are separate Rules. Parameterized phrase entries materialize into ordinary keyword Rules before plan publication; concrete IDs, actions and risk levels are included in immutable snapshots. No phrase-sequence detector interprets actions.
+
+Model classification references share model/classifier with explicit compatible profiles. Grounding and formal verification retain distinct contracts. Existing platform-native execution adapters remain; this change does not claim that custom source packages can register model-backed Rules yet.

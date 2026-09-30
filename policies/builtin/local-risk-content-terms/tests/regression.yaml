@@ -1,0 +1,45 @@
+# yaml-language-server: $schema=../../../schemas/tests.schema.json
+- id: benign-en/input
+  name: benign-en
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: input
+  content: Please explain the account opening process and its fees.
+  expected_decision: allow
+  covered_rule_ids: []
+  kind: scenario
+  required: true
+  group: Protection contract
+  parameter_names: []
+- id: benign-en/output
+  name: benign-en
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: output
+  content: Please explain the account opening process and its fees.
+  expected_decision: allow
+  covered_rule_ids: []
+  kind: scenario
+  required: true
+  group: Protection contract
+  parameter_names: []
+- id: benign-zh/input
+  name: benign-zh
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: input
+  content: 请介绍账户开户流程以及相关费用。
+  expected_decision: allow
+  covered_rule_ids: []
+  kind: scenario
+  required: true
+  group: Protection contract
+  parameter_names: []
+- id: benign-zh/output
+  name: benign-zh
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: output
+  content: 请介绍账户开户流程以及相关费用。
+  expected_decision: allow
+  covered_rule_ids: []
+  kind: scenario
+  required: true
+  group: Protection contract
+  parameter_names: []

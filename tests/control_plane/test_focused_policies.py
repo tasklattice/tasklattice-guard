@@ -35,7 +35,7 @@ def test_materialized_focused_policies_are_current() -> None:
     for policy in FOCUSED:
         assert policy.parameters == ()
         assert set(policy.rails) == {"input", "output"}
-        assert all(rule.form != "colang_flow" for rule in policy.rules)
+        assert all(rule.implementation.execution == "local" for rule in policy.rules)
         assert any(case.expected_decision == "allow" for case in policy.test_cases)
 
 
@@ -78,12 +78,15 @@ def test_extended_families_preserve_source_matching_actions_and_acceptance_input
             continue
         target_rule = PASSPORT_ALIASES.get(source.covered_rule_ids[0], source.covered_rule_ids[0])
         policy = CATALOG[owners[target_rule]]
+        # Source packages now carry acceptance coverage for both stages too.
+        # Strip an existing stage suffix before locating the focused counterpart.
+        source_id = source.id.removesuffix(f"/{source.phase}")
         for phase in ("input", "output"):
-            retained = next(case for case in policy.test_cases if case.id == f"{source.id}/{phase}")
+            retained = next(case for case in policy.test_cases if case.id == f"{source_id}/{phase}")
             assert retained.content == source.content
             assert retained.expected_decision == source.expected_decision
             assert retained.required and retained.phase == phase
-            expected_rule = "pattern/br_phone_mobile" if source.id == "accept/br_phone_landline" else target_rule
+            expected_rule = "pattern/br_phone_mobile" if source_id == "accept/br_phone_landline" else target_rule
             assert retained.covered_rule_ids == (expected_rule,)
 
 

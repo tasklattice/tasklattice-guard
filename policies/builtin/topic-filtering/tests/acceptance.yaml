@@ -1,0 +1,155 @@
+# yaml-language-server: $schema=../../../schemas/tests.schema.json
+- id: rule-topic-restriction-filter/blocked-word-1-acceptance
+  name: Trigger news today
+  description: Proves that the published keyword implementation for news today activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: news today'
+  expected_decision: block
+  covered_rule_ids:
+  - topic-restriction-filter/blocked-word-1
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-topic-restriction-filter/blocked-word-2-acceptance
+  name: Trigger latest news
+  description: Proves that the published keyword implementation for latest news activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: latest news'
+  expected_decision: block
+  covered_rule_ids:
+  - topic-restriction-filter/blocked-word-2
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-topic-restriction-filter/blocked-word-3-acceptance
+  name: Trigger what happened in
+  description: Proves that the published keyword implementation for what happened
+    in activates this Rule.
+  phase: input
+  content: 'Acceptance sample: what happened in'
+  expected_decision: block
+  covered_rule_ids:
+  - topic-restriction-filter/blocked-word-3
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-topic-restriction-filter/blocked-word-4-acceptance
+  name: Trigger election results
+  description: Proves that the published keyword implementation for election results
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: election results'
+  expected_decision: block
+  covered_rule_ids:
+  - topic-restriction-filter/blocked-word-4
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-topic-restriction-filter/blocked-word-5-acceptance
+  name: Trigger who won the
+  description: Proves that the published keyword implementation for who won the activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: who won the'
+  expected_decision: block
+  covered_rule_ids:
+  - topic-restriction-filter/blocked-word-5
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-topic-restriction-filter/blocked-word-6-acceptance
+  name: Trigger weather forecast
+  description: Proves that the published keyword implementation for weather forecast
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: weather forecast'
+  expected_decision: block
+  covered_rule_ids:
+  - topic-restriction-filter/blocked-word-6
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-topic-restriction-filter/blocked-word-7-acceptance
+  name: Trigger stock market
+  description: Proves that the published keyword implementation for stock market activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: stock market'
+  expected_decision: block
+  covered_rule_ids:
+  - topic-restriction-filter/blocked-word-7
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-topic-restriction-filter/blocked-word-8-acceptance
+  name: Trigger tell me a joke
+  description: Proves that the published keyword implementation for tell me a joke
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: tell me a joke'
+  expected_decision: block
+  covered_rule_ids:
+  - topic-restriction-filter/blocked-word-8
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-topic-restriction-filter/blocked-word-9-acceptance
+  name: Trigger movie recommendation
+  description: Proves that the published keyword implementation for movie recommendation
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: movie recommendation'
+  expected_decision: block
+  covered_rule_ids:
+  - topic-restriction-filter/blocked-word-9
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-topic-restriction-filter/blocked-word-10-acceptance
+  name: Trigger sports scores
+  description: Proves that the published keyword implementation for sports scores
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: sports scores'
+  expected_decision: block
+  covered_rule_ids:
+  - topic-restriction-filter/blocked-word-10
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-topic-restriction-filter/off_topic-acceptance
+  name: Trigger Off Topic
+  description: Proves that the published category implementation for Off Topic activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: latest news'
+  expected_decision: block
+  covered_rule_ids:
+  - topic-restriction-filter/off_topic
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule

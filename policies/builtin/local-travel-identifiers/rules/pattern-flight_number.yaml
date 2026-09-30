@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: pattern/flight_number
+name: Airline Flight Number
+description: Detects airline flight numbers (major IATA 2-letter codes + 1-4 digit flight number) when
+  near flight context
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b(?:EK|QF|BA|AA|LH|AF|SQ|CX|QR|EY|FZ|WY|GF|KU|SV|MS|RJ|ME|PK|AI|UL|WS|9W|6E)\s?\d{1,4}\b
+    context_expression: \b(?:flight|departure|arrival|gate|boarding|schedule|operate|route|aircraft|plane|outbound|inbound|leg|sector|flying)\b
+    context_max_gap_words: 1
+on_match:
+  action: redact
+  replacement: '[flight_number_REDACTED]'
+runtime_adapter:
+  binding_id: local-travel-identifiers
+  implementation_rule_id: flight_number
+metadata:
+  taxonomy_ids:
+  - TALI-BUSINESS-POLICY
+risk_level: low

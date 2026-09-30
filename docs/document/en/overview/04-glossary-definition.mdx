@@ -1,53 +1,89 @@
 ---
 id: "glossary-definition"
 title: "Policy Library: Policies, Rules, and implementations"
-summary: "Follow a Policy into its Rules, check stages, six implementation forms, eight post-match directives, Test Cases, and versions."
+summary: "Split business requirements into Rules and understand detectors, stages, handling, tests, and versions."
 order: 3
 ---
 <a id="term-policy" />
 
 ## Policy
 
-<strong>What:</strong> A reusable protection capability, such as “protect customer-service information”. It contains one or more specific Rules, Test Cases, optional parameters, and a runtime contract. Each Rule says **when to check (Rail), how to check (form), and what to do by default on a match (effect)**. Built-in Policies come from the Policy Library; custom Policies are maintained in Policy Studio.
+<strong>What:</strong> A reusable protection capability, such as “protect customer-service information”. It contains one or more specific Rules, Test Cases, optional parameters, and a runtime contract. Each Rule says **when to check (Rail), which detector and parameters to use (detector), and what to do by default on a match (on_match)**. Built-in and imported declarative Policies use the same directory package; the Policy Library supports inspection and reuse.
 
 <strong>Why:</strong> Separating detection behavior from application deployment lets multiple Guardrails pin one Policy Version.
 
 <strong>How:</strong> Review the complete Rule and Test Case inventory in the Library. For new behavior, edit and validate a custom draft, publish its Policy Version, then bind it in a Guardrail.
 
-For example, one customer-service Policy can contain two Rules: use `regex` on output to find phone numbers and request `redact`, and use `colang_flow` on input to identify an attempt to reveal the system prompt and request `reject`. Together they form the Policy, but each Rule has its own check stage, implementation, directive, and tests. Writing “do not disclose” in a compliance document does not itself create an executable Rule.
+For example, a customer-service Policy contains two Rules: `text/regex` finds customer IDs in responses and requests `redact`; `text/keyword` finds internal secret labels and requests `reject`. Both use the same contract, with different detectors, parameters, and handling. Writing “do not disclose” in a compliance document does not itself create an executable Rule.
 
 <a id="term-rule" />
 
 ## Rule
 
+A **Rule is the smallest business-processing unit**: a description, check stages, a detector and its parameters, a risk level, and the handling directive the Gateway must apply on a match. A Policy collects Rules with metadata, versions, resources, and tests. Detectors provide reusable technical mechanisms and do not choose business severity or enforcement actions.
+
+Changing a directive from rejection to observation must preserve detection. Guard returns the Decision and any replacement content; the Gateway enforces that decision on the actual model request or response. Each event takes its severity from the published Rule snapshot, independently of detector confidence.
+
+Technical references are `text/keyword`, `text/regex`, `text/conditions`, `code/fenced-block`, `model/classifier`, `model/grounding`, and `service/formal-verification`. Classifier profiles select compatible technical contracts; Company Policy reuses the Topic Control profile. Business terms belong in Rule data. Configured phrase entries compile into individual keyword Rules with their own IDs, directives, and risk levels.
+
 <strong>What:</strong> One specific check inside a Policy, such as “detect a credit-card number” or “detect an attempt to ignore safety rules”. A Rule answers four questions: **which content, at which input or output stage, how to recognize a match, and what to request after a match**. It has a stable Rule ID, Rail, implementation mapping, and default directive. A Policy may contain several Rules.
 
-<strong>Why:</strong> The same Rule ID links configuration, Validation results, and runtime findings so each decision is traceable.
+<strong>Why:</strong> The same Rule ID links configuration, Testing results, and security events so each decision is traceable.
 
 <strong>How:</strong> Inspect its implementation, default directive, and Test Cases in the Policy; then enable or disable it in a Guardrail Binding and review parameters and the effective directive. Disabling it changes compiled behavior.
 
-Read or design one Rule as **business requirement → check stage → implementation form → match evidence → directive → Test Case**. Detection and handling are separate choices: using `regex` to find a phone number does not imply that the whole request must be blocked; you may mask it and continue. Conversely, requesting `redact` does not tell you whether a regular expression, keyword, or Flow should detect the content.
+Read or design one Rule as **business requirement → check stage → detector and parameters → match evidence → risk level and directive → Test Case**. Detection and handling are separate choices: using `regex` to find a phone number does not imply that the whole request must be blocked; you may mask it and continue. Conversely, requesting `redact` does not specify which detector should find the content.
 
 <a id="term-rule-implementation" />
 
-### Rule implementation forms
+### How a Rule performs its check
 
-A Rule's `form` says **how it finds a problem**. It is neither a Policy Library category nor a post-match directive. The current Catalog accepts six forms, and one Policy may contain Rules of several forms. Custom programmable Policies in the current Policy Studio primarily use `colang_flow`; the six Catalog forms are not six direct creation modes in that editor.
+**Every Rule uses one contract: choose a stage, reference a detector, supply its parameters, set a risk level, and declare post-match handling.** Regex, keywords, and model judgment are reusable detection capabilities, not separate Rule types. Policy authors do not choose a `form` or write Colang for ordinary detection.
 
-1. <strong><code>regex</code> · regular expression</strong>: Runs an explicit expression over content and returns matched spans. Use it for stable structures such as identity numbers, card numbers, or secret formats: for example, first find digits shaped like a card number, then validate whether the number is valid. Rules may include an `expression`, a context expression and distance limit; some built-in detectors also validate checksums or dates. A pattern hit is not proof of semantic intent, so test false positives, misses, and redaction.
+There are seven registered detectors. The first four support custom directory packages; the remaining three currently run through built-in Policies and are not available to custom Rules:
 
-2. <strong><code>keyword</code> · word or phrase</strong>: Matches configured words or phrases case-insensitively and returns evidence spans; single-word matching handles word boundaries. For example, put an internal codename in `blocked_words` so its appearance triggers a check. Use it for explicit prohibited terms and phrase lists. It is literal matching, not contextual intent detection; include allowed examples to test false positives.
+| Detector | What it checks | Custom Rules | Requirement or example |
+| --- | --- | --- | --- |
+| `text/regex` | Fixed formats and candidate validity | Available | Find `CUS-123456`; optionally check dates or checksums |
+| `text/keyword` | Explicit words or phrases | Available | Match the internal secret label `INTERNAL_SECRET` |
+| `text/conditions` | All, any, exclusion and same-sentence conditions | Available | Match competitor recommendations while excluding order queries |
+| `code/fenced-block` | Markdown code fences, languages and context | Available | Detect a Python code block; does not analyze actual code execution |
+| `model/classifier` | Classification using a model contract | Built-in Policies only | Configure a compatible model, credentials and classification profile |
+| `model/grounding` | Whether a response is supported by source material | Built-in Policies only | Configure a compatible model; supply the query, sources and response |
+| `service/formal-verification` | Whether a response satisfies versioned constraints | Built-in Policies only | Configure a reasoning service, credentials and constraint version |
 
-3. <strong><code>category</code> · local category rule</strong>: Combines deterministic signals for one content category. For example, it can require an identifier and a condition term in the same sentence, while allowing an exception for educational context. It can also use phrase patterns, always-block terms, and severity thresholds. Use it when a category has a reviewed vocabulary and boundary. “Category” here does not automatically invoke a model classifier. Inspect the actual terms, threshold, exceptions, and Test Cases rather than assuming coverage from its name.
+`model/classifier` supports four profiles: `topic-classification` for Topic Control and Company Policy, `safety-classification` for content safety, `jailbreak-classification` for jailbreak detection, and `pii-classification` for personal-information detection. These are model adapter contracts, not additional Rule formats; arbitrary chat models do not necessarily support them.
 
-4. <strong><code>code_block</code> · code block and execution intent</strong>: Detects Markdown fenced code blocks (for example, a triple-backtick block labeled Python), with optional language selection, confidence threshold, and input-stage execution-intent checks; output-stage checks can also detect code blocks. Use it to constrain code generation or execution requests, as in the built-in `block-code-execution` Policy. It is not a general malware scanner. Test explanatory text and genuine execution requests separately.
+The `validators` parameter on `text/regex` supports `date`, `weighted_checksum` and `luhn`. These validate candidate values and are not separate detectors. Model and service paths require verification in a configured environment; local Policy regression never counts unexecuted model cases as passed.
 
-5. <strong><code>competitor_intent</code> · competitor mention and context</strong>: Uses a configured competitor-name list with normalization, aliases, and comparison or domain signals in a local heuristic. For example, “compare us with Competitor A” may match. Use it for a business boundary with a known competitor list. A full-name mention can match without a purchase intent, so test neutral references, abbreviations, comparisons, and false positives.
+This complete Rule file finds customer identifiers in a response and replaces them with a placeholder. `risk_level` describes impact independently of the directive.
 
-6. <strong><code>colang_flow</code> · NeMo Colang Flow</strong>: A named Flow orchestrates checks and may call registered, version-pinned Actions or specialized evaluation models. For example, a jailbreak evaluator can judge whether “ignore all previous rules” attempts to bypass restrictions. Use it for semantic judgments, multi-step checks, or external capabilities such as content safety, jailbreak detection, and semantic PII. Inspect `flow_name`, `action_name`, Action dependencies, Rail, and required Test Cases. It has runtime dependencies and latency unlike local lexical matching. Kotlin Flow is not a Rule form in this product.
+```yaml
+id: customer-id
+name: Redact customer identifiers
+stages: [output]
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: '\bCUS-\d{6}\b'
+risk_level: medium
+on_match:
+  action: redact
+  replacement: '[CUSTOMER_ID]'
+metadata:
+  taxonomy_ids: [TALI-PRIVACY-PII]
+```
 
-<strong>Trace the exact implementation:</strong> `form` selects one of the types above; `engine`, `binding_id`, and `implementation_rule_id` identify the execution mapping. `detector`, `flow_name`, and `action_name` provide more specific provenance where relevant. Review these fields and Test Cases in Policy Library; maintain and publish custom programmable behavior in Policy Studio. Then inspect what this Rule requests **after a match**.
+Given `Customer ID CUS-123456`, expect `Customer ID [CUSTOMER_ID]`. To block the entire response instead, change `on_match.action` to `reject` and remove `replacement`; keep the same detector. Rerun allowed, matching, and boundary cases after the change.
 
+**Business identity belongs in the Rule; detection mechanism belongs in the detector.** Resident IDs and organization codes both use `text/regex`, with checks declared in `detector.parameters.validators`. Resident IDs combine date and weighted-checksum validation; organization codes use a weighted checksum; card numbers can use `luhn`. The Rule supplies the date offset, weights, and character mapping. Every configured validator must pass before the Rule matches and applies its directive. A new identifier format supported by these algorithms can reuse the same detector.
+
+A Policy can contain several such Rule files; `policy.yaml` lists their order. Each Rule reads the preceding Rule's output, and rejection stops this Policy's check. See [creating a Policy](#operator-policy-declarative) for the complete package, tests, and import/export workflow.
+
+**If no detector fits, implement and register the capability before referencing it.** A name alone does not establish coverage: regex, keyword, and local category signals do not provide full semantic understanding. Model detection needs a compatible model and any required context. Custom packages currently support registered local detectors; new model-detector registration and console YAML editing are not available yet.
+
+The platform connects detectors to NeMo Actions and handles execution and evidence. Engine, Flow, and Action bindings are adapter details, not Rule types for authors to select. The existing programmable Policy Studio still offers Colang; declarative directory packages do not require it.
 
 <a id="term-rule-risk-severity" />
 
@@ -75,7 +111,7 @@ A successful safe check does not create a Low security event. Matches and uncert
 
 ### After a Rule matches: eight directives
 
-A Rule's `effect` is its default **post-evaluation directive** (Enforcement Action). It is not the detection algorithm, evaluator verdict, or a NeMo Action called by a Flow. A Rule that does not match normally requests no intervention. After a match it can request one of eight directives. A particular combination must have the evidence or deliverable content it needs: `redact`, for example, needs spans or replacement text, while `regenerate` needs a caller that can generate again. Do not assume every implementation form can satisfy every directive merely because the name is selectable.
+A Rule's source `on_match.action` is its default **post-evaluation directive** (Enforcement Action). It is not the detection algorithm, evaluator verdict, or a NeMo Action called by a Flow. A Rule that does not match normally requests no intervention. After a match it can request one of eight directives. A particular combination must have the evidence or deliverable content it needs: `redact`, for example, needs spans or replacement text, while `regenerate` needs a caller that can generate again. Do not assume every implementation form can satisfy every directive merely because the name is selectable.
 
 1. **`reject` · block**: Stop this phase. Do not call the model for a rejected input or deliver rejected output.
 2. **`redact` · mask**: Replace sensitive spans with reviewed placeholders, such as “[masked]” for a phone number, and continue with the remaining content.

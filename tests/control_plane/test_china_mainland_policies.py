@@ -38,7 +38,7 @@ def test_china_mainland_collection_is_versioned_and_locally_executable() -> None
     for item in CHINA_POLICIES:
         assert item.version == "1.0.0"
         assert any(tag.id == "jurisdiction:cn" for tag in item.tags)
-        assert all(rule.form != "colang_flow" for rule in item.rules)
+        assert all(rule.implementation.execution == "local" for rule in item.rules)
 
 
 @pytest.mark.parametrize(

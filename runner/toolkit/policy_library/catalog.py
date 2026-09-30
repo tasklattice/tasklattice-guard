@@ -23,7 +23,7 @@ def policy_payload(item: PolicySpec) -> dict[str, object]:
         "parameters": tuple(asdict(parameter) for parameter in item.parameters),
         "rails": item.rails,
         "effects": item.effects,
-        "forms": item.forms,
+        "detectors": item.detectors,
         "rules": tuple(asdict(rule) for rule in item.rules),
         "test_cases": tuple(asdict(test_case) for test_case in item.test_cases),
         "test_count": item.test_count,

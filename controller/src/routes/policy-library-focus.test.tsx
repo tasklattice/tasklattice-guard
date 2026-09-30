@@ -21,11 +21,24 @@ afterEach(cleanup);
 beforeEach(() => { catalog.items = []; catalog.search = {}; });
 
 describe("Policy Library actual Studio opener", () => {
+  it("keeps file-imported declarative definitions out of the programmable mutation flows", async () => {
+    catalog.items = [{ id: "from-file", name: "Imported Rules", description: "File-owned definition", source: "custom", implementation: "rules",
+      version: "1.0.0", tags: [], parameters: [], rails: ["output"], effects: [], detectors: [], rules: [], test_count: 0, test_cases: [],
+      safety_level: "balanced", output_delivery: "full_buffered",
+    } as Policy];
+    catalog.search = { policy: "from-file" };
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><PolicyLibraryPage /></QueryClientProvider>);
+    await screen.findByRole("dialog", { name: "Imported Rules" });
+    expect(screen.queryByRole("button", { name: "policyLibrary.editPolicy" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "policyLibrary.deleteAction" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "policyStudio.exportPolicy" })).toBeNull();
+  });
   it("returns to the Edit button in the underlying Policy inspector", async () => {
     const draft = { guardrail_category: "pii_detection", sources: [{ path: "main.co", content: "flow check_request $text\n  pass" }],
       parameter_schema: [], action_references: [], evaluation_contracts: [], prompt_dependencies: [], execution_contract: [], rail_bindings: [], test_cases: [] };
     catalog.items = [{ id: "custom", name: "Local Policy", description: "Focus regression", source: "custom", implementation: "nemo_native",
-      version: "1", tags: [], parameters: [], rails: [], effects: [], forms: [], rules: [], test_count: 0, test_cases: [],
+      version: "1", tags: [], parameters: [], rails: [], effects: [], detectors: [], rules: [], test_count: 0, test_cases: [],
       safety_level: "balanced", output_delivery: "full_buffered",
       implementation_detail: { id: "custom", name: "Local Policy", description: "Focus regression", owner: "author@example.test", draft },
     } as Policy];

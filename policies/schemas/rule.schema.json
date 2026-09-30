@@ -1,0 +1,182 @@
+{
+  "$defs": {
+    "DetectorReference": {
+      "additionalProperties": false,
+      "properties": {
+        "ref": {
+          "minLength": 1,
+          "title": "Ref",
+          "type": "string"
+        },
+        "version": {
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        },
+        "parameters": {
+          "additionalProperties": true,
+          "title": "Parameters",
+          "type": "object"
+        }
+      },
+      "required": [
+        "ref",
+        "version"
+      ],
+      "title": "DetectorReference",
+      "type": "object"
+    },
+    "Handling": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "title": "Action",
+          "type": "string"
+        },
+        "replacement": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Replacement"
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "title": "Handling",
+      "type": "object"
+    },
+    "RuleMetadata": {
+      "additionalProperties": false,
+      "properties": {
+        "taxonomy_ids": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Taxonomy Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "taxonomy_ids"
+      ],
+      "title": "RuleMetadata",
+      "type": "object"
+    },
+    "RuntimeIdentity": {
+      "additionalProperties": false,
+      "properties": {
+        "binding_id": {
+          "minLength": 1,
+          "title": "Binding Id",
+          "type": "string"
+        },
+        "implementation_rule_id": {
+          "minLength": 1,
+          "title": "Implementation Rule Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "binding_id",
+        "implementation_rule_id"
+      ],
+      "title": "RuntimeIdentity",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "minLength": 1,
+      "title": "Id",
+      "type": "string"
+    },
+    "name": {
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+    },
+    "description": {
+      "default": "",
+      "title": "Description",
+      "type": "string"
+    },
+    "stages": {
+      "items": {
+        "enum": [
+          "input",
+          "output"
+        ],
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Stages",
+      "type": "array"
+    },
+    "detector": {
+      "$ref": "#/$defs/DetectorReference"
+    },
+    "on_match": {
+      "$ref": "#/$defs/Handling"
+    },
+    "risk_level": {
+      "enum": [
+        "critical",
+        "high",
+        "medium",
+        "low",
+        "informational"
+      ],
+      "title": "Risk Level",
+      "type": "string"
+    },
+    "metadata": {
+      "$ref": "#/$defs/RuleMetadata"
+    },
+    "expand": {
+      "anyOf": [
+        {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Expand"
+    },
+    "runtime_adapter": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RuntimeIdentity"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "stages",
+    "detector",
+    "on_match",
+    "risk_level",
+    "metadata"
+  ],
+  "title": "RuleDefinition",
+  "type": "object"
+}

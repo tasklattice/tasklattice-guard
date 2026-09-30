@@ -1,0 +1,46 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: filter-harmful-child-safety
+  name: Harmful Child Safety
+  description: Detects inappropriate content involving minors using identifier + block word combinations
+  source: built_in
+  version: 1.95.0
+  tags:
+  - namespace: protection
+    value: content_safety
+    label: Content safety
+    source: declared
+  - namespace: collection
+    value: local-content-filter
+    label: Local Content Filter
+    source: declared
+  - namespace: guardrail_category
+    value: content_safety
+    label: Content Safety
+    source: declared
+  - namespace: implementation
+    value: category
+    label: Category
+    source: derived
+  - namespace: rail
+    value: input
+    label: Input rail
+    source: derived
+  - namespace: rail
+    value: output
+    label: Output rail
+    source: derived
+  safety_level: balanced
+  output_delivery: window_buffered
+parameters: []
+rules:
+- rules/category-harmful_child_safety.yaml
+tests:
+- tests/acceptance.yaml
+resources:
+- resources/category-harmful_child_safety-identifiers.yaml
+- resources/category-harmful_child_safety-conditions.yaml
+- resources/category-harmful_child_safety-always_block.yaml
+- resources/category-harmful_child_safety-exceptions.yaml

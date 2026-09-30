@@ -1,0 +1,57 @@
+# yaml-language-server: $schema=../../../schemas/tests.schema.json
+- id: rule-nsfw-content-filter-english-only/harm_toxic_abuse-acceptance
+  name: Trigger Harm Toxic Abuse
+  description: Proves that the published category implementation for Harm Toxic Abuse
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: 1m1j'
+  expected_decision: block
+  covered_rule_ids:
+  - nsfw-content-filter-english-only/harm_toxic_abuse
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-nsfw-self-harm-filter-basic/harmful_self_harm-acceptance
+  name: Trigger Harmful Self Harm
+  description: Proves that the published category implementation for Harmful Self
+    Harm activates this Rule.
+  phase: input
+  content: 'Acceptance sample: kill myself'
+  expected_decision: block
+  covered_rule_ids:
+  - nsfw-self-harm-filter-basic/harmful_self_harm
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-nsfw-child-safety-filter-basic/harmful_child_safety-acceptance
+  name: Trigger Harmful Child Safety
+  description: Proves that the published category implementation for Harmful Child
+    Safety activates this Rule.
+  phase: input
+  content: 'Acceptance sample: child sexual abuse'
+  expected_decision: block
+  covered_rule_ids:
+  - nsfw-child-safety-filter-basic/harmful_child_safety
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-nsfw-racial-bias-filter-basic/bias_racial-acceptance
+  name: Trigger Bias Racial
+  description: Proves that the published category implementation for Bias Racial activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: white supremacy'
+  expected_decision: block
+  covered_rule_ids:
+  - nsfw-racial-bias-filter-basic/bias_racial
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule

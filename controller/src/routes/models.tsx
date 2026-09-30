@@ -78,7 +78,6 @@ export function ProvidersPage() {
   return (
     <section className="py-6 sm:py-8">
       <PageHeader
-        eyebrow={t("modelSettings.providersEyebrow")}
         title={t("modelSettings.providersTitle")}
         description={t("modelSettings.providersPageDescription")}
       />
@@ -106,7 +105,7 @@ export function ModelsPage() {
 
   return (
     <section className="py-6 sm:py-8">
-      <PageHeader eyebrow={t("modelSettings.eyebrow")} title={t("modelSettings.title")} description={t("modelSettings.description")} />
+      <PageHeader title={t("modelSettings.title")} description={t("modelSettings.description")} />
       <SettingsNavigation />
       {!administrator ? (
         <Alert className="mt-6"><CircleAlert /><AlertTitle>{t("modelSettings.readOnly")}</AlertTitle><AlertDescription>{t("modelSettings.readOnlyDescription")}</AlertDescription></Alert>
@@ -227,7 +226,6 @@ export function GuardrailCatalogPage() {
   return (
     <section className="py-6 sm:py-8">
       <PageHeader
-        eyebrow={t("modelSettings.catalogEyebrow")}
         title={t("modelSettings.catalogTitle")}
         description={t("modelSettings.catalogPageDescription")}
 

@@ -1,0 +1,31 @@
+# yaml-language-server: $schema=../../../schemas/tests.schema.json
+- id: accept/competitor-intent
+  name: Detect a reviewed competitor comparison
+  description: Required acceptance case for normalized competitor intent.
+  phase: input
+  content: Compare {{competitors}} with {{brand_name}}.
+  expected_decision: block
+  covered_rule_ids:
+  - competitor/intent
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names:
+  - competitors
+  - brand_name
+  scope: rule
+- id: accept/competitor-intent/output
+  name: Detect a reviewed competitor comparison
+  description: Required acceptance case for normalized competitor intent.
+  phase: output
+  content: Compare {{competitors}} with {{brand_name}}.
+  expected_decision: block
+  covered_rule_ids:
+  - competitor/intent
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names:
+  - competitors
+  - brand_name
+  scope: rule

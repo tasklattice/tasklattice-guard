@@ -49,6 +49,14 @@ jobs:
       - name: Test control-plane behavior and artifact production
         run: npm run test:control-plane
 
+      - name: Upload Policy regression report
+        if: ${{ always() && hashFiles('output/policy-regression.json') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: policy-regression
+          path: output/policy-regression.json
+          if-no-files-found: error
+
       - name: Typecheck and build Controller
         working-directory: controller
         run: npm run typecheck && npm run build

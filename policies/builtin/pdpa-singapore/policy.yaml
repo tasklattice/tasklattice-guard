@@ -1,0 +1,67 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: pdpa-singapore
+  name: Singapore PDPA — Personal Data Protection
+  description: Screens selected Singapore identifier formats and phrases related to consent, sensitive-data
+    profiling, Do Not Call requests, overseas transfers, and automated profiling. It does not determine
+    PDPA applicability or compliance.
+  source: built_in
+  version: 1.95.0
+  tags:
+  - namespace: protection
+    value: privacy
+    label: Privacy & sensitive information
+    source: declared
+  - namespace: guardrail_category
+    value: pii_detection
+    label: PII Detection
+    source: declared
+  - namespace: guardrail_category
+    value: agentic_security
+    label: Agentic Security
+    source: declared
+  - namespace: framework
+    value: pdpa
+    label: Singapore PDPA
+    source: declared
+  - namespace: jurisdiction
+    value: sg
+    label: Singapore
+    source: declared
+  - namespace: rail
+    value: input
+    label: Input rail
+    source: derived
+  - namespace: implementation
+    value: category
+    label: Category
+    source: derived
+  - namespace: implementation
+    value: regex
+    label: Regex
+    source: derived
+  safety_level: balanced
+  output_delivery: window_buffered
+parameters: []
+rules:
+- rules/sg-pdpa-pii-identifiers-sg_nric.yaml
+- rules/sg-pdpa-pii-identifiers-passport_singapore.yaml
+- rules/sg-pdpa-contact-information-sg_phone.yaml
+- rules/sg-pdpa-contact-information-sg_postal_code.yaml
+- rules/sg-pdpa-contact-information-email.yaml
+- rules/sg-pdpa-financial-data-sg_bank_account.yaml
+- rules/sg-pdpa-financial-data-credit_card.yaml
+- rules/sg-pdpa-business-identifiers-sg_uen.yaml
+- rules/sg-pdpa-personal-identifiers-sg_pdpa_personal_identifiers.yaml
+- rules/sg-pdpa-sensitive-data-sg_pdpa_sensitive_data.yaml
+- rules/sg-pdpa-do-not-call-sg_pdpa_do_not_call.yaml
+- rules/sg-pdpa-data-transfer-sg_pdpa_data_transfer.yaml
+- rules/sg-pdpa-profiling-automated-decisions-sg_pdpa_profiling_automated_decisions.yaml
+tests:
+- tests/acceptance.yaml
+resources:
+- resources/sg-pdpa-sensitive-data-sg_pdpa_sensitive_data-identifiers.yaml
+- resources/sg-pdpa-data-transfer-sg_pdpa_data_transfer-conditions.yaml
+- resources/sg-pdpa-profiling-automated-decisions-sg_pdpa_profiling_automated_decisions-conditions.yaml

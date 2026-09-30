@@ -1,0 +1,79 @@
+# yaml-language-server: $schema=../../../schemas/tests.schema.json
+- id: resident-id-valid/input
+  name: Validate and redact a resident ID candidate
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: input
+  content: 身份证号：990000200001010012
+  expected_decision: transform
+  covered_rule_ids:
+  - cn-personal-information/resident-identity-card
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: resident-id-valid/output
+  name: Validate and redact a resident ID candidate
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: output
+  content: 身份证号：990000200001010012
+  expected_decision: transform
+  covered_rule_ids:
+  - cn-personal-information/resident-identity-card
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: mainland-mobile/input
+  name: Redact a mainland mobile candidate
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: input
+  content: 手机号码：19900000000
+  expected_decision: transform
+  covered_rule_ids:
+  - cn-personal-information/mainland-mobile
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: mainland-mobile/output
+  name: Redact a mainland mobile candidate
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: output
+  content: 手机号码：19900000000
+  expected_decision: transform
+  covered_rule_ids:
+  - cn-personal-information/mainland-mobile
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: unionpay-context/input
+  name: Validate and redact a labelled UnionPay candidate
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: input
+  content: 银行卡号：6222000000000009
+  expected_decision: transform
+  covered_rule_ids:
+  - cn-personal-information/unionpay-card
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: unionpay-context/output
+  name: Validate and redact a labelled UnionPay candidate
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: output
+  content: 银行卡号：6222000000000009
+  expected_decision: transform
+  covered_rule_ids:
+  - cn-personal-information/unionpay-card
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule

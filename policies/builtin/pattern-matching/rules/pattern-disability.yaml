@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: pattern/disability
+name: Disability Status (Protected Class)
+description: Detects disability-related terms - protected under ECOA and ADA
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b(disabled|disabilit(y|ies)|handicap(ped)?|impair(ed|ment|ments)?|wheelchair|blind(ness)?|deaf(ness)?|hard\s+of\s+hearing|hearing\s+impaired|visually\s+impaired|mute|paralyz(ed|is)|quadriplegic|paraplegic|amputee|prosthetic|cripple[d]?|mentally\s+ill|mental\s+illness|mental\s+disorder|psychiatric|schizophren(ia|ic)|bipolar|depression|depressed|anxiety\s+disorder|PTSD|autis(m|tic)|asperger'?s?|ADHD|ADD|dyslexia|dyslexic|learning\s+disabilit(y|ies)|intellectual\s+disabilit(y|ies)|down'?s?\s+syndrome|cerebral\s+palsy|epilep(sy|tic)|seizure\s+disorder|multiple\s+sclerosis|MS\s+patient|parkinson'?s?|alzheimer'?s?|dementia|chronic\s+illness|chronic\s+pain|fibromyalgia|lupus|crohn'?s?|cancer\s+patient|HIV|AIDS|diabetic|diabetes|SSI|SSDI|disability\s+benefits|disability\s+income|ADA|reasonable\s+accommodation|special\s+needs|service\s+animal|service\s+dog|guide\s+dog)\b
+on_match:
+  action: redact
+  replacement: '[disability_REDACTED]'
+runtime_adapter:
+  binding_id: pattern-matching
+  implementation_rule_id: disability
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-SENSITIVE-ATTRIBUTE
+risk_level: medium

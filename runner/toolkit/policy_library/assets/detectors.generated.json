@@ -1,0 +1,149 @@
+{
+  "schema_version": 2,
+  "detectors": {
+    "text/regex": {
+      "version": "1.0.0",
+      "adapter": {
+        "engine": "nemo-guardrails",
+        "detector": "regex",
+        "flow_name": null,
+        "action_name": "GuardContentFilterAction",
+        "execution": "local"
+      },
+      "parameters": [
+        "expression",
+        "context_expression",
+        "context_max_gap_words",
+        "allow_word_numbers",
+        "validators"
+      ],
+      "required_parameters": [
+        "expression"
+      ],
+      "supports_replacement": true
+    },
+    "text/keyword": {
+      "version": "1.0.0",
+      "adapter": {
+        "engine": "nemo-guardrails",
+        "detector": "keyword",
+        "flow_name": null,
+        "action_name": "GuardContentFilterAction",
+        "execution": "local"
+      },
+      "parameters": [
+        "keywords",
+        "detector_options"
+      ],
+      "required_parameters": [],
+      "supports_replacement": true
+    },
+    "code/fenced-block": {
+      "version": "1.0.0",
+      "adapter": {
+        "engine": "nemo-guardrails",
+        "detector": "code_block",
+        "flow_name": null,
+        "action_name": "GuardContentFilterAction",
+        "execution": "local"
+      },
+      "parameters": [
+        "detector_options"
+      ],
+      "required_parameters": [
+        "detector_options"
+      ],
+      "supports_replacement": false
+    },
+    "text/conditions": {
+      "version": "1.0.0",
+      "adapter": {
+        "engine": "nemo-guardrails",
+        "detector": "conditions",
+        "flow_name": null,
+        "action_name": "GuardContentFilterAction",
+        "execution": "local"
+      },
+      "parameters": [
+        "detector_options"
+      ],
+      "required_parameters": [
+        "detector_options"
+      ],
+      "supports_replacement": false
+    },
+    "model/classifier": {
+      "version": "1.0.0",
+      "adapter": {
+        "engine": "nemo-guardrails",
+        "detector": null,
+        "flow_name": "tasklattice content safety",
+        "action_name": "GuardEvaluateAction",
+        "execution": "platform"
+      },
+      "parameters": [
+        "profile"
+      ],
+      "required_parameters": [
+        "profile"
+      ],
+      "supports_replacement": false,
+      "profiles": {
+        "topic-classification": {
+          "engine": "nemo-guardrails",
+          "detector": null,
+          "flow_name": "tasklattice topic control",
+          "action_name": "GuardTopicJudgeAction",
+          "execution": "platform"
+        },
+        "safety-classification": {
+          "engine": "nemo-guardrails",
+          "detector": null,
+          "flow_name": "tasklattice content safety",
+          "action_name": "GuardEvaluateAction",
+          "execution": "platform"
+        },
+        "jailbreak-classification": {
+          "engine": "nemo-guardrails",
+          "detector": null,
+          "flow_name": "tasklattice jailbreak",
+          "action_name": "GuardEvaluateAction",
+          "execution": "platform"
+        },
+        "pii-classification": {
+          "engine": "nemo-guardrails",
+          "detector": null,
+          "flow_name": "tasklattice pii",
+          "action_name": "GuardEvaluateAction",
+          "execution": "platform"
+        }
+      }
+    },
+    "model/grounding": {
+      "version": "1.0.0",
+      "adapter": {
+        "engine": "nemo-guardrails",
+        "detector": null,
+        "flow_name": "tasklattice contextual grounding",
+        "action_name": "GuardGroundingAction",
+        "execution": "platform"
+      },
+      "parameters": [],
+      "required_parameters": [],
+      "supports_replacement": false
+    },
+    "service/formal-verification": {
+      "version": "1.0.0",
+      "adapter": {
+        "engine": "nemo-guardrails",
+        "detector": null,
+        "flow_name": "tasklattice automated reasoning",
+        "action_name": "GuardAutomatedReasoningAction",
+        "execution": "platform"
+      },
+      "parameters": [],
+      "required_parameters": [],
+      "supports_replacement": false
+    }
+  }
+}

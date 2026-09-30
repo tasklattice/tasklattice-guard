@@ -1,0 +1,299 @@
+{
+  "$defs": {
+    "DiscoveryTag": {
+      "additionalProperties": false,
+      "properties": {
+        "namespace": {
+          "enum": [
+            "protection",
+            "guardrail_category",
+            "collection",
+            "domain",
+            "framework",
+            "implementation",
+            "jurisdiction",
+            "rail"
+          ],
+          "title": "Namespace",
+          "type": "string"
+        },
+        "value": {
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        },
+        "label": {
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "source": {
+          "default": "declared",
+          "enum": [
+            "declared",
+            "derived"
+          ],
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "namespace",
+        "value",
+        "label"
+      ],
+      "title": "DiscoveryTag",
+      "type": "object"
+    },
+    "ExecutionDefinition": {
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "const": "sequential",
+          "default": "sequential",
+          "title": "Mode",
+          "type": "string"
+        },
+        "input": {
+          "const": "previous_output",
+          "default": "previous_output",
+          "title": "Input",
+          "type": "string"
+        },
+        "stop_on": {
+          "const": "reject",
+          "default": "reject",
+          "title": "Stop On",
+          "type": "string"
+        }
+      },
+      "title": "ExecutionDefinition",
+      "type": "object"
+    },
+    "ParameterDefinition": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "label": {
+          "default": "",
+          "title": "Label",
+          "type": "string"
+        },
+        "kind": {
+          "minLength": 1,
+          "title": "Kind",
+          "type": "string"
+        },
+        "required": {
+          "title": "Required",
+          "type": "boolean"
+        },
+        "placeholder": {
+          "default": "",
+          "title": "Placeholder",
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        },
+        "default": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Default"
+        }
+      },
+      "required": [
+        "name",
+        "kind",
+        "required"
+      ],
+      "title": "ParameterDefinition",
+      "type": "object"
+    },
+    "PolicyMetadata": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "maxLength": 160,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "built_in",
+            "custom"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "version": {
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        },
+        "tags": {
+          "items": {
+            "$ref": "#/$defs/DiscoveryTag"
+          },
+          "title": "Tags",
+          "type": "array"
+        },
+        "safety_level": {
+          "default": "balanced",
+          "enum": [
+            "balanced",
+            "strict"
+          ],
+          "title": "Safety Level",
+          "type": "string"
+        },
+        "output_delivery": {
+          "default": "window_buffered",
+          "enum": [
+            "interruptible",
+            "window_buffered",
+            "full_buffered"
+          ],
+          "title": "Output Delivery",
+          "type": "string"
+        },
+        "compliance": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Compliance"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "source",
+        "version",
+        "tags"
+      ],
+      "title": "PolicyMetadata",
+      "type": "object"
+    },
+    "TestSettings": {
+      "additionalProperties": false,
+      "properties": {
+        "parameters": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Parameters",
+          "type": "object"
+        }
+      },
+      "title": "TestSettings",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 2,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "kind": {
+      "const": "Policy",
+      "title": "Kind",
+      "type": "string"
+    },
+    "metadata": {
+      "$ref": "#/$defs/PolicyMetadata"
+    },
+    "parameters": {
+      "items": {
+        "$ref": "#/$defs/ParameterDefinition"
+      },
+      "title": "Parameters",
+      "type": "array"
+    },
+    "execution": {
+      "$ref": "#/$defs/ExecutionDefinition"
+    },
+    "rules": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Rules",
+      "type": "array"
+    },
+    "tests": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Tests",
+      "type": "array"
+    },
+    "resources": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Resources",
+      "type": "array"
+    },
+    "documents": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Documents",
+      "type": "array"
+    },
+    "testing": {
+      "$ref": "#/$defs/TestSettings"
+    },
+    "history": {
+      "items": {
+        "type": "string"
+      },
+      "title": "History",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "kind",
+    "metadata",
+    "rules",
+    "tests"
+  ],
+  "title": "PolicyManifest",
+  "type": "object"
+}

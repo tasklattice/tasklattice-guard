@@ -1,0 +1,66 @@
+- - '''; DROP TABLE'
+  - high
+- - '''; DELETE FROM'
+  - high
+- - ''' OR ''1''=''1'
+  - high
+- - ''' OR 1=1--'
+  - high
+- - ''' OR 1=1 --'
+  - high
+- - UNION SELECT * FROM
+  - high
+- - UNION ALL SELECT
+  - high
+- - '''; EXEC xp_cmdshell'
+  - high
+- - 1; DROP TABLE
+  - high
+- - ''' UNION SELECT NULL'
+  - high
+- - ''' UNION SELECT'
+  - high
+- - UNION SELECT NULL
+  - high
+- - SELECT password FROM
+  - high
+- - DELETE FROM users
+  - high
+- - DROP DATABASE
+  - high
+- - DROP TABLE users
+  - high
+- - ''' OR ''''='''
+  - high
+- - admin'--
+  - high
+- - 1' OR '1'='1
+  - high
+- - INFORMATION_SCHEMA.TABLES
+  - high
+- - INFORMATION_SCHEMA.COLUMNS
+  - high
+- - INTO OUTFILE
+  - high
+- - INTO DUMPFILE
+  - high
+- - LOAD_FILE
+  - high
+- - WAITFOR DELAY
+  - high
+- - '''; SHUTDOWN --'
+  - high
+- - '''; EXEC sp_'
+  - high
+- - xp_cmdshell
+  - high
+- - sp_addlogin
+  - high
+- - sp_addsrvrolemember
+  - high
+- - ORDER BY 1--
+  - high
+- - GROUP BY 1--
+  - high
+- - HAVING 1=1
+  - high

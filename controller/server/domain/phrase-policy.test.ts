@@ -21,9 +21,26 @@ describe("Policy-owned phrase configuration", () => {
     const params = Object.fromEntries(steps[0]!.parameters);
     expect(params.policy_id).toBe(PHRASE_POLICY_ID);
     expect(params).not.toHaveProperty("custom_rules_json");
-    expect(JSON.parse(params.rule_actions_json!)).toEqual({ [PHRASE_POLICY_ID]: {} });
+    expect(JSON.parse(params.rule_actions_json!)).toEqual({ [PHRASE_POLICY_ID]: { [`${PHRASE_RULE_ID}/mask`]: "redact", [`${PHRASE_RULE_ID}/block`]: "reject" } });
     expect(JSON.parse(params.policy_parameters_json!)[PHRASE_POLICY_ID]).toEqual(draft.policyBindings[0]!.parameterValues);
     expect(plan.policy_bindings).toEqual([expect.objectContaining({ policy_id: PHRASE_POLICY_ID })]);
+  });
+  it("pins each expanded Rule risk independently from its directive", () => {
+    const candidate = structuredClone(draft);
+    candidate.policyBindings[0]!.parameterValues.phrase_entries = JSON.stringify([
+      entries[0], entries[1],
+    ]);
+    candidate.policyBindings[0]!.ruleActions = { [PHRASE_RULE_ID]: "pass" };
+    const plan = buildGuardrailPlan({ guardrailId: "risk", guardrailVersion: "v1", draft: candidate, policies });
+    expect(plan.policy_bindings).toEqual([expect.objectContaining({
+      enabled_rule_ids: [`${PHRASE_RULE_ID}/mask`, `${PHRASE_RULE_ID}/block`],
+      rule_severities: [[`${PHRASE_RULE_ID}/mask`, "low"], [`${PHRASE_RULE_ID}/block`, "low"]],
+      rule_actions: [[`${PHRASE_RULE_ID}/block`, "pass"], [`${PHRASE_RULE_ID}/mask`, "pass"]],
+    })]);
+    expect(candidate.policyBindings[0]!.enabledRuleIds).toEqual([PHRASE_RULE_ID]);
+  });
+  it("rejects severity overrides inside binding parameters", () => {
+    expect(() => parsePhraseEntries(JSON.stringify([{ ...entries[0], risk_level: "informational" }]))).toThrow();
   });
   it("generates acceptance tests for every phrase in both selected directions", () => {
     const cases = generatedTestCases("phrases", draft, policies);

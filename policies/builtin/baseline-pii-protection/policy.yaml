@@ -1,0 +1,47 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: baseline-pii-protection
+  name: Baseline PII Protection
+  description: Baseline PII protection for internal tools and testing. Focuses on credentials and high-risk
+    identifiers only. Suitable for non-sensitive internal use.
+  source: built_in
+  version: 1.95.0
+  tags:
+  - namespace: protection
+    value: privacy
+    label: Privacy & sensitive information
+    source: declared
+  - namespace: guardrail_category
+    value: pii_detection
+    label: PII Detection
+    source: declared
+  - namespace: rail
+    value: input
+    label: Input rail
+    source: derived
+  - namespace: implementation
+    value: regex
+    label: Regex
+    source: derived
+  safety_level: balanced
+  output_delivery: window_buffered
+parameters: []
+rules:
+- rules/au-pii-tax-identifiers-au_tfn.yaml
+- rules/au-pii-tax-identifiers-au_abn.yaml
+- rules/au-pii-tax-identifiers-au_medicare.yaml
+- rules/credentials-api-keys-aws_access_key.yaml
+- rules/credentials-api-keys-aws_secret_key.yaml
+- rules/credentials-api-keys-github_token.yaml
+- rules/credentials-api-keys-slack_token.yaml
+- rules/credentials-api-keys-generic_api_key.yaml
+- rules/financial-pii-visa.yaml
+- rules/financial-pii-mastercard.yaml
+- rules/financial-pii-amex.yaml
+- rules/financial-pii-discover.yaml
+- rules/financial-pii-credit_card.yaml
+- rules/financial-pii-iban.yaml
+tests:
+- tests/acceptance.yaml

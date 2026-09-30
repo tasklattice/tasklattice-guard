@@ -1,0 +1,28 @@
+- 1=1
+- OR true
+- OR 1
+- --
+- xp_cmdshell
+- information_schema
+- sys.tables
+- sysobjects
+- pg_catalog
+- pg_tables
+- INTO OUTFILE
+- INTO DUMPFILE
+- LOAD_FILE
+- BENCHMARK
+- WAITFOR
+- HAVING 1=1
+- ORDER BY 1
+- schema_name
+- '@@version'
+- drop table
+- drop database
+- drop schema
+- truncate table
+- delete from
+- alter table
+- union select
+- union all select
+- grant all

@@ -1,0 +1,53 @@
+# yaml-language-server: $schema=../../../schemas/tests.schema.json
+- id: accept/email/input
+  name: Detect Email Address
+  description: Required acceptance case for PII Patterns.
+  phase: input
+  content: 'Acceptance sample: A@A.AA'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/email
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/email/output
+  name: Detect Email Address
+  description: Required acceptance case for PII Patterns.
+  phase: output
+  content: 'Acceptance sample: A@A.AA'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/email
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/us_phone/input
+  name: Detect Phone Number (US)
+  description: Required acceptance case for PII Patterns.
+  phase: input
+  content: 'Acceptance sample: +1 (000) 000 0000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/us_phone
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/us_phone/output
+  name: Detect Phone Number (US)
+  description: Required acceptance case for PII Patterns.
+  phase: output
+  content: 'Acceptance sample: +1 (000) 000 0000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/us_phone
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule

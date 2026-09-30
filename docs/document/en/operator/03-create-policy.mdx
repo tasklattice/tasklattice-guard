@@ -1,10 +1,33 @@
 ---
 id: "operator-create-policy"
 title: "Create a Policy: turn a business need into a check"
-summary: "Understand how Colang Flows, Rails, Actions, and Rules work together before creating a reusable check in Policy Studio."
+summary: "Split a business requirement into Rules, choose detectors and handling, then test the expected behavior."
 order: 2
 ---
 First decide whether an existing Policy needs different binding parameters or whether a new reusable check is missing. Change Guardrail Binding parameters or Rules for the former. Create a Policy for the latter. For example, if several applications need to detect requests to reveal a system prompt, make that detection reusable instead of encoding it separately in each Router.
+
+<a id="operator-policy-declarative" />
+
+## Declarative Policies: define Rules before choosing a detector
+
+Built-in and custom Policies use the same directory package: one directory per Policy, one YAML file per Rule. The `policy.yaml` manifest lists Rule order, tests, and resources; the compiler produces the shared runtime catalog. Author a Policy in this order: **purpose → multiple Rules → detector and parameters → post-match handling → tests**. You do not need to start by learning Colang.
+
+For example, “support responses must not reveal customer identifiers or internal secret labels” becomes two Output Rules. The first uses `text/regex@1.0.0` to detect a format such as `CUS-123456` and redact it. The second uses `text/keyword@1.0.0` to detect `INTERNAL_SECRET` and reject the response. Each Rule declares its own risk level. Rules execute in order on the preceding Rule's output; rejection stops the check.
+
+Use `scope: rule` to test an individual detector and `scope: policy` to test the complete sequence. Cases can assert the Decision, exact replacement text, and matched Rule IDs. Every Rule stage requires an acceptance case.
+
+The complete example is `policies/examples/customer-information`. From the repository root:
+
+```bash
+npm run policies:validate -- policies/examples/customer-information
+npm run policies:test -- policies/examples/customer-information
+npm run policies:import -- policies/examples/customer-information
+npm run policies:export -- policies/custom/customer-information --output /tmp/customer-information.zip
+```
+
+Import accepts only `source: custom` and cannot replace platform-owned IDs. It generates the custom catalog. After rebuilding and starting Controller, the Policy can be viewed in Policy Library and bound to a Guardrail. **Import does not publish**: Guardrail tests, Guardrail publication and Router publication are still required. Changed definitions need a new version, and published Guardrails retain their Rule snapshots.
+
+This path supports directory/ZIP transfer for local detectors. Run `npm run policies:regression` to check every current package. Model-dependent cases are explicitly reported as not run and require a configured model environment. Custom model-detector registration and console YAML editing are not available yet. Policy Studio below remains the existing programmable editor; its import button accepts programmable Policy JSON packages. These package formats cannot be mixed.
 
 <a id="operator-policy-mechanism" />
 
@@ -19,7 +42,7 @@ The parts have distinct responsibilities:
 3. **Action References pin callable capabilities by name and version**. The Flow may call registered detectors or model-backed capabilities from the Action Catalog. A custom Policy cannot upload arbitrary Python to Runner. Guardrail Binding resolves reviewed parameters and pins them with the version; live requests cannot override them.
 4. **Test Cases demonstrate behavior**. A normal order response should pass; a response containing a customer ID should transform or block as configured. Add look-alike values that must not match and failure cases such as Action timeout. Each case specifies a Rail, expected Decision, and covered Rule ID.
 
-The execution relationship for a custom Rule is **Policy Version → Rule (a Flow on an Input or Output Rail) → registered Action/model produces a finding → post-match directive → Decision**. A Policy defines the default directive, which a Guardrail Binding may override for an application; Endpoint and Router decide which requests use which Guardrail Version. See the full [Policy–Rule–implementation–directive model](#glossary-definition). The Catalog also contains six [Rule implementation forms](#term-rule-implementation), such as `regex` and `keyword`, but custom programmable authoring in Policy Studio uses `colang_flow`; the six forms are not six editor modes here.
+The execution relationship for a custom Rule is **Policy Version → Rule (a Flow on an Input or Output Rail) → registered Action/model produces a finding → post-match directive → Decision**. A Policy defines the default directive, which a Guardrail Binding may override for an application; Endpoint and Router decide which requests use which Guardrail Version. See the full [Policy–Rule–implementation–directive model](#glossary-definition). Declarative directory packages use one [detector-reference contract](#term-rule-implementation). The programmable Policy Studio path described here still uses Flows and a separate import format.
 
 <a id="operator-policy-create" />
 

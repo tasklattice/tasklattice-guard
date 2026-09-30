@@ -8,7 +8,7 @@ def test_pass_retains_local_and_custom_findings_without_changing_text() -> None:
         policy_rule_actions={"filter-denied-insults": {"category/denied_insults": "pass"}})
     assert observed.verdict == "unsafe" and observed.content == text
     assert observed.findings[0].recommended_action == "pass"
-    assert "failure + you" in observed.findings[0].evidence
+    assert "failure + you" in observed.findings[0].evidence.lower()
     assert "without intervening" in observed.reason
     # The source Policy still rejects when no Default-local override is supplied.
     assert engine.evaluate(text=text, phase="input", policies=("filter-denied-insults",)).findings[0].recommended_action == "reject"

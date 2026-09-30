@@ -1,0 +1,17 @@
+id: model/contextual-grounding
+name: Grounding judge
+description: Regenerate output that is unsupported by the source context.
+stages:
+- output
+detector:
+  ref: model/grounding
+  version: 1.0.0
+on_match:
+  action: regenerate
+runtime_adapter:
+  binding_id: contextual_grounding
+  implementation_rule_id: contextual_grounding
+metadata:
+  taxonomy_ids:
+  - TALI-RESPONSE-INTEGRITY-UNGROUNDED
+risk_level: medium

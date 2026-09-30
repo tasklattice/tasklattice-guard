@@ -27,7 +27,7 @@ def policy_protection(item: PolicySpec) -> dict:
     split_topic = item.id == "builtin-topic-safety" and any(
         rule.id == "topic/allowlist" for rule in item.rules
     )
-    execution = "model" if split_topic else native.get("execution", "custom" if "colang_flow" in item.forms else "local")
+    execution = "model" if split_topic else native.get("execution", "custom" if any(rule.implementation.execution != "local" for rule in item.rules) else "local")
     limitations = []
     if execution == "local":
         limitations.append("Matches configured local patterns; it does not provide comprehensive semantic detection.")

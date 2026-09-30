@@ -1,0 +1,209 @@
+# yaml-language-server: $schema=../../../schemas/tests.schema.json
+- id: accept/gender_sexual_orientation/input
+  name: Detect Gender & Sexual Orientation (Protected Class)
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: input
+  content: 'Acceptance sample: non-binary'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/gender_sexual_orientation
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/gender_sexual_orientation/output
+  name: Detect Gender & Sexual Orientation (Protected Class)
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: output
+  content: 'Acceptance sample: non-binary'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/gender_sexual_orientation
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/race_ethnicity_national_origin/input
+  name: Detect Race, Ethnicity & National Origin (Protected Class)
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: input
+  content: 'Acceptance sample: caucasian'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/race_ethnicity_national_origin
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/race_ethnicity_national_origin/output
+  name: Detect Race, Ethnicity & National Origin (Protected Class)
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: output
+  content: 'Acceptance sample: caucasian'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/race_ethnicity_national_origin
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/religion/input
+  name: Detect Religion & Creed (Protected Class)
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: input
+  content: 'Acceptance sample: christians'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/religion
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/religion/output
+  name: Detect Religion & Creed (Protected Class)
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: output
+  content: 'Acceptance sample: christians'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/religion
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/age_discrimination/input
+  name: Detect Age-Related Terms (Protected Class)
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: input
+  content: 'Acceptance sample: elderly'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/age_discrimination
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/age_discrimination/output
+  name: Detect Age-Related Terms (Protected Class)
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: output
+  content: 'Acceptance sample: elderly'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/age_discrimination
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/disability/input
+  name: Detect Disability Status (Protected Class)
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: input
+  content: 'Acceptance sample: disabled'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/disability
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/disability/output
+  name: Detect Disability Status (Protected Class)
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: output
+  content: 'Acceptance sample: disabled'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/disability
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/marital_family_status/input
+  name: Detect Marital & Family Status (Protected Class)
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: input
+  content: 'Acceptance sample: married'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/marital_family_status
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/marital_family_status/output
+  name: Detect Marital & Family Status (Protected Class)
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: output
+  content: 'Acceptance sample: married'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/marital_family_status
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/military_status/input
+  name: Detect Military Status (Protected Class)
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: input
+  content: 'Acceptance sample: veterans'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/military_status
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/military_status/output
+  name: Detect Military Status (Protected Class)
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: output
+  content: 'Acceptance sample: veterans'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/military_status
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/public_assistance/input
+  name: Detect Public Assistance Status (Protected Class)
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: input
+  content: 'Acceptance sample: welfare'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/public_assistance
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/public_assistance/output
+  name: Detect Public Assistance Status (Protected Class)
+  description: Required acceptance case for Protected Class - Fair Lending.
+  phase: output
+  content: 'Acceptance sample: welfare'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/public_assistance
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule

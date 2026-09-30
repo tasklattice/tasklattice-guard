@@ -1,0 +1,123 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: pattern-matching
+  name: Pattern Matching
+  description: Detects and masks 82 reviewed identity, credential, financial, safety, and regional data
+    patterns locally.
+  source: built_in
+  version: 1.95.0
+  tags:
+  - namespace: protection
+    value: privacy
+    label: Privacy & sensitive information
+    source: declared
+  - namespace: collection
+    value: local-content-filter
+    label: Local Content Filter
+    source: declared
+  - namespace: guardrail_category
+    value: pii_detection
+    label: PII Detection
+    source: declared
+  - namespace: implementation
+    value: regex
+    label: Regex
+    source: derived
+  - namespace: rail
+    value: input
+    label: Input rail
+    source: derived
+  - namespace: rail
+    value: output
+    label: Output rail
+    source: derived
+  safety_level: balanced
+  output_delivery: window_buffered
+parameters: []
+rules:
+- rules/pattern-us_ssn.yaml
+- rules/pattern-us_ssn_no_dash.yaml
+- rules/pattern-email.yaml
+- rules/pattern-us_phone.yaml
+- rules/pattern-visa.yaml
+- rules/pattern-mastercard.yaml
+- rules/pattern-amex.yaml
+- rules/pattern-discover.yaml
+- rules/pattern-credit_card.yaml
+- rules/pattern-aws_access_key.yaml
+- rules/pattern-aws_secret_key.yaml
+- rules/pattern-github_token.yaml
+- rules/pattern-slack_token.yaml
+- rules/pattern-generic_api_key.yaml
+- rules/pattern-ipv4.yaml
+- rules/pattern-ipv6.yaml
+- rules/pattern-url.yaml
+- rules/pattern-passport_us.yaml
+- rules/pattern-passport_uk.yaml
+- rules/pattern-passport_germany.yaml
+- rules/pattern-passport_france.yaml
+- rules/pattern-passport_netherlands.yaml
+- rules/pattern-passport_canada.yaml
+- rules/pattern-passport_india.yaml
+- rules/pattern-passport_australia.yaml
+- rules/pattern-passport_china.yaml
+- rules/pattern-passport_japan.yaml
+- rules/pattern-gender_sexual_orientation.yaml
+- rules/pattern-race_ethnicity_national_origin.yaml
+- rules/pattern-religion.yaml
+- rules/pattern-age_discrimination.yaml
+- rules/pattern-disability.yaml
+- rules/pattern-marital_family_status.yaml
+- rules/pattern-military_status.yaml
+- rules/pattern-public_assistance.yaml
+- rules/pattern-weapons_firearms.yaml
+- rules/pattern-weapons_other.yaml
+- rules/pattern-explosives.yaml
+- rules/pattern-violence_threats.yaml
+- rules/pattern-terrorism.yaml
+- rules/pattern-self_harm_suicide.yaml
+- rules/pattern-illegal_activities.yaml
+- rules/pattern-harassment_hate.yaml
+- rules/pattern-nl_bsn_contextual.yaml
+- rules/pattern-br_cpf.yaml
+- rules/pattern-br_cpf_unformatted.yaml
+- rules/pattern-br_phone_landline.yaml
+- rules/pattern-br_phone_mobile.yaml
+- rules/pattern-br_cep.yaml
+- rules/pattern-br_cnpj.yaml
+- rules/pattern-br_rg.yaml
+- rules/pattern-au_tfn.yaml
+- rules/pattern-au_abn.yaml
+- rules/pattern-au_medicare.yaml
+- rules/pattern-iban.yaml
+- rules/pattern-fr_nir.yaml
+- rules/pattern-eu_iban_enhanced.yaml
+- rules/pattern-fr_phone.yaml
+- rules/pattern-eu_vat.yaml
+- rules/pattern-eu_passport_generic.yaml
+- rules/pattern-fr_postal_code.yaml
+- rules/pattern-street_address.yaml
+- rules/pattern-airline_pnr.yaml
+- rules/pattern-skywards_number.yaml
+- rules/pattern-uae_emirates_id.yaml
+- rules/pattern-uae_phone.yaml
+- rules/pattern-flight_number.yaml
+- rules/pattern-sg_nric.yaml
+- rules/pattern-sg_phone.yaml
+- rules/pattern-sg_postal_code.yaml
+- rules/pattern-passport_singapore.yaml
+- rules/pattern-sg_uen.yaml
+- rules/pattern-sg_bank_account.yaml
+- rules/pattern-ca_sin.yaml
+- rules/pattern-ca_ohip.yaml
+- rules/pattern-ca_on_drivers_licence.yaml
+- rules/pattern-ca_immigration_doc.yaml
+- rules/pattern-ca_bank_account.yaml
+- rules/pattern-ca_postal_code.yaml
+- rules/pattern-uoft_student_id.yaml
+- rules/pattern-uoft_utorid.yaml
+- rules/pattern-uoft_tcard.yaml
+tests:
+- tests/acceptance.yaml

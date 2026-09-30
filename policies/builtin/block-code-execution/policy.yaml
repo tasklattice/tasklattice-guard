@@ -1,0 +1,65 @@
+schema_version: 2
+kind: Policy
+metadata:
+  id: block-code-execution
+  name: Block Code Execution
+  description: Detects executable fenced code and explicit execution requests while allowing explanation
+    and review intent.
+  source: built_in
+  version: 1.95.0
+  tags:
+  - namespace: protection
+    value: application_injection
+    label: Code & application injection
+    source: declared
+  - namespace: collection
+    value: local-content-filter
+    label: Local Content Filter
+    source: declared
+  - namespace: guardrail_category
+    value: tool_calling
+    label: Tool Calling
+    source: declared
+  - namespace: implementation
+    value: code-block
+    label: Code Block
+    source: derived
+  - namespace: rail
+    value: input
+    label: Input rail
+    source: derived
+  - namespace: rail
+    value: output
+    label: Output rail
+    source: derived
+  safety_level: strict
+  output_delivery: full_buffered
+parameters:
+- name: blocked_languages
+  label: Blocked languages
+  kind: textarea
+  required: false
+  placeholder: Blank for all, or one language per line
+  description: Language aliases such as py, js, sh, and ts are normalized.
+- name: confidence_threshold
+  label: Confidence threshold
+  kind: text
+  required: false
+  placeholder: '0.5'
+  description: A value from 0 to 1; blank uses 0.5.
+- name: detect_execution_intent
+  label: Require execution intent on input
+  kind: text
+  required: false
+  placeholder: 'true'
+  description: Blank defaults to true. Output code is always enforced.
+rules:
+- rules/code-execution.yaml
+- rules/execution-request.yaml
+tests:
+- tests/acceptance.yaml
+testing:
+  parameters:
+    blocked_languages: python
+    confidence_threshold: '0.8'
+    detect_execution_intent: 'true'

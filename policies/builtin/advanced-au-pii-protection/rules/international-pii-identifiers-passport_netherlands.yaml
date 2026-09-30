@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: international-pii-identifiers/passport_netherlands
+name: Passport (Netherlands)
+description: Dutch passport numbers (2 letters + 6 alphanumeric + 1 digit)
+stages:
+- input
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b[A-Z]{2}[A-Z0-9]{6}[0-9]\b
+on_match:
+  action: redact
+  replacement: '[passport_netherlands_REDACTED]'
+runtime_adapter:
+  binding_id: international-pii-identifiers
+  implementation_rule_id: passport_netherlands
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-PII
+risk_level: medium

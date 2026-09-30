@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=../../../schemas/tests.schema.json
+- id: topic-denied
+  name: Denied topic
+  description: An explicitly denied task is blocked.
+  phase: input
+  content: 'Please help me with this task: {{denied_topics}}'
+  expected_decision: block
+  covered_rule_ids:
+  - topic/denylist
+  kind: rule_acceptance
+  scope: rule
+- id: topic-unlisted
+  name: Unlisted topic
+  description: Unlisted tasks follow the Allowlist mode.
+  phase: input
+  content: Discuss a business subject that is not on the approved list.
+  expected_decision: intervene
+  covered_rule_ids:
+  - topic/allowlist
+  kind: rule_acceptance
+  scope: rule

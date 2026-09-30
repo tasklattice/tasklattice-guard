@@ -1,0 +1,33 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: local-network-addresses
+  name: Network addresses & URLs
+  description: Redact IPv4, IPv6 and URL formats, including public addresses. This is a disclosure filter,
+    not an SSRF defense or a network access policy.
+  source: built_in
+  version: 2.0.0
+  tags:
+  - namespace: protection
+    value: privacy
+    label: Privacy & sensitive information
+    source: declared
+  - namespace: guardrail_category
+    value: pii_detection
+    label: PII Detection
+    source: declared
+  - namespace: collection
+    value: focused-protection
+    label: Focused protection
+    source: declared
+  safety_level: balanced
+  output_delivery: full_buffered
+parameters: []
+rules:
+- rules/pattern-ipv4.yaml
+- rules/pattern-ipv6.yaml
+- rules/pattern-url.yaml
+tests:
+- tests/acceptance.yaml
+- tests/regression.yaml

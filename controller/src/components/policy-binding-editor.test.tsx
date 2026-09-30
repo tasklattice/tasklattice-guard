@@ -5,6 +5,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import type { GuardrailPolicyBinding, Policy } from "@/lib/api";
 
 import { PolicyBindingEditor, defaultPolicyBinding } from "./policy-binding-editor";
+import configurablePolicies from "../../../runner/toolkit/policy_library/assets/configurable_policies.json";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -73,18 +74,18 @@ const policy = {
   parameters: [],
   rails: ["input"],
   effects: ["redact"],
-  forms: ["regex"],
+  detectors: ["text/regex"],
   rules: [
     {
       id: "customer-data-policy/account-id",
       name: "Protect account IDs",
       description: "Redact account identifiers.",
-      form: "regex",
+      detector: { ref: "text/regex", version: "1.0.0" },
       effect: "redact",
       rails: ["input"],
       implementation: {
         engine: "nemo-guardrails",
-        form: "regex",
+        execution: "local",
         binding_id: "customer-data-policy",
         implementation_rule_id: "account-id",
         detector: "regex",
@@ -174,13 +175,16 @@ describe("PolicyBindingEditor", () => {
   });
 
   it("shows per-phrase actions only when no Policy action overrides them", () => {
-    const phrases: Policy = { ...policy, rules: [{ ...policy.rules[0], implementation: { ...policy.rules[0].implementation, detector: "configured_phrases" } }] };
+    const source = configurablePolicies.find(item => item.id === "configured-phrase-filter")!;
+    const phrases = { ...policy, ...source } as unknown as Policy;
     const binding = defaultPolicyBinding(phrases);
+    binding.parameter_values.phrase_entries = JSON.stringify([{ id: "secret", phrase: "INTERNAL_SECRET", action: "reject" }]);
     const { rerender } = render(<PolicyBindingEditor policies={[phrases]} value={[binding]} onChange={vi.fn()} showSelector={false} />);
     fireEvent.click(screen.getByRole("button", { name: /Review Rule details for/ }));
-    expect(screen.getByRole("combobox", { name: "Action for Protect account IDs" }).querySelector(".cds--list-box__label")?.textContent).toBe("Phrase actions");
+    const action = () => screen.getByRole("combobox", { name: `Action for ${phrases.rules[0].name}` });
+    expect(action().querySelector(".cds--list-box__label")?.textContent).toBe("Phrase actions");
     rerender(<PolicyBindingEditor policies={[phrases]} value={[{ ...binding, action: "reject" }]} onChange={vi.fn()} showSelector={false} />);
-    expect(screen.getByRole("combobox", { name: "Action for Protect account IDs" }).querySelector(".cds--list-box__label")?.textContent).toBe("Policy · reject");
+    expect(action().querySelector(".cds--list-box__label")?.textContent).toBe("Policy · reject");
   });
 
   it("renders and edits the pinned version's required parameters, not the latest version", () => {

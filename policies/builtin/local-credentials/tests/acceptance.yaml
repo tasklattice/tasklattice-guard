@@ -1,0 +1,193 @@
+# yaml-language-server: $schema=../../../schemas/tests.schema.json
+- id: rule-credentials-api-keys/aws_access_key-acceptance/input
+  name: Trigger AWS Access Key
+  description: Proves that the published regex implementation for AWS Access Key activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: AKIA0000000000000000'
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-credentials-api-keys/aws_access_key-acceptance/output
+  name: Trigger AWS Access Key
+  description: Proves that the published regex implementation for AWS Access Key activates
+    this Rule.
+  phase: output
+  content: 'Acceptance sample: AKIA0000000000000000'
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-credentials-api-keys/aws_secret_key-acceptance/input
+  name: Trigger AWS Secret Key
+  description: Proves that the published regex implementation for AWS Secret Key activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/aws_secret_key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-credentials-api-keys/aws_secret_key-acceptance/output
+  name: Trigger AWS Secret Key
+  description: Proves that the published regex implementation for AWS Secret Key activates
+    this Rule.
+  phase: output
+  content: 'Acceptance sample: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/aws_secret_key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-credentials-api-keys/github_token-acceptance/input
+  name: Trigger GitHub Token
+  description: Proves that the published regex implementation for GitHub Token activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/github_token
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-credentials-api-keys/github_token-acceptance/output
+  name: Trigger GitHub Token
+  description: Proves that the published regex implementation for GitHub Token activates
+    this Rule.
+  phase: output
+  content: 'Acceptance sample: ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/github_token
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-credentials-api-keys/slack_token-acceptance/input
+  name: Trigger Slack Token
+  description: Proves that the published regex implementation for Slack Token activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: xoxp-0000000000-0000000000-aaaaaaaaaaaaaaaaaaaaaaaa'
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/slack_token
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-credentials-api-keys/slack_token-acceptance/output
+  name: Trigger Slack Token
+  description: Proves that the published regex implementation for Slack Token activates
+    this Rule.
+  phase: output
+  content: 'Acceptance sample: xoxp-0000000000-0000000000-aaaaaaaaaaaaaaaaaaaaaaaa'
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/slack_token
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-credentials-api-keys/generic_api_key-acceptance/input
+  name: Trigger API Key (Generic)
+  description: Proves that the published regex implementation for API Key (Generic)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: API-KEY ''AAAAAAAAAAAAAAAAAAAA'''
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/generic_api_key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-credentials-api-keys/generic_api_key-acceptance/output
+  name: Trigger API Key (Generic)
+  description: Proves that the published regex implementation for API Key (Generic)
+    activates this Rule.
+  phase: output
+  content: 'Acceptance sample: API-KEY ''AAAAAAAAAAAAAAAAAAAA'''
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/generic_api_key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: password-en/input
+  name: password-en/input
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: input
+  content: password=synthetic-secret-42
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  group: Protection contract
+  parameter_names: []
+  scope: rule
+- id: password-zh/input
+  name: password-zh/input
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: input
+  content: 密码：测试密码123
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  group: Protection contract
+  parameter_names: []
+  scope: rule
+- id: password-en/output
+  name: password-en/output
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: output
+  content: password=synthetic-secret-42
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  group: Protection contract
+  parameter_names: []
+  scope: rule
+- id: password-zh/output
+  name: password-zh/output
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: output
+  content: 密码：测试密码123
+  expected_decision: block
+  covered_rule_ids:
+  - credential/password
+  kind: rule_acceptance
+  required: true
+  group: Protection contract
+  parameter_names: []
+  scope: rule

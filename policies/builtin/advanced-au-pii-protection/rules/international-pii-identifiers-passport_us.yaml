@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: international-pii-identifiers/passport_us
+name: Passport (US)
+description: US passport numbers (9 digits or alphanumeric letter + 8 digits)
+stages:
+- input
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b([A-Z][0-9]{8}|[0-9]{9})\b
+on_match:
+  action: redact
+  replacement: '[passport_us_REDACTED]'
+runtime_adapter:
+  binding_id: international-pii-identifiers
+  implementation_rule_id: passport_us
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-PII
+risk_level: medium

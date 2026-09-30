@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: builtin-contextual-grounding
+  name: Contextual Grounding
+  description: Checks model output against supplied context before it is released.
+  source: built_in
+  version: 1.0.0
+  tags:
+  - namespace: protection
+    value: answer_reliability
+    label: Answer reliability
+    source: declared
+  - namespace: guardrail_category
+    value: hallucinations_fact_checking
+    label: Hallucinations & Fact-Checking
+    source: declared
+parameters: []
+rules:
+- rules/model-contextual-grounding.yaml
+tests:
+- tests/acceptance.yaml

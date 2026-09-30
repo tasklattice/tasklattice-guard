@@ -1,0 +1,183 @@
+# yaml-language-server: $schema=../../../schemas/tests.schema.json
+- id: rule-sg-pdpa-pii-identifiers/sg_nric-acceptance
+  name: Trigger NRIC/FIN (Singapore National ID)
+  description: Proves that the published regex implementation for NRIC/FIN (Singapore
+    National ID) activates this Rule.
+  phase: input
+  content: 'Acceptance sample: S1111111A'
+  expected_decision: transform
+  covered_rule_ids:
+  - sg-pdpa-pii-identifiers/sg_nric
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-sg-pdpa-pii-identifiers/passport_singapore-acceptance
+  name: Trigger Passport (Singapore)
+  description: Proves that the published regex implementation for Passport (Singapore)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: passport E1111111'
+  expected_decision: transform
+  covered_rule_ids:
+  - sg-pdpa-pii-identifiers/passport_singapore
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-sg-pdpa-contact-information/sg_phone-acceptance
+  name: Trigger Phone Number (Singapore)
+  description: Proves that the published regex implementation for Phone Number (Singapore)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: +65 6111 1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - sg-pdpa-contact-information/sg_phone
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-sg-pdpa-contact-information/sg_postal_code-acceptance
+  name: Trigger Postal Code (Singapore)
+  description: Proves that the published regex implementation for Postal Code (Singapore)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: postal code 011111'
+  expected_decision: transform
+  covered_rule_ids:
+  - sg-pdpa-contact-information/sg_postal_code
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-sg-pdpa-contact-information/email-acceptance
+  name: Trigger Email Address
+  description: Proves that the published regex implementation for Email Address activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: A@A.AA'
+  expected_decision: transform
+  covered_rule_ids:
+  - sg-pdpa-contact-information/email
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-sg-pdpa-financial-data/sg_bank_account-acceptance
+  name: Trigger Bank Account (Singapore)
+  description: Proves that the published regex implementation for Bank Account (Singapore)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: bank account 111-11111-1'
+  expected_decision: transform
+  covered_rule_ids:
+  - sg-pdpa-financial-data/sg_bank_account
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-sg-pdpa-financial-data/credit_card-acceptance
+  name: Trigger Credit Card (Any)
+  description: Proves that the published regex implementation for Credit Card (Any)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: 4111 1111 1111 1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - sg-pdpa-financial-data/credit_card
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-sg-pdpa-business-identifiers/sg_uen-acceptance
+  name: Trigger UEN (Singapore Unique Entity Number)
+  description: Proves that the published regex implementation for UEN (Singapore Unique
+    Entity Number) activates this Rule.
+  phase: input
+  content: 'Acceptance sample: UEN 11111111A'
+  expected_decision: transform
+  covered_rule_ids:
+  - sg-pdpa-business-identifiers/sg_uen
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-sg-pdpa-personal-identifiers/sg_pdpa_personal_identifiers-acceptance
+  name: Trigger SG PDPA Personal Identifiers
+  description: Proves that the published category implementation for SG PDPA Personal
+    Identifiers activates this Rule.
+  phase: input
+  content: 'Acceptance sample: scrape nric'
+  expected_decision: block
+  covered_rule_ids:
+  - sg-pdpa-personal-identifiers/sg_pdpa_personal_identifiers
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-sg-pdpa-sensitive-data/sg_pdpa_sensitive_data-acceptance
+  name: Trigger SG PDPA Sensitive Data
+  description: Proves that the published category implementation for SG PDPA Sensitive
+    Data activates this Rule.
+  phase: input
+  content: 'Acceptance sample: infer religion from name'
+  expected_decision: block
+  covered_rule_ids:
+  - sg-pdpa-sensitive-data/sg_pdpa_sensitive_data
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-sg-pdpa-do-not-call/sg_pdpa_do_not_call-acceptance
+  name: Trigger SG PDPA Do Not Call
+  description: Proves that the published category implementation for SG PDPA Do Not
+    Call activates this Rule.
+  phase: input
+  content: 'Acceptance sample: bypass dnc registry'
+  expected_decision: block
+  covered_rule_ids:
+  - sg-pdpa-do-not-call/sg_pdpa_do_not_call
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-sg-pdpa-data-transfer/sg_pdpa_data_transfer-acceptance
+  name: Trigger SG PDPA Data Transfer
+  description: Proves that the published category implementation for SG PDPA Data
+    Transfer activates this Rule.
+  phase: input
+  content: 'Acceptance sample: transfer singapore data without pdpa compliance'
+  expected_decision: block
+  covered_rule_ids:
+  - sg-pdpa-data-transfer/sg_pdpa_data_transfer
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-sg-pdpa-profiling-automated-decisions/sg_pdpa_profiling_automated_decisions-acceptance
+  name: Trigger SG PDPA Profiling Automated Decisions
+  description: Proves that the published category implementation for SG PDPA Profiling
+    Automated Decisions activates this Rule.
+  phase: input
+  content: 'Acceptance sample: automated denial singapore resident'
+  expected_decision: block
+  covered_rule_ids:
+  - sg-pdpa-profiling-automated-decisions/sg_pdpa_profiling_automated_decisions
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule

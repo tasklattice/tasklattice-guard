@@ -1,0 +1,65 @@
+id: code/execution
+name: Executable code and execution intent
+description: Detects fenced executable code and explicit requests to execute commands.
+stages:
+- input
+- output
+detector:
+  ref: code/fenced-block
+  version: 1.0.0
+  parameters:
+    detector_options:
+      require_terms:
+      - 'run this '
+      - 'run these '
+      - 'execute this '
+      - 'please run '
+      - 'can you run '
+      - run `
+      - execute `
+      - run code
+      - run the snippet
+      - execute the command
+      - just run it
+      - compile and run
+      - run the program
+      - run the tests
+      - check if tests pass
+      - read /
+      - list the files
+      - create a file
+      - run curl
+      - make an http request
+      - connect to postgres
+      - paste the output
+      - tell me the result
+      exclude_terms:
+      - don't run
+      - do not run
+      - don't execute
+      - do not execute
+      - no execution
+      - without running
+      - just reason
+      - what would happen if
+      - what would this output
+      - explain what this code
+      - explain what this script
+      - can you explain this code
+      - refactor this code
+      - convert this code
+      - spot any security issues
+      - write pseudocode
+      languages: '{{blocked_languages}}'
+      minimum_score: '{{confidence_threshold}}'
+      require_context: '{{detect_execution_intent}}'
+on_match:
+  action: reject
+  replacement: '[CODE_BLOCK_REDACTED]'
+runtime_adapter:
+  binding_id: block-code-execution
+  implementation_rule_id: execution
+metadata:
+  taxonomy_ids:
+  - TALI-TOOL-SECURITY-UNAUTHORIZED-EXECUTION
+risk_level: high

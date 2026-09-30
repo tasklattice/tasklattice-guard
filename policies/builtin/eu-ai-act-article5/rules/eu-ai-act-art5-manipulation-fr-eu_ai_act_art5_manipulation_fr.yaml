@@ -1,0 +1,99 @@
+id: eu-ai-act-art5-manipulation-fr/eu_ai_act_art5_manipulation_fr
+name: EU AI Act Art5 Manipulation Fr
+description: Art. 5.1(a) — Bloque la manipulation subliminale, les techniques d'IA trompeuses et l'influence
+  comportementale cachée
+stages:
+- input
+detector:
+  ref: text/conditions
+  version: 1.0.0
+  parameters:
+    detector_options:
+      match:
+        all:
+        - not:
+            contains:
+            - recherche sur
+            - étude sur
+            - académique
+            - thèse sur
+            - expliquer
+            - qu'est-ce que
+            - c'est quoi
+            - article 5
+            - interdit par
+            - prohibé par
+            - détecter les dark patterns
+            - audit
+            - surveillance de conformité
+            - contrôle de conformité
+            - examen éthique
+            - comment prévenir
+            - comment éviter
+        - any:
+          - within_sentence:
+              all:
+              - contains:
+                - construire
+                - créer
+                - développer
+                - concevoir
+                - implémenter
+                - mettre en place
+                - déployer
+                - lancer
+                - utiliser
+                - manipuler
+                - influencer
+                - persuader
+                - inciter
+                - contraindre
+                - exploiter
+                - cibler
+                - intégrer
+                - injecter
+                - insérer
+              - keywords:
+                - subliminal
+                - subliminale
+                - message subliminal
+                - publicité subliminale
+                - technique subliminale
+                - signal subliminal
+                - stimulus subliminal
+                - perception subliminale
+                - subconscient
+                - inconscient
+                - manipulation subconsciente
+                - influence subconsciente
+                - persuasion subconsciente
+                - en dessous du seuil de conscience
+                - manipulation de comportement
+                - manipulation comportementale
+                - distorsion comportementale
+                - conception manipulatrice
+                - dark pattern
+                - schéma trompeur
+                - conception trompeuse
+                - conception coercitive
+                - altérer la décision
+                - fausser la décision
+                - saper l'autonomie
+                - contourner le consentement
+          - keywords:
+            - système de manipulation subliminale
+            - système de publicité subliminale
+            - manipulation comportementale cachée
+            - outil de manipulation subconsciente
+            - manipulation ia trompeuse
+            - système ia dark pattern
+on_match:
+  action: reject
+  replacement: null
+runtime_adapter:
+  binding_id: eu-ai-act-art5-manipulation-fr
+  implementation_rule_id: eu_ai_act_art5_manipulation_fr
+metadata:
+  taxonomy_ids:
+  - TALI-BUSINESS-POLICY
+risk_level: low

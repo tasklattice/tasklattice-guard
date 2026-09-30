@@ -92,7 +92,7 @@ describe("Default baseline validation gate", () => {
     expect(validation).toHaveLength(validationStatus === "missing" ? 1 : 0);
     if (validationStatus === "missing") expect(validation[0]!.value).toMatchObject({
       sourceDraftRevision: 3, status: "queued", excludedCaseIds: [], createdBy: null,
-      metrics: { total: 321, passed: 0 },
+      metrics: { total: cases.length, passed: 0 },
     });
     expect(test.inserts.some((item) => item.value.kind === "guardrail.compile_requested" || item.value.kind === "runner.desired_state_changed")).toBe(false);
   });

@@ -1,0 +1,39 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: airline-off-topic-restriction
+  name: Airline Off-Topic Restriction
+  description: Restricts an airline chatbot to airline-related topics only. Blocks off-topic questions
+    about news, sports, coding, politics, entertainment, finance, recipes, homework, and general knowledge
+    using keyword-based detection with no additional LLM calls.
+  source: built_in
+  version: 1.95.0
+  tags:
+  - namespace: protection
+    value: business_topics
+    label: Business topics
+    source: declared
+  - namespace: guardrail_category
+    value: topic_control
+    label: Topic Control
+    source: declared
+  - namespace: domain
+    value: aviation
+    label: Aviation
+    source: declared
+  - namespace: rail
+    value: input
+    label: Input rail
+    source: derived
+  - namespace: implementation
+    value: category
+    label: Category
+    source: derived
+  safety_level: balanced
+  output_delivery: window_buffered
+parameters: []
+rules:
+- rules/airline-off-topic-filter-airline_off_topic_restriction.yaml
+tests:
+- tests/acceptance.yaml

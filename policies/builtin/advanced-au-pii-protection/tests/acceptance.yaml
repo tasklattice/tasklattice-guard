@@ -1,0 +1,659 @@
+# yaml-language-server: $schema=../../../schemas/tests.schema.json
+- id: rule-au-pii-tax-identifiers/au_tfn-acceptance
+  name: Trigger TFN (Australian Tax File Number)
+  description: Proves that the published regex implementation for TFN (Australian
+    Tax File Number) activates this Rule.
+  phase: input
+  content: 'Acceptance sample: TFN 111 111 111'
+  expected_decision: transform
+  covered_rule_ids:
+  - au-pii-tax-identifiers/au_tfn
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-au-pii-tax-identifiers/au_abn-acceptance
+  name: Trigger ABN (Australian Business Number)
+  description: Proves that the published regex implementation for ABN (Australian
+    Business Number) activates this Rule.
+  phase: input
+  content: 'Acceptance sample: 11 111 111 111'
+  expected_decision: transform
+  covered_rule_ids:
+  - au-pii-tax-identifiers/au_abn
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-au-pii-tax-identifiers/au_medicare-acceptance
+  name: Trigger Medicare Number (Australia)
+  description: Proves that the published regex implementation for Medicare Number
+    (Australia) activates this Rule.
+  phase: input
+  content: 'Acceptance sample: 1111 11111 1'
+  expected_decision: transform
+  covered_rule_ids:
+  - au-pii-tax-identifiers/au_medicare
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-au-pii-passports/passport_australia-acceptance
+  name: Trigger Passport (Australia)
+  description: Proves that the published regex implementation for Passport (Australia)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: A0000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - au-pii-passports/passport_australia
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-international-pii-identifiers/us_ssn-acceptance
+  name: Trigger SSN (Social Security Number)
+  description: Proves that the published regex implementation for SSN (Social Security
+    Number) activates this Rule.
+  phase: input
+  content: 'Acceptance sample: 111-11-1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - international-pii-identifiers/us_ssn
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-international-pii-identifiers/us_ssn_no_dash-acceptance
+  name: Trigger SSN (No Dashes)
+  description: Proves that the published regex implementation for SSN (No Dashes)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: 111111111'
+  expected_decision: transform
+  covered_rule_ids:
+  - international-pii-identifiers/us_ssn_no_dash
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-international-pii-identifiers/passport_us-acceptance
+  name: Trigger Passport (US)
+  description: Proves that the published regex implementation for Passport (US) activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: A00000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - international-pii-identifiers/passport_us
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-international-pii-identifiers/passport_uk-acceptance
+  name: Trigger Passport (UK)
+  description: Proves that the published regex implementation for Passport (UK) activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: 000000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - international-pii-identifiers/passport_uk
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-international-pii-identifiers/passport_germany-acceptance
+  name: Trigger Passport (Germany)
+  description: Proves that the published regex implementation for Passport (Germany)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: CCCCCCCCC'
+  expected_decision: transform
+  covered_rule_ids:
+  - international-pii-identifiers/passport_germany
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-international-pii-identifiers/passport_france-acceptance
+  name: Trigger Passport (France)
+  description: Proves that the published regex implementation for Passport (France)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: 00AA00000'
+  expected_decision: transform
+  covered_rule_ids:
+  - international-pii-identifiers/passport_france
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-international-pii-identifiers/passport_netherlands-acceptance
+  name: Trigger Passport (Netherlands)
+  description: Proves that the published regex implementation for Passport (Netherlands)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: AAAAAAAA0'
+  expected_decision: transform
+  covered_rule_ids:
+  - international-pii-identifiers/passport_netherlands
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-international-pii-identifiers/nl_bsn_contextual-acceptance
+  name: Trigger BSN (Dutch Citizen Service Number)
+  description: Proves that the published regex implementation for BSN (Dutch Citizen
+    Service Number) activates this Rule.
+  phase: input
+  content: 'Acceptance sample: BSN 000000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - international-pii-identifiers/nl_bsn_contextual
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-international-pii-identifiers/passport_china-acceptance
+  name: Trigger Passport (China)
+  description: Proves that the published regex implementation for Passport (China)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: E00000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - international-pii-identifiers/passport_china
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-international-pii-identifiers/passport_india-acceptance
+  name: Trigger Passport (India)
+  description: Proves that the published regex implementation for Passport (India)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: A0000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - international-pii-identifiers/passport_india
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-international-pii-identifiers/passport_japan-acceptance
+  name: Trigger Passport (Japan)
+  description: Proves that the published regex implementation for Passport (Japan)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: AA0000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - international-pii-identifiers/passport_japan
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-international-pii-identifiers/passport_canada-acceptance
+  name: Trigger Passport (Canada)
+  description: Proves that the published regex implementation for Passport (Canada)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: AA000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - international-pii-identifiers/passport_canada
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-international-pii-identifiers/br_cpf-acceptance
+  name: Trigger CPF - Brazilian Personal Tax ID (Formatted)
+  description: Proves that the published regex implementation for CPF - Brazilian
+    Personal Tax ID (Formatted) activates this Rule.
+  phase: input
+  content: 'Acceptance sample: 111.111.111-11'
+  expected_decision: transform
+  covered_rule_ids:
+  - international-pii-identifiers/br_cpf
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-international-pii-identifiers/br_cpf_unformatted-acceptance
+  name: Trigger CPF - Brazilian Personal Tax ID (Unformatted)
+  description: Proves that the published regex implementation for CPF - Brazilian
+    Personal Tax ID (Unformatted) activates this Rule.
+  phase: input
+  content: 'Acceptance sample: 11111111111'
+  expected_decision: transform
+  covered_rule_ids:
+  - international-pii-identifiers/br_cpf_unformatted
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-international-pii-identifiers/br_rg-acceptance
+  name: Trigger RG - Brazilian National Identity Card (SP, RJ, MG)
+  description: Proves that the published regex implementation for RG - Brazilian National
+    Identity Card (SP, RJ, MG) activates this Rule.
+  phase: input
+  content: 'Acceptance sample: 1.111.111-1'
+  expected_decision: transform
+  covered_rule_ids:
+  - international-pii-identifiers/br_rg
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-international-pii-identifiers/br_cnpj-acceptance
+  name: Trigger CNPJ - Brazilian Company Tax ID
+  description: Proves that the published regex implementation for CNPJ - Brazilian
+    Company Tax ID activates this Rule.
+  phase: input
+  content: 'Acceptance sample: 11.111.111/1111-11'
+  expected_decision: transform
+  covered_rule_ids:
+  - international-pii-identifiers/br_cnpj
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-contact-information-pii/email-acceptance
+  name: Trigger Email Address
+  description: Proves that the published regex implementation for Email Address activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: A@A.AA'
+  expected_decision: transform
+  covered_rule_ids:
+  - contact-information-pii/email
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-contact-information-pii/us_phone-acceptance
+  name: Trigger Phone Number (US)
+  description: Proves that the published regex implementation for Phone Number (US)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: +1 (000) 000 0000'
+  expected_decision: transform
+  covered_rule_ids:
+  - contact-information-pii/us_phone
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-contact-information-pii/br_phone_landline-acceptance
+  name: Trigger Brazilian Phone Number (Landline)
+  description: Proves that the published regex implementation for Brazilian Phone
+    Number (Landline) activates this Rule.
+  phase: input
+  content: 'Acceptance sample: (11) 91111-1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - contact-information-pii/br_phone_landline
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-contact-information-pii/br_phone_mobile-acceptance
+  name: Trigger Brazilian Mobile Phone Number
+  description: Proves that the published regex implementation for Brazilian Mobile
+    Phone Number activates this Rule.
+  phase: input
+  content: 'Acceptance sample: +1 (11) 91111-1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - contact-information-pii/br_phone_mobile
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-contact-information-pii/street_address-acceptance
+  name: Trigger Street Address
+  description: Proves that the published regex implementation for Street Address activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: 1 AA Street'
+  expected_decision: transform
+  covered_rule_ids:
+  - contact-information-pii/street_address
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-contact-information-pii/br_cep-acceptance
+  name: Trigger CEP - Brazilian Zip / Postal Code
+  description: Proves that the published regex implementation for CEP - Brazilian
+    Zip / Postal Code activates this Rule.
+  phase: input
+  content: 'Acceptance sample: 11111-111'
+  expected_decision: transform
+  covered_rule_ids:
+  - contact-information-pii/br_cep
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-financial-pii/visa-acceptance
+  name: Trigger Credit Card (Visa)
+  description: Proves that the published regex implementation for Credit Card (Visa)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: 4111 1111 1111 1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - financial-pii/visa
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-financial-pii/mastercard-acceptance
+  name: Trigger Credit Card (Mastercard)
+  description: Proves that the published regex implementation for Credit Card (Mastercard)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: 5111 1111 1111 1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - financial-pii/mastercard
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-financial-pii/amex-acceptance
+  name: Trigger Credit Card (American Express)
+  description: Proves that the published regex implementation for Credit Card (American
+    Express) activates this Rule.
+  phase: input
+  content: 'Acceptance sample: 3411 111111 11111'
+  expected_decision: transform
+  covered_rule_ids:
+  - financial-pii/amex
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-financial-pii/discover-acceptance
+  name: Trigger Credit Card (Discover)
+  description: Proves that the published regex implementation for Credit Card (Discover)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: 6011 1111 1111 1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - financial-pii/discover
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-financial-pii/credit_card-acceptance
+  name: Trigger Credit Card (Any)
+  description: Proves that the published regex implementation for Credit Card (Any)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: 4111 1111 1111 1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - financial-pii/credit_card
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-financial-pii/iban-acceptance
+  name: Trigger IBAN (International Bank Account Number)
+  description: Proves that the published regex implementation for IBAN (International
+    Bank Account Number) activates this Rule.
+  phase: input
+  content: 'Acceptance sample: AA11AAAAAAAAAAA'
+  expected_decision: transform
+  covered_rule_ids:
+  - financial-pii/iban
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-credentials-api-keys/aws_access_key-acceptance
+  name: Trigger AWS Access Key
+  description: Proves that the published regex implementation for AWS Access Key activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: AKIA0000000000000000'
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-credentials-api-keys/aws_secret_key-acceptance
+  name: Trigger AWS Secret Key
+  description: Proves that the published regex implementation for AWS Secret Key activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/aws_secret_key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-credentials-api-keys/github_token-acceptance
+  name: Trigger GitHub Token
+  description: Proves that the published regex implementation for GitHub Token activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/github_token
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-credentials-api-keys/slack_token-acceptance
+  name: Trigger Slack Token
+  description: Proves that the published regex implementation for Slack Token activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: xoxp-0000000000-0000000000-aaaaaaaaaaaaaaaaaaaaaaaa'
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/slack_token
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-credentials-api-keys/generic_api_key-acceptance
+  name: Trigger API Key (Generic)
+  description: Proves that the published regex implementation for API Key (Generic)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: API-KEY ''AAAAAAAAAAAAAAAAAAAA'''
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/generic_api_key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-network-infrastructure-pii/ipv4-acceptance
+  name: Trigger IP Address (IPv4)
+  description: Proves that the published regex implementation for IP Address (IPv4)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: 250.250.250.250'
+  expected_decision: transform
+  covered_rule_ids:
+  - network-infrastructure-pii/ipv4
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-network-infrastructure-pii/ipv6-acceptance
+  name: Trigger IP Address (IPv6)
+  description: Proves that the published regex implementation for IP Address (IPv6)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: 0:0:0:0:0:0:0:0'
+  expected_decision: transform
+  covered_rule_ids:
+  - network-infrastructure-pii/ipv6
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-protected-class-information/gender_sexual_orientation-acceptance
+  name: Trigger Gender & Sexual Orientation (Protected Class)
+  description: Proves that the published regex implementation for Gender & Sexual
+    Orientation (Protected Class) activates this Rule.
+  phase: input
+  content: 'Acceptance sample: non-binary'
+  expected_decision: transform
+  covered_rule_ids:
+  - protected-class-information/gender_sexual_orientation
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-protected-class-information/race_ethnicity_national_origin-acceptance
+  name: Trigger Race, Ethnicity & National Origin (Protected Class)
+  description: Proves that the published regex implementation for Race, Ethnicity
+    & National Origin (Protected Class) activates this Rule.
+  phase: input
+  content: 'Acceptance sample: caucasian'
+  expected_decision: transform
+  covered_rule_ids:
+  - protected-class-information/race_ethnicity_national_origin
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-protected-class-information/religion-acceptance
+  name: Trigger Religion & Creed (Protected Class)
+  description: Proves that the published regex implementation for Religion & Creed
+    (Protected Class) activates this Rule.
+  phase: input
+  content: 'Acceptance sample: christians'
+  expected_decision: transform
+  covered_rule_ids:
+  - protected-class-information/religion
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-protected-class-information/age_discrimination-acceptance
+  name: Trigger Age-Related Terms (Protected Class)
+  description: Proves that the published regex implementation for Age-Related Terms
+    (Protected Class) activates this Rule.
+  phase: input
+  content: 'Acceptance sample: elderly'
+  expected_decision: transform
+  covered_rule_ids:
+  - protected-class-information/age_discrimination
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-protected-class-information/disability-acceptance
+  name: Trigger Disability Status (Protected Class)
+  description: Proves that the published regex implementation for Disability Status
+    (Protected Class) activates this Rule.
+  phase: input
+  content: 'Acceptance sample: disabled'
+  expected_decision: transform
+  covered_rule_ids:
+  - protected-class-information/disability
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-protected-class-information/marital_family_status-acceptance
+  name: Trigger Marital & Family Status (Protected Class)
+  description: Proves that the published regex implementation for Marital & Family
+    Status (Protected Class) activates this Rule.
+  phase: input
+  content: 'Acceptance sample: married'
+  expected_decision: transform
+  covered_rule_ids:
+  - protected-class-information/marital_family_status
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-protected-class-information/military_status-acceptance
+  name: Trigger Military Status (Protected Class)
+  description: Proves that the published regex implementation for Military Status
+    (Protected Class) activates this Rule.
+  phase: input
+  content: 'Acceptance sample: veterans'
+  expected_decision: transform
+  covered_rule_ids:
+  - protected-class-information/military_status
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-protected-class-information/public_assistance-acceptance
+  name: Trigger Public Assistance Status (Protected Class)
+  description: Proves that the published regex implementation for Public Assistance
+    Status (Protected Class) activates this Rule.
+  phase: input
+  content: 'Acceptance sample: welfare'
+  expected_decision: transform
+  covered_rule_ids:
+  - protected-class-information/public_assistance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule

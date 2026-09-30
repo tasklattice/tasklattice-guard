@@ -1,0 +1,43 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: filter-harm-toxic-abuse
+  name: Toxic & Abusive Language
+  description: Detects harmful, toxic, abusive, and hateful language.
+  source: built_in
+  version: 1.95.0
+  tags:
+  - namespace: protection
+    value: content_safety
+    label: Content safety
+    source: declared
+  - namespace: collection
+    value: local-content-filter
+    label: Local Content Filter
+    source: declared
+  - namespace: guardrail_category
+    value: content_safety
+    label: Content Safety
+    source: declared
+  - namespace: implementation
+    value: category
+    label: Category
+    source: derived
+  - namespace: rail
+    value: input
+    label: Input rail
+    source: derived
+  - namespace: rail
+    value: output
+    label: Output rail
+    source: derived
+  safety_level: balanced
+  output_delivery: window_buffered
+parameters: []
+rules:
+- rules/category-harm_toxic_abuse.yaml
+tests:
+- tests/acceptance.yaml
+resources:
+- resources/category-harm_toxic_abuse-keywords.yaml

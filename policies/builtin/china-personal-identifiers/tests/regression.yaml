@@ -1,0 +1,34 @@
+# yaml-language-server: $schema=../../../schemas/tests.schema.json
+- id: resident-id-invalid-checksum
+  name: Do not redact an invalid resident ID checksum
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: input
+  content: 身份证号：990000200001010013
+  expected_decision: allow
+  covered_rule_ids: []
+  group: Protection contract
+  kind: scenario
+  required: true
+  parameter_names: []
+- id: resident-id-invalid-date
+  name: Do not redact an invalid resident ID date
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: output
+  content: 身份证号：990000200002300019
+  expected_decision: allow
+  covered_rule_ids: []
+  group: Protection contract
+  kind: scenario
+  required: true
+  parameter_names: []
+- id: unionpay-without-context
+  name: Do not redact an unlabelled long number
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: input
+  content: 参考编号 6222000000000009
+  expected_decision: allow
+  covered_rule_ids: []
+  group: Protection contract
+  kind: scenario
+  required: true
+  parameter_names: []

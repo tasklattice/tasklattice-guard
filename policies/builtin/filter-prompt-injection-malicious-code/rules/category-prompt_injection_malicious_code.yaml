@@ -1,0 +1,121 @@
+id: category/prompt_injection_malicious_code
+name: Prompt Injection Malicious Code
+description: Detects attempts to inject or execute malicious code via prompts
+stages:
+- input
+- output
+detector:
+  ref: text/conditions
+  version: 1.0.0
+  parameters:
+    detector_options:
+      match:
+        all:
+        - not:
+            contains:
+            - code review
+            - security audit
+            - security testing
+            - explain this command
+            - what does this code do
+            - vulnerability assessment
+            - penetration test
+            - CTF challenge
+            - security training
+            - defensive security
+            - how to prevent
+            - how to protect
+            - secure coding
+            - code analysis
+        - any:
+          - within_sentence:
+              all:
+              - contains:
+                - execute
+                - run
+                - eval
+                - exec
+                - spawn
+                - system
+                - shell
+                - invoke
+                - call
+                - launch
+                - process
+                - compile
+                - interpret
+                - inject
+              - keywords:
+                - rm -rf
+                - rm -f
+                - chmod 777
+                - chmod +x
+                - sudo
+                - su root
+                - curl | bash
+                - curl | sh
+                - wget -O -
+                - wget | sh
+                - /etc/passwd
+                - /etc/shadow
+                - mkfs
+                - dd if=
+                - '> /dev/sda'
+                - fork bomb
+                - crontab
+                - nc -e
+                - netcat
+                - ncat
+                - reverse shell
+                - powershell -enc
+                - powershell -e
+                - base64 -d
+                - base64 --decode
+                - <script>
+                - 'javascript:'
+                - onerror=
+                - onload=
+                - document.cookie
+                - innerHTML
+                - __import__
+                - os.system
+                - subprocess
+                - os.popen
+                - importlib
+          - keywords:
+            - rm -rf /
+            - rm -rf /*
+            - rm -rf ~
+            - ':(){ :|:& };:'
+            - '> /dev/sda'
+            - mkfs.ext4 /dev/sda
+            - dd if=/dev/zero of=/dev/sda
+            - curl | sh
+            - curl | bash
+            - wget | sh
+            - wget | bash
+            - eval(base64
+            - eval(atob(
+            - python -c 'import os
+            - python3 -c 'import os
+            - bash -i >& /dev/tcp
+            - nc -e /bin/sh
+            - nc -e /bin/bash
+            - sudo chmod 777 /
+            - echo ALL=(ALL) NOPASSWD
+            - cat /etc/shadow
+            - <script>alert(
+            - <script>document.cookie
+            - javascript:void
+            - powershell -encodedcommand
+            - powershell -enc
+on_match:
+  action: reject
+  replacement: null
+runtime_adapter:
+  binding_id: prompt_injection_malicious_code
+  implementation_rule_id: prompt_injection_malicious_code
+metadata:
+  taxonomy_ids:
+  - TALI-TOOL-SECURITY-UNAUTHORIZED-EXECUTION
+risk_level: high

@@ -3,7 +3,8 @@
 
 The generated catalog is runtime-independent: TaskLattice does not import or call
 LiteLLM. This importer is retained only to make provenance and future reviews
-reproducible.
+reproducible. It writes review material under output/, never canonical assets;
+accepted changes must be made in policies/builtin/<id>/ and compiled there.
 """
 
 from __future__ import annotations
@@ -77,13 +78,13 @@ def _git_show(repo: Path, revision: str, path: str) -> str:
     return result.stdout
 
 
-def _implementation(form: str, binding_id: str, rule_id: str) -> dict[str, Any]:
+def _implementation(detector: str, binding_id: str, rule_id: str) -> dict[str, Any]:
     return {
         "engine": "nemo-guardrails",
-        "form": form,
+        "execution": "local",
         "binding_id": binding_id,
         "implementation_rule_id": rule_id,
-        "detector": form,
+        "detector": detector,
         "flow_name": None,
         "action_name": "GuardContentFilterAction",
     }
@@ -224,7 +225,7 @@ def _category_policy(payload: dict[str, Any]) -> dict[str, Any]:
         "id": rule_id,
         "name": payload["display_name"],
         "description": payload["description"],
-        "form": "category",
+        "detector": {"ref": "text/category", "version": "1.0.0"},
         "effect": (
             "redact" if payload["default_action"].upper() == "MASK" else "reject"
         ),
@@ -277,7 +278,7 @@ def _legacy_pattern_samples(catalog_path: Path) -> dict[str, str]:
         rules = {
             rule["id"]: rule["implementation"]["implementation_rule_id"]
             for rule in policy.get("rules", [])
-            if rule.get("form") == "regex"
+            if rule.get("detector", {}).get("ref") == "text/regex"
         }
         for case in policy.get("test_cases", []):
             if case.get("kind") != "rule_acceptance":
@@ -312,7 +313,7 @@ def _pattern_policy(
                 "id": rule_id,
                 "name": item["display_name"],
                 "description": item["description"],
-                "form": "regex",
+                "detector": {"ref": "text/regex", "version": "1.0.0"},
                 "effect": "redact",
                 "rails": ["input", "output"],
                 "implementation": _implementation("regex", "pattern-matching", name),
@@ -386,7 +387,7 @@ def _keyword_policy() -> dict[str, Any]:
                 "id": rule_id,
                 "name": "Reviewed blocked words",
                 "description": "Matches the configured line-separated keyword list.",
-                "form": "keyword",
+                "detector": {"ref": "text/keyword", "version": "1.0.0"},
                 "effect": "reject",
                 "rails": ["input", "output"],
                 "implementation": _implementation("keyword", "keyword-blocking", "blocked-words"),
@@ -462,7 +463,7 @@ def _code_policy() -> dict[str, Any]:
                 "id": rule_id,
                 "name": "Executable code and execution intent",
                 "description": "Detects fenced executable code and explicit requests to execute commands.",
-                "form": "code_block",
+                "detector": {"ref": "code/fenced-block", "version": "1.0.0"},
                 "effect": "reject",
                 "rails": ["input", "output"],
                 "implementation": _implementation("code_block", "block-code-execution", "execution"),
@@ -525,7 +526,7 @@ def _competitor_policy(legacy_catalog: Path) -> dict[str, Any]:
                 "id": rule_id,
                 "name": "Competitor entity and comparison intent",
                 "description": "Normalizes aliases and obfuscation, then distinguishes competitor intent from destination and operational context.",
-                "form": "competitor_intent",
+                "detector": {"ref": "business/competitor-intent", "version": "1.0.0"},
                 "effect": "reject",
                 "rails": ["input", "output"],
                 "implementation": _implementation("competitor_intent", "competitor", "intent"),
@@ -574,9 +575,12 @@ def main() -> None:
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("runner/toolkit/policy_library/assets/local_content_filters.json"),
+        default=Path("output/litellm-content-filters-review.json"),
     )
     args = parser.parse_args()
+    generated_assets = Path(__file__).resolve().parents[1] / "runner/toolkit/policy_library/assets"
+    if args.output.resolve().is_relative_to(generated_assets):
+        parser.error("Write review material outside generated assets, then update the Policy source packages")
 
     policies = [
         _category_policy(

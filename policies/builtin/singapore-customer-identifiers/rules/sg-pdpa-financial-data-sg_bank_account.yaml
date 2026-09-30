@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: sg-pdpa-financial-data/sg_bank_account
+name: Bank Account (Singapore)
+description: Detects Singapore bank account numbers (XXX-XXXXX(X)-X(XX) format for DBS/POSB/OCBC/UOB)
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b\d{3}-\d{5,6}-\d{1,3}\b
+    context_expression: \b(?:bank\s*account|account\s*number|DBS|OCBC|UOB|POSB|savings|current\s*account|bank\s*statement)\b
+on_match:
+  action: redact
+  replacement: '[sg_bank_account_REDACTED]'
+runtime_adapter:
+  binding_id: singapore-customer-identifiers
+  implementation_rule_id: sg_bank_account
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-FINANCIAL
+risk_level: high
