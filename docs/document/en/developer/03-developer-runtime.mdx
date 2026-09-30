@@ -13,7 +13,7 @@ Data-plane integration happens **on the path of every model call**. For example,
 1. Operations supplies an Endpoint URL bound to a Router and its **runtime credential**. The platform confirms the target Guardrail Version and Runner are ready. Do not use a Controller Personal Access Token here.
 2. The gateway or Agent extracts `texts` from the content it would really send to the model and checks the **input** with the Endpoint credential. On `BLOCKED`, stop before the model call; on `GUARDRAIL_INTERVENED`, replace the corresponding input with returned `texts`; use the original input only on `NONE`.
 3. The integrating client calls its upstream model and remains responsible for model credentials, business sessions, timeouts, retries, and cancellation. Guard does not proxy that model request.
-4. Check the **output** before delivery. Buffer complete output until its check finishes; for streaming output, submit ordered new text and deliver only Guard's `released_text`. Input and output use the same Endpoint and `litellm_call_id` and consistent routing metadata so both phases remain pinned to the same version.
+4. Check the **output** before delivery. Buffer complete output until its check finishes; for streaming output, submit ordered new text and deliver only Guard's `delta.text`. Input and output use the same Endpoint and `litellm_call_id` and consistent routing metadata so both phases remain pinned to the same version.
 
 See [connection, input, and complete output checks](/document/developer/gateway-connect) for request and `action` shapes, and [streaming output checks](/document/developer/gateway-stream) for incremental delivery.
 

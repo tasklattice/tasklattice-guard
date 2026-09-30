@@ -11,7 +11,7 @@ from fastapi import FastAPI
 
 from runner.api import RunnerAPI
 from runner.metrics import RunnerMetrics
-from runner.output_streaming import OutputStreamSessionStore
+from tests.stream_client import service_stream
 from runner.toolkit.runtime.contracts import ProtectionRequest, RequestContext
 from runner.toolkit.runtime.service import GuardrailRuntimeService
 from tests.data_plane.test_artifact_execution import Telemetry, _runtime
@@ -107,14 +107,13 @@ async def test_every_frozen_output_case_is_equivalent_when_split_across_stream_c
     directory, manifest = frozen(preset)
     store, _registry, engine = _runtime(tmp_path, directory)
     runtime = GuardrailRuntimeService(engine, store)
-    streams = OutputStreamSessionStore(window_characters=8)
     context = RequestContext(protocol="litellm", endpoint_id="fixture-endpoint")
     try:
         for case in manifest["regression_cases"]:
             if case["phase"] != "output":
                 continue
             request = ProtectionRequest(phase="output", texts=(case["content"],), call_id=case["id"], context=context)
-            runtime.output_delivery(request, allow_new_output=True)
+            runtime._resolve_call(request, allow_new_output=True)
             whole = await runtime.evaluate(request)
             assert whole.decision == case["expectedDecision"]
             assert whole.usage is not None and whole.usage.model_invocations == 0
@@ -125,21 +124,15 @@ async def test_every_frozen_output_case_is_equivalent_when_split_across_stream_c
                 # A pass decision carries no replacement; the adapter/stream
                 # must deliver the original text, checked below independently.
                 assert whole.texts == ()
-            assert runtime.output_delivery(request) == "full_buffered"
-            # Force phrase, identity-number and injection-marker boundaries into
-            # separate chunks. No prefix is released before the complete check.
             cut = max(1, len(case["content"]) // 2)
-            first = await streams.process(stream_key=case["id"], sequence=0, text=case["content"][:cut], final=False,
-                mode="full_buffered", request=replace(request, texts=("",)), evaluate=runtime.evaluate)
-            assert first.released_text == "" and not first.terminate
-            last = await streams.process(stream_key=case["id"], sequence=1, text=case["content"][cut:], final=True,
-                mode="full_buffered", request=replace(request, texts=("",)), evaluate=runtime.evaluate)
-            assert last.decision is not None
-            assert last.decision.decision == whole.decision
-            assert last.decision.effective_release_id == whole.effective_release_id
+            result, text, decisions, contract = await service_stream(runtime, replace(request, texts=("",)),
+                [case["content"][:cut], case["content"][cut:]])
+            assert contract.effective_mode == "full_buffered"
+            assert decisions[0].decision == whole.decision
+            assert decisions[0].effective_release_id == whole.effective_release_id
             if whole.decision == "block":
-                assert last.terminate and last.released_text == ""
+                assert result.status == "blocked" and text == ""
             else:
-                assert last.released_text == expected_text(case)
+                assert text == expected_text(case)
     finally:
         await engine.shutdown()

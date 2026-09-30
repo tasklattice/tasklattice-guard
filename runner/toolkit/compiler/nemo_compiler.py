@@ -37,11 +37,12 @@ from ..runtime.contracts import (
     PolicyVersionSnapshot,
     flow_rule_id,
 )
+from ..runtime.streaming import output_stream_contract
 from .domain import PolicyDraft, PlanCompilationError, RailBinding
 from .policy_sources import FLOW_ID_EVENTS, expand_policy_parameters, link_policy_source, literal_flow_target, parse_source_tree, symbol_name
 
 
-NEMO_COMPILER_VERSION = "tasklattice-nemo-config-v25-detector-verdicts"
+NEMO_COMPILER_VERSION = "tasklattice-nemo-config-v26-native-output-stream"
 
 _COLANG1_STANDARD_ACTIONS = {
     ACTION_EVALUATE,
@@ -64,7 +65,15 @@ class NeMoConfigCompiler:
         models: tuple[dict[str, Any], ...] = (),
         builtin_prompts_yaml: str = "",
         otel_enabled: bool = False,
+        stream_chunk_size: int = 200,
+        stream_context_size: int = 50,
     ) -> None:
+        if not 1 <= stream_context_size < stream_chunk_size:
+            # NeMo 0.24 retains buffer[-context_size:]; zero would retain the
+            # entire buffer. Use a positive overlap without patching upstream.
+            raise ValueError("Streaming requires 1 <= context_size < chunk_size.")
+        self._stream_chunk_size = stream_chunk_size
+        self._stream_context_size = stream_context_size
         self._models = tuple(dict(item) for item in models)
         self._model_types = frozenset(str(item.get("type", "")) for item in models)
         unsupported_model_types = self._model_types - _ALLOWED_RUNTIME_MODEL_TYPES
@@ -156,12 +165,32 @@ class NeMoConfigCompiler:
             if runtime_profile == "llmrails_colang2_programmable"
             else "1.0"
         )
+        native_streaming = (
+            runtime_profile == "llmrails_colang1_standard"
+            and bool(plan.steps_for("output"))
+            and output_stream_contract(plan).effective_mode != "full_buffered"
+            and all(module.required_for_release and module.failure_mode == "fail_closed"
+                    for module in plan.modules_for("output"))
+            and all(
+                binding.capability == "content_safety"
+                and binding.on_unsafe in {"allow", "block"}
+                and binding.failure_mode == "fail_closed"
+                for binding in builtin_bindings if "output" in binding.phases
+            )
+        )
         if runtime_profile == "llmrails_colang1_standard":
             builtin_bindings = tuple(
                 _with_result_var(binding) for binding in builtin_bindings
             )
             bindings = builtin_bindings + custom_bindings
             flows = _colang_v1_flow_lists(flows, builtin_bindings)
+            if native_streaming:
+                # NeMo's public stream API executes a direct Action per rail;
+                # it does not traverse our ordered subflow entry point.
+                flows["output"] = [
+                    _colang_v1_flow_name(binding, "output")
+                    for binding in builtin_bindings if "output" in binding.phases
+                ]
         config = self._config(
             flows,
             prompts,
@@ -171,13 +200,20 @@ class NeMoConfigCompiler:
             colang_version=colang_version,
             include_flow_lists=runtime_profile != "llmrails_colang2_programmable",
         )
+        if native_streaming:
+            config["rails"]["output"]["streaming"] = {
+                "enabled": True,
+                "stream_first": False,
+                "chunk_size": self._stream_chunk_size,
+                "context_size": self._stream_context_size,
+            }
         config_yaml = yaml.safe_dump(
             config,
             allow_unicode=True,
             sort_keys=False,
         )
         colang_content = (
-            _colang_v1_standard(builtin_bindings)
+            _colang_v1_standard(builtin_bindings, native_streaming=native_streaming)
             if runtime_profile == "llmrails_colang1_standard"
             else ""
             if runtime_profile == "iorails_native"
@@ -567,6 +603,7 @@ def _colang_v1_flow_lists(
 
 def _colang_v1_standard(
     bindings: tuple[NeMoActionBinding, ...],
+    *, native_streaming: bool = False,
 ) -> str:
     lines = [
         "define bot tasklattice refuse",
@@ -579,6 +616,8 @@ def _colang_v1_standard(
     # NeMo still executes every check sequentially, including stop/redaction.
     # Do not raise or patch the upstream runtime's event safety limit.
     for phase in ("input", "output"):
+        if native_streaming and phase == "output":
+            continue
         phase_bindings = tuple(binding for binding in bindings if phase in binding.phases)
         if phase_bindings:
             lines.append(f"define subflow tasklattice ordered {phase} rails")
@@ -591,6 +630,7 @@ def _colang_v1_standard(
             )
         for phase in binding.phases:
             message_var = "$user_message" if phase == "input" else "$bot_message"
+            native_outcome = native_streaming and phase == "output"
             lines.extend(
                 (
                     f"define subflow {_colang_v1_flow_name(binding, phase)}",
@@ -598,11 +638,14 @@ def _colang_v1_standard(
                         f"  ${binding.result_var} = execute {binding.action_name}("
                         f'text={message_var}, binding_id="{binding.id}")'
                     ),
-                    f'  if ${binding.result_var}["blocked"]',
+                    (f'  if ${binding.result_var}.is_blocked'
+                     if native_outcome else f'  if ${binding.result_var}["blocked"]'),
                     "    bot tasklattice refuse",
                     "    stop",
-                    f'  else if ${binding.result_var}["modified"]',
-                    f'    {message_var} = ${binding.result_var}["content"]',
+                    *(() if native_outcome else (
+                        f'  else if ${binding.result_var}["modified"]',
+                        f'    {message_var} = ${binding.result_var}["content"]',
+                    )),
                     "",
                 )
             )

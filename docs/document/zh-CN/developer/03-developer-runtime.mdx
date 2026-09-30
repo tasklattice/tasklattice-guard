@@ -13,7 +13,7 @@ order: 2
 1. 运维人员提供已绑定 Router 的 Endpoint 地址和**运行时凭据**。平台须确认目标 Guardrail Version 和 Runner 已就绪。这里不使用 Controller 个人 Access Token。
 2. 网关或 Agent 从真正要送给模型的请求中提取 `texts`，使用 Endpoint 凭据检查**输入**。若返回 `BLOCKED`，停止模型调用；若返回 `GUARDRAIL_INTERVENED`，用返回的 `texts` 替换对应输入；`NONE` 才使用原输入。
 3. 接入方自己调用上游模型，并继续负责模型密钥、业务会话、超时、重试和取消生成。Guard 不代理上游模型请求。
-4. 在回复交付前检查**输出**：完整输出先缓存再检查；流式输出按协议提交新增文本，只交付 Guard 返回的 `released_text`。输入和输出使用同一 Endpoint、同一 `litellm_call_id`，保持路由元数据一致，让两阶段固定到同一版本。
+4. 在回复交付前检查**输出**：完整输出先缓存再检查；流式输出按协议提交新增文本，只交付 Guard 返回的 `delta.text`。输入和输出使用同一 Endpoint、同一 `litellm_call_id`，保持路由元数据一致，让两阶段固定到同一版本。
 
 详细请求和 `action` 响应见[连接、输入与完整输出检查](/document/developer/gateway-connect)；逐段交付见[流式输出检查](/document/developer/gateway-stream)。
 

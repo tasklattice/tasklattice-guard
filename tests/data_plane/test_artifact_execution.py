@@ -268,23 +268,17 @@ def _runtime(
 
 @pytest.mark.asyncio
 async def test_stream_split_secret_uses_complete_response_contract(tmp_path):
-    from runner.output_streaming import OutputStreamSessionStore
+    from tests.stream_client import service_stream
     from runner.toolkit.runtime.contracts import ProtectionRequest, RequestContext
     store, _registry, engine = _runtime(tmp_path)
     runtime = GuardrailRuntimeService(engine, store)
     request = ProtectionRequest(phase="output", texts=("",), call_id="split-secret",
                                 context=RequestContext(protocol="litellm", endpoint_id="fixture-endpoint"))
-    streams = OutputStreamSessionStore(window_characters=8)
     try:
-        mode = runtime.output_delivery(request, allow_new_output=True)
-        assert mode == "full_buffered"
-        first = await streams.process(stream_key="split", sequence=0, text="api_key=", final=False,
-                                      mode=mode, request=request, evaluate=runtime.evaluate)
-        last = await streams.process(stream_key="split", sequence=1, text="abcdefghijklmnop", final=True,
-                                     mode=mode, request=request, evaluate=runtime.evaluate)
-        assert first.released_text + last.released_text == ""
-        assert last.terminate
-        assert last.decision.effective_release_id
+        result, text, decisions, contract = await service_stream(runtime, request, ["api_key=", "abcdefghijklmnop"])
+        assert contract.effective_mode == "full_buffered"
+        assert text == "" and result.status == "blocked"
+        assert decisions[0].effective_release_id
     finally:
         await engine.shutdown()
 

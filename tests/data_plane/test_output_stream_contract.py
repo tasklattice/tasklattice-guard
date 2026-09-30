@@ -44,7 +44,8 @@ def test_native_safety_policy_snapshot_does_not_invent_a_custom_output_flow(mode
     candidate = plan(mode)
     candidate = replace(candidate, steps=(replace(candidate.steps[0], on_unsafe=action),))
     result = output_stream_contract(candidate)
-    assert result.requested_mode == result.effective_mode == mode
+    assert result.requested_mode == mode
+    assert result.effective_mode == ("full_buffered" if mode == "full_buffered" else "window_buffered")
 
 
 @pytest.mark.parametrize("mode", ["window_buffered", "interruptible"])
@@ -71,7 +72,7 @@ def test_unused_custom_output_does_not_override_the_selected_execution(mode, sel
         candidate = replace(candidate, policy_versions=(version("built-in"), version("custom", "2")))
     else:
         candidate = replace(candidate, policy_bindings=())
-    assert output_stream_contract(candidate).effective_mode == mode
+    assert output_stream_contract(candidate).effective_mode == ("full_buffered" if mode == "full_buffered" else "window_buffered")
 
 
 @pytest.mark.parametrize("mode", ["window_buffered", "interruptible"])
@@ -97,4 +98,4 @@ def test_input_only_complete_response_metadata_does_not_constrain_output(mode):
     candidate = replace(candidate,
         policy_versions=(version(execution_contract=(("output_delivery", "full_buffered"),)),),
         policy_bindings=(replace(candidate.policy_bindings[0], enabled_rails=("input",)),))
-    assert output_stream_contract(candidate).effective_mode == mode
+    assert output_stream_contract(candidate).effective_mode == ("full_buffered" if mode == "full_buffered" else "window_buffered")

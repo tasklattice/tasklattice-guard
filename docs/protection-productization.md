@@ -358,7 +358,7 @@ Relay's TaskLattice Guard Provider; the results below supersede that blocker.
 - Added a concrete TaskLattice-only streaming hook, using Guard's authenticated
   ordered `/guardrails/output-stream` endpoint with native LiteLLM metadata.
   Runner accepts `protocol=litellm` only on the matching Integration adapter.
-  Only approved `released_text` is emitted; raw/logprob/provider-specific content
+  Only approved `delta.text` is emitted; raw/logprob/provider-specific content
   cannot bypass the checked response. Other LiteLLM Providers are unchanged.
 - Stream callbacks pin sequence, release, model revision and delivery mode.
   Full-response checks withhold every prefix. Limits, idle/callback timeouts,

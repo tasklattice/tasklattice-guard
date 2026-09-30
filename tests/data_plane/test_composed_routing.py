@@ -153,11 +153,11 @@ async def test_replicas_pin_inputs_outputs_and_deduplicate_completion():
 async def test_standalone_stream_claims_once_and_requires_subsequent_context():
     resolver = Resolver(); service = Service(None, resolver)
     req = ProtectionRequest(phase='output', texts=('hello',), context=context(), call_id='endpoint:stream')
-    with pytest.raises(RoutingError): service.output_delivery(req)
-    service.output_delivery(req, allow_new_output=True)
+    with pytest.raises(RoutingError): service._resolve_call(req)
+    service._resolve_call(req, allow_new_output=True)
     await service.evaluate(req)
     assert resolver.calls == 1
-    with pytest.raises(RoutingError): service.output_delivery(replace(req, call_id='missing'), require_existing=True, allow_new_output=True)
+    with pytest.raises(RoutingError): service._resolve_call(replace(req, call_id='missing'), require_existing=True, allow_new_output=True)
 
 
 def test_real_redis_atomic_assignment_and_outcome():

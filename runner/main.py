@@ -24,7 +24,6 @@ from .draft_preview import DraftPreviewRuntime
 from .http_metrics import instrument_http_metrics
 from .metrics import RunnerMetrics
 from .observability import configure_observability
-from .output_streaming import RedisOutputStreamSessionStore
 from .providers import runtime_action_providers
 from .telemetry import RuntimeTelemetryExporter
 
@@ -95,11 +94,6 @@ def create_app(settings: RunnerSettings | None = None) -> FastAPI:
         configured.controller_token,
         configured.runtime_log_encryption_key,
         draft_previews,
-        (
-            RedisOutputStreamSessionStore(configured.call_context_redis_url)
-            if configured.call_context_redis_url
-            else None
-        ),
     )
 
     @asynccontextmanager

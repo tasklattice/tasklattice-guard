@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal, Protocol
+from typing import Any, Literal, Protocol, TYPE_CHECKING
+from collections.abc import AsyncIterator, Awaitable, Callable
+
+if TYPE_CHECKING:
+    from .streaming import OutputStreamContract, OutputStreamResult
 
 from .enforcement_action_generated import (
     ENFORCEMENT_ACTIONS,
@@ -701,6 +705,14 @@ class NeMoPolicyRuntime(Protocol):
     supported_phases: frozenset[GuardrailPhase]
 
     async def evaluate(self, request: EngineRequest) -> ProtectionDecision: ...
+
+    def output_stream_contract(self, request: EngineRequest) -> OutputStreamContract: ...
+
+    async def stream_output(self, request: EngineRequest, source: AsyncIterator[str], *,
+        emit: Callable[[str], Awaitable[None]],
+        observe: Callable[[ProtectionDecision], Awaitable[None]] | None = None,
+        timeout_seconds: float = 300,
+    ) -> OutputStreamResult: ...
 
 
 class PlanResolver(Protocol):

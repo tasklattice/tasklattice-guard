@@ -429,7 +429,9 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
     const { snapshot } = await sourceFixture();
     const request = { id: "guard-a", name: "Draft copy", sourceDraftRevision: 1, idempotencyKey: "draft-copy", actorId: actor };
     const copy = await service.duplicateGuardrail(request);
-    expect(copy.draftConfig).toEqual(snapshot.draftConfig); expect(copy.copyOrigin).toMatchObject({ sourceDraftRevision: 1, sourceVersion: null });
+    // Older stored drafts omit the mode; reads preserve their strict topic semantics.
+    expect(copy.draftConfig).toEqual({ ...snapshot.draftConfig, topicControlMode: "strict" });
+    expect(copy.copyOrigin).toMatchObject({ sourceDraftRevision: 1, sourceVersion: null });
     await pool.query("UPDATE guardrail SET draft_revision=2 WHERE id='guard-a'");
     expect((await service.duplicateGuardrail(request)).id).toBe(copy.id);
     await expect(service.duplicateGuardrail({ ...request, idempotencyKey: "stale" })).rejects.toMatchObject({ code: "guardrail_draft_conflict" });

@@ -1799,8 +1799,8 @@ const resources = {
       },
       endpoints: {
         streamCallbackUrl: "Output stream callback URL",
-        streamContract: "Stream endpoint: send ordered chunks with one call_id and increasing sequence; await each check and forward only released_text. Send final=true at completion and cancel the upstream model on terminate=true. Runner does not proxy generation or SSE. A connectivity test does not verify this wiring.",
-        streamNotVerified: "This adapter's Input/Output callbacks do not prove incremental streaming protection. Stream wiring must be verified separately; do not forward unchecked chunks.",
+        streamContract: "Use one WebSocket connection with input credits. Deliver only server delta.text, send end after verified model completion, and cancel upstream on block, error or disconnect. Streams cannot resume.",
+        streamNotVerified: "Relay’s TaskLattice Guard Provider opens the output WebSocket automatically under this Endpoint; clients continue using normal SSE. Verify protection through actual client delivery.",
         railObserved: "Check observed",
         railNotObserved: "Not observed",
         streamFinalObserved: "Final check observed",
@@ -4727,8 +4727,8 @@ const resources = {
       },
       endpoints: {
         streamCallbackUrl: "输出流检查地址",
-        streamContract: "流式接入：使用同一个 call_id 和递增 sequence 顺序发送 chunk，等待检查后仅转发 released_text。结束时发送 final=true；收到 terminate=true 必须取消上游模型。Runner 不代理模型生成或 SSE。连接测试通过不代表已验证此链路。",
-        streamNotVerified: "此适配器的 Input/Output 回调不能证明逐段流式保护已经生效，需要单独验证流式接入；不要直接交付未经检查的 chunk。",
+        streamContract: "使用一条 WebSocket 连接提交输出，按输入额度发送片段，只交付服务端 delta.text。确认模型正常结束后发送 end；拦截、错误或断线时取消上游，不支持续传。",
+        streamNotVerified: "Relay 的 TaskLattice Guard Provider 会自动连接同一 Endpoint 下的 WebSocket 输出通道，客户端仍使用正常 SSE。请通过实际交付验证保护已生效。",
         railObserved: "已观测检查",
         railNotObserved: "尚未观测",
         streamFinalObserved: "已观测最终检查",

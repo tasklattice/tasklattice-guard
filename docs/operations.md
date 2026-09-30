@@ -90,7 +90,7 @@ still runs one Controller; management, publication, reconciliation, and telemetr
 ingest depend on it. Production availability also depends on failure-domain
 scheduling, spare capacity, and externally managed HA PostgreSQL and Redis.
 
-Shared Redis stores call and stream state, including protected content. It is
+Shared Redis stores call context, including protected input content. Output buffers and NeMo iterators live only in their WebSocket connection. It is
 not a load balancer and does not replicate historical model runtimes. Context
 expiration or a replica without the pinned release can prevent an associated
 check from completing. Keep Redis private, access-controlled, and encrypted in

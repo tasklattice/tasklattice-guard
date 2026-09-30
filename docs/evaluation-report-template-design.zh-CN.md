@@ -50,7 +50,7 @@
 应用 / 网关
   ├─ Input 检查 → Guard Runner → 决策 / 替换文本
   ├─ 执行决策 → 用允许的文本调用业务模型
-  ├─ Output / Stream 检查 → Guard Runner → 决策 / released_text
+  ├─ Output / Stream 检查 → Guard Runner → 决策 / delta.text
   └─ 执行决策 → 最终消费者
 
 Guard Controller：配置、版本、发布、证据管理（与同步检查路径区分）
@@ -69,7 +69,7 @@ Guard Controller：配置、版本、发布、证据管理（与同步检查路�
 
 明确范围限制：当前 Input/Output 是实际执行方向；Retrieval、Dialog、Execution 不能因协议预留就显示为已保护。Grounding 需要真实 query/source，Automated Reasoning 需要兼容服务和版本化形式规则。文本过滤不能代替工具授权、数据访问控制或交易审批。依据：[架构](architecture.md)、[产品化边界](protection-productization.md)。
 
-流式必须显示 requested/effective mode、回退原因、集成版本。仅交付 `released_text`；实际取消上游由集成方负责。增量模式不能撤回已经交付的内容。完整缓冲模式必须把较长的首段等待呈现在报告中。
+流式必须显示 requested/effective mode、回退原因、集成版本。仅交付 `delta.text`；实际取消上游由集成方负责。增量模式不能撤回已经交付的内容。完整缓冲模式必须把较长的首段等待呈现在报告中。
 
 ## 4. 如何证明方法具有业界通用性
 

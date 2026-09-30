@@ -4,6 +4,7 @@ import asyncio
 import difflib
 import re
 import time
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import nullcontext
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass, replace
@@ -11,6 +12,7 @@ from functools import wraps
 from typing import Any
 
 from nemoguardrails import Guardrails
+from nemoguardrails.actions.rail_outcome import RailOutcome
 from nemoguardrails.exceptions import LLMCallException
 from nemoguardrails.guardrails.iorails import INTERNAL_ERROR_MESSAGE
 from nemoguardrails.rails.llm.options import (
@@ -25,6 +27,7 @@ from opentelemetry import context as otel_context, trace
 from opentelemetry.trace import Status, StatusCode
 
 from ..runtime.content_views import request_view, with_active_text
+from ..runtime.streaming import OutputStreamContract, OutputStreamResult
 from ..runtime.contracts import (
     AppliedIntervention,
     ContentPatch,
@@ -62,6 +65,9 @@ from .actions.model_call import (
     deactivate_native_model_observation,
     observe_native_model_call,
 )
+from .native_streaming import (
+    evaluate_native_output, native_output_config, run_native_output_stream,
+)
 from .artifacts import config_checksum
 from .registry import NeMoRuntimeRegistry
 from ..safety.taxonomy import taxonomy, taxonomy_for_evaluator
@@ -95,6 +101,7 @@ class _ExecutionScope:
     proposed_action: str = "allow"
     reason: str = "All NeMo Actions passed."
     action_failure: _ActionExecutionFailure | None = None
+    native_stream: Any = None
 
 
 class _ActionExecutionFailure(LLMCallException):
@@ -123,6 +130,9 @@ class NeMoActionBridge:
         self._config = config
         self._bindings = {item.id: item for item in config.action_bindings}
         self._providers = providers
+        self._native_output_streaming = bool(
+            native_output_config(config).get("streaming", {}).get("enabled", False)
+        )
 
     def register(self, rails: Guardrails) -> None:
         def register_action(handler, *, name):
@@ -202,13 +212,28 @@ class NeMoActionBridge:
             text: str,
             binding_id: str,
             context: dict[str, Any] | None = None,
-        ) -> dict[str, Any]:
-            return await self.execute_action(
+            llm_task_manager=None, config=None, model_name=None, llms=None, llm=None,
+        ) -> dict[str, Any] | RailOutcome:
+            # NeMo injects these public Action parameters on its streaming path.
+            payload = await self.execute_action(
                 action_name,
                 action_version,
                 text,
                 binding_id,
                 context,
+            )
+            if not self._native_output_streaming or self._request().phase != "output":
+                return payload
+            scope = _execution_scope()
+            if scope.native_stream is not None:
+                scope.native_stream.record(payload)
+            metadata = {"tasklattice_result": payload}
+            if payload["verdict"] == "error":
+                return RailOutcome.failure(reason=payload["reason"], metadata=metadata)
+            if payload["modified"]:
+                raise ValueError("A streaming rail cannot transform content.")
+            return (RailOutcome.block if payload["blocked"] else RailOutcome.allow)(
+                reason=payload["reason"], metadata=metadata,
             )
 
         return execute_provider
@@ -811,6 +836,34 @@ class NeMoRuntime:
     name = "nemo-guardrails"
     supported_phases = frozenset({"input", "output"})
 
+    def output_stream_contract(self, request: EngineRequest) -> OutputStreamContract:
+        instance = self._registry.acquire(request.plan,
+            **({"release_id": request.effective_release_id} if request.effective_release_id else {}))[0]
+        enabled = native_output_config(instance.config).get("streaming", {}).get("enabled")
+        return OutputStreamContract(request.plan.output_delivery,
+            "window_buffered" if enabled else "full_buffered",
+            "NeMo checks overlapping windows before release." if enabled
+            else "The compiled output rules require one complete-response check.")
+
+    async def stream_output(
+        self,
+        request: EngineRequest,
+        source: AsyncIterator[str],
+        *,
+        emit: Callable[[str], Awaitable[None]],
+        observe: Callable[[ProtectionDecision], Awaitable[None]] | None = None,
+        timeout_seconds: float = 300,
+    ) -> OutputStreamResult:
+        """Check an external text iterator using the compiled NeMo output rails.
+
+        This is an engine API, not the legacy per-chunk HTTP protocol. The
+        caller awaits one invocation and supplies async delivery/audit sinks.
+        """
+        return await run_native_output_stream(
+            self, request, source, emit=emit, observe=observe,
+            timeout_seconds=timeout_seconds,
+        )
+
     def __init__(
         self,
         registry: NeMoRuntimeRegistry,
@@ -825,6 +878,13 @@ class NeMoRuntime:
             request.plan,
             **({"release_id": request.effective_release_id} if request.effective_release_id else {}),
         )
+        if request.phase == "output" and native_output_config(instance.config).get("streaming", {}).get("enabled"):
+            # A complete response is one input frame. Reuse the same native
+            # rail dispatch and evidence as streaming, avoiding Colang's
+            # per-flow event limit on large output Policy collections.
+            return await evaluate_native_output(
+                self, request, (instance, cache_hit, registry_queue_latency_ms),
+            )
         profile = instance.config.runtime_profile
         started = time.perf_counter()
         scope = _ExecutionScope(request, profile, [], started)
@@ -1185,7 +1245,7 @@ def _colang1_results(
             raise RuntimeError(
                 f"Colang 1 binding {binding.id!r} has no explicit result variable."
             )
-        raw = output_data.get(binding.result_var)
+        raw = _action_evidence(output_data.get(binding.result_var))
         if isinstance(raw, dict):
             raw_by_id[binding.id] = raw
 
@@ -1194,7 +1254,7 @@ def _colang1_results(
     # executed Action's return value, so use it only as a same-call fallback.
     for rail in _activated_rails(response):
         for action in rail.executed_actions:
-            raw = action.return_value
+            raw = _action_evidence(action.return_value)
             if isinstance(raw, dict) and isinstance(raw.get("step_id"), str):
                 raw_by_id.setdefault(str(raw["step_id"]), raw)
 
@@ -1229,6 +1289,12 @@ def _colang1_results(
             + "."
         )
     return ordered, payloads
+
+
+def _action_evidence(value: Any) -> Any:
+    if isinstance(value, RailOutcome):
+        return value.metadata.get("tasklattice_result")
+    return value
 
 
 def _colang1_runtime_result(

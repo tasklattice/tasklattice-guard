@@ -1,41 +1,53 @@
 ---
 id: "gateway-stream"
 title: "Data-plane protocol: streaming output checks"
-summary: "Submit new text increments in sequence and deliver only released_text returned by Runner."
+summary: "Use one WebSocket; deliver only output checked by NeMo."
 order: 4
 ---
-When the model streams chunks, complete the Input check first. Then submit each new text increment to `POST {endpoint}/guardrails/output-stream` on the same Endpoint. This is **JSON request → JSON response**, not SSE or WebSocket; the gateway owns the client-facing stream.
+When the model streams, complete Input first, then open one authenticated WebSocket
+at `{endpoint}/guardrails/output-stream`. Send the Endpoint token in `x-api-key`.
+The gateway keeps its normal client-facing SSE interface. The old POST chunk API
+is removed; reverse proxies must allow WebSocket upgrades.
 
 <a id="gateway-stream-request" />
 
-## Submit ordered increments
+## Start and feed the stream
 
 ```json
-{"protocol":"litellm","call_id":"call-123","stream_id":"stream-456","sequence":0,"text":"Hello ","final":false}
+{"type":"start","version":1,"protocol":"litellm","call_id":"call-123","stream_id":"stream-456","messages":[],"request_data":{},"request_headers":{}}
 ```
 
-- Send `protocol: "litellm"` explicitly; the default protocol does not match this Endpoint.
-- Use the Input check's `litellm_call_id` as `call_id`. Give each new output stream a new `stream_id` and never reuse an ended ID.
-- Start `sequence` at 0 and increment by exactly 1, with at most one request in flight per stream.
-- Send only **new** text in `text`, not a cumulative prefix. On normal completion submit `final: true`, optionally with an empty final increment.
+Reuse Input's call ID and routing metadata. Runner sends `ready` with the pinned
+release, model revision, requested/effective mode and eight input credits. Each
+`delta` uses one credit; `ack` returns it when NeMo consumes the frame. Input
+sequence starts at zero. Process incoming events concurrently with sending.
+
+```json
+{"type":"delta","sequence":0,"text":"Hello "}
+{"type":"delta","sequence":1,"text":"world."}
+{"type":"end","sequence":2}
+```
 
 <a id="gateway-stream-delivery" />
 
-## Deliver only released_text
+## Deliver checked output
 
-Validate `stream_id`, `sequence`, `next_sequence`, field types, and the actual `mode` before delivering each response. Append only `released_text` once. Neither the raw model chunk nor nested diagnostic fields authorize delivery.
+Only server `delta.text` authorizes client delivery. Validate stream identity and
+its independent output sequence. An input `ack` never authorizes delivery.
+`completed` permits normal completion after validating counts. `blocked` stops
+output; `error` reports check/protocol failure. Both require cancelling upstream.
+Disconnect or timeout terminates the stream; no reconnect or replay is supported.
 
-| `status` | Gateway behavior |
-| --- | --- |
-| `buffering` | Deliver no new text; wait for another increment or final submission |
-| `released` | Deliver only this response's `released_text`, then continue in sequence |
-| `completed` | Deliver remaining `released_text` and finish; submit nothing more |
-| `blocked` | Deliver no new text; stop the stream and client delivery, and cancel upstream generation if supported |
-
-Published Policies determine the actual `mode`: `full_buffered` waits for a successful final check; `window_buffered` may release increments while retaining a trailing window; `interruptible` may release after each check but cannot retract previously delivered text. If the whole response must pass before any character is shown, require the actual mode to be `full_buffered`. Chunk requests cannot choose a mode.
+NeMo owns overlapping windows: 200 input fragments with 50 fragments of context,
+checked before release. Requested `interruptible` also becomes `window_buffered`.
+These are fragment counts, not character limits. Earlier text cannot be recalled.
+PII, transformations and other complete-response policies use `full_buffered`:
+check once after `end`, then release the original or replacement.
 
 <a id="gateway-stream-end" />
 
-## Complete or stop
-
-On normal model completion, submit `final: true` even if no new text remains and wait for a valid `completed` response before claiming protected completion. `[DONE]`, SSE closure, and disconnects do not replace that submission. `terminate: true` can arrive before `final: true`; send no more chunks after termination. On timeout or lost response, do not blindly replay: the server may have accepted the sequence, and the protocol has no general idempotent retry or recovery cursor. See [failure handling and production checks](/document/developer/gateway-failures).
+Send `end` only after verified normal model completion. Upstream failure or
+truncation must close the stream. Limits: 300 seconds, 100,000 delta frames,
+100,000 characters per delta and 1,000,000 total characters. Redis shares call
+assignments across replicas, not output buffers. See the repository's
+`docs/gateway-integration.md` for the complete fields and executable tests.

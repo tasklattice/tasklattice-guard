@@ -3262,7 +3262,7 @@ export function endpointSetup(runtimeServiceUrl: string, endpointId: string, ada
   return {
     api_base_url: apiBaseUrl,
     callback_url: callbackUrl,
-    stream_callback_url: isLiteLLM ? null : `${apiBaseUrl}/guardrails/output-stream`,
+    stream_callback_url: isLiteLLM ? null : `${apiBaseUrl.replace(/^http/, "ws")}/guardrails/output-stream`,
     auth_header: "x-api-key",
     credential_env_var: "TASKLATTICE_GUARD_API_KEY",
     api_base_env_var: "TASKLATTICE_GUARD_API_BASE",

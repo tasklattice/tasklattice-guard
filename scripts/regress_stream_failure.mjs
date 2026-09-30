@@ -4,6 +4,7 @@
  * causes a real NeMo failure on one synthetic marker. Never edits existing data.
  */
 import assert from "node:assert/strict";
+import {checkOutputStream} from "./stream-transport.mjs";
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 
@@ -130,15 +131,19 @@ for (const [text, expected, failure] of cases) {
   assert.equal(verdict.usage.model_invocations, 0);
   if (failure && dispatchFailure) assert(verdict.reason.includes("GuardRecordOwnedPolicyAction"), verdict.reason);
   const streamId = randomUUID();
-  const streamPath = `/runtime/v1/endpoints/${endpoint.id}/guardrails/output-stream`;
-  const first = (await call(runner, streamPath, { stream_id: streamId, sequence: 0, text, final: false, protocol: "http" }, 200, true)).data;
-  assert.equal(first.status, "buffering");
-  assert.equal(first.released_text, "");
-  const final = (await call(runner, streamPath, { stream_id: streamId, sequence: 1, text: "", final: true, protocol: "http" }, failure ? 502 : 200, true)).data;
-  if (failure) { assert(!JSON.stringify(final).includes(text)); assert(!("released_text" in final)); }
-  else { assert.equal(final.released_text, expected === "allow" ? text : ""); assert.equal(final.status, expected === "allow" ? "completed" : "blocked"); }
-  report("case-passed", { scenario: text, expected, infrastructureFailure: Boolean(failure), streamHttpStatus: failure ? 502 : 200, modelInvocations: 0 });
+  const result = await checkOutputStream(`${runner}/runtime/v1/endpoints/${endpoint.id}`, credential,
+    {stream_id: streamId, protocol: "http"}, [text]);
+  assert.equal(result.ready.mode, "full_buffered");
+  if (failure) {
+    assert.equal(result.terminal.type, "error"); assert.equal(result.text, "");
+    assert(!JSON.stringify(result.terminal).includes(text));
+  } else {
+    assert.equal(result.text, expected === "allow" ? text : "");
+    assert.equal(result.terminal.type, expected === "allow" ? "completed" : "blocked");
+  }
+
+  report("case-passed", { scenario: text, expected, infrastructureFailure: Boolean(failure), streamStatus: result.terminal.type, modelInvocations: 0 });
 }
 report("passed", { dispatchFailure, policyId: policy.id, guardrailId: guardrail.id, version: publication.version, artifactId: release.artifactId,
   checksum: release.artifact.checksum, validationId: validation.id, endpointId: endpoint.id, routerId: router.id,
-  scope: "real persisted Policy, NeMo action failure, signed artifact, runtime stream HTTP; no mocked model or detector" });
+  scope: "real persisted Policy, NeMo action failure, signed artifact, runtime WebSocket stream; no mocked model or detector" });

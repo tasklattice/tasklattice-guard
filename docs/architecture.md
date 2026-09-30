@@ -28,7 +28,7 @@ Service, not individual Pod names.
 ```text
 AI Gateway / LiteLLM / AI App -> Runtime Service -> Guard Runner -> NeMo / models
                                                        |
-                                                       +-> Redis call/stream state
+                                                       +-> Redis call context
 
 Operator / API client -> Guard Controller -> PostgreSQL
                               ^      |
@@ -216,33 +216,75 @@ migration; runtime parsing does not accept the old labels as aliases.
 
 ## Effective releases and streaming
 
-Each call pins an effective release derived from desired generation, signed
-artifact checksums, and model configuration. Old materialized runtimes remain
-leased until their calls drain. A replica unable to serve the pinned release
-fails closed; shared Redis does not replicate historical model clients or
-guarantee uninterrupted calls across cold rollouts.
+### Native output engine
 
-Every pool with multiple replicas requires Redis. Call context is keyed by a
-SHA-256 digest of `call_id`, with a default five-minute TTL. It includes routing
-and release identity, up to 20 messages, and input content blocks. Stream state
-also retains output buffers, sequence, and completion state with an idle TTL.
-These values can contain protected content and are JSON, not application-level
-encrypted payloads. Production Redis needs private access, authentication, and
-transport encryption.
+Compiler v26 enables NeMo 0.24's public `stream_async(generator=...)` for
+unconditional, non-transforming Content Safety output rules using required,
+fail-closed modules and an incremental delivery mode. It emits direct Action
+rails in Policy order, `parallel: false`, and `stream_first: false`. Actions
+return NeMo `RailOutcome`; their metadata retains the existing Policy evidence.
+Complete-response `NeMoRuntime.evaluate()` calls for these configurations use
+one frame through the same native engine. This also avoids Colang 1's per-rail
+event limit for larger output Policy collections.
 
-The output-stream API accepts ordered chunks; it does not proxy upstream
-text generation or serve SSE. Callers must retain `call_id` and `stream_id`,
-submit increasing sequences serially, await each response, forward only
-`released_text`, and send `final=true` on completion. They must cancel upstream
-generation on `terminate=true` or transport failure. Lost responses must not
-cause speculative text delivery or sequence advancement.
+`NeMoRuntime.stream_output(request, source, emit=..., observe=...)` consumes an
+async text iterator in one invocation. NeMo owns windowing, overlap and ordered
+rail dispatch. Guard owns the pinned runtime, concurrency admission, delivery,
+Policy evidence, model-call observation, timeout and source cancellation.
+`emit` and `observe` are awaited async callbacks; only `emit` supplies approved
+text. `observe` supplies each window's `ProtectionDecision`, including failed
+checks. NeMo diagnostic JSON is never forwarded as model content. Valid model
+text that happens to look like an error JSON object remains deliverable.
 
-`full_buffered` checks the complete response. Incremental modes release checked
-text with bounded buffering; they cannot recall text released before later
-context changes a verdict. Policies requiring complete-response checks force
-the effective mode to full buffering. The API reports requested/effective modes,
-fallback reason, and effective release. LiteLLM pre/post callbacks or a successful
-connectivity check alone do not prove incremental stream protection.
+The default window is 200 iterator items with 50 retained items. For external
+generators these are **frames, not characters or tokenizer tokens**. The overlap
+must be positive and smaller than the window: in pinned NeMo 0.24 a zero overlap
+retains the buffer because of its `[-context_size:]` slice. The adapter does not
+patch that implementation. NeMo may check the retained tail again at EOF, even
+when it has no new content to release. These are overlapping-window checks,
+not accumulated-prefix checks; previously delivered content cannot be recalled.
+Model clients should yield incremental deltas without pre-buffering large
+batches. Full-response guarantees still require `full_buffered`.
+
+The result distinguishes `completed` from `blocked`. Evaluation, upstream or
+delivery failure raises `NativeStreamError`; it never permits raw-output
+fallback. Block, error and cancellation close the source and release admission.
+The source must end only on confirmed normal upstream completion and raise on
+truncation. Defaults cap a stream at 300 seconds, one million characters and
+100,000 frames. Input checks, Endpoint authorization and route resolution remain
+the caller's responsibility. Transforming, conditional, arbitrary Colang and
+full-buffered policies are rejected by this native stream entry before reading
+upstream content; they retain their complete-response evaluation paths.
+
+### WebSocket delivery protocol
+
+Runner exposes `/runtime/v1/endpoints/{id}/guardrails/output-stream` as a WebSocket.
+One connection pins the call context, release and model revision, supplies the
+source generator to NeMo and forwards approved deltas. The old per-chunk HTTP
+state machine and Redis output-buffer/lock storage have been removed.
+
+The `start → ready → delta/ack → end → completed|blocked|error` protocol separates
+input credits from approved delivery. Eight outstanding frames bound Relay's
+lookahead while NeMo checks. The socket reader continues listening for disconnects
+during model calls, cancelling execution and freeing admission on disconnect.
+Relay serves normal SSE to clients and closes the model iterator on block, error
+or cancellation. It verifies upstream completion before sending `end`.
+
+Requested incremental modes use NeMo window buffering. Full-response policies
+collect the complete source and run the same NeMo evaluation path once, preserving
+transformations. Client delivery always uses the approved output events.
+
+Redis still shares Input/Output call context (default TTL 300 seconds), including
+release identity, up to 20 messages and input blocks. These can contain protected
+content; production Redis requires private access and appropriate protection.
+An output connection cannot resume on another replica. If its pinned release is
+unavailable, the call fails closed. Release leases keep existing runtimes alive
+while calls drain; Redis does not replicate model clients or native iterators.
+
+See [the protocol](gateway-integration.md#6-streaming-output-guard),
+[native engine tests](../tests/control_plane/test_native_output_stream.py),
+[network tests](../tests/data_plane/test_stream_safety_network.py) and
+[actual Relay SSE tests](../tests/e2e/test_relay_stream_delivery.py).
 
 ## State ownership and lifecycles
 

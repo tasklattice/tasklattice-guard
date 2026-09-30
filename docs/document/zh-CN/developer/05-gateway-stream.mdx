@@ -1,41 +1,35 @@
 ---
 id: "gateway-stream"
 title: "数据面协议：流式输出检查"
-summary: "按顺序提交新增文本，只向客户端交付 Runner 返回的 released_text。"
+summary: "通过一条 WebSocket 提交输出，只交付 NeMo 检查通过的内容。"
 order: 4
 ---
-模型以 chunk 输出时，先完成输入检查，再使用同一 Endpoint 把每个新增文本片段提交给 `POST {endpoint}/guardrails/output-stream`。这个接口是 **JSON 请求 → JSON 响应**，不是 SSE 或 WebSocket；网关自行维护面向客户端的流。
+先完成 Input 检查，再打开一条到 `{endpoint}/guardrails/output-stream` 的 WebSocket，在升级请求头中传入 `x-api-key`。网关对客户端继续使用原有 SSE。旧的逐段 POST 接口已移除，反向代理需要允许 WebSocket 升级。
 
 <a id="gateway-stream-request" />
 
-## 提交有序增量
+## 建立连接并发送文本
 
 ```json
-{"protocol":"litellm","call_id":"call-123","stream_id":"stream-456","sequence":0,"text":"Hello ","final":false}
+{"type":"start","version":1,"protocol":"litellm","call_id":"call-123","stream_id":"stream-456","messages":[],"request_data":{},"request_headers":{}}
 ```
 
-- `protocol` 明确传 `litellm`；省略时的默认值不适用于此 Endpoint。
-- `call_id` 使用输入检查的 `litellm_call_id`；每条新输出流生成新的 `stream_id`，结束后不复用。
-- `sequence` 从 0 开始逐次加 1；同一条流一次只提交一个在途请求。
-- `text` 只包含本次**新增**内容，不要提交累计前缀。正常结束时必须发送 `final: true`；最后一次可以用空字符串。
+复用 Input 的 call ID 和路由元数据。Runner 返回 `ready`，包含固定的发布版本、模型修订、请求与实际模式，以及 8 个输入额度。每个 `delta` 消耗一个额度；NeMo 消费后返回 `ack` 归还额度。输入序号从 0 递增，收发需要并行执行。
+
+```json
+{"type":"delta","sequence":0,"text":"你好，"}
+{"type":"delta","sequence":1,"text":"世界。"}
+{"type":"end","sequence":2}
+```
 
 <a id="gateway-stream-delivery" />
 
-## 只交付 released_text
+## 只交付通过检查的输出
 
-每次响应先校验 `stream_id`、`sequence`、`next_sequence`、字段类型及实际 `mode`，然后只把 `released_text` 追加交付一次。原始模型 chunk 和嵌套诊断字段都不是交付许可。
+只有服务端的 `delta.text` 允许交付给客户端。校验 stream ID 和独立的输出序号；输入 `ack` 不代表允许交付。校验计数后，`completed` 才表示正常结束。`blocked` 表示拦截，`error` 表示检查或协议失败，两者都要停止输出并取消上游。断线或超时终止本次流，不支持重连、重放或续传。
 
-| `status` | 网关行为 |
-| --- | --- |
-| `buffering` | 不交付新文本，继续等待下一段或最终提交 |
-| `released` | 只交付这次的 `released_text`，按序继续 |
-| `completed` | 交付剩余 `released_text` 后正常结束，不再提交 |
-| `blocked` | 不交付新文本；停止流和客户端交付，如可行则取消上游生成 |
-
-实际 `mode` 由已发布 Policy 决定：`full_buffered` 等最终检查后才释放；`window_buffered` 可能逐段释放并保留尾部；`interruptible` 可以每次检查后释放，但后续阻断无法撤回已交付文本。若业务要求整条回答都通过后才展示，必须确认实际模式为 `full_buffered`。不能靠请求字段自行选择模式。
+NeMo 负责重叠窗口：每 200 个输入片段检查一次，保留 50 个片段作为上下文，检查通过后才释放。请求的 `interruptible` 也采用 `window_buffered`。这里的单位是片段，不是字符。已交付文本无法撤回。PII、替换及其他要求完整回复的策略使用 `full_buffered`：收到 `end` 后检查一次，只交付通过的原文或替换结果。
 
 <a id="gateway-stream-end" />
 
-## 正常结束与异常中止
-
-模型正常完成后，即使最后没有新增文本，也要提交 `final: true` 并等待有效的 `completed` 响应，才能宣称受保护地完成。`[DONE]`、SSE 关闭或连接断开都不能替代这个提交。`terminate: true` 可能在 `final: false` 时出现；此后不要再发送 chunk。请求超时或响应丢失时，不要盲目重放：服务端可能已经接受该 sequence，协议没有通用的幂等重试或恢复游标。详见[失败处理与上线检查](/document/developer/gateway-failures)。
+只有确认模型正常结束后才能发送 `end`；异常或截断必须关闭连接。限制为每连接 300 秒、100,000 个 delta、每段 100,000 字符和总计 1,000,000 字符。Redis 仅共享跨副本的调用版本绑定，不保存输出缓冲。完整字段及可执行测试见仓库 `docs/gateway-integration.md`。

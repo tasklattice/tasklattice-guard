@@ -28,8 +28,7 @@ from .metrics import (
     UNMATCHED_METRIC_ID,
     UNRESOLVED_METRIC_ID,
 )
-from .output_streaming import OutputStreamEvaluationError, OutputStreamProcessor, OutputStreamSessionStore
-from .toolkit.runtime.streaming import output_stream_contract
+from .output_streaming import register_output_stream
 from .telemetry import RuntimeTelemetryExporter
 
 
@@ -169,31 +168,6 @@ class LiteLLMGuardrailResponse(BaseModel):
     tools: list[dict[str, Any]] | None = None
 
 
-class OutputStreamRequest(BaseModel):
-    """One ordered model-output chunk for Guardrail-controlled release."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    stream_id: str = Field(min_length=1, max_length=256)
-    sequence: int = Field(ge=0)
-    text: str = Field(default="", max_length=100_000)
-    final: bool = False
-    call_id: str | None = Field(default=None, min_length=1, max_length=256)
-    protocol: Literal["http", "a2a", "litellm"] = "http"
-    messages: list[dict[str, Any]] = Field(default_factory=list, max_length=20)
-    request_data: dict[str, Any] = Field(default_factory=dict)
-    request_headers: dict[str, str] = Field(default_factory=dict)
-    attributes: dict[str, str] = Field(default_factory=dict)
-    model: str | None = None
-    output_sink: Literal["display", "markdown", "html", "sql", "shell", "url", "json", "tool_argument"] | None = None
-
-    @model_validator(mode="after")
-    def validate_chunk(self):
-        if not self.text and not self.final:
-            raise ValueError("A non-final output stream chunk must contain text.")
-        return self
-
-
 class RunnerAPI:
     def __init__(
         self,
@@ -205,7 +179,6 @@ class RunnerAPI:
         controller_token: str,
         runtime_log_encryption_key: bytes | None = None,
         draft_previews: DraftPreviewRuntime | None = None,
-        output_streams: OutputStreamProcessor | None = None,
     ) -> None:
         self.router = APIRouter()
         self._runtime = runtime
@@ -220,8 +193,8 @@ class RunnerAPI:
         self._controller_token = controller_token
         self._runtime_log_encryption_key = runtime_log_encryption_key
         self._draft_previews = draft_previews
-        self._output_streams = output_streams or OutputStreamSessionStore()
         self._register()
+        register_output_stream(self)
         from .path_testing import register_path_testing
         register_path_testing(self)
 
@@ -426,118 +399,6 @@ class RunnerAPI:
                         http_request=request,
                         observation=observation,
                     )
-
-        @self.router.post("/runtime/v1/endpoints/{endpoint_id}/guardrails/output-stream")
-        async def evaluate_output_stream(
-            endpoint_id: str,
-            payload: OutputStreamRequest,
-            request: Request,
-            x_api_key: str | None = Header(default=None),
-        ):
-            expected_adapter = {
-                "a2a": "a2a-guard", "http": "generic-http-guard", "litellm": LITELLM_ADAPTER_ID,
-            }[payload.protocol]
-            authenticated = self._store.authenticate_endpoint(endpoint_id, x_api_key)
-            self._metrics.observe_authentication(payload.protocol, authenticated)
-            if not authenticated:
-                self._metrics.reject_request(payload.protocol, "output", "authentication_rejected")
-                raise HTTPException(status_code=401, detail="Endpoint credential is invalid.")
-            if self._store.endpoint_adapter(endpoint_id) != expected_adapter:
-                self._metrics.reject_request(payload.protocol, "output", "adapter_mismatch")
-                raise HTTPException(status_code=409, detail="Endpoint adapter does not match this protocol.")
-
-            if payload.protocol == "litellm":
-                # Preserve the same principal, routing fields and call identity
-                # used by the pre-call Generic Guardrail API callback.
-                protection_request = _litellm_protection_request(LiteLLMGuardrailRequest(
-                    input_type="response", texts=[payload.text or " "],
-                    litellm_call_id=payload.call_id or payload.stream_id,
-                    structured_messages=payload.messages, model=payload.model,
-                    request_data=payload.request_data, request_headers=payload.request_headers,
-                ), endpoint_id, request)
-            else:
-                evaluate_payload = EvaluateRequest(
-                    phase="output", texts=[payload.text or " "],
-                    call_id=payload.call_id or payload.stream_id, protocol=payload.protocol,
-                    messages=payload.messages, attributes=payload.attributes,
-                    model=payload.model, output_sink=payload.output_sink,
-                )
-                protection_request = _http_protection_request(evaluate_payload, request, endpoint_id)
-            protection_request = replace(protection_request, context=replace(protection_request.context,
-                fields=(*protection_request.context.fields, ("routing.stream", "true"))))
-            try:
-                resolutions = []
-                mode = self._runtime.output_delivery(protection_request, on_resolved=resolutions.append,
-                                                     require_existing=payload.sequence > 0,
-                                                     allow_new_output=payload.call_id is None)
-                resolution = resolutions[0]
-                if isinstance(self._runtime, GuardrailRuntimeService):
-                    await self._runtime.publish_assignment(resolution, protection_request.call_id)
-                contract = output_stream_contract(resolution.plan)
-
-                async def evaluate_candidate(candidate: ProtectionRequest) -> ProtectionDecision:
-                    started = time.perf_counter()
-                    decision = None
-                    try:
-                        decision = await self._runtime.evaluate(candidate)
-                        return decision
-                    finally:
-                        await self._emit_telemetry(
-                            request_id=str(uuid.uuid4()),
-                            call_id=candidate.call_id,
-                            endpoint_id=endpoint_id,
-                            phase="output",
-                            protocol=f"{payload.protocol}-stream",
-                            mode=candidate.mode,
-                            started=started,
-                            decision=decision,
-                            content_before=candidate.texts,
-                            http_request=request,
-                            stream_metadata={"streamId": payload.stream_id, "streamSequence": payload.sequence,
-                                             "streamFinalCheck": payload.final and decision is not None,
-                                             "effectiveOutputDelivery": mode},
-                        )
-
-                result = await self._output_streams.process(
-                    stream_key=f"{endpoint_id}:{payload.stream_id}",
-                    sequence=payload.sequence,
-                    text=payload.text,
-                    final=payload.final,
-                    mode=mode,
-                    request=protection_request,
-                    evaluate=evaluate_candidate,
-                )
-                if isinstance(self._runtime, GuardrailRuntimeService) and (result.final or result.terminate):
-                    await self._runtime.complete_call(resolution, protection_request.call_id,
-                        result.decision.decision if result.decision else "allow")
-            except RoutingError as error:
-                raise HTTPException(status_code=503, detail=error.reason) from error
-            except OutputStreamEvaluationError as error:
-                if isinstance(self._runtime, GuardrailRuntimeService) and resolutions:
-                    await self._runtime.complete_call(resolutions[0], protection_request.call_id,
-                        "timeout" if error.timed_out else "error", type(error).__name__)
-                raise HTTPException(status_code=504 if error.timed_out else 502, detail=str(error)) from error
-            except LookupError as error:
-                raise HTTPException(status_code=404, detail=str(error)) from error
-            except ValueError as error:
-                raise HTTPException(status_code=409, detail=str(error)) from error
-            response = {
-                "stream_id": payload.stream_id,
-                "sequence": result.sequence,
-                "next_sequence": result.next_sequence,
-                "mode": result.mode,
-                "requested_mode": contract.requested_mode,
-                "delivery_reason": contract.reason,
-                "effective_release_id": resolution.effective_release_id,
-                "model_revision_id": resolution.model_revision_id,
-                "status": result.status,
-                "released_text": result.released_text,
-                "terminate": result.terminate,
-                "final": result.final,
-            }
-            if result.decision is not None:
-                response["decision"] = jsonable_encoder(asdict(result.decision))
-            return response
 
         @self.router.post("/internal/v1/guardrails/{guardrail_id}/evaluate")
         async def evaluate_guardrail(
