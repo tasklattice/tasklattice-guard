@@ -1,11 +1,9 @@
 import readline from 'readline';
+import { Writable } from 'node:stream';
 import axios, { AxiosRequestConfig } from 'axios';
 import { readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+const cliDirectory = dirname(resolve(process.argv[1]));
 
 function loadEnvFile(path: string): Record<string, string> {
   const result: Record<string, string> = {};
@@ -43,9 +41,9 @@ function resolveBaseUrl(): { url: string; source: string } {
 
   const searchDirs = [
     process.cwd(),
-    resolve(__dirname, '../../..'),
-    resolve(__dirname, '../..'),
-    resolve(__dirname, '..'),
+    resolve(cliDirectory, '../../..'),
+    resolve(cliDirectory, '../..'),
+    resolve(cliDirectory, '..'),
   ];
   for (const dir of searchDirs) {
     const envPath = resolve(dir, '.env');
@@ -89,7 +87,7 @@ function parseFlags(args: string[]): { positional: string[]; flags: Record<strin
   return { positional, flags };
 }
 
-function buildQs(flags: Record<string, string>, allowList: string[]): string {
+function buildQs(flags: Record<string, string | undefined>, allowList: string[]): string {
   const params = new URLSearchParams();
   for (const k of allowList) {
     if (flags[k] !== undefined) params.set(k, flags[k]);
@@ -251,49 +249,52 @@ const session: Session = {
   urlSource,
 };
 
+// readline owns terminal input and echoing. Muting its output is essential:
+// a second stdin listener alone does not prevent readline echoing credentials.
+let hiddenInput = false;
+const terminalOutput = new Writable({
+  write(chunk, encoding, callback) {
+    if (!hiddenInput) process.stdout.write(chunk, encoding);
+    callback();
+  },
+});
 const rl = readline.createInterface({
   input: process.stdin,
-  output: process.stdout,
+  output: terminalOutput,
+  terminal: Boolean(process.stdin.isTTY && process.stdout.isTTY),
 });
+const inputLines: string[] = [];
+let inputClosed = false;
+let waitingForLine: ((line: string | null) => void) | null = null;
+rl.on('line', (line) => {
+  if (waitingForLine) {
+    const resolve = waitingForLine;
+    waitingForLine = null;
+    resolve(line);
+  } else inputLines.push(line);
+});
+rl.on('close', () => {
+  inputClosed = true;
+  waitingForLine?.(null);
+  waitingForLine = null;
+});
+rl.on('SIGINT', () => rl.close());
 
-function promptHidden(text: string): Promise<string> {
-  return new Promise((resolve) => {
-    const wasRaw = process.stdin.isRaw;
-    process.stdin.setRawMode?.(true);
-    let value = '';
-    process.stdout.write(text);
-    const onData = (buf: Buffer) => {
-      const data = buf.toString('utf-8');
-      for (const ch of data) {
-        if (ch === '\r' || ch === '\n' || ch === '\u0004') {
-          process.stdin.setRawMode?.(wasRaw ?? false);
-          process.stdin.off('data', onData);
-          process.stdout.write('\n');
-          return resolve(value);
-        } else if (ch === '\u0003') {
-          process.stdin.setRawMode?.(wasRaw ?? false);
-          process.stdin.off('data', onData);
-          process.stdout.write('\n');
-          return resolve('');
-        } else if (ch === '\u007f' || ch === '\b') {
-          if (value.length) {
-            value = value.slice(0, -1);
-            process.stdout.write('\b \b');
-          }
-        } else {
-          value += ch;
-          process.stdout.write('*');
-        }
-      }
-    };
-    process.stdin.on('data', onData);
-  });
+async function prompt(text: string): Promise<string | null> {
+  if (process.stdin.isTTY) process.stdout.write(text);
+  if (inputLines.length) return inputLines.shift()!;
+  if (inputClosed) return null;
+  return new Promise(resolve => { waitingForLine = resolve; });
 }
 
-async function prompt(text: string): Promise<string> {
-  return new Promise((resolve) => {
-    rl.question(text, (answer) => resolve(answer));
-  });
+async function promptHidden(text: string): Promise<string | null> {
+  hiddenInput = true;
+  try {
+    return await prompt(text);
+  } finally {
+    hiddenInput = false;
+    if (process.stdin.isTTY) process.stdout.write('\n');
+  }
 }
 
 async function runApi(
@@ -320,6 +321,7 @@ async function runApi(
       data,
       headers,
       withCredentials: Boolean(session.authCookie),
+      timeout: 15_000,
       ...axiosConfig,
       validateStatus: () => true,
     });
@@ -421,7 +423,7 @@ async function handleShow(args: string[]) {
       break;
     case 'test-runs':
     case 'validation-runs': {
-      const qs = buildQs(flags, ['guardrail']);
+      const qs = buildQs({ guardrailId: flags.guardrail }, ['guardrailId']);
       res = await runApi('GET', `/api/v1/test-runs${qs}`);
       break;
     }
@@ -444,7 +446,7 @@ async function handleShow(args: string[]) {
         res = await runApi('GET', `/api/v1/routers/${encodeURIComponent(p1)}`);
       }
       if (res?.ok && res?.data) {
-        const routes = res.data.routes ?? res.data.draft?.routes ?? res.data.active?.routes ?? null;
+        const routes = res.data.routes ?? res.data.draft?.routes ?? res.data.active?.routes ?? res.data.snapshot?.routes ?? null;
         if (routes) {
           if (flags.output ?? flags.out) outputJson(routes, flags.output ?? flags.out);
           else outputHuman('routes', routes, flags.detail === 'true');
@@ -459,9 +461,16 @@ async function handleShow(args: string[]) {
       if (!p1) { console.log('Usage: show route-distribution <router-id> [--route <id>] [--endpoint <id>] [--window <dur>] [--revision <n>]'); return; }
       const routeId = flags.route;
       const ep = flags.endpoint;
-      const window = flags.window;
+      const window = flags.window ?? '24h';
+      const duration = /^(\d+(?:\.\d+)?)(h|d)$/.exec(window);
+      const hours = duration ? Number(duration[1]) * (duration[2] === 'd' ? 24 : 1) : NaN;
+      if (!Number.isFinite(hours) || hours < 0.25 || hours > 168) {
+        console.error('Error: --window must be between 0.25h and 7d.');
+        if (!process.stdin.isTTY) process.exitCode = 1;
+        return;
+      }
       const revision = flags.revision;
-      const qs = buildQs({ endpoint: ep, window, revision }, ['endpoint', 'window', 'revision']);
+      const qs = buildQs({ endpointId: ep, hours: String(hours), revision }, ['endpointId', 'hours', 'revision']);
       if (routeId) {
         res = await runApi('GET', `/api/v1/routers/${encodeURIComponent(p1)}/routes/${encodeURIComponent(routeId)}/traffic-distribution${qs}`);
       } else {
@@ -470,20 +479,20 @@ async function handleShow(args: string[]) {
       break;
     }
     case 'selector-fields': {
-      const qs = buildQs(flags, ['endpoints']);
+      const qs = buildQs({ endpointIds: flags.endpoints }, ['endpointIds']);
       res = await runApi('GET', `/api/v1/routing/selector-fields${qs}`);
       break;
     }
     case 'runner-pools':
-      res = await runApi('GET', `/api/v1/runner-pools${p1 ? '/' + encodeURIComponent(p1) : ''}`);
-      break;
     case 'runners': {
-      const qs = buildQs(flags, ['pool']);
-      res = await runApi('GET', `/api/v1/runner-pools${qs}`);
+      // The API exposes a collection, not GET /runner-pools/:id or ?pool=.
+      res = await runApi('GET', '/api/v1/runner-pools');
+      const pool = resource === 'runner-pools' ? p1 : flags.pool;
+      if (res.ok && pool) res.data = { items: listItems(res.data).filter(item => item.id === pool) };
       break;
     }
     case 'telemetry-events': {
-      const qs = buildQs(flags, ['router', 'route', 'target', 'endpoint', 'guardrail', 'request', 'since', 'before', 'cursor', 'limit']);
+      const qs = buildQs({ routerId: flags.router, routeId: flags.route, targetId: flags.target, endpointId: flags.endpoint, guardrailId: flags.guardrail, requestId: flags.request, since: flags.since, before: flags.before, cursor: flags.cursor, limit: flags.limit }, ['routerId', 'routeId', 'targetId', 'endpointId', 'guardrailId', 'requestId', 'since', 'before', 'cursor', 'limit']);
       res = await runApi('GET', `/api/v1/telemetry/events${qs}`);
       break;
     }
@@ -492,7 +501,7 @@ async function handleShow(args: string[]) {
       res = await runApi('GET', `/api/v1/telemetry/events/${encodeURIComponent(p1)}`);
       break;
     case 'telemetry-metrics': {
-      const qs = buildQs(flags, ['router', 'guardrail', 'window']);
+      const qs = buildQs({ routerId: flags.router, guardrailId: flags.guardrail, window: flags.window }, ['routerId', 'guardrailId', 'window']);
       res = await runApi('GET', `/api/v1/telemetry/metrics${qs}`);
       break;
     }
@@ -514,8 +523,10 @@ async function handleShow(args: string[]) {
     if (flags.output ?? flags.out) outputJson(res.data, flags.output ?? flags.out);
     else outputHuman(resource, res.data, flags.detail === 'true');
   } else if (res.error) {
+    if (!process.stdin.isTTY) process.exitCode = 1;
     console.error(`Network Error: ${res.error}`);
   } else {
+    if (!process.stdin.isTTY) process.exitCode = 1;
     const body = typeof res.data === 'object' && res.data ? JSON.stringify(res.data) : String(res.data ?? '');
     console.error(`Error: ${res.status} ${body ? ' — ' + body : ''}`);
     if (res.status === 401 && !session.token && !session.authCookie) {
@@ -534,7 +545,7 @@ async function handleCommand(line: string) {
   if (cmd === 'exit' || cmd === 'quit') {
     console.log('Exiting...');
     rl.close();
-    process.exit(0);
+    process.exit(process.exitCode ?? 0);
   }
 
   if (cmd === 'help') {
@@ -585,27 +596,30 @@ async function handleCommand(line: string) {
     if (ident.ok && ident.data) {
       const user = ident.data.user ?? ident.data;
       const role = user?.role ?? user?.roleId ?? 'member';
-      const mods = ident.data.modulePermissions ?? ident.data.grants ?? [];
-      console.log(`Signed in: ${(user?.email ?? user?.name ?? 'unknown')} (${role})`);
-      if (Array.isArray(mods) && mods.length) {
-        console.log(`Permissions: ${mods.slice(0, 8).map((m: any) => typeof m === 'string' ? m : (m.module ?? '')).filter(Boolean).join(', ')}${mods.length > 8 ? ', …' : ''}`);
+      const permissions = ident.data.effectivePermissions ?? ident.data.permissions;
+      console.log(`Signed in: ${(user?.email ?? user?.name ?? ident.data.userId ?? 'unknown')} (${role})`);
+      if (permissions && typeof permissions === 'object') {
+        console.log(`Permissions: ${Object.entries(permissions).map(([module, access]) => `${module}:${access}`).join(', ')}`);
       }
     } else {
-      console.log('Token stored (could not fetch identity).');
+      session.token = null;
+      console.error(`Token authentication failed: ${ident.error ?? `HTTP ${ident.status}`}`);
+      if (!process.stdin.isTTY) process.exitCode = 1;
     }
     return;
   }
 
   if (cmd === 'enable') {
     let email: string;
-    let password: string;
+    let password: string | null;
     if (args[0]?.startsWith('--password=')) {
       password = args[0].slice('--password='.length);
-      email = (await prompt('Admin email (blank → admin@tasklattice.local): ')).trim() || 'admin@tasklattice.local';
+      email = (await prompt('Admin email (blank → admin@tasklattice.local): '))?.trim() || 'admin@tasklattice.local';
     } else {
-      email = (await prompt('Admin email (blank → admin@tasklattice.local): ')).trim() || 'admin@tasklattice.local';
+      email = (await prompt('Admin email (blank → admin@tasklattice.local): '))?.trim() || 'admin@tasklattice.local';
       password = await promptHidden('Admin password (blank → simulates local-default "admin"): ');
     }
+    if (password === null || inputClosed) return;
     const pwForApi = password === '' ? 'admin' : password;
     const resp = await runApi('POST', '/api/auth/sign-in/email', {
       email,
@@ -661,13 +675,15 @@ async function main() {
     return `${prefix} `;
   };
 
-  const loop = async () => {
+  while (!inputClosed || inputLines.length) {
     const line = await prompt(getPrompt());
+    if (line === null) break;
     await handleCommand(line);
-    setImmediate(loop);
-  };
-
-  loop();
+  }
 }
 
-main();
+main().catch(error => {
+  console.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
+  process.exitCode = 1;
+  rl.close();
+});

@@ -61,6 +61,51 @@ jobs:
         working-directory: controller
         run: npm run typecheck && npm run build
 
+  runner-cli:
+    name: Runner guardctl (${{ matrix.architecture }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: amd64
+            runner: ubuntu-24.04
+          - architecture: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4.2.0
+
+      - name: Build the final Runner image
+        uses: docker/build-push-action@v7.3.0
+        with:
+          context: .
+          file: Dockerfile.runner
+          target: runtime
+          platforms: linux/${{ matrix.architecture }}
+          load: true
+          tags: tali-guard-runner:guardctl-ci
+          cache-from: type=gha,scope=guardctl-runner-${{ matrix.architecture }}
+          cache-to: type=gha,mode=max,scope=guardctl-runner-${{ matrix.architecture }}
+
+      - name: Test the shipped CLI and Runner runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/test-runner-guardctl.sh tali-guard-runner:guardctl-ci 2>&1 | tee guardctl-smoke.log
+
+      - name: Upload CLI smoke results
+        if: ${{ always() && hashFiles('guardctl-smoke.log') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: guardctl-smoke-${{ matrix.architecture }}
+          path: guardctl-smoke.log
+          if-no-files-found: error
+
   data-plane:
     name: Data plane (Python 3.13)
     runs-on: ubuntu-latest

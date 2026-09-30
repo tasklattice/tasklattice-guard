@@ -102,6 +102,7 @@ use the [production deployment guide](charts/tali-guard/README.md#production-ins
 | Publish, restore, or delete versions | [Revision lifecycles](docs/revision-lifecycle.md) |
 | Automate management operations | [Controller API conventions](docs/api-contract.md) and [Access Tokens](docs/account-access-tokens.md) |
 | Deploy and operate Guard | [Helm deployment](charts/tali-guard/README.md), [operations and security](docs/operations.md), and [observability](observability/README.md) |
+| Inspect the control plane from a Runner | [guardctl usage and image regression tests](docs/ops-cli-proposal.md#running-the-shipped-cli) |
 | Develop or understand the internals | [Development and tests](docs/development.md) and [architecture](docs/architecture.md) |
 
 A running Controller also serves an interactive API reference at `/api/docs`,

@@ -54,6 +54,7 @@ spec:
           ports:
             - { name: runtime, containerPort: 8091, protocol: TCP }
           env:
+            - { name: GUARD_URL, value: {{ printf "http://%s:%v" (include "tali-guard.controllerName" $root) 8080 | quote }} }
             - { name: GUARD_RUNNER_ID, valueFrom: { fieldRef: { fieldPath: metadata.name } } }
             - { name: GUARD_RUNNER_POOL_ID, value: {{ $pool.name | quote }} }
             - { name: GUARD_RUNNER_COMPILER_CAPABLE, value: {{ default false $pool.compilerCapable | quote }} }
