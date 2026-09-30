@@ -14,7 +14,7 @@
   description: Unlisted tasks follow the Allowlist mode.
   phase: input
   content: Discuss a business subject that is not on the approved list.
-  expected_decision: intervene
+  expected_decision: block
   covered_rule_ids:
   - topic/allowlist
   kind: rule_acceptance

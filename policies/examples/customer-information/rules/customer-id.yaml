@@ -10,7 +10,7 @@ detector:
     expression: \bCUS-\d{6}\b
 risk_level: medium
 on_match:
-  action: redact
+  action: transform
   replacement: '[客户编号已隐藏]'
 metadata:
   taxonomy_ids:

@@ -11,7 +11,7 @@ detector:
   parameters:
     expression: (?:忽略|无视|绕过|覆盖).{0,8}(?:之前|此前|以上|原有|系统|开发者).{0,6}(?:指令|提示词|规则)
 on_match:
-  action: reject
+  action: block
 runtime_adapter:
   binding_id: china-prompt-manipulation
   implementation_rule_id: cn-prompt-security/instruction-override

@@ -28,7 +28,7 @@ const safeSource = 'flow check $text\n  # await MissingAction() is documentation
 const draft = {
   guardrail_category: "content_safety", protection_directory: "content_filters", colang_version: "2.x",
   sources: [{ path: "checks.co", content: safeSource }],
-  rail_bindings: [{ rail_type: "input", flow_name: "check", execution_mode: "detect", on_unsafe: "reject" }],
+  rail_bindings: [{ rail_type: "input", flow_name: "check", execution_mode: "detect", on_unsafe: "block" }],
   action_references: [{ name: "GuardRecordPolicyAction", version: "1.0.0" }],
   test_cases: [{ name: "Ordinary content", rail_type: "input", content: "ordinary", expected_decision: "allow",
     covered_rule_ids: ["flow/input/check"], case_type: "input_rail", required: true }],

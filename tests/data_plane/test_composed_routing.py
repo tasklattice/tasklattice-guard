@@ -121,7 +121,7 @@ class Resolver:
 
 class Service(GuardrailRuntimeService):
     async def _evaluate_resolved(self, request, resolution, stored):
-        return ProtectionDecision(decision='transform' if request.phase == 'input' else 'allow', action='pass', route_assignment=resolution.route_assignment)
+        return ProtectionDecision(decision='transform' if request.phase == 'input' else 'allow', action='allow', route_assignment=resolution.route_assignment)
 
 
 @pytest.mark.asyncio

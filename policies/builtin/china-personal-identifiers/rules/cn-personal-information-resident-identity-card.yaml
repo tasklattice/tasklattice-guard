@@ -38,7 +38,7 @@ detector:
       - 2
       check_characters: 10X98765432
 on_match:
-  action: redact
+  action: transform
   replacement: '[cn_resident_id_REDACTED]'
 runtime_adapter:
   binding_id: china-personal-identifiers

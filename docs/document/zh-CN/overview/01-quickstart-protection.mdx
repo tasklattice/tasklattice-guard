@@ -20,10 +20,10 @@ order: 0
 
 ## 六步完成保护链路
 
-1. **组合并验证 Guardrail**：选择所需的 Policy Versions，确认启用的 Rules、Rails 和参数，运行 Validation Run。只有测试通过后才发布不可变 Guardrail Version。详见[构建并发布 Guardrail](#user-lifecycle)。
+1. **组合并验证 Guardrail**：选择所需的 Policy Versions，确认启用的 Rules、Rails 和参数，运行 Validation Run。只有测试通过后才发布不可变 Guardrail Version。详见[构建并发布 Guardrail](/document/operator/user-lifecycle)。
 2. **创建 Endpoint**：为测试应用分配独立身份、协议调用地址和凭据。不要用个人 Controller Token 代替 Endpoint 凭据。
-3. **接入输入与输出检查**：应用在模型调用前检查输入，在交付回复前检查输出，并执行返回的 Decision。被阻断的输入不要再送给模型。详见[数据面集成：保护模型请求](#developer-runtime)。
-4. **配置 Router**：让 Endpoint 使用一个 Router，添加指向刚发布的 Guardrail Version 的 Route，并保留最后的 fallback。详见[Endpoint 与 Routing](#operator-routing)。
+3. **接入输入与输出检查**：应用在模型调用前检查输入，在交付回复前检查输出，并执行返回的 Decision。被阻断的输入不要再送给模型。详见[数据面集成：保护模型请求](/document/developer/developer-runtime)。
+4. **配置 Router**：让 Endpoint 使用一个 Router，添加指向刚发布的 Guardrail Version 的 Route，并保留最后的 fallback。详见[Endpoint 与 Routing](/document/operator/operator-routing)。
 5. **发布并确认下发**：发布 Router 后检查目标 generation 是否已被 Runner 应用。Guardrail 显示“保护中”只表示已发布的 Route 引用了它，还要确认运行环境已收敛。
 6. **用真实请求验证**：发送一条应放行的订单问题和一条应阻断的测试输入，检查 Decision、实际应用行为及运行证据。不要把 Validation Run 代替这一步。
 
@@ -31,7 +31,7 @@ order: 0
 
 ## 完成标准
 
-Router 指向已发布的 Guardrail Version，Runner 已应用目标配置，应用正确执行 allow、transform 或 block 的决策，而且测试请求能在运行记录中找到。若任一项不成立，先检查[Router 下发状态](#router-rollout-states)和 Endpoint 凭据，再排查应用的决策处理。
+Router 指向已发布的 Guardrail Version，Runner 已应用目标配置，应用正确执行 allow、transform 或 block 的决策，而且测试请求能在运行记录中找到。若任一项不成立，先检查[Router 下发状态](/document/overview/term-router#router-rollout-states)和 Endpoint 凭据，再排查应用的决策处理。
 
 <a id="overview" />
 
@@ -130,4 +130,4 @@ Policy 解决“这项检查如何工作”，Guardrail 解决“这个应用要
 
 ## 继续阅读
 
-查看 [Guardrail 与资源关系](#term-guardrail)，弄清 Policy、Rule、版本和 Router 的分工；也可以按任务阅读[操作指南](#user-lifecycle)、[平台管理](#platform-runtime)或[集成参考](#developer-endpoint)。
+查看 [Guardrail 与资源关系](/document/overview/term-guardrail)，弄清 Policy、Rule、版本和 Router 的分工；也可以按任务阅读[操作指南](/document/operator/user-lifecycle)、[平台管理](/document/admin/platform-runtime)或[集成参考](/document/developer/developer-endpoint)。

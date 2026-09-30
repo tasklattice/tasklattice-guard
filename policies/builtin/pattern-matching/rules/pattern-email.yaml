@@ -11,7 +11,7 @@ detector:
   parameters:
     expression: \b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b
 on_match:
-  action: redact
+  action: transform
   replacement: '[email_REDACTED]'
 runtime_adapter:
   binding_id: pattern-matching

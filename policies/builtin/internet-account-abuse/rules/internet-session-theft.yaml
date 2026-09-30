@@ -11,7 +11,7 @@ detector:
   parameters:
     expression: (?i)\b(?:steal|exfiltrate)\s+(?:the\s+)?(?:user|customer)\s+session\s+cookies\b|窃取(?:用户|客户)的会话(?:Cookie|令牌)
 on_match:
-  action: reject
+  action: block
 runtime_adapter:
   binding_id: internet-account-abuse
   implementation_rule_id: internet/session-theft

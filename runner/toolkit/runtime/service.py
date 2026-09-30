@@ -174,7 +174,7 @@ class GuardrailRuntimeService:
         if not incoming_blocks:
             return ProtectionDecision(
                 decision="allow",
-                action="pass",
+                action="allow",
                 reason="No model content required a protection check.",
                 guardrail_id=resolution.plan.guardrail_id,
                 guardrail_version=resolution.plan.guardrail_version,
@@ -196,7 +196,7 @@ class GuardrailRuntimeService:
         coverages: list[RuntimeCoverage] = []
         usages: list[RuntimeUsage] = []
         final_decision = "allow"
-        final_action = "pass"
+        final_action = "allow"
         reason = "All model content passed the active Guardrail."
         pinned = stored if request.phase == "output" else None
         context_messages = pinned.messages if pinned else request.messages
@@ -211,7 +211,7 @@ class GuardrailRuntimeService:
                 role=block.role,
                 source=block.source,
                 decision="allow",
-                action="pass",
+                action="allow",
                 text=block.text,
                 evaluated=False,
             )
@@ -266,7 +266,7 @@ class GuardrailRuntimeService:
                 output_by_id[block.id] = resolved_text
             if decision.decision == "block":
                 final_decision = "block"
-                final_action = "reject"
+                final_action = "block"
                 reason = decision.reason or "A content block was blocked by the active Guardrail."
                 continue
             if decision.decision == "transform":
@@ -341,7 +341,7 @@ def _strongest_action(
     values = set(actions)
     return next(
         (action for action in ENFORCEMENT_ACTION_CONFLICT_ORDER if action in values),
-        "pass",
+        "allow",
     )
 
 

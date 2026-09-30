@@ -121,7 +121,7 @@ TaskLattice 对当前阶段的最终结论。
 
 Enforcement Action · 响应指令 · 不安全时
 
-Rule 命中后要求运行时或调用方采取的具体处理，例如脱敏、阻断或重新生成。Policy 为 Rule 定义默认值；Guardrail Binding 可覆盖。完整的八种处理与优先级见[Rule 命中后如何处理](#term-rule-actions)。
+Rule 命中后要求运行时或调用方采取的具体处理，即放行、阻断或修改。Policy 为 Rule 定义默认值；Guardrail Binding 可覆盖。三种处理与优先级见[Rule 命中后如何处理](/document/overview/glossary-definition#term-rule-actions)。
 
 它不是评估器 verdict，也不是 NeMo 调用的 Python Action；部分生命周期指令由集成调用方执行。
 

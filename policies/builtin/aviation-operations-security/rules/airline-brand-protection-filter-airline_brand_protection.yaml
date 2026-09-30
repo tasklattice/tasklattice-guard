@@ -107,7 +107,7 @@ detector:
             - pilot names
             - gate assignment
 on_match:
-  action: reject
+  action: block
   replacement: null
 runtime_adapter:
   binding_id: airline-brand-protection-filter

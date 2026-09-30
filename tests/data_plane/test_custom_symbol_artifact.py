@@ -42,7 +42,7 @@ async def test_frozen_custom_source_keeps_literals_and_policy_ownership(tmp_path
         assert registry.readiness()["ready"]
         assert result.decision == decision, result
         assert result.usage.model_invocations == 0 and not result.usage.fail_closed
-        assert [item.policy_id for item in result.findings if item.verdict == "unsafe"] == owners
+        assert [item.policy_id for item in result.findings if item.verdict == "matched"] == owners
         if decision == "allow":
             assert (result.texts or (content,)) == (content,)
     finally:

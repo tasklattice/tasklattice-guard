@@ -43,7 +43,7 @@ class _Evaluator:
         self.calls.append((request.capability, request.binding.contract_ref))
         return action_result(
             request,
-            "safe",
+            "not_matched",
             request.content,
             reason=f"Evaluated by {self.id}.",
         )
@@ -140,7 +140,7 @@ def _request(content: str, capability: str, contract_ref: str) -> ActionRequest:
         capability=capability,
         contract_ref=contract_ref,
         phases=("input",),
-        on_unsafe="reject",
+        on_unsafe="block",
     )
     return ActionRequest(
         content=content,
@@ -154,7 +154,7 @@ def _request(content: str, capability: str, contract_ref: str) -> ActionRequest:
         deadline=time.monotonic() + 5,
         parameters=(),
         capability=capability,
-        proposed_action="reject",
+        proposed_action="block",
         plan=plan,
         binding=binding,
     )

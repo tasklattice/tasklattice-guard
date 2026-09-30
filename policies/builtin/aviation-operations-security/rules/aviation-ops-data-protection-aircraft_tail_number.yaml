@@ -10,7 +10,7 @@ detector:
   parameters:
     expression: \bA6-[A-Z]{3}\b|\b[A-Z]-[A-Z]{4}\b|\bN[0-9]{1,5}[A-Z]{0,2}\b
 on_match:
-  action: redact
+  action: transform
   replacement: '[aircraft_tail_number_REDACTED]'
 runtime_adapter:
   binding_id: aviation-ops-data-protection

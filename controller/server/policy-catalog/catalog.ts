@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { z } from "zod";
+import { enforcementActions } from "../../shared/enforcement-action.generated.js";
 import { patternValidatorSchema } from "../../shared/pattern-validator.js";
 import { riskSeverities } from "../../shared/security-severity.js";
 import { policyComplianceSchema, type PolicyCompliance } from "../../shared/policy-compliance.js";
@@ -56,7 +57,7 @@ const ruleSchema = z.object({
   name: z.string().min(1),
   description: z.string(),
   detector: detectorReferenceSchema,
-  effect: z.string().min(1),
+  effect: z.enum(enforcementActions),
   risk_severity: z.enum(riskSeverities).nullable().default(null),
   rails: z.array(railTypeSchema),
   implementation: implementationSchema,

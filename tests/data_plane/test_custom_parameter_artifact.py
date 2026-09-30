@@ -25,6 +25,6 @@ async def test_frozen_parameters_cannot_rewrite_flow_input(tmp_path, phase, cont
         assert result.decision == expected
         assert not result.usage.fail_closed and result.usage.model_invocations == 0
         if expected == "block":
-            assert any(item.policy_id == "policy-a" and item.verdict == "unsafe" for item in result.findings)
+            assert any(item.policy_id == "policy-a" and item.verdict == "matched" for item in result.findings)
     finally:
         await engine.shutdown()

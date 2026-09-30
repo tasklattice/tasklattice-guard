@@ -110,7 +110,7 @@ detector:
             - système pour classer le comportement social
             - système de score de réputation
 on_match:
-  action: reject
+  action: block
   replacement: null
 runtime_adapter:
   binding_id: eu-ai-act-art5-social-scoring-fr

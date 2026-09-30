@@ -11,7 +11,7 @@ detector:
   parameters:
     expression: (?i)\b(?:trade|buy|sell)\s+(?:on|using)\s+(?:non[- ]public|inside)\s+information\b|利用(?:内幕|未公开)信息(?:买卖|交易|炒股)
 on_match:
-  action: reject
+  action: block
 runtime_adapter:
   binding_id: securities-market-integrity
   implementation_rule_id: securities/inside-information

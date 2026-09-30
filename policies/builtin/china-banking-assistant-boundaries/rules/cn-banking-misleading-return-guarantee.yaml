@@ -13,7 +13,7 @@ detector:
     expression: (?:本产品|该产品|我们|我行)(?![^，。！？]{0,6}(?:无法|不能|不会|不|未)).{0,6}(?:保证|承诺).{0,10}(?:保本|收益|回报|盈利)|(?:本产品|该产品).{0,6}稳赚不赔|(?i:\b(?:this
       product|our bank|we)\s+guarantees?\s+(?:your\s+)?(?:principal|profit|returns?)\b)
 on_match:
-  action: reject
+  action: block
 runtime_adapter:
   binding_id: china-banking-assistant-boundaries
   implementation_rule_id: cn-banking/misleading-return-guarantee

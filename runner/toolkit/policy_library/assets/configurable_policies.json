@@ -82,7 +82,7 @@
           "ref": "text/keyword",
           "version": "1.0.0"
         },
-        "effect": "reject",
+        "effect": "block",
         "risk_severity": "low",
         "rails": [
           "input",

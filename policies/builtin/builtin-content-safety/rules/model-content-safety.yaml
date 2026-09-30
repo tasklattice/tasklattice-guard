@@ -10,7 +10,7 @@ detector:
   parameters:
     profile: safety-classification
 on_match:
-  action: reject
+  action: block
 runtime_adapter:
   binding_id: content_safety
   implementation_rule_id: content_safety

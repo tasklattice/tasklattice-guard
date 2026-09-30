@@ -13,7 +13,7 @@ detector:
     context_expression: \b(?:driver'?s?\s*licen[cs]e\s*number|ontario\s*licen[cs]e\s*number|driver'?s?\s*licen[cs]e|licen[cs]e\s*number|DL\s*number|ontario\s*licen[cs]e|permis\s*de\s*conduire|numéro\s*de\s*permis)\b
     context_max_gap_words: 1
 on_match:
-  action: redact
+  action: transform
   replacement: '[ca_on_drivers_licence_REDACTED]'
 runtime_adapter:
   binding_id: local-government-identifiers

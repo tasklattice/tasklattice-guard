@@ -40,7 +40,7 @@ describe("Guardrail version workspace", () => {
       safety_level: "strict",
       policy_bindings: [
         { policy_id: "content-filter", policy_version: "2", action: "block", enabled_rule_ids: ["sql", "code"], enabled_rails: ["input"] },
-        { policy_id: "pii", policy_version: "1", action: "redact", enabled_rule_ids: ["email"], enabled_rails: ["input", "output"] },
+        { policy_id: "pii", policy_version: "1", action: "transform", enabled_rule_ids: ["email"], enabled_rails: ["input", "output"] },
       ],
       models: ["content-safety"],
     });

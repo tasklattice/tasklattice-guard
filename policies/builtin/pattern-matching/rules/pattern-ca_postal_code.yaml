@@ -14,7 +14,7 @@ detector:
     context_expression: \b(?:postal\s*code|zip\s*code|mailing\s*address|street\s*address|shipping\s*address|home\s*address|code\s*postal|postcode)\b
     context_max_gap_words: 1
 on_match:
-  action: redact
+  action: transform
   replacement: '[ca_postal_code_REDACTED]'
 runtime_adapter:
   binding_id: pattern-matching

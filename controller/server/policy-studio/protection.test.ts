@@ -13,7 +13,7 @@ import { protectionDirectoryIds } from "../../shared/protection-map.js";
 
 const draft = programmablePolicyDraftSchema.parse({ guardrail_category: "content_safety", colang_version: "2.x",
   sources: [{ path: "check.co", content: "flow custom_check $text\n  pass" }],
-  rail_bindings: ["input", "output"].map(rail_type => ({ rail_type, flow_name: "custom_check", execution_mode: "detect", on_unsafe: "reject" })),
+  rail_bindings: ["input", "output"].map(rail_type => ({ rail_type, flow_name: "custom_check", execution_mode: "detect", on_unsafe: "block" })),
   evaluation_contracts: ["tali.guard.content-safety.v1", "unregistered.external-service"],
 });
 

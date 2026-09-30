@@ -13,7 +13,7 @@ detector:
     context_expression: \b(?:VAT|V\.A\.T\.|TVA|IVA|BTW|MWST|value\s*added\s*tax|tax\s*number|tax\s*id|fiscal\s*number|fiscal\s*code)\b
     context_max_gap_words: 1
 on_match:
-  action: redact
+  action: transform
   replacement: '[eu_vat_REDACTED]'
 runtime_adapter:
   binding_id: pattern-matching

@@ -12,7 +12,7 @@ detector:
     expression: \b(elderly|senior\s+citizens?|seniors?|old\s+age|aged\s+\d+|retirees?|retired|pensioners?|baby\s+boomers?|boomers?|geriatric|over\s+the\s+hill|too\s+old|too\s+young|young\s+person|millennials?|gen[-
       ]?z|junior|age\s+discrimination|ageism|years?\s+old|\d+\s*years?\s*old|over\s+\d+|under\s+\d+|older\s+workers?|older\s+employees?|older\s+candidates?|in\s+their\s+\d{2}s?|date\s+of\s+birth|DOB|birth\s*date|born\s+in\s+\d{4}|age\s+\d{2,3})\b
 on_match:
-  action: redact
+  action: transform
   replacement: '[age_discrimination_REDACTED]'
 runtime_adapter:
   binding_id: local-sensitive-attribute-terms

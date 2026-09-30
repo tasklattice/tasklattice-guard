@@ -10,7 +10,7 @@ detector:
   parameters:
     expression: (?<!\d)(?:\+971|00971|0)\s?(?:2|3|4|6|7|9|50|52|54|55|56|58)\s?\d{3}\s?\d{4}\b
 on_match:
-  action: redact
+  action: transform
   replacement: '[uae_phone_REDACTED]'
 runtime_adapter:
   binding_id: airline-contact-info-uae

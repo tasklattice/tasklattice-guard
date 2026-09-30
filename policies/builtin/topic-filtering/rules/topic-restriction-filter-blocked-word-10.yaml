@@ -12,7 +12,7 @@ detector:
     - - sports scores
       - medium
 on_match:
-  action: reject
+  action: block
   replacement: null
 runtime_adapter:
   binding_id: topic-restriction-filter

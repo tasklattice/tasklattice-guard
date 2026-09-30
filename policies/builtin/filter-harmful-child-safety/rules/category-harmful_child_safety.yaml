@@ -1057,7 +1057,7 @@ detector:
             - explicit content involving minors
             - explicit content involving children
 on_match:
-  action: reject
+  action: block
   replacement: null
 runtime_adapter:
   binding_id: harmful_child_safety

@@ -712,7 +712,7 @@ class TaxonomyJudgeAdapter:
         decoded = json.loads(cleaned)
         if not isinstance(decoded, dict):
             raise TypeError("Taxonomy Judge response must be a JSON object.")
-        verdict = str(decoded.get("verdict", "uncertain")).casefold()
+        verdict = str(decoded.get("verdict", "")).casefold()
         if verdict not in {"safe", "unsafe", "uncertain"}:
             raise ValueError("Taxonomy Judge returned an unsupported verdict.")
         raw_categories = decoded.get("categories", ())

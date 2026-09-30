@@ -29,7 +29,7 @@ curl "{controllerOrigin}/api/v1/account/identity" \
   -H "Authorization: Bearer $GUARD_ACCESS_TOKEN"
 ```
 
-Endpoint 的运行时 `x-api-key` 只供[数据面检查](#developer-runtime)，不能修改 Controller 配置；个人 Access Token 也不能代替 Endpoint 凭据检查模型请求。
+Endpoint 的运行时 `x-api-key` 只供[数据面检查](/document/developer/developer-runtime)，不能修改 Controller 配置；个人 Access Token 也不能代替 Endpoint 凭据检查模型请求。
 
 [管理 Access Tokens](/account/access-tokens)
 
@@ -40,7 +40,7 @@ Endpoint 的运行时 `x-api-key` 只供[数据面检查](#developer-runtime)，
 
 `/api/docs` 适合人工查阅，`/api/openapi.json` 可供自己的编辑器或工具生成客户端，`/api/llms.txt` 是紧凑索引。每个操作的 `x-token-permission`、`x-idempotency` 和 `x-retry-policy` 分别说明权限、重复请求语义和重试规则。Tag 是产品分组，不等于权限分组。
 
-网络超时不能证明写入没有执行；不能把所有 `POST` 都当作可安全重放。尤其发布 Router 时，要保留同一个 `idempotencyKey` 和请求内容，并核对返回的发布身份。详见[版本化契约与重试](#api-contract-retries)。
+网络超时不能证明写入没有执行；不能把所有 `POST` 都当作可安全重放。尤其发布 Router 时，要保留同一个 `idempotencyKey` 和请求内容，并核对返回的发布身份。详见[版本化契约与重试](/document/api/api-contract-retries)。
 
 [管理 API 文档](/api/docs)
 

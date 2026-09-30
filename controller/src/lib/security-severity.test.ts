@@ -4,17 +4,17 @@ import { highestSeverity } from "../../shared/security-severity";
 import type { RuntimeEvent } from "./controller-api";
 const event = (findings: unknown[]): RuntimeEvent => ({ id: "event", requestId: "request", occurredAt: "2026-09-29T00:00:00Z", runnerId: "runner", guardrailId: "guard", guardrailVersion: "20260929-000000.000Z", routerId: null, endpointId: null, direction: "incoming", decision: "allow", durationMs: 1, metadata: { findings } });
 describe("Rule risk snapshots", () => {
-  it.each(["pass", "reject", "redact", "rewrite", "regenerate", "redirect", "fallback", "clarify"])("keeps high risk with %s regardless of confidence", recommendedAction => {
-    const findings = runtimeFindings(event([0.1, 0.99, null].map(confidence => ({ verdict: "unsafe", riskSeverity: "high", confidence, recommendedAction, policyVersion: "7" }))));
+  it.each(["allow", "block", "transform", "transform", "block", "block", "block", "block"])("keeps high risk with %s regardless of confidence", recommendedAction => {
+    const findings = runtimeFindings(event([0.1, 0.99, null].map(confidence => ({ verdict: "matched", riskSeverity: "high", confidence, recommendedAction, policyVersion: "7" }))));
     expect(findings.map(f => f.severity)).toEqual(["high", "high", "high"]);
     expect(findings.every(f => f.policy_version === "7" && f.recommended_action === recommendedAction)).toBe(true);
   });
   it("does not reclassify old evidence or trust the old derived severity", () => {
-    expect(runtimeFindings(event([{ verdict: "unsafe", severity: "critical", confidence: 1, recommendedAction: "reject" }]))[0]?.severity).toBe("unclassified");
+    expect(runtimeFindings(event([{ verdict: "matched", severity: "critical", confidence: 1, recommendedAction: "block" }]))[0]?.severity).toBe("unclassified");
   });
   it("separates safe and failed checks from events while preserving uncertain detections", () => {
-    const findings = runtimeFindings(event(["safe", "error", "unsafe", "uncertain"].map(verdict => ({ verdict, riskSeverity: "informational" }))));
-    expect(findings.map(f => f.verdict)).toEqual(["unsafe", "uncertain"]);
+    const findings = runtimeFindings(event(["not_matched", "error", "matched", "unknown"].map(verdict => ({ verdict, riskSeverity: "informational" }))));
+    expect(findings.map(f => f.verdict)).toEqual(["matched", "unknown"]);
     expect(findings.map(f => f.severity)).toEqual(["informational", "informational"]);
   });
   it("summarizes the highest risk instead of the first match", () => {

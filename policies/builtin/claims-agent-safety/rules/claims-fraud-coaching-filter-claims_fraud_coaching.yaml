@@ -114,7 +114,7 @@ detector:
             - saying my injury is worse
             - worse than it is
 on_match:
-  action: reject
+  action: block
   replacement: null
 runtime_adapter:
   binding_id: claims-fraud-coaching-filter

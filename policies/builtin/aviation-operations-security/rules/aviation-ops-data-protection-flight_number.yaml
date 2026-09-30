@@ -12,7 +12,7 @@ detector:
     expression: \b(?:EK|QF|BA|AA|LH|AF|SQ|CX|QR|EY|FZ|WY|GF|KU|SV|MS|RJ|ME|PK|AI|UL|WS|9W|6E)\s?\d{1,4}\b
     context_expression: \b(?:flight|departure|arrival|gate|boarding|schedule|operate|route|aircraft|plane|outbound|inbound|leg|sector|flying)\b
 on_match:
-  action: redact
+  action: transform
   replacement: '[flight_number_REDACTED]'
 runtime_adapter:
   binding_id: aviation-ops-data-protection

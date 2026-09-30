@@ -11,7 +11,7 @@ detector:
   parameters:
     expression: (?i)\{\{[^}]{0,200}(?:__class__|__globals__|__subclasses__)[^}]{0,200}\}\}
 on_match:
-  action: reject
+  action: block
 runtime_adapter:
   binding_id: local-rendered-content-injection
   implementation_rule_id: application/template-traversal

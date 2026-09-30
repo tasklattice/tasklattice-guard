@@ -12,7 +12,7 @@ detector:
     expression: \b(?:EK\s?)?\d{9,10}\b
     context_expression: \b(?:[Ss]kywards|frequent\s*flyer|FF\s*(?:number|no|#)|loyalty\s*(?:number|id|member)|member\s*(?:number|id|#)|miles\s*(?:account|number)|tier\s*(?:number|status))\b
 on_match:
-  action: redact
+  action: transform
   replacement: '[skywards_number_REDACTED]'
 runtime_adapter:
   binding_id: airline-pnr-skywards-pii

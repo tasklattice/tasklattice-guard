@@ -271,7 +271,7 @@ function mapVersionDetail(value: controllerApi.GuardrailVersion, guardrail: cont
   const requestedDelivery = enumValue(value.plan.output_delivery, ["interruptible", "window_buffered", "full_buffered"]) ?? "full_buffered";
   const hasCustomOutput = arrayOfRecords(value.plan.policy_versions).some((policy) => arrayOfRecords(policy.rail_bindings).some((binding) => binding.rail_type === "output"));
   const incrementalOutput = !hasCustomOutput && steps.filter((step) => arrayOfStrings(step.phases).includes("output"))
-    .every((step) => step.capability === "content_safety" && ["reject", "report", "pass"].includes(String(step.on_unsafe)));
+    .every((step) => step.capability === "content_safety" && ["block", "report", "allow"].includes(String(step.on_unsafe)));
   const actions = artifactBindings.length ? artifactBindings.map((binding) => ({
     name: stringValue(binding.action_name) ?? stringValue(binding.name) ?? stringValue(binding.id) ?? "runtime-action",
     version: stringValue(binding.action_version) ?? stringValue(binding.version),
@@ -594,7 +594,7 @@ function mapValidationResult(value: Record<string, unknown>): ValidationRun["res
     reason: stringValue(value.reason) ?? "",
     phase,
     input_content: stringValue(value.inputContent) ?? "",
-    action: stringValue(value.action) ?? "pass",
+    action: stringValue(value.action) ?? "allow",
     output_content: stringValue(value.outputContent) ?? "",
     findings: arrayOfRecords(value.findings) as ValidationRun["results"][number]["findings"],
     trace: arrayOfRecords(value.trace) as ValidationRun["results"][number]["trace"],

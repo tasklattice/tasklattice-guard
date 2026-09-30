@@ -24,7 +24,7 @@ class Runtime:
         self.request = request
         return ProtectionDecision(
             decision="block",
-            action="reject",
+            action="block",
             reason="policy matched",
             guardrail_id="guardrail-1",
             guardrail_version="20260904-020000.002Z",
@@ -33,10 +33,10 @@ class Runtime:
             findings=(RiskFinding(
                 risk="secrets",
                 taxonomy_id="TALI-PRIVACY-CREDENTIAL",
-                verdict="unsafe",
+                verdict="matched",
                 confidence=0.99,
                 evidence="secret prompt must never be exported",
-                recommended_action="reject",
+                recommended_action="block",
                 policy_id="builtin-secrets",
                 rule_id="credential-pattern",
             ),),
@@ -51,7 +51,7 @@ class Runtime:
                 evidence="secret prompt must never be exported",
                 capability="secrets",
                 contract_ref="tali.guard.secrets.exact.v1",
-                outcome="unsafe",
+                outcome="matched",
                 action_name="GuardSecretsAction",
                 action_version="1.0.0",
             ),),
@@ -87,7 +87,7 @@ class StreamingRuntime:
         self.requests.append(request)
         return ProtectionDecision(
             decision="allow",
-            action="pass",
+            action="allow",
             output_delivery=self.mode,
             guardrail_id="guardrail-stream",
             guardrail_version="20260904-020000.002Z",
@@ -190,7 +190,7 @@ class DraftPreviews:
         self.evaluated = (request, input)
         return ProtectionDecision(
             decision="allow",
-            action="pass",
+            action="allow",
             reason="draft passed",
             guardrail_id=input["guardrail_id"],
             guardrail_version=input["candidate_version"],
@@ -252,9 +252,9 @@ async def test_runtime_authenticates_locally_and_emits_content_free_telemetry():
             "id": "finding-1",
             "risk": "secrets",
             "taxonomyId": "TALI-PRIVACY-CREDENTIAL",
-            "verdict": "unsafe",
+            "verdict": "matched",
         "confidence": 0.99,
-        "recommendedAction": "reject",
+        "recommendedAction": "block",
         "policyId": "builtin-secrets",
             "ruleId": "credential-pattern",
             "providerEvidence": [],
@@ -326,7 +326,7 @@ async def test_stream_distinguishes_failed_checks_from_policy_rejection(protocol
 
     async def evaluate(_request):
         return ProtectionDecision(
-            decision="transform" if kind == "missing_transform" else "block", action="reject",
+            decision="transform" if kind == "missing_transform" else "block", action="block",
             reason="private upstream body must not appear in HTTP errors",
             usage=RuntimeUsage(fail_closed=kind in {"provider_failure", "timeout"}),
             trace=(RuntimeTraceStep(id="check", kind="action", name="Check", status="failed", detail="private detail", timed_out=kind == "timeout"),),

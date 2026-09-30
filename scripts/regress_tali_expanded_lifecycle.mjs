@@ -31,7 +31,7 @@ try{
  const policy=(await api('/api/v1/policies')).items.find(p=>p.id==='builtin-content-safety');
  assert.equal(policy.test_cases.length,2);assert(policy.test_cases.every(c=>['input','output'].includes(c.phase)));
  if(!resume){
- report.guardrail=await api('/api/v1/guardrails',{name:report.name,runtimeProfile:'auto',draftConfig:{allowedTopics:[],restrictedTopics:[],safetyLevel:'balanced',outputDelivery:'full_buffered',policyBindings:[{policyId:policy.id,policyVersion:policy.version,action:'reject',parameterValues:{},enabledRuleIds:policy.rules.map(r=>r.id),ruleActions:{},ruleOrder:[],enabledRails:['input','output']}]}});save();
+ report.guardrail=await api('/api/v1/guardrails',{name:report.name,runtimeProfile:'auto',draftConfig:{allowedTopics:[],restrictedTopics:[],safetyLevel:'balanced',outputDelivery:'full_buffered',policyBindings:[{policyId:policy.id,policyVersion:policy.version,action:'block',parameterValues:{},enabledRuleIds:policy.rules.map(r=>r.id),ruleActions:{},ruleOrder:[],enabledRails:['input','output']}]}});save();
  const path='/api/v1/guardrails/'+report.guardrail.id;
  report.reservedNvidiaCalls+=2;save();
  const validation=await api(`/api/v1/guardrails/${encodeURIComponent(report.guardrail.id)}/test-runs`,{guardrailId:report.guardrail.id});report.validationId=validation.id;save();

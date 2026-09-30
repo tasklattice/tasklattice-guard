@@ -186,6 +186,34 @@ compatible contracts. Artifacts pin behavior and dependencies, while active
 bindings select physical models. Semantic PII results without trustworthy span
 offsets redact the complete evaluated content block.
 
+Detector results use one contract across local evaluators, model adapters,
+NeMo Actions, traces, and the control protocol:
+
+| `verdict` | Meaning |
+| --- | --- |
+| `matched` | The detector found its configured target condition. |
+| `not_matched` | The detector completed and did not find that condition. |
+| `unknown` | The detector could not establish whether the condition holds, for example because context or proof is insufficient. |
+| `error` | The detector failed to execute correctly, including invalid configuration, timeouts, and malformed provider responses. |
+
+A target is the violation being detected: PII presence or a topic-boundary
+violation, for example. An allowed topic therefore yields `not_matched`.
+`not_matched` does not certify overall safety. Detection is independent of the
+Policy's `allow`, `block`, or `transform` decision; the same match can lead to
+any of these actions. Existing escalation and failure policies resolve
+`unknown` and `error` without relabeling them as a match.
+
+Provider-native labels such as `safe`, `unsafe`, and `controversial` remain in
+provider parsing and evidence, and are normalized at the evaluator boundary.
+Grounding claim support and formal proof results retain their domain-specific
+values; inconclusive claims or proofs produce `unknown` unless a violation is
+established. A malformed response produces `error` rather than `unknown`.
+
+This is a breaking detector contract. Upgrade Controller and Runners together
+and recompile/republish existing Guardrail artifacts with compiler v25 or later.
+Stored JSON traces and external consumers using the old detector labels need
+migration; runtime parsing does not accept the old labels as aliases.
+
 ## Effective releases and streaming
 
 Each call pins an effective release derived from desired generation, signed

@@ -80,6 +80,6 @@ async def test_signed_native_topic_artifact_against_tcp_mock(tmp_path,scenario,t
             else:
                 assert result.decision==expected, result.reason
                 assert result.usage.fail_closed is False
-                if expected=='block': assert any(f.verdict=='unsafe' for f in result.findings)
+                if expected=='block': assert any(f.verdict=='matched' for f in result.findings)
         finally:
             await engine.shutdown()

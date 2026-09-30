@@ -11,7 +11,7 @@ vi.mock("react-i18next", () => ({
 afterEach(cleanup);
 const steps: RuntimeTraceStep[] = [
   { id: "root", kind: "runtime", name: "Runtime", status: "active", detail: "Runtime detail", duration_ms: 10 },
-  { id: "child", parent_id: "root", kind: "action", name: "Action", status: "completed", outcome: "unsafe", verdict: "unsafe", detail: "Action detail", duration_ms: 7, parallel_group: "group" },
+  { id: "child", parent_id: "root", kind: "action", name: "Action", status: "completed", outcome: "matched", verdict: "matched", detail: "Action detail", duration_ms: 7, parallel_group: "group" },
 ];
 it("renders the same hierarchy, outcomes, and interactions for Playground and Logs", () => {
   const telemetry = { metadata: { trace: steps.map(step => ({ ...step, parentId: step.parent_id, durationMs: step.duration_ms, parallelGroup: step.parallel_group })) } } as unknown as RuntimeEvent;
@@ -20,7 +20,7 @@ it("renders the same hierarchy, outcomes, and interactions for Playground and Lo
   unmount();
   const playground = render(<ExecutionTracePanel result={{ trace_id: "trace", trace: steps } as PlaygroundCheckResult} />);
   expect(playground.container.textContent).toBe(logsMarkup);
-  expect(playgroundTraceSteps(steps)[1]?.outcome).toBe("unsafe");
+  expect(playgroundTraceSteps(steps)[1]?.outcome).toBe("matched");
   fireEvent.click(screen.getByRole("button", { name: "logs.collapseSpan Runtime" }));
   expect(screen.queryByText("Action")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "logs.expandSpan Runtime" }));

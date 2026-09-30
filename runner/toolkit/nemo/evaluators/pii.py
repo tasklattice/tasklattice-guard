@@ -60,11 +60,11 @@ class PiiEvaluator:
         if not matches:
             escalation = _semantic_escalation(request)
             if escalation == "always" or (
-                escalation == "on_uncertain" and _looks_like_pii_candidate(request.content)
+                escalation == "on_unknown" and _looks_like_pii_candidate(request.content)
             ):
                 return evaluation_result(
                     request,
-                    "uncertain",
+                    "unknown",
                     request.content,
                     reason=(
                         "No exact PII pattern matched, but candidate identity "
@@ -73,19 +73,19 @@ class PiiEvaluator:
                 )
             return evaluation_result(
                 request,
-                "safe",
+                "not_matched",
                 request.content,
                 reason="No PII pattern matched.",
             )
         return evaluation_result(
             request,
-            "unsafe",
+            "matched",
             _redact(request.content, matches, "[PII_REDACTED]"),
             findings=(
                 RiskFinding(
                     risk="pii",
                     taxonomy_id=taxonomy_for_evaluator("pii"),
-                    verdict="unsafe",
+                    verdict="matched",
                     confidence=0.97,
                     evidence=f"Detected {', '.join(sorted(set(evidence)))}.",
                     recommended_action=request.proposed_action,
@@ -107,8 +107,8 @@ def _semantic_escalation(request: EvaluationRequest) -> str | None:
     )
     if any(trigger.type == "always" for trigger in triggers):
         return "always"
-    if any("uncertain" in trigger.verdicts for trigger in triggers):
-        return "on_uncertain"
+    if any("unknown" in trigger.verdicts for trigger in triggers):
+        return "on_unknown"
     return None
 
 

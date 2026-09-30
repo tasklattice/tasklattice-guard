@@ -145,7 +145,7 @@ detector:
           - not real women
           - not real men
 on_match:
-  action: reject
+  action: block
   replacement: null
 runtime_adapter:
   binding_id: bias_sexual_orientation

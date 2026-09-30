@@ -11,7 +11,7 @@ detector:
   parameters:
     expression: \b\d{11}\b
 on_match:
-  action: redact
+  action: transform
   replacement: '[br_cpf_unformatted_REDACTED]'
 runtime_adapter:
   binding_id: pattern-matching

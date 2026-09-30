@@ -13,7 +13,7 @@ detector:
     - - '{{blocked_words}}'
       - medium
 on_match:
-  action: reject
+  action: block
   replacement: '[KEYWORD_REDACTED]'
 runtime_adapter:
   binding_id: keyword-blocking

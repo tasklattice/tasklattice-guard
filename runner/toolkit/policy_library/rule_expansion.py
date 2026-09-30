@@ -4,6 +4,7 @@ from dataclasses import replace
 import json
 
 from .domain import PolicyRuleSpec
+from ..runtime.enforcement_action_generated import ENFORCEMENT_ACTIONS
 
 RISK_LEVELS = {"critical", "high", "medium", "low", "informational"}
 
@@ -27,9 +28,9 @@ def expand_rule(rule: PolicyRuleSpec, parameters: dict[str, str]) -> tuple[Polic
         risk = rule.risk_severity
         if not isinstance(id, str) or not 1 <= len(id.strip()) <= 100 or id.strip() in ids:
             raise ValueError("Rule entry IDs must be nonempty and unique")
-        if not isinstance(text, str) or not 1 <= len(text.strip()) <= 240 or not isinstance(action, str) or action not in {"reject", "redact"}:
+        if not isinstance(text, str) or not 1 <= len(text.strip()) <= 240 or not isinstance(action, str) or action not in ENFORCEMENT_ACTIONS:
             raise ValueError("Rule entries require text and a supported handling action")
-        if not isinstance(replacement, str) or len(replacement) > 240 or (action == "redact" and not replacement):
+        if not isinstance(replacement, str) or len(replacement) > 240:
             raise ValueError("Rule replacement text is invalid")
         if not isinstance(risk, str) or risk not in RISK_LEVELS:
             raise ValueError("Rule risk level is invalid")

@@ -42,7 +42,7 @@ def output_stream_contract(plan: GuardrailPlanSnapshot) -> OutputStreamContract:
     # Built-in native flows are compiled to the same steps as catalog model
     # assignments; their mere presence is not evidence of arbitrary Colang.
     incremental = not complete_response_policy and all(
-        step.capability == "content_safety" and step.on_unsafe in {"reject", "report", "pass"}
+        step.capability == "content_safety" and step.on_unsafe in {"block", "report", "allow"}
         for step in steps
     )
     if not incremental:

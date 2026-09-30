@@ -9,7 +9,7 @@ detector:
   parameters:
     profile: topic-classification
 on_match:
-  action: reject
+  action: block
 runtime_adapter:
   binding_id: company_policy
   implementation_rule_id: company_policy

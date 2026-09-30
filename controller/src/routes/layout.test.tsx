@@ -81,7 +81,7 @@ describe("ControlPlaneLayout", () => {
     expect(screen.getByText("Runner")).toBeTruthy();
   });
 
-  it.each(["/document", "/document/"])("renders %s without the management shell", (path) => {
+  it.each(["/document", "/document/", "/document/overview/quickstart-protection", "/document/operator/operator-create-policy"])("renders %s without the management shell", (path) => {
     pathname = path;
     render(<ControlPlaneLayout />);
 

@@ -14,7 +14,7 @@ detector:
     context_expression: \b(?:flight|departure|arrival|gate|boarding|schedule|operate|route|aircraft|plane|outbound|inbound|leg|sector|flying)\b
     context_max_gap_words: 1
 on_match:
-  action: redact
+  action: transform
   replacement: '[flight_number_REDACTED]'
 runtime_adapter:
   binding_id: local-travel-identifiers

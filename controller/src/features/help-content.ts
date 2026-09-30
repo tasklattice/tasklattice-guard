@@ -2,6 +2,7 @@ import type { ComponentType } from "react";
 import type { MDXProps } from "mdx/types";
 import en from "@/content/help/en/interface.json";
 import zh from "@/content/help/zh-CN/interface.json";
+import { documentHref } from "./help-navigation";
 
 export type HelpLocale = "en" | "zh-CN";
 export type HelpSection = { id: string; title: string; text: string; depth: number };
@@ -55,13 +56,17 @@ export function getHelpContent(locale: HelpLocale) {
     return [{ id, ...module.default, articles }];
   }).sort((a, b) => a.order - b.order);
   const documents = categories.flatMap(category => category.articles);
-  const ids = documents.flatMap(document => [document.id, ...document.sections.map(section => section.id)]);
-  if (ids.length !== new Set(ids).size) throw new Error(`Duplicate document anchor in ${locale}: ${ids.filter((id, index) => ids.indexOf(id) !== index).join(", ")}`);
+  const ids = documents.map(document => document.id);
+  if (ids.length !== new Set(ids).size) throw new Error(`Duplicate document ID in ${locale}`);
+  for (const document of documents) {
+    const anchors = [document.id, ...document.sections.map(section => section.id)];
+    if (anchors.length !== new Set(anchors).size) throw new Error(`Duplicate anchor in ${locale}/${document.categoryId}/${document.id}`);
+  }
   if (!categories.some(category => category.id === "api")) throw new Error(`Missing API document category in ${locale}`);
   return { labels: labels[locale], categories, documents };
 }
 export type HelpContent = ReturnType<typeof getHelpContent>;
-export type HelpSearchResult = { id: string; title: string; documentTitle: string; categoryTitle: string };
+export type HelpSearchResult = { id: string; href: string; title: string; documentTitle: string; categoryTitle: string };
 
 function normalize(value: string) {
   return value.trim().toLocaleLowerCase().replace(/[，。、：；（）/·—_-]+/g, " ");
@@ -76,10 +81,10 @@ export function searchHelpContent(content: HelpContent, query: string): HelpSear
   };
   return content.documents.flatMap(document => {
     const article = matches(`${document.title} ${document.summary} ${document.introText}`)
-      ? [{ id: document.id, title: document.title, documentTitle: document.title, categoryTitle: document.categoryTitle }]
+      ? [{ id: document.id, href: documentHref(document), title: document.title, documentTitle: document.title, categoryTitle: document.categoryTitle }]
       : [];
     const sections = document.sections.filter(section => matches(`${section.title} ${section.text}`))
-      .map(section => ({ id: section.id, title: section.title, documentTitle: document.title, categoryTitle: document.categoryTitle }));
+      .map(section => ({ id: section.id, href: documentHref(document, section.id), title: section.title, documentTitle: document.title, categoryTitle: document.categoryTitle }));
     return [...article, ...sections];
   });
 }

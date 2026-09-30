@@ -12,7 +12,7 @@ detector:
   parameters:
     expression: (?<!\d)(?:\+65|0065|65)\s?[689]\d{3}\s?\d{4}\b
 on_match:
-  action: redact
+  action: transform
   replacement: '[sg_phone_REDACTED]'
 runtime_adapter:
   binding_id: pattern-matching

@@ -95,7 +95,7 @@ export const protectionEn = {
   limits: "Coverage & limitations", overview: "Protection map", order: "Policy execution order",
   allDirectories: "All protections", includeLegacy: "Include legacy collections",
   legacyHint: "Legacy collections mix several protection concerns and may overlap. They remain available for existing Guardrails and explicit review, but are not added by the new Profiles. Focused Policies are not a promise of identical coverage; validate any migration as a new revision.",
-  orderHint: "Policies execute top to bottom, then their Rules in local order. A reject ends processing; a redaction continues with modified text. This order is independent of the map's categories.",
+  orderHint: "Policies execute top to bottom, then their Rules in local order. A block ends processing; a transform continues with modified text. This order is independent of the map's categories.",
   moveUp: "Move {{name}} earlier", moveDown: "Move {{name}} later", remove: "Remove {{name}}",
   unsavedOrder: "Unsaved changes",
   nestedOrderHint: "First arrange Policies from top to bottom, then expand a Policy to fine-tune its Rules. Both levels are saved together in this Guardrail draft.",

@@ -12,7 +12,7 @@ detector:
   parameters:
     expression: (?<!\d)(?:\+33|0033|0)[1-9][0-9]{8}\b
 on_match:
-  action: redact
+  action: transform
   replacement: '[fr_phone_REDACTED]'
 runtime_adapter:
   binding_id: pattern-matching

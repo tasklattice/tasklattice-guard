@@ -13,7 +13,7 @@ detector:
     context_expression: \b(?:code\s*postal|postal\s*code|CP|zip\s*code|postcode)\b
     context_max_gap_words: 1
 on_match:
-  action: redact
+  action: transform
   replacement: '[fr_postal_code_REDACTED]'
 runtime_adapter:
   binding_id: pattern-matching

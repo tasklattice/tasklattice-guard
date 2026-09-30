@@ -11,7 +11,7 @@ detector:
   parameters:
     expression: (?i)\b(?:organize|coordinate|plan)\s+(?:a\s+)?pump[- ]and[- ]dump\b|组织(?:拉高出货|操纵股价)
 on_match:
-  action: reject
+  action: block
 runtime_adapter:
   binding_id: securities-market-integrity
   implementation_rule_id: securities/manipulation

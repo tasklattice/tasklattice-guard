@@ -79,7 +79,7 @@ detector:
             - predict ethnicity from name
             - discriminate by race singapore
 on_match:
-  action: reject
+  action: block
   replacement: null
 runtime_adapter:
   binding_id: singapore-data-use-boundaries

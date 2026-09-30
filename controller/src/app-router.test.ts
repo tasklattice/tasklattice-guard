@@ -47,6 +47,8 @@ describe("Integration navigation", () => {
     ["/integration/routers", "/integration/routers", {}],
     ["/integration/routers/router-123", "/integration/routers/$routerId", { routerId: "router-123" }],
     ["/integration/endpoint", "/integration/endpoint", {}],
+    ["/document/overview/quickstart-protection", "/document/$categoryId/$articleId", { categoryId: "overview", articleId: "quickstart-protection" }],
+    ["/document/operator/operator-create-policy#operator-policy-declarative", "/document/$categoryId/$articleId", { categoryId: "operator", articleId: "operator-create-policy" }],
   ])("resolves %s", async (path, routeId, params) => {
     const router = createRouter({ routeTree, history: createMemoryHistory({ initialEntries: [path] }) });
     await router.load();

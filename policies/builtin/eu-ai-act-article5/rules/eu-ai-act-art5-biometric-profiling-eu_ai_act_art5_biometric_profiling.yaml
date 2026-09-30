@@ -119,7 +119,7 @@ detector:
             - untargeted facial image scraping
             - mass biometric surveillance
 on_match:
-  action: reject
+  action: block
   replacement: null
 runtime_adapter:
   binding_id: eu-ai-act-art5-biometric-profiling

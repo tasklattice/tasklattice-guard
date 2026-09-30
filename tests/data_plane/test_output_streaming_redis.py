@@ -42,10 +42,10 @@ async def test_expired_owner_cannot_overwrite_a_new_replica_commit(replicas):
     async def slow(_candidate):
         entered.set()
         await resume.wait()
-        return ProtectionDecision(decision="allow", action="pass")
+        return ProtectionDecision(decision="allow", action="allow")
 
     async def allow(_candidate):
-        return ProtectionDecision(decision="allow", action="pass")
+        return ProtectionDecision(decision="allow", action="allow")
 
     args = dict(stream_key=stream_key, sequence=0, final=True, mode="full_buffered", request=request())
     stale = asyncio.create_task(stores[0].process(**args, text="old owner", evaluate=slow))
@@ -83,7 +83,7 @@ async def test_cancelled_replica_releases_lock_and_other_replica_retries(replica
 
     async def allow(candidate):
         assert candidate.texts == ("once",)
-        return ProtectionDecision(decision="allow", action="pass")
+        return ProtectionDecision(decision="allow", action="allow")
 
     args = dict(stream_key=stream_key, sequence=0, text="once", final=True,
                 mode="full_buffered", request=request())
@@ -111,7 +111,7 @@ async def test_stale_owner_does_not_release_replacement_owners_lock(replicas):
     async def evaluate(index, _candidate):
         entered[index].set()
         await resume[index].wait()
-        return ProtectionDecision(decision="allow", action="pass")
+        return ProtectionDecision(decision="allow", action="allow")
 
     args = dict(stream_key=stream_key, sequence=0, final=True, mode="full_buffered", request=request())
     first = asyncio.create_task(stores[0].process(**args, text="old", evaluate=lambda req: evaluate(0, req)))
@@ -148,7 +148,7 @@ async def test_real_redis_replica_handoff_preserves_exact_checked_output_and_ttl
 
     async def evaluate(candidate):
         seen.append(candidate.texts[0])
-        return ProtectionDecision(decision="transform", action="redact",
+        return ProtectionDecision(decision="transform", action="transform",
                                   texts=(candidate.texts[0].replace("secret", "[REDACTED]"),))
 
     args = dict(stream_key=stream_key, mode=mode, request=request(), evaluate=evaluate)

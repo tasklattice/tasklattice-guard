@@ -426,7 +426,7 @@ def test_model_policy_finding_uses_the_selected_catalog_rule_identity():
         capability="jailbreak",
         contract_ref="tali.guard.jailbreak.v1",
         phases=("input",),
-        on_unsafe="reject",
+        on_unsafe="block",
         policy_id="builtin-jailbreak",
         policy_version="1.0.0",
     )

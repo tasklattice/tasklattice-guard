@@ -72,7 +72,7 @@ detector:
             - auto reject singapore loan application
             - fully automated hiring decision singapore
 on_match:
-  action: reject
+  action: block
   replacement: null
 runtime_adapter:
   binding_id: sg-pdpa-profiling-automated-decisions

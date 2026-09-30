@@ -124,7 +124,7 @@ class DefaultRunnerValidator:
             for item in findings
             if isinstance(item, dict)
             and item.get("rule_id")
-            and item.get("verdict") in {"unsafe", "uncertain"}
+            and item.get("verdict") in {"matched", "unknown"}
             and (source_policy_id is None or item.get("policy_id") == source_policy_id)
         })
         expected_failure = _optional_string(case.get("expectedFailure"))
@@ -147,14 +147,14 @@ class DefaultRunnerValidator:
             assertion_failures.append("Runtime failed closed without a classified infrastructure failure; this is not a Policy match.")
         preempting_matches = []
         if (not override and not rule_contract and expected in {"block", "intervene"}
-                and decision.decision == "block" and decision.action == "reject"
+                and decision.decision == "block" and decision.action == "block"
                 and not runtime_failed and actual_failure is None and expected_failure is None):
             preempting_matches = _ordered_preemption(plan, case, phase, findings, trace)
             rule_contract = bool(preempting_matches)
         if override:
             actual_matches = {
                 (item.get("policy_id"), item.get("rule_id")) for item in findings
-                if item.get("verdict") in {"unsafe", "uncertain"}
+                if item.get("verdict") in {"matched", "unknown"}
             }
             expected_matches = {
                 (_record(item).get("policyId"), _record(item).get("ruleId"))
@@ -168,10 +168,10 @@ class DefaultRunnerValidator:
                 and all(
                     policy_id in bindings
                     and rule_id in bindings[policy_id].enabled_rule_ids
-                    and dict(bindings[policy_id].rule_actions).get(rule_id, bindings[policy_id].action) == "pass"
+                    and dict(bindings[policy_id].rule_actions).get(rule_id, bindings[policy_id].action) == "allow"
                     for policy_id, rule_id in expected_matches
                 )
-                and all(item.get("recommended_action") == "pass" for item in findings)
+                and all(item.get("recommended_action") == "allow" for item in findings)
             )
             valid_override = (
                 bool(_string(override.get("reason")).strip())
@@ -304,7 +304,7 @@ def _ordered_preemption(
     target_executed = any(t.get("kind") == "action" and t.get("policy_id") == target.policy_id
                           and t.get("status") != "skipped" for t in trace)
     for finding in findings:
-        if finding.get("verdict") != "unsafe" or finding.get("recommended_action") != "reject":
+        if finding.get("verdict") != "matched" or finding.get("recommended_action") != "block":
             continue
         index = next((i for i, b in enumerate(bindings) if b.policy_id == finding.get("policy_id")), None)
         if index is None or index > target_index:

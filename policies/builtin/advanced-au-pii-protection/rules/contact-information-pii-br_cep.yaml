@@ -10,7 +10,7 @@ detector:
   parameters:
     expression: \b\d{5}-?\d{3}\b
 on_match:
-  action: redact
+  action: transform
   replacement: '[br_cep_REDACTED]'
 runtime_adapter:
   binding_id: contact-information-pii

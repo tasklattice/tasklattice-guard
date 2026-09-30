@@ -61,8 +61,8 @@
           "type": "string"
         },
         "stop_on": {
-          "const": "reject",
-          "default": "reject",
+          "const": "block",
+          "default": "block",
           "title": "Stop On",
           "type": "string"
         }

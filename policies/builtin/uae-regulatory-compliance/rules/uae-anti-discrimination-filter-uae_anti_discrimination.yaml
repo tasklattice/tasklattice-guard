@@ -71,7 +71,7 @@ detector:
             - incite discrimination
             - religious hatred
 on_match:
-  action: reject
+  action: block
   replacement: null
 runtime_adapter:
   binding_id: uae-anti-discrimination-filter

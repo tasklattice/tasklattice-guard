@@ -11,7 +11,7 @@ detector:
     expression: \b[0-9]{9}\b
     context_expression: (?:\b(?:BSN|B\.S\.N\.|burgerservicenummer|burger\s*service\s*nummer|sofi\s*nummer|sofinummer|persoonsnummer|identificatienummer|citizen\s*service\s*number)\b|8\s*5\s*\|\\\|)
 on_match:
-  action: redact
+  action: transform
   replacement: '[nl_bsn_contextual_REDACTED]'
 runtime_adapter:
   binding_id: international-pii-identifiers

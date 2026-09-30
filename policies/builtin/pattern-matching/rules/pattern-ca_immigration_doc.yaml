@@ -13,7 +13,7 @@ detector:
     context_expression: \b(?:unique\s*client\s*identifier|study\s*permit\s*number|work\s*permit\s*number|study\s*permit|work\s*permit|UCI|immigration|IRCC|permanent\s*resident|PR\s*card|permis\s*d'études|permis\s*de\s*travail|landed\s*immigrant|temporary\s*resident)\b
     context_max_gap_words: 1
 on_match:
-  action: redact
+  action: transform
   replacement: '[ca_immigration_doc_REDACTED]'
 runtime_adapter:
   binding_id: pattern-matching

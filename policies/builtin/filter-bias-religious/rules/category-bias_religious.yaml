@@ -87,7 +87,7 @@ detector:
           - jihad
           - crusade
 on_match:
-  action: reject
+  action: block
   replacement: null
 runtime_adapter:
   binding_id: bias_religious

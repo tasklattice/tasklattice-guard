@@ -38,4 +38,4 @@ order: 4
 
 ## 正常结束与异常中止
 
-模型正常完成后，即使最后没有新增文本，也要提交 `final: true` 并等待有效的 `completed` 响应，才能宣称受保护地完成。`[DONE]`、SSE 关闭或连接断开都不能替代这个提交。`terminate: true` 可能在 `final: false` 时出现；此后不要再发送 chunk。请求超时或响应丢失时，不要盲目重放：服务端可能已经接受该 sequence，协议没有通用的幂等重试或恢复游标。详见[失败处理与上线检查](#gateway-failures)。
+模型正常完成后，即使最后没有新增文本，也要提交 `final: true` 并等待有效的 `completed` 响应，才能宣称受保护地完成。`[DONE]`、SSE 关闭或连接断开都不能替代这个提交。`terminate: true` 可能在 `final: false` 时出现；此后不要再发送 chunk。请求超时或响应丢失时，不要盲目重放：服务端可能已经接受该 sequence，协议没有通用的幂等重试或恢复游标。详见[失败处理与上线检查](/document/developer/gateway-failures)。

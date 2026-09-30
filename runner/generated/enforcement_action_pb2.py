@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x18\x65nforcement_action.proto\x12\x1ctasklattice.guard.control.v1*\xbe\x02\n\x11\x45nforcementAction\x12\"\n\x1e\x45NFORCEMENT_ACTION_UNSPECIFIED\x10\x00\x12\x1e\n\x19\x45NFORCEMENT_ACTION_REJECT\x10\xa0\x06\x12\x1e\n\x19\x45NFORCEMENT_ACTION_REDACT\x10\xc8\x01\x12\x1f\n\x1a\x45NFORCEMENT_ACTION_REWRITE\x10\x90\x03\x12\"\n\x1d\x45NFORCEMENT_ACTION_REGENERATE\x10\xf4\x03\x12 \n\x1b\x45NFORCEMENT_ACTION_REDIRECT\x10\xac\x02\x12 \n\x1b\x45NFORCEMENT_ACTION_FALLBACK\x10\xd8\x04\x12\x1f\n\x1a\x45NFORCEMENT_ACTION_CLARIFY\x10\xbc\x05\x12\x1b\n\x17\x45NFORCEMENT_ACTION_PASS\x10\x64\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x18\x65nforcement_action.proto\x12\x1ctasklattice.guard.control.v1*\x97\x01\n\x11\x45nforcementAction\x12\"\n\x1e\x45NFORCEMENT_ACTION_UNSPECIFIED\x10\x00\x12\x1c\n\x18\x45NFORCEMENT_ACTION_ALLOW\x10\x64\x12\x1d\n\x18\x45NFORCEMENT_ACTION_BLOCK\x10\xa0\x06\x12!\n\x1c\x45NFORCEMENT_ACTION_TRANSFORM\x10\xc8\x01\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -32,5 +32,5 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'enforcement_action_pb2', _g
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
   _globals['_ENFORCEMENTACTION']._serialized_start=59
-  _globals['_ENFORCEMENTACTION']._serialized_end=377
+  _globals['_ENFORCEMENTACTION']._serialized_end=210
 # @@protoc_insertion_point(module_scope)

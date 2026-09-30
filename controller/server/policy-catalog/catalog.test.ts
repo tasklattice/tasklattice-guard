@@ -119,7 +119,7 @@ describe("Policy catalog", () => {
 
     expect(policy).toBeDefined();
     expect(policy?.rails).toEqual(["input", "output"]);
-    expect(policy?.effects).toEqual(["redact"]);
+    expect(policy?.effects).toEqual(["transform"]);
     expect(policy?.detectors).toEqual(["text/regex"]);
     expect(policy?.test_count).toBe(policy?.test_cases.length);
     expect(policy?.tags).toEqual(expect.arrayContaining([

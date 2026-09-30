@@ -1316,7 +1316,7 @@ detector:
             - send them back
             - go back to your country
 on_match:
-  action: reject
+  action: block
   replacement: null
 runtime_adapter:
   binding_id: nsfw-racial-bias-filter-global

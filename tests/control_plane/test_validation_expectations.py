@@ -24,16 +24,16 @@ async def test_observation_only_override_preserves_detection_and_pass_action(cha
             "expectedOutputContent": text, "expectedMatches": [{"policyId": "insults", "ruleId": "insults-rule"}]},
     }
     findings = () if change == "missing_finding" else (RiskFinding(
-        risk="builtin_content_filter", taxonomy_id="TALI-SOCIAL-HARM-HARASSMENT", verdict="unsafe", confidence=1,
-        evidence="Synthetic insults match", recommended_action="pass", policy_id="insults",
+        risk="builtin_content_filter", taxonomy_id="TALI-SOCIAL-HARM-HARASSMENT", verdict="matched", confidence=1,
+        evidence="Synthetic insults match", recommended_action="allow", policy_id="insults",
         rule_id="wrong" if change == "wrong_rule" else "insults-rule",
     ),)
     runtime = AsyncMock()
-    runtime.evaluate.return_value = ProtectionDecision(decision="allow", action="pass", findings=findings,
+    runtime.evaluate.return_value = ProtectionDecision(decision="allow", action="allow", findings=findings,
         texts=("changed",) if change == "changed_output" else ())
     plan = plan_from_dict({"guardrail_id": "test", "guardrail_version": "20260904-010000.001Z",
         "policy_bindings": [{"policy_id": "insults", "policy_version": "1", "enabled_rule_ids": ["insults-rule"],
-            "rule_actions": [["insults-rule", "reject" if change == "reject_binding" else "pass"]], "enabled_rails": ["input"]}]})
+            "rule_actions": [["insults-rule", "block" if change == "reject_binding" else "allow"]], "enabled_rails": ["input"]}]})
     result = await DefaultRunnerValidator(DefaultRunnerCompiler())._evaluate(runtime, plan, case)
     assert result["passed"] is (change == "none"), result
 
@@ -45,7 +45,7 @@ def test_legacy_numeric_guardrail_versions_are_rejected():
 
 async def test_unclassified_runtime_failure_is_not_a_successful_block_test():
     runtime = AsyncMock()
-    runtime.evaluate.return_value = ProtectionDecision(decision="block", action="reject",
+    runtime.evaluate.return_value = ProtectionDecision(decision="block", action="block",
         usage=RuntimeUsage(fail_closed=True))
     plan = plan_from_dict({"guardrail_id": "test", "guardrail_version": "20260904-010000.001Z",
         "compiler_version": "test", "steps": [], "modules": []})
@@ -81,9 +81,9 @@ async def test_composition_assertions_require_reviewed_evidence_and_complete_out
     # decision but still must fail the output-content contract.
     runtime = AsyncMock()
     runtime.evaluate.return_value = ProtectionDecision(
-        decision="transform", action="redact", texts=(output,), findings=(RiskFinding(
-            risk="pii", taxonomy_id="pii", verdict="unsafe", confidence=1,
-            evidence="Synthetic complete-ID detector.", recommended_action="redact",
+        decision="transform", action="transform", texts=(output,), findings=(RiskFinding(
+            risk="pii", taxonomy_id="pii", verdict="matched", confidence=1,
+            evidence="Synthetic complete-ID detector.", recommended_action="transform",
             policy_id="earlier", rule_id=rule,
         ),),
     )
@@ -133,9 +133,9 @@ async def test_ordered_terminal_preemption(scenario, passed):
         bindings[1]["policy_version"] = "2"
     if scenario == "unknown_policy":
         blocker = "unknown"
-    action = "redact" if scenario == "redaction" else "reject"
+    action = "transform" if scenario == "redaction" else "block"
     findings = () if scenario == "no_evidence" else (RiskFinding(
-        risk="builtin_content_filter", taxonomy_id="test", verdict="unsafe", confidence=1,
+        risk="builtin_content_filter", taxonomy_id="test", verdict="matched", confidence=1,
         evidence="Ordered terminal detector", recommended_action=action,
         policy_id=blocker, rule_id="blocker",
     ),)
@@ -143,7 +143,7 @@ async def test_ordered_terminal_preemption(scenario, passed):
     runtime.evaluate.return_value = ProtectionDecision(
         decision="transform" if scenario == "redaction" else "block", action=action,
         findings=findings, usage=RuntimeUsage(fail_closed=scenario == "fail_closed"),
-        trace=(RuntimeTraceStep(id="target-action", kind="action", name="target", detail="Target ran", policy_id=source, status="safe"),) if scenario == "target_already_ran" else (),
+        trace=(RuntimeTraceStep(id="target-action", kind="action", name="target", detail="Target ran", policy_id=source, status="not_matched"),) if scenario == "target_already_ran" else (),
     )
     plan = plan_from_dict({"guardrail_id": "ordered", "guardrail_version": "20260904-010000.001Z", "policy_bindings": bindings})
     case = {"id": "source-case", "expectedDecision": "allow" if scenario == "expected_allow" else "transform" if scenario == "redaction" else "block",
@@ -170,9 +170,9 @@ def test_custom_policy_preemption_uses_pinned_flow_order(reverse):
     plan = plan_from_dict({"guardrail_id": "ordered", "guardrail_version": "20260904-010000.001Z", "policy_bindings": [binding]})
     version = PolicyVersionSnapshot(policy_id="custom", version="7", name="Custom", source="custom", colang_version="2.x",
         sources=(), parameter_schema=(), rail_bindings=tuple(PolicyRailBindingSnapshot(rail_type="input", flow_name=name,
-            execution_mode="detect", on_unsafe="reject") for name in ["first", "target"]),
+            execution_mode="detect", on_unsafe="block") for name in ["first", "target"]),
         action_references=(), evaluation_contracts=(), prompt_dependencies=(), execution_contract=(), test_cases=(), checksum="pinned")
     plan = replace(plan, policy_versions=(version,))
     result = _ordered_preemption(plan, {"sourcePolicyId": "custom", "sourcePolicyVersion": "7", "coveredRuleIds": ["flow/input/target"]}, "input",
-        [{"policy_id": "custom", "rule_id": "flow/input/first", "verdict": "unsafe", "recommended_action": "reject"}], [])
+        [{"policy_id": "custom", "rule_id": "flow/input/first", "verdict": "matched", "recommended_action": "block"}], [])
     assert bool(result) is (not reverse)

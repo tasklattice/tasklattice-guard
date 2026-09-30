@@ -72,7 +72,7 @@ detector:
             - spam singapore numbers
             - buy singapore phone list
 on_match:
-  action: reject
+  action: block
   replacement: null
 runtime_adapter:
   binding_id: sg-pdpa-do-not-call

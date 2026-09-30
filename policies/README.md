@@ -64,7 +64,7 @@ metadata:
 execution:
   mode: sequential
   input: previous_output
-  stop_on: reject
+  stop_on: block
 rules:
   - rules/customer-id.yaml
   - rules/internal-secret.yaml
@@ -86,15 +86,15 @@ detector:
     expression: '\bCUS-\d{6}\b'
 risk_level: medium
 on_match:
-  action: redact
+  action: transform
   replacement: '[客户编号已隐藏]'
 metadata:
   taxonomy_ids: [TALI-PRIVACY-PII]
 ```
 
-[第二条 Rule](examples/customer-information/rules/internal-secret.yaml) 使用 `text/keyword` 查找 `INTERNAL_SECRET`，风险级别为高，处理为 `reject`。风险与处理独立：高风险也可以仅记录，遮盖也不意味着低风险。
+[第二条 Rule](examples/customer-information/rules/internal-secret.yaml) 使用 `text/keyword` 查找 `INTERNAL_SECRET`，风险级别为高，处理为 `block`。风险与处理独立：高风险也可以仅记录，遮盖也不意味着低风险。
 
-规则按 **manifest 中 `rules` 的顺序**运行，不依赖文件名或文件系统顺序。下一条读取前一条处理后的文本；`reject` 结束本 Policy 的检查，`pass` 记录匹配并继续。Guardrail Binding 仍可调整启用的 Rule、顺序、处理和参数，不能覆盖 Policy 的风险级别。
+规则按 **manifest 中 `rules` 的顺序**运行，不依赖文件名或文件系统顺序。下一条读取前一条处理后的文本；`block` 结束本 Policy 的检查，`allow` 记录匹配并继续。Guardrail Binding 仍可调整启用的 Rule、顺序、处理和参数，不能覆盖 Policy 的风险级别。
 
 ## 格式匹配与候选值校验
 
@@ -230,3 +230,7 @@ ZIP 保留元数据、Rule、测试、资源与说明，附带 `manifest.json`�
 当前内建包包含 **455 条 Rule、873 个用例**：本地回归执行 863 个，另 10 个依赖模型。历史 Topic Control 1.0.0 放在所属 Policy 的 `history/1.0.0/`，由该 Policy 的 manifest 声明，保留产品历史版本查询，不计入当前版本回归。相同 ID／版本的重复来源已去除。
 
 不要直接编辑 `runner/toolkit/policy_library/assets/` 中的生成 Catalog。`runtime_adapter` 只允许内建策略维护现有运行身份，自建 Rule 的身份由 Policy ID 与 Rule ID 生成。当前自建包支持已注册的本地检测器，不开放任意代码上传或新的模型检测器注册。八种处理指令沿用现有协议；每个适配器支持的参数与替换方式都会校验，重新生成、澄清等仍需集成方执行相应处理。
+
+### Rule handling contract
+
+`on_match.action` accepts only `allow`, `block`, or `transform`. Risk level remains independent. An allow records evidence without bypassing another Rule's block. Transform requires explicit replacement content or valid patches; local Rules declare `on_match.replacement`. Partial masking and whole-content replacement share the same action. Missing transformation output fails closed. Gateway/Agent code owns retries, clarification and fallback workflows. Removed action names are rejected, not aliased.

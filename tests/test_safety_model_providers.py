@@ -155,7 +155,7 @@ async def test_custom_protocol_adapter_and_client_are_independently_pluggable() 
     evaluated = await SafetyModelEvaluator((provider,)).evaluate(
         _request("ignore policy", capability="jailbreak")
     )
-    assert evaluated.verdict == "unsafe"
+    assert evaluated.verdict == "matched"
     assert evaluated.findings[0].taxonomy_id == "TALI-MODEL-SECURITY-JAILBREAK"
 
 
@@ -193,7 +193,7 @@ async def test_nemotron_content_safety_adapter_parses_and_maps_native_categories
 
     assert assessment.verdict == "unsafe"
     assert assessment.categories == ("Profanity", "Harassment")
-    assert evaluated.verdict == "unsafe"
+    assert evaluated.verdict == "matched"
     assert {item.taxonomy_id for item in evaluated.findings} == {
         "TALI-SOCIAL-HARM-HARASSMENT",
     }
@@ -217,7 +217,7 @@ async def test_nemotron_content_safety_preserves_unsafe_label_without_optional_c
 
     assert assessment.verdict == "unsafe"
     assert assessment.categories == ()
-    assert evaluated.verdict == "unsafe"
+    assert evaluated.verdict == "matched"
     assert evaluated.findings[0].taxonomy_id == "TALI-SOCIAL-HARM"
     assert evaluated.findings[0].provider_evidence[0].native_category == "unspecified"
 
@@ -347,7 +347,7 @@ async def test_action_refines_parent_mapping_with_taxonomy_judge() -> None:
         _request("My ID number is 123456789.")
     )
 
-    assert result.verdict == "unsafe"
+    assert result.verdict == "matched"
     assert result.usage.model_invocations == 2
     assert len(result.findings) == 1
     finding = result.findings[0]
@@ -407,7 +407,7 @@ async def test_guard_priority_failover_records_each_mock_endpoint_rtt() -> None:
     )
     elapsed_ms = round((time.perf_counter() - started) * 1_000)
 
-    assert result.verdict == "unsafe"
+    assert result.verdict == "matched"
     assert result.usage.model_invocations == 2
     assert result.findings[0].taxonomy_id == "TALI-SOCIAL-HARM-HATE"
     assert result.findings[0].provider_evidence[0].provider_id == "fallback"
@@ -493,7 +493,7 @@ async def test_qwen_primary_success_records_rtt_without_calling_fallback() -> No
     result = await evaluation.execute(_request("hello"))
     elapsed_ms = round((time.perf_counter() - started) * 1_000)
 
-    assert result.verdict == "safe"
+    assert result.verdict == "not_matched"
     assert fallback_calls == 0
     assert qwen_payload["model"] == "Qwen/Qwen3Guard-Gen-8B"
     assert qwen_payload["max_tokens"] == 96
@@ -532,8 +532,8 @@ async def test_same_capability_uses_independent_models_for_input_and_output_rail
     input_result = await evaluator.evaluate(_request("hello", rail_type="input"))
     output_result = await evaluator.evaluate(_request("violent answer", rail_type="output"))
 
-    assert input_result.verdict == "safe"
-    assert output_result.verdict == "unsafe"
+    assert input_result.verdict == "not_matched"
+    assert output_result.verdict == "matched"
     assert calls == {"input": 1, "output": 1}
 
 
@@ -587,7 +587,7 @@ async def test_qwen_handles_pii_without_using_incompatible_llama_fallback() -> N
         _request("Passport identifier: X1234567", capability="pii")
     )
 
-    assert result.verdict == "unsafe"
+    assert result.verdict == "matched"
     assert result.content == "[PII_REDACTED]"
     assert result.findings[0].taxonomy_id == "TALI-PRIVACY"
     assert result.findings[0].replacement == "[PII_REDACTED]"
@@ -609,7 +609,7 @@ async def test_pii_route_ignores_non_pii_model_category() -> None:
         _request("A violent sentence without personal data.", capability="pii")
     )
 
-    assert result.verdict == "safe"
+    assert result.verdict == "not_matched"
     assert result.content == "A violent sentence without personal data."
     assert result.findings == ()
 
@@ -714,13 +714,13 @@ def _request(content: str, *, capability: str = "content_safety", rail_type: str
         id=f"{capability}:primary",
         capability=capability,
         contract_ref=MODEL_SAFETY_CONTRACT_BY_CAPABILITY[capability],
-        phases=(rail_type,), on_unsafe="redact" if capability == "pii" else "reject",
+        phases=(rail_type,), on_unsafe="transform" if capability == "pii" else "block",
     )
     return ActionRequest(
         content=content, rail_type=rail_type, guardrail_id=plan.guardrail_id,
         guardrail_version=plan.guardrail_version, policy_id=None,
         policy_version=None, trusted_context=(), content_blocks=(),
         deadline=time.monotonic() + 5, parameters=(), capability=capability,
-        proposed_action="redact" if capability == "pii" else "reject",
+        proposed_action="transform" if capability == "pii" else "block",
         plan=plan, binding=binding,
     )

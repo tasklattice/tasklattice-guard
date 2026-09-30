@@ -37,4 +37,4 @@ tests:
 - tests/acceptance.yaml
 testing:
   parameters:
-    phrase_entries: '[{"id": "secret", "phrase": "INTERNAL_SECRET", "action": "reject"}]'
+    phrase_entries: '[{"id": "secret", "phrase": "INTERNAL_SECRET", "action": "block"}]'

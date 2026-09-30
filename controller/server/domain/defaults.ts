@@ -77,7 +77,7 @@ export function defaultGuardrailDraft(policies: readonly PolicyDto[]): Guardrail
       ruleOrder: [],
       testCaseOverrides: defaultTestCaseOverrides(policy.id),
       ruleActions: policy.id === "filter-denied-insults"
-        ? { "category/denied_insults": "pass" as const }
+        ? { "category/denied_insults": "allow" as const }
         : {},
       enabledRails: [...policy.rails],
       reasoningPolicy: null,

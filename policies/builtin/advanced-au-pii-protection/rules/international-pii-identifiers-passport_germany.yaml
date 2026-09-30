@@ -10,7 +10,7 @@ detector:
   parameters:
     expression: \b[CFGHJKLMNPRTVWXYZ0-9]{9}\b
 on_match:
-  action: redact
+  action: transform
   replacement: '[passport_germany_REDACTED]'
 runtime_adapter:
   binding_id: international-pii-identifiers

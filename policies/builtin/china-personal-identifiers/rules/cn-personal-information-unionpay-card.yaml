@@ -16,7 +16,7 @@ detector:
     validators:
     - type: luhn
 on_match:
-  action: redact
+  action: transform
   replacement: '[cn_bank_card_REDACTED]'
 runtime_adapter:
   binding_id: china-personal-identifiers

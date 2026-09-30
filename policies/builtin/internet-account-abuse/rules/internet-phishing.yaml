@@ -11,7 +11,7 @@ detector:
   parameters:
     expression: (?i)\b(?:create|build)\s+(?:a\s+)?(?:fake|phishing)\s+login\s+page\s+to\s+steal\b|创建(?:钓鱼|假)登录页面(?:来)?窃取
 on_match:
-  action: reject
+  action: block
 runtime_adapter:
   binding_id: internet-account-abuse
   implementation_rule_id: internet/phishing

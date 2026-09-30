@@ -117,7 +117,7 @@ detector:
             - documentation should i fabricate
             - structure the appeal to exploit
 on_match:
-  action: reject
+  action: block
   replacement: null
 runtime_adapter:
   binding_id: claims-prior-auth-gaming-filter

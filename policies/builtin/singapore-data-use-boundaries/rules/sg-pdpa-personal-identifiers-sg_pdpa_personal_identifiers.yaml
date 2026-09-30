@@ -79,7 +79,7 @@ detector:
             - fake nric generator
             - nric brute force
 on_match:
-  action: reject
+  action: block
   replacement: null
 runtime_adapter:
   binding_id: singapore-data-use-boundaries

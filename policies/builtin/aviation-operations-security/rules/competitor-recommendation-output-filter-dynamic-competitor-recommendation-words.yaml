@@ -15,7 +15,7 @@ detector:
         - try {{item}}
         - switch to {{item}}
 on_match:
-  action: reject
+  action: block
   replacement: null
 runtime_adapter:
   binding_id: competitor-recommendation-output-filter

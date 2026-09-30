@@ -12,7 +12,7 @@ detector:
     - - 'javascript:'
       - medium
 on_match:
-  action: reject
+  action: block
   replacement: null
 runtime_adapter:
   binding_id: code-injection-blocker

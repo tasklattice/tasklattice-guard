@@ -32,7 +32,7 @@ detector:
               - compare
               - switch
 on_match:
-  action: reject
+  action: block
   replacement: null
 runtime_adapter:
   binding_id: competitor-comparison-input-filter

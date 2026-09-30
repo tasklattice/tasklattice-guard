@@ -10,9 +10,14 @@ import type { TrafficScope } from "../generated/control-protocol/tasklattice/gua
 import type { ValidationCaseResult__Output } from "../generated/control-protocol/tasklattice/guard/control/v1/ValidationCaseResult.js";
 import type { ValidationMetrics__Output } from "../generated/control-protocol/tasklattice/guard/control/v1/ValidationMetrics.js";
 import type { ValidationTestCase } from "../generated/control-protocol/tasklattice/guard/control/v1/ValidationTestCase.js";
+import { EvaluatorVerdict } from "../generated/control-protocol/tasklattice/guard/control/v1/EvaluatorVerdict.js";
 
 import type { ValidationCaseResult, ValidationMetrics } from "../domain/models.js";
 import { isGuardrailVersionId } from "../../shared/guardrail-version.js";
+
+const detectorVerdicts = new Set<string>(Object.values(EvaluatorVerdict).filter(
+  value => value !== EvaluatorVerdict.EVALUATOR_VERDICT_UNSPECIFIED,
+));
 
 /** Convert the Controller plan document into the generated transport type. */
 export function planToWire(value: unknown): GuardrailPlan {
@@ -488,13 +493,20 @@ function pairsFromWire(value: ReadonlyArray<{ key: string; value: string }>): Ar
 function wireEnum<T extends string | number>(prefix: string, value: unknown): T {
   const normalized = string(value).trim().toUpperCase();
   if (!normalized) throw new Error(`${prefix} requires a value.`);
-  return `${prefix}_${normalized}` as T;
+  const wireValue = `${prefix}_${normalized}`;
+  if (prefix === "EVALUATOR_VERDICT" && !detectorVerdicts.has(wireValue)) {
+    throw new Error(`Invalid detector result ${string(value)}.`);
+  }
+  return wireValue as T;
 }
 
 function domainEnum(prefix: string, value: unknown): string {
   const normalized = string(value);
   const marker = `${prefix}_`;
   if (!normalized.startsWith(marker)) throw new Error(`Invalid ${prefix} value ${normalized}.`);
+  if (prefix === "EVALUATOR_VERDICT" && !detectorVerdicts.has(normalized)) {
+    throw new Error(`Invalid detector result ${normalized}.`);
+  }
   return normalized.slice(marker.length).toLowerCase();
 }
 

@@ -11,7 +11,7 @@ detector:
     expression: \b[0-9]{5}\b
     context_expression: \b(?:code\s*postal|postal\s*code|CP|zip\s*code|postcode)\b
 on_match:
-  action: redact
+  action: transform
   replacement: '[fr_postal_code_REDACTED]'
 runtime_adapter:
   binding_id: gdpr-eu-contact-information

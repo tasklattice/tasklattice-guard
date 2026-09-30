@@ -114,7 +114,7 @@ try {
       const existing=(await api('/api/v1/guardrails')).items.find(g=>g.name===name);
       const g=existing??await api('/api/v1/guardrails',{expected:[201],body:{name,runtimeProfile:'auto',draftConfig:{
         allowedTopics:[],restrictedTopics:[],safetyLevel:'balanced',outputDelivery:'full_buffered',
-        policyBindings:[{policyId:p.id,policyVersion:p.version,action:'reject',parameterValues:{},
+        policyBindings:[{policyId:p.id,policyVersion:p.version,action:'block',parameterValues:{},
           enabledRuleIds:p.rules.map(r=>r.id),ruleActions:{},enabledRails:['input','output']}]}}});
       report.guardrailId=g.id;save();
     }

@@ -10,6 +10,7 @@ from ...runtime.contracts import (
     EnforcementAction,
     EnforcementMode,
     EvidenceScope,
+    EVALUATOR_VERDICTS,
     EvaluatorVerdict,
     GuardContentBlock,
     GuardrailPhase,
@@ -98,11 +99,15 @@ class EvaluationResult:
     findings: tuple[RiskFinding, ...] = ()
     patches: tuple[ContentPatch, ...] = ()
     confidence: float | None = None
-    proposed_action: EnforcementAction = "pass"
+    proposed_action: EnforcementAction = "allow"
     evidence: str = ""
     reason: str | None = None
     trace: tuple[RuntimeTraceStep, ...] = ()
     usage: EvaluationUsage = EvaluationUsage()
+
+    def __post_init__(self) -> None:
+        if self.verdict not in EVALUATOR_VERDICTS:
+            raise ValueError("Detector result must be matched, not_matched, unknown, or error.")
 
 
 class GuardEvaluator(Protocol):

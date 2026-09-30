@@ -49,7 +49,7 @@ const policy = resumePolicy ? (await call(controller, `/api/v1/policies/${encode
   name: `Regression stream failure ${runId}`, owner: "regression", description: "Synthetic isolated execution-failure boundary, not a business Policy.",
   draft: { guardrail_category: "content_safety", colang_version: "2.x",
     sources: [{ path: "checks.co", content: `flow ${flow} $text\n  if $text == "${failed}"\n    $r = await ${failingCall}\n  elif $text == "${blocked}"\n    $r = await GuardRecordPolicyAction(flow_name="${flow}", safe=False, text=$text)\n  else\n    $r = await GuardRecordPolicyAction(flow_name="${flow}", safe=True, text=$text)\n` }],
-    rail_bindings: [{ rail_type: "output", flow_name: flow, execution_mode: "detect", on_unsafe: "reject" }],
+    rail_bindings: [{ rail_type: "output", flow_name: flow, execution_mode: "detect", on_unsafe: "block" }],
     action_references: [{ name: "GuardRecordPolicyAction", version: "1.0.0" }],
     execution_contract: [["output_delivery", "full_buffered"]],
     test_cases: cases.map(([content, expected_decision, expected_failure], index) => ({

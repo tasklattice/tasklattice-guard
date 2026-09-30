@@ -10,7 +10,7 @@ detector:
   parameters:
     expression: \b6(?:011|5\d{2})[\s\-]?\d{4}[\s\-]?\d{4}[\s\-]?\d{4}\b
 on_match:
-  action: redact
+  action: transform
   replacement: '[discover_REDACTED]'
 runtime_adapter:
   binding_id: financial-pii

@@ -1136,7 +1136,7 @@ export type RuntimeComponentMetric = {
   invocations: number;
   passed: number;
   intervened: number;
-  uncertain: number;
+  unknown: number;
   errors: number;
   timeouts: number;
   p50_latency_ms: number;

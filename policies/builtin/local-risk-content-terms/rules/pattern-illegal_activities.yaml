@@ -11,7 +11,7 @@ detector:
   parameters:
     expression: \b(money\s+launder(ing)?|launder\s+money|structuring|smurfing|wash\s+(the\s+)?money|clean\s+money|dirty\s+money|drug\s+traffick(ing)?|narco|cartel|drug\s+deal(er|ing)?|drug\s+lord|kingpin|cocaine|heroin|fentanyl|meth(amphetamine)?|crack|opioid|human\s+traffick(ing)?|sex\s+traffick(ing)?|smuggl(e|ing)|contraband|black\s+market|dark\s+web|darknet|hitman|contract\s+killer|murder\s+for\s+hire|arson|extort(ion)?|blackmail|ransom|kidnap(ping)?|abduct(ion)?|hostage|fraud\s+scheme|ponzi|pyramid\s+scheme|identity\s+theft|credit\s+card\s+fraud|wire\s+fraud|bank\s+fraud|embezzle(ment)?|brib(e|ery)|kickback|racketeering|RICO|organized\s+crime|mob|mafia|syndicate|gang\s+activity|criminal\s+enterprise)\b
 on_match:
-  action: redact
+  action: transform
   replacement: '[illegal_activities_REDACTED]'
 runtime_adapter:
   binding_id: local-risk-content-terms

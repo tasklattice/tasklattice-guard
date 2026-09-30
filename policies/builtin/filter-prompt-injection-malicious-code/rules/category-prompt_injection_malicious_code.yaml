@@ -110,7 +110,7 @@ detector:
             - powershell -encodedcommand
             - powershell -enc
 on_match:
-  action: reject
+  action: block
   replacement: null
 runtime_adapter:
   binding_id: prompt_injection_malicious_code

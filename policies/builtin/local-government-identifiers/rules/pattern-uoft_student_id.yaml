@@ -13,7 +13,7 @@ detector:
     context_expression: \b(?:student\s*id\s*number|student\s*number|employee\s*id\s*number|employee\s*number|student\s*id|employee\s*id|utorid|uoft\s*id|university\s*of\s*toronto|u\s*of\s*t)\b
     context_max_gap_words: 1
 on_match:
-  action: redact
+  action: transform
   replacement: '[uoft_student_id_REDACTED]'
 runtime_adapter:
   binding_id: local-government-identifiers

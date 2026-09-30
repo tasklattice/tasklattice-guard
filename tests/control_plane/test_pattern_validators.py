@@ -63,13 +63,13 @@ def _number_rule():
     return replace(compiled, rules=(compiled.rules[0],))
 
 
-@pytest.mark.parametrize("last_word, verdict", [("one", "unsafe"), ("two", "safe")])
+@pytest.mark.parametrize("last_word, verdict", [("one", "matched"), ("two", "not_matched")])
 def test_spelled_out_numbers_obey_the_same_candidate_checks(last_word, verdict):
     policy = _number_rule()
     text = "four " + "one " * 14 + last_word
     result = BuiltinContentFilter().evaluate(text=text, phase="output", policies=[policy.id], definitions={policy.id: policy})
     assert result.verdict == verdict
-    assert (result.content != text) is (verdict == "unsafe")
+    assert (result.content != text) is (verdict == "matched")
 
 
 def test_all_validators_must_pass_and_invalid_pinned_config_is_not_ignored():

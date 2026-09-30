@@ -13,7 +13,7 @@ detector:
     context_expression: \b(?:bank\s*account|account\s*number|transit\s*number|institution\s*number|branch\s*number|routing\s*number|direct\s*deposit|void\s*cheque|chequing|savings\s*account|numéro\s*de\s*compte|dépôt\s*direct)\b
     context_max_gap_words: 1
 on_match:
-  action: redact
+  action: transform
   replacement: '[ca_bank_account_REDACTED]'
 runtime_adapter:
   binding_id: local-bank-account-formats

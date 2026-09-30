@@ -64,7 +64,7 @@ def test_all_bundled_sources_bootstrap_the_current_runtime_catalog():
     (lambda p: p["rules"].append(deepcopy(p["rules"][0])), "Rule IDs must be unique"),
     (lambda p: p["rules"][0].update(stages=["retrieval"]), "input"),
     (lambda p: p["rules"][0].update(risk_level="urgent"), "critical"),
-    (lambda p: p["rules"][0]["on_match"].update(action="execute"), "Unknown handling"),
+    (lambda p: p["rules"][0]["on_match"].update(action="execute"), "Input should be"),
     (lambda p: p["rules"][0]["detector"].update(version="99"), "detector/version unavailable"),
     (lambda p: p["rules"][0]["detector"]["parameters"].update(expression="["), "unterminated"),
     (lambda p: p["rules"][0]["detector"]["parameters"].update(expression=5), "invalid expression"),
@@ -77,7 +77,7 @@ def test_all_bundled_sources_bootstrap_the_current_runtime_catalog():
     (lambda p: p["rules"][0].update(runtime_adapter={"binding_id": "platform", "implementation_rule_id": "id"}), "built-in provenance"),
     (lambda p: p["metadata"].update(compliance={}), "compliance review"),
     (lambda p: p["metadata"].update(id="builtin-secrets"), "platform-native Policy ID"),
-    (lambda p: p["rules"][0]["on_match"].update(action="rewrite"), "does not accept replacement"),
+    (lambda p: p["rules"][0]["on_match"].update(action="block"), "does not accept replacement"),
     (lambda p: p["rules"][0]["detector"].update(ref="model/grounding", parameters={}), "model-backed detector registration"),
 ])
 def test_invalid_or_unimplemented_definitions_fail_before_import(example, mutate, message):
@@ -157,9 +157,9 @@ def test_redaction_feeds_the_next_rule_and_rejection_short_circuits(example):
     assert [f.rule_id for f in transformed.findings] == ["customer-id"]
     blocked = engine.evaluate(**args, rule_order={spec.id: ["internal-secret", "customer-id"]})
     assert blocked.content == "CUS-123456"
-    assert [f.recommended_action for f in blocked.findings] == ["reject"]
-    observed = engine.evaluate(**args, policy_rule_actions={spec.id: {"customer-id": "pass"}})
-    assert [f.recommended_action for f in observed.findings] == ["pass", "reject"]
+    assert [f.recommended_action for f in blocked.findings] == ["block"]
+    observed = engine.evaluate(**args, policy_rule_actions={spec.id: {"customer-id": "allow"}})
+    assert [f.recommended_action for f in observed.findings] == ["allow", "block"]
 
 
 def test_import_export_round_trip_and_version_guard(isolated_catalog):

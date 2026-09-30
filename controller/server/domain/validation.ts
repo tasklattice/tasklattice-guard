@@ -50,12 +50,12 @@ export function generatedTestCases(
       const phase = item.phase;
       if (item.covered_rule_ids.length && !item.covered_rule_ids.some((id) => enabledRules.has(id))) return [];
       const topicCase = policy.id === "builtin-topic-safety" && item.id === "topic-input";
-      const topicAction = binding.ruleActions["model/topic-control"] ?? binding.action ?? "redirect";
-      const topicBlockedDecision = topicAction === "reject" ? "block" as const : "intervene" as const;
+      const topicAction = binding.ruleActions["model/topic-control"] ?? binding.action ?? "block";
+      const topicBlockedDecision = topicAction;
       const topicValues = topicPolicyValues(binding.parameterValues);
       const expanded = isSplitTopicPolicy(binding.policyId, binding.policyVersion) ? item.covered_rule_ids.includes(TOPIC_DENY_RULE)
         ? topicLines(topicValues.denied).map((topic, index) => ({ ...item, id: `${item.id}/${index + 1}`, name: `Denied topic: ${topic}`, content: `Please help me with this task: ${topic}`, expected_decision: "block" as const }))
-        : [{ ...item, expected_decision: topicValues.mode === "permissive" ? "allow" as const : (binding.ruleActions[TOPIC_ALLOW_RULE] ?? binding.action ?? "redirect") === "reject" ? "block" as const : "intervene" as const }]
+        : [{ ...item, expected_decision: topicValues.mode === "permissive" ? "allow" as const : (binding.ruleActions[TOPIC_ALLOW_RULE] ?? binding.action ?? "block") }]
         : topicCase ? [
         { ...item, expected_decision: draft.topicControlMode === "permissive" ? "allow" as const : topicBlockedDecision },
         ...draft.restrictedTopics.map((topic, index) => ({ ...item, id: `${item.id}/deny-${index + 1}`, name: `Denied topic: ${topic}`, content: `Please help me with this task: ${topic}`, expected_decision: topicBlockedDecision })),
@@ -63,7 +63,7 @@ export function generatedTestCases(
         ? parsePhraseEntries(binding.parameterValues[PHRASE_PARAMETER] ?? "").map((entry) => ({
             ...item, id: `${item.id}/${entry.id}`, name: `${item.name}: ${entry.phrase}`,
             content: entry.phrase,
-            expected_decision: entry.action === "reject" ? "block" as const : "transform" as const,
+            expected_decision: entry.action,
           })) : [item];
       return expanded.map((item) => ({
         id: generatedCaseId(policy.id, item.id),
@@ -160,14 +160,14 @@ export function applyValidationOverrides<T extends { id: string; sourcePolicyId:
         // original content must survive unchanged.
         const recordsOnly = Boolean(source.coveredRuleIds?.length)
           && source.coveredRuleIds!.every((ruleId) =>
-            (binding.ruleActions[ruleId] ?? binding.action) === "pass"
+            (binding.ruleActions[ruleId] ?? binding.action) === "allow"
             && override.expectedMatches.some((match) => match.policyId === binding.policyId && match.ruleId === ruleId))
           && override.expectedMatches.every((match) => {
             const target = bindings.get(match.policyId);
-            return target && (target.ruleActions[match.ruleId] ?? target.action) === "pass";
+            return target && (target.ruleActions[match.ruleId] ?? target.action) === "allow";
           })
           && typeof source.content === "string" && override.expectedOutputContent === source.content;
-        if (!recordsOnly) throw new Error(`Cannot weaken an unsafe inherited Test Case to allow: ${binding.policyId}/${caseId}. Observation-only expectations require explicit pass actions, retained Rule matches and unchanged content.`);
+        if (!recordsOnly) throw new Error(`Cannot weaken an unsafe inherited Test Case to allow: ${binding.policyId}/${caseId}. Observation-only expectations require explicit allow actions, retained Rule matches and unchanged content.`);
       }
       for (const match of override.expectedMatches) {
         if (!bindings.get(match.policyId)?.enabledRuleIds.includes(match.ruleId)) {

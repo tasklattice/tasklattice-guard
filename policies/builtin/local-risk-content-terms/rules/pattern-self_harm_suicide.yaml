@@ -13,7 +13,7 @@ detector:
       ]?harm|cut(ting)?\s+myself|slit\s+(my\s+)?wrists|overdose|OD|hang\s+myself|jump\s+off|jump\s+from|bridge\s+jump|train\s+tracks|pills\s+to\s+die|lethal\s+dose|LD50|how\s+to\s+kill\s+(myself|yourself)|suicide\s+method|painless\s+death|exit\s+bag|helium\s+hood|suicide\s+note|goodbye\s+letter|final\s+letter|last\s+words|pro[-
       ]?ana|pro[- ]?mia|thinspiration|self[- ]?starv(e|ation)|purging)\b
 on_match:
-  action: redact
+  action: transform
   replacement: '[self_harm_suicide_REDACTED]'
 runtime_adapter:
   binding_id: local-risk-content-terms

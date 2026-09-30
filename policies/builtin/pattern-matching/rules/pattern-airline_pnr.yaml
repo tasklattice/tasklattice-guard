@@ -14,7 +14,7 @@ detector:
     context_expression: \b(?:PNR|booking\s*(?:reference|ref|code|number|confirmation)|reservation\s*(?:code|number|ref)|record\s*locator|confirmation\s*(?:code|number)|itinerary\s*(?:number|ref))\b
     context_max_gap_words: 1
 on_match:
-  action: redact
+  action: transform
   replacement: '[airline_pnr_REDACTED]'
 runtime_adapter:
   binding_id: pattern-matching

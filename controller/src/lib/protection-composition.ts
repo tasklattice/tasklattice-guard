@@ -41,6 +41,6 @@ export function completeResponsePolicies(bindings: GuardrailPolicyBinding[], pol
     // contract today. Unknown/custom checks remain conservatively buffered.
     if (policy?.protection?.outputStreaming !== "incremental_check") return true;
     const actions = [binding.action, ...Object.values(binding.rule_actions)].filter(Boolean);
-    return actions.some((action) => !["reject", "pass", "report"].includes(action!));
+    return actions.some((action) => !["block", "allow", "report"].includes(action!));
   }).map((binding) => boundPolicy(policies, binding)?.name ?? binding.policy_id);
 }

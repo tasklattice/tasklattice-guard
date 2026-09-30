@@ -17,5 +17,8 @@
   "choosePathDescription": "按任务选择操作指南、平台管理或 AI Gateway 集成指南。",
   "searchResults": "搜索结果",
   "roleResults": "角色指南",
-  "glossaryResults": "概念词典"
+  "glossaryResults": "概念词典",
+  "notFoundTitle": "找不到这篇文档",
+  "notFoundDescription": "文章地址或旧章节链接不存在，请从文档目录重新选择。",
+  "backToDocs": "返回文档"
 }

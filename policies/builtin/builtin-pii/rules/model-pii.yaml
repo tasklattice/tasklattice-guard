@@ -10,7 +10,7 @@ detector:
   parameters:
     profile: pii-classification
 on_match:
-  action: redact
+  action: transform
 runtime_adapter:
   binding_id: pii
   implementation_rule_id: pii

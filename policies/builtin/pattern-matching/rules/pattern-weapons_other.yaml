@@ -11,7 +11,7 @@ detector:
   parameters:
     expression: \b(knife|blade|machete|switchblade|butterfly\s+knife|balisong|brass\s+knuckles|knuckle\s+duster|baton|blackjack|taser|stun\s+gun|pepper\s+spray|mace|crossbow|bow\s+and\s+arrow|compound\s+bow|sword|katana|throwing\s+star|shuriken|nunchaku|nunchucks|tomahawk|hatchet|axe\s+attack|ice\s+pick|garrote|zip\s+gun|improvised\s+weapon|shiv|shank|pipe\s+bomb)\b
 on_match:
-  action: redact
+  action: transform
   replacement: '[weapons_other_REDACTED]'
 runtime_adapter:
   binding_id: pattern-matching

@@ -11,7 +11,7 @@ detector:
     expression: \b[0-8]\d{5}\b
     context_expression: \b(?:postal\s*code|postcode|zip\s*code|Singapore\s*\d|blk|block|address|HDB|flat|unit)\b
 on_match:
-  action: redact
+  action: transform
   replacement: '[sg_postal_code_REDACTED]'
 runtime_adapter:
   binding_id: sg-pdpa-contact-information

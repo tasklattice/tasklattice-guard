@@ -11,7 +11,7 @@ detector:
   parameters:
     expression: \b\d{2}\s?\d{3}\s?\d{3}\s?\d{3}\b
 on_match:
-  action: redact
+  action: transform
   replacement: '[au_abn_REDACTED]'
 runtime_adapter:
   binding_id: pattern-matching

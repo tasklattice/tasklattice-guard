@@ -14,7 +14,7 @@ order: 3
 
 <strong>How:</strong> Review the complete Rule and Test Case inventory in the Library. For new behavior, edit and validate a custom draft, publish its Policy Version, then bind it in a Guardrail.
 
-For example, a customer-service Policy contains two Rules: `text/regex` finds customer IDs in responses and requests `redact`; `text/keyword` finds internal secret labels and requests `reject`. Both use the same contract, with different detectors, parameters, and handling. Writing “do not disclose” in a compliance document does not itself create an executable Rule.
+For example, a customer-service Policy contains two Rules: `text/regex` finds customer IDs in responses and requests `transform`; `text/keyword` finds internal secret labels and requests `block`. Both use the same contract, with different detectors, parameters, and handling. Writing “do not disclose” in a compliance document does not itself create an executable Rule.
 
 <a id="term-rule" />
 
@@ -32,7 +32,7 @@ Technical references are `text/keyword`, `text/regex`, `text/conditions`, `code/
 
 <strong>How:</strong> Inspect its implementation, default directive, and Test Cases in the Policy; then enable or disable it in a Guardrail Binding and review parameters and the effective directive. Disabling it changes compiled behavior.
 
-Read or design one Rule as **business requirement → check stage → detector and parameters → match evidence → risk level and directive → Test Case**. Detection and handling are separate choices: using `regex` to find a phone number does not imply that the whole request must be blocked; you may mask it and continue. Conversely, requesting `redact` does not specify which detector should find the content.
+Read or design one Rule as **business requirement → check stage → detector and parameters → match evidence → risk level and directive → Test Case**. Detection and handling are separate choices: using `regex` to find a phone number does not imply that the whole request must be blocked; you may mask it and continue. Conversely, requesting `transform` does not specify which detector should find the content.
 
 <a id="term-rule-implementation" />
 
@@ -69,17 +69,17 @@ detector:
     expression: '\bCUS-\d{6}\b'
 risk_level: medium
 on_match:
-  action: redact
+  action: transform
   replacement: '[CUSTOMER_ID]'
 metadata:
   taxonomy_ids: [TALI-PRIVACY-PII]
 ```
 
-Given `Customer ID CUS-123456`, expect `Customer ID [CUSTOMER_ID]`. To block the entire response instead, change `on_match.action` to `reject` and remove `replacement`; keep the same detector. Rerun allowed, matching, and boundary cases after the change.
+Given `Customer ID CUS-123456`, expect `Customer ID [CUSTOMER_ID]`. To block the entire response instead, change `on_match.action` to `block` and remove `replacement`; keep the same detector. Rerun allowed, matching, and boundary cases after the change.
 
 **Business identity belongs in the Rule; detection mechanism belongs in the detector.** Resident IDs and organization codes both use `text/regex`, with checks declared in `detector.parameters.validators`. Resident IDs combine date and weighted-checksum validation; organization codes use a weighted checksum; card numbers can use `luhn`. The Rule supplies the date offset, weights, and character mapping. Every configured validator must pass before the Rule matches and applies its directive. A new identifier format supported by these algorithms can reuse the same detector.
 
-A Policy can contain several such Rule files; `policy.yaml` lists their order. Each Rule reads the preceding Rule's output, and rejection stops this Policy's check. See [creating a Policy](#operator-policy-declarative) for the complete package, tests, and import/export workflow.
+A Policy can contain several such Rule files; `policy.yaml` lists their order. Each Rule reads the preceding Rule's output, and rejection stops this Policy's check. See [creating a Policy](/document/operator/operator-create-policy#operator-policy-declarative) for the complete package, tests, and import/export workflow.
 
 **If no detector fits, implement and register the capability before referencing it.** A name alone does not establish coverage: regex, keyword, and local category signals do not provide full semantic understanding. Model detection needs a compatible model and any required context. Custom packages currently support registered local detectors; new model-detector registration and console YAML editing are not available yet.
 
@@ -101,36 +101,39 @@ A Rule has two independent settings. **Risk level** describes the potential impa
 
 These are product conventions, not proof of confirmed harm or human verification. Built-in Rules provide defaults. Authors of custom Rules choose a level based on business impact. Older evidence without a versioned Rule level is **Unclassified**, which does not mean Informational or Low.
 
-A production-credential Rule rated High remains **High · Record only** with `pass`, **High · Requested action: Block** with `reject`, and **High · Requested action: Redact** with `redact`. Conversely, a competitor-name Rule may be Low even when it blocks. Stricter handling does not automatically increase risk severity.
+A production-credential Rule rated High remains **High · Allow (record only)** with `allow`, **High · Requested action: Block** with `block`, and **High · Requested action: Transform** with `transform`. Conversely, a competitor-name Rule may be Low even when it blocks. Stricter handling does not automatically increase risk severity.
 
 **Confidence is independent.** It describes the detector’s certainty about this evaluation. Missing scores are shown as Not provided; scores from different detectors may not be comparable. A 99% score does not automatically mean Critical.
 
-A successful safe check does not create a Low security event. Matches and uncertain detection evidence appear as security events. Errors, timeouts, and unavailable models are operational failures, not automatically Critical security events. [See security events and runtime logs](#concept-security-events).
+A successful safe check does not create a Low security event. Matches and uncertain detection evidence appear as security events. Errors, timeouts, and unavailable models are operational failures, not automatically Critical security events. [See security events and runtime logs](/document/admin/concept-logs#concept-security-events).
 
 <a id="term-rule-actions" />
 
-### After a Rule matches: eight directives
+### After a Rule matches: three actions
 
-A Rule's source `on_match.action` is its default **post-evaluation directive** (Enforcement Action). It is not the detection algorithm, evaluator verdict, or a NeMo Action called by a Flow. A Rule that does not match normally requests no intervention. After a match it can request one of eight directives. A particular combination must have the evidence or deliverable content it needs: `redact`, for example, needs spans or replacement text, while `regenerate` needs a caller that can generate again. Do not assume every implementation form can satisfy every directive merely because the name is selectable.
+`on_match.action` defines how to handle a matching Rule. The detector provides evidence; the Rule defines its risk level and action independently. Blocking does not imply a particular severity.
 
-1. **`reject` · block**: Stop this phase. Do not call the model for a rejected input or deliver rejected output.
-2. **`redact` · mask**: Replace sensitive spans with reviewed placeholders, such as “[masked]” for a phone number, and continue with the remaining content.
-3. **`rewrite` · replace**: Replace the current content with a complete reviewed alternative rather than masking one span.
-4. **`regenerate` · try again**: Ask the application or gateway that owns model calls to generate another response; Guard does not call the model on its behalf.
-5. **`redirect` · guide elsewhere**: Move the interaction to an approved topic, workflow, or replacement answer.
-6. **`fallback` · safe fallback**: Deliver an approved fixed response or take a degraded path, such as human support.
-7. **`clarify` · ask for context**: Require more information before continuing, such as “Are you asking about your own account?”.
-8. **`pass` · record only**: Record the finding without changing content during an explicitly accepted observation period.
+| Action | Meaning | Example |
+| --- | --- | --- |
+| `allow` | Record evidence without modifying or blocking content | Observe a new Rule before enforcing it |
+| `block` | Stop the checked content from proceeding | Stop an unsafe input before the model call, or withhold an unsafe output |
+| `transform` | Provide explicit replacement content or valid patches that the caller must use | Replace a phone number with `[PHONE]`, or replace the entire text |
 
-When Rules request conflicting directives, precedence is **reject → clarify → fallback → regenerate → rewrite → redirect → redact → pass**. This is not the editor's display order, and multiple findings can still be recorded. The final Decision resolves to outcomes such as allow, transform, or block; the runtime protocol then maps it to `NONE`, `BLOCKED`, or `GUARDRAIL_INTERVENED`. The client still implements interaction directives such as `regenerate` or `clarify`, and HTTP `200` alone never means allow.
+Redaction and whole-text replacement are both transformations. Text detectors use `on_match.replacement`: replace matched spans when available, otherwise replace the whole text. Platform detectors may also supply concrete transformed content. Missing replacements, conflicting patches or execution failures fail closed; unchanged unsafe text must not be delivered as a successful transformation.
+
+Independent results use precedence **block → transform → allow**. One Rule's allow never overrides another Rule's block. Policies and Rules still execute in configured order, with each Rule inspecting the preceding transformed text; block terminates the current check chain.
+
+Regeneration, clarification, human handoff and fallback workflows belong to the Gateway or Agent. For example, block an ungrounded answer; the application decides whether to call the model again and checks the new answer. Guard does not own retries or conversation state.
+
+Runtime Decisions also use `allow`, `block` and `transform`. Adapters may map these to `NONE`, `BLOCKED` and `GUARDRAIL_INTERVENED`; HTTP `200` alone does not mean allow.
 
 <a id="term-rule-effective-action" />
 
 ### Defaults and Guardrail overrides
 
-A Policy defines a Rule's default `effect`. When a Guardrail binds a Policy Version, it may set one directive for the Policy Binding or a more specific override for one Rule. The effective directive generally follows **Rule override → Policy Binding override → Rule default**. Some Policies add constraints; for example, the Topic Control denylist Rule must `reject`. Reading the Policy tells you its default behavior; before production, inspect enabled Rules, parameters, and overrides in the Guardrail Binding and validate with Test Cases.
+A Policy defines a Rule's default `effect`. When a Guardrail binds a Policy Version, it may set one directive for the Policy Binding or a more specific override for one Rule. The effective directive generally follows **Rule override → Policy Binding override → Rule default**. Some Policies add constraints; for example, the Topic Control denylist Rule must `block`. Reading the Policy tells you its default behavior; before production, inspect enabled Rules, parameters, and overrides in the Guardrail Binding and validate with Test Cases.
 
-For “customer replies must not expose phone numbers”, one Rule could be **Output Rail → `regex` finds phone numbers → matched span → `redact` masks it → Test Case proves the original text is not delivered**. If an application overrides that Rule to `reject` in its Binding, the same match should block the whole output instead of delivering a masked sentence. Changing the directive changes observable behavior and requires validation and a new Guardrail Version.
+For “customer replies must not expose phone numbers”, one Rule could be **Output Rail → `regex` finds phone numbers → matched span → `transform` masks it → Test Case proves the original text is not delivered**. If an application overrides that Rule to `block` in its Binding, the same match should block the whole output instead of delivering a masked sentence. Changing the directive changes observable behavior and requires validation and a new Guardrail Version.
 
 <a id="term-catalog" />
 
@@ -199,7 +202,7 @@ With TaskLattice, your application or AI Gateway makes the actual model call and
 
 This describes only the Input and Output checkpoints currently integrated by this product. NeMo Guardrails also has Retrieval, Dialog, and Execution rails for retrieved content, conversation flow, and tools; that does not imply TaskLattice Endpoints support those stages. Compare NVIDIA's [Guardrail Types](https://docs.nvidia.com/nemo/guardrails/about-nemo-guardrails-library/rail-types) and [request sequence diagrams](https://docs.nvidia.com/nemo/guardrails/reference/guardrails-sequence-diagrams).
 
-For streaming output, decide which text has been checked before it is delivered; see this site's [streaming output checks](#gateway-stream). NeMo's [configuration reference](https://docs.nvidia.com/nemo/guardrails/latest/configure-guardrails/configuration-reference) shows how check flows are listed separately under `rails.input.flows` and `rails.output.flows`.
+For streaming output, decide which text has been checked before it is delivered; see this site's [streaming output checks](/document/developer/gateway-stream). NeMo's [configuration reference](https://docs.nvidia.com/nemo/guardrails/latest/configure-guardrails/configuration-reference) shows how check flows are listed separately under `rails.input.flows` and `rails.output.flows`.
 
 <a id="term-flow" />
 

@@ -55,7 +55,7 @@
           "ref": "model/classifier",
           "version": "1.0.0"
         },
-        "effect": "reject",
+        "effect": "block",
         "risk_severity": "high",
         "rails": [
           "input",
@@ -123,7 +123,7 @@
           "ref": "model/classifier",
           "version": "1.0.0"
         },
-        "effect": "reject",
+        "effect": "block",
         "risk_severity": "high",
         "rails": [
           "input"
@@ -211,7 +211,7 @@
         "description": "Unlisted tasks follow the Allowlist mode.",
         "phase": "input",
         "content": "Discuss a business subject that is not on the approved list.",
-        "expected_decision": "intervene",
+        "expected_decision": "block",
         "covered_rule_ids": [
           "topic/allowlist"
         ],
@@ -227,7 +227,7 @@
           "ref": "model/classifier",
           "version": "1.0.0"
         },
-        "effect": "reject",
+        "effect": "block",
         "risk_severity": "low",
         "rails": [
           "input"
@@ -256,7 +256,7 @@
           "ref": "model/classifier",
           "version": "1.0.0"
         },
-        "effect": "redirect",
+        "effect": "block",
         "risk_severity": "low",
         "rails": [
           "input"
@@ -335,7 +335,7 @@
           "ref": "model/classifier",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -403,7 +403,7 @@
           "ref": "model/classifier",
           "version": "1.0.0"
         },
-        "effect": "reject",
+        "effect": "block",
         "risk_severity": "low",
         "rails": [
           "input"
@@ -454,7 +454,7 @@
         "description": "Unsupported output is regenerated.",
         "phase": "output",
         "content": "A claim not present in the provided context.",
-        "expected_decision": "intervene",
+        "expected_decision": "block",
         "covered_rule_ids": [
           "model/contextual-grounding"
         ],
@@ -470,7 +470,7 @@
           "ref": "model/grounding",
           "version": "1.0.0"
         },
-        "effect": "regenerate",
+        "effect": "block",
         "risk_severity": "medium",
         "rails": [
           "output"
@@ -534,7 +534,7 @@
           "ref": "service/formal-verification",
           "version": "1.0.0"
         },
-        "effect": "rewrite",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "output"

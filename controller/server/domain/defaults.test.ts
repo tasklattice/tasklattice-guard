@@ -97,7 +97,7 @@ describe("Default Guardrail baseline", () => {
         enabledRuleIds: policy.rules.map((rule) => rule.id),
         ruleOrder: [],
         testCaseOverrides: binding.testCaseOverrides,
-        ruleActions: policy.id === "filter-denied-insults" ? { "category/denied_insults": "pass" } : {},
+        ruleActions: policy.id === "filter-denied-insults" ? { "category/denied_insults": "allow" } : {},
         enabledRails: policy.rails,
         reasoningPolicy: null,
       });

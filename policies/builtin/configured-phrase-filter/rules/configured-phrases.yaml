@@ -9,7 +9,7 @@ detector:
   ref: text/keyword
   version: 1.0.0
 on_match:
-  action: reject
+  action: block
 runtime_adapter:
   binding_id: configured-phrase-filter
   implementation_rule_id: phrases

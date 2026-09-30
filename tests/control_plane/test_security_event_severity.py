@@ -17,8 +17,8 @@ def test_frozen_rule_risk_survives_wire_and_telemetry(level):
     payload = plan_payload(level)
     plan = plan_from_dict(plan_from_proto(plan_to_proto(payload)))
     payload["policy_bindings"][0]["rule_severities"] = [["key", "low"]]
-    for action in ("pass", "reject", "redact", "rewrite", "regenerate", "redirect", "fallback", "clarify"):
-        finding = RiskFinding("secrets", "TALI-PRIVACY-CREDENTIAL", "unsafe", .1, "synthetic", action, policy_id="credentials", rule_id="key", risk_severity="critical")
+    for action in ("allow", "block", "transform", "transform", "block", "block", "block", "block"):
+        finding = RiskFinding("secrets", "TALI-PRIVACY-CREDENTIAL", "matched", .1, "synthetic", action, policy_id="credentials", rule_id="key", risk_severity="critical")
         stamped = _snapshot_finding_risks(plan, [finding])[0]
         assert stamped.risk_severity == level
         assert stamped.policy_version == "7"

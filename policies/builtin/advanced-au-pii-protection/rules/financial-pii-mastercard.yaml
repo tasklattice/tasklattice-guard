@@ -10,7 +10,7 @@ detector:
   parameters:
     expression: \b5[1-5]\d{2}[\s\-]?\d{4}[\s\-]?\d{4}[\s\-]?\d{4}\b
 on_match:
-  action: redact
+  action: transform
   replacement: '[mastercard_REDACTED]'
 runtime_adapter:
   binding_id: financial-pii

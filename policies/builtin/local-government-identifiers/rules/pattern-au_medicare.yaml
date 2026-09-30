@@ -11,7 +11,7 @@ detector:
   parameters:
     expression: \b(?:\d{4}\s?\d{5}\s?\d{1}|\d{11})\b
 on_match:
-  action: redact
+  action: transform
   replacement: '[au_medicare_REDACTED]'
 runtime_adapter:
   binding_id: local-government-identifiers

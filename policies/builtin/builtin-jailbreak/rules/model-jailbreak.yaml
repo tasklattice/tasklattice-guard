@@ -9,7 +9,7 @@ detector:
   parameters:
     profile: jailbreak-classification
 on_match:
-  action: reject
+  action: block
 runtime_adapter:
   binding_id: jailbreak
   implementation_rule_id: jailbreak

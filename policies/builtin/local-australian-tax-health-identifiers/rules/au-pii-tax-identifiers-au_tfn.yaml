@@ -13,7 +13,7 @@ detector:
     expression: \b(?:\d{3}\s?\d{3}\s?\d{3}|\d{2}\s?\d{3}\s?\d{3})\b
     context_expression: \b(?:TFN|T\.F\.N\.|tax\s*file\s*(?:number|no\.?)|tax\s*file\s*#?|ATO\s*number)\b
 on_match:
-  action: redact
+  action: transform
   replacement: '[au_tfn_REDACTED]'
 runtime_adapter:
   binding_id: local-australian-tax-health-identifiers

@@ -1,6 +1,6 @@
 import { auditLogSearch } from "../shared/audit-query";
 import { selectedSeverities } from "../shared/security-severity";
-import { createBrowserHistory, createRootRoute, createRoute, createRouter, Navigate, redirect, useRouterState } from "@tanstack/react-router";
+import { createBrowserHistory, createRootRoute, createRoute, createRouter, Navigate, notFound, redirect, useRouterState } from "@tanstack/react-router";
 
 import { ControlPlaneLayout } from "@/routes/layout";
 import { GuardrailDetailPage, GuardrailsPage } from "@/routes/guardrails";
@@ -13,7 +13,9 @@ import { UsersPage } from "@/routes/users";
 import { DashboardPage } from "@/routes/dashboard";
 import { PolicyLibraryPage } from "@/routes/policy-library";
 import { AccountPage } from "@/routes/account";
-import { HelpPage } from "@/routes/help";
+import { HelpPage, DocumentNotFound } from "@/routes/help";
+import { getHelpContent } from "@/features/help-content";
+import { documentPath, resolveLegacyDocument } from "@/features/help-navigation";
 import { AuditLogPage } from "@/routes/audit-log";
 import { VersionPage } from "@/routes/version";
 import { HealthPage } from "@/routes/status";
@@ -85,7 +87,25 @@ const runnerRoute = createRoute({ getParentRoute: () => rootRoute, path: "/setti
 const providersRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/providers", component: ProvidersPage });
 const modelsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/models", component: ModelsPage });
 const guardrailCatalogRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/guardrail-catalog", component: GuardrailCatalogPage });
-const documentRoute = createRoute({ getParentRoute: () => rootRoute, path: "/document", component: HelpPage });
+const documentRoute = createRoute({ getParentRoute: () => rootRoute, path: "/document", notFoundComponent: DocumentNotFound });
+const documentIndexRoute = createRoute({
+  getParentRoute: () => documentRoute,
+  path: "/",
+  beforeLoad: ({ location }) => {
+    // Article and section IDs are shared by both translations.
+    const target = resolveLegacyDocument(getHelpContent("en"), location.hash);
+    if (!target) throw notFound();
+    throw redirect({ to: documentPath(target.document), hash: target.anchor, replace: true });
+  },
+});
+const documentArticleRoute = createRoute({
+  getParentRoute: () => documentRoute,
+  path: "$categoryId/$articleId",
+  beforeLoad: ({ params }) => {
+    if (!getHelpContent("en").documents.some(document => document.categoryId === params.categoryId && document.id === params.articleId)) throw notFound();
+  },
+  component: HelpPage,
+});
 function LegacyHelpRedirect() {
   const hash = useRouterState({ select: state => state.location.hash });
   return <Navigate to="/document" hash={hash} replace />;
@@ -112,7 +132,7 @@ export const routeTree = rootRoute.addChildren([
   providersRoute,
   modelsRoute,
   guardrailCatalogRoute,
-  documentRoute,
+  documentRoute.addChildren([documentIndexRoute, documentArticleRoute]),
   helpRoute,
 ]);
 export const router = createRouter({ routeTree, history: createBrowserHistory() });

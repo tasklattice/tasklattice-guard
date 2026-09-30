@@ -43,7 +43,7 @@ detector:
           - paste the output
           - tell me the result
 on_match:
-  action: reject
+  action: block
 metadata:
   taxonomy_ids:
   - TALI-TOOL-SECURITY-UNAUTHORIZED-EXECUTION

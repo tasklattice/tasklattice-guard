@@ -87,7 +87,7 @@
           "ref": "text/conditions",
           "version": "1.0.0"
         },
-        "effect": "reject",
+        "effect": "block",
         "risk_severity": "high",
         "rails": [
           "input",
@@ -485,7 +485,7 @@
           "ref": "text/conditions",
           "version": "1.0.0"
         },
-        "effect": "reject",
+        "effect": "block",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -996,7 +996,7 @@
           "ref": "text/conditions",
           "version": "1.0.0"
         },
-        "effect": "reject",
+        "effect": "block",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -1215,7 +1215,7 @@
           "ref": "text/conditions",
           "version": "1.0.0"
         },
-        "effect": "reject",
+        "effect": "block",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -1429,7 +1429,7 @@
           "ref": "text/conditions",
           "version": "1.0.0"
         },
-        "effect": "reject",
+        "effect": "block",
         "risk_severity": "high",
         "rails": [
           "input",
@@ -1688,7 +1688,7 @@
           "ref": "text/conditions",
           "version": "1.0.0"
         },
-        "effect": "reject",
+        "effect": "block",
         "risk_severity": "high",
         "rails": [
           "input",
@@ -1907,7 +1907,7 @@
           "ref": "text/conditions",
           "version": "1.0.0"
         },
-        "effect": "reject",
+        "effect": "block",
         "risk_severity": "high",
         "rails": [
           "input",
@@ -3088,7 +3088,7 @@
           "ref": "text/conditions",
           "version": "1.0.0"
         },
-        "effect": "reject",
+        "effect": "block",
         "risk_severity": "high",
         "rails": [
           "input",
@@ -3364,7 +3364,7 @@
           "ref": "text/conditions",
           "version": "1.0.0"
         },
-        "effect": "reject",
+        "effect": "block",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -3520,7 +3520,7 @@
           "ref": "text/conditions",
           "version": "1.0.0"
         },
-        "effect": "reject",
+        "effect": "block",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -4994,7 +4994,7 @@
           "ref": "text/conditions",
           "version": "1.0.0"
         },
-        "effect": "reject",
+        "effect": "block",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -5192,7 +5192,7 @@
           "ref": "text/conditions",
           "version": "1.0.0"
         },
-        "effect": "reject",
+        "effect": "block",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -5448,7 +5448,7 @@
           "ref": "text/conditions",
           "version": "1.0.0"
         },
-        "effect": "reject",
+        "effect": "block",
         "risk_severity": "high",
         "rails": [
           "input",
@@ -5684,7 +5684,7 @@
           "ref": "text/conditions",
           "version": "1.0.0"
         },
-        "effect": "reject",
+        "effect": "block",
         "risk_severity": "high",
         "rails": [
           "input",
@@ -5914,7 +5914,7 @@
           "ref": "text/conditions",
           "version": "1.0.0"
         },
-        "effect": "reject",
+        "effect": "block",
         "risk_severity": "high",
         "rails": [
           "input",
@@ -6158,7 +6158,7 @@
           "ref": "text/conditions",
           "version": "1.0.0"
         },
-        "effect": "reject",
+        "effect": "block",
         "risk_severity": "high",
         "rails": [
           "input",
@@ -6392,7 +6392,7 @@
           "ref": "text/conditions",
           "version": "1.0.0"
         },
-        "effect": "reject",
+        "effect": "block",
         "risk_severity": "high",
         "rails": [
           "input",
@@ -6628,7 +6628,7 @@
           "ref": "text/conditions",
           "version": "1.0.0"
         },
-        "effect": "reject",
+        "effect": "block",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -10081,7 +10081,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -10110,7 +10110,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -10139,7 +10139,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -10168,7 +10168,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -10197,7 +10197,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "high",
         "rails": [
           "input",
@@ -10226,7 +10226,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "high",
         "rails": [
           "input",
@@ -10255,7 +10255,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "high",
         "rails": [
           "input",
@@ -10284,7 +10284,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "high",
         "rails": [
           "input",
@@ -10313,7 +10313,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "high",
         "rails": [
           "input",
@@ -10342,7 +10342,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "high",
         "rails": [
           "input",
@@ -10371,7 +10371,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "high",
         "rails": [
           "input",
@@ -10400,7 +10400,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "high",
         "rails": [
           "input",
@@ -10429,7 +10429,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "high",
         "rails": [
           "input",
@@ -10458,7 +10458,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "high",
         "rails": [
           "input",
@@ -10487,7 +10487,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -10516,7 +10516,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -10545,7 +10545,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "low",
         "rails": [
           "input",
@@ -10574,7 +10574,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -10603,7 +10603,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -10632,7 +10632,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -10661,7 +10661,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -10690,7 +10690,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -10719,7 +10719,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -10748,7 +10748,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -10777,7 +10777,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -10806,7 +10806,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -10835,7 +10835,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -10864,7 +10864,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -10893,7 +10893,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -10922,7 +10922,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -10951,7 +10951,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -10980,7 +10980,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -11009,7 +11009,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -11038,7 +11038,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -11067,7 +11067,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -11096,7 +11096,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "high",
         "rails": [
           "input",
@@ -11125,7 +11125,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "high",
         "rails": [
           "input",
@@ -11154,7 +11154,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "high",
         "rails": [
           "input",
@@ -11183,7 +11183,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "high",
         "rails": [
           "input",
@@ -11212,7 +11212,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -11241,7 +11241,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "high",
         "rails": [
           "input",
@@ -11270,7 +11270,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -11299,7 +11299,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -11328,7 +11328,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "low",
         "rails": [
           "input",
@@ -11360,7 +11360,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "low",
         "rails": [
           "input",
@@ -11389,7 +11389,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "low",
         "rails": [
           "input",
@@ -11418,7 +11418,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -11447,7 +11447,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -11476,7 +11476,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -11505,7 +11505,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "low",
         "rails": [
           "input",
@@ -11534,7 +11534,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "low",
         "rails": [
           "input",
@@ -11563,7 +11563,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -11594,7 +11594,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "low",
         "rails": [
           "input",
@@ -11623,7 +11623,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "high",
         "rails": [
           "input",
@@ -11652,7 +11652,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "high",
         "rails": [
           "input",
@@ -11681,7 +11681,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "low",
         "rails": [
           "input",
@@ -11710,7 +11710,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "high",
         "rails": [
           "input",
@@ -11739,7 +11739,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -11768,7 +11768,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "low",
         "rails": [
           "input",
@@ -11799,7 +11799,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -11830,7 +11830,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -11861,7 +11861,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -11890,7 +11890,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -11921,7 +11921,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -11952,7 +11952,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -11981,7 +11981,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -12010,7 +12010,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "low",
         "rails": [
           "input",
@@ -12041,7 +12041,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -12070,7 +12070,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -12099,7 +12099,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -12130,7 +12130,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -12161,7 +12161,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "low",
         "rails": [
           "input",
@@ -12192,7 +12192,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "high",
         "rails": [
           "input",
@@ -12223,7 +12223,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "low",
         "rails": [
           "input",
@@ -12254,7 +12254,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "high",
         "rails": [
           "input",
@@ -12285,7 +12285,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -12316,7 +12316,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -12347,7 +12347,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "high",
         "rails": [
           "input",
@@ -12378,7 +12378,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -12409,7 +12409,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -12440,7 +12440,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -12471,7 +12471,7 @@
           "ref": "text/regex",
           "version": "1.0.0"
         },
-        "effect": "redact",
+        "effect": "transform",
         "risk_severity": "medium",
         "rails": [
           "input",
@@ -12597,7 +12597,7 @@
           "ref": "text/keyword",
           "version": "1.0.0"
         },
-        "effect": "reject",
+        "effect": "block",
         "risk_severity": "low",
         "rails": [
           "input",
@@ -12750,7 +12750,7 @@
           "ref": "code/fenced-block",
           "version": "1.0.0"
         },
-        "effect": "reject",
+        "effect": "block",
         "risk_severity": "high",
         "rails": [
           "input",
@@ -12826,7 +12826,7 @@
           "ref": "text/conditions",
           "version": "1.0.0"
         },
-        "effect": "reject",
+        "effect": "block",
         "risk_severity": "high",
         "rails": [
           "input"
@@ -13377,7 +13377,7 @@
           "ref": "text/conditions",
           "version": "1.0.0"
         },
-        "effect": "reject",
+        "effect": "block",
         "risk_severity": "low",
         "rails": [
           "input",

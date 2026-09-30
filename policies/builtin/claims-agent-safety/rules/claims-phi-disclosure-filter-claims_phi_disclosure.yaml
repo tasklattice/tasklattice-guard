@@ -118,7 +118,7 @@ detector:
             - patient jane doe
             - member robert williams
 on_match:
-  action: reject
+  action: block
   replacement: null
 runtime_adapter:
   binding_id: claims-phi-disclosure-filter

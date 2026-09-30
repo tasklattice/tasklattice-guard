@@ -41,7 +41,7 @@ describe('SPA asset delivery across builds', () => {
     expect(response.headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
     expect(await response.text()).not.toContain('<html>');
   });
-  it.each(['/', '/guardrails', '/integration/routers/router-1', '/document'])('keeps SPA navigation at %s but never caches the document', async path => {
+  it.each(['/', '/guardrails', '/integration/routers/router-1', '/document', '/document/overview/quickstart-protection', '/document/operator/operator-create-policy'])('keeps SPA navigation at %s but never caches the document', async path => {
     const response = await app.request(path);
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toContain('text/html');

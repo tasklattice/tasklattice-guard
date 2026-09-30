@@ -43,7 +43,7 @@ def test_materialized_focused_policies_are_current() -> None:
 def test_each_focused_policy_runs_its_own_input_and_output_acceptance_cases(policy, case) -> None:
     result = BuiltinContentFilter().evaluate(text=case.content, phase=case.phase, policies=(policy.id,))
     assert result.verdict != "error", result.reason
-    decision = "allow" if result.verdict == "safe" else "block" if any(f.recommended_action == "reject" for f in result.findings) else "transform"
+    decision = "allow" if result.verdict == "not_matched" else "block" if any(f.recommended_action == "block" for f in result.findings) else "transform"
     assert decision == case.expected_decision, result.reason
     if decision == "transform":
         assert result.content != case.content
@@ -123,7 +123,7 @@ def test_spaced_australian_identifiers_keep_the_complete_original_detectors() ->
 ])
 def test_extended_formats_redact_the_entire_identifier(phase, policy_id, content, expected) -> None:
     result = BuiltinContentFilter().evaluate(text=content, phase=phase, policies=(policy_id,))
-    assert result.verdict == "unsafe"
+    assert result.verdict == "matched"
     assert result.content == expected
 
 

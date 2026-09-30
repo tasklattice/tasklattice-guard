@@ -10,7 +10,7 @@ detector:
   parameters:
     expression: \b([A-Z]{2}[0-9]{6}|[A-Z][0-9]{6}[A-Z]{2})\b
 on_match:
-  action: redact
+  action: transform
   replacement: '[passport_canada_REDACTED]'
 runtime_adapter:
   binding_id: airline-passport-multinational

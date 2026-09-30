@@ -113,7 +113,7 @@ detector:
             - flight management system hack
             - spoof ads-b
 on_match:
-  action: reject
+  action: block
   replacement: null
 runtime_adapter:
   binding_id: aviation-safety-topic-filter

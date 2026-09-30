@@ -4,7 +4,7 @@
   description: Unsupported output is regenerated.
   phase: output
   content: A claim not present in the provided context.
-  expected_decision: intervene
+  expected_decision: block
   covered_rule_ids:
   - model/contextual-grounding
   kind: rule_acceptance

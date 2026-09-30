@@ -55,7 +55,7 @@ async def test_internal_probe_requires_auth_and_does_not_execute_for_simulation(
         assert response.json()['runnerId'] == 'runner-1'
         assert response.json()['assignment']['routeId'] == 'first'
         runtime.evaluate.assert_not_called()
-        runtime.evaluate.return_value = ProtectionDecision(decision='block', action='reject', route_assignment=response.json()['assignment'])
+        runtime.evaluate.return_value = ProtectionDecision(decision='block', action='block', route_assignment=response.json()['assignment'])
         executed = await client.post('/internal/v1/playground/routers/router/test', json={**body, 'action': 'execute'}, headers={'authorization': 'Bearer secret'})
         assert executed.status_code == 200
         assert executed.json()['decision']['decision'] == 'block'

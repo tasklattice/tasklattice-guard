@@ -11,7 +11,7 @@ detector:
   parameters:
     expression: \b[STFGM]\d{7}[A-Z]\b
 on_match:
-  action: redact
+  action: transform
   replacement: '[sg_nric_REDACTED]'
 runtime_adapter:
   binding_id: sg-pdpa-pii-identifiers

@@ -64,7 +64,7 @@ async def test_full_buffered_never_releases_before_complete_response_passes():
 
     async def evaluate(candidate: ProtectionRequest) -> ProtectionDecision:
         seen.append(candidate.texts[0])
-        return ProtectionDecision(decision="allow", action="pass")
+        return ProtectionDecision(decision="allow", action="allow")
 
     store = OutputStreamSessionStore(window_characters=8)
     first = await store.process(
@@ -90,8 +90,8 @@ async def test_window_buffered_releases_only_windows_that_pass():
     async def evaluate(candidate: ProtectionRequest) -> ProtectionDecision:
         seen.append(candidate.texts[0])
         if "unsafe" in candidate.texts[0]:
-            return ProtectionDecision(decision="block", action="reject", reason="unsafe output")
-        return ProtectionDecision(decision="allow", action="pass")
+            return ProtectionDecision(decision="block", action="block", reason="unsafe output")
+        return ProtectionDecision(decision="allow", action="allow")
 
     store = OutputStreamSessionStore(window_characters=6)
     first = await store.process(
@@ -118,7 +118,7 @@ async def test_window_buffered_releases_only_windows_that_pass():
 @pytest.mark.asyncio
 async def test_interruptible_does_not_forward_a_blocked_chunk():
     async def evaluate(_candidate: ProtectionRequest) -> ProtectionDecision:
-        return ProtectionDecision(decision="block", action="reject", reason="unsafe output")
+        return ProtectionDecision(decision="block", action="block", reason="unsafe output")
 
     result = await OutputStreamSessionStore().process(
         stream_key="stream-3", sequence=0, text="already emitted", final=False,
@@ -133,7 +133,7 @@ async def test_interruptible_does_not_forward_a_blocked_chunk():
 @pytest.mark.asyncio
 async def test_stream_rejects_out_of_order_or_post_completion_chunks():
     async def evaluate(_candidate: ProtectionRequest) -> ProtectionDecision:
-        return ProtectionDecision(decision="allow", action="pass")
+        return ProtectionDecision(decision="allow", action="allow")
 
     store = OutputStreamSessionStore()
     with pytest.raises(ValueError, match="Expected output stream sequence 0"):
@@ -162,7 +162,7 @@ async def test_redis_store_continues_a_stream_on_another_runner_replica():
 
     async def evaluate(candidate: ProtectionRequest) -> ProtectionDecision:
         return ProtectionDecision(
-            decision="transform", action="redact", texts=(candidate.texts[0].replace("secret", "[REDACTED]"),),
+            decision="transform", action="transform", texts=(candidate.texts[0].replace("secret", "[REDACTED]"),),
         )
 
     first = await first_runner.process(
@@ -227,8 +227,8 @@ def stream_store(request):
 async def test_cross_window_secret_is_checked_with_prior_context(stream_store):
     async def evaluate(candidate):
         if "api_key=abcdefghijklmnop" in candidate.texts[0]:
-            return ProtectionDecision(decision="block", action="reject")
-        return ProtectionDecision(decision="allow", action="pass")
+            return ProtectionDecision(decision="block", action="block")
+        return ProtectionDecision(decision="allow", action="allow")
 
     first = await stream_store.process(stream_key="split", sequence=0, text="api_key=", final=False,
                                        mode="window_buffered", request=request(), evaluate=evaluate)
@@ -245,7 +245,7 @@ async def test_failed_evaluation_does_not_consume_sequence_or_duplicate_text(str
 
     async def evaluate(candidate):
         assert candidate.texts == ("one",)
-        return ProtectionDecision(decision="allow", action="pass")
+        return ProtectionDecision(decision="allow", action="allow")
 
     with pytest.raises(TimeoutError):
         await stream_store.process(stream_key="retry", sequence=0, text="one", final=True,
@@ -260,7 +260,7 @@ async def test_failed_evaluation_does_not_consume_sequence_or_duplicate_text(str
 async def test_late_transform_cannot_rewrite_a_released_prefix(stream_store):
     async def evaluate(candidate):
         text = candidate.texts[0]
-        return ProtectionDecision(decision="transform", action="redact", texts=(text.replace("hello", "[REDACTED]") if text.endswith("!") else text,))
+        return ProtectionDecision(decision="transform", action="transform", texts=(text.replace("hello", "[REDACTED]") if text.endswith("!") else text,))
 
     first = await stream_store.process(stream_key="prefix", sequence=0, text="hello world long", final=False,
                                        mode="window_buffered", request=request(), evaluate=evaluate)
@@ -279,15 +279,15 @@ async def test_failed_check_never_releases_original_or_consumes_sequence(stream_
     async def broken(candidate):
         seen.append(candidate.texts)
         if failure == "fail_closed":
-            return ProtectionDecision(decision="block", action="reject", usage=RuntimeUsage(fail_closed=True))
+            return ProtectionDecision(decision="block", action="block", usage=RuntimeUsage(fail_closed=True))
         if failure == "invalid_decision":
-            return ProtectionDecision(decision="error", action="reject")  # type: ignore[arg-type]
-        return ProtectionDecision(decision="transform", action="redact",
+            return ProtectionDecision(decision="error", action="block")  # type: ignore[arg-type]
+        return ProtectionDecision(decision="transform", action="transform",
                                   texts=() if failure == "missing_transform" else ("first", "second"))
 
     async def recovered(candidate):
         seen.append(candidate.texts)
-        return ProtectionDecision(decision="transform", action="redact", texts=("[REDACTED]",))
+        return ProtectionDecision(decision="transform", action="transform", texts=("[REDACTED]",))
 
     with pytest.raises(OutputStreamEvaluationError):
         await stream_store.process(stream_key="failed-check", sequence=0, text="private", final=True,
@@ -301,7 +301,7 @@ async def test_failed_check_never_releases_original_or_consumes_sequence(stream_
 @pytest.mark.asyncio
 async def test_explicit_empty_transformation_is_valid_not_a_fallback_to_raw(stream_store):
     async def evaluate(_candidate):
-        return ProtectionDecision(decision="transform", action="redact", texts=("",))
+        return ProtectionDecision(decision="transform", action="transform", texts=("",))
     result = await stream_store.process(stream_key="empty-transform", sequence=0, text="private", final=True,
                                         mode="full_buffered", request=request(), evaluate=evaluate)
     assert result.released_text == "" and result.status == "completed"
@@ -320,7 +320,7 @@ async def test_expiry_cannot_replace_a_session_with_an_inflight_check(monkeypatc
         calls.append(candidate.texts[0])
         entered.set()
         await resume.wait()
-        return ProtectionDecision(decision="allow", action="pass")
+        return ProtectionDecision(decision="allow", action="allow")
 
     store = OutputStreamSessionStore(ttl_seconds=1)
     args = dict(stream_key="slow", sequence=0, text="once", final=True,
@@ -351,7 +351,7 @@ async def test_cancelled_check_retries_same_sequence_without_duplicate_text(stre
     entered, cancelled = asyncio.Event(), asyncio.Event()
 
     async def allow(_candidate):
-        return ProtectionDecision(decision="allow", action="pass")
+        return ProtectionDecision(decision="allow", action="allow")
 
     first = await stream_store.process(stream_key="cancelled", sequence=0, text="checked ", final=False,
                                        mode=mode, request=request(), evaluate=allow)
@@ -374,7 +374,7 @@ async def test_cancelled_check_retries_same_sequence_without_duplicate_text(stre
 
     async def evaluate(candidate):
         assert candidate.texts == ("checked once",)
-        return ProtectionDecision(decision="allow", action="pass")
+        return ProtectionDecision(decision="allow", action="allow")
 
     result = await stream_store.process(**args, evaluate=evaluate)
     assert first.released_text + result.released_text == "checked once"
@@ -395,7 +395,7 @@ async def test_busy_capacity_is_not_evicted_and_cancelled_waiters_do_not_pin_for
         await asyncio.Event().wait()
 
     async def allow(_candidate):
-        return ProtectionDecision(decision="allow", action="pass")
+        return ProtectionDecision(decision="allow", action="allow")
 
     args = dict(sequence=0, text="text", final=True, mode="full_buffered", request=request())
     first = asyncio.create_task(store.process(stream_key="busy", evaluate=slow, **args))

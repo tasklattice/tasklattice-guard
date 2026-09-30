@@ -42,7 +42,7 @@ The parts have distinct responsibilities:
 3. **Action References pin callable capabilities by name and version**. The Flow may call registered detectors or model-backed capabilities from the Action Catalog. A custom Policy cannot upload arbitrary Python to Runner. Guardrail Binding resolves reviewed parameters and pins them with the version; live requests cannot override them.
 4. **Test Cases demonstrate behavior**. A normal order response should pass; a response containing a customer ID should transform or block as configured. Add look-alike values that must not match and failure cases such as Action timeout. Each case specifies a Rail, expected Decision, and covered Rule ID.
 
-The execution relationship for a custom Rule is **Policy Version → Rule (a Flow on an Input or Output Rail) → registered Action/model produces a finding → post-match directive → Decision**. A Policy defines the default directive, which a Guardrail Binding may override for an application; Endpoint and Router decide which requests use which Guardrail Version. See the full [Policy–Rule–implementation–directive model](#glossary-definition). Declarative directory packages use one [detector-reference contract](#term-rule-implementation). The programmable Policy Studio path described here still uses Flows and a separate import format.
+The execution relationship for a custom Rule is **Policy Version → Rule (a Flow on an Input or Output Rail) → registered Action/model produces a finding → post-match directive → Decision**. A Policy defines the default directive, which a Guardrail Binding may override for an application; Endpoint and Router decide which requests use which Guardrail Version. See the full [Policy–Rule–implementation–directive model](/document/overview/glossary-definition). Declarative directory packages use one [detector-reference contract](/document/overview/glossary-definition#term-rule-implementation). The programmable Policy Studio path described here still uses Flows and a separate import format.
 
 <a id="operator-policy-create" />
 
@@ -60,7 +60,7 @@ The current console provides **New Policy** in the [Policy Library](/policy-libr
 
 ## Validate, publish, and use it
 
-The next article, [test, publish, and transfer a custom Policy](#developer-release-transfer), explains the validation gate and version semantics. After publishing a Policy Version, bind that exact version in a Guardrail draft and resolve required parameters. Publishing a Policy alone does not cause Endpoint traffic to be checked. Editing the Policy creates a new draft and version; an existing Guardrail pinned to the old version does not change silently.
+The next article, [test, publish, and transfer a custom Policy](/document/operator/developer-release-transfer), explains the validation gate and version semantics. After publishing a Policy Version, bind that exact version in a Guardrail draft and resolve required parameters. Publishing a Policy alone does not cause Endpoint traffic to be checked. Editing the Policy creates a new draft and version; an existing Guardrail pinned to the old version does not change silently.
 
 An export package contains editable definitions, not validation evidence. In another environment, recheck Action and model dependencies, rerun tests, and publish there.
 
@@ -71,4 +71,4 @@ An export package contains editable definitions, not validation evidence. In ano
 
 In the Flow/Rail configuration, set **Risk level** separately from the **Requested action**. New Rules start at Medium; review this choice against business impact. Built-in defaults are visible in Policy Library. Older imported drafts without levels must be classified before testing and publication.
 
-A customer identifier check may use Medium + Redact; a production-credential check typically uses High + Block. During observation, override the action to Record only in the Guardrail: the event remains High. Guardrails cannot override risk levels. To change a level, update, test, and publish the Policy, then update the Guardrail. [Risk-level reference](#term-rule-risk-severity).
+A customer identifier check may use Medium + Redact; a production-credential check typically uses High + Block. During observation, override the action to Record only in the Guardrail: the event remains High. Guardrails cannot override risk levels. To change a level, update, test, and publish the Policy, then update the Guardrail. [Risk-level reference](/document/overview/glossary-definition#term-rule-risk-severity).

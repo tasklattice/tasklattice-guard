@@ -529,7 +529,7 @@ describe("Create Guardrail wizard", () => {
     expect(preview).not.toHaveProperty("custom_content_rules");
     expect(preview.policy_bindings.map((item: GuardrailPolicyBinding) => item.policy_id)).toEqual([binding.policy_id, phrasePolicy.id]);
     expect(JSON.parse(preview.policy_bindings[1].parameter_values.phrase_entries)).toEqual([
-      expect.objectContaining({ phrase: "internal-name", action: "reject" }),
+      expect.objectContaining({ phrase: "internal-name", action: "block" }),
     ]);
     expect(preview.output_delivery).toBe("full_buffered");
     await waitFor(() => expect(screen.getByRole("button", { name: "Create draft" }).hasAttribute("disabled")).toBe(false));

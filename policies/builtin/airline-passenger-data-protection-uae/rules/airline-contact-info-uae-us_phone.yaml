@@ -10,7 +10,7 @@ detector:
   parameters:
     expression: \b(?:\+?1[\s.-]?)?\(?([0-9]{3})\)?[\s.-]?([0-9]{3})[\s.-]?([0-9]{4})\b
 on_match:
-  action: redact
+  action: transform
   replacement: '[us_phone_REDACTED]'
 runtime_adapter:
   binding_id: airline-contact-info-uae

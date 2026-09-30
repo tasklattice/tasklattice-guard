@@ -20,7 +20,7 @@ detector:
         - explicit adult content
         - celebrity gossip
 on_match:
-  action: reject
+  action: block
   replacement: null
 runtime_adapter:
   binding_id: airline-off-topic-filter

@@ -54,7 +54,7 @@ detector:
       minimum_score: '{{confidence_threshold}}'
       require_context: '{{detect_execution_intent}}'
 on_match:
-  action: reject
+  action: block
   replacement: '[CODE_BLOCK_REDACTED]'
 runtime_adapter:
   binding_id: block-code-execution

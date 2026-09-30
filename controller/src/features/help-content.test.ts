@@ -109,7 +109,7 @@ describe("repository documentation", () => {
       expect(choices?.querySelectorAll("tbody > tr")).toHaveLength(7);
       for (const ref of ["text/regex", "text/keyword", "text/conditions", "code/fenced-block", "model/classifier", "model/grounding", "service/formal-verification"]) expect(choices?.textContent).toContain(ref);
       const example = section.find(node => node.tagName === "PRE")?.textContent;
-      for (const field of ["stages:", "detector:", "text/regex", "risk_level:", "on_match:", "action: redact"]) expect(example).toContain(field);
+      for (const field of ["stages:", "detector:", "text/regex", "risk_level:", "on_match:", "action: transform"]) expect(example).toContain(field);
       expect(example).not.toContain("colang_flow");
       expect(definitions).toContain("#operator-policy-declarative");
       const states = ["term-guardrail", "term-router", "term-endpoint", "platform-runtime"].map(id => renderToStaticMarkup(createElement(article(locale, id).Content, { components: helpStructuralComponents }))).join(" ");

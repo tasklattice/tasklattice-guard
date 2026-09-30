@@ -14,7 +14,7 @@ detector:
     context_expression: \b(?:TFN|T\.F\.N\.|tax\s*file\s*(?:number|no\.?)|tax\s*file\s*#?|ATO\s*number)\b
     context_max_gap_words: 1
 on_match:
-  action: redact
+  action: transform
   replacement: '[au_tfn_REDACTED]'
 runtime_adapter:
   binding_id: local-government-identifiers

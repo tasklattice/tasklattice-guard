@@ -10,7 +10,7 @@ detector:
   parameters:
     expression: (?:\+\d{1,3}\s?)?(?:\(?\d{2}\)?\s?)?9\d{4}-?\d{4}
 on_match:
-  action: redact
+  action: transform
   replacement: '[br_phone_mobile_REDACTED]'
 runtime_adapter:
   binding_id: contact-information-pii

@@ -110,7 +110,7 @@ try{
    const name='Regression live SSE '+mode+' 20260908'+suffix;
    let g=(await api('/api/v1/guardrails')).items.find(g=>g.name===name);
    if(g)g=await api('/api/v1/guardrails/'+g.id);
-   else g=await api('/api/v1/guardrails',{name,runtimeProfile:'auto',draftConfig:{allowedTopics:[],restrictedTopics:[],safetyLevel:'balanced',outputDelivery:mode,policyBindings:[{policyId:policy.id,policyVersion:policy.version,action:'reject',parameterValues:{},enabledRuleIds:policy.rules.map(r=>r.id),ruleActions:{},enabledRails:['input','output']}]}},[201]);
+   else g=await api('/api/v1/guardrails',{name,runtimeProfile:'auto',draftConfig:{allowedTopics:[],restrictedTopics:[],safetyLevel:'balanced',outputDelivery:mode,policyBindings:[{policyId:policy.id,policyVersion:policy.version,action:'block',parameterValues:{},enabledRuleIds:policy.rules.map(r=>r.id),ruleActions:{},enabledRails:['input','output']}]}},[201]);
    const validation=g.latestValidationRun??await api(`/api/v1/guardrails/${encodeURIComponent(g.id)}/test-runs`,{guardrailId:g.id},[202]);
    const done=await until(()=>api('/api/v1/test-runs/'+validation.id),v=>['passed','failed'].includes(v.status));assert.equal(done.status,'passed');
    if(!g.activeVersion)await api(`/api/v1/guardrails/${g.id}/publish`,{},[202]);

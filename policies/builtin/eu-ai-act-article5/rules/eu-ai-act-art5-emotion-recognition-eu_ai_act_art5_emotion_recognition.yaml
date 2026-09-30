@@ -122,7 +122,7 @@ detector:
             - worker mood monitoring system
             - student engagement emotion tracking
 on_match:
-  action: reject
+  action: block
   replacement: null
 runtime_adapter:
   binding_id: eu-ai-act-art5-emotion-recognition

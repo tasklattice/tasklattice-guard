@@ -11,7 +11,7 @@ detector:
   parameters:
     expression: '(?i)<\s*script\b|\bon(?:error|load)\s*=|javascript\s*:'
 on_match:
-  action: reject
+  action: block
 runtime_adapter:
   binding_id: local-rendered-content-injection
   implementation_rule_id: application/active-html

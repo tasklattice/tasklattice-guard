@@ -40,9 +40,9 @@ Guardrail detail → **Security findings** exposes the **Prompt History logging*
 setting. INFO retains blocked/failed checkpoints, DEBUG also retains content
 transformations, and TRACE retains all checkpoints. This runtime setting does
 not change enforcement. Security findings remain available at all three levels.
-Default overrides `filter-denied-insults` / `category/denied_insults` to `pass`
+Default overrides `filter-denied-insults` / `category/denied_insults` to `allow`
 on input and output: matched findings are recorded without changing content or
-stopping later Policies. The source Policy retains its original reject action.
+stopping later Policies. The source Policy retains its original block action.
 Observation-only acceptance still asserts the original Rule match and unchanged
 content; it does not exclude the inherited test.
 

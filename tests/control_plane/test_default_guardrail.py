@@ -153,7 +153,7 @@ async def test_default_complete_policies_compile_and_run_without_models(
                 **identity,
             )
             assert decision.decision == "allow", decision.reason
-            assert decision.action == "pass"
+            assert decision.action == "allow"
             # The runtime returns replacement texts only for transformations.
             assert decision.texts == ()
             assert decision.usage is not None
@@ -211,7 +211,7 @@ def test_inherited_rule_acceptance_is_independent_of_composition(default_baselin
             enabled_rules={case["policyId"]: case["coveredRuleIds"]} if case["coveredRuleIds"] else None,
         )
         actions = {f.recommended_action for f in result.findings}
-        actual = "block" if "reject" in actions else "transform" if actions else "allow"
+        actual = "block" if "block" in actions else "transform" if actions else "allow"
         assert actual == case["expectedDecision"], case["sourceCaseId"]
         if case["coveredRuleIds"]:
             assert set(case["coveredRuleIds"]) & {f.rule_id for f in result.findings}
@@ -235,12 +235,12 @@ async def test_default_records_insults_and_still_enforces_later_policies(default
             )
             assert result.decision == expected, result.reason
             observed = [f for f in result.findings if f.policy_id == "filter-denied-insults"]
-            assert observed and all(f.recommended_action == "pass" for f in observed)
+            assert observed and all(f.recommended_action == "allow" for f in observed)
             assert observed[0].rule_id == "category/denied_insults"
             if expected == "allow":
-                assert result.action == "pass" and result.texts == ()
+                assert result.action == "allow" and result.texts == ()
             elif expected == "block":
-                assert any(f.policy_id == "local-credentials" and f.recommended_action == "reject" for f in result.findings)
+                assert any(f.policy_id == "local-credentials" and f.recommended_action == "block" for f in result.findings)
             else:
                 assert result.texts == ("You should report any failure honestly. Passport: [passport_china_REDACTED]",)
             assert not result.usage.fail_closed and result.usage.model_invocations == 0

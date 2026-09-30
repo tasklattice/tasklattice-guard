@@ -79,7 +79,7 @@ describe("Guardrail Validation contract", () => {
     const cases = generatedTestCases("guardrail-1", {
       allowedTopics: [], restrictedTopics: [], safetyLevel: "balanced", outputDelivery: "full_buffered",
       policyBindings: [{
-        policyId: "keyword-blocking", policyVersion: "1.95.0", action: "reject",
+        policyId: "keyword-blocking", policyVersion: "1.95.0", action: "block",
         parameterValues: { blocked_words: "restricted phrase" }, enabledRuleIds: ["keyword/blocked-words"],
         ruleActions: {}, enabledRails: ["input"], reasoningPolicy: null,
       }],
@@ -100,7 +100,7 @@ describe("Guardrail Validation contract", () => {
 
   it("generates mode-aware unmatched and denied-topic cases", () => {
     const policies = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
-    const binding = { policyId: "builtin-topic-safety", policyVersion: "1.0.0", action: "reject" as const,
+    const binding = { policyId: "builtin-topic-safety", policyVersion: "1.0.0", action: "block" as const,
       parameterValues: {}, enabledRuleIds: ["model/topic-control"], ruleActions: {}, enabledRails: ["input" as const], reasoningPolicy: null };
     const draft = { allowedTopics: ["Order support"], restrictedTopics: ["Fabricating refund evidence"], safetyLevel: "balanced" as const, outputDelivery: "full_buffered" as const, policyBindings: [binding] };
     for (const mode of ["strict", "permissive"] as const) {

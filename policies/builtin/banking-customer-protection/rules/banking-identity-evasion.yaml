@@ -11,7 +11,7 @@ detector:
   parameters:
     expression: (?i)\b(?:help me|show me how to|I will)\s+(?:bypass|evade)\s+(?:KYC|AML|identity verification)\b|帮我绕过(?:身份验证|反洗钱检查)
 on_match:
-  action: reject
+  action: block
 runtime_adapter:
   binding_id: banking-customer-protection
   implementation_rule_id: banking/identity-evasion

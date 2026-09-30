@@ -28,8 +28,8 @@ export function arrayOfStrings(value: unknown): string[] {
 export function normalizeOutcome(decision: string): "allow" | "transform" | "block" | "error" | string {
   const value = decision.toLowerCase();
   if (["allow", "allowed", "pass", "passed"].includes(value)) return "allow";
-  if (["transform", "transformed", "redact", "redacted", "rewrite", "rewritten", "intervene", "intervened"].includes(value)) return "transform";
-  if (["block", "blocked", "reject", "rejected", "deny", "denied"].includes(value)) return "block";
+  if (["transform", "transformed", "intervene", "intervened"].includes(value)) return "transform";
+  if (["block", "blocked", "deny", "denied"].includes(value)) return "block";
   if (["error", "failed", "failure", "timeout", "timed_out"].includes(value)) return "error";
   return decision;
 }
@@ -40,7 +40,7 @@ export function isTimedOut(event: controllerApi.RuntimeEvent): boolean {
 }
 
 export function runtimeFindings(event: controllerApi.RuntimeEvent): RouterTraceFinding[] {
-  return arrayOfRecords(event.metadata.findings).filter(finding => finding.verdict === "unsafe" || finding.verdict === "uncertain").map((finding, index) => {
+  return arrayOfRecords(event.metadata.findings).filter(finding => finding.verdict === "matched" || finding.verdict === "unknown").map((finding, index) => {
     const verdict = stringValue(finding.verdict) ?? "unknown";
     const confidence = numberValue(finding.confidence);
     const risk = stringValue(finding.risk) ?? "unknown";

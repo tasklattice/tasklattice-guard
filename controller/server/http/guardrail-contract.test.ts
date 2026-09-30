@@ -25,7 +25,7 @@ const draftConfig = {
   policyBindings: [{
     policyId: "builtin-topic-safety",
     policyVersion: "1.0.0",
-    action: "redirect",
+    action: "block",
     parameterValues: {},
     enabledRuleIds: ["model/topic-control"],
     ruleActions: {},

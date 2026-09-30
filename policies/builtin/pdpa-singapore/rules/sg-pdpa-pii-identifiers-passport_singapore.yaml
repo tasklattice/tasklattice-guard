@@ -11,7 +11,7 @@ detector:
     expression: \b[EK]\d{7}\b
     context_expression: \b(?:passport|travel\s*document|document\s*number|immigration|ICA)\b
 on_match:
-  action: redact
+  action: transform
   replacement: '[passport_singapore_REDACTED]'
 runtime_adapter:
   binding_id: sg-pdpa-pii-identifiers

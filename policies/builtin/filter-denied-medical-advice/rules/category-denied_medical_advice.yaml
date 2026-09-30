@@ -104,7 +104,7 @@ detector:
           - treatment
           - injection
 on_match:
-  action: reject
+  action: block
   replacement: null
 runtime_adapter:
   binding_id: denied_medical_advice

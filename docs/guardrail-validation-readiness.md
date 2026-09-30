@@ -73,7 +73,7 @@ Guardrail 管理员打开详情页即可知道当前草稿能否进行 Validatio
 
 - `builtin-topic-safety@2.0.0` 是一个 Policy，包含 `topic/denylist` 和 `topic/allowlist` 两条 Rule。Guardrail 绑定 Policy，Rule 开关存放在 `enabled_rule_ids`。
 - 配置保存在该绑定的 `parameter_values`：`denied_topics`、`allowed_topics`（每行一项）、`topic_mode`（`strict` 或 `permissive`，默认宽松）。v2 不读取 Guardrail 根级名单。
-- 黑名单启用时必须填写拒绝话题，命中始终 `reject`，优先于白名单；白名单启用时，严格模式要求非空允许名单并拦截未匹配任务，宽松模式允许未匹配任务继续接受其他 Policy 检查。
+- 黑名单启用时必须填写拒绝话题，命中始终 `block`，优先于白名单；白名单启用时，严格模式要求非空允许名单并拦截未匹配任务，宽松模式允许未匹配任务继续接受其他 Policy 检查。
 - Rule 可独立关闭，关闭后保留参数但不编译该 Rule，不调用其模型。至少启用一条 Rule；要关闭整个能力，移除 Policy。
 - 意图／上传文档分析仅是 Policy 内的配置 Helper。先展示建议，再由用户应用名单；不自动切换 Rule、不修改模式、不添加或移除其他 Policy。没有可用 Topic Control 模型时，意图输入和文档入口一起禁用。
 - NeMo 原生 Topic Flow 共享一份提示词，因此 v2 采用具有独立 binding 参数的 Action，避免两条 Rule 共用边界。执行顺序固定为黑名单、白名单，日志归属到对应 Rule ID。

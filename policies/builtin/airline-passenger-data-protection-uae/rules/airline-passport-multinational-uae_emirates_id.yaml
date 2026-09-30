@@ -10,7 +10,7 @@ detector:
   parameters:
     expression: \b784-?\d{4}-?\d{7}-?\d\b
 on_match:
-  action: redact
+  action: transform
   replacement: '[uae_emirates_id_REDACTED]'
 runtime_adapter:
   binding_id: airline-passport-multinational

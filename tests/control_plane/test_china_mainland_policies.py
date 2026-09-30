@@ -19,11 +19,11 @@ CASES = tuple(
 
 
 def _decision(result) -> str:
-    if result.verdict == "safe":
+    if result.verdict == "not_matched":
         return "allow"
     if result.verdict == "error":
         return "error"
-    if any(finding.recommended_action == "reject" for finding in result.findings):
+    if any(finding.recommended_action == "block" for finding in result.findings):
         return "block"
     return "transform"
 
@@ -76,5 +76,5 @@ def test_checksum_validation_does_not_redact_format_only_candidates(content: str
         phase="input",
         policies=("china-personal-identifiers", "china-organization-identifiers"),
     )
-    assert result.verdict == "safe"
+    assert result.verdict == "not_matched"
     assert result.content == content

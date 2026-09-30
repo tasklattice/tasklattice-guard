@@ -1022,7 +1022,7 @@ detector:
             - explicit content involving minors
             - explicit content involving children
 on_match:
-  action: reject
+  action: block
   replacement: null
 runtime_adapter:
   binding_id: nsfw-child-safety-filter

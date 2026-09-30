@@ -65,7 +65,7 @@ type RuntimeEvaluation = {
   idSuffix: string;
   contractRef: string;
   potentiallyRemote: boolean;
-  after?: { idSuffix: string; verdicts: Array<"safe" | "unsafe" | "uncertain" | "error"> };
+  after?: { idSuffix: string; verdicts: Array<"not_matched" | "matched" | "unknown" | "error"> };
 };
 
 const contracts = {
@@ -88,22 +88,22 @@ const contracts = {
 const always = (idSuffix: string, contractRef: string, potentiallyRemote = false): RuntimeEvaluation => ({
   idSuffix, contractRef, potentiallyRemote,
 });
-const afterUncertain = (idSuffix: string, contractRef: string, previous: string, potentiallyRemote = true): RuntimeEvaluation => ({
-  idSuffix, contractRef, potentiallyRemote, after: { idSuffix: previous, verdicts: ["uncertain"] },
+const afterUnknown = (idSuffix: string, contractRef: string, previous: string, potentiallyRemote = true): RuntimeEvaluation => ({
+  idSuffix, contractRef, potentiallyRemote, after: { idSuffix: previous, verdicts: ["unknown"] },
 });
 
 const capabilities: RuntimeCapability[] = [
-  capability("secrets", "builtin-secrets", ["input", "output"], "reject", [always("exact", contracts.secretsExact)], "data_protection"),
-  capability("pii", "builtin-pii", ["input", "output"], "redact", [always("exact", contracts.piiExact), afterUncertain("semantic", contracts.piiSemantic, "exact")], "data_protection"),
-  capability("prompt_injection", "builtin-prompt-injection", ["input"], "reject", [always("primary", contracts.promptInjection)], "interaction_safety"),
-  capability("indirect_prompt_injection", "builtin-indirect-prompt-injection", ["input"], "reject", [always("exact", contracts.indirectPromptInjection)], "interaction_safety"),
-  capability("jailbreak", "builtin-jailbreak", ["input"], "reject", [always("primary", contracts.jailbreak, true)], "interaction_safety"),
-  capability("system_prompt_leakage", "builtin-system-prompt-leakage", ["output"], "reject", [always("exact", contracts.systemPromptLeakage)], "data_protection"),
-  capability("content_safety", "builtin-content-safety", ["input", "output"], "reject", [always("primary", contracts.contentSafety, true)], "interaction_safety"),
-  capability("topic_control", "builtin-topic-safety", ["input"], "redirect", [always("rules", contracts.topicRules), afterUncertain("semantic", contracts.topicSemantic, "rules")], "business_assurance"),
-  capability("company_policy", "builtin-company-policy", ["input"], "reject", [always("primary", contracts.companyPolicy, true)], "business_assurance"),
-  capability("contextual_grounding", "builtin-contextual-grounding", ["output"], "regenerate", [always("primary", contracts.contextualGrounding, true)], "business_assurance"),
-  capability("automated_reasoning", "builtin-automated-reasoning", ["output"], "rewrite", [always("primary", contracts.automatedReasoning, true)], "business_assurance"),
+  capability("secrets", "builtin-secrets", ["input", "output"], "block", [always("exact", contracts.secretsExact)], "data_protection"),
+  capability("pii", "builtin-pii", ["input", "output"], "transform", [always("exact", contracts.piiExact), afterUnknown("semantic", contracts.piiSemantic, "exact")], "data_protection"),
+  capability("prompt_injection", "builtin-prompt-injection", ["input"], "block", [always("primary", contracts.promptInjection)], "interaction_safety"),
+  capability("indirect_prompt_injection", "builtin-indirect-prompt-injection", ["input"], "block", [always("exact", contracts.indirectPromptInjection)], "interaction_safety"),
+  capability("jailbreak", "builtin-jailbreak", ["input"], "block", [always("primary", contracts.jailbreak, true)], "interaction_safety"),
+  capability("system_prompt_leakage", "builtin-system-prompt-leakage", ["output"], "block", [always("exact", contracts.systemPromptLeakage)], "data_protection"),
+  capability("content_safety", "builtin-content-safety", ["input", "output"], "block", [always("primary", contracts.contentSafety, true)], "interaction_safety"),
+  capability("topic_control", "builtin-topic-safety", ["input"], "block", [always("rules", contracts.topicRules), afterUnknown("semantic", contracts.topicSemantic, "rules")], "business_assurance"),
+  capability("company_policy", "builtin-company-policy", ["input"], "block", [always("primary", contracts.companyPolicy, true)], "business_assurance"),
+  capability("contextual_grounding", "builtin-contextual-grounding", ["output"], "block", [always("primary", contracts.contextualGrounding, true)], "business_assurance"),
+  capability("automated_reasoning", "builtin-automated-reasoning", ["output"], "transform", [always("primary", contracts.automatedReasoning, true)], "business_assurance"),
 ];
 
 const capabilityByPolicyId = new Map(capabilities.map((item) => [item.policyId, item]));
@@ -116,7 +116,7 @@ type PlanStep = {
   contract_ref: string;
   phases: Array<"input" | "output">;
   on_unsafe: EnforcementAction;
-  trigger: { type: "always" } | { type: "on_result"; step_ref: string; verdicts: Array<"safe" | "unsafe" | "uncertain" | "error"> };
+  trigger: { type: "always" } | { type: "on_result"; step_ref: string; verdicts: Array<"not_matched" | "matched" | "unknown" | "error"> };
   parameters: Array<[string, string]>;
 };
 
@@ -197,7 +197,7 @@ export function buildGuardrailPlan(input: {
     policyById.set(`${policy.id}@${policy.version}`, policy);
     resolved.push({ capability: {
       capability: "builtin_content_filter", policyId: "", defaultPhases: ["input", "output"],
-      defaultAction: "reject", evaluations: [always("rules", contracts.contentFilter)], module: "interaction_safety",
+      defaultAction: "block", evaluations: [always("rules", contracts.contentFilter)], module: "interaction_safety",
     }, binding, policy });
   }
 
@@ -237,7 +237,7 @@ export function buildGuardrailPlan(input: {
     // Deny-first is the Policy's semantic contract, independent of display order.
     const groups: Array<{ prefix: string; phases: Array<"input" | "output">; action: EnforcementAction; parameters?: Array<[string, string]> }> = splitTopic ? [TOPIC_DENY_RULE, TOPIC_ALLOW_RULE].filter(id => binding.enabledRuleIds.includes(id)).map(id => ({
       prefix: `${prefix}:${id}`, phases,
-      action: id === TOPIC_DENY_RULE ? "reject" as EnforcementAction : binding.ruleActions[id] ?? binding.action ?? "redirect" as EnforcementAction,
+      action: id === TOPIC_DENY_RULE ? "block" as EnforcementAction : binding.ruleActions[id] ?? binding.action ?? "block" as EnforcementAction,
       parameters: [["policy_id", binding.policyId], ["policy_version", binding.policyVersion], ["rule_id", id],
         ["topic_mode", id === TOPIC_DENY_RULE ? "permissive" : values.mode],
         ["allowed_topics", id === TOPIC_ALLOW_RULE ? values.allowed : ""],
@@ -263,7 +263,7 @@ export function buildGuardrailPlan(input: {
               type: "on_result",
               step_ref: `${group.prefix}:${evaluation.after.idSuffix}`,
               verdicts: draft.safetyLevel === "strict"
-                ? Array.from(new Set(["safe" as const, ...evaluation.after.verdicts]))
+                ? Array.from(new Set(["not_matched" as const, ...evaluation.after.verdicts]))
                 : evaluation.after.verdicts,
             }
           : { type: "always" },
@@ -422,7 +422,7 @@ function validateCatalogBinding(binding: GuardrailPolicyBindingConfig, policy: P
     const missing = topicMissingParameters(binding.parameterValues, binding.enabledRuleIds);
     if (missing.length) throw new Error(`Topic Control requires configuration for enabled Rules: ${missing.join(", ")}.`);
     if (binding.parameterValues.topic_mode && !["strict", "permissive"].includes(binding.parameterValues.topic_mode)) throw new Error("Topic Control Allowlist mode must be strict or permissive.");
-    if (binding.ruleActions[TOPIC_DENY_RULE] && binding.ruleActions[TOPIC_DENY_RULE] !== "reject") throw new Error("The Topic Control Denylist Rule must reject denied tasks.");
+    if (binding.ruleActions[TOPIC_DENY_RULE] && binding.ruleActions[TOPIC_DENY_RULE] !== "block") throw new Error("The Topic Control Denylist Rule must reject denied tasks.");
   }
   if (policy.id === PHRASE_POLICY_ID) parsePhraseEntries(binding.parameterValues[PHRASE_PARAMETER] ?? "");
   if (binding.policyVersion !== policy.version) throw new Error(`Policy ${policy.id} must pin catalog version ${policy.version}; received ${binding.policyVersion}.`);

@@ -919,7 +919,7 @@ detector:
         - zoophilia
         - zoophile
 on_match:
-  action: reject
+  action: block
   replacement: null
 runtime_adapter:
   binding_id: harm_toxic_abuse

@@ -10,7 +10,7 @@ detector:
   parameters:
     expression: \b[Pp]\.?[Oo]\.?\s*[Bb]ox\s*\d{1,6}\b
 on_match:
-  action: redact
+  action: transform
   replacement: '[uae_po_box_REDACTED]'
 runtime_adapter:
   binding_id: uae-data-protection-pii

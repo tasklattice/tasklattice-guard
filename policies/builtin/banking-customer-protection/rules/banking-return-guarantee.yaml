@@ -11,7 +11,7 @@ detector:
   parameters:
     expression: (?i)\b(?:I|we)\s+guarantee\s+(?:a\s+)?(?:[0-9]+%\s+)?(?:profit|returns?)\b|(?:我|我们)保证(?:稳赚不赔|投资收益|盈利)
 on_match:
-  action: reject
+  action: block
 runtime_adapter:
   binding_id: banking-customer-protection
   implementation_rule_id: banking/return-guarantee

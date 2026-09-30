@@ -7,7 +7,7 @@ detector:
   ref: model/grounding
   version: 1.0.0
 on_match:
-  action: regenerate
+  action: block
 runtime_adapter:
   binding_id: contextual_grounding
   implementation_rule_id: contextual_grounding

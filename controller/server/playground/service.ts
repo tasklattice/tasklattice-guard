@@ -468,7 +468,7 @@ function checkResult(
     triggered_policy: firstFinding?.policy_id ? { id: firstFinding.policy_id, name: firstFinding.policy_id } : null,
     triggered_rule: firstFinding?.rule_id ? { id: firstFinding.rule_id, name: firstFinding.rule_id } : null,
     policies,
-    findings: result.decision.findings.filter(finding => finding.verdict === "unsafe" || finding.verdict === "uncertain").map((finding, index) => ({
+    findings: result.decision.findings.filter(finding => finding.verdict === "matched" || finding.verdict === "unknown").map((finding, index) => ({
       id: `finding-${index + 1}`,
       severity: eventSeverity(finding.risk_severity),
       title: finding.taxonomy_id,
@@ -482,7 +482,7 @@ function checkResult(
     })),
     trace_summary: {
       steps: result.decision.trace.length,
-      matched_steps: result.decision.trace.filter((step) => step.verdict === "unsafe" || step.outcome === "unsafe").length,
+      matched_steps: result.decision.trace.filter((step) => step.verdict === "matched" || step.outcome === "matched").length,
     },
     trace: result.decision.trace,
   };

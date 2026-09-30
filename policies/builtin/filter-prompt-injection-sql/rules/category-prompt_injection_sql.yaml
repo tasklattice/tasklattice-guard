@@ -120,7 +120,7 @@ detector:
             - GROUP BY 1--
             - HAVING 1=1
 on_match:
-  action: reject
+  action: block
   replacement: null
 runtime_adapter:
   binding_id: prompt_injection_sql

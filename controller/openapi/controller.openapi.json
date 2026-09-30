@@ -1080,35 +1080,15 @@
                 "type": "null"
               },
               {
-                "const": "clarify",
+                "const": "allow",
                 "type": "string"
               },
               {
-                "const": "fallback",
+                "const": "block",
                 "type": "string"
               },
               {
-                "const": "pass",
-                "type": "string"
-              },
-              {
-                "const": "redact",
-                "type": "string"
-              },
-              {
-                "const": "redirect",
-                "type": "string"
-              },
-              {
-                "const": "regenerate",
-                "type": "string"
-              },
-              {
-                "const": "reject",
-                "type": "string"
-              },
-              {
-                "const": "rewrite",
+                "const": "transform",
                 "type": "string"
               }
             ]
@@ -1198,14 +1178,9 @@
       "getGuardrailProfilesResponseItemsItemPolicyBindingsItemRuleActions": {
         "additionalProperties": {
           "enum": [
-            "clarify",
-            "fallback",
-            "pass",
-            "redact",
-            "redirect",
-            "regenerate",
-            "reject",
-            "rewrite"
+            "allow",
+            "block",
+            "transform"
           ],
           "type": "string"
         },
@@ -3725,14 +3700,9 @@
           "effects": {
             "items": {
               "enum": [
-                "clarify",
-                "fallback",
-                "pass",
-                "redact",
-                "redirect",
-                "regenerate",
-                "reject",
-                "rewrite"
+                "allow",
+                "block",
+                "transform"
               ],
               "type": "string"
             },
@@ -4055,14 +4025,9 @@
           },
           "on_unsafe": {
             "enum": [
-              "clarify",
-              "fallback",
-              "pass",
-              "redact",
-              "redirect",
-              "regenerate",
-              "reject",
-              "rewrite"
+              "allow",
+              "block",
+              "transform"
             ],
             "type": "string"
           },
@@ -4490,14 +4455,9 @@
           "effects": {
             "items": {
               "enum": [
-                "clarify",
-                "fallback",
-                "pass",
-                "redact",
-                "redirect",
-                "regenerate",
-                "reject",
-                "rewrite"
+                "allow",
+                "block",
+                "transform"
               ],
               "type": "string"
             },
@@ -4669,14 +4629,9 @@
           },
           "effect": {
             "enum": [
-              "clarify",
-              "fallback",
-              "pass",
-              "redact",
-              "redirect",
-              "regenerate",
-              "reject",
-              "rewrite"
+              "allow",
+              "block",
+              "transform"
             ],
             "type": "string"
           },
@@ -5425,6 +5380,11 @@
             "$ref": "#/components/schemas/getPoliciesResponseItemsItemRulesItemDetector_options"
           },
           "effect": {
+            "enum": [
+              "allow",
+              "block",
+              "transform"
+            ],
             "type": "string"
           },
           "exceptions": {
@@ -9097,14 +9057,9 @@
                       "anyOf": [
                         {
                           "enum": [
-                            "reject",
-                            "redact",
-                            "rewrite",
-                            "regenerate",
-                            "redirect",
-                            "fallback",
-                            "clarify",
-                            "pass"
+                            "allow",
+                            "block",
+                            "transform"
                           ],
                           "type": "string"
                         },
@@ -9191,14 +9146,9 @@
                     "ruleActions": {
                       "additionalProperties": {
                         "enum": [
-                          "reject",
-                          "redact",
-                          "rewrite",
-                          "regenerate",
-                          "redirect",
-                          "fallback",
-                          "clarify",
-                          "pass"
+                          "allow",
+                          "block",
+                          "transform"
                         ],
                         "type": "string"
                       },
@@ -9723,14 +9673,9 @@
                     },
                     "on_unsafe": {
                       "enum": [
-                        "reject",
-                        "redact",
-                        "rewrite",
-                        "regenerate",
-                        "redirect",
-                        "fallback",
-                        "clarify",
-                        "pass"
+                        "allow",
+                        "block",
+                        "transform"
                       ],
                       "type": "string"
                     },
@@ -10476,14 +10421,9 @@
                       "anyOf": [
                         {
                           "enum": [
-                            "reject",
-                            "redact",
-                            "rewrite",
-                            "regenerate",
-                            "redirect",
-                            "fallback",
-                            "clarify",
-                            "pass"
+                            "allow",
+                            "block",
+                            "transform"
                           ],
                           "type": "string"
                         },
@@ -10570,14 +10510,9 @@
                     "ruleActions": {
                       "additionalProperties": {
                         "enum": [
-                          "reject",
-                          "redact",
-                          "rewrite",
-                          "regenerate",
-                          "redirect",
-                          "fallback",
-                          "clarify",
-                          "pass"
+                          "allow",
+                          "block",
+                          "transform"
                         ],
                         "type": "string"
                       },
@@ -11651,14 +11586,9 @@
                       "anyOf": [
                         {
                           "enum": [
-                            "reject",
-                            "redact",
-                            "rewrite",
-                            "regenerate",
-                            "redirect",
-                            "fallback",
-                            "clarify",
-                            "pass"
+                            "allow",
+                            "block",
+                            "transform"
                           ],
                           "type": "string"
                         },
@@ -11745,14 +11675,9 @@
                     "ruleActions": {
                       "additionalProperties": {
                         "enum": [
-                          "reject",
-                          "redact",
-                          "rewrite",
-                          "regenerate",
-                          "redirect",
-                          "fallback",
-                          "clarify",
-                          "pass"
+                          "allow",
+                          "block",
+                          "transform"
                         ],
                         "type": "string"
                       },
@@ -14127,14 +14052,9 @@
                     },
                     "on_unsafe": {
                       "enum": [
-                        "reject",
-                        "redact",
-                        "rewrite",
-                        "regenerate",
-                        "redirect",
-                        "fallback",
-                        "clarify",
-                        "pass"
+                        "allow",
+                        "block",
+                        "transform"
                       ],
                       "type": "string"
                     },

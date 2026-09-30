@@ -57,7 +57,7 @@ class RecordingExecution(GuardrailRuntimeService):
 
     async def _evaluate_resolved(self, request, resolution, stored):
         self.executions.append((resolution.plan.guardrail_id, resolution.plan.guardrail_version, request.texts))
-        return ProtectionDecision(decision='allow', action='pass',
+        return ProtectionDecision(decision='allow', action='allow',
             guardrail_id=resolution.plan.guardrail_id, guardrail_version=resolution.plan.guardrail_version,
             route_assignment=resolution.route_assignment)
 

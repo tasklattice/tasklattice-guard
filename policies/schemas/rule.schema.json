@@ -30,6 +30,11 @@
       "additionalProperties": false,
       "properties": {
         "action": {
+          "enum": [
+            "allow",
+            "block",
+            "transform"
+          ],
           "title": "Action",
           "type": "string"
         },

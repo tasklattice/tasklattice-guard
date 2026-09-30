@@ -10,7 +10,7 @@ detector:
   parameters:
     expression: \b[0-9]{9}\b
 on_match:
-  action: redact
+  action: transform
   replacement: '[passport_uk_REDACTED]'
 runtime_adapter:
   binding_id: airline-passport-multinational

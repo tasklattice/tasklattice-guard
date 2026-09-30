@@ -38,9 +38,9 @@ export function PageHeader({
 export function StateBadge({ state, label }: { state: string; label?: string }) {
   const { t, i18n } = useTranslation();
   const normalized = state.toLowerCase();
-  const positive = ["active", "passed", "ready", "healthy", "allow", "pass", "safe", "enabled", "configured", "protected", "local", "success"].includes(normalized);
-  const negative = ["failed", "block", "blocked", "reject", "unsafe", "error", "degraded", "disabled", "saturated", "offline"].includes(normalized);
-  const warning = ["transform", "redirect", "uncertain", "waiting", "unconfigured", "unavailable", "not evaluated", "stale", "needs_validation", "intervene", "paused", "syncing", "busy", "deploying", "distributing"].includes(normalized);
+  const positive = ["active", "passed", "ready", "healthy", "allow", "pass", "not_matched", "enabled", "configured", "protected", "local", "success"].includes(normalized);
+  const negative = ["failed", "block", "blocked", "error", "degraded", "disabled", "saturated", "offline"].includes(normalized);
+  const warning = ["transform", "matched", "unknown", "waiting", "unconfigured", "unavailable", "not evaluated", "stale", "needs_validation", "intervene", "paused", "syncing", "busy", "deploying", "distributing"].includes(normalized);
 
   return (
     <Badge

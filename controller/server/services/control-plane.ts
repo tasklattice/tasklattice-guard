@@ -1453,7 +1453,7 @@ export class ControlPlaneService {
       cursor ? lt(rowValue(runtimeEvents.occurredAt, runtimeEvents.id), rowValue(timestampValue(cursor.at), literal(cursor.id))) : undefined,
       input.requestId ? eq(runtimeEvents.requestId, input.requestId) : undefined,
       input.direction ? eq(runtimeEvents.direction, input.direction) : undefined,
-      input.outcome ? inArray(lowerText(runtimeEvents.decision), input.outcome === 'allow' ? ['allow','allowed','pass','passed'] : input.outcome === 'block' ? ['block','blocked','reject','rejected','deny','denied'] : input.outcome === 'transform' ? ['transform','transformed','redact','redacted','rewrite','rewritten','intervene','intervened'] : ['error','failed','failure','timeout','timed_out']) : undefined,
+      input.outcome ? inArray(lowerText(runtimeEvents.decision), input.outcome === 'allow' ? ['allow','allowed','pass','passed'] : input.outcome === 'block' ? ['block','blocked','block','rejected','deny','denied'] : input.outcome === 'transform' ? ['transform','transformed','transform','redacted','transform','rewritten','intervene','intervened'] : ['error','failed','failure','timeout','timed_out']) : undefined,
       input.captured ? eq(jsonText(runtimeEvents.metadata, 'runtimeLogCaptured'), 'true') : undefined,
       input.findingsOnly ? exists(this.db.select({ item: findings.item }).from(findings.source).where(securityFinding(findings.item))) : undefined,
       input.guardrailId ? eq(runtimeEvents.guardrailId, input.guardrailId) : undefined,
@@ -3049,7 +3049,7 @@ function programmablePolicyPlan(
   const contract = Object.fromEntries(snapshot.execution_contract);
   const nativeRisk = contract.native_risk;
   const phases = [...new Set(snapshot.rail_bindings.map((item) => item.rail_type))];
-  const action = snapshot.rail_bindings[0]?.on_unsafe ?? "reject";
+  const action = snapshot.rail_bindings[0]?.on_unsafe ?? "block";
   const steps = nativeRisk ? [{
     id: `${nativeRisk}:primary`,
     capability: nativeRisk,

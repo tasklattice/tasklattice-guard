@@ -15,7 +15,7 @@ describe.skipIf(!url)("Policy publication identity in PostgreSQL", () => {
   const namespace = `guard_policy_publish_${randomUUID().replaceAll("-", "")}`;
   let admin: Pool; let pool: Pool; let service: ControlPlaneService;
   const draft = programmablePolicyDraftSchema.parse({ guardrail_category: "content_safety", sources: [{ path: "main.co", content: "flow check $text\n  pass\n" }],
-    rail_bindings: [{ rail_type: "input", flow_name: "check", execution_mode: "detect", on_unsafe: "reject", risk_severity: "medium" }],
+    rail_bindings: [{ rail_type: "input", flow_name: "check", execution_mode: "detect", on_unsafe: "block", risk_severity: "medium" }],
     test_cases: [{ name: "safe", rail_type: "input", content: "ordinary", expected_decision: "allow", covered_rule_ids: ["flow/input/check"], case_type: "input_rail" }] });
   beforeAll(async () => {
     expect(["127.0.0.1", "localhost", "[::1]"]).toContain(new URL(url!).hostname);

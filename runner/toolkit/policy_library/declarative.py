@@ -13,7 +13,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 import yaml
 
-from ..runtime.enforcement_action_generated import ENFORCEMENT_ACTIONS
+from ..runtime.enforcement_action_generated import ENFORCEMENT_ACTIONS, EnforcementAction
 from .pattern_validation import parse_pattern_validators
 
 
@@ -28,7 +28,7 @@ class DetectorReference(StrictModel):
 
 
 class Handling(StrictModel):
-    action: str
+    action: EnforcementAction
     replacement: str | None = None
 
     @field_validator("action")
@@ -126,7 +126,7 @@ class TestDefinition(StrictModel):
 class ExecutionDefinition(StrictModel):
     mode: Literal["sequential"] = "sequential"
     input: Literal["previous_output"] = "previous_output"
-    stop_on: Literal["reject"] = "reject"
+    stop_on: Literal["block"] = "block"
 
 
 class PolicyDefinition(StrictModel):
@@ -263,7 +263,7 @@ def validate_custom_detector(definition: PolicyDefinition, rule: RuleDefinition,
     adapter = detector["adapter"]
     if adapter["execution"] != "local":
         raise ValueError("Custom model-backed detector registration is not available in this iteration")
-    if "replacement" in rule.on_match.model_fields_set and not (detector["supports_replacement"] and rule.on_match.action == "redact"):
+    if "replacement" in rule.on_match.model_fields_set and not (rule.on_match.action == "transform"):
         raise ValueError(f"Rule {rule.id}: this detector/action does not accept replacement text")
     if adapter["detector"] == "keyword" and not (rule.expand or params.get("keywords") or params.get("detector_options", {}).get("terms")):
         raise ValueError(f"Rule {rule.id}: keyword detection requires keywords")
@@ -317,5 +317,5 @@ def validate_detector_parameters(rule: RuleDefinition, detector: dict, params: d
             re.compile(expression)
     except re.error as error:
         raise ValueError(f"Rule {rule.id}: invalid regular expression: {error}") from error
-    if rule.on_match.action == "redact" and detector["supports_replacement"] and not rule.on_match.replacement:
-        raise ValueError(f"Rule {rule.id}: redaction requires replacement text")
+    if rule.on_match.action == "transform" and detector["adapter"]["execution"] == "local" and rule.on_match.replacement is None:
+        raise ValueError(f"Rule {rule.id}: transform requires replacement text")

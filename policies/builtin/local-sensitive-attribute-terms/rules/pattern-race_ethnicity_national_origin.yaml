@@ -13,7 +13,7 @@ detector:
     expression: \b(caucasian|african[- ]?american|black|white|asian|hispanic|latino|latina|latinx|pacific\s+islander|native\s+american|indigenous|first\s+nations|aboriginal|mestizo|mulatto|biracial|multiracial|mixed[-
       ]?race|person\s+of\s+colou?r|POC|BIPOC|ethnic(ity)?|racial|race|arab|middle\s+eastern|south\s+asian|east\s+asian|southeast\s+asian|european|african|caribbean|west\s+indian|haitian|jamaican|cuban|puerto\s+rican|mexican|dominican|salvadoran|guatemalan|honduran|colombian|venezuelan|peruvian|brazilian|chinese|japanese|korean|vietnamese|filipino|filipina|indian|pakistani|bangladeshi|sri\s+lankan|nepali|thai|indonesian|malaysian|burmese|cambodian|laotian|hmong|somali|ethiopian|nigerian|ghanaian|kenyan|south\s+african|egyptian|moroccan|algerian|iranian|iraqi|syrian|lebanese|palestinian|israeli|turkish|afghan|uzbek|kazakh|russian|ukrainian|polish|german|italian|irish|british|french|spanish|portuguese|greek|albanian|serbian|croatian|bosnian|romani|roma|gypsy|jewish|ashkenazi|sephardic|mizrahi|native\s+hawaiian|samoan|tongan|fijian|guamanian|chamorro|inuit|aleut|metis|maori|aboriginal\s+australian|torres\s+strait)\b
 on_match:
-  action: redact
+  action: transform
   replacement: '[race_ethnicity_national_origin_REDACTED]'
 runtime_adapter:
   binding_id: local-sensitive-attribute-terms

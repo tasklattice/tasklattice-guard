@@ -22,7 +22,7 @@ def _request(content: str) -> ActionRequest:
         capability="topic_control",
         contract_ref="tali.guard.topic-control.rules.v1",
         phases=("input",),
-        on_unsafe="redirect",
+        on_unsafe="block",
         parameters=(
             ("topic_mode", "allowlist"),
             ("allowed_topics", "Order status\nReturns"),
@@ -58,7 +58,7 @@ def _request(content: str) -> ActionRequest:
         deadline=time.monotonic() + 5,
         parameters=step.parameters,
         capability=step.capability,
-        proposed_action="redirect",
+        proposed_action="block",
         plan=plan,
         binding=binding,
     )
@@ -66,13 +66,13 @@ def _request(content: str) -> ActionRequest:
 
 def test_explicit_allowlist_match_is_safe_even_when_legacy_restricted_value_matches() -> None:
     result = asyncio.run(TopicRulesActionProvider().execute(_request("Please check my order status")))
-    assert result.verdict == "safe"
+    assert result.verdict == "not_matched"
     assert "allowed" in result.reason
 
 
 def test_unlisted_topic_escalates_to_semantic_allowlist_judgment() -> None:
     result = asyncio.run(TopicRulesActionProvider().execute(_request("Give me medical advice")))
-    assert result.verdict == "uncertain"
+    assert result.verdict == "unknown"
     assert "allowlist" in result.reason
 
 
@@ -81,7 +81,7 @@ def test_new_modes_never_allow_a_keyword_to_bypass_semantic_denials(mode: str) -
     request = _request("Please check my order status and give me medical advice")
     request = replace(request, parameters=(("topic_mode", mode), ("allowed_topics", "Order status"), ("restricted_topics", "Medical advice")))
     result = asyncio.run(TopicRulesActionProvider().execute(request))
-    assert result.verdict == "uncertain"
+    assert result.verdict == "unknown"
     prompt = topic_judge_prompt(request.parameters)
     assert "Medical advice" in prompt
     assert "even if an allowed topic also matches" in prompt

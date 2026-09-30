@@ -21,7 +21,7 @@ async def test_default_runner_validates_cases_through_the_real_nemo_runtime() ->
             "capability": "secrets",
             "contract_ref": "tali.guard.secrets.exact.v1",
             "phases": ["input", "output"],
-            "on_unsafe": "reject",
+            "on_unsafe": "block",
             "trigger": {"type": "always", "verdicts": []},
             "parameters": [],
         }],

@@ -113,7 +113,7 @@ detector:
             - système d'analyse du sentiment des employés
             - surveillance des émotions en classe
 on_match:
-  action: reject
+  action: block
   replacement: null
 runtime_adapter:
   binding_id: eu-ai-act-art5-emotion-recognition-fr

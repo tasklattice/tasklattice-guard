@@ -65,7 +65,7 @@ const result: TestCaseResult = {
   reason: "Matched the pinned Rule contract.",
   phase: "input",
   input_content: "Is Qatar Airways better than Emirates?",
-  action: "reject",
+  action: "block",
   output_content: "",
   findings: [],
   trace: [],

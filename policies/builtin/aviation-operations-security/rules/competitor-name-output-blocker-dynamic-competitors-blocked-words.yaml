@@ -11,7 +11,7 @@ detector:
       terms:
         parameter: competitors
 on_match:
-  action: reject
+  action: block
   replacement: null
 runtime_adapter:
   binding_id: competitor-name-output-blocker

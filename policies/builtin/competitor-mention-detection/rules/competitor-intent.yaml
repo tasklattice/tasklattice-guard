@@ -96,7 +96,7 @@ detector:
           '7': t
         collapse_whitespace: true
 on_match:
-  action: reject
+  action: block
   replacement: '[COMPETITOR_CONTENT_REDACTED]'
 runtime_adapter:
   binding_id: competitor

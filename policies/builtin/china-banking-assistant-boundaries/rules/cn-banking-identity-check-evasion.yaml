@@ -13,7 +13,7 @@ detector:
     expression: (?i)(?:帮我|教我|如何|怎么).{0,6}(?:绕过|规避|跳过).{0,6}(?:银行)?(?:身份验证|实名认证|客户尽职调查|反洗钱检查)|\b(?:help
       me|show me how to)\s+(?:bypass|evade)\s+(?:bank\s+)?(?:KYC|AML|identity verification)\b
 on_match:
-  action: reject
+  action: block
 runtime_adapter:
   binding_id: china-banking-assistant-boundaries
   implementation_rule_id: cn-banking/identity-check-evasion

@@ -36,7 +36,7 @@ detector:
       - 28
       check_characters: 0YXWUTRQPNMLKJHGFEDCBA987654321
 on_match:
-  action: redact
+  action: transform
   replacement: '[cn_uscc_REDACTED]'
 runtime_adapter:
   binding_id: china-organization-identifiers

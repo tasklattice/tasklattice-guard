@@ -10,7 +10,7 @@ detector:
   parameters:
     expression: \b4\d{3}[\s\-]?\d{4}[\s\-]?\d{4}[\s\-]?\d{4}\b
 on_match:
-  action: redact
+  action: transform
   replacement: '[visa_REDACTED]'
 runtime_adapter:
   binding_id: financial-pii

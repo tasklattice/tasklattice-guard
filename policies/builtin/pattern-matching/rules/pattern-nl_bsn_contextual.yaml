@@ -14,7 +14,7 @@ detector:
     context_max_gap_words: 1
     allow_word_numbers: true
 on_match:
-  action: redact
+  action: transform
   replacement: '[nl_bsn_contextual_REDACTED]'
 runtime_adapter:
   binding_id: pattern-matching

@@ -88,7 +88,7 @@ detector:
             - manipulation ia trompeuse
             - système ia dark pattern
 on_match:
-  action: reject
+  action: block
   replacement: null
 runtime_adapter:
   binding_id: eu-ai-act-art5-manipulation-fr

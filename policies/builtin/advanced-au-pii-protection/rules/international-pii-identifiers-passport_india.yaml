@@ -10,7 +10,7 @@ detector:
   parameters:
     expression: \b[A-Z][0-9]{7}\b
 on_match:
-  action: redact
+  action: transform
   replacement: '[passport_india_REDACTED]'
 runtime_adapter:
   binding_id: international-pii-identifiers

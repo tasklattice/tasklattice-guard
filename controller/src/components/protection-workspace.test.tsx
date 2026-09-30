@@ -12,7 +12,7 @@ afterEach(cleanup);
 const bindings: GuardrailPolicyBinding[] = ["alpha", "beta", "gamma"].map(policy_id => ({
   policy_id, policy_version: "2.0.0", enabled_rails: ["input", "output"],
   enabled_rule_ids: ["second", "first"], rule_order: ["second", "first"],
-  rule_actions: { first: "redact" }, action: null, parameter_values: {}, reasoning_policy: null,
+  rule_actions: { first: "transform" }, action: null, parameter_values: {}, reasoning_policy: null,
 }));
 function setup() {
   const changed = vi.fn();

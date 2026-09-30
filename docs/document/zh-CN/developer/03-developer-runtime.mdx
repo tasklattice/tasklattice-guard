@@ -15,18 +15,18 @@ order: 2
 3. 接入方自己调用上游模型，并继续负责模型密钥、业务会话、超时、重试和取消生成。Guard 不代理上游模型请求。
 4. 在回复交付前检查**输出**：完整输出先缓存再检查；流式输出按协议提交新增文本，只交付 Guard 返回的 `released_text`。输入和输出使用同一 Endpoint、同一 `litellm_call_id`，保持路由元数据一致，让两阶段固定到同一版本。
 
-详细请求和 `action` 响应见[连接、输入与完整输出检查](#gateway-connect)；逐段交付见[流式输出检查](#gateway-stream)。
+详细请求和 `action` 响应见[连接、输入与完整输出检查](/document/developer/gateway-connect)；逐段交付见[流式输出检查](/document/developer/gateway-stream)。
 
 <a id="developer-runtime-boundary" />
 ## 双方各负责什么
 
 **Guard 负责**根据已发布的 Router 和 Guardrail Version 执行所提交文本的检查，返回决策或可交付的流式文本，并记录运行证据。它不会凭空看见未提交的消息、图片或工具结果，也不会替接入方调用模型、发送 SSE、取消生成或收回已交付的文本。
 
-**网关或 Agent 负责**提取并提交实际待保护的内容，验证响应格式，按 `action` 阻断或替换，决定何时调用模型及何时交付输出。HTTP `200` 只表示检查 API 调用成功，**不表示内容可以放行**。检查失败与正常的 `BLOCKED` 是两回事；Fail Open、Fail Closed 或 Dry Run 都是接入方需要明确选择并验证的交付行为，见[失败处理与上线检查](#gateway-failures)。
+**网关或 Agent 负责**提取并提交实际待保护的内容，验证响应格式，按 `action` 阻断或替换，决定何时调用模型及何时交付输出。HTTP `200` 只表示检查 API 调用成功，**不表示内容可以放行**。检查失败与正常的 `BLOCKED` 是两回事；Fail Open、Fail Closed 或 Dry Run 都是接入方需要明确选择并验证的交付行为，见[失败处理与上线检查](/document/developer/gateway-failures)。
 
-Endpoint 身份来自运行时凭据。请求里的 `model`、headers 或用户声明可以参与路由或检查上下文，但不会仅因调用方填写了它们就变成可信身份。控制面负责配置与发布，数据面只执行已经生效的配置；想更改 Policy 或 Route，应回到[控制面集成](#developer-api-access)。
+Endpoint 身份来自运行时凭据。请求里的 `model`、headers 或用户声明可以参与路由或检查上下文，但不会仅因调用方填写了它们就变成可信身份。控制面负责配置与发布，数据面只执行已经生效的配置；想更改 Policy 或 Route，应回到[控制面集成](/document/developer/developer-api-access)。
 
 <a id="developer-enforce-results" />
 ## 执行 Rule 命中后的处理
 
-Policy 中的 Rule 定义默认处理方式，Guardrail Binding 可能覆盖它。八种处理及优先级见[Rule 命中后如何处理](#term-rule-actions)。数据面接入方不用选择 Rule 的实现形式，但必须执行本次返回的结果：`BLOCKED` 停止当前阶段，`GUARDRAIL_INTERVENED` 使用返回的 `texts`，`NONE` 才使用原文。`regenerate`、`fallback`、`clarify` 等交互动作还需要接入方控制模型调用或用户对话，不能只记录 Guard 的 finding 就认为处理完成。
+Policy 中的 Rule 定义默认处理方式，Guardrail Binding 可能覆盖它。三种处理及优先级见[Rule 命中后如何处理](/document/overview/glossary-definition#term-rule-actions)。数据面接入方不用选择 Rule 的实现形式，但必须执行本次返回的结果：`BLOCKED` 停止当前阶段，`GUARDRAIL_INTERVENED` 使用返回的 `texts`，`NONE` 才使用原文。重试、追问和降级由接入方管理，不是 Rule 动作。阻断后不能继续交付原文，修改后必须使用返回内容。

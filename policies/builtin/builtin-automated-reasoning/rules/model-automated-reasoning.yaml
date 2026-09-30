@@ -7,7 +7,7 @@ detector:
   ref: service/formal-verification
   version: 1.0.0
 on_match:
-  action: rewrite
+  action: transform
 runtime_adapter:
   binding_id: automated_reasoning
   implementation_rule_id: automated_reasoning

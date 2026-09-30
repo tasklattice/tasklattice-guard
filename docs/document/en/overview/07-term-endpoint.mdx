@@ -24,7 +24,7 @@ The type selected when creating an Endpoint is its **data-plane integration prot
 | **Generic HTTP Guard API** (`generic-http-guard`) | A custom AI Gateway, application, or Agent that wants a vendor-neutral check request | Authenticate to `/guardrails/evaluate` with the Endpoint credential, specify `protocol: "http"` and the input or output phase, then enforce the result in the client. |
 | **A2A Guard API** (`a2a-guard`) | An A2A client that needs to inspect agent-to-agent messages | Also call `/guardrails/evaluate`, but specify `protocol: "a2a"` and provide A2A operation, context ID, or task ID where relevant. |
 
-<strong>Which one to choose:</strong> Use the LiteLLM type for an existing LiteLLM gateway. A custom gateway can either implement the LiteLLM Generic Guardrail contract or choose generic HTTP and map its own request and response structures. Choose A2A for agent-to-agent messages. <strong>The Endpoint type and call protocol must match</strong>: a generic HTTP Endpoint cannot be called through the LiteLLM callback path. See [data-plane responsibilities](#developer-runtime) and [LiteLLM-contract request examples](#gateway-connect).
+<strong>Which one to choose:</strong> Use the LiteLLM type for an existing LiteLLM gateway. A custom gateway can either implement the LiteLLM Generic Guardrail contract or choose generic HTTP and map its own request and response structures. Choose A2A for agent-to-agent messages. <strong>The Endpoint type and call protocol must match</strong>: a generic HTTP Endpoint cannot be called through the LiteLLM callback path. See [data-plane responsibilities](/document/developer/developer-runtime) and [LiteLLM-contract request examples](/document/developer/gateway-connect).
 
 <a id="state-endpoint" />
 

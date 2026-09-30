@@ -11,7 +11,7 @@ detector:
   parameters:
     expression: (?:显示|泄露|输出|复述|告诉我).{0,8}(?:系统提示词|系统指令|开发者指令)
 on_match:
-  action: reject
+  action: block
 runtime_adapter:
   binding_id: china-prompt-manipulation
   implementation_rule_id: cn-prompt-security/prompt-extraction

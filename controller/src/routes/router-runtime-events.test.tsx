@@ -21,7 +21,7 @@ const trace: RouterRuntimeTrace = {
   protocol: "litellm",
   phase: "output",
   outcome: "transform",
-  action: "redact",
+  action: "transform",
   risk: null,
   severity: null,
   latency_ms: 15,

@@ -61,7 +61,7 @@ async def validate_capability(
         for contract in binding.contract_refs:
             capability = "pii" if binding.capability_ref == "pii_semantic" else "company_policy" if contract.endswith("company-policy.v1") else binding.capability_ref
             step = GuardrailPlanStep(id="candidate", capability=capability, contract_ref=contract,
-                                     phases=(phase,), on_unsafe="reject",
+                                     phases=(phase,), on_unsafe="block",
                                      parameters=(("allowed_topics", "Product support and password reset"), ("topic_mode", "allowlist")) if binding.capability_ref == "topic_control" else ())
             plan = GuardrailPlanSnapshot(
                 guardrail_id=f"rail-validation:{request.request_id}", guardrail_version="20260905-000000.000Z",
@@ -80,7 +80,7 @@ async def validate_capability(
                                                   context_messages=({"role": "user", "content": "Please answer my question."},) if phase == "output" else ()))
                 passed = decision.decision == expected
                 if expected == "block":
-                    passed = passed and any(item.verdict == "unsafe" for item in decision.findings)
+                    passed = passed and any(item.verdict == "matched" for item in decision.findings)
                 result.cases.add(id=f"{contract}:{phase}:{name}", expected_decision=expected,
                                  actual_decision=decision.decision, passed=passed,
                                  input_content=text, output_content=json.dumps({

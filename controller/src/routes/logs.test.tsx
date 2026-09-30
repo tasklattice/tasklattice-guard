@@ -38,7 +38,7 @@ const interaction: RuntimeLogInteraction = {
       created_at: "2026-08-15T05:00:00Z",
       phase: "input",
       outcome: "allow",
-      action: "pass",
+      action: "allow",
       risk: null,
       latency_ms: 5,
       timed_out: false,

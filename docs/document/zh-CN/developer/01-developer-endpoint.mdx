@@ -21,9 +21,9 @@ order: 0
 <a id="developer-handoff" />
 ## 两条链路在哪里交接
 
-1. 运维人员在控制面准备 Policy、Guardrail 和 Router，验证并发布版本，为接入方创建或绑定 Endpoint；如需自动化，可通过[控制面集成](#developer-api-access)把这些操作纳入自己的编辑与审批流程。
+1. 运维人员在控制面准备 Policy、Guardrail 和 Router，验证并发布版本，为接入方创建或绑定 Endpoint；如需自动化，可通过[控制面集成](/document/developer/developer-api-access)把这些操作纳入自己的编辑与审批流程。
 2. 平台确认发布配置已下发到 Runner，并把 Endpoint 地址及运行时凭据交给应用、Agent 或网关。
-3. 接入方按[数据面集成](#developer-runtime)检查每次实际提交的输入和输出，执行返回的阻断、替换或放行结果。
+3. 接入方按[数据面集成](/document/developer/developer-runtime)检查每次实际提交的输入和输出，执行返回的阻断、替换或放行结果。
 4. 用真实请求核对运行记录和最终交付行为。**已发布**说明有可执行版本；**已下发**说明 Runner 接受了配置；**受到保护**还要求调用方实际送检并执行结果。
 
 Controller 的个人 Access Token 不能用于运行时检查；Endpoint 凭据也不能用于修改控制面资源。选择了哪个 Guardrail Version、哪条 Route，由已发布配置和请求上下文决定，接入方不能只凭请求中的自报字段获得可信身份。

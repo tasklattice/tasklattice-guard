@@ -76,7 +76,7 @@ def _plan() -> dict[str, object]:
             "capability": "secrets",
             "contract_ref": "tali.guard.secrets.exact.v1",
             "phases": ["input", "output"],
-            "on_unsafe": "reject",
+            "on_unsafe": "block",
             "trigger": {"type": "always", "verdicts": []},
             "parameters": [],
         }],
@@ -116,13 +116,13 @@ def _ordered_plan() -> dict[str, object]:
     redactions = {
         "id": "local:redactions", "capability": "builtin_content_filter",
         "contract_ref": "tali.guard.content-filter.rules.v1",
-        "phases": ["input", "output"], "on_unsafe": "reject",
+        "phases": ["input", "output"], "on_unsafe": "block",
         "trigger": {"type": "always", "verdicts": []},
         "parameters": [
             ["policy_id", "pattern-matching"], ["policy_version", "1.95.0"],
             ["policy_ids", "pattern-matching"],
             ["enabled_rules_json", json.dumps({"pattern-matching": ["pattern/email", "pattern/generic_api_key"]})],
-            ["rule_actions_json", json.dumps({"pattern-matching": {"pattern/email": "redact", "pattern/generic_api_key": "redact"}})],
+            ["rule_actions_json", json.dumps({"pattern-matching": {"pattern/email": "transform", "pattern/generic_api_key": "transform"}})],
         ],
     }
     plan["steps"] = [redactions, *plan["steps"]]
@@ -181,10 +181,10 @@ def _phrase_plan() -> dict[str, object]:
       import {PolicyCatalog} from './server/policy-catalog/catalog.ts';
       const policies = PolicyCatalog.load('../runner/toolkit/policy_library/assets').list();
       const phrase_entries = JSON.stringify([
-        {id:'mask', phrase:'internal-name', action:'redact', replacement:'public-name'},
-        {id:'block-original', phrase:'internal-name', action:'reject'},
-        {id:'block', phrase:'confidential', action:'reject'},
-        {id:'mask-zh', phrase:'内部代号', action:'redact', replacement:'公开名称'},
+        {id:'mask', phrase:'internal-name', action:'transform', replacement:'public-name'},
+        {id:'block-original', phrase:'internal-name', action:'block'},
+        {id:'block', phrase:'confidential', action:'block'},
+        {id:'mask-zh', phrase:'内部代号', action:'transform', replacement:'公开名称'},
       ]);
       console.log(JSON.stringify(buildGuardrailPlan({guardrailId:'fixture-secrets', guardrailVersion:'20260904-010000.001Z', policies,
         draft:{allowedTopics:[], restrictedTopics:[], safetyLevel:'balanced', outputDelivery:'full_buffered', policyBindings:[{
@@ -248,7 +248,7 @@ def _stream_safety_plan(mode: str, rails: tuple[str, ...] = ('output',)) -> dict
 def _custom_symbol_plan(*, flow_events: bool = False, dynamic: bool = False) -> dict:
     plan = _plan()
     plan.update(steps=[], modules=[], policy_versions=[], policy_bindings=[])
-    for policy_id, marker, action in [("policy-a", "check", "redact"), ("policy_a", "check reviewed", "reject")]:
+    for policy_id, marker, action in [("policy-a", "check", "transform"), ("policy_a", "check reviewed", "block")]:
         source = '\n'.join(f'flow {phase}_check $text\n  await check($text, "{phase}_check")\n' for phase in ("input", "output"))
         if flow_events:
             source = '\n'.join(f'''flow {phase}_check $text
@@ -289,7 +289,7 @@ def _custom_parameter_plan() -> dict:
     version = plan["policy_versions"][0]
     version.update(sources=[{"path": "checks.co", "content": source}], checksum=hashlib.sha256(source.encode()).hexdigest())
     for binding in version["rail_bindings"]:
-        binding.update(execution_mode="detect", on_unsafe="reject")
+        binding.update(execution_mode="detect", on_unsafe="block")
     plan["policy_bindings"][0]["parameter_values"] = [["label", 'ordinary"\n  $text = "safe"\n  $other = "ordinary']]
     return plan
 

@@ -84,7 +84,7 @@ detector:
             - deceptive ai manipulation
             - dark pattern ai system
 on_match:
-  action: reject
+  action: block
   replacement: null
 runtime_adapter:
   binding_id: eu-ai-act-art5-manipulation

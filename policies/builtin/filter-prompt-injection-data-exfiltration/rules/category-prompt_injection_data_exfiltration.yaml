@@ -106,7 +106,7 @@ detector:
             - access confidential files
             - retrieve secret keys
 on_match:
-  action: reject
+  action: block
   replacement: null
 runtime_adapter:
   binding_id: prompt_injection_data_exfiltration

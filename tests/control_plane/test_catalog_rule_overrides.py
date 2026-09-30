@@ -38,18 +38,18 @@ def catalog_plans():
       const pii = policies.find(p => p.id === 'builtin-pii');
       const contact = policies.find(p => p.id === 'local-contact-data');
       const binding = (policy, phase) => ({ policyId: policy.id, policyVersion: policy.version,
-        action: 'reject', parameterValues: {}, enabledRuleIds: policy.rules.map(r => r.id),
+        action: 'block', parameterValues: {}, enabledRuleIds: policy.rules.map(r => r.id),
         ruleActions: {}, enabledRails: [phase], reasoningPolicy: null });
       const entries = [];
-      for (const phase of ['input', 'output']) for (const action of ['pass', 'redact', 'reject']) {
+      for (const phase of ['input', 'output']) for (const action of ['allow', 'transform', 'block']) {
         const selected = binding(pii, phase);
-        selected.action = action === 'reject' ? 'pass' : 'reject';
+        selected.action = action === 'block' ? 'allow' : 'block';
         selected.ruleActions = { [pii.rules[0].id]: action };
         const plan = buildGuardrailPlan({ guardrailId: 'catalog-override', guardrailVersion: '20260906-010000.001Z', policies,
           draft: { allowedTopics: [], restrictedTopics: [], policyBindings: [selected], safetyLevel: 'balanced', outputDelivery: 'full_buffered' } });
         entries.push([`${phase}:${action}`, plan]);
-        if (action === 'pass') {
-          const later = binding(contact, phase); later.action = 'redact';
+        if (action === 'allow') {
+          const later = binding(contact, phase); later.action = 'transform';
           entries.push([`${phase}:continue`, buildGuardrailPlan({ guardrailId: 'catalog-override', guardrailVersion: '20260906-010000.001Z', policies,
             draft: { allowedTopics: [], restrictedTopics: [], policyBindings: [selected, later], safetyLevel: 'balanced', outputDelivery: 'full_buffered' } })]);
         }
@@ -66,7 +66,7 @@ def catalog_plans():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("phase", ["input", "output"])
-@pytest.mark.parametrize("action", ["pass", "redact", "reject", "continue"])
+@pytest.mark.parametrize("action", ["allow", "transform", "block", "continue"])
 async def test_catalog_rule_action_reaches_real_nemo_and_preserves_later_policies(catalog_plans, phase, action):
     providers = action_providers(*local_action_providers(), EvaluationActionProvider((
         EvaluationRoute("pii", CONTRACT_PII_EXACT, PiiEvaluator()),
@@ -90,11 +90,11 @@ async def test_catalog_rule_action_reaches_real_nemo_and_preserves_later_policie
         assert fragment_findings
         assert all(finding.risk_severity == "medium" for finding in fragment_findings)
         assert all(finding.policy_version == catalog_plans[f"{phase}:{action}"]["policy_bindings"][0]["policy_version"] for finding in pii_findings)
-        assert result.decision == {"pass": "allow", "redact": "transform", "reject": "block", "continue": "transform"}[action]
-        if action == "pass":
+        assert result.decision == {"allow": "allow", "transform": "transform", "block": "block", "continue": "transform"}[action]
+        if action == "allow":
             # Allow carries no replacement: endpoints forward the original.
             assert result.texts == ()
-        elif action in {"redact", "continue"}:
+        elif action in {"transform", "continue"}:
             assert "alice@example.com" not in result.texts[0]
             assert result.texts[0].startswith("Contact ")
         if action == "continue":

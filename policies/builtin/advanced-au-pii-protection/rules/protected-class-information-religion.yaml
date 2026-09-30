@@ -11,7 +11,7 @@ detector:
     expression: \b(christians?|catholics?|protestants?|baptists?|methodists?|lutherans?|presbyterians?|episcopal|pentecostal|evangelicals?|orthodox\s+christian|mormons?|latter[-
       ]?day\s+saint|LDS|jehovah'?s?\s+witness(es)?|seventh[- ]?day\s+adventist|amish|mennonite|quakers?|jewish|jews?|judaism|orthodox\s+jew|hasidic|muslims?|islam(ic)?|sunni|shia|shiite|sufi|nation\s+of\s+islam|hindus?(ism)?|buddhists?|buddhism|sikhs?(ism)?|jains?(ism)?|shinto|taoists?|taoism|confucian|zoroastrian|baha'?i|rastafari(an)?|pagans?|wiccans?|druids?|satanist|scientolog(y|ist)|unitarian|agnostics?|atheists?|secular|non-?religious|spiritual\s+but\s+not\s+religious|religious\s+belief|religious\s+practice|place\s+of\s+worship|church|mosque|synagogue|temple|gurdwara|kosher|halal|sabbath|shabbat|ramadan|lent|yom\s+kippur|rosh\s+hashanah|diwali|eid|hijab|yarmulke|kippah|turban|religious\s+head\s*covering)\b
 on_match:
-  action: redact
+  action: transform
   replacement: '[PROTECTED_CLASS_INFO_REDACTED]'
 runtime_adapter:
   binding_id: protected-class-information

@@ -95,6 +95,7 @@ class TopicJudgeActionProvider:
         except (
             httpx.HTTPError,
             KeyError,
+            IndexError,
             TypeError,
             ValueError,
             json.JSONDecodeError,
@@ -107,20 +108,20 @@ class TopicJudgeActionProvider:
                 usage=action_usage(call, len(request.content)),
             )
 
-        verdict = str(payload.get("verdict", "uncertain")).lower()
+        # Provider labels describe topic compliance; our detector target is a
+        # violation of the configured topic boundary, not an allowed-keyword hit.
+        verdict = {"safe": "not_matched", "unsafe": "matched", "uncertain": "unknown"}[payload["verdict"]]
         reason = str(payload.get("reason", "Topic decision returned without a reason."))
-        if verdict == "safe":
+        if verdict == "not_matched":
             return action_result(
-                request, "safe", request.content, reason=reason,
+                request, "not_matched", request.content, reason=reason,
                 usage=action_usage(call, len(request.content)),
             )
-        if verdict not in {"unsafe", "uncertain"}:
-            verdict = "uncertain"
-        findings = () if verdict == "uncertain" else (
+        findings = () if verdict == "unknown" else (
             RiskFinding(
                 risk=request.capability,
                 taxonomy_id=taxonomy_for_evaluator(request.capability),
-                verdict="unsafe",
+                verdict="matched",
                 confidence=_confidence(payload.get("confidence")),
                 evidence=reason,
                 recommended_action=request.proposed_action,
@@ -216,7 +217,10 @@ def _response_payload(payload: dict[str, Any]) -> dict[str, Any]:
     if cleaned.startswith("```"):
         cleaned = cleaned.removeprefix("```json").removeprefix("```")
         cleaned = cleaned.removesuffix("```").strip()
-    return json.loads(cleaned)
+    result = json.loads(cleaned)
+    if not isinstance(result, dict) or result.get("verdict") not in {"safe", "unsafe", "uncertain"}:
+        raise ValueError("Topic Judge returned an invalid classification.")
+    return result
 
 
 def _confidence(value: object) -> float:

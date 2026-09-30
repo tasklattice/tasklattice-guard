@@ -13,7 +13,7 @@ detector:
     expression: (?i)(?:骗取|套取|窃取|盗取|收集).{0,10}(?:客户|用户)?.{0,4}(?:短信)?(?:验证码|动态口令|支付密码|银行卡密码)|\b(?:steal|harvest|trick\s+(?:a\s+)?customer\s+into\s+sharing)\b.{0,32}\b(?:OTP|one-time
       password|verification code|card PIN)\b
 on_match:
-  action: reject
+  action: block
 runtime_adapter:
   binding_id: china-banking-assistant-boundaries
   implementation_rule_id: cn-banking/verification-code-theft

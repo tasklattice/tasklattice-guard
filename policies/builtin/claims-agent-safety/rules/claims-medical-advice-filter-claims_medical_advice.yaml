@@ -132,7 +132,7 @@ detector:
             - radiation therapy or chemotherapy better
             - is it safe to combine these two medications
 on_match:
-  action: reject
+  action: block
   replacement: null
 runtime_adapter:
   binding_id: claims-medical-advice-filter

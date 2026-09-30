@@ -56,7 +56,7 @@ class GroundingActionProvider:
         active = view.active_block
         if "query" in active.qualifiers or "grounding_source" in active.qualifiers:
             return action_result(request,
-                "safe",
+                "not_matched",
                 request.content,
                 reason="The active block supplies grounding context and is not a response target.",
             )
@@ -79,16 +79,16 @@ class GroundingActionProvider:
                 missing = "query"
             reason = f"Contextual grounding requires a {missing} before evaluating output."
             return action_result(request,
-                "uncertain",
+                "unknown",
                 request.content,
                 findings=(
                     RiskFinding(
                         risk=request.capability,
                         taxonomy_id=taxonomy_for_evaluator(request.capability),
-                        verdict="uncertain",
+                        verdict="unknown",
                         confidence=0.0,
                         evidence=reason,
-                        recommended_action="clarify",
+                        recommended_action="block",
                     ),
                 ),
                 reason=reason,
@@ -172,7 +172,7 @@ class GroundingActionProvider:
                         frozenset(block.id for block in sources),
                     )
                     call.complete(payload=raw_payload)
-        except (httpx.HTTPError, KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+        except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError) as error:
             return action_result(request,
                 "error",
                 request.content,
@@ -197,13 +197,16 @@ class GroundingActionProvider:
             ),
         )
         claims = payload["claims"]
-        unsafe = any(item.detected for item in grounding) or any(
+        matched = any(item.detected for item in grounding) or any(
             claim.support == "unsupported" for claim in claims
         )
-        verdict = "unsafe" if unsafe else "safe"
+        unknown = any(claim.support == "uncertain" for claim in claims)
+        verdict = "matched" if matched else "unknown" if unknown else "not_matched"
         reason = payload["reason"] or (
             "The response failed contextual grounding thresholds."
-            if unsafe
+            if matched
+            else "The supplied sources do not establish support for every claim."
+            if unknown
             else "The response is grounded in the supplied sources and relevant to the query."
         )
         finding = RiskFinding(
@@ -212,14 +215,14 @@ class GroundingActionProvider:
             verdict=verdict,
             confidence=min(grounding_score, relevance_score),
             evidence=reason,
-            recommended_action=request.proposed_action if unsafe else "pass",
+            recommended_action=request.proposed_action if verdict != "not_matched" else "allow",
             grounding=grounding,
             claims=claims,
         )
         return action_result(request,
             verdict,
             request.content,
-            findings=(finding,) if unsafe or request.evidence_scope == "full" else (),
+            findings=(finding,) if verdict != "not_matched" or request.evidence_scope == "full" else (),
             reason=reason,
             usage=action_usage(call, len(request.content)),
         )
@@ -269,7 +272,7 @@ def _response_payload(
     for index, item in enumerate(raw_claims):
         if not isinstance(item, dict):
             raise TypeError("Each contextual grounding claim must be an object.")
-        support = str(item.get("support", "uncertain")).casefold()
+        support = str(item.get("support", "")).casefold()
         if support not in {"supported", "unsupported", "uncertain"}:
             raise ValueError("Contextual grounding claim support is invalid.")
         raw_references = item.get("source_block_ids", ())

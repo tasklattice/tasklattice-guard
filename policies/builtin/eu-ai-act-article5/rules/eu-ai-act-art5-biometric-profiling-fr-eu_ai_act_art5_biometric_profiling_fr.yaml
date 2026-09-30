@@ -126,7 +126,7 @@ detector:
             - collecte non ciblée d'images faciales
             - surveillance biométrique de masse
 on_match:
-  action: reject
+  action: block
   replacement: null
 runtime_adapter:
   binding_id: eu-ai-act-art5-biometric-profiling-fr

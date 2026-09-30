@@ -10,7 +10,7 @@ const draft = programmablePolicyDraftSchema.parse({
   guardrail_category: "content_safety", colang_version: "1.0",
   sources: [{ path: "rails.co", content: "define flow published_check\n  pass" }],
   parameter_schema: [{ name: "published_parameter", kind: "string", required: true }],
-  rail_bindings: [{ rail_type: "input", flow_name: "published_check", execution_mode: "detect", on_unsafe: "reject", risk_severity: "medium" }],
+  rail_bindings: [{ rail_type: "input", flow_name: "published_check", execution_mode: "detect", on_unsafe: "block", risk_severity: "medium" }],
   execution_contract: [["output_delivery", "full_buffered"]],
   test_cases: [{ id: "published-case", name: "Published acceptance", rail_type: "input", content: "sample", expected_decision: "block",
     covered_rule_ids: ["flow/input/published_check"], case_type: "input_rail" }],
@@ -31,7 +31,7 @@ describe("Selectable custom Policy version boundary", () => {
   it("projects Rules, parameters, tests and directions from the published snapshot, not the edited draft", () => {
     const payload = programmablePolicyPayload(record, [version(2)]);
     expect(payload).toMatchObject({ version: "2", name: "Published 2", description: "Published protection", owner: "published owner",
-      rails: ["input"], effects: ["reject"], parameters: draft.parameter_schema, test_count: 1, output_delivery: "full_buffered",
+      rails: ["input"], effects: ["block"], parameters: draft.parameter_schema, test_count: 1, output_delivery: "full_buffered",
       updated_at: publishedAt.toISOString() });
     expect(payload.rules[0]?.implementation.flow_name).toBe("published_check");
     expect(payload.test_cases[0]?.id).toBe("published-case");

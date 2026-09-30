@@ -13,7 +13,7 @@ detector:
     context_expression: \b(?:postal\s*code|postcode|zip\s*code|Singapore\s*\d|blk|block|address|HDB|flat|unit)\b
     context_max_gap_words: 1
 on_match:
-  action: redact
+  action: transform
   replacement: '[sg_postal_code_REDACTED]'
 runtime_adapter:
   binding_id: pattern-matching

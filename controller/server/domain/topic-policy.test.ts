@@ -26,9 +26,9 @@ describe("Topic Control Policy Rule isolation", () => {
     }
   });
   it("keeps deny-first order and rejection despite Policy action or user order", () => {
-    const item = binding([ALLOW, DENY]); item.ruleOrder = [ALLOW, DENY]; item.action = "pass";
-    expect(steps(item)[0]!.on_unsafe).toBe("reject");
-    item.ruleActions = { [DENY]: "pass" };
+    const item = binding([ALLOW, DENY]); item.ruleOrder = [ALLOW, DENY]; item.action = "allow";
+    expect(steps(item)[0]!.on_unsafe).toBe("block");
+    item.ruleActions = { [DENY]: "allow" };
     expect(() => steps(item)).toThrow(/must reject/);
   });
   it("requires only enabled Rule inputs and defaults the Allowlist to permissive", () => {

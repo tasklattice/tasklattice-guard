@@ -24,7 +24,7 @@ order: 6
 | **通用 HTTP Guard API**（`generic-http-guard`） | 自研 AI Gateway、应用或 Agent，希望使用厂商中立的检查请求 | 用 Endpoint 凭据调用 `/guardrails/evaluate`，在请求中指定 `protocol: "http"` 及输入或输出阶段；接入方负责根据结果决定是否调用模型或交付内容。 |
 | **A2A Guard API**（`a2a-guard`） | 需要检查 Agent 之间消息的 A2A 接入方 | 同样调用 `/guardrails/evaluate`，但指定 `protocol: "a2a"`，并按需提供 A2A operation、context ID 和 task ID 等上下文。 |
 
-<strong>怎么选：</strong>已有 LiteLLM 就选 LiteLLM 类型；自研网关可以实现 LiteLLM Generic Guardrail 契约，也可以选通用 HTTP 类型，按自己的请求/响应结构完成映射；检查 Agent 间消息则选 A2A。<strong>接入类型与调用协议必须一致</strong>：例如通用 HTTP Endpoint 不能用 LiteLLM 的回调路径代替调用。详见[数据面集成边界](#developer-runtime)和[LiteLLM 契约的请求示例](#gateway-connect)。
+<strong>怎么选：</strong>已有 LiteLLM 就选 LiteLLM 类型；自研网关可以实现 LiteLLM Generic Guardrail 契约，也可以选通用 HTTP 类型，按自己的请求/响应结构完成映射；检查 Agent 间消息则选 A2A。<strong>接入类型与调用协议必须一致</strong>：例如通用 HTTP Endpoint 不能用 LiteLLM 的回调路径代替调用。详见[数据面集成边界](/document/developer/developer-runtime)和[LiteLLM 契约的请求示例](/document/developer/gateway-connect)。
 
 <a id="state-endpoint" />
 

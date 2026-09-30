@@ -99,7 +99,7 @@ detector:
             - reputation scoring system
             - behavioral scoring system
 on_match:
-  action: reject
+  action: block
   replacement: null
 runtime_adapter:
   binding_id: eu-ai-act-art5-social-scoring

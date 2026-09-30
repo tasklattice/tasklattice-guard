@@ -16,7 +16,6 @@ from ...runtime.contracts import (
     RiskFinding,
     RuntimeTraceStep,
 )
-from ...runtime.interventions import fallback_content
 from ...safety.taxonomy import taxonomy_for_evaluator
 from .contracts import ActionRequest, ActionResult, action_result
 from .names import ACTION_CONTENT_FILTER
@@ -30,7 +29,7 @@ class _Detection:
     action: str
     evidence: str
     spans: tuple[tuple[int, int], ...] = ()
-    replacement: str = "[REDACTED]"
+    replacement: str | None = None
     confidence: float | None = None
     risk_severity: str | None = None
     taxonomy_ids: tuple[str, ...] = ()
@@ -97,14 +96,14 @@ class BuiltinContentFilter:
                     tuple((rule_order or {}).get(name, ())),
                 )
                 detections.extend(matched)
-                if any(item.action == "reject" for item in matched):
+                if any(item.action == "block" for item in matched):
                     break
             else:
                 for rule in custom_rules:
                     matched = self._apply_custom_rules((rule,), content, phase)
                     detections.extend(matched)
                     content = self._apply_effect(content, matched)
-                    if any(item.action == "reject" for item in matched):
+                    if any(item.action == "block" for item in matched):
                         break
         except (re.error, ValueError) as error:
             return _ContentFilterResult(
@@ -119,7 +118,7 @@ class BuiltinContentFilter:
         # findings so Security can show the match without changing the content.
         if not detections:
             return _ContentFilterResult(
-                verdict="safe",
+                verdict="not_matched",
                 content=text,
                 reason="No built-in content-filter Rule matched.",
             )
@@ -128,14 +127,14 @@ class BuiltinContentFilter:
             RiskFinding(
                 risk="builtin_content_filter",
                 taxonomy_id=taxonomy_id,
-                verdict="unsafe",
+                verdict="matched",
                 confidence=item.confidence,
                 evidence=(
                     f"Policy {item.policy} matched "
                     f"{item.kind} Rule {item.rule}: {item.evidence}."
                 ),
                 recommended_action=item.action,
-                replacement=(item.replacement if item.action in {"redact", "rewrite"} else None),
+                replacement=(item.replacement if item.action == "transform" else None),
                 policy_id=item.policy,
                 rule_id=item.rule,
                 risk_severity=item.risk_severity,
@@ -143,16 +142,16 @@ class BuiltinContentFilter:
             for item in detections
             for taxonomy_id in (item.taxonomy_ids or _taxonomy_ids(item.policy, item.rule, definitions))
         )
-        blocked = any(item.action == "reject" for item in detections)
+        blocked = any(item.action == "block" for item in detections)
         return _ContentFilterResult(
-            verdict="unsafe",
+            verdict="matched",
             content=content,
             findings=findings,
             reason=(
                 "A built-in content-filter Policy blocked the interaction."
                 if blocked
                 else "A built-in content-filter Policy transformed the interaction."
-                if any(item.action != "pass" for item in detections)
+                if any(item.action != "allow" for item in detections)
                 else "A built-in content-filter Policy recorded a finding without intervening."
             ),
         )
@@ -191,7 +190,7 @@ class BuiltinContentFilter:
                     definition.id, concrete, text, phase, parameters, concrete_action,
                 )
                 detections.extend(matched)
-                if any(item.action == "reject" for item in matched):
+                if any(item.action == "block" for item in matched):
                     return text, detections
         return text, detections
 
@@ -209,16 +208,15 @@ class BuiltinContentFilter:
         match = LocalDetector().detect(rule.implementation.detector, config, text, phase, parameters)
         matched = [] if match is None else [_Detection(
             policy_id, rule.detector.ref, rule.id, action, match.evidence,
-            match.spans, rule.redaction or "[REDACTED]", match.confidence, rule.risk_severity, rule.taxonomy_ids,
+            match.spans, rule.redaction, match.confidence, rule.risk_severity, rule.taxonomy_ids,
         )]
         return self._apply_effect(text, matched), matched
 
     def _apply_effect(self, text: str, detections: list[_Detection]) -> str:
-        text = self._apply_redactions(text, detections)
-        for item in detections:
-            if item.action not in {"pass", "reject", "redact"}:
-                text = fallback_content(item.action, text)
-        return text
+        transforms = [item for item in detections if item.action == "transform"]
+        if any(item.replacement is None for item in transforms):
+            raise ValueError("Transform requires explicit replacement content")
+        return self._apply_redactions(text, detections)
 
     def _apply_custom_rules(
         self,
@@ -237,8 +235,8 @@ class BuiltinContentFilter:
             if match:
                 detections.append(_Detection(
                     "custom", kind, str(rule.get("id", "custom-rule")),
-                    _enforcement_action(str(rule.get("action", "reject"))),
-                    match.evidence, match.spans, str(rule.get("replacement") or "[REDACTED]"), match.confidence,
+                    _enforcement_action(str(rule.get("action", "block"))),
+                    match.evidence, match.spans, rule.get("replacement"), match.confidence,
                 ))
         return detections
 
@@ -247,7 +245,7 @@ class BuiltinContentFilter:
         candidates = [
             (start, end, item.policy, item.rule, item.replacement)
             for item in detections
-            if item.action in {"redact", "rewrite"}
+            if item.action == "transform"
             for start, end in (item.spans or ((0, len(text)),))
         ]
         selected: list[tuple[int, int, str]] = []
@@ -407,9 +405,6 @@ def _configured_action(
 
 def _enforcement_action(value: str) -> str:
     normalized = value.strip().lower()
-    return {
-        "allow": "pass",
-        "block": "reject",
-        "mask": "redact",
-        "transform": "rewrite",
-    }.get(normalized, normalized)
+    if normalized not in {"allow", "block", "transform"}:
+        raise ValueError(f"Unknown Rule action: {value}")
+    return normalized

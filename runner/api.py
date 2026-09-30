@@ -317,7 +317,7 @@ class RunnerAPI:
                         )
                         decision = ProtectionDecision(
                             decision="block",
-                            action="reject",
+                            action="block",
                             reason="No Router matches this request.",
                             mode=protection_request.mode,
                         )
@@ -394,7 +394,7 @@ class RunnerAPI:
                             router_id=UNMATCHED_METRIC_ID,
                         )
                         decision = ProtectionDecision(
-                            decision="block", action="reject",
+                            decision="block", action="block",
                             reason="No Router matches this request.",
                             mode=payload.mode,
                         )

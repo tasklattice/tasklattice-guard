@@ -13,7 +13,7 @@ detector:
       ]?Qaeda|Al[- ]?Shabaab|Boko\s+Haram|Hezbollah|Hamas|Taliban|lone\s+wolf|radicalize[d]?|radicalization|extremis[tm]|white\s+supremac(y|ist)|neo[-
       ]?nazi|skinhead|aryan|white\s+power|white\s+nationalist|race\s+war|day\s+of\s+the\s+rope|Turner\s+Diaries|accelerationism|boogaloo|proud\s+boys|oath\s+keepers|three\s+percenter|militia\s+movement|domestic\s+terroris[tm]|cell|sleeper\s+cell|attack\s+planning|soft\s+target|hard\s+target|high\s+value\s+target|infidel|kuffar|crusader|manifest(o)?|insurgent|insurrection|armed\s+uprising|overthrow\s+the\s+government|civil\s+war\s+2|RAHOWA|fourteen\s+words|1488|88|HH)\b
 on_match:
-  action: redact
+  action: transform
   replacement: '[terrorism_REDACTED]'
 runtime_adapter:
   binding_id: pattern-matching

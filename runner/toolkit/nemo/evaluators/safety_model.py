@@ -95,7 +95,7 @@ class SafetyModelEvaluator:
         if assessment.verdict == "safe":
             return evaluation_result(
                 request,
-                "safe",
+                "not_matched",
                 request.content,
                 reason=(
                     f"Safety Provider {assessment.provider_id} classified "
@@ -116,7 +116,7 @@ class SafetyModelEvaluator:
             if irrelevant and not unmapped:
                 return evaluation_result(
                     request,
-                    "safe",
+                    "not_matched",
                     request.content,
                     reason=(
                         f"Safety Provider {assessment.provider_id} returned no "
@@ -133,13 +133,13 @@ class SafetyModelEvaluator:
                 reason += " Unmapped categories: " + ", ".join(unmapped) + "."
             return evaluation_result(
                 request,
-                "uncertain",
+                "unknown",
                 request.content,
                 reason=reason,
                 usage=usage,
             )
 
-        verdict = "unsafe" if assessment.verdict == "unsafe" else "uncertain"
+        verdict = "matched" if assessment.verdict == "unsafe" else "unknown"
         reason = (
             f"Safety Provider {assessment.provider_id} classified capability "
             f"{request.capability} as {assessment.verdict}; normalized to "
@@ -152,8 +152,8 @@ class SafetyModelEvaluator:
         content = request.content
         if (
             request.capability == "pii"
-            and verdict == "unsafe"
-            and request.proposed_action == "redact"
+            and verdict == "matched"
+            and request.proposed_action == "transform"
         ):
             # Generative classifiers do not return trustworthy character spans.
             # A semantic PII hit therefore redacts the complete evaluated block
@@ -221,6 +221,8 @@ class SafetyModelEvaluator:
                     scope=request.rail_type,
                     candidate_taxonomy_ids=candidates,
                 )
+                if result.verdict not in {"safe", "unsafe", "uncertain", "controversial"}:
+                    raise ValueError("Safety Provider returned an invalid classification.")
                 tracker.complete(payload=result.payload)
                 return result
         except Exception as error:
@@ -437,7 +439,7 @@ def _finding(
     return RiskFinding(
         risk=request.capability,
         taxonomy_id=taxonomy_id,
-        verdict="unsafe" if assessment.verdict == "unsafe" else "uncertain",
+        verdict="matched" if assessment.verdict == "unsafe" else "unknown",
         confidence=None,
         evidence=evidence,
         recommended_action=request.proposed_action,

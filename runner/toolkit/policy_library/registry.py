@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from ..runtime.enforcement_action_generated import ENFORCEMENT_ACTIONS
+
 from functools import lru_cache
 
 from .domain import PolicySpec
@@ -99,6 +101,8 @@ class PolicyLibraryRegistry:
         rule_ids: set[str] = set()
         taxonomy_registry = taxonomy()
         for rule in item.rules:
+            if rule.effect not in ENFORCEMENT_ACTIONS:
+                raise ValueError(f"Rule {rule.id!r} has unknown action {rule.effect!r}.")
             _required(rule.id, f"Policy {item.id!r} Rule ID")
             _required(rule.name, f"Policy {item.id!r} Rule {rule.id!r} name")
             if rule.id in rule_ids:

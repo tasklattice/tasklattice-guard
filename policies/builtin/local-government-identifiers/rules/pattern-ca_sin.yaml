@@ -14,7 +14,7 @@ detector:
     context_expression: \b(?:social\s*insurance\s*number|numéro\s*d'assurance\s*sociale|social\s*insurance|SIN|NAS)\b
     context_max_gap_words: 1
 on_match:
-  action: redact
+  action: transform
   replacement: '[ca_sin_REDACTED]'
 runtime_adapter:
   binding_id: local-government-identifiers

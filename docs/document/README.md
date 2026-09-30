@@ -39,8 +39,10 @@ order: 0
 这里是小节正文。
 ```
 
-文章 `id` 对应 `/document#<id>`；编译插件把小节锚点移到标题上，并从同一份 MDX 生成右侧“本页目录”和搜索索引。左侧按目录名分组展示文章，默认只展开当前分类。旧版术语和状态深链接改为相应对象文章的章节锚点；旧分类锚点由 `controller/src/routes/help.tsx` 映射到对应文章。
+文章路径为 `/document/<category>/<id>`，其中 `category` 来自目录名，`id` 来自 frontmatter。例如快速开始的路径是 `/document/overview/quickstart-protection`，其中“六步完成保护链路”的链接是 `/document/overview/quickstart-protection#quickstart-steps`。`/document` 入口跳转到第一篇文章；不存在的文章显示找不到文档，不会自动回到第一篇。
 
-正文使用普通 Markdown 的段落、标题、列表、链接、引用、代码块和表格。结构化状态卡片、资源地图与流程图仍可使用 `controller/src/components/help/` 导出的 MDX 组件。站内链接使用绝对路径，例如 `[API 文档](/api/docs)`；代码块中的 `{controllerOrigin}` 在渲染时替换为当前站点地址。
+编译插件把小节锚点移到标题上，并从同一份 MDX 生成右侧“本页目录”和搜索索引。左侧按目录名分组展示文章，默认只展开当前分类。路径选择文章，`#` 只定位该文章内的章节；章节 ID 只需在文章内唯一。两种语言共用文章路径与章节 ID，由语言选择器切换正文。旧 `/document#<id>` 链接在入口处跳转到对应文章路径；相关映射集中在 `controller/src/features/help-navigation.ts`。
+
+正文使用普通 Markdown 的段落、标题、列表、链接、引用、代码块和表格。结构化状态卡片、资源地图与流程图仍可使用 `controller/src/components/help/` 导出的 MDX 组件。同篇文章内使用 `[六步完成保护链路](#quickstart-steps)`；跨文章链接必须带目标文章路径，例如 `[Rule 检测器](/document/overview/glossary-definition#term-rule-implementation)`。其他站内链接使用绝对路径，例如 `[API 文档](/api/docs)`；代码块中的 `{controllerOrigin}` 在渲染时替换为当前站点地址。
 
 `controller/src/content/help/<locale>/interface.json` 只保留搜索、目录等界面标签，不存放文章正文。文章加载逻辑在 `controller/src/features/help-content.ts`，目录和文章布局在 `controller/src/routes/help.tsx`，MDX 标题索引由 `controller/scripts/remark-help-index.mjs` 在构建时生成。新增文章后运行 `npm run build:ui` 与 `npm test -- src/features/help-content.test.ts`；修改 Controller 容器构建时还要确认根目录 `Dockerfile.controller` 把本目录复制进构建阶段。

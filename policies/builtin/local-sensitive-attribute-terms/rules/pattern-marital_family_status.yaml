@@ -13,7 +13,7 @@ detector:
       ]?law|marital\s+status|maiden\s+name|alimony|child\s+support|custody|pregnant|pregnancy|maternity|paternity|expecting|family\s+status|number\s+of\s+children|dependents|childless|child[-
       ]?free|single\s+parent|single\s+mother|single\s+father|unwed|out\s+of\s+wedlock|illegitimate|family\s+planning|birth\s+control|fertility|IVF|adoption|adopted|foster\s+parent|guardian)\b
 on_match:
-  action: redact
+  action: transform
   replacement: '[marital_family_status_REDACTED]'
 runtime_adapter:
   binding_id: local-sensitive-attribute-terms

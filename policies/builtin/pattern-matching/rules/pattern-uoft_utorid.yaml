@@ -13,7 +13,7 @@ detector:
     context_expression: \b(?:utorid|utoid|utor\s*id|uoft\s*login|university\s*of\s*toronto\s*login|acorn\s*login|acorn\s*portal|quercus\s*login|quercus\s*course|portal\s*login|weblogin|shibboleth)\b
     context_max_gap_words: 1
 on_match:
-  action: redact
+  action: transform
   replacement: '[uoft_utorid_REDACTED]'
 runtime_adapter:
   binding_id: pattern-matching

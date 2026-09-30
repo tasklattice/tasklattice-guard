@@ -12,7 +12,7 @@ detector:
     - - '{{brand_name}} confirms fatalities'
       - medium
 on_match:
-  action: reject
+  action: block
   replacement: null
 runtime_adapter:
   binding_id: airline-brand-protection-filter
