@@ -12,7 +12,7 @@ from runner.toolkit.compiler.nemo_compiler import NeMoConfigCompiler
 from runner.toolkit.nemo.action_registry import action_providers
 from runner.toolkit.nemo.actions.contracts import ActionResult
 from runner.toolkit.nemo.actions.names import ACTION_EVALUATE
-from runner.toolkit.nemo.native_streaming import NativeStreamError
+from runner.toolkit.runtime.streaming import OutputStreamEvaluationError
 from runner.toolkit.nemo.registry import NeMoRuntimeRegistry
 from runner.toolkit.nemo.runtime import NeMoRuntime, _CURRENT_SCOPE
 from runner.toolkit.runtime.contracts import (
@@ -93,7 +93,7 @@ async def run(runtime, request, *chunks):
     delivered, observed = [], []
     async def emit(text): delivered.append(text)
     async def observe(check): observed.append(check)
-    result = await runtime.stream_output(request, source(*chunks), emit=emit, observe=observe)
+    result = await runtime.protect_output(request, source(*chunks), emit=emit, observe=observe)
     return result, delivered, observed
 
 
@@ -182,7 +182,7 @@ async def test_check_finishes_before_any_text_is_delivered():
     provider.gate = asyncio.Event()
     delivered = []
     async def emit(text): delivered.append(text)
-    task = asyncio.create_task(runtime.stream_output(request, source("hello", " world"), emit=emit))
+    task = asyncio.create_task(runtime.protect_output(request, source("hello", " world"), emit=emit))
     try:
         await asyncio.wait_for(provider.entered.wait(), 2)
         assert delivered == []
@@ -196,8 +196,9 @@ async def test_check_finishes_before_any_text_is_delivered():
 
 
 @pytest.mark.parametrize("kind", ["provider", "source", "timeout", "cancel"])
-async def test_failure_and_cancellation_close_source_and_release_admission(kind):
-    runtime, provider, registry, request, _ = build(concurrency=1)
+@pytest.mark.parametrize("delivery", ["window_buffered", "full_buffered"])
+async def test_failure_and_cancellation_close_source_and_release_admission(kind, delivery):
+    runtime, provider, registry, request, _ = build(plan(delivery=delivery), concurrency=1)
     closed = asyncio.Event()
     delivered, observed = [], []
     async def tokens():
@@ -210,15 +211,15 @@ async def test_failure_and_cancellation_close_source_and_release_admission(kind)
     if kind in {"cancel", "timeout"}: provider.gate = asyncio.Event()
     async def emit(text): delivered.append(text)
     async def observe(check): observed.append(check)
-    task = asyncio.create_task(runtime.stream_output(request, tokens(), emit=emit, observe=observe,
+    task = asyncio.create_task(runtime.protect_output(request, tokens(), emit=emit, observe=observe,
                                                      timeout_seconds=0.05 if kind == "timeout" else 3))
     try:
         if kind == "cancel":
             await asyncio.wait_for(provider.entered.wait(), 2)
             task.cancel()
-        with pytest.raises(asyncio.CancelledError if kind == "cancel" else NativeStreamError) as error:
+        with pytest.raises(asyncio.CancelledError if kind == "cancel" else OutputStreamEvaluationError) as error:
             await task
-        if kind == "timeout": assert isinstance(error.value, TimeoutError)
+        if kind == "timeout": assert error.value.timed_out
         assert closed.is_set() and delivered == []
         if kind == "provider": assert observed[0].usage.fail_closed
         instance = registry.get(request.plan)
@@ -229,15 +230,13 @@ async def test_failure_and_cancellation_close_source_and_release_admission(kind)
         await runtime.shutdown()
 
 
-async def test_incompatible_configuration_is_rejected_before_consuming_source():
-    runtime, _, _, request, _ = build(plan(delivery="full_buffered"))
-    async def unexpected():
-        pytest.fail("An incompatible plan must not consume upstream text")
-        yield ""
-    async def emit(_): pytest.fail("No content is deliverable")
+async def test_complete_configuration_uses_the_same_output_entry_point():
+    runtime, provider, _, request, _ = build(plan(delivery="full_buffered"))
     try:
-        with pytest.raises(ValueError, match="does not support"):
-            await runtime.stream_output(request, unexpected(), emit=emit)
+        result, delivered, observed = await run(runtime, request, "hello", " world")
+        assert result.status == "completed" and "".join(delivered) == "hello world"
+        assert result.checks == len(observed) == 1
+        assert provider.calls == [("safety-0", "hello world")]
     finally:
         await runtime.shutdown()
 
@@ -264,26 +263,29 @@ async def test_concurrent_streams_keep_request_modes_and_evidence_isolated():
 
 
 @pytest.mark.parametrize("sink", ["emit", "observe"])
-async def test_failed_sink_terminates_and_closes_upstream(sink, monkeypatch, caplog):
+@pytest.mark.parametrize("delivery", ["window_buffered", "full_buffered"])
+async def test_failed_sink_terminates_and_closes_upstream(sink, monkeypatch, caplog, delivery):
     import runner.toolkit.nemo.runtime as runtime_module
     exporter = InMemorySpanExporter()
     tracing = TracerProvider()
     tracing.add_span_processor(SimpleSpanProcessor(exporter))
     monkeypatch.setattr(runtime_module, "_TRACER", tracing.get_tracer("native-test"))
-    runtime, _, registry, request, _ = build()
+    runtime, _, registry, request, _ = build(plan(delivery=delivery))
     closed = asyncio.Event()
     async def chunks():
         try:
             yield "hello"
             yield " world"
-            pytest.fail("No more upstream content should be requested after delivery fails")
+            if delivery == "window_buffered":
+                pytest.fail("No more upstream content should be requested after delivery fails")
+            yield " tail"
         finally:
             closed.set()
     async def fail(_): raise ValueError("private sink error")
     async def ignore(_): pass
     try:
-        with pytest.raises(NativeStreamError) as error:
-            await runtime.stream_output(request, chunks(), emit=fail if sink == "emit" else ignore,
+        with pytest.raises(OutputStreamEvaluationError) as error:
+            await runtime.protect_output(request, chunks(), emit=fail if sink == "emit" else ignore,
                                         observe=fail if sink == "observe" else None)
         assert "private" not in str(error.value)
         assert closed.is_set() and _CURRENT_SCOPE.get() is None
@@ -310,7 +312,7 @@ async def test_cancel_while_waiting_does_not_consume_source_or_leak_admission():
     second = None
     try:
         await asyncio.wait_for(provider.entered.wait(), 2)
-        second = asyncio.create_task(runtime.stream_output(request, queued_source(), emit=emit))
+        second = asyncio.create_task(runtime.protect_output(request, queued_source(), emit=emit))
         await asyncio.sleep(0)
         assert registry.get(request.plan).waiting_requests == 1
         second.cancel()
@@ -328,12 +330,13 @@ async def test_cancel_while_waiting_does_not_consume_source_or_leak_admission():
 
 
 @pytest.mark.parametrize("kind", ["non_text", "too_large"])
-async def test_invalid_source_is_withheld_before_model_checks(kind):
-    runtime, provider, _, request, _ = build()
+@pytest.mark.parametrize("delivery", ["window_buffered", "full_buffered"])
+async def test_invalid_source_is_withheld_before_model_checks(kind, delivery):
+    runtime, provider, _, request, _ = build(plan(delivery=delivery))
     async def emit(_): pytest.fail("No invalid content is deliverable")
     try:
-        with pytest.raises(NativeStreamError):
-            await runtime.stream_output(request, source(None if kind == "non_text" else "x" * 1_000_001), emit=emit)
+        with pytest.raises(OutputStreamEvaluationError):
+            await runtime.protect_output(request, source(None if kind == "non_text" else "x" * 1_000_001), emit=emit)
         assert provider.calls == [] and _CURRENT_SCOPE.get() is None
     finally:
         await runtime.shutdown()

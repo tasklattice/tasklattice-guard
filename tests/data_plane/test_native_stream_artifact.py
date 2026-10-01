@@ -7,7 +7,7 @@ import pytest
 
 from runner import generated as protocol
 from runner.providers import dynamic_runtime_action_providers
-from runner.toolkit.nemo.native_streaming import NativeStreamError
+from runner.toolkit.runtime.streaming import OutputStreamEvaluationError
 from runner.toolkit.runtime.contracts import EngineRequest
 from tests.data_plane.test_artifact_execution import _runtime
 
@@ -72,12 +72,12 @@ async def test_native_stream_consumes_signed_policy_and_preserves_model_evidence
     async def observe(decision): decisions.append(decision)
     try:
         if scenario in {"http_failure", "invalid_response"}:
-            with pytest.raises(NativeStreamError) as error:
-                await engine.stream_output(request, source(), emit=emit, observe=observe)
+            with pytest.raises(OutputStreamEvaluationError) as error:
+                await engine.protect_output(request, source(), emit=emit, observe=observe)
             assert "private" not in str(error.value)
             assert decisions[-1].usage.fail_closed
         else:
-            result = await engine.stream_output(request, source(), emit=emit, observe=observe)
+            result = await engine.protect_output(request, source(), emit=emit, observe=observe)
             assert result.status == ("completed" if scenario == "safe" else "blocked")
             assert result.checks == len(calls) == len(decisions)
             assert not decisions[-1].usage.fail_closed

@@ -68,6 +68,13 @@ redis:
     repository: redis
     tag: "7.4-alpine"
     pullPolicy: IfNotPresent
+  # Call contexts retain the immutable plan for input/output version pinning.
+  # Leave room for the full Default regression within the five-minute TTL.
+  resources:
+    requests:
+      memory: 128Mi
+    limits:
+      memory: 512Mi
 
 security:
   bootstrapAdmin:

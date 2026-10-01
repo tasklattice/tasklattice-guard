@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 
 from .content_views import content_view, text_blocks
 from .context import CallContextStore
-from .streaming import OutputStreamResult, OutputStreamEvaluationError
+from .streaming import OutputStreamEvaluationError
 from .contracts import (
     AppliedIntervention,
     ContentBlockResult,
@@ -129,12 +129,9 @@ class GuardrailRuntimeService:
             content_view=content_view(blocks, incoming[0].id), active_block_id=incoming[0].id,
             request_context=request.context, effective_release_id=resolution.effective_release_id,
         )
-        checks = 0
         outcome = "error"
 
         async def checked(decision):
-            nonlocal checks
-            checks += 1
             decision = replace(decision, router_id=resolution.router_id, endpoint_id=resolution.endpoint_id,
                 effective_release_id=resolution.effective_release_id, model_revision_id=resolution.model_revision_id,
                 route_assignment=resolution.route_assignment,
@@ -144,38 +141,14 @@ class GuardrailRuntimeService:
                 else "intervene" if decision.decision == "transform" else decision.decision)
             await observe(decision)
 
-        try:
-            contract = self._runtime.output_stream_contract(engine_request)
+        async def prepared(contract):
             await ready(contract, resolution)
-            if contract.effective_mode == "window_buffered":
-                result = await self._runtime.stream_output(engine_request, source, emit=emit, observe=checked)
-                outcome = "block" if result.status == "blocked" else "allow"
-                return OutputStreamResult(result.status, result.released_characters, checks)
 
-            # Full-response transformations and arbitrary Policy programs run
-            # once after confirmed EOF. There is no second incremental scheduler.
-            parts, size = [], 0
-            async for text in source:
-                size += len(text)
-                if size > 1_000_000:
-                    raise OutputStreamEvaluationError("Output exceeded the text limit.")
-                parts.append(text)
-            text = "".join(parts)
-            candidate = replace(request, texts=(text,), content_blocks=text_blocks("output", (text,), "model_output"))
-            decision = await self._evaluate_resolved(candidate, resolution, stored)
-            await checked(decision)
-            if decision.usage and decision.usage.fail_closed:
-                raise OutputStreamEvaluationError("Output protection failed.",
-                    timed_out=any(step.timed_out for step in decision.trace))
-            if decision.decision == "block":
-                outcome = "block"
-                return OutputStreamResult("blocked", 0, checks)
-            transformed = decision.decision == "transform"
-            approved = decision.texts[0] if transformed else text
-            for offset in range(0, len(approved), 16_384):
-                await emit(approved[offset:offset + 16_384])
-            outcome = "intervene" if transformed else "allow"
-            return OutputStreamResult("completed", len(approved), checks, transformed)
+        try:
+            result = await self._runtime.protect_output(engine_request, source,
+                ready=prepared, emit=emit, observe=checked)
+            outcome = "block" if result.status == "blocked" else "intervene" if result.transformed else "allow"
+            return result
         except asyncio.CancelledError:
             raise
         except TimeoutError:

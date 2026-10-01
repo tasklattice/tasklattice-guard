@@ -223,16 +223,26 @@ unconditional, non-transforming Content Safety output rules using required,
 fail-closed modules and an incremental delivery mode. It emits direct Action
 rails in Policy order, `parallel: false`, and `stream_first: false`. Actions
 return NeMo `RailOutcome`; their metadata retains the existing Policy evidence.
-Complete-response `NeMoRuntime.evaluate()` calls for these configurations use
-one frame through the same native engine. This also avoids Colang 1's per-rail
-event limit for larger output Policy collections.
+Every complete-response `NeMoRuntime.evaluate()` output call becomes a one-item
+source for `NeMoRuntime.protect_output()`. Configurations compiled for native
+streaming therefore also use its direct rail dispatch for complete checks,
+avoiding Colang 1's per-rail event limit for larger output Policy collections.
 
-`NeMoRuntime.stream_output(request, source, emit=..., observe=...)` consumes an
-async text iterator in one invocation. NeMo owns windowing, overlap and ordered
-rail dispatch. Guard owns the pinned runtime, concurrency admission, delivery,
-Policy evidence, model-call observation, timeout and source cancellation.
+`NeMoRuntime.protect_output(request, source, ready=..., emit=..., observe=...)`
+is the single output execution boundary for all published configurations.
+It acquires the pinned NeMo instance once, then announces the compiled delivery
+contract through `ready`. Native configurations delegate windowing, overlap and
+ordered rail dispatch to NeMo. Other configurations collect the bounded source
+and invoke NeMo's complete evaluation once, preserving transformations and
+programmable flows. The Service handles routing and release assignment without
+choosing a delivery mode, accumulating output, or scheduling Policy checks.
+
+Both modes share source limits, deadline, cancellation, safe error handling and
+the `guardrail.output` span. All NeMo API paths reuse the same request context,
+model-observation scope and concurrency admission lifecycle. No additional
+event queue or producer task is introduced inside the engine.
 `emit` and `observe` are awaited async callbacks; only `emit` supplies approved
-text. `observe` supplies each window's `ProtectionDecision`, including failed
+text. `observe` supplies each check's `ProtectionDecision`, including failed
 checks. NeMo diagnostic JSON is never forwarded as model content. Valid model
 text that happens to look like an error JSON object remains deliverable.
 
@@ -247,14 +257,17 @@ Model clients should yield incremental deltas without pre-buffering large
 batches. Full-response guarantees still require `full_buffered`.
 
 The result distinguishes `completed` from `blocked`. Evaluation, upstream or
-delivery failure raises `NativeStreamError`; it never permits raw-output
+delivery failure raises `OutputStreamEvaluationError`; it never permits raw-output
 fallback. Block, error and cancellation close the source and release admission.
 The source must end only on confirmed normal upstream completion and raise on
 truncation. Defaults cap a stream at 300 seconds, one million characters and
 100,000 frames. Input checks, Endpoint authorization and route resolution remain
 the caller's responsibility. Transforming, conditional, arbitrary Colang and
-full-buffered policies are rejected by this native stream entry before reading
-upstream content; they retain their complete-response evaluation paths.
+full-buffered policies use this same entry with complete-response delivery.
+The lower-level native streaming adapter is limited to the configurations the
+compiler explicitly enables; it does not act as a second general executor.
+The existing NeMo public API calls remain encapsulated behind this boundary;
+no NeMo fork or private streaming implementation is patched.
 
 ### WebSocket delivery protocol
 

@@ -706,11 +706,10 @@ class NeMoPolicyRuntime(Protocol):
 
     async def evaluate(self, request: EngineRequest) -> ProtectionDecision: ...
 
-    def output_stream_contract(self, request: EngineRequest) -> OutputStreamContract: ...
-
-    async def stream_output(self, request: EngineRequest, source: AsyncIterator[str], *,
+    async def protect_output(self, request: EngineRequest, source: AsyncIterator[str], *,
         emit: Callable[[str], Awaitable[None]],
         observe: Callable[[ProtectionDecision], Awaitable[None]] | None = None,
+        ready: Callable[[OutputStreamContract], Awaitable[None]] | None = None,
         timeout_seconds: float = 300,
     ) -> OutputStreamResult: ...
 

@@ -1,13 +1,12 @@
 """External text streams checked by NeMo's public stream_async API.
 
-NeMo owns buffering and rail dispatch. This adapter owns delivery, typed
-evidence, admission and cancellation; it never interprets Colang or schedules
-individual rails. Source exhaustion means verified normal completion: protocol
-adapters must raise on upstream truncation instead of silently ending source.
+NeMo owns buffering and rail dispatch. This adapter verifies typed check
+evidence before delivery; output.py owns the common output lifecycle. It never
+interprets Colang or schedules individual rails. Source exhaustion means verified
+normal completion: transports must raise on truncation instead of ending source.
 """
 from __future__ import annotations
 
-import asyncio
 import time
 from collections import deque
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -19,56 +18,15 @@ from nemoguardrails.rails.llm.options import ActivatedRail, GenerationLog, Gener
 from opentelemetry.trace import Status, StatusCode
 
 from ..runtime.contracts import EngineRequest, NeMoConfigSnapshot, ProtectionDecision
-from ..runtime.streaming import OutputStreamResult
-from .actions.model_call import activate_native_model_observation, deactivate_native_model_observation
+from ..runtime.streaming import OutputStreamEvaluationError, OutputStreamResult
 
 
-class NativeStreamError(RuntimeError):
+class NativeStreamError(OutputStreamEvaluationError):
     """The stream failed; no unchecked text may be used as a fallback."""
-
-
-class NativeStreamTimeoutError(NativeStreamError, TimeoutError):
-    """Keep deadline failures distinguishable in existing runtime telemetry."""
 
 
 def native_output_config(config: NeMoConfigSnapshot) -> dict[str, Any]:
     return (yaml.safe_load(config.config_yaml) or {}).get("rails", {}).get("output", {})
-
-
-async def evaluate_native_output(runtime, request: EngineRequest, acquisition) -> ProtectionDecision:
-    """A whole-response check is a single frame through the same native rails."""
-    from .runtime import _failed_decision, _request_timeout_ms
-
-    instance, cache_hit, registry_wait = acquisition
-    decisions: list[ProtectionDecision] = []
-    started = time.perf_counter()
-
-    async def source():
-        yield request.text
-
-    async def emit(_):
-        pass  # Non-transforming checks return a decision about the original text.
-
-    async def observe(decision):
-        decisions.append(decision)
-
-    try:
-        await run_native_output_stream(
-            runtime, request, source(), emit=emit, observe=observe,
-            timeout_seconds=_request_timeout_ms(request) / 1000,
-            acquisition=acquisition,
-        )
-        if len(decisions) != 1:
-            raise NativeStreamError("A complete response must produce exactly one check.")
-        return decisions[0]
-    except Exception as error:
-        if decisions and decisions[-1].usage.fail_closed:
-            return decisions[-1]
-        return _failed_decision(
-            request, error, max(0, round((time.perf_counter() - started) * 1000)),
-            instance.config,
-            cache_hit=cache_hit, queue_latency_ms=registry_wait,
-        )
 
 
 @dataclass(slots=True)
@@ -114,21 +72,15 @@ async def run_native_output_stream(
     *,
     emit: Callable[[str], Awaitable[None]],
     observe: Callable[[ProtectionDecision], Awaitable[None]] | None = None,
-    timeout_seconds: float = 300,
-    acquisition=None,
+    acquisition,
 ) -> OutputStreamResult:
     # These are our own runtime helpers, not NeMo implementation APIs.
     from .runtime import (
-        _CURRENT_SCOPE, _ExecutionScope, _TRACER, _colang1_decision, _colang1_runtime_result,
+        _execution_context, _admission, _TRACER, _colang1_decision, _colang1_runtime_result,
         _decision, _messages,
     )
 
-    if request.phase != "output" or timeout_seconds <= 0:
-        raise ValueError("Native output streaming requires output phase and a positive timeout.")
-    instance, cache_hit, registry_wait = acquisition or runtime._registry.acquire(
-        request.plan,
-        **({"release_id": request.effective_release_id} if request.effective_release_id else {}),
-    )
+    instance, cache_hit, registry_wait = acquisition
     output = native_output_config(instance.config)
     streaming = output.get("streaming", {})
     if (
@@ -146,145 +98,99 @@ async def run_native_output_stream(
     source_iterator = source.__aiter__()
     evidence = _StreamEvidence(tuple(item.id for item in bindings))
     started = time.perf_counter()
-    scope = _ExecutionScope(request, instance.config.runtime_profile, [], started, native_stream=evidence)
-    token = _CURRENT_SCOPE.set(scope)
-    _, model_token = activate_native_model_observation(
-        guardrail_id=request.plan.guardrail_id,
-        endpoint_id=(request.request_context.endpoint_id or "__internal__")
-        if request.request_context is not None else "__internal__",
-        phase=request.phase, request_started_at=started,
-        observer=runtime._model_call_observer,
-    )
-    admitted = False
-    waiting = False
-    stream = None
-    pending = ""
-    exhausted = False
-    received = 0
-    frames = 0
-    released = 0
-    checks = 0
-    queue_wait = registry_wait
+    with _execution_context(runtime, request, instance, started, native_stream=evidence) as (scope, _):
+        stream = None
+        pending = ""
+        exhausted = False
+        released = 0
+        checks = 0
+        queue_wait = registry_wait
 
-    async def inputs():
-        nonlocal pending, exhausted, received, frames
-        async for text in source_iterator:
+        async def inputs():
+            nonlocal pending, exhausted
+            async for text in source_iterator:
+                evidence.release_allowed = False
+                pending += text
+                yield text
             evidence.release_allowed = False
-            frames += 1
-            if not isinstance(text, str):
-                raise NativeStreamError("The model stream contained a non-text frame.")
-            received += len(text)
-            if received > 1_000_000 or frames > 100_000:
-                raise NativeStreamError("The model stream exceeded its configured limit.")
-            pending += text
-            yield text
-        evidence.release_allowed = False
-        exhausted = True
+            exhausted = True
 
-    async def observe_checks():
-        nonlocal checks
-        while evidence.completed:
-            payloads = evidence.completed.popleft()
-            results = tuple(_colang1_runtime_result(binding, payload)
-                            for binding, payload in zip(bindings, payloads))
-            last = payloads[-1]
-            candidate = payloads[0]["input_text"]
-            if not candidate.endswith(pending):
-                raise NativeStreamError("NeMo did not check all pending source text.")
-            # We record results at our registered Action boundary. The public
-            # streaming API does not return GenerationResponse/output_vars.
-            response = GenerationResponse(response=candidate, log=GenerationLog(activated_rails=[
-                ActivatedRail(type="output", name=flow, stop=payload["blocked"],
-                              duration=payload["latency_ms"] / 1000)
-                for flow, payload in zip(output["flows"], payloads)
-            ]))
-            decision = _decision(
-                replace(request, text=candidate), response, instance.config, results,
-                custom_decision=_colang1_decision(
-                    replace(request, text=candidate), instance.config, response, results, payloads,
-                ),
-                cache_hit=cache_hit, queue_latency_ms=queue_wait,
-                active_concurrency=instance.active_requests,
-            )
-            checks += 1
-            if observe is not None:
-                await observe(decision)
-            if last["verdict"] == "error" or decision.usage.fail_closed:
-                raise NativeStreamError("Output protection failed; unchecked text was withheld.")
+        async def observe_checks():
+            nonlocal checks
+            while evidence.completed:
+                payloads = evidence.completed.popleft()
+                results = tuple(_colang1_runtime_result(binding, payload)
+                                for binding, payload in zip(bindings, payloads))
+                last = payloads[-1]
+                candidate = payloads[0]["input_text"]
+                if not candidate.endswith(pending):
+                    raise NativeStreamError("NeMo did not check all pending source text.")
+                # We record results at our registered Action boundary. The public
+                # streaming API does not return GenerationResponse/output_vars.
+                response = GenerationResponse(response=candidate, log=GenerationLog(activated_rails=[
+                    ActivatedRail(type="output", name=flow, stop=payload["blocked"],
+                                  duration=payload["latency_ms"] / 1000)
+                    for flow, payload in zip(output["flows"], payloads)
+                ]))
+                decision = _decision(
+                    replace(request, text=candidate), response, instance.config, results,
+                    custom_decision=_colang1_decision(
+                        replace(request, text=candidate), instance.config, response, results, payloads,
+                    ),
+                    cache_hit=cache_hit, queue_latency_ms=queue_wait,
+                    active_concurrency=instance.active_requests,
+                )
+                checks += 1
+                if observe is not None:
+                    await observe(decision)
+                if last["verdict"] == "error" or decision.usage.fail_closed:
+                    raise NativeStreamError("Output protection failed; unchecked text was withheld.")
 
-    inputs_iterator = inputs()
-    try:
-        async with asyncio.timeout(timeout_seconds):
-            instance.waiting_requests += 1
-            waiting = True
-            await instance.admission.acquire()
-            instance.waiting_requests -= 1
-            waiting = False
-            admitted = True
-            instance.active_requests += 1
-            queue_wait += max(0, round((time.perf_counter() - started) * 1000))
-            # Sources and delivery callbacks can raise with private payloads.
-            # Record only safe error types, never automatic exception details.
-            with _TRACER.start_as_current_span(
-                "guardrail.native_output_stream",
-                record_exception=False, set_status_on_exception=False,
-            ) as span:
-                span.set_attribute("guardrail.id", request.plan.guardrail_id)
-                span.set_attribute("guardrail.version", request.plan.guardrail_version)
-                try:
-                    stream = instance.rails.stream_async(
-                        messages=_messages(request), generator=inputs_iterator,
-                        include_metadata=False,
-                    )
-                    async for text in stream:
+        inputs_iterator = inputs()
+        async with _admission(instance, request) as admission_wait:
+            try:
+                queue_wait += admission_wait
+                # Sources and delivery callbacks can raise with private payloads.
+                # Record only safe error types, never automatic exception details.
+                with _TRACER.start_as_current_span(
+                    "guardrail.native_output_stream",
+                    record_exception=False, set_status_on_exception=False,
+                ) as span:
+                    span.set_attribute("guardrail.id", request.plan.guardrail_id)
+                    span.set_attribute("guardrail.version", request.plan.guardrail_version)
+                    try:
+                        stream = instance.rails.stream_async(
+                            messages=_messages(request), generator=inputs_iterator,
+                            include_metadata=False,
+                        )
+                        async for text in stream:
+                            await observe_checks()
+                            if scope.action_failure is not None:
+                                raise NativeStreamError("Output rail execution failed.")
+                            if evidence.blocked:
+                                return OutputStreamResult("blocked", released, checks)
+                            # Do not classify text by JSON shape: model content may
+                            # itself be {"error": ...}. Only our checked source prefix
+                            # is deliverable; NeMo diagnostic strings are not.
+                            if (not evidence.release_allowed or not isinstance(text, str)
+                                    or not pending.startswith(text)):
+                                raise NativeStreamError("NeMo returned output without a completed check.")
+                            if text:
+                                await emit(text)
+                                pending = pending[len(text):]
+                                released += len(text)
                         await observe_checks()
-                        if scope.action_failure is not None:
-                            raise NativeStreamError("Output rail execution failed.")
+                        if scope.action_failure is not None or not exhausted or pending:
+                            raise NativeStreamError("The protected stream did not complete.")
                         if evidence.blocked:
                             return OutputStreamResult("blocked", released, checks)
-                        # Do not classify text by JSON shape: model content may
-                        # itself be {"error": ...}. Only our checked source prefix
-                        # is deliverable; NeMo diagnostic strings are not.
-                        if (not evidence.release_allowed or not isinstance(text, str)
-                                or not pending.startswith(text)):
-                            raise NativeStreamError("NeMo returned output without a completed check.")
-                        if text:
-                            await emit(text)
-                            pending = pending[len(text):]
-                            released += len(text)
-                    await observe_checks()
-                    if scope.action_failure is not None or not exhausted or pending:
-                        raise NativeStreamError("The protected stream did not complete.")
-                    if evidence.blocked:
-                        return OutputStreamResult("blocked", released, checks)
-                    return OutputStreamResult("completed", released, checks)
-                except BaseException as error:
-                    span.set_status(Status(StatusCode.ERROR, type(error).__name__))
-                    raise
-    except asyncio.CancelledError:
-        raise
-    except TimeoutError:
-        raise NativeStreamTimeoutError("The protected stream timed out.") from None
-    except NativeStreamError:
-        raise
-    except Exception:
-        raise NativeStreamError("The protected stream failed; unchecked text was withheld.") from None
-    finally:
-        try:
-            if stream is not None:
-                await _close(stream)
-        finally:
-            try:
-                await _close(inputs_iterator)
+                        return OutputStreamResult("completed", released, checks)
+                    except BaseException as error:
+                        span.set_status(Status(StatusCode.ERROR, type(error).__name__))
+                        raise
             finally:
                 try:
-                    await _close(source_iterator)
+                    if stream is not None:
+                        await _close(stream)
                 finally:
-                    if waiting:
-                        instance.waiting_requests -= 1
-                    if admitted:
-                        instance.active_requests -= 1
-                        instance.admission.release()
-                    scope.closed = True
-                    _CURRENT_SCOPE.reset(token)
-                    deactivate_native_model_observation(model_token)
+                    await _close(inputs_iterator)

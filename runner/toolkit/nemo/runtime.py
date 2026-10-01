@@ -5,7 +5,7 @@ import difflib
 import re
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
-from contextlib import nullcontext
+from contextlib import asynccontextmanager, contextmanager, nullcontext
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass, replace
 from functools import wraps
@@ -27,7 +27,7 @@ from opentelemetry import context as otel_context, trace
 from opentelemetry.trace import Status, StatusCode
 
 from ..runtime.content_views import request_view, with_active_text
-from ..runtime.streaming import OutputStreamContract, OutputStreamResult
+from ..runtime.streaming import OutputStreamContract, OutputStreamEvaluationError, OutputStreamResult
 from ..runtime.contracts import (
     AppliedIntervention,
     ContentPatch,
@@ -65,9 +65,8 @@ from .actions.model_call import (
     deactivate_native_model_observation,
     observe_native_model_call,
 )
-from .native_streaming import (
-    evaluate_native_output, native_output_config, run_native_output_stream,
-)
+from .native_streaming import native_output_config
+from .output import protect_output
 from .artifacts import config_checksum
 from .registry import NeMoRuntimeRegistry
 from ..safety.taxonomy import taxonomy, taxonomy_for_evaluator
@@ -102,6 +101,51 @@ class _ExecutionScope:
     reason: str = "All NeMo Actions passed."
     action_failure: _ActionExecutionFailure | None = None
     native_stream: Any = None
+
+
+@contextmanager
+def _execution_context(runtime, request, instance, started, *, native_stream=None):
+    """One request scope and model-observation lifecycle for all NeMo APIs."""
+    scope = _ExecutionScope(request, instance.config.runtime_profile, [], started,
+                            native_stream=native_stream)
+    token = _CURRENT_SCOPE.set(scope)
+    observation, model_token = activate_native_model_observation(
+        guardrail_id=request.plan.guardrail_id,
+        endpoint_id=(request.request_context.endpoint_id or "__internal__")
+        if request.request_context is not None else "__internal__",
+        phase=request.phase, request_started_at=started,
+        observer=runtime._model_call_observer,
+    )
+    try:
+        yield scope, observation
+    finally:
+        scope.closed = True
+        _CURRENT_SCOPE.reset(token)
+        deactivate_native_model_observation(model_token)
+
+
+@asynccontextmanager
+async def _admission(instance, request):
+    started = time.perf_counter()
+    instance.waiting_requests += 1
+    try:
+        with _TRACER.start_as_current_span("guardrail.queue_wait", attributes={
+            "guardrail.id": request.plan.guardrail_id,
+            "guardrail.version": request.plan.guardrail_version,
+            "guardrail.phase": request.phase,
+            "guardrail.runtime.profile": instance.config.runtime_profile,
+        }) as span:
+            await instance.admission.acquire()
+            wait_ms = max(0, round((time.perf_counter() - started) * 1000))
+            span.set_attribute("guardrail.queue.duration_ms", wait_ms)
+    finally:
+        instance.waiting_requests -= 1
+    instance.active_requests += 1
+    try:
+        yield wait_ms
+    finally:
+        instance.active_requests -= 1
+        instance.admission.release()
 
 
 class _ActionExecutionFailure(LLMCallException):
@@ -836,33 +880,19 @@ class NeMoRuntime:
     name = "nemo-guardrails"
     supported_phases = frozenset({"input", "output"})
 
-    def output_stream_contract(self, request: EngineRequest) -> OutputStreamContract:
-        instance = self._registry.acquire(request.plan,
-            **({"release_id": request.effective_release_id} if request.effective_release_id else {}))[0]
-        enabled = native_output_config(instance.config).get("streaming", {}).get("enabled")
-        return OutputStreamContract(request.plan.output_delivery,
-            "window_buffered" if enabled else "full_buffered",
-            "NeMo checks overlapping windows before release." if enabled
-            else "The compiled output rules require one complete-response check.")
-
-    async def stream_output(
+    async def protect_output(
         self,
         request: EngineRequest,
         source: AsyncIterator[str],
         *,
         emit: Callable[[str], Awaitable[None]],
         observe: Callable[[ProtectionDecision], Awaitable[None]] | None = None,
+        ready: Callable[[OutputStreamContract], Awaitable[None]] | None = None,
         timeout_seconds: float = 300,
     ) -> OutputStreamResult:
-        """Check an external text iterator using the compiled NeMo output rails.
-
-        This is an engine API, not the legacy per-chunk HTTP protocol. The
-        caller awaits one invocation and supplies async delivery/audit sinks.
-        """
-        return await run_native_output_stream(
-            self, request, source, emit=emit, observe=observe,
-            timeout_seconds=timeout_seconds,
-        )
+        """Protect any output source with one pinned configuration and lifecycle."""
+        return await protect_output(self, request, source, emit=emit, observe=observe,
+            ready=ready, timeout_seconds=timeout_seconds)
 
     def __init__(
         self,
@@ -874,264 +904,244 @@ class NeMoRuntime:
         self._model_call_observer = model_call_observer
 
     async def evaluate(self, request: EngineRequest) -> ProtectionDecision:
-        instance, cache_hit, registry_queue_latency_ms = self._registry.acquire(
+        if request.phase != "output":
+            return await self._evaluate_complete(request)
+        decisions = []
+        started = time.perf_counter()
+
+        async def source():
+            yield request.text
+
+        async def emit(_):
+            pass  # The complete decision already carries any transformed text.
+
+        async def observe(decision):
+            decisions.append(decision)
+
+        try:
+            await self.protect_output(request, source(), emit=emit, observe=observe,
+                timeout_seconds=_request_timeout_ms(request) / 1000)
+            if len(decisions) != 1:
+                raise RuntimeError("Complete output must produce exactly one check.")
+            return decisions[0]
+        except Exception as error:
+            if decisions and decisions[-1].usage and decisions[-1].usage.fail_closed:
+                return decisions[-1]
+            instance, cache_hit, queue_wait = self._registry.acquire(request.plan,
+                **({"release_id": request.effective_release_id} if request.effective_release_id else {}))
+            return _failed_decision(request, error,
+                max(0, round((time.perf_counter() - started) * 1000)), instance.config,
+                cache_hit=cache_hit, queue_latency_ms=queue_wait)
+
+    async def _evaluate_complete(self, request: EngineRequest, *, acquisition=None) -> ProtectionDecision:
+        instance, cache_hit, registry_queue_latency_ms = acquisition or self._registry.acquire(
             request.plan,
             **({"release_id": request.effective_release_id} if request.effective_release_id else {}),
         )
-        if request.phase == "output" and native_output_config(instance.config).get("streaming", {}).get("enabled"):
-            # A complete response is one input frame. Reuse the same native
-            # rail dispatch and evidence as streaming, avoiding Colang's
-            # per-flow event limit on large output Policy collections.
-            return await evaluate_native_output(
-                self, request, (instance, cache_hit, registry_queue_latency_ms),
-            )
         profile = instance.config.runtime_profile
         started = time.perf_counter()
-        scope = _ExecutionScope(request, profile, [], started)
-        token = _CURRENT_SCOPE.set(scope)
-        request_context = request.request_context
-        native_model_scope, native_model_token = activate_native_model_observation(
-            guardrail_id=request.plan.guardrail_id,
-            endpoint_id=(
-                request_context.endpoint_id
-                if request_context is not None and request_context.endpoint_id
-                else "__internal__"
-            ),
-            phase=request.phase,
-            request_started_at=started,
-            observer=self._model_call_observer,
-        )
-        queue_started = started
-        queue_latency_ms = registry_queue_latency_ms
-        admitted = False
-        waiting = False
-        active_concurrency = 0
-        response: GenerationResponse | None = None
-        rails_result: RailsResult | None = None
-        runtime_results: tuple[_RuntimeResult, ...] = ()
-        custom_decision: dict[str, Any] | None = None
-        runtime_span = None
-        runtime_context_token = None
-        try:
-            async with asyncio.timeout(_request_timeout_ms(request) / 1_000):
-                instance.waiting_requests += 1
-                waiting = True
-                with _TRACER.start_as_current_span(
-                    "guardrail.queue_wait",
-                    attributes={
-                        "guardrail.id": request.plan.guardrail_id,
-                        "guardrail.version": request.plan.guardrail_version,
-                        "guardrail.phase": request.phase,
-                        "guardrail.runtime.profile": profile,
-                    },
-                ) as queue_span:
-                    await instance.admission.acquire()
-                    queue_span.set_attribute(
-                        "guardrail.queue.duration_ms",
-                        max(0, round((time.perf_counter() - queue_started) * 1_000)),
-                    )
-                instance.waiting_requests = max(0, instance.waiting_requests - 1)
-                waiting = False
-                admitted = True
-                instance.active_requests += 1
-                active_concurrency = instance.active_requests
-                queue_latency_ms += max(
-                    0, round((time.perf_counter() - queue_started) * 1_000)
-                )
-                runtime_started = time.perf_counter()
-                runtime_span = _TRACER.start_span(
-                    "guardrail.runtime",
-                    attributes={
-                        "guardrail.id": request.plan.guardrail_id,
-                        "guardrail.version": request.plan.guardrail_version,
-                        "guardrail.phase": request.phase,
-                        "guardrail.runtime.engine": instance.config.runtime_engine,
-                        "guardrail.runtime.profile": profile,
-                        "guardrail.runtime.cache_hit": cache_hit,
-                    },
-                )
-                runtime_context_token = otel_context.attach(
-                    trace.set_span_in_context(runtime_span)
-                )
-                if profile == "iorails_native":
-                    native_model = next(
-                        iter(instance.native_models),
-                        None,
-                    )
-                    observation = (
-                        observe_native_model_call(
-                            native_model_scope,
-                            role=native_model.type,
-                            provider=native_model.runtime_id,
-                            model=native_model.model,
-                            profile_ref=native_model.profile_ref,
-                            runtime_ref=native_model.runtime_id,
+        with _execution_context(self, request, instance, started) as (scope, native_model_scope):
+            queue_latency_ms = registry_queue_latency_ms
+            admitted = False
+            active_concurrency = 0
+            response: GenerationResponse | None = None
+            rails_result: RailsResult | None = None
+            runtime_results: tuple[_RuntimeResult, ...] = ()
+            custom_decision: dict[str, Any] | None = None
+            runtime_span = None
+            runtime_context_token = None
+            try:
+                async with asyncio.timeout(_request_timeout_ms(request) / 1_000):
+                    async with _admission(instance, request) as admission_wait:
+                        admitted = True
+                        active_concurrency = instance.active_requests
+                        queue_latency_ms += admission_wait
+                        runtime_started = time.perf_counter()
+                        runtime_span = _TRACER.start_span(
+                            "guardrail.runtime",
+                            attributes={
+                                "guardrail.id": request.plan.guardrail_id,
+                                "guardrail.version": request.plan.guardrail_version,
+                                "guardrail.phase": request.phase,
+                                "guardrail.runtime.engine": instance.config.runtime_engine,
+                                "guardrail.runtime.profile": profile,
+                                "guardrail.runtime.cache_hit": cache_hit,
+                            },
                         )
-                        if native_model is not None and request.text
-                        else nullcontext()
-                    )
-                    with observation:
-                        rails_result = await instance.rails.check_async(
-                            messages=_messages(request),
-                            rail_types=[NeMoRailType(request.phase)],
+                        runtime_context_token = otel_context.attach(
+                            trace.set_span_in_context(runtime_span)
                         )
-                        _raise_if_cancelled()
-                        if (
-                            rails_result.status == RailStatus.BLOCKED
-                            and rails_result.content == INTERNAL_ERROR_MESSAGE
-                        ):
-                            raise ValueError(
-                                f"NeMo rail {rails_result.rail or 'unknown'} "
-                                "returned an invalid result."
+                        if profile == "iorails_native":
+                            native_model = next(
+                                iter(instance.native_models),
+                                None,
                             )
-                    response, custom_decision = _iorails_response(
-                        request,
-                        instance.config,
-                        rails_result,
-                        max(0, time.perf_counter() - runtime_started),
-                    )
-                elif profile == "llmrails_colang1_standard":
-                    candidate = await instance.rails.generate_async(
-                        messages=_colang1_messages(request),
-                        options={
-                            "rails": [request.phase],
-                            "output_vars": [
-                                *(
-                                    binding.result_var
-                                    for binding in instance.config.bindings_for(
-                                        request.phase
+                            observation = (
+                                observe_native_model_call(
+                                    native_model_scope,
+                                    role=native_model.type,
+                                    provider=native_model.runtime_id,
+                                    model=native_model.model,
+                                    profile_ref=native_model.profile_ref,
+                                    runtime_ref=native_model.runtime_id,
+                                )
+                                if native_model is not None and request.text
+                                else nullcontext()
+                            )
+                            with observation:
+                                rails_result = await instance.rails.check_async(
+                                    messages=_messages(request),
+                                    rail_types=[NeMoRailType(request.phase)],
+                                )
+                                _raise_if_cancelled()
+                                if (
+                                    rails_result.status == RailStatus.BLOCKED
+                                    and rails_result.content == INTERNAL_ERROR_MESSAGE
+                                ):
+                                    raise ValueError(
+                                        f"NeMo rail {rails_result.rail or 'unknown'} "
+                                        "returned an invalid result."
                                     )
-                                    if binding.result_var
-                                ),
-                                (
-                                    "user_message"
-                                    if request.phase == "input"
-                                    else "bot_message"
-                                ),
-                            ],
-                            # Aggregate call counts remain available in
-                            # log.stats; raw model prompts/completions stay off.
-                            "log": {
-                                "activated_rails": True,
-                                "llm_calls": False,
-                            },
-                        },
-                    )
-                    _raise_if_cancelled()
-                    response = _generation_response(candidate)
-                    runtime_results, action_payloads = _colang1_results(
-                        request,
-                        instance.config,
-                        response,
-                    )
-                    custom_decision = _colang1_decision(
-                        request,
-                        instance.config,
-                        response,
-                        runtime_results,
-                        action_payloads,
-                    )
-                elif profile == "llmrails_colang2_programmable":
-                    response = await instance.rails.generate_async(
-                        messages=_programmable_messages(request),
-                        options={
-                            "rails": {
-                                "input": False,
-                                "dialog": False,
-                                "retrieval": False,
-                                "output": False,
-                                "tool_input": False,
-                                "tool_output": False,
-                            },
-                        },
-                    )
-                    _raise_if_cancelled()
-                    response = _generation_response(response)
-                    runtime_results = tuple(scope.results)
-                    custom_decision = scope.c2_decision
-                    if custom_decision is None:
-                        raise RuntimeError(
-                            "The Colang 2 policy completed without a decision."
-                        )
-                else:
-                    raise RuntimeError(f"Unknown NeMo runtime profile {profile!r}.")
-                if scope.action_failure is not None:
-                    raise scope.action_failure
-                runtime_span.set_attributes({
-                    "guardrail.runtime.result": "success",
-                    "guardrail.runtime.duration_ms": max(
-                        0, round((time.perf_counter() - runtime_started) * 1_000)
-                    ),
-                    "guardrail.runtime.action_count": len(runtime_results),
-                })
-        except Exception as error:
-            # Colang may itself fail while consuming the missing Action result.
-            # Preserve the original safe diagnostic rather than a secondary one.
-            error = scope.action_failure or error
-            if runtime_span is not None:
-                runtime_span.record_exception(error)
-                runtime_span.set_status(Status(StatusCode.ERROR, type(error).__name__))
-                runtime_span.set_attribute("guardrail.runtime.result", "error")
-            duration = max(0, round((time.perf_counter() - started) * 1_000))
-            if not admitted:
-                queue_latency_ms += duration
-            return _failed_decision(
-                request,
-                error,
-                duration,
-                instance.config,
-                cache_hit=cache_hit,
-                queue_latency_ms=queue_latency_ms,
-                active_concurrency=active_concurrency,
-                native_model_calls=tuple(native_model_scope.calls),
-            )
-        finally:
-            if runtime_context_token is not None:
-                otel_context.detach(runtime_context_token)
-            if runtime_span is not None:
-                runtime_span.end()
-            if waiting:
-                instance.waiting_requests = max(0, instance.waiting_requests - 1)
-            if admitted:
-                instance.active_requests = max(0, instance.active_requests - 1)
-                instance.admission.release()
-            scope.closed = True
-            _CURRENT_SCOPE.reset(token)
-            deactivate_native_model_observation(native_model_token)
-        if response is None:
-            return _failed_decision(
-                request,
-                RuntimeError("NeMo invocation completed without a response."),
-                max(0, round((time.perf_counter() - started) * 1_000)),
-                instance.config,
-                cache_hit=cache_hit,
-                queue_latency_ms=queue_latency_ms,
-                active_concurrency=active_concurrency,
-                native_model_calls=tuple(native_model_scope.calls),
-            )
-        try:
-            return _decision(
-                request,
-                response,
-                instance.config,
-                runtime_results,
-                custom_decision=custom_decision,
-                cache_hit=cache_hit,
-                queue_latency_ms=queue_latency_ms,
-                active_concurrency=active_concurrency,
-                native_model_calls=tuple(native_model_scope.calls),
-            )
-        except Exception as error:
-            return _failed_decision(
-                request,
-                error,
-                max(0, round((time.perf_counter() - started) * 1_000)),
-                instance.config,
-                cache_hit=cache_hit,
-                queue_latency_ms=queue_latency_ms,
-                active_concurrency=active_concurrency,
-                native_model_calls=tuple(native_model_scope.calls),
-            )
+                            response, custom_decision = _iorails_response(
+                                request,
+                                instance.config,
+                                rails_result,
+                                max(0, time.perf_counter() - runtime_started),
+                            )
+                        elif profile == "llmrails_colang1_standard":
+                            candidate = await instance.rails.generate_async(
+                                messages=_colang1_messages(request),
+                                options={
+                                    "rails": [request.phase],
+                                    "output_vars": [
+                                        *(
+                                            binding.result_var
+                                            for binding in instance.config.bindings_for(
+                                                request.phase
+                                            )
+                                            if binding.result_var
+                                        ),
+                                        (
+                                            "user_message"
+                                            if request.phase == "input"
+                                            else "bot_message"
+                                        ),
+                                    ],
+                                    # Aggregate call counts remain available in
+                                    # log.stats; raw model prompts/completions stay off.
+                                    "log": {
+                                        "activated_rails": True,
+                                        "llm_calls": False,
+                                    },
+                                },
+                            )
+                            _raise_if_cancelled()
+                            response = _generation_response(candidate)
+                            runtime_results, action_payloads = _colang1_results(
+                                request,
+                                instance.config,
+                                response,
+                            )
+                            custom_decision = _colang1_decision(
+                                request,
+                                instance.config,
+                                response,
+                                runtime_results,
+                                action_payloads,
+                            )
+                        elif profile == "llmrails_colang2_programmable":
+                            response = await instance.rails.generate_async(
+                                messages=_programmable_messages(request),
+                                options={
+                                    "rails": {
+                                        "input": False,
+                                        "dialog": False,
+                                        "retrieval": False,
+                                        "output": False,
+                                        "tool_input": False,
+                                        "tool_output": False,
+                                    },
+                                },
+                            )
+                            _raise_if_cancelled()
+                            response = _generation_response(response)
+                            runtime_results = tuple(scope.results)
+                            custom_decision = scope.c2_decision
+                            if custom_decision is None:
+                                raise RuntimeError(
+                                    "The Colang 2 policy completed without a decision."
+                                )
+                        else:
+                            raise RuntimeError(f"Unknown NeMo runtime profile {profile!r}.")
+                        if scope.action_failure is not None:
+                            raise scope.action_failure
+                        runtime_span.set_attributes({
+                            "guardrail.runtime.result": "success",
+                            "guardrail.runtime.duration_ms": max(
+                                0, round((time.perf_counter() - runtime_started) * 1_000)
+                            ),
+                            "guardrail.runtime.action_count": len(runtime_results),
+                        })
+            except Exception as error:
+                # Colang may itself fail while consuming the missing Action result.
+                # Preserve the original safe diagnostic rather than a secondary one.
+                error = scope.action_failure or error
+                if runtime_span is not None:
+                    runtime_span.record_exception(error)
+                    runtime_span.set_status(Status(StatusCode.ERROR, type(error).__name__))
+                    runtime_span.set_attribute("guardrail.runtime.result", "error")
+                duration = max(0, round((time.perf_counter() - started) * 1_000))
+                if not admitted:
+                    queue_latency_ms += duration
+                return _failed_decision(
+                    request,
+                    error,
+                    duration,
+                    instance.config,
+                    cache_hit=cache_hit,
+                    queue_latency_ms=queue_latency_ms,
+                    active_concurrency=active_concurrency,
+                    native_model_calls=tuple(native_model_scope.calls),
+                )
+            finally:
+                if runtime_context_token is not None:
+                    otel_context.detach(runtime_context_token)
+                if runtime_span is not None:
+                    runtime_span.end()
+            if response is None:
+                return _failed_decision(
+                    request,
+                    RuntimeError("NeMo invocation completed without a response."),
+                    max(0, round((time.perf_counter() - started) * 1_000)),
+                    instance.config,
+                    cache_hit=cache_hit,
+                    queue_latency_ms=queue_latency_ms,
+                    active_concurrency=active_concurrency,
+                    native_model_calls=tuple(native_model_scope.calls),
+                )
+            try:
+                return _decision(
+                    request,
+                    response,
+                    instance.config,
+                    runtime_results,
+                    custom_decision=custom_decision,
+                    cache_hit=cache_hit,
+                    queue_latency_ms=queue_latency_ms,
+                    active_concurrency=active_concurrency,
+                    native_model_calls=tuple(native_model_scope.calls),
+                )
+            except Exception as error:
+                return _failed_decision(
+                    request,
+                    error,
+                    max(0, round((time.perf_counter() - started) * 1_000)),
+                    instance.config,
+                    cache_hit=cache_hit,
+                    queue_latency_ms=queue_latency_ms,
+                    active_concurrency=active_concurrency,
+                    native_model_calls=tuple(native_model_scope.calls),
+                )
 
     async def shutdown(self) -> None:
         await self._registry.shutdown()
@@ -2599,7 +2609,7 @@ def _failed_decision(
             rail_type=request.phase,
             outcome="error",
             timed_out=isinstance(error, TimeoutError) or (
-                isinstance(error, _ActionExecutionFailure) and error.timed_out
+                isinstance(error, (_ActionExecutionFailure, OutputStreamEvaluationError)) and error.timed_out
             ),
             engine=config.runtime_engine,
             runtime_profile=config.runtime_profile,

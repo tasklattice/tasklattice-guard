@@ -137,11 +137,11 @@ async def test_stream_uses_normal_adapter_identity_mapping(tmp_path, monkeypatch
     async with runner(tmp_path, contexts=contexts) as (url, engine, _, _, store):
         monkeypatch.setattr(store, "endpoint_adapter", lambda _: adapter)
         seen = []
-        original = engine.output_stream_contract
-        def contract(request):
+        original = engine.protect_output
+        async def protect(request, source, **kwargs):
             seen.append(request)
-            return original(request)
-        monkeypatch.setattr(engine, "output_stream_contract", contract)
+            return await original(request, source, **kwargs)
+        monkeypatch.setattr(engine, "protect_output", protect)
         async with connection(url, protocol=protocol, stream_id="identity", model="chat-model",
                 request_data={"user_api_key_team_id": "team-1"},
                 request_headers={"x-api-key": "never-forward", "x-original-uri": "/chat/completions"}) as (socket, ready):

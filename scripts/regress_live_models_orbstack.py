@@ -187,6 +187,7 @@ def worker(payload):
                         parts = [text[:12], text[12:]] if mode == "full_buffered" else [text]
                         before = len(recorder.rows())
                         results = []
+                        started = time.monotonic()
                         try:
                             import aiohttp
                             async with tcp_server(app) as runner_url, aiohttp.ClientSession() as client:
@@ -211,7 +212,10 @@ def worker(payload):
                             passed = (last["type"] == ("blocked" if unsafe else "completed")
                                 and last.get("checks") == 1 and approved == ("" if unsafe else text))
                             item = {"target": f"stream.{mode}.{'unsafe' if unsafe else 'safe'}", "passed": passed,
-                                "external_requests": len(recorder.rows()) - before, "responses": results}
+                                "external_requests": len(recorder.rows()) - before,
+                                "elapsed_ms": round((time.monotonic() - started) * 1000),
+                                "terminal": last["type"], "error_code": last.get("code"),
+                                "responses": results}
                             checks.append(item)
                             print("CHECK " + json.dumps({k: v for k, v in item.items() if k != "responses"}), flush=True)
                         finally:
@@ -288,6 +292,8 @@ def main():
     args.output.chmod(0o600)
     print(json.dumps({"external_requests": report["external_requests"], "output": str(args.output.resolve()),
         "checks_passed": sum(check["passed"] for check in report["checks"]), "checks_total": len(report["checks"])}))
+    if not report["checks"] or not all(check["passed"] for check in report["checks"]):
+        raise SystemExit(1)
 
 
 if __name__ == "live_worker":
