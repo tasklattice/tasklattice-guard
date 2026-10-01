@@ -69,10 +69,9 @@ export function Button({
         as={child.type as React.ElementType}
         {...props}
         {...child.props}
-        href={
-          (child.props.href as string | undefined) ??
-          (child.props.to as string | undefined)
-        }
+        // Router links build their own href, including search and hash. A plain
+        // `to` fallback overrides that destination when the link is clicked.
+        href={child.props.href as string | undefined}
         data-slot="button"
         data-variant={variant}
         data-size={size}

@@ -1,3 +1,4 @@
+import { callFailureEvents, runtimeLogSource } from "./runtime-log-source.js";
 import { queryAuditEvents } from "./audit-events.js";
 import type { AuditQuery } from "../../shared/audit-query.js";
 import type { EventSeverity } from "../../shared/security-severity.js";
@@ -1358,6 +1359,12 @@ export class ControlPlaneService {
   }
 
   async getRuntimeEvent(id: string, includeContent = false) {
+    if (id.startsWith("call:")) {
+      const source = callFailureEvents(this.db).as("call_failures");
+      const [event] = await boundedRead(this.db, tx => tx.select().from(source).where(eq(source.id, id)).limit(1));
+      if (!event) throw new NotFoundError("Runtime event", id);
+      return event;
+    }
     // Exclude large bodies in SQL, before the database driver allocates them in Node.
     const metadata = includeContent ? runtimeEvents.metadata : sql<Record<string, unknown>>`(${runtimeEvents.metadata} - 'contentCiphertext' - 'contentBefore' - 'contentAfter' - 'httpRequest') || jsonb_build_object('contentAvailable',
       (${this.runtimeLogEncryptionKey !== null} AND coalesce(${runtimeEvents.metadata}->>'contentCiphertext', '') <> '')
@@ -1431,6 +1438,7 @@ export class ControlPlaneService {
     endpointId?: string | undefined;
     since?: Date | undefined;
     before?: Date | undefined;
+    until?: Date | undefined;
     cursor?: string | undefined;
     requestId?: string | undefined;
     direction?: string | undefined;
@@ -1439,6 +1447,7 @@ export class ControlPlaneService {
     findingsOnly?: boolean | undefined;
     severity?: EventSeverity | EventSeverity[] | undefined;
   }) {
+    const runtimeEvents = runtimeLogSource(this.db);
     let cursor: { at: string; id: string } | undefined;
     if (input.cursor) {
       try {
@@ -1447,13 +1456,26 @@ export class ControlPlaneService {
       } catch { throw new ValidationError("Invalid event cursor"); }
     }
     const findings = jsonElements(jsonValue(runtimeEvents.metadata, 'findings'), 'finding');
+    const trace = jsonElements(jsonValue(runtimeEvents.metadata, 'trace'), 'error_span');
+    const executionError = or(
+      inArray(lowerText(runtimeEvents.decision), ['error','failed','failure','timeout','timed_out']),
+      eq(jsonText(runtimeEvents.metadata, 'executionStatus'), 'error'),
+      eq(jsonText(runtimeEvents.metadata, 'timedOut'), 'true'),
+      eq(jsonText(runtimeEvents.metadata, 'timed_out'), 'true'),
+      exists(this.db.select({ item: findings.item }).from(findings.source).where(eq(jsonText(findings.item, 'verdict'), 'error'))),
+      exists(this.db.select({ item: trace.item }).from(trace.source).where(or(
+        eq(jsonText(trace.item, 'verdict'), 'error'), eq(jsonText(trace.item, 'timedOut'), 'true'),
+        inArray(jsonText(trace.item, 'status'), ['error','failed','timeout']),
+        inArray(jsonText(trace.item, 'outcome'), ['error','failed','timeout']),
+      ))),
+    );
     const severities = input.severity ? (Array.isArray(input.severity) ? input.severity : [input.severity]) : [];
     const conditions = [
       severities.length ? exists(this.db.select({ severity: findingSeverity(findings.item) }).from(findings.source).where(and(securityFinding(findings.item), inArray(findingSeverity(findings.item), severities)))) : undefined,
       cursor ? lt(rowValue(runtimeEvents.occurredAt, runtimeEvents.id), rowValue(timestampValue(cursor.at), literal(cursor.id))) : undefined,
       input.requestId ? eq(runtimeEvents.requestId, input.requestId) : undefined,
       input.direction ? eq(runtimeEvents.direction, input.direction) : undefined,
-      input.outcome ? inArray(lowerText(runtimeEvents.decision), input.outcome === 'allow' ? ['allow','allowed','pass','passed'] : input.outcome === 'block' ? ['block','blocked','block','rejected','deny','denied'] : input.outcome === 'transform' ? ['transform','transformed','transform','redacted','transform','rewritten','intervene','intervened'] : ['error','failed','failure','timeout','timed_out']) : undefined,
+      input.outcome === 'error' ? executionError : input.outcome ? inArray(lowerText(runtimeEvents.decision), input.outcome === 'allow' ? ['allow','allowed','pass','passed'] : input.outcome === 'block' ? ['block','blocked','block','rejected','deny','denied'] : input.outcome === 'transform' ? ['transform','transformed','transform','redacted','transform','rewritten','intervene','intervened'] : ['error','failed','failure','timeout','timed_out']) : undefined,
       input.captured ? eq(jsonText(runtimeEvents.metadata, 'runtimeLogCaptured'), 'true') : undefined,
       input.findingsOnly ? exists(this.db.select({ item: findings.item }).from(findings.source).where(securityFinding(findings.item))) : undefined,
       input.guardrailId ? eq(runtimeEvents.guardrailId, input.guardrailId) : undefined,
@@ -1463,6 +1485,7 @@ export class ControlPlaneService {
       input.routerRevision ? eq(jsonText(runtimeEvents.metadata, "routerRevision"), String(input.routerRevision)) : undefined,
       input.endpointId ? eq(runtimeEvents.endpointId, input.endpointId) : undefined,
       input.since ? gte(runtimeEvents.occurredAt, input.since) : undefined,
+      input.until ? lte(runtimeEvents.occurredAt, input.until) : undefined,
       input.before ? lte(runtimeEvents.occurredAt, input.before) : undefined,
     ].filter((item): item is NonNullable<typeof item> => Boolean(item));
     const predicate = conditions.length ? and(...conditions) : undefined;
@@ -1470,7 +1493,8 @@ export class ControlPlaneService {
     return boundedRead(this.db, async tx => {
     const findingSummary = jsonObject(Object.fromEntries(['id','risk','verdict','confidence','taxonomyId','recommendedAction','policyId','ruleId','riskSeverity','policyVersion'].map(key => [key, jsonValue(findings.item, key)])));
     const metadata = jsonObject({
-      ...Object.fromEntries(['executionStatus','captureLevel','runtimeLogCaptured','protocol','action','timedOut','timed_out','streamFinalCheck','routeId','targetId','routerRevision','decisionId'].map(key => [key,jsonValue(runtimeEvents.metadata, key)])),
+      ...Object.fromEntries(['executionStatus','captureLevel','runtimeLogCaptured','protocol','action','timedOut','timed_out','streamFinalCheck','routeId','targetId','routerRevision','decisionId','logKind','completionInferred','failureReason','completedAt'].map(key => [key,jsonValue(runtimeEvents.metadata, key)])),
+      executionStatus: sql`CASE WHEN ${executionError} THEN 'error' ELSE ${jsonText(runtimeEvents.metadata, 'executionStatus')} END`,
       findings: scalar(tx.select({ value: jsonAggregate(findingSummary) }).from(findings.source)),
     });
     let itemsQuery = tx.select({

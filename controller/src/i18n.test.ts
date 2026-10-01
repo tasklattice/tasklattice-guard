@@ -89,8 +89,9 @@ describe("Controller operations translations", () => {
     expect(zh("runners.removal.title")).toBe("移除此离线 Runner？");
     expect(en("nav.observability")).toBe("Observability");
     expect(zh("nav.observability")).toBe("可观测性");
-    expect(en("logs.systemEvents")).toBe("System events");
-    expect(zh("logs.systemEvents")).toBe("系统事件");
+    expect(en("logs.outcomes.allow")).toBe("Allow");
+    expect(zh("logs.outcomes.allow")).toBe("允许");
+    expect(Object.keys(en("logs.outcomes", { returnObjects: true }))).toEqual(["allow", "block", "transform"]);
   });
 });
 

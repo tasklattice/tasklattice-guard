@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { ChevronRight, FileCode2, Workflow } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { StateBadge } from "@/components/product-shell";
@@ -39,12 +39,16 @@ export function buildTraceForest(steps: ExecutionTraceStep[]): TraceNode[] {
 
 export function ExecutionTrace({ steps }: { steps: ExecutionTraceStep[] }) {
   const { t } = useTranslation();
+  const [expanded, setExpanded] = useState(false);
+  const traceId = useId();
   const roots = useMemo(() => buildTraceForest(steps), [steps]);
   const hasHierarchy = roots.some((node) => node.children.length > 0);
-  return <section className="min-w-0 border-t pt-4">
-    <div className="flex items-center justify-between gap-3"><h4 className="text-sm font-semibold">{t("logs.executionTrace")}</h4><span className="text-xs text-muted-foreground">{t("logs.traceSpans", { count: steps.length })}</span></div>
-    <p className="mt-1 text-xs leading-5 text-muted-foreground">{t(!steps.length ? "logs.traceEmpty" : hasHierarchy ? "logs.traceTreeDescription" : "logs.traceFlatDescription")}</p>
-    <ol className="mt-3">{roots.map((node, index) => <TraceBranch key={`${node.step.id}:${index}`} node={node} />)}</ol>
+  return <section className="min-w-0 border-t pt-2">
+    <h4><button type="button" aria-expanded={expanded} aria-controls={traceId} className="flex min-h-9 w-full items-center gap-2 rounded-sm text-left focus-visible:outline-2 focus-visible:outline-ring" onClick={() => setExpanded(value => !value)}><ChevronRight aria-hidden className={`size-4 shrink-0 ${expanded ? "rotate-90" : ""}`} /><span className="flex-1 text-sm font-semibold">{t("logs.executionTrace")}</span><span className="text-xs text-muted-foreground">{t("logs.traceSpans", { count: steps.length })}</span></button></h4>
+    <div id={traceId} hidden={!expanded}>{expanded ? <>
+      <p className="mt-1 text-xs leading-5 text-muted-foreground">{t(!steps.length ? "logs.traceEmpty" : hasHierarchy ? "logs.traceTreeDescription" : "logs.traceFlatDescription")}</p>
+      <ol className="mt-3">{roots.map((node, index) => <TraceBranch key={`${node.step.id}:${index}`} node={node} />)}</ol>
+    </> : null}</div>
   </section>;
 }
 

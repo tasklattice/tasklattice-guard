@@ -7,7 +7,7 @@ import type { RuntimeLogInteraction } from "@/lib/api";
 
 import { buildTraceForest } from "@/components/execution-trace";
 import { RuntimeCheckpoint, RuntimeLogSheet } from "@/components/runtime-log-sheet";
-import { CheckpointHistory } from "./logs";
+import { RuntimeHistory } from "./logs";
 
 vi.mock("react-i18next", () => ({
   initReactI18next: { type: "3rdParty", init: () => undefined },
@@ -112,6 +112,7 @@ describe('request checkpoint browsing', () => {
     });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<QueryClientProvider client={client}><RuntimeLogSheet requestId={interaction.id} guardrailId={interaction.guardrail_id} checkpointId="finding-event" open admin guardrailName={baseProps.guardrailName} routerName={baseProps.routerName} onOpenChange={() => {}} /></QueryClientProvider>);
+    fireEvent.click(await screen.findByRole('button', { name: /logs.executionTrace/ }));
     expect(await screen.findByText('Retained metadata')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'logs.requestContent' }));
     expect(screen.getByText('logs.contentNotCaptured')).toBeTruthy();
@@ -176,24 +177,24 @@ describe('request checkpoint browsing', () => {
 
 });
 
-describe("CheckpointHistory", () => {
+describe("RuntimeHistory", () => {
   afterEach(cleanup);
 
   it("renders one traffic checkpoint per inbound and outbound log entry", () => {
-    render(<CheckpointHistory {...baseProps} />);
+    render(<RuntimeHistory {...baseProps} />);
 
-    expect(screen.getByText("Inbound request approved")).toBeTruthy();
-    expect(screen.getByText("Outbound response blocked")).toBeTruthy();
+    expect(screen.getByText("logs.inbound")).toBeTruthy();
+    expect(screen.getByText("logs.outbound")).toBeTruthy();
     expect(screen.getAllByRole("row")).toHaveLength(3);
     expect(screen.queryByText(/policy \/ version \/ published/i)).toBeNull();
     expect(screen.queryByText(/validation completed/i)).toBeNull();
   });
 
   it("renders only checkpoints supplied by the shared runtime query", () => {
-    render(<CheckpointHistory {...baseProps} interactions={[{ ...interaction, entries: [interaction.entries[0]!] }]} />);
+    render(<RuntimeHistory {...baseProps} interactions={[{ ...interaction, entries: [interaction.entries[0]!] }]} />);
 
-    expect(screen.getByText("Inbound request approved")).toBeTruthy();
-    expect(screen.queryByText("Outbound response blocked")).toBeNull();
+    expect(screen.getByText("logs.inbound")).toBeTruthy();
+    expect(screen.queryByText("logs.outbound")).toBeNull();
     expect(screen.getAllByRole("row")).toHaveLength(2);
   });
 });
@@ -214,6 +215,7 @@ describe("runtime detail", () => {
     render(<RuntimeCheckpoint entry={entry} admin />);
     expect(screen.getByRole("heading", { name: "logs.modelOutput" })).toBeTruthy();
     expect(screen.getByText("Model response body")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /logs.executionTrace/ }));
     fireEvent.click(screen.getByRole("button", { name: "logs.collapseSpan" }));
     expect(screen.queryByText("child")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "logs.expandSpan" }));
@@ -224,6 +226,7 @@ describe("runtime detail", () => {
   it("keeps captured content hidden from non-admins and explains absent traces", () => {
     render(<RuntimeCheckpoint entry={{ ...interaction.entries[1]!, content_before: [{ id: "text", role: "model_output", source: "model_output", text: "Private body", truncated: false }] }} admin={false} />);
     expect(screen.queryByText("Private body")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /logs.executionTrace/ }));
     expect(screen.getByText("logs.traceEmpty")).toBeTruthy();
   });
 });

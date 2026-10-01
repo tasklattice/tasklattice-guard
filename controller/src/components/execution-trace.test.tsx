@@ -16,9 +16,14 @@ const steps: RuntimeTraceStep[] = [
 it("renders the same hierarchy, outcomes, and interactions for Playground and Logs", () => {
   const telemetry = { metadata: { trace: steps.map(step => ({ ...step, parentId: step.parent_id, durationMs: step.duration_ms, parallelGroup: step.parallel_group })) } } as unknown as RuntimeEvent;
   const { container, unmount } = render(<ExecutionTrace steps={runtimeTraceSteps(telemetry)} />);
+  expect(screen.getByRole("button", { name: /logs.executionTrace/ }).getAttribute("aria-expanded")).toBe("false");
+  expect(screen.queryByText("Runtime")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: /logs.executionTrace/ }));
   const logsMarkup = container.textContent;
   unmount();
   const playground = render(<ExecutionTracePanel result={{ trace_id: "trace", trace: steps } as PlaygroundCheckResult} />);
+  expect(screen.queryByText("Runtime")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: /logs.executionTrace/ }));
   expect(playground.container.textContent).toBe(logsMarkup);
   expect(playgroundTraceSteps(steps)[1]?.outcome).toBe("matched");
   fireEvent.click(screen.getByRole("button", { name: "logs.collapseSpan Runtime" }));
@@ -27,4 +32,7 @@ it("renders the same hierarchy, outcomes, and interactions for Playground and Lo
   fireEvent.click(screen.getByRole("button", { name: "logs.inspectSpan Action" }));
   expect(screen.getByText("Action detail")).toBeTruthy();
   expect(screen.getByText("root")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: /logs.executionTrace/ }));
+  expect(screen.queryByText("Action detail")).toBeNull();
+  expect(screen.queryByText("Runtime")).toBeNull();
 });

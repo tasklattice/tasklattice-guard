@@ -272,6 +272,7 @@ export class TrafficRoutingService {
           assignmentStatus: event.assignmentStatus, failureReason: event.failureReason ?? null, occurredAt: event.decisionAt,
           completedAt: complete ? event.occurredAt : null, outcome: complete ? event.outcome! : null, durationMs: complete ? event.durationMs ?? null : null,
         }).onConflictDoUpdate({ target: routeAssignments.decisionId, set: {
+          failureReason: sql`CASE WHEN excluded.completed_at IS NOT NULL THEN coalesce(excluded.failure_reason, ${routeAssignments.failureReason}) ELSE ${routeAssignments.failureReason} END`,
           completionInferred: sql`CASE WHEN excluded.completed_at IS NOT NULL THEN false ELSE ${routeAssignments.completionInferred} END`,
           completedAt: sql`CASE WHEN ${routeAssignments.completionInferred} AND excluded.completed_at IS NOT NULL THEN excluded.completed_at ELSE coalesce(${routeAssignments.completedAt}, excluded.completed_at) END`,
           outcome: sql`CASE WHEN ${routeAssignments.completionInferred} AND excluded.completed_at IS NOT NULL THEN excluded.outcome WHEN ${routeAssignments.outcome} IN ('error','timeout') THEN ${routeAssignments.outcome}

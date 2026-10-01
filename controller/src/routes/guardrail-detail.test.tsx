@@ -25,7 +25,7 @@ vi.mock("react-i18next", () => ({
 }));
 
 vi.mock("@tanstack/react-router", () => ({
-  Link: ({ children }: { children: ReactNode }) => <a href="#test">{children}</a>,
+  Link: ({ children, to, search }: { children: ReactNode; to?: string; search?: Record<string, string> }) => <a href={`${to ?? "#test"}${search ? `?${new URLSearchParams(search)}` : ""}`}>{children}</a>,
   useNavigate: () => vi.fn(),
   useParams: () => ({}),
 }));
@@ -183,6 +183,7 @@ describe("Guardrail detail information hierarchy", () => {
       summary: { total: 1, critical: 1, high: 0, medium: 0, low: 0, informational: 0, unclassified: 0, affected_traces: 1, latest_at: "2026-08-16T09:46:46Z" },
       items: [{
         id: "finding-critical",
+        event_id: "event-critical",
         trace_id: "trace-playground",
         created_at: "2026-08-16T09:46:46Z",
         guardrail_id: "guardrail-observed",
@@ -210,6 +211,9 @@ describe("Guardrail detail information hierarchy", () => {
     expect(screen.getByText("guardrails.playgroundSource")).toBeTruthy();
     expect(screen.getByText("Policy content-safety matched Rule harmful-request.")).toBeTruthy();
     expect(screen.getByText("99%")).toBeTruthy();
+    const link = new URL(screen.getByRole("link", { name: "logs.viewLog" }).getAttribute("href")!, "http://localhost");
+    expect(link.pathname).toBe("/logs");
+    expect(Object.fromEntries(link.searchParams)).toEqual({ eventId: "event-critical", requestId: "trace-playground", checkpointId: "event-critical", guardrailId: "guardrail-observed" });
   });
 
   it("removes findings with repeated local ids when filtering to an empty severity", async () => {

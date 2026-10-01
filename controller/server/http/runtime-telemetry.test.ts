@@ -97,3 +97,18 @@ describe("Security Event multi-select filter", () => {
     else expect(queryRuntimeEvents).not.toHaveBeenCalled();
   });
 });
+
+describe("runtime log outcome filter", () => {
+  it.each([["allow", 200], ["block", 200], ["transform", 200], ["error", 200], ["timeout", 400]])("accepts enforcement outcomes and the error log filter: %s", async (outcome, status) => {
+    const queryRuntimeEvents = vi.fn().mockResolvedValue({ items: [], count: 0 });
+    const app = createHttpApp({ config,
+      auth: { api: { getSession: vi.fn().mockResolvedValue({ user: { id: "reader", role: "admin" } }) } } as unknown as ControllerAuth,
+      service: { queryRuntimeEvents } as unknown as ControlPlaneService,
+      runnerControl: {} as RunnerControlServer, metrics: {} as ControllerMetrics,
+    });
+    const response = await app.request(`/api/v1/telemetry/events?outcome=${outcome}`);
+    expect(response.status).toBe(status);
+    if (status === 200) expect(queryRuntimeEvents).toHaveBeenCalledWith(expect.objectContaining({ outcome }));
+    else expect(queryRuntimeEvents).not.toHaveBeenCalled();
+  });
+});

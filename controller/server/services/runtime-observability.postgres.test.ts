@@ -13,7 +13,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('bounded runtime observability (
   const db = drizzle(pool);
   const service = Object.assign(Object.create(ControlPlaneService.prototype), { db, runtimeLogEncryptionKey: null }) as ControlPlaneService;
   beforeAll(async () => {
-    for (const name of ['runtime_event','guardrail','guardrail_router','endpoint','guardrail_validation_run']) {
+    for (const name of ['runtime_event','guardrail','guardrail_router','endpoint','guardrail_validation_run','route_assignment']) {
       await db.execute(sql.raw(`CREATE TEMP TABLE ${name} (LIKE public.${name} INCLUDING DEFAULTS)`));
     }
     await db.execute(sql`INSERT INTO runtime_event(id,occurred_at,request_id,runner_id,guardrail_id,router_id,direction,decision,duration_ms,metadata)
@@ -105,6 +105,30 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('bounded runtime observability (
       const runtime = await service.queryRuntimeEvents({guardrailId:'classification'});
       expect(runtime.items).toHaveLength(5);
     } finally { await db.execute(sql`DELETE FROM runtime_event WHERE guardrail_id='classification'`); }
+  });
+
+  it('queries historical call failures alongside fail-closed checkpoints with exact scope and pagination', async () => {
+    await db.execute(sql`INSERT INTO route_assignment(decision_id,call_id,occurred_at,endpoint_id,router_id,router_revision,route_id,target_id,guardrail_id,guardrail_version,assignment_status,completed_at,completion_inferred,outcome,duration_ms)
+      VALUES ('inferred','error-call','2026-09-19T10:00:00Z','error-endpoint','error-router',2,'fallback','target','error-guard','v1','assigned','2026-09-19T10:05:00Z',true,'timeout',300000),
+             ('out-of-window','later-call','2026-09-19T11:00:00Z','error-endpoint','error-router',2,'fallback','target','error-guard','v1','assigned','2026-09-19T11:05:00Z',false,'error',100)`);
+    await db.execute(sql`INSERT INTO runtime_event(id,occurred_at,request_id,runner_id,endpoint_id,router_id,guardrail_id,direction,decision,duration_ms,metadata)
+      VALUES ('failed-check','2026-09-19T10:00:00Z','error-call','runner','error-endpoint','error-router','error-guard','incoming','block',50,'{"trace":[{"id":"span","outcome":"error","errorType":"AuthenticationError"}],"routerRevision":2,"routeId":"fallback","targetId":"target"}'),
+             ('allowed-check','2026-09-19T09:59:59Z','error-call','runner','error-endpoint','error-router','error-guard','incoming','allow',2,'{}')`);
+    const scope = { outcome:'error', routerId:'error-router', endpointId:'error-endpoint', routerRevision:2, routeId:'fallback', targetId:'target', since:new Date('2026-09-19T09:00:00Z'), until:new Date('2026-09-19T10:30:00Z'), limit:1 };
+    const first = await service.queryRuntimeEvents(scope);
+    const second = await service.queryRuntimeEvents({...scope, cursor:first.nextCursor!});
+    expect([first.items[0]!.id, second.items[0]!.id].sort()).toEqual(['call:inferred','failed-check']);
+    expect(second.nextCursor).toBeNull();
+    expect(first.items[0]!.metadata.executionStatus).toBe('error');
+    expect(JSON.stringify(first)).not.toContain('AuthenticationError');
+    const detail = await service.getRuntimeEvent('call:inferred');
+    expect(detail).toMatchObject({requestId:'error-call',direction:'completion',durationMs:300000,metadata:{completionInferred:true,decisionId:'inferred',routerRevision:2}});
+    const related = await service.queryRuntimeEvents({requestId:detail.requestId});
+    expect(related.items.map(row=>row.id).sort()).toEqual(['allowed-check','call:inferred','failed-check']);
+    await expect(service.getRuntimeEvent('call:missing')).rejects.toThrow();
+    // A late real completion resolves the inferred failure without stale duplicate logs.
+    await db.execute(sql`UPDATE route_assignment SET outcome='allow',completion_inferred=false WHERE decision_id='inferred'`);
+    expect((await service.queryRuntimeEvents(scope)).items.map(row=>row.id)).toEqual(['failed-check']);
   });
 
   it('cancels SQL at the shared deadline and releases the only pool connection', async () => {

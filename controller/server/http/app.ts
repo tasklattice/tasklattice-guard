@@ -1,3 +1,4 @@
+import { runtimeLogOutcomes } from "../../shared/runtime-outcome.js";
 import { readSoftwareVersion } from "../services/software-version.js";
 import { parseSoftwareVersion } from "../../shared/software-version.js";
 import { auditQuerySchema } from "../../shared/audit-query.js";
@@ -950,11 +951,12 @@ export function createHttpApp(input: {
       routerRevision: z.coerce.number().int().positive().optional(),
       endpointId: z.string().min(1).optional(),
       since: z.coerce.date().optional(),
+      until: z.coerce.date().optional(),
       before: z.coerce.date().optional(),
       cursor: z.string().max(2048).optional(),
       requestId: z.string().max(256).optional(),
-      direction: z.enum(['incoming','outgoing']).optional(),
-      outcome: z.enum(['allow','block','transform','error']).optional(),
+      direction: z.enum(['incoming','outgoing','completion']).optional(),
+      outcome: z.enum(runtimeLogOutcomes).optional(),
       captured: z.enum(['true']).transform(() => true).optional(),
       findingsOnly: z.enum(['true']).transform(() => true).optional(),
       severity: z.string().describe('One or more comma-separated Rule risk levels: critical, high, medium, low, informational, unclassified. Matches any selected level before pagination.').transform(value => value.split(',')).pipe(z.array(z.enum(['critical','high','medium','low','informational','unclassified'])).min(1).max(6)).optional(),

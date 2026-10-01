@@ -1,3 +1,4 @@
+import { runtimeLogOutcomes, type RuntimeLogOutcome } from "../shared/runtime-outcome";
 import { auditLogSearch } from "../shared/audit-query";
 import { selectedSeverities } from "../shared/security-severity";
 import { createBrowserHistory, createRootRoute, createRoute, createRouter, Navigate, notFound, redirect, useRouterState } from "@tanstack/react-router";
@@ -29,7 +30,7 @@ const indexRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", com
 const dashboardRoute = createRoute({ getParentRoute: () => rootRoute, path: "/dashboard", component: DashboardPage });
 const guardrailsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/guardrails", component: GuardrailsPage });
 const guardrailDetailRoute = createRoute({ getParentRoute: () => rootRoute, path: "/guardrails/$guardrailId", validateSearch: (search: Record<string, unknown>): { tab?: string; window?: "1h" | "24h" | "7d" | "15d" | "30d"; severity?: string } => ({
-  tab: ["runtime", "findings", "immutable", "testing", "draft"].includes(String(search.tab)) ? String(search.tab) : undefined,
+  tab: ["runtime", "event", "immutable", "testing", "draft"].includes(String(search.tab)) ? String(search.tab) : undefined,
   window: ["1h", "24h", "7d", "15d", "30d"].includes(String(search.window)) ? search.window as "1h" | "24h" | "7d" | "15d" | "30d" : undefined,
   severity: selectedSeverities(search.severity).join(",") || undefined,
 }), component: GuardrailDetailPage });
@@ -65,9 +66,9 @@ function EndpointRoutePage() {
     void navigate({ search: (previous) => ({ ...previous, endpointId: id }), replace: id === undefined });
   }} />;
 }
-const logsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/logs", validateSearch: (search: Record<string, unknown>): { tab?: "interactions" | "checkpoints" | "system"; requestId?: string; checkpointId?: string; guardrailId?: string; routerId?: string; routeId?: string; targetId?: string; routerRevision?: number; since?: string; until?: string; endpointId?: string } => ({
-  tab: search.tab === "checkpoints" || search.tab === "system" ? search.tab : undefined,
-  ...Object.fromEntries(['requestId', 'checkpointId', 'guardrailId', 'routerId', 'routeId', 'targetId', 'endpointId', 'since', 'until'].flatMap(key => typeof search[key] === 'string' && search[key].trim() ? [[key, search[key]]] : [])),
+const logsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/logs", validateSearch: (search: Record<string, unknown>): { requestId?: string; checkpointId?: string; eventId?: string; outcome?: RuntimeLogOutcome; guardrailId?: string; routerId?: string; routeId?: string; targetId?: string; routerRevision?: number; since?: string; until?: string; endpointId?: string } => ({
+  ...Object.fromEntries(['requestId', 'checkpointId', 'eventId', 'guardrailId', 'routerId', 'routeId', 'targetId', 'endpointId', 'since', 'until'].flatMap(key => typeof search[key] === 'string' && search[key].trim() ? [[key, search[key]]] : [])),
+  ...(runtimeLogOutcomes.includes(search.outcome as RuntimeLogOutcome) ? { outcome: search.outcome as RuntimeLogOutcome } : {}),
   ...(Number.isInteger(Number(search.routerRevision)) && Number(search.routerRevision) > 0 ? { routerRevision: Number(search.routerRevision) } : {}),
 }), component: LogsPage });
 const auditLogRoute = createRoute({ getParentRoute: () => rootRoute, path: "/audit-log", validateSearch: auditLogSearch, component: AuditLogPage });

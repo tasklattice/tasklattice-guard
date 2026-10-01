@@ -24,10 +24,12 @@ describe("HTTP log body and download", () => {
     const toggle = screen.getByRole("button", { name: "Original request" });
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     expect(container.querySelector("code")).toBeNull();
+    expect(screen.queryByText("logs.httpBodyDescription")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "logs.downloadHttpRequest" }));
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     fireEvent.click(toggle);
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByText("logs.httpBodyDescription")).toBeTruthy();
     const code = container.querySelector("code")!;
     expect(code.textContent).toContain('\n  "message": "你好",\n');
     expect(code.textContent).toContain('9007199254740993');

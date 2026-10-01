@@ -325,7 +325,7 @@ export type RuntimeEvent = {
   guardrailVersion: string | null;
   endpointId: string | null;
   routerId: string | null;
-  direction: "incoming" | "outgoing";
+  direction: "incoming" | "outgoing" | "completion";
   decision: string;
   durationMs: number;
   metadata: Record<string, unknown>;
