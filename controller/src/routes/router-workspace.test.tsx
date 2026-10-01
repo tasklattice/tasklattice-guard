@@ -65,9 +65,6 @@ vi.mock("@/lib/traffic-routing-api", async (original) => ({
 vi.mock("@/components/traffic-routing/distribution", () => ({
   DistributionOverview: () => <div data-testid="monitoring-distribution">Runtime distribution</div>,
 }));
-vi.mock("@/components/traffic-routing/selector-preview", () => ({
-  SelectorPreviewPanel: () => null,
-}));
 const draft: RouterDraft = {
   routes: [
     {
@@ -150,6 +147,9 @@ async function edit() {
     await screen.findByRole("menuitem", { name: "Edit", exact: true }),
   );
   await screen.findByLabelText("Route name");
+  expect(screen.getByText("Guardrail 1 version strategy")).toBeTruthy();
+  expect(screen.queryByText(/\{\{index\}\}/)).toBeNull();
+  expect(screen.queryByText("Test matching")).toBeNull();
   expect(screen.queryByLabelText("Enabled", { exact: true })).toBeNull();
 }
 
@@ -166,6 +166,7 @@ describe("Router detail workflow", () => {
       "ResizeObserver",
       class {
         observe() {}
+        unobserve() {}
         disconnect() {}
       },
     );
@@ -344,6 +345,8 @@ describe("Router detail workflow", () => {
     const sheet = await screen.findByRole("dialog", {
       name: "Create routing rule",
     });
+    expect(within(sheet).queryByText("Test matching")).toBeNull();
+    expect(within(sheet).queryByRole("button", { name: "Test Selector" })).toBeNull();
     fireEvent.change(within(sheet).getByLabelText("Route name"), {
       target: { value: "Abandoned rule" },
     });

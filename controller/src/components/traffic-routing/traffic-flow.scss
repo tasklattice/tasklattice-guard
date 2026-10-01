@@ -1,0 +1,34 @@
+.router-traffic-flow { background: var(--cds-layer-02); container-type: inline-size; }
+.router-flow-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1.5rem; padding: 1rem 1.5rem; color: var(--cds-text-secondary); font-size: 0.75rem; border-block-end: 1px solid var(--cds-border-subtle-01); }
+.router-flow-legend > span { display: inline-flex; align-items: center; gap: 0.5rem; }
+.router-flow-legend i { position: relative; width: 1.5rem; border-block-start: 2px solid var(--cds-link-primary); }
+.router-flow-legend i::after { content: ""; position: absolute; right: -1px; top: -4px; border-block: 3px solid transparent; border-inline-start: 5px solid var(--cds-link-primary); }
+.router-flow-legend i.router-flow-legend-miss { border-block-start: 2px dashed var(--cds-text-secondary); }
+.router-flow-legend i.router-flow-legend-miss::after { border-inline-start-color: var(--cds-text-secondary); }
+.router-flow-legend .router-flow-scroll-hint { display: none; }
+@container (max-width: 1031px) { .router-flow-legend .router-flow-scroll-hint { display: inline; flex-basis: 100%; } }
+.router-flow-scroll { overflow-x: auto; }
+.router-flow-scroll:focus-visible { outline: 2px solid var(--cds-focus); outline-offset: -2px; }
+.router-flow-canvas { margin-inline: auto; }
+.router-flow-headings { position: relative; height: 3rem; }
+.router-flow-headings h3 { position: absolute; top: 1.25rem; color: var(--cds-text-secondary); font-size: 0.75rem; font-weight: 500; }
+.router-traffic-flow .react-flow { --xy-background-color: var(--cds-layer-02); --xy-edge-stroke: var(--cds-link-primary); }
+.router-traffic-flow .react-flow__pane { cursor: default; }
+.router-traffic-flow .react-flow__handle { width: 6px; height: 6px; min-width: 6px; min-height: 6px; background: var(--cds-link-primary); border: 1px solid var(--cds-layer-02); pointer-events: none; }
+.router-traffic-flow .react-flow__handle-top, .router-traffic-flow .react-flow__handle-bottom { background: var(--cds-text-secondary); }
+.router-flow-card { display: flex; flex-direction: column; justify-content: center; gap: 0.5rem; width: 100%; height: 100%; padding: 0.875rem; border: 1px solid var(--cds-border-strong-01); background: var(--cds-layer-01); color: var(--cds-text-primary); text-align: start; font-size: 0.875rem; text-decoration: none; cursor: pointer; pointer-events: auto; }
+.router-flow-card:hover { border-color: var(--cds-link-primary); background: var(--cds-layer-hover-01); }
+.router-flow-card:focus-visible, .router-flow-skipped button:focus-visible { outline: 2px solid var(--cds-focus); outline-offset: 3px; }
+.router-flow-card-fallback { border-style: dashed; }
+.router-flow-card-empty { color: var(--cds-text-secondary); border-style: dashed; cursor: default; }
+.router-flow-card-empty svg { width: 1.25rem; }
+.router-flow-title { display: flex; align-items: flex-start; gap: 0.5rem; font-weight: 500; line-height: 1.4; }
+.router-flow-title > svg { flex: 0 0 1.125rem; width: 1.125rem; height: 1.125rem; margin-top: 1px; color: var(--cds-icon-secondary); }
+.router-flow-title > span, .router-flow-summary { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.router-flow-detail, .router-flow-status { font-size: 0.75rem; line-height: 1.4; color: var(--cds-text-secondary); }
+.router-flow-status-healthy2 { color: var(--success); }
+.router-flow-status-unhealthy { color: var(--cds-support-error); }
+.router-flow-version { overflow-wrap: anywhere; font-family: var(--font-mono); font-size: 0.75rem; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: var(--cds-text-secondary); }
+.router-flow-skipped { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem 1rem; padding: 1rem 1.5rem; border-block-start: 1px solid var(--cds-border-subtle-01); font-size: 0.75rem; color: var(--cds-text-secondary); }
+.router-flow-skipped button { min-height: 44px; display: flex; align-items: center; gap: 0.75rem; color: var(--cds-link-primary); text-align: start; }
+.router-flow-skipped button span { color: var(--cds-text-secondary); }

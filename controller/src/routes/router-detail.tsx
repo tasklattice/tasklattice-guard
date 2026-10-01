@@ -355,7 +355,6 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
               onRule={openRule}
               onEndpoints={() => setTab("endpoints")}
               onRouting={() => setTab("routing")}
-              onRevisions={() => setTab("revisions")}
             />
           )}
           {(endpoints.error || guardrails.error || revisions.error) && (
@@ -425,8 +424,6 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
             <p role="status">{localize("routing.loadingRoutingTargets")}</p>
           ) : (
             <RouterRouting
-              routerId={router.id}
-              endpointIds={router.endpointIds}
               draft={editing ? draft : (router.activeSnapshot ?? router.draft)}
               editableDraft={draft}
               editing={editing}

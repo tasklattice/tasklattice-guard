@@ -15,9 +15,7 @@
 .router-overview-metrics button.router-metric-label { padding: 0; border: 0; background: none; cursor: pointer; text-align: left; color: var(--cds-link-primary); }
 .router-overview-metrics button.router-metric-label:focus-visible { outline: 2px solid var(--cds-focus); outline-offset: 2px; }
 .router-overview-metrics button.router-metric-label:hover { text-decoration: underline; }
-.router-overview-columns { display: grid; grid-template-columns: minmax(0, 1fr) 21rem; align-items: start; gap: 1.5rem; }
 .router-overview-panel { min-inline-size: 0; background: var(--cds-layer-01); border: 1px solid var(--cds-border-subtle-01); }
-.router-overview-sidebar { display: grid; gap: 1.5rem; }
 .router-panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.25rem; border-block-end: 1px solid var(--cds-border-subtle-01); }
 .router-panel-heading h2 { display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; font-weight: 600; }
 .router-panel-heading h2 svg { width: 1rem; height: 1rem; }
@@ -32,17 +30,3 @@
 .router-flow-stages > span { display: flex; flex-direction: column; align-items: center; gap: 0.75rem; font-size: 0.75rem; }
 .router-flow-stages > span > svg { width: 2rem; height: 2rem; }
 .router-flow-stages > svg { width: 1rem; height: 1rem; color: var(--cds-icon-secondary); }
-.router-panel-empty { display: grid; gap: 0.5rem; padding: 1.25rem; font-size: 0.875rem; line-height: 1.5; }
-.router-panel-empty > span { color: var(--cds-text-secondary); }
-.router-deployment-facts { padding: 0.25rem 1.25rem; font-size: 0.875rem; }
-.router-deployment-facts > div { padding-block: 1rem; border-block-end: 1px solid var(--cds-border-subtle-01); }
-.router-deployment-facts > div:last-child { border-block-end: 0; }
-.router-deployment-facts dt { margin-block-end: 0.5rem; color: var(--cds-text-secondary); font-size: 0.75rem; }
-.router-deployment-facts dd { overflow-wrap: anywhere; }
-.router-revision-list { padding-inline: 1.25rem; }
-.router-revision-list li { display: grid; gap: 0.5rem; padding-block: 1rem; border-block-end: 1px solid var(--cds-border-subtle-01); font-size: 0.75rem; }
-.router-revision-list li:last-child { border-block-end: 0; }
-.router-revision-list code { overflow-wrap: anywhere; }
-.router-revision-list span { color: var(--cds-text-secondary); }
-.router-traffic-flow { background: var(--cds-layer-02); }
-.router-flow-node:focus-visible { outline: 2px solid var(--cds-focus); outline-offset: 2px; }
