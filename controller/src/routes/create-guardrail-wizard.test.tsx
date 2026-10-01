@@ -413,14 +413,14 @@ describe("Create Guardrail wizard", () => {
     fireEvent.click(screen.getByRole("button", { name: "Configure Aviation Operations Security", exact: true }));
     fireEvent.click(screen.getByRole("button", { name: "Complete Aviation configuration" }));
     fireEvent.click(screen.getByRole("button", { name: "Configure Aviation Operations Security", exact: true }));
-    fireEvent.change(screen.getByRole("textbox", { name: "Search protections" }), { target: { value: "Topic Filtering" } });
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search protections" }), { target: { value: "Topic Filtering" } });
     expect(screen.queryByRole("checkbox", { name: "Aviation Operations Security" })).toBeNull();
     expect(screen.getByRole("checkbox", { name: "Topic Filtering" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Review draft" }));
     await waitFor(() => expect(apiMocks.preview).toHaveBeenCalledWith(expect.objectContaining({ policy_bindings: [configuredRequiredBinding] })));
     fireEvent.click(screen.getByRole("button", { name: "Edit protections" }));
     expect((screen.getByRole("checkbox", { name: "Aviation Operations Security" }) as HTMLInputElement).checked).toBe(true);
-    expect(screen.getByRole("textbox", { name: "Search protections" }).getAttribute("value")).toBe("");
+    expect(screen.getByRole("searchbox", { name: "Search protections" }).getAttribute("value")).toBe("");
   });
 
   it("keeps intent generation inside Policies and applies only after review", async () => {

@@ -14,15 +14,17 @@ export function PageHeader({
   description,
   action,
   aside,
+  className,
 }: {
   eyebrow?: string;
   title: string;
   description: string;
   action?: ReactNode;
   aside?: ReactNode;
+  className?: string;
 }) {
   return (
-    <header className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+    <header className={cn("flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between", className)}>
       <div className="min-w-0">
         {eyebrow ? <p className="text-sm font-medium text-primary">{eyebrow}</p> : null}
         <h1 className={cn("font-sans text-3xl font-normal tracking-normal text-foreground sm:text-[2rem]", eyebrow && "mt-1.5")}>

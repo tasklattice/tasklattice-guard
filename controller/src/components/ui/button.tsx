@@ -5,6 +5,7 @@ type Variant =
   | "default"
   | "create"
   | "edit"
+  | "testing"
   | "outline"
   | "secondary"
   | "ghost"
@@ -16,6 +17,7 @@ const kinds = {
   default: "primary",
   create: "primary",
   edit: "primary",
+  testing: "primary",
   outline: "tertiary",
   secondary: "secondary",
   ghost: "ghost",
@@ -41,6 +43,7 @@ export function buttonVariants({
     "cds--btn",
     `cds--btn--${kinds[variant]}`,
     `cds--btn--${sizes[size]}`,
+    variant === "testing" && "guard-testing-button",
     className,
   );
 }
@@ -60,6 +63,7 @@ export function Button({
     "guard-button",
     size.startsWith("icon") && "guard-icon-button",
     variant === "link" && "guard-link-button",
+    variant === "testing" && "guard-testing-button",
     className,
   );
   if (asChild && React.isValidElement<Record<string, unknown>>(children)) {

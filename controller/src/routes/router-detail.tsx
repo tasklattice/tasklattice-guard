@@ -239,9 +239,10 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
         to="/integration/routers"
       >{localize("routing.trafficRouters2")}</Link>
       <PageHeader
+        className="router-workspace-header"
         title={router.name}
         description={localize("routing.manageTrafficRoutingFromIncomingEndpointsToGuardRails")}
-        action={<Button asChild variant="outline" className="min-h-11"><Link to="/playground" search={{ mode: "advanced", router: router.id }}><FlaskConical aria-hidden="true" />{localize("routing.testRouter")}</Link></Button>}
+        action={<Button asChild variant="testing" className="router-workspace-action"><Link to="/playground" search={{ mode: "advanced", router: router.id }}><FlaskConical aria-hidden="true" />{localize("routing.testRouter")}</Link></Button>}
       />
       <div className="router-workspace-status">
         <StateBadge state={router.rolloutStatus} label={router.rolloutStatus === "active" ? localize("routing.active") : router.rolloutStatus === "failed" ? localize("routing.rolloutFailed") : router.rolloutStatus === "distributing" ? localize("routing.distributing") : localize("routing.unpublished")} />

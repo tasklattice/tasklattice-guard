@@ -30,3 +30,5 @@
 .router-flow-stages > span { display: flex; flex-direction: column; align-items: center; gap: 0.75rem; font-size: 0.75rem; }
 .router-flow-stages > span > svg { width: 2rem; height: 2rem; }
 .router-flow-stages > svg { width: 1rem; height: 1rem; color: var(--cds-icon-secondary); }
+.router-workspace-header { flex-direction: row; align-items: center; justify-content: space-between; }
+.router-workspace-action { inline-size: 10.75rem; block-size: 3rem; min-block-size: 3rem; flex-shrink: 0; white-space: nowrap; }
