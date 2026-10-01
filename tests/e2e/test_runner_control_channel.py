@@ -113,9 +113,17 @@ class MockController(services.RunnerControlServicer):
             message_id="desired-state",
             desired_state=self.desired_state,
         )
+        accepted = False
         async for message in request_iterator:
             self.received.append(message)
             if message.WhichOneof("body") == "desired_state_result":
+                if not message.desired_state_result.accepted:
+                    return
+                accepted = True
+            # Applying desired state also sends its new generation immediately.
+            # Closing after the ACK races that required heartbeat write in gRPC.
+            if (accepted and message.WhichOneof("body") == "heartbeat"
+                    and message.heartbeat.applied_generation == self.desired_state.generation):
                 return
 
 
@@ -168,6 +176,7 @@ async def test_mock_controller_and_real_runner_exchange_and_apply_desired_state(
     assert result.runner_id == "e2e-runner"
     assert result.generation == 1
     assert result.accepted is True
+    assert controller.received[-1].heartbeat.applied_generation == 1
     assert store.generation == 1
     assert client.synchronized is True
     assert registry.readiness()["ready"] is True
@@ -243,6 +252,7 @@ async def test_runner_accepts_replaceable_model_configuration_in_desired_state(
     )
     assert result.accepted is True
     assert result.model_revision_id == model_configuration.revision_id
+    assert controller.received[-1].heartbeat.applied_generation == desired_state.generation
     assert client.synchronized is True
     assert client._providers is not None
     assert registry.readiness()["ready"] is True
