@@ -32,4 +32,3 @@ async def tcp_server(app):
                 task.cancel()
                 await asyncio.gather(task, return_exceptions=True)
             sock.close()
-
