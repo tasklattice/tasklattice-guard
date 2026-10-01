@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: banking/identity-evasion
+name: Identity-check evasion
+description: Matches this reviewed text pattern, not arbitrary semantic variants.
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: (?i)\b(?:help me|show me how to|I will)\s+(?:bypass|evade)\s+(?:KYC|AML|identity verification)\b|帮我绕过(?:身份验证|反洗钱检查)
+on_match:
+  action: block
+runtime_adapter:
+  binding_id: banking-customer-protection
+  implementation_rule_id: banking/identity-evasion
+metadata:
+  taxonomy_ids:
+  - TALI-BUSINESS-POLICY
+risk_level: low

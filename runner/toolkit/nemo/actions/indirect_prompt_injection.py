@@ -84,7 +84,7 @@ class IndirectPromptInjectionActionProvider:
         if request.target_source not in _INDIRECT_SOURCES:
             return action_result(
                 request,
-                "safe",
+                "not_matched",
                 request.content,
                 reason="The active block is not retrieval context or a tool result.",
             )
@@ -102,7 +102,7 @@ class IndirectPromptInjectionActionProvider:
         if detected is None:
             return action_result(
                 request,
-                "safe",
+                "not_matched",
                 request.content,
                 reason="No embedded instruction override or prompt-extraction command was detected.",
             )
@@ -115,13 +115,13 @@ class IndirectPromptInjectionActionProvider:
         )
         return action_result(
             request,
-            "unsafe",
+            "matched",
             request.content,
             findings=(
                 RiskFinding(
                     risk=request.capability,
                     taxonomy_id=taxonomy_for_evaluator(request.capability),
-                    verdict="unsafe",
+                    verdict="matched",
                     confidence=0.99 if not encoded else 0.97,
                     evidence=reason,
                     recommended_action=request.proposed_action,

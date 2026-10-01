@@ -1,3 +1,4 @@
+import { hasRuntimeError, runtimeOutcome, type RuntimeLogOutcome, type RuntimeOutcome } from "../../shared/runtime-outcome";
 import { selectedSeverities, type EventSeverity } from "../../shared/security-severity";
 import * as controllerApi from "@/lib/controller-api";
 import {
@@ -5,7 +6,7 @@ import {
   arrayOfStrings,
   enumValue,
   isTimedOut,
-  normalizeOutcome,
+  numberValue,
   runtimeFindings,
   runtimeTraceSteps,
   stringValue,
@@ -55,13 +56,23 @@ function runtimeLogEntry(event: controllerApi.RuntimeEvent): RuntimeLogInteracti
     id: event.id,
     trace_id: event.requestId,
     created_at: event.occurredAt,
-    phase: event.direction === "incoming" ? "input" : "output",
-    outcome: normalizeOutcome(event.decision),
+    phase: event.direction === "completion" ? "completion" : event.direction === "incoming" ? "input" : "output",
+    outcome: runtimeOutcome(event.decision),
     action: stringValue(event.metadata.action) ?? event.decision,
     risk: runtimeFindings(event)[0]?.risk ?? arrayOfStrings(event.metadata.risks)[0] ?? null,
     latency_ms: event.durationMs,
     timed_out: isTimedOut(event),
-    execution_status: event.metadata.executionStatus === "error" || isTimedOut(event) || arrayOfRecords(event.metadata.findings).some(f => f.verdict === "error") ? "error" : event.metadata.executionStatus === "complete" ? "complete" : "unknown",
+    execution_status: hasRuntimeError(event) ? "error" : event.metadata.executionStatus === "complete" ? "complete" : "unknown",
+    ...(event.metadata.logKind === "call_completion" ? { call_completion: {
+      inferred: event.metadata.completionInferred === true, reason: stringValue(event.metadata.failureReason),
+      completed_at: stringValue(event.metadata.completedAt), decision_id: stringValue(event.metadata.decisionId),
+      route_id: stringValue(event.metadata.routeId), target_id: stringValue(event.metadata.targetId), router_revision: numberValue(event.metadata.routerRevision),
+    } } : {}),
+    error_details: arrayOfRecords(event.metadata.trace).filter(step => hasRuntimeError({ decision: String(step.outcome ?? step.status ?? ""), metadata: { trace: [step] } })).map(step => ({
+      span_id: stringValue(step.id) ?? "—", name: stringValue(step.actionName) ?? stringValue(step.name) ?? "—",
+      error_type: stringValue(step.errorType), provider: stringValue(step.providerName), model: stringValue(step.modelName),
+      policy: stringValue(step.policyId), timed_out: step.timedOut === true || step.status === "timeout" || step.outcome === "timeout", timeout_ms: numberValue(step.timeoutMs),
+    })),
     detail: `Runner ${event.runnerId} reported ${event.direction} decision “${event.decision}” in ${event.durationMs} ms.`,
     http_request: httpRequest,
     content_before: before,
@@ -72,21 +83,21 @@ function runtimeLogEntry(event: controllerApi.RuntimeEvent): RuntimeLogInteracti
   };
 }
 
-function worstOutcome(values: string[]): string {
-  const rank = (value: string) => ({ error: 4, block: 3, transform: 2, allow: 1 }[normalizeOutcome(value)] ?? 0);
-  return [...values].sort((left, right) => rank(right) - rank(left))[0] ?? "allow";
+function worstOutcome(values: string[]): RuntimeOutcome | null {
+  const outcomes = values.map(runtimeOutcome).filter((value): value is RuntimeOutcome => value !== null);
+  const rank = { block: 3, transform: 2, allow: 1 };
+  return outcomes.sort((left, right) => rank[right] - rank[left])[0] ?? null;
 }
 
 export function runtimeLogInteractions(events: controllerApi.RuntimeEvent[], filters: {
   includeUncaptured?: boolean;
   phase?: "input" | "output";
-  outcome?: "allow" | "transform" | "block" | "error";
+  outcome?: RuntimeLogOutcome;
 } = {}): RuntimeLogInteraction[] {
   const matching = events
-    .filter((event): event is controllerApi.RuntimeEvent & { guardrailId: string } => Boolean(event.guardrailId))
     .filter((event) => filters.includeUncaptured || event.metadata.runtimeLogCaptured === true)
-    .filter((event) => !filters.phase || (event.direction === "incoming" ? "input" : "output") === filters.phase)
-    .filter((event) => !filters.outcome || normalizeOutcome(event.decision) === filters.outcome);
+    .filter((event) => !filters.phase || (event.direction === "completion" ? "completion" : event.direction === "incoming" ? "input" : "output") === filters.phase)
+    .filter((event) => !filters.outcome || (filters.outcome === "error" ? hasRuntimeError(event) : runtimeOutcome(event.decision) === filters.outcome));
   const grouped = new Map<string, typeof matching>();
   for (const event of matching) {
     const key = `${event.requestId}:${event.guardrailId}`;

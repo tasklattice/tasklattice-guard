@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
 from dataclasses import replace
 from datetime import UTC, datetime
 
 from .content_views import content_view, text_blocks
 from .context import CallContextStore
-from .streaming import output_stream_contract
+from .streaming import OutputStreamEvaluationError
 from .contracts import (
     AppliedIntervention,
     ContentBlockResult,
@@ -22,7 +23,6 @@ from .contracts import (
     PlanResolution,
     PlanResolver,
     RuntimeCoverage,
-    OutputDeliveryMode,
 )
 
 
@@ -109,16 +109,9 @@ class GuardrailRuntimeService:
             await self.complete_call(resolution, request.call_id, outcome)
         return decision
 
-    def output_delivery(
-        self,
-        request: ProtectionRequest,
-        *,
-        on_resolved: Callable[[PlanResolution], None] | None = None,
-        require_existing: bool = False,
-        allow_new_output: bool = False,
-    ) -> OutputDeliveryMode:
-        """Resolve and pin the delivery contract before the first output chunk is released."""
-        resolution, stored = self._resolve_call(request, require_existing=require_existing, allow_new_output=allow_new_output)
+    async def stream_output(self, request, source, *, ready, emit, observe, allow_new_output=False):
+        """Pin once for the lifetime of one connection; NeMo owns incremental checks."""
+        resolution, stored = self._resolve_call(request, allow_new_output=allow_new_output)
         retain = getattr(self._resolver, "retain_release", None)
         if retain is not None:
             try:
@@ -126,11 +119,46 @@ class GuardrailRuntimeService:
             except LookupError as error:
                 from runner.routing import RoutingError
                 raise RoutingError("pinned_release_unavailable", resolution.route_assignment) from error
-        self._contexts.put(request.call_id, stored.messages if stored else request.messages,
-                           resolution, stored.content_blocks if stored else request.content_blocks)
-        if on_resolved is not None:
-            on_resolved(resolution)
-        return output_stream_contract(resolution.plan).effective_mode
+        await self.publish_assignment(resolution, request.call_id)
+        incoming = text_blocks("output", ("",), "model_output")
+        blocks = _context_blocks(stored.content_blocks, incoming)
+        engine_request = EngineRequest(
+            phase="output", text="", plan=resolution.plan, context_messages=stored.messages,
+            trusted_instruction=_trusted_instruction(stored.messages, blocks), target_source="model_output",
+            mode=request.mode, evidence_scope=request.evidence_scope,
+            content_view=content_view(blocks, incoming[0].id), active_block_id=incoming[0].id,
+            request_context=request.context, effective_release_id=resolution.effective_release_id,
+        )
+        outcome = "error"
+
+        async def checked(decision):
+            decision = replace(decision, router_id=resolution.router_id, endpoint_id=resolution.endpoint_id,
+                effective_release_id=resolution.effective_release_id, model_revision_id=resolution.model_revision_id,
+                route_assignment=resolution.route_assignment,
+                trace=decision.trace if decision.router_id else (*resolution.trace, *decision.trace))
+            self._contexts.record_outcome(request.call_id,
+                "error" if decision.usage and decision.usage.fail_closed
+                else "intervene" if decision.decision == "transform" else decision.decision)
+            await observe(decision)
+
+        async def prepared(contract):
+            await ready(contract, resolution)
+
+        try:
+            result = await self._runtime.protect_output(engine_request, source,
+                ready=prepared, emit=emit, observe=checked)
+            outcome = "block" if result.status == "blocked" else "intervene" if result.transformed else "allow"
+            return result
+        except asyncio.CancelledError:
+            raise
+        except TimeoutError:
+            outcome = "timeout"
+            raise
+        except OutputStreamEvaluationError as error:
+            outcome = "timeout" if error.timed_out else "error"
+            raise
+        finally:
+            await self.complete_call(resolution, request.call_id, outcome)
 
     async def evaluate_guardrail(
         self,
@@ -174,7 +202,7 @@ class GuardrailRuntimeService:
         if not incoming_blocks:
             return ProtectionDecision(
                 decision="allow",
-                action="pass",
+                action="allow",
                 reason="No model content required a protection check.",
                 guardrail_id=resolution.plan.guardrail_id,
                 guardrail_version=resolution.plan.guardrail_version,
@@ -196,7 +224,7 @@ class GuardrailRuntimeService:
         coverages: list[RuntimeCoverage] = []
         usages: list[RuntimeUsage] = []
         final_decision = "allow"
-        final_action = "pass"
+        final_action = "allow"
         reason = "All model content passed the active Guardrail."
         pinned = stored if request.phase == "output" else None
         context_messages = pinned.messages if pinned else request.messages
@@ -211,7 +239,7 @@ class GuardrailRuntimeService:
                 role=block.role,
                 source=block.source,
                 decision="allow",
-                action="pass",
+                action="allow",
                 text=block.text,
                 evaluated=False,
             )
@@ -266,7 +294,7 @@ class GuardrailRuntimeService:
                 output_by_id[block.id] = resolved_text
             if decision.decision == "block":
                 final_decision = "block"
-                final_action = "reject"
+                final_action = "block"
                 reason = decision.reason or "A content block was blocked by the active Guardrail."
                 continue
             if decision.decision == "transform":
@@ -341,7 +369,7 @@ def _strongest_action(
     values = set(actions)
     return next(
         (action for action in ENFORCEMENT_ACTION_CONFLICT_ORDER if action in values),
-        "pass",
+        "allow",
     )
 
 

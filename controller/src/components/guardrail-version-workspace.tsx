@@ -221,7 +221,7 @@ function addSetChanges(changes: VersionDiffChange[], category: VersionDiffCatego
 }
 
 function describePolicy(binding: GuardrailVersionDetail["policy_bindings"][number]) {
-  return `v${binding.policy_version} · ${binding.action ?? "pass"} · rules:[${[...binding.enabled_rule_ids].sort().join(",")}] · rails:[${[...binding.enabled_rails].sort().join(",")}]`;
+  return `v${binding.policy_version} · ${binding.action ?? "allow"} · rules:[${[...binding.enabled_rule_ids].sort().join(",")}] · rails:[${[...binding.enabled_rails].sort().join(",")}]`;
 }
 
 function describeAction(action: GuardrailVersionDetail["actions"][number]) {

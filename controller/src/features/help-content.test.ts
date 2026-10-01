@@ -93,18 +93,25 @@ describe("repository documentation", () => {
     expect(html).toContain(locale === "zh-CN" ? "下一步" : "Next step");
   });
 
-  it("keeps resource maps, Rule forms, and state diagrams with their parent concepts", () => {
+  it("keeps resource maps, Rule detectors, and state diagrams with their parent concepts", () => {
     for (const locale of locales) {
       const map = renderToStaticMarkup(createElement(article(locale, "term-guardrail").Content, { components: helpStructuralComponents }));
       expect(map).toContain('src="/favicon.svg"');
+      expect(map).toContain(locale === "zh-CN" ? "检查阶段 · 检测器 · 安全分级 · 命中后处理" : "Stage · detector · risk level · handling");
+      expect(map).not.toContain("colang_flow");
       const definitions = renderToStaticMarkup(createElement(article(locale, "glossary-definition").Content, { components: helpStructuralComponents }));
       const container = document.createElement("div");
       container.innerHTML = definitions;
-      const list = container.querySelector("#term-rule-implementation")?.nextElementSibling?.nextElementSibling;
-      expect(list?.tagName).toBe("OL");
-      expect(Array.from(list?.querySelectorAll(":scope > li") ?? []).map(item => item.querySelector("code")?.textContent)).toEqual([
-        "regex", "keyword", "category", "code_block", "competitor_intent", "colang_flow",
-      ]);
+      const heading = container.querySelector("#term-rule-implementation");
+      const section: Element[] = [];
+      for (let node = heading?.nextElementSibling; node && !/^H[1-3]$/.test(node.tagName); node = node.nextElementSibling) section.push(node);
+      const choices = section.find(node => node.tagName === "TABLE");
+      expect(choices?.querySelectorAll("tbody > tr")).toHaveLength(7);
+      for (const ref of ["text/regex", "text/keyword", "text/conditions", "code/fenced-block", "model/classifier", "model/grounding", "service/formal-verification"]) expect(choices?.textContent).toContain(ref);
+      const example = section.find(node => node.tagName === "PRE")?.textContent;
+      for (const field of ["stages:", "detector:", "text/regex", "risk_level:", "on_match:", "action: transform"]) expect(example).toContain(field);
+      expect(example).not.toContain("colang_flow");
+      expect(definitions).toContain("#operator-policy-declarative");
       const states = ["term-guardrail", "term-router", "term-endpoint", "platform-runtime"].map(id => renderToStaticMarkup(createElement(article(locale, id).Content, { components: helpStructuralComponents }))).join(" ");
       expect(states).toContain("<svg");
       expect(states).toContain("marker-end=");

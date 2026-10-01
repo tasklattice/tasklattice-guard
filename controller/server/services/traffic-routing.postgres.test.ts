@@ -347,6 +347,15 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
     expect(result.trend.reduce((n, r) => n + r.count, 0)).toBe(3);
   });
 
+  it("retains completion failure reasons after assignment and retries", async () => {
+    const router = await publish();
+    const assigned = event(router.id, "failed");
+    const done = event(router.id, "failed", { id: "failed-completion", eventType: "completion", outcome: "error", failureReason: "upstream_unavailable" });
+    await service.trafficRouting.recordEvents([assigned, done, assigned, done]);
+    const detail = await service.getRuntimeEvent("call:failed");
+    expect(detail.metadata).toMatchObject({ failureReason: "upstream_unavailable", completionInferred: false });
+  });
+
   it("folds multistage outcomes without inflating counts and retains revision/endpoint filters", async () => {
     const router = await publish();
     for (const [i, outcome] of ["allow", "transform", "intervene", "block", "error"].entries()) {
@@ -429,7 +438,9 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
     const { snapshot } = await sourceFixture();
     const request = { id: "guard-a", name: "Draft copy", sourceDraftRevision: 1, idempotencyKey: "draft-copy", actorId: actor };
     const copy = await service.duplicateGuardrail(request);
-    expect(copy.draftConfig).toEqual(snapshot.draftConfig); expect(copy.copyOrigin).toMatchObject({ sourceDraftRevision: 1, sourceVersion: null });
+    // Older stored drafts omit the mode; reads preserve their strict topic semantics.
+    expect(copy.draftConfig).toEqual({ ...snapshot.draftConfig, topicControlMode: "strict" });
+    expect(copy.copyOrigin).toMatchObject({ sourceDraftRevision: 1, sourceVersion: null });
     await pool.query("UPDATE guardrail SET draft_revision=2 WHERE id='guard-a'");
     expect((await service.duplicateGuardrail(request)).id).toBe(copy.id);
     await expect(service.duplicateGuardrail({ ...request, idempotencyKey: "stale" })).rejects.toMatchObject({ code: "guardrail_draft_conflict" });

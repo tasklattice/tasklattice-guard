@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=../../../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: builtin-topic-safety
+  name: Model Topic Control
+  description: Keeps user input within configured business topics using the validated Topic Control Input
+    Rail binding.
+  source: built_in
+  version: 1.0.0
+  tags:
+  - namespace: protection
+    value: business_topics
+    label: Business topics
+    source: declared
+  - namespace: guardrail_category
+    value: topic_control
+    label: Topic Control
+    source: declared
+parameters: []
+rules:
+- rules/model-topic-control.yaml
+tests:
+- tests/acceptance.yaml

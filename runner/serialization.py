@@ -33,7 +33,7 @@ def plan_from_dict(payload: dict[str, Any]) -> GuardrailPlanSnapshot:
                 capability=str(item["capability"]),
                 contract_ref=str(item["contract_ref"]),
                 phases=tuple(item.get("phases", ("input", "output"))),
-                on_unsafe=str(item.get("on_unsafe", "reject")),
+                on_unsafe=str(item.get("on_unsafe", "block")),
                 trigger=_evaluation_trigger(item.get("trigger")),
                 parameters=_pairs(item.get("parameters", ())),
             )

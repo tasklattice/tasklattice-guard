@@ -1,0 +1,17 @@
+id: model/automated-reasoning
+name: Reasoning verifier
+description: Rewrite output that violates the pinned reasoning policy.
+stages:
+- output
+detector:
+  ref: service/formal-verification
+  version: 1.0.0
+on_match:
+  action: transform
+runtime_adapter:
+  binding_id: automated_reasoning
+  implementation_rule_id: automated_reasoning
+metadata:
+  taxonomy_ids:
+  - TALI-RESPONSE-INTEGRITY
+risk_level: medium

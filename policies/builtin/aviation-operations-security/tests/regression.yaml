@@ -1,0 +1,301 @@
+# yaml-language-server: $schema=../../../schemas/tests.schema.json
+- id: competitor-comparison-input-filter/destination-intent-001
+  name: Allow route availability question
+  description: A country name is used as a destination, not as a competing airline.
+  phase: input
+  content: Do you have flights to Qatar?
+  expected_decision: allow
+  covered_rule_ids:
+  - competitor-comparison-input-filter/competitor-comparison-intent
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Destination intent
+- id: competitor-comparison-input-filter/destination-intent-002
+  name: Allow flight duration question
+  description: Location-based travel planning must remain available.
+  phase: input
+  content: How long is the flight to Doha?
+  expected_decision: allow
+  covered_rule_ids:
+  - competitor-comparison-input-filter/competitor-comparison-intent
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Destination intent
+- id: competitor-comparison-input-filter/destination-intent-003
+  name: Allow transit visa question
+  description: Transit requirements concern a destination rather than a brand comparison.
+  phase: input
+  content: Do I need a visa to transit through Qatar?
+  expected_decision: allow
+  covered_rule_ids:
+  - competitor-comparison-input-filter/competitor-comparison-intent
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Destination intent
+- id: competitor-comparison-input-filter/destination-intent-004
+  name: Allow airport facilities question
+  description: Airport facility requests must not be treated as competitor promotion.
+  phase: input
+  content: Are there lounges at Hamad Airport?
+  expected_decision: allow
+  covered_rule_ids:
+  - competitor-comparison-input-filter/competitor-comparison-intent
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Destination intent
+- id: competitor-comparison-input-filter/destination-intent-005
+  name: Allow entry documents question
+  description: Travel-document planning is within the allowed destination intent.
+  phase: input
+  content: What documents are required to enter Singapore?
+  expected_decision: allow
+  covered_rule_ids:
+  - competitor-comparison-input-filter/competitor-comparison-intent
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Destination intent
+- id: competitor-comparison-input-filter/destination-intent-006
+  name: Allow airlines serving a destination
+  description: Listing services to a destination is not itself a quality comparison.
+  phase: input
+  content: What airlines fly to Turkey?
+  expected_decision: allow
+  covered_rule_ids:
+  - competitor-comparison-input-filter/competitor-comparison-intent
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Destination intent
+- id: competitor-comparison-input-filter/destination-intent-007
+  name: Allow airport code question
+  description: Airport code lookup is a factual destination request.
+  phase: input
+  content: What is the airport code for Doha?
+  expected_decision: allow
+  covered_rule_ids:
+  - competitor-comparison-input-filter/competitor-comparison-intent
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Destination intent
+- id: competitor-comparison-input-filter/destination-intent-008
+  name: Allow layover planning question
+  description: Layover planning must remain available when no airline ranking is requested.
+  phase: input
+  content: Is Doha a good place for a long layover?
+  expected_decision: allow
+  covered_rule_ids:
+  - competitor-comparison-input-filter/competitor-comparison-intent
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Destination intent
+- id: competitor-comparison-input-filter/destination-intent-009
+  name: Allow destination weather question
+  description: Weather planning is unrelated to competitor comparison.
+  phase: input
+  content: What is the weather like in Qatar in March?
+  expected_decision: allow
+  covered_rule_ids:
+  - competitor-comparison-input-filter/competitor-comparison-intent
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Destination intent
+- id: competitor-comparison-input-filter/destination-intent-010
+  name: Allow connection timing question
+  description: Connection-time planning is an allowed destination request.
+  phase: input
+  content: How much connection time do I need in Doha?
+  expected_decision: allow
+  covered_rule_ids:
+  - competitor-comparison-input-filter/competitor-comparison-intent
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Destination intent
+- id: competitor-comparison-input-filter/competitor-comparison-001
+  name: Block direct airline comparison
+  description: A direct better-than comparison crosses the brand-protection boundary.
+  phase: input
+  content: Is Qatar Airways better than Emirates?
+  expected_decision: block
+  covered_rule_ids:
+  - competitor-comparison-input-filter/competitor-comparison-intent
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Competitor comparison
+- id: competitor-comparison-input-filter/competitor-comparison-002
+  name: Block premium cabin comparison
+  description: Comparing competitor premium products is a comparison intent.
+  phase: input
+  content: Which airline has better business class, Qatar or Singapore Airlines?
+  expected_decision: block
+  covered_rule_ids:
+  - competitor-comparison-input-filter/competitor-comparison-intent
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Competitor comparison
+- id: competitor-comparison-input-filter/competitor-comparison-003
+  name: Block best airline ranking
+  description: A superlative ranking asks the assistant to select a competitor.
+  phase: input
+  content: Which airline is the best for long haul flights?
+  expected_decision: block
+  covered_rule_ids:
+  - competitor-comparison-input-filter/competitor-comparison-intent
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Competitor comparison
+- id: competitor-comparison-input-filter/competitor-comparison-004
+  name: Block competitor choice request
+  description: Choosing between the protected brand and another airline is comparison intent.
+  phase: input
+  content: Should I choose Qatar Airways or another airline?
+  expected_decision: block
+  covered_rule_ids:
+  - competitor-comparison-input-filter/competitor-comparison-intent
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Competitor comparison
+- id: competitor-comparison-input-filter/competitor-comparison-005
+  name: Block named airline comparison
+  description: Explicit versus language is a competitor comparison.
+  phase: input
+  content: Compare Turkish Airlines vs Lufthansa.
+  expected_decision: block
+  covered_rule_ids:
+  - competitor-comparison-input-filter/competitor-comparison-intent
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Competitor comparison
+- id: competitor-comparison-input-filter/competitor-comparison-006
+  name: Block lounge quality comparison
+  description: Comparing service quality between airlines is a comparison request.
+  phase: input
+  content: Which airline has better lounges?
+  expected_decision: block
+  covered_rule_ids:
+  - competitor-comparison-input-filter/competitor-comparison-intent
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Competitor comparison
+- id: competitor-comparison-input-filter/competitor-comparison-007
+  name: Block customer satisfaction ranking
+  description: Ranking airlines by customer satisfaction is comparison intent.
+  phase: input
+  content: Which airline has the best customer satisfaction?
+  expected_decision: block
+  covered_rule_ids:
+  - competitor-comparison-input-filter/competitor-comparison-intent
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Competitor comparison
+- id: competitor-comparison-input-filter/competitor-comparison-008
+  name: Block indirect airline comparison
+  description: An indirect location-based airline reference still requests a comparison.
+  phase: input
+  content: Is the Doha airline better than other carriers?
+  expected_decision: block
+  covered_rule_ids:
+  - competitor-comparison-input-filter/competitor-comparison-intent
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Competitor comparison
+- id: competitor-comparison-input-filter/competitor-comparison-009
+  name: Block airline switching request
+  description: Asking whether to switch providers is recommendation and comparison intent.
+  phase: input
+  content: Should I switch to another airline for a better experience?
+  expected_decision: block
+  covered_rule_ids:
+  - competitor-comparison-input-filter/competitor-comparison-intent
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Competitor comparison
+- id: competitor-comparison-input-filter/competitor-comparison-010
+  name: Block global airline ranking
+  description: Requesting the number-one airline is an explicit ranking request.
+  phase: input
+  content: Which airline is ranked number one worldwide?
+  expected_decision: block
+  covered_rule_ids:
+  - competitor-comparison-input-filter/competitor-comparison-intent
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Competitor comparison
+- id: competitor-comparison-input-filter/ambiguous-entity-001
+  name: Allow ambiguous baggage question
+  description: The entity may be a country or airline, but the request contains no ranking intent.
+  phase: input
+  content: Qatar baggage allowance
+  expected_decision: allow
+  covered_rule_ids:
+  - competitor-comparison-input-filter/competitor-comparison-intent
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Ambiguous entity
+- id: competitor-comparison-input-filter/ambiguous-entity-002
+  name: Allow ambiguous lounge question
+  description: A service-policy lookup must not be blocked solely because the entity is ambiguous.
+  phase: input
+  content: Qatar lounge access rules
+  expected_decision: allow
+  covered_rule_ids:
+  - competitor-comparison-input-filter/competitor-comparison-intent
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Ambiguous entity
+- id: competitor-comparison-input-filter/ambiguous-entity-003
+  name: Allow ambiguous check-in question
+  description: Operational timing without comparison remains allowed.
+  phase: input
+  content: Qatar check in time
+  expected_decision: allow
+  covered_rule_ids:
+  - competitor-comparison-input-filter/competitor-comparison-intent
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Ambiguous entity
+- id: competitor-comparison-input-filter/ambiguous-entity-004
+  name: Allow city lounge question
+  description: A city-specific facility query has no competitor ranking intent.
+  phase: input
+  content: Doha premium lounge access
+  expected_decision: allow
+  covered_rule_ids:
+  - competitor-comparison-input-filter/competitor-comparison-intent
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Ambiguous entity
+- id: competitor-comparison-input-filter/ambiguous-entity-005
+  name: Allow ambiguous refund question
+  description: A refund-policy lookup is allowed when it does not compare providers.
+  phase: input
+  content: Qatar refund policy
+  expected_decision: allow
+  covered_rule_ids:
+  - competitor-comparison-input-filter/competitor-comparison-intent
+  kind: scenario
+  required: true
+  parameter_names: []
+  group: Ambiguous entity

@@ -131,13 +131,13 @@ function TargetRow({
   allowLatest: boolean;
   fallback: boolean;
 }) {
-  const { t: localize } = useTranslation();
   const { t } = useTranslation();
   const query = useQuery({
     queryKey: ["routing-guardrail", target.guardrailId],
     queryFn: () => getControllerGuardrail(target.guardrailId),
     enabled: Boolean(target.guardrailId),
   });
+  const versionStrategyLabel = t("routing.versionStrategy", { index: index + 1 });
   const versions =
     query.data?.versions.filter(
       (version) => version.status === "ready" && version.artifactId,
@@ -209,7 +209,7 @@ function TargetRow({
           <Button
             variant="destructive"
             className="size-12 shrink-0"
-            aria-label={localize("routing.removeGuardrail", { index: index + 1 })}
+            aria-label={t("routing.removeGuardrail", { index: index + 1 })}
             onClick={onRemove}
           >
             ×
@@ -217,7 +217,7 @@ function TargetRow({
         )}
       </div>
       {target.guardrailId && allowLatest && (
-        <Field label={t("routing.versionStrategy")}>
+        <Field label={versionStrategyLabel}>
           <Select
             value={target.versionStrategy ?? "pinned"}
             onValueChange={(strategy) =>
@@ -230,13 +230,13 @@ function TargetRow({
             }
           >
             <SelectTrigger
-              aria-label={localize("routing.versionStrategy", { index: index + 1 })}
+              aria-label={versionStrategyLabel}
             >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="latest">{localize("routing.latestWhenPublished")}</SelectItem>
-              <SelectItem value="pinned">{localize("routing.pinVersion")}</SelectItem>
+              <SelectItem value="latest">{t("routing.latestWhenPublished")}</SelectItem>
+              <SelectItem value="pinned">{t("routing.pinVersion")}</SelectItem>
             </SelectContent>
           </Select>
         </Field>
@@ -248,7 +248,7 @@ function TargetRow({
             onChange({ ...target, guardrailVersion })
           }
         >
-          <SelectTrigger aria-label={localize("routing.targetVersion", { index: index + 1 })}>
+          <SelectTrigger aria-label={t("routing.targetVersion", { index: index + 1 })}>
             <SelectValue placeholder={t("routing.selectVersion")} />
           </SelectTrigger>
           <SelectContent>

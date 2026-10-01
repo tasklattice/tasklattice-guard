@@ -19,11 +19,11 @@ CASES = tuple(
 
 
 def _decision(result) -> str:
-    if result.verdict == "safe":
+    if result.verdict == "not_matched":
         return "allow"
     if result.verdict == "error":
         return "error"
-    if any(finding.recommended_action == "reject" for finding in result.findings):
+    if any(finding.recommended_action == "block" for finding in result.findings):
         return "block"
     return "transform"
 
@@ -38,7 +38,7 @@ def test_china_mainland_collection_is_versioned_and_locally_executable() -> None
     for item in CHINA_POLICIES:
         assert item.version == "1.0.0"
         assert any(tag.id == "jurisdiction:cn" for tag in item.tags)
-        assert all(rule.form != "colang_flow" for rule in item.rules)
+        assert all(rule.implementation.execution == "local" for rule in item.rules)
 
 
 @pytest.mark.parametrize(
@@ -76,5 +76,5 @@ def test_checksum_validation_does_not_redact_format_only_candidates(content: str
         phase="input",
         policies=("china-personal-identifiers", "china-organization-identifiers"),
     )
-    assert result.verdict == "safe"
+    assert result.verdict == "not_matched"
     assert result.content == content

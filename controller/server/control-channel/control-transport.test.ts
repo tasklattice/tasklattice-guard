@@ -117,6 +117,7 @@ describe("production Controller gRPC transport budget", () => {
         results: Array.from({ length: 321 }, (_, i) => ({
           caseId: `case-${i}`, passed: true,
           expectedDecision: "VALIDATION_DECISION_ALLOW", actualDecision: "VALIDATION_DECISION_ALLOW",
+          action: "ENFORCEMENT_ACTION_ALLOW",
         })),
       } });
       if (oversized) {

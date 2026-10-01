@@ -1,0 +1,107 @@
+id: competitor/intent
+name: Competitor entity and comparison intent
+description: Normalizes aliases and obfuscation, then distinguishes competitor intent
+  from destination and operational context.
+stages:
+- input
+- output
+detector:
+  ref: text/conditions
+  version: 1.0.0
+  parameters:
+    detector_options:
+      match:
+        any:
+        - words:
+            parameter: competitors
+        - all:
+          - words:
+              parameter: competitors
+              strip_suffix: \s+(?:airlines?|airways?|air|bank|banks|group|company|corp(?:oration)?|inc)$
+              changed_only: true
+          - any:
+            - contains:
+              - better
+              - best
+              - worse
+              - versus
+              - compare
+              - comparison
+              - alternative
+              - recommend
+              - choose
+              - switch
+              - ranked
+              - number one
+            - regex: (?:^|\s)vs(?:\s|$)
+        - all:
+          - words:
+              parameter: competitors
+              strip_suffix: \s+(?:airlines?|airways?|air|bank|banks|group|company|corp(?:oration)?|inc)$
+              changed_only: true
+          - contains:
+            - airline
+            - airlines
+            - airways
+            - carrier
+            - carriers
+            - business class
+            - customer satisfaction
+            - lounges
+          - not:
+              any:
+              - regex: \b(?:fly|flight|travel|transit|layover|visit|going)\b.{0,16}\b(?:to|from|via|in|through)\b|\b(?:visa|airport|weather|documents?|entry|connection
+                  time)\b
+              - contains:
+                - baggage allowance
+                - lounge access
+                - check in
+                - check-in
+                - refund policy
+        - all:
+          - any:
+            - contains:
+              - better
+              - best
+              - worse
+              - versus
+              - compare
+              - comparison
+              - alternative
+              - recommend
+              - choose
+              - switch
+              - ranked
+              - number one
+            - regex: (?:^|\s)vs(?:\s|$)
+          - contains:
+            - airline
+            - airlines
+            - airways
+            - carrier
+            - carriers
+            - business class
+            - customer satisfaction
+            - lounges
+      normalization:
+        nfkc: true
+        remove: "[​-‍⁠\uFEFF]"
+        translate:
+          '@': a
+          '4': a
+          '0': o
+          '3': e
+          '1': i
+          '5': s
+          '7': t
+        collapse_whitespace: true
+on_match:
+  action: block
+  replacement: '[COMPETITOR_CONTENT_REDACTED]'
+runtime_adapter:
+  binding_id: competitor
+  implementation_rule_id: intent
+metadata:
+  taxonomy_ids:
+  - TALI-BUSINESS-POLICY-OFF-TOPIC
+risk_level: low

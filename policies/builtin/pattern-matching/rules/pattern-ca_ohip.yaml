@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: pattern/ca_ohip
+name: OHIP (Ontario Health Insurance Plan Number)
+description: Detects Ontario Health Insurance Plan numbers (10 digits + 2-letter version code)
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b\d{4}[\-\s]?\d{3}[\-\s]?\d{3}[\-\s]?[A-Z]{2}\b
+    context_expression: \b(?:OHIP\s*number|health\s*card\s*number|health\s*insurance\s*number|OHIP|health\s*card|health\s*insurance|ontario\s*health|health\s*number|carte\s*santé)\b
+    context_max_gap_words: 1
+on_match:
+  action: transform
+  replacement: '[ca_ohip_REDACTED]'
+runtime_adapter:
+  binding_id: pattern-matching
+  implementation_rule_id: ca_ohip
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-HEALTH
+risk_level: high

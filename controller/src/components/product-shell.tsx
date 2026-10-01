@@ -14,15 +14,17 @@ export function PageHeader({
   description,
   action,
   aside,
+  className,
 }: {
   eyebrow?: string;
   title: string;
   description: string;
   action?: ReactNode;
   aside?: ReactNode;
+  className?: string;
 }) {
   return (
-    <header className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+    <header className={cn("flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between", className)}>
       <div className="min-w-0">
         {eyebrow ? <p className="text-sm font-medium text-primary">{eyebrow}</p> : null}
         <h1 className={cn("font-sans text-3xl font-normal tracking-normal text-foreground sm:text-[2rem]", eyebrow && "mt-1.5")}>
@@ -38,9 +40,9 @@ export function PageHeader({
 export function StateBadge({ state, label }: { state: string; label?: string }) {
   const { t, i18n } = useTranslation();
   const normalized = state.toLowerCase();
-  const positive = ["active", "passed", "ready", "healthy", "allow", "pass", "safe", "enabled", "configured", "protected", "local", "success"].includes(normalized);
-  const negative = ["failed", "block", "blocked", "reject", "unsafe", "error", "degraded", "disabled", "saturated", "offline"].includes(normalized);
-  const warning = ["transform", "redirect", "uncertain", "waiting", "unconfigured", "unavailable", "not evaluated", "stale", "needs_validation", "intervene", "paused", "syncing", "busy", "deploying", "distributing"].includes(normalized);
+  const positive = ["active", "passed", "ready", "healthy", "allow", "pass", "not_matched", "enabled", "configured", "protected", "local", "success"].includes(normalized);
+  const negative = ["failed", "block", "blocked", "error", "degraded", "disabled", "saturated", "offline"].includes(normalized);
+  const warning = ["transform", "matched", "unknown", "waiting", "unconfigured", "unavailable", "not evaluated", "stale", "needs_validation", "intervene", "paused", "syncing", "busy", "deploying", "distributing"].includes(normalized);
 
   return (
     <Badge

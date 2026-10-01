@@ -20,31 +20,6 @@
       }
     ],
     "parameters": [],
-    "rules": [
-      {
-        "id": "model/topic-control",
-        "name": "Topic boundary judge",
-        "description": "Redirect input outside the configured topic boundary.",
-        "form": "colang_flow",
-        "effect": "redirect",
-        "risk_severity": "low",
-        "rails": [
-          "input"
-        ],
-        "implementation": {
-          "engine": "nemo-guardrails",
-          "form": "colang_flow",
-          "binding_id": "topic_control",
-          "implementation_rule_id": "topic_control",
-          "detector": null,
-          "flow_name": "tasklattice topic control",
-          "action_name": "GuardTopicJudgeAction"
-        },
-        "taxonomy_ids": [
-          "TALI-BUSINESS-POLICY-OFF-TOPIC"
-        ]
-      }
-    ],
     "test_cases": [
       {
         "id": "topic-input",
@@ -52,11 +27,42 @@
         "description": "Input outside the configured allowlist is redirected.",
         "phase": "input",
         "content": "Discuss a business subject that is not on the approved list.",
-        "expected_decision": "intervene",
+        "expected_decision": "block",
         "covered_rule_ids": [
           "model/topic-control"
         ],
         "kind": "rule_acceptance"
+      }
+    ],
+    "rules": [
+      {
+        "id": "model/topic-control",
+        "name": "Topic boundary judge",
+        "description": "Redirect input outside the configured topic boundary.",
+        "detector": {
+          "ref": "model/classifier",
+          "version": "1.0.0"
+        },
+        "effect": "block",
+        "risk_severity": "low",
+        "rails": [
+          "input"
+        ],
+        "implementation": {
+          "engine": "nemo-guardrails",
+          "detector": null,
+          "flow_name": "tasklattice topic control",
+          "action_name": "GuardTopicJudgeAction",
+          "execution": "platform",
+          "binding_id": "topic_control",
+          "implementation_rule_id": "topic_control"
+        },
+        "detector_options": {
+          "profile": "topic-classification"
+        },
+        "taxonomy_ids": [
+          "TALI-BUSINESS-POLICY-OFF-TOPIC"
+        ]
       }
     ]
   }

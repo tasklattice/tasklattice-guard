@@ -16,7 +16,7 @@ vi.mock("@/lib/api", async (original) => ({ ...await original<typeof import("@/l
 const current: Policy = {
   id: "passport", name: "Passport identifiers", description: "Contextual passport checks", source: "built_in", version: "2",
   implementation: "rules", tags: [], parameters: [], rails: ["input", "output"], rules: [], test_cases: [], test_count: 4,
-  effects: ["redact"], forms: ["regex"], safety_level: "balanced", output_delivery: "full_buffered",
+  effects: ["transform"], detectors: ["text/regex"], safety_level: "balanced", output_delivery: "full_buffered",
   protection: { directory: "privacy", execution: "local", modelCapabilities: [], requiredContext: [], outputStreaming: "complete_response", limitations: [] },
 };
 afterEach(cleanup);

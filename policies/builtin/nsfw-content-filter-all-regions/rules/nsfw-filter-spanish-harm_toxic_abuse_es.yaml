@@ -1,0 +1,90 @@
+id: nsfw-filter-spanish/harm_toxic_abuse_es
+name: Harm Toxic Abuse Es
+description: ''
+stages:
+- input
+detector:
+  ref: text/conditions
+  version: 1.0.0
+  parameters:
+    detector_options:
+      match:
+        keywords:
+        - asesinato
+        - asno
+        - bastardo
+        - bollera
+        - cabron
+        - cabrón
+        - caca
+        - chupada
+        - chupapollas
+        - chupetón
+        - concha
+        - concha de tu madre
+        - coño
+        - coprofagía
+        - culo
+        - drogas
+        - esperma
+        - fiesta de salchichas
+        - follador
+        - follar
+        - gilipichis
+        - gilipollas
+        - hacer una paja
+        - haciendo el amor
+        - heroína
+        - hija de puta
+        - hijaputa
+        - hijo de puta
+        - hijoputa
+        - idiota
+        - imbécil
+        - infierno
+        - jilipollas
+        - kapullo
+        - lameculos
+        - maciza
+        - macizorra
+        - maldito
+        - mamada
+        - marica
+        - maricón
+        - mariconazo
+        - martillo
+        - mierda
+        - nazi
+        - orina
+        - pedo
+        - pervertido
+        - pezón
+        - pinche
+        - pis
+        - prostituta
+        - puta
+        - racista
+        - ramera
+        - sádico
+        - semen
+        - sexo
+        - sexo oral
+        - soplagaitas
+        - soplapollas
+        - tetas grandes
+        - tía buena
+        - travesti
+        - trio
+        - verga
+        - vete a la mierda
+        - vulva
+on_match:
+  action: block
+  replacement: null
+runtime_adapter:
+  binding_id: nsfw-filter-spanish
+  implementation_rule_id: harm_toxic_abuse_es
+metadata:
+  taxonomy_ids:
+  - TALI-SOCIAL-HARM-HARASSMENT
+risk_level: medium

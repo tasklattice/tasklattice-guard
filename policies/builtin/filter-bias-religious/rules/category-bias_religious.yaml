@@ -1,0 +1,98 @@
+id: category/bias_religious
+name: Bias Religious
+description: Detects religious discrimination, stereotypes, and biased content
+stages:
+- input
+- output
+detector:
+  ref: text/conditions
+  version: 1.0.0
+  parameters:
+    detector_options:
+      match:
+        all:
+        - not:
+            contains:
+            - religious freedom
+            - religious tolerance
+            - religious discrimination
+            - religious persecution
+            - interfaith
+            - religious studies
+            - religious history
+            - combat islamophobia
+            - fight antisemitism
+            - religious diversity
+            - freedom of religion
+            - religious equality
+            - anti-muslim bias
+            - anti-semitism
+            - antisemitism
+            - religious bigotry
+            - theological
+            - scripture
+            - comparative religion
+            - protect muslims
+            - protect jews
+            - protect christians
+            - muslim rights
+            - jewish rights
+            - christian rights
+            - muslim community
+            - jewish community
+            - christian community
+            - muslim culture
+            - jewish culture
+            - christian culture
+            - islam teaches
+            - judaism teaches
+            - christianity teaches
+            - muslim faith
+            - jewish faith
+            - christian faith
+            - muslim americans
+            - jewish americans
+            - christian americans
+        - keywords:
+          - muslim
+          - muslims
+          - islam
+          - islamic
+          - jew
+          - jews
+          - jewish
+          - christian
+          - christians
+          - christianity
+          - atheist
+          - atheists
+          - hindu
+          - hindus
+          - hinduism
+          - buddhist
+          - buddhists
+          - buddhism
+          - sikh
+          - sikhs
+          - catholic
+          - catholics
+          - protestant
+          - protestants
+          - mormon
+          - mormons
+          - religious extremist
+          - religious fanatic
+          - infidel
+          - infidels
+          - jihad
+          - crusade
+on_match:
+  action: block
+  replacement: null
+runtime_adapter:
+  binding_id: bias_religious
+  implementation_rule_id: bias_religious
+metadata:
+  taxonomy_ids:
+  - TALI-SOCIAL-HARM-DISCRIMINATION
+risk_level: medium

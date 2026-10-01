@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: pattern/weapons_other
+name: Other Weapons
+description: Detects non-firearm weapons terminology
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b(knife|blade|machete|switchblade|butterfly\s+knife|balisong|brass\s+knuckles|knuckle\s+duster|baton|blackjack|taser|stun\s+gun|pepper\s+spray|mace|crossbow|bow\s+and\s+arrow|compound\s+bow|sword|katana|throwing\s+star|shuriken|nunchaku|nunchucks|tomahawk|hatchet|axe\s+attack|ice\s+pick|garrote|zip\s+gun|improvised\s+weapon|shiv|shank|pipe\s+bomb)\b
+on_match:
+  action: transform
+  replacement: '[weapons_other_REDACTED]'
+runtime_adapter:
+  binding_id: local-risk-content-terms
+  implementation_rule_id: weapons_other
+metadata:
+  taxonomy_ids:
+  - TALI-PHYSICAL-HARM-WEAPONS
+risk_level: high

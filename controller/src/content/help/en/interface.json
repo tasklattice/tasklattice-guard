@@ -17,5 +17,8 @@
   "choosePathDescription": "Choose a how-to guide, platform management guide, or AI Gateway integration guide.",
   "searchResults": "Search results",
   "roleResults": "Role guides",
-  "glossaryResults": "Concept glossary"
+  "glossaryResults": "Concept glossary",
+  "notFoundTitle": "Document not found",
+  "notFoundDescription": "This article address or legacy section link does not exist. Choose an article from the documentation.",
+  "backToDocs": "Back to documentation"
 }

@@ -55,9 +55,9 @@ def test_local_content_filter_executes_policy_rails_without_a_model() -> None:
         enabled_rules={"keyword-blocking": ("keyword/blocked-words",)},
     )
 
-    assert result.verdict == "unsafe"
+    assert result.verdict == "matched"
     assert result.findings[0].rule_id == "keyword/blocked-words"
-    assert result.findings[0].recommended_action == "reject"
+    assert result.findings[0].recommended_action == "block"
 
 
 def test_topic_parameter_defaults_do_not_break_unrelated_local_rules() -> None:
@@ -76,6 +76,6 @@ def test_topic_parameter_defaults_do_not_break_unrelated_local_rules() -> None:
     case = next(item for item in credentials.test_cases
                 if "credentials-api-keys/aws_access_key" in item.covered_rule_ids and item.phase == "input")
     result = BuiltinContentFilter().evaluate(text=case.content, phase="input", policies=(credentials.id,))
-    assert result.verdict == "unsafe"
+    assert result.verdict == "matched"
     assert any(item.policy_id == credentials.id and item.rule_id == "credentials-api-keys/aws_access_key"
                for item in result.findings)

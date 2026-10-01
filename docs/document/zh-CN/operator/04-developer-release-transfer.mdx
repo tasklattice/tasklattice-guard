@@ -20,7 +20,7 @@ order: 3
 
 验证通过后在 Policy Studio 审查名称、Rails、Action 依赖、Test Cases 和超时预算，再发布当前草稿。平台为该 revision 创建带 checksum 的不可变 Policy Version；后续编辑会产生新的草稿和版本，不会改写旧版本。Guardrail Binding 必须显式选择需要的 Policy Version，必填参数也要在绑定时解析。
 
-**Policy 发布成功不等于业务请求已经受保护。** 还要将其绑定到 Guardrail，验证并发布 Guardrail Version；然后让 Endpoint 通过已发布 Router 指向它，并确认 Runner 应用新配置。步骤分别见[构建并发布 Guardrail](#user-lifecycle)与[Endpoint 与 Routing](#operator-routing)。
+**Policy 发布成功不等于业务请求已经受保护。** 还要将其绑定到 Guardrail，验证并发布 Guardrail Version；然后让 Endpoint 通过已发布 Router 指向它，并确认 Runner 应用新配置。步骤分别见[构建并发布 Guardrail](/document/operator/user-lifecycle)与[Endpoint 与 Routing](/document/operator/operator-routing)。
 
 <a id="policy-transfer-environments" />
 

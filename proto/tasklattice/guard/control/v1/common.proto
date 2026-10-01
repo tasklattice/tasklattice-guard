@@ -84,12 +84,13 @@ enum PolicyExecutionMode {
   POLICY_EXECUTION_MODE_MUTATE = 2;
 }
 
-// Normalized evaluator result before conflict resolution and enforcement.
+// Whether the detector target condition matched, independently of enforcement.
+// UNKNOWN is a valid inconclusive check; ERROR is a detector execution failure.
 enum EvaluatorVerdict {
   EVALUATOR_VERDICT_UNSPECIFIED = 0;
-  EVALUATOR_VERDICT_SAFE = 1;
-  EVALUATOR_VERDICT_UNSAFE = 2;
-  EVALUATOR_VERDICT_UNCERTAIN = 3;
+  EVALUATOR_VERDICT_NOT_MATCHED = 1;
+  EVALUATOR_VERDICT_MATCHED = 2;
+  EVALUATOR_VERDICT_UNKNOWN = 3;
   EVALUATOR_VERDICT_ERROR = 4;
 }
 

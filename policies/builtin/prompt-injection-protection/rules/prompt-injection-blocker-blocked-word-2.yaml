@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: prompt-injection-blocker/blocked-word-2
+name: ignore previous instructions
+description: Prompt injection attempt
+stages:
+- input
+detector:
+  ref: text/keyword
+  version: 1.0.0
+  parameters:
+    keywords:
+    - - ignore previous instructions
+      - medium
+on_match:
+  action: block
+  replacement: null
+runtime_adapter:
+  binding_id: prompt-injection-blocker
+  implementation_rule_id: blocked-word-2
+metadata:
+  taxonomy_ids:
+  - TALI-MODEL-SECURITY-PROMPT-INJECTION
+risk_level: high

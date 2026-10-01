@@ -1,0 +1,52 @@
+- - rm -rf /
+  - high
+- - rm -rf /*
+  - high
+- - rm -rf ~
+  - high
+- - ':(){ :|:& };:'
+  - high
+- - '> /dev/sda'
+  - high
+- - mkfs.ext4 /dev/sda
+  - high
+- - dd if=/dev/zero of=/dev/sda
+  - high
+- - curl | sh
+  - high
+- - curl | bash
+  - high
+- - wget | sh
+  - high
+- - wget | bash
+  - high
+- - eval(base64
+  - high
+- - eval(atob(
+  - high
+- - python -c 'import os
+  - high
+- - python3 -c 'import os
+  - high
+- - bash -i >& /dev/tcp
+  - high
+- - nc -e /bin/sh
+  - high
+- - nc -e /bin/bash
+  - high
+- - sudo chmod 777 /
+  - high
+- - echo ALL=(ALL) NOPASSWD
+  - high
+- - cat /etc/shadow
+  - high
+- - <script>alert(
+  - medium
+- - <script>document.cookie
+  - high
+- - javascript:void
+  - medium
+- - powershell -encodedcommand
+  - high
+- - powershell -enc
+  - high

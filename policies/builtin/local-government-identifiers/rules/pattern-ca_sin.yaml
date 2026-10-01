@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: pattern/ca_sin
+name: SIN (Canadian Social Insurance Number)
+description: Detects Canadian Social Insurance Numbers (9-digit federal identifier, dashed or spaced format,
+  first digit 1-9)
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b[1-9]\d{2}[\-\s]\d{3}[\-\s]\d{3}\b
+    context_expression: \b(?:social\s*insurance\s*number|numéro\s*d'assurance\s*sociale|social\s*insurance|SIN|NAS)\b
+    context_max_gap_words: 1
+on_match:
+  action: transform
+  replacement: '[ca_sin_REDACTED]'
+runtime_adapter:
+  binding_id: local-government-identifiers
+  implementation_rule_id: ca_sin
+metadata:
+  taxonomy_ids:
+  - TALI-BUSINESS-POLICY
+risk_level: low

@@ -22,7 +22,7 @@ def grounding_plan():
       const policy = policies.find(p => p.id === 'builtin-contextual-grounding');
       const plan = buildGuardrailPlan({guardrailId:'grounding-context', guardrailVersion:'20260907-010000.001Z', policies,
         draft:{allowedTopics:[],restrictedTopics:[],safetyLevel:'balanced',outputDelivery:'full_buffered',policyBindings:[{
-          policyId:policy.id,policyVersion:policy.version,action:'reject',parameterValues:{},enabledRails:['output'],
+          policyId:policy.id,policyVersion:policy.version,action:'block',parameterValues:{},enabledRails:['output'],
           enabledRuleIds:policy.rules.map(r=>r.id),ruleActions:{},reasoningPolicy:null
         }]}});
       console.log(JSON.stringify(plan));
@@ -58,11 +58,10 @@ async def test_grounding_missing_context_cannot_release_output(grounding_plan, c
             assert result.decision == "allow", result
             assert len(calls) == result.usage.model_invocations == 1
         else:
-            # Missing evidence requests clarification rather than treating the
-            # output as a detected violation. The original answer must not pass.
-            assert result.decision == "transform", result
-            assert result.action == "clarify"
-            assert result.texts and blocks[0].text not in result.texts
+            # Missing evidence blocks this answer; the application owns any follow-up.
+            assert result.decision == "block", result
+            assert result.action == "block"
+            assert not result.texts
             assert calls == []
             assert result.usage.model_invocations == 0
             assert "grounding source" in result.reason.lower()

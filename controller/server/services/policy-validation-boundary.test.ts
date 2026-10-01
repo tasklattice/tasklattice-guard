@@ -7,7 +7,7 @@ import { ControlPlaneService } from "./control-plane.js";
 const draft = programmablePolicyDraftSchema.parse({
   guardrail_category: "content_safety",
   sources: [{ path: "main.co", content: 'flow check $text\n  # await MissingAction()\n  $s = "import llm"\n  pass\n' }],
-  rail_bindings: [{ rail_type: "input", flow_name: "check", execution_mode: "detect", on_unsafe: "reject", risk_severity: "medium" }],
+  rail_bindings: [{ rail_type: "input", flow_name: "check", execution_mode: "detect", on_unsafe: "block", risk_severity: "medium" }],
   test_cases: [{ name: "safe", rail_type: "input", content: "ordinary", expected_decision: "allow", covered_rule_ids: ["flow/input/check"], case_type: "input_rail" }],
 });
 

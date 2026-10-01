@@ -365,7 +365,7 @@ class TestCaseResult:
     reason: str
     phase: GuardrailPhase = "input"
     input_content: str = ""
-    action: EnforcementAction = "pass"
+    action: EnforcementAction = "allow"
     output_content: str = ""
     findings: tuple[dict[str, object], ...] = ()
     trace: tuple[dict[str, object], ...] = ()

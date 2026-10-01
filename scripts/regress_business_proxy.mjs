@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /** Real Relay/LiteLLM -> Guard Runner -> controlled business-model HTTP replay. */
 import assert from "node:assert/strict";
+import {attachStreamTransport} from "./stream-transport.mjs";
 import { execFile } from "node:child_process";
 import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
@@ -54,14 +55,6 @@ const guardTransport = createServer(async (request, response) => {
     const chunks = [];
     for await (const chunk of request) chunks.push(chunk);
     const body = Buffer.concat(chunks);
-    if (request.url.endsWith("/guardrails/output-stream") && guardTransportFault) {
-      const payload = JSON.parse(body.toString());
-      if (guardTransportFault === "any-check" || payload.final === true) {
-        injectedFailures += 1;
-        response.writeHead(503, { "content-type": "application/json" }).end(JSON.stringify({ detail: "Synthetic Guard transport outage" }));
-        return;
-      }
-    }
     const target = new URL(runner);
     target.pathname = request.url;
     const forwarded = await fetch(target, { method: request.method,
@@ -71,6 +64,16 @@ const guardTransport = createServer(async (request, response) => {
       .end(Buffer.from(await forwarded.arrayBuffer()));
   } catch {
     response.writeHead(502, { "content-type": "application/json" }).end(JSON.stringify({ detail: "Guard transport failed" }));
+  }
+});
+
+const closeStreams = attachStreamTransport(guardTransport, {target: runner,
+  fault: (direction, event) => {
+    if (direction === "input" && guardTransportFault &&
+        (guardTransportFault === "any-check" || event.type === "end")) {
+      injectedFailures += 1; return true;
+    }
+    return false;
   }
 });
 
@@ -332,6 +335,6 @@ try {
   }
   upstream.closeAllConnections();
   await new Promise((resolve) => upstream.close(resolve));
-  guardTransport.closeAllConnections();
+  closeStreams();guardTransport.closeAllConnections();
   await new Promise((resolve) => guardTransport.close(resolve));
 }

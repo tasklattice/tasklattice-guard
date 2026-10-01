@@ -69,7 +69,7 @@ function checkResult(
     },
     phase,
     decision: "allow",
-    action: "pass",
+    action: "allow",
     output_content: input ? "Effective request" : "Safe response",
     latency_ms: input ? 7 : 11,
     reason: input ? "Unique input checkpoint reason" : "Unique output checkpoint reason",
@@ -228,7 +228,7 @@ describe("StageTabs", () => {
           assistant_message: null,
           output_check: checkResult("output", {
             decision: "block",
-            action: "reject",
+            action: "block",
           }),
         })}
       />,
@@ -257,7 +257,7 @@ describe("StageTabs", () => {
           },
           input_check: checkResult("input", {
             decision: "block",
-            action: "reject",
+            action: "block",
           }),
           output_check: null,
         })}
@@ -284,7 +284,7 @@ describe("StageTabs", () => {
         result={interaction({
           input_check: checkResult("input", {
             decision: "transform",
-            action: "redact",
+            action: "transform",
           }),
         })}
       />,
@@ -313,7 +313,7 @@ describe("StageTabs", () => {
           state: "output_blocked",
           output_check: checkResult("output", {
             decision: "block",
-            action: "reject",
+            action: "block",
           }),
         })}
       />,

@@ -1,0 +1,32 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: local-payment-data
+  name: Payment card & bank identifiers
+  description: Redact recognizable payment card and IBAN formats. Matching does not validate account ownership
+    or enforce payment authorization.
+  source: built_in
+  version: 2.0.0
+  tags:
+  - namespace: protection
+    value: privacy
+    label: Privacy & sensitive information
+    source: declared
+  - namespace: guardrail_category
+    value: pii_detection
+    label: PII Detection
+    source: declared
+  - namespace: collection
+    value: focused-protection
+    label: Focused protection
+    source: declared
+  safety_level: balanced
+  output_delivery: full_buffered
+parameters: []
+rules:
+- rules/financial-pii-credit_card.yaml
+- rules/financial-pii-iban.yaml
+tests:
+- tests/acceptance.yaml
+- tests/regression.yaml

@@ -37,6 +37,15 @@ describe('Router Monitoring', () => {
     fireEvent.click(within(drawer).getAllByRole('button', { name: 'Close', exact: true })[0]);
     expect(screen.queryByRole('dialog')).toBeNull();
   });
+  it('links the error metric to logs with the selected endpoint, revision, and report window', async () => {
+    mount();
+    await screen.findByRole('link', { name: 'View errors' });
+    fireEvent.change(screen.getByLabelText('Endpoint'), { target: { value: 'gateway' } });
+    fireEvent.change(screen.getByLabelText('Revision'), { target: { value: '1' } });
+    const link = await screen.findByRole('link', { name: 'View errors' });
+    const url = new URL(link.getAttribute('href')!, 'http://localhost');
+    expect(Object.fromEntries(url.searchParams)).toMatchObject({ outcome:'error',routerId:'router',endpointId:'gateway',routerRevision:'1',since:report.since,until:report.until });
+  });
   it('uses a single empty state instead of a table with fictional zero target rows', async () => {
     queryReport.mockResolvedValue({ ...report, total: 0, assigned: 0, unassigned: 0, rows: [] });
     mount();

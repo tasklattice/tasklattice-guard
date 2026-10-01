@@ -93,9 +93,9 @@ export async function queryRuntimeMetrics(
         inArray(decision, [
           "transform",
           "transformed",
-          "redact",
+          "transform",
           "redacted",
-          "rewrite",
+          "transform",
           "rewritten",
           "intervene",
           "intervened",
@@ -105,7 +105,7 @@ export async function queryRuntimeMetrics(
           inArray(decision, [
             "block",
             "blocked",
-            "reject",
+            "block",
             "rejected",
             "deny",
             "denied",
@@ -387,11 +387,11 @@ export async function queryRuntimeMetrics(
           rail_types: distinctArray(c.rail_type),
           parallel_groups: distinctArray(c.parallel_group),
           passed: countWhere(
-            inArray(c.outcome, ["passed", "safe", "allow", "complete"]),
+            inArray(c.outcome, ["passed", "not_matched", "allow", "complete"]),
           ),
           intervened: countWhere(
             inArray(c.outcome, [
-              "unsafe",
+              "matched",
               "block",
               "transform",
               "intervene",
@@ -399,7 +399,7 @@ export async function queryRuntimeMetrics(
             ]),
           ),
           errors: countWhere(eq(c.outcome, "error")),
-          uncertain: countWhere(eq(c.outcome, "uncertain")),
+          unknown: countWhere(eq(c.outcome, "unknown")),
           timeouts: countWhere(c.timed_out),
           latency: percentiles(c.duration),
           provider: percentiles(c.provider),

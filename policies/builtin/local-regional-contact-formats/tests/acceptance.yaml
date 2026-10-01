@@ -1,0 +1,291 @@
+# yaml-language-server: $schema=../../../schemas/tests.schema.json
+- id: accept/br_phone_landline/input
+  name: Brazilian mobile / landline overlap
+  description: Required acceptance case for Brazilian PII Patterns. The source sample
+    is a mobile number; the complete mobile detector runs before the unprefixed landline
+    detector.
+  phase: input
+  content: 'Acceptance sample: (11) 91111-1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_phone_mobile
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/br_phone_landline/output
+  name: Brazilian mobile / landline overlap
+  description: Required acceptance case for Brazilian PII Patterns. The source sample
+    is a mobile number; the complete mobile detector runs before the unprefixed landline
+    detector.
+  phase: output
+  content: 'Acceptance sample: (11) 91111-1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_phone_mobile
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/br_phone_mobile/input
+  name: Detect Brazilian Mobile Phone Number
+  description: Required acceptance case for Brazilian PII Patterns.
+  phase: input
+  content: 'Acceptance sample: +1 (11) 91111-1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_phone_mobile
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/br_phone_mobile/output
+  name: Detect Brazilian Mobile Phone Number
+  description: Required acceptance case for Brazilian PII Patterns.
+  phase: output
+  content: 'Acceptance sample: +1 (11) 91111-1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_phone_mobile
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/br_cep/input
+  name: Detect CEP - Brazilian Zip / Postal Code
+  description: Required acceptance case for Brazilian PII Patterns.
+  phase: input
+  content: 'Acceptance sample: 11111-111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_cep
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/br_cep/output
+  name: Detect CEP - Brazilian Zip / Postal Code
+  description: Required acceptance case for Brazilian PII Patterns.
+  phase: output
+  content: 'Acceptance sample: 11111-111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_cep
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/fr_phone/input
+  name: Detect Phone Number (France)
+  description: Required acceptance case for EU PII Patterns.
+  phase: input
+  content: 'Acceptance sample: +33100000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/fr_phone
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/fr_phone/output
+  name: Detect Phone Number (France)
+  description: Required acceptance case for EU PII Patterns.
+  phase: output
+  content: 'Acceptance sample: +33100000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/fr_phone
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/fr_postal_code/input
+  name: Detect Postal Code (France)
+  description: Required acceptance case for EU PII Patterns.
+  phase: input
+  content: 'Acceptance sample: code postal 00000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/fr_postal_code
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/fr_postal_code/output
+  name: Detect Postal Code (France)
+  description: Required acceptance case for EU PII Patterns.
+  phase: output
+  content: 'Acceptance sample: code postal 00000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/fr_postal_code
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/street_address/input
+  name: Detect Street Address
+  description: Required acceptance case for PII Patterns.
+  phase: input
+  content: 'Acceptance sample: 1 AA Street'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/street_address
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/street_address/output
+  name: Detect Street Address
+  description: Required acceptance case for PII Patterns.
+  phase: output
+  content: 'Acceptance sample: 1 AA Street'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/street_address
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/uae_phone/input
+  name: Detect Phone Number (UAE)
+  description: Required acceptance case for UAE PII Patterns.
+  phase: input
+  content: 'Acceptance sample: +971 2 111 1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/uae_phone
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/uae_phone/output
+  name: Detect Phone Number (UAE)
+  description: Required acceptance case for UAE PII Patterns.
+  phase: output
+  content: 'Acceptance sample: +971 2 111 1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/uae_phone
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/sg_phone/input
+  name: Detect Phone Number (Singapore)
+  description: Required acceptance case for Singapore PII Patterns.
+  phase: input
+  content: 'Acceptance sample: +65 6111 1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/sg_phone
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/sg_phone/output
+  name: Detect Phone Number (Singapore)
+  description: Required acceptance case for Singapore PII Patterns.
+  phase: output
+  content: 'Acceptance sample: +65 6111 1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/sg_phone
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/sg_postal_code/input
+  name: Detect Postal Code (Singapore)
+  description: Required acceptance case for Singapore PII Patterns.
+  phase: input
+  content: 'Acceptance sample: postal code 011111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/sg_postal_code
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/sg_postal_code/output
+  name: Detect Postal Code (Singapore)
+  description: Required acceptance case for Singapore PII Patterns.
+  phase: output
+  content: 'Acceptance sample: postal code 011111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/sg_postal_code
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/ca_postal_code/input
+  name: Detect Postal Code (Canada)
+  description: Required acceptance case for Canadian PII Patterns.
+  phase: input
+  content: Postal code M5V 3A8.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/ca_postal_code
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/ca_postal_code/output
+  name: Detect Postal Code (Canada)
+  description: Required acceptance case for Canadian PII Patterns.
+  phase: output
+  content: Postal code M5V 3A8.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/ca_postal_code
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: br-landline-only/input
+  name: br-landline-only/input
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: input
+  content: 'Phone: (11) 2345-6789'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_phone_landline
+  kind: rule_acceptance
+  required: true
+  group: Protection contract
+  parameter_names: []
+  scope: rule
+- id: br-landline-only/output
+  name: br-landline-only/output
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: output
+  content: 'Phone: (11) 2345-6789'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_phone_landline
+  kind: rule_acceptance
+  required: true
+  group: Protection contract
+  parameter_names: []
+  scope: rule

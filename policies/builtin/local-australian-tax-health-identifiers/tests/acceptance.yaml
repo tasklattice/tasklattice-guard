@@ -1,0 +1,85 @@
+# yaml-language-server: $schema=../../../schemas/tests.schema.json
+- id: rule-au-pii-tax-identifiers/au_tfn-acceptance/input
+  name: Trigger TFN (Australian Tax File Number)
+  description: Proves that the published regex implementation for TFN (Australian
+    Tax File Number) activates this Rule.
+  phase: input
+  content: 'Acceptance sample: TFN 111 111 111'
+  expected_decision: transform
+  covered_rule_ids:
+  - au-pii-tax-identifiers/au_tfn
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-au-pii-tax-identifiers/au_tfn-acceptance/output
+  name: Trigger TFN (Australian Tax File Number)
+  description: Proves that the published regex implementation for TFN (Australian
+    Tax File Number) activates this Rule.
+  phase: output
+  content: 'Acceptance sample: TFN 111 111 111'
+  expected_decision: transform
+  covered_rule_ids:
+  - au-pii-tax-identifiers/au_tfn
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-au-pii-tax-identifiers/au_abn-acceptance/input
+  name: Trigger ABN (Australian Business Number)
+  description: Proves that the published regex implementation for ABN (Australian
+    Business Number) activates this Rule.
+  phase: input
+  content: 'Acceptance sample: 11 111 111 111'
+  expected_decision: transform
+  covered_rule_ids:
+  - au-pii-tax-identifiers/au_abn
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-au-pii-tax-identifiers/au_abn-acceptance/output
+  name: Trigger ABN (Australian Business Number)
+  description: Proves that the published regex implementation for ABN (Australian
+    Business Number) activates this Rule.
+  phase: output
+  content: 'Acceptance sample: 11 111 111 111'
+  expected_decision: transform
+  covered_rule_ids:
+  - au-pii-tax-identifiers/au_abn
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-au-pii-tax-identifiers/au_medicare-acceptance/input
+  name: Trigger Medicare Number (Australia)
+  description: Proves that the published regex implementation for Medicare Number
+    (Australia) activates this Rule.
+  phase: input
+  content: 'Acceptance sample: 1111 11111 1'
+  expected_decision: transform
+  covered_rule_ids:
+  - au-pii-tax-identifiers/au_medicare
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-au-pii-tax-identifiers/au_medicare-acceptance/output
+  name: Trigger Medicare Number (Australia)
+  description: Proves that the published regex implementation for Medicare Number
+    (Australia) activates this Rule.
+  phase: output
+  content: 'Acceptance sample: 1111 11111 1'
+  expected_decision: transform
+  covered_rule_ids:
+  - au-pii-tax-identifiers/au_medicare
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule

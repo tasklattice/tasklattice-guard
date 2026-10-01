@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: prompt-injection-blocker/blocked-word-13
+name: enter developer mode
+description: Jailbreak attempt
+stages:
+- input
+- output
+detector:
+  ref: text/keyword
+  version: 1.0.0
+  parameters:
+    keywords:
+    - - enter developer mode
+      - medium
+on_match:
+  action: block
+  replacement: null
+runtime_adapter:
+  binding_id: local-prompt-manipulation
+  implementation_rule_id: blocked-word-13
+metadata:
+  taxonomy_ids:
+  - TALI-MODEL-SECURITY-PROMPT-INJECTION
+risk_level: high

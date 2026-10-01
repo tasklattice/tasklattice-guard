@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: pattern/sg_postal_code
+name: Postal Code (Singapore)
+description: Detects Singapore 6-digit postal codes (ranges 01xxxx to 83xxxx)
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b[0-8]\d{5}\b
+    context_expression: \b(?:postal\s*code|postcode|zip\s*code|Singapore\s*\d|blk|block|address|HDB|flat|unit)\b
+    context_max_gap_words: 1
+on_match:
+  action: transform
+  replacement: '[sg_postal_code_REDACTED]'
+runtime_adapter:
+  binding_id: pattern-matching
+  implementation_rule_id: sg_postal_code
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-PII
+risk_level: medium

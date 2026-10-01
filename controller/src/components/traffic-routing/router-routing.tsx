@@ -46,8 +46,6 @@ import { percent } from "./form";
 import { conditionCount, newRoute, selectorSummary } from "./router-view-model";
 
 type Props = {
-  routerId: string;
-  endpointIds: string[];
   draft: RouterDraft;
   editableDraft?: RouterDraft;
   editing: boolean;
@@ -172,9 +170,6 @@ export function RouterRouting(props: Props) {
           key={editor.route.id}
           initialRoute={editor.route}
           isNew={editor.isNew}
-          draft={draft}
-          routerId={props.routerId}
-          endpointIds={props.endpointIds}
           fields={props.fields}
           busy={busy}
           onClose={() => setEditor(null)}

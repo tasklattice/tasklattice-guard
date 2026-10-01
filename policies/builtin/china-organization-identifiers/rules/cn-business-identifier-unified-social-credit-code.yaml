@@ -1,0 +1,47 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: cn-business-identifier/unified-social-credit-code
+name: Contextual Unified Social Credit Code
+description: Redacts an 18-character candidate only when a nearby Chinese label is present and the GB
+  32100 checksum is valid. It does not verify registration or organization status.
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: (?<![0-9A-Z])[159Y][1239][0-9ABCDEFGHJKLMNPQRTUWXY]{16}(?![0-9A-Z])
+    context_expression: (?:统一社会信用代码|社会信用代码|统一信用代码)
+    context_max_gap_words: 3
+    validators:
+    - type: weighted_checksum
+      alphabet: 0123456789ABCDEFGHJKLMNPQRTUWXY
+      weights:
+      - 1
+      - 3
+      - 9
+      - 27
+      - 19
+      - 26
+      - 16
+      - 17
+      - 20
+      - 29
+      - 25
+      - 13
+      - 8
+      - 24
+      - 10
+      - 30
+      - 28
+      check_characters: 0YXWUTRQPNMLKJHGFEDCBA987654321
+on_match:
+  action: transform
+  replacement: '[cn_uscc_REDACTED]'
+runtime_adapter:
+  binding_id: china-organization-identifiers
+  implementation_rule_id: cn-business-identifier/unified-social-credit-code
+metadata:
+  taxonomy_ids:
+  - TALI-BUSINESS-POLICY
+risk_level: low

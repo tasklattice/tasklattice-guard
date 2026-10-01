@@ -64,7 +64,7 @@ async def test_validator_requires_explicit_matching_action_failure_expectation(p
 async def test_false_boolean_and_empty_string_replacement_are_valid(phase):
     plan = custom_plan('flow check $text\n  await GuardRecordPolicyAction(flow_name="check", safe=False, text=$text, replacement="")\n',
         ["GuardRecordPolicyAction"])
-    plan["policy_versions"][0]["rail_bindings"][0].update(rail_type=phase, on_unsafe="redact", execution_mode="mutate")
+    plan["policy_versions"][0]["rail_bindings"][0].update(rail_type=phase, on_unsafe="transform", execution_mode="mutate")
     plan["policy_bindings"][0]["enabled_rails"] = [phase]
     runtime = DraftPreviewRuntime(DefaultRunnerCompiler(), action_providers())
     try:

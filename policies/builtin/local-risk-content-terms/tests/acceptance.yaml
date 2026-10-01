@@ -1,0 +1,209 @@
+# yaml-language-server: $schema=../../../schemas/tests.schema.json
+- id: accept/weapons_firearms/input
+  name: Detect Weapons & Firearms
+  description: Required acceptance case for Dangerous Content.
+  phase: input
+  content: The firearm was found in the room.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/weapons_firearms
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/weapons_firearms/output
+  name: Detect Weapons & Firearms
+  description: Required acceptance case for Dangerous Content.
+  phase: output
+  content: The firearm was found in the room.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/weapons_firearms
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/weapons_other/input
+  name: Detect Other Weapons
+  description: Required acceptance case for Dangerous Content.
+  phase: input
+  content: The suspect carried a switchblade.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/weapons_other
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/weapons_other/output
+  name: Detect Other Weapons
+  description: Required acceptance case for Dangerous Content.
+  phase: output
+  content: The suspect carried a switchblade.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/weapons_other
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/explosives/input
+  name: Detect Explosives & Bombs
+  description: Required acceptance case for Dangerous Content - High Risk.
+  phase: input
+  content: Instructions for a pipe bomb are prohibited.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/explosives
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/explosives/output
+  name: Detect Explosives & Bombs
+  description: Required acceptance case for Dangerous Content - High Risk.
+  phase: output
+  content: Instructions for a pipe bomb are prohibited.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/explosives
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/violence_threats/input
+  name: Detect Violence & Threats
+  description: Required acceptance case for Dangerous Content - High Risk.
+  phase: input
+  content: They sent a death threat yesterday.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/violence_threats
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/violence_threats/output
+  name: Detect Violence & Threats
+  description: Required acceptance case for Dangerous Content - High Risk.
+  phase: output
+  content: They sent a death threat yesterday.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/violence_threats
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/terrorism/input
+  name: Detect Terrorism & Extremism
+  description: Required acceptance case for Dangerous Content - High Risk.
+  phase: input
+  content: The message promoted a terrorist attack.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/terrorism
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/terrorism/output
+  name: Detect Terrorism & Extremism
+  description: Required acceptance case for Dangerous Content - High Risk.
+  phase: output
+  content: The message promoted a terrorist attack.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/terrorism
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/self_harm_suicide/input
+  name: Detect Self-Harm & Suicide
+  description: Required acceptance case for Dangerous Content - Crisis.
+  phase: input
+  content: The message says I want to die.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/self_harm_suicide
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/self_harm_suicide/output
+  name: Detect Self-Harm & Suicide
+  description: Required acceptance case for Dangerous Content - Crisis.
+  phase: output
+  content: The message says I want to die.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/self_harm_suicide
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/illegal_activities/input
+  name: Detect Illegal Activities
+  description: Required acceptance case for Dangerous Content - Illegal.
+  phase: input
+  content: The request describes money laundering.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/illegal_activities
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/illegal_activities/output
+  name: Detect Illegal Activities
+  description: Required acceptance case for Dangerous Content - Illegal.
+  phase: output
+  content: The request describes money laundering.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/illegal_activities
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/harassment_hate/input
+  name: Detect Harassment & Hate Speech
+  description: Required acceptance case for Dangerous Content - High Risk.
+  phase: input
+  content: The account was used for doxxing.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/harassment_hate
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/harassment_hate/output
+  name: Detect Harassment & Hate Speech
+  description: Required acceptance case for Dangerous Content - High Risk.
+  phase: output
+  content: The account was used for doxxing.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/harassment_hate
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule

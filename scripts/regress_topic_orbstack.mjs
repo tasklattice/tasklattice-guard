@@ -147,11 +147,11 @@ for (const [scope, expected] of [['Product support', 'allow'], ['Cooking and rec
     assert(verdict.effective_release_id);
     if (test.decision === 'allow') assert(!verdict.texts.length || verdict.texts.join('') === test.text);
     if (test.decision === 'transform') {
-      assert.equal(verdict.action, 'redirect');
+      assert.equal(verdict.action, 'block');
       assert.equal(verdict.texts.join(''), 'I can help with topics inside the configured allowed topics.');
-      assert(verdict.findings.some(f => f.verdict === 'unsafe' && f.policy_id === 'builtin-topic-safety'));
+      assert(verdict.findings.some(f => f.verdict === 'matched' && f.policy_id === 'builtin-topic-safety'));
     }
-    if (test.failure) assert(!verdict.findings.some(f => f.verdict === 'unsafe'), 'Infrastructure failure must not masquerade as a detected threat.');
+    if (test.failure) assert(!verdict.findings.some(f => f.verdict === 'matched'), 'Infrastructure failure must not masquerade as a detected threat.');
   }
   const result = { scope, guardrailId: created.id, version: publication.version, artifactId: version.artifactId,
     checksum: version.artifact.checksum, inheritedCases: validation.metrics.total, runtimeCases: cases.length };

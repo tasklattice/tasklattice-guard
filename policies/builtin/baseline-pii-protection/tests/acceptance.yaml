@@ -1,0 +1,197 @@
+# yaml-language-server: $schema=../../../schemas/tests.schema.json
+- id: rule-au-pii-tax-identifiers/au_tfn-acceptance
+  name: Trigger TFN (Australian Tax File Number)
+  description: Proves that the published regex implementation for TFN (Australian
+    Tax File Number) activates this Rule.
+  phase: input
+  content: 'Acceptance sample: TFN 111 111 111'
+  expected_decision: transform
+  covered_rule_ids:
+  - au-pii-tax-identifiers/au_tfn
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-au-pii-tax-identifiers/au_abn-acceptance
+  name: Trigger ABN (Australian Business Number)
+  description: Proves that the published regex implementation for ABN (Australian
+    Business Number) activates this Rule.
+  phase: input
+  content: 'Acceptance sample: 11 111 111 111'
+  expected_decision: transform
+  covered_rule_ids:
+  - au-pii-tax-identifiers/au_abn
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-au-pii-tax-identifiers/au_medicare-acceptance
+  name: Trigger Medicare Number (Australia)
+  description: Proves that the published regex implementation for Medicare Number
+    (Australia) activates this Rule.
+  phase: input
+  content: 'Acceptance sample: 1111 11111 1'
+  expected_decision: transform
+  covered_rule_ids:
+  - au-pii-tax-identifiers/au_medicare
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-credentials-api-keys/aws_access_key-acceptance
+  name: Trigger AWS Access Key
+  description: Proves that the published regex implementation for AWS Access Key activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: AKIA0000000000000000'
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/aws_access_key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-credentials-api-keys/aws_secret_key-acceptance
+  name: Trigger AWS Secret Key
+  description: Proves that the published regex implementation for AWS Secret Key activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/aws_secret_key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-credentials-api-keys/github_token-acceptance
+  name: Trigger GitHub Token
+  description: Proves that the published regex implementation for GitHub Token activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/github_token
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-credentials-api-keys/slack_token-acceptance
+  name: Trigger Slack Token
+  description: Proves that the published regex implementation for Slack Token activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: xoxp-0000000000-0000000000-aaaaaaaaaaaaaaaaaaaaaaaa'
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/slack_token
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-credentials-api-keys/generic_api_key-acceptance
+  name: Trigger API Key (Generic)
+  description: Proves that the published regex implementation for API Key (Generic)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: API-KEY ''AAAAAAAAAAAAAAAAAAAA'''
+  expected_decision: block
+  covered_rule_ids:
+  - credentials-api-keys/generic_api_key
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-financial-pii/visa-acceptance
+  name: Trigger Credit Card (Visa)
+  description: Proves that the published regex implementation for Credit Card (Visa)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: 4111 1111 1111 1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - financial-pii/visa
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-financial-pii/mastercard-acceptance
+  name: Trigger Credit Card (Mastercard)
+  description: Proves that the published regex implementation for Credit Card (Mastercard)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: 5111 1111 1111 1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - financial-pii/mastercard
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-financial-pii/amex-acceptance
+  name: Trigger Credit Card (American Express)
+  description: Proves that the published regex implementation for Credit Card (American
+    Express) activates this Rule.
+  phase: input
+  content: 'Acceptance sample: 3411 111111 11111'
+  expected_decision: transform
+  covered_rule_ids:
+  - financial-pii/amex
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-financial-pii/discover-acceptance
+  name: Trigger Credit Card (Discover)
+  description: Proves that the published regex implementation for Credit Card (Discover)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: 6011 1111 1111 1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - financial-pii/discover
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-financial-pii/credit_card-acceptance
+  name: Trigger Credit Card (Any)
+  description: Proves that the published regex implementation for Credit Card (Any)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: 4111 1111 1111 1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - financial-pii/credit_card
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-financial-pii/iban-acceptance
+  name: Trigger IBAN (International Bank Account Number)
+  description: Proves that the published regex implementation for IBAN (International
+    Bank Account Number) activates this Rule.
+  phase: input
+  content: 'Acceptance sample: AA11AAAAAAAAAAA'
+  expected_decision: transform
+  covered_rule_ids:
+  - financial-pii/iban
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule

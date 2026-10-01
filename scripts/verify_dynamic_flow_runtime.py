@@ -37,7 +37,7 @@ flow inspect text $text
                         "colang_version": "2.x", "checksum": "smoke",
                         "sources": [{"path": "main.co", "content": source}],
                         "rail_bindings": [{"rail_type": phase, "flow_name": "check",
-                            "execution_mode": "detect", "on_unsafe": "reject", "timeout_ms": 2000}],
+                            "execution_mode": "detect", "on_unsafe": "block", "timeout_ms": 2000}],
                         "action_references": [{"name": "GuardRecordPolicyAction", "version": "1.0.0"}],
                     }],
                     "policy_bindings": [{"policy_id": "custom", "policy_version": "1", "enabled_rails": [phase]}],

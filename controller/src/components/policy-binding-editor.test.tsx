@@ -5,6 +5,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import type { GuardrailPolicyBinding, Policy } from "@/lib/api";
 
 import { PolicyBindingEditor, defaultPolicyBinding } from "./policy-binding-editor";
+import configurablePolicies from "../../../runner/toolkit/policy_library/assets/configurable_policies.json";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -72,19 +73,19 @@ const policy = {
   tags: [],
   parameters: [],
   rails: ["input"],
-  effects: ["redact"],
-  forms: ["regex"],
+  effects: ["transform"],
+  detectors: ["text/regex"],
   rules: [
     {
       id: "customer-data-policy/account-id",
       name: "Protect account IDs",
       description: "Redact account identifiers.",
-      form: "regex",
-      effect: "redact",
+      detector: { ref: "text/regex", version: "1.0.0" },
+      effect: "transform",
       rails: ["input"],
       implementation: {
         engine: "nemo-guardrails",
-        form: "regex",
+        execution: "local",
         binding_id: "customer-data-policy",
         implementation_rule_id: "account-id",
         detector: "regex",
@@ -156,31 +157,34 @@ describe("PolicyBindingEditor", () => {
     const { rerender } = render(<PolicyBindingEditor policies={[policy]} value={[binding]} onChange={onChange} showSelector={false} />);
     fireEvent.click(screen.getByRole("button", { name: /Review Rule details for/ }));
     const action = () => screen.getByRole("combobox", { name: "Action for Protect account IDs" });
-    expect(action().querySelector(".cds--list-box__label")?.textContent).toBe("Default · redact");
+    expect(action().querySelector(".cds--list-box__label")?.textContent).toBe("Default · transform");
 
-    binding = { ...binding, action: "reject" };
+    binding = { ...binding, action: "block" };
     rerender(<PolicyBindingEditor policies={[policy]} value={[binding]} onChange={onChange} showSelector={false} />);
-    expect(action().querySelector(".cds--list-box__label")?.textContent).toBe("Policy · reject");
+    expect(action().querySelector(".cds--list-box__label")?.textContent).toBe("Policy · block");
     fireEvent.keyDown(action(), { key: "ArrowDown" });
-    fireEvent.click(screen.getByRole("option", { name: "redact" }));
-    expect(onChange).toHaveBeenLastCalledWith([{ ...binding, rule_actions: { [policy.rules[0].id]: "redact" } }]);
+    fireEvent.click(screen.getByRole("option", { name: "transform" }));
+    expect(onChange).toHaveBeenLastCalledWith([{ ...binding, rule_actions: { [policy.rules[0].id]: "transform" } }]);
 
-    binding = { ...binding, rule_actions: { [policy.rules[0].id]: "redact" } };
+    binding = { ...binding, rule_actions: { [policy.rules[0].id]: "transform" } };
     rerender(<PolicyBindingEditor policies={[policy]} value={[binding]} onChange={onChange} showSelector={false} />);
-    expect(action().querySelector(".cds--list-box__label")?.textContent).toBe("redact");
+    expect(action().querySelector(".cds--list-box__label")?.textContent).toBe("transform");
     fireEvent.keyDown(action(), { key: "ArrowDown" });
-    fireEvent.click(screen.getByRole("option", { name: "Policy · reject" }));
+    fireEvent.click(screen.getByRole("option", { name: "Policy · block" }));
     expect(onChange).toHaveBeenLastCalledWith([{ ...binding, rule_actions: {} }]);
   });
 
   it("shows per-phrase actions only when no Policy action overrides them", () => {
-    const phrases: Policy = { ...policy, rules: [{ ...policy.rules[0], implementation: { ...policy.rules[0].implementation, detector: "configured_phrases" } }] };
+    const source = configurablePolicies.find(item => item.id === "configured-phrase-filter")!;
+    const phrases = { ...policy, ...source } as unknown as Policy;
     const binding = defaultPolicyBinding(phrases);
+    binding.parameter_values.phrase_entries = JSON.stringify([{ id: "secret", phrase: "INTERNAL_SECRET", action: "block" }]);
     const { rerender } = render(<PolicyBindingEditor policies={[phrases]} value={[binding]} onChange={vi.fn()} showSelector={false} />);
     fireEvent.click(screen.getByRole("button", { name: /Review Rule details for/ }));
-    expect(screen.getByRole("combobox", { name: "Action for Protect account IDs" }).querySelector(".cds--list-box__label")?.textContent).toBe("Phrase actions");
-    rerender(<PolicyBindingEditor policies={[phrases]} value={[{ ...binding, action: "reject" }]} onChange={vi.fn()} showSelector={false} />);
-    expect(screen.getByRole("combobox", { name: "Action for Protect account IDs" }).querySelector(".cds--list-box__label")?.textContent).toBe("Policy · reject");
+    const action = () => screen.getByRole("combobox", { name: `Action for ${phrases.rules[0].name}` });
+    expect(action().querySelector(".cds--list-box__label")?.textContent).toBe("Phrase actions");
+    rerender(<PolicyBindingEditor policies={[phrases]} value={[{ ...binding, action: "block" }]} onChange={vi.fn()} showSelector={false} />);
+    expect(action().querySelector(".cds--list-box__label")?.textContent).toBe("Policy · block");
   });
 
   it("renders and edits the pinned version's required parameters, not the latest version", () => {
@@ -311,7 +315,7 @@ describe("PolicyBindingEditor", () => {
   it("moves whole Policies before fine-tuning Rules, preserving expansion, focus and overrides", () => {
     const first = { ...policy, rules: [policy.rules[0], { ...policy.rules[0], id: "second-rule", name: "Second rule" }] };
     const second = { ...policy, id: "second-policy", name: "Second Policy" };
-    const initial = [defaultPolicyBinding(first), { ...defaultPolicyBinding(second), action: "reject" as const }];
+    const initial = [defaultPolicyBinding(first), { ...defaultPolicyBinding(second), action: "block" as const }];
     function OrderedHarness() {
       const [bindings, setBindings] = useState(initial);
       return <><PolicyBindingEditor policies={[first, second]} value={bindings} onChange={setBindings} /><output aria-label="Order state">{JSON.stringify(bindings)}</output></>;

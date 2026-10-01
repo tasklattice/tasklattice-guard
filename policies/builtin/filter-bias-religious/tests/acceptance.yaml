@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=../../../schemas/tests.schema.json
+- id: accept/bias_religious
+  name: Detect Bias Religious
+  description: Required acceptance case for the imported local category.
+  phase: input
+  content: The message contains muslim.
+  expected_decision: block
+  covered_rule_ids:
+  - category/bias_religious
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/bias_religious/output
+  name: Detect Bias Religious
+  description: Required acceptance case for the imported local category.
+  phase: output
+  content: The message contains muslim.
+  expected_decision: block
+  covered_rule_ids:
+  - category/bias_religious
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule

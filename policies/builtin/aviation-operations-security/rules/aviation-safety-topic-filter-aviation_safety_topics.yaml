@@ -1,0 +1,124 @@
+id: aviation-safety-topic-filter/aviation_safety_topics
+name: Aviation Safety Topics
+description: Blocks AI from generating content about aviation security vulnerabilities, bypass procedures,
+  and restricted operations data
+stages:
+- input
+detector:
+  ref: text/conditions
+  version: 1.0.0
+  parameters:
+    detector_options:
+      match:
+        all:
+        - not:
+            contains:
+            - aviation safety
+            - safety report
+            - safety investigation
+            - safety improvement
+            - ntsb
+            - accident investigation
+            - safety training
+            - security awareness
+            - safety management system
+            - iata safety
+            - icao
+            - how to report
+            - incident report
+            - safety culture
+        - any:
+          - within_sentence:
+              all:
+              - contains:
+                - aircraft
+                - airplane
+                - plane
+                - aviation
+                - airline
+                - airport
+                - cockpit
+                - flight deck
+                - airside
+                - tarmac
+                - runway
+                - cargo hold
+                - fuselage
+                - avionics
+                - transponder
+                - atc
+                - air traffic control
+                - acars
+                - flight management system
+                - fms
+                - autopilot
+                - a380
+                - b777
+                - '777'
+                - '787'
+              - keywords:
+                - bypass security
+                - bypass screening
+                - defeat security
+                - circumvent security
+                - evade detection
+                - avoid screening
+                - smuggle
+                - smuggling
+                - conceal weapon
+                - hidden weapon
+                - cockpit door code
+                - cockpit access code
+                - override cockpit
+                - force cockpit door
+                - break into cockpit
+                - cockpit intrusion
+                - cockpit breach
+                - locking mechanism
+                - open the cockpit
+                - cockpit door open
+                - enter the cockpit
+                - access the cockpit
+                - vulnerability
+                - exploit
+                - disable
+                - jamming
+                - spoofing
+                - hijack
+                - hijacking
+                - take over
+                - commandeer
+                - crash intentionally
+                - bring down
+                - shoot down
+                - sabotage
+                - tamper
+                - interfere with
+                - hack
+                - hack into
+                - inject malware
+                - remote access
+                - unauthorized access
+          - keywords:
+            - hijack a plane
+            - hijack an aircraft
+            - cockpit door override code
+            - bypass airport security
+            - smuggle weapons onto aircraft
+            - disable aircraft transponder
+            - bring down an aircraft
+            - crash a plane into
+            - aircraft bomb
+            - acars vulnerability
+            - flight management system hack
+            - spoof ads-b
+on_match:
+  action: block
+  replacement: null
+runtime_adapter:
+  binding_id: aviation-safety-topic-filter
+  implementation_rule_id: aviation_safety_topics
+metadata:
+  taxonomy_ids:
+  - TALI-BUSINESS-POLICY-OFF-TOPIC
+risk_level: low

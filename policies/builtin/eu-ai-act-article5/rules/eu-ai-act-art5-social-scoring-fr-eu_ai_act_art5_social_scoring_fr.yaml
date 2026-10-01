@@ -1,0 +1,121 @@
+id: eu-ai-act-art5-social-scoring-fr/eu_ai_act_art5_social_scoring_fr
+name: EU AI Act Art5 Social Scoring Fr
+description: Art. 5.1(c) — Bloque les systèmes de notation sociale, de notation des citoyens et de classification
+  de fiabilité
+stages:
+- input
+detector:
+  ref: text/conditions
+  version: 1.0.0
+  parameters:
+    detector_options:
+      match:
+        all:
+        - not:
+            contains:
+            - recherche sur
+            - étude sur
+            - académique
+            - thèse sur
+            - mémoire sur
+            - expliquer
+            - qu'est-ce que
+            - c'est quoi
+            - article 5
+            - interdit par
+            - prohibé par
+            - audit de biais
+            - audit des biais
+            - détecter la discrimination
+            - détection de discrimination
+            - surveillance de conformité
+            - contrôle de conformité
+            - examen éthique
+            - test d'équité
+            - avis sur le produit
+            - avis produit
+            - retour client
+        - any:
+          - within_sentence:
+              all:
+              - contains:
+                - construire
+                - créer
+                - développer
+                - concevoir
+                - implémenter
+                - mettre en place
+                - établir
+                - bâtir
+                - élaborer
+                - noter
+                - classer
+                - évaluer
+                - estimer
+                - classifier
+                - profiler
+                - coter
+                - juger
+                - attribuer une note
+                - attribuer un score
+                - donner une note
+                - donner un score
+                - catégoriser
+                - reconnaître
+                - détecter
+                - identifier
+                - inférer
+                - déduire
+                - prédire
+                - déterminer
+                - analyser
+                - surveiller
+                - monitorer
+              - keywords:
+                - comportement social
+                - crédit social
+                - score social
+                - note sociale
+                - notation sociale
+                - classement social
+                - rang social
+                - score de citoyen
+                - note de citoyen
+                - notation des citoyens
+                - classement des citoyens
+                - fiabilité des citoyens
+                - fiabilité
+                - score de fiabilité
+                - score de réputation
+                - note de réputation
+                - score comportemental
+                - note comportementale
+                - classification comportementale
+                - score de loyauté
+                - score d'obéissance
+                - réputation sociale
+                - comportement sur les réseaux sociaux
+                - comportement médias sociaux
+                - score des réseaux sociaux
+                - solvabilité à partir des réseaux sociaux
+                - solvabilité à partir du social
+          - keywords:
+            - système de crédit social
+            - système de notation sociale
+            - système de score social
+            - notation des citoyens
+            - système de notation des citoyens
+            - système pour noter le comportement social
+            - système pour évaluer le comportement social
+            - système pour classer le comportement social
+            - système de score de réputation
+on_match:
+  action: block
+  replacement: null
+runtime_adapter:
+  binding_id: eu-ai-act-art5-social-scoring-fr
+  implementation_rule_id: eu_ai_act_art5_social_scoring_fr
+metadata:
+  taxonomy_ids:
+  - TALI-BUSINESS-POLICY
+risk_level: low

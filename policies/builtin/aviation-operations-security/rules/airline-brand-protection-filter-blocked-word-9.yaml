@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: airline-brand-protection-filter/blocked-word-9
+name: '{{brand_name}} fleet grounded'
+description: Fake grounding claim
+stages:
+- output
+detector:
+  ref: text/keyword
+  version: 1.0.0
+  parameters:
+    keywords:
+    - - '{{brand_name}} fleet grounded'
+      - medium
+on_match:
+  action: block
+  replacement: null
+runtime_adapter:
+  binding_id: airline-brand-protection-filter
+  implementation_rule_id: blocked-word-9
+metadata:
+  taxonomy_ids:
+  - TALI-BUSINESS-POLICY
+risk_level: low

@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: cn-personal-information/mainland-mobile
+name: China mainland mobile number
+description: Redacts standalone +86/86-prefixed or domestic 11-digit mobile-number patterns. It does not
+  verify allocation, ownership, or whether a number identifies a person in context.
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: (?<![0-9])(?:\+?86[\s-]?)?1[3-9][0-9]{9}(?![0-9])
+on_match:
+  action: transform
+  replacement: '[cn_mobile_REDACTED]'
+runtime_adapter:
+  binding_id: china-personal-identifiers
+  implementation_rule_id: cn-personal-information/mainland-mobile
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-PII
+risk_level: medium

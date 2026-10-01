@@ -83,7 +83,7 @@
       "padding": " neutral",
       "input_type": "request",
       "expected_decision": "transform",
-      "expected_action": "redact",
+      "expected_action": "transform",
       "expected_text_contains": "[BENCH_REDACTED]"
     },
     {
@@ -93,7 +93,7 @@
       "padding": " neutral",
       "input_type": "request",
       "expected_decision": "block",
-      "expected_action": "reject"
+      "expected_action": "block"
     },
     {
       "name": "multiple-block-input",
@@ -102,7 +102,7 @@
       "padding": " neutral",
       "input_type": "request",
       "expected_decision": "block",
-      "expected_action": "reject"
+      "expected_action": "block"
     }
   ]
 }

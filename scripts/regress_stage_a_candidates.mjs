@@ -89,11 +89,11 @@ for (const c of corpus.cases) for (const preset of corpus.preset_groups[c.group]
     }
     // Internal evaluate returns diagnostic texts even for block. Final-client
     // no-body semantics are asserted separately through the real proxy.
-    if(c.expected!=='allow' && !(result.findings??[]).some(x=>x.verdict==='unsafe')) errors.push('missing_detection_evidence');
+    if(c.expected!=='allow' && !(result.findings??[]).some(x=>x.verdict==='matched')) errors.push('missing_detection_evidence');
     r.runtimeChecksums.add(result.usage?.config_checksum);
     r.effectiveReleases.add(result.effective_release_id);
     rows.push({id:c.id,preset,phase,expected:c.expected,actual:result.decision,passed:errors.length===0,errors,
-      matches:(result.findings??[]).filter(x=>x.verdict==='unsafe').map(x=>({policy:x.policy_id,rule:x.rule_id}))});
+      matches:(result.findings??[]).filter(x=>x.verdict==='matched').map(x=>({policy:x.policy_id,rule:x.rule_id}))});
   } catch(error) { console.log(JSON.stringify({stage:'stopped',caseId:c.id,preset,phase,reason:error.message}));throw error; }
 }
 const identityFailures=[];

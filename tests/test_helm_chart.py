@@ -158,6 +158,8 @@ def test_controller_and_runner_have_distinct_images_ports_and_responsibilities()
     assert controller_env["BETTER_AUTH_MIN_PASSWORD_LENGTH"]["value"] == "12"
     assert controller_env["CONTROLLER_ALLOW_LOCAL_DEFAULT_CREDENTIALS"]["value"] == "false"
     assert "GUARD_CONTROLLER_TARGET" in runner_env
+    assert runner_env["GUARD_URL"]["value"] == "http://contract-tali-guard-controller:8080"
+    assert "GUARD_ACCESS_TOKEN" not in runner_env
     assert controller_env["CONTROLLER_METRICS_TOKEN"]["valueFrom"]["secretKeyRef"]["name"] == "contract-tali-guard-metrics"
     assert runner_env["GUARD_METRICS_TOKEN"]["valueFrom"]["secretKeyRef"]["name"] == "contract-tali-guard-metrics"
     assert "CONTROLLER_DATABASE_URL" not in runner_env

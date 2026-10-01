@@ -1,0 +1,137 @@
+id: eu-ai-act-art5-biometric-profiling-fr/eu_ai_act_art5_biometric_profiling_fr
+name: EU AI Act Art5 Biometric Profiling Fr
+description: Art. 5.1(d)(g)(h) — Bloque la catégorisation biométrique, les bases de reconnaissance faciale
+  et le profilage prédictif
+stages:
+- input
+detector:
+  ref: text/conditions
+  version: 1.0.0
+  parameters:
+    detector_options:
+      match:
+        all:
+        - not:
+            contains:
+            - recherche sur
+            - étude sur
+            - académique
+            - thèse sur
+            - mémoire sur
+            - expliquer
+            - qu'est-ce que
+            - c'est quoi
+            - article 5
+            - interdit par
+            - prohibé par
+            - audit de biais
+            - audit des biais
+            - détecter la discrimination
+            - détection de discrimination
+            - surveillance de conformité
+            - contrôle de conformité
+            - examen éthique
+            - test d'équité
+            - dans un film
+            - jeu vidéo
+            - médico-légal
+            - personne disparue
+            - recherche ciblée
+        - any:
+          - within_sentence:
+              all:
+              - contains:
+                - construire
+                - créer
+                - développer
+                - concevoir
+                - implémenter
+                - mettre en place
+                - noter
+                - classer
+                - évaluer
+                - estimer
+                - classifier
+                - profiler
+                - catégoriser
+                - reconnaître
+                - détecter
+                - identifier
+                - inférer
+                - déduire
+                - prédire
+                - déterminer
+                - analyser
+                - collecter
+                - récolter
+                - scraper
+                - aspirer
+              - keywords:
+                - race à partir du visage
+                - race à partir de biométrie
+                - race à partir du biométrique
+                - race à partir de l'image
+                - race à partir de la photo
+                - ethnie à partir du visage
+                - ethnie à partir de biométrie
+                - ethnie à partir du biométrique
+                - ethnie à partir de l'image
+                - classification raciale
+                - classification ethnique
+                - opinions politiques à partir
+                - vues politiques à partir
+                - affiliation politique à partir
+                - croyances politiques à partir
+                - orientation politique à partir
+                - orientation sexuelle à partir
+                - préférence sexuelle à partir
+                - religion à partir de biométrie
+                - religion à partir du biométrique
+                - religion à partir du visage
+                - croyances religieuses à partir
+                - affiliation religieuse à partir
+                - base de données de reconnaissance faciale
+                - base de données d'images faciales
+                - collecte d'images faciales
+                - aspiration d'images faciales
+                - données d'entraînement reconnaissance faciale
+                - base de données biométrique internet
+                - base de données biométrique vidéosurveillance
+                - prédiction de crime
+                - prédiction criminelle
+                - comportement criminel
+                - récidive
+                - prédiction de la récidive
+                - score de risque criminel
+                - évaluation du risque criminel
+                - probabilité criminelle
+                - profilage criminel
+                - prédiction de performance des employés
+                - prédiction de performance des salariés
+                - prédiction de licenciement
+                - prédiction d'attrition
+          - keywords:
+            - inférer la race à partir du visage
+            - prédire la race à partir du visage
+            - déduire la race à partir du visage
+            - inférer l'ethnie à partir de biométrie
+            - prédire l'ethnie à partir de biométrie
+            - prédire les opinions politiques à partir
+            - inférer les opinions politiques à partir
+            - système de catégorisation biométrique
+            - police prédictive
+            - algorithme de prédiction de crime
+            - algorithme de prédiction criminelle
+            - prédiction de récidive
+            - collecte non ciblée d'images faciales
+            - surveillance biométrique de masse
+on_match:
+  action: block
+  replacement: null
+runtime_adapter:
+  binding_id: eu-ai-act-art5-biometric-profiling-fr
+  implementation_rule_id: eu_ai_act_art5_biometric_profiling_fr
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-BIOMETRIC
+risk_level: high

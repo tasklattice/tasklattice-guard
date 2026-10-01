@@ -1,0 +1,29 @@
+# yaml-language-server: $schema=../../../schemas/tests.schema.json
+- id: accept/phrases/input
+  name: Configured phrase acceptance
+  description: Expanded into one acceptance case per configured phrase by Controller.
+  phase: input
+  content: '{{phrase_entries}}'
+  expected_decision: block
+  covered_rule_ids:
+  - configured/phrases
+  group: Configured phrases
+  kind: rule_acceptance
+  required: true
+  parameter_names:
+  - phrase_entries
+  scope: rule
+- id: accept/phrases/output
+  name: Configured phrase acceptance
+  description: Expanded into one acceptance case per configured phrase by Controller.
+  phase: output
+  content: '{{phrase_entries}}'
+  expected_decision: block
+  covered_rule_ids:
+  - configured/phrases
+  group: Configured phrases
+  kind: rule_acceptance
+  required: true
+  parameter_names:
+  - phrase_entries
+  scope: rule

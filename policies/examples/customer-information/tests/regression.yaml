@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=../../../schemas/tests.schema.json
+- id: normal-reply
+  name: 正常订单回复
+  phase: output
+  content: 您的订单预计明天送达。
+  expected_decision: allow
+  covered_rule_ids: []
+  expected_matched_rules: []
+- id: combined-reply
+  name: 先遮盖编号，再阻断密钥
+  phase: output
+  content: CUS-123456 INTERNAL_SECRET
+  expected_decision: block
+  covered_rule_ids: [customer-id, internal-secret]
+  expected_matched_rules: [customer-id, internal-secret]

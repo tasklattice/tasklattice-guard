@@ -1,0 +1,40 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: china-organization-identifiers
+  name: China organization identifiers
+  description: Local redaction for explicitly labelled Unified Social Credit Code candidates after checksum
+    validation. The code identifies an organization rather than, by itself, a natural person; this Policy
+    does not classify it as personal information or establish confidentiality.
+  source: built_in
+  version: 1.0.0
+  tags:
+  - namespace: protection
+    value: business_rules
+    label: Business & industry rules
+    source: declared
+  - namespace: guardrail_category
+    value: topic_control
+    label: Topic Control
+    source: declared
+  - namespace: collection
+    value: china-mainland
+    label: China mainland runtime controls
+    source: declared
+  - namespace: jurisdiction
+    value: cn
+    label: China mainland
+    source: declared
+  - namespace: domain
+    value: business
+    label: Business
+    source: declared
+  safety_level: balanced
+  output_delivery: full_buffered
+parameters: []
+rules:
+- rules/cn-business-identifier-unified-social-credit-code.yaml
+tests:
+- tests/acceptance.yaml
+- tests/regression.yaml

@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=../../../schemas/tests.schema.json
+- id: benign-instructions/input
+  name: Allow a benign instruction question
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: input
+  content: 请说明如何在账户页面更新通知设置。
+  expected_decision: allow
+  covered_rule_ids: []
+  group: Protection contract
+  kind: scenario
+  required: true
+  parameter_names: []

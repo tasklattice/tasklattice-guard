@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=../../../schemas/tests.schema.json
+- id: accept/denied_legal_advice
+  name: Detect Denied Legal Advice
+  description: Required acceptance case for the imported local category.
+  phase: input
+  content: The message contains lawyer.
+  expected_decision: block
+  covered_rule_ids:
+  - category/denied_legal_advice
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/denied_legal_advice/output
+  name: Detect Denied Legal Advice
+  description: Required acceptance case for the imported local category.
+  phase: output
+  content: The message contains lawyer.
+  expected_decision: block
+  covered_rule_ids:
+  - category/denied_legal_advice
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule

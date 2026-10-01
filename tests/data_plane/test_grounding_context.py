@@ -22,9 +22,9 @@ def request_with_context(query, source):
     return ActionRequest(content=blocks[0].text, rail_type="output", guardrail_id="grounding",
         guardrail_version="1", policy_id=None, policy_version=None, trusted_context=(),
         content_blocks=tuple(blocks), active_block_id="answer", deadline=time.monotonic() + 5,
-        parameters=(), capability="contextual_grounding", proposed_action="reject", plan=plan,
+        parameters=(), capability="contextual_grounding", proposed_action="block", plan=plan,
         binding=NeMoActionBinding(id="grounding", capability="contextual_grounding",
-            contract_ref="tali.guard.contextual-grounding.v1", phases=("output",), on_unsafe="reject"))
+            contract_ref="tali.guard.contextual-grounding.v1", phases=("output",), on_unsafe="block"))
 
 
 def grounding_provider(calls):
@@ -43,9 +43,9 @@ async def test_absent_or_blank_grounding_context_does_not_call_or_pass(field, mi
     request = request_with_context(missing if field == "query" else "What is the balance?",
         missing if field == "grounding_source" else "The account balance is 100.")
     result = await grounding_provider(calls).execute(request)
-    assert result.verdict == "uncertain"
+    assert result.verdict == "unknown"
     assert "requires" in result.reason
-    assert result.findings[0].recommended_action == "clarify"
+    assert result.findings[0].recommended_action == "block"
     assert result.usage.model_invocations == 0
     assert calls == []
 
@@ -54,7 +54,7 @@ async def test_nonempty_grounding_context_still_calls_the_judge():
     calls = []
     result = await grounding_provider(calls).execute(request_with_context(
         "What is the balance?", "The account balance is 100."))
-    assert result.verdict == "safe"
+    assert result.verdict == "not_matched"
     assert result.usage.model_invocations == 1
     assert len(calls) == 1
     content = json.loads(calls[0]["messages"][1]["content"])

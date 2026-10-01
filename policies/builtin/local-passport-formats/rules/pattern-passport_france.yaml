@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: pattern/passport_france
+name: Passport (France)
+description: French passport numbers (2 digits, 2 letters, 5 digits)
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b[0-9]{2}[A-Z]{2}[0-9]{5}\b
+on_match:
+  action: transform
+  replacement: '[passport_france_REDACTED]'
+runtime_adapter:
+  binding_id: local-passport-formats
+  implementation_rule_id: passport_france
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-PII
+risk_level: medium

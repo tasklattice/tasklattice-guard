@@ -1,0 +1,31 @@
+id: topic-restriction-filter/off_topic
+name: Off Topic
+description: Inline keyword category bundled with this Policy.
+stages:
+- input
+detector:
+  ref: text/conditions
+  version: 1.0.0
+  parameters:
+    detector_options:
+      match:
+        keywords:
+        - latest news
+        - weather forecast
+        - stock price
+        - tell me a joke
+        - movie recommendation
+        - sports score
+        - political campaign
+        - celebrity gossip
+        - cryptocurrency advice
+on_match:
+  action: block
+  replacement: null
+runtime_adapter:
+  binding_id: topic-restriction-filter
+  implementation_rule_id: off_topic
+metadata:
+  taxonomy_ids:
+  - TALI-BUSINESS-POLICY-OFF-TOPIC
+risk_level: low

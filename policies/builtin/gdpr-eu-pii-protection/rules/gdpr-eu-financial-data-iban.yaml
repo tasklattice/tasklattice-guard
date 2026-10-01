@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: gdpr-eu-financial-data/iban
+name: IBAN (International Bank Account Number)
+description: Detects IBANs (2 letter country code + 2 check digits + 4 char bank code + 7 digit base +
+  optional 0-16 alphanumeric)
+stages:
+- input
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b
+on_match:
+  action: transform
+  replacement: '[IBAN_REDACTED]'
+runtime_adapter:
+  binding_id: gdpr-eu-financial-data
+  implementation_rule_id: iban
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-FINANCIAL
+risk_level: high

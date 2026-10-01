@@ -22,7 +22,7 @@ def plans():
           sources: [{path: 'checks.co', content: ['input', 'output'].map(phase =>
             `flow check_${phase} $text\n  $marker = "\${marker}"\n  $safe = $text != $marker\n  $r = await GuardRecordPolicyAction(flow_name="check_${phase}", safe=$safe, text=$text)\n`).join('\n')}],
           parameter_schema: [{name: 'marker', kind: 'string', required: true, default: 'banking'}],
-          rail_bindings: ['input', 'output'].map(phase => ({rail_type: phase, flow_name: `check_${phase}`, execution_mode: 'detect', on_unsafe: 'reject'})),
+          rail_bindings: ['input', 'output'].map(phase => ({rail_type: phase, flow_name: `check_${phase}`, execution_mode: 'detect', on_unsafe: 'block'})),
           action_references: [{name: 'GuardRecordPolicyAction', version: '1.0.0'}],
         }), policy_id: 'parameters', version: '1', name: 'Parameters', description: '',
         source: 'custom', owner: 'test', checksum: 'pinned', published_at: '2026-09-06',

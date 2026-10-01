@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: financial-pii/discover
+name: Credit Card (Discover)
+description: Detects Discover credit card numbers
+stages:
+- input
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b6(?:011|5\d{2})[\s\-]?\d{4}[\s\-]?\d{4}[\s\-]?\d{4}\b
+on_match:
+  action: transform
+  replacement: '[discover_REDACTED]'
+runtime_adapter:
+  binding_id: financial-pii
+  implementation_rule_id: discover
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-FINANCIAL
+risk_level: high

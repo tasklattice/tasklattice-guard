@@ -1,0 +1,83 @@
+id: sg-pdpa-do-not-call/sg_pdpa_do_not_call
+name: SG PDPA Do Not Call
+description: PDPA Part IX — Blocks generation of unsolicited marketing lists and DNC Registry bypass attempts
+  for Singapore phone numbers
+stages:
+- input
+detector:
+  ref: text/conditions
+  version: 1.0.0
+  parameters:
+    detector_options:
+      match:
+        all:
+        - not:
+            contains:
+            - dnc check
+            - opted in
+            - consent obtained
+            - existing customer
+            - legitimate interest
+            - dnc registry lookup
+            - dnc compliance
+            - explain
+            - what is
+            - how to comply
+        - any:
+          - within_sentence:
+              all:
+              - contains:
+                - singapore phone number
+                - sg mobile
+                - '+65'
+                - local number
+                - singapore contact
+                - sms list
+                - telemarketing list
+                - cold call list
+                - contact list singapore
+                - marketing list
+                - call list
+                - phone list
+                - whatsapp blast
+                - telegram blast
+                - sms blast
+                - mass sms
+              - keywords:
+                - generate
+                - compile
+                - create
+                - build
+                - scrape
+                - harvest
+                - crawl
+                - buy
+                - sell
+                - trade
+                - mass message
+                - bulk sms
+                - bulk send
+                - blast to
+                - spam
+                - without checking dnc
+                - bypass dnc
+                - ignore dnc
+                - skip dnc
+                - unsolicited
+          - keywords:
+            - bypass dnc registry
+            - ignore do not call singapore
+            - bulk sms without consent singapore
+            - harvest singapore phone numbers
+            - spam singapore numbers
+            - buy singapore phone list
+on_match:
+  action: block
+  replacement: null
+runtime_adapter:
+  binding_id: sg-pdpa-do-not-call
+  implementation_rule_id: sg_pdpa_do_not_call
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-PII
+risk_level: medium

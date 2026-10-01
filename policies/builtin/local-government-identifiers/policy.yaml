@@ -1,0 +1,53 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: local-government-identifiers
+  name: Government & institutional identifiers
+  description: Recognize configured government, tax, health and institutional identifier formats. Formats
+    are not proof of identity, validity or issuing jurisdiction. Broad numeric formats can overlap; review
+    before enabling.
+  source: built_in
+  version: 2.0.0
+  tags:
+  - namespace: protection
+    value: privacy
+    label: Privacy & sensitive information
+    source: declared
+  - namespace: guardrail_category
+    value: pii_detection
+    label: PII Detection
+    source: declared
+  - namespace: collection
+    value: focused-protection
+    label: Focused protection
+    source: declared
+  safety_level: balanced
+  output_delivery: full_buffered
+parameters: []
+rules:
+- rules/pattern-uae_emirates_id.yaml
+- rules/pattern-ca_on_drivers_licence.yaml
+- rules/pattern-ca_immigration_doc.yaml
+- rules/pattern-fr_nir.yaml
+- rules/pattern-uoft_tcard.yaml
+- rules/pattern-sg_uen.yaml
+- rules/pattern-ca_ohip.yaml
+- rules/pattern-ca_sin.yaml
+- rules/pattern-eu_vat.yaml
+- rules/pattern-nl_bsn_contextual.yaml
+- rules/pattern-au_tfn.yaml
+- rules/pattern-uoft_student_id.yaml
+- rules/pattern-us_ssn.yaml
+- rules/pattern-us_ssn_no_dash.yaml
+- rules/pattern-br_cpf.yaml
+- rules/pattern-br_cpf_unformatted.yaml
+- rules/pattern-br_cnpj.yaml
+- rules/pattern-br_rg.yaml
+- rules/pattern-au_abn.yaml
+- rules/pattern-au_medicare.yaml
+- rules/pattern-sg_nric.yaml
+- rules/pattern-uoft_utorid.yaml
+tests:
+- tests/acceptance.yaml
+- tests/regression.yaml

@@ -1,0 +1,24 @@
+.log-time-range-filter { display: grid; gap: 0.375rem; min-inline-size: 0; }
+.log-filters-grid { grid-template-columns: 1fr 1.5fr 1fr 1fr; }
+.log-time-range-label { display: flex; align-items: center; gap: 0.375rem; font-size: 0.75rem; font-weight: 500; color: var(--cds-text-secondary); }
+.log-time-range-label > svg { inline-size: 0.75rem; block-size: 0.75rem; }
+.log-time-range-popover { display: block; min-inline-size: 0; }
+.log-time-range-trigger.cds--btn { display: flex; gap: 0.5rem; inline-size: 100%; max-inline-size: none; block-size: 2.75rem; min-block-size: 2.75rem; padding-inline: 1rem; border-block-end: 1px solid var(--cds-border-strong-01); color: var(--cds-text-primary); background: var(--cds-field-01); }
+.log-time-range-trigger > span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: start; }
+.log-time-range-popover .cds--popover-content { inline-size: 36rem; max-inline-size: none; padding: 0; z-index: 6000; }
+.log-time-range-presets { display: flex; gap: 0.25rem; padding: 0.75rem 1rem; border-block-end: 1px solid var(--cds-border-subtle-01); }
+.log-time-range-presets .cds--btn { padding-inline: 0.75rem; font-size: 0.75rem; white-space: nowrap; }
+.log-time-range-presets [aria-pressed="true"] { background: var(--cds-layer-selected-01); color: var(--cds-link-primary); }
+.log-time-range { position: relative; padding: 1rem; }
+.log-time-range-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; gap: 1rem; }
+.log-time-range-bound { display: grid; grid-template-columns: minmax(0, 1fr) 5.5rem; align-items: end; gap: 0.5rem; min-inline-size: 0; }
+.log-time-range-bound > .cds--form-item,
+.log-time-range-bound .cds--date-picker,
+.log-time-range-bound .cds--date-picker-container,
+.log-time-range-bound .cds--date-picker-input__wrapper,
+.log-time-range-bound .cds--date-picker__input,
+.log-time-range-bound .cds--time-picker__input,
+.log-time-range-bound .cds--time-picker__input-field { inline-size: 100%; min-inline-size: 0; }
+.log-time-range-hint { margin-block-start: 0.75rem; font-size: 0.75rem; line-height: 1.5; color: var(--cds-text-secondary); }
+.log-time-range-hint[role="alert"] { color: var(--cds-text-error); }
+.log-time-range-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-block-start: 1rem; }

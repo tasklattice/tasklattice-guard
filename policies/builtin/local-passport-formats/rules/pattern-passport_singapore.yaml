@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: pattern/passport_singapore
+name: Passport (Singapore)
+description: Detects Singapore passport numbers (E/K prefix + 7 digits)
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b[EK]\d{7}\b
+    context_expression: \b(?:passport|travel\s*document|document\s*number|immigration|ICA)\b
+    context_max_gap_words: 1
+on_match:
+  action: transform
+  replacement: '[passport_singapore_REDACTED]'
+runtime_adapter:
+  binding_id: local-passport-formats
+  implementation_rule_id: passport_singapore
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-PII
+risk_level: medium

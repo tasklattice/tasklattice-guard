@@ -1,7 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { useState } from "react";
 import type {
-  RouterDraft,
   TrafficRoute,
   SelectorField,
 } from "@/lib/traffic-routing-api";
@@ -11,15 +10,11 @@ import { Input } from "../ui/input";
 import { Field } from "./form";
 import { SelectorEditor } from "./selector-editor";
 import { TargetsEditor } from "./targets-editor";
-import { SelectorPreviewPanel } from "./selector-preview";
 import { ruleErrors } from "./route-rule-validation";
 
 export function RouteEditorSheet({
   initialRoute,
   isNew,
-  draft,
-  routerId,
-  endpointIds,
   fields,
   busy,
   onApply,
@@ -27,9 +22,6 @@ export function RouteEditorSheet({
 }: {
   initialRoute: TrafficRoute;
   isNew: boolean;
-  draft: RouterDraft;
-  routerId: string;
-  endpointIds: string[];
   fields?: SelectorField[];
   busy: boolean;
   onApply: (route: TrafficRoute) => void;
@@ -40,15 +32,6 @@ export function RouteEditorSheet({
   const [submitted, setSubmitted] = useState(false);
   const fallback = route.kind === "fallback";
   const errors = ruleErrors(route);
-  const previewDraft = {
-    routes: isNew
-      ? [
-          ...draft.routes.filter((r) => r.kind !== "fallback"),
-          route,
-          ...draft.routes.filter((r) => r.kind === "fallback"),
-        ]
-      : draft.routes.map((r) => (r.id === route.id ? route : r)),
-  };
   return (
     <EntitySheet
       open
@@ -142,16 +125,6 @@ export function RouteEditorSheet({
           </ul>
         )}
       </fieldset>
-      {!fallback && (
-        <details className="mt-6 border-t pt-3">
-          <summary className="min-h-11 cursor-pointer py-3 text-sm">{localize("routing.testMatching")}</summary>
-          <SelectorPreviewPanel
-            routerId={routerId}
-            endpointIds={endpointIds}
-            draft={previewDraft}
-          />
-        </details>
-      )}
     </EntitySheet>
   );
 }

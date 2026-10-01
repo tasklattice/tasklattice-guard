@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=../../../schemas/tests.schema.json
+- id: accept/denied_financial_advice
+  name: Detect Denied Financial / Investment Advice
+  description: Required acceptance case for the imported local category.
+  phase: input
+  content: 'Please review this request: should i invest.'
+  expected_decision: block
+  covered_rule_ids:
+  - category/denied_financial_advice
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/denied_financial_advice/output
+  name: Detect Denied Financial / Investment Advice
+  description: Required acceptance case for the imported local category.
+  phase: output
+  content: 'Please review this request: should i invest.'
+  expected_decision: block
+  covered_rule_ids:
+  - category/denied_financial_advice
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule

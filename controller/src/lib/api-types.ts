@@ -1,3 +1,4 @@
+import type { RuntimeOutcome } from "../../shared/runtime-outcome";
 import type { RiskSeverity, EventSeverity } from "../../shared/security-severity";
 import type { EnforcementAction } from "../../shared/enforcement-action.generated";
 import type { GuardrailCategoryId } from "../../shared/guardrail-catalog";
@@ -571,7 +572,7 @@ export type PolicyTag = {
 
 export type PolicyRuleImplementation = {
   engine: string;
-  form: "regex" | "keyword" | "category" | "code_block" | "competitor_intent" | "colang_flow";
+  execution: "local" | "platform" | "programmable";
   binding_id: string;
   implementation_rule_id: string;
   detector: string | null;
@@ -583,11 +584,14 @@ export type PolicyRule = {
   id: string;
   name: string;
   description: string;
-  form: "regex" | "keyword" | "category" | "code_block" | "competitor_intent" | "colang_flow";
+  detector: { ref: string; version: string };
   effect: string;
   risk_severity?: RiskSeverity | null;
   rails: NativeRailType[];
   implementation: PolicyRuleImplementation;
+  detector_options: Record<string, unknown>;
+  rule_expansion: { parameter: string; text_field: string; action_field: string; replacement_field: string } | null;
+  validators: import("../../shared/pattern-validator").PatternValidator[];
   expression: string | null;
   context_expression: string | null;
   context_max_gap_words?: number | null;
@@ -638,7 +642,7 @@ export type Policy = {
   parameters: PolicyParameter[];
   rails: NativeRailType[];
   effects: string[];
-  forms: PolicyRule["form"][];
+  detectors: string[];
   rules: PolicyRule[];
   test_cases: PolicyTestCase[];
   test_count: number;
@@ -899,12 +903,14 @@ export type RuntimeHttpRequest = {
 
 export type RuntimeLogEntry = {
   execution_status?: "error" | "complete" | "unknown";
+  call_completion?: { inferred: boolean; reason: string | null; completed_at: string | null; decision_id: string | null; route_id: string | null; target_id: string | null; router_revision: number | null };
+  error_details?: Array<{ span_id: string; name: string; error_type: string | null; provider: string | null; model: string | null; policy: string | null; timed_out: boolean; timeout_ms: number | null }>;
   http_request?: RuntimeHttpRequest | null;
   id: string;
   trace_id: string;
   created_at: string;
-  phase: "input" | "output";
-  outcome: "allow" | "transform" | "block" | "error" | string;
+  phase: "input" | "output" | "completion";
+  outcome: RuntimeOutcome | null;
   action: string;
   risk: string | null;
   latency_ms: number;
@@ -921,12 +927,12 @@ export type RuntimeLogInteraction = {
   id: string;
   created_at: string;
   completed_at: string | null;
-  guardrail_id: string;
+  guardrail_id: string | null;
   guardrail_version: string | null;
   router_id: string | null;
   endpoint_id: string | null;
   protocol: string;
-  outcome: "allow" | "transform" | "block" | "error" | string;
+  outcome: RuntimeOutcome | null;
   capture_level: LoggingLevel;
   entries: RuntimeLogEntry[];
 };
@@ -1133,7 +1139,7 @@ export type RuntimeComponentMetric = {
   invocations: number;
   passed: number;
   intervened: number;
-  uncertain: number;
+  unknown: number;
   errors: number;
   timeouts: number;
   p50_latency_ms: number;

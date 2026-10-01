@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: pattern/religion
+name: Religion & Creed (Protected Class)
+description: Detects religious affiliation and practice terms - protected under ECOA
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b(christians?|catholics?|protestants?|baptists?|methodists?|lutherans?|presbyterians?|episcopal|pentecostal|evangelicals?|orthodox\s+christian|mormons?|latter[-
+      ]?day\s+saint|LDS|jehovah'?s?\s+witness(es)?|seventh[- ]?day\s+adventist|amish|mennonite|quakers?|jewish|jews?|judaism|orthodox\s+jew|hasidic|muslims?|islam(ic)?|sunni|shia|shiite|sufi|nation\s+of\s+islam|hindus?(ism)?|buddhists?|buddhism|sikhs?(ism)?|jains?(ism)?|shinto|taoists?|taoism|confucian|zoroastrian|baha'?i|rastafari(an)?|pagans?|wiccans?|druids?|satanist|scientolog(y|ist)|unitarian|agnostics?|atheists?|secular|non-?religious|spiritual\s+but\s+not\s+religious|religious\s+belief|religious\s+practice|place\s+of\s+worship|church|mosque|synagogue|temple|gurdwara|kosher|halal|sabbath|shabbat|ramadan|lent|yom\s+kippur|rosh\s+hashanah|diwali|eid|hijab|yarmulke|kippah|turban|religious\s+head\s*covering)\b
+on_match:
+  action: transform
+  replacement: '[religion_REDACTED]'
+runtime_adapter:
+  binding_id: pattern-matching
+  implementation_rule_id: religion
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-SENSITIVE-ATTRIBUTE
+risk_level: medium

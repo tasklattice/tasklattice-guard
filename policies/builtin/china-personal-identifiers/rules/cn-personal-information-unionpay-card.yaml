@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: cn-personal-information/unionpay-card
+name: Contextual UnionPay card number
+description: Redacts labelled 16–19 digit 62-prefixed card candidates that pass a Luhn check. It does
+  not identify every Chinese bank account, establish ownership, or validate account status.
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: (?<![0-9])62(?:[\s-]?[0-9]){14,17}(?![0-9])
+    context_expression: (?i)(?:银行卡(?:号)?|卡号|借记卡|信用卡|bank\s*card|card\s*(?:number|no\.?))
+    context_max_gap_words: 4
+    validators:
+    - type: luhn
+on_match:
+  action: transform
+  replacement: '[cn_bank_card_REDACTED]'
+runtime_adapter:
+  binding_id: china-personal-identifiers
+  implementation_rule_id: cn-personal-information/unionpay-card
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-FINANCIAL
+risk_level: high

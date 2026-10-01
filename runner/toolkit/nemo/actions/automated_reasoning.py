@@ -143,13 +143,13 @@ class ReasoningActionProvider:
         active = view.active_block
         if "query" in active.qualifiers:
             return action_result(request,
-                "safe",
+                "not_matched",
                 request.content,
                 reason="The active block supplies reasoning context and is not an output target.",
             )
         if active.role != "model_output":
             return action_result(request,
-                "safe",
+                "not_matched",
                 request.content,
                 reason="Automated Reasoning evaluates complete model-output blocks only.",
             )
@@ -203,7 +203,11 @@ class ReasoningActionProvider:
             )
         ordered = order_reasoning_findings(findings)
         result = aggregate_reasoning_result(ordered)
-        detected = result != "valid"
+        # The target is a demonstrated policy contradiction. A valid provider
+        # response that cannot establish validity or contradiction is inconclusive.
+        if any(item.result == "invalid" for item in ordered):
+            result = "invalid"
+        verdict = "not_matched" if result == "valid" else "matched" if result == "invalid" else "unknown"
         message = next(
             (item.message for item in ordered if item.result == result and item.message),
             _result_message(result),
@@ -211,18 +215,18 @@ class ReasoningActionProvider:
         risk_finding = RiskFinding(
             risk=request.capability,
             taxonomy_id=taxonomy_for_evaluator(request.capability),
-            verdict="unsafe" if detected else "safe",
+            verdict=verdict,
             confidence=min(item.confidence for item in ordered),
             evidence=message,
-            recommended_action="pass",
+            recommended_action="allow",
             reasoning=ordered,
         )
         return action_result(request,
-            "unsafe" if detected else "safe",
+            verdict,
             request.content,
             findings=(
                 (risk_finding,)
-                if detected or request.evidence_scope == "full"
+                if verdict != "not_matched" or request.evidence_scope == "full"
                 else ()
             ),
             reason=message,

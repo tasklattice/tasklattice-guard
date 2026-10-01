@@ -1,0 +1,101 @@
+schema_version: 2
+kind: Policy
+metadata:
+  id: aviation-operations-security
+  name: Aviation Operations Security
+  description: Prevents AI from leaking flight operations data (flight numbers, crew
+    schedules, gate assignments, aircraft tail numbers), generating content about
+    aviation security vulnerabilities or bypass procedures, and producing unauthorized
+    airline statements or fake incident reports.
+  source: built_in
+  version: 1.95.0
+  tags:
+  - namespace: protection
+    value: business_rules
+    label: Business & industry rules
+    source: declared
+  - namespace: guardrail_category
+    value: content_safety
+    label: Content Safety
+    source: declared
+  - namespace: guardrail_category
+    value: topic_control
+    label: Topic Control
+    source: declared
+  - namespace: domain
+    value: aviation
+    label: Aviation
+    source: declared
+  - namespace: rail
+    value: input
+    label: Input rail
+    source: derived
+  - namespace: rail
+    value: output
+    label: Output rail
+    source: derived
+  - namespace: implementation
+    value: category
+    label: Category
+    source: derived
+  - namespace: implementation
+    value: keyword
+    label: Keyword
+    source: derived
+  - namespace: implementation
+    value: regex
+    label: Regex
+    source: derived
+  safety_level: balanced
+  output_delivery: window_buffered
+parameters:
+- name: brand_name
+  label: Your Airline / Brand Name
+  kind: text
+  required: true
+  placeholder: e.g. Acme Airlines
+  description: ''
+- name: competitors
+  label: Competitors
+  kind: textarea
+  required: true
+  placeholder: One competitor per line
+  description: Paste the reviewed competitor set used by this Policy.
+rules:
+- rules/aviation-ops-data-protection-flight_number.yaml
+- rules/aviation-ops-data-protection-aircraft_tail_number.yaml
+- rules/aviation-ops-data-protection-blocked-word-1.yaml
+- rules/aviation-ops-data-protection-blocked-word-2.yaml
+- rules/aviation-ops-data-protection-blocked-word-3.yaml
+- rules/aviation-ops-data-protection-blocked-word-4.yaml
+- rules/aviation-ops-data-protection-blocked-word-5.yaml
+- rules/aviation-safety-topic-filter-aviation_safety_topics.yaml
+- rules/airline-brand-protection-filter-blocked-word-1.yaml
+- rules/airline-brand-protection-filter-blocked-word-2.yaml
+- rules/airline-brand-protection-filter-blocked-word-3.yaml
+- rules/airline-brand-protection-filter-blocked-word-4.yaml
+- rules/airline-brand-protection-filter-blocked-word-5.yaml
+- rules/airline-brand-protection-filter-blocked-word-6.yaml
+- rules/airline-brand-protection-filter-blocked-word-7.yaml
+- rules/airline-brand-protection-filter-blocked-word-8.yaml
+- rules/airline-brand-protection-filter-blocked-word-9.yaml
+- rules/airline-brand-protection-filter-blocked-word-10.yaml
+- rules/airline-brand-protection-filter-airline_brand_protection.yaml
+- rules/competitor-name-input-blocker-dynamic-competitors-blocked-words.yaml
+- rules/competitor-name-output-blocker-dynamic-competitors-blocked-words.yaml
+- rules/competitor-recommendation-input-filter-dynamic-competitor-recommendation-words.yaml
+- rules/competitor-recommendation-output-filter-dynamic-competitor-recommendation-words.yaml
+- rules/competitor-comparison-input-filter-dynamic-competitor-comparison-words.yaml
+- rules/competitor-comparison-input-filter-competitor-comparison-intent.yaml
+- rules/competitor-comparison-output-filter-dynamic-competitor-comparison-words.yaml
+tests:
+- tests/acceptance.yaml
+- tests/regression.yaml
+resources:
+- resources/aviation-safety-topic-filter-aviation_safety_topics-identifiers.yaml
+- resources/aviation-safety-topic-filter-aviation_safety_topics-conditions.yaml
+- resources/airline-brand-protection-filter-airline_brand_protection-conditions.yaml
+testing:
+  parameters:
+    brand_name: TaskLattice
+    competitors: ExampleCompetitor

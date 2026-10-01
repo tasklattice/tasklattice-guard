@@ -7,7 +7,13 @@
     "node": ">=24"
   },
   "scripts": {
-    "sync": "uv sync --all-extras --frozen && npm ci --prefix controller",
+    "policies:build": ".venv/bin/python scripts/policy_sources.py build",
+    "policies:check": ".venv/bin/python scripts/policy_sources.py check",
+    "policies:validate": ".venv/bin/python scripts/policy_sources.py validate",
+    "policies:test": ".venv/bin/python scripts/policy_sources.py test",
+    "policies:import": ".venv/bin/python scripts/policy_sources.py import",
+    "policies:export": ".venv/bin/python scripts/policy_sources.py export",
+    "sync": "uv sync --all-extras --frozen && npm ci && npm ci --prefix controller",
     "dev": "npm run dev:controller",
     "dev:setup": "npm run dev:setup --prefix controller",
     "dev:controller": "npm run dev --prefix controller",
@@ -18,8 +24,9 @@
     "start": "npm run start --prefix controller",
     "typecheck": "npm run typecheck --prefix controller",
     "test": "npm run test:cli && npm run test:contracts && npm run test:control-plane && npm run test:data-plane && npm run test:e2e && npm run typecheck && npm run build",
-    "test:cli": "node --test scripts/project-commands.test.mjs controller/scripts/dev-setup.node-test.mjs",
-    "test:control-plane": ".venv/bin/python scripts/generate_test_artifacts.py --check && .venv/bin/python -m pytest -q -m control_plane && npm run test:control-plane --prefix controller",
+    "test:cli": "node --test scripts/stream-transport.test.mjs scripts/project-commands.test.mjs controller/scripts/dev-setup.node-test.mjs",
+    "test:runner-cli": "bash scripts/test-runner-guardctl.sh",
+    "test:control-plane": "npm run policies:check && npm run policies:regression && .venv/bin/python scripts/generate_test_artifacts.py --check && .venv/bin/python -m pytest -q -m control_plane && npm run test:control-plane --prefix controller",
     "test:data-plane": ".venv/bin/python -m pytest -q -m data_plane",
     "test:e2e": ".venv/bin/python -m pytest -q -m e2e",
     "test:contracts": "node scripts/project-commands.mjs test-contracts",
@@ -37,6 +44,10 @@
     "helm:deploy:dev:debug": "node scripts/project-commands.mjs helm-deploy-debug",
     "helm:status": "node scripts/project-commands.mjs helm-status",
     "helm:test": "node scripts/project-commands.mjs helm-test",
-    "helm:delete:dev": "node scripts/project-commands.mjs helm-delete"
+    "helm:delete:dev": "node scripts/project-commands.mjs helm-delete",
+    "policies:regression": ".venv/bin/python scripts/policy_sources.py test --all --output output/policy-regression.json"
+  },
+  "devDependencies": {
+    "ws": "^8.22.0"
   }
 }

@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: cn-prompt-security/prompt-extraction
+name: Chinese prompt extraction request
+description: Rejects selected explicit Chinese requests to reveal or reproduce protected system or developer
+  instructions. It does not prevent every disclosure path.
+stages:
+- input
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: (?:显示|泄露|输出|复述|告诉我).{0,8}(?:系统提示词|系统指令|开发者指令)
+on_match:
+  action: block
+runtime_adapter:
+  binding_id: china-prompt-manipulation
+  implementation_rule_id: cn-prompt-security/prompt-extraction
+metadata:
+  taxonomy_ids:
+  - TALI-MODEL-SECURITY-PROMPT-LEAKAGE
+risk_level: high

@@ -20,7 +20,7 @@ const imported: PolicyImport = {
   name: "Synthetic check", description: "Directory regression", owner: "author@example.test", sourcePolicyId: null, sourceDraftRevision: null,
   draft: { guardrail_category: "pii_detection", colang_version: "2.x", sources: [{ path: "main.co", content: "flow check_request $text\n  pass" }],
     parameter_schema: [], action_references: [], evaluation_contracts: [], prompt_dependencies: [], execution_contract: [],
-    rail_bindings: [{ rail_type: "input", flow_name: "check_request", execution_mode: "detect", on_unsafe: "reject", risk_severity: "high",
+    rail_bindings: [{ rail_type: "input", flow_name: "check_request", execution_mode: "detect", on_unsafe: "block", risk_severity: "high",
       parallel_group: null, priority: null, timeout_ms: 500, failure_mode: "fail_closed", required: true, depends_on: [] }],
     test_cases: [{ id: "one", name: "Safe", description: "", rail_type: "input", content: "Hello", expected_decision: "allow",
       covered_rule_ids: ["flow/input/check_request"], case_type: "input_rail", required: true, expected_failure: null,
@@ -61,7 +61,7 @@ describe("Policy Studio business directory", () => {
     fireEvent.click(screen.getByRole("button", { name: "common.next" }));
     fireEvent.click(screen.getByRole("button", { name: "policyStudio.validateAndRun" }));
     await waitFor(() => expect(api.create).toHaveBeenCalledWith(expect.objectContaining({
-      draft: expect.objectContaining({ rail_bindings: [expect.objectContaining({ risk_severity: "informational", on_unsafe: "reject" })] }),
+      draft: expect.objectContaining({ rail_bindings: [expect.objectContaining({ risk_severity: "informational", on_unsafe: "block" })] }),
     })));
   });
 

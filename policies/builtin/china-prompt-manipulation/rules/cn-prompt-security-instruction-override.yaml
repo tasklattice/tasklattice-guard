@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: cn-prompt-security/instruction-override
+name: Chinese instruction override
+description: Rejects selected explicit Chinese phrases that ask the model to ignore, override, or bypass
+  trusted instructions. It does not detect arbitrary paraphrases or establish instruction trust.
+stages:
+- input
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: (?:忽略|无视|绕过|覆盖).{0,8}(?:之前|此前|以上|原有|系统|开发者).{0,6}(?:指令|提示词|规则)
+on_match:
+  action: block
+runtime_adapter:
+  binding_id: china-prompt-manipulation
+  implementation_rule_id: cn-prompt-security/instruction-override
+metadata:
+  taxonomy_ids:
+  - TALI-MODEL-SECURITY-PROMPT-INJECTION
+risk_level: high

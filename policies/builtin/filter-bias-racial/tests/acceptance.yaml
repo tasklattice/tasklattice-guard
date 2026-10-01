@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=../../../schemas/tests.schema.json
+- id: accept/bias_racial
+  name: Detect Bias Racial
+  description: Required acceptance case for the imported local category.
+  phase: input
+  content: 'Please review this request: white supremacy.'
+  expected_decision: block
+  covered_rule_ids:
+  - category/bias_racial
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/bias_racial/output
+  name: Detect Bias Racial
+  description: Required acceptance case for the imported local category.
+  phase: output
+  content: 'Please review this request: white supremacy.'
+  expected_decision: block
+  covered_rule_ids:
+  - category/bias_racial
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule

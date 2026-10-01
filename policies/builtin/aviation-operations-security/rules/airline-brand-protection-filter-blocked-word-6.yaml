@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: airline-brand-protection-filter/blocked-word-6
+name: '{{brand_name}} confirms fatalities'
+description: Fake fatality confirmation
+stages:
+- output
+detector:
+  ref: text/keyword
+  version: 1.0.0
+  parameters:
+    keywords:
+    - - '{{brand_name}} confirms fatalities'
+      - medium
+on_match:
+  action: block
+  replacement: null
+runtime_adapter:
+  binding_id: airline-brand-protection-filter
+  implementation_rule_id: blocked-word-6
+metadata:
+  taxonomy_ids:
+  - TALI-BUSINESS-POLICY
+risk_level: low

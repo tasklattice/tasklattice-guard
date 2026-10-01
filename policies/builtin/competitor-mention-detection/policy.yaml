@@ -1,0 +1,60 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: competitor-mention-detection
+  name: Competitor Name Blocking
+  description: Detects reviewed competitor entities, aliases, obfuscation, recommendations,
+    comparisons, and category-ranking intent while allowing destination and service
+    questions.
+  source: built_in
+  version: 1.95.0
+  tags:
+  - namespace: protection
+    value: content_filters
+    label: Words & content filters
+    source: declared
+  - namespace: collection
+    value: local-content-filter
+    label: Local Content Filter
+    source: declared
+  - namespace: guardrail_category
+    value: content_safety
+    label: Content Safety
+    source: declared
+  - namespace: implementation
+    value: competitor-intent
+    label: Competitor Intent
+    source: derived
+  - namespace: rail
+    value: input
+    label: Input rail
+    source: derived
+  - namespace: rail
+    value: output
+    label: Output rail
+    source: derived
+  safety_level: balanced
+  output_delivery: window_buffered
+parameters:
+- name: brand_name
+  label: Your Brand Name
+  kind: text
+  required: true
+  placeholder: e.g. Acme Airlines
+  description: ''
+- name: competitors
+  label: Competitors
+  kind: textarea
+  required: true
+  placeholder: One competitor per line
+  description: Paste the reviewed competitor set used by this Policy.
+rules:
+- rules/competitor-intent.yaml
+tests:
+- tests/acceptance.yaml
+- tests/regression.yaml
+testing:
+  parameters:
+    brand_name: TaskLattice
+    competitors: ExampleCompetitor

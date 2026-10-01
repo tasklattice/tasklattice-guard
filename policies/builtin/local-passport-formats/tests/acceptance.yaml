@@ -1,0 +1,329 @@
+# yaml-language-server: $schema=../../../schemas/tests.schema.json
+- id: accept/passport_us/input
+  name: Detect Passport (US)
+  description: Required acceptance case for PII Patterns.
+  phase: input
+  content: 'Acceptance sample: A00000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/passport_us
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/passport_us/output
+  name: Detect Passport (US)
+  description: Required acceptance case for PII Patterns.
+  phase: output
+  content: 'Acceptance sample: A00000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/passport_us
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/passport_uk/input
+  name: Detect Passport (UK)
+  description: 'Required acceptance case for PII Patterns. Consolidated passport format:
+    the retained detector covers the complete identifier; no issuing-country inference
+    is made.'
+  phase: input
+  content: 'Acceptance sample: 000000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/passport_us
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/passport_uk/output
+  name: Detect Passport (UK)
+  description: 'Required acceptance case for PII Patterns. Consolidated passport format:
+    the retained detector covers the complete identifier; no issuing-country inference
+    is made.'
+  phase: output
+  content: 'Acceptance sample: 000000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/passport_us
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/passport_germany/input
+  name: Detect Passport (Germany)
+  description: Required acceptance case for PII Patterns.
+  phase: input
+  content: 'Acceptance sample: CCCCCCCCC'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/passport_germany
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/passport_germany/output
+  name: Detect Passport (Germany)
+  description: Required acceptance case for PII Patterns.
+  phase: output
+  content: 'Acceptance sample: CCCCCCCCC'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/passport_germany
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/passport_france/input
+  name: Detect Passport (France)
+  description: Required acceptance case for PII Patterns.
+  phase: input
+  content: 'Acceptance sample: 00AA00000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/passport_france
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/passport_france/output
+  name: Detect Passport (France)
+  description: Required acceptance case for PII Patterns.
+  phase: output
+  content: 'Acceptance sample: 00AA00000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/passport_france
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/passport_netherlands/input
+  name: Detect Passport (Netherlands)
+  description: Required acceptance case for PII Patterns.
+  phase: input
+  content: 'Acceptance sample: AAAAAAAA0'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/passport_netherlands
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/passport_netherlands/output
+  name: Detect Passport (Netherlands)
+  description: Required acceptance case for PII Patterns.
+  phase: output
+  content: 'Acceptance sample: AAAAAAAA0'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/passport_netherlands
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/passport_canada/input
+  name: Detect Passport (Canada)
+  description: Required acceptance case for PII Patterns.
+  phase: input
+  content: 'Acceptance sample: AA000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/passport_canada
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/passport_canada/output
+  name: Detect Passport (Canada)
+  description: Required acceptance case for PII Patterns.
+  phase: output
+  content: 'Acceptance sample: AA000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/passport_canada
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/passport_india/input
+  name: Detect Passport (India)
+  description: Required acceptance case for PII Patterns.
+  phase: input
+  content: 'Acceptance sample: A0000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/passport_india
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/passport_india/output
+  name: Detect Passport (India)
+  description: Required acceptance case for PII Patterns.
+  phase: output
+  content: 'Acceptance sample: A0000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/passport_india
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/passport_australia/input
+  name: Detect Passport (Australia)
+  description: 'Required acceptance case for PII Patterns. Consolidated passport format:
+    the retained detector covers the complete identifier; no issuing-country inference
+    is made.'
+  phase: input
+  content: 'Acceptance sample: A0000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/passport_india
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/passport_australia/output
+  name: Detect Passport (Australia)
+  description: 'Required acceptance case for PII Patterns. Consolidated passport format:
+    the retained detector covers the complete identifier; no issuing-country inference
+    is made.'
+  phase: output
+  content: 'Acceptance sample: A0000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/passport_india
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/passport_china/input
+  name: Detect Passport (China)
+  description: Required acceptance case for PII Patterns.
+  phase: input
+  content: 'Acceptance sample: E00000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/passport_china
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/passport_china/output
+  name: Detect Passport (China)
+  description: Required acceptance case for PII Patterns.
+  phase: output
+  content: 'Acceptance sample: E00000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/passport_china
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/passport_japan/input
+  name: Detect Passport (Japan)
+  description: 'Required acceptance case for PII Patterns. Consolidated passport format:
+    the retained detector covers the complete identifier; no issuing-country inference
+    is made.'
+  phase: input
+  content: 'Acceptance sample: AA0000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/passport_netherlands
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/passport_japan/output
+  name: Detect Passport (Japan)
+  description: 'Required acceptance case for PII Patterns. Consolidated passport format:
+    the retained detector covers the complete identifier; no issuing-country inference
+    is made.'
+  phase: output
+  content: 'Acceptance sample: AA0000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/passport_netherlands
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/eu_passport_generic/input
+  name: Detect Passport Number (EU Generic)
+  description: 'Required acceptance case for EU PII Patterns. Consolidated passport
+    format: the retained detector covers the complete identifier; no issuing-country
+    inference is made.'
+  phase: input
+  content: 'Acceptance sample: passport 00AA00000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/passport_france
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/eu_passport_generic/output
+  name: Detect Passport Number (EU Generic)
+  description: 'Required acceptance case for EU PII Patterns. Consolidated passport
+    format: the retained detector covers the complete identifier; no issuing-country
+    inference is made.'
+  phase: output
+  content: 'Acceptance sample: passport 00AA00000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/passport_france
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/passport_singapore/input
+  name: Detect Passport (Singapore)
+  description: Required acceptance case for Singapore PII Patterns.
+  phase: input
+  content: 'Acceptance sample: passport E1111111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/passport_singapore
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/passport_singapore/output
+  name: Detect Passport (Singapore)
+  description: Required acceptance case for Singapore PII Patterns.
+  phase: output
+  content: 'Acceptance sample: passport E1111111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/passport_singapore
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule

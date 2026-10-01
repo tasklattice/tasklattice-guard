@@ -1,0 +1,20 @@
+id: model/pii
+name: PII detector
+description: Redact detected PII before forwarding or release.
+stages:
+- input
+- output
+detector:
+  ref: model/classifier
+  version: 1.0.0
+  parameters:
+    profile: pii-classification
+on_match:
+  action: transform
+runtime_adapter:
+  binding_id: pii
+  implementation_rule_id: pii
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-PII
+risk_level: medium

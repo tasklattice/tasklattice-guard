@@ -2,6 +2,7 @@
 
 from .catalog import policy_catalog, policy_payload
 from .domain import (
+    PolicyDetectorRef,
     PolicyImplementationRef,
     PolicyParameterSpec,
     PolicyRuleSpec,
@@ -14,6 +15,7 @@ from .domain import (
 from .registry import policies, policy
 
 __all__ = (
+    "PolicyDetectorRef",
     "PolicyImplementationRef",
     "PolicyParameterSpec",
     "PolicyRuleSpec",

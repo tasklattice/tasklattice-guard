@@ -60,7 +60,12 @@ def test_enforcement_action_contract_centralizes_semantics_and_precedence() -> N
     assert tuple(
         ENFORCEMENT_ACTION_CONFLICT_PRIORITIES[value] for value in conflict_values
     ) == tuple(sorted(priorities, reverse=True))
-    assert conflict_values[-1] == "pass"
+    assert conflict_values[-1] == "allow"
     assert set(ENFORCEMENT_ACTION_DESCRIPTIONS) == set(values)
     assert set(ENFORCEMENT_ACTION_CONFLICT_PRIORITIES) == set(values)
     assert all(ENFORCEMENT_ACTION_DESCRIPTIONS[value] for value in values)
+
+
+def test_only_three_rule_actions_are_exposed():
+    assert ENFORCEMENT_ACTIONS == {"allow", "block", "transform"}
+    assert ENFORCEMENT_ACTION_CONFLICT_ORDER == ("block", "transform", "allow")

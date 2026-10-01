@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: customer-id
+name: 遮盖客户编号
+stages:
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \bCUS-\d{6}\b
+risk_level: medium
+on_match:
+  action: transform
+  replacement: '[客户编号已隐藏]'
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-PII

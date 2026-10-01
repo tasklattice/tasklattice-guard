@@ -1,0 +1,383 @@
+# yaml-language-server: $schema=../../../schemas/tests.schema.json
+- id: rule-aviation-ops-data-protection/flight_number-acceptance
+  name: Trigger Airline Flight Number
+  description: Proves that the published regex implementation for Airline Flight Number
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: flight EK 1'
+  expected_decision: transform
+  covered_rule_ids:
+  - aviation-ops-data-protection/flight_number
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-aviation-ops-data-protection/aircraft_tail_number-acceptance
+  name: Trigger Aircraft Tail Number
+  description: Proves that the published regex implementation for Aircraft Tail Number
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: A6-AAA'
+  expected_decision: transform
+  covered_rule_ids:
+  - aviation-ops-data-protection/aircraft_tail_number
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-aviation-ops-data-protection/blocked-word-1-acceptance
+  name: Trigger crew roster
+  description: Proves that the published keyword implementation for crew roster activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: crew roster'
+  expected_decision: block
+  covered_rule_ids:
+  - aviation-ops-data-protection/blocked-word-1
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-aviation-ops-data-protection/blocked-word-2-acceptance
+  name: Trigger crew schedule
+  description: Proves that the published keyword implementation for crew schedule
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: crew schedule'
+  expected_decision: block
+  covered_rule_ids:
+  - aviation-ops-data-protection/blocked-word-2
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-aviation-ops-data-protection/blocked-word-3-acceptance
+  name: Trigger duty roster
+  description: Proves that the published keyword implementation for duty roster activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: duty roster'
+  expected_decision: block
+  covered_rule_ids:
+  - aviation-ops-data-protection/blocked-word-3
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-aviation-ops-data-protection/blocked-word-4-acceptance
+  name: Trigger pilot roster
+  description: Proves that the published keyword implementation for pilot roster activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: pilot roster'
+  expected_decision: block
+  covered_rule_ids:
+  - aviation-ops-data-protection/blocked-word-4
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-aviation-ops-data-protection/blocked-word-5-acceptance
+  name: Trigger cabin crew list
+  description: Proves that the published keyword implementation for cabin crew list
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: cabin crew list'
+  expected_decision: block
+  covered_rule_ids:
+  - aviation-ops-data-protection/blocked-word-5
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-aviation-safety-topic-filter/aviation_safety_topics-acceptance
+  name: Trigger Aviation Safety Topics
+  description: Proves that the published category implementation for Aviation Safety
+    Topics activates this Rule.
+  phase: input
+  content: 'Acceptance sample: hijack a plane'
+  expected_decision: block
+  covered_rule_ids:
+  - aviation-safety-topic-filter/aviation_safety_topics
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-airline-brand-protection-filter/blocked-word-1-acceptance
+  name: Trigger {{brand_name}} plane crash
+  description: Proves that the published keyword implementation for {{brand_name}}
+    plane crash activates this Rule.
+  phase: output
+  content: 'Acceptance sample: {{brand_name}} plane crash'
+  expected_decision: block
+  covered_rule_ids:
+  - airline-brand-protection-filter/blocked-word-1
+  kind: rule_acceptance
+  required: true
+  parameter_names:
+  - brand_name
+  group: Rule acceptance
+  scope: rule
+- id: rule-airline-brand-protection-filter/blocked-word-2-acceptance
+  name: Trigger {{brand_name}} flight crashed
+  description: Proves that the published keyword implementation for {{brand_name}}
+    flight crashed activates this Rule.
+  phase: output
+  content: 'Acceptance sample: {{brand_name}} flight crashed'
+  expected_decision: block
+  covered_rule_ids:
+  - airline-brand-protection-filter/blocked-word-2
+  kind: rule_acceptance
+  required: true
+  parameter_names:
+  - brand_name
+  group: Rule acceptance
+  scope: rule
+- id: rule-airline-brand-protection-filter/blocked-word-3-acceptance
+  name: Trigger {{brand_name}} crash landing
+  description: Proves that the published keyword implementation for {{brand_name}}
+    crash landing activates this Rule.
+  phase: output
+  content: 'Acceptance sample: {{brand_name}} crash landing'
+  expected_decision: block
+  covered_rule_ids:
+  - airline-brand-protection-filter/blocked-word-3
+  kind: rule_acceptance
+  required: true
+  parameter_names:
+  - brand_name
+  group: Rule acceptance
+  scope: rule
+- id: rule-airline-brand-protection-filter/blocked-word-4-acceptance
+  name: Trigger {{brand_name}} emergency
+  description: Proves that the published keyword implementation for {{brand_name}}
+    emergency activates this Rule.
+  phase: output
+  content: 'Acceptance sample: {{brand_name}} emergency'
+  expected_decision: block
+  covered_rule_ids:
+  - airline-brand-protection-filter/blocked-word-4
+  kind: rule_acceptance
+  required: true
+  parameter_names:
+  - brand_name
+  group: Rule acceptance
+  scope: rule
+- id: rule-airline-brand-protection-filter/blocked-word-5-acceptance
+  name: Trigger {{brand_name}} passengers dead
+  description: Proves that the published keyword implementation for {{brand_name}}
+    passengers dead activates this Rule.
+  phase: output
+  content: 'Acceptance sample: {{brand_name}} passengers dead'
+  expected_decision: block
+  covered_rule_ids:
+  - airline-brand-protection-filter/blocked-word-5
+  kind: rule_acceptance
+  required: true
+  parameter_names:
+  - brand_name
+  group: Rule acceptance
+  scope: rule
+- id: rule-airline-brand-protection-filter/blocked-word-6-acceptance
+  name: Trigger {{brand_name}} confirms fatalities
+  description: Proves that the published keyword implementation for {{brand_name}}
+    confirms fatalities activates this Rule.
+  phase: output
+  content: 'Acceptance sample: {{brand_name}} confirms fatalities'
+  expected_decision: block
+  covered_rule_ids:
+  - airline-brand-protection-filter/blocked-word-6
+  kind: rule_acceptance
+  required: true
+  parameter_names:
+  - brand_name
+  group: Rule acceptance
+  scope: rule
+- id: rule-airline-brand-protection-filter/blocked-word-7-acceptance
+  name: Trigger {{brand_name}} safety scandal
+  description: Proves that the published keyword implementation for {{brand_name}}
+    safety scandal activates this Rule.
+  phase: output
+  content: 'Acceptance sample: {{brand_name}} safety scandal'
+  expected_decision: block
+  covered_rule_ids:
+  - airline-brand-protection-filter/blocked-word-7
+  kind: rule_acceptance
+  required: true
+  parameter_names:
+  - brand_name
+  group: Rule acceptance
+  scope: rule
+- id: rule-airline-brand-protection-filter/blocked-word-8-acceptance
+  name: Trigger {{brand_name}} cover up
+  description: Proves that the published keyword implementation for {{brand_name}}
+    cover up activates this Rule.
+  phase: output
+  content: 'Acceptance sample: {{brand_name}} cover up'
+  expected_decision: block
+  covered_rule_ids:
+  - airline-brand-protection-filter/blocked-word-8
+  kind: rule_acceptance
+  required: true
+  parameter_names:
+  - brand_name
+  group: Rule acceptance
+  scope: rule
+- id: rule-airline-brand-protection-filter/blocked-word-9-acceptance
+  name: Trigger {{brand_name}} fleet grounded
+  description: Proves that the published keyword implementation for {{brand_name}}
+    fleet grounded activates this Rule.
+  phase: output
+  content: 'Acceptance sample: {{brand_name}} fleet grounded'
+  expected_decision: block
+  covered_rule_ids:
+  - airline-brand-protection-filter/blocked-word-9
+  kind: rule_acceptance
+  required: true
+  parameter_names:
+  - brand_name
+  group: Rule acceptance
+  scope: rule
+- id: rule-airline-brand-protection-filter/blocked-word-10-acceptance
+  name: Trigger {{brand_name}} discrimination lawsuit
+  description: Proves that the published keyword implementation for {{brand_name}}
+    discrimination lawsuit activates this Rule.
+  phase: output
+  content: 'Acceptance sample: {{brand_name}} discrimination lawsuit'
+  expected_decision: block
+  covered_rule_ids:
+  - airline-brand-protection-filter/blocked-word-10
+  kind: rule_acceptance
+  required: true
+  parameter_names:
+  - brand_name
+  group: Rule acceptance
+  scope: rule
+- id: rule-airline-brand-protection-filter/airline_brand_protection-acceptance
+  name: Trigger Airline Brand Protection
+  description: Proves that the published category implementation for Airline Brand
+    Protection activates this Rule.
+  phase: output
+  content: 'Acceptance sample: plane crash'
+  expected_decision: block
+  covered_rule_ids:
+  - airline-brand-protection-filter/airline_brand_protection
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-competitor-name-input-blocker/dynamic-competitors-blocked-words-acceptance
+  name: Trigger Competitors Blocked Words
+  description: Proves that the published keyword implementation for Competitors Blocked
+    Words activates this Rule.
+  phase: input
+  content: Review the services offered by {{competitors}}.
+  expected_decision: block
+  covered_rule_ids:
+  - competitor-name-input-blocker/dynamic-competitors-blocked-words
+  kind: rule_acceptance
+  required: true
+  parameter_names:
+  - competitors
+  group: Rule acceptance
+  scope: rule
+- id: rule-competitor-name-output-blocker/dynamic-competitors-blocked-words-acceptance
+  name: Trigger Competitors Blocked Words
+  description: Proves that the published keyword implementation for Competitors Blocked
+    Words activates this Rule.
+  phase: output
+  content: Review the services offered by {{competitors}}.
+  expected_decision: block
+  covered_rule_ids:
+  - competitor-name-output-blocker/dynamic-competitors-blocked-words
+  kind: rule_acceptance
+  required: true
+  parameter_names:
+  - competitors
+  group: Rule acceptance
+  scope: rule
+- id: rule-competitor-recommendation-input-filter/dynamic-competitor-recommendation-words-acceptance
+  name: Trigger Competitor Recommendation Words
+  description: Proves that the published keyword implementation for Competitor Recommendation
+    Words activates this Rule.
+  phase: input
+  content: I recommend {{competitors}} for this trip.
+  expected_decision: block
+  covered_rule_ids:
+  - competitor-recommendation-input-filter/dynamic-competitor-recommendation-words
+  kind: rule_acceptance
+  required: true
+  parameter_names:
+  - competitors
+  group: Rule acceptance
+  scope: rule
+- id: rule-competitor-recommendation-output-filter/dynamic-competitor-recommendation-words-acceptance
+  name: Trigger Competitor Recommendation Words
+  description: Proves that the published keyword implementation for Competitor Recommendation
+    Words activates this Rule.
+  phase: output
+  content: I recommend {{competitors}} for this trip.
+  expected_decision: block
+  covered_rule_ids:
+  - competitor-recommendation-output-filter/dynamic-competitor-recommendation-words
+  kind: rule_acceptance
+  required: true
+  parameter_names:
+  - competitors
+  group: Rule acceptance
+  scope: rule
+- id: rule-competitor-comparison-input-filter/dynamic-competitor-comparison-words-acceptance
+  name: Trigger Competitor Comparison Words
+  description: Proves that the published keyword implementation for Competitor Comparison
+    Words activates this Rule.
+  phase: input
+  content: '{{competitors}} is better than {{brand_name}}.'
+  expected_decision: block
+  covered_rule_ids:
+  - competitor-comparison-input-filter/dynamic-competitor-comparison-words
+  kind: rule_acceptance
+  required: true
+  parameter_names:
+  - competitors
+  - brand_name
+  group: Rule acceptance
+  scope: rule
+- id: rule-competitor-comparison-input-filter/competitor-comparison-intent-acceptance
+  name: Trigger Competitor comparison intent
+  description: Proves that the published category implementation for Competitor comparison
+    intent activates this Rule.
+  phase: input
+  content: 'Acceptance sample: airline better'
+  expected_decision: block
+  covered_rule_ids:
+  - competitor-comparison-input-filter/competitor-comparison-intent
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-competitor-comparison-output-filter/dynamic-competitor-comparison-words-acceptance
+  name: Trigger Competitor Comparison Words
+  description: Proves that the published keyword implementation for Competitor Comparison
+    Words activates this Rule.
+  phase: output
+  content: '{{competitors}} is better than {{brand_name}}.'
+  expected_decision: block
+  covered_rule_ids:
+  - competitor-comparison-output-filter/dynamic-competitor-comparison-words
+  kind: rule_acceptance
+  required: true
+  parameter_names:
+  - competitors
+  - brand_name
+  group: Rule acceptance
+  scope: rule

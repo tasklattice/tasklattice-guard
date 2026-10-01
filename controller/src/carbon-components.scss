@@ -4,6 +4,8 @@
   @include meta.load-css("@carbon/styles/scss/utilities/visually-hidden");
   @include meta.load-css("@carbon/react/scss/components/button");
   @include meta.load-css("@carbon/react/scss/components/text-input");
+  @include meta.load-css("@carbon/react/scss/components/date-picker");
+  @include meta.load-css("@carbon/react/scss/components/time-picker");
   @include meta.load-css("@carbon/react/scss/components/text-area");
   @include meta.load-css("@carbon/react/scss/components/checkbox");
   @include meta.load-css("@carbon/react/scss/components/toggle");

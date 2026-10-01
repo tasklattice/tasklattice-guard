@@ -1,0 +1,35 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: local-code-injection
+  name: Code execution patterns
+  description: Local evaluation and command-execution signatures. Active HTML is covered separately by
+    Rendered content injection. Actual execution requires sandboxing and authorization.
+  source: built_in
+  version: 2.0.0
+  tags:
+  - namespace: protection
+    value: application_injection
+    label: Code & application injection
+    source: declared
+  - namespace: guardrail_category
+    value: agentic_security
+    label: Agentic Security
+    source: declared
+  - namespace: collection
+    value: focused-protection
+    label: Focused protection
+    source: declared
+  safety_level: balanced
+  output_delivery: full_buffered
+parameters: []
+rules:
+- rules/code-injection-blocker-blocked-word-3.yaml
+- rules/code-injection-blocker-blocked-word-4.yaml
+- rules/code-injection-blocker-blocked-word-5.yaml
+- rules/code-injection-blocker-blocked-word-6.yaml
+- rules/code-injection-blocker-blocked-word-7.yaml
+tests:
+- tests/acceptance.yaml
+- tests/regression.yaml

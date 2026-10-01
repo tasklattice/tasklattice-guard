@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: topic-restriction-filter/blocked-word-4
+name: election results
+description: 'Off-topic: politics'
+stages:
+- input
+detector:
+  ref: text/keyword
+  version: 1.0.0
+  parameters:
+    keywords:
+    - - election results
+      - medium
+on_match:
+  action: block
+  replacement: null
+runtime_adapter:
+  binding_id: topic-restriction-filter
+  implementation_rule_id: blocked-word-4
+metadata:
+  taxonomy_ids:
+  - TALI-BUSINESS-POLICY-OFF-TOPIC
+risk_level: low

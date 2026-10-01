@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: builtin-company-policy
+  name: Company Policy
+  description: Evaluates user input against configured company boundaries using the validated Topic Control
+    binding.
+  source: built_in
+  version: 1.0.0
+  tags:
+  - namespace: protection
+    value: business_rules
+    label: Business & industry rules
+    source: declared
+  - namespace: guardrail_category
+    value: topic_control
+    label: Topic Control
+    source: declared
+parameters: []
+rules:
+- rules/model-company-policy.yaml
+tests:
+- tests/acceptance.yaml

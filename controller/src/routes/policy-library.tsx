@@ -230,8 +230,8 @@ export function PolicyLibraryPage() {
                     key={policy.id}
                     policy={policy}
                     onOpen={() => openPolicy(policy)}
-                    onExport={policy.source === "custom" ? () => exportPolicy(policy) : undefined}
-                    onDelete={canManage && policy.source === "custom" ? () => requestPolicyDelete(policy) : undefined}
+                    onExport={policy.source === "custom" && policy.implementation === "nemo_native" ? () => exportPolicy(policy) : undefined}
+                    onDelete={canManage && policy.source === "custom" && policy.implementation === "nemo_native" ? () => requestPolicyDelete(policy) : undefined}
                   />
                 ))}
               </div>
@@ -250,9 +250,9 @@ export function PolicyLibraryPage() {
       <PolicyDetail
         policy={selected}
         onClose={closePolicy}
-        onExport={!searchParams.version && selected?.source === "custom" ? exportPolicy : undefined}
-        onDelete={!searchParams.version && canManage && selected?.source === "custom" ? requestPolicyDelete : undefined}
-        onEdit={!searchParams.version && canManage && selected?.source === "custom" ? (policy, trigger) => { studioOpenerRef.current = trigger; setPolicyImport(null); setStudioPolicy(policy.implementation_detail ?? null); } : undefined}
+        onExport={!searchParams.version && selected?.source === "custom" && selected.implementation === "nemo_native" ? exportPolicy : undefined}
+        onDelete={!searchParams.version && canManage && selected?.source === "custom" && selected.implementation === "nemo_native" ? requestPolicyDelete : undefined}
+        onEdit={!searchParams.version && canManage && selected?.source === "custom" && selected.implementation === "nemo_native" ? (policy, trigger) => { studioOpenerRef.current = trigger; setPolicyImport(null); setStudioPolicy(policy.implementation_detail ?? null); } : undefined}
       />
       <DeletePolicyDialog
         policy={pendingDelete}
@@ -474,7 +474,7 @@ function RuleRow({ rule }: { rule: PolicyRule }) {
       <div className="border-t bg-muted/15 px-4 py-4 text-xs">
         <p className="leading-5 text-muted-foreground">{rule.description || t("policyLibrary.noRuleDescription")}</p>
         <dl className="mt-3 grid gap-3 sm:grid-cols-3">
-          <Fact label={t("policyLibrary.ruleForm")} value={t(`policyLibrary.forms.${rule.form}`)} />
+          <Fact label={t("policyLibrary.detector")} value={`${rule.detector.ref}@${rule.detector.version}`} />
           <Fact label={t("policyLibrary.railTypesLabel")} value={rule.rails.map((railType) => t(`policyLibrary.railTypes.${railType}`)).join(", ")} />
           <Fact label={t("policyLibrary.effectLabel")} value={t(`policyLibrary.effects.${rule.effect}`, { defaultValue: rule.effect })} />
         </dl>
@@ -526,11 +526,11 @@ function Implementation({ policy }: { policy: Policy }) {
       <p className="mt-1 text-xs leading-5 text-muted-foreground">{t("policyLibrary.implementationDescription")}</p>
       <dl className="mt-4 grid gap-3 rounded-lg border bg-muted/15 p-4 sm:grid-cols-2">
         <Fact label={t("policyLibrary.railTypesLabel")} value={policy.rails.map((railType) => t(`policyLibrary.railTypes.${railType}`)).join(", ")} />
-        <Fact label={t("policyLibrary.ruleForms")} value={policy.forms.map((form) => t(`policyLibrary.forms.${form}`)).join(", ")} />
+        <Fact label={t("policyLibrary.detectors")} value={policy.detectors.join(", ")} />
       </dl>
       <div className="mt-4 divide-y overflow-hidden rounded-lg border">
         {policy.rules.map((rule) => {
-          const implementation = rule.implementation.flow_name ?? rule.implementation.detector ?? rule.form;
+          const implementation = rule.implementation.flow_name ?? rule.implementation.detector ?? rule.detector.ref;
           return (
             <div key={rule.id} className="grid items-center gap-x-5 gap-y-2 px-4 py-3 text-xs sm:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_minmax(8rem,0.75fr)]">
               <div className="min-w-0"><strong className="block truncate font-medium">{rule.name}</strong><span className="mt-1 block truncate font-mono text-xs text-muted-foreground">{rule.implementation.binding_id}</span></div>

@@ -32,7 +32,7 @@ export const jsonAggregate = (value: SQLWrapper) =>
   sql`coalesce(jsonb_agg(${value}), '[]'::jsonb)`;
 export const scalar = <T>(query: SQLWrapper) => sql<T>`(${query})`;
 // Historical evidence without an explicit Rule snapshot stays unclassified.
-export const securityFinding = (finding: SQLWrapper) => sql<boolean>`${jsonText(finding, "verdict")} IN ('unsafe', 'uncertain')`;
+export const securityFinding = (finding: SQLWrapper) => sql<boolean>`${jsonText(finding, "verdict")} IN ('matched', 'unknown')`;
 export const findingSeverity = (finding: SQLWrapper) => sql<string>`CASE
   WHEN ${jsonText(finding, "riskSeverity")} IN ('critical','high','medium','low','informational')
   THEN ${jsonText(finding, "riskSeverity")} ELSE 'unclassified' END`;

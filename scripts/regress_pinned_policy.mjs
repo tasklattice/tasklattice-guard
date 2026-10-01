@@ -40,7 +40,7 @@ const legacy = symbolMarkers ? "input_version_1" : "PINNED_LEGACY_TOKEN";
 const current = symbolMarkers ? "output_version_2" : "PINNED_CURRENT_TOKEN";
 function draft(version) {
   const marker = version === 1 ? legacy : current;
-  const action = version === 1 ? "redact" : "reject";
+  const action = version === 1 ? "transform" : "block";
   const flows = phases.map(phase => `${phase}_version_${version}`);
   return { guardrail_category: "content_safety", colang_version: "2.x",
     sources: [{ path: "checks.co", content: flows.map(flow => `flow ${flow} $text\n  if $text == "${marker}"\n    $r = await GuardRecordPolicyAction(flow_name="${flow}", safe=False, text=$text, replacement="[version-${version}]")\n  else\n    $r = await GuardRecordPolicyAction(flow_name="${flow}", safe=True, text=$text)\n`).join("\n") }],

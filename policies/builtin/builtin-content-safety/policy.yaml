@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: builtin-content-safety
+  name: Model Content Safety
+  description: Classifies unsafe user input and model output with the validated Content Safety capability
+    binding.
+  source: built_in
+  version: 1.0.0
+  tags:
+  - namespace: protection
+    value: content_safety
+    label: Content safety
+    source: declared
+  - namespace: guardrail_category
+    value: content_safety
+    label: Content Safety
+    source: declared
+parameters: []
+rules:
+- rules/model-content-safety.yaml
+tests:
+- tests/acceptance.yaml

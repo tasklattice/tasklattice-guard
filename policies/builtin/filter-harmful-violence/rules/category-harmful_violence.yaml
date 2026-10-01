@@ -1,0 +1,159 @@
+id: category/harmful_violence
+name: Harmful Violence
+description: Detects content related to violence, criminal planning, and attacks
+stages:
+- input
+- output
+detector:
+  ref: text/conditions
+  version: 1.0.0
+  parameters:
+    detector_options:
+      match:
+        all:
+        - not:
+            contains:
+            - violence prevention
+            - crime statistics
+            - true crime
+            - documentary
+            - news report
+            - historical
+            - prevent violence
+            - combat violence
+            - fight violence
+            - violence against
+            - victims of violence
+            - domestic violence
+            - reporting violence
+            - violence awareness
+        - keywords:
+          - how to kill someone
+          - plan attack
+          - commit murder
+          - school shooting
+          - mass shooting
+          - serial killer
+          - hired hitman
+          - assassinate
+          - terrorism
+          - terrorist attack
+          - kidnapping plan
+          - human trafficking
+          - rape
+          - sexual assault
+          - torture method
+          - ways to murder
+          - plan a shooting
+          - plan an attack
+          - kill my
+          - murder someone
+          - hire a hitman
+          - get away with murder
+          - plan attack
+          - planning attack
+          - planned attack
+          - commit crime
+          - committing crime
+          - organize shooting
+          - organizing shooting
+          - organized shooting
+          - coordinate attack
+          - coordinating attack
+          - coordinated attack
+          - gun school
+          - shooting school
+          - weapon attack
+          - kill wife
+          - kill husband
+          - murder plan
+          - murder planning
+          - how to get away with murder
+          - how to commit murder
+          - how to kill
+          - ways to kill
+          - best way to kill
+          - easiest way to kill
+          - hire hitman
+          - find hitman
+          - hire assassin
+          - find assassin
+          - contract killer
+          - how to assassinate
+          - assassination plan
+          - plan terrorist attack
+          - organize terrorist attack
+          - commit terrorist attack
+          - plan mass shooting
+          - organize mass shooting
+          - school shooter
+          - mass shooter
+          - how to kidnap
+          - kidnapping instructions
+          - kidnap someone
+          - abduct someone
+          - how to rape
+          - rape someone
+          - how to sexually assault
+          - sexual assault someone
+          - torture someone
+          - torture methods
+          - how to torture
+          - ways to torture
+          - torture techniques
+          - human trafficking operation
+          - start human trafficking
+          - organize human trafficking
+          - child trafficking
+          - sex trafficking
+          - domestic terrorism
+          - lone wolf attack
+          - active shooter
+          - mass casualty
+          - vehicular attack
+          - vehicle ramming
+          - knife attack
+          - stabbing spree
+          - murder spree
+          - killing spree
+          - rampage shooting
+          - workplace shooting
+          - public shooting
+          - mass murder
+          - mass killing
+          - massacre
+          - genocide
+          - ethnic cleansing
+          - war crimes
+          - crimes against humanity
+          - honor killing
+          - vigilante justice
+          - lynch mob
+          - mob violence
+          - gang violence
+          - organized crime
+          - mafia hit
+          - gang hit
+          - drive by shooting
+          - execution style
+          - murder
+          - kill
+          - assassin
+          - hitman
+          - kidnap
+          - attack
+          - violence
+          - weapon
+          - shooting
+          - terrorist
+          - crime
+on_match:
+  action: block
+  replacement: null
+runtime_adapter:
+  binding_id: harmful_violence
+  implementation_rule_id: harmful_violence
+metadata:
+  taxonomy_ids:
+  - TALI-PHYSICAL-HARM
+risk_level: high

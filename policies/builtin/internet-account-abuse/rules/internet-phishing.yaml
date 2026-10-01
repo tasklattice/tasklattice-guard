@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: internet/phishing
+name: Credential phishing
+description: Matches this reviewed text pattern, not arbitrary semantic variants.
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: (?i)\b(?:create|build)\s+(?:a\s+)?(?:fake|phishing)\s+login\s+page\s+to\s+steal\b|创建(?:钓鱼|假)登录页面(?:来)?窃取
+on_match:
+  action: block
+runtime_adapter:
+  binding_id: internet-account-abuse
+  implementation_rule_id: internet/phishing
+metadata:
+  taxonomy_ids:
+  - TALI-BUSINESS-POLICY
+risk_level: low

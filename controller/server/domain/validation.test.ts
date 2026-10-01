@@ -13,10 +13,13 @@ describe("Guardrail Validation contract", () => {
     const policies = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
     const draft = defaultGuardrailDraft(policies);
     const cases = generatedTestCases("guardrail-1", draft, policies);
-    const observed = applyValidationOverrides(cases, draft).find(item => item.sourcePolicyId === "filter-denied-insults")!;
-    expect(observed.expectedDecision).toBe("block");
-    expect(observed.expectationOverride).toMatchObject({ expectedDecision: "allow", expectedOutputContent: observed.content,
-      expectedMatches: [{ policyId: "filter-denied-insults", ruleId: "category/denied_insults" }] });
+    const observed = applyValidationOverrides(cases, draft).filter(item => item.sourcePolicyId === "filter-denied-insults");
+    expect(observed.map(item => item.phase)).toEqual(["input", "output"]);
+    for (const test of observed) {
+      expect(test.expectedDecision).toBe("block");
+      expect(test.expectationOverride).toMatchObject({ expectedDecision: "allow", expectedOutputContent: test.content,
+        expectedMatches: [{ policyId: "filter-denied-insults", ruleId: "category/denied_insults" }] });
+    }
     for (const change of ["action", "match", "content"] as const) {
       const changed = structuredClone(draft);
       const binding = changed.policyBindings.find(item => item.policyId === "filter-denied-insults")!;
@@ -47,7 +50,7 @@ describe("Guardrail Validation contract", () => {
       sourcePolicyVersion: "2.0.0", expectedDecision: "block", expectedOutputContent: "",
       expectedMatches: [{ policyId: "filter-harmful-illegal-weapons", ruleId: "category/harmful_illegal_weapons" }],
     });
-    expect(reviewed).toHaveLength(321);
+    expect(reviewed).toHaveLength(336);
     expect(reviewed.every((item) => item.required)).toBe(true);
     expect(cases).toEqual(original);
   });
@@ -76,7 +79,7 @@ describe("Guardrail Validation contract", () => {
     const cases = generatedTestCases("guardrail-1", {
       allowedTopics: [], restrictedTopics: [], safetyLevel: "balanced", outputDelivery: "full_buffered",
       policyBindings: [{
-        policyId: "keyword-blocking", policyVersion: "1.95.0", action: "reject",
+        policyId: "keyword-blocking", policyVersion: "1.95.0", action: "block",
         parameterValues: { blocked_words: "restricted phrase" }, enabledRuleIds: ["keyword/blocked-words"],
         ruleActions: {}, enabledRails: ["input"], reasoningPolicy: null,
       }],
@@ -97,7 +100,7 @@ describe("Guardrail Validation contract", () => {
 
   it("generates mode-aware unmatched and denied-topic cases", () => {
     const policies = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
-    const binding = { policyId: "builtin-topic-safety", policyVersion: "1.0.0", action: "reject" as const,
+    const binding = { policyId: "builtin-topic-safety", policyVersion: "1.0.0", action: "block" as const,
       parameterValues: {}, enabledRuleIds: ["model/topic-control"], ruleActions: {}, enabledRails: ["input" as const], reasoningPolicy: null };
     const draft = { allowedTopics: ["Order support"], restrictedTopics: ["Fabricating refund evidence"], safetyLevel: "balanced" as const, outputDelivery: "full_buffered" as const, policyBindings: [binding] };
     for (const mode of ["strict", "permissive"] as const) {

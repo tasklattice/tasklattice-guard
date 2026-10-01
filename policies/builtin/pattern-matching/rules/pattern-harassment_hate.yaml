@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: pattern/harassment_hate
+name: Harassment & Hate Speech
+description: Detects slurs, hate speech and harassment
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b(n[i1]gg[e3]r|f[a4]gg[o0]t|k[i1]ke|sp[i1]c|ch[i1]nk|g[o0]{2}k|w[e3]tb[a4]ck|r[e3]t[a4]rd|tr[a4]nny|shemale|dyke|cunt|kill\s+all|gas\s+the|lynch|hang\s+the|exterminate|subhuman|untermensch|mongrel|mud\s+people|race\s+traitor|coal\s+burner|oil\s+driller|oven|lampshade|helicopter\s+ride|throw\s+from|rooftop|wood\s+chipper|dox(x)?(ing)?|swat(ting)?|harass(ment)?|stalk(ing|er)?|cyber\s*bully|death\s+threat|rape\s+threat|bomb\s+threat|shoot\s+up|gonna\s+find\s+you|know\s+where\s+you\s+live|coming\s+for\s+you)\b
+on_match:
+  action: transform
+  replacement: '[harassment_hate_REDACTED]'
+runtime_adapter:
+  binding_id: pattern-matching
+  implementation_rule_id: harassment_hate
+metadata:
+  taxonomy_ids:
+  - TALI-SOCIAL-HARM-HARASSMENT
+risk_level: medium

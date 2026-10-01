@@ -1,0 +1,78 @@
+id: uae-cultural-sensitivity-filter/uae_cultural_sensitivity
+name: UAE Cultural Sensitivity
+description: Ensures AI output respects UAE cultural norms, royal family, and religious content policies
+stages:
+- input
+detector:
+  ref: text/conditions
+  version: 1.0.0
+  parameters:
+    detector_options:
+      match:
+        all:
+        - not:
+            contains:
+            - what is
+            - explain
+            - cultural guide
+            - travel guide
+            - etiquette
+            - customs
+            - tradition
+            - how to respect
+            - cultural awareness
+            - history of
+            - learn about
+            - understand
+            - policy on
+            - regulation
+        - any:
+          - within_sentence:
+              all:
+              - contains:
+                - uae
+                - united arab emirates
+                - dubai
+                - abu dhabi
+                - sharjah
+                - ajman
+                - fujairah
+                - ras al khaimah
+                - umm al quwain
+                - emirati
+                - emiratis
+              - keywords:
+                - mock
+                - ridicule
+                - insult
+                - satirize
+                - caricature
+                - parody
+                - defame
+                - slander
+                - disrespect
+                - alcohol promotion
+                - gambling promotion
+                - drug use
+                - immodest
+                - indecent
+          - keywords:
+            - insult the ruler
+            - mock the sheikh
+            - ridicule the royal family
+            - defame mohammed bin
+            - blasphemy against islam
+            - insult islam
+            - mock the prophet
+            - anti-islamic
+            - desecrate the quran
+on_match:
+  action: block
+  replacement: null
+runtime_adapter:
+  binding_id: uae-cultural-sensitivity-filter
+  implementation_rule_id: uae_cultural_sensitivity
+metadata:
+  taxonomy_ids:
+  - TALI-BUSINESS-POLICY
+risk_level: low

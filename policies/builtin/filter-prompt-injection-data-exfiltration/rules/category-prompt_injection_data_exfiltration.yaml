@@ -1,0 +1,117 @@
+id: category/prompt_injection_data_exfiltration
+name: Prompt Injection Data Exfiltration
+description: Detects attempts to extract training data, internal information, or user data through prompts
+stages:
+- input
+- output
+detector:
+  ref: text/conditions
+  version: 1.0.0
+  parameters:
+    detector_options:
+      match:
+        all:
+        - not:
+            contains:
+            - data extraction pipeline
+            - ETL
+            - data science
+            - data engineering
+            - data migration
+            - backup and recovery
+            - data export feature
+            - GDPR data request
+            - right to access
+            - data portability
+            - legitimate data access
+            - authorized data retrieval
+            - data loss prevention
+            - DLP
+        - any:
+          - within_sentence:
+              all:
+              - contains:
+                - extract
+                - leak
+                - exfiltrate
+                - dump
+                - retrieve
+                - access
+                - steal
+                - obtain
+                - harvest
+                - scrape
+                - collect
+                - gather
+                - expose
+                - export
+                - download
+                - copy
+                - siphon
+              - keywords:
+                - training data
+                - training set
+                - training examples
+                - internal data
+                - internal information
+                - database contents
+                - database records
+                - user data
+                - user records
+                - user information
+                - personal data
+                - private information
+                - private data
+                - confidential data
+                - confidential information
+                - sensitive data
+                - sensitive information
+                - customer data
+                - customer records
+                - employee data
+                - employee records
+                - credentials
+                - passwords
+                - API keys
+                - access tokens
+                - secret keys
+                - encryption keys
+                - private keys
+                - session tokens
+                - authentication tokens
+                - model weights
+                - model parameters
+                - source code
+                - proprietary code
+                - intellectual property
+          - keywords:
+            - extract training data
+            - leak internal data
+            - dump database
+            - dump all records
+            - show all user data
+            - list all users
+            - list all passwords
+            - show all API keys
+            - reveal all credentials
+            - expose customer data
+            - steal user information
+            - exfiltrate data
+            - harvest email addresses
+            - scrape personal information
+            - extract model weights
+            - steal source code
+            - copy proprietary code
+            - download private data
+            - access confidential files
+            - retrieve secret keys
+on_match:
+  action: block
+  replacement: null
+runtime_adapter:
+  binding_id: prompt_injection_data_exfiltration
+  implementation_rule_id: prompt_injection_data_exfiltration
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-DATA-EXFILTRATION
+risk_level: high

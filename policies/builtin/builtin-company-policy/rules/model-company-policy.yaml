@@ -1,0 +1,19 @@
+id: model/company-policy
+name: Company policy judge
+description: Reject input that violates configured company policy.
+stages:
+- input
+detector:
+  ref: model/classifier
+  version: 1.0.0
+  parameters:
+    profile: topic-classification
+on_match:
+  action: block
+runtime_adapter:
+  binding_id: company_policy
+  implementation_rule_id: company_policy
+metadata:
+  taxonomy_ids:
+  - TALI-BUSINESS-POLICY
+risk_level: low

@@ -20,7 +20,7 @@ This article is about a **custom Policy authored in Policy Studio**. **Testing**
 
 After validation passes, review the Policy name, Rails, Action dependencies, Test Cases, and timeout budget in Policy Studio, then publish the current draft. The platform creates an immutable Policy Version with a checksum for that revision. Later edits create a new draft and version without rewriting the old one. A Guardrail Binding explicitly selects the Policy Version and resolves required parameters.
 
-**Publishing the Policy does not protect business traffic yet.** Bind it to a Guardrail, validate and publish a Guardrail Version, route an Endpoint through a published Router to that version, and confirm Runner has applied the new configuration. See [build and publish a Guardrail](#user-lifecycle) and [Endpoint and Routing](#operator-routing).
+**Publishing the Policy does not protect business traffic yet.** Bind it to a Guardrail, validate and publish a Guardrail Version, route an Endpoint through a published Router to that version, and confirm Runner has applied the new configuration. See [build and publish a Guardrail](/document/operator/user-lifecycle) and [Endpoint and Routing](/document/operator/operator-routing).
 
 <a id="policy-transfer-environments" />
 

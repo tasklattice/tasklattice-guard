@@ -5,17 +5,17 @@ def test_pass_retains_local_and_custom_findings_without_changing_text() -> None:
     text = "You should report any failure honestly."
     engine = BuiltinContentFilter()
     observed = engine.evaluate(text=text, phase="input", policies=("filter-denied-insults",),
-        policy_rule_actions={"filter-denied-insults": {"category/denied_insults": "pass"}})
-    assert observed.verdict == "unsafe" and observed.content == text
-    assert observed.findings[0].recommended_action == "pass"
-    assert "failure + you" in observed.findings[0].evidence
+        policy_rule_actions={"filter-denied-insults": {"category/denied_insults": "allow"}})
+    assert observed.verdict == "matched" and observed.content == text
+    assert observed.findings[0].recommended_action == "allow"
+    assert "failure + you" in observed.findings[0].evidence.lower()
     assert "without intervening" in observed.reason
     # The source Policy still rejects when no Default-local override is supplied.
-    assert engine.evaluate(text=text, phase="input", policies=("filter-denied-insults",)).findings[0].recommended_action == "reject"
+    assert engine.evaluate(text=text, phase="input", policies=("filter-denied-insults",)).findings[0].recommended_action == "block"
     custom = engine.evaluate(text="private", phase="output", policies=(), custom_rules=(
-        {"id": "observe", "phases": ["output"], "detector": "keyword", "keywords": ["private"], "action": "pass"},
+        {"id": "observe", "phases": ["output"], "detector": "keyword", "keywords": ["private"], "action": "allow"},
     ))
-    assert custom.content == "private" and custom.findings[0].recommended_action == "pass"
+    assert custom.content == "private" and custom.findings[0].recommended_action == "allow"
 
 
 def test_custom_keyword_rule_can_mask_with_replacement_text() -> None:
@@ -29,13 +29,13 @@ def test_custom_keyword_rule_can_mask_with_replacement_text() -> None:
                 "phases": ["input"],
                 "detector": "keyword",
                 "keywords": ["mama"],
-                "action": "redact",
+                "action": "transform",
                 "replacement": "niulai",
             },
         ),
     )
 
-    assert result.verdict == "unsafe"
+    assert result.verdict == "matched"
     assert result.content == "please tell niulai to review this request"
     assert result.reason == "A built-in content-filter Policy transformed the interaction."
     assert result.findings[0].replacement == "niulai"
@@ -53,7 +53,7 @@ def test_block_after_mask_preserves_prior_transformation() -> None:
                 "phases": ["input"],
                 "detector": "keyword",
                 "keywords": ["mama"],
-                "action": "redact",
+                "action": "transform",
                 "replacement": "niulai",
             },
             {
@@ -61,23 +61,23 @@ def test_block_after_mask_preserves_prior_transformation() -> None:
                 "phases": ["input"],
                 "detector": "keyword",
                 "keywords": ["xiao sheng zi"],
-                "action": "reject",
+                "action": "block",
             },
         ),
     )
 
-    assert result.verdict == "unsafe"
+    assert result.verdict == "matched"
     assert result.content == "please tell niulai that xiao sheng zi is here"
     assert result.reason == "A built-in content-filter Policy blocked the interaction."
-    assert {item.recommended_action for item in result.findings} == {"redact", "reject"}
+    assert {item.recommended_action for item in result.findings} == {"transform", "block"}
     assert [item.rule_id for item in result.findings] == ["mask-mama", "block-xiao-sheng-zi"]
     assert all(item.taxonomy_id == "TALI-BUSINESS-POLICY" for item in result.findings)
 
 
 def test_custom_rules_check_transformed_content_and_stop_after_reject() -> None:
     rules = (
-        {"id": "mask", "phases": ["input"], "detector": "keyword", "keywords": ["private"], "action": "redact", "replacement": "public"},
-        {"id": "block-original", "phases": ["input"], "detector": "keyword", "keywords": ["private"], "action": "reject"},
+        {"id": "mask", "phases": ["input"], "detector": "keyword", "keywords": ["private"], "action": "transform", "replacement": "public"},
+        {"id": "block-original", "phases": ["input"], "detector": "keyword", "keywords": ["private"], "action": "block"},
     )
     transformed = BuiltinContentFilter().evaluate(text="private", phase="input", policies=(), custom_rules=rules)
     assert transformed.content == "public"

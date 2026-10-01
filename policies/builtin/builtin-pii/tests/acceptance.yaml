@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=../../../schemas/tests.schema.json
+- id: pii-input
+  name: PII input
+  description: PII in input is redacted.
+  phase: input
+  content: My passport number is X1234567.
+  expected_decision: transform
+  covered_rule_ids:
+  - model/pii
+  kind: rule_acceptance
+  scope: rule
+- id: pii-output
+  name: PII output
+  description: PII in output is redacted before release.
+  phase: output
+  content: The customer passport number is X1234567.
+  expected_decision: transform
+  covered_rule_ids:
+  - model/pii
+  kind: rule_acceptance
+  scope: rule

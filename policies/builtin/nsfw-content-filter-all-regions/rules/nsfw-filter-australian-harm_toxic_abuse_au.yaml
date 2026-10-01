@@ -1,0 +1,88 @@
+id: nsfw-filter-australian/harm_toxic_abuse_au
+name: Harm Toxic Abuse AU
+description: ''
+stages:
+- input
+detector:
+  ref: text/conditions
+  version: 1.0.0
+  parameters:
+    detector_options:
+      match:
+        keywords:
+        - root
+        - rooting
+        - rooted
+        - rooter
+        - ranga
+        - rangas
+        - minge
+        - minges
+        - perv
+        - perve
+        - perving
+        - perved
+        - have a perv
+        - perve on
+        - slapper
+        - slappers
+        - moll
+        - molls
+        - arsehole
+        - arseholes
+        - bloody hell
+        - bloody oath
+        - bloody bastard
+        - bloody idiot
+        - bugger off
+        - bugger all
+        - bugger me
+        - buggered
+        - bollocks
+        - bollock
+        - wanker
+        - wankers
+        - wank
+        - tosser
+        - tossers
+        - bogan
+        - bogans
+        - filthy bogan
+        - yobbo
+        - yobbos
+        - yob
+        - dole bludger
+        - dole-bludger
+        - bludger
+        - fuck spiders
+        - fucking spiders
+        - root rat
+        - rootrat
+        - bush pig
+        - bushpig
+        - seppo
+        - seppos
+        - pom
+        - pommie
+        - pommy bastard
+        - spunk rat
+        - spunkrat
+        - fanny
+        - knob
+        - knobhead
+        - knob-head
+        - gash
+        - norks
+        - up the duff
+        - upduff
+        - get stuffed
+on_match:
+  action: block
+  replacement: null
+runtime_adapter:
+  binding_id: nsfw-filter-australian
+  implementation_rule_id: harm_toxic_abuse_au
+metadata:
+  taxonomy_ids:
+  - TALI-SOCIAL-HARM-HARASSMENT
+risk_level: medium

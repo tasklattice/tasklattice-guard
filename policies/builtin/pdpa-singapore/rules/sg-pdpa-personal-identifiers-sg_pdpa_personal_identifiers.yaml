@@ -1,0 +1,89 @@
+id: sg-pdpa-personal-identifiers/sg_pdpa_personal_identifiers
+name: SG PDPA Personal Identifiers
+description: PDPA s.13 — Blocks unauthorized collection, harvesting, or extraction of Singapore personal
+  identifiers (NRIC/FIN, SingPass, passports)
+stages:
+- input
+detector:
+  ref: text/conditions
+  version: 1.0.0
+  parameters:
+    detector_options:
+      match:
+        all:
+        - not:
+            contains:
+            - compliance
+            - pdpa audit
+            - consent form
+            - data protection officer
+            - legitimate purpose
+            - research
+            - government portal
+            - official verification
+            - explain
+            - what is
+            - how to protect
+            - format of
+            - validate checksum
+        - any:
+          - within_sentence:
+              all:
+              - contains:
+                - nric
+                - fin
+                - ic number
+                - identity card number
+                - foreign identification number
+                - singpass
+                - singpass
+                - myinfo
+                - corppass
+                - singapore passport
+                - passport number
+                - work permit number
+                - employment pass
+                - s-pass
+                - s pass
+                - ep number
+                - wp number
+              - keywords:
+                - collect
+                - harvest
+                - scrape
+                - extract
+                - crawl
+                - mine
+                - store
+                - aggregate
+                - compile database
+                - compile list
+                - bulk
+                - mass collect
+                - without consent
+                - bypass
+                - circumvent
+                - verify without
+                - lookup
+                - enumerate
+                - brute force
+          - keywords:
+            - scrape nric
+            - harvest fin numbers
+            - collect nric without consent
+            - database of ic numbers
+            - bulk nric lookup
+            - singpass credential
+            - steal singpass
+            - fake nric generator
+            - nric brute force
+on_match:
+  action: block
+  replacement: null
+runtime_adapter:
+  binding_id: sg-pdpa-personal-identifiers
+  implementation_rule_id: sg_pdpa_personal_identifiers
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-PII
+risk_level: medium

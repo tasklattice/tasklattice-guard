@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: securities/inside-information
+name: Trading on inside information
+description: Matches this reviewed text pattern, not arbitrary semantic variants.
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: (?i)\b(?:trade|buy|sell)\s+(?:on|using)\s+(?:non[- ]public|inside)\s+information\b|利用(?:内幕|未公开)信息(?:买卖|交易|炒股)
+on_match:
+  action: block
+runtime_adapter:
+  binding_id: securities-market-integrity
+  implementation_rule_id: securities/inside-information
+metadata:
+  taxonomy_ids:
+  - TALI-BUSINESS-POLICY
+risk_level: low

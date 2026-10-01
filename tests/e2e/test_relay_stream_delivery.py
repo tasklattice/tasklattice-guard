@@ -39,12 +39,13 @@ async def docker(*args):
 @pytest.mark.parametrize("mode", ["interruptible", "window_buffered", "full_buffered"])
 async def test_actual_relay_stream_delivery_and_cancellation(tmp_path, mode):
     image = os.environ.get("GUARD_TEST_RELAY_IMAGE")
-    if not image:
-        pytest.skip("Set GUARD_TEST_RELAY_IMAGE to an existing isolated Relay test image")
+    local_python = os.environ.get("GUARD_TEST_RELAY_PYTHON")
+    if not image and not local_python:
+        pytest.skip("Set GUARD_TEST_RELAY_IMAGE or GUARD_TEST_RELAY_PYTHON to an isolated pinned Relay installation")
     root = Path(__file__).resolve().parents[2]
     overlay = root.parent / "tasklattice-relay/infra/litellm/v1.87.0/overlay/litellm/proxy/guardrails/guardrail_hooks/tasklattice_guard"
     assert (overlay / "streaming.py").is_file()
-    image_id = await docker("image", "inspect", image, "--format", "{{.Id}}")
+    image_id = await docker("image", "inspect", image, "--format", "{{.Id}}") if image else "local-pinned-1.87.0"
     baked_mode = os.environ.get("GUARD_TEST_RELAY_BAKED_IMAGE", "0")
     assert baked_mode in {"0", "1"}, "GUARD_TEST_RELAY_BAKED_IMAGE must be 0 or 1"
     code_mount = ["--mount", f"type=bind,source={overlay},target=/app/litellm/proxy/guardrails/guardrail_hooks/tasklattice_guard,readonly"]
@@ -65,7 +66,7 @@ async def test_actual_relay_stream_delivery_and_cancellation(tmp_path, mode):
         code_mount = []
     name = f"guard-incremental-e2e-{uuid4()}"
     proxy_key = f"sk-test-{uuid4()}"
-    prefix = "benign " * 600
+    prefix = "".join(f"Benign response {i:03d}. " for i in range(200))
     safe_suffix = "ordinary answer"
     # Replay a captured business answer without contacting that model again.
     # Detector verdicts remain synthetic here: this is an engineering contract test.
@@ -75,7 +76,7 @@ async def test_actual_relay_stream_delivery_and_cancellation(tmp_path, mode):
         assert recording["source"] == "live-deepseek-business-sse"
         assert recording["finish_reason"] == "stop"
         prefix = recording["text"]
-        assert len(prefix) > 2048, "Recorded answer must span a stream check boundary"
+        assert len(prefix) >= 200, "Recorded answer must fill 200 nonempty native input frames"
         safe_suffix = ""
     marker = "REGRESSION_UNSAFE"
     scenario = "safe"
@@ -109,7 +110,9 @@ async def test_actual_relay_stream_delivery_and_cancellation(tmp_path, mode):
                 if scenario in {"cancel-before-first-frame", "first-frame-timeout"}:
                     upstream_entered.set()
                     await upstream_continue.wait()
-                yield frame(prefix)
+                # NeMo windows count upstream frames, not characters.
+                for index in range(200):
+                    yield frame(prefix[len(prefix)*index//200:len(prefix)*(index+1)//200])
                 upstream_entered.set()
                 await upstream_continue.wait()
                 yield frame(safe_suffix if scenario == "safe" else marker)
@@ -136,18 +139,33 @@ async def test_actual_relay_stream_delivery_and_cancellation(tmp_path, mode):
         started = False
         try:
             async with tcp_server(app) as runner_url:
-                await docker("run", "-d", "--pull=never", "--name", name, "-p", "127.0.0.1::4000",
-                    "--mount", f"type=bind,source={root}/tests/fixtures/business-replay/litellm.yaml,target=/tmp/replay.yaml,readonly",
-                    *code_mount,
-                    "-e", f"BUSINESS_REPLAY_BASE={model_url.replace('127.0.0.1', 'host.docker.internal')}/v1",
-                    "-e", f"TASKLATTICE_GUARD_API_BASE={runner_url.replace('127.0.0.1', 'host.docker.internal')}/runtime/v1/endpoints/fixture-endpoint",
-                    "-e", f"TASKLATTICE_GUARD_API_KEY={RUNTIME_CREDENTIAL}",
-                    "-e", f"REPLAY_PROXY_MASTER_KEY={proxy_key}",
-                    "-e", "LITELLM_LOCAL_MODEL_COST_MAP=True", "-e", "DISABLE_ADMIN_UI=true",
-                    image_id, "--config", "/tmp/replay.yaml", "--host", "0.0.0.0", "--port", "4000")
-                started = True
-                address = await docker("port", name, "4000/tcp")
-                assert address.startswith("127.0.0.1:") and "\n" not in address
+                if local_python:
+                    import socket
+                    with socket.socket() as listener:
+                        listener.bind(("127.0.0.1", 0))
+                        port = listener.getsockname()[1]
+                    log = (tmp_path / "proxy.log").open("w+")
+                    process = await asyncio.create_subprocess_exec(str(Path(local_python).with_name("litellm")), "--config",
+                        str(root / "tests/fixtures/business-replay/litellm.yaml"), "--host", "127.0.0.1", "--port", str(port),
+                        env={**os.environ, "BUSINESS_REPLAY_BASE": model_url + "/v1",
+                            "TASKLATTICE_GUARD_API_BASE": runner_url + "/runtime/v1/endpoints/fixture-endpoint",
+                            "TASKLATTICE_GUARD_API_KEY": RUNTIME_CREDENTIAL, "REPLAY_PROXY_MASTER_KEY": proxy_key,
+                            "LITELLM_LOCAL_MODEL_COST_MAP": "True", "DISABLE_ADMIN_UI": "true"}, stdout=log, stderr=log)
+                    address = f"127.0.0.1:{port}"
+                    started = True
+                else:
+                    await docker("run", "-d", "--pull=never", "--name", name, "-p", "127.0.0.1::4000",
+                        "--mount", f"type=bind,source={root}/tests/fixtures/business-replay/litellm.yaml,target=/tmp/replay.yaml,readonly",
+                        *code_mount,
+                        "-e", f"BUSINESS_REPLAY_BASE={model_url.replace('127.0.0.1', 'host.docker.internal')}/v1",
+                        "-e", f"TASKLATTICE_GUARD_API_BASE={runner_url.replace('127.0.0.1', 'host.docker.internal')}/runtime/v1/endpoints/fixture-endpoint",
+                        "-e", f"TASKLATTICE_GUARD_API_KEY={RUNTIME_CREDENTIAL}",
+                        "-e", f"REPLAY_PROXY_MASTER_KEY={proxy_key}",
+                        "-e", "LITELLM_LOCAL_MODEL_COST_MAP=True", "-e", "DISABLE_ADMIN_UI=true",
+                        image_id, "--config", "/tmp/replay.yaml", "--host", "0.0.0.0", "--port", "4000")
+                    started = True
+                    address = await docker("port", name, "4000/tcp")
+                    assert address.startswith("127.0.0.1:") and "\n" not in address
                 async with httpx.AsyncClient(base_url=f"http://{address}", timeout=20, trust_env=False) as client:
                     async with asyncio.timeout(60):
                         while True:
@@ -156,7 +174,8 @@ async def test_actual_relay_stream_delivery_and_cancellation(tmp_path, mode):
                                     break
                             except httpx.TransportError:
                                 pass
-                            assert await docker("inspect", name, "--format", "{{.State.Running}}") == "true"
+                            if local_python: assert process.returncode is None
+                            else: assert await docker("inspect", name, "--format", "{{.State.Running}}") == "true"
                             await asyncio.sleep(0.2)
 
                     scenarios = ["cancel-before-first-frame", "safe", "blocked", "detector-failure", "cancel"]
@@ -202,7 +221,10 @@ async def test_actual_relay_stream_delivery_and_cancellation(tmp_path, mode):
                             await asyncio.wait_for(upstream_entered.wait(), 10)
                             if mode != "full_buffered" and scenario not in {"cancel-before-first-frame", "first-frame-timeout"}:
                                 await asyncio.wait_for(received_content.wait(), 5)
-                                expected_prefix = prefix if mode == "interruptible" else prefix[:-2048]
+                                expected_prefix = prefix
+                                async with asyncio.timeout(5):
+                                    while len("".join(content)) < len(expected_prefix):
+                                        await asyncio.sleep(.01)
                                 assert "".join(content) == expected_prefix
                                 assert len(detector_calls) > detector_before
                             else:
@@ -242,14 +264,17 @@ async def test_actual_relay_stream_delivery_and_cancellation(tmp_path, mode):
                             print(json.dumps({"mode": mode, "scenario": scenario, "passed": True,
                                 "client_characters": sum(map(len, content)), "detector_calls": len(detector_calls) - detector_before,
                                 "proxy_image": image_id,
-                                "relay_code_source": "baked-image" if baked_mode == "1" else "mounted-overlay"}))
+                                "relay_code_source": "local-overlay" if local_python else "baked-image" if baked_mode == "1" else "mounted-overlay"}))
                         finally:
                             upstream_continue.set()
                             if not pending.done():
                                 pending.cancel()
                             await asyncio.gather(pending, return_exceptions=True)
         except Exception:
-            if started:
+            if started and local_python:
+                log.flush(); log.seek(0)
+                print(log.read().replace(proxy_key, "[redacted]").replace(RUNTIME_CREDENTIAL, "[redacted]")[-9000:])
+            elif started:
                 # Only synthetic fixture data is used; still strip credentials.
                 process = await asyncio.create_subprocess_exec("docker", "logs", "--tail", "60", name,
                     stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
@@ -257,7 +282,13 @@ async def test_actual_relay_stream_delivery_and_cancellation(tmp_path, mode):
                 print(output.decode().replace(proxy_key, "[redacted]").replace(RUNTIME_CREDENTIAL, "[redacted]")[-9000:])
             raise
         finally:
-            if started:
+            if started and local_python:
+                process.terminate()
+                try: await asyncio.wait_for(process.wait(), 5)
+                except TimeoutError:
+                    process.kill(); await process.wait()
+                log.close()
+            elif started:
                 await docker("stop", "--time", "2", name)
                 await docker("rm", name)
             await engine.shutdown()

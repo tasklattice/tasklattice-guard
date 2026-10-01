@@ -24,7 +24,7 @@ class Runtime:
         self.request = request
         return ProtectionDecision(
             decision="block",
-            action="reject",
+            action="block",
             reason="policy matched",
             guardrail_id="guardrail-1",
             guardrail_version="20260904-020000.002Z",
@@ -33,10 +33,10 @@ class Runtime:
             findings=(RiskFinding(
                 risk="secrets",
                 taxonomy_id="TALI-PRIVACY-CREDENTIAL",
-                verdict="unsafe",
+                verdict="matched",
                 confidence=0.99,
                 evidence="secret prompt must never be exported",
-                recommended_action="reject",
+                recommended_action="block",
                 policy_id="builtin-secrets",
                 rule_id="credential-pattern",
             ),),
@@ -51,7 +51,7 @@ class Runtime:
                 evidence="secret prompt must never be exported",
                 capability="secrets",
                 contract_ref="tali.guard.secrets.exact.v1",
-                outcome="unsafe",
+                outcome="matched",
                 action_name="GuardSecretsAction",
                 action_version="1.0.0",
             ),),
@@ -67,31 +67,6 @@ class Runtime:
     async def evaluate_guardrail(self, request, guardrail_id, version, *, on_resolved=None):
         self.explicit_guardrail = (guardrail_id, version)
         return await self.evaluate(request)
-
-
-class StreamingRuntime:
-    def __init__(self, mode="full_buffered") -> None:
-        self.mode = mode
-        self.requests = []
-
-    def output_delivery(self, _request, *, on_resolved=None, require_existing=False, allow_new_output=False):
-        from runner.toolkit.runtime.contracts import GuardrailPlanSnapshot, PlanResolution
-        if on_resolved:
-            on_resolved(PlanResolution(plan=GuardrailPlanSnapshot(
-                guardrail_id="guardrail-stream", guardrail_version="20260904-020000.002Z",
-                compiler_version="test", safety_level="balanced", output_delivery=self.mode, steps=(),
-            ), router_id="router-stream"))
-        return self.mode
-
-    async def evaluate(self, request, *, on_resolved=None):
-        self.requests.append(request)
-        return ProtectionDecision(
-            decision="allow",
-            action="pass",
-            output_delivery=self.mode,
-            guardrail_id="guardrail-stream",
-            guardrail_version="20260904-020000.002Z",
-        )
 
 
 class NoRouterRuntime:
@@ -190,7 +165,7 @@ class DraftPreviews:
         self.evaluated = (request, input)
         return ProtectionDecision(
             decision="allow",
-            action="pass",
+            action="allow",
             reason="draft passed",
             guardrail_id=input["guardrail_id"],
             guardrail_version=input["candidate_version"],
@@ -252,9 +227,9 @@ async def test_runtime_authenticates_locally_and_emits_content_free_telemetry():
             "id": "finding-1",
             "risk": "secrets",
             "taxonomyId": "TALI-PRIVACY-CREDENTIAL",
-            "verdict": "unsafe",
+            "verdict": "matched",
         "confidence": 0.99,
-        "recommendedAction": "reject",
+        "recommendedAction": "block",
         "policyId": "builtin-secrets",
             "ruleId": "credential-pattern",
             "providerEvidence": [],
@@ -266,86 +241,6 @@ async def test_runtime_authenticates_locally_and_emits_content_free_telemetry():
     assert telemetry.events[0]["metadata"]["trace"][0]["parentId"] == "rail-1"
     assert "texts" not in telemetry.events[0]
     assert "secret prompt" not in str(telemetry.events[0])
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("protocol,endpoint", [("http", "endpoint-http"), ("litellm", "endpoint-1")])
-async def test_output_stream_endpoint_holds_full_response_until_final_chunk(protocol, endpoint):
-    runtime = StreamingRuntime()
-    app = FastAPI()
-    app.include_router(RunnerAPI(runtime, Store(), Metrics(), Telemetry(), "runner-1", "controller-token").router)  # type: ignore[arg-type]
-    headers = {"x-api-key": "valid-secret"}
-    url = f"/runtime/v1/endpoints/{endpoint}/guardrails/output-stream"
-    context = {"protocol": protocol, "request_data": {"user_api_key_team_id": "team-1"},
-               "request_headers": {"x-api-key": "never-forward", "x-original-uri": "/chat/completions"}}
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://runner") as client:
-        first = await client.post(url, headers=headers, json={
-            **context,
-            "stream_id": "stream-1", "call_id": "call-1", "sequence": 0,
-            "text": "hello ", "final": False,
-        })
-        final = await client.post(url, headers=headers, json={
-            **context,
-            "stream_id": "stream-1", "call_id": "call-1", "sequence": 1,
-            "text": "world", "final": True,
-        })
-
-    assert first.status_code == 200
-    assert first.json()["status"] == "buffering"
-    assert first.json()["released_text"] == ""
-    assert final.status_code == 200
-    assert final.json()["status"] == "completed"
-    assert final.json()["released_text"] == "hello world"
-    assert runtime.requests[0].texts == ("hello world",)
-    assert runtime.requests[0].context.protocol == protocol
-    if protocol == "litellm":
-        assert runtime.requests[0].call_id == "endpoint-1:call-1"
-        assert runtime.requests[0].context.value("field", "litellm.team_id") == "team-1"
-        assert runtime.requests[0].context.value("field", "http.path") == "/chat/completions"
-        assert runtime.requests[0].context.value("header", "x-api-key") is None
-
-
-@pytest.mark.asyncio
-async def test_litellm_stream_rejects_wrong_adapter_and_credentials():
-    app = FastAPI()
-    app.include_router(RunnerAPI(StreamingRuntime(), Store(), Metrics(), Telemetry(), "runner-1", "token").router)
-    body = {"protocol": "litellm", "stream_id": "stream", "sequence": 0, "text": "hello", "final": True}
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://runner") as client:
-        mismatch = await client.post("/runtime/v1/endpoints/endpoint-http/guardrails/output-stream",
-                                     headers={"x-api-key": "valid-secret"}, json=body)
-        unauthorized = await client.post("/runtime/v1/endpoints/endpoint-1/guardrails/output-stream", json=body)
-    assert mismatch.status_code == 409
-    assert unauthorized.status_code == 401
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("protocol,endpoint", [("http", "endpoint-http"), ("litellm", "endpoint-1")])
-@pytest.mark.parametrize("kind,expected", [("provider_failure", 502), ("timeout", 504), ("missing_transform", 502), ("policy_block", 200)])
-async def test_stream_distinguishes_failed_checks_from_policy_rejection(protocol, endpoint, kind, expected):
-    runtime = StreamingRuntime()
-
-    async def evaluate(_request):
-        return ProtectionDecision(
-            decision="transform" if kind == "missing_transform" else "block", action="reject",
-            reason="private upstream body must not appear in HTTP errors",
-            usage=RuntimeUsage(fail_closed=kind in {"provider_failure", "timeout"}),
-            trace=(RuntimeTraceStep(id="check", kind="action", name="Check", status="failed", detail="private detail", timed_out=kind == "timeout"),),
-        )
-
-    runtime.evaluate = evaluate
-    app = FastAPI()
-    app.include_router(RunnerAPI(runtime, Store(), Metrics(), Telemetry(), "runner-1", "token").router)
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://runner") as client:
-        response = await client.post(f"/runtime/v1/endpoints/{endpoint}/guardrails/output-stream",
-            headers={"x-api-key": "valid-secret"}, json={"protocol": protocol, "stream_id": "failed-check",
-                "sequence": 0, "text": "private content", "final": True})
-    assert response.status_code == expected
-    if kind == "policy_block":
-        assert response.json()["status"] == "blocked"
-        assert response.json()["released_text"] == "" and response.json()["terminate"]
-    else:
-        assert "private" not in response.text
-        assert "released_text" not in response.json()
 
 
 @pytest.mark.asyncio

@@ -9,6 +9,10 @@ covers 18 content categories and 82 regex patterns, plus keyword, fenced-code,
 and competitor-intent behavior. The reproducible importer is stored at
 `scripts/import_litellm_content_filters.py`.
 
+The maintained definitions, Rule files, tests and resources now live in
+`policies/builtin/<policy-id>/`. The importer produces review material;
+`scripts/policy_sources.py` builds the executable catalog from those packages.
+
 TaskLattice stores and executes the resulting Rules and Test Cases through its
 own Policy model and NeMo Guardrails runtime. It does not import LiteLLM at
 runtime and does not expose a LiteLLM product type or runtime contract.

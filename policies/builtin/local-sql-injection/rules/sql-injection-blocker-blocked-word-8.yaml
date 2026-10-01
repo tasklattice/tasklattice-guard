@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: sql-injection-blocker/blocked-word-8
+name: SELECT * FROM
+description: SQL injection
+stages:
+- input
+- output
+detector:
+  ref: text/keyword
+  version: 1.0.0
+  parameters:
+    keywords:
+    - - SELECT * FROM
+      - medium
+on_match:
+  action: block
+  replacement: null
+runtime_adapter:
+  binding_id: local-sql-injection
+  implementation_rule_id: blocked-word-8
+metadata:
+  taxonomy_ids:
+  - TALI-TOOL-SECURITY-UNAUTHORIZED-EXECUTION
+risk_level: high

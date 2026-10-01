@@ -28,7 +28,7 @@ Service, not individual Pod names.
 ```text
 AI Gateway / LiteLLM / AI App -> Runtime Service -> Guard Runner -> NeMo / models
                                                        |
-                                                       +-> Redis call/stream state
+                                                       +-> Redis call context
 
 Operator / API client -> Guard Controller -> PostgreSQL
                               ^      |
@@ -56,6 +56,32 @@ telemetry ingest depend on Controller availability. Runner state uses an
 See the [deployment guide](../charts/tali-guard/README.md) for configuration.
 
 ## Resources and routing
+
+### Policy source packages
+
+Policy authoring uses one directory per Policy and one YAML file per Rule.
+The `policy.yaml` manifest explicitly owns Rule order, tests, resources and
+optional documentation. Built-in and custom packages use the same schema,
+coverage checks and detector adapter registry. See the [authoring guide](../policies/README.md)
+for the directory contract and commands.
+
+`scripts/policy_sources.py` resolves package-local resources and compiles the
+sources into the shared JSON catalog. Runtime requests never parse source
+YAML. Controller pins local Policy definitions and resolved parameters into
+the Guardrail plan; Runner uses that snapshot instead of looking up mutable
+catalog definitions during execution. Existing native model capabilities
+continue through their registered platform adapters.
+
+Package regression runs the actual Controller plan builder and NeMo runtime.
+Rule-scoped cases isolate selected Rules; Policy-scoped cases preserve the
+complete sequence. Assertions include decisions, exact transformed text and
+ordered Rule matches. CI checks generated catalog drift and runs local cases;
+model-dependent cases are explicitly `not_run` until tested in a configured
+model environment. Custom package transfer uses directory import or a ZIP
+containing declared files, file hashes and detector dependencies. Import does
+not publish or activate a Guardrail.
+
+### Runtime resources
 
 | Resource | Responsibility |
 | --- | --- |
@@ -160,35 +186,118 @@ compatible contracts. Artifacts pin behavior and dependencies, while active
 bindings select physical models. Semantic PII results without trustworthy span
 offsets redact the complete evaluated content block.
 
+Detector results use one contract across local evaluators, model adapters,
+NeMo Actions, traces, and the control protocol:
+
+| `verdict` | Meaning |
+| --- | --- |
+| `matched` | The detector found its configured target condition. |
+| `not_matched` | The detector completed and did not find that condition. |
+| `unknown` | The detector could not establish whether the condition holds, for example because context or proof is insufficient. |
+| `error` | The detector failed to execute correctly, including invalid configuration, timeouts, and malformed provider responses. |
+
+A target is the violation being detected: PII presence or a topic-boundary
+violation, for example. An allowed topic therefore yields `not_matched`.
+`not_matched` does not certify overall safety. Detection is independent of the
+Policy's `allow`, `block`, or `transform` decision; the same match can lead to
+any of these actions. Existing escalation and failure policies resolve
+`unknown` and `error` without relabeling them as a match.
+
+Provider-native labels such as `safe`, `unsafe`, and `controversial` remain in
+provider parsing and evidence, and are normalized at the evaluator boundary.
+Grounding claim support and formal proof results retain their domain-specific
+values; inconclusive claims or proofs produce `unknown` unless a violation is
+established. A malformed response produces `error` rather than `unknown`.
+
+This is a breaking detector contract. Upgrade Controller and Runners together
+and recompile/republish existing Guardrail artifacts with compiler v25 or later.
+Stored JSON traces and external consumers using the old detector labels need
+migration; runtime parsing does not accept the old labels as aliases.
+
 ## Effective releases and streaming
 
-Each call pins an effective release derived from desired generation, signed
-artifact checksums, and model configuration. Old materialized runtimes remain
-leased until their calls drain. A replica unable to serve the pinned release
-fails closed; shared Redis does not replicate historical model clients or
-guarantee uninterrupted calls across cold rollouts.
+### Native output engine
 
-Every pool with multiple replicas requires Redis. Call context is keyed by a
-SHA-256 digest of `call_id`, with a default five-minute TTL. It includes routing
-and release identity, up to 20 messages, and input content blocks. Stream state
-also retains output buffers, sequence, and completion state with an idle TTL.
-These values can contain protected content and are JSON, not application-level
-encrypted payloads. Production Redis needs private access, authentication, and
-transport encryption.
+Compiler v26 enables NeMo 0.24's public `stream_async(generator=...)` for
+unconditional, non-transforming Content Safety output rules using required,
+fail-closed modules and an incremental delivery mode. It emits direct Action
+rails in Policy order, `parallel: false`, and `stream_first: false`. Actions
+return NeMo `RailOutcome`; their metadata retains the existing Policy evidence.
+Every complete-response `NeMoRuntime.evaluate()` output call becomes a one-item
+source for `NeMoRuntime.protect_output()`. Configurations compiled for native
+streaming therefore also use its direct rail dispatch for complete checks,
+avoiding Colang 1's per-rail event limit for larger output Policy collections.
 
-The output-stream API accepts ordered chunks; it does not proxy upstream
-text generation or serve SSE. Callers must retain `call_id` and `stream_id`,
-submit increasing sequences serially, await each response, forward only
-`released_text`, and send `final=true` on completion. They must cancel upstream
-generation on `terminate=true` or transport failure. Lost responses must not
-cause speculative text delivery or sequence advancement.
+`NeMoRuntime.protect_output(request, source, ready=..., emit=..., observe=...)`
+is the single output execution boundary for all published configurations.
+It acquires the pinned NeMo instance once, then announces the compiled delivery
+contract through `ready`. Native configurations delegate windowing, overlap and
+ordered rail dispatch to NeMo. Other configurations collect the bounded source
+and invoke NeMo's complete evaluation once, preserving transformations and
+programmable flows. The Service handles routing and release assignment without
+choosing a delivery mode, accumulating output, or scheduling Policy checks.
 
-`full_buffered` checks the complete response. Incremental modes release checked
-text with bounded buffering; they cannot recall text released before later
-context changes a verdict. Policies requiring complete-response checks force
-the effective mode to full buffering. The API reports requested/effective modes,
-fallback reason, and effective release. LiteLLM pre/post callbacks or a successful
-connectivity check alone do not prove incremental stream protection.
+Both modes share source limits, deadline, cancellation, safe error handling and
+the `guardrail.output` span. All NeMo API paths reuse the same request context,
+model-observation scope and concurrency admission lifecycle. No additional
+event queue or producer task is introduced inside the engine.
+`emit` and `observe` are awaited async callbacks; only `emit` supplies approved
+text. `observe` supplies each check's `ProtectionDecision`, including failed
+checks. NeMo diagnostic JSON is never forwarded as model content. Valid model
+text that happens to look like an error JSON object remains deliverable.
+
+The default window is 200 iterator items with 50 retained items. For external
+generators these are **frames, not characters or tokenizer tokens**. The overlap
+must be positive and smaller than the window: in pinned NeMo 0.24 a zero overlap
+retains the buffer because of its `[-context_size:]` slice. The adapter does not
+patch that implementation. NeMo may check the retained tail again at EOF, even
+when it has no new content to release. These are overlapping-window checks,
+not accumulated-prefix checks; previously delivered content cannot be recalled.
+Model clients should yield incremental deltas without pre-buffering large
+batches. Full-response guarantees still require `full_buffered`.
+
+The result distinguishes `completed` from `blocked`. Evaluation, upstream or
+delivery failure raises `OutputStreamEvaluationError`; it never permits raw-output
+fallback. Block, error and cancellation close the source and release admission.
+The source must end only on confirmed normal upstream completion and raise on
+truncation. Defaults cap a stream at 300 seconds, one million characters and
+100,000 frames. Input checks, Endpoint authorization and route resolution remain
+the caller's responsibility. Transforming, conditional, arbitrary Colang and
+full-buffered policies use this same entry with complete-response delivery.
+The lower-level native streaming adapter is limited to the configurations the
+compiler explicitly enables; it does not act as a second general executor.
+The existing NeMo public API calls remain encapsulated behind this boundary;
+no NeMo fork or private streaming implementation is patched.
+
+### WebSocket delivery protocol
+
+Runner exposes `/runtime/v1/endpoints/{id}/guardrails/output-stream` as a WebSocket.
+One connection pins the call context, release and model revision, supplies the
+source generator to NeMo and forwards approved deltas. The old per-chunk HTTP
+state machine and Redis output-buffer/lock storage have been removed.
+
+The `start → ready → delta/ack → end → completed|blocked|error` protocol separates
+input credits from approved delivery. Eight outstanding frames bound Relay's
+lookahead while NeMo checks. The socket reader continues listening for disconnects
+during model calls, cancelling execution and freeing admission on disconnect.
+Relay serves normal SSE to clients and closes the model iterator on block, error
+or cancellation. It verifies upstream completion before sending `end`.
+
+Requested incremental modes use NeMo window buffering. Full-response policies
+collect the complete source and run the same NeMo evaluation path once, preserving
+transformations. Client delivery always uses the approved output events.
+
+Redis still shares Input/Output call context (default TTL 300 seconds), including
+release identity, up to 20 messages and input blocks. These can contain protected
+content; production Redis requires private access and appropriate protection.
+An output connection cannot resume on another replica. If its pinned release is
+unavailable, the call fails closed. Release leases keep existing runtimes alive
+while calls drain; Redis does not replicate model clients or native iterators.
+
+See [the protocol](gateway-integration.md#6-streaming-output-guard),
+[native engine tests](../tests/control_plane/test_native_output_stream.py),
+[network tests](../tests/data_plane/test_stream_safety_network.py) and
+[actual Relay SSE tests](../tests/e2e/test_relay_stream_delivery.py).
 
 ## State ownership and lifecycles
 
@@ -352,3 +461,17 @@ with the name followed by industry/use-case and default tags. It preserves
 explicit append/replace/cancel/undo behavior.
 Choosing blank is respected. Runtime model availability gates still apply to
 all selected bindings, including those inherited from a Profile.
+
+### Unified Rule detector contract
+
+Policy source packages use one Rule contract: stages, a versioned detector reference with parameters, and post-match handling. The compiled Rule retains `detector.ref` and `detector.version`; the former `form` enum and Policy `forms` aggregate are removed. Catalog/API discovery exposes `detectors` instead. Internal `implementation.execution` routes local checks, platform capabilities, and existing programmable Flows; it is not another author-facing Rule type. Local content filtering dispatches on the resolved detector and uses common Rule ordering, effect application, and rejection handling. Unknown local detectors raise an error instead of silently passing. Registered adapters own NeMo bindings, while source packages cannot supply executable code.
+
+Pattern detection uses `text/regex` with optional candidate validators (`date`, `weighted_checksum`, `luhn`). Business-specific identifier formats, date offsets, alphabets, weights, and check-character maps live in the Policy Rule. Controller snapshots retain the validated configuration, and Runner applies every configured check to both literal and normalized number candidates before recording a match. Country-specific detector entries and dispatch branches are removed; adding a format supported by these algorithms needs Rule data and regression cases, not another runtime detector.
+
+### Rule detection and Gateway directives
+
+A Policy is a collection of Rules plus metadata, resources and tests. Each Rule is the smallest business-processing unit and owns its stages, detector configuration, risk level and on-match directive. LocalDetector accepts only technical DetectorInput and returns evidence/spans; the Policy executor separately attaches Rule identity, pinned risk and handling requirements. Detection must not branch on a handling action. Runner may compute a replacement view for subsequent checks, but Gateway/application enforcement remains authoritative for the actual model request and delivery.
+
+Local category heuristics and competitor vocabulary are now source-owned text/conditions predicates. Code structure and execution-request detection are separate Rules. Parameterized phrase entries materialize into ordinary keyword Rules before plan publication; concrete IDs, actions and risk levels are included in immutable snapshots. No phrase-sequence detector interprets actions.
+
+Model classification references share model/classifier with explicit compatible profiles. Grounding and formal verification retain distinct contracts. Existing platform-native execution adapters remain; this change does not claim that custom source packages can register model-backed Rules yet.

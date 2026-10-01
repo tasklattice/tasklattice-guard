@@ -1,0 +1,90 @@
+id: sg-pdpa-sensitive-data/sg_pdpa_sensitive_data
+name: SG PDPA Sensitive Data
+description: PDPA Advisory Guidelines — Blocks profiling or inference of sensitive personal data categories
+  (race, religion, health, politics) for Singapore residents
+stages:
+- input
+- output
+detector:
+  ref: text/conditions
+  version: 1.0.0
+  parameters:
+    detector_options:
+      match:
+        all:
+        - not:
+            contains:
+            - medical treatment
+            - healthcare provider
+            - research ethics
+            - anonymised
+            - anonymized
+            - aggregate statistics
+            - census
+            - equal opportunity
+            - anti-discrimination
+            - explain
+            - what is
+            - academic
+            - study on
+        - any:
+          - within_sentence:
+              all:
+              - contains:
+                - race
+                - ethnicity
+                - ethnic group
+                - cmio
+                - religion
+                - religious belief
+                - faith
+                - health condition
+                - medical record
+                - mental health
+                - medical history
+                - health status
+                - political opinion
+                - political affiliation
+                - trade union
+                - union membership
+                - sexual orientation
+                - gender identity
+                - criminal record
+                - criminal history
+                - financial status
+                - income level
+                - credit history
+              - keywords:
+                - infer
+                - predict
+                - classify
+                - profile
+                - categorize
+                - score
+                - rank
+                - rate
+                - segment by
+                - target based on
+                - discriminate
+                - filter by
+                - sort by
+                - group by
+          - keywords:
+            - infer religion from name
+            - predict race from photo
+            - segment by ethnicity singapore
+            - profile by religious group
+            - classify by mental health
+            - infer race from surname
+            - predict ethnicity from name
+            - discriminate by race singapore
+on_match:
+  action: block
+  replacement: null
+runtime_adapter:
+  binding_id: singapore-data-use-boundaries
+  implementation_rule_id: sg_pdpa_sensitive_data
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-SENSITIVE-ATTRIBUTE
+risk_level: medium

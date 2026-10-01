@@ -7,6 +7,36 @@ import { programmablePolicyDraftSchema, type ProgrammablePolicySnapshot } from "
 import { defaultGuardrailDraft } from "./defaults.js";
 
 describe("Controller Guardrail plan", () => {
+  it("rejects a classifier change that the native adapter cannot execute", () => {
+    const policies = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
+    const policy = policies.find(item => item.id === "builtin-content-safety")!;
+    policy.rules[0]!.detector_options = { profile: "topic-classification" };
+    const binding = { ...nativeBinding(policy.id), policyVersion: policy.version,
+      enabledRuleIds: policy.rules.map(rule => rule.id), enabledRails: ["input"] };
+    expect(() => buildGuardrailPlan({ guardrailId: "invalid-profile", guardrailVersion: "v1", policies,
+      draft: { allowedTopics: [], restrictedTopics: [], safetyLevel: "balanced", outputDelivery: "full_buffered", policyBindings: [binding] },
+    })).toThrow("requires the safety-classification detector contract");
+  });
+  it("pins local Rule definitions and parameter defaults without changing the source Policy", () => {
+    const policies = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
+    const policy = policies.find(item => item.id === "keyword-blocking")!;
+    policy.parameters[0]!.default = "private";
+    const before = structuredClone(policy);
+    const binding = { ...nativeBinding(policy.id), policyVersion: policy.version,
+      enabledRuleIds: policy.rules.map(rule => rule.id), enabledRails: ["input"] as const };
+    const build = () => buildGuardrailPlan({ guardrailId: "pinned", guardrailVersion: "v1", policies,
+      draft: { allowedTopics: [], restrictedTopics: [], safetyLevel: "balanced", outputDelivery: "full_buffered", policyBindings: [{ ...binding, enabledRails: [...binding.enabledRails] }] } });
+    const plan = build();
+    const parameters = Object.fromEntries((plan.steps as Array<{ parameters: Array<[string, string]> }>)[0]!.parameters);
+    const pinned = JSON.parse(parameters.policy_definitions_json!)[policy.id];
+    expect(pinned.rules).toEqual(before.rules);
+    expect(pinned.version).toBe(before.version);
+    expect(JSON.parse(parameters.policy_parameters_json!)).toEqual({ [policy.id]: { blocked_words: "private" } });
+    expect(policy).toEqual(before);
+    policy.rules[0]!.effect = "allow";
+    expect(pinned.rules[0].effect).toBe(before.rules[0]!.effect);
+    expect(build()).not.toEqual(plan);
+  });
   it("materializes pinned custom Policy defaults while preserving explicit values and the source draft", () => {
     const snapshot: ProgrammablePolicySnapshot = {
       ...programmablePolicyDraftSchema.parse({
@@ -16,7 +46,7 @@ describe("Controller Guardrail plan", () => {
           { name: "optional", kind: "string", default: "fallback" },
           { name: "unset", kind: "string" },
         ],
-        rail_bindings: [{ rail_type: "input", flow_name: "check", execution_mode: "detect", on_unsafe: "reject" }],
+        rail_bindings: [{ rail_type: "input", flow_name: "check", execution_mode: "detect", on_unsafe: "block" }],
       }),
       policy_id: "parameterized", version: "1", name: "Parameters", description: "", source: "custom", owner: "test",
       checksum: "pinned", published_at: "2026-09-06",
@@ -44,7 +74,7 @@ describe("Controller Guardrail plan", () => {
     const binding = {
       ...nativeBinding(id), policyVersion: policy.version,
       enabledRuleIds: [rule.id], enabledRails: [...policy.rails],
-      action: "reject" as const, ruleActions: { [rule.id]: "pass" as const },
+      action: "block" as const, ruleActions: { [rule.id]: "allow" as const },
     };
     const build = () => buildGuardrailPlan({
       guardrailId: "native-override", guardrailVersion: "20260906-010000.001Z", policies,
@@ -53,11 +83,11 @@ describe("Controller Guardrail plan", () => {
     const plan = build();
     const steps = plan.steps as Array<{ on_unsafe: string; phases: string[] }>;
     expect(steps.length).toBeGreaterThan(0);
-    expect(steps.every((step) => step.on_unsafe === "pass")).toBe(true);
+    expect(steps.every((step) => step.on_unsafe === "allow")).toBe(true);
     expect(steps.every((step) => step.phases.every((phase) => (policy.rails as string[]).includes(phase)))).toBe(true);
-    expect(plan.policy_bindings).toEqual([expect.objectContaining({ rule_actions: [[rule.id, "pass"]], rule_severities: [[rule.id, rule.risk_severity]] })]);
+    expect(plan.policy_bindings).toEqual([expect.objectContaining({ rule_actions: [[rule.id, "allow"]], rule_severities: [[rule.id, rule.risk_severity]] })]);
     expect(policy).toEqual(before);
-    binding.ruleActions = { missing: "pass" };
+    binding.ruleActions = { missing: "allow" };
     expect(build).toThrow(/unknown Rule action overrides/);
   });
 
@@ -69,8 +99,8 @@ describe("Controller Guardrail plan", () => {
         policyBindings: [{ ...nativeBinding(policy.id), policyVersion: policy.version, enabledRuleIds: [policy.rules[0]!.id], enabledRails: ["output"] }] },
     });
     expect(plan.steps).toEqual([
-      expect.objectContaining({ on_unsafe: "redact", phases: ["output"] }),
-      expect.objectContaining({ on_unsafe: "redact", phases: ["output"] }),
+      expect.objectContaining({ on_unsafe: "transform", phases: ["output"] }),
+      expect.objectContaining({ on_unsafe: "transform", phases: ["output"] }),
     ]);
   });
 
@@ -132,14 +162,14 @@ describe("Controller Guardrail plan", () => {
     expect(plan).toMatchObject({
       guardrail_id: "guardrail-1",
       guardrail_version: "20260904-030000.003Z",
-      compiler_version: "tasklattice-controller-plan-v10-topic-rules",
+      compiler_version: "tasklattice-controller-plan-v14-policy-rule-boundaries",
       safety_level: "strict",
     });
     expect(plan.steps).toEqual(expect.arrayContaining([
-      expect.objectContaining({ capability: "secrets", contract_ref: "tali.guard.secrets.exact.v1", on_unsafe: "reject", trigger: { type: "always" } }),
+      expect.objectContaining({ capability: "secrets", contract_ref: "tali.guard.secrets.exact.v1", on_unsafe: "block", trigger: { type: "always" } }),
       expect.objectContaining({ capability: "pii", contract_ref: "tali.guard.pii.exact.v1", trigger: { type: "always" } }),
-      expect.objectContaining({ capability: "pii", contract_ref: "tali.guard.pii.semantic.v1", trigger: { type: "on_result", step_ref: "pii:builtin-pii:exact", verdicts: ["safe", "uncertain"] } }),
-      expect.objectContaining({ capability: "prompt_injection", contract_ref: "tali.guard.prompt-injection.v1", on_unsafe: "reject" }),
+      expect.objectContaining({ capability: "pii", contract_ref: "tali.guard.pii.semantic.v1", trigger: { type: "on_result", step_ref: "pii:builtin-pii:exact", verdicts: ["not_matched", "unknown"] } }),
+      expect.objectContaining({ capability: "prompt_injection", contract_ref: "tali.guard.prompt-injection.v1", on_unsafe: "block" }),
     ]));
     expect(plan.modules).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: "data_protection:builtin-pii:input", failure_mode: "fail_closed", timeout_ms: 30_000 }),
@@ -158,7 +188,7 @@ describe("Controller Guardrail plan", () => {
     expect(balanced.steps).toEqual(expect.arrayContaining([
       expect.objectContaining({
         contract_ref: "tali.guard.pii.semantic.v1",
-        trigger: { type: "on_result", step_ref: "pii:builtin-pii:exact", verdicts: ["uncertain"] },
+        trigger: { type: "on_result", step_ref: "pii:builtin-pii:exact", verdicts: ["unknown"] },
       }),
     ]));
   });
@@ -177,10 +207,10 @@ describe("Controller Guardrail plan", () => {
         policyBindings: [{
           policyId: "keyword-blocking",
           policyVersion: "1.95.0",
-          action: "reject",
+          action: "block",
           parameterValues: { blocked_words: "internal-only" },
           enabledRuleIds: ["keyword/blocked-words"],
-          ruleActions: { "keyword/blocked-words": "redact" },
+          ruleActions: { "keyword/blocked-words": "transform" },
           enabledRails: ["input"],
           reasoningPolicy: null,
         }],
@@ -190,21 +220,21 @@ describe("Controller Guardrail plan", () => {
     expect(plan.policy_bindings).toEqual([expect.objectContaining({
       policy_id: "keyword-blocking",
       policy_version: "1.95.0",
-      action: "reject",
+      action: "block",
       parameter_values: [["blocked_words", "internal-only"]],
       enabled_rule_ids: ["keyword/blocked-words"],
-      rule_actions: [["keyword/blocked-words", "redact"]],
+      rule_actions: [["keyword/blocked-words", "transform"]],
       enabled_rails: ["input"],
     })]);
     expect(plan.steps).toEqual([expect.objectContaining({
       capability: "builtin_content_filter",
       contract_ref: "tali.guard.content-filter.rules.v1",
       phases: ["input"],
-      on_unsafe: "reject",
+      on_unsafe: "block",
       parameters: expect.arrayContaining([
         ["policy_versions_json", JSON.stringify({ "keyword-blocking": "1.95.0" })],
         ["enabled_rules_json", JSON.stringify({ "keyword-blocking": ["keyword/blocked-words"] })],
-        ["rule_actions_json", JSON.stringify({ "keyword-blocking": { "keyword/blocked-words": "redact" } })],
+        ["rule_actions_json", JSON.stringify({ "keyword-blocking": { "keyword/blocked-words": "transform" } })],
       ]),
     })]);
   });
@@ -256,20 +286,20 @@ describe("Controller Guardrail plan", () => {
         outputDelivery: "full_buffered",
         policyBindings: [{
           ...nativeBinding("builtin-secrets"),
-          action: "redact",
+          action: "transform",
           enabledRails: ["output"],
         }],
       },
     });
 
     expect(plan.steps).toEqual([
-      expect.objectContaining({ phases: ["output"], on_unsafe: "redact" }),
+      expect.objectContaining({ phases: ["output"], on_unsafe: "transform" }),
     ]);
     expect(plan.modules).toEqual([
       expect.objectContaining({ id: "data_protection:builtin-secrets:output", phase: "output" }),
     ]);
     expect(plan.policy_bindings).toEqual([
-      expect.objectContaining({ action: "redact", enabled_rails: ["output"] }),
+      expect.objectContaining({ action: "transform", enabled_rails: ["output"] }),
     ]);
   });
 
@@ -284,7 +314,7 @@ describe("Controller Guardrail plan", () => {
     const draft = {
       allowedTopics: [], restrictedTopics: [], safetyLevel: "balanced" as const, outputDelivery: "full_buffered" as const,
       policyBindings: [
-        { ...makeBinding(pattern), action: "reject" as const, ruleActions: { "pattern/email": "redact" as const } },
+        { ...makeBinding(pattern), action: "block" as const, ruleActions: { "pattern/email": "transform" as const } },
         nativeBinding("builtin-secrets"),
         { ...makeBinding(keyword), parameterValues: { blocked_words: "private" }, enabledRails: ["output" as const] },
       ],
@@ -297,8 +327,8 @@ describe("Controller Guardrail plan", () => {
       "pattern-matching", "builtin-secrets", "keyword-blocking",
     ]);
     const actions = JSON.parse(Object.fromEntries(steps[0]!.parameters).rule_actions_json!)[pattern.id];
-    expect(actions["pattern/email"]).toBe("redact");
-    expect(actions["pattern/passport_us"]).toBe("reject");
+    expect(actions["pattern/email"]).toBe("transform");
+    expect(actions["pattern/passport_us"]).toBe("block");
     expect(steps[2]!.phases).toEqual(["output"]);
     const modules = plan.modules as Array<{ id: string; phase: string; depends_on: string[]; input_view: string }>;
     for (const phase of ["input", "output"]) {
@@ -308,8 +338,8 @@ describe("Controller Guardrail plan", () => {
         expect(item.depends_on).toEqual(index ? [ordered[index - 1]!.id] : []);
       });
     }
-    expect(pattern.rules.find((item) => item.id === "pattern/passport_us")?.effect).toBe("redact");
-    expect(draft.policyBindings[0]!.ruleActions).toEqual({ "pattern/email": "redact" });
+    expect(pattern.rules.find((item) => item.id === "pattern/passport_us")?.effect).toBe("transform");
+    expect(draft.policyBindings[0]!.ruleActions).toEqual({ "pattern/email": "transform" });
   });
 
   it("honors native Policy Rule overrides independently for input and output", () => {
@@ -318,8 +348,8 @@ describe("Controller Guardrail plan", () => {
         guardrail_category: "content_safety",
         sources: [{ path: "main.co", content: "flow check_input $text\n  pass\nflow check_output $text\n  pass" }],
         rail_bindings: [
-          { rail_type: "input", flow_name: "check_input", execution_mode: "detect", on_unsafe: "reject" },
-          { rail_type: "output", flow_name: "check_output", execution_mode: "detect", on_unsafe: "reject" },
+          { rail_type: "input", flow_name: "check_input", execution_mode: "detect", on_unsafe: "block" },
+          { rail_type: "output", flow_name: "check_output", execution_mode: "detect", on_unsafe: "block" },
         ],
         execution_contract: [["native_risk", "content_safety"]],
       }),
@@ -327,21 +357,21 @@ describe("Controller Guardrail plan", () => {
       checksum: "test", published_at: "2026-09-02",
     };
     const binding = {
-      ...nativeBinding("safety"), policyVersion: "1", action: "pass" as const,
+      ...nativeBinding("safety"), policyVersion: "1", action: "allow" as const,
       enabledRuleIds: ["flow/input/check_input", "flow/output/check_output"],
       enabledRails: ["input" as const, "output" as const],
-      ruleActions: { "flow/output/check_output": "redact" as const },
+      ruleActions: { "flow/output/check_output": "transform" as const },
     };
     const build = () => buildGuardrailPlan({
       guardrailId: "native", guardrailVersion: "20260904-010000.001Z", programmablePolicies: [snapshot],
       draft: { allowedTopics: [], restrictedTopics: [], safetyLevel: "balanced", outputDelivery: "full_buffered", policyBindings: [binding] },
     });
     expect(build().steps).toEqual([
-      expect.objectContaining({ phases: ["input"], on_unsafe: "pass" }),
-      expect.objectContaining({ phases: ["output"], on_unsafe: "redact" }),
+      expect.objectContaining({ phases: ["input"], on_unsafe: "allow" }),
+      expect.objectContaining({ phases: ["output"], on_unsafe: "transform" }),
     ]);
     binding.enabledRuleIds = ["flow/output/check_output"];
-    expect(build().steps).toEqual([expect.objectContaining({ phases: ["output"], on_unsafe: "redact" })]);
+    expect(build().steps).toEqual([expect.objectContaining({ phases: ["output"], on_unsafe: "transform" })]);
   });
 
   it("compiles Topic Control as a strict allowlist and rejects an empty allowlist", () => {

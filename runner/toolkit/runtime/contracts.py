@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal, Protocol
+from typing import Any, Literal, Protocol, TYPE_CHECKING
+from collections.abc import AsyncIterator, Awaitable, Callable
+
+if TYPE_CHECKING:
+    from .streaming import OutputStreamContract, OutputStreamResult
 
 from .enforcement_action_generated import (
     ENFORCEMENT_ACTIONS,
@@ -16,7 +20,12 @@ GuardrailPhase = Literal["input", "output"]
 RailType = Literal["input", "output", "retrieval", "dialog", "execution"]
 # Raw evaluator evidence. It does not directly determine how an interaction is
 # handled; routing and policy resolution produce the decision below.
-EvaluatorVerdict = Literal["safe", "unsafe", "uncertain", "error"]
+# Whether the detector's declared target condition was found; never an enforcement decision.
+# unknown = a valid but inconclusive check; error = the check could not execute correctly.
+EvaluatorVerdict = Literal["matched", "not_matched", "unknown", "error"]
+EVALUATOR_VERDICTS: frozenset[EvaluatorVerdict] = frozenset(
+    ("matched", "not_matched", "unknown", "error")
+)
 RouteDecision = Literal["complete", "enforce", "escalate", "fail_open", "fail_closed"]
 # Coarse runtime outcome aligned with allow/block/transform rail semantics.
 # EnforcementAction is the separate, more specific post-decision directive.
@@ -235,6 +244,8 @@ class EvaluationTrigger:
     verdicts: tuple[EvaluatorVerdict, ...] = ()
 
     def __post_init__(self) -> None:
+        if any(verdict not in EVALUATOR_VERDICTS for verdict in self.verdicts):
+            raise ValueError("Evaluation trigger contains an invalid detector result.")
         if self.type == "always":
             if self.step_ref is not None or self.verdicts:
                 raise ValueError("An always trigger cannot reference a prior result.")
@@ -540,6 +551,10 @@ class RiskFinding:
     risk_severity: str | None = None
     policy_version: str | None = None
 
+    def __post_init__(self) -> None:
+        if self.verdict not in EVALUATOR_VERDICTS:
+            raise ValueError("Finding contains an invalid detector result.")
+
 
 @dataclass(frozen=True, slots=True)
 class ContentPatch:
@@ -590,7 +605,7 @@ class DecisionFragment:
     module_id: str
     module: PolicyModule
     status: FragmentStatus
-    action: EnforcementAction = "pass"
+    action: EnforcementAction = "allow"
     findings: tuple[RiskFinding, ...] = ()
     patches: tuple[ContentPatch, ...] = ()
     replacement: str | None = None
@@ -690,6 +705,13 @@ class NeMoPolicyRuntime(Protocol):
     supported_phases: frozenset[GuardrailPhase]
 
     async def evaluate(self, request: EngineRequest) -> ProtectionDecision: ...
+
+    async def protect_output(self, request: EngineRequest, source: AsyncIterator[str], *,
+        emit: Callable[[str], Awaitable[None]],
+        observe: Callable[[ProtectionDecision], Awaitable[None]] | None = None,
+        ready: Callable[[OutputStreamContract], Awaitable[None]] | None = None,
+        timeout_seconds: float = 300,
+    ) -> OutputStreamResult: ...
 
 
 class PlanResolver(Protocol):

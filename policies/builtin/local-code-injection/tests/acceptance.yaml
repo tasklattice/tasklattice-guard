@@ -1,0 +1,141 @@
+# yaml-language-server: $schema=../../../schemas/tests.schema.json
+- id: rule-code-injection-blocker/blocked-word-3-acceptance/input
+  name: Trigger eval(
+  description: Proves that the published keyword implementation for eval( activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: eval('
+  expected_decision: block
+  covered_rule_ids:
+  - code-injection-blocker/blocked-word-3
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-code-injection-blocker/blocked-word-3-acceptance/output
+  name: Trigger eval(
+  description: Proves that the published keyword implementation for eval( activates
+    this Rule.
+  phase: output
+  content: 'Acceptance sample: eval('
+  expected_decision: block
+  covered_rule_ids:
+  - code-injection-blocker/blocked-word-3
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-code-injection-blocker/blocked-word-4-acceptance/input
+  name: Trigger exec(
+  description: Proves that the published keyword implementation for exec( activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: exec('
+  expected_decision: block
+  covered_rule_ids:
+  - code-injection-blocker/blocked-word-4
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-code-injection-blocker/blocked-word-4-acceptance/output
+  name: Trigger exec(
+  description: Proves that the published keyword implementation for exec( activates
+    this Rule.
+  phase: output
+  content: 'Acceptance sample: exec('
+  expected_decision: block
+  covered_rule_ids:
+  - code-injection-blocker/blocked-word-4
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-code-injection-blocker/blocked-word-5-acceptance/input
+  name: Trigger __import__
+  description: Proves that the published keyword implementation for __import__ activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: __import__'
+  expected_decision: block
+  covered_rule_ids:
+  - code-injection-blocker/blocked-word-5
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-code-injection-blocker/blocked-word-5-acceptance/output
+  name: Trigger __import__
+  description: Proves that the published keyword implementation for __import__ activates
+    this Rule.
+  phase: output
+  content: 'Acceptance sample: __import__'
+  expected_decision: block
+  covered_rule_ids:
+  - code-injection-blocker/blocked-word-5
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-code-injection-blocker/blocked-word-6-acceptance/input
+  name: Trigger os.system(
+  description: Proves that the published keyword implementation for os.system( activates
+    this Rule.
+  phase: input
+  content: 'Acceptance sample: os.system('
+  expected_decision: block
+  covered_rule_ids:
+  - code-injection-blocker/blocked-word-6
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-code-injection-blocker/blocked-word-6-acceptance/output
+  name: Trigger os.system(
+  description: Proves that the published keyword implementation for os.system( activates
+    this Rule.
+  phase: output
+  content: 'Acceptance sample: os.system('
+  expected_decision: block
+  covered_rule_ids:
+  - code-injection-blocker/blocked-word-6
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-code-injection-blocker/blocked-word-7-acceptance/input
+  name: Trigger subprocess.call(
+  description: Proves that the published keyword implementation for subprocess.call(
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: subprocess.call('
+  expected_decision: block
+  covered_rule_ids:
+  - code-injection-blocker/blocked-word-7
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-code-injection-blocker/blocked-word-7-acceptance/output
+  name: Trigger subprocess.call(
+  description: Proves that the published keyword implementation for subprocess.call(
+    activates this Rule.
+  phase: output
+  content: 'Acceptance sample: subprocess.call('
+  expected_decision: block
+  covered_rule_ids:
+  - code-injection-blocker/blocked-word-7
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule

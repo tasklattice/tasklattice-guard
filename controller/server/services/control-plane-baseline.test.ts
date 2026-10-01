@@ -92,7 +92,7 @@ describe("Default baseline validation gate", () => {
     expect(validation).toHaveLength(validationStatus === "missing" ? 1 : 0);
     if (validationStatus === "missing") expect(validation[0]!.value).toMatchObject({
       sourceDraftRevision: 3, status: "queued", excludedCaseIds: [], createdBy: null,
-      metrics: { total: 321, passed: 0 },
+      metrics: { total: cases.length, passed: 0 },
     });
     expect(test.inserts.some((item) => item.value.kind === "guardrail.compile_requested" || item.value.kind === "runner.desired_state_changed")).toBe(false);
   });
@@ -152,7 +152,7 @@ describe("Default baseline validation gate", () => {
 
   it("leaves user-authored Default changes to explicit Validate and Publish", async () => {
     const stored = legacyBaseline();
-    stored.draftConfig.policyBindings[0]!.ruleActions = { "category/denied_insults": "pass" };
+    stored.draftConfig.policyBindings[0]!.ruleActions = { "category/denied_insults": "allow" };
     const original = structuredClone(stored);
     const test = harness([[stored], [{ id: "user-edit" }]]);
     await test.service.initialize();
@@ -192,7 +192,7 @@ describe("Compiled artifact publication gate", () => {
 
   it("refuses a compiler response that changes an executable Rule action", async () => {
     const altered = structuredClone(plan);
-    (altered.steps as Array<{ on_unsafe: string }>)[0]!.on_unsafe = "pass";
+    (altered.steps as Array<{ on_unsafe: string }>)[0]!.on_unsafe = "allow";
     const test = harness([[baseline()], [version]], { artifactSigningKeyPath: keyPath });
     await expect(test.service.acceptCompiledArtifact({ ...input, plan: altered })).rejects.toMatchObject({ code: "compile_plan_mismatch" });
     expect(test.inserts).toEqual([]);
@@ -233,7 +233,7 @@ describe("Validated executable snapshot", () => {
 
   it.each(["missing", "catalog-action", "runtime-profile"])("requires new validation when the validated snapshot differs: %s", async (change) => {
     const snapshot = { payload: { plan: structuredClone(plan), runtimeProfile: "auto" } };
-    if (change === "catalog-action") (snapshot.payload.plan.steps as Array<{ on_unsafe: string }>)[0]!.on_unsafe = "pass";
+    if (change === "catalog-action") (snapshot.payload.plan.steps as Array<{ on_unsafe: string }>)[0]!.on_unsafe = "allow";
     if (change === "runtime-profile") snapshot.payload.runtimeProfile = "iorails_native";
     const test = harness([[baseline()], [validation], [], change === "missing" ? [] : [snapshot]]);
     await expect(test.service.requestGuardrailPublish({ guardrailId: "guardrail-default", actorId: "admin", compilerAvailable: true }))

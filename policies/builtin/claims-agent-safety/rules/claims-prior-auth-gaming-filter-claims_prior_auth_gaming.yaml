@@ -1,0 +1,128 @@
+id: claims-prior-auth-gaming-filter/claims_prior_auth_gaming
+name: Claims Prior Auth Gaming
+description: Detects attempts to game prior authorization through code manipulation, misrepresentation,
+  and circumvention
+stages:
+- input
+detector:
+  ref: text/conditions
+  version: 1.0.0
+  parameters:
+    detector_options:
+      match:
+        all:
+        - not:
+            contains:
+            - how do i submit
+            - what is the process
+            - what is the prior authorization process
+            - check the status
+            - status of my
+            - how long does
+            - was denied
+            - file an appeal
+            - my prior authorization was denied
+            - what documentation is required
+            - what documentation do i need
+            - submit supporting clinical documentation
+            - clinical documentation
+            - does this code require
+            - does my plan require
+            - what are the clinical guidelines
+            - explain the medical necessity criteria
+            - what medications require
+            - peer-to-peer review process
+            - expedited prior authorization
+            - urgent
+            - turnaround time
+            - what happens if
+            - transferred if i change
+            - continuity of care
+            - retroactive
+            - emergency services
+            - help me understand why
+            - difference between
+            - letter of medical necessity from my doctor
+        - any:
+          - regex: \b(?:how|help|what)\b.{0,20}\b(?:change|swap|switch|alter)\b.{0,20}\b(?:code|CPT|ICD|procedure)\b.{0,20}\b(?:approved|approval|authorize)\b
+          - regex: \b(?:which|what)\b.{0,15}\b(?:code|diagnosis|CPT|ICD)\b.{0,20}\b(?:bypass|avoid|skip|guarantee)\b
+          - within_sentence:
+              all:
+              - contains:
+                - guarantee
+                - trick
+                - tricking
+                - game
+                - gaming
+                - manipulate
+                - manipulating
+                - exploit
+                - exploiting
+                - circumvent
+                - get around
+                - swap
+                - swap in
+                - upcode
+                - upcoding
+                - downcode
+                - downcoding
+                - misrepresent
+                - fabricate
+                - fabricating
+                - bypass
+              - keywords:
+                - prior authorization
+                - prior auth
+                - pre-authorization
+                - preauthorization
+                - precertification
+                - medical necessity
+                - medically necessary
+                - procedure code
+                - cpt code
+                - diagnosis code
+                - icd-10 code
+                - modifier code
+                - clinical criteria
+                - utilization review
+                - peer-to-peer
+                - step therapy
+                - formulary
+                - quantity limits
+                - approval
+                - reviewer
+                - referral chain
+          - keywords:
+            - guarantee prior authorization approval
+            - guarantee approval
+            - gets automatically approved
+            - auto-approved
+            - look medically necessary
+            - trick the reviewer
+            - bypass the prior authorization
+            - bypass prior auth
+            - codes bypass
+            - avoid the prior auth
+            - false clinical notes
+            - fake the medical necessity
+            - fabricate to prove medical necessity
+            - cosmetic procedure qualify
+            - exploit a loophole
+            - split this procedure into smaller codes
+            - skip prior authorization
+            - get around the step therapy
+            - get around the quantity limits
+            - get around the formulary
+            - fabricate to prove
+            - documentation should i fabricate
+            - structure the appeal to exploit
+on_match:
+  action: block
+  replacement: null
+runtime_adapter:
+  binding_id: claims-prior-auth-gaming-filter
+  implementation_rule_id: claims_prior_auth_gaming
+metadata:
+  taxonomy_ids:
+  - TALI-ILLEGAL-ACTIVITY
+risk_level: medium

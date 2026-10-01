@@ -1,5 +1,5 @@
 import { requestController, type Collection, type GuardrailDetail } from './controller-api';
-import type { RouterDraft, TrafficRouter, RoutingInput, SelectorField } from '../../shared/traffic-routing';
+import type { RouterDraft, TrafficRouter, SelectorField } from '../../shared/traffic-routing';
 export type { RouterDraft, TrafficRouter, TrafficRoute, RouteTarget, SelectorExpression, SelectorCondition, RoutingInput, SelectorField } from '../../shared/traffic-routing';
 export const trafficRouterKeys = { all: ['traffic-routers'] as const, detail: (id: string) => ['traffic-routers', id] as const };
 const path = (id: string) => `/api/v1/routers/${encodeURIComponent(id)}`;
@@ -27,8 +27,6 @@ export const getRouterDistribution = (id: string, hours = 24, revision?: number,
   return requestController<DistributionReport>(`${path(id)}/traffic-distribution?${query}`);
 };
 export const getSelectorFields = (endpointIds: string[]) => requestController<Collection<SelectorField> & { capabilities?: unknown }>('/api/v1/routing/selector-fields?' + new URLSearchParams({ endpointIds: endpointIds.join(',') }));
-export type SelectorPreview = { routeId: string; independentMatch: boolean; received: boolean; blockedBy: string | null; state: string; matched: boolean; children: unknown[] };
-export const testTrafficSelector = (id: string, draft: RouterDraft, input: RoutingInput) => requestController<{ items: SelectorPreview[]; normalizedInput?: RoutingInput }>(`${path(id)}/simulations`, json('POST', { draft, input }));
 export type DuplicateSource = { sourceVersion: string; sourceDraftRevision?: never } | { sourceDraftRevision: number; sourceVersion?: never };
 export const duplicateGuardrail = (id: string, name: string, source: DuplicateSource, idempotencyKey: string) => requestController<GuardrailDetail>(`/api/v1/guardrails/${encodeURIComponent(id)}/duplicate`, json('POST', { name, ...source, idempotencyKey }));
 

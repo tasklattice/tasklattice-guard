@@ -10,9 +10,18 @@ import type { TrafficScope } from "../generated/control-protocol/tasklattice/gua
 import type { ValidationCaseResult__Output } from "../generated/control-protocol/tasklattice/guard/control/v1/ValidationCaseResult.js";
 import type { ValidationMetrics__Output } from "../generated/control-protocol/tasklattice/guard/control/v1/ValidationMetrics.js";
 import type { ValidationTestCase } from "../generated/control-protocol/tasklattice/guard/control/v1/ValidationTestCase.js";
+import { EvaluatorVerdict } from "../generated/control-protocol/tasklattice/guard/control/v1/EvaluatorVerdict.js";
+import { EnforcementAction } from "../generated/control-protocol/tasklattice/guard/control/v1/EnforcementAction.js";
 
 import type { ValidationCaseResult, ValidationMetrics } from "../domain/models.js";
 import { isGuardrailVersionId } from "../../shared/guardrail-version.js";
+
+const detectorVerdicts = new Set<string>(Object.values(EvaluatorVerdict).filter(
+  value => value !== EvaluatorVerdict.EVALUATOR_VERDICT_UNSPECIFIED,
+));
+const enforcementActions = new Set<string>(Object.values(EnforcementAction).filter(
+  value => value !== EnforcementAction.ENFORCEMENT_ACTION_UNSPECIFIED,
+));
 
 /** Convert the Controller plan document into the generated transport type. */
 export function planToWire(value: unknown): GuardrailPlan {
@@ -82,7 +91,7 @@ export function planToWire(value: unknown): GuardrailPlan {
     policyBindings: records(plan.policy_bindings).map((binding) => ({
       policyId: string(binding.policy_id),
       policyVersion: string(binding.policy_version),
-      ...(optionalString(binding.action) === null ? {} : { action: wireEnum("ENFORCEMENT_ACTION", binding.action) }),
+      ...(binding.action === undefined || binding.action === null ? {} : { action: wireEnum("ENFORCEMENT_ACTION", binding.action) }),
       parameterValues: pairsToWire(binding.parameter_values),
       enabledRuleIds: strings(binding.enabled_rule_ids),
       ruleOrder: strings(binding.rule_order),
@@ -488,13 +497,26 @@ function pairsFromWire(value: ReadonlyArray<{ key: string; value: string }>): Ar
 function wireEnum<T extends string | number>(prefix: string, value: unknown): T {
   const normalized = string(value).trim().toUpperCase();
   if (!normalized) throw new Error(`${prefix} requires a value.`);
-  return `${prefix}_${normalized}` as T;
+  const wireValue = `${prefix}_${normalized}`;
+  if (prefix === "EVALUATOR_VERDICT" && !detectorVerdicts.has(wireValue)) {
+    throw new Error(`Invalid detector result ${string(value)}.`);
+  }
+  if (prefix === "ENFORCEMENT_ACTION" && !enforcementActions.has(wireValue)) {
+    throw new Error(`Invalid enforcement action ${string(value)}; expected allow, block or transform.`);
+  }
+  return wireValue as T;
 }
 
 function domainEnum(prefix: string, value: unknown): string {
   const normalized = string(value);
   const marker = `${prefix}_`;
   if (!normalized.startsWith(marker)) throw new Error(`Invalid ${prefix} value ${normalized}.`);
+  if (prefix === "EVALUATOR_VERDICT" && !detectorVerdicts.has(normalized)) {
+    throw new Error(`Invalid detector result ${normalized}.`);
+  }
+  if (prefix === "ENFORCEMENT_ACTION" && !enforcementActions.has(normalized)) {
+    throw new Error(`Invalid enforcement action ${normalized}; expected allow, block or transform.`);
+  }
   return normalized.slice(marker.length).toLowerCase();
 }
 

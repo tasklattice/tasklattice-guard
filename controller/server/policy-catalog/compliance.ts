@@ -5,7 +5,7 @@ type PolicyInput = {
   name: string;
   version: string;
   description: string;
-  rules: Array<{ id: string; form: string }>;
+  rules: Array<{ id: string; detector: { ref: string } }>;
   tags?: Array<{ namespace: string; value: string }>;
 };
 type Reference = PolicyCompliance["references"][number];
@@ -211,7 +211,7 @@ export function builtInPolicyCompliance(policy: PolicyInput, sourceFile: string)
   const ruleIds = policy.rules.slice(0, 3).map(rule => rule.id);
   if (!ruleIds.length) throw new Error(`Policy ${policy.id} needs at least one Rule for source documentation.`);
   const origin = provenance(sourceFile);
-  const forms = [...new Set(policy.rules.map(rule => rule.form))];
+  const detectors = [...new Set(policy.rules.map(rule => rule.detector.ref))];
   const references = contextualSources(policy).map(source => ({ ...sources[source], rule_ids: ruleIds }));
   return {
     policy_version: policy.version,
@@ -231,8 +231,8 @@ export function builtInPolicyCompliance(policy: PolicyInput, sourceFile: string)
     coverage: [{
       rule_ids: ruleIds,
       description: bilingual(
-        `The implementation evaluates configured ${forms.join(", ")} Rules. The related Rules below are representative; inspect the Policy tab for the complete executable inventory and Test Cases for sampled behavior.`,
-        `实现会执行已配置的 ${forms.join("、")} Rules。下列关联 Rules 为代表性示例；完整可执行清单见 Policy 页签，抽样行为见 Test Cases。`,
+        `The implementation evaluates configured Rules using ${detectors.join(", ")} detectors. The related Rules below are representative; inspect the Policy tab for the complete executable inventory and Test Cases for sampled behavior.`,
+        `实现通过 ${detectors.join("、")} 检测器执行已配置的 Rules。下列关联 Rules 为代表性示例；完整可执行清单见 Policy 页签，抽样行为见 Test Cases。`,
       ),
     }],
     limitations: [

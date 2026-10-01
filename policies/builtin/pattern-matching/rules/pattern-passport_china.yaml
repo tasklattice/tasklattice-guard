@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: pattern/passport_china
+name: Passport (China)
+description: Chinese passport numbers (E/G prefix + 8 digits)
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b[EeGg][0-9]{8}\b
+on_match:
+  action: transform
+  replacement: '[passport_china_REDACTED]'
+runtime_adapter:
+  binding_id: pattern-matching
+  implementation_rule_id: passport_china
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-PII
+risk_level: medium

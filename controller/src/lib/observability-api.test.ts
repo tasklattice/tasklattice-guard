@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { getRouterTraces, getGuardrailFindings, getMetrics, getValidationRun } from "./api";
+import { getRouterTraces, getGuardrailFindings, getMetrics, getValidationRun, runtimeLogInteractions } from "./api";
 
 const event = {
   id: "event-1",
@@ -17,16 +17,16 @@ const event = {
   metadata: {
     captureLevel: "info",
     protocol: "litellm",
-    action: "reject",
+    action: "block",
     findings: [{
       id: "finding-1",
       risk: "secrets",
-      verdict: "unsafe",
+      verdict: "matched",
       confidence: 0.98,
       riskSeverity: "high",
       policyVersion: "1",
       evidence: "sensitive prompt fragment",
-      recommendedAction: "reject",
+      recommendedAction: "block",
       policyId: "builtin-secrets",
       ruleId: "credential-pattern",
     }],
@@ -35,7 +35,7 @@ const event = {
       kind: "action",
       parentId: "root-span",
       name: "Secrets detector",
-      outcome: "unsafe",
+      outcome: "matched",
       durationMs: 7,
       actionName: "GuardSecretsAction",
       actionVersion: "1.0.0",
@@ -46,6 +46,33 @@ const event = {
 
 describe("privacy-safe runtime observability", () => {
   afterEach(() => vi.unstubAllGlobals());
+
+  it("retains an execution failure separately from the three enforcement outcomes", () => {
+    const [interaction] = runtimeLogInteractions([
+      { ...event, decision: "block", metadata: { executionStatus: "error", runtimeLogCaptured: true } },
+      { ...event, id: "no-decision", decision: "error", metadata: { runtimeLogCaptured: true } },
+    ]);
+    expect(interaction.outcome).toBe("block");
+    expect(interaction.entries.map(entry => [entry.outcome, entry.execution_status])).toEqual([["block", "error"], [null, "error"]]);
+  });
+
+  it("finds fail-closed trace errors with diagnostics while preserving the enforcement outcome", () => {
+    const [interaction] = runtimeLogInteractions([{ ...event, metadata: { trace: [{ id: "failed-span", name: "Judge", outcome: "error", errorType: "AuthenticationError", providerName: "openai", modelName: "judge-model", policyId: "safety" }] } }], { outcome: "error", includeUncaptured: true });
+    expect(interaction.entries[0]).toMatchObject({ outcome: "block", execution_status: "error", error_details: [{ span_id: "failed-span", error_type: "AuthenticationError", provider: "openai", model: "judge-model", policy: "safety" }] });
+    expect(runtimeLogInteractions([event], { outcome: "error", includeUncaptured: true })).toEqual([]);
+  });
+
+  it("maps inferred call completion independently of input/output checks", () => {
+    const [interaction] = runtimeLogInteractions([{ ...event, direction: "completion", decision: "timeout", durationMs: 300000, metadata: { logKind: "call_completion", completionInferred: true, decisionId: "decision-1", completedAt: "2026-08-20T10:05:00.000Z", routerRevision: 2 } }], { outcome: "error", includeUncaptured: true });
+    expect(interaction.entries[0]).toMatchObject({ phase: "completion", outcome: null, execution_status: "error", call_completion: { inferred: true, decision_id: "decision-1", completed_at: "2026-08-20T10:05:00.000Z", router_revision: 2, reason: null } });
+  });
+
+  it("does not invent an allow outcome when no enforcement decision was reported", () => {
+    const [interaction] = runtimeLogInteractions([{ ...event, guardrailId: null, decision: "timeout", metadata: {} }], { includeUncaptured: true });
+    expect(interaction.guardrail_id).toBeNull();
+    expect(interaction.outcome).toBeNull();
+    expect(interaction.entries[0]).toMatchObject({ outcome: null, execution_status: "error", timed_out: true });
+  });
 
   it("keeps platform readiness reasons distinct from scoped Guardrail evidence", async () => {
     vi.stubGlobal("fetch", vi.fn(async (path: string) => new Response(JSON.stringify(path === "/api/v1/system/status"

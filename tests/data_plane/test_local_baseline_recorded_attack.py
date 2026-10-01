@@ -47,7 +47,7 @@ async def test_local_policy_handles_recorded_classifier_input_without_a_model(tm
         assert result.effective_release_id
         assert registry.readiness()['ready']
         if attack:
-            findings = [finding for finding in result.findings if finding.verdict == 'unsafe']
+            findings = [finding for finding in result.findings if finding.verdict == 'matched']
             assert findings, 'An infrastructure block is not a detected attack'
             policies = {binding.policy_id for binding in store.resolve(context).plan.policy_bindings}
             assert all(finding.policy_id in policies and finding.rule_id for finding in findings)

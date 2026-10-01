@@ -1,0 +1,63 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: prompt-injection-protection
+  name: Prompt Injection Protection
+  description: Detects and blocks prompt injection attacks, SQL injection attempts, code injection, and
+    jailbreak attempts. Protects against adversarial inputs that try to override system instructions or
+    extract sensitive information.
+  source: built_in
+  version: 1.95.0
+  tags:
+  - namespace: protection
+    value: attacks_and_abuse
+    label: Attacks & abuse
+    source: declared
+  - namespace: guardrail_category
+    value: agentic_security
+    label: Agentic Security
+    source: declared
+  - namespace: rail
+    value: input
+    label: Input rail
+    source: derived
+  - namespace: implementation
+    value: keyword
+    label: Keyword
+    source: derived
+  safety_level: balanced
+  output_delivery: window_buffered
+parameters: []
+rules:
+- rules/prompt-injection-blocker-blocked-word-1.yaml
+- rules/prompt-injection-blocker-blocked-word-2.yaml
+- rules/prompt-injection-blocker-blocked-word-3.yaml
+- rules/prompt-injection-blocker-blocked-word-4.yaml
+- rules/prompt-injection-blocker-blocked-word-5.yaml
+- rules/prompt-injection-blocker-blocked-word-6.yaml
+- rules/prompt-injection-blocker-blocked-word-7.yaml
+- rules/prompt-injection-blocker-blocked-word-8.yaml
+- rules/prompt-injection-blocker-blocked-word-9.yaml
+- rules/prompt-injection-blocker-blocked-word-10.yaml
+- rules/prompt-injection-blocker-blocked-word-11.yaml
+- rules/prompt-injection-blocker-blocked-word-12.yaml
+- rules/prompt-injection-blocker-blocked-word-13.yaml
+- rules/prompt-injection-blocker-blocked-word-14.yaml
+- rules/sql-injection-blocker-blocked-word-1.yaml
+- rules/sql-injection-blocker-blocked-word-2.yaml
+- rules/sql-injection-blocker-blocked-word-3.yaml
+- rules/sql-injection-blocker-blocked-word-4.yaml
+- rules/sql-injection-blocker-blocked-word-5.yaml
+- rules/sql-injection-blocker-blocked-word-6.yaml
+- rules/sql-injection-blocker-blocked-word-7.yaml
+- rules/sql-injection-blocker-blocked-word-8.yaml
+- rules/code-injection-blocker-blocked-word-1.yaml
+- rules/code-injection-blocker-blocked-word-2.yaml
+- rules/code-injection-blocker-blocked-word-3.yaml
+- rules/code-injection-blocker-blocked-word-4.yaml
+- rules/code-injection-blocker-blocked-word-5.yaml
+- rules/code-injection-blocker-blocked-word-6.yaml
+- rules/code-injection-blocker-blocked-word-7.yaml
+tests:
+- tests/acceptance.yaml

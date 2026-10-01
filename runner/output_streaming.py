@@ -1,389 +1,212 @@
+"""One authenticated WebSocket owns one pinned, non-resumable output stream."""
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import json
 import time
-from dataclasses import asdict, dataclass, field, replace
-from contextlib import asynccontextmanager
-from typing import AsyncIterator, Awaitable, Callable, Protocol
+import uuid
+from dataclasses import replace
+from typing import Any, Literal
 
-from redis.asyncio import Redis
-from redis.asyncio.lock import Lock
+from fastapi import Request, WebSocket, WebSocketDisconnect
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from runner.toolkit.runtime.contracts import (
-    GuardContentBlock,
-    OutputDeliveryMode,
-    ProtectionDecision,
-    ProtectionRequest,
-    RequestContext,
-)
+from .routing import RoutingError
+from .toolkit.runtime.streaming import OutputStreamEvaluationError
 
-
-StreamEvaluator = Callable[[ProtectionRequest], Awaitable[ProtectionDecision]]
+INPUT_CREDITS = 8
+MAX_SECONDS = 300
+MAX_FRAMES = 100_000
+MAX_CHARACTERS = 1_000_000
+MAX_MESSAGE_CHARACTERS = 1_048_576
 
 
-class OutputStreamEvaluationError(RuntimeError):
-    """A failed/invalid check is not a successful Policy rejection."""
-
-    def __init__(self, message: str, *, timed_out: bool = False) -> None:
-        super().__init__(message)
-        self.timed_out = timed_out
-
-# Checking ownership separately from SET leaves a lease-expiry race between the
-# two commands. Commit the state and its idle TTL only while this token owns the
-# lock, in one Redis operation. A stale evaluator must never overwrite a newer
-# replica, even though releasing its expired lock would subsequently fail.
-_COMMIT_OWNED_STREAM = """
-if redis.call('get', KEYS[1]) ~= ARGV[1] then return 0 end
-redis.call('set', KEYS[2], ARGV[2], 'EX', ARGV[3])
-return 1
-"""
+class StreamStart(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    type: Literal["start"]
+    version: int = Field(ge=1, le=1)
+    stream_id: str = Field(min_length=1, max_length=256)
+    call_id: str | None = Field(default=None, min_length=1, max_length=256)
+    protocol: Literal["http", "a2a", "litellm"]
+    messages: list[dict[str, Any]] = Field(default_factory=list, max_length=20)
+    request_data: dict[str, Any] = Field(default_factory=dict)
+    request_headers: dict[str, str] = Field(default_factory=dict)
+    attributes: dict[str, str] = Field(default_factory=dict)
+    model: str | None = None
+    output_sink: Literal["display", "markdown", "html", "sql", "shell", "url", "json", "tool_argument"] | None = None
 
 
-class OutputStreamProcessor(Protocol):
-    async def process(
-        self,
-        *,
-        stream_key: str,
-        sequence: int,
-        text: str,
-        final: bool,
-        mode: OutputDeliveryMode,
-        request: ProtectionRequest,
-        evaluate: StreamEvaluator,
-    ) -> "OutputStreamResult": ...
+class StreamFrame(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    type: Literal["delta", "end"]
+    sequence: int = Field(ge=0, le=MAX_FRAMES)
+    text: str = Field(default="", max_length=100_000)
 
 
-@dataclass(slots=True)
-class OutputStreamResult:
-    mode: OutputDeliveryMode
-    status: str
-    sequence: int
-    next_sequence: int
-    released_text: str
-    terminate: bool
-    final: bool
-    decision: ProtectionDecision | None = None
+class StreamProtocolError(ValueError):
+    pass
 
 
-@dataclass(slots=True)
-class _OutputStreamSession:
-    mode: OutputDeliveryMode
-    request: ProtectionRequest
-    next_sequence: int = 0
-    all_text: str = ""
-    pending_text: str = ""
-    released_text: str = ""
-    complete: bool = False
-    expires_at: float = 0.0
-    active_users: int = 0
-    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+async def _receive(socket: WebSocket):
+    message = await socket.receive()
+    if message["type"] == "websocket.disconnect":
+        raise WebSocketDisconnect(message.get("code", 1000))
+    text = message.get("text")
+    if not isinstance(text, str) or len(text) > MAX_MESSAGE_CHARACTERS:
+        raise StreamProtocolError("Invalid stream frame.")
+    return json.loads(text)
 
 
-class OutputStreamSessionStore:
-    """Apply one pinned output-delivery state machine to ordered model chunks.
+def register_output_stream(api) -> None:
+    # HTTP adapters remain the authority for Endpoint/principal mapping.
+    from .api import (
+        EvaluateRequest, LiteLLMGuardrailRequest, LITELLM_ADAPTER_ID,
+        _http_protection_request, _litellm_protection_request,
+    )
 
-    Complete-response checks hold all text. Incremental checks evaluate accumulated
-    context, retaining one window before release. The caller must await each result,
-    forward only released_text, and cancel generation when terminate is true.
-    """
+    @api.router.websocket("/runtime/v1/endpoints/{endpoint_id}/guardrails/output-stream")
+    async def output_stream(socket: WebSocket, endpoint_id: str):
+        authenticated = api._store.authenticate_endpoint(endpoint_id, socket.headers.get("x-api-key"))
+        adapter = api._store.endpoint_adapter(endpoint_id)
+        protocol = {"a2a-guard": "a2a", "generic-http-guard": "http", LITELLM_ADAPTER_ID: "litellm"}.get(adapter)
+        api._metrics.observe_authentication(protocol or "http", authenticated)
+        if not authenticated or protocol is None:
+            await socket.close(code=1008)
+            return
+        await socket.accept()
+        stream_id = None
+        output_sequence = 0
+        checks = 0
+        source_ended = False
+        lock = asyncio.Lock()
+        queue: asyncio.Queue[StreamFrame] = asyncio.Queue(INPUT_CREDITS)
 
-    def __init__(
-        self,
-        *,
-        window_characters: int = 2_048,
-        max_characters: int = 1_000_000,
-        ttl_seconds: float = 300.0,
-        max_sessions: int = 10_000,
-    ) -> None:
-        if window_characters < 1 or max_characters < window_characters:
-            raise ValueError("Output stream buffer limits are invalid.")
-        self._window_characters = window_characters
-        self._max_characters = max_characters
-        self._ttl_seconds = ttl_seconds
-        self._max_sessions = max_sessions
-        self._sessions: dict[str, _OutputStreamSession] = {}
-        self._index_lock = asyncio.Lock()
+        async def send(payload):
+            async with lock:
+                await socket.send_json({"stream_id": stream_id, **payload})
 
-    async def process(
-        self,
-        *,
-        stream_key: str,
-        sequence: int,
-        text: str,
-        final: bool,
-        mode: OutputDeliveryMode,
-        request: ProtectionRequest,
-        evaluate: StreamEvaluator,
-    ) -> OutputStreamResult:
-        async with self._session(stream_key, mode, request) as session, session.lock:
-            _check_identity(session.request, request)
-            if session.complete:
-                raise ValueError("The output stream is already complete.")
-            if sequence != session.next_sequence:
-                raise ValueError(
-                    f"Expected output stream sequence {session.next_sequence}, received {sequence}."
-                )
-            if mode != session.mode:
-                raise ValueError("The Guardrail output-delivery mode changed during one stream.")
-            if len(session.all_text) + len(text) > self._max_characters:
-                session.complete = True
-                raise ValueError("The output stream exceeded the configured maximum size.")
+        async def read_frames():
+            expected, size, ended = 0, 0, False
+            while True:
+                frame = StreamFrame.model_validate(await _receive(socket))
+                if ended or frame.sequence != expected or (frame.type == "end" and frame.text):
+                    raise StreamProtocolError("Invalid stream sequence or terminal frame.")
+                size += len(frame.text)
+                if size > MAX_CHARACTERS or (frame.type == "delta" and expected >= MAX_FRAMES):
+                    raise StreamProtocolError("Output stream exceeded its limit.")
+                ended = frame.type == "end"
+                expected += 1
+                # Credits return on consumption. This reader stays available
+                # for disconnects even while the engine checks a full window.
+                try:
+                    queue.put_nowait(frame)
+                except asyncio.QueueFull:
+                    raise StreamProtocolError("Output stream exceeded its input credits.") from None
 
-            # Work on a copy: a timeout/cancellation must not consume the sequence
-            # or duplicate its text on retry. Redis uses this same transition.
-            candidate = replace(session)
-            result = await _advance(candidate, sequence, text, final, self._window_characters, evaluate)
-            session.next_sequence = candidate.next_sequence
-            session.all_text = candidate.all_text
-            session.pending_text = candidate.pending_text
-            session.released_text = candidate.released_text
-            session.complete = candidate.complete
-            session.expires_at = time.monotonic() + self._ttl_seconds
-            return result
+        async def source():
+            nonlocal source_ended
+            while True:
+                frame = await queue.get()
+                await send({"type": "ack", "sequence": frame.sequence})
+                if frame.type == "end":
+                    source_ended = True
+                    return
+                yield frame.text
 
-    @asynccontextmanager
-    async def _session(
-        self,
-        key: str,
-        mode: OutputDeliveryMode,
-        request: ProtectionRequest,
-    ) -> AsyncIterator[_OutputStreamSession]:
-        async with self._index_lock:
-            self._prune()
-            session = self._sessions.get(key)
-            if session is None:
-                if len(self._sessions) >= self._max_sessions:
-                    raise ValueError("Output stream capacity reached; retry after an existing stream expires.")
-                session = _OutputStreamSession(
-                    mode=mode,
-                    request=request,
-                    expires_at=time.monotonic() + self._ttl_seconds,
-                )
-                self._sessions[key] = session
-            # Pin both the current evaluator and callers queued on its lock.
-            # A TTL is an idle expiry, not permission to fork in-flight state.
-            session.active_users += 1
+        async def emit(text):
+            nonlocal output_sequence
+            await send({"type": "delta", "sequence": output_sequence, "text": text})
+            output_sequence += 1
+
+        async def terminal_error(code):
+            # Never copy exception strings, provider responses or Policy text.
+            try:
+                async with asyncio.timeout(2):
+                    await send({"type": "error", "sequence": output_sequence, "checks": checks,
+                                "code": code, "message": "Protected output stream failed; unchecked text was withheld."})
+            except (RuntimeError, WebSocketDisconnect, OSError, TimeoutError):
+                pass
+
         try:
-            yield session
+            async with asyncio.timeout(MAX_SECONDS):
+                async with asyncio.timeout(10):
+                    start = StreamStart.model_validate(await _receive(socket))
+                stream_id = start.stream_id
+                if start.protocol != protocol:
+                    raise StreamProtocolError("Endpoint adapter does not match the stream protocol.")
+                request = Request({**socket.scope, "type": "http", "method": "GET"})
+                if protocol == "litellm":
+                    protection = _litellm_protection_request(LiteLLMGuardrailRequest(
+                        input_type="response", texts=[""], litellm_call_id=start.call_id or start.stream_id,
+                        structured_messages=start.messages, model=start.model,
+                        request_data=start.request_data, request_headers=start.request_headers,
+                    ), endpoint_id, request)
+                else:
+                    protection = _http_protection_request(EvaluateRequest(
+                        phase="output", texts=[""], call_id=start.call_id or start.stream_id,
+                        protocol=protocol, messages=start.messages, attributes=start.attributes,
+                        model=start.model, output_sink=start.output_sink,
+                    ), request, endpoint_id)
+                protection = replace(protection, context=replace(protection.context,
+                    fields=(*protection.context.fields, ("routing.stream", "true"))))
+                effective_mode = None
+                check_started = time.perf_counter()
+
+                async def ready(contract, resolution):
+                    nonlocal effective_mode
+                    effective_mode = contract.effective_mode
+                    await send({"type": "ready", "version": 1, "input_credits": INPUT_CREDITS,
+                        "mode": contract.effective_mode, "requested_mode": contract.requested_mode,
+                        "effective_release_id": resolution.effective_release_id,
+                        "model_revision_id": resolution.model_revision_id})
+
+                async def observe(decision):
+                    nonlocal checks, check_started
+                    checks += 1
+                    await api._emit_telemetry(
+                        request_id=str(uuid.uuid4()), call_id=protection.call_id, endpoint_id=endpoint_id,
+                        phase="output", protocol=f"{protocol}-stream", mode=protection.mode,
+                        started=check_started, decision=decision,
+                        stream_metadata={"streamId": stream_id, "streamCheck": checks,
+                                         "streamFinalCheck": source_ended,
+                                         "effectiveOutputDelivery": effective_mode},
+                    )
+                    check_started = time.perf_counter()
+
+                iterator = source()
+                worker = asyncio.create_task(api._runtime.stream_output(protection, iterator,
+                    ready=ready, emit=emit, observe=observe, allow_new_output=start.call_id is None))
+                reader = asyncio.create_task(read_frames())
+                try:
+                    done, _ = await asyncio.wait((worker, reader), return_when=asyncio.FIRST_COMPLETED)
+                    # Disconnect/protocol violation wins over simultaneous EOF.
+                    if reader in done:
+                        await reader
+                    result = await worker
+                    await send({"type": result.status, "sequence": output_sequence, "checks": result.checks,
+                                "released_characters": result.released_characters, "transformed": result.transformed})
+                finally:
+                    for task in (worker, reader):
+                        task.cancel()
+                    await asyncio.gather(worker, reader, return_exceptions=True)
+                    await iterator.aclose()
+        except WebSocketDisconnect:
+            pass
+        except asyncio.CancelledError:
+            raise
+        except TimeoutError:
+            await terminal_error("timeout")
+        except OutputStreamEvaluationError as error:
+            await terminal_error("timeout" if error.timed_out else "protection_failed")
+        except RoutingError:
+            await terminal_error("routing_failed")
+        except (StreamProtocolError, ValidationError, json.JSONDecodeError):
+            await terminal_error("invalid_stream")
+        except Exception:
+            await terminal_error("protection_failed")
         finally:
-            session.active_users -= 1
-
-    def _prune(self) -> None:
-        now = time.monotonic()
-        for key, session in list(self._sessions.items()):
-            if session.expires_at <= now and session.active_users == 0:
-                self._sessions.pop(key, None)
-
-    @staticmethod
-    def _result(
-        session: _OutputStreamSession,
-        sequence: int,
-        status: str,
-        released_text: str,
-        terminate: bool,
-        final: bool,
-        decision: ProtectionDecision | None = None,
-    ) -> OutputStreamResult:
-        return OutputStreamResult(
-            mode=session.mode,
-            status=status,
-            sequence=sequence,
-            next_sequence=session.next_sequence,
-            released_text=released_text,
-            terminate=terminate,
-            final=final,
-            decision=decision,
-        )
-
-
-class RedisOutputStreamSessionStore:
-    """Share ordered output-stream buffers across horizontally scaled Runners."""
-
-    def __init__(
-        self,
-        url: str,
-        *,
-        window_characters: int = 2_048,
-        max_characters: int = 1_000_000,
-        ttl_seconds: int = 300,
-    ) -> None:
-        if window_characters < 1 or max_characters < window_characters:
-            raise ValueError("Output stream buffer limits are invalid.")
-        self._redis: Redis = Redis.from_url(url, decode_responses=True)
-        self._window_characters = window_characters
-        self._max_characters = max_characters
-        self._ttl_seconds = ttl_seconds
-
-    async def process(
-        self,
-        *,
-        stream_key: str,
-        sequence: int,
-        text: str,
-        final: bool,
-        mode: OutputDeliveryMode,
-        request: ProtectionRequest,
-        evaluate: StreamEvaluator,
-    ) -> OutputStreamResult:
-        key = self._key(stream_key)
-        # Evaluation runs while the lock is held so two replicas cannot release
-        # the same window or advance one stream out of order.
-        async with self._redis.lock(
-            f"{key}:lock",
-            timeout=120,
-            blocking_timeout=15,
-            raise_on_release_error=False,
-        ) as lock:
-            raw = await self._redis.get(key)
-            state = json.loads(raw) if isinstance(raw, str) else self._new_state(mode, request)
-            _check_identity(_request_from_dict(state["request"]), request)
-            if bool(state["complete"]):
-                raise ValueError("The output stream is already complete.")
-            expected = int(state["next_sequence"])
-            if sequence != expected:
-                raise ValueError(f"Expected output stream sequence {expected}, received {sequence}.")
-            if mode != state["mode"]:
-                raise ValueError("The Guardrail output-delivery mode changed during one stream.")
-            if len(str(state["all_text"])) + len(text) > self._max_characters:
-                state["complete"] = True
-                await self._save(key, state, lock)
-                raise ValueError("The output stream exceeded the configured maximum size.")
-
-            session = _OutputStreamSession(
-                mode=mode, request=_request_from_dict(state["request"]),
-                next_sequence=expected, all_text=str(state["all_text"]),
-                pending_text=str(state["pending_text"]),
-                released_text=str(state.get("released_text", "")),
-            )
-            result = await _advance(session, sequence, text, final, self._window_characters, evaluate)
-            state.update(next_sequence=session.next_sequence, all_text=session.all_text,
-                         pending_text=session.pending_text, released_text=session.released_text,
-                         complete=session.complete)
-            await self._save(key, state, lock)
-            return result
-
-    def _new_state(self, mode: OutputDeliveryMode, request: ProtectionRequest) -> dict[str, object]:
-        return {
-            "mode": mode,
-            "request": asdict(request),
-            "next_sequence": 0,
-            "all_text": "",
-            "pending_text": "",
-            "released_text": "",
-            "complete": False,
-        }
-
-    async def _save(self, key: str, state: dict[str, object], lock: Lock) -> None:
-        committed = await self._redis.eval(
-            _COMMIT_OWNED_STREAM, 2, lock.name, key, lock.local.token,
-            json.dumps(state, separators=(",", ":")), self._ttl_seconds,
-        )
-        if committed != 1:
-            raise RuntimeError("Output stream lease expired before commit; unchecked output was withheld.")
-
-    @staticmethod
-    def _key(stream_key: str) -> str:
-        digest = hashlib.sha256(stream_key.encode()).hexdigest()
-        return f"tasklattice:guard:output-stream:{digest}"
-
-
-def _request_from_dict(value: object) -> ProtectionRequest:
-    if not isinstance(value, dict):
-        raise ValueError("The output stream request state is invalid.")
-    context = value.get("context")
-    if not isinstance(context, dict):
-        raise ValueError("The output stream request context is invalid.")
-    content_blocks = value.get("content_blocks", ())
-    messages = value.get("messages", ())
-    return ProtectionRequest(
-        phase=str(value.get("phase", "output")),  # type: ignore[arg-type]
-        texts=tuple(str(item) for item in value.get("texts", ())),
-        context=RequestContext(
-            protocol=str(context.get("protocol", "http")),
-            endpoint_id=(str(context["endpoint_id"]) if context.get("endpoint_id") is not None else None),
-            headers=tuple((str(key), str(item)) for key, item in context.get("headers", ())),
-            jwt_claims=tuple((str(key), str(item)) for key, item in context.get("jwt_claims", ())),
-            fields=tuple((str(key), str(item)) for key, item in context.get("fields", ())),
-        ),
-        content_blocks=tuple(
-            GuardContentBlock(
-                id=str(item["id"]),
-                text=str(item["text"]),
-                role=str(item["role"]),  # type: ignore[arg-type]
-                trust=str(item["trust"]),  # type: ignore[arg-type]
-                source=str(item["source"]),
-                qualifiers=tuple(item.get("qualifiers", ())),
-                metadata=tuple((str(key), str(data)) for key, data in item.get("metadata", ())),
-            )
-            for item in content_blocks
-            if isinstance(item, dict)
-        ),
-        call_id=(str(value["call_id"]) if value.get("call_id") is not None else None),
-        messages=tuple(item for item in messages if isinstance(item, dict)),
-        mode=str(value.get("mode", "enforce")),  # type: ignore[arg-type]
-        evidence_scope=str(value.get("evidence_scope", "interventions")),  # type: ignore[arg-type]
-    )
-
-
-def _check_identity(pinned: ProtectionRequest, incoming: ProtectionRequest) -> None:
-    if incoming.phase != "output" or (pinned.call_id, pinned.context.endpoint_id, pinned.mode) != (
-        incoming.call_id, incoming.context.endpoint_id, incoming.mode,
-    ):
-        raise ValueError("Output stream identity or enforcement mode changed. Start a new stream.")
-
-
-async def _advance(
-    session: _OutputStreamSession,
-    sequence: int,
-    text: str,
-    final: bool,
-    window_characters: int,
-    evaluate: StreamEvaluator,
-) -> OutputStreamResult:
-    session.all_text += text
-    session.pending_text += text
-    session.next_sequence += 1
-    if not final and (
-        session.mode == "full_buffered"
-        or session.mode == "window_buffered" and len(session.pending_text) < window_characters
-    ):
-        return OutputStreamSessionStore._result(session, sequence, "buffering", "", False, False)
-
-    # Do not reset semantic context at a network chunk/window boundary. Text is
-    # the output candidate, not stale content blocks from the initial request.
-    decision = await evaluate(replace(session.request, texts=(session.all_text,), content_blocks=()))
-    checked, terminate = _release_after_evaluation(session.all_text, decision)
-    if not terminate and not checked.startswith(session.released_text):
-        # A later check changed already released text. Never slice transformed
-        # output using original offsets or pretend earlier bytes can be recalled.
-        raise OutputStreamEvaluationError("Output changed an already released prefix; use full-buffered delivery.")
-    end = len(checked)
-    if session.mode == "window_buffered" and not final:
-        end = max(len(session.released_text), end - window_characters)
-    released = "" if terminate else checked[len(session.released_text):end]
-    session.released_text += released
-    session.pending_text = ""
-    session.complete = final or terminate
-    status = "blocked" if terminate else "completed" if final else "released" if released else "buffering"
-    return OutputStreamSessionStore._result(
-        session, sequence, status, released, terminate, final, decision,
-    )
-
-
-def _release_after_evaluation(text: str, decision: ProtectionDecision) -> tuple[str, bool]:
-    if decision.usage is not None and decision.usage.fail_closed:
-        raise OutputStreamEvaluationError(
-            "Output protection could not complete; unchecked output was withheld.",
-            timed_out=any(step.timed_out for step in decision.trace),
-        )
-    if decision.decision == "block":
-        return "", True
-    if decision.decision == "transform":
-        if len(decision.texts) != 1 or not isinstance(decision.texts[0], str):
-            raise OutputStreamEvaluationError("Output protection returned an invalid transformation; unchecked output was withheld.")
-        return decision.texts[0], False
-    if decision.decision != "allow":
-        raise OutputStreamEvaluationError("Output protection returned an invalid decision; unchecked output was withheld.")
-    return text, False
+            try:
+                async with asyncio.timeout(2):
+                    await socket.close(code=1000)
+            except (RuntimeError, WebSocketDisconnect, OSError, TimeoutError):
+                pass

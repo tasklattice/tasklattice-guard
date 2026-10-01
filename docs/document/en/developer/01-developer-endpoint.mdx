@@ -21,9 +21,9 @@ order: 0
 <a id="developer-handoff" />
 ## Where the two paths meet
 
-1. Operations prepares and publishes Policy, Guardrail, and Router versions, then creates or binds an Endpoint. [Control-plane integration](#developer-api-access) can bring these operations into a custom editor and approval workflow.
+1. Operations prepares and publishes Policy, Guardrail, and Router versions, then creates or binds an Endpoint. [Control-plane integration](/document/developer/developer-api-access) can bring these operations into a custom editor and approval workflow.
 2. The platform confirms the published configuration has reached the Runner and supplies the Endpoint URL and runtime credential to the application, Agent, or gateway.
-3. The client follows [data-plane integration](#developer-runtime) to check the actual submitted input and output of each model call and enforce the returned block, replacement, or allow result.
+3. The client follows [data-plane integration](/document/developer/developer-runtime) to check the actual submitted input and output of each model call and enforce the returned block, replacement, or allow result.
 4. Use real requests to compare runtime records with what the client ultimately delivered. **Published** means an executable version exists; **distributed** means the Runner has applied it; **protected** also requires the caller to submit traffic and enforce results.
 
 A Controller Personal Access Token cannot authenticate runtime checks, and an Endpoint credential cannot change control-plane resources. The published configuration and request context select the Guardrail Version and Route; self-reported request fields alone do not create a trusted identity.

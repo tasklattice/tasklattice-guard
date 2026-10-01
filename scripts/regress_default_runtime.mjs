@@ -61,7 +61,7 @@ async function replay(test) {
   assert.equal(verdict.usage?.fail_closed, false, label);
   assert.match(verdict.usage.config_checksum, /^[a-f0-9]{64}$/);
   configChecksums.add(verdict.usage.config_checksum);
-  const matches = verdict.findings.filter((item) => item.verdict === "unsafe" || item.verdict === "uncertain");
+  const matches = verdict.findings.filter((item) => item.verdict === "matched" || item.verdict === "unknown");
   for (const match of expected.expectedMatches ?? []) {
     assert(matches.some((item) => item.policy_id === match.policyId && item.rule_id === match.ruleId), label);
   }

@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: sg-pdpa-contact-information/sg_phone
+name: Phone Number (Singapore)
+description: Detects Singapore phone numbers (+65/0065/65 prefix with 6/8/9 starting digit for landline
+  and mobile)
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: (?<!\d)(?:\+65|0065|65)\s?[689]\d{3}\s?\d{4}\b
+on_match:
+  action: transform
+  replacement: '[sg_phone_REDACTED]'
+runtime_adapter:
+  binding_id: singapore-customer-identifiers
+  implementation_rule_id: sg_phone
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-PII
+risk_level: medium

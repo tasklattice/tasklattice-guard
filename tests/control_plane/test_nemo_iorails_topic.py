@@ -113,7 +113,7 @@ def _semantic_input(
         capability="topic_control",
         contract_ref="tali.guard.topic-control.semantic.v1",
         phases=("input",),
-        on_unsafe="reject",
+        on_unsafe="block",
         trigger=trigger,
         parameters=(
             ("topic_mode", "allowlist"),
@@ -155,13 +155,13 @@ def test_mixed_topic_plan_uses_official_input_action_and_custom_output_action() 
         capability="topic_control",
         contract_ref="tali.guard.topic-control.rules.v1",
         phases=("input",),
-        on_unsafe="reject",
+        on_unsafe="block",
     )
     semantic = _semantic_input(
         trigger=EvaluationTrigger(
             type="on_result",
             step_ref=rules.id,
-            verdicts=("uncertain",),
+            verdicts=("unknown",),
         )
     )
     output = GuardrailPlanStep(
@@ -169,7 +169,7 @@ def test_mixed_topic_plan_uses_official_input_action_and_custom_output_action() 
         capability="topic_control",
         contract_ref="tali.guard.topic-control.semantic.v1",
         phases=("output",),
-        on_unsafe="reject",
+        on_unsafe="block",
     )
 
     snapshot = _compiler().compile(_plan(rules, semantic, output))
@@ -194,7 +194,7 @@ def test_content_safety_remains_on_the_evidence_preserving_custom_evaluator() ->
         capability="content_safety",
         contract_ref="tali.guard.content-safety.v1",
         phases=("input",),
-        on_unsafe="reject",
+        on_unsafe="block",
     )
 
     snapshot = _compiler().compile(_plan(content))
@@ -359,7 +359,7 @@ def test_iorails_prewarm_rejects_missing_model_and_invalid_manifest() -> None:
 @pytest.mark.parametrize(
     ("result", "expected_decision", "expected_action", "fail_closed"),
     [
-        (RailsResult(status=RailStatus.PASSED, content="hello"), "allow", "pass", False),
+        (RailsResult(status=RailStatus.PASSED, content="hello"), "allow", "allow", False),
         (
             RailsResult(
                 status=RailStatus.BLOCKED,
@@ -367,7 +367,7 @@ def test_iorails_prewarm_rejects_missing_model_and_invalid_manifest() -> None:
                 rail="topic safety check input",
             ),
             "block",
-            "reject",
+            "block",
             False,
         ),
         (
@@ -377,7 +377,7 @@ def test_iorails_prewarm_rejects_missing_model_and_invalid_manifest() -> None:
                 rail="topic safety check input",
             ),
             "block",
-            "reject",
+            "block",
             True,
         ),
     ],
@@ -586,7 +586,7 @@ def test_split_topic_rules_use_isolated_action_prompts_and_preserve_deny_first()
         ("rule_id", "topic/denylist"), ("topic_mode", "permissive"),
         ("allowed_topics", ""), ("restricted_topics", "Refund fraud"),
     ))
-    allow = replace(deny, id="topic:allow", on_unsafe="redirect", parameters=(
+    allow = replace(deny, id="topic:allow", on_unsafe="block", parameters=(
         ("policy_id", "builtin-topic-safety"), ("policy_version", "2.0.0"),
         ("rule_id", "topic/allowlist"), ("topic_mode", "strict"),
         ("allowed_topics", "Order support"), ("restricted_topics", ""),

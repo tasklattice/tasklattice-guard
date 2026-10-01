@@ -610,7 +610,7 @@ class RunnerMetrics:
     ) -> None:
         detail_labels = {**identity, "protocol": protocol_name, "phase": phase}
         actions = [item.kind for item in decision.interventions]
-        if not actions and disposition in {"deny", "transform"} and decision.action != "pass":
+        if not actions and disposition in {"deny", "transform"} and decision.action != "allow":
             actions.append(decision.action)
         for action in actions:
             self.guardrail_interventions.labels(**detail_labels, action=action).inc()
@@ -696,37 +696,37 @@ class RunnerMetrics:
             for fragment in assessment.fragments:
                 for finding in fragment.findings:
                     observed_findings.add(finding)
-                    if finding.verdict in {"unsafe", "uncertain", "error"}:
+                    if finding.verdict in {"matched", "unknown", "error"}:
                         triggers.add((
                             assessment.module_id or "__unknown__",
                             finding.risk or "unknown",
                             finding.policy_id or "__builtin__",
-                            finding.recommended_action or "pass",
+                            finding.recommended_action or "allow",
                             finding.verdict,
                         ))
         for finding in decision.findings:
             if finding in observed_findings or finding.verdict not in {
-                "unsafe", "uncertain", "error",
+                "matched", "unknown", "error",
             }:
                 continue
             triggers.add((
                 "__unknown__",
                 finding.risk or "unknown",
                 finding.policy_id or "__builtin__",
-                finding.recommended_action or "pass",
+                finding.recommended_action or "allow",
                 finding.verdict,
             ))
         if not triggers and disposition in {"deny", "transform"}:
             for step in decision.trace:
                 if step.kind != "action" or step.verdict not in {
-                    "unsafe", "uncertain", "error",
+                    "matched", "unknown", "error",
                 }:
                     continue
                 triggers.add((
                     step.module_id or "__unknown__",
                     step.capability or "unknown",
                     step.policy_id or "__builtin__",
-                    decision.action or "pass",
+                    decision.action or "allow",
                     step.verdict,
                 ))
         for module_id, risk, policy_id, action, verdict in triggers:
@@ -905,13 +905,13 @@ class RunnerMetrics:
 
 def _bounded_result(value: str | None) -> str:
     normalized = (value or "unknown").lower()
-    if normalized in {"complete", "passed", "safe", "allow", "success"}:
+    if normalized in {"complete", "passed", "not_matched", "allow", "success"}:
         return "success"
     if normalized in {"timeout", "timed_out"}:
         return "timeout"
     if normalized in {"error", "failed", "failure", "uncovered"}:
         return "error"
-    if normalized in {"unsafe", "block", "transform", "intervene", "enforce"}:
+    if normalized in {"matched", "block", "transform", "intervene", "enforce"}:
         return "intervention"
     return "other"
 

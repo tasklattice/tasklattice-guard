@@ -12,7 +12,7 @@ describe("business protection composition", () => {
     const first = binding("privacy-a");
     const middle = binding("attacks");
     const last = binding("privacy-b");
-    const edited = { ...last, rule_actions: { rule: "reject" as const } };
+    const edited = { ...last, rule_actions: { rule: "block" as const } };
     const current = [first, middle, last];
     expect(mergeDirectoryBindings(current, new Set([first.policy_id, last.policy_id, "privacy-new"]), [edited, binding("privacy-new")]))
       .toEqual([middle, edited, binding("privacy-new")]);
@@ -21,11 +21,11 @@ describe("business protection composition", () => {
 
   it("does not accept out-of-directory changes", () => {
     const current = [binding("a"), binding("b")];
-    expect(mergeDirectoryBindings(current, new Set(["a"]), [binding("a"), { ...binding("b"), action: "reject" }, binding("c")])).toEqual(current);
+    expect(mergeDirectoryBindings(current, new Set(["a"]), [binding("a"), { ...binding("b"), action: "block" }, binding("c")])).toEqual(current);
   });
 
   it("applies presets idempotently, preserves overrides, and does not share mutable state", () => {
-    const customized = { ...binding("baseline"), action: "pass" as const, rule_order: ["rule"], enabled_rails: ["input"] as ["input"] };
+    const customized = { ...binding("baseline"), action: "allow" as const, rule_order: ["rule"], enabled_rails: ["input"] as ["input"] };
     const preset = [binding("baseline"), binding("banking"), binding("banking")];
     const merged = mergePresetBindings([customized], preset);
     expect(merged).toEqual([customized, binding("banking")]);
@@ -40,7 +40,7 @@ describe("business protection composition", () => {
     expect(completeResponsePolicies([binding(policy.id)], [policy])).toEqual(["Passports"]);
     expect(completeResponsePolicies([{ ...binding(policy.id), enabled_rails: ["input"] }], [policy])).toEqual([]);
     expect(completeResponsePolicies([binding(classifier.id)], [classifier])).toEqual([]);
-    expect(completeResponsePolicies([{ ...binding(classifier.id), action: "redact" }], [classifier])).toEqual(["Content safety"]);
+    expect(completeResponsePolicies([{ ...binding(classifier.id), action: "transform" }], [classifier])).toEqual(["Content safety"]);
     expect(completeResponsePolicies([binding("unknown")], [])).toEqual(["unknown"]);
   });
 

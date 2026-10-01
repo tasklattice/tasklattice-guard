@@ -1,0 +1,85 @@
+# yaml-language-server: $schema=../../../schemas/tests.schema.json
+- id: rule-sg-pdpa-pii-identifiers/sg_nric-acceptance/input
+  name: Trigger NRIC/FIN (Singapore National ID)
+  description: Proves that the published regex implementation for NRIC/FIN (Singapore
+    National ID) activates this Rule.
+  phase: input
+  content: 'Acceptance sample: S1111111A'
+  expected_decision: transform
+  covered_rule_ids:
+  - sg-pdpa-pii-identifiers/sg_nric
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-sg-pdpa-pii-identifiers/sg_nric-acceptance/output
+  name: Trigger NRIC/FIN (Singapore National ID)
+  description: Proves that the published regex implementation for NRIC/FIN (Singapore
+    National ID) activates this Rule.
+  phase: output
+  content: 'Acceptance sample: S1111111A'
+  expected_decision: transform
+  covered_rule_ids:
+  - sg-pdpa-pii-identifiers/sg_nric
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-sg-pdpa-contact-information/sg_phone-acceptance/input
+  name: Trigger Phone Number (Singapore)
+  description: Proves that the published regex implementation for Phone Number (Singapore)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: +65 6111 1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - sg-pdpa-contact-information/sg_phone
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-sg-pdpa-contact-information/sg_phone-acceptance/output
+  name: Trigger Phone Number (Singapore)
+  description: Proves that the published regex implementation for Phone Number (Singapore)
+    activates this Rule.
+  phase: output
+  content: 'Acceptance sample: +65 6111 1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - sg-pdpa-contact-information/sg_phone
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-sg-pdpa-financial-data/sg_bank_account-acceptance/input
+  name: Trigger Bank Account (Singapore)
+  description: Proves that the published regex implementation for Bank Account (Singapore)
+    activates this Rule.
+  phase: input
+  content: 'Acceptance sample: bank account 111-11111-1'
+  expected_decision: transform
+  covered_rule_ids:
+  - sg-pdpa-financial-data/sg_bank_account
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule
+- id: rule-sg-pdpa-financial-data/sg_bank_account-acceptance/output
+  name: Trigger Bank Account (Singapore)
+  description: Proves that the published regex implementation for Bank Account (Singapore)
+    activates this Rule.
+  phase: output
+  content: 'Acceptance sample: bank account 111-11111-1'
+  expected_decision: transform
+  covered_rule_ids:
+  - sg-pdpa-financial-data/sg_bank_account
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  group: Rule acceptance
+  scope: rule

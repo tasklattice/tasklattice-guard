@@ -24,12 +24,12 @@ A safe integration depends on what the gateway actually delivers for each result
 ## Diagnose common failures
 
 - **401**: check the Endpoint URL and credential; do not substitute a personal Access Token.
-- **409**: protocol, stream sequence, identity, terminal-state, or capacity conflict; inspect `detail` and never assume a replay succeeded.
+- **WebSocket `error`**: invalid sequence, protocol, check failure or timeout; stop the stream without replay.
 - **422**: invalid request fields, enums, or shapes; the content has not passed a valid check.
 - **503**: routing, call context, or pinned version unavailable; changing the call ID cannot restore the same call.
 - **502 / 504 on streams**: check failure or timeout, not a normal `blocked` result.
 
-Input and Output use the same Endpoint and call ID with consistent routing context. An expired associated context must not silently select another version for Output. After a stream request was sent but its response was lost, do not blindly retry the chunk or start a new stream and claim it is a continuation.
+Input and Output use the same Endpoint and call ID with consistent routing context. An expired associated context must not silently select another version for Output. After a stream connection was lost, do not blindly retry the chunk or start a new stream and claim it is a continuation.
 
 <a id="gateway-production-check" />
 
@@ -37,7 +37,7 @@ Input and Output use the same Endpoint and call ID with consistent routing conte
 
 1. Confirm `/verify`, then test gateway behavior with content that should allow, block, and replace.
 2. Parse action even after HTTP 200; never send blocked Input to a model or blocked Output to a client, and map replacements back to their original positions.
-3. Keep one call ID across Input and Output; deliver only `released_text` on streams, and handle sequence, `final`, and termination correctly.
+3. Keep one call ID across Input and Output; deliver only `delta.text` on streams, and handle sequence, `end`, and termination correctly.
 4. Select Fail Open / Fail Closed and Dry Run explicitly; compare gateway delivery logs with Guard runtime evidence.
 5. Confirm published versions, Runner convergence, model dependencies, state lifetimes, and shared state across replicas with platform management.
 

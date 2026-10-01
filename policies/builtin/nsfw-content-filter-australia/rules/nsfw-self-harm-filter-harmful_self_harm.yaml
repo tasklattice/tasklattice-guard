@@ -1,0 +1,118 @@
+id: nsfw-self-harm-filter/harmful_self_harm
+name: Harmful Self Harm
+description: Detects content related to self-harm, suicide, and eating disorders
+stages:
+- input
+detector:
+  ref: text/conditions
+  version: 1.0.0
+  parameters:
+    detector_options:
+      match:
+        all:
+        - not:
+            contains:
+            - suicide prevention
+            - suicide hotline
+            - prevent suicide
+            - suicide awareness
+            - suicide crisis
+            - suicide support
+            - mental health
+            - help with suicide
+            - suicide prevention resources
+            - talk someone out of suicide
+            - preventing self-harm
+            - self-harm prevention
+            - eating disorder treatment
+            - eating disorder recovery
+            - eating disorder support
+        - keywords:
+          - kill myself
+          - end my life
+          - commit suicide
+          - want to die
+          - how to die
+          - suicide method
+          - painless death
+          - overdose on
+          - hang myself
+          - cut myself
+          - self harm
+          - hurt myself
+          - how to commit suicide
+          - ways to kill myself
+          - easiest way to die
+          - suicide instructions
+          - how to end my life
+          - plan suicide
+          - planning suicide
+          - planned suicide
+          - attempt suicide
+          - attempting suicide
+          - attempted suicide
+          - self harm method
+          - self harm methods
+          - suicide note
+          - end life
+          - ending my life
+          - take my life
+          - taking my life
+          - slash my wrists
+          - slit my wrists
+          - jump off bridge
+          - jump off building
+          - fatal overdose
+          - lethal dose
+          - suicide plan
+          - suicide pact
+          - want to end it
+          - can't go on
+          - better off dead
+          - wish i was dead
+          - no reason to live
+          - life not worth living
+          - burn myself
+          - poison myself
+          - starve myself
+          - suffocate myself
+          - drown myself
+          - shoot myself
+          - self-mutilation
+          - self mutilation
+          - cutting techniques
+          - self-injury
+          - self injury
+          - how deep to cut
+          - where to cut
+          - painless suicide
+          - quick suicide
+          - easy suicide
+          - suicide methods
+          - suicide
+          - self-harm
+          - cutting
+          - anorexia
+          - bulimia
+          - suicidal
+          - suicidal thoughts
+          - self-destructive
+          - self destructive
+          - eating disorder
+          - purging
+          - binge eating
+          - binge and purge
+          - pro-ana
+          - pro ana
+          - thinspo
+          - thinspiration
+on_match:
+  action: block
+  replacement: null
+runtime_adapter:
+  binding_id: nsfw-self-harm-filter
+  implementation_rule_id: harmful_self_harm
+metadata:
+  taxonomy_ids:
+  - TALI-SELF-HARM
+risk_level: high

@@ -49,7 +49,7 @@ describe("Guardrail Playground HTTP capability", () => {
       expect(request).not.toHaveProperty("guardrail_version");
       return Response.json({
         decision: "allow",
-        action: "pass",
+        action: "allow",
         reason: "draft passed",
         texts: [],
         guardrail_id: "guardrail-draft",
@@ -139,7 +139,7 @@ describe("Guardrail Playground HTTP capability", () => {
       expect(request.guardrail_version).toBe(versionId);
       return Response.json({
         decision: "allow",
-        action: "pass",
+        action: "allow",
         reason: `${request.phase} passed`,
         texts: [],
         guardrail_id: "guardrail-default",
@@ -214,18 +214,18 @@ describe("Guardrail Playground HTTP capability", () => {
     const modelFetch = vi.fn();
     const runnerFetch = vi.fn(async () => Response.json({
       decision: "block",
-      action: "reject",
+      action: "block",
       reason: "PII blocked",
       texts: [],
       findings: [{
         risk: "pii",
         taxonomy_id: "TALI-PRIVACY-PII",
-        verdict: "unsafe",
+        verdict: "matched",
         confidence: 0.99,
         risk_severity: "medium",
         policy_version: "7",
         evidence: "PII detected",
-        recommended_action: "reject",
+        recommended_action: "block",
         policy_id: "privacy",
         rule_id: "pii",
       }],
@@ -257,7 +257,7 @@ describe("Guardrail Playground HTTP capability", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({ state: "input_blocked", assistant_message: null,
-      input_check: { findings: [expect.objectContaining({ severity: "medium", policy_version: "7", recommended_action: "reject" })] },
+      input_check: { findings: [expect.objectContaining({ severity: "medium", policy_version: "7", recommended_action: "block" })] },
     });
     expect(modelFetch).not.toHaveBeenCalled();
     expect(runnerFetch).toHaveBeenCalledTimes(1);

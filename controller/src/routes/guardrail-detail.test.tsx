@@ -25,7 +25,7 @@ vi.mock("react-i18next", () => ({
 }));
 
 vi.mock("@tanstack/react-router", () => ({
-  Link: ({ children }: { children: ReactNode }) => <a href="#test">{children}</a>,
+  Link: ({ children, to, search }: { children: ReactNode; to?: string; search?: Record<string, string> }) => <a href={`${to ?? "#test"}${search ? `?${new URLSearchParams(search)}` : ""}`}>{children}</a>,
   useNavigate: () => vi.fn(),
   useParams: () => ({}),
 }));
@@ -183,6 +183,7 @@ describe("Guardrail detail information hierarchy", () => {
       summary: { total: 1, critical: 1, high: 0, medium: 0, low: 0, informational: 0, unclassified: 0, affected_traces: 1, latest_at: "2026-08-16T09:46:46Z" },
       items: [{
         id: "finding-critical",
+        event_id: "event-critical",
         trace_id: "trace-playground",
         created_at: "2026-08-16T09:46:46Z",
         guardrail_id: "guardrail-observed",
@@ -193,9 +194,9 @@ describe("Guardrail detail information hierarchy", () => {
         phase: "input",
         severity: "critical",
         risk: "builtin_content_filter",
-        verdict: "unsafe",
+        verdict: "matched",
         confidence: 0.99,
-        recommended_action: "reject",
+        recommended_action: "block",
         policy_id: "content-safety",
         rule_id: "harmful-request",
         detail: "Policy content-safety matched Rule harmful-request.",
@@ -210,6 +211,9 @@ describe("Guardrail detail information hierarchy", () => {
     expect(screen.getByText("guardrails.playgroundSource")).toBeTruthy();
     expect(screen.getByText("Policy content-safety matched Rule harmful-request.")).toBeTruthy();
     expect(screen.getByText("99%")).toBeTruthy();
+    const link = new URL(screen.getByRole("link", { name: "logs.viewLog" }).getAttribute("href")!, "http://localhost");
+    expect(link.pathname).toBe("/logs");
+    expect(Object.fromEntries(link.searchParams)).toEqual({ eventId: "event-critical", requestId: "trace-playground", checkpointId: "event-critical", guardrailId: "guardrail-observed" });
   });
 
   it("removes findings with repeated local ids when filtering to an empty severity", async () => {
@@ -224,9 +228,9 @@ describe("Guardrail detail information hierarchy", () => {
       phase: "output" as const,
       severity: "medium" as const,
       risk: "content_safety",
-      verdict: "unsafe",
+      verdict: "matched",
       confidence: null,
-      recommended_action: "reject",
+      recommended_action: "block",
       policy_id: "builtin-content-safety",
       rule_id: "model/content-safety",
       detail: "Runner reported an unsafe content-safety finding.",
@@ -467,7 +471,7 @@ describe("Guardrail detail information hierarchy", () => {
       policy_bindings: [{
         policy_id: "builtin-topic-safety",
         policy_version: "1.0.0",
-        action: "redirect",
+        action: "block",
         parameter_values: {},
         enabled_rule_ids: ["model/topic-control"],
         rule_actions: {},
@@ -542,9 +546,9 @@ describe("Guardrail detail information hierarchy", () => {
     const catalog = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
     const policies = ["configured-phrase-filter", "local-credentials"].map(id => catalog.find(p => p.id === id)!);
     const bindings = policies.map(defaultPolicyBinding);
-    bindings[0]!.parameter_values = { phrase_entries: JSON.stringify([{ id: "private-phrase", phrase: "confidential", action: "reject" }]) };
+    bindings[0]!.parameter_values = { phrase_entries: JSON.stringify([{ id: "private-phrase", phrase: "confidential", action: "block" }]) };
     bindings[1]!.rule_order = [...bindings[1]!.enabled_rule_ids].reverse();
-    bindings[1]!.rule_actions = { [bindings[1]!.enabled_rule_ids[0]!]: "redact" };
+    bindings[1]!.rule_actions = { [bindings[1]!.enabled_rule_ids[0]!]: "transform" };
     const original = structuredClone(bindings);
     const guardrail = { ...deletableGuardrail, output_delivery: "full_buffered" as const, policy_bindings: bindings };
     const update = vi.spyOn(api, "updateGuardrail").mockResolvedValue(guardrail);
@@ -571,7 +575,7 @@ describe("Guardrail detail information hierarchy", () => {
     const policy = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list().find(item => item.id === "configured-phrase-filter")!;
     const guardrail: Guardrail = { ...deletableGuardrail, policy_bindings: [{
       policy_id: policy.id, policy_version: policy.version, action: null,
-      parameter_values: { phrase_entries: JSON.stringify([{ id: "entry", phrase: "", action: "reject" }]) },
+      parameter_values: { phrase_entries: JSON.stringify([{ id: "entry", phrase: "", action: "block" }]) },
       enabled_rule_ids: ["configured/phrases"], rule_actions: {}, enabled_rails: ["input", "output"], reasoning_policy: null,
     }] };
     const client = new QueryClient();

@@ -59,7 +59,7 @@ describe("Default Guardrail baseline", () => {
       const catalog = structuredClone(policies);
       const policy = catalog.find((item) => item.id === "local-government-identifiers")!;
       if (change === "hidden-model") policy.protection.modelCapabilities = ["content_safety"];
-      else if (change === "flow") policy.rules[0]!.form = "colang_flow";
+      else if (change === "flow") policy.rules[0]!.implementation.execution = "programmable";
       else policy.protection.execution = change;
       expect(() => defaultGuardrailDraft(catalog)).toThrow(/must execute locally without a Model/);
     }
@@ -71,7 +71,7 @@ describe("Default Guardrail baseline", () => {
     const cases = generatedTestCases(DEFAULT_GUARDRAIL_ID, draft, policies);
 
     expect(draft.policyBindings).toHaveLength(32);
-    expect(cases).toHaveLength(321);
+    expect(cases).toHaveLength(336);
     for (const [id, ruleCount] of [
       ["advanced-au-pii-protection", 47], ["prompt-injection-protection", 29],
       ["baseline-pii-protection", 14], ["pattern-matching", 82],
@@ -97,7 +97,7 @@ describe("Default Guardrail baseline", () => {
         enabledRuleIds: policy.rules.map((rule) => rule.id),
         ruleOrder: [],
         testCaseOverrides: binding.testCaseOverrides,
-        ruleActions: policy.id === "filter-denied-insults" ? { "category/denied_insults": "pass" } : {},
+        ruleActions: policy.id === "filter-denied-insults" ? { "category/denied_insults": "allow" } : {},
         enabledRails: policy.rails,
         reasoningPolicy: null,
       });

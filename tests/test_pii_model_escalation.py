@@ -143,7 +143,7 @@ def _plan(*, safety_level: str = "balanced") -> dict[str, object]:
                 "capability": "pii",
                 "contract_ref": CONTRACT_PII_EXACT,
                 "phases": ["input"],
-                "on_unsafe": "redact",
+                "on_unsafe": "transform",
                 "trigger": {"type": "always"},
                 "parameters": [],
             },
@@ -152,14 +152,14 @@ def _plan(*, safety_level: str = "balanced") -> dict[str, object]:
                 "capability": "pii",
                 "contract_ref": CONTRACT_PII_SEMANTIC,
                 "phases": ["input"],
-                "on_unsafe": "redact",
+                "on_unsafe": "transform",
                 "trigger": {
                     "type": "on_result",
                     "step_ref": "pii:exact",
                     "verdicts": (
-                        ["safe", "uncertain"]
+                        ["not_matched", "unknown"]
                         if safety_level == "strict"
-                        else ["uncertain"]
+                        else ["unknown"]
                     ),
                 },
                 "parameters": [],

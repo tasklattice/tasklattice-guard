@@ -1,0 +1,24 @@
+id: configured/phrases
+name: Configured phrase sequence
+description: Materialize one ordinary keyword Rule per configured entry, with its
+  own handling and risk level.
+stages:
+- input
+- output
+detector:
+  ref: text/keyword
+  version: 1.0.0
+on_match:
+  action: block
+runtime_adapter:
+  binding_id: configured-phrase-filter
+  implementation_rule_id: phrases
+metadata:
+  taxonomy_ids:
+  - TALI-BUSINESS-POLICY
+risk_level: low
+expand:
+  parameter: phrase_entries
+  text_field: phrase
+  action_field: action
+  replacement_field: replacement

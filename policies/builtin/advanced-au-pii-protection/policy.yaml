@@ -1,0 +1,172 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: advanced-au-pii-protection
+  name: Advanced PII Protection (Australia)
+  compliance:
+    policy_version: 1.95.0
+    summary:
+      en: Text-pattern detection and redaction can help reduce exposure of personal identifiers. This
+        Policy is a supporting technical control, not a determination of legal compliance or regulatory
+        certification.
+      zh: 通过文本模式检测与脱敏，辅助降低个人标识符的暴露风险。本策略是辅助性技术控制，不代表法律合规结论或监管认证。
+    jurisdiction:
+      en: Australia; applicability depends on the entity, data and processing context.
+      zh: 澳大利亚；具体适用性取决于组织主体、数据及处理场景。
+    provenance:
+      en: TaskLattice maintains this built-in Policy definition, Rule grouping, Australian reference mapping,
+        and Test Cases in runner/toolkit/policy_library/assets/builtin_policies.json. Regulatory references
+        are selected independently from implementation lineage.
+      zh: TaskLattice 在 runner/toolkit/policy_library/assets/builtin_policies.json 中维护此内置 Policy 的定义、Rule
+        分组、澳大利亚参考映射和 Test Cases。监管参考与实现沿革分别选择。
+    maintainer: TaskLattice
+    upstream_status:
+      en: Implementation lineage is repository-maintained. Where third-party detector material is incorporated,
+        THIRD_PARTY_NOTICES.md is authoritative. That technical lineage is not the Policy's regulatory
+        basis or a compliance mapping.
+      zh: 实现沿革由仓库维护。若包含第三方检测器材料，以 THIRD_PARTY_NOTICES.md 为准。该技术沿革不是此 Policy 的监管依据，也不构成合规映射。
+    license_status:
+      en: The Policy definition follows the repository license and THIRD_PARTY_NOTICES.md for incorporated
+        material. External regulatory and industry references grant no software rights.
+      zh: Policy 定义遵循仓库许可；所含材料受 THIRD_PARTY_NOTICES.md 约束。外部监管及行业参考不授予软件权利。
+    references:
+    - title: Australian Privacy Principles — APP 11
+      url: https://www.oaic.gov.au/privacy/australian-privacy-principles-guidelines/chapter-11-app-11-security-of-personal-information
+      publisher: Office of the Australian Information Commissioner (OAIC)
+      provision: APP 11.1 — Security of personal information
+      relevance:
+        en: OAIC describes reasonable steps to protect personal information, including against unauthorised
+          disclosure. Redacting detected identifiers can contribute to exposure reduction, but does not
+          implement all APP 11 obligations or establish applicability.
+        zh: OAIC 指引说明应采取合理措施保护个人信息，包括防止未经授权的披露。对检出的标识符脱敏可辅助减少暴露，但不实现 APP 11 的全部义务，也不判定其适用性。
+      rule_ids:
+      - au-pii-tax-identifiers/au_tfn
+      - au-pii-tax-identifiers/au_medicare
+      - au-pii-passports/passport_australia
+    - title: Privacy (Tax File Number) Rule 2015
+      url: https://www.legislation.gov.au/F2015L00249/latest/text
+      publisher: Federal Register of Legislation
+      provision: TFN information handling — contextual reference, not a clause-level compliance mapping
+      relevance:
+        en: A relevant legal reference when handling tax file number information. The TFN Rule detector
+          screens contextual text patterns only; it does not determine lawful collection, use, disclosure,
+          retention or the organisation's obligations.
+        zh: 处理税号信息时的相关法律参考。TFN 检测规则仅筛查带上下文的文本模式，不判断收集、使用、披露、留存的合法性或组织的具体义务。
+      rule_ids:
+      - au-pii-tax-identifiers/au_tfn
+    coverage:
+    - rule_ids:
+      - au-pii-tax-identifiers/au_tfn
+      description:
+        en: Matches configured 8–9 digit TFN patterns near tax-file context and replaces matches with
+          the configured redaction marker on the input rail.
+        zh: 在 input rail 上识别税号上下文附近的已配置 8–9 位 TFN 模式，并替换为配置的脱敏标记。
+    - rule_ids:
+      - au-pii-tax-identifiers/au_medicare
+      - au-pii-passports/passport_australia
+      description:
+        en: Screens configured Medicare and Australian passport patterns. These are selected examples,
+          not a complete inventory of the Policy's Rules; see the Policy tab for the full list.
+        zh: 筛查已配置的 Medicare 及澳大利亚护照模式。这些是覆盖示例，并非全部 Rules；完整列表见 Policy 页签。
+    limitations:
+    - en: Pattern matching can produce false positives and false negatives; it does not verify identifier
+        authenticity or ownership.
+      zh: 模式匹配可能误报或漏报，不验证标识符的真实性或归属。
+    - en: Does not establish consent, lawful processing, access control, retention, cross-border transfer
+        compliance or incident-response readiness.
+      zh: 不证明已满足同意、合法处理、访问控制、数据留存、跨境传输合规或事件响应要求。
+    - en: Replacing text is not proof of irreversible de-identification under APP 11.2. Copies, logs,
+        other channels and re-identification risk need separate controls.
+      zh: 文本替换不能证明满足 APP 11.2 的去标识化要求；副本、日志、其他通道及再识别风险需单独控制。
+    - en: Passing Test Cases demonstrates only the tested behaviour. Official links may change; obtain
+        qualified review before relying on this mapping for compliance decisions.
+      zh: Test Cases 通过仅说明已测试行为符合预期。官方链接内容可能更新；将此映射用于合规决策前，应取得具备资质人员的审查。
+    review:
+      status: reviewed
+      reviewed_on: '2026-09-22'
+      reviewer: TaskLattice Engineering
+      notes:
+        en: Engineering reviewed the repository provenance, official reference targets and technical scope.
+          Legal applicability and clause-level compliance conclusions still require qualified independent
+          review.
+        zh: 工程团队已审查仓库来源、官方参考目标和技术范围。法律适用性及条款级合规结论仍需具备资质的独立审查。
+  description: Screens and redacts configured Australian identifiers, international employee data, financial
+    information, credentials, protected-class terms, and selected industry-sensitive data. This is a technical
+    exposure-reduction control, not legal compliance.
+  source: built_in
+  version: 1.95.0
+  tags:
+  - namespace: protection
+    value: privacy
+    label: Privacy & sensitive information
+    source: declared
+  - namespace: guardrail_category
+    value: pii_detection
+    label: PII Detection
+    source: declared
+  - namespace: jurisdiction
+    value: au
+    label: Australia
+    source: declared
+  - namespace: rail
+    value: input
+    label: Input rail
+    source: derived
+  - namespace: implementation
+    value: regex
+    label: Regex
+    source: derived
+  safety_level: balanced
+  output_delivery: window_buffered
+parameters: []
+rules:
+- rules/au-pii-tax-identifiers-au_tfn.yaml
+- rules/au-pii-tax-identifiers-au_abn.yaml
+- rules/au-pii-tax-identifiers-au_medicare.yaml
+- rules/au-pii-passports-passport_australia.yaml
+- rules/international-pii-identifiers-us_ssn.yaml
+- rules/international-pii-identifiers-us_ssn_no_dash.yaml
+- rules/international-pii-identifiers-passport_us.yaml
+- rules/international-pii-identifiers-passport_uk.yaml
+- rules/international-pii-identifiers-passport_germany.yaml
+- rules/international-pii-identifiers-passport_france.yaml
+- rules/international-pii-identifiers-passport_netherlands.yaml
+- rules/international-pii-identifiers-nl_bsn_contextual.yaml
+- rules/international-pii-identifiers-passport_china.yaml
+- rules/international-pii-identifiers-passport_india.yaml
+- rules/international-pii-identifiers-passport_japan.yaml
+- rules/international-pii-identifiers-passport_canada.yaml
+- rules/international-pii-identifiers-br_cpf.yaml
+- rules/international-pii-identifiers-br_cpf_unformatted.yaml
+- rules/international-pii-identifiers-br_rg.yaml
+- rules/international-pii-identifiers-br_cnpj.yaml
+- rules/contact-information-pii-email.yaml
+- rules/contact-information-pii-us_phone.yaml
+- rules/contact-information-pii-br_phone_landline.yaml
+- rules/contact-information-pii-br_phone_mobile.yaml
+- rules/contact-information-pii-street_address.yaml
+- rules/contact-information-pii-br_cep.yaml
+- rules/financial-pii-visa.yaml
+- rules/financial-pii-mastercard.yaml
+- rules/financial-pii-amex.yaml
+- rules/financial-pii-discover.yaml
+- rules/financial-pii-credit_card.yaml
+- rules/financial-pii-iban.yaml
+- rules/credentials-api-keys-aws_access_key.yaml
+- rules/credentials-api-keys-aws_secret_key.yaml
+- rules/credentials-api-keys-github_token.yaml
+- rules/credentials-api-keys-slack_token.yaml
+- rules/credentials-api-keys-generic_api_key.yaml
+- rules/network-infrastructure-pii-ipv4.yaml
+- rules/network-infrastructure-pii-ipv6.yaml
+- rules/protected-class-information-gender_sexual_orientation.yaml
+- rules/protected-class-information-race_ethnicity_national_origin.yaml
+- rules/protected-class-information-religion.yaml
+- rules/protected-class-information-age_discrimination.yaml
+- rules/protected-class-information-disability.yaml
+- rules/protected-class-information-marital_family_status.yaml
+- rules/protected-class-information-military_status.yaml
+- rules/protected-class-information-public_assistance.yaml
+tests:
+- tests/acceptance.yaml

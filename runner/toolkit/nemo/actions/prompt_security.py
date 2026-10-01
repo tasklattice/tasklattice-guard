@@ -66,13 +66,13 @@ class PromptSecurityActionProvider:
             )
             return action_result(
                 request,
-                "unsafe",
+                "matched",
                 request.content,
                 findings=(
                     RiskFinding(
                         risk=request.capability,
                         taxonomy_id=taxonomy_for_evaluator(detected_risk),
-                        verdict="unsafe",
+                        verdict="matched",
                         confidence=0.99,
                         evidence=reason,
                         recommended_action=request.proposed_action,
@@ -87,13 +87,13 @@ class PromptSecurityActionProvider:
             )
             return action_result(
                 request,
-                "uncertain",
+                "unknown",
                 request.content,
                 findings=(
                     RiskFinding(
                         risk=request.capability,
                         taxonomy_id=taxonomy_for_evaluator(request.capability),
-                        verdict="uncertain",
+                        verdict="unknown",
                         confidence=0.5,
                         evidence=reason,
                         recommended_action=request.proposed_action,
@@ -103,7 +103,7 @@ class PromptSecurityActionProvider:
             )
         return action_result(
             request,
-            "safe",
+            "not_matched",
             request.content,
             reason=(
                 "No instruction override, prompt extraction, or safety-bypass "

@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: cn-banking/identity-check-evasion
+name: Bank identity-check evasion
+description: Rejects selected explicit Chinese or English requests to bypass bank identity verification,
+  customer due diligence, or anti-money-laundering checks. It does not perform KYC or AML decisions.
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: (?i)(?:帮我|教我|如何|怎么).{0,6}(?:绕过|规避|跳过).{0,6}(?:银行)?(?:身份验证|实名认证|客户尽职调查|反洗钱检查)|\b(?:help
+      me|show me how to)\s+(?:bypass|evade)\s+(?:bank\s+)?(?:KYC|AML|identity verification)\b
+on_match:
+  action: block
+runtime_adapter:
+  binding_id: china-banking-assistant-boundaries
+  implementation_rule_id: cn-banking/identity-check-evasion
+metadata:
+  taxonomy_ids:
+  - TALI-ILLEGAL-ACTIVITY-FRAUD
+  - TALI-BUSINESS-POLICY
+risk_level: medium

@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: pattern/url
+name: URL
+description: Detects URLs (http/https)
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b(?:https?://|www\.)[^\s/$.?#].[^\s]*\b
+on_match:
+  action: transform
+  replacement: '[url_REDACTED]'
+runtime_adapter:
+  binding_id: pattern-matching
+  implementation_rule_id: url
+metadata:
+  taxonomy_ids:
+  - TALI-BUSINESS-POLICY
+risk_level: low

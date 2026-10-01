@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: pattern/ca_postal_code
+name: Postal Code (Canada)
+description: Detects Canadian postal codes (A1A 1A1 format, excludes invalid first-letter characters per
+  Canada Post spec)
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b[ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z][\-\s]?\d[ABCEGHJ-NPRSTV-Z]\d\b
+    context_expression: \b(?:postal\s*code|zip\s*code|mailing\s*address|street\s*address|shipping\s*address|home\s*address|code\s*postal|postcode)\b
+    context_max_gap_words: 1
+on_match:
+  action: transform
+  replacement: '[ca_postal_code_REDACTED]'
+runtime_adapter:
+  binding_id: local-regional-contact-formats
+  implementation_rule_id: ca_postal_code
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-PII
+risk_level: medium

@@ -14,6 +14,40 @@ import sys
 import tempfile
 import threading
 import time
+import socket
+import uvicorn
+from contextlib import asynccontextmanager
+
+
+@asynccontextmanager
+async def tcp_server(app):
+    """Bind an OS-assigned loopback port; never reuse or stop a user service."""
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+    server = uvicorn.Server(uvicorn.Config(
+        app, host="127.0.0.1", port=port, lifespan="off", access_log=False,
+        log_level="error", timeout_graceful_shutdown=2,
+    ))
+    task = asyncio.create_task(server.serve(sockets=[sock]))
+    try:
+        async with asyncio.timeout(5):
+            while not server.started:
+                if task.done():
+                    await task
+                    raise AssertionError("Loopback server stopped before startup")
+                await asyncio.sleep(0.01)
+        yield f"http://127.0.0.1:{port}"
+    finally:
+        server.should_exit = True
+        try:
+            await asyncio.wait_for(task, 5)
+        finally:
+            if not task.done():
+                task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
+            sock.close()
+
 
 
 def worker(payload):
@@ -153,24 +187,35 @@ def worker(payload):
                         parts = [text[:12], text[12:]] if mode == "full_buffered" else [text]
                         before = len(recorder.rows())
                         results = []
+                        started = time.monotonic()
                         try:
-                            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://runner") as client:
-                                for index, part in enumerate(parts):
-                                    response = await client.post("/runtime/v1/endpoints/fixture-endpoint/guardrails/output-stream",
-                                        headers={"x-api-key": "fixture-runtime-secret"}, json={"stream_id": "live",
-                                            "sequence": index, "text": part, "final": index == len(parts) - 1,
-                                            "protocol": "litellm", "messages": [{"role": "user", "content": "Please answer my question."}]})
-                                    results.append({"http_status": response.status_code, "body": response.json(),
-                                        "requests_since_start": len(recorder.rows()) - before})
-                            last = results[-1]["body"]
-                            usage = last.get("decision", {}).get("usage", {})
-                            passed = (all(row["http_status"] == 200 for row in results)
-                                and last.get("status") == ("blocked" if unsafe else "completed")
-                                and last.get("released_text") == ("" if unsafe else text)
-                                and usage.get("fail_closed") is False and usage.get("model_invocations") == 1
-                                and all(row["body"].get("released_text") == "" and row["requests_since_start"] == 0 for row in results[:-1]))
+                            import aiohttp
+                            async with tcp_server(app) as runner_url, aiohttp.ClientSession() as client:
+                                async with client.ws_connect(runner_url + "/runtime/v1/endpoints/fixture-endpoint/guardrails/output-stream",
+                                    headers={"x-api-key": "fixture-runtime-secret"}) as stream:
+                                    await stream.send_json({"type": "start", "version": 1, "stream_id": "live", "protocol": "litellm",
+                                        "messages": [{"role": "user", "content": "Please answer my question."}]})
+                                    ready = await stream.receive_json()
+                                    assert ready["type"] == "ready", ready
+                                    for index, part in enumerate(parts):
+                                        await stream.send_json({"type": "delta", "sequence": index, "text": part})
+                                        ack = await stream.receive_json()
+                                        assert ack["type"] == "ack" and ack["sequence"] == index
+                                    assert len(recorder.rows()) == before
+                                    await stream.send_json({"type": "end", "sequence": len(parts)})
+                                    while True:
+                                        event = await stream.receive_json(timeout=60)
+                                        results.append(event)
+                                        if event["type"] in {"completed", "blocked", "error"}: break
+                            last = results[-1]
+                            approved = "".join(e["text"] for e in results if e["type"] == "delta")
+                            passed = (last["type"] == ("blocked" if unsafe else "completed")
+                                and last.get("checks") == 1 and approved == ("" if unsafe else text))
                             item = {"target": f"stream.{mode}.{'unsafe' if unsafe else 'safe'}", "passed": passed,
-                                "external_requests": len(recorder.rows()) - before, "responses": results}
+                                "external_requests": len(recorder.rows()) - before,
+                                "elapsed_ms": round((time.monotonic() - started) * 1000),
+                                "terminal": last["type"], "error_code": last.get("code"),
+                                "responses": results}
                             checks.append(item)
                             print("CHECK " + json.dumps({k: v for k, v in item.items() if k != "responses"}), flush=True)
                         finally:
@@ -247,6 +292,8 @@ def main():
     args.output.chmod(0o600)
     print(json.dumps({"external_requests": report["external_requests"], "output": str(args.output.resolve()),
         "checks_passed": sum(check["passed"] for check in report["checks"]), "checks_total": len(report["checks"])}))
+    if not report["checks"] or not all(check["passed"] for check in report["checks"]):
+        raise SystemExit(1)
 
 
 if __name__ == "live_worker":

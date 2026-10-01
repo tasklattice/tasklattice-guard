@@ -1,0 +1,20 @@
+id: topic/denylist
+name: Denylist
+description: Block a request when any task matches a denied topic. Evaluated before
+  the Allowlist Rule.
+stages:
+- input
+detector:
+  ref: model/classifier
+  version: 1.0.0
+  parameters:
+    profile: topic-classification
+on_match:
+  action: block
+runtime_adapter:
+  binding_id: topic_control
+  implementation_rule_id: topic_control
+metadata:
+  taxonomy_ids:
+  - TALI-BUSINESS-POLICY-OFF-TOPIC
+risk_level: low

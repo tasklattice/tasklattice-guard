@@ -12,7 +12,7 @@ describe("Immutable Guardrail version projection", () => {
       versions: [{ guardrailId: "guard-1", version: "v1", sourceDraftRevision: 1, runtimeProfile: "llmrails-colang2",
         status: "ready", createdAt: "2026-09-05T00:00:00Z", failureReason: null,
         plan: { safety_level: "balanced", output_delivery: "window_buffered",
-          steps: [{ id: "pii-rule", capability: "pii", phases: ["output"], on_unsafe: "redact" }],
+          steps: [{ id: "pii-rule", capability: "pii", phases: ["output"], on_unsafe: "transform" }],
           policy_bindings: [{ policy_id: "released-policy", policy_version: "1.0.0", enabled_rule_ids: ["pii"], enabled_rails: ["output"] }],
         },
       }],

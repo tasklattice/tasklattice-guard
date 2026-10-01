@@ -1,0 +1,43 @@
+id: competitor-comparison-input-filter/competitor-comparison-intent
+name: Competitor comparison intent
+description: Blocks airline ranking, comparison, recommendation, and switching requests while allowing
+  destination and service-policy questions.
+stages:
+- input
+detector:
+  ref: text/conditions
+  version: 1.0.0
+  parameters:
+    detector_options:
+      match:
+        any:
+        - regex: \bcompare\b.{0,80}\b(?:airlines?|airways|carriers?|vs\.?)\b
+        - regex: \b(?:airlines?|airways|carriers?)\b.{0,80}\b(?:better|best|ranked|number\s+one|versus|vs\.?)\b
+        - regex: \b(?:better|best|ranked|number\s+one)\b.{0,80}\b(?:airlines?|airways|carriers?|business\s+class|lounges?|customer\s+satisfaction)\b
+        - regex: \bshould\s+i\s+(?:choose|switch)\b.{0,80}\b(?:airlines?|airways|carriers?|qatar|singapore|turkish|lufthansa)\b
+        - regex: \bdoha\s+airline\b.{0,40}\bbetter\s+than\b
+        - within_sentence:
+            all:
+            - contains:
+              - airline
+              - airlines
+              - airways
+              - carrier
+              - carriers
+            - keywords:
+              - better
+              - best
+              - ranked
+              - number one
+              - compare
+              - switch
+on_match:
+  action: block
+  replacement: null
+runtime_adapter:
+  binding_id: competitor-comparison-input-filter
+  implementation_rule_id: competitor-comparison-intent
+metadata:
+  taxonomy_ids:
+  - TALI-BUSINESS-POLICY-OFF-TOPIC
+risk_level: low

@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: pattern/ca_on_drivers_licence
+name: Driver's Licence (Ontario)
+description: Detects Ontario driver's licence numbers (1 letter + 14 digits, dashed format)
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b[A-Z]\d{4}[\-\s]\d{5}[\-\s]\d{5}\b
+    context_expression: \b(?:driver'?s?\s*licen[cs]e\s*number|ontario\s*licen[cs]e\s*number|driver'?s?\s*licen[cs]e|licen[cs]e\s*number|DL\s*number|ontario\s*licen[cs]e|permis\s*de\s*conduire|numéro\s*de\s*permis)\b
+    context_max_gap_words: 1
+on_match:
+  action: transform
+  replacement: '[ca_on_drivers_licence_REDACTED]'
+runtime_adapter:
+  binding_id: pattern-matching
+  implementation_rule_id: ca_on_drivers_licence
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-PII
+risk_level: medium

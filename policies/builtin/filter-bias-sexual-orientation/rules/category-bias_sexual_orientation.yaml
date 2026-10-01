@@ -1,0 +1,156 @@
+id: category/bias_sexual_orientation
+name: Bias Sexual Orientation
+description: Detects discriminatory language targeting LGBTQ+ individuals and communities
+stages:
+- input
+- output
+detector:
+  ref: text/conditions
+  version: 1.0.0
+  parameters:
+    detector_options:
+      match:
+        all:
+        - not:
+            contains:
+            - lgbtq rights
+            - lgbtq equality
+            - lgbtq community
+            - lgbtq support
+            - lgbtq advocacy
+            - sexual orientation
+            - coming out
+            - pride
+            - marriage equality
+            - anti-lgbtq
+            - discrimination against
+            - protect lgbtq
+            - lgbtq history
+            - gender identity
+            - conversion therapy ban
+            - harmful practice
+            - fight discrimination
+            - lgbtq acceptance
+            - lgbtq inclusion
+            - support lgbtq
+            - lgbtq youth
+            - lgbtq healthcare
+        - keywords:
+          - faggot
+          - fag
+          - dyke
+          - tranny
+          - shemale
+          - sodomite
+          - homo
+          - f*ggot
+          - f@ggot
+          - gay
+          - gay agenda
+          - homosexual agenda
+          - conversion therapy
+          - reparative therapy
+          - groomer
+          - lifestyle choice
+          - gay lifestyle
+          - homosexual lifestyle
+          - choose to be gay
+          - gay is a choice
+          - homosexuality is a choice
+          - gay is unnatural
+          - gay is wrong
+          - gay is a sin
+          - gay is sinful
+          - gay is a disease
+          - gay is an illness
+          - gay is a disorder
+          - gay is abnormal
+          - gay is deviant
+          - gay is perverted
+          - gay is a perversion
+          - gay is degenerate
+          - gay is an abomination
+          - gay is disgusting
+          - gay is immoral
+          - gay is evil
+          - gay is sick
+          - gay is twisted
+          - lesbian is unnatural
+          - lesbian is wrong
+          - lesbian is a sin
+          - lesbian is abnormal
+          - bisexual is confused
+          - bisexual is fake
+          - transgender is unnatural
+          - transgender is wrong
+          - transgender is a sin
+          - transgender is a disease
+          - transgender is a disorder
+          - transgender is abnormal
+          - transgender is fake
+          - transgender is confused
+          - transgender is a delusion
+          - transgender is mental illness
+          - trans is unnatural
+          - trans is wrong
+          - trans is fake
+          - trans is confused
+          - trans is a delusion
+          - trans is mental
+          - queer is unnatural
+          - queer is wrong
+          - homosexual is unnatural
+          - homosexual is wrong
+          - homosexual is a sin
+          - homosexual is a disease
+          - homosexual is abnormal
+          - lgbtq is unnatural
+          - lgbtq is wrong
+          - lgbtq is a sin
+          - cure gay
+          - cure homosexuality
+          - cure transgender
+          - fix gay
+          - change gay
+          - convert gay
+          - stop being gay
+          - prevent gay
+          - eliminate gay
+          - eradicate gay
+          - ban gay
+          - punish gay
+          - cure lesbian
+          - fix lesbian
+          - change lesbian
+          - cure trans
+          - fix trans
+          - change trans
+          - cure lgbtq
+          - fix lgbtq
+          - all gays are
+          - all lesbians are
+          - all transgender are
+          - all trans are
+          - all lgbtq are
+          - gays are pedophiles
+          - gays are groomers
+          - gays are perverts
+          - gays are sinners
+          - lesbians are perverts
+          - transgender are predators
+          - trans are predators
+          - trans are groomers
+          - trans women are men
+          - trans men are women
+          - not real women
+          - not real men
+on_match:
+  action: block
+  replacement: null
+runtime_adapter:
+  binding_id: bias_sexual_orientation
+  implementation_rule_id: bias_sexual_orientation
+metadata:
+  taxonomy_ids:
+  - TALI-SOCIAL-HARM-DISCRIMINATION
+risk_level: medium

@@ -1,0 +1,47 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: china-banking-assistant-boundaries
+  name: China banking assistant boundaries
+  description: Local Chinese/English text boundaries for verification-code theft, assistant credential
+    solicitation, identity-check evasion, and selected misleading return guarantees. It does not make
+    banking decisions, perform KYC/AML, assess suitability, or establish financial-regulatory compliance.
+  source: built_in
+  version: 1.0.0
+  tags:
+  - namespace: protection
+    value: business_rules
+    label: Business & industry rules
+    source: declared
+  - namespace: guardrail_category
+    value: topic_control
+    label: Topic Control
+    source: declared
+  - namespace: collection
+    value: china-mainland
+    label: China mainland runtime controls
+    source: declared
+  - namespace: jurisdiction
+    value: cn
+    label: China mainland
+    source: declared
+  - namespace: domain
+    value: banking
+    label: Banking
+    source: declared
+  - namespace: framework
+    value: jr-t-0221-2021
+    label: JR/T 0221-2021
+    source: declared
+  safety_level: balanced
+  output_delivery: full_buffered
+parameters: []
+rules:
+- rules/cn-banking-verification-code-theft.yaml
+- rules/cn-banking-sensitive-credential-solicitation.yaml
+- rules/cn-banking-identity-check-evasion.yaml
+- rules/cn-banking-misleading-return-guarantee.yaml
+tests:
+- tests/acceptance.yaml
+- tests/regression.yaml

@@ -1,0 +1,32 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: internet-account-abuse
+  name: Internet account abuse
+  description: Local patterns for credential-phishing and session-cookie theft requests. Does not authorize
+    tools, enforce identity or replace account fraud detection.
+  source: built_in
+  version: 2.0.0
+  tags:
+  - namespace: protection
+    value: business_rules
+    label: Business & industry rules
+    source: declared
+  - namespace: guardrail_category
+    value: topic_control
+    label: Topic Control
+    source: declared
+  - namespace: collection
+    value: focused-protection
+    label: Focused protection
+    source: declared
+  safety_level: balanced
+  output_delivery: full_buffered
+parameters: []
+rules:
+- rules/internet-phishing.yaml
+- rules/internet-session-theft.yaml
+tests:
+- tests/acceptance.yaml
+- tests/regression.yaml

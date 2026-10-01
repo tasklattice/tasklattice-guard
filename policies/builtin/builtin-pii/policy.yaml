@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: builtin-pii
+  name: PII Protection
+  description: Combines exact local detection with semantic escalation for uncertain personal information
+    on requests and responses. Requires a semantic PII model assignment; use focused local Policies for
+    model-free protection.
+  source: built_in
+  version: 1.0.0
+  tags:
+  - namespace: protection
+    value: privacy
+    label: Privacy & sensitive information
+    source: declared
+  - namespace: guardrail_category
+    value: pii_detection
+    label: PII Detection
+    source: declared
+parameters: []
+rules:
+- rules/model-pii.yaml
+tests:
+- tests/acceptance.yaml

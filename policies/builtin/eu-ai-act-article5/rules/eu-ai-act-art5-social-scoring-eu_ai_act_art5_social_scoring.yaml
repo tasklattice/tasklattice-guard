@@ -1,0 +1,110 @@
+id: eu-ai-act-art5-social-scoring/eu_ai_act_art5_social_scoring
+name: EU AI Act Art5 Social Scoring
+description: Art. 5.1(c) — Blocks social scoring, citizen rating, and trustworthiness classification systems
+stages:
+- input
+detector:
+  ref: text/conditions
+  version: 1.0.0
+  parameters:
+    detector_options:
+      match:
+        all:
+        - not:
+            contains:
+            - research on
+            - study on
+            - academic
+            - thesis on
+            - explain
+            - what is
+            - article 5
+            - prohibited by
+            - audit for bias
+            - detect discrimination
+            - compliance monitoring
+            - ethical review
+            - fairness testing
+            - product review
+            - customer feedback
+            - credit score
+            - net promoter score
+        - any:
+          - within_sentence:
+              all:
+              - contains:
+                - build
+                - create
+                - develop
+                - design
+                - implement
+                - score
+                - rank
+                - rate
+                - assess
+                - evaluate
+                - classify
+                - profile
+                - grade
+                - categorize
+                - tier
+                - recognize
+                - detect
+                - identify
+                - infer
+                - deduce
+                - predict
+                - determine
+                - analyze
+                - monitor
+                - track
+              - keywords:
+                - social behavior
+                - social credit
+                - social score
+                - social rating
+                - social ranking
+                - social standing
+                - citizen score
+                - citizen rating
+                - citizen ranking
+                - citizen classification
+                - citizen trustworthiness
+                - trustworthiness
+                - trustworthiness score
+                - reputation score
+                - reputation rating
+                - behavioral score
+                - behavioral rating
+                - behavioral classification
+                - loyalty score
+                - obedience score
+                - social media behavior
+                - social media score
+                - online behavior score
+                - digital reputation score
+                - creditworthiness from social
+                - personality score
+                - character score
+                - moral score
+                - virtue score
+          - keywords:
+            - social credit system
+            - social scoring system
+            - citizen scoring
+            - citizen scoring system
+            - social credit score
+            - government social score
+            - trustworthiness scoring system
+            - reputation scoring system
+            - behavioral scoring system
+on_match:
+  action: block
+  replacement: null
+runtime_adapter:
+  binding_id: eu-ai-act-art5-social-scoring
+  implementation_rule_id: eu_ai_act_art5_social_scoring
+metadata:
+  taxonomy_ids:
+  - TALI-BUSINESS-POLICY
+risk_level: low

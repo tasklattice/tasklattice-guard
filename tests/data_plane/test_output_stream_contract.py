@@ -19,7 +19,7 @@ def version(source="built-in", number="1", execution_contract=()):
         policy_id="policy-safety", version=number, name="Safety", source=source,
         colang_version="2.x", sources=(), parameter_schema=(),
         rail_bindings=tuple(PolicyRailBindingSnapshot(
-            rail_type=rail, flow_name=f"check_{rail}", execution_mode="detect", on_unsafe="reject",
+            rail_type=rail, flow_name=f"check_{rail}", execution_mode="detect", on_unsafe="block",
         ) for rail in ("input", "output")),
         action_references=(), evaluation_contracts=(), prompt_dependencies=(),
         execution_contract=execution_contract, test_cases=(), checksum=f"checksum-{number}",
@@ -31,7 +31,7 @@ def plan(mode="window_buffered", source="built-in"):
         guardrail_id="stream-contract", guardrail_version="1", compiler_version="test",
         safety_level="balanced", output_delivery=mode,
         steps=(GuardrailPlanStep(id="safety", capability="content_safety",
-            contract_ref="tali.guard.content_safety.nvidia.v1", phases=("output",), on_unsafe="reject"),),
+            contract_ref="tali.guard.content_safety.nvidia.v1", phases=("output",), on_unsafe="block"),),
         policy_versions=(version(source),),
         policy_bindings=(GuardrailPolicyBindingSnapshot(policy_id="policy-safety", policy_version="1",
             enabled_rails=("input", "output")),),
@@ -39,12 +39,13 @@ def plan(mode="window_buffered", source="built-in"):
 
 
 @pytest.mark.parametrize("mode", ["window_buffered", "interruptible", "full_buffered"])
-@pytest.mark.parametrize("action", ["reject", "report", "pass"])
+@pytest.mark.parametrize("action", ["block", "report", "allow"])
 def test_native_safety_policy_snapshot_does_not_invent_a_custom_output_flow(mode, action):
     candidate = plan(mode)
     candidate = replace(candidate, steps=(replace(candidate.steps[0], on_unsafe=action),))
     result = output_stream_contract(candidate)
-    assert result.requested_mode == result.effective_mode == mode
+    assert result.requested_mode == mode
+    assert result.effective_mode == ("full_buffered" if mode == "full_buffered" else "window_buffered")
 
 
 @pytest.mark.parametrize("mode", ["window_buffered", "interruptible"])
@@ -71,13 +72,13 @@ def test_unused_custom_output_does_not_override_the_selected_execution(mode, sel
         candidate = replace(candidate, policy_versions=(version("built-in"), version("custom", "2")))
     else:
         candidate = replace(candidate, policy_bindings=())
-    assert output_stream_contract(candidate).effective_mode == mode
+    assert output_stream_contract(candidate).effective_mode == ("full_buffered" if mode == "full_buffered" else "window_buffered")
 
 
 @pytest.mark.parametrize("mode", ["window_buffered", "interruptible"])
 @pytest.mark.parametrize("capability,action", [
-    ("pii", "redact"), ("content_filter", "reject"), ("grounding", "reject"),
-    ("content_safety", "redact"), ("unknown_future_detector", "reject"),
+    ("pii", "transform"), ("content_filter", "block"), ("grounding", "block"),
+    ("content_safety", "transform"), ("unknown_future_detector", "block"),
 ])
 def test_complete_response_and_unknown_steps_cannot_use_incremental_delivery(mode, capability, action):
     candidate = plan(mode)
@@ -97,4 +98,4 @@ def test_input_only_complete_response_metadata_does_not_constrain_output(mode):
     candidate = replace(candidate,
         policy_versions=(version(execution_contract=(("output_delivery", "full_buffered"),)),),
         policy_bindings=(replace(candidate.policy_bindings[0], enabled_rails=("input",)),))
-    assert output_stream_contract(candidate).effective_mode == mode
+    assert output_stream_contract(candidate).effective_mode == ("full_buffered" if mode == "full_buffered" else "window_buffered")

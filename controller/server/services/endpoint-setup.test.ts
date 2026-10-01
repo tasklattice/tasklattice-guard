@@ -31,5 +31,6 @@ describe("Endpoint setup", () => {
     const setup = endpointSetup("https://runtime.example.test", "endpoint-1", "generic-http-guard");
 
     expect(setup.callback_url).toBe(`${setup.api_base_url}/guardrails/evaluate`);
+    expect(setup.stream_callback_url).toBe("wss://runtime.example.test/runtime/v1/endpoints/endpoint-1/guardrails/output-stream");
   });
 });

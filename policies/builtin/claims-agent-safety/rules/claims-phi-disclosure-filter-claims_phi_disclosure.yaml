@@ -1,0 +1,129 @@
+id: claims-phi-disclosure-filter/claims_phi_disclosure
+name: Claims Phi Disclosure
+description: Detects unauthorized PHI disclosure requests, bulk data extraction, and HIPAA violations
+stages:
+- input
+detector:
+  ref: text/conditions
+  version: 1.0.0
+  parameters:
+    detector_options:
+      match:
+        all:
+        - not:
+            contains:
+            - my own
+            - my claim
+            - my records
+            - my medical
+            - my coverage
+            - my eligibility
+            - my own claim
+            - my own medical
+            - i need to correct
+            - how do i request my
+            - aggregate
+            - de-identified
+            - how many claims
+            - average processing
+            - total last quarter
+            - what types of information
+            - what is protected health information
+            - hipaa privacy
+            - hipaa authorization
+            - breach notification
+            - penalties for
+            - data retention
+            - minimum necessary
+            - training do staff
+            - how does the system protect
+            - accounting of disclosures
+            - revoke a previously
+            - designate a personal
+            - file a complaint
+            - send my claim documents
+            - verify my own
+            - trends
+        - any:
+          - regex: \b(?:give|show|pull|get|send)\b.{0,10}\b(?:me|us)\b.{0,30}\b(?:all|every|complete|full)\b.{0,30}\b(?:record|claim|data|history|information)\b
+          - regex: \b(?:export|download|dump|extract)\b.{0,30}\b(?:member|patient|claimant|employee)\b.{0,20}\b(?:data|record|information|detail)\b
+          - regex: \b(?:list|show)\b.{0,10}\b(?:all|every)\b.{0,20}\b(?:member|patient|claimant)\b.{0,10}\bwho\b
+          - within_sentence:
+              all:
+              - contains:
+                - give me
+                - show me
+                - pull up
+                - pull
+                - export
+                - download
+                - dump
+                - extract
+                - list all
+                - list every
+                - access
+              - keywords:
+                - medical records
+                - medical history
+                - health records
+                - health information
+                - treatment history
+                - treatment records
+                - treatment notes
+                - diagnosis history
+                - diagnoses
+                - mental health records
+                - psychiatric treatment
+                - psychiatric records
+                - substance abuse
+                - genetic testing
+                - hiv status
+                - medications
+                - medication list
+                - taking antidepressants
+                - social security numbers
+                - claims data
+                - member names
+                - patient names
+                - dates of birth
+                - names and addresses
+                - disability records
+                - billing details
+                - session notes
+                - protected health information
+                - pregnancy-related
+          - keywords:
+            - all claims filed by member
+            - every patient in the
+            - all members with
+            - all claimants
+            - all member social security
+            - all patients who have filed
+            - all claims data including patient names
+            - all members taking
+            - every claim with a mental health
+            - every member who has been treated
+            - complete medical history for claimant
+            - complete health records for everyone
+            - billing details and diagnoses for patient
+            - diagnoses for patient
+            - treatment notes from
+            - sessions with this patient
+            - claims filed by employee
+            - records for all employees
+            - all member records
+            - name of every member
+            - patient john smith
+            - patient sarah johnson
+            - patient jane doe
+            - member robert williams
+on_match:
+  action: block
+  replacement: null
+runtime_adapter:
+  binding_id: claims-phi-disclosure-filter
+  implementation_rule_id: claims_phi_disclosure
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-HEALTH
+risk_level: high

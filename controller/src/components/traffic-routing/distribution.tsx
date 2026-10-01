@@ -41,7 +41,7 @@ export function DistributionOverview({ router, endpoints }: { router: TrafficRou
     { label: t("routing.assigned"), value: assigned.toLocaleString(), detail: t("routing.targetSelected"), tone: '' },
     { label: t("routing.unassigned"), value: report?.unassigned?.toLocaleString() ?? '—', detail: t("routing.noTargetSelected"), tone: (report?.unassigned ?? 0) > 0 ? 'warning' : '' },
     { label: localize("routing.fallback"), value: share(fallback, report?.total ?? 0), detail: translate('routerMonitoring.callCount', { count: fallback }), tone: '' },
-    { label: t("routing.executionErrorRate"), value: share(errors, completed), detail: translate('routerMonitoring.errorCount', { errors: errors.toLocaleString(), completed: completed.toLocaleString() }), tone: errors > 0 ? 'error' : '' },
+    { label: t("routing.executionErrorRate"), value: share(errors, completed), detail: translate('routerMonitoring.errorCount', { errors: errors.toLocaleString(), completed: completed.toLocaleString() }), tone: errors > 0 ? 'error' : '', errors: true },
   ];
   const maxTrend = Math.max(...(report?.trend?.map(point => point.count) ?? []), 1);
   return <div className="router-monitoring">
@@ -64,7 +64,7 @@ export function DistributionOverview({ router, endpoints }: { router: TrafficRou
       {!report.telemetryFresh && <p role="alert" className="monitoring-notice monitoring-notice-warning"><AlertTriangle aria-hidden="true" />{t("routing.telemetryIsDelayedOrUnavailableCountsMayBeIncomplete")}</p>}
       {report.multipleRevisions && <p role="status" className="monitoring-notice"><GitBranch aria-hidden="true" />{t("routing.thisWindowContainsMultipleRevisionsSelectARevisionTo")}</p>}
       <dl className="monitoring-metrics">{metrics.map(metric => <div key={metric.label} data-tone={metric.tone}>
-        <dt>{metric.label}</dt><dd>{metric.value}</dd><dd className="monitoring-metric-detail">{metric.detail}</dd>
+        <dt>{metric.label}</dt><dd>{metric.value}</dd><dd className="monitoring-metric-detail">{metric.detail}</dd>{metric.errors && errors > 0 ? <dd><Link to="/logs" search={{ outcome: "error", routerId: router.id, routerRevision: revision ? Number(revision) : undefined, endpointId: endpoint || undefined, since: report.since, until: report.until }} className="text-sm text-primary underline underline-offset-4">{t("logs.viewErrors")}</Link></dd> : null}
       </div>)}</dl>
       <section className="monitoring-panel" aria-label={t("routing.routeDistribution")}>
         <header className="monitoring-panel-heading"><div><h3><GitBranch aria-hidden="true" />{t("routing.routeDistribution")}</h3><p>{t("routing.routeShareUsesAllRouterCallsTargetSharesUse")}</p></div></header>

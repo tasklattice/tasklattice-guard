@@ -1,0 +1,123 @@
+id: category/prompt_injection_jailbreak
+name: Prompt Injection Jailbreak
+description: Detects jailbreak attempts including DAN, roleplay attacks, and safety bypass requests
+stages:
+- input
+- output
+detector:
+  ref: text/conditions
+  version: 1.0.0
+  parameters:
+    detector_options:
+      match:
+        all:
+        - not:
+            contains:
+            - jailbreak prevention
+            - security research
+            - red team
+            - red teaming
+            - AI safety research
+            - AI alignment
+            - prompt injection defense
+            - how to prevent jailbreaks
+            - jailbreak detection
+            - content moderation research
+            - safety evaluation
+        - any:
+          - within_sentence:
+              all:
+              - contains:
+                - pretend
+                - roleplay
+                - act as
+                - imagine you are
+                - suppose you are
+                - you are now
+                - behave as
+                - respond as
+                - simulate
+                - emulate
+                - impersonate
+                - transform into
+                - become
+                - play the role
+                - switch to
+                - enter
+                - enable
+                - activate
+                - turn on
+              - keywords:
+                - no restrictions
+                - no rules
+                - no guidelines
+                - no filters
+                - no limitations
+                - no boundaries
+                - no censorship
+                - no moderation
+                - no safety
+                - no ethical
+                - bypass
+                - override
+                - unrestricted
+                - unfiltered
+                - uncensored
+                - unmoderated
+                - unlimited
+                - without limits
+                - without restrictions
+                - without rules
+                - without guidelines
+                - without filters
+                - anything mode
+                - god mode
+                - developer mode
+                - debug mode
+                - test mode
+                - admin mode
+                - root mode
+                - superuser
+                - evil mode
+                - chaos mode
+                - unrestricted mode
+                - opposite mode
+          - keywords:
+            - DAN mode
+            - Do Anything Now
+            - developer mode enabled
+            - jailbreak
+            - jailbroken
+            - bypass safety
+            - bypass filters
+            - bypass content filter
+            - bypass moderation
+            - ignore safety guidelines
+            - ignore content policy
+            - ignore ethical guidelines
+            - without restrictions
+            - without safety
+            - without filters
+            - remove all restrictions
+            - disable safety
+            - disable content filter
+            - disable moderation
+            - turn off safety
+            - turn off filters
+            - respond in base64
+            - encode your response
+            - answer in rot13
+            - respond in hex
+            - use pig latin
+            - respond backwards
+            - spell it out letter by letter
+on_match:
+  action: block
+  replacement: null
+runtime_adapter:
+  binding_id: prompt_injection_jailbreak
+  implementation_rule_id: prompt_injection_jailbreak
+metadata:
+  taxonomy_ids:
+  - TALI-MODEL-SECURITY-JAILBREAK
+risk_level: high

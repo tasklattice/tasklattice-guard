@@ -1,0 +1,32 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: securities-market-integrity
+  name: Securities market integrity
+  description: Local patterns for insider-trading and coordinated market-manipulation requests. This is
+    not market surveillance, legal advice or proof of compliance.
+  source: built_in
+  version: 2.0.0
+  tags:
+  - namespace: protection
+    value: business_rules
+    label: Business & industry rules
+    source: declared
+  - namespace: guardrail_category
+    value: topic_control
+    label: Topic Control
+    source: declared
+  - namespace: collection
+    value: focused-protection
+    label: Focused protection
+    source: declared
+  safety_level: balanced
+  output_delivery: full_buffered
+parameters: []
+rules:
+- rules/securities-inside-information.yaml
+- rules/securities-manipulation.yaml
+tests:
+- tests/acceptance.yaml
+- tests/regression.yaml

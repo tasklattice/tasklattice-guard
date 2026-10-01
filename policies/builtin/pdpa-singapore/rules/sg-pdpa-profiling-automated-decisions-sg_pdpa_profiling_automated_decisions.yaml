@@ -1,0 +1,83 @@
+id: sg-pdpa-profiling-automated-decisions/sg_pdpa_profiling_automated_decisions
+name: SG PDPA Profiling Automated Decisions
+description: PDPA + Model AI Governance Framework — Blocks automated profiling and decision-making systems
+  for consequential decisions about Singapore residents without human oversight
+stages:
+- input
+detector:
+  ref: text/conditions
+  version: 1.0.0
+  parameters:
+    detector_options:
+      match:
+        all:
+        - not:
+            contains:
+            - human in the loop
+            - human review
+            - with human oversight
+            - appeals process
+            - explainability
+            - fairness audit
+            - model governance
+            - pdpa impact assessment
+            - explain
+            - what is
+            - research
+            - academic
+            - bias detection
+        - any:
+          - within_sentence:
+              all:
+              - contains:
+                - singapore resident
+                - singaporean
+                - sg citizen
+                - pr holder
+                - ep holder
+                - singapore employee
+                - hdb applicant
+                - hdb buyer
+                - cpf member
+                - medishield
+                - medisave
+                - bto applicant
+              - keywords:
+                - credit score
+                - risk score
+                - risk profile
+                - loan eligibility
+                - employment score
+                - hiring score
+                - trustworthiness score
+                - automated reject
+                - automated denial
+                - auto reject
+                - auto deny
+                - blacklist
+                - flag automatically
+                - no human review
+                - fully automated decision
+                - without human oversight
+                - deny housing
+                - deny loan
+                - deny employment
+                - terminate automatically
+                - exclude automatically
+          - keywords:
+            - automated denial singapore resident
+            - blacklist singaporean without review
+            - deny hdb application automatically
+            - reject cpf claim without human
+            - auto reject singapore loan application
+            - fully automated hiring decision singapore
+on_match:
+  action: block
+  replacement: null
+runtime_adapter:
+  binding_id: sg-pdpa-profiling-automated-decisions
+  implementation_rule_id: sg_pdpa_profiling_automated_decisions
+metadata:
+  taxonomy_ids:
+  - TALI-BUSINESS-POLICY
+risk_level: low

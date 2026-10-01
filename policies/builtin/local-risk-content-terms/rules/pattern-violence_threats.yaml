@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: pattern/violence_threats
+name: Violence & Threats
+description: Detects violent threats and terminology
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b(kill|murder|assassinate|execute|slaughter|massacre|bloodbath|genocide|ethnic\s+cleansing|mass\s+shooting|shooting\s+spree|rampage|gun\s+down|mow\s+down|hunt\s+(down|them)|take\s+(them|him|her)\s+out|eliminate|neutralize|liquidate|hit\s+(list|man)|contract\s+kill|hired\s+gun|death\s+threat|threat(en)?\s+to\s+kill|gonna\s+kill|going\s+to\s+kill|want\s+(to|him|her|them)\s+dead|deserve\s+to\s+die|need(s)?\s+to\s+die|shoot\s+up|bomb\s+threat|terrorize|reign\s+of\s+terror|burning\s+down|burn\s+it\s+down|blow\s+(it|them|this)\s+up|torture|mutilate|dismember|decapitate|behead|strangle|suffocate|drown|poison|stab|slash|cut\s+(throat|them)|slit\s+(throat|wrists)|beat\s+to\s+death|bludgeon|maim|cripple|kneecap)\b
+on_match:
+  action: transform
+  replacement: '[violence_threats_REDACTED]'
+runtime_adapter:
+  binding_id: local-risk-content-terms
+  implementation_rule_id: violence_threats
+metadata:
+  taxonomy_ids:
+  - TALI-PHYSICAL-HARM
+risk_level: high

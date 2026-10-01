@@ -1,5 +1,70 @@
 # Add a Cisco-style, permission-aware operations CLI
 
+## Running the shipped CLI
+
+The Runner image includes `guardctl`, compiled with its JavaScript dependencies
+and Node.js 24. It runs as the existing non-root Runner user; no npm, tsx, source
+checkout, or package installation is needed inside the container. The image's
+default command remains the Runner service. `guardctl` only calls the Controller
+HTTP API; it does not read the Runner's control token or modify local runtime state.
+
+For the standard Helm release:
+
+```sh
+kubectl -n tali exec -it tali-guard-runner-0 -- guardctl
+```
+
+Helm sets `GUARD_URL` to the release's internal Controller HTTP service. Use
+`--url=http://controller:8080` or `GUARD_URL` when running the image elsewhere.
+No management credentials are injected by Helm. Run `read` and enter your PAT,
+or `enable` to authenticate with your administrator account. Both credential
+prompts hide input. `disable` clears the administrator session; `connect <url>`
+clears all active credentials before changing servers.
+
+Current delivery supports inspection: `help`, `connect`, `read`, `enable`,
+`disable`, `show`, `detail`, and `exit`. The write commands discussed later in
+this proposal are **not implemented**. An authenticated prompt does not bypass
+Controller authorization.
+
+For automation, provide `GUARD_ACCESS_TOKEN` through the process environment
+and pipe commands. Commands execute in order, HTTP failures return a nonzero
+exit status, and JSON exports include all rows:
+
+```sh
+printf 'show runners --pool default\nshow guardrails --output /tmp/guardrails.json\nexit\n' | guardctl
+```
+
+`show runners --pool <id>` and `show runner-pools <id>` filter the Controller's
+pool collection locally. `show route-distribution <id> --window 7d --endpoint <id>`
+maps to the API's `hours=168` and `endpointId` fields; supported windows range
+from `0.25h` to `7d`. `show routes <id> --revision <n>` reads the published
+revision's snapshot. Protected commands report 401/403 as errors, not as a
+successful empty result.
+
+### Build and regression tests
+
+```sh
+npm ci --prefix controller
+npm run build:cli --prefix controller
+docker build -f Dockerfile.runner -t tali-guard-runner:guardctl-ci .
+npm run test:runner-cli -- tali-guard-runner:guardctl-ci
+```
+
+The `Runner guardctl` CI job builds and tests the final image on native Linux
+amd64 and arm64. It is also part of the release quality gate. The test starts
+the shipped executable through a pseudo-terminal in an offline, read-only
+container using the image's default user. A loopback HTTP fixture validates
+request paths and query names against the generated Controller OpenAPI file.
+It covers the read-command inventory, hidden credentials, PAT/session switching,
+401/403 and failed login, table/detail views, pool filtering, Router snapshots,
+JSON export, network errors, EOF, and piped commands. It also verifies the
+Runner application still imports and retains its service entrypoint.
+
+These are CLI/image regression tests, not a live Controller authentication or
+NeMo inference test. The existing control-plane and data-plane suites retain
+those responsibilities. For an installed cluster, run `show system` and
+authenticated `show runners --pool default` to inspect actual convergence.
+
 ## Summary
 
 Provide an interactive terminal client for TaskLattice Guard that uses the

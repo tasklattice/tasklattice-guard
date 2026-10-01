@@ -1,0 +1,50 @@
+id: code/execution-request
+name: Explicit execution request
+description: Detect a request to execute commands, even without a fenced code block.
+stages:
+- input
+detector:
+  ref: text/conditions
+  version: 1.0.0
+  parameters:
+    detector_options:
+      match:
+        all:
+        - parameter_in:
+            name: detect_execution_intent
+            values:
+            - 'true'
+            - '1'
+            - 'yes'
+            - 'on'
+            default: 'true'
+        - contains:
+          - 'run this '
+          - 'run these '
+          - 'execute this '
+          - 'please run '
+          - 'can you run '
+          - run `
+          - execute `
+          - run code
+          - run the snippet
+          - execute the command
+          - just run it
+          - compile and run
+          - run the program
+          - run the tests
+          - check if tests pass
+          - read /
+          - list the files
+          - create a file
+          - run curl
+          - make an http request
+          - connect to postgres
+          - paste the output
+          - tell me the result
+on_match:
+  action: block
+metadata:
+  taxonomy_ids:
+  - TALI-TOOL-SECURITY-UNAUTHORIZED-EXECUTION
+risk_level: high

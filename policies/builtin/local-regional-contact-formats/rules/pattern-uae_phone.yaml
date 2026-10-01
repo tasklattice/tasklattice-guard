@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: pattern/uae_phone
+name: Phone Number (UAE)
+description: Detects UAE phone numbers (+971/00971/0 prefix, landline and mobile)
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: (?<!\d)(?:\+971|00971|0)\s?(?:2|3|4|6|7|9|50|52|54|55|56|58)\s?\d{3}\s?\d{4}\b
+on_match:
+  action: transform
+  replacement: '[uae_phone_REDACTED]'
+runtime_adapter:
+  binding_id: local-regional-contact-formats
+  implementation_rule_id: uae_phone
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-PII
+risk_level: medium

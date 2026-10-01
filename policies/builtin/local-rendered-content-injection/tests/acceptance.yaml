@@ -1,0 +1,105 @@
+# yaml-language-server: $schema=../../../schemas/tests.schema.json
+- id: application/active-html/en/input
+  name: application/active-html/en
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: input
+  content: <script>/* synthetic fixture */</script>
+  expected_decision: block
+  covered_rule_ids:
+  - application/active-html
+  kind: rule_acceptance
+  required: true
+  group: Protection contract
+  parameter_names: []
+  scope: rule
+- id: application/active-html/en/output
+  name: application/active-html/en
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: output
+  content: <script>/* synthetic fixture */</script>
+  expected_decision: block
+  covered_rule_ids:
+  - application/active-html
+  kind: rule_acceptance
+  required: true
+  group: Protection contract
+  parameter_names: []
+  scope: rule
+- id: application/active-html/zh/input
+  name: application/active-html/zh
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: input
+  content: 不要执行这段：<img onerror=synthetic()>
+  expected_decision: block
+  covered_rule_ids:
+  - application/active-html
+  kind: rule_acceptance
+  required: true
+  group: Protection contract
+  parameter_names: []
+  scope: rule
+- id: application/active-html/zh/output
+  name: application/active-html/zh
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: output
+  content: 不要执行这段：<img onerror=synthetic()>
+  expected_decision: block
+  covered_rule_ids:
+  - application/active-html
+  kind: rule_acceptance
+  required: true
+  group: Protection contract
+  parameter_names: []
+  scope: rule
+- id: application/template-traversal/en/input
+  name: application/template-traversal/en
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: input
+  content: '{{ fixture.__class__ }}'
+  expected_decision: block
+  covered_rule_ids:
+  - application/template-traversal
+  kind: rule_acceptance
+  required: true
+  group: Protection contract
+  parameter_names: []
+  scope: rule
+- id: application/template-traversal/en/output
+  name: application/template-traversal/en
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: output
+  content: '{{ fixture.__class__ }}'
+  expected_decision: block
+  covered_rule_ids:
+  - application/template-traversal
+  kind: rule_acceptance
+  required: true
+  group: Protection contract
+  parameter_names: []
+  scope: rule
+- id: application/template-traversal/zh/input
+  name: application/template-traversal/zh
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: input
+  content: 模板样例：{{ fixture.__globals__ }}
+  expected_decision: block
+  covered_rule_ids:
+  - application/template-traversal
+  kind: rule_acceptance
+  required: true
+  group: Protection contract
+  parameter_names: []
+  scope: rule
+- id: application/template-traversal/zh/output
+  name: application/template-traversal/zh
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: output
+  content: 模板样例：{{ fixture.__globals__ }}
+  expected_decision: block
+  covered_rule_ids:
+  - application/template-traversal
+  kind: rule_acceptance
+  required: true
+  group: Protection contract
+  parameter_names: []
+  scope: rule

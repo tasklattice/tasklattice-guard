@@ -25,20 +25,20 @@ class TopicRulesActionProvider:
         if parameters.get("topic_mode") == "allowlist" and allowed_matches:
             return action_result(
                 request,
-                "safe",
+                "not_matched",
                 request.content,
                 reason="The request directly matched an explicitly allowed topic.",
             )
         reason = "Topic allowlist and deny-list boundaries require semantic review of all requested tasks; an allowed keyword cannot bypass denied topics."
         return action_result(
             request,
-            "uncertain",
+            "unknown",
             request.content,
             findings=(
                 RiskFinding(
                     risk="topic_control",
                     taxonomy_id=taxonomy_for_evaluator("topic_control"),
-                    verdict="uncertain",
+                    verdict="unknown",
                     confidence=0.5,
                     evidence=reason,
                     recommended_action=request.proposed_action,

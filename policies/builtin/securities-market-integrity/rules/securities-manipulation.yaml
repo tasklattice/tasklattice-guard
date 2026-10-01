@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: securities/manipulation
+name: Coordinated market manipulation
+description: Matches this reviewed text pattern, not arbitrary semantic variants.
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: (?i)\b(?:organize|coordinate|plan)\s+(?:a\s+)?pump[- ]and[- ]dump\b|组织(?:拉高出货|操纵股价)
+on_match:
+  action: block
+runtime_adapter:
+  binding_id: securities-market-integrity
+  implementation_rule_id: securities/manipulation
+metadata:
+  taxonomy_ids:
+  - TALI-BUSINESS-POLICY
+risk_level: low

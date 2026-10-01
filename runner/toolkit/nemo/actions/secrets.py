@@ -30,19 +30,19 @@ class SecretsActionProvider:
         if not matches:
             return action_result(
                 request,
-                "safe",
+                "not_matched",
                 request.content,
                 reason="No credential pattern matched.",
             )
         return action_result(
             request,
-            "unsafe",
+            "matched",
             _redact(request.content, matches, "[SECRET_REDACTED]"),
             findings=(
                 RiskFinding(
                     risk="secrets",
                     taxonomy_id=taxonomy_for_evaluator("secrets"),
-                    verdict="unsafe",
+                    verdict="matched",
                     confidence=0.99,
                     evidence="High-confidence credential pattern detected.",
                     recommended_action=request.proposed_action,

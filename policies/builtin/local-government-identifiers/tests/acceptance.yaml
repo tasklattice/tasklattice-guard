@@ -1,0 +1,573 @@
+# yaml-language-server: $schema=../../../schemas/tests.schema.json
+- id: accept/us_ssn/input
+  name: Detect SSN (Social Security Number)
+  description: Required acceptance case for PII Patterns.
+  phase: input
+  content: 'Acceptance sample: 111-11-1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/us_ssn
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/us_ssn/output
+  name: Detect SSN (Social Security Number)
+  description: Required acceptance case for PII Patterns.
+  phase: output
+  content: 'Acceptance sample: 111-11-1111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/us_ssn
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/us_ssn_no_dash/input
+  name: Detect SSN (No Dashes)
+  description: Required acceptance case for PII Patterns.
+  phase: input
+  content: 'Acceptance sample: 111111111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/us_ssn_no_dash
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/us_ssn_no_dash/output
+  name: Detect SSN (No Dashes)
+  description: Required acceptance case for PII Patterns.
+  phase: output
+  content: 'Acceptance sample: 111111111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/us_ssn_no_dash
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/nl_bsn_contextual/input
+  name: Detect BSN (Dutch Citizen Service Number)
+  description: Required acceptance case for PII Patterns.
+  phase: input
+  content: 'Acceptance sample: BSN 000000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/nl_bsn_contextual
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/nl_bsn_contextual/output
+  name: Detect BSN (Dutch Citizen Service Number)
+  description: Required acceptance case for PII Patterns.
+  phase: output
+  content: 'Acceptance sample: BSN 000000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/nl_bsn_contextual
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/br_cpf/input
+  name: Detect CPF - Brazilian Personal Tax ID (Formatted)
+  description: Required acceptance case for Brazilian PII Patterns.
+  phase: input
+  content: 'Acceptance sample: 111.111.111-11'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_cpf
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/br_cpf/output
+  name: Detect CPF - Brazilian Personal Tax ID (Formatted)
+  description: Required acceptance case for Brazilian PII Patterns.
+  phase: output
+  content: 'Acceptance sample: 111.111.111-11'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_cpf
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/br_cpf_unformatted/input
+  name: Detect CPF - Brazilian Personal Tax ID (Unformatted)
+  description: Required acceptance case for Brazilian PII Patterns.
+  phase: input
+  content: 'Acceptance sample: 11111111111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_cpf_unformatted
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/br_cpf_unformatted/output
+  name: Detect CPF - Brazilian Personal Tax ID (Unformatted)
+  description: Required acceptance case for Brazilian PII Patterns.
+  phase: output
+  content: 'Acceptance sample: 11111111111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_cpf_unformatted
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/br_cnpj/input
+  name: Detect CNPJ - Brazilian Company Tax ID
+  description: Required acceptance case for Brazilian PII Patterns.
+  phase: input
+  content: 'Acceptance sample: 11.111.111/1111-11'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_cnpj
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/br_cnpj/output
+  name: Detect CNPJ - Brazilian Company Tax ID
+  description: Required acceptance case for Brazilian PII Patterns.
+  phase: output
+  content: 'Acceptance sample: 11.111.111/1111-11'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_cnpj
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/br_rg/input
+  name: Detect RG - Brazilian National Identity Card (SP, RJ, MG)
+  description: Required acceptance case for Brazilian PII Patterns.
+  phase: input
+  content: 'Acceptance sample: 1.111.111-1'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_rg
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/br_rg/output
+  name: Detect RG - Brazilian National Identity Card (SP, RJ, MG)
+  description: Required acceptance case for Brazilian PII Patterns.
+  phase: output
+  content: 'Acceptance sample: 1.111.111-1'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/br_rg
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/au_tfn/input
+  name: Detect TFN (Australian Tax File Number)
+  description: Required acceptance case for PII Patterns.
+  phase: input
+  content: Tax file number 111111111.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/au_tfn
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/au_tfn/output
+  name: Detect TFN (Australian Tax File Number)
+  description: Required acceptance case for PII Patterns.
+  phase: output
+  content: Tax file number 111111111.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/au_tfn
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/au_abn/input
+  name: Detect ABN (Australian Business Number)
+  description: Required acceptance case for PII Patterns.
+  phase: input
+  content: 'Acceptance sample: 11 111 111 111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/au_abn
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/au_abn/output
+  name: Detect ABN (Australian Business Number)
+  description: Required acceptance case for PII Patterns.
+  phase: output
+  content: 'Acceptance sample: 11 111 111 111'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/au_abn
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/au_medicare/input
+  name: Detect Medicare Number (Australia)
+  description: Required acceptance case for PII Patterns.
+  phase: input
+  content: 'Acceptance sample: 1111 11111 1'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/au_medicare
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/au_medicare/output
+  name: Detect Medicare Number (Australia)
+  description: Required acceptance case for PII Patterns.
+  phase: output
+  content: 'Acceptance sample: 1111 11111 1'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/au_medicare
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/fr_nir/input
+  name: Detect NIR/INSEE (French Social Security Number)
+  description: Required acceptance case for EU PII Patterns.
+  phase: input
+  content: 'Acceptance sample: 100010000000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/fr_nir
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/fr_nir/output
+  name: Detect NIR/INSEE (French Social Security Number)
+  description: Required acceptance case for EU PII Patterns.
+  phase: output
+  content: 'Acceptance sample: 100010000000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/fr_nir
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/eu_vat/input
+  name: Detect VAT Number (EU)
+  description: Required acceptance case for EU PII Patterns.
+  phase: input
+  content: 'Acceptance sample: VAT AT00000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/eu_vat
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/eu_vat/output
+  name: Detect VAT Number (EU)
+  description: Required acceptance case for EU PII Patterns.
+  phase: output
+  content: 'Acceptance sample: VAT AT00000000'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/eu_vat
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/uae_emirates_id/input
+  name: Detect UAE Emirates ID
+  description: Required acceptance case for UAE PII Patterns.
+  phase: input
+  content: 'Acceptance sample: 784-1111-1111111-1'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/uae_emirates_id
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/uae_emirates_id/output
+  name: Detect UAE Emirates ID
+  description: Required acceptance case for UAE PII Patterns.
+  phase: output
+  content: 'Acceptance sample: 784-1111-1111111-1'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/uae_emirates_id
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/sg_nric/input
+  name: Detect NRIC/FIN (Singapore National ID)
+  description: Required acceptance case for Singapore PII Patterns.
+  phase: input
+  content: 'Acceptance sample: S1111111A'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/sg_nric
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/sg_nric/output
+  name: Detect NRIC/FIN (Singapore National ID)
+  description: Required acceptance case for Singapore PII Patterns.
+  phase: output
+  content: 'Acceptance sample: S1111111A'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/sg_nric
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/sg_uen/input
+  name: Detect UEN (Singapore Unique Entity Number)
+  description: Required acceptance case for Singapore PII Patterns.
+  phase: input
+  content: 'Acceptance sample: UEN 11111111A'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/sg_uen
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/sg_uen/output
+  name: Detect UEN (Singapore Unique Entity Number)
+  description: Required acceptance case for Singapore PII Patterns.
+  phase: output
+  content: 'Acceptance sample: UEN 11111111A'
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/sg_uen
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/ca_sin/input
+  name: Detect SIN (Canadian Social Insurance Number)
+  description: Required acceptance case for Canadian PII Patterns.
+  phase: input
+  content: Social insurance number 123-456-789.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/ca_sin
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/ca_sin/output
+  name: Detect SIN (Canadian Social Insurance Number)
+  description: Required acceptance case for Canadian PII Patterns.
+  phase: output
+  content: Social insurance number 123-456-789.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/ca_sin
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/ca_ohip/input
+  name: Detect OHIP (Ontario Health Insurance Plan Number)
+  description: Required acceptance case for Canadian PII Patterns.
+  phase: input
+  content: OHIP number 1234-567-890 AB.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/ca_ohip
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/ca_ohip/output
+  name: Detect OHIP (Ontario Health Insurance Plan Number)
+  description: Required acceptance case for Canadian PII Patterns.
+  phase: output
+  content: OHIP number 1234-567-890 AB.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/ca_ohip
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/ca_on_drivers_licence/input
+  name: Detect Driver's Licence (Ontario)
+  description: Required acceptance case for Canadian PII Patterns.
+  phase: input
+  content: Driver's licence A1234-56789-01234.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/ca_on_drivers_licence
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/ca_on_drivers_licence/output
+  name: Detect Driver's Licence (Ontario)
+  description: Required acceptance case for Canadian PII Patterns.
+  phase: output
+  content: Driver's licence A1234-56789-01234.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/ca_on_drivers_licence
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/ca_immigration_doc/input
+  name: Detect Immigration Document (Canada IRCC)
+  description: Required acceptance case for Canadian PII Patterns.
+  phase: input
+  content: UCI 1234-5678-90.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/ca_immigration_doc
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/ca_immigration_doc/output
+  name: Detect Immigration Document (Canada IRCC)
+  description: Required acceptance case for Canadian PII Patterns.
+  phase: output
+  content: UCI 1234-5678-90.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/ca_immigration_doc
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/uoft_student_id/input
+  name: Detect Student/Employee Number (University of Toronto)
+  description: Required acceptance case for Canadian Institutional Identifiers (FIPPA).
+  phase: input
+  content: University of Toronto student number 1000000000.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/uoft_student_id
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/uoft_student_id/output
+  name: Detect Student/Employee Number (University of Toronto)
+  description: Required acceptance case for Canadian Institutional Identifiers (FIPPA).
+  phase: output
+  content: University of Toronto student number 1000000000.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/uoft_student_id
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/uoft_utorid/input
+  name: Detect UTORid (University of Toronto Login)
+  description: Required acceptance case for Canadian Institutional Identifiers (FIPPA).
+  phase: input
+  content: UTORid smith123.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/uoft_utorid
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/uoft_utorid/output
+  name: Detect UTORid (University of Toronto Login)
+  description: Required acceptance case for Canadian Institutional Identifiers (FIPPA).
+  phase: output
+  content: UTORid smith123.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/uoft_utorid
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/uoft_tcard/input
+  name: Detect TCard Number (University of Toronto Campus ID)
+  description: Required acceptance case for Canadian Institutional Identifiers (FIPPA).
+  phase: input
+  content: TCard number 1234567890123456.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/uoft_tcard
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule
+- id: accept/uoft_tcard/output
+  name: Detect TCard Number (University of Toronto Campus ID)
+  description: Required acceptance case for Canadian Institutional Identifiers (FIPPA).
+  phase: output
+  content: TCard number 1234567890123456.
+  expected_decision: transform
+  covered_rule_ids:
+  - pattern/uoft_tcard
+  group: Rule acceptance
+  kind: rule_acceptance
+  required: true
+  parameter_names: []
+  scope: rule

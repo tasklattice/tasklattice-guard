@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: pattern/nl_bsn_contextual
+name: BSN (Dutch Citizen Service Number)
+description: Detects Dutch BSN numbers with contextual keywords
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b[0-9]{9}\b
+    context_expression: (?:\b(?:BSN|B\.S\.N\.|burgerservicenummer|burger\s*service\s*nummer|sofi\s*nummer|sofinummer|persoonsnummer|identificatienummer|citizen\s*service\s*number)\b|8\s*5\s*\|\\\|)
+    context_max_gap_words: 1
+    allow_word_numbers: true
+on_match:
+  action: transform
+  replacement: '[nl_bsn_contextual_REDACTED]'
+runtime_adapter:
+  binding_id: pattern-matching
+  implementation_rule_id: nl_bsn_contextual
+metadata:
+  taxonomy_ids:
+  - TALI-BUSINESS-POLICY
+risk_level: low

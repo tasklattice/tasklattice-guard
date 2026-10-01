@@ -1,0 +1,32 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: banking-customer-protection
+  name: Banking customer protection
+  description: Local text boundaries for identity-check evasion and misleading return guarantees. Safe
+    banking education remains allowed; no KYC, AML or suitability decisions are performed.
+  source: built_in
+  version: 2.0.0
+  tags:
+  - namespace: protection
+    value: business_rules
+    label: Business & industry rules
+    source: declared
+  - namespace: guardrail_category
+    value: topic_control
+    label: Topic Control
+    source: declared
+  - namespace: collection
+    value: focused-protection
+    label: Focused protection
+    source: declared
+  safety_level: balanced
+  output_delivery: full_buffered
+parameters: []
+rules:
+- rules/banking-identity-evasion.yaml
+- rules/banking-return-guarantee.yaml
+tests:
+- tests/acceptance.yaml
+- tests/regression.yaml

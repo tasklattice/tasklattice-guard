@@ -66,7 +66,7 @@ describe("Protection presets", () => {
 
   it("shares the baseline without overwriting user changes when switching scenarios", () => {
     const bank = expandProtectionPreset(protectionPresets[1]!, policies);
-    bank[0]!.ruleActions[bank[0]!.enabledRuleIds[0]!] = "redact";
+    bank[0]!.ruleActions[bank[0]!.enabledRuleIds[0]!] = "transform";
     bank[0]!.enabledRails = ["output"];
     bank.reverse();
     const before = structuredClone(bank);

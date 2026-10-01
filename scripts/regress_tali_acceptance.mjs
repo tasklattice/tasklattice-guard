@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /** Main tali acceptance: 40 NVIDIA requests, 3 DeepSeek calls, no retries. */
 import assert from 'node:assert/strict';
+import {attachStreamTransport} from './stream-transport.mjs';
 import {execFile} from 'node:child_process';
 import {createServer} from 'node:http';
 import {randomUUID} from 'node:crypto';
@@ -34,24 +35,32 @@ async function until(get,ready){for(let i=0;i<120;i++){const v=await get();if(re
 async function stage(name,work){if(report.stages[name])return report.stages[name];const value=await work();report.stages[name]=value;save();console.log(JSON.stringify({stage:name,passed:true}));return value;}
 function parseSse(raw){let text='',finished=false,error=null;for(const line of raw.split('\n')){if(!line.startsWith('data:')||line.slice(5).trim()==='[DONE]')continue;const f=JSON.parse(line.slice(5));text+=f.choices?.[0]?.delta?.content??'';finished||=Boolean(f.choices?.[0]?.finish_reason);error??=f.error??null;}return {text,finished,error};}
 
-// Capture actual Guard requests/replies. The only injected fault is explicit HTTP 503.
+// Capture HTTP checks and actual WebSocket events; faults close the stream connection.
 const transport=createServer(async(req,res)=>{
  try{
   const parts=[];for await(const c of req)parts.push(c);const body=Buffer.concat(parts);
   const payload=body.length?JSON.parse(body):{};
-  const isStream=req.url.endsWith('/guardrails/output-stream');
   if(activeCase&&payload.input_type==='response'){
    // The live scenarios are all streaming. Never spend a model call on the
    // legacy per-token response path, even if an image preflight is bypassed.
    activeCase.legacyResponseRejected=true;
    res.writeHead(426,{'content-type':'application/json'}).end('{"error":"Protected SSE requires the output-stream API"}');return;
   }
-  if(isStream&&activeCase?.fault&&activeCase.checks.some(c=>c.path.endsWith('/guardrails/output-stream')&&c.response.released_text)){activeCase.injectedFaults++;res.writeHead(503,{'content-type':'application/json'}).end('{"error":"Synthetic final-check outage"}');return;}
   const r=await fetch('http://localhost:38082'+req.url,{method:req.method,headers:{'x-api-key':req.headers['x-api-key']??'','content-type':'application/json'},...(body.length?{body}:{}),signal:AbortSignal.timeout(60000)});
   const text=await r.text();
   if(activeCase)activeCase.checks.push({path:req.url,at:Date.now(),request:payload,status:r.status,response:JSON.parse(text)});
   res.writeHead(r.status,{'content-type':'application/json'}).end(text);
  }catch{res.writeHead(502,{'content-type':'application/json'}).end('{"error":"Guard transport failed"}');}
+});
+
+const closeStreams=attachStreamTransport(transport, {target:'http://localhost:38082',
+ observe: event=>{if(activeCase)activeCase.checks.push(event);},
+ fault: (direction,event)=>{
+  if(!activeCase?.fault||activeCase.injectedFaults)return false;
+  const released=activeCase.checks.some(c=>c.direction==='output'&&c.event.type==='delta');
+  if((direction==='input'&&activeCase.mode==='full_buffered'&&event.type==='end')||(released&&((direction==='input')||(direction==='output'&&event.type==='ack')))){activeCase.injectedFaults++;return true;}
+  return false;
+ }
 });
 
 const upstream=createServer(async(req,res)=>{
@@ -74,7 +83,7 @@ const upstream=createServer(async(req,res)=>{
    res.writeHead(200,{'content-type':'text/event-stream','cache-control':'no-cache'});
    const id='chatcmpl-'+randomUUID(),created=Math.floor(Date.now()/1000);
    const send=(content,finish_reason=null)=>{const line=`data: ${JSON.stringify({id,created,object:'chat.completion.chunk',model:'replay-model',choices:[{index:0,delta:{content},finish_reason}]})}\n\n`;current.upstreamRaw+=line;res.write(line);};
-   for(const chunk of current.chunks){if(res.destroyed)return;send(chunk);await delay(80);}
+   for(const chunk of current.chunks.flatMap((text,index)=>index===0&&text.length>=200?Array.from({length:200},(_,i)=>text.slice(Math.floor(text.length*i/200),Math.floor(text.length*(i+1)/200))):[text])){if(res.destroyed)return;send(chunk);await delay(10);}
    send('','stop');current.upstreamRaw+='data: [DONE]\n\n';current.upstreamFinishedAt=Date.now();res.end('data: [DONE]\n\n');
   }
  }catch(error){current.upstreamError=error.name;if(!res.destroyed)res.destroy();}
@@ -119,7 +128,7 @@ try{
    const name='Regression live SSE '+mode+' 20260908'+suffix;
    let g=(await api('/api/v1/guardrails')).items.find(g=>g.name===name);
    if(g)g=await api('/api/v1/guardrails/'+g.id);
-   else g=await api('/api/v1/guardrails',{name,runtimeProfile:'auto',draftConfig:{allowedTopics:[],restrictedTopics:[],safetyLevel:'balanced',outputDelivery:mode,policyBindings:[{policyId:policy.id,policyVersion:policy.version,action:'reject',parameterValues:{},enabledRuleIds:policy.rules.map(r=>r.id),ruleActions:{},enabledRails:['input','output']}]}},[201]);
+   else g=await api('/api/v1/guardrails',{name,runtimeProfile:'auto',draftConfig:{allowedTopics:[],restrictedTopics:[],safetyLevel:'balanced',outputDelivery:mode,policyBindings:[{policyId:policy.id,policyVersion:policy.version,action:'block',parameterValues:{},enabledRuleIds:policy.rules.map(r=>r.id),ruleActions:{},enabledRails:['input','output']}]}},[201]);
    const validation=g.latestValidationRun??await api(`/api/v1/guardrails/${encodeURIComponent(g.id)}/test-runs`,{guardrailId:g.id},[202]);
    const done=await until(()=>api('/api/v1/test-runs/'+validation.id),v=>['passed','failed'].includes(v.status));assert.equal(done.status,'passed');
    if(!g.activeVersion)await api(`/api/v1/guardrails/${g.id}/publish`,{},[202]);
@@ -176,19 +185,21 @@ try{
     for await(const bytes of r.body){const part=decoder.decode(bytes,{stream:true});activeCase.clientRaw+=part;pending+=part;const lines=pending.split('\n');pending=lines.pop();for(const line of lines){const parsed=parseSse(line);if(parsed.text)activeCase.clientEvents.push({at:Date.now(),text:parsed.text});}if(scenario.cancel&&activeCase.clientEvents.length){activeCase.clientCancelledAt=Date.now();break;}}
     if(scenario.cancel||scenario.fault)await until(()=>Promise.resolve(activeCase.upstreamClosedAt),Boolean);
     const received=parseSse(activeCase.clientRaw),original=parseSse(activeCase.upstreamRaw??'');
-    const checks=activeCase.checks.filter(c=>c.path.endsWith('/guardrails/output-stream'));
+    const checks=activeCase.checks.filter(c=>c.direction==='output').map(c=>c.event);
+    const ready=checks.find(e=>e.type==='ready'),terminal=checks.find(e=>['completed','blocked','error'].includes(e.type));
     assert.equal(activeCase.upstreamCalls,1);assert(checks.length>0,'Must reach actual stream checks.');
-    assert(checks.every(c=>c.response.mode===mode),'Requested delivery mode silently changed.');
-    assert(checks.every(c=>c.response.model_revision_id===active.id),'Wrong model revision.');
-    assert.equal(new Set(checks.map(c=>c.response.effective_release_id)).size,1);
-    const released=checks.map(c=>c.response.released_text??'').join('');
+    assert.equal(ready.mode,mode==='full_buffered'?'full_buffered':'window_buffered');
+    assert.equal(ready.requested_mode,mode);
+    assert.equal(ready.model_revision_id,active.id,'Wrong model revision.');
+    assert(ready.effective_release_id);assert.equal(checks.filter(e=>e.type==='ready').length,1);
+    const released=checks.filter(e=>e.type==='delta').map(e=>e.text).join('');
     if(!scenario.cancel)assert.equal(received.text,released,'Client received text not explicitly released by Guard.');
     else assert(released.startsWith(received.text));
     if(scenario.cancel){assert(activeCase.clientCancelledAt);assert(!activeCase.upstreamFinishedAt,'Cancellation happened after generation had completed.');assert(activeCase.upstreamClosedAt-activeCase.clientCancelledAt<5000,'Upstream cancellation took over 5 seconds.');}
-    else if(!scenario.blocked){assert.equal(activeCase.businessHttpStatus,200);assert.equal(received.error,null);assert(original.finished&&received.finished);assert.equal(received.text,original.text);assert(original.text.length>2048,'Real output did not span a check boundary.');assert(checks.length>=2);assert(activeCase.clientEvents[0].at<activeCase.upstreamFinishedAt,'Window delivery did not release before upstream completion.');}
-    else{assert(received.error||!r.ok,'Expected explicit client error.');assert(!received.text.includes('bomb to kill people'));if(scenario.fault){assert.equal(activeCase.injectedFaults,1);assert(!activeCase.upstreamFinishedAt,'Fault occurred after generation had completed.');assert(activeCase.upstreamClosedAt);assert(Number(received.error?.code)>=500,'Outage must remain an infrastructure error.');}else assert(checks.some(c=>c.response.terminate&&c.response.decision?.usage?.fail_closed===false),'Infrastructure error must not masquerade as detection.');}
+    else if(!scenario.blocked){assert.equal(activeCase.businessHttpStatus,200);assert.equal(received.error,null);assert(original.finished&&received.finished);assert.equal(received.text,original.text);assert(terminal?.checks>=(mode==='full_buffered'?1:2),'Output did not span a native check boundary.');assert(activeCase.clientEvents[0].at<activeCase.upstreamFinishedAt,'Window delivery did not release before upstream completion.');}
+    else{assert(received.error||!r.ok,'Expected explicit client error.');assert(!received.text.includes('bomb to kill people'));if(scenario.fault){assert.equal(activeCase.injectedFaults,1);assert(!activeCase.upstreamFinishedAt,'Fault occurred after generation had completed.');assert(activeCase.upstreamClosedAt);assert(Number(received.error?.code)>=500,'Outage must remain an infrastructure error.');}else assert(terminal?.type==='blocked','Infrastructure error must not masquerade as detection.');}
     if(mode==='full_buffered'){if(scenario.blocked)assert.equal(received.text,'');else assert(activeCase.clientEvents[0].at>=activeCase.upstreamFinishedAt);}
-    if(mode!=='full_buffered'&&scenario.name==='cross-window-unsafe')assert(checks.length>=2,'Attack must cross an actual checking boundary.');
+    if(mode!=='full_buffered'&&scenario.name==='cross-window-unsafe')assert(terminal?.checks>=2,'Attack must cross an actual checking boundary.');
     activeCase.passed=true;
    }catch(error){activeCase.passed=false;activeCase.failure=error.message;}
    report.cases.push(activeCase);save();console.log(JSON.stringify({mode,name:scenario.name,passed:activeCase.passed,failure:activeCase.failure,checks:activeCase.checks.filter(c=>c.path.endsWith('/guardrails/output-stream')).length,clientCharacters:parseSse(activeCase.clientRaw).text.length}));
@@ -222,4 +233,4 @@ finally{
   }catch(e){report.restoreError=e.message;process.exitCode=1;}
  }
  report.finished=true;save();
- if(container){await exec('docker',['stop','--time','2',container]).catch(()=>{});await exec('docker',['rm',container]).catch(()=>{});}upstream.closeAllConnections();upstream.close();transport.closeAllConnections();transport.close();}
+ if(container){await exec('docker',['stop','--time','2',container]).catch(()=>{});await exec('docker',['rm',container]).catch(()=>{});}upstream.closeAllConnections();upstream.close();closeStreams();transport.closeAllConnections();transport.close();}

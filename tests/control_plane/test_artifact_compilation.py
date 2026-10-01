@@ -32,7 +32,7 @@ def test_custom_full_response_requirement_applies_only_to_enabled_output(mode, s
                 f'flow check_{rail} $text\n  $r = await GuardRecordPolicyAction(flow_name="check_{rail}", safe=True, text=$text)\n'
                 for rail in ("input", "output"))}],
             "rail_bindings": [{"rail_type": rail, "flow_name": f"check_{rail}",
-                "execution_mode": "detect", "on_unsafe": "reject"} for rail in ("input", "output")],
+                "execution_mode": "detect", "on_unsafe": "block"} for rail in ("input", "output")],
             "action_references": [{"name": "GuardRecordPolicyAction", "version": "1.0.0"}],
             "execution_contract": [["output_delivery", "full_buffered"]],
         }],
@@ -66,7 +66,7 @@ def test_control_plane_flags_compile_into_the_signed_artifact_contract(
         safety_level=safety_level,
         output_delivery=output_delivery,
         phases=["input", "output"],
-        on_unsafe="reject",
+        on_unsafe="block",
     )
 
     plan = plan_from_proto(artifact.plan)
@@ -83,15 +83,15 @@ def test_control_plane_flags_compile_into_the_signed_artifact_contract(
     assert artifact.checksum
     assert len(bindings) == 1
     assert bindings[0]["capability"] == "secrets"
-    assert bindings[0]["on_unsafe"] == "reject"
+    assert bindings[0]["on_unsafe"] == "block"
 
 
 @pytest.mark.parametrize(
     ("phases", "on_unsafe"),
     [
-        (["input"], "reject"),
-        (["output"], "redact"),
-        (["input", "output"], "rewrite"),
+        (["input"], "block"),
+        (["output"], "transform"),
+        (["input", "output"], "transform"),
     ],
 )
 def test_rail_and_enforcement_flags_survive_compilation(
@@ -135,7 +135,7 @@ def test_model_capability_compiles_to_a_provider_agnostic_action_binding() -> No
             "capability": "content_safety",
             "contract_ref": CONTRACT_CONTENT_SAFETY,
             "phases": ["input"],
-            "on_unsafe": "reject",
+            "on_unsafe": "block",
             "trigger": {"type": "always", "verdicts": []},
             "parameters": [],
         }],

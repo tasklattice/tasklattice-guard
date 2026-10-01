@@ -36,23 +36,23 @@ def test_guardrail_business_metrics_cover_allow_deny_transform_and_failure_modes
         required_modules_completed=2, required_modules_total=2,
     )
     allow = ProtectionDecision(
-        decision="allow", action="pass", guardrail_id="guardrail-1",
+        decision="allow", action="allow", guardrail_id="guardrail-1",
         guardrail_version="20260904-020000.002Z", router_id="router-1",
         # The runtime/route identity is deliberately different. Metrics must
         # retain the authenticated entrypoint identity supplied below.
         endpoint_id="route-derived-must-not-win", coverage=coverage,
     )
     deny = ProtectionDecision(
-        decision="block", action="reject", guardrail_id="guardrail-1",
+        decision="block", action="block", guardrail_id="guardrail-1",
         guardrail_version="20260904-020000.002Z", router_id="router-1",
         coverage=coverage, usage=RuntimeUsage(fail_closed=True, queue_latency_ms=5),
     )
     transform = ProtectionDecision(
-        decision="transform", action="redact", guardrail_id="guardrail-1",
+        decision="transform", action="transform", guardrail_id="guardrail-1",
         guardrail_version="20260904-020000.002Z", router_id="router-1",
         mode="detect",
         interventions=(AppliedIntervention(
-            kind="redact", module_id="secrets", fragment_id="fragment-1",
+            kind="transform", module_id="secrets", fragment_id="fragment-1",
         ),),
         coverage=RuntimeCoverage(
             status="partial", guarded_items=1, total_items=2,
@@ -77,8 +77,8 @@ def test_guardrail_business_metrics_cover_allow_deny_transform_and_failure_modes
     # A policy denial is a successful Guardrail execution, not a platform error.
     assert 'coverage="complete",disposition="deny",endpoint_id="endpoint-authenticated",enforcement_mode="enforce",failure_mode="fail_closed",guardrail_id="guardrail-1",phase="input",protocol="http",result="success",traffic_class="runtime"} 1.0' in rendered
     assert 'coverage="partial",disposition="transform",endpoint_id="endpoint-authenticated",enforcement_mode="detect",failure_mode="fail_open",guardrail_id="guardrail-1",phase="input",protocol="http",result="success",traffic_class="runtime"} 1.0' in rendered
-    assert 'guard_runner_guardrail_interventions_total{action="reject",endpoint_id="endpoint-authenticated",guardrail_id="guardrail-1",phase="input",protocol="http"} 1.0' in rendered
-    assert 'guard_runner_guardrail_interventions_total{action="redact",endpoint_id="endpoint-authenticated",guardrail_id="guardrail-1",phase="input",protocol="http"} 1.0' in rendered
+    assert 'guard_runner_guardrail_interventions_total{action="block",endpoint_id="endpoint-authenticated",guardrail_id="guardrail-1",phase="input",protocol="http"} 1.0' in rendered
+    assert 'guard_runner_guardrail_interventions_total{action="transform",endpoint_id="endpoint-authenticated",guardrail_id="guardrail-1",phase="input",protocol="http"} 1.0' in rendered
     assert 'guard_runner_guardrail_request_duration_seconds_count{disposition="deny",endpoint_id="endpoint-authenticated",guardrail_id="guardrail-1",phase="input",protocol="http",result="success",traffic_class="runtime"} 1.0' in rendered
     assert 'guard_runner_guardrail_guarded_items_total{endpoint_id="endpoint-authenticated",guardrail_id="guardrail-1",phase="input",protocol="http"} 3.0' in rendered
     assert 'guard_runner_guardrail_stage_duration_seconds_count{endpoint_id="endpoint-authenticated",guardrail_id="guardrail-1",phase="input",protocol="http",result="success",stage="runtime"} 1.0' in rendered
@@ -126,7 +126,7 @@ def test_guardrail_request_errors_keep_resolved_identity_and_unmatched_is_stable
             guardrail_version="__unmatched__",
             router_id="__unmatched__",
         )
-        observation.complete(ProtectionDecision(decision="block", action="reject"))
+        observation.complete(ProtectionDecision(decision="block", action="block"))
 
     rendered = generate_latest(metrics.registry).decode()
     assert 'coverage="unknown",disposition="unknown",endpoint_id="endpoint-a2a",enforcement_mode="enforce",failure_mode="normal",guardrail_id="guardrail-resolved",phase="output",protocol="a2a",result="error",traffic_class="runtime"} 1.0' in rendered
@@ -161,8 +161,8 @@ def test_policy_and_protection_metrics_explain_module_risk_policy_and_failure():
     metrics = RunnerMetrics(8)
     finding = RiskFinding(
         risk="prompt_injection", taxonomy_id="TALI-MODEL-SECURITY-PROMPT-INJECTION",
-        verdict="unsafe", confidence=0.99,
-        evidence="bounded evidence", recommended_action="reject",
+        verdict="matched", confidence=0.99,
+        evidence="bounded evidence", recommended_action="block",
         policy_id="policy-injection",
     )
     coverage = RuntimeCoverage(
@@ -171,7 +171,7 @@ def test_policy_and_protection_metrics_explain_module_risk_policy_and_failure():
         required_modules_completed=0, required_modules_total=1,
     )
     decision = ProtectionDecision(
-        decision="block", action="reject", guardrail_id="guardrail-1",
+        decision="block", action="block", guardrail_id="guardrail-1",
         guardrail_version="20260904-010000.001Z", router_id="router-1",
         findings=(finding,),
         assessments=(ModuleAssessment(
@@ -180,7 +180,7 @@ def test_policy_and_protection_metrics_explain_module_risk_policy_and_failure():
             fragments=(DecisionFragment(
                 id="fragment-1", module_id="interaction-safety",
                 module="interaction_safety", status="intervene",
-                action="reject", findings=(finding,),
+                action="block", findings=(finding,),
             ),),
         ),),
         trace=(RuntimeTraceStep(
@@ -202,7 +202,7 @@ def test_policy_and_protection_metrics_explain_module_risk_policy_and_failure():
 
     rendered = generate_latest(metrics.registry).decode()
     assert (
-        'guard_runner_guardrail_policy_triggers_total{action="reject",disposition="deny",endpoint_id="endpoint-1",guardrail_id="guardrail-1",module_id="interaction-safety",phase="input",policy_id="policy-injection",protocol="http",risk="prompt_injection",verdict="unsafe"} 1.0'
+        'guard_runner_guardrail_policy_triggers_total{action="block",disposition="deny",endpoint_id="endpoint-1",guardrail_id="guardrail-1",module_id="interaction-safety",phase="input",policy_id="policy-injection",protocol="http",risk="prompt_injection",verdict="matched"} 1.0'
     ) in rendered
     assert (
         'guard_runner_guardrail_protection_failures_total{action="PromptInjectionAction",endpoint_id="endpoint-1",failure_mode="fail_closed",guardrail_id="guardrail-1",module_id="interaction-safety",phase="input",policy_id="policy-injection",protocol="http",reason_class="timeout",stage="action"} 1.0'
@@ -217,7 +217,7 @@ def test_non_endpoint_requests_use_a_bounded_internal_identity():
     with metrics.request("controller", "playground", "input") as observation:
         observation.complete(ProtectionDecision(
             decision="allow",
-            action="pass",
+            action="allow",
             guardrail_id="guardrail-internal",
             guardrail_version="20260904-010000.001Z",
             router_id="router-internal",
@@ -278,13 +278,13 @@ def test_parallel_model_work_is_not_misreported_as_wall_wait():
     results = (
         SimpleNamespace(
             result=ActionResult(
-                "safe", "content", usage=ActionUsage(model_calls=(calls[0],)),
+                "not_matched", "content", usage=ActionUsage(model_calls=(calls[0],)),
             ),
             provider_latency_ms=3_000,
         ),
         SimpleNamespace(
             result=ActionResult(
-                "safe", "content", usage=ActionUsage(model_calls=(calls[1],)),
+                "not_matched", "content", usage=ActionUsage(model_calls=(calls[1],)),
             ),
             provider_latency_ms=3_000,
         ),

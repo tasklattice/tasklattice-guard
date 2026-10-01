@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: airline-passport-multinational/uae_emirates_id
+name: UAE Emirates ID
+description: Detects UAE Emirates ID numbers (784-YYYY-NNNNNNN-C format, 15 digits starting with 784)
+stages:
+- input
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b784-?\d{4}-?\d{7}-?\d\b
+on_match:
+  action: transform
+  replacement: '[uae_emirates_id_REDACTED]'
+runtime_adapter:
+  binding_id: airline-passport-multinational
+  implementation_rule_id: uae_emirates_id
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-PII
+risk_level: medium

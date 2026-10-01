@@ -1,0 +1,79 @@
+# yaml-language-server: $schema=../../../schemas/tests.schema.json
+- id: passport-en/input
+  name: passport-en
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: input
+  content: 'Passport: E12345678'
+  expected_decision: transform
+  covered_rule_ids:
+  - identity/passport
+  kind: rule_acceptance
+  required: true
+  group: Protection contract
+  parameter_names: []
+  scope: rule
+- id: passport-en/output
+  name: passport-en
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: output
+  content: 'Passport: E12345678'
+  expected_decision: transform
+  covered_rule_ids:
+  - identity/passport
+  kind: rule_acceptance
+  required: true
+  group: Protection contract
+  parameter_names: []
+  scope: rule
+- id: passport-zh/input
+  name: passport-zh
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: input
+  content: 护照号码：K1234567
+  expected_decision: transform
+  covered_rule_ids:
+  - identity/passport
+  kind: rule_acceptance
+  required: true
+  group: Protection contract
+  parameter_names: []
+  scope: rule
+- id: passport-zh/output
+  name: passport-zh
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: output
+  content: 护照号码：K1234567
+  expected_decision: transform
+  covered_rule_ids:
+  - identity/passport
+  kind: rule_acceptance
+  required: true
+  group: Protection contract
+  parameter_names: []
+  scope: rule
+- id: passport-mixed/input
+  name: passport-mixed
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: input
+  content: 'Passport number: 12AB12345'
+  expected_decision: transform
+  covered_rule_ids:
+  - identity/passport
+  kind: rule_acceptance
+  required: true
+  group: Protection contract
+  parameter_names: []
+  scope: rule
+- id: passport-mixed/output
+  name: passport-mixed
+  description: Synthetic, deterministic text fixture; no external action is performed.
+  phase: output
+  content: 'Passport number: 12AB12345'
+  expected_decision: transform
+  covered_rule_ids:
+  - identity/passport
+  kind: rule_acceptance
+  required: true
+  group: Protection contract
+  parameter_names: []
+  scope: rule

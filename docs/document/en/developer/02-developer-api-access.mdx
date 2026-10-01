@@ -29,7 +29,7 @@ curl "{controllerOrigin}/api/v1/account/identity" \
   -H "Authorization: Bearer $GUARD_ACCESS_TOKEN"
 ```
 
-An Endpoint runtime `x-api-key` is only for [data-plane checks](#developer-runtime), not Controller configuration. A Personal Access Token cannot replace an Endpoint credential for model-request checks.
+An Endpoint runtime `x-api-key` is only for [data-plane checks](/document/developer/developer-runtime), not Controller configuration. A Personal Access Token cannot replace an Endpoint credential for model-request checks.
 
 [Manage Access Tokens](/account/access-tokens)
 
@@ -40,7 +40,7 @@ An Endpoint runtime `x-api-key` is only for [data-plane checks](#developer-runti
 
 Humans can read `/api/docs`; custom editors and tools can import `/api/openapi.json`, while `/api/llms.txt` provides a compact index. Each operation's `x-token-permission`, `x-idempotency`, and `x-retry-policy` describe its grant, duplicate-request semantics, and retry guidance. Tags group product capabilities, not permissions.
 
-A timeout does not prove that a write did not happen; `POST` is not universally safe to replay. For Router publication, preserve the same `idempotencyKey` and request content and inspect the returned publication identity. See [versioned contracts and retries](#api-contract-retries).
+A timeout does not prove that a write did not happen; `POST` is not universally safe to replay. For Router publication, preserve the same `idempotencyKey` and request content and inspect the returned publication identity. See [versioned contracts and retries](/document/api/api-contract-retries).
 
 [Management API reference](/api/docs)
 

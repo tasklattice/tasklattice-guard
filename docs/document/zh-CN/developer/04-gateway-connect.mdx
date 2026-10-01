@@ -4,7 +4,7 @@ title: "数据面协议：连接、输入与完整输出"
 summary: "LiteLLM 或自研网关只需实现 LiteLLM Generic Guardrail HTTP 契约，无需在网关里运行 LiteLLM。"
 order: 3
 ---
-运行时使用 **LiteLLM Generic Guardrail** 协议作为接入契约；这是协议名称，不要求你的网关采用 LiteLLM 实现。直接调用模型的 Agent 也可按相同的 HTTP 契约接入。运维人员提供 Endpoint 基础地址和该 Endpoint 的运行时 Token。以下示例针对文本的输入检查与完整输出检查；生产中仍要由接入方把检查结果映射回自己的请求和响应结构。先了解[数据面职责与边界](#developer-runtime)。
+运行时使用 **LiteLLM Generic Guardrail** 协议作为接入契约；这是协议名称，不要求你的网关采用 LiteLLM 实现。直接调用模型的 Agent 也可按相同的 HTTP 契约接入。运维人员提供 Endpoint 基础地址和该 Endpoint 的运行时 Token。以下示例针对文本的输入检查与完整输出检查；生产中仍要由接入方把检查结果映射回自己的请求和响应结构。先了解[数据面职责与边界](/document/developer/developer-runtime)。
 
 <a id="gateway-connection" />
 
@@ -55,4 +55,4 @@ curl -sS --fail-with-body -X POST "${TALI_GUARD_ENDPOINT%/}/beta/litellm_basic_g
 | `BLOCKED` | 不调用模型 | 不交付被阻断的输出 |
 | `GUARDRAIL_INTERVENED` | 用返回的 `texts` 替换对应输入 | 交付返回的 `texts`，不交付原输出 |
 
-替换数组必须与提交的 `texts` 数量、位置一致；空字符串也是有效替换。未知 action、无效 JSON 或错误的替换数量都属于检查失败，不能默认当作 `NONE`。对流式模型输出请使用[流式输出检查](#gateway-stream)，不要先把未经检查的 chunk 直接交给客户端。
+替换数组必须与提交的 `texts` 数量、位置一致；空字符串也是有效替换。未知 action、无效 JSON 或错误的替换数量都属于检查失败，不能默认当作 `NONE`。对流式模型输出请使用[流式输出检查](/document/developer/gateway-stream)，不要先把未经检查的 chunk 直接交给客户端。

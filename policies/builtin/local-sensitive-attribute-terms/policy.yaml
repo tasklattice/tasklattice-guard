@@ -1,0 +1,39 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: local-sensitive-attribute-terms
+  name: Sensitive attribute terms
+  description: Redact configured demographic and protected-attribute words, including benign mentions.
+    This optional vocabulary filter does not detect discrimination, infer a person's attributes or determine
+    legality.
+  source: built_in
+  version: 2.0.0
+  tags:
+  - namespace: protection
+    value: privacy
+    label: Privacy & sensitive information
+    source: declared
+  - namespace: guardrail_category
+    value: pii_detection
+    label: PII Detection
+    source: declared
+  - namespace: collection
+    value: focused-protection
+    label: Focused protection
+    source: declared
+  safety_level: balanced
+  output_delivery: full_buffered
+parameters: []
+rules:
+- rules/pattern-gender_sexual_orientation.yaml
+- rules/pattern-race_ethnicity_national_origin.yaml
+- rules/pattern-religion.yaml
+- rules/pattern-age_discrimination.yaml
+- rules/pattern-disability.yaml
+- rules/pattern-marital_family_status.yaml
+- rules/pattern-military_status.yaml
+- rules/pattern-public_assistance.yaml
+tests:
+- tests/acceptance.yaml
+- tests/regression.yaml

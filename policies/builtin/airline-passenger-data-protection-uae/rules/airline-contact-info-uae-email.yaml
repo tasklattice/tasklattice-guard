@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: airline-contact-info-uae/email
+name: Email Address
+description: Detects email addresses
+stages:
+- input
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b
+on_match:
+  action: transform
+  replacement: '[email_REDACTED]'
+runtime_adapter:
+  binding_id: airline-contact-info-uae
+  implementation_rule_id: email
+metadata:
+  taxonomy_ids:
+  - TALI-PRIVACY-PII
+risk_level: medium

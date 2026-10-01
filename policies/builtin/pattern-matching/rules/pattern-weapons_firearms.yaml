@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: pattern/weapons_firearms
+name: Weapons & Firearms
+description: Detects firearms and ammunition terminology
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b(gun|firearm|rifle|shotgun|pistol|handgun|revolver|semi[- ]?automatic|automatic\s+weapon|assault\s+rifle|AR-?15|AK-?47|machine\s+gun|submachine\s+gun|SMG|ammunition|ammo|bullet(s)?|cartridge|caliber|9mm|\.45|\.38|\.357|\.22|12\s+gauge|hollow\s+point|armor\s+piercing|magazine|clip|suppressor|silencer|bump\s+stock|trigger|barrel|concealed\s+carry|open\s+carry|CCW|ghost\s+gun|3D\s+printed\s+gun|untraceable\s+firearm|straw\s+purchase|gun\s+show|FFL|firearms\s+dealer)\b
+on_match:
+  action: transform
+  replacement: '[weapons_firearms_REDACTED]'
+runtime_adapter:
+  binding_id: pattern-matching
+  implementation_rule_id: weapons_firearms
+metadata:
+  taxonomy_ids:
+  - TALI-PHYSICAL-HARM-WEAPONS
+risk_level: high

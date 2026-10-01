@@ -150,6 +150,7 @@ export function RouterEndpoints({
         </div>
         {canEdit && (
           <Button
+            className="router-workspace-action"
             disabled={mutation.isPending}
             onClick={(event) => open({ kind: "attach" }, event.currentTarget)}
           >

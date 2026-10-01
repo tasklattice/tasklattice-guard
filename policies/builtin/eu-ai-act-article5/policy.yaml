@@ -1,0 +1,72 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: eu-ai-act-article5
+  name: EU AI Act Article 5 — Prohibited Practices
+  description: 'Screens selected English and French phrases related to five EU AI Act Article 5 topics:
+    manipulation, vulnerability exploitation, social scoring, emotion recognition, and biometric categorization
+    or profiling. This technical filter does not determine legal scope, exceptions, or compliance.'
+  source: built_in
+  version: 1.95.0
+  tags:
+  - namespace: protection
+    value: business_rules
+    label: Business & industry rules
+    source: declared
+  - namespace: guardrail_category
+    value: agentic_security
+    label: Agentic Security
+    source: declared
+  - namespace: framework
+    value: eu-ai-act
+    label: EU AI Act
+    source: declared
+  - namespace: jurisdiction
+    value: eu
+    label: European Union
+    source: declared
+  - namespace: rail
+    value: input
+    label: Input rail
+    source: derived
+  - namespace: implementation
+    value: category
+    label: Category
+    source: derived
+  safety_level: balanced
+  output_delivery: window_buffered
+parameters: []
+rules:
+- rules/eu-ai-act-art5-manipulation-eu_ai_act_art5_manipulation.yaml
+- rules/eu-ai-act-art5-vulnerability-eu_ai_act_art5_vulnerability.yaml
+- rules/eu-ai-act-art5-social-scoring-eu_ai_act_art5_social_scoring.yaml
+- rules/eu-ai-act-art5-emotion-recognition-eu_ai_act_art5_emotion_recognition.yaml
+- rules/eu-ai-act-art5-biometric-profiling-eu_ai_act_art5_biometric_profiling.yaml
+- rules/eu-ai-act-art5-manipulation-fr-eu_ai_act_art5_manipulation_fr.yaml
+- rules/eu-ai-act-art5-vulnerability-fr-eu_ai_act_art5_vulnerability_fr.yaml
+- rules/eu-ai-act-art5-social-scoring-fr-eu_ai_act_art5_social_scoring_fr.yaml
+- rules/eu-ai-act-art5-emotion-recognition-fr-eu_ai_act_art5_emotion_recognition_fr.yaml
+- rules/eu-ai-act-art5-biometric-profiling-fr-eu_ai_act_art5_biometric_profiling_fr.yaml
+tests:
+- tests/acceptance.yaml
+resources:
+- resources/eu-ai-act-art5-manipulation-eu_ai_act_art5_manipulation-conditions.yaml
+- resources/eu-ai-act-art5-vulnerability-eu_ai_act_art5_vulnerability-conditions.yaml
+- resources/eu-ai-act-art5-social-scoring-eu_ai_act_art5_social_scoring-identifiers.yaml
+- resources/eu-ai-act-art5-social-scoring-eu_ai_act_art5_social_scoring-conditions.yaml
+- resources/eu-ai-act-art5-emotion-recognition-eu_ai_act_art5_emotion_recognition-identifiers.yaml
+- resources/eu-ai-act-art5-emotion-recognition-eu_ai_act_art5_emotion_recognition-conditions.yaml
+- resources/eu-ai-act-art5-biometric-profiling-eu_ai_act_art5_biometric_profiling-identifiers.yaml
+- resources/eu-ai-act-art5-biometric-profiling-eu_ai_act_art5_biometric_profiling-conditions.yaml
+- resources/eu-ai-act-art5-manipulation-fr-eu_ai_act_art5_manipulation_fr-conditions.yaml
+- resources/eu-ai-act-art5-vulnerability-fr-eu_ai_act_art5_vulnerability_fr-conditions.yaml
+- resources/eu-ai-act-art5-social-scoring-fr-eu_ai_act_art5_social_scoring_fr-identifiers.yaml
+- resources/eu-ai-act-art5-social-scoring-fr-eu_ai_act_art5_social_scoring_fr-conditions.yaml
+- resources/eu-ai-act-art5-social-scoring-fr-eu_ai_act_art5_social_scoring_fr-exceptions.yaml
+- resources/eu-ai-act-art5-emotion-recognition-fr-eu_ai_act_art5_emotion_recognition_fr-identifiers.yaml
+- resources/eu-ai-act-art5-emotion-recognition-fr-eu_ai_act_art5_emotion_recognition_fr-conditions.yaml
+- resources/eu-ai-act-art5-emotion-recognition-fr-eu_ai_act_art5_emotion_recognition_fr-exceptions.yaml
+- resources/eu-ai-act-art5-biometric-profiling-fr-eu_ai_act_art5_biometric_profiling_fr-identifiers.yaml
+- resources/eu-ai-act-art5-biometric-profiling-fr-eu_ai_act_art5_biometric_profiling_fr-conditions.yaml
+- resources/eu-ai-act-art5-biometric-profiling-fr-eu_ai_act_art5_biometric_profiling_fr-exceptions.yaml

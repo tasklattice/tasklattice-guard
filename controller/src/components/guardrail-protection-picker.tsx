@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { Search } from "@carbon/react";
 import { BadgeCheck, ChevronDown, LockKeyhole, MessagesSquare, SlidersHorizontal, ShieldCheck, Fingerprint } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { boundPolicy } from "@/lib/bound-policy";
@@ -9,7 +10,7 @@ import { PolicyBindingEditor, defaultPolicyBinding } from "./policy-binding-edit
 import { Checkbox } from "./ui/checkbox";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
-import { Input } from "./ui/input";
+import "./guardrail-protection-picker.scss";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 
 export type ProtectionSection = "safety" | "privacy" | "business" | "topics" | "reliability";
@@ -108,10 +109,12 @@ export function GuardrailProtectionPicker({ policies, bindings, onChange, issueF
         </header>
         {section === "topics" ? businessControls : section === "reliability" ? correctnessControls : null}
         {sectionItems.length ? <>
-          <div className="flex flex-wrap gap-2">
-            <Input className="field:min-h-11 min-w-0 flex-1 basis-48 field:bg-card" aria-label={t("protection.wizard.search")} placeholder={t("protection.wizard.search")} value={query} onChange={event => setQuery(event.target.value)} />
-            <Button className="min-h-11" variant={selectedOnly ? "outline" : "secondary"} aria-pressed={!selectedOnly} onClick={() => setSelectedOnly(false)}>{t("protection.wizard.all")}</Button>
-            <Button className="min-h-11" variant={selectedOnly ? "secondary" : "outline"} aria-pressed={selectedOnly} onClick={() => setSelectedOnly(true)}>{t("protection.wizard.selectedOnly", { count: selectedCount(section) })}</Button>
+          <div className="guard-protection-toolbar">
+            <Search id={`${prefix}-search`} size="lg" labelText={t("protection.wizard.search")} placeholder={t("protection.wizard.search")} value={query} closeButtonLabelText={t("resourceList.clearSearch")} onClear={() => setQuery("")} onChange={event => setQuery(event.target.value)} />
+            <div role="group" aria-label={t("protection.wizard.search")} className="guard-protection-filters">
+              <Button variant={selectedOnly ? "outline" : "default"} aria-pressed={!selectedOnly} onClick={() => setSelectedOnly(false)}>{t("protection.wizard.all")}</Button>
+              <Button variant={selectedOnly ? "default" : "outline"} aria-pressed={selectedOnly} onClick={() => setSelectedOnly(true)}>{t("protection.wizard.selectedOnly", { count: selectedCount(section) })}</Button>
+            </div>
           </div>
           <p className="text-xs leading-5 text-muted-foreground">{t("protection.wizard.sections.selectionHint")}</p>
         </> : null}

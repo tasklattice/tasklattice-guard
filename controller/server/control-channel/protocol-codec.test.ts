@@ -26,8 +26,8 @@ const plan = {
   output_delivery: "full_buffered",
   steps: [{
     id: "pii:semantic", capability: "pii", contract_ref: "tali.guard.pii.semantic.v1",
-    phases: ["input", "output"], on_unsafe: "redact",
-    trigger: { type: "on_result", step_ref: "pii:exact", verdicts: ["uncertain"] },
+    phases: ["input", "output"], on_unsafe: "transform",
+    trigger: { type: "on_result", step_ref: "pii:exact", verdicts: ["unknown"] },
     parameters: [["entity_types", "passport,phone"]],
   }],
   modules: [{
@@ -43,7 +43,7 @@ const plan = {
     colang_version: "2.x", sources: [{ path: "rails/passport.co", content: "define flow passport" }],
     parameter_schema: [["entity_types", "string"]],
     rail_bindings: [{
-      rail_type: "input", flow_name: "passport input", execution_mode: "mutate", on_unsafe: "redact", risk_severity: "high",
+      rail_type: "input", flow_name: "passport input", execution_mode: "mutate", on_unsafe: "transform", risk_severity: "high",
       parallel_group: "data-protection", priority: 10, timeout_ms: 500, failure_mode: "fail_closed",
       required: true, depends_on: [],
     }],
@@ -52,14 +52,41 @@ const plan = {
     execution_contract: [["native_risk", "pii"]], test_cases: [["safe", "allow"]], checksum: "policy-checksum",
   }],
   policy_bindings: [{
-    policy_id: "passport-policy", policy_version: "1.0.0", action: "redact",
+    policy_id: "passport-policy", policy_version: "1.0.0", action: "transform",
     parameter_values: [["entity_types", "passport"]], enabled_rule_ids: ["pii/passport"],
-    rule_actions: [["pii/passport", "redact"]], rule_severities: [["pii/passport", "high"]], enabled_rails: ["input", "output"], rule_order: ["pii/passport"],
+    rule_actions: [["pii/passport", "transform"]], rule_severities: [["pii/passport", "high"]], enabled_rails: ["input", "output"], rule_order: ["pii/passport"],
   }],
 };
 
 
 describe("Controller/Runner control protocol", () => {
+  it.each(["reject", "pass", "mask", "unspecified", "typo", 800])(
+    "rejects invalid enforcement action %s before Protobuf can discard it", action => {
+      const inputs = [
+        { ...plan, steps: [{ ...plan.steps[0], on_unsafe: action }] },
+        { ...plan, policy_versions: [{ ...plan.policy_versions[0], rail_bindings: [
+          { ...plan.policy_versions[0]!.rail_bindings[0], on_unsafe: action },
+        ] }] },
+        { ...plan, policy_bindings: [{ ...plan.policy_bindings[0], action }] },
+      ];
+      for (const input of inputs) {
+        expect(() => planToWire(input)).toThrow(/Invalid enforcement action/);
+      }
+      expect(() => artifactToWire({
+        guardrailVersion: versionId, plan,
+        actionBindings: [{ phases: ["output"], on_unsafe: action }],
+      })).toThrow(/Invalid enforcement action/);
+    },
+  );
+
+  it.each(["REJECT", "PASS", "UNSPECIFIED", "TYPO"])(
+    "rejects invalid incoming enforcement action %s", action => {
+      const wire = planToWire(plan) as unknown as GuardrailPlan__Output;
+      wire.steps[0]!.onUnsafe = `ENFORCEMENT_ACTION_${action}` as never;
+      expect(() => planFromWire(wire)).toThrow(/Invalid enforcement action/);
+    },
+  );
+
   it("rejects legacy numeric Guardrail Versions instead of coercing them", () => {
     expect(() => planToWire({ ...plan, guardrail_version: 1 })).toThrow("canonical UTC timestamp");
   });
@@ -85,7 +112,7 @@ describe("Controller/Runner control protocol", () => {
       expectedMatches: [{ policyId: "baseline", ruleId: "credential" }],
     });
   });
-  it("serializes a typed message through the service loaded from the split Proto graph", () => {
+  it.each(["allow", "block", "transform"])("preserves %s on the real Protobuf wire", action => {
     const protoPath = resolve("../proto/tasklattice/guard/control/v1/runner_control.proto");
     const definition = loadSync(protoPath, {
       includeDirs: [dirname(protoPath)], longs: String, enums: String, defaults: true, oneofs: true,
@@ -97,23 +124,51 @@ describe("Controller/Runner control protocol", () => {
       sentAtUnixMs: "1",
       compileRequest: {
         compileId: "compile-1", guardrailId: "guardrail-1", guardrailVersion: versionId,
-        generation: "11", plan: planToWire(plan), runtimeProfile: "nemo-default",
+        generation: "11", plan: planToWire({ ...plan,
+          steps: [{ ...plan.steps[0], on_unsafe: action }],
+          policy_bindings: [{ ...plan.policy_bindings[0], action }],
+        }), runtimeProfile: "nemo-default",
       },
     });
 
     const decoded = connect.responseDeserialize(encoded);
     expect(decoded.body).toBe("compileRequest");
     expect(decoded.compileRequest?.plan?.safetyLevel).toBe("SAFETY_LEVEL_STRICT");
-    expect(decoded.compileRequest?.plan?.policyBindings[0]?.action).toBe("ENFORCEMENT_ACTION_REDACT");
+    expect(decoded.compileRequest?.plan?.steps[0]?.onUnsafe).toBe(`ENFORCEMENT_ACTION_${action.toUpperCase()}`);
+    expect(decoded.compileRequest?.plan?.policyBindings[0]?.action).toBe(`ENFORCEMENT_ACTION_${action.toUpperCase()}`);
   });
 
   it("round-trips the complete Guardrail Plan through generated wire types", () => {
     const wire = planToWire(plan);
 
     expect(wire.safetyLevel).toBe("SAFETY_LEVEL_STRICT");
-    expect(wire.policyBindings?.[0]?.action).toBe("ENFORCEMENT_ACTION_REDACT");
+    expect(wire.policyBindings?.[0]?.action).toBe("ENFORCEMENT_ACTION_TRANSFORM");
     expect(planFromWire(wire as unknown as GuardrailPlan__Output)).toEqual(plan);
   });
+
+  it("preserves all four detector results independently of the enforcement action", () => {
+    const verdicts = ["matched", "not_matched", "unknown", "error"];
+    const input = { ...plan, steps: [{ ...plan.steps[0], trigger: {
+      type: "on_result", step_ref: "pii:exact", verdicts,
+    } }] };
+    const wire = planToWire(input);
+    expect(wire.steps?.[0]?.trigger?.verdicts).toEqual([
+      "EVALUATOR_VERDICT_MATCHED", "EVALUATOR_VERDICT_NOT_MATCHED",
+      "EVALUATOR_VERDICT_UNKNOWN", "EVALUATOR_VERDICT_ERROR",
+    ]);
+    expect(planFromWire(wire as unknown as GuardrailPlan__Output)).toEqual(input);
+  });
+
+  it.each(["safe", "unsafe", "uncertain", "allow", "block", "transform", "unspecified"])(
+    "rejects %s as a detector result", verdict => {
+      expect(() => planToWire({ ...plan, steps: [{ ...plan.steps[0], trigger: {
+        type: "on_result", step_ref: "pii:exact", verdicts: [verdict],
+      } }] })).toThrow("Invalid detector result");
+      const wire = planToWire(plan) as unknown as GuardrailPlan__Output;
+      wire.steps[0]!.trigger!.verdicts = [`EVALUATOR_VERDICT_${verdict.toUpperCase()}`] as never;
+      expect(() => planFromWire(wire)).toThrow("Invalid detector result");
+    },
+  );
 
   it("round-trips the canonical signed Artifact body", () => {
     const content = {
@@ -123,8 +178,8 @@ describe("Controller/Runner control protocol", () => {
       prompts: [{ task: "passport_check", content: "Check {{ user_input }}", output_parser: "json", max_tokens: 64 }],
       actionBindings: [{
         id: "pii:semantic", capability: "pii", contract_ref: "tali.guard.pii.semantic.v1",
-        phases: ["input", "output"], on_unsafe: "redact",
-        trigger: { type: "on_result", step_ref: "pii:exact", verdicts: ["uncertain"] }, timeout_ms: 500,
+        phases: ["input", "output"], on_unsafe: "transform",
+        trigger: { type: "on_result", step_ref: "pii:exact", verdicts: ["unknown"] }, timeout_ms: 500,
         parameters: [["entity_types", "passport"]], policy_id: "passport-policy", policy_version: "1.0.0",
         flow_name: "passport input", action_name: "detect_passport", action_version: "1.0.0",
         parallel_group: "data-protection", execution_mode: "mutate", failure_mode: "fail_closed",

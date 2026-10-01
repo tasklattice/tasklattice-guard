@@ -121,7 +121,7 @@ The caller must execute the Decision and action; it is not merely a displayed sc
 
 Enforcement Action · post-detection directive
 
-The specific response requested after a Rule matches, such as redaction, rejection, or regeneration. The Policy provides the Rule default, which a Guardrail Binding may override. See [post-match Rule directives](#term-rule-actions) for all eight values and their precedence.
+The specific response requested after a Rule matches, allow, block, or transform. The Policy provides the Rule default, which a Guardrail Binding may override. See [post-match Rule directives](/document/overview/glossary-definition#term-rule-actions) for all three values and their precedence.
 
 It is neither an evaluator verdict nor a Python Action invoked by NeMo; some lifecycle directives are applied by the integrating caller.
 

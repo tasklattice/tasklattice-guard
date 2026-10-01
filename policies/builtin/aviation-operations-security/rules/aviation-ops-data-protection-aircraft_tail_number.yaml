@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: aviation-ops-data-protection/aircraft_tail_number
+name: Aircraft Tail Number
+description: Custom regular-expression rule.
+stages:
+- input
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \bA6-[A-Z]{3}\b|\b[A-Z]-[A-Z]{4}\b|\bN[0-9]{1,5}[A-Z]{0,2}\b
+on_match:
+  action: transform
+  replacement: '[aircraft_tail_number_REDACTED]'
+runtime_adapter:
+  binding_id: aviation-ops-data-protection
+  implementation_rule_id: aircraft_tail_number
+metadata:
+  taxonomy_ids:
+  - TALI-BUSINESS-POLICY
+risk_level: low

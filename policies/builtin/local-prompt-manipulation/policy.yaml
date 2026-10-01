@@ -1,0 +1,44 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: local-prompt-manipulation
+  name: Instruction manipulation patterns
+  description: Local phrases indicating instruction overrides, role replacement or prompt extraction.
+    Input and output text screening does not detect arbitrary paraphrases or establish trusted roles.
+  source: built_in
+  version: 2.0.0
+  tags:
+  - namespace: protection
+    value: attacks_and_abuse
+    label: Attacks & abuse
+    source: declared
+  - namespace: guardrail_category
+    value: jailbreak_protection
+    label: Jailbreak Protection
+    source: declared
+  - namespace: collection
+    value: focused-protection
+    label: Focused protection
+    source: declared
+  safety_level: balanced
+  output_delivery: full_buffered
+parameters: []
+rules:
+- rules/prompt-injection-blocker-blocked-word-1.yaml
+- rules/prompt-injection-blocker-blocked-word-2.yaml
+- rules/prompt-injection-blocker-blocked-word-3.yaml
+- rules/prompt-injection-blocker-blocked-word-4.yaml
+- rules/prompt-injection-blocker-blocked-word-5.yaml
+- rules/prompt-injection-blocker-blocked-word-6.yaml
+- rules/prompt-injection-blocker-blocked-word-7.yaml
+- rules/prompt-injection-blocker-blocked-word-8.yaml
+- rules/prompt-injection-blocker-blocked-word-9.yaml
+- rules/prompt-injection-blocker-blocked-word-10.yaml
+- rules/prompt-injection-blocker-blocked-word-11.yaml
+- rules/prompt-injection-blocker-blocked-word-12.yaml
+- rules/prompt-injection-blocker-blocked-word-13.yaml
+- rules/prompt-injection-blocker-blocked-word-14.yaml
+tests:
+- tests/acceptance.yaml
+- tests/regression.yaml

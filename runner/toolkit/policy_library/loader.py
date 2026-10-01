@@ -5,6 +5,7 @@ from pathlib import Path
 
 from .domain import (
     PolicyImplementationRef,
+    PolicyDetectorRef,
     PolicyParameterSpec,
     PolicyRuleSpec,
     PolicySpec,
@@ -12,6 +13,8 @@ from .domain import (
     PolicyTestCaseSpec,
 )
 from .frameworks import framework_tags_for_policy
+from .pattern_validation import parse_pattern_validators
+from .conditions import validate_conditions, validate_terms
 
 
 _ASSET_DIR = Path(__file__).resolve().parent / "assets"
@@ -22,6 +25,7 @@ _ASSET_PATHS = (
     _ASSET_DIR / "focused_policies.json",
     _ASSET_DIR / "china_policies.json",
     _ASSET_DIR / "configurable_policies.json",
+    _ASSET_DIR / "custom_policies.json",
 )
 
 
@@ -77,9 +81,22 @@ def _rule(policy_id: str, payload: dict[str, object]) -> PolicyRuleSpec:
             f"Policy {policy_id!r} Rule {values.get('id')!r} must declare taxonomy_ids."
         )
     values["rails"] = tuple(values.get("rails", ()))
+    values["validators"] = parse_pattern_validators(values.get("validators", []))
+    values["detector"] = PolicyDetectorRef(**values["detector"])
     values["implementation"] = PolicyImplementationRef(
         **values["implementation"]
     )
+    options = values.get("detector_options", {})
+    if not isinstance(options, dict):
+        raise ValueError("Detector options must be an object")
+    if values["implementation"].detector == "conditions":
+        validate_conditions(options)
+    if values["implementation"].detector == "keyword" and options:
+        if set(options) - {"terms", "literal"} or "terms" not in options:
+            raise ValueError("Unknown keyword detector option")
+        validate_terms(options["terms"])
+    if values["validators"] and (values["implementation"].execution != "local" or values["implementation"].detector != "regex"):
+        raise ValueError("Candidate validators require the regex detector")
     for field in (
         "identifiers",
         "conditions",

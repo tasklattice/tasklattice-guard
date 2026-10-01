@@ -1,0 +1,33 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: local-travel-identifiers
+  name: Travel & loyalty identifiers
+  description: Redact configured booking-reference, loyalty-number and flight-number formats. Public flight
+    numbers may also match; enable only when the business treats them as sensitive.
+  source: built_in
+  version: 2.0.0
+  tags:
+  - namespace: protection
+    value: privacy
+    label: Privacy & sensitive information
+    source: declared
+  - namespace: guardrail_category
+    value: pii_detection
+    label: PII Detection
+    source: declared
+  - namespace: collection
+    value: focused-protection
+    label: Focused protection
+    source: declared
+  safety_level: balanced
+  output_delivery: full_buffered
+parameters: []
+rules:
+- rules/pattern-skywards_number.yaml
+- rules/pattern-airline_pnr.yaml
+- rules/pattern-flight_number.yaml
+tests:
+- tests/acceptance.yaml
+- tests/regression.yaml

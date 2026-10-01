@@ -1,0 +1,39 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: local-passport-formats
+  name: International passport formats
+  description: Recognize the configured labelled and unlabelled passport formats. A match does not identify
+    the issuing country or validate the document; use Passport identifiers when context-labelled detection
+    is preferred.
+  source: built_in
+  version: 2.0.0
+  tags:
+  - namespace: protection
+    value: privacy
+    label: Privacy & sensitive information
+    source: declared
+  - namespace: guardrail_category
+    value: pii_detection
+    label: PII Detection
+    source: declared
+  - namespace: collection
+    value: focused-protection
+    label: Focused protection
+    source: declared
+  safety_level: balanced
+  output_delivery: full_buffered
+parameters: []
+rules:
+- rules/pattern-passport_singapore.yaml
+- rules/pattern-passport_china.yaml
+- rules/pattern-passport_us.yaml
+- rules/pattern-passport_germany.yaml
+- rules/pattern-passport_france.yaml
+- rules/pattern-passport_netherlands.yaml
+- rules/pattern-passport_canada.yaml
+- rules/pattern-passport_india.yaml
+tests:
+- tests/acceptance.yaml
+- tests/regression.yaml

@@ -1,0 +1,31 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: local-passports
+  name: Passport identifiers
+  description: Redact 6–9 character alphanumeric identifiers explicitly labelled as a passport or 护照.
+    This does not validate issuing authorities or detect unlabelled documents.
+  source: built_in
+  version: 2.0.0
+  tags:
+  - namespace: protection
+    value: privacy
+    label: Privacy & sensitive information
+    source: declared
+  - namespace: guardrail_category
+    value: pii_detection
+    label: PII Detection
+    source: declared
+  - namespace: collection
+    value: focused-protection
+    label: Focused protection
+    source: declared
+  safety_level: balanced
+  output_delivery: full_buffered
+parameters: []
+rules:
+- rules/identity-passport.yaml
+tests:
+- tests/acceptance.yaml
+- tests/regression.yaml

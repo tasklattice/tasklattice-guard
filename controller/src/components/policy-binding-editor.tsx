@@ -201,7 +201,7 @@ export function PolicyBindingEditor({
                           const enabled = binding.enabled_rule_ids.includes(rule.id);
                           const inheritedActionLabel = binding.action != null
                             ? t("protection.ruleInheritedAction", { action: binding.action })
-                            : rule.implementation?.detector === "configured_phrases"
+                            : rule.rule_expansion
                               ? t("protection.phrases.useEntryActions")
                               : t("protection.ruleDefaultAction", { action: rule.effect });
                           return (

@@ -1,0 +1,125 @@
+id: claims-fraud-coaching-filter/claims_fraud_coaching
+name: Claims Fraud Coaching
+description: Detects coaching on fraudulent insurance claims including exaggeration, fabrication, and
+  document forgery
+stages:
+- input
+detector:
+  ref: text/conditions
+  version: 1.0.0
+  parameters:
+    detector_options:
+      match:
+        all:
+        - not:
+            contains:
+            - fraud detection
+            - fraud prevention
+            - anti-fraud
+            - report fraud
+            - reporting fraud
+            - suspected fraud
+            - investigate fraud
+            - fraud investigation
+            - fraud awareness
+            - how does our fraud
+            - detect fraud
+            - prevent fraud
+            - fraud protection
+        - any:
+          - regex: \b(?:how|help|can you|tell me)\b.{0,30}\b(?:exaggerate|inflate|fake|forge|fabricate)\b.{0,30}\b(?:claim|injury|damage|disability|medical)\b
+          - regex: \b(?:make|look|appear)\b.{0,20}\b(?:worse|more severe|legitimate)\b.{0,20}\b(?:claim|injury|settlement|payout)\b
+          - regex: \b(?:what|which)\b.{0,15}\b(?:symptoms|injuries|diagnosis)\b.{0,20}\b(?:tell|say|put
+              down|write)\b
+          - within_sentence:
+              all:
+              - contains:
+                - exaggerate
+                - exaggerating
+                - inflate
+                - inflating
+                - fabricate
+                - fabricating
+                - fake
+                - faking
+                - forge
+                - forging
+                - falsify
+                - falsifying
+                - misrepresent
+                - misrepresenting
+                - stage
+                - staging
+                - coach me
+                - trick
+                - tricking
+                - double-bill
+                - double bill
+                - unbundle
+                - alter
+                - duplicate claim
+                - phantom
+                - get away with
+              - keywords:
+                - claim
+                - claims
+                - injury
+                - injuries
+                - payout
+                - settlement
+                - insurance
+                - medical bills
+                - medical records
+                - disability
+                - workers comp
+                - adjuster
+                - diagnosis
+                - symptoms
+                - documentation
+                - benefits
+                - reimbursement
+                - pre-existing
+                - accident
+                - whiplash
+                - back injury
+                - billing
+                - date of service
+                - condition
+                - damage
+          - keywords:
+            - file a fraudulent claim
+            - fraudulent workers comp
+            - fake documentation
+            - forge medical records
+            - stage a car accident
+            - stage an accident
+            - false claim look legitimate
+            - bill for treatments i never received
+            - bill for treatments that weren't
+            - services that weren't provided
+            - easiest type of insurance fraud
+            - insurance fraud
+            - claim fraud
+            - fraudulent claim
+            - injuries are hardest for insurance companies to disprove
+            - hardest to disprove
+            - higher settlement
+            - bigger payout
+            - without getting caught
+            - diagnosis codes pay out the most
+            - pay out the most
+            - get reimbursed for a procedure that wasn't medically necessary
+            - look like it was caused by
+            - write a note saying my injury is worse
+            - saying my injury is worse
+            - worse than it is
+on_match:
+  action: block
+  replacement: null
+runtime_adapter:
+  binding_id: claims-fraud-coaching-filter
+  implementation_rule_id: claims_fraud_coaching
+metadata:
+  taxonomy_ids:
+  - TALI-ILLEGAL-ACTIVITY
+risk_level: medium

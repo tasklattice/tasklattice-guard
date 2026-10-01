@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=../../../schemas/rule.schema.json
+id: pattern/explosives
+name: Explosives & Bombs
+description: Detects explosives and bomb-making terminology
+stages:
+- input
+- output
+detector:
+  ref: text/regex
+  version: 1.0.0
+  parameters:
+    expression: \b(bomb|explosive|detonate|detonator|detonation|IED|improvised\s+explosive|pipe\s+bomb|mail\s+bomb|car\s+bomb|truck\s+bomb|suicide\s+bomb|vest\s+bomb|dirty\s+bomb|fertilizer\s+bomb|ANFO|ammonium\s+nitrate|C-?4|plastic\s+explosive|dynamite|TNT|nitroglycerin|black\s+powder|gunpowder|blasting\s+cap|fuse|timer\s+device|remote\s+detonation|pressure\s+cooker\s+bomb|nail\s+bomb|shrapnel|fragmentation|incendiary|molotov|firebomb|thermite|napalm|grenade|hand\s+grenade|frag\s+grenade|flash\s+bang|smoke\s+bomb|landmine|claymore|semtex|RDX|PETN|how\s+to\s+(make|build|construct)\s+(a\s+)?bomb)\b
+on_match:
+  action: transform
+  replacement: '[explosives_REDACTED]'
+runtime_adapter:
+  binding_id: local-risk-content-terms
+  implementation_rule_id: explosives
+metadata:
+  taxonomy_ids:
+  - TALI-PHYSICAL-HARM-WEAPONS
+risk_level: high

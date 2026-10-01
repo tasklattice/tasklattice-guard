@@ -21,6 +21,7 @@ data/
 node_modules/
 controller/dist/
 controller/dist-server/
+controller/dist-cli/
 controller/*.tsbuildinfo
 controller/vite.config.js
 controller/vite.config.d.ts

@@ -57,7 +57,7 @@ export function ControlPlaneLayout() {
     return <div className="flex min-h-dvh items-center justify-center bg-background"><div className="flex items-center gap-3 text-sm text-muted-foreground"><ShieldCheck className="size-5 animate-pulse text-primary" />{t("auth.sessionLoading")}</div></div>;
   }
   if (!auth.status?.authenticated || !auth.user) return <LoginPage />;
-  if (["/document", "/help"].includes(pathname.replace(/\/$/, ""))) return <HelpLayout />;
+  if (pathname === "/document" || pathname.startsWith("/document/") || ["/help", "/help/"].includes(pathname)) return <HelpLayout />;
 
   return (
     <TooltipProvider>

@@ -50,6 +50,10 @@
   --notice-success: #defbe6;
   --warning: #8e6a00;
   --notice-warning: #fff1c7;
+  --button-testing: #f1c21b;
+  --button-testing-hover: #e0b10a;
+  --button-testing-active: #d2a106;
+  --button-testing-text: #161616;
   --notice-info: #edf5ff;
   --notice-danger: #fff1f1;
   --chart-1: #0f62fe;
@@ -120,6 +124,15 @@
   width: 1rem;
   height: 1rem;
   flex-shrink: 0;
+}
+.guard-testing-button.cds--btn--primary {
+  background-color: var(--button-testing);
+  border-color: var(--button-testing);
+  color: var(--button-testing-text);
+  &:hover { background-color: var(--button-testing-hover); border-color: var(--button-testing-hover); }
+  &:active { background-color: var(--button-testing-active); border-color: var(--button-testing-active); }
+  &:focus { border-color: var(--cds-focus); box-shadow: inset 0 0 0 1px var(--cds-focus), inset 0 0 0 2px var(--cds-background); }
+  &:disabled { background-color: var(--cds-button-disabled); border-color: var(--cds-button-disabled); color: var(--cds-text-on-color-disabled); }
 }
 .guard-icon-button {
   padding-inline: 0.75rem;
