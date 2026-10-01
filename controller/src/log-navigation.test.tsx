@@ -1,6 +1,6 @@
 import { createMemoryHistory, createRouter, Outlet, RouterProvider } from "@tanstack/react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as api from "@/lib/api";
 import * as controllerApi from "@/lib/controller-api";
@@ -82,7 +82,8 @@ describe("URL-driven log inspection", () => {
   it.each(["allow", "block", "transform", "error"])("offers enforcement outcomes and Error, and sends %s to the server", async outcome => {
     const { list } = await setup();
     await screen.findByRole("table");
-    expect(screen.getAllByRole("combobox")).toHaveLength(4);
+    expect(screen.getAllByRole("combobox")).toHaveLength(3);
+    expect(screen.getByRole("button", { name: "logs.windowFilter" })).toBeTruthy();
     fireEvent.click(screen.getByRole("combobox", { name: "logs.outcomeFilter" }));
     expect(screen.getAllByRole("option").map(option => option.textContent)).toEqual([
       "logs.allOutcomes", "logs.outcomes.allow", "logs.outcomes.block", "logs.outcomes.transform", "logs.executionErrorOutcome",
@@ -98,8 +99,8 @@ describe("URL-driven log inspection", () => {
     await screen.findByRole("table");
     expect(list).toHaveBeenCalledWith(100, expect.objectContaining({ outcome: "error", routerId: "router-1", endpointId: "endpoint-1", routerRevision: 2, since: "2026-09-19T00:00:00Z", until: "2026-09-20T00:00:00Z" }), expect.any(AbortSignal));
     expect(router.state.location.search.outcome).toBe("error");
-    expect(screen.getByRole("combobox", { name: "logs.windowFilter" }).hasAttribute("disabled")).toBe(false);
-    expect(screen.getByText("logs.customTimeRange")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "logs.windowFilter" }).hasAttribute("disabled")).toBe(false);
+    expect(screen.getByRole("button", { name: "logs.windowFilter" }).textContent).toContain("09/19");
     expect(screen.getByText("logs.outcomes.block")).toBeTruthy();
   });
 
@@ -128,7 +129,7 @@ describe("URL-driven log inspection", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(router.state.location.search.eventId).toBe("older-checkpoint");
     expect(screen.getAllByRole("row")).toHaveLength(2);
-    expect(screen.getByRole("combobox", { name: "logs.windowFilter" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "logs.windowFilter" }).hasAttribute("disabled")).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "logs.clearEventFilter" }));
     await waitFor(() => expect(router.state.location.search.eventId).toBeUndefined());
     await waitFor(() => expect(list).toHaveBeenCalledWith(100, expect.objectContaining({ since: expect.any(String), guardrailId: "guardrail-1" }), expect.any(AbortSignal)));
@@ -159,34 +160,90 @@ describe("URL-driven log inspection", () => {
   });
 });
 
+function openTimeRange() {
+  if (!screen.queryByLabelText("logs.startDate")) fireEvent.click(screen.getByRole("button", { name: "logs.windowFilter" }));
+}
+
+function setTimeBound(field: "start" | "end", value: string) {
+  openTimeRange();
+  const [date, time] = value.split("T");
+  fireEvent.change(screen.getByLabelText(`logs.${field}Date`), { target: { value: date } });
+  fireEvent.change(screen.getByLabelText(`logs.${field}Time`), { target: { value: time } });
+}
+
+function timeBound(field: "start" | "end") {
+  openTimeRange();
+  const date = (screen.getByLabelText(`logs.${field}Date`) as HTMLInputElement).value;
+  const time = (screen.getByLabelText(`logs.${field}Time`) as HTMLInputElement).value;
+  return `${date}T${time}`;
+}
+
 describe("minute-precision log filtering", () => {
   it("stages edits, then sends UTC bounds including the whole end minute and keeps routing filters", async () => {
     const { list, router } = await setup("/logs?routerId=router-1&routeId=route-1&outcome=block");
     await screen.findByRole("table");
     list.mockClear();
-    fireEvent.change(screen.getByLabelText("logs.startTime"), { target: { value: "2026-09-19T14:02" } });
-    fireEvent.change(screen.getByLabelText("logs.endTime"), { target: { value: "2026-09-19T14:05" } });
+    expect(screen.queryByLabelText("logs.startDate")).toBeNull();
+    setTimeBound("start", "2026-09-19T14:02");
+    setTimeBound("end", "2026-09-19T14:05");
     expect(list).not.toHaveBeenCalled();
     const since = new Date("2026-09-19T14:02:00").toISOString();
     const until = new Date("2026-09-19T14:05:59.999").toISOString();
     fireEvent.click(screen.getByRole("button", { name: "logs.applyTimeRange" }));
     await waitFor(() => expect(list).toHaveBeenLastCalledWith(100, expect.objectContaining({ since, until, routerId: "router-1", routeId: "route-1", outcome: "block" }), expect.any(AbortSignal)));
     expect(router.state.location.search).toMatchObject({ since, until, routerId: "router-1", routeId: "route-1", outcome: "block" });
-    expect(screen.getByText("logs.customTimeRange")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "logs.windowFilter" }).textContent).toContain("09/19 14:02 – 14:05");
+    expect(screen.queryByRole("dialog", { name: "logs.preciseTimeRange" })).toBeNull();
+  });
+
+  it("selects a calendar day without dismissing the editor or losing its minute value", async () => {
+    const { list } = await setup("/logs?since=2026-09-19T06%3A02%3A00Z&until=2026-09-21T06%3A05%3A59.999Z");
+    await screen.findByRole("table");
+    list.mockClear();
+    openTimeRange();
+    // jsdom does not load the SCSS positioning required by Carbon's calendar.
+    screen.getByLabelText("logs.startDate").closest("form")!.style.position = "relative";
+    fireEvent.focus(screen.getByLabelText("logs.startDate"));
+    const calendar = document.querySelector<HTMLElement>(".flatpickr-calendar.open")!;
+    const day = await within(calendar).findByRole("button", { name: "Sunday, September 20, 2026" });
+    fireEvent.mouseDown(day);
+    fireEvent.click(day);
+    expect(screen.getByRole("dialog", { name: "logs.preciseTimeRange" })).toBeTruthy();
+    expect(timeBound("start")).toBe("2026-09-20T14:02");
+    expect(list).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "logs.applyTimeRange" }));
+    await waitFor(() => expect(list).toHaveBeenLastCalledWith(100, expect.objectContaining({ since: new Date("2026-09-20T14:02:00").toISOString() }), expect.any(AbortSignal)));
+  });
+
+  it.each(["cancel", "escape", "outside"])("discards unapplied edits when dismissed via %s", async method => {
+    const { list } = await setup("/logs?since=2026-09-19T06%3A02%3A00Z&until=2026-09-19T06%3A05%3A59.999Z");
+    await screen.findByRole("table");
+    list.mockClear();
+    setTimeBound("start", "2026-09-20T14:02");
+    if (method === "cancel") fireEvent.click(screen.getByRole("button", { name: "common.cancel" }));
+    else if (method === "escape") fireEvent.keyDown(screen.getByLabelText("logs.startTime"), { key: "Escape" });
+    else fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole("dialog", { name: "logs.preciseTimeRange" })).toBeNull();
+    expect(screen.getByRole("button", { name: "logs.windowFilter" }).textContent).toContain("09/19 14:02 – 14:05");
+    expect(timeBound("start")).toBe("2026-09-19T14:02");
+    expect(list).not.toHaveBeenCalled();
   });
 
   it("accepts a single minute and disables invalid or incomplete intervals without querying", async () => {
     const { list } = await setup();
     await screen.findByRole("table");
     list.mockClear();
-    fireEvent.change(screen.getByLabelText("logs.startTime"), { target: { value: "2026-09-19T14:05" } });
-    fireEvent.change(screen.getByLabelText("logs.endTime"), { target: { value: "2026-09-19T14:02" } });
+    setTimeBound("start", "2026-09-19T14:05");
+    setTimeBound("end", "2026-09-19T14:02");
     expect(screen.getByRole("alert").textContent).toBe("logs.timeRangeReversed");
     expect(screen.getByRole("button", { name: "logs.applyTimeRange" }).hasAttribute("disabled")).toBe(true);
     fireEvent.change(screen.getByLabelText("logs.endTime"), { target: { value: "" } });
     expect(screen.getByRole("alert").textContent).toBe("logs.timeRangeRequired");
     expect(list).not.toHaveBeenCalled();
-    fireEvent.change(screen.getByLabelText("logs.endTime"), { target: { value: "2026-09-19T14:05" } });
+    setTimeBound("end", "2026-09-19T24:05");
+    expect(screen.getByRole("alert").textContent).toBe("logs.timeRangeInvalid");
+    expect(screen.getByRole("button", { name: "logs.applyTimeRange" }).hasAttribute("disabled")).toBe(true);
+    setTimeBound("end", "2026-09-19T14:05");
     fireEvent.click(screen.getByRole("button", { name: "logs.applyTimeRange" }));
     await waitFor(() => expect(list).toHaveBeenLastCalledWith(100, expect.objectContaining({ since: new Date("2026-09-19T14:05:00").toISOString(), until: new Date("2026-09-19T14:05:59.999").toISOString() }), expect.any(AbortSignal)));
   });
@@ -194,21 +251,21 @@ describe("minute-precision log filtering", () => {
   it("fills a one-hour preset, clears fixed bounds, and restores them with Back", async () => {
     const { list, router, history } = await setup("/logs?since=2026-09-19T06%3A02%3A00Z&until=2026-09-19T06%3A05%3A59.999Z&routerId=router-1");
     await screen.findByRole("table");
-    const originalStart = (screen.getByLabelText("logs.startTime") as HTMLInputElement).value;
-    const originalEnd = (screen.getByLabelText("logs.endTime") as HTMLInputElement).value;
-    fireEvent.click(screen.getByRole("combobox", { name: "logs.windowFilter" }));
-    fireEvent.click(screen.getByRole("option", { name: "dashboard.windows.1h" }));
+    const originalStart = timeBound("start");
+    const originalEnd = timeBound("end");
+    openTimeRange();
+    fireEvent.click(screen.getByRole("button", { name: "dashboard.windows.1h" }));
     await waitFor(() => expect(router.state.location.search.since).toBeUndefined());
     expect(router.state.location.search.until).toBeUndefined();
     expect(router.state.location.search.routerId).toBe("router-1");
-    const start = new Date((screen.getByLabelText("logs.startTime") as HTMLInputElement).value);
-    const end = new Date((screen.getByLabelText("logs.endTime") as HTMLInputElement).value);
+    const start = new Date(timeBound("start"));
+    const end = new Date(timeBound("end"));
     expect(end.getTime() - start.getTime()).toBe(3_600_000);
     expect(list.mock.calls.at(-1)?.[1]?.until).toBeUndefined();
     history.back();
-    await waitFor(() => expect((screen.getByLabelText("logs.startTime") as HTMLInputElement).value).toBe(originalStart));
-    expect((screen.getByLabelText("logs.endTime") as HTMLInputElement).value).toBe(originalEnd);
-    expect(screen.getByText("logs.customTimeRange")).toBeTruthy();
+    await waitFor(() => expect(timeBound("start")).toBe(originalStart));
+    expect(timeBound("end")).toBe(originalEnd);
+    expect(screen.getByRole("button", { name: "logs.windowFilter" }).textContent).toContain("09/19 14:02 – 14:05");
   });
 
   it("starts from the first page when a precise interval changes", async () => {
@@ -221,8 +278,8 @@ describe("minute-precision log filtering", () => {
     await waitFor(() => expect(next.hasAttribute("disabled")).toBe(false));
     fireEvent.click(next);
     await waitFor(() => expect(list).toHaveBeenLastCalledWith(100, expect.objectContaining({ cursor: "older" }), expect.any(AbortSignal)));
-    fireEvent.change(screen.getByLabelText("logs.startTime"), { target: { value: "2026-09-19T14:02" } });
-    fireEvent.change(screen.getByLabelText("logs.endTime"), { target: { value: "2026-09-19T14:05" } });
+    setTimeBound("start", "2026-09-19T14:02");
+    setTimeBound("end", "2026-09-19T14:05");
     fireEvent.click(screen.getByRole("button", { name: "logs.applyTimeRange" }));
     await waitFor(() => expect(list.mock.calls.at(-1)?.[1]?.until).toBe(new Date("2026-09-19T14:05:59.999").toISOString()));
     expect(list.mock.calls.at(-1)?.[1]).not.toHaveProperty("cursor");

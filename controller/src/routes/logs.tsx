@@ -2,7 +2,7 @@ import { runtimeLogOutcomes, type RuntimeLogOutcome } from "../../shared/runtime
 import { Table as CarbonTable, TableHead as CarbonTableHead, TableBody as CarbonTableBody, TableRow as CarbonTableRow, TableHeader as CarbonTableHeader, TableCell as CarbonTableCell } from "@carbon/react";
 import { RuntimeOutcomeBadge } from "@/components/runtime-outcome-badge";
 import { RuntimeLogSheet } from "@/components/runtime-log-sheet";
-import { LogTimeRangeFields, useLogTimeRange, type LogTimePreset } from "@/components/log-time-range";
+import { LogTimeRangeControl, useLogTimeRange } from "@/components/log-time-range";
 import { useSearch, useNavigate, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
@@ -31,7 +31,6 @@ import {
   getGuardrails,
   metricWindowMilliseconds,
   runtimeLogInteractions,
-  type MetricWindow,
   type RuntimeLogInteraction,
 } from "@/lib/api";
 
@@ -113,14 +112,12 @@ export function LogsPage() {
         <span className="min-w-0 break-all">{t("logs.eventFilter")}: <code className="text-xs">{eventId}</code></span>
         <Button variant="ghost" size="sm" onClick={() => void navigate({ search: previous => ({ ...previous, eventId: undefined, requestId: undefined, checkpointId: undefined }), replace: true })}>{t("logs.clearEventFilter")}</Button>
       </div> : null}
-      <Card className="mt-5 gap-0 p-0 shadow-none">
-        <div className="grid grid-cols-4 gap-3 p-4">
+      <Card className="mt-5 gap-0 overflow-visible p-0 shadow-none">
+        <div className="log-filters-grid grid gap-3 p-4">
           <LogFilter label={t("logs.guardrailFilter")}>
             <Select value={guardrailId} onValueChange={setGuardrailId}><SelectTrigger className="field:min-h-11"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t("logs.allGuardrails")}</SelectItem>{guardrails.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}</SelectContent></Select>
           </LogFilter>
-          <LogFilter label={t("logs.windowFilter")}>
-            <Select value={eventId ? "exact" : timeRange.preset} disabled={Boolean(eventId)} onValueChange={value => timeRange.choosePreset(value as LogTimePreset)}><SelectTrigger className="field:min-h-11"><SelectValue /></SelectTrigger><SelectContent>{eventId ? <SelectItem value="exact">{t("logs.allTime")}</SelectItem> : null}{(["1h", "24h", "7d", "15d", "30d"] as MetricWindow[]).map((value) => <SelectItem key={value} value={value}>{t(`dashboard.windows.${value}`)}</SelectItem>)}<SelectItem value="custom">{t("logs.customTimeRange")}</SelectItem></SelectContent></Select>
-          </LogFilter>
+          <LogTimeRangeControl range={timeRange} disabled={Boolean(eventId)} />
           <LogFilter label={t("logs.directionFilter")}>
             <Select value={phase} onValueChange={(value) => setPhase(value as PhaseFilter)}><SelectTrigger className="field:min-h-11"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t("logs.allDirections")}</SelectItem><SelectItem value="input">{t("logs.inbound")}</SelectItem><SelectItem value="output">{t("logs.outbound")}</SelectItem></SelectContent></Select>
           </LogFilter>
@@ -128,7 +125,6 @@ export function LogsPage() {
             <Select value={outcome} onValueChange={(value) => setOutcome(value as OutcomeFilter)}><SelectTrigger className="field:min-h-11"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t("logs.allOutcomes")}</SelectItem>{runtimeLogOutcomes.map((value) => <SelectItem key={value} value={value}>{t(value === "error" ? "logs.executionErrorOutcome" : `logs.outcomes.${value}`)}</SelectItem>)}</SelectContent></Select>
           </LogFilter>
         </div>
-        <LogTimeRangeFields range={timeRange} disabled={Boolean(eventId)} />
       </Card>
 
       <div className="mt-5">
