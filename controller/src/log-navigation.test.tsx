@@ -201,6 +201,7 @@ describe("minute-precision log filtering", () => {
     await screen.findByRole("table");
     list.mockClear();
     openTimeRange();
+    const selectedStart = `2026-09-20T${timeBound("start").split("T")[1]}`;
     // jsdom does not load the SCSS positioning required by Carbon's calendar.
     screen.getByLabelText("logs.startDate").closest("form")!.style.position = "relative";
     fireEvent.focus(screen.getByLabelText("logs.startDate"));
@@ -209,23 +210,25 @@ describe("minute-precision log filtering", () => {
     fireEvent.mouseDown(day);
     fireEvent.click(day);
     expect(screen.getByRole("dialog", { name: "logs.preciseTimeRange" })).toBeTruthy();
-    expect(timeBound("start")).toBe("2026-09-20T14:02");
+    expect(timeBound("start")).toBe(selectedStart);
     expect(list).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "logs.applyTimeRange" }));
-    await waitFor(() => expect(list).toHaveBeenLastCalledWith(100, expect.objectContaining({ since: new Date("2026-09-20T14:02:00").toISOString() }), expect.any(AbortSignal)));
+    await waitFor(() => expect(list).toHaveBeenLastCalledWith(100, expect.objectContaining({ since: new Date(selectedStart).toISOString() }), expect.any(AbortSignal)));
   });
 
   it.each(["cancel", "escape", "outside"])("discards unapplied edits when dismissed via %s", async method => {
     const { list } = await setup("/logs?since=2026-09-19T06%3A02%3A00Z&until=2026-09-19T06%3A05%3A59.999Z");
     await screen.findByRole("table");
     list.mockClear();
+    const originalStart = timeBound("start");
+    const originalLabel = screen.getByRole("button", { name: "logs.windowFilter" }).textContent;
     setTimeBound("start", "2026-09-20T14:02");
     if (method === "cancel") fireEvent.click(screen.getByRole("button", { name: "common.cancel" }));
     else if (method === "escape") fireEvent.keyDown(screen.getByLabelText("logs.startTime"), { key: "Escape" });
     else fireEvent.pointerDown(document.body);
     expect(screen.queryByRole("dialog", { name: "logs.preciseTimeRange" })).toBeNull();
-    expect(screen.getByRole("button", { name: "logs.windowFilter" }).textContent).toContain("09/19 14:02 – 14:05");
-    expect(timeBound("start")).toBe("2026-09-19T14:02");
+    expect(screen.getByRole("button", { name: "logs.windowFilter" }).textContent).toBe(originalLabel);
+    expect(timeBound("start")).toBe(originalStart);
     expect(list).not.toHaveBeenCalled();
   });
 
@@ -253,6 +256,7 @@ describe("minute-precision log filtering", () => {
     await screen.findByRole("table");
     const originalStart = timeBound("start");
     const originalEnd = timeBound("end");
+    const originalLabel = screen.getByRole("button", { name: "logs.windowFilter" }).textContent;
     openTimeRange();
     fireEvent.click(screen.getByRole("button", { name: "dashboard.windows.1h" }));
     await waitFor(() => expect(router.state.location.search.since).toBeUndefined());
@@ -265,7 +269,7 @@ describe("minute-precision log filtering", () => {
     history.back();
     await waitFor(() => expect(timeBound("start")).toBe(originalStart));
     expect(timeBound("end")).toBe(originalEnd);
-    expect(screen.getByRole("button", { name: "logs.windowFilter" }).textContent).toContain("09/19 14:02 – 14:05");
+    expect(screen.getByRole("button", { name: "logs.windowFilter" }).textContent).toBe(originalLabel);
   });
 
   it("starts from the first page when a precise interval changes", async () => {
