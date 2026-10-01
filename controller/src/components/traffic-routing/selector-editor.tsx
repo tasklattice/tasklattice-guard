@@ -111,6 +111,7 @@ function Condition({ value, fields, onChange }: { value: SelectorCondition; fiel
 function SelectorAction({ className, handleOnClick, label, title, disabled, testID }: ActionProps) {
   const remove = testID === 'remove-rule' || testID === 'remove-group';
   return <Button type="button" variant={remove ? 'destructive' : 'create'}
+    size={remove ? 'icon' : 'default'}
     className={className} disabled={disabled} data-testid={testID}
     aria-label={typeof label === 'string' ? label : title} title={title}
     onClick={handleOnClick}>

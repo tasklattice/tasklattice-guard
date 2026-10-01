@@ -241,9 +241,10 @@
 
 /* Scope layout overrides to the Router editor. The query-builder vendor CSS
    is unlayered, so these rules also stay unlayered. */
+.router-selector { --router-selector-control-height: 3rem; }
 .router-selector .ruleGroup .rule {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 2.75rem;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) var(--router-selector-control-height);
   border: 1px solid var(--border);
   background: var(--card);
   align-items: start;
@@ -255,9 +256,12 @@
 .router-selector .router-selector-operator {
   width: 100%;
 }
-.router-selector .router-selector-field .cds--list-box__field,
-.router-selector .router-selector-operator .cds--list-box__field {
-  min-height: 2.75rem;
+.router-selector .cds--list-box,
+.router-selector .cds--list-box__field,
+.router-selector .cds--text-input,
+.router-selector .cds--select-input {
+  height: var(--router-selector-control-height);
+  min-height: var(--router-selector-control-height);
 }
 .router-selector .router-selector-value {
   grid-column: 1 / -1;
@@ -269,17 +273,25 @@
 .router-selector .router-selector-remove {
   grid-column: 3;
   grid-row: 1;
-  width: 2.75rem;
-  min-height: 2.75rem;
+  width: var(--router-selector-control-height);
+  height: var(--router-selector-control-height);
+  min-height: var(--router-selector-control-height);
   padding: 0;
 }
 .router-selector .ruleGroup-header {
   flex-wrap: wrap;
+  align-items: center;
   gap: 0.5rem;
 }
 .router-selector .ruleGroup-header > button {
   width: auto;
-  min-height: 2.75rem;
+  height: var(--router-selector-control-height);
+  min-height: var(--router-selector-control-height);
+}
+.router-selector .ruleGroup-header > .ruleGroup-removeGroup {
+  width: var(--router-selector-control-height);
+  padding: 0;
+  margin-inline-start: auto;
 }
 .router-selector .ruleGroup-header > .ruleGroup-combinators {
   width: 12rem;
