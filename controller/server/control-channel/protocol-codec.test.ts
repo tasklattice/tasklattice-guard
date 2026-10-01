@@ -60,6 +60,33 @@ const plan = {
 
 
 describe("Controller/Runner control protocol", () => {
+  it.each(["reject", "pass", "mask", "unspecified", "typo", 800])(
+    "rejects invalid enforcement action %s before Protobuf can discard it", action => {
+      const inputs = [
+        { ...plan, steps: [{ ...plan.steps[0], on_unsafe: action }] },
+        { ...plan, policy_versions: [{ ...plan.policy_versions[0], rail_bindings: [
+          { ...plan.policy_versions[0]!.rail_bindings[0], on_unsafe: action },
+        ] }] },
+        { ...plan, policy_bindings: [{ ...plan.policy_bindings[0], action }] },
+      ];
+      for (const input of inputs) {
+        expect(() => planToWire(input)).toThrow(/Invalid enforcement action/);
+      }
+      expect(() => artifactToWire({
+        guardrailVersion: versionId, plan,
+        actionBindings: [{ phases: ["output"], on_unsafe: action }],
+      })).toThrow(/Invalid enforcement action/);
+    },
+  );
+
+  it.each(["REJECT", "PASS", "UNSPECIFIED", "TYPO"])(
+    "rejects invalid incoming enforcement action %s", action => {
+      const wire = planToWire(plan) as unknown as GuardrailPlan__Output;
+      wire.steps[0]!.onUnsafe = `ENFORCEMENT_ACTION_${action}` as never;
+      expect(() => planFromWire(wire)).toThrow(/Invalid enforcement action/);
+    },
+  );
+
   it("rejects legacy numeric Guardrail Versions instead of coercing them", () => {
     expect(() => planToWire({ ...plan, guardrail_version: 1 })).toThrow("canonical UTC timestamp");
   });
@@ -85,7 +112,7 @@ describe("Controller/Runner control protocol", () => {
       expectedMatches: [{ policyId: "baseline", ruleId: "credential" }],
     });
   });
-  it("serializes a typed message through the service loaded from the split Proto graph", () => {
+  it.each(["allow", "block", "transform"])("preserves %s on the real Protobuf wire", action => {
     const protoPath = resolve("../proto/tasklattice/guard/control/v1/runner_control.proto");
     const definition = loadSync(protoPath, {
       includeDirs: [dirname(protoPath)], longs: String, enums: String, defaults: true, oneofs: true,
@@ -97,14 +124,18 @@ describe("Controller/Runner control protocol", () => {
       sentAtUnixMs: "1",
       compileRequest: {
         compileId: "compile-1", guardrailId: "guardrail-1", guardrailVersion: versionId,
-        generation: "11", plan: planToWire(plan), runtimeProfile: "nemo-default",
+        generation: "11", plan: planToWire({ ...plan,
+          steps: [{ ...plan.steps[0], on_unsafe: action }],
+          policy_bindings: [{ ...plan.policy_bindings[0], action }],
+        }), runtimeProfile: "nemo-default",
       },
     });
 
     const decoded = connect.responseDeserialize(encoded);
     expect(decoded.body).toBe("compileRequest");
     expect(decoded.compileRequest?.plan?.safetyLevel).toBe("SAFETY_LEVEL_STRICT");
-    expect(decoded.compileRequest?.plan?.policyBindings[0]?.action).toBe("ENFORCEMENT_ACTION_TRANSFORM");
+    expect(decoded.compileRequest?.plan?.steps[0]?.onUnsafe).toBe(`ENFORCEMENT_ACTION_${action.toUpperCase()}`);
+    expect(decoded.compileRequest?.plan?.policyBindings[0]?.action).toBe(`ENFORCEMENT_ACTION_${action.toUpperCase()}`);
   });
 
   it("round-trips the complete Guardrail Plan through generated wire types", () => {

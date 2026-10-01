@@ -175,11 +175,13 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: "24"
+          cache: npm
+          cache-dependency-path: controller/package-lock.json
 
       - name: Install dependencies
-        run: uv sync --all-extras --frozen
+        run: uv sync --all-extras --frozen && npm ci --prefix controller --no-audit --no-fund
 
-      - name: Test the real gRPC control stream and ACK/NACK lifecycle
+      - name: Test TypeScript Controller to Python Runner and ACK/NACK lifecycle
         run: npm run test:e2e
 
   contracts-and-deployment:
