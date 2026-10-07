@@ -43,6 +43,7 @@ import {
   runPlaygroundInteraction,
 } from "../playground/service.js";
 import { isGuardrailVersionId } from "../../shared/guardrail-version.js";
+import { guardrailArtifactFilename } from "../../shared/guardrail-export.js";
 import type { PlatformStatusSnapshot } from "../../shared/platform-status.js";
 import { protectionDirectories } from "../../shared/protection-map.js";
 
@@ -670,6 +671,14 @@ export function createHttpApp(input: {
   app.get("/api/v1/guardrails/:id", authenticated, async (context) => {
     return context.json(await input.service.getGuardrail(context.req.param("id")));
   });
+  app.get("/api/v1/guardrails/:id/versions/:version/export", authenticated, async context => {
+    const id = context.req.param("id");
+    const version = guardrailVersionInput.parse(context.req.param("version"));
+    const artifact = await input.service.exportGuardrailVersion(id, version);
+    context.header("Content-Disposition", `attachment; filename="${guardrailArtifactFilename(id, version)}"`);
+    context.header("Cache-Control", "no-store");
+    return context.json(artifact);
+  });
   app.post("/api/v1/guardrails/:id/duplicate", authenticated, administrator, async context => {
     const body = z.object({ name: z.string().trim().min(1).max(160), sourceVersion: guardrailVersionInput.optional(), sourceDraftRevision: z.number().int().positive().optional(), idempotencyKey: z.string().min(1).max(128) })
       .refine(value => !(value.sourceVersion && value.sourceDraftRevision), "Choose one copy source").parse(await context.req.json());
@@ -694,9 +703,9 @@ export function createHttpApp(input: {
     await input.service.deleteGuardrailVersion({ guardrailId: context.req.param("id"), version: guardrailVersionInput.parse(context.req.param("version")), actorId: context.get("actor").id });
     return context.body(null, 204);
   });
-  app.post("/api/v1/guardrails/:id/rollback", authenticated, administrator, async (context) => {
+  app.put("/api/v1/guardrails/:id/active-version", authenticated, administrator, async (context) => {
     const { version } = z.object({ version: guardrailVersionInput }).parse(await context.req.json());
-    const result = await input.service.rollbackGuardrail({
+    const result = await input.service.markGuardrailVersionActive({
       guardrailId: context.req.param("id"), version, actorId: context.get("actor").id,
     });
     await input.runnerControl.distributeDesiredState();

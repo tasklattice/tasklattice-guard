@@ -41,7 +41,7 @@ const adminRoutes = [
   ["POST", "/playground/guardrails/guard/draft-previews"], ["POST", "/playground/guardrails/guard/draft-interactions"],
   ["POST", "/authoring/plan-previews"], ["POST", "/guardrails"],
   ["PATCH", "/guardrails/guard"], ["POST", "/guardrails/guard/publish"],
-  ["POST", "/guardrails/guard/rollback"],
+  ["PUT", "/guardrails/guard/active-version"],
   ["PATCH", "/guardrails/guard/logging"], ["GET", "/guardrails/guard/deletion-impact"],
   ["DELETE", "/guardrails/guard"], ["POST", "/guardrails/guard/test-cases"], ["DELETE", "/guardrails/guard/test-cases/case"],
   ["PATCH", "/guardrails/guard/test-scope"], ["POST", "/guardrails/guard/test-runs"],

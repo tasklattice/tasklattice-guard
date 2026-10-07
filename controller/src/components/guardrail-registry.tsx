@@ -1,5 +1,4 @@
 import { GuardrailRowActions } from "./guardrail-row-actions";
-import { useAuth } from "@/lib/auth";
 import { Link } from "@tanstack/react-router";
 import { ShieldCheck } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -16,7 +15,6 @@ export function GuardrailRegistry({
   onOpen: (guardrailId: string) => void;
 }) {
   const { t, i18n } = useTranslation();
-  const canEdit = useAuth().user?.role === "admin";
 
   return (
     <Table className="resource-table table-fixed" aria-label={t("pages.guardrails.title")}>
@@ -27,7 +25,7 @@ export function GuardrailRegistry({
             <TableHead className="w-24">{t("guardrails.policies")}</TableHead>
             <TableHead className="w-44">{t("guardrails.validation")}</TableHead>
             <TableHead className="w-48">{t("guardrails.updated")}</TableHead>
-            {canEdit && <TableHead className="resource-actions-column"><span className="sr-only">{t("common.actions")}</span></TableHead>}
+            <TableHead className="resource-actions-column"><span className="sr-only">{t("common.actions")}</span></TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -63,7 +61,7 @@ export function GuardrailRegistry({
               <TableCell className="text-xs text-muted-foreground">
                 {new Date(guardrail.updated_at).toLocaleString(i18n.language)}
               </TableCell>
-              {canEdit && <TableCell className="resource-actions-column" onClick={event => event.stopPropagation()}><GuardrailRowActions guardrail={guardrail} /></TableCell>}
+              <TableCell className="resource-actions-column" onClick={event => event.stopPropagation()}><GuardrailRowActions guardrail={guardrail} /></TableCell>
             </TableRow>
           ))}
         </TableBody>

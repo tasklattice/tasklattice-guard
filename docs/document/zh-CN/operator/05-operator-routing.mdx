@@ -56,7 +56,7 @@ order: 4
 
 - 发布前确认当前 Validation Run 通过、checksum 已生成、依赖和专用模型可用。
 - 在 Settings / Health 查看运行健康，并在 Router Overview 核对 rolloutStatus 和 desiredGeneration。
-- Router 回滚会基于历史快照发布新的 revision；Guardrail 回滚重新激活已就绪的历史版本。已发布 Router 固定的 Guardrail Target 如需变更，应重新发布 Router。
+- Router 回滚会基于历史快照发布新的 revision；Guardrail **设为活动版本（Mark active）** 选择已有的就绪版本。已发布 Router 固定的 Guardrail Target 如需变更，应重新发布 Router。
 - 进行中的调用继续使用开始时固定的版本；Runner 应用新的 Router revision 后，新调用才使用新的路由快照。
 - 不要修改历史 artifact 或在进程外替换源码；任何语义变化都应创建新版本。
 

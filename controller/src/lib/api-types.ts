@@ -476,6 +476,7 @@ export type Guardrail = {
   draft_revision?: number;
   tested_current: boolean;
   published_current: boolean;
+  active_version?: string | null;
   published_version_count?: number;
   is_default: boolean;
   system_managed: boolean;

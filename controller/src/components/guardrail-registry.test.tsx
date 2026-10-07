@@ -5,6 +5,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Guardrail } from "@/lib/api";
 
 import { GuardrailRegistry } from "./guardrail-registry";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+
+function renderRegistry(onOpen = vi.fn()) {
+  return render(<QueryClientProvider client={new QueryClient()}><GuardrailRegistry guardrails={[guardrail]} onOpen={onOpen} /></QueryClientProvider>);
+}
 
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ params, children, ...props }: AnchorHTMLAttributes<HTMLAnchorElement> & { params: { guardrailId: string }; children: ReactNode }) => (
@@ -64,7 +69,7 @@ describe("GuardrailRegistry", () => {
   afterEach(cleanup);
 
   it("shows Policy-based registry metadata without a purpose", () => {
-    render(<GuardrailRegistry guardrails={[guardrail]} onOpen={vi.fn()} />);
+    renderRegistry();
 
     expect(screen.getByRole("table").className).toContain("table-fixed");
     expect(screen.getByRole("columnheader", { name: "Status" })).toBeTruthy();
@@ -75,7 +80,7 @@ describe("GuardrailRegistry", () => {
 
   it("supports a real detail link and whole-row pointer navigation", () => {
     const onOpen = vi.fn();
-    render(<GuardrailRegistry guardrails={[guardrail]} onOpen={onOpen} />);
+    renderRegistry(onOpen);
 
     const link = screen.getByRole("link", { name: "Open Default Guardrail" });
     expect(link.getAttribute("href")).toBe("/guardrails/guardrail-default");

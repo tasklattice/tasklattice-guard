@@ -6,7 +6,7 @@ order: 2
 ---
 <strong>What:</strong> A Guardrail is a protection plan for one application. For example, a support-assistant Guardrail might check for jailbreak attempts and sensitive information in replies. In configuration, it uses Policy Bindings to pin Policy Versions and select Rules, Rails, parameters, and post-evaluation directives. It also owns a draft, validation records, and publishable versions.
 
-<strong>Why:</strong> Policies are reusable across applications; a Guardrail assembles them into a reviewable, releasable, rollback-safe protection boundary. It is neither one Rule nor a Router.
+<strong>Why:</strong> Policies are reusable across applications; a Guardrail assembles them into a reviewable protection boundary with immutable versions. It is neither one Rule nor a Router.
 
 <strong>How:</strong> Select Policy Versions and parameters in the draft, run Validation, publish an immutable Guardrail Version, then route Endpoint traffic to that version. A published Route reference can make the UI show protected, but publication alone does not mean Runners have applied it.
 
@@ -23,6 +23,18 @@ order: 2
 ## Guardrail
 
 A protection plan for one business scenario. It pins Policy Versions, enabled Rules, Rails, and parameters, then publishes an immutable Guardrail Version after validation. See the [product introduction](#term-guardrail) for the full relationship.
+
+## Export a Guardrail
+
+Open **Guardrails**, then choose **Export** from the row's **Actions** menu.
+The download contains the current published version; unpublished draft edits are
+excluded. Publish a version first if Export is disabled.
+
+The `.artifact.json` file includes frozen Policy implementations and compiled
+configuration, so it does not require Policy Library. Running it still requires
+a compatible TaskLattice/NeMo runtime and the declared model capabilities, with
+credentials configured in the target environment. Export does not deploy or
+import the Guardrail into another Controller.
 
 <a id="term-policy-binding" />
 
@@ -54,9 +66,9 @@ For example, an administrator can set `blocked_words` to a list before publishin
 
 <strong>What:</strong> An immutable published Guardrail snapshot with pinned Policy Bindings, Rules, parameters, compiled artifact, dependencies, and checksum.
 
-<strong>Why:</strong> It is the release and rollback unit. Router Targets resolve to exact versions, never a mutable draft at request time.
+<strong>Why:</strong> It is the immutable unit selected for publication and activation. Router Targets resolve to exact versions, never a mutable draft at request time.
 
-<strong>How:</strong> Wait for compilation to become ready, publish a Router Revision that references it, and check Runner convergence. To roll back, activate a ready historical version and republish Routers whose pinned Targets must change.
+<strong>How:</strong> Wait for compilation to become ready, publish a Router Revision that references it, and check Runner convergence. To choose an active version, select a ready version and use **Mark active**. Republish Routers whose pinned Targets must change.
 
 <strong>Example:</strong> Publishing Guardrail v2 does not switch a Router still pinned to v1; review and republish the Router to change production traffic.
 
@@ -188,7 +200,7 @@ The persisted resource path is draft → active → disabled, with draft → dis
 
 <StateMachineDiagram kind="guardrail-version" locale="en" />
 
-A version compiles to ready or failed. Terminal contents are immutable. `active / historical` describes which ready Version the Guardrail selects, <strong>not</strong> compilation state. Ready means an artifact exists; a Router must still reference the exact version and Runners must apply it. Rollback switches the active pointer without rewriting historical artifacts.
+A version compiles to ready or failed. Terminal contents are immutable. `active / historical` describes which ready Version the Guardrail selects, <strong>not</strong> compilation state. Ready means an artifact exists; a Router must still reference the exact version and Runners must apply it. Mark active selects an existing version without creating a version or rewriting its Artifact.
 
 <a id="guardrail-build-states" />
 
@@ -230,7 +242,7 @@ The version artifact is ready. This does not mean Router traffic has switched to
 
 <StateDetail label="Transitions">
 
-The version can be selected for publication or rollback; Router rollout determines traffic activation.
+The version can be marked Active; Router rollout determines traffic activation.
 
 </StateDetail>
 

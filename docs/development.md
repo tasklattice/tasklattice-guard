@@ -176,6 +176,66 @@ Playground also use separate HTTP APIs. See
 [the control protocol](architecture.md#control-protocol) for contract
 ownership and extension rules.
 
+## Catalog-independent Artifact compilation
+
+`runner.toolkit.compiler.artifact.ArtifactCompiler` compiles a frozen
+`CompileRequest` without starting a Runner, connecting to Controller, loading
+Policy Library, or leasing model credentials. `runner/compiler.py` is the Runner
+adapter: it captures the active target model capabilities and delegates to this
+compiler. Draft validation, preview, and release use the same compilation path.
+
+The input must contain all selected local Policy definitions and exact versions,
+Rule parameters, and programmable Policy source snapshots. A Policy ID alone is
+rejected at compilation and runtime loading; there is no catalog fallback. The
+result embeds the frozen definitions, generated Colang, prompts, Action bindings,
+and dependency manifest under the Artifact checksum. Updating or removing the
+authoring Library cannot change that content.
+
+For an offline build, save a `CompileRequest` using the Protobuf JSON format from
+`proto/tasklattice/guard/control/v1/artifact.proto`, then run:
+
+```bash
+.venv/bin/python -m runner.toolkit.compiler \
+  --request compile-request.json --output guardrail.artifact.pb
+```
+
+Use `--format json` for an inspectable Protobuf JSON result. `--model-type
+topic_control` declares support for the dedicated native topic model without an
+endpoint or credential. `--prompts prompts.yml` supplies a pinned template
+catalog; omission uses the versioned templates bundled with the compiler.
+
+The output is an **unsigned Artifact**, not an activated deployment. Controller
+still owns signing, distribution and route publication. The execution environment
+must supply the matching TaskLattice/NeMo runtime and declared model capabilities;
+model endpoints, credentials and weights remain deployment concerns. The generic
+local detectors, Rule expansion and snapshot decoding live in
+`runner/toolkit/policy_runtime/`, independently of the authoring Library.
+
+### Export a published Guardrail
+
+In **Guardrails → row Actions → Export**, download the current published version
+as `<guardrail-id>-<version>.artifact.json`. Unpublished draft edits are excluded;
+publish a version first if none exists. Downloads do not recompile or query Policy
+Library. The signed Artifact contains the frozen Policy implementations, NeMo
+configuration, Colang, prompts, bindings, dependency versions, checksum and signature.
+
+The authenticated, read-scoped API also supports explicit historical versions:
+`GET /api/v1/guardrails/{id}/versions/{version}/export`. It returns the
+`tasklattice.guard.control.v1.Artifact` Protobuf JSON contract as an attachment.
+Read it directly with `google.protobuf.json_format.Parse(text, protocol.Artifact())`;
+the checksum and signature remain unchanged. Versions without complete Policy
+snapshots must be published again before export. No live model configuration,
+credentials, model weights, Router assignments or request logs are included.
+
+An export still requires the matching TaskLattice/NeMo runtime and model capabilities.
+It does not publish into another Controller; an import workflow and
+content-addressed incremental distribution are separate work. Trust the source
+Controller's signing public key through a separate trusted channel before loading.
+
+The independence contract tests physically omit `policy_library/` in fresh
+processes, reproduce the checked-in Artifacts, and exercise health endpoints and
+input/output requests through the real Runner.
+
 ## Controller API reference
 
 The Controller serves a code-generated OpenAPI 3.1 contract at `/api/openapi.json`,

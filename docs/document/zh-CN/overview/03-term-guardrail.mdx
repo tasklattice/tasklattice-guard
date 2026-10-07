@@ -6,7 +6,7 @@ order: 2
 ---
 <strong>是什么：</strong>Guardrail 是给某个应用使用的一套保护方案。例如“客服助手保护方案”可同时检查越狱输入和回复中的敏感信息。配置上，它通过 Policy Binding 固定多个 Policy Version，并选择启用的 Rules、Rails、参数和检测后处理；还维护草稿、验证记录和可发布版本。
 
-<strong>为什么：</strong>Policy 可以跨应用复用，Guardrail 则把能力组合成某个应用可审查、可发布、可回滚的具体保护边界。它不是单条 Rule，也不是流量路由。
+<strong>为什么：</strong>Policy 可以跨应用复用，Guardrail 则把能力组合成某个应用可审查、可发布且版本不可变的具体保护边界。它不是单条 Rule，也不是流量路由。
 
 <strong>怎么用：</strong>在 Guardrail 草稿中选定 Policy Versions 和参数，运行 Validation Run，通过后发布不可变 Guardrail Version；再由 Router 将 Endpoint 流量指向该版本。Route 的已发布引用可让前端显示“保护中”，但发布版本不等于 Runner 已经应用。
 
@@ -23,6 +23,15 @@ order: 2
 ## Guardrail
 
 面向一个业务场景的保护方案：固定所需 Policy Versions、启用的 Rules、Rails 和参数，验证后发布不可变 Guardrail Version。完整关系见[产品介绍](#term-guardrail)。
+
+## 导出 Guardrail
+
+在 **Guardrails** 列表中，打开对应行的 **Actions（操作）** 菜单，选择 **导出**。
+下载内容是当前已发布版本，不包含未发布的草稿修改。若导出按钮不可用，请先发布一个版本。
+
+`.artifact.json` 文件包含冻结的 Policy 实现和编译配置，不依赖 Policy Library。
+运行时仍需匹配的 TaskLattice/NeMo 环境和声明的模型能力，凭据在目标环境单独配置。
+导出操作不会将 Guardrail 部署或导入到另一个 Controller。
 
 <a id="term-policy-binding" />
 
@@ -54,9 +63,9 @@ Policy 暴露、由 Guardrail 绑定时解析的审查值。
 
 <strong>是什么：</strong>Guardrail 草稿通过验证后发布的不可变快照，包含固定的 Policy Bindings、Rules、参数、编译 artifact、依赖和 checksum。
 
-<strong>为什么：</strong>它是发布与回滚单元；Router Target 必须解析到确切版本，不能靠“最新草稿”处理生产请求。
+<strong>为什么：</strong>它是发布和活动版本选择的不可变单元；Router Target 必须解析到确切版本，不能靠“最新草稿”处理生产请求。
 
-<strong>怎么用：</strong>等待编译 ready，再发布引用它的 Router Revision；需要回滚时激活已就绪的历史版本，并检查 Router 固定目标是否也要重新发布。
+<strong>怎么用：</strong>等待编译 ready，再发布引用它的 Router Revision；需要选择活动版本时，对已就绪版本执行 **设为活动版本（Mark active）**，并检查 Router 固定目标是否也要重新发布。
 
 <strong>例子：</strong>即使已发布 Guardrail v2，仍指向 v1 的 Router 不会自动切到 v2；要改变生产流量，需检查并重新发布 Router。
 
@@ -188,7 +197,7 @@ Guardrail 资源的持久状态是 draft → active → disabled，也允许 dra
 
 <StateMachineDiagram kind="guardrail-version" locale="zh-CN" />
 
-版本从 compiling 走向 ready 或 failed，终态内容不可原地修改。`active / historical` 是 Guardrail 选择哪一个 ready Version 的<strong>活动指针</strong>，不是版本构建状态。ready 只表示 artifact 可用；Router 还需引用确切版本并完成 Runner 下发。回滚切换活动指针，不重写历史 artifact。
+版本从 compiling 走向 ready 或 failed，终态内容不可原地修改。`active / historical` 是 Guardrail 选择哪一个 ready Version 的<strong>活动指针</strong>，不是版本构建状态。ready 只表示 artifact 可用；Router 还需引用确切版本并完成 Runner 下发。设为活动版本只选择已有版本，不创建新版本或重写其 artifact。
 
 <a id="guardrail-build-states" />
 
@@ -230,7 +239,7 @@ Guardrail 资源的持久状态是 draft → active → disabled，也允许 dra
 
 <StateDetail label="状态变化">
 
-版本可被选作发布或回滚目标；流量是否生效仍由 Router 下发状态决定。
+版本可以被标记为 Active；流量是否生效仍由 Router 下发状态决定。
 
 </StateDetail>
 

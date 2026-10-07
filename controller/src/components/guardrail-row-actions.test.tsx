@@ -6,6 +6,7 @@ import { GuardrailRowActions } from './guardrail-row-actions';
 import type { Guardrail } from '@/lib/api';
 
 
+vi.mock('@/lib/auth', () => ({ useAuth: () => ({ user: { role: 'admin' } }) }));
 vi.mock('./guardrail-duplicate', () => ({ DuplicateGuardrailSheet: () => <div role="dialog" aria-label="Duplicate Guardrail" /> }));
 vi.mock('./guardrail-delete-sheet', () => ({ DeleteGuardrailSheet: () => <div role="dialog" aria-label="Delete Guardrail" /> }));
 vi.mock('@/lib/api', () => ({ getGuardrailDeletionImpact: vi.fn().mockResolvedValue({}), deleteGuardrail: vi.fn() }));
@@ -22,7 +23,7 @@ describe('Guardrail row actions', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Actions: Example' }));
     expect(await screen.findByRole('menuitem', { name: 'Duplicate' })).toBeTruthy();
-    expect(screen.getAllByRole('menuitem')).toHaveLength(2);
+    expect(screen.getAllByRole('menuitem')).toHaveLength(3);
     fireEvent.click(screen.getByRole('menuitem', { name: action }));
     expect(await screen.findByRole('dialog', { name: `${action} Guardrail` })).toBeTruthy();
     expect(onOpen).not.toHaveBeenCalled();

@@ -270,7 +270,7 @@ describe("Guardrail detail information hierarchy", () => {
     expect(screen.queryByText("guardrails.noSecurityFindings")).toBeNull();
   });
 
-  it("shows immutable configuration before the unified compiled runtime", () => {
+  it.each([true, false])("shows immutable configuration and marks an existing version active (active=%s)", async active => {
     const version: GuardrailVersion = {
       guardrail_id: "guardrail-observed",
       version: VERSION_ID,
@@ -278,7 +278,8 @@ describe("Guardrail detail information hierarchy", () => {
       compiler_version: "tasklattice-nemo-config-v6",
       plan_checksum: "plan-checksum",
       created_at: "2026-08-13T08:00:00Z",
-      active: true,
+      active,
+      compile_status: "ready",
       runtime_engine: "llmrails",
       config_checksum: "config-checksum",
       execution_mode: "nemo_only",
@@ -300,7 +301,9 @@ describe("Guardrail detail information hierarchy", () => {
     };
 
     const client = new QueryClient();
-    render(<QueryClientProvider client={client}><TooltipProvider><ImmutableVersionView detail={detail} selectedVersion={version} versions={[version]} loading={false} comparisonActive={false} comparisonLoading={false} compareOptions={[]} guardrailId="guardrail-observed" validation={null} onChanged={async () => undefined} onOpenDraft={() => undefined} onSelectVersion={() => undefined} onStartCompare={() => undefined} onCompareBaseChange={() => undefined} onCloseCompare={() => undefined} /></TooltipProvider></QueryClientProvider>);
+    const markActive = vi.spyOn(api, "markGuardrailVersionActive").mockResolvedValue({ ...version, active: true });
+    const onChanged = vi.fn().mockResolvedValue(undefined);
+    render(<QueryClientProvider client={client}><TooltipProvider><ImmutableVersionView detail={detail} selectedVersion={version} versions={[version]} loading={false} comparisonActive={false} comparisonLoading={false} compareOptions={[]} guardrailId="guardrail-observed" validation={null} onChanged={onChanged} onOpenDraft={() => undefined} onSelectVersion={() => undefined} onStartCompare={() => undefined} onCompareBaseChange={() => undefined} onCloseCompare={() => undefined} /></TooltipProvider></QueryClientProvider>);
 
     const configuration = screen.getAllByText(VERSION_ID)[1];
     const compiledRuntime = screen.getByText("guardrails.compiledRuntime");
@@ -314,6 +317,23 @@ describe("Guardrail detail information hierarchy", () => {
     fireEvent.mouseUp(generatedFilesTab, { button: 0, ctrlKey: false });
     fireEvent.click(generatedFilesTab);
     expect(screen.getAllByText("config.yml").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: "uiCopy.versionActions" }));
+    const action = screen.getByRole("menuitem", { name: "guardrails.markActive" });
+    expect(action.hasAttribute("disabled")).toBe(active);
+    if (active) {
+      expect(screen.getAllByText("guardrails.activeVersionLabel")).toHaveLength(2);
+      expect(markActive).not.toHaveBeenCalled();
+    } else {
+      fireEvent.click(action);
+      const confirmation = screen.getByRole("dialog", { name: `guardrails.confirmMarkActiveTitle version:${VERSION_ID}` });
+      expect(within(confirmation).getByText("guardrails.confirmMarkActiveDescription")).toBeTruthy();
+      expect(within(confirmation).getByText("guardrails.confirmMarkActiveImpact")).toBeTruthy();
+      expect(markActive).not.toHaveBeenCalled();
+      fireEvent.click(within(confirmation).getByRole("button", { name: "guardrails.markActive" }));
+      await waitFor(() => expect(markActive).toHaveBeenCalledWith("guardrail-observed", VERSION_ID));
+      await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    }
   });
 
   it("groups inherited and Guardrail-specific Test Cases by source and keeps groups collapsed", () => {

@@ -69,7 +69,7 @@ import {
   getValidationRuns,
   publishGuardrail,
   restoreGuardrailTestCase,
-  rollbackGuardrail,
+  markGuardrailVersionActive,
   updateGuardrail,
   updateGuardrailLoggingSettings,
   type Guardrail,
@@ -543,8 +543,8 @@ export function ImmutableVersionView({ detail, selectedVersion, versions, loadin
   const auth = useAuth();
   const [deleteVersion, setDeleteVersion] = useState<string | null>(null);
   const removeVersion = useMutation({ mutationFn: (version: string) => deleteControllerGuardrailVersion(guardrailId, version), onSuccess: async () => { setDeleteVersion(null); await onChanged(); onOpenDraft(); } });
-  const [rollbackVersion, setRollbackVersion] = useState<string | null>(null);
-  const rollback = useMutation({ mutationFn: (version: string) => rollbackGuardrail(guardrailId, version), onSuccess: async () => { setRollbackVersion(null); toast.success(t("guardrails.rollbackSucceeded")); await onChanged(); }, onError: (error) => notifyError(error, t("guardrails.operationFailed")) });
+  const [activationVersion, setActivationVersion] = useState<string | null>(null);
+  const activation = useMutation({ mutationFn: (version: string) => markGuardrailVersionActive(guardrailId, version), onSuccess: async (_result, version) => { setActivationVersion(null); toast.success(t("guardrails.markActiveSucceeded", { version })); await onChanged(); }, onError: (error) => notifyError(error, t("guardrails.operationFailed")) });
   if (loading) return <Skeleton className="h-[34rem] rounded-xl" />;
   if (!selectedVersion || !detail) return <EmptyState title={t("guardrails.noActiveVersion")} description={t("guardrails.noActiveVersionDescription")} action={<Button onClick={onOpenDraft}>{t("guardrails.openDraftRelease")}</Button>} />;
   const releaseId = detail.version;
@@ -569,15 +569,15 @@ export function ImmutableVersionView({ detail, selectedVersion, versions, loadin
                 <div className="flex flex-wrap items-center gap-2">
                   <LockKeyhole className="size-4 text-primary" />
                   <CardTitle className="font-mono">{releaseId}</CardTitle>
-                  {selectedVersion.active ? <StateBadge state="active" /> : <Badge variant="outline">{t("guardrails.historicalVersion")}</Badge>}
+                  {selectedVersion.active ? <StateBadge state="active" label={t("guardrails.activeVersionLabel")} /> : <Badge variant="outline">{t("guardrails.historicalVersion")}</Badge>}
                 </div>
                 <CardDescription className="mt-2">{t("guardrails.immutableDescription")}</CardDescription>
               </div>
               <div className="flex flex-wrap gap-2">
                 {compareOptions.length ? <Button variant="outline" className="min-h-11" onClick={onStartCompare}><GitCompareArrows />{t("guardrails.compareWithPrevious")}</Button> : null}
                 {auth.user?.role === "admin" ? <VersionMenu><VersionMenuTrigger asChild><Button variant="ghost" className="size-11" aria-label={uiText("uiCopy.versionActions")}><VersionActionsIcon /></Button></VersionMenuTrigger><VersionMenuContent align="end">
-                  <VersionMenuItem variant="edit" disabled={selectedVersion.active || rollback.isPending || removeVersion.isPending} onSelect={() => setRollbackVersion(selectedVersion.version)}><History />{t("guardrails.rollback")}</VersionMenuItem>
-                  <VersionMenuItem variant="destructive" disabled={selectedVersion.active || rollback.isPending || removeVersion.isPending} onSelect={() => { removeVersion.reset(); setDeleteVersion(selectedVersion.version); }}><Trash2 />{uiText("uiCopy.delete")}</VersionMenuItem>
+                  <VersionMenuItem variant="edit" disabled={selectedVersion.active || activation.isPending || removeVersion.isPending} onSelect={() => setActivationVersion(selectedVersion.version)}><Check />{t("guardrails.markActive")}</VersionMenuItem>
+                  <VersionMenuItem variant="destructive" disabled={selectedVersion.active || activation.isPending || removeVersion.isPending} onSelect={() => { removeVersion.reset(); setDeleteVersion(selectedVersion.version); }}><Trash2 />{uiText("uiCopy.delete")}</VersionMenuItem>
                 </VersionMenuContent></VersionMenu> : null}
               </div>
             </div>
@@ -591,20 +591,20 @@ export function ImmutableVersionView({ detail, selectedVersion, versions, loadin
       </>}
     </div>
   </div><ConfirmationSheet
-    open={rollbackVersion !== null}
-    onOpenChange={(open) => { if (!open && !rollback.isPending) { setRollbackVersion(null); rollback.reset(); } }}
+    open={activationVersion !== null}
+    onOpenChange={(open) => { if (!open && !activation.isPending) { setActivationVersion(null); activation.reset(); } }}
     eyebrow={t("guardrails.confirmActionEyebrow")}
-    title={t("guardrails.confirmRollbackTitle", { version: rollbackVersion ?? "" })}
-    description={t("guardrails.confirmRollbackDescription")}
+    title={t("guardrails.confirmMarkActiveTitle", { version: activationVersion ?? "" })}
+    description={t("guardrails.confirmMarkActiveDescription")}
     cancelLabel={t("common.cancel")}
-    confirmLabel={t("guardrails.rollback")}
+    confirmLabel={t("guardrails.markActive")}
     pendingLabel={t("common.saving")}
-    pending={rollback.isPending}
-    variant="warning"
-    onConfirm={() => { if (rollbackVersion !== null) rollback.mutate(rollbackVersion); }}
+    pending={activation.isPending}
+    confirmIcon={<Check />}
+    onConfirm={() => { if (activationVersion !== null) activation.mutate(activationVersion); }}
   >
-    <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950">{t("guardrails.confirmRollbackImpact")}</div>
-    {rollback.error ? <p role="alert" className="rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">{rollback.error instanceof Error ? rollback.error.message : t("guardrails.operationFailed")}</p> : null}
+    <div className="text-sm leading-6 text-muted-foreground">{t("guardrails.confirmMarkActiveImpact")}</div>
+    {activation.error ? <p role="alert" className="rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">{activation.error instanceof Error ? activation.error.message : t("guardrails.operationFailed")}</p> : null}
   </ConfirmationSheet>
   <ConfirmationSheet open={deleteVersion !== null} onOpenChange={open => { if (!open) setDeleteVersion(null); }} eyebrow={uiText("uiCopy.guardrailVersion")} title={`Delete version ${deleteVersion ?? ""}?`} description={uiText("uiCopy.thisPermanentlyRemovesTheHistoricalVersionActiveCompilingOr")} cancelLabel={t("common.cancel")} confirmLabel={uiText("uiCopy.deleteVersion")} variant="destructive" pending={removeVersion.isPending} onConfirm={() => { if (deleteVersion) removeVersion.mutate(deleteVersion); }}>
     {removeVersion.error && <p role="alert" className="text-sm text-destructive">{removeVersion.error.message}</p>}

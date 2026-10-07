@@ -18,6 +18,7 @@ import { and, asc, count, countDistinct, desc, eq, exists, getTableColumns, gt, 
 import type { ControllerConfig } from "../config.js";
 import type { ControllerDatabase } from "../db/client.js";
 import { planToWire } from "../control-channel/protocol-codec.js";
+import { guardrailArtifactExport } from "../domain/guardrail-artifact-export.js";
 import {
   artifacts,
   auditEvents,
@@ -435,6 +436,25 @@ export class ControlPlaneService {
     };
   }
 
+  async exportGuardrailVersion(id: string, version: string) {
+    // Read only the requested immutable version. Drafts and the live Policy
+    // catalog must never take part in reconstructing an exported Artifact.
+    const [guardrail] = await this.db.select({ id: guardrails.id }).from(guardrails)
+      .where(and(eq(guardrails.id, id), isNull(guardrails.deletedAt))).limit(1);
+    if (!guardrail) throw new NotFoundError("Guardrail", id);
+    const [published] = await this.db.select().from(guardrailVersions)
+      .where(and(eq(guardrailVersions.guardrailId, id), eq(guardrailVersions.version, version))).limit(1);
+    if (!published) throw new NotFoundError("Guardrail Version", version);
+    if (published.status !== "ready" || !published.artifactId) {
+      throw new ConflictError("Only a ready, published Guardrail Version can be exported.", "guardrail_version_not_ready");
+    }
+    const [artifact] = await this.db.select().from(artifacts).where(and(
+      eq(artifacts.id, published.artifactId), eq(artifacts.guardrailId, id), eq(artifacts.guardrailVersion, version),
+    )).limit(1);
+    if (!artifact) throw new ConflictError("The compiled Artifact is unavailable.", "guardrail_version_artifact_missing");
+    return guardrailArtifactExport(artifact);
+  }
+
   async playgroundDraftCandidate(id: string) {
     const [guardrail] = await this.db.select().from(guardrails).where(and(
       eq(guardrails.id, id),
@@ -796,7 +816,7 @@ export class ControlPlaneService {
     ).toString("base64");
     const proposedArtifactId = randomUUID();
     const stored = await this.db.transaction(async (tx) => {
-      // Serialize publication/rollback and completion for this Guardrail. A
+      // Serialize publication/activation and completion for this Guardrail. A
       // slower, older compile may become a ready version, never the active one.
       const [guardrail] = await tx.select().from(guardrails).where(and(
         eq(guardrails.id, input.guardrailId), isNull(guardrails.deletedAt),
@@ -938,7 +958,7 @@ export class ControlPlaneService {
     });
   }
 
-  async rollbackGuardrail(input: { guardrailId: string; version: string; actorId: string }) {
+  async markGuardrailVersionActive(input: { guardrailId: string; version: string; actorId: string }) {
     return this.db.transaction(async (tx) => {
       const [guardrail] = await tx.select().from(guardrails).where(and(
         eq(guardrails.id, input.guardrailId), isNull(guardrails.deletedAt),
@@ -950,6 +970,9 @@ export class ControlPlaneService {
         eq(guardrailVersions.status, "ready"),
       ));
       if (!version?.artifactId) throw new ConflictError("Only a ready immutable Guardrail Version can be activated.", "guardrail_version_not_ready");
+      if (guardrail.status === "active" && guardrail.activeVersion === input.version && guardrail.activeArtifactId === version.artifactId) {
+        return version;
+      }
       const [state] = await tx.update(controllerState)
         .set({ desiredGeneration: increment(controllerState.desiredGeneration), updatedAt: new Date() })
         .where(eq(controllerState.id, "singleton")).returning();

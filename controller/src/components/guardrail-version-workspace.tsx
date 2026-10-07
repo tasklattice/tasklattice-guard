@@ -54,7 +54,7 @@ export function GuardrailVersionNavigator({ versions, selectedVersion, onSelect 
                   <span className="block truncate font-mono text-xs font-semibold text-foreground">{releaseId}</span>
                   <time className="mt-1 block text-[11px] text-muted-foreground" dateTime={version.created_at}>{new Date(version.created_at).toLocaleString(i18n.language)}</time>
                   <span className="mt-1.5 flex items-center gap-2">
-                    {version.active ? <StateBadge state="active" /> : <span className="text-[11px] text-muted-foreground">{t("guardrails.historicalVersion")}</span>}
+                    {version.active ? <StateBadge state="active" label={t("guardrails.activeVersionLabel")} /> : <span className="text-[11px] text-muted-foreground">{t("guardrails.historicalVersion")}</span>}
                   </span>
                 </span>
               </button>

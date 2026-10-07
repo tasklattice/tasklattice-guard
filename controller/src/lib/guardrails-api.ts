@@ -136,6 +136,7 @@ function mapGuardrail(
     draft_revision: value.draftRevision,
     tested_current: testedCurrent,
     published_current: publishedCurrent,
+    active_version: value.activeVersion,
     published_version_count: publishedVersionCount,
     is_default: isDefault,
     system_managed: isDefault,
@@ -366,8 +367,8 @@ export async function publishGuardrail(guardrailId: string, expectedDraftRevisio
   throw new Error(`Guardrail version ${result.version} is still compiling. Check Controller activity for progress.`);
 }
 
-export const rollbackGuardrail = (guardrailId: string, version: string) =>
-  controllerApi.rollbackControllerGuardrail(guardrailId, version).then(async (item) => {
+export const markGuardrailVersionActive = (guardrailId: string, version: string) =>
+  controllerApi.markControllerGuardrailVersionActive(guardrailId, version).then(async (item) => {
     const guardrail = await controllerApi.getControllerGuardrail(guardrailId);
     return mapVersion(item, guardrail);
   });
