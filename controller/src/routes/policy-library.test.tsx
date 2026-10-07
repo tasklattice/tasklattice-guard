@@ -34,22 +34,17 @@ vi.mock("react-i18next", () => ({
         "policyLibrary.tabs.testCases": "Test Cases",
         "policyLibrary.tabs.compliance": "Sources & Compliance",
         "policyLibrary.compliance.empty": "Sources and compliance documentation have not been provided for this Policy version.",
-        "policyLibrary.tabs.implementation": "NeMo implementation",
         "policyLibrary.ruleListTitle": "Rules",
         "policyLibrary.ruleListDescription": "Each Rule is linked to Test Cases.",
         "policyLibrary.testCasesTitle": "Test Cases",
         "policyLibrary.testCasesDescription": "Executable Test Cases.",
-        "policyLibrary.implementationTitle": "NeMo Guardrails implementation",
-        "policyLibrary.implementationDescription": "Technical Rule bindings.",
         "policyLibrary.filters": "Filters",
         "policyLibrary.clearFilters": "Clear filters",
         "policyLibrary.tagNamespaces.implementation": "Implementation",
         "policyLibrary.tagNamespaces.rail": "Rail type",
         "policyLibrary.railTypesLabel": "Rail types",
-        "policyLibrary.detectors": "Detectors",
         "policyLibrary.detector": "Detector",
         "policyLibrary.effectLabel": "Effect",
-        "policyLibrary.runtimeManaged": "Runtime managed",
         "policyLibrary.jurisdictions.au": "Australia",
         "policyLibrary.jurisdictions.cn": "China mainland",
         "policyLibrary.railTypes.input": "Input rail",
@@ -152,7 +147,7 @@ function clickTab(tab: HTMLElement) {
 describe("Policy detail", () => {
   afterEach(cleanup);
 
-  it("presents Policy, Test Cases, Sources & Compliance, and NeMo implementation in order", () => {
+  it("presents only Policy, Test Cases, and Sources & Compliance in order", () => {
     render(<PolicyDetail policy={policy} onClose={vi.fn()} onEdit={vi.fn()} />);
 
     expect(screen.getByRole("heading", { name: "Competitor Discussion Policy" })).toBeTruthy();
@@ -169,16 +164,9 @@ describe("Policy detail", () => {
     expect(screen.getByText("Block airline comparison")).toBeTruthy();
     expect(screen.getByText("Allow destination question")).toBeTruthy();
 
-    expect(screen.getAllByRole("tab").map(tab => tab.textContent)).toEqual(["Policy1", "Test Cases2", "Sources & Compliance", expect.stringContaining("NeMo implementation")]);
+    expect(screen.getAllByRole("tab").map(tab => tab.textContent)).toEqual(["Policy1", "Test Cases2", "Sources & Compliance"]);
     clickTab(screen.getByRole("tab", { name: "Sources & Compliance" }));
     expect(screen.getByText("Sources and compliance documentation have not been provided for this Policy version.")).toBeTruthy();
-
-    clickTab(screen.getByRole("tab", { name: "NeMo implementation" }));
-    expect(screen.getByRole("heading", { name: "NeMo Guardrails implementation" })).toBeTruthy();
-    expect(screen.queryByText("Runtime engine")).toBeNull();
-    const actionName = screen.getByText("GuardPolicyRuleAction");
-    expect(actionName.tagName).toBe("CODE");
-    expect(actionName.getAttribute("title")).toBe("GuardPolicyRuleAction");
   });
 
   it("visually identifies a custom Policy and exposes its migration export from the card", () => {

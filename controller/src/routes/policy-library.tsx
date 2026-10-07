@@ -404,7 +404,6 @@ export function PolicyDetail({ policy, onClose, onEdit, onExport, onDelete }: { 
             <TabsTrigger value="policy"><ShieldCheck aria-hidden="true" /><span className="flex items-center gap-2">{t("policyLibrary.tabs.policy")}<Badge variant="outline" className="font-mono text-[10px]">{policy.rules.length}</Badge></span></TabsTrigger>
             <TabsTrigger value="validation"><FlaskConical aria-hidden="true" /><span className="flex items-center gap-2">{t("policyLibrary.tabs.testCases")}<Badge variant="outline" className="font-mono text-[10px]">{policy.test_count}</Badge></span></TabsTrigger>
             <TabsTrigger value="compliance"><BookOpen aria-hidden="true" />{t("policyLibrary.tabs.compliance")}</TabsTrigger>
-            <TabsTrigger aria-label={t("policyLibrary.tabs.implementation")} value="implementation"><FileCode2 aria-hidden="true" /><span aria-hidden className="sm:hidden">{t("policyLibrary.tabs.implementationShort")}</span><span aria-hidden className="hidden sm:inline">{t("policyLibrary.tabs.implementation")}</span></TabsTrigger>
           </TabsList>
         </div>
         <TabsContent value="policy" className="space-y-5 pt-3 sm:pt-4">
@@ -418,7 +417,6 @@ export function PolicyDetail({ policy, onClose, onEdit, onExport, onDelete }: { 
         </TabsContent>
         <TabsContent value="validation" className="pt-3 sm:pt-4"><PolicyTestCases policy={policy} /></TabsContent>
         <TabsContent value="compliance" className="pt-3 sm:pt-4"><PolicyCompliancePanel policy={policy} /></TabsContent>
-        <TabsContent value="implementation" className="pt-3 sm:pt-4"><Implementation policy={policy} /></TabsContent>
       </Tabs>
     </EntitySheet>
   );
@@ -513,36 +511,6 @@ function PolicyTestCases({ policy }: { policy: Policy }) {
             </div>
           </section>
         ))}
-      </div>
-    </section>
-  );
-}
-
-function Implementation({ policy }: { policy: Policy }) {
-  const { t } = useTranslation();
-  return (
-    <section>
-      <h3 className="text-sm font-semibold">{t("policyLibrary.implementationTitle")}</h3>
-      <p className="mt-1 text-xs leading-5 text-muted-foreground">{t("policyLibrary.implementationDescription")}</p>
-      <dl className="mt-4 grid gap-3 rounded-lg border bg-muted/15 p-4 sm:grid-cols-2">
-        <Fact label={t("policyLibrary.railTypesLabel")} value={policy.rails.map((railType) => t(`policyLibrary.railTypes.${railType}`)).join(", ")} />
-        <Fact label={t("policyLibrary.detectors")} value={policy.detectors.join(", ")} />
-      </dl>
-      <div className="mt-4 divide-y overflow-hidden rounded-lg border">
-        {policy.rules.map((rule) => {
-          const implementation = rule.implementation.flow_name ?? rule.implementation.detector ?? rule.detector.ref;
-          return (
-            <div key={rule.id} className="grid items-center gap-x-5 gap-y-2 px-4 py-3 text-xs sm:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_minmax(8rem,0.75fr)]">
-              <div className="min-w-0"><strong className="block truncate font-medium">{rule.name}</strong><span className="mt-1 block truncate font-mono text-xs text-muted-foreground">{rule.implementation.binding_id}</span></div>
-              <span className="min-w-0 truncate font-mono text-muted-foreground" title={implementation}>{implementation}</span>
-              {rule.implementation.action_name ? (
-                <code className="min-w-0 truncate text-muted-foreground sm:text-right" title={rule.implementation.action_name}>{rule.implementation.action_name}</code>
-              ) : (
-                <span className="min-w-0 truncate text-muted-foreground sm:text-right" title={t("policyLibrary.runtimeManaged")}>{t("policyLibrary.runtimeManaged")}</span>
-              )}
-            </div>
-          );
-        })}
       </div>
     </section>
   );
