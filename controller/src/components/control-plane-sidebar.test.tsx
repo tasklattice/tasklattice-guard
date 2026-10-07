@@ -33,7 +33,7 @@ describe("ControlPlaneSidebar", () => {
       </SidebarProvider>,
     );
 
-    expect(screen.getByRole("link", { name: "Traffic Routers" }).getAttribute("href")).toBe("/integration/routers");
+    expect(screen.getByRole("link", { name: "Routers" }).getAttribute("href")).toBe("/integration/routers");
     expect(screen.getByRole("link", { name: "Endpoints" }).getAttribute("href")).toBe("/integration/endpoint");
     expect(document.body.textContent).toContain("Integration");
     expect(screen.queryByRole("link", { name: "Deployments" })).toBeNull();

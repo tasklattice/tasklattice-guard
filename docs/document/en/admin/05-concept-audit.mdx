@@ -13,7 +13,7 @@ Audit log answers “which person or system did what to which resource, and when
 If a Router moves traffic from Guardrail v1 to v2:
 
 1. Search the audit log by time, **person/system**, and resource ID for the Router publication or rollback event. Open its details to inspect the event kind, actor, and any additional information. System-initiated events show System as their actor.
-2. In [Traffic Routers](/integration/routers), inspect the new revision, Target, and Runner rollout status. An audit event proves a management action occurred, not that Runners applied it.
+2. In [Routers](/integration/routers), inspect the new revision, Target, and Runner rollout status. An audit event proves a management action occurred, not that Runners applied it.
 3. In [runtime logs](/document/admin/concept-logs), filter by Guardrail and time range to inspect real requests after the change and confirm their pinned versions and Decisions.
 
 <a id="audit-scope" />

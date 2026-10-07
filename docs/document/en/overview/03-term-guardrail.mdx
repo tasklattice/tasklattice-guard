@@ -6,7 +6,7 @@ order: 2
 ---
 <strong>What:</strong> A Guardrail is a protection plan for one application. For example, a support-assistant Guardrail might check for jailbreak attempts and sensitive information in replies. In configuration, it uses Policy Bindings to pin Policy Versions and select Rules, Rails, parameters, and post-evaluation directives. It also owns a draft, validation records, and publishable versions.
 
-<strong>Why:</strong> Policies are reusable across applications; a Guardrail assembles them into a reviewable, releasable, rollback-safe protection boundary. It is neither one Rule nor a traffic Router.
+<strong>Why:</strong> Policies are reusable across applications; a Guardrail assembles them into a reviewable, releasable, rollback-safe protection boundary. It is neither one Rule nor a Router.
 
 <strong>How:</strong> Select Policy Versions and parameters in the draft, run Validation, publish an immutable Guardrail Version, then route Endpoint traffic to that version. A published Route reference can make the UI show protected, but publication alone does not mean Runners have applied it.
 

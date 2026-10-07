@@ -2,7 +2,7 @@
 
 Status: Product design reconciled with the current implementation; deployment acceptance remains separate.  
 Reviewed: 2026-09-14. Source baseline: `7b33ef879b73d0d0ffb399235a7910a15baccd62`, with the current workspace checked.  
-Scope: Traffic Router object model, editing and publishing, weighted assignment, selectors, Guardrail duplication, monitoring, and management/runtime contracts.
+Scope: Router object model, editing and publishing, weighted assignment, selectors, Guardrail duplication, monitoring, and management/runtime contracts.
 
 This document distinguishes implemented behavior from product requirements that still need work or deployment evidence. Section 13 records the corrections to the earlier design and the verification performed for this revision. API paths and fields below describe the current source, rather than proposed aliases.
 

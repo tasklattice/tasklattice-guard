@@ -13,7 +13,7 @@ order: 4
 例如某个 Router 将流量从 Guardrail v1 切到 v2：
 
 1. 在审计日志按时间、**人员／系统**和资源 ID 查找 Router 的发布或回滚事件，打开详情核对事件类型、操作者与附加信息。有些事件由系统执行，操作者会显示为“系统”。
-2. 到 [Traffic Routers](/integration/routers) 核对新 revision、Target 和 Runner 下发状态。审计事件证明发生了管理动作，不证明 Runner 已应用。
+2. 到 [Routers](/integration/routers) 核对新 revision、Target 和 Runner 下发状态。审计事件证明发生了管理动作，不证明 Runner 已应用。
 3. 到[运行日志](/document/admin/concept-logs)按 Guardrail 和时间范围查看切换后的真实请求，确认其固定版本与决策。
 
 <a id="audit-scope" />

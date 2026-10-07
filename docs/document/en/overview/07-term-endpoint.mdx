@@ -4,7 +4,7 @@ title: "Endpoints: application identity and integration"
 summary: "Understand the LiteLLM, generic HTTP, and A2A Endpoint types, plus credentials, Router binding, and integration health."
 order: 6
 ---
-<strong>What:</strong> An authenticated application, agent, or gateway identity with a protocol entry point; it can bind to one Traffic Router.
+<strong>What:</strong> An authenticated application, agent, or gateway identity with a protocol entry point; it can bind to one Router.
 
 <strong>Why:</strong> Separate trust boundaries need separate credentials and call context. Caller-supplied headers are not identity.
 
@@ -16,7 +16,7 @@ order: 6
 
 ## Three supported integration types
 
-The type selected when creating an Endpoint is its **data-plane integration protocol**, not a different kind of Guardrail. All three use their own Endpoint credentials and can bind to a Traffic Router; the Router then selects the Guardrail Version for a request.
+The type selected when creating an Endpoint is its **data-plane integration protocol**, not a different kind of Guardrail. All three use their own Endpoint credentials and can bind to a Router; the Router then selects the Guardrail Version for a request.
 
 | Type | Intended client | How it submits checks |
 | --- | --- | --- |

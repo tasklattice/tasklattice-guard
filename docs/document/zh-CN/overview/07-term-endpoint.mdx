@@ -4,7 +4,7 @@ title: "Endpoints：应用身份与接入"
 summary: "认识 LiteLLM、通用 HTTP、A2A 三种 Endpoint 接入类型，以及凭据、Router 绑定和接入健康。"
 order: 6
 ---
-<strong>是什么：</strong>应用、Agent 或网关的认证身份及其协议接入点，可绑定一个 Traffic Router。
+<strong>是什么：</strong>应用、Agent 或网关的认证身份及其协议接入点，可绑定一个 Router。
 
 <strong>为什么：</strong>不同信任边界要隔离凭据和调用上下文，不能把外部 header 当成认证身份。
 
@@ -16,7 +16,7 @@ order: 6
 
 ## 支持哪三种接入类型
 
-创建 Endpoint 时选择的是**数据面接入协议**，不是三种不同的 Guardrail。三种类型都使用各自的 Endpoint 凭据认证，都可以绑定 Traffic Router；Router 再决定请求命中哪个 Guardrail Version。
+创建 Endpoint 时选择的是**数据面接入协议**，不是三种不同的 Guardrail。三种类型都使用各自的 Endpoint 凭据认证，都可以绑定 Router；Router 再决定请求命中哪个 Guardrail Version。
 
 | 接入类型 | 适合谁 | 如何送检 |
 | --- | --- | --- |

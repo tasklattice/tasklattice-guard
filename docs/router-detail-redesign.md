@@ -1,4 +1,4 @@
-# Traffic Router Detail: Implementation and Acceptance
+# Router Detail: Implementation and Acceptance
 
 Updated: 2026-09-12. Aligned with the Router Detail refactoring requirements and the additional requirement to use the GuardRails timestamp design for Revisions. See [Router / Route distribution design](router-route-weighted-distribution-design.md) for the domain model.
 

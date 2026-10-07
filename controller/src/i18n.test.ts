@@ -100,7 +100,7 @@ describe("Router and Endpoint product terminology", () => {
     const { default: i18n } = await import("./i18n");
     for (const language of ["en", "zh-CN"]) {
       const t = i18n.getFixedT(language);
-      expect(t("nav.routers")).toBe(language === "en" ? "Traffic Routers" : "流量路由器");
+      expect(t("nav.routers")).toBe(language === "en" ? "Routers" : "路由器");
       expect(t("nav.endpoints")).toMatch(/Endpoint|端点/);
       for (const key of ["endpoints.register", "endpoints.openEndpointDetails", "endpoints.deleteDialogTitle", "dashboard.attentionEndpoint"]) {
         expect(t(key), `${language}: ${key}`).toMatch(/endpoint|Endpoint|端点/);

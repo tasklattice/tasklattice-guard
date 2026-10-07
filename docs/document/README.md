@@ -18,7 +18,7 @@ docs/document/
     ...
 ```
 
-分类顺序由各目录的 `_category.json` 中的 `order` 定义；`title` 是侧边栏展示名，`description` 简述分类。当前阅读路径为**核心产品概念 → 操作指南 → 平台管理 → 集成参考 → API 参考**。核心产品概念介绍 Guardrails、Policy Library、Playground、Traffic Routers 和 Endpoints；Rule、Binding、Decision、Selector、版本和状态机作为相关对象的章节解释，不再设独立术语表。操作指南解释配置和发布步骤；平台管理说明 Runner、模型、账户、运行日志与审计日志。集成参考先区分控制面（Controller API 接入自建编辑与发布流程）和数据面（LiteLLM、自研 AI Gateway 或 Agent 接入运行时检查），再介绍数据面协议。目录按任务组织，写入操作仍受控制台账户权限限制。文章按 frontmatter 的 `order` 排序，建议文件名也使用相同的两位序号。每个分类至少保留两篇文章。
+分类顺序由各目录的 `_category.json` 中的 `order` 定义；`title` 是侧边栏展示名，`description` 简述分类。当前阅读路径为**核心产品概念 → 操作指南 → 平台管理 → 集成参考 → API 参考**。核心产品概念介绍 Guardrails、Policy Library、Playground、Routers 和 Endpoints；Rule、Binding、Decision、Selector、版本和状态机作为相关对象的章节解释，不再设独立术语表。操作指南解释配置和发布步骤；平台管理说明 Runner、模型、账户、运行日志与审计日志。集成参考先区分控制面（Controller API 接入自建编辑与发布流程）和数据面（LiteLLM、自研 AI Gateway 或 Agent 接入运行时检查），再介绍数据面协议。目录按任务组织，写入操作仍受控制台账户权限限制。文章按 frontmatter 的 `order` 排序，建议文件名也使用相同的两位序号。每个分类至少保留两篇文章。
 
 文章使用以下格式，标题只写在 frontmatter，不在正文重复写 `#` 标题。正文从导语或 `##` 小节开始；需要稳定深链接时，在标题前写一个锚点。
 

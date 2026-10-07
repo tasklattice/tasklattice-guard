@@ -21,7 +21,7 @@ order: 4
 
 [管理 Endpoints](/integration/endpoint)
 
-[管理 Traffic Routers](/integration/routers)
+[管理 Routers](/integration/routers)
 
 <a id="operator-canary-release" />
 
@@ -39,7 +39,7 @@ order: 4
 按下面的顺序操作：
 
 1. **准备候选版本**：先让两个 Guardrails 都通过当前验证并发布确切版本，确认候选方案的规则、依赖和模型能力已就绪。记录稳定版和候选版的 Guardrail ID 与 Version。
-2. **编辑同一条 Route 的 Targets**：在 [Traffic Routers](/integration/routers) 的 Routing 页面，找到客服请求使用的 Route，保持 Selector 不变，添加第二个 Target，分别设置 90% 和 10%。检查其他 Route 的优先级以及最后的 fallback；共享 Router 的发布会影响所有绑定的 Endpoints。
+2. **编辑同一条 Route 的 Targets**：在 [Routers](/integration/routers) 的 Routing 页面，找到客服请求使用的 Route，保持 Selector 不变，添加第二个 Target，分别设置 90% 和 10%。检查其他 Route 的优先级以及最后的 fallback；共享 Router 的发布会影响所有绑定的 Endpoints。
 3. **预览后发布 Router**：先用 **Test matching** 检查示例请求是否命中这条 Route；它只测试匹配，不执行 Guardrail，也不能证明真实分流比例。点击 **Review changes** 保存并预览草稿，核对 Target 的 Guardrail ID、固定 Version、权重和 Endpoint 绑定，再发布新的 Router revision。等目标 generation 被 Runner 应用后，才把新调用视为进入灰度。
 4. **观察真实效果**：在 Router 的 **Monitoring** 中按 revision 和 Endpoint 查看 Target 的配置占比与实际占比、分配量、阻断／转换结果、错误率和延迟；结合[运行日志](/logs)检查候选方案是否误拦正常问题。统计可能延迟，小样本的实际占比也会波动。
 5. **扩大或回退**：表现符合预期时，按“稳定／候选”75%／25%、50%／50%、0%／100% 等阶段调整权重；每次都审阅并发布新的 Router revision，确认 Runner 收敛。出现问题时，把候选 Target 调为 0%、稳定 Target 调为 100% 并重新发布，或从历史 Router revision 回滚；回滚本身也会发布新的 revision，不会修改历史版本。进行中的调用仍沿用开始时固定的目标。
