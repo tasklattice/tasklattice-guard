@@ -85,7 +85,7 @@ The LiteLLM Provider is published separately by [tasklattice-litellm-guard](http
 
 | Guard output-stream protocol (`OUTPUT_STREAM_PROTOCOL_VERSION`) | Minimum Provider image |
 | --- | --- |
-| 1 | `tali-litellm:1.87.0-guard.1` |
+| 1 | `tali-litellm:1.87.0-guard.2` (`-guard.1` was never published) |
 
 ## 2. Integration Flow
 

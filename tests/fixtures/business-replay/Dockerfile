@@ -1,7 +1,7 @@
 # Use a pinned tasklattice-litellm-guard release, replacing only its TaskLattice
 # Guard Provider with a working copy. Build with a tasklattice-litellm-guard
 # checkout as context, never the Guard repository.
-ARG LITELLM_BASE=ghcr.io/tasklattice/tali-litellm:1.87.0-guard.1
+ARG LITELLM_BASE=ghcr.io/tasklattice/tali-litellm:1.87.0-guard.2
 FROM ${LITELLM_BASE}
 USER root
 COPY litellm/v1.87.0/overlay/litellm/proxy/guardrails/guardrail_hooks/tasklattice_guard /app/litellm/proxy/guardrails/guardrail_hooks/tasklattice_guard
