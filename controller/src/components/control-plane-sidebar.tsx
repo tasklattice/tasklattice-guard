@@ -33,7 +33,7 @@ const navigation = [
     label: "nav.runtime",
     items: [
       { label: "nav.routers", to: "/integration/routers", icon: Rocket, count: "routers" },
-      { label: "nav.endpoints", to: "/integration/endpoint", icon: Cable, count: "endpoints" },
+      { label: "nav.endpoints", to: "/integration/endpoints", icon: Cable, count: "endpoints" },
     ],
   },
   {

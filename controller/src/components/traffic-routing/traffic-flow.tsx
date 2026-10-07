@@ -27,7 +27,7 @@ function TrafficNode({ data }: NodeProps<TrafficFlowNode>) {
     const e = data.endpoint;
     const status = !e.enabled ? "disabled" : e.runtime_status === "healthy" ? "healthy2" : e.runtime_status === "degraded" ? "unhealthy" : "healthUnknown";
     return <>
-      <Link to="/integration/endpoint" search={{ endpointId: e.id }} className="router-flow-card nodrag" title={e.name}>
+      <Link to="/integration/endpoints" search={{ endpointId: e.id }} className="router-flow-card nodrag" title={e.name}>
         <span className="router-flow-title"><EndpointProtocolIcon protocol={e.protocol} size="sm" /><span>{e.name}</span></span>
         <span className={`router-flow-status router-flow-status-${status}`}>● {t(`routing.${status}`)}</span>
       </Link>

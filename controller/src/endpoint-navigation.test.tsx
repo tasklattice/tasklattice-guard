@@ -26,7 +26,7 @@ async function setup(path = "/integration/routers/router-test") {
 describe("Endpoint detail history", () => {
   it("Back closes a detail entered from Router; Forward reopens the same endpoint", async () => {
     const { router, history } = await setup();
-    await router.navigate({ to: "/integration/endpoint", search: { endpointId: "source" } });
+    await router.navigate({ to: "/integration/endpoints", search: { endpointId: "source" } });
     await screen.findByRole("dialog", { name: "source" });
     history.back();
     await screen.findByRole("heading", { name: "Router detail" });
@@ -37,7 +37,7 @@ describe("Endpoint detail history", () => {
 
   it("explicit Close does not reopen the sheet on the next Back", async () => {
     const { router, history } = await setup();
-    await router.navigate({ to: "/integration/endpoint", search: { endpointId: "source" } });
+    await router.navigate({ to: "/integration/endpoints", search: { endpointId: "source" } });
     fireEvent.click(await screen.findByRole("button", { name: "Close endpoint" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(router.state.location.search.endpointId).toBeUndefined();
@@ -47,7 +47,7 @@ describe("Endpoint detail history", () => {
   });
 
   it("Back closes a detail opened from the Endpoint list", async () => {
-    const { history } = await setup("/integration/endpoint");
+    const { history } = await setup("/integration/endpoints");
     fireEvent.click(await screen.findByRole("button", { name: "Open endpoint" }));
     await screen.findByRole("dialog", { name: "source" });
     history.back();
@@ -56,10 +56,10 @@ describe("Endpoint detail history", () => {
   });
 
   it("a directly opened detail closes in place without leaving the app", async () => {
-    const { router, history } = await setup("/integration/endpoint?endpointId=source");
+    const { router, history } = await setup("/integration/endpoints?endpointId=source");
     fireEvent.click(await screen.findByRole("button", { name: "Close endpoint" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    expect(router.state.location.pathname).toBe("/integration/endpoint");
+    expect(router.state.location.pathname).toBe("/integration/endpoints");
     expect(history.length).toBe(1);
   });
 });

@@ -39,7 +39,7 @@ import {
 
 
 export const endpointHref = (id: string) =>
-  `/integration/endpoint?${new URLSearchParams({ endpointId: id })}`;
+  `/integration/endpoints?${new URLSearchParams({ endpointId: id })}`;
 type Action = { kind: "attach" } | { kind: "detach"; id: string; name: string };
 
 export function RouterEndpoints({
@@ -198,7 +198,7 @@ export function RouterEndpoints({
                     <TableCell>
                       <Link
                         className="inline-flex min-h-11 items-center gap-2 font-medium text-primary hover:underline"
-                        to="/integration/endpoint"
+                        to="/integration/endpoints"
                         search={{ endpointId: id }}
                       >
                         {endpoint && <EndpointProtocolIcon protocol={endpoint.protocol} size="sm" />}
@@ -246,7 +246,7 @@ export function RouterEndpoints({
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem asChild>
                             <Link
-                              to="/integration/endpoint"
+                              to="/integration/endpoints"
                               search={{ endpointId: id }}
                             >
                               {t("routing.viewEndpoint")}

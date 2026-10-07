@@ -29,7 +29,7 @@ const names: Record<string, { group?: string; page: string }> = {
   "/policy-library": { group: "nav.guardrailDesign", page: "nav.policyLibrary" },
   "/playground": { group: "nav.guardrailDesign", page: "nav.playground" },
   "/integration/routers": { group: "nav.runtime", page: "nav.routers" },
-  "/integration/endpoint": { group: "nav.runtime", page: "nav.endpoints" },
+  "/integration/endpoints": { group: "nav.runtime", page: "nav.endpoints" },
   "/logs": { group: "nav.observability", page: "nav.logs" },
   "/audit-log": { group: "nav.observability", page: "nav.auditLog" },
   "/access": { group: "nav.system", page: "nav.access" },

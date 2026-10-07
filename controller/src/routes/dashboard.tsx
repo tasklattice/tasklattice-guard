@@ -197,10 +197,10 @@ function AttentionPanel({ metrics }: { metrics: Metrics }) {
   if (!metrics.total_decisions) return <GettingStarted metrics={metrics} />;
   const items = [
     metrics.latency_slo.p95_status === "breached" ? { icon: TriangleAlert, title: t("dashboard.attentionLatency"), detail: t("dashboard.attentionLatencyDetail", { value: metrics.runtime_p95_ms }), to: "/logs" as const } : null,
-    metrics.degraded_endpoints ? { icon: CircleAlert, title: t("dashboard.attentionEndpoint"), detail: t("dashboard.attentionEndpointDetail", { count: metrics.degraded_endpoints }), to: "/integration/endpoint" as const } : null,
+    metrics.degraded_endpoints ? { icon: CircleAlert, title: t("dashboard.attentionEndpoint"), detail: t("dashboard.attentionEndpointDetail", { count: metrics.degraded_endpoints }), to: "/integration/endpoints" as const } : null,
     metrics.fail_closed_count ? { icon: ShieldCheck, title: t("dashboard.attentionFailClosed"), detail: t("dashboard.attentionFailClosedDetail", { count: metrics.fail_closed_count }), to: "/logs" as const } : null,
     metrics.guardrails_needing_test ? { icon: CircleAlert, title: t("dashboard.attentionTesting"), detail: t("dashboard.attentionTestingDetail", { count: metrics.guardrails_needing_test }), to: "/guardrails" as const } : null,
-  ].filter(Boolean).slice(0, 3) as Array<{ icon: ComponentType<{ className?: string }>; title: string; detail: string; to: "/logs" | "/integration/endpoint" | "/guardrails" }>;
+  ].filter(Boolean).slice(0, 3) as Array<{ icon: ComponentType<{ className?: string }>; title: string; detail: string; to: "/logs" | "/integration/endpoints" | "/guardrails" }>;
 
   return (
     <Card className="shadow-none">
@@ -223,7 +223,7 @@ function AttentionPanel({ metrics }: { metrics: Metrics }) {
   );
 }
 
-function AttentionItem({ icon: Icon, title, detail, to }: { icon: ComponentType<{ className?: string }>; title: string; detail: string; to: "/logs" | "/integration/endpoint" | "/guardrails" }) {
+function AttentionItem({ icon: Icon, title, detail, to }: { icon: ComponentType<{ className?: string }>; title: string; detail: string; to: "/logs" | "/integration/endpoints" | "/guardrails" }) {
   return (
     <Link to={to} className="group flex min-h-16 items-start gap-3 rounded-lg px-2 py-3 transition-colors hover:bg-muted/60 focus-visible:outline-2 focus-visible:outline-ring">
       <span className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-md bg-amber-50 text-amber-700"><Icon className="size-4" /></span>

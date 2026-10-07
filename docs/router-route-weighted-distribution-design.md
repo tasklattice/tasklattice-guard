@@ -286,7 +286,7 @@ The detail route is `/integration/routers/:routerId`. The fixed tab order is **O
 | Tab | Current purpose and behavior |
 | --- | --- |
 | Overview | Read-only traffic topology. All source Endpoints feed the shared ordered rules; target links show configured percentages and pinned published versions. Fallback is separate. Summaries and expandable monitoring provide context |
-| Endpoints | Attach/detach source relationships through a side sheet; an Endpoint cannot be owned by another Router. Endpoint links use `/integration/endpoint?endpointId=…` |
+| Endpoints | Attach/detach source relationships through a side sheet; an Endpoint cannot be owned by another Router. Endpoint links use `/integration/endpoints?endpointId=…` |
 | Routing | Read-only published configuration, or the draft if unpublished. Add/edit opens a Route sheet with selector above targets. Confirm applies to the local draft; cancellation leaves no empty Route. Normal Routes can be deleted and reordered using pointer or keyboard drag-and-drop. Fallback is fixed last |
 | Revisions | Publication history, publisher, time, configuration differences, publication-time Endpoint context, and exact Guardrail versions. Restore creates a new editable copy and later a new publication; it never mutates history |
 

@@ -49,17 +49,17 @@ const playgroundSearch = (search: Record<string, unknown>): { guardrail?: string
 const playgroundRoute = createRoute({ getParentRoute: () => rootRoute, path: "/playground", validateSearch: playgroundSearch, component: PlaygroundPage });
 const routersRoute = createRoute({ getParentRoute: () => rootRoute, path: "/integration/routers", component: RoutersPage });
 const routerDetailRoute = createRoute({ getParentRoute: () => rootRoute, path: "/integration/routers/$routerId", validateSearch: (search: Record<string, unknown>): { routeId?: string; tab?: string } => ({ routeId: typeof search.routeId === "string" ? search.routeId : undefined, tab: ['overview', 'endpoints', 'routing', 'monitoring', 'revisions'].includes(String(search.tab)) ? String(search.tab) : undefined }), component: RouterDetailPage });
-const endpointRoute = createRoute({
+const endpointsRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/integration/endpoint",
+  path: "/integration/endpoints",
   validateSearch: (search: Record<string, unknown>): { endpointId?: string } => ({
     endpointId: typeof search.endpointId === "string" && search.endpointId.trim() ? search.endpointId : undefined,
   }),
-  component: EndpointRoutePage,
+  component: EndpointsRoutePage,
 });
-function EndpointRoutePage() {
-  const { endpointId } = endpointRoute.useSearch();
-  const navigate = endpointRoute.useNavigate();
+function EndpointsRoutePage() {
+  const { endpointId } = endpointsRoute.useSearch();
+  const navigate = endpointsRoute.useNavigate();
   return <EndpointsPage endpointId={endpointId} onEndpointChange={(id) => {
     // Closing a URL-driven sheet must not add a history entry that Back reopens.
     if (id === endpointId) return;
@@ -121,7 +121,7 @@ export const routeTree = rootRoute.addChildren([
   playgroundRoute,
   routersRoute,
   routerDetailRoute,
-  endpointRoute,
+  endpointsRoute,
   logsRoute,
   auditLogRoute,
   usersRoute,

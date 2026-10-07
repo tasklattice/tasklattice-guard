@@ -46,7 +46,7 @@ describe("Integration navigation", () => {
     ["/account/access-tokens", "/account/access-tokens", {}],
     ["/integration/routers", "/integration/routers", {}],
     ["/integration/routers/router-123", "/integration/routers/$routerId", { routerId: "router-123" }],
-    ["/integration/endpoint", "/integration/endpoint", {}],
+    ["/integration/endpoints", "/integration/endpoints", {}],
     ["/document/overview/quickstart-protection", "/document/$categoryId/$articleId", { categoryId: "overview", articleId: "quickstart-protection" }],
     ["/document/operator/operator-create-policy#operator-policy-declarative", "/document/$categoryId/$articleId", { categoryId: "operator", articleId: "operator-create-policy" }],
   ])("resolves %s", async (path, routeId, params) => {

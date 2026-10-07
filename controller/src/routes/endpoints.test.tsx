@@ -194,7 +194,7 @@ function registration(overrides: Partial<Endpoint> = {}): EndpointRegistration {
 
 function renderWithProviders(node: React.ReactNode) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-  const router = createRouter({ routeTree: createRootRoute(), history: createMemoryHistory({ initialEntries: ["/integration/endpoint"] }) });
+  const router = createRouter({ routeTree: createRootRoute(), history: createMemoryHistory({ initialEntries: ["/integration/endpoints"] }) });
   return render(<QueryClientProvider client={client}><RouterContextProvider router={router}>{node}</RouterContextProvider></QueryClientProvider>);
 }
 
