@@ -8,16 +8,17 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  BookOpen,
   Check,
   CheckCircle2,
   Clock3,
   Copy,
   Eye,
   EyeOff,
+  FlaskConical,
   KeyRound,
   Plus,
   RefreshCw,
-  ShieldCheck,
   Trash2,
 } from "lucide-react";
 import { toast } from "@/components/ui/notifications";
@@ -259,7 +260,6 @@ function EndpointDetailContent({
   onOpenChange: (open: boolean) => void;
   onUpdated: () => Promise<void>;
 }) {
-  const { t: uiText } = useTranslation();
   const { t, i18n } = useTranslation();
   const auth = useAuth();
   const canManage = auth.user?.role === "admin";
@@ -338,12 +338,12 @@ function EndpointDetailContent({
       onOpenChange={(open) => !open && requestClose()}
       eyebrow={t("endpoints.details")}
       title={endpoint.name}
-      description={t("endpoints.detailsDescription")}
+      description={null}
+      density="compact"
       width="lg"
       footer={footer}
     >
-      <div className="space-y-5">
-        <Button asChild variant="outline" className="min-h-11"><Link to="/playground" search={{ mode: "advanced", endpoint: endpoint.id }}>{t("playground.advancedMode")}{" "}{uiText("uiCopy.endpoint")}</Link></Button>
+      <div className="space-y-4">
         {query.error ? <ErrorNotice error={query.error} /> : null}
         {closeWarning ? <SecretExitWarning /> : null}
         {oneTimeCredential ? (
@@ -361,18 +361,14 @@ function EndpointDetailContent({
               <EndpointProtocolIcon protocol={endpoint.protocol} />
               <div>
                 <p className="text-sm font-medium">{t(`endpoints.adapters.${endpoint.adapter_id}`)}</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">{endpoint.id}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{t("endpoints.createdAt", { date: formatDate(endpoint.created_at, i18n.language) })}</p>
               </div>
-            </div>
-            <div className="flex items-center gap-2">
               <SetupBadge status={endpoint.setup_status} />
             </div>
+            <Button asChild variant="testing" size="sm"><Link to="/playground" search={{ mode: "advanced", endpoint: endpoint.id }}><FlaskConical />{t("endpoints.testEndpoint")}</Link></Button>
           </div>
           <dl className="divide-y divide-border">
             <Detail label={t("endpoints.id")} mono copyValue={endpoint.id}>{endpoint.id}</Detail>
-            <Detail label={t("endpoints.protocol")}>{t(`endpoints.protocols.${endpoint.protocol}`)}</Detail>
-            <Detail label={t("endpoints.keyHint")} mono>{endpoint.key_hint || t("endpoints.noActiveCredential")}</Detail>
-            <Detail label={t("endpoints.created")}>{formatDate(endpoint.created_at, i18n.language)}</Detail>
           </dl>
           <div className="flex items-center justify-between gap-4 border-t px-4 py-4">
             <div>
@@ -395,7 +391,7 @@ function EndpointDetailContent({
           <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-muted/30 px-4 py-3">
             <div>
               <h3 className="text-sm font-semibold">{t("endpoints.activeCredentials")}</h3>
-              <p className="mt-1 text-xs text-muted-foreground">{t("endpoints.activeCredentialsDescription")}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{t("endpoints.credentialRecoveryHint")}</p>
             </div>
             {canManage ? <Button variant="outline" disabled={rotateMutation.isPending} onClick={() => rotateMutation.mutate()}>
               <RefreshCw className={cn(rotateMutation.isPending && "animate-spin")} />
@@ -423,19 +419,22 @@ function EndpointDetailContent({
 
         <section className="overflow-hidden rounded-lg border bg-card">
           <div className="border-b bg-muted/30 px-4 py-3"><h3 className="text-sm font-semibold">{t("endpoints.runtimeActivity")}</h3></div>
-          <dl className="divide-y divide-border">
-            <Detail label={t("endpoints.inputCallback")}>{callbackTimestamp(endpoint.input_seen_at, i18n.language, t("endpoints.notReceived"))}</Detail>
-            <Detail label={t("endpoints.outputCallback")}>{callbackTimestamp(endpoint.output_seen_at, i18n.language, t("endpoints.notReceived"))}</Detail>
-            <Detail label={t("endpoints.successRate24h")}><EndpointSuccessRate endpoint={endpoint} /></Detail>
-            <Detail label={t("endpoints.failedRequests24h")} mono>{endpoint.error_count.toLocaleString(i18n.language)}</Detail>
-            <Detail label={t("endpoints.lastActivity")}>{endpoint.last_seen_at ? formatDate(endpoint.last_seen_at, i18n.language) : t("endpoints.noTraffic")}</Detail>
+          <dl className="grid grid-cols-3 gap-x-4 gap-y-5 p-4">
+            <ActivityFact label={t("endpoints.inputCallback")}>{callbackTimestamp(endpoint.input_seen_at, i18n.language, t("endpoints.notReceived"))}</ActivityFact>
+            <ActivityFact label={t("endpoints.outputCallback")}>{callbackTimestamp(endpoint.output_seen_at, i18n.language, t("endpoints.notReceived"))}</ActivityFact>
+            <ActivityFact label={t("endpoints.streamFinalCheck")}>{callbackTimestamp(endpoint.stream_final_check_seen_at ?? null, i18n.language, t("endpoints.notReceived"))}</ActivityFact>
+            <ActivityFact label={t("endpoints.successRate24h")}><EndpointSuccessRate endpoint={endpoint} /></ActivityFact>
+            <ActivityFact label={t("endpoints.failedRequests24h")}>{endpoint.error_count.toLocaleString(i18n.language)}</ActivityFact>
+            <ActivityFact label={t("endpoints.lastActivity")}>{endpoint.last_seen_at ? formatDate(endpoint.last_seen_at, i18n.language) : t("endpoints.noTraffic")}</ActivityFact>
           </dl>
         </section>
-
-        <InfoNotice title={t("endpoints.trustedContext")}>{t("endpoints.trustedContextDescription")}</InfoNotice>
       </div>
     </EntitySheet>
   );
+}
+
+function ActivityFact({ label, children }: { label: string; children: ReactNode }) {
+  return <div className="min-w-0"><dt className="text-xs text-muted-foreground">{label}</dt><dd className="mt-1 text-sm">{children}</dd></div>;
 }
 
 export function DeleteEndpointSheet({
@@ -770,42 +769,43 @@ function SetupStep({
   );
 }
 
+function EndpointSetupGuide({ protocol }: { protocol: EndpointProtocol }) {
+  const { t } = useTranslation();
+  return (
+    <Button asChild variant="ghost" size="sm">
+      <a href={`/document/developer/endpoint-setup#${protocol === "litellm" ? "endpoint-litellm" : "endpoint-adapters"}`} target="_blank" rel="noopener noreferrer">
+        <BookOpen />{t("endpoints.setupGuide")}
+      </a>
+    </Button>
+  );
+}
+
 function SetupConfiguration({ endpoint }: { endpoint: Endpoint }) {
   const { t } = useTranslation();
-  if (endpoint.protocol === "litellm") {
-    return (
-      <section className="overflow-hidden rounded-lg border bg-card">
-        <div className="border-b bg-muted/30 px-4 py-3">
-          <h3 className="text-sm font-semibold">{t("endpoints.litellmProviderSetup")}</h3>
-          <p className="mt-1 text-xs text-muted-foreground">{t("endpoints.litellmProviderSetupDescription")}</p>
-        </div>
-        <div className="p-4">
-          <LiteLLMProviderSetup endpoint={endpoint.setup.api_base_url} detail />
-          <p className="mt-4 text-sm leading-6 text-muted-foreground">{t("endpoints.streamNotVerified")}</p>
-          <div className="mt-4"><SetupFacts endpoint={endpoint} /></div>
-        </div>
-      </section>
-    );
-  }
   return (
     <section className="overflow-hidden rounded-lg border bg-card">
-      <div className="border-b bg-muted/30 px-4 py-3">
-        <h3 className="text-sm font-semibold">{t("endpoints.setupConfiguration")}</h3>
-        <p className="mt-1 text-xs text-muted-foreground">{t("endpoints.setupConfigurationDescription")}</p>
+      <div className="flex items-center justify-between gap-3 border-b bg-muted/30 px-4 py-3">
+        <h3 className="text-sm font-semibold">{t("endpoints.connection")}</h3>
+        <EndpointSetupGuide protocol={endpoint.protocol} />
       </div>
-      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4 p-4">
-        <CopyField label={t("endpoints.apiBaseUrl")} value={endpoint.setup.api_base_url} />
-        <CopyField label={t("endpoints.callbackUrl")} value={endpoint.setup.callback_url} />
-        {endpoint.setup.stream_callback_url ? <CopyField label={t("endpoints.streamCallbackUrl")} value={endpoint.setup.stream_callback_url} /> : null}
-        <p className="text-sm leading-6 text-muted-foreground">{t(endpoint.setup.stream_callback_url ? "endpoints.streamContract" : "endpoints.streamNotVerified")}</p>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <CopyField label={t("endpoints.authHeader")} value={endpoint.setup.auth_header} />
-          <CopyField label={t("endpoints.credentialEnvironmentVariable")} value={endpoint.setup.credential_env_var} />
-        </div>
-        <EnvironmentVariableValue label={t("endpoints.apiBaseEnvironmentVariable")} name={endpoint.setup.api_base_env_var} value={endpoint.setup.api_base_url} />
-        <CodeBlock label={t("endpoints.configurationTemplate")} value={endpoint.setup.yaml_template} />
-        <SetupFacts endpoint={endpoint} />
+      <div className="p-4">
+        <CopyField label={t(endpoint.protocol === "litellm" ? "endpoints.endpointUrl" : "endpoints.apiBaseUrl")} value={endpoint.setup.api_base_url} />
       </div>
+      {endpoint.protocol !== "litellm" ? (
+        <details className="border-t">
+          <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-primary focus-visible:outline-primary">{t("endpoints.connectionDetails")}</summary>
+          <div className="grid min-w-0 gap-4 px-4 pb-4">
+            <CopyField label={t("endpoints.callbackUrl")} value={endpoint.setup.callback_url} />
+            {endpoint.setup.stream_callback_url ? <CopyField label={t("endpoints.streamCallbackUrl")} value={endpoint.setup.stream_callback_url} /> : null}
+            <div className="grid grid-cols-2 gap-4">
+              <CopyField label={t("endpoints.authHeader")} value={endpoint.setup.auth_header} />
+              <CopyField label={t("endpoints.credentialEnvironmentVariable")} value={endpoint.setup.credential_env_var} />
+            </div>
+            <EnvironmentVariableValue label={t("endpoints.apiBaseEnvironmentVariable")} name={endpoint.setup.api_base_env_var} value={endpoint.setup.api_base_url} />
+            <CodeBlock label={t("endpoints.configurationTemplate")} value={endpoint.setup.yaml_template} />
+          </div>
+        </details>
+      ) : null}
     </section>
   );
 }
@@ -824,65 +824,13 @@ function SetupFacts({ endpoint }: { endpoint: Endpoint }) {
   );
 }
 
-function LiteLLMProviderSetup({ endpoint, detail = false }: { endpoint: string; detail?: boolean }) {
+function LiteLLMProviderSetup({ endpoint }: { endpoint: string }) {
   const { t } = useTranslation();
-  const confirmationId = `litellm-provider-configured-${endpoint}`;
   return (
-    <div className="grid min-w-0 gap-4">
-      <section className="overflow-hidden rounded-lg border bg-card" aria-labelledby={`${confirmationId}-title`}>
-        <div className="flex items-center gap-3 border-b bg-muted/30 px-4 py-3">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-background text-primary shadow-xs">
-            <ShieldCheck className="size-5" aria-hidden="true" />
-          </span>
-          <div className="min-w-0">
-            <h4 id={`${confirmationId}-title`} className="text-sm font-semibold">{t("endpoints.taskLatticeGuardProvider")}</h4>
-            <p className="mt-0.5 text-xs text-muted-foreground">{t("endpoints.taskLatticeGuardProviderDescription")}</p>
-          </div>
-        </div>
-        <ol className="divide-y divide-border text-sm">
-          {[t("endpoints.litellmProviderStepOpen"), t("endpoints.litellmProviderStepSelect"), t("endpoints.litellmProviderStepConnect")].map((instruction, index) => (
-            <li key={instruction} className="grid grid-cols-[1.75rem_minmax(0,1fr)] items-start gap-3 px-4 py-3">
-              <span className="flex size-7 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground" aria-hidden="true">{index + 1}</span>
-              <span className="min-w-0 pt-1 leading-5">{instruction}</span>
-            </li>
-          ))}
-        </ol>
-      </section>
-
+    <div className="grid min-w-0 gap-3">
       <CopyField label={t("endpoints.endpointUrl")} value={endpoint} />
-
-      <div className="rounded-lg border bg-muted/20 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="flex items-center gap-2 text-xs font-medium text-foreground"><KeyRound className="size-4 text-muted-foreground" aria-hidden="true" />{t("endpoints.endpointSecret")}</p>
-          {detail ? <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700"><CheckCircle2 />{t("endpoints.endpointSecretAvailable")}</Badge> : null}
-        </div>
-        <p className="mt-2 text-xs leading-5 text-muted-foreground">{t(detail ? "endpoints.endpointSecretDetailsDescription" : "endpoints.endpointSecretDescription")}</p>
-      </div>
-
-      <section className="overflow-hidden rounded-lg border bg-card" aria-labelledby={`${confirmationId}-settings-title`}>
-        <div className="border-b bg-muted/30 px-4 py-3">
-          <h4 id={`${confirmationId}-settings-title`} className="text-sm font-semibold">{t("endpoints.litellmProviderSettings")}</h4>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">{t("endpoints.litellmProviderSettingsDescription")}</p>
-        </div>
-        <dl className="divide-y divide-border text-xs">
-          <div className="grid gap-1 px-4 py-3 sm:grid-cols-[10rem_minmax(0,1fr)] sm:gap-4">
-            <dt className="font-medium text-foreground">{t("endpoints.protectionStages")}</dt>
-            <dd className="leading-5 text-muted-foreground">{t("endpoints.protectionStagesDescription")}</dd>
-          </div>
-          <div className="grid gap-1 px-4 py-3 sm:grid-cols-[10rem_minmax(0,1fr)] sm:gap-4">
-            <dt className="font-medium text-foreground">{t("endpoints.guardUnavailable")}</dt>
-            <dd className="leading-5 text-muted-foreground">{t("endpoints.guardUnavailableDescription")}</dd>
-          </div>
-          <div className="grid gap-1 px-4 py-3 sm:grid-cols-[10rem_minmax(0,1fr)] sm:gap-4">
-            <dt className="font-medium text-foreground">{t("endpoints.advancedProviderSettings")}</dt>
-            <dd className="leading-5 text-muted-foreground">{t("endpoints.advancedProviderSettingsDescription")}</dd>
-          </div>
-        </dl>
-      </section>
-
-      <InfoNotice title={t("endpoints.failOpenScopeTitle")}>{t("endpoints.failOpenScopeDescription")}</InfoNotice>
-
-      <InfoNotice title={t("endpoints.noLiteLLMRestartTitle")}>{t("endpoints.noLiteLLMRestartDescription")}</InfoNotice>
+      <p className="text-xs leading-5 text-muted-foreground">{t("endpoints.endpointSecretDescription")}</p>
+      <div><EndpointSetupGuide protocol="litellm" /></div>
     </div>
   );
 }

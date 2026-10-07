@@ -1,0 +1,60 @@
+---
+id: "endpoint-setup"
+title: "Endpoint 接入与凭据管理"
+summary: "连接 LiteLLM 或其他 Adapter，验证真实流量，并轮换 Endpoint 凭据。"
+order: 6
+---
+在 [Endpoints](/integration/endpoints) 中打开详情，可复制连接地址、管理凭据和查看运行活动。为每个网关实例创建独立 Endpoint，并在发送受保护流量前绑定已发布的 Router。网关需要能够访问详情页显示的运行时地址。
+
+<a id="endpoint-litellm" />
+
+## 连接 LiteLLM
+
+**TaskLattice Guard Provider** 已内置于 TaskLattice LiteLLM 镜像。
+
+1. 在 LiteLLM 管理界面打开 **Guardrails → Guardrail Garden → TaskLattice Guard → Create Guardrail**，在 Provider 流程中确认选择 **TaskLattice Guard**。
+2. 从 Endpoint 的**连接信息**复制 **Endpoint** 地址。**Secret** 使用创建时保存的完整凭据，不是密钥提示；如果已遗失，请生成新凭据。
+3. 至少选择一个检查点，确认下表中的设置，然后点击 **Verify & connect**。Provider 会在当前 LiteLLM 实例中立即保存并生效，无需重启。
+4. 通过 LiteLLM 发送真实模型请求，在 Endpoint 的**运行活动**中检查回调。
+
+下列设置由 LiteLLM 执行；Endpoint 详情页不展示它们的实时配置值：
+
+| 设置 | 行为 |
+| --- | --- |
+| Inspection points | **Before model** 检查 Input；**After model** 检查 Output。可选择一项或两项。 |
+| Guard unavailable | 推荐默认选择 **Block request**。**Continue without protection** 仅在网络故障、超时以及 HTTP 502、503 或 504 时优先保证可用性；不会绕过策略阻止、HTTP 4xx 或 500，也不会放行无效的 Guard 响应。 |
+| Runtime timeout | 1–60 秒，默认 10 秒。 |
+| Apply to every request | 默认开启；只有客户端会显式选择该 Guardrail 时才应关闭。 |
+
+对于流式 Output，Provider 会自动连接运行时 WebSocket；客户端继续使用普通 SSE。验证时应同时检查运行结果和客户端实际收到的文本。
+
+<a id="endpoint-adapters" />
+
+## 连接 HTTP 与 A2A Adapter
+
+在 Endpoint 的**连接信息**中展开**连接详情与配置**，获取回调地址、流式地址、认证 Header、环境变量名和生成的配置。将该 Endpoint 的值复制到 Adapter 部署中，并按需重启或重新部署。
+
+- 将完整凭据安全保存为 `TASKLATTICE_GUARD_API_KEY`，通过 `x-api-key` 发送。个人 Access Token 不能用于运行时检查。
+- 支持环境变量的接入方式可使用 `TASKLATTICE_GUARD_API_BASE` 指定 Endpoint 基础地址。生成配置推荐 Input 与 Output 检查、默认开启保护以及 fail-closed；Adapter 必须实际实现对应行为。
+- Input 与 Output 保持同一个 call ID，在交付前执行阻断或替换，并保留可信路由上下文。参见[运行时集成](/document/developer/developer-runtime)。
+- WebSocket Output 使用一条连接并遵守输入 credits，只交付服务端 `delta.text`，确认模型完成后再发送 `end`。遇到 block、error 或断连时取消上游；流不能恢复续传。参见[流式协议](/document/developer/gateway-stream)。
+
+<a id="endpoint-verification" />
+
+## 验证连接与实际交付
+
+等待配置完成 Runner 下发后再连接。**Verify & connect** 检查就绪状态与认证；Endpoint 显示**已验证**还需要收到经过认证的回调。Input、Output 和流式最终检查的时间表示实际观测到的检查点；观测到一个检查点不代表其他检查点也已运行。
+
+通过网关分别测试应放行、阻断和转换的内容，将[运行日志](/logs)与应用实际收到的结果对照。检查成功不等于调用方已经执行结果。参见[失败处理与上线检查](/document/developer/gateway-failures)。
+
+Adapter 将认证身份、HTTP、模型、LiteLLM、A2A 和配置的 SDK 字段归一化后供 Router 匹配。身份 Header 必须由可信代理验证；调用方自报字段不能建立可信身份。参见 [Endpoint 与 Routing](/document/operator/operator-routing)。
+
+<a id="endpoint-credentials" />
+
+## 轮换凭据或停用连接
+
+1. 点击**生成新凭据**，安全保存一次性完整值，并在离开前标记为已保存。
+2. 更新网关的 Secret，使用新凭据发送真实请求。
+3. 确认流量正常后撤销旧凭据。至少需要保留一个有效凭据。
+
+详情页只显示非敏感的密钥提示，无法找回已遗失的 Secret。关闭**接收回调**后，该 Endpoint 所有凭据认证的回调都会被拒绝。

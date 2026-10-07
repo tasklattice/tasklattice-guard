@@ -1,0 +1,60 @@
+---
+id: "endpoint-setup"
+title: "Endpoint setup and credentials"
+summary: "Connect LiteLLM or another adapter, verify real traffic, and rotate Endpoint credentials."
+order: 6
+---
+Open an Endpoint in [Endpoints](/integration/endpoints) to copy its connection address, manage credentials, and inspect runtime activity. Create a separate Endpoint for each gateway instance and bind it to a published Router before sending protected traffic. The gateway must be able to reach the runtime address shown in the Endpoint.
+
+<a id="endpoint-litellm" />
+
+## Connect LiteLLM
+
+The **TaskLattice Guard Provider** is built into the TaskLattice LiteLLM image.
+
+1. In the LiteLLM Admin UI, open **Guardrails → Guardrail Garden → TaskLattice Guard → Create Guardrail**. Confirm **TaskLattice Guard** in the Provider flow.
+2. Copy **Endpoint** from the Endpoint's **Connection** section. For **Secret**, use the complete credential saved when it was created, not its key hint. If it is lost, generate a new credential.
+3. Select at least one inspection point, review the settings below, then choose **Verify & connect**. This saves and activates the Provider in the running LiteLLM instance without a restart.
+4. Send a real model request through LiteLLM and check the Endpoint's **Runtime activity**.
+
+These settings are applied in LiteLLM; the Endpoint page does not report their live values:
+
+| Setting | Behavior |
+| --- | --- |
+| Inspection points | **Before model** checks Input; **After model** checks Output. Select one or both. |
+| Guard unavailable | **Block request** is the recommended default. **Continue without protection** prioritizes availability only for network failures, timeouts, and HTTP 502, 503 or 504. It never bypasses policy blocks, HTTP 4xx or 500, or invalid Guard responses. |
+| Runtime timeout | 1–60 seconds; default 10 seconds. |
+| Apply to every request | On by default. Turn it off only when clients explicitly select this Guardrail. |
+
+For streaming Output, the Provider opens the runtime WebSocket automatically; clients continue using normal SSE. Verify the text actually delivered to clients as well as the runtime results.
+
+<a id="endpoint-adapters" />
+
+## Connect HTTP and A2A adapters
+
+In the Endpoint's **Connection** section, expand **Connection details & configuration** for its callback address, streaming address, authentication header, environment variable names and generated configuration. Copy the values for that Endpoint into the adapter deployment and restart or redeploy it as required.
+
+- Store the complete credential securely as `TASKLATTICE_GUARD_API_KEY`; send it in `x-api-key`. A personal Access Token cannot authenticate runtime checks.
+- Use `TASKLATTICE_GUARD_API_BASE` for the Endpoint base address where supported. The generated configuration recommends Input and Output checks, default-on protection, and fail-closed behavior. Your adapter must implement the corresponding behavior.
+- Keep one call ID across Input and Output, apply blocks and replacements before delivery, and preserve trusted routing context. See [runtime integration](/document/developer/developer-runtime).
+- For WebSocket Output, use one connection with input credits, deliver only server `delta.text`, and send `end` after verified model completion. Cancel upstream on block, error or disconnect; streams cannot resume. See the [streaming protocol](/document/developer/gateway-stream).
+
+<a id="endpoint-verification" />
+
+## Verify the connection and delivery
+
+Wait for configuration to finish applying to Runners before connecting. **Verify & connect** checks readiness and authentication; **Verified** on the Endpoint requires an authenticated callback. Input, Output and Stream final check timestamps show which checkpoints have actually been observed. One observed checkpoint does not prove that the others ran.
+
+Test allowed, blocked and transformed content through the gateway, then compare [runtime logs](/logs) with the result delivered to the application. A successful check alone does not prove enforcement. See [failure handling and production checks](/document/developer/gateway-failures).
+
+The adapter normalizes authenticated identity, HTTP, model, LiteLLM, A2A and configured SDK fields for Router matching. Identity headers must be verified by a trusted proxy; caller-supplied fields do not establish trusted identity. See [Endpoint and Routing](/document/operator/operator-routing).
+
+<a id="endpoint-credentials" />
+
+## Rotate or disable credentials
+
+1. Choose **Generate new credential**, securely save the one-time value, and mark it as saved before leaving.
+2. Update the gateway's Secret and send a real request with the new credential.
+3. Confirm traffic succeeds, then revoke the old credential. At least one active credential must remain.
+
+The detail page only shows non-secret key hints; a lost Secret cannot be retrieved. Turning off **Accept callbacks** rejects every callback authenticated with this Endpoint's credentials.

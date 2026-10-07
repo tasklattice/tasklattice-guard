@@ -14,7 +14,7 @@ describe("repository documentation", () => {
     const content = getHelpContent(locale);
     expect(content.categories.map(category => category.id)).toEqual(["overview", "operator", "admin", "developer", "api"]);
     expect(content.categories.every(category => category.articles.length >= 2)).toBe(true);
-    expect(content.documents).toHaveLength(25);
+    expect(content.documents).toHaveLength(26);
     expect(content.documents[0].id).toBe("quickstart-protection");
     expect(content.categories[1].articles[0].id).toBe("user-lifecycle");
     expect(content.categories[2].articles[0].id).toBe("platform-runtime");
@@ -30,7 +30,7 @@ describe("repository documentation", () => {
     expect(article(locale, "gateway-connect").categoryId).toBe("developer");
     expect(content.categories[3].articles.map(document => document.id)).toEqual([
       "developer-endpoint", "developer-api-access", "developer-runtime",
-      "gateway-connect", "gateway-stream", "gateway-failures",
+      "gateway-connect", "gateway-stream", "gateway-failures", "endpoint-setup",
     ]);
     expect(content.categories[2].articles.map(document => document.id)).toEqual([
       "platform-runtime", "platform-models", "platform-access", "concept-logs", "concept-audit",

@@ -56,28 +56,11 @@ vi.mock("react-i18next", () => ({
         "endpoints.configureTaskLatticeProvider": "Connect the TaskLattice Guard Provider",
         "endpoints.configureTaskLatticeProviderDescription": "Connect Endpoint and Secret, then choose Provider settings.",
         "endpoints.protocolShort.litellm": "LiteLLM",
-        "endpoints.taskLatticeGuardProvider": "TaskLattice Guard",
-        "endpoints.taskLatticeGuardProviderDescription": "Built into the TaskLattice LiteLLM image",
-        "endpoints.litellmProviderStepOpen": "Open Guardrails > Guardrail Garden.",
-        "endpoints.litellmProviderStepSelect": "Open TaskLattice Guard and choose Create Guardrail.",
-        "endpoints.litellmProviderStepConnect": "Paste Endpoint and Secret, select an inspection point, then choose Verify & connect.",
+        "endpoints.testEndpoint": "Test Endpoint",
+        "endpoints.setupGuide": "Setup guide",
+        "endpoints.connectionDetails": "Connection details & configuration",
         "endpoints.endpointUrl": "Endpoint",
-        "endpoints.endpointSecret": "Secret",
         "endpoints.endpointSecretDescription": "Use the complete one-time Secret saved in step 1.",
-        "endpoints.endpointSecretDetailsDescription": "Use any active Secret.",
-        "endpoints.endpointSecretAvailable": "Active Secret available",
-        "endpoints.litellmProviderSettings": "Provider settings",
-        "endpoints.litellmProviderSettingsDescription": "These settings are enforced by LiteLLM.",
-        "endpoints.protectionStages": "Inspection points",
-        "endpoints.protectionStagesDescription": "Select Before model, After model, or both. At least one checkpoint is required.",
-        "endpoints.guardUnavailable": "Guard unavailable",
-        "endpoints.guardUnavailableDescription": "Block request is recommended; Continue without protection favors availability.",
-        "endpoints.advancedProviderSettings": "Advanced",
-        "endpoints.advancedProviderSettingsDescription": "Runtime timeout defaults to 10 seconds. Apply to every request is on by default.",
-        "endpoints.failOpenScopeTitle": "Continue is limited to availability failures",
-        "endpoints.failOpenScopeDescription": "Continue applies only to network failures, timeouts, and HTTP 502, 503, or 504.",
-        "endpoints.noLiteLLMRestartTitle": "No LiteLLM restart required",
-        "endpoints.noLiteLLMRestartDescription": "Verify & connect saves and activates this Provider immediately.",
         "endpoints.apiBaseUrl": "TaskLattice API base URL",
         "endpoints.apiBaseEnvironmentVariable": "API base environment variable",
         "endpoints.configurationTemplate": "Adapter configuration",
@@ -212,7 +195,7 @@ describe("Endpoint onboarding", () => {
     vi.restoreAllMocks();
   });
 
-  it("guides the packaged TaskLattice Guard Provider through connection and runtime settings", () => {
+  it("keeps connection values in onboarding and links to the LiteLLM setup guide", () => {
     const item = endpoint({
       setup_status: "verified",
       runtime_status: "waiting",
@@ -236,21 +219,38 @@ describe("Endpoint onboarding", () => {
     expect(screen.getByText("tali_••••8NzQ")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Reveal credential" })).toBeTruthy();
     expect(screen.getByText("Connect the TaskLattice Guard Provider")).toBeTruthy();
-    expect(screen.getByText("Open TaskLattice Guard and choose Create Guardrail.")).toBeTruthy();
-    expect(screen.getByText("Paste Endpoint and Secret, select an inspection point, then choose Verify & connect.")).toBeTruthy();
     expect(screen.getByText("Endpoint")).toBeTruthy();
     expect(screen.getByText(item.setup.api_base_url)).toBeTruthy();
-    expect(screen.getByText("Secret")).toBeTruthy();
-    expect(screen.getByText("Inspection points")).toBeTruthy();
-    expect(screen.getByText("Guard unavailable")).toBeTruthy();
-    expect(screen.getByText("Advanced")).toBeTruthy();
-    expect(screen.getByText("Continue is limited to availability failures")).toBeTruthy();
-    expect(screen.getByText("No LiteLLM restart required")).toBeTruthy();
+    expect(screen.getByText("Use the complete one-time Secret saved in step 1.")).toBeTruthy();
+    const guide = screen.getByRole("link", { name: "Setup guide" });
+    expect(guide.getAttribute("href")).toBe("/document/developer/endpoint-setup#endpoint-litellm");
+    expect(guide.getAttribute("target")).toBe("_blank");
     expect(screen.getAllByText("Complete").length).toBe(3);
     expect(screen.queryByText(/config\.yaml/i)).toBeNull();
     expect(screen.queryByText(/guardrail_name: tasklattice-guard/)).toBeNull();
     expect(screen.queryByText(`TASKLATTICE_GUARD_API_BASE=${item.setup.api_base_url}`)).toBeNull();
     expect(screen.getByText("An authenticated callback has been received. This Gateway connection is verified; other checkpoints are optional.")).toBeTruthy();
+  });
+
+  it.each(["http", "a2a"] as const)("keeps %s connection values available in the details disclosure", async protocol => {
+    const item = endpoint({ protocol, adapter_id: protocol === "http" ? "generic-http-guard" : "a2a-guard" });
+    item.setup.callback_url = `${item.setup.api_base_url}/guardrails/evaluate`;
+    item.setup.stream_callback_url = `${item.setup.api_base_url.replace("https:", "wss:")}/guardrails/output-stream`;
+    getEndpointsMock.mockResolvedValue({ items: [item] });
+    getEndpointMock.mockResolvedValue(item);
+    renderWithProviders(<EndpointsPage />);
+
+    fireEvent.click(await screen.findByText(item.name));
+    expect((await screen.findByRole("link", { name: "Setup guide" })).getAttribute("href")).toBe("/document/developer/endpoint-setup#endpoint-adapters");
+    const summary = screen.getByText("Connection details & configuration");
+    const details = summary.closest("details")!;
+    expect(details.open).toBe(false);
+    fireEvent.click(summary);
+    expect(details.open).toBe(true);
+    expect(screen.getByText(item.setup.callback_url)).toBeTruthy();
+    expect(screen.getByText(item.setup.stream_callback_url)).toBeTruthy();
+    expect(details.querySelector("pre")?.textContent).toBe(item.setup.yaml_template);
+    expect((screen.getByRole("button", { name: "endpoints.revoke" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("hides a saved credential and supports explicit reveal and hide without clearing the saved state", async () => {
@@ -410,7 +410,7 @@ describe("Endpoint onboarding", () => {
     renderWithProviders(<EndpointsPage />);
 
     fireEvent.click(await screen.findByText(item.name));
-    const playgroundLink = await screen.findByRole("link", { name: "Advanced mode · Endpoint" });
+    const playgroundLink = await screen.findByRole("link", { name: "Test Endpoint" });
     const playgroundUrl = new URL(playgroundLink.getAttribute("href")!, "http://localhost");
     expect(playgroundUrl.pathname).toBe("/playground");
     expect(playgroundUrl.searchParams.get("mode")).toBe("advanced");
