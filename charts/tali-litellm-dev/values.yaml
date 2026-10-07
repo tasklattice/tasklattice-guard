@@ -13,7 +13,7 @@ image:
   # `npm run litellm:deploy:dev` pulls; it verifies the image's
   # io.tasklattice.guard.output-stream-protocol label against the Runner first.
   repository: ghcr.io/tasklattice/tali-litellm
-  tag: "1.87.0-guard.2"
+  tag: "1.87.0-guard.3"
   pullPolicy: IfNotPresent
 
 service:

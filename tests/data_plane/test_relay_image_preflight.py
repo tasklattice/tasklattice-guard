@@ -49,5 +49,5 @@ def test_image_without_streaming_provider_fails_offline(monkeypatch):
 def test_compatible_image_reports_its_provider_identity(monkeypatch):
     run, _ = fake_docker(LABELS)
     monkeypatch.setattr(preflight.subprocess, 'run', run)
-    assert preflight.verify('ghcr.io/tasklattice/tali-litellm:1.87.0-guard.2') == {
+    assert preflight.verify('ghcr.io/tasklattice/tali-litellm:1.87.0-guard.3') == {
         'image': 'sha256:synthetic', 'protocol': 1, 'litellmVersion': '1.87.0', 'providerVersion': '1', 'revision': 'abc123'}

@@ -50,7 +50,7 @@ def test_dev_stack_has_gateway_database_and_mock_model_by_default():
     deployment = find(docs, "Deployment", "tali-litellm-dev")
     container = deployment["spec"]["template"]["spec"]["containers"][0]
     # Published by tasklattice-litellm-guard at an exact <litellm>-guard.<n> tag.
-    assert container["image"] == "ghcr.io/tasklattice/tali-litellm:1.87.0-guard.2"
+    assert container["image"] == "ghcr.io/tasklattice/tali-litellm:1.87.0-guard.3"
     assert container["imagePullPolicy"] == "IfNotPresent"
     env = {item["name"]: item for item in container["env"]}
     for name, key in (("TASKLATTICE_GUARD_API_BASE", "api-base"), ("TASKLATTICE_GUARD_API_KEY", "api-key")):

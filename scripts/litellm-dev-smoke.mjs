@@ -8,8 +8,8 @@ const headers = { authorization: `Bearer ${masterKey}`, "content-type": "applica
 const report = (stage, value) => console.log(JSON.stringify({ stage, ...value }));
 const failures = [];
 
-async function completion(body, extraHeaders = {}) {
-  const response = await fetch(new URL("/v1/chat/completions", base), {
+async function completion(body, extraHeaders = {}, path = "/v1/chat/completions") {
+  const response = await fetch(new URL(path, base), {
     method: "POST", headers: { ...headers, ...extraHeaders }, body: JSON.stringify({ model, ...body }), signal: AbortSignal.timeout(60_000),
   });
   return { status: response.status, body: response.headers.get("content-type")?.includes("text/event-stream") ? await response.text() : await response.json() };
@@ -58,6 +58,13 @@ try {
     report("streamed-completion", { ok: false, expected: "unverified provider image; protected streaming requires the vendored overlay revision", status: streamed.status, frames: frames.length, error: terminalError?.slice(0, 200) });
   } else {
     check("streamed-completion", streamedOk, { status: streamed.status, frames: frames.length, error: terminalError?.slice(0, 200) });
+    // The LiteLLM UI Playground (OpenAI SDK) requests usage on streams; LiteLLM
+    // then appends a usage frame after the finish frame.
+    const playground = await completion({ stream: true, stream_options: { include_usage: true }, messages: [{ role: "user", content: "Stream a short greeting with usage." }] }, {}, "/chat/completions");
+    const playgroundFrames = typeof playground.body === "string" ? playground.body.split("\n\n").filter(Boolean) : [];
+    check("streamed-completion-with-usage",
+      playground.status === 200 && playgroundFrames.at(-1) === "data: [DONE]" && playgroundFrames.some((frame) => frame.includes('"usage"')) && !playgroundFrames.some((frame) => frame.includes('"error"')),
+      { status: playground.status, frames: playgroundFrames.length, error: playgroundFrames.find((frame) => frame.includes('"error"'))?.slice(0, 200) });
   }
 } catch (error) {
   check("smoke", false, { error: error.message });
