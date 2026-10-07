@@ -53,6 +53,8 @@ GET `/api/v1/routers/{id}/traffic-distribution`，可按 Route 查询。使用 `
 
 [查看 Endpoints](/integration/endpoints)
 
+<a id="runner-liveness-timeouts" />
+
 ## Runner liveness 超时
 
 Runner 通过单个后台构建线程准备运行实例，再用只操作内存的短锁切换整组实例。校验、NeMo 初始化、快照持久化都在切换之前完成；健康检查和已有请求继续使用当前版本，准备失败会保留当前可服务状态。模型配置与实际租用凭据共同生成指纹：未变化时复用实例，凭据轮换则重新构建。
