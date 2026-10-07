@@ -32,6 +32,7 @@ _CONTRACT = frozenset({
     "test_control_protocol_contract.py",
     "test_enforcement_action_contract.py",
     "test_helm_chart.py",
+    "test_litellm_dev_chart.py",
     "test_release_contract.py",
 })
 

@@ -398,7 +398,7 @@ Evidence identifiers:
   `ba876e22-d86d-4a87-96ea-3b1ca6b071d8`.
 
 Build the regression image using `tests/fixtures/business-replay/Dockerfile` from
-this repository and the sibling Relay repository as Docker's build context.
+this repository and a `tasklattice-litellm-guard` checkout as Docker's build context.
 Set `GUARD_REGRESSION_PROXY_IMAGE` when running the replay script. This layered
 image updates the Provider runtime, not Relay's dashboard; runtime schema and
 credential-reference verification passed. Full dashboard/source verification

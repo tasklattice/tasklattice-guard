@@ -7,7 +7,8 @@ import { spawnSync } from 'node:child_process';
 
 function fixture(t) {
   const root = mkdtempSync(join(tmpdir(), 'guard-command-test-'));
-  for (const dir of ['scripts', 'bin']) mkdirSync(join(root, dir));
+  for (const dir of ['scripts', 'bin', '.venv/bin', 'charts/tali-litellm-dev']) mkdirSync(join(root, dir), { recursive: true });
+  copyFileSync(new URL('../charts/tali-litellm-dev/values.yaml', import.meta.url), join(root, 'charts/tali-litellm-dev/values.yaml'));
   copyFileSync(new URL('./project-commands.mjs', import.meta.url), join(root, 'scripts/project-commands.mjs'));
   copyFileSync(new URL('./git-build-info.mjs', import.meta.url), join(root, 'scripts/git-build-info.mjs'));
   for (const args of [['init'], ['config', 'user.email', 'test@example.com'], ['config', 'user.name', 'Test'], ['add', '.'], ['commit', '-m', 'initial']]) {
@@ -15,8 +16,10 @@ function fixture(t) {
     assert.equal(result.status, 0, result.stderr?.toString());
   }
   const log = join(root, 'commands.jsonl');
-  for (const command of ['docker', 'helm', 'bash', 'kubectl']) {
-    writeFileSync(join(root, 'bin', command), `#!${process.execPath}\nconst fs=require('node:fs');fs.appendFileSync(process.env.COMMAND_LOG,JSON.stringify({command:${JSON.stringify(command)},args:process.argv.slice(2),controllerRepository:process.env.TALI_GUARD_CONTROLLER_IMAGE_REPOSITORY,runnerRepository:process.env.TALI_GUARD_RUNNER_IMAGE_REPOSITORY})+'\\n');process.exit(process.env.FAIL_COMMAND===${JSON.stringify(command)}?1:0);\n`, { mode: 0o755 });
+  for (const command of ['docker', 'helm', 'bash', 'kubectl', 'node', '.venv/bin/python']) {
+    const name = command.split('/').pop();
+    const fake = `#!${process.execPath}\nconst fs=require('node:fs');fs.appendFileSync(process.env.COMMAND_LOG,JSON.stringify({command:${JSON.stringify(name)},args:process.argv.slice(2),controllerRepository:process.env.TALI_GUARD_CONTROLLER_IMAGE_REPOSITORY,runnerRepository:process.env.TALI_GUARD_RUNNER_IMAGE_REPOSITORY})+'\\n');process.exit(process.env.FAIL_COMMAND===${JSON.stringify(name)}?1:0);\n`;
+    writeFileSync(join(root, command.includes('/') ? command : join('bin', command)), fake, { mode: 0o755 });
   }
   t.after(() => rmSync(root, { recursive: true, force: true }));
   return {
@@ -61,6 +64,76 @@ test('image builds package the release version and pass repository overrides', t
   assert.match(buildInfo.commit, /^[0-9a-f]{40}$/);
   assert.equal(calls[0].controllerRepository, 'registry.test/controller');
   assert.equal(calls[0].runnerRepository, 'registry.test/runner');
+});
+const pinnedLitellm = /^image:\n(?:\s+.*\n)*?\s+tag:\s*"([^"]+)"/m.exec(readFileSync(new URL('../charts/tali-litellm-dev/values.yaml', import.meta.url), 'utf8'))[1];
+test('litellm-deploy pulls the chart-pinned image, verifies its protocol, wires Guard, then installs the test chart', t => {
+  const f = fixture(t);
+  const result = f.run('litellm-deploy', ['--set', 'replicaCount=1'], { HELM_TIMEOUT: '7m' });
+  assert.equal(result.status, 0, result.stderr);
+  const calls = f.calls();
+  const image = `ghcr.io/tasklattice/tali-litellm:${pinnedLitellm}`;
+  assert.match(pinnedLitellm, /^\d+\.\d+\.\d+-guard\.\d+$/);
+  assert.deepEqual(calls.map(c => c.command), ['docker', 'python', 'node', 'bash', 'node']);
+  assert.deepEqual(calls[0].args, ['pull', image]);
+  assert.deepEqual(calls[1].args, ['scripts/verify_relay_stream_image.py', image]);
+  assert.deepEqual(calls[2].args, ['scripts/litellm-dev-wire.mjs']);
+  assert.deepEqual(calls[3].args.slice(0, 5), ['scripts/helm-upgrade.sh', 'tali-litellm-dev', 'charts/tali-litellm-dev', 'test-context', 'test-namespace']);
+  assert.ok(calls[3].args.includes('charts/tali-litellm-dev/values-dev.yaml'));
+  assert.ok(calls[3].args.includes('image.repository=ghcr.io/tasklattice/tali-litellm'));
+  assert.ok(calls[3].args.includes(`image.tag=${pinnedLitellm}`));
+  assert.equal(calls[3].args.some(arg => arg.startsWith('model.upstream.')), false);
+  assert.equal(calls[3].args[calls[3].args.indexOf('--timeout') + 1], '7m');
+  assert.deepEqual(calls[3].args.slice(-2), ['--set', 'replicaCount=1']);
+  assert.deepEqual(calls[4].args, ['scripts/litellm-dev-smoke.mjs']);
+});
+test('LITELLM_IMAGE overrides the chart pin for pull, verification and install', t => {
+  const f = fixture(t);
+  const result = f.run('litellm-deploy', [], { LITELLM_IMAGE: 'registry.test/litellm:1.88.0-guard.2', LITELLM_SKIP_SMOKE: '1' });
+  assert.equal(result.status, 0, result.stderr);
+  const calls = f.calls();
+  assert.deepEqual(calls[0].args, ['pull', 'registry.test/litellm:1.88.0-guard.2']);
+  assert.ok(calls[3].args.includes('image.repository=registry.test/litellm') && calls[3].args.includes('image.tag=1.88.0-guard.2'));
+});
+test('litellm-deploy stops before touching Guard when the image is neither pullable nor local', t => {
+  const f = fixture(t);
+  const result = f.run('litellm-deploy', [], { FAIL_COMMAND: 'docker' });
+  assert.equal(result.status, 1);
+  assert.deepEqual(f.calls().map(c => c.args[0]), ['pull', 'image']);
+});
+test('litellm-deploy refuses an image whose Provider speaks another stream protocol', t => {
+  const f = fixture(t);
+  const result = f.run('litellm-deploy', [], { FAIL_COMMAND: 'python' });
+  assert.equal(result.status, 1);
+  assert.deepEqual(f.calls().map(c => c.command), ['docker', 'python']);
+  assert.match(result.stderr, /not compatible with this Guard/);
+});
+test('litellm-deploy passes a complete upstream provider and skips the smoke test on request', t => {
+  const f = fixture(t);
+  const result = f.run('litellm-deploy', [], { LITELLM_UPSTREAM_API_BASE: 'https://api.example/v1', LITELLM_UPSTREAM_API_KEY: 'sk-test', LITELLM_UPSTREAM_MODEL: 'gpt-test', LITELLM_SKIP_SMOKE: '1' });
+  assert.equal(result.status, 0, result.stderr);
+  const calls = f.calls();
+  assert.deepEqual(calls.map(c => c.command), ['docker', 'python', 'node', 'bash']);
+  assert.ok(calls[3].args.includes('model.upstream.apiBase=https://api.example/v1'));
+  assert.ok(calls[3].args.includes('model.upstream.model=gpt-test'));
+  const partial = f.run('litellm-deploy', [], { LITELLM_UPSTREAM_API_BASE: 'https://api.example/v1', LITELLM_SKIP_SMOKE: '1' });
+  assert.equal(partial.status, 1);
+  assert.match(partial.stderr, /together/);
+});
+test('litellm-deploy-full deploys Guard exactly like helm-deploy before LiteLLM', t => {
+  const f = fixture(t);
+  const result = f.run('litellm-deploy-full', [], { HELM_ROLLOUT_REVISION: 'regression', LITELLM_SKIP_SMOKE: '1' });
+  assert.equal(result.status, 0, result.stderr);
+  const calls = f.calls();
+  assert.deepEqual(calls.map(c => c.command), ['bash', 'docker', 'docker', 'bash', 'docker', 'python', 'node', 'bash']);
+  assert.deepEqual(calls[3].args.slice(0, 3), ['scripts/helm-upgrade.sh', 'tali-guard', 'charts/tali-guard']);
+  assert.ok(calls[3].args.includes('rolloutRevision=regression'));
+  assert.deepEqual(calls[4].args, ['pull', `ghcr.io/tasklattice/tali-litellm:${pinnedLitellm}`]);
+  assert.deepEqual(calls[7].args.slice(0, 3), ['scripts/helm-upgrade.sh', 'tali-litellm-dev', 'charts/tali-litellm-dev']);
+});
+test('helm-deploy never touches the LiteLLM test chart or image', t => {
+  const f = fixture(t);
+  assert.equal(f.run('helm-deploy').status, 0);
+  assert.equal(f.calls().some(call => call.args.some(arg => String(arg).includes('litellm'))), false);
 });
 test('build failure prevents deployment', t => {
   const f = fixture(t);

@@ -3,11 +3,12 @@
 GUARD_TEST_RELAY_IMAGE=<existing-local-image> pytest -q -s <this file>
 Requires Docker Desktop host.docker.internal routing. No Controller writes,
 compiler, external models, image pulls, or user ports. Only this test's random
-proxy container is stopped. Current Relay Guard endpoint is mounted read-only
-unless GUARD_TEST_RELAY_BAKED_IMAGE=1, which verifies and tests image-baked code.
+proxy container is stopped. The image is a tasklattice-litellm-guard release; its
+baked Provider is tested after the output-stream protocol label is verified.
+GUARD_TEST_LITELLM_GUARD_CHECKOUT=<tasklattice-litellm-guard checkout> mounts that
+checkout's Provider source read-only instead, for iterating on Provider changes.
 """
 import asyncio
-import hashlib
 import json
 import os
 from pathlib import Path
@@ -43,27 +44,16 @@ async def test_actual_relay_stream_delivery_and_cancellation(tmp_path, mode):
     if not image and not local_python:
         pytest.skip("Set GUARD_TEST_RELAY_IMAGE or GUARD_TEST_RELAY_PYTHON to an isolated pinned Relay installation")
     root = Path(__file__).resolve().parents[2]
-    overlay = root.parent / "tasklattice-relay/infra/litellm/v1.87.0/overlay/litellm/proxy/guardrails/guardrail_hooks/tasklattice_guard"
-    assert (overlay / "streaming.py").is_file()
     image_id = await docker("image", "inspect", image, "--format", "{{.Id}}") if image else "local-pinned-1.87.0"
-    baked_mode = os.environ.get("GUARD_TEST_RELAY_BAKED_IMAGE", "0")
-    assert baked_mode in {"0", "1"}, "GUARD_TEST_RELAY_BAKED_IMAGE must be 0 or 1"
-    code_mount = ["--mount", f"type=bind,source={overlay},target=/app/litellm/proxy/guardrails/guardrail_hooks/tasklattice_guard,readonly"]
-    if baked_mode == "1":
-        probe = (
-            "import hashlib,importlib.machinery,json,pathlib; "
-            "s=importlib.machinery.PathFinder.find_spec('litellm'); "
-            "p=pathlib.Path(s.origin).parent/'proxy/guardrails/guardrail_hooks/tasklattice_guard'; "
-            "assert p.is_dir(), 'Missing baked TaskLattice Guard endpoint'; "
-            "print(json.dumps({str(f.relative_to(p)):hashlib.sha256(f.read_bytes()).hexdigest() "
-            "for f in sorted(p.rglob('*.py'))},sort_keys=True))"
-        )
-        actual = json.loads(await docker("run", "--rm", "--pull=never", "--network=none", "--read-only",
-            "--entrypoint", "python", image_id, "-c", probe))
-        expected = {str(path.relative_to(overlay)): hashlib.sha256(path.read_bytes()).hexdigest()
-            for path in sorted(overlay.rglob("*.py"))}
-        assert actual == expected, "Baked Relay Guard code differs from the current sibling overlay; rebuild the image"
-        code_mount = []
+    checkout = os.environ.get("GUARD_TEST_LITELLM_GUARD_CHECKOUT")
+    code_mount = []
+    if checkout:
+        provider = Path(checkout) / "litellm/v1.87.0/overlay/litellm/proxy/guardrails/guardrail_hooks/tasklattice_guard"
+        assert (provider / "streaming.py").is_file(), f"No Provider source under {checkout}"
+        code_mount = ["--mount", f"type=bind,source={provider},target=/app/litellm/proxy/guardrails/guardrail_hooks/tasklattice_guard,readonly"]
+    elif image:
+        from scripts.verify_relay_stream_image import verify
+        verify(image)
     name = f"guard-incremental-e2e-{uuid4()}"
     proxy_key = f"sk-test-{uuid4()}"
     prefix = "".join(f"Benign response {i:03d}. " for i in range(200))
@@ -264,7 +254,7 @@ async def test_actual_relay_stream_delivery_and_cancellation(tmp_path, mode):
                             print(json.dumps({"mode": mode, "scenario": scenario, "passed": True,
                                 "client_characters": sum(map(len, content)), "detector_calls": len(detector_calls) - detector_before,
                                 "proxy_image": image_id,
-                                "relay_code_source": "local-overlay" if local_python else "baked-image" if baked_mode == "1" else "mounted-overlay"}))
+                                "relay_code_source": "local-overlay" if local_python else "mounted-checkout" if checkout else "baked-image"}))
                         finally:
                             upstream_continue.set()
                             if not pending.done():

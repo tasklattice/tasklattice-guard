@@ -137,6 +137,29 @@ The default context/namespace are `orbstack` / `tali`. Additional flags after
 only; new workflows should use npm. Legacy `HELM_VALUES_ARGS` is replaced by
 explicit arguments after `--`.
 
+## LiteLLM integration stack
+
+The `litellm-generic-guardrail` adapter can be exercised end to end against a
+real LiteLLM proxy carrying the TaskLattice Guard Provider. The Provider lives in
+[tasklattice-litellm-guard](https://github.com/tasklattice/tasklattice-litellm-guard),
+which publishes `ghcr.io/tasklattice/tali-litellm:<litellm>-guard.<n>`; this
+repository carries no copy of it. `charts/tali-litellm-dev/values.yaml` pins the
+tag, and the deploy command refuses an image whose
+`io.tasklattice.guard.output-stream-protocol` label differs from
+`OUTPUT_STREAM_PROTOCOL_VERSION` in `runner/output_streaming.py`.
+
+```bash
+npm run helm:deploy:dev-with-litellm   # tali-guard + LiteLLM + mock model, then smoke test
+npm run litellm:deploy:dev             # LiteLLM only, against an existing tali-guard release
+npm run litellm:smoke                  # allowed, blocked-output and streaming calls
+npm run litellm:delete:dev
+```
+
+The stack is deployed from the test-only chart `charts/tali-litellm-dev`; it is
+not part of the product chart and `npm run helm:deploy:dev` never installs it.
+See [the chart README](../charts/tali-litellm-dev/README.md) for wiring details,
+ports, and switching the synthetic echo model to a real provider.
+
 ## Tests and generated contracts
 
 The root [package.json](../package.json) separates `test:control-plane`,

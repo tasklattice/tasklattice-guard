@@ -1,0 +1,95 @@
+# Test-only LiteLLM gateway carrying the TaskLattice Guard provider.
+#
+# This chart exists to exercise the litellm-generic-guardrail adapter against a
+# locally deployed tali-guard release. It is deployed by
+# `npm run helm:deploy:dev-with-litellm` / `npm run litellm:deploy:dev` and is
+# never installed by the product chart or `npm run helm:deploy:dev`.
+
+fullnameOverride: tali-litellm-dev
+
+image:
+  # Published by github.com/tasklattice/tasklattice-litellm-guard: upstream
+  # LiteLLM plus the TaskLattice Guard Provider. This is the single pin
+  # `npm run litellm:deploy:dev` pulls; it verifies the image's
+  # io.tasklattice.guard.output-stream-protocol label against the Runner first.
+  repository: ghcr.io/tasklattice/tali-litellm
+  tag: "1.87.0-guard.1"
+  pullPolicy: IfNotPresent
+
+service:
+  type: LoadBalancer
+  # 38080 tali-relay, 38081 Guard Controller, 38082 Guard runtime.
+  port: 38083
+
+# LiteLLM proxy credentials. Development defaults only; this chart is not a
+# production deployment path.
+masterKey: sk-tali-litellm-dev
+ui:
+  username: admin
+  password: password
+saltKey: tali-litellm-dev-salt-v1
+
+guard:
+  # Secret written by scripts/litellm-dev-wire.mjs after it creates the Guard
+  # Endpoint and Router. Keys: api-base (Runner endpoint base URL ending in
+  # /runtime/v1/endpoints/<id>) and api-key (one-time Endpoint credential).
+  # The credential never passes through Helm values.
+  existingSecret: tali-litellm-dev-guard
+  timeoutSeconds: 10
+  # Protected streaming requires fail_closed (Provider design notes in
+  # tasklattice-litellm-guard, litellm/v<version>/README.md).
+  unreachableFallback: fail_closed
+
+model:
+  # Model alias applications send to LiteLLM.
+  name: guarded-model
+  # Synthetic OpenAI-compatible echo model. Used unless upstream is complete.
+  mock:
+    enabled: true
+    image:
+      # The Guard Runner image already ships FastAPI and uvicorn.
+      repository: ghcr.io/tasklattice/tali-guard-runner
+      tag: dev
+      pullPolicy: Never
+    port: 8097
+    resources:
+      requests:
+        cpu: 10m
+        memory: 64Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi
+  # Real OpenAI-compatible provider. All three values are required together;
+  # when set, the mock model is not deployed.
+  upstream:
+    apiBase: ""
+    apiKey: ""
+    model: ""
+
+replicaCount: 1
+resources:
+  requests:
+    cpu: 100m
+    memory: 512Mi
+  limits:
+    cpu: "1"
+    memory: 2Gi
+
+# LiteLLM's database image requires PostgreSQL. Development-only single replica.
+postgresql:
+  image:
+    repository: postgres
+    tag: "17-alpine"
+    pullPolicy: IfNotPresent
+  database: litellm
+  username: litellm
+  password: litellm-dev-postgres-password
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+imagePullSecrets: []

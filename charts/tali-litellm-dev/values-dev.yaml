@@ -1,0 +1,14 @@
+# OrbStack / Docker Desktop profile for the LiteLLM integration test stack.
+# The LiteLLM image is pulled into the local Docker store by
+# `npm run litellm:deploy:dev`; the mock model reuses the locally built Guard
+# Runner image from `npm run images:build:dev`, which the cluster never pulls.
+image:
+  pullPolicy: IfNotPresent
+service:
+  type: LoadBalancer
+  port: 38083
+model:
+  mock:
+    image:
+      tag: dev
+      pullPolicy: Never

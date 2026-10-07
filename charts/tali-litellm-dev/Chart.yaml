@@ -1,0 +1,16 @@
+apiVersion: v2
+name: tali-litellm-dev
+description: Test-only LiteLLM gateway with the TaskLattice Guard provider for local adapter integration testing. Not part of the TaskLattice Guard product chart.
+type: application
+version: 0.1.0
+appVersion: "1.87.0"
+home: https://github.com/tasklattice/tasklattice-guard
+sources:
+  - https://github.com/tasklattice/tasklattice-guard
+keywords:
+  - litellm
+  - guardrails
+  - testing
+  - tasklattice
+maintainers:
+  - name: TaskLattice

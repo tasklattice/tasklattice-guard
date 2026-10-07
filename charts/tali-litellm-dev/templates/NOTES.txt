@@ -1,0 +1,22 @@
+Test-only LiteLLM gateway with the TaskLattice Guard provider.
+
+  LiteLLM:    deployment/{{ include "tali-litellm-dev.fullname" . }}
+  PostgreSQL: statefulset/{{ include "tali-litellm-dev.postgresqlName" . }}
+{{- if include "tali-litellm-dev.mockEnabled" . }}
+  Mock model: deployment/{{ include "tali-litellm-dev.mockModelName" . }} (synthetic OpenAI-compatible echo)
+{{- else }}
+  Upstream:   {{ .Values.model.upstream.apiBase }} ({{ .Values.model.upstream.model }})
+{{- end }}
+
+Guard wiring comes from Secret {{ .Values.guard.existingSecret }} (api-base / api-key),
+written by scripts/litellm-dev-wire.mjs. Policy decisions are made by the Guard
+Endpoint that URL points at; this chart only carries the gateway.
+
+Call the guarded model alias:
+
+  curl -sS http://localhost:{{ .Values.service.port }}/v1/chat/completions \
+    -H "Authorization: Bearer {{ .Values.masterKey }}" -H "content-type: application/json" \
+    -d '{"model":"{{ .Values.model.name }}","messages":[{"role":"user","content":"Hello"}]}'
+
+LiteLLM UI: http://localhost:{{ .Values.service.port }}/ui ({{ .Values.ui.username }} / {{ .Values.ui.password }})
+Smoke test: npm run litellm:smoke

@@ -1,0 +1,97 @@
+{{- if include "tali-litellm-dev.mockEnabled" . }}
+{{- $name := include "tali-litellm-dev.mockModelName" . -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "tali-litellm-dev.commonLabels" . | nindent 4 }}
+    app.kubernetes.io/component: mock-model
+data:
+  mock_openai_model.py: |
+{{ .Files.Get "files/mock_openai_model.py" | indent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "tali-litellm-dev.commonLabels" . | nindent 4 }}
+    app.kubernetes.io/component: mock-model
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "tali-litellm-dev.selectorLabels" (dict "root" . "component" "mock-model") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "tali-litellm-dev.commonLabels" . | nindent 8 }}
+        app.kubernetes.io/component: mock-model
+      annotations:
+        checksum/script: {{ .Files.Get "files/mock_openai_model.py" | sha256sum }}
+    spec:
+      automountServiceAccountToken: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mock-model
+          # The Guard Runner image provides FastAPI and uvicorn on PATH.
+          image: "{{ .Values.model.mock.image.repository }}:{{ .Values.model.mock.image.tag }}"
+          imagePullPolicy: {{ .Values.model.mock.image.pullPolicy }}
+          command: ["python", "/opt/mock/mock_openai_model.py"]
+          env:
+            - name: MOCK_MODEL_PORT
+              value: {{ .Values.model.mock.port | quote }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.model.mock.port }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources: {{- toYaml .Values.model.mock.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: script
+              mountPath: /opt/mock
+              readOnly: true
+      volumes:
+        - name: script
+          configMap:
+            name: {{ $name }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "tali-litellm-dev.commonLabels" . | nindent 4 }}
+    app.kubernetes.io/component: mock-model
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "tali-litellm-dev.selectorLabels" (dict "root" . "component" "mock-model") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.model.mock.port }}
+      targetPort: http
+{{- end }}

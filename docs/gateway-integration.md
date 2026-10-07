@@ -79,6 +79,14 @@ curl -sS --fail-with-body -X POST "${TALI_GUARD_ENDPOINT%/}/beta/litellm_basic_g
 
 A non-2xx response, timeout, or invalid response at either check is not `NONE`: stop by default unless your explicitly configured fail-open behavior permits continuing without a valid check result.
 
+To see a complete LiteLLM integration locally, `npm run helm:deploy:dev-with-litellm` deploys Guard together with a test-only LiteLLM proxy that already carries the TaskLattice Guard provider; see [charts/tali-litellm-dev/README.md](../charts/tali-litellm-dev/README.md).
+
+The LiteLLM Provider is published separately by [tasklattice-litellm-guard](https://github.com/tasklattice/tasklattice-litellm-guard) as `ghcr.io/tasklattice/tali-litellm:<litellm>-guard.<n>`. Guard owns the runtime protocol; each image declares the output-stream protocol it speaks in the label `io.tasklattice.guard.output-stream-protocol`:
+
+| Guard output-stream protocol (`OUTPUT_STREAM_PROTOCOL_VERSION`) | Minimum Provider image |
+| --- | --- |
+| 1 | `tali-litellm:1.87.0-guard.1` |
+
 ## 2. Integration Flow
 
 ```mermaid

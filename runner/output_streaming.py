@@ -19,12 +19,16 @@ MAX_SECONDS = 300
 MAX_FRAMES = 100_000
 MAX_CHARACTERS = 1_000_000
 MAX_MESSAGE_CHARACTERS = 1_048_576
+# Version carried by start/ready frames. LiteLLM gateway images advertise the
+# version their Provider speaks as io.tasklattice.guard.output-stream-protocol;
+# scripts/verify_relay_stream_image.py refuses images that disagree.
+OUTPUT_STREAM_PROTOCOL_VERSION = 1
 
 
 class StreamStart(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     type: Literal["start"]
-    version: int = Field(ge=1, le=1)
+    version: int = Field(ge=OUTPUT_STREAM_PROTOCOL_VERSION, le=OUTPUT_STREAM_PROTOCOL_VERSION)
     stream_id: str = Field(min_length=1, max_length=256)
     call_id: str | None = Field(default=None, min_length=1, max_length=256)
     protocol: Literal["http", "a2a", "litellm"]
@@ -155,7 +159,7 @@ def register_output_stream(api) -> None:
                 async def ready(contract, resolution):
                     nonlocal effective_mode
                     effective_mode = contract.effective_mode
-                    await send({"type": "ready", "version": 1, "input_credits": INPUT_CREDITS,
+                    await send({"type": "ready", "version": OUTPUT_STREAM_PROTOCOL_VERSION, "input_credits": INPUT_CREDITS,
                         "mode": contract.effective_mode, "requested_mode": contract.requested_mode,
                         "effective_release_id": resolution.effective_release_id,
                         "model_revision_id": resolution.model_revision_id})
