@@ -1,4 +1,6 @@
 """Transformation results must be concrete, never fabricated fallback messages."""
+
+from tests.policy_snapshots import library_definitions
 from types import SimpleNamespace
 
 import pytest
@@ -44,7 +46,7 @@ def test_custom_rule_without_replacement_is_an_execution_error():
 
 def test_phrase_observation_preserves_text_and_evidence():
     import json
-    outcome = BuiltinContentFilter().evaluate(text="secret", phase="input", policies=["configured-phrase-filter"],
+    outcome = BuiltinContentFilter().evaluate(definitions=library_definitions(["configured-phrase-filter"]), text="secret", phase="input", policies=["configured-phrase-filter"],
         policy_parameters={"configured-phrase-filter": {"phrase_entries": json.dumps([
             {"id": "observe", "phrase": "secret", "action": "allow"}])}})
     assert outcome.verdict == "matched"

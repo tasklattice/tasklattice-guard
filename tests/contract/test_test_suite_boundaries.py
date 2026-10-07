@@ -15,7 +15,7 @@ def test_data_plane_tests_do_not_compile_or_validate_artifacts() -> None:
         if architectural_suite(path) != "data_plane":
             continue
         source = path.read_text(encoding="utf-8")
-        if "runner.compiler" in source or "DefaultRunnerCompiler" in source:
+        if "runner.compiler" in source or "DefaultRunnerCompiler" in source or "runner.toolkit.compiler.artifact" in source:
             violations.append(f"{path.relative_to(ROOT)} imports the compiler")
         if "runner.validator" in source or "DefaultRunnerValidator" in source:
             violations.append(f"{path.relative_to(ROOT)} imports the validator")

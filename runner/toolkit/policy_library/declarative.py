@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 import yaml
 
 from ..runtime.enforcement_action_generated import ENFORCEMENT_ACTIONS, EnforcementAction
-from .pattern_validation import parse_pattern_validators
+from ..policy_runtime.pattern_validation import parse_pattern_validators
 
 
 class StrictModel(BaseModel):
@@ -270,7 +270,7 @@ def validate_custom_detector(definition: PolicyDefinition, rule: RuleDefinition,
 
 
 def validate_detector_parameters(rule: RuleDefinition, detector: dict, params: dict) -> None:
-    from .conditions import validate_conditions, validate_terms
+    from ..policy_runtime.conditions import validate_conditions, validate_terms
     options = params.get("detector_options", {})
     if not isinstance(options, dict):
         raise ValueError("Detector options must be an object")

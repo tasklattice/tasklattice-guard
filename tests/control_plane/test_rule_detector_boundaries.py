@@ -1,11 +1,13 @@
+
+from tests.policy_snapshots import library_definitions
 from dataclasses import fields, replace
 import json
 
 import pytest
 
 from runner.toolkit.policy_library import policy
-from runner.toolkit.policy_library.detectors import DetectorInput, LocalDetector
-from runner.toolkit.policy_library.conditions import validate_conditions
+from runner.toolkit.policy_runtime.detectors import DetectorInput, LocalDetector
+from runner.toolkit.policy_runtime.conditions import validate_conditions
 from runner.toolkit.nemo.actions.content_filter import BuiltinContentFilter
 from runner.toolkit.runtime.enforcement_action_generated import ENFORCEMENT_ACTION_DISPLAY_ORDER
 
@@ -38,7 +40,7 @@ def test_phrase_entries_are_individual_rules_with_source_owned_risk_levels():
     spec=policy("configured-phrase-filter")
     entries=[{"id":"a","phrase":"secret","action":"transform","replacement":"public"},
              {"id":"b","phrase":"public","action":"block"}]
-    result=BuiltinContentFilter().evaluate(text="secret",phase="input",policies=[spec.id],
+    result=BuiltinContentFilter().evaluate(definitions=library_definitions([spec.id]), text="secret",phase="input",policies=[spec.id],
         policy_parameters={spec.id:{"phrase_entries":json.dumps(entries)}})
     assert [(f.rule_id,f.risk_severity,f.recommended_action) for f in result.findings]==[
         ("configured/phrases/a","low","transform"),("configured/phrases/b","low","block")]
@@ -59,7 +61,7 @@ def test_company_policy_reuses_the_topic_classifier_contract():
 
 
 def test_binding_parameters_cannot_override_rule_risk():
-    result=BuiltinContentFilter().evaluate(text="secret",phase="input",policies=["configured-phrase-filter"],
+    result=BuiltinContentFilter().evaluate(definitions=library_definitions(["configured-phrase-filter"]), text="secret",phase="input",policies=["configured-phrase-filter"],
         policy_parameters={"configured-phrase-filter":{"phrase_entries":json.dumps([
             {"id":"override","phrase":"secret","action":"block","risk_level":"informational"}])}})
     assert result.verdict == "error"
@@ -74,7 +76,8 @@ def test_normalization_preserves_literal_term_boundaries():
 
 def test_execution_intent_rule_respects_explicit_policy_configuration():
     engine=BuiltinContentFilter()
-    args=dict(text="Please run the tests",phase="input",policies=["block-code-execution"])
+    args=dict(text="Please run the tests",phase="input",policies=["block-code-execution"],
+              definitions=library_definitions(["block-code-execution"]))
     assert engine.evaluate(**args,parameters={"detect_execution_intent":"false"}).verdict == "not_matched"
     assert engine.evaluate(**args,parameters={"detect_execution_intent":"true"}).verdict == "matched"
 

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.policy_snapshots import library_definitions
+
 import json
 import base64
 from pathlib import Path
@@ -206,7 +208,7 @@ def test_inherited_rule_acceptance_is_independent_of_composition(default_baselin
     # unchanged. The separate full-chain test below exercises composition.
     engine = BuiltinContentFilter()
     for case in default_baseline["cases"]:
-        result = engine.evaluate(
+        result = engine.evaluate(definitions=library_definitions([case["policyId"]]),
             text=case["content"], phase=case["phase"], policies=[case["policyId"]],
             enabled_rules={case["policyId"]: case["coveredRuleIds"]} if case["coveredRuleIds"] else None,
         )
@@ -293,7 +295,7 @@ async def test_focused_default_replays_every_frozen_legacy_case(default_plan: di
             if case["expectedDecision"] == "transform" and expected_output is None:
                 # The unchanged legacy Rule, not the migrated composition, is
                 # the reference when the old case had no composition override.
-                isolated = source_engine.evaluate(text=source.content, phase=source.phase,
+                isolated = source_engine.evaluate(definitions=library_definitions([original.id]), text=source.content, phase=source.phase,
                     policies=[original.id], enabled_rules={original.id: source.covered_rule_ids})
                 assert isolated.verdict != "error" and isolated.findings
                 expected_output = isolated.content

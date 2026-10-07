@@ -1,3 +1,5 @@
+
+from tests.policy_snapshots import library_definitions
 from dataclasses import replace
 from typing import cast
 
@@ -47,7 +49,7 @@ def test_policy_library_rejects_unknown_guardrail_categories() -> None:
 
 
 def test_local_content_filter_executes_policy_rails_without_a_model() -> None:
-    result = BuiltinContentFilter().evaluate(
+    result = BuiltinContentFilter().evaluate(definitions=library_definitions(("keyword-blocking",)),
         text="The phrase internal-only is prohibited.",
         phase="input",
         policies=("keyword-blocking",),
@@ -75,7 +77,7 @@ def test_topic_parameter_defaults_do_not_break_unrelated_local_rules() -> None:
     credentials = policy("local-credentials")
     case = next(item for item in credentials.test_cases
                 if "credentials-api-keys/aws_access_key" in item.covered_rule_ids and item.phase == "input")
-    result = BuiltinContentFilter().evaluate(text=case.content, phase="input", policies=(credentials.id,))
+    result = BuiltinContentFilter().evaluate(definitions=library_definitions((credentials.id,)), text=case.content, phase="input", policies=(credentials.id,))
     assert result.verdict == "matched"
     assert any(item.policy_id == credentials.id and item.rule_id == "credentials-api-keys/aws_access_key"
                for item in result.findings)

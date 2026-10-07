@@ -22,6 +22,7 @@ from ..evaluation.contracts import (
     CONTRACT_AUTOMATED_REASONING,
 )
 from ..runtime.contracts import GuardrailPlanSnapshot, NeMoConfigSnapshot
+from ..policy_runtime.snapshots import definitions_from_parameters
 from .action_registry import (
     ACTION_CUSTOMER_IDENTIFIER,
     ACTION_EVALUATE,
@@ -607,6 +608,9 @@ class _RuntimeBuilder:
                 )
 
     def _validate_bindings(self, config: NeMoConfigSnapshot, plan: GuardrailPlanSnapshot | None = None) -> None:
+        for binding in config.action_bindings:
+            if binding.capability == "builtin_content_filter":
+                definitions_from_parameters(dict(binding.parameters))
         result_vars = tuple(
             binding.result_var
             for binding in config.action_bindings

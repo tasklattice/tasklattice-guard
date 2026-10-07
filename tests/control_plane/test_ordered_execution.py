@@ -151,17 +151,16 @@ def test_local_rules_use_current_text_and_stop_on_reject(monkeypatch):
     second = replace(rule, id="a-second", expression="alpha", context_expression=None, effect="block")
     third = replace(rule, id="m-third", expression="beta", context_expression=None, effect="transform", redaction="[B]")
     definition = replace(template, id="ordered-rules", rules=(first, second, third))
-    monkeypatch.setattr(content_filter, "policy", lambda name: definition)
     engine = content_filter.BuiltinContentFilter()
-    result = engine.evaluate(text="alpha beta", phase="input", policies=[definition.id])
+    result = engine.evaluate(definitions={definition.id: definition}, text="alpha beta", phase="input", policies=[definition.id])
     assert result.content == "[A] [B]"
     assert [f.rule_id for f in result.findings] == ["z-first", "m-third"]
     definition = replace(definition, rules=(second, first, third))
-    result = engine.evaluate(text="alpha beta", phase="input", policies=[definition.id])
+    result = engine.evaluate(definitions={definition.id: definition}, text="alpha beta", phase="input", policies=[definition.id])
     assert result.content == "alpha beta"
     assert [f.rule_id for f in result.findings] == ["a-second"]
     definition = replace(definition, rules=(replace(first, effect="transform"), second))
-    result = engine.evaluate(text="alpha beta", phase="input", policies=[definition.id])
+    result = engine.evaluate(definitions={definition.id: definition}, text="alpha beta", phase="input", policies=[definition.id])
     assert result.content == "[A] beta"
     assert [f.rule_id for f in result.findings] == ["z-first"]
 
@@ -174,9 +173,8 @@ def test_guardrail_rule_order_is_independent_of_enabled_membership_and_template(
         replace(base, id="block", expression="alpha", context_expression=None, effect="block"),
         replace(base, id="tail", expression="beta", context_expression=None, effect="transform", redaction="[B]"),
     ))
-    monkeypatch.setattr(content_filter, "policy", lambda name: definition)
     engine = content_filter.BuiltinContentFilter()
-    args = dict(text="alpha beta", phase="input", policies=[definition.id], enabled_rules={definition.id: ["block", "transform", "tail"]})
+    args = dict(definitions={definition.id: definition}, text="alpha beta", phase="input", policies=[definition.id], enabled_rules={definition.id: ["block", "transform", "tail"]})
     assert engine.evaluate(**args).content == "[A] [B]"
     result = engine.evaluate(**args, rule_order={definition.id: ["block"]})
     assert [f.rule_id for f in result.findings] == ["block"]

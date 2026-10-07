@@ -14,7 +14,7 @@ from runner.toolkit.nemo.actions import (
 )
 from runner.toolkit.nemo.evaluators.pii import PiiEvaluator
 from runner.toolkit.evaluation.contracts import CONTRACT_PII_EXACT
-from runner.toolkit.policy_library import policy as catalog_policy
+from runner.toolkit.policy_runtime.snapshots import definitions_from_parameters
 from runner.toolkit.nemo.registry import NeMoRuntimeRegistry
 from runner.toolkit.nemo.runtime import NeMoRuntime
 from runner.toolkit.runtime.content_views import content_view
@@ -303,7 +303,9 @@ def _ordered_preemption(
             defaults = [f"flow/{rail.rail_type}/{rail.flow_name}" for rail in version.rail_bindings
                         if rail.rail_type == phase]
         else:
-            definition = catalog_policy(binding.policy_id)
+            definition = next((definitions_from_parameters(dict(step.parameters)).get(binding.policy_id)
+                               for step in plan.steps if step.capability == "builtin_content_filter"
+                               and binding.policy_id in dict(step.parameters).get("policy_ids", "").splitlines()), None)
             defaults = [r.id for r in definition.rules if phase in r.rails] if definition and definition.version == binding.policy_version else []
         return list(dict.fromkeys([*binding.rule_order, *defaults]))
 

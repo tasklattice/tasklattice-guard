@@ -4,7 +4,7 @@ from ..runtime.enforcement_action_generated import ENFORCEMENT_ACTIONS
 
 from functools import lru_cache
 
-from .domain import PolicySpec
+from ..policy_runtime.domain import PolicySpec
 from .loader import load_builtin_policies
 from .protection import policy_protection
 from ..safety.taxonomy import taxonomy

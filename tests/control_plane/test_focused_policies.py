@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.policy_snapshots import library_definitions
+
 from dataclasses import replace
 from pathlib import Path
 import subprocess
@@ -41,7 +43,7 @@ def test_materialized_focused_policies_are_current() -> None:
 
 @pytest.mark.parametrize("policy,case", CASES, ids=[f"{p.id}:{c.id}" for p, c in CASES])
 def test_each_focused_policy_runs_its_own_input_and_output_acceptance_cases(policy, case) -> None:
-    result = BuiltinContentFilter().evaluate(text=case.content, phase=case.phase, policies=(policy.id,))
+    result = BuiltinContentFilter().evaluate(definitions=library_definitions((policy.id,)), text=case.content, phase=case.phase, policies=(policy.id,))
     assert result.verdict != "error", result.reason
     decision = "allow" if result.verdict == "not_matched" else "block" if any(f.recommended_action == "block" for f in result.findings) else "transform"
     assert decision == case.expected_decision, result.reason
@@ -122,7 +124,7 @@ def test_spaced_australian_identifiers_keep_the_complete_original_detectors() ->
     ("local-australian-tax-health-identifiers", "TFN: 123 456 789", "TFN: [au_tfn_REDACTED]"),
 ])
 def test_extended_formats_redact_the_entire_identifier(phase, policy_id, content, expected) -> None:
-    result = BuiltinContentFilter().evaluate(text=content, phase=phase, policies=(policy_id,))
+    result = BuiltinContentFilter().evaluate(definitions=library_definitions((policy_id,)), text=content, phase=phase, policies=(policy_id,))
     assert result.verdict == "matched"
     assert result.content == expected
 

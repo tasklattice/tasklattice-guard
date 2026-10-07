@@ -3,13 +3,12 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from functools import lru_cache
-from types import MappingProxyType
 from typing import Any, Iterable, Mapping
 
-from ...policy_library import PolicyRuleSpec, PolicySpec, policy
-from ...policy_library.detectors import DetectorInput, LocalDetector
-from ...policy_library.rule_expansion import expand_rule
+from ...policy_runtime.domain import PolicyRuleSpec, PolicySpec
+from ...policy_runtime.snapshots import definitions_from_parameters
+from ...policy_runtime.detectors import DetectorInput, LocalDetector
+from ...policy_runtime.rule_expansion import expand_rule
 from ...runtime.contracts import (
     EvaluatorVerdict,
     GuardrailPhase,
@@ -75,7 +74,7 @@ class BuiltinContentFilter:
 
         try:
             for name in policies:
-                definition = definitions.get(name) if definitions is not None else policy(name)
+                definition = (definitions or {}).get(name)
                 if definition is None:
                     return _ContentFilterResult(
                         verdict="error",
@@ -266,7 +265,7 @@ class BuiltinContentFilter:
 
 
 class ContentFilterActionProvider:
-    """Provide local Policy Library Rules as a versioned NeMo Action."""
+    """Execute the Artifact-owned local Rules through a versioned NeMo Action."""
 
     name = ACTION_CONTENT_FILTER
     version = "1.0.0"
@@ -296,13 +295,7 @@ class ContentFilterActionProvider:
             for key, value in decoded_actions.items()
             if isinstance(value, str)
         }
-        definitions = None
-        if "policy_definitions_json" in parameters:
-            definitions = _pinned_definitions(parameters["policy_definitions_json"])
-            versions = _json_mapping(parameters.get("policy_versions_json", "{}"))
-            selected = {item.strip() for item in parameters.get("policy_ids", "").splitlines() if item.strip()}
-            if selected != definitions.keys() or selected != versions.keys() or any(definitions[id].version != versions[id] for id in selected):
-                raise ValueError("Pinned Policy definitions do not match the selected Policy versions")
+        definitions = definitions_from_parameters(parameters)
         result = self._content_filter.evaluate(
             text=request.content,
             phase=request.rail_type,
@@ -336,24 +329,10 @@ class ContentFilterActionProvider:
         )
 
 
-@lru_cache(maxsize=128)
-def _pinned_definitions(value: str) -> Mapping[str, PolicySpec]:
-    from ...policy_library.loader import _policy
-    from ...policy_library.registry import PolicyLibraryRegistry
-    payload = _json_mapping(value)
-    definitions = {id: _policy(item) for id, item in payload.items()}
-    if any(id != definition.id for id, definition in definitions.items()):
-        raise ValueError("Pinned Policy key does not match its definition ID")
-    if any(rule.implementation.execution != "local" for definition in definitions.values() for rule in definition.rules):
-        raise ValueError("Pinned local Policy definitions cannot contain model-backed Rules")
-    PolicyLibraryRegistry(tuple(definitions.values()))
-    return MappingProxyType(definitions)
-
-
 def _taxonomy_ids(policy_id: str, rule_id: str, definitions: Mapping[str, PolicySpec] | None = None) -> tuple[str, ...]:
     # Guardrail-local phrase/regex Rules have no shared catalog entry. Their
     # category is the configured business boundary, not an inferred PII label.
-    definition = definitions.get(policy_id) if definitions is not None else policy(policy_id)
+    definition = (definitions or {}).get(policy_id)
     if definition is not None:
         rule = next((item for item in definition.rules if item.id == rule_id), None)
         if rule is not None and rule.taxonomy_ids:

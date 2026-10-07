@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.policy_snapshots import library_definitions
+
 import pytest
 
 from runner.toolkit.nemo.actions.content_filter import BuiltinContentFilter
@@ -47,7 +49,7 @@ def test_china_mainland_collection_is_versioned_and_locally_executable() -> None
     ids=[f"{item.id}:{case.id}" for item, case in CASES],
 )
 def test_china_mainland_policy_cases_execute_the_published_rules(policy, case) -> None:
-    result = BuiltinContentFilter().evaluate(
+    result = BuiltinContentFilter().evaluate(definitions=library_definitions((policy.id,)),
         text=case.content,
         phase=case.phase,
         policies=(policy.id,),
@@ -71,7 +73,7 @@ def test_china_mainland_policy_cases_execute_the_published_rules(policy, case) -
     ],
 )
 def test_checksum_validation_does_not_redact_format_only_candidates(content: str) -> None:
-    result = BuiltinContentFilter().evaluate(
+    result = BuiltinContentFilter().evaluate(definitions=library_definitions(("china-personal-identifiers", "china-organization-identifiers")),
         text=content,
         phase="input",
         policies=("china-personal-identifiers", "china-organization-identifiers"),

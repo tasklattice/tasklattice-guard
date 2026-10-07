@@ -1,17 +1,19 @@
+
+from tests.policy_snapshots import library_definitions
 from runner.toolkit.nemo.actions.content_filter import BuiltinContentFilter
 
 
 def test_pass_retains_local_and_custom_findings_without_changing_text() -> None:
     text = "You should report any failure honestly."
     engine = BuiltinContentFilter()
-    observed = engine.evaluate(text=text, phase="input", policies=("filter-denied-insults",),
+    observed = engine.evaluate(definitions=library_definitions(("filter-denied-insults",)), text=text, phase="input", policies=("filter-denied-insults",),
         policy_rule_actions={"filter-denied-insults": {"category/denied_insults": "allow"}})
     assert observed.verdict == "matched" and observed.content == text
     assert observed.findings[0].recommended_action == "allow"
     assert "failure + you" in observed.findings[0].evidence.lower()
     assert "without intervening" in observed.reason
     # The source Policy still rejects when no Default-local override is supplied.
-    assert engine.evaluate(text=text, phase="input", policies=("filter-denied-insults",)).findings[0].recommended_action == "block"
+    assert engine.evaluate(definitions=library_definitions(("filter-denied-insults",)), text=text, phase="input", policies=("filter-denied-insults",)).findings[0].recommended_action == "block"
     custom = engine.evaluate(text="private", phase="output", policies=(), custom_rules=(
         {"id": "observe", "phases": ["output"], "detector": "keyword", "keywords": ["private"], "action": "allow"},
     ))

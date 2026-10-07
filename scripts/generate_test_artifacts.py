@@ -21,8 +21,8 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from runner import generated as protocol
-from runner.compiler import DefaultRunnerCompiler
-from runner.toolkit.nemo.native_models import NativeRailModel
+from runner.toolkit.compiler.artifact import ArtifactCompiler
+from runner.toolkit.nemo.builtin_policies import prompt_catalog_yaml
 from runner.protocol_codec import (
     endpoint_verification_to_proto,
     plan_to_proto,
@@ -111,6 +111,10 @@ def _plan() -> dict[str, object]:
 
 
 def _ordered_plan() -> dict[str, object]:
+    from dataclasses import asdict
+    from runner.toolkit.policy_library import policy
+
+    definition = policy("pattern-matching")
     plan = _plan()
     plan["compiler_version"] = "tasklattice-controller-plan-v4-ordered"
     redactions = {
@@ -121,6 +125,8 @@ def _ordered_plan() -> dict[str, object]:
         "parameters": [
             ["policy_id", "pattern-matching"], ["policy_version", "1.95.0"],
             ["policy_ids", "pattern-matching"],
+            ["policy_versions_json", json.dumps({definition.id: definition.version})],
+            ["policy_definitions_json", json.dumps({definition.id: asdict(definition)}, ensure_ascii=False)],
             ["enabled_rules_json", json.dumps({"pattern-matching": ["pattern/email", "pattern/generic_api_key"]})],
             ["rule_actions_json", json.dumps({"pattern-matching": {"pattern/email": "transform", "pattern/generic_api_key": "transform"}})],
         ],
@@ -315,12 +321,8 @@ def generate(fixture_name: str = FIXTURE_NAME) -> FixtureFiles:
     if fixture_name in STREAM_SAFETY_FIXTURES:
         plan = _stream_safety_plan(STREAM_SAFETY_FIXTURES[fixture_name],
             ('input', 'output') if fixture_name == 'content-safety-inout-v1' else ('output',))
-    compiler = DefaultRunnerCompiler()
-    if fixture_name == TOPIC_FIXTURE_NAME:
-        compiler.configure_native_models((NativeRailModel(type='topic_control',
-            profile_ref='tali.nemoguard-topic-control.v1', runtime_id='topic-runtime',
-            model='mock/nemoguard-topic-control', base_url='http://mock.invalid/v1',
-            api_key='', timeout_seconds=5, max_tokens=16),))
+    compiler = ArtifactCompiler(builtin_prompts_yaml=prompt_catalog_yaml(),
+        model_types=("topic_control",) if fixture_name == TOPIC_FIXTURE_NAME else ())
     artifact = compiler.compile(protocol.CompileRequest(
         compile_id="fixture-compile-local-secrets-v1",
         guardrail_id="fixture-secrets",

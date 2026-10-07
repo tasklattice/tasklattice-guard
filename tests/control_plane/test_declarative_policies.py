@@ -235,7 +235,7 @@ async def test_imported_yaml_compiles_in_controller_and_executes_without_runtime
     def unavailable(_):
         raise AssertionError("Published Rules must come from the pinned plan, not the mutable catalog")
 
-    monkeypatch.setattr(content_filter, "policy", unavailable)
+    monkeypatch.setattr("runner.toolkit.policy_library.policy", unavailable)
     runtime = DraftPreviewRuntime(
         DefaultRunnerCompiler(),
         action_providers(content_filter.ContentFilterActionProvider()),

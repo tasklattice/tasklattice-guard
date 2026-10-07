@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .domain import PolicyTag
+from ..policy_runtime.domain import PolicyTag
 
 
 OWASP_LLM_2025_FRAMEWORK_ID = "owasp-llm-2025"

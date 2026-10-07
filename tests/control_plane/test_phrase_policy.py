@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.policy_snapshots import library_definitions
+
 import json
 
 import pytest
@@ -15,7 +17,7 @@ ENTRIES = [
 
 
 def evaluate(text, entries=ENTRIES, phase="input", **kwargs):
-    return BuiltinContentFilter().evaluate(text=text, phase=phase, policies=(POLICY,),
+    return BuiltinContentFilter().evaluate(definitions=library_definitions((POLICY,)), text=text, phase=phase, policies=(POLICY,),
         policy_parameters={POLICY: {"phrase_entries": json.dumps(entries)}}, **kwargs)
 
 

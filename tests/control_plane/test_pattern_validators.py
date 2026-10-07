@@ -9,7 +9,7 @@ from runner.toolkit.nemo.actions.content_filter import BuiltinContentFilter
 from runner.toolkit.policy_library.declarative import PolicyDefinition, compile_policy
 from runner.toolkit.policy_library.loader import _policy
 from runner.toolkit.policy_library.package import load_package
-from runner.toolkit.policy_library.pattern_validation import parse_pattern_validators, valid_pattern_candidate
+from runner.toolkit.policy_runtime.pattern_validation import parse_pattern_validators, valid_pattern_candidate
 from runner.toolkit.policy_library.regression import run_packages
 from scripts.policy_sources import ASSETS, registry
 

@@ -69,7 +69,7 @@ class RunnerControlClient:
         self._capability_tasks: set[asyncio.Task] = set()
         self._compiler = None
         if settings.compiler_capable:
-            self._compiler = compiler or DefaultRunnerCompiler(settings)
+            self._compiler = compiler or DefaultRunnerCompiler()
         self._providers = providers
         self._materialization_key: str | None = None
         self._provider_observer = provider_observer

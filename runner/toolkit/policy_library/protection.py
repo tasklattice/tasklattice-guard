@@ -5,7 +5,7 @@ import json
 from functools import lru_cache
 from pathlib import Path
 
-from .domain import PolicySpec
+from ..policy_runtime.domain import PolicySpec
 
 
 @lru_cache(maxsize=1)

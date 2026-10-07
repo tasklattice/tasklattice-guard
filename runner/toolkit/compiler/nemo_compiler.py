@@ -38,6 +38,7 @@ from ..runtime.contracts import (
     flow_rule_id,
 )
 from ..runtime.streaming import output_stream_contract
+from ..policy_runtime.snapshots import definitions_from_parameters
 from .domain import PolicyDraft, PlanCompilationError, RailBinding
 from .policy_sources import FLOW_ID_EVENTS, expand_policy_parameters, link_policy_source, literal_flow_target, parse_source_tree, symbol_name
 
@@ -96,6 +97,9 @@ class NeMoConfigCompiler:
 
     def compile(self, plan: GuardrailPlanSnapshot) -> NeMoConfigSnapshot:
         _validate_execution_order(plan)
+        for step in plan.steps:
+            if step.capability == "builtin_content_filter":
+                definitions_from_parameters(dict(step.parameters))
         selected = {(item.policy_id, item.policy_version): item for item in plan.policy_bindings}
         for version in plan.policy_versions:
             binding = selected.get((version.policy_id, version.version))

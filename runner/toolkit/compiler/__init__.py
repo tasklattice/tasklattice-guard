@@ -1,1 +1,1 @@
-"""Pure artifact contracts used by the Default Runner compiler."""
+"""Offline Artifact compilation and frozen plan contracts."""

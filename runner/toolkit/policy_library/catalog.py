@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 
-from .domain import PolicySpec
+from ..policy_runtime.domain import PolicySpec
 from .registry import policies, policy
 from .protection import policy_protection
 
