@@ -12,11 +12,8 @@ import {
 import type {
   Collection,
   DeleteConfirmation,
-  Router,
   RouterDeletionImpact,
   RouterRuntimeTrace,
-  TrafficScopeExpression,
-  TrafficScopeField,
 } from "@/lib/api-types";
 
 export { listTrafficRouters as getRouters, getTrafficRouter as getRouter } from './traffic-routing-api';

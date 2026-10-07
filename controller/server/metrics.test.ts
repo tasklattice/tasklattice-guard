@@ -216,16 +216,24 @@ describe("Controller metrics contract", () => {
         from: vi.fn(() => ({
           where: vi.fn().mockResolvedValue([
             {
-              id: "router-active", name: "Production API", guardrailId: "guardrail-1",
-              guardrailVersion: null, endpointId: "endpoint-active", poolId: "production", enabled: true,
+              id: "router-active", name: "Production API", activeRevision: 3,
+              activeSnapshot: { routes: [
+                { id: "r1", name: "Paused", kind: "normal", enabled: false, selector: { expression: { combinator: "and", conditions: [] } },
+                  targets: [{ id: "t0", guardrailId: "guardrail-2", guardrailVersion: "20260904-020000.002Z", weightBps: 10000 }] },
+                { id: "r2", name: "All", kind: "fallback", enabled: true, selector: { expression: { combinator: "and", conditions: [] } },
+                  targets: [
+                    { id: "t1", guardrailId: "guardrail-1", guardrailVersion: "20260904-030000.003Z", weightBps: 10000 },
+                    { id: "t2", guardrailId: "guardrail-2", guardrailVersion: "20260904-020000.002Z", weightBps: 0 },
+                  ] },
+              ] },
             },
+            { id: "router-unpublished", name: "Unpublished API", activeRevision: null, activeSnapshot: null },
             {
-              id: "router-disabled", name: "Disabled API", guardrailId: "guardrail-1",
-              guardrailVersion: "20260904-020000.002Z", endpointId: "endpoint-active", poolId: "production", enabled: false,
-            },
-            {
-              id: "router-inactive", name: "Draft API", guardrailId: "guardrail-2",
-              guardrailVersion: null, endpointId: "endpoint-disabled", poolId: "production", enabled: true,
+              id: "router-inactive", name: "Draft API", activeRevision: 1,
+              activeSnapshot: { routes: [
+                { id: "r3", name: "All", kind: "fallback", enabled: true, selector: { expression: { combinator: "and", conditions: [] } },
+                  targets: [{ id: "t3", guardrailId: "guardrail-2", guardrailVersion: "20260904-020000.002Z", weightBps: 10000 }] },
+              ] },
             },
           ]),
         })),
@@ -234,19 +242,19 @@ describe("Controller metrics contract", () => {
         from: vi.fn().mockResolvedValue([
           {
             id: "endpoint-active", name: "Agent Gateway", adapter: "generic-http-guard",
-            status: "active", deletedAt: null,
+            status: "active", deletedAt: null, trafficRouterId: "router-active",
           },
           {
             id: "endpoint-disabled", name: "Disabled Gateway", adapter: "generic-http-guard",
-            status: "disabled", deletedAt: null,
+            status: "disabled", deletedAt: null, trafficRouterId: "router-inactive",
           },
           {
             id: "endpoint-zero-traffic", name: "New Gateway", adapter: "openai-compatible",
-            status: "active", deletedAt: null,
+            status: "active", deletedAt: null, trafficRouterId: null,
           },
           {
             id: "endpoint-deleted", name: "Deleted Gateway", adapter: "generic-http-guard",
-            status: "disabled", deletedAt: new Date(),
+            status: "disabled", deletedAt: new Date(), trafficRouterId: "router-active",
           },
         ]),
       }));
@@ -272,31 +280,28 @@ describe("Controller metrics contract", () => {
         adapter: "openai-compatible", status: "active",
       },
     ]);
+    // Disabled routes and zero-weight targets never become topology; deleted
+    // Endpoints never become bindings; unpublished Routers have no topology.
     expect(snapshot.endpointBindings).toEqual([
       {
         guardrailId: "guardrail-1", endpointId: "endpoint-active",
-        endpointName: "Agent Gateway", poolId: "production", status: "active",
+        endpointName: "Agent Gateway", poolId: "default", status: "active",
       },
       {
         guardrailId: "guardrail-2", endpointId: "endpoint-disabled",
-        endpointName: "Disabled Gateway", poolId: "production", status: "inactive",
+        endpointName: "Disabled Gateway", poolId: "default", status: "inactive",
       },
     ]);
     expect(snapshot.routers).toEqual([
       {
         guardrailId: "guardrail-1", guardrailVersion: "20260904-030000.003Z",
         routerId: "router-active", routerName: "Production API",
-        poolId: "production", status: "active",
+        poolId: "default", status: "active",
       },
       {
-        guardrailId: "guardrail-1", guardrailVersion: "20260904-020000.002Z",
-        routerId: "router-disabled", routerName: "Disabled API",
-        poolId: "production", status: "disabled",
-      },
-      {
-        guardrailId: "guardrail-2", guardrailVersion: null,
+        guardrailId: "guardrail-2", guardrailVersion: "20260904-020000.002Z",
         routerId: "router-inactive", routerName: "Draft API",
-        poolId: "production", status: "inactive",
+        poolId: "default", status: "inactive",
       },
     ]);
   });

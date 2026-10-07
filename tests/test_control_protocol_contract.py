@@ -49,7 +49,6 @@ SEMANTIC_FIELD_NAMES = {
     "required",
     "required_for_release",
     "revoked_at",
-    "route_order",
     "runtime_profile",
     "sequence",
     "sha256",

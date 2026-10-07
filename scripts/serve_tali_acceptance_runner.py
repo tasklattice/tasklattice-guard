@@ -31,7 +31,6 @@ store.attach_registry(registry)
 desired=protocol.DesiredState.FromString(base64.b64decode((fixture/'desired-state.pb.b64').read_text()))
 desired.model_configuration.CopyFrom(config)
 endpoint=desired.endpoints.add();endpoint.CopyFrom(desired.endpoints[0]);endpoint.endpoint_id='quality-endpoint';endpoint.adapter='generic-http-guard'
-route=desired.routers.add();route.CopyFrom(desired.routers[0]);route.endpoint_id='quality-endpoint';route.router_id='quality-router'
 store.apply(desired)
 engine=NeMoRuntime(registry)
 class Telemetry:

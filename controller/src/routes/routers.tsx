@@ -64,9 +64,5 @@ export function RouterStatus({ router, revisionLabel }: { router: TrafficRouter;
 
 export function TrafficScopeBadges({ router }: { router: TrafficRouter }) {
   const { t: localize } = useTranslation();
-  const legacy = router as TrafficRouter & { traffic_scope?: { conditions?: unknown[] }; is_default?: boolean };
-  if (!router.activeSnapshot && legacy.traffic_scope) {
-    return <div className="flex flex-wrap gap-2 text-xs"><span className="rounded border px-2 py-1">{legacy.is_default ? 'routers.unmatchedTraffic' : localize("routing.allTraffic")}</span></div>;
-  }
   return <div className="flex flex-wrap gap-2 text-xs">{router.activeSnapshot?.routes.map(route => <span key={route.id} className="rounded border px-2 py-1">{route.name} · {route.kind === 'fallback' ? localize("routing.fallback") : route.enabled ? localize("routing.enabled") : localize("routing.disabled")} · {route.targets.map(target => `${target.guardrailId} ${target.guardrailVersion} ${target.weightBps / 100}%`).join(' / ')}</span>)}</div>;
 }

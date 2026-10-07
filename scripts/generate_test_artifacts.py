@@ -338,17 +338,6 @@ def generate(fixture_name: str = FIXTURE_NAME) -> FixtureFiles:
     desired_state = protocol.DesiredState(
         generation=1,
         artifacts=[artifact],
-        routers=[protocol.RouterRoute(
-            router_id="fixture-router",
-            guardrail_id="fixture-secrets",
-            artifact_id=artifact.artifact_id,
-            endpoint_id="fixture-endpoint",
-            route_order=1,
-            traffic_scope=traffic_scope_to_proto({
-                "combinator": "and",
-                "conditions": [],
-            }),
-        )],
         router_revisions=[protocol.RouterRevision(
             router_id="fixture-router",
             revision=1,

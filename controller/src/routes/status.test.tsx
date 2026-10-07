@@ -116,7 +116,6 @@ const readyStatus: SystemStatus = {
     basicProtection: {
       status: "ready",
       guardrailStatus: "active",
-      routerStatus: "active",
       activeVersion: "20260904-093000.000Z",
       modelIndependent: true,
       coverage: { policyCount: 3, inputChecks: 3, outputChecks: 2, requiredModelBindings: [], hasUnknownDependencies: false },
@@ -204,7 +203,6 @@ describe("HealthPage", () => {
           ...readyStatus.components.basicProtection,
           status: "initializing",
           guardrailStatus: "initializing",
-          routerStatus: "initializing",
           activeVersion: null,
         },
         runnerFleet: {

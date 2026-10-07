@@ -394,29 +394,6 @@ export const endpoints = pgTable("endpoint", {
   updatedAt,
 }, (table) => [index("endpoint_status_idx").on(table.status)]);
 
-export const routers = pgTable("guardrail_router", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull(),
-  guardrailId: text("guardrail_id").notNull().references(() => guardrails.id),
-  endpointId: text("endpoint_id").references(() => endpoints.id),
-  poolId: text("pool_id").notNull().references(() => runnerPools.id),
-  guardrailVersion: text("guardrail_version"),
-  routeOrder: integer("route_order").notNull().default(0),
-  enabled: boolean("enabled").notNull().default(true),
-  trafficScope: jsonb("traffic_scope").$type<Record<string, unknown>>().notNull().default({}),
-  deletedAt: timestamp("deleted_at", { withTimezone: true }),
-  deletedBy: text("deleted_by").references(() => user.id),
-  deleteReason: text("delete_reason"),
-  createdAt,
-  updatedAt,
-}, (table) => [
-  index("router_guardrail_idx").on(table.guardrailId),
-  index("router_endpoint_idx").on(table.endpointId),
-  uniqueIndex("router_endpoint_route_order_idx").on(table.endpointId, table.routeOrder)
-    .where(sql`${table.deletedAt} is null`),
-  index("router_pool_idx").on(table.poolId),
-]);
-
 export type RunnerLoad = {
   inflight: number;
   maxConcurrency: number;
@@ -521,7 +498,6 @@ export const schema = {
   validationRuns,
   artifacts,
   endpoints,
-  routers,
   runnerInstances,
   runtimeEvents,
   telemetryWatermarks,

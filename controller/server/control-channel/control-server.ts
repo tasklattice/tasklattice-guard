@@ -412,7 +412,6 @@ export class RunnerControlServer {
       // the database adapter. Keep the wire projection typed at this boundary.
       const desired = desiredUnknown as Awaited<ReturnType<ControlPlaneService["desiredStateForPool"]>> & {
         routerRevisions?: Array<any>;
-        routers: Array<any>;
         endpoints: Array<any>;
       };
       if (connection.lastReconcileGeneration === desired.generation) {
@@ -456,14 +455,6 @@ export class RunnerControlServer {
               weightBps: target.weightBps,
             })),
           })),
-        })),
-        routers: desired.routers.map((router) => ({
-          routerId: router.routerId,
-          guardrailId: router.guardrailId,
-          artifactId: router.artifactId,
-          endpointId: router.endpointId ?? "",
-          routeOrder: router.routeOrder,
-          trafficScope: trafficScopeToWire(router.trafficScope),
         })),
         endpoints: desired.endpoints.map((endpoint) => ({
           endpointId: endpoint.endpointId,

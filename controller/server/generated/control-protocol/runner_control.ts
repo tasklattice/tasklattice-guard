@@ -42,7 +42,6 @@ import type { ProviderEvidence as _tasklattice_guard_control_v1_ProviderEvidence
 import type { RegistrationAccepted as _tasklattice_guard_control_v1_RegistrationAccepted, RegistrationAccepted__Output as _tasklattice_guard_control_v1_RegistrationAccepted__Output } from './tasklattice/guard/control/v1/RegistrationAccepted.js';
 import type { RiskFinding as _tasklattice_guard_control_v1_RiskFinding, RiskFinding__Output as _tasklattice_guard_control_v1_RiskFinding__Output } from './tasklattice/guard/control/v1/RiskFinding.js';
 import type { RouterRevision as _tasklattice_guard_control_v1_RouterRevision, RouterRevision__Output as _tasklattice_guard_control_v1_RouterRevision__Output } from './tasklattice/guard/control/v1/RouterRevision.js';
-import type { RouterRoute as _tasklattice_guard_control_v1_RouterRoute, RouterRoute__Output as _tasklattice_guard_control_v1_RouterRoute__Output } from './tasklattice/guard/control/v1/RouterRoute.js';
 import type { RunnerControlClient as _tasklattice_guard_control_v1_RunnerControlClient, RunnerControlDefinition as _tasklattice_guard_control_v1_RunnerControlDefinition } from './tasklattice/guard/control/v1/RunnerControl.js';
 import type { RunnerHeartbeat as _tasklattice_guard_control_v1_RunnerHeartbeat, RunnerHeartbeat__Output as _tasklattice_guard_control_v1_RunnerHeartbeat__Output } from './tasklattice/guard/control/v1/RunnerHeartbeat.js';
 import type { RunnerLoad as _tasklattice_guard_control_v1_RunnerLoad, RunnerLoad__Output as _tasklattice_guard_control_v1_RunnerLoad__Output } from './tasklattice/guard/control/v1/RunnerLoad.js';
@@ -125,7 +124,6 @@ export interface ProtoGrpcType {
           RiskFinding: MessageTypeDefinition<_tasklattice_guard_control_v1_RiskFinding, _tasklattice_guard_control_v1_RiskFinding__Output>
           RouteDecision: EnumTypeDefinition
           RouterRevision: MessageTypeDefinition<_tasklattice_guard_control_v1_RouterRevision, _tasklattice_guard_control_v1_RouterRevision__Output>
-          RouterRoute: MessageTypeDefinition<_tasklattice_guard_control_v1_RouterRoute, _tasklattice_guard_control_v1_RouterRoute__Output>
           /**
            * RunnerControl is the only state-distribution channel between the control
            * plane and data plane. Every business payload is a typed imported message;

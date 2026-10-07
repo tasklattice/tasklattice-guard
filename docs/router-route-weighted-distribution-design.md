@@ -146,7 +146,7 @@ Changing percentages does not change the selector. Changing the selector does no
 
 #### 5.5.2 Fields and Sources
 
-The composed routing model uses [the shared selector catalog](../controller/shared/traffic-routing.ts), [the selector editor](../controller/src/components/traffic-routing/selector-editor.tsx), and [Runner matching](../runner/routing.py). The older Traffic Scope catalog is not the authoritative field list for this model.
+The composed routing model uses [the shared selector catalog](../controller/shared/traffic-routing.ts), [the selector editor](../controller/src/components/traffic-routing/selector-editor.tsx), and [Runner matching](../runner/routing.py). The earlier per-Endpoint Traffic Scope catalog and `guardrail_router` table have been removed; Endpoints reach Guardrails only through their bound Router revision.
 
 | Field group | Current examples | Source and boundary |
 | --- | --- | --- |

@@ -129,7 +129,6 @@ async def test_unrouted_artifact_is_loaded_once_on_demand_off_the_loop(serving, 
     _, store, registry = serving
     state = _desired_state()
     state.generation += 1
-    state.ClearField("routers")
     state.ClearField("router_revisions")
     # A changed provider set forces a new runtime if this version is ever used.
     await prepare(store.apply, state, providers=action_providers(*local_action_providers()))
@@ -185,7 +184,6 @@ async def test_late_on_demand_load_in_old_release_is_closed_on_expiration(servin
     _, store, registry = serving
     state = _desired_state()
     state.generation = 2
-    state.ClearField("routers")
     state.ClearField("router_revisions")
     await prepare(store.apply, state, providers=action_providers(*local_action_providers()))
     artifact = state.artifacts[0]

@@ -13,7 +13,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('bounded runtime observability (
   const db = drizzle(pool);
   const service = Object.assign(Object.create(ControlPlaneService.prototype), { db, runtimeLogEncryptionKey: null }) as ControlPlaneService;
   beforeAll(async () => {
-    for (const name of ['runtime_event','guardrail','guardrail_router','endpoint','guardrail_validation_run','route_assignment']) {
+    for (const name of ['runtime_event','guardrail','traffic_router','endpoint','guardrail_validation_run','route_assignment']) {
       await db.execute(sql.raw(`CREATE TEMP TABLE ${name} (LIKE public.${name} INCLUDING DEFAULTS)`));
     }
     await db.execute(sql`INSERT INTO runtime_event(id,occurred_at,request_id,runner_id,guardrail_id,router_id,direction,decision,duration_ms,metadata)

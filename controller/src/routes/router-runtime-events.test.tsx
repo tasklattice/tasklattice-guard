@@ -1,7 +1,8 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { Router, RouterRuntimeTrace } from "@/lib/api";
+import type { RouterRuntimeTrace } from "@/lib/api";
+import type { TrafficRouter } from "@/lib/traffic-routing-api";
 import { DeleteRouterSheet, RouterRuntimeEventTable } from "./router-detail";
 
 vi.mock("react-i18next", () => ({
@@ -51,16 +52,17 @@ describe("Router protected delete", () => {
     const router = {
       id: "router-1",
       name: "Regional traffic",
-      guardrail_id: "guardrail-1",
-      guardrail_version: "20260904-010000.001Z",
-      endpoint_id: "endpoint-1",
-      route_order: 0,
-      traffic_scope: { combinator: "and", conditions: [] },
-      enabled: true,
-      is_default: false,
-      system_managed: false,
-      updated_at: "2026-08-24T08:00:00.000Z",
-    } satisfies Router;
+      description: "",
+      draftRevision: 1,
+      draft: { routes: [] },
+      activeRevision: 1,
+      activeDraftRevision: 1,
+      activeSnapshot: null,
+      desiredGeneration: 1,
+      rolloutStatus: "active",
+      endpointIds: ["endpoint-1"],
+      updatedAt: "2026-08-24T08:00:00.000Z",
+    } satisfies TrafficRouter;
     const onConfirm = vi.fn();
     render(<DeleteRouterSheet
       router={router}

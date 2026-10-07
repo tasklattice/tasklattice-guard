@@ -48,27 +48,16 @@ def test_runner_verifies_and_restores_complete_last_known_good(tmp_path):
     artifact.artifact_id = "artifact-1"
     artifact.signature = _signature(private_key, artifact.checksum)
     credential = "tg_runtime_secret"
+    routes = [
+        ("production", "normal", {
+            "combinator": "and",
+            "conditions": [{"field": "target.environment", "operator": "equals", "value": "production"}],
+        }),
+        ("fallback", "fallback", {"combinator": "and", "conditions": []}),
+    ]
     desired = protocol.DesiredState(
         generation=7,
         artifacts=[artifact],
-        routers=[protocol.RouterRoute(
-            router_id="fallback",
-            guardrail_id="guardrail-1",
-            artifact_id="artifact-1",
-            endpoint_id="endpoint-1",
-            route_order=2,
-            traffic_scope=traffic_scope_to_proto({"combinator": "and", "conditions": []}),
-        ), protocol.RouterRoute(
-            router_id="production",
-            guardrail_id="guardrail-1",
-            artifact_id="artifact-1",
-            endpoint_id="endpoint-1",
-            route_order=1,
-            traffic_scope=traffic_scope_to_proto({
-                "combinator": "and",
-                "conditions": [{"field": "target.environment", "operator": "equals", "value": "production"}],
-            }),
-        )],
         endpoints=[protocol.EndpointRuntime(
             endpoint_id="endpoint-1",
             adapter="http",
@@ -85,13 +74,13 @@ def test_runner_verifies_and_restores_complete_last_known_good(tmp_path):
     desired.router_revisions.append(protocol.RouterRevision(
         router_id="composed", revision=1, assignment_algorithm="hmac-sha256-v1",
         assignment_key_id="v1", assignment_key=b"k" * 32,
-        routes=[protocol.ComposedRoute(route_id=old.router_id, name=old.router_id,
-            kind="normal" if old.router_id == "production" else "fallback", enabled=True,
-            all_endpoints=True, traffic_scope=old.traffic_scope,
-            targets=[protocol.WeightedTarget(target_id=old.router_id + "-target",
+        routes=[protocol.ComposedRoute(route_id=route_id, name=route_id,
+            kind=kind, enabled=True,
+            all_endpoints=True, traffic_scope=traffic_scope_to_proto(scope),
+            targets=[protocol.WeightedTarget(target_id=route_id + "-target",
                 guardrail_id=artifact.guardrail_id, guardrail_version=artifact.guardrail_version,
                 artifact_id=artifact.artifact_id, weight_bps=10000)])
-            for old in reversed(desired.routers)]))
+            for route_id, kind, scope in routes]))
 
     first = ArtifactStore(public_path, tmp_path / "state")
     first_registry = Registry()

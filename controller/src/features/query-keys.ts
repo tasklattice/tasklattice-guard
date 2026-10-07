@@ -24,7 +24,6 @@ export const queryKeys = {
   router: (id: string) => ["resources", "routers", id] as const,
   routerDeletionImpact: (id: string) => ["resources", "routers", id, "deletion-impact"] as const,
   routerTraces: (id: string, limit: number) => ["resources", "routers", id, "traces", { limit }] as const,
-  trafficScopeFields: ["resources", "traffic-scope-fields"] as const,
   endpoints: ["resources", "endpoints"] as const,
   endpoint: (id: string) => ["resources", "endpoints", id] as const,
   endpointDeletionImpact: (id: string) => ["resources", "endpoints", id, "deletion-impact"] as const,

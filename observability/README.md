@@ -136,6 +136,8 @@ They come from:
 - `guard_controller_guardrail_endpoint_info`
 - `guard_controller_runner_info`
 
+`guard_controller_guardrail_endpoint_info` is derived from each Endpoint's bound
+Router and the Guardrail targets pinned in that Router's published revision.
 This is intentionally independent of traffic counters, so a zero-traffic legal
 GuardRail, Endpoint, or Runner remains selectable. Percentile selection is
 not a dashboard-wide filter: P90, P95, and P99 live together in the Latency

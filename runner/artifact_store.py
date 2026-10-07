@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import fnmatch
 import hashlib
 import hmac
 import importlib.metadata
@@ -49,16 +48,6 @@ class RuntimeArtifact:
     config: NeMoConfigSnapshot
 
 
-@dataclass(frozen=True, slots=True)
-class RouterRoute:
-    router_id: str
-    guardrail_id: str
-    artifact_id: str
-    endpoint_id: str | None
-    route_order: int
-    traffic_scope: dict[str, Any]
-
-
 class ArtifactStore:
     """Atomic, last-known-good desired-state store owned only by the Runner."""
 
@@ -77,7 +66,6 @@ class ArtifactStore:
         self._release_id: str | None = None
         self._model_revision_id: str | None = None
         self._artifacts: dict[str, RuntimeArtifact] = {}
-        self._routes: tuple[RouterRoute, ...] = ()
         self._router_revisions: dict[str, Any] = {}
         self._endpoints: dict[str, dict[str, Any]] = {}
         self._logging_levels: dict[str, str] = {}
@@ -104,9 +92,10 @@ class ArtifactStore:
             return self._generation
 
     def observability_counts(self) -> tuple[int, int, int]:
-        """Return loaded artifact, router-route, and Endpoint counts."""
+        """Return loaded artifact, composed Route, and Endpoint counts."""
         with self._lock:
-            return len(self._artifacts), len(self._routes), len(self._endpoints)
+            routes = sum(len(router.routes) for router in self._router_revisions.values())
+            return len(self._artifacts), routes, len(self._endpoints)
 
     def plan(self, guardrail_id: str, version: str) -> GuardrailPlanSnapshot:
         with self._lock:
@@ -128,9 +117,8 @@ class ArtifactStore:
 
     def active_plan_keys(self) -> tuple[tuple[str, str], ...]:
         with self._lock:
-            active_artifact_ids = {route.artifact_id for route in self._routes}
-            active_artifact_ids.update(t.artifact_id for r in self._router_revisions.values()
-                                       for route in r.routes if route.enabled for t in route.targets if t.weight_bps > 0)
+            active_artifact_ids = {t.artifact_id for r in self._router_revisions.values()
+                                   for route in r.routes if route.enabled for t in route.targets if t.weight_bps > 0}
             return tuple(
                 (artifact.plan.guardrail_id, artifact.plan.guardrail_version)
                 for artifact_id, artifact in self._artifacts.items()
@@ -173,55 +161,19 @@ class ArtifactStore:
 
     def resolve(self, context: RequestContext) -> PlanResolution:
         with self._lock:
+            # An Endpoint reaches Guardrails only through its bound Router
+            # revision; an unbound or unknown Endpoint never inherits one.
             endpoint = self._endpoints.get(context.endpoint_id, {})
-            router_id = endpoint.get("_router_id")
-            if self._router_revisions or router_id:
-                router = self._router_revisions.get(router_id)
-                if router is None:
-                    raise RoutingError("endpoint_router_unavailable")
-                target, assignment = select(router, context)
-                artifact = self._artifacts.get(target.artifact_id)
-                if artifact is None:
-                    raise RoutingError("target_unavailable", assignment)
-                return PlanResolution(plan=artifact.plan, router_id=router.router_id,
-                    endpoint_id=context.endpoint_id, effective_release_id=self._release_id,
-                    model_revision_id=self._model_revision_id, route_assignment=assignment)
-            # Legacy snapshots are only accessible to internal/test callers;
-            # an unbound authenticated Endpoint never inherits a global Router.
-            if context.endpoint_id in self._endpoints:
+            router = self._router_revisions.get(endpoint.get("_router_id"))
+            if router is None:
                 raise RoutingError("endpoint_router_unavailable")
-            candidates = tuple(
-                route
-                for route in self._routes
-                if route.endpoint_id == context.endpoint_id
-                and _scope_matches(route.traffic_scope, context)
-            ) or tuple(route for route in self._routes if route.endpoint_id is None)
-            candidates = tuple(route for route in candidates if _scope_matches(route.traffic_scope, context))
-            if not candidates:
-                raise LookupError("No active Runner router matches this request.")
-            route = min(candidates, key=lambda item: (
-                -_scope_specificity(item.traffic_scope)[0],
-                -_scope_specificity(item.traffic_scope)[1],
-                item.route_order,
-                item.router_id,
-            ))
-            artifact = self._artifacts[route.artifact_id]
-            return PlanResolution(
-                plan=artifact.plan,
-                effective_release_id=self._release_id,
-                model_revision_id=self._model_revision_id,
-                router_id=route.router_id,
-                endpoint_id=route.endpoint_id,
-                trace=(RuntimeTraceStep(
-                    id=f"router:{route.router_id}",
-                    kind="router",
-                    name=route.router_id,
-                    status="selected",
-                    detail=f"Runner selected immutable Artifact {route.artifact_id}.",
-                    guardrail_id=artifact.plan.guardrail_id,
-                    guardrail_version=artifact.plan.guardrail_version,
-                ),),
-            )
+            target, assignment = select(router, context)
+            artifact = self._artifacts.get(target.artifact_id)
+            if artifact is None:
+                raise RoutingError("target_unavailable", assignment)
+            return PlanResolution(plan=artifact.plan, router_id=router.router_id,
+                endpoint_id=context.endpoint_id, effective_release_id=self._release_id,
+                model_revision_id=self._model_revision_id, route_assignment=assignment)
 
     def resolve_guardrail(self, guardrail_id: str, version: str) -> PlanResolution:
         """Resolve an explicit immutable version for Controller-owned tools such as Playground."""
@@ -237,11 +189,7 @@ class ArtifactStore:
             )
             if artifact is None:
                 raise LookupError(f"Guardrail {guardrail_id}@{version} is not available on this Runner.")
-            route = next(
-                (item for item in self._routes if item.artifact_id == artifact.artifact_id),
-                None,
-            )
-            router_id = route.router_id if route else f"playground:{guardrail_id}:{version}"
+            router_id = f"playground:{guardrail_id}:{version}"
             return PlanResolution(
                 plan=artifact.plan,
                 effective_release_id=self._release_id,
@@ -340,17 +288,6 @@ class ArtifactStore:
                     if previous_digests.get(message.artifact_id) == digest
                     else self._artifact_from_message(message))
                 digests[message.artifact_id] = digest
-        routes = tuple(
-            RouterRoute(
-                router_id=item.router_id,
-                guardrail_id=item.guardrail_id,
-                artifact_id=item.artifact_id,
-                endpoint_id=item.endpoint_id or None,
-                route_order=item.route_order,
-                traffic_scope=traffic_scope_from_proto(item.traffic_scope),
-            )
-            for item in desired_state.routers
-        )
         router_revisions = {}
         for item in desired_state.router_revisions:
             if item.router_id in router_revisions: raise ValueError("Duplicate Router ID.")
@@ -358,9 +295,6 @@ class ArtifactStore:
             snapshot = protocol.RouterRevision()
             snapshot.CopyFrom(item)
             router_revisions[item.router_id] = snapshot
-        missing = {route.artifact_id for route in routes} - set(staged)
-        if missing:
-            raise ValueError("Desired state references unavailable Artifacts: " + ", ".join(sorted(missing)))
         endpoints: dict[str, dict[str, Any]] = {}
         for item in desired_state.endpoints:
             verification = endpoint_verification_from_proto(item.verification)
@@ -368,10 +302,9 @@ class ArtifactStore:
         registry = self._registry
         if registry is None:
             raise RuntimeError("NeMo Runtime Registry is not attached.")
-        active_ids = {route.artifact_id for route in routes}
-        active_ids.update(target.artifact_id for router in router_revisions.values()
-                          for route in router.routes if route.enabled
-                          for target in route.targets if target.weight_bps > 0)
+        active_ids = {target.artifact_id for router in router_revisions.values()
+                      for route in router.routes if route.enabled
+                      for target in route.targets if target.weight_bps > 0}
         active = frozenset((staged[key].plan.guardrail_id, staged[key].plan.guardrail_version) for key in active_ids)
         candidates = tuple((artifact.plan, artifact.config) for artifact in staged.values())
         prepared = registry.prepare_release(candidates, active, providers=providers, native_models=native_models)
@@ -386,7 +319,6 @@ class ArtifactStore:
             with self._lock:
                 self._artifacts = staged
                 self._artifact_digests = digests
-                self._routes = routes
                 self._router_revisions = router_revisions
                 self._endpoints = endpoints
                 self._logging_levels = dict(desired_state.guardrail_logging_levels)
@@ -482,65 +414,3 @@ def _base64(value: str) -> bytes:
 def _encode_base64(value: bytes) -> str:
     import base64
     return base64.b64encode(value).decode("ascii")
-
-
-def _scope_matches(scope: dict[str, Any], context: RequestContext) -> bool:
-    conditions = scope.get("conditions", ())
-    if not conditions:
-        return True
-    values = [
-        _scope_matches(item, context) if isinstance(item, dict) and "conditions" in item
-        else _condition_matches(item, context)
-        for item in conditions
-    ]
-    return all(values) if scope.get("combinator", "and") == "and" else any(values)
-
-
-def _condition_matches(condition: Any, context: RequestContext) -> bool:
-    if not isinstance(condition, dict):
-        return False
-    field = str(condition.get("field", ""))
-    key = str(condition.get("key", ""))
-    if field == "protocol":
-        actual = context.protocol
-    elif field == "endpoint.id":
-        actual = context.endpoint_id
-    elif field == "http.header":
-        actual = context.value("header", key)
-    elif field == "auth.jwt_claim":
-        actual = context.value("jwt_claim", key)
-    elif field == "adapter.field":
-        actual = context.value("field", key)
-    else:
-        actual = context.value("field", field)
-    if actual is None:
-        return False
-    expected = str(condition.get("value", ""))
-    operator = condition.get("operator", "equals")
-    if operator == "equals":
-        return actual == expected
-    if operator == "contains":
-        return expected in actual
-    if operator == "starts_with":
-        return actual.startswith(expected)
-    if operator == "glob":
-        return fnmatch.fnmatchcase(actual, expected)
-    return False
-
-
-def _scope_specificity(scope: dict[str, Any]) -> tuple[int, int]:
-    weights = {"equals": 4, "starts_with": 3, "contains": 2, "glob": 1}
-    conditions = scope.get("conditions", ())
-    if not conditions:
-        return (0, 0)
-    children = [
-        _scope_specificity(item) if isinstance(item, dict) and "conditions" in item
-        else (1, weights.get(str(item.get("operator", "")), 0))
-        for item in conditions
-        if isinstance(item, dict)
-    ]
-    if not children:
-        return (0, 0)
-    if scope.get("combinator", "and") == "and":
-        return (sum(item[0] for item in children), sum(item[1] for item in children))
-    return min(children)

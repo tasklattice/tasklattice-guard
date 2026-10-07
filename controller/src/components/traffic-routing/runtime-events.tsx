@@ -11,9 +11,10 @@ import { EmptyState, ErrorNotice, StateBadge } from "@/components/product-shell"
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { Router, RouterDeletionImpact, RouterRuntimeTrace, Policy, RouterTraceFinding } from "@/lib/api";
+import type { RouterDeletionImpact, RouterRuntimeTrace, Policy, RouterTraceFinding } from "@/lib/api";
+import type { TrafficRouter } from "@/lib/traffic-routing-api";
 export function DeleteRouterSheet({ router, open, impact, loading, deleting, error, onOpenChange, onRetry, onConfirm }: {
-  router: Router;
+  router: TrafficRouter;
   open: boolean;
   impact?: RouterDeletionImpact;
   loading: boolean;

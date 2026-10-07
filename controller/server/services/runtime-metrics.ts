@@ -21,7 +21,7 @@ import { unionAll } from "drizzle-orm/pg-core";
 import type { ControllerDatabase } from "../db/client.js";
 import { boundedRead } from "../db/read-budget.js";
 import {
-  routers,
+  trafficRouters,
   guardrails,
   endpoints,
   runtimeEvents as event,
@@ -479,17 +479,27 @@ export async function queryRuntimeMetrics(
         .leftJoinLateral(validation, eq(guardrails.id, guardrails.id))
         .where(isNull(guardrails.deletedAt)),
     );
-    const deps = await execute(
+    // One row per published Router target so Guardrail scoping keeps working;
+    // consumers de-duplicate by Router id when counting.
+    const deps = (await execute(
       tx
         .select({
-          id: routers.id,
-          name: routers.name,
-          guardrail_id: routers.guardrailId,
-          enabled: routers.enabled,
+          id: trafficRouters.id,
+          name: trafficRouters.name,
+          active_revision: trafficRouters.activeRevision,
+          active_snapshot: trafficRouters.activeSnapshot,
         })
-        .from(routers)
-        .where(isNull(routers.deletedAt)),
-    );
+        .from(trafficRouters)
+        .where(isNull(trafficRouters.deletedAt)),
+    )).flatMap((router) => {
+      const guardrailIds = [...new Set((router.active_snapshot?.routes ?? []).flatMap((route) => route.targets.map((target) => target.guardrailId)))];
+      return (guardrailIds.length ? guardrailIds : [null]).map((guardrail_id) => ({
+        id: router.id,
+        name: router.name,
+        guardrail_id,
+        enabled: router.active_revision !== null,
+      }));
+    });
     const ints = await execute(
       tx
         .select({ id: endpoints.id, name: endpoints.name })

@@ -3,9 +3,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Router, Guardrail, Endpoint } from "@/lib/api";
+import type { Guardrail, Endpoint } from "@/lib/api";
 
-import { CreateRouterSheet, TrafficScopeBadges } from "./routers";
+import { CreateRouterSheet } from "./routers";
 
 const createBindingsMock = vi.fn();
 const getEndpointsMock = vi.fn();
@@ -97,25 +97,4 @@ describe("Router Endpoint bindings", () => {
     expect(screen.getByRole("button", { name: "Create Router" })).toBeTruthy();
   });
 
-  it("labels Endpoint catch-all traffic separately from the system fallback", () => {
-    const binding = {
-      id: "router-binding",
-      name: "All Gateway traffic",
-      guardrail_id: guardrail.id,
-      guardrail_version: "20260904-030000.003Z",
-      endpoint_id: "endpoint-cn",
-      route_order: 1,
-      traffic_scope: { combinator: "and", conditions: [] },
-      enabled: true,
-      is_default: false,
-      system_managed: false,
-      updated_at: "2026-08-14T08:00:00Z",
-    } satisfies Router;
-    const fallback = { ...binding, id: "router-default", endpoint_id: null, is_default: true, system_managed: true } satisfies Router;
-
-    const { rerender } = render(<TrafficScopeBadges router={binding} />);
-    expect(screen.getByText("All traffic")).toBeTruthy();
-    rerender(<TrafficScopeBadges router={fallback} />);
-    expect(screen.getByText("routers.unmatchedTraffic")).toBeTruthy();
-  });
 });

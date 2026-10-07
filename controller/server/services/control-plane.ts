@@ -23,7 +23,6 @@ import {
   artifacts,
   auditEvents,
   controllerState,
-  routers,
   guardrails,
   guardrailVersions,
   trafficRouters,
@@ -47,8 +46,6 @@ import { isModelIndependent, publishedProtectionCoverage } from "../domain/prote
 import type { BasicProtectionSnapshot } from "../../shared/platform-status.js";
 import { decodeRuntimeLogKey, decryptRuntimeLogPayload } from "../runtime-log-crypto.js";
 import {
-  DEFAULT_ROUTER_ID,
-  DEFAULT_ROUTER_NAME,
   DEFAULT_GUARDRAIL_ID,
   DEFAULT_GUARDRAIL_NAME,
   defaultGuardrailDraft,
@@ -366,10 +363,6 @@ export class ControlPlaneService {
       eq(guardrails.id, DEFAULT_GUARDRAIL_ID),
       isNull(guardrails.deletedAt),
     )).limit(1);
-    const [router] = await this.db.select().from(routers).where(and(
-      eq(routers.id, DEFAULT_ROUTER_ID),
-      isNull(routers.deletedAt),
-    )).limit(1);
     const [compiling] = await this.db.select({ version: guardrailVersions.version }).from(guardrailVersions).where(and(
       eq(guardrailVersions.guardrailId, DEFAULT_GUARDRAIL_ID),
       eq(guardrailVersions.status, "compiling"),
@@ -392,21 +385,12 @@ export class ControlPlaneService {
       && artifact.checksum && artifact.signature);
     const coverage = guardrailActive ? publishedProtectionCoverage(artifact?.plan) : null;
     const hasChecks = Boolean(coverage && (coverage.inputChecks > 0 || coverage.outputChecks > 0));
-    const routerActive = Boolean(
-      guardrailActive
-      && router?.enabled
-      && router.guardrailId === DEFAULT_GUARDRAIL_ID
-      && router.guardrailVersion === guardrail?.activeVersion
-      && router.poolId === "default"
-      && isCatchAllTrafficScope(router.trafficScope),
-    );
     const preparing = guardrail?.status !== "disabled" && Boolean(compiling || validation?.status === "queued" || validation?.status === "running");
-    const initializing = Boolean(guardrail && (!guardrailActive || !routerActive) && preparing);
+    const initializing = Boolean(guardrail && !guardrailActive && preparing);
 
     return {
-      status: routerActive && hasChecks ? "ready" : initializing ? "initializing" : "unavailable",
+      status: guardrailActive && hasChecks ? "ready" : initializing ? "initializing" : "unavailable",
       guardrailStatus: guardrailActive ? "active" as const : preparing ? "initializing" as const : "unavailable" as const,
-      routerStatus: routerActive ? "active" as const : preparing ? "initializing" as const : "unavailable" as const,
       activeVersion: guardrail?.activeVersion ?? null,
       modelIndependent: isModelIndependent(coverage),
       coverage,
@@ -688,13 +672,6 @@ export class ControlPlaneService {
             desiredGeneration: state.desiredGeneration,
             updatedAt: new Date(),
           }).where(eq(guardrails.id, input.guardrailId));
-          await tx.update(routers).set({
-            guardrailVersion: existingVersion.version,
-            updatedAt: new Date(),
-          }).where(and(eq(routers.guardrailId, input.guardrailId), isNull(routers.deletedAt)));
-          if (input.guardrailId === DEFAULT_GUARDRAIL_ID) {
-            await this.ensureDefaultRouter(tx, existingVersion.version);
-          }
           await tx.insert(outboxEvents).values({
             id: randomUUID(), kind: "runner.desired_state_changed", aggregateId: input.guardrailId,
             payload: {
@@ -885,13 +862,6 @@ export class ControlPlaneService {
           desiredGeneration: input.generation,
           updatedAt: new Date(),
         }).where(eq(guardrails.id, input.guardrailId));
-        await tx.update(routers).set({
-          guardrailVersion: input.guardrailVersion,
-          updatedAt: new Date(),
-        }).where(and(eq(routers.guardrailId, input.guardrailId), isNull(routers.deletedAt)));
-        if (input.guardrailId === DEFAULT_GUARDRAIL_ID) {
-          await this.ensureDefaultRouter(tx, input.guardrailVersion);
-        }
       }
       // Compile-request generation may already have been reconciled without
       // this artifact. Publishing new ready content needs a distinct delivery
@@ -948,8 +918,7 @@ export class ControlPlaneService {
       const references = (draft: { routes: Array<{ targets: Array<{ guardrailId: string; guardrailVersion?: string; versionStrategy?: string | undefined }> }> } | null) => draft?.routes.some(r => r.targets.some(t => t.guardrailId === input.guardrailId && (t.guardrailVersion === input.version || t.versionStrategy === "latest")));
       const current = await tx.select().from(trafficRouters).where(isNull(trafficRouters.deletedAt));
       const history = await tx.select().from(trafficRouterRevisions);
-      const legacy = await tx.select().from(routers).where(and(eq(routers.guardrailId, input.guardrailId), eq(routers.guardrailVersion, input.version), isNull(routers.deletedAt)));
-      if (legacy.length || current.some(r => references(r.draft) || references(r.activeSnapshot)) || history.some(r => references(r.snapshot))) throw new ConflictError("This version is referenced by Router drafts or published revisions. Remove those references first.", "version_in_use");
+      if (current.some(r => references(r.draft) || references(r.activeSnapshot)) || history.some(r => references(r.snapshot))) throw new ConflictError("This version is referenced by Router drafts or published revisions. Remove those references first.", "version_in_use");
       const [pending] = await tx.select().from(routeAssignments).where(and(eq(routeAssignments.guardrailId, input.guardrailId), eq(routeAssignments.guardrailVersion, input.version), isNull(routeAssignments.completedAt), gte(routeAssignments.occurredAt, new Date(Date.now() - 300000)))).limit(1);
       if (pending) throw new ConflictError("This version has in-flight calls.", "version_in_use");
       await tx.insert(auditEvents).values({ id: randomUUID(), kind: "guardrail.version_deleted", actorId: input.actorId, resourceType: "guardrail", resourceId: input.guardrailId, detail: { version: input.version, artifactId: version.artifactId } });
@@ -984,8 +953,6 @@ export class ControlPlaneService {
         desiredGeneration: state.desiredGeneration,
         updatedAt: new Date(),
       }).where(eq(guardrails.id, input.guardrailId));
-      await tx.update(routers).set({ guardrailVersion: input.version, updatedAt: new Date() })
-        .where(and(eq(routers.guardrailId, input.guardrailId), isNull(routers.deletedAt)));
       await tx.insert(outboxEvents).values({
         id: randomUUID(), kind: "runner.desired_state_changed", aggregateId: input.guardrailId,
         payload: { guardrailId: input.guardrailId, version: input.version, generation: state.desiredGeneration },
@@ -1337,27 +1304,6 @@ export class ControlPlaneService {
     return this.publicEndpoint(endpoint);
   }
 
-  async listRouters() {
-    const rows = await this.db.select({ router: routers }).from(routers)
-      .leftJoin(endpoints, eq(routers.endpointId, endpoints.id))
-      .where(and(
-        isNull(routers.deletedAt),
-        or(
-          isNull(routers.endpointId),
-          and(isNotNull(endpoints.id), isNull(endpoints.deletedAt)),
-        ),
-      ))
-      .orderBy(asc(routers.endpointId), asc(routers.routeOrder), asc(routers.id));
-    return rows.map((row) => row.router);
-  }
-
-  async getRouter(id: string) {
-    const [router] = await this.db.select().from(routers)
-      .where(and(eq(routers.id, id), isNull(routers.deletedAt)));
-    if (!router) throw new NotFoundError("Router", id);
-    return router;
-  }
-
   async listRuntimeEvents(limit = 100) {
     return (await this.queryRuntimeEvents({ limit })).items;
   }
@@ -1547,161 +1493,6 @@ export class ControlPlaneService {
     return queryAuditEvents(this.db, query);
   }
 
-  async createRouter(input: {
-    name: string;
-    guardrailId: string;
-    endpointId: string;
-    poolId: string;
-    trafficScope: Record<string, unknown>;
-    enabled?: boolean | undefined;
-    actorId: string;
-  }) {
-    const created = await this.createRouterBindings({
-      ...input,
-      endpointIds: [input.endpointId],
-    });
-    return created[0]!;
-  }
-
-  async createRouterBindings(input: {
-    name: string;
-    guardrailId: string;
-    endpointIds: string[];
-    poolId: string;
-    trafficScope: Record<string, unknown>;
-    enabled?: boolean | undefined;
-    actorId: string;
-  }) {
-    const uniqueEndpointIds = [...new Set(input.endpointIds)];
-    if (!uniqueEndpointIds.length) throw new ValidationError("Select at least one Endpoint for a Router.");
-    return this.db.transaction(async (tx) => {
-      await advisoryTransactionLock(tx, "traffic-router-bindings");
-      const [guardrail] = await tx.select().from(guardrails).where(and(
-        eq(guardrails.id, input.guardrailId), eq(guardrails.status, "active"), isNull(guardrails.deletedAt),
-      ));
-      if (!guardrail?.activeArtifactId || !guardrail.activeVersion) {
-        throw new ConflictError("Only a compiled active Guardrail can be deployed.", "guardrail_not_active");
-      }
-      const [pool] = await tx.select().from(runnerPools).where(eq(runnerPools.id, input.poolId));
-      if (!pool) throw new NotFoundError("Runner Pool", input.poolId);
-      for (const endpointId of [...uniqueEndpointIds].sort()) {
-        await advisoryTransactionLock(tx, endpointId);
-      }
-      const endpointRows = await tx.select().from(endpoints).where(and(
-        inArray(endpoints.id, uniqueEndpointIds), eq(endpoints.status, "active"), isNull(endpoints.deletedAt),
-      ));
-      const activeIds = new Set(endpointRows.map((item) => item.id));
-      const missing = uniqueEndpointIds.filter((id) => !activeIds.has(id));
-      if (missing.length) throw new ValidationError(`Active Endpoints were not found: ${missing.join(", ")}.`);
-      const created: Array<typeof routers.$inferSelect> = [];
-      for (const endpointId of uniqueEndpointIds) {
-        const routes = await tx.select().from(routers)
-          .where(and(eq(routers.endpointId, endpointId), isNull(routers.deletedAt)))
-          .orderBy(asc(routers.routeOrder), asc(routers.id)).for("update");
-        assertCatchAllTopology(routes);
-        const catchAll = routes.find((item) => isCatchAllTrafficScope(item.trafficScope));
-        const insertingCatchAll = isCatchAllTrafficScope(input.trafficScope);
-        if (insertingCatchAll && catchAll) {
-          throw new ConflictError(
-            "An Endpoint can have only one catch-all Router.",
-            "router_catch_all_conflict",
-          );
-        }
-        const routeOrder = !insertingCatchAll && catchAll
-          ? catchAll.routeOrder
-          : (routes.at(-1)?.routeOrder ?? -1) + 1;
-        if (!insertingCatchAll && catchAll) {
-          for (const route of [...routes].reverse()) {
-            if (route.routeOrder < routeOrder) continue;
-            await tx.update(routers).set({ routeOrder: route.routeOrder + 1 })
-              .where(eq(routers.id, route.id));
-          }
-        }
-        const id = randomUUID();
-        const [row] = await tx.insert(routers).values({
-          id,
-          name: uniqueEndpointIds.length === 1 ? input.name : `${input.name} · ${endpointRows.find((item) => item.id === endpointId)?.name ?? endpointId}`,
-          guardrailId: input.guardrailId,
-          guardrailVersion: guardrail.activeVersion,
-          endpointId,
-          poolId: input.poolId,
-          routeOrder,
-          enabled: input.enabled ?? true,
-          trafficScope: input.trafficScope,
-        }).returning();
-        if (!row) throw new Error("Router creation did not return the stored resource.");
-        created.push(row);
-      }
-      const [state] = await tx.update(controllerState)
-        .set({ desiredGeneration: increment(controllerState.desiredGeneration), updatedAt: new Date() })
-        .where(eq(controllerState.id, "singleton")).returning();
-      if (!state) throw new Error("Controller state is not initialized.");
-      await tx.insert(outboxEvents).values({
-        id: randomUUID(), kind: "runner.desired_state_changed", aggregateId: input.guardrailId,
-        payload: { routerIds: created.map((item) => item.id), generation: state.desiredGeneration },
-      });
-      await tx.insert(auditEvents).values(created.map((item) => ({
-        id: randomUUID(), kind: "router.created", actorId: input.actorId,
-        resourceType: "router", resourceId: item.id,
-        detail: { guardrailId: input.guardrailId, endpointId: item.endpointId, poolId: input.poolId, routeOrder: item.routeOrder },
-      })));
-      return created;
-    });
-  }
-
-  async setRouterEnabled(input: { id: string; enabled: boolean; actorId: string }) {
-    return this.mutateRouter(input.id, input.actorId, input.enabled ? "router.enabled" : "router.disabled", async (tx, current) => {
-      if (current.enabled === input.enabled) return current;
-      const [updated] = await tx.update(routers).set({ enabled: input.enabled, updatedAt: new Date() })
-        .where(eq(routers.id, input.id)).returning();
-      return updated!;
-    });
-  }
-
-  async updateRouterTrafficScope(input: { id: string; trafficScope: Record<string, unknown>; actorId: string }) {
-    return this.mutateRouter(input.id, input.actorId, "router.traffic_scope_updated", async (tx, current) => {
-      if (!current.endpointId) throw new ValidationError("The global fallback Router is system managed.");
-      await advisoryTransactionLock(tx, current.endpointId);
-      const routes = await tx.select().from(routers)
-        .where(and(eq(routers.endpointId, current.endpointId), isNull(routers.deletedAt)))
-        .orderBy(asc(routers.routeOrder), asc(routers.id)).for("update");
-      assertCatchAllTopology(routes.map((route) => route.id === input.id
-        ? { ...route, trafficScope: input.trafficScope }
-        : route));
-      const [updated] = await tx.update(routers).set({ trafficScope: input.trafficScope, updatedAt: new Date() })
-        .where(eq(routers.id, input.id)).returning();
-      return updated!;
-    });
-  }
-
-  async reorderRouterRoutes(input: { endpointId: string; routerIds: string[]; actorId: string }) {
-    if (new Set(input.routerIds).size !== input.routerIds.length) throw new ValidationError("Router route order contains duplicate IDs.");
-    return this.db.transaction(async (tx) => {
-      await advisoryTransactionLock(tx, input.endpointId);
-      const current = await tx.select().from(routers)
-        .where(and(eq(routers.endpointId, input.endpointId), isNull(routers.deletedAt)))
-        .orderBy(asc(routers.routeOrder), asc(routers.id)).for("update");
-      const expected = new Set(current.map((item) => item.id));
-      if (current.length !== input.routerIds.length || input.routerIds.some((id) => !expected.has(id))) {
-        throw new ConflictError("Route order must include every Router for the Endpoint exactly once.", "router_order_conflict");
-      }
-      const byId = new Map(current.map((item) => [item.id, item]));
-      assertCatchAllTopology(input.routerIds.map((id, routeOrder) => ({ ...byId.get(id)!, routeOrder })));
-      for (const item of current) {
-        await tx.update(routers).set({ routeOrder: -item.routeOrder - 1 }).where(eq(routers.id, item.id));
-      }
-      for (const [routeOrder, id] of input.routerIds.entries()) {
-        await tx.update(routers).set({ routeOrder, updatedAt: new Date() }).where(eq(routers.id, id));
-      }
-      await this.advanceRouterDesiredState(tx, input.endpointId, input.actorId, "router.routes_reordered", {
-        routerIds: input.routerIds,
-      });
-      return tx.select().from(routers)
-        .where(and(eq(routers.endpointId, input.endpointId), isNull(routers.deletedAt)))
-        .orderBy(asc(routers.routeOrder), asc(routers.id));
-    });
-  }
-
   async createEndpoint(input: { name: string; adapter: string; actorId: string }) {
     const id = randomUUID();
     const issued = issueEndpointCredential();
@@ -1809,26 +1600,29 @@ export class ControlPlaneService {
 
   async guardrailDeletionImpact(id: string): Promise<DeletionImpact> {
     if (id === DEFAULT_GUARDRAIL_ID) {
-      throw new ValidationError("The Default Guardrail cannot be removed because it protects unmatched traffic.");
+      throw new ValidationError("The Default Guardrail is the built-in baseline and cannot be removed.");
     }
     const [resource] = await this.db.select().from(guardrails).where(and(eq(guardrails.id, id), isNull(guardrails.deletedAt)));
     if (!resource) throw new NotFoundError("Guardrail", id);
-    const activeRouters = await this.db.select({ poolId: routers.poolId }).from(routers)
-      .where(and(eq(routers.guardrailId, id), eq(routers.enabled, true), isNull(routers.deletedAt)));
-    return this.deletionImpact("guardrail", id, activeRouters.map((item) => item.poolId));
+    // Published Router revisions are the only live references; composed
+    // Routers roll out through the default pool today.
+    const published = await this.db.select({ activeSnapshot: trafficRouters.activeSnapshot }).from(trafficRouters)
+      .where(and(isNull(trafficRouters.deletedAt), isNotNull(trafficRouters.activeRevision)));
+    const referencing = published.filter((router) => router.activeSnapshot?.routes.some((route) => route.targets.some((target) => target.guardrailId === id)));
+    return this.deletionImpact("guardrail", id, referencing.map(() => "default"));
   }
 
   async endpointDeletionImpact(id: string): Promise<DeletionImpact> {
     const [resource] = await this.db.select().from(endpoints).where(and(eq(endpoints.id, id), isNull(endpoints.deletedAt)));
     if (!resource) throw new NotFoundError("Endpoint", id);
-    const activeRouters = await this.db.select({ poolId: routers.poolId }).from(routers)
-      .where(and(eq(routers.endpointId, id), eq(routers.enabled, true), isNull(routers.deletedAt)));
-    return this.deletionImpact("endpoint", id, activeRouters.map((item) => item.poolId));
+    const [bound] = resource.trafficRouterId ? await this.db.select({ id: trafficRouters.id }).from(trafficRouters)
+      .where(and(eq(trafficRouters.id, resource.trafficRouterId), isNull(trafficRouters.deletedAt), isNotNull(trafficRouters.activeRevision))) : [];
+    return this.deletionImpact("endpoint", id, bound ? ["default"] : []);
   }
 
   async softDeleteGuardrail(input: { id: string; actorId: string; reason: string; confirmRecentTraffic: boolean; confirmationName?: string | undefined }) {
     if (input.id === DEFAULT_GUARDRAIL_ID) {
-      throw new ValidationError("The Default Guardrail cannot be removed because it protects unmatched traffic.");
+      throw new ValidationError("The Default Guardrail is the built-in baseline and cannot be removed.");
     }
     const [resource] = await this.db.select({ name: guardrails.name }).from(guardrails)
       .where(and(eq(guardrails.id, input.id), isNull(guardrails.deletedAt)));
@@ -1847,8 +1641,6 @@ export class ControlPlaneService {
         deleteReason: input.reason, desiredGeneration: state.desiredGeneration, updatedAt: new Date(),
       }).where(and(eq(guardrails.id, input.id), isNull(guardrails.deletedAt))).returning({ id: guardrails.id });
       if (!disabled[0]) throw new NotFoundError("Guardrail", input.id);
-      await tx.update(routers).set({ enabled: false, updatedAt: new Date() })
-        .where(and(eq(routers.guardrailId, input.id), isNull(routers.deletedAt)));
       await this.recordSoftDelete(tx, "guardrail", input, impact, state.desiredGeneration);
     });
   }
@@ -1869,75 +1661,7 @@ export class ControlPlaneService {
         deleteReason: input.reason, updatedAt: new Date(),
       }).where(and(eq(endpoints.id, input.id), isNull(endpoints.deletedAt))).returning({ id: endpoints.id });
       if (!disabled[0]) throw new NotFoundError("Endpoint", input.id);
-      await tx.update(routers).set({ enabled: false, updatedAt: new Date() })
-        .where(and(eq(routers.endpointId, input.id), isNull(routers.deletedAt)));
       await this.recordSoftDelete(tx, "endpoint", input, impact, state.desiredGeneration);
-    });
-  }
-
-  async routerDeletionImpact(id: string): Promise<DeletionImpact> {
-    if (id === DEFAULT_ROUTER_ID) {
-      throw new ValidationError("The Default Router cannot be removed because it protects unmatched traffic.");
-    }
-    const [resource] = await this.db.select({ poolId: routers.poolId, enabled: routers.enabled })
-      .from(routers).where(and(eq(routers.id, id), isNull(routers.deletedAt)));
-    if (!resource) throw new NotFoundError("Router", id);
-    return this.deletionImpact("router", id, resource.enabled ? [resource.poolId] : []);
-  }
-
-  async softDeleteRouter(input: { id: string; actorId: string; reason: string; confirmRecentTraffic: boolean; confirmationName?: string | undefined }) {
-    if (input.id === DEFAULT_ROUTER_ID) {
-      throw new ValidationError("The Default Router cannot be removed because it protects unmatched traffic.");
-    }
-    const [resource] = await this.db.select({
-      name: routers.name,
-      endpointId: routers.endpointId,
-      guardrailId: routers.guardrailId,
-    }).from(routers).where(and(eq(routers.id, input.id), isNull(routers.deletedAt)));
-    if (!resource) throw new NotFoundError("Router", input.id);
-    const impact = await this.routerDeletionImpact(input.id);
-    this.assertDeletionAllowed(impact, input.confirmRecentTraffic, input.confirmationName, resource.name);
-    await this.db.transaction(async (tx) => {
-      if (resource.endpointId) {
-        await advisoryTransactionLock(tx, resource.endpointId);
-      }
-      const [state] = await tx.update(controllerState)
-        .set({ desiredGeneration: increment(controllerState.desiredGeneration), updatedAt: new Date() })
-        .where(eq(controllerState.id, "singleton")).returning();
-      if (!state) throw new Error("Controller state is not initialized.");
-      const deleted = await tx.update(routers).set({
-        enabled: false,
-        deletedAt: new Date(),
-        deletedBy: input.actorId,
-        deleteReason: input.reason,
-        updatedAt: new Date(),
-      }).where(and(eq(routers.id, input.id), isNull(routers.deletedAt))).returning({ id: routers.id });
-      if (!deleted[0]) throw new NotFoundError("Router", input.id);
-      await tx.insert(auditEvents).values({
-        id: randomUUID(),
-        kind: "router.deleted",
-        actorId: input.actorId,
-        resourceType: "router",
-        resourceId: input.id,
-        detail: {
-          reason: input.reason,
-          impact,
-          generation: state.desiredGeneration,
-          endpointId: resource.endpointId,
-          guardrailId: resource.guardrailId,
-        },
-      });
-      await tx.insert(outboxEvents).values({
-        id: randomUUID(),
-        kind: "runner.desired_state_changed",
-        aggregateId: input.id,
-        payload: {
-          resourceType: "router",
-          resourceId: input.id,
-          generation: state.desiredGeneration,
-          disabled: true,
-        },
-      });
     });
   }
 
@@ -2070,52 +1794,32 @@ export class ControlPlaneService {
     return this.db.transaction(async tx => {
     const [state] = await tx.select().from(controllerState).where(eq(controllerState.id, "singleton"));
     const generation = state?.desiredGeneration ?? 0;
+    const routerRevisions = await this.trafficRouting.runtimeSnapshots(tx);
+    // Every pool receives the artifacts its published Router revisions pin plus
+    // the Default Guardrail baseline. The default pool additionally keeps every
+    // ready version so Playground and internal checks can address any version.
+    const referencedArtifactIds = new Set(routerRevisions.flatMap((router) => router.routes.flatMap((route) => route.targets.map((target) => target.artifactId).filter(Boolean))));
+    const [defaultGuardrail] = await tx.select({ activeArtifactId: guardrails.activeArtifactId }).from(guardrails)
+      .where(and(eq(guardrails.id, DEFAULT_GUARDRAIL_ID), isNull(guardrails.deletedAt)));
+    if (defaultGuardrail?.activeArtifactId) referencedArtifactIds.add(defaultGuardrail.activeArtifactId);
+    const readyArtifacts = await tx.select({ artifact: artifacts }).from(guardrailVersions)
+      .innerJoin(guardrails, and(eq(guardrails.id, guardrailVersions.guardrailId), isNull(guardrails.deletedAt)))
+      .innerJoin(artifacts, eq(artifacts.id, guardrailVersions.artifactId))
+      .where(eq(guardrailVersions.status, "ready"));
     const activeArtifacts = poolId === "default"
-      ? await tx.select({ artifact: artifacts }).from(guardrailVersions)
-        .innerJoin(guardrails, and(eq(guardrails.id, guardrailVersions.guardrailId), isNull(guardrails.deletedAt)))
-        .innerJoin(artifacts, eq(artifacts.id, guardrailVersions.artifactId))
-        .where(eq(guardrailVersions.status, "ready"))
-      : await tx.select({ artifact: artifacts }).from(routers)
-        .innerJoin(guardrails, and(eq(guardrails.id, routers.guardrailId), eq(guardrails.status, "active")))
-        .innerJoin(guardrailVersions, and(
-          eq(guardrailVersions.guardrailId, routers.guardrailId),
-          or(eq(guardrailVersions.version, routers.guardrailVersion), and(isNull(routers.guardrailVersion), eq(guardrailVersions.version, guardrails.activeVersion))),
-          eq(guardrailVersions.status, "ready"),
-        ))
-        .innerJoin(artifacts, eq(artifacts.id, guardrailVersions.artifactId))
-        .where(and(eq(routers.poolId, poolId), eq(routers.enabled, true), isNull(routers.deletedAt)));
+      ? readyArtifacts
+      : readyArtifacts.filter((row) => referencedArtifactIds.has(row.artifact.id));
     const disabledGuardrails = await tx.select({ id: guardrails.id }).from(guardrails).where(eq(guardrails.status, "disabled"));
     const loggingLevels = await tx.select({ id: guardrails.id, level: guardrails.loggingLevel })
       .from(guardrails).where(isNull(guardrails.deletedAt));
     const disabledEndpoints = await tx.select({ id: endpoints.id }).from(endpoints).where(eq(endpoints.status, "disabled"));
-    const routes = await tx.select({
-      routerId: routers.id,
-      guardrailId: routers.guardrailId,
-      artifactId: guardrailVersions.artifactId,
-      endpointId: routers.endpointId,
-      trafficScope: routers.trafficScope,
-      routeOrder: routers.routeOrder,
-    }).from(routers)
-      .innerJoin(guardrails, and(eq(guardrails.id, routers.guardrailId), eq(guardrails.status, "active")))
-      .innerJoin(guardrailVersions, and(
-        eq(guardrailVersions.guardrailId, routers.guardrailId),
-        or(eq(guardrailVersions.version, routers.guardrailVersion), and(isNull(routers.guardrailVersion), eq(guardrailVersions.version, guardrails.activeVersion))),
-        eq(guardrailVersions.status, "ready"),
-      ))
-      .where(and(eq(routers.poolId, poolId), eq(routers.enabled, true), isNull(routers.deletedAt)))
-      .orderBy(asc(routers.routeOrder), asc(routers.id));
     const endpointRows = await tx.select().from(endpoints).where(eq(endpoints.status, "active"));
     return {
       generation,
       artifacts: [...new Map(activeArtifacts.map((row) => [row.artifact.id, row.artifact])).values()],
       disabledGuardrailIds: disabledGuardrails.map((row) => row.id),
       disabledEndpointIds: disabledEndpoints.map((row) => row.id),
-      routerRevisions: (await this.trafficRouting.runtimeSnapshots(tx)).map(router => ({ ...router, assignmentAlgorithm: "hmac-sha256-v1", assignmentKeyId: "v1", assignmentKey: createHash("sha256").update("traffic-router-assignment-v1:" + this.config.runnerToken).digest() })),
-      routers: routes.filter((route) => route.artifactId !== null).map((route) => ({
-        ...route,
-        artifactId: route.artifactId as string,
-        endpointId: route.endpointId,
-      })),
+      routerRevisions: routerRevisions.map(router => ({ ...router, assignmentAlgorithm: "hmac-sha256-v1", assignmentKeyId: "v1", assignmentKey: createHash("sha256").update("traffic-router-assignment-v1:" + this.config.runnerToken).digest() })),
       endpoints: endpointRows.map((endpoint) => ({
         endpointId: endpoint.id,
         trafficRouterId: endpoint.trafficRouterId,
@@ -2179,24 +1883,21 @@ export class ControlPlaneService {
         activeVersion: guardrails.activeVersion,
       }).from(guardrails).where(isNull(guardrails.deletedAt)),
       this.db.select({
-        id: routers.id,
-        name: routers.name,
-        guardrailId: routers.guardrailId,
-        guardrailVersion: routers.guardrailVersion,
-        endpointId: routers.endpointId,
-        poolId: routers.poolId,
-        enabled: routers.enabled,
-      }).from(routers).where(isNull(routers.deletedAt)),
+        id: trafficRouters.id,
+        name: trafficRouters.name,
+        activeRevision: trafficRouters.activeRevision,
+        activeSnapshot: trafficRouters.activeSnapshot,
+      }).from(trafficRouters).where(isNull(trafficRouters.deletedAt)),
       this.db.select({
         id: endpoints.id,
         name: endpoints.name,
         adapter: endpoints.adapter,
         status: endpoints.status,
         deletedAt: endpoints.deletedAt,
+        trafficRouterId: endpoints.trafficRouterId,
       }).from(endpoints),
     ]);
     const guardrailById = new Map(guardrailRows.map((item) => [item.id, item]));
-    const endpointById = new Map(endpointRows.map((item) => [item.id, item]));
     const endpointBindings = new Map<string, {
       guardrailId: string;
       endpointId: string;
@@ -2204,40 +1905,44 @@ export class ControlPlaneService {
       poolId: string;
       status: "active" | "inactive" | "disabled";
     }>();
-    const routerTopology = routerRows.flatMap((item) => {
-      const guardrail = guardrailById.get(item.guardrailId);
-      if (!guardrail) return [];
-      const endpoint = item.endpointId === null ? null : endpointById.get(item.endpointId);
-      const guardrailVersion = item.guardrailVersion ?? guardrail.activeVersion;
-      const status = !item.enabled
-        ? "disabled"
-        : guardrail.status !== "active"
-          || guardrailVersion === null
-          || (item.endpointId !== null && (!endpoint || endpoint.status !== "active" || endpoint.deletedAt !== null))
-          ? "inactive"
-          : "active";
-      if (item.endpointId !== null && endpoint?.deletedAt === null) {
-        const key = `${item.guardrailId}\u0000${item.endpointId}\u0000${item.poolId}`;
-        const current = endpointBindings.get(key);
-        const priority = { disabled: 0, inactive: 1, active: 2 } as const;
-        if (!current || priority[status] > priority[current.status]) {
-          endpointBindings.set(key, {
-            guardrailId: item.guardrailId,
-            endpointId: item.endpointId,
-            endpointName: endpoint.name,
-            poolId: item.poolId,
-            status,
-          });
+    // Topology comes from published Router revisions: one row per pinned
+    // target, and one Endpoint binding per bound Endpoint and target Guardrail.
+    // Composed Routers roll out through the default pool.
+    const poolId = "default";
+    const priority = { disabled: 0, inactive: 1, active: 2 } as const;
+    const routerTopology = routerRows.flatMap((router) => {
+      if (!router.activeSnapshot) return [];
+      const boundEndpoints = endpointRows.filter((endpoint) => endpoint.trafficRouterId === router.id && endpoint.deletedAt === null);
+      const targets = new Map<string, { guardrailId: string; guardrailVersion: string | null }>();
+      for (const route of router.activeSnapshot.routes) {
+        if (!route.enabled) continue;
+        for (const target of route.targets) {
+          if (target.weightBps <= 0) continue;
+          const guardrail = guardrailById.get(target.guardrailId);
+          if (!guardrail) continue;
+          // Publication pins every target version; fall back to the active
+          // version only for snapshots that predate pinning.
+          const guardrailVersion = target.guardrailVersion || guardrail.activeVersion;
+          targets.set(`${target.guardrailId}\u0000${guardrailVersion ?? ""}`, { guardrailId: target.guardrailId, guardrailVersion });
         }
       }
-      return [{
-        guardrailId: item.guardrailId,
-        guardrailVersion,
-        routerId: item.id,
-        routerName: item.name,
-        poolId: item.poolId,
-        status,
-      }];
+      return [...targets.values()].map(({ guardrailId, guardrailVersion }) => {
+        const guardrail = guardrailById.get(guardrailId)!;
+        const status = router.activeRevision === null
+          ? "disabled"
+          : guardrail.status !== "active" || guardrailVersion === null
+            ? "inactive"
+            : "active";
+        for (const endpoint of boundEndpoints) {
+          const bindingStatus = status === "active" && endpoint.status !== "active" ? "inactive" : status;
+          const key = `${guardrailId}\u0000${endpoint.id}\u0000${poolId}`;
+          const current = endpointBindings.get(key);
+          if (!current || priority[bindingStatus] > priority[current.status]) {
+            endpointBindings.set(key, { guardrailId, endpointId: endpoint.id, endpointName: endpoint.name, poolId, status: bindingStatus });
+          }
+        }
+        return { guardrailId, guardrailVersion, routerId: router.id, routerName: router.name, poolId, status };
+      });
     });
     return {
       watermarks,
@@ -2493,8 +2198,7 @@ export class ControlPlaneService {
       .from(guardrailVersions).where(and(eq(guardrailVersions.guardrailId, DEFAULT_GUARDRAIL_ID), eq(guardrailVersions.version, stored.activeVersion))) : [];
     if (stored.activeArtifactId && stored.activeVersion && !baselineChanged
       && (userCustomization || activeVersion?.sourceDraftRevision === stored.draftRevision)) {
-      const routerChanged = await this.ensureDefaultRouter(tx, stored.activeVersion);
-      if (restored || routerChanged) {
+      if (restored) {
         const [state] = await tx.update(controllerState)
           .set({ desiredGeneration: increment(controllerState.desiredGeneration), updatedAt: new Date() })
           .where(eq(controllerState.id, "singleton")).returning();
@@ -2581,66 +2285,6 @@ export class ControlPlaneService {
       resourceId: DEFAULT_GUARDRAIL_ID,
       detail: { version, generation: state.desiredGeneration, sourceDraftRevision: stored.draftRevision, validationRunId: validation.id },
     });
-  }
-
-  private async ensureDefaultRouter(
-    tx: Parameters<Parameters<ControllerDatabase["transaction"]>[0]>[0],
-    guardrailVersion: string,
-  ): Promise<boolean> {
-    const [existing] = await tx.select().from(routers)
-      .where(eq(routers.id, DEFAULT_ROUTER_ID)).for("update");
-    if (!existing) {
-      await tx.insert(routers).values({
-        id: DEFAULT_ROUTER_ID,
-        name: DEFAULT_ROUTER_NAME,
-        guardrailId: DEFAULT_GUARDRAIL_ID,
-        guardrailVersion,
-        endpointId: null,
-        poolId: "default",
-        routeOrder: 100,
-        enabled: true,
-        trafficScope: { combinator: "and", conditions: [] },
-      });
-      await tx.insert(auditEvents).values({
-        id: randomUUID(),
-        kind: "router.default.created",
-        actorId: null,
-        resourceType: "router",
-        resourceId: DEFAULT_ROUTER_ID,
-        detail: { guardrailId: DEFAULT_GUARDRAIL_ID, guardrailVersion, poolId: "default" },
-      });
-      return true;
-    }
-    const changed = (
-      existing.guardrailId !== DEFAULT_GUARDRAIL_ID
-      || existing.guardrailVersion !== guardrailVersion
-      || existing.endpointId !== null
-      || existing.poolId !== "default"
-      || existing.routeOrder !== 100
-      || !existing.enabled
-      || !isCatchAllTrafficScope(existing.trafficScope)
-    );
-    if (!changed) return false;
-    await tx.update(routers).set({
-      name: DEFAULT_ROUTER_NAME,
-      guardrailId: DEFAULT_GUARDRAIL_ID,
-      guardrailVersion,
-      endpointId: null,
-      poolId: "default",
-      routeOrder: 100,
-      enabled: true,
-      trafficScope: { combinator: "and", conditions: [] },
-      updatedAt: new Date(),
-    }).where(eq(routers.id, DEFAULT_ROUTER_ID));
-    await tx.insert(auditEvents).values({
-      id: randomUUID(),
-      kind: "router.default.restored",
-      actorId: null,
-      resourceType: "router",
-      resourceId: DEFAULT_ROUTER_ID,
-      detail: { guardrailId: DEFAULT_GUARDRAIL_ID, guardrailVersion, poolId: "default" },
-    });
-    return true;
   }
 
   private async validateGuardrailDraft(draft: GuardrailDraftConfig): Promise<ProgrammablePolicySnapshot[]> {
@@ -2765,54 +2409,6 @@ export class ControlPlaneService {
     return state.desiredGeneration;
   }
 
-  private async mutateRouter(
-    id: string,
-    actorId: string,
-    auditKind: string,
-    mutation: (
-      tx: Parameters<Parameters<ControllerDatabase["transaction"]>[0]>[0],
-      current: typeof routers.$inferSelect,
-    ) => Promise<typeof routers.$inferSelect>,
-  ) {
-    return this.db.transaction(async (tx) => {
-      const [current] = await tx.select().from(routers)
-        .where(and(eq(routers.id, id), isNull(routers.deletedAt))).for("update");
-      if (!current) throw new NotFoundError("Router", id);
-      if (current.id === DEFAULT_ROUTER_ID) {
-        throw new ValidationError("The Default Router is system managed and cannot be changed directly.");
-      }
-      const updated = await mutation(tx, current);
-      await this.advanceRouterDesiredState(tx, id, actorId, auditKind, {
-        endpointId: current.endpointId,
-        guardrailId: current.guardrailId,
-      });
-      return updated;
-    });
-  }
-
-  private async advanceRouterDesiredState(
-    tx: Parameters<Parameters<ControllerDatabase["transaction"]>[0]>[0],
-    aggregateId: string,
-    actorId: string,
-    auditKind: string,
-    detail: Record<string, unknown>,
-  ): Promise<number> {
-    const [state] = await tx.update(controllerState)
-      .set({ desiredGeneration: increment(controllerState.desiredGeneration), updatedAt: new Date() })
-      .where(eq(controllerState.id, "singleton")).returning();
-    if (!state) throw new Error("Controller state is not initialized.");
-    await tx.insert(auditEvents).values({
-      id: randomUUID(), kind: auditKind, actorId,
-      resourceType: "router", resourceId: aggregateId,
-      detail: { ...detail, generation: state.desiredGeneration },
-    });
-    await tx.insert(outboxEvents).values({
-      id: randomUUID(), kind: "runner.desired_state_changed", aggregateId,
-      payload: { resourceType: "router", resourceId: aggregateId, generation: state.desiredGeneration, change: auditKind },
-    });
-    return state.desiredGeneration;
-  }
-
   private async deletionImpact(kind: "guardrail" | "endpoint" | "router", id: string, routerPoolIds: readonly string[]): Promise<DeletionImpact> {
     const cutoff = new Date(Date.now() - this.config.deletionTrafficWindowMinutes * 60_000);
     const condition = kind === "guardrail"
@@ -2905,33 +2501,6 @@ export class ControlPlaneService {
       id: randomUUID(), kind: "runner.desired_state_changed", aggregateId: input.id,
       payload: { resourceType, resourceId: input.id, generation, disabled: true },
     });
-  }
-}
-
-export function isCatchAllTrafficScope(scope: unknown): boolean {
-  if (!scope || typeof scope !== "object" || Array.isArray(scope)) return false;
-  const conditions = (scope as { conditions?: unknown }).conditions;
-  return Array.isArray(conditions) && conditions.length === 0;
-}
-
-export function assertCatchAllTopology(
-  routes: Array<{ routeOrder: number; trafficScope: unknown }>,
-): void {
-  const ordered = [...routes].sort((left, right) => left.routeOrder - right.routeOrder);
-  const catchAllIndexes = ordered.flatMap((route, index) => (
-    isCatchAllTrafficScope(route.trafficScope) ? [index] : []
-  ));
-  if (catchAllIndexes.length > 1) {
-    throw new ConflictError(
-      "An Endpoint can have only one catch-all Router.",
-      "router_catch_all_conflict",
-    );
-  }
-  if (catchAllIndexes.length === 1 && catchAllIndexes[0] !== ordered.length - 1) {
-    throw new ConflictError(
-      "The catch-all Router must be the final route for its Endpoint.",
-      "router_catch_all_order_conflict",
-    );
   }
 }
 

@@ -196,8 +196,8 @@ export function assembleMetrics(
       p99_status: current.p99_latency_ms <= 5000 ? "healthy" : "breached",
     },
     latest_validation_p95_ms: guards.reduce((n, r) => Math.max(n, r.p95), 0),
-    active_routers: scopedDeps.filter((r) => r.enabled).length,
-    total_routers: scopedDeps.length,
+    active_routers: new Set(scopedDeps.filter((r) => r.enabled).map((r) => r.id)).size,
+    total_routers: new Set(scopedDeps.map((r) => r.id)).size,
     guardrails_needing_test: guards.filter(
       (r) =>
         r.status !== "passed" || r.source_draft_revision !== r.draft_revision,

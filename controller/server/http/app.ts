@@ -132,30 +132,6 @@ const deletionInput = z.object({
   confirmRecentTraffic: z.boolean().default(false),
   confirmationName: z.string().trim().max(160).optional(),
 });
-type TrafficScope = { combinator: "and" | "or"; conditions: Array<TrafficCondition | TrafficScope> };
-type TrafficCondition = { field: string; key: string; operator: "equals" | "contains" | "starts_with" | "glob"; value: string };
-const trafficConditionInput = z.object({
-  field: z.string().trim().min(1).max(120),
-  key: z.string().trim().max(120).default(""),
-  operator: z.enum(["equals", "contains", "starts_with", "glob"]),
-  value: z.string().min(1).max(500),
-});
-const trafficScopeInput: z.ZodType<TrafficScope> = z.lazy(() => z.object({
-  combinator: z.enum(["and", "or"]).default("and"),
-  conditions: z.array(z.union([trafficConditionInput, trafficScopeInput])).max(16).default([]),
-}));
-const routerInput = z.object({
-  name: z.string().trim().min(1).max(160),
-  guardrailId: z.string().min(1),
-  endpointId: z.string().min(1),
-  poolId: z.string().min(1).default("default"),
-  trafficScope: trafficScopeInput.default({ combinator: "and", conditions: [] }),
-  enabled: z.boolean().default(true),
-});
-const routerBindingsInput = routerInput.omit({ endpointId: true }).extend({ endpointIds: z.array(z.string().min(1)).min(1).max(50) });
-const routerEnabledInput = z.object({ enabled: z.boolean() });
-const routerScopeInput = z.object({ trafficScope: trafficScopeInput });
-const routerOrderInput = z.object({ routerIds: z.array(z.string().min(1)).min(1).max(100) });
 const runnerPoolInput = z.object({
   desiredReplicas: z.number().int().min(1).max(1_000),
   safeRpsPerRunner: z.number().positive().max(1_000_000),
@@ -1107,78 +1083,6 @@ function authorization(role: string): MiddlewareHandler<{ Variables: Variables }
     }
     await next();
   };
-}
-
-function trafficScopeFields() {
-  return [
-    field("protocol", "request", "field", "protocol", ["equals"], ["http", "litellm", "a2a"]),
-    field("output.sink", "request", "field", "output.sink", ["equals"], ["display", "markdown", "html", "sql", "shell", "url", "json", "tool_argument"]),
-    field("output.content_type", "request", "field", "output.content_type", ["equals", "glob"]),
-    field("output.schema_id", "request", "field", "output.schema_id", ["equals", "glob"]),
-    field("tool.name", "request", "field", "tool.name", ["equals", "glob"]),
-    field("target.environment", "request", "field", "target.environment", ["equals", "glob"]),
-    field("auth.principal", "authentication", "field", "auth.principal", ["equals", "glob"]),
-    field("endpoint.id", "authentication", "field", "endpoint.id", ["equals"]),
-    field("http.method", "http", "field", "http.method", ["equals"], ["GET", "POST", "PUT", "PATCH", "DELETE"]),
-    field("http.host", "http", "field", "http.host", ["equals", "glob"]),
-    field("http.path", "http", "field", "http.path", ["equals", "starts_with", "glob"]),
-    field("http.header", "http", "header", "", ["equals", "contains", "starts_with", "glob"], [], true),
-    field("auth.jwt_claim", "authentication", "jwt_claim", "", ["equals", "contains", "glob"], [], true),
-    field("model", "model", "field", "model", ["equals", "starts_with", "glob"]),
-    field("litellm.api_key_alias", "litellm", "field", "litellm.api_key_alias", ["equals", "glob"]),
-    field("litellm.team_id", "litellm", "field", "litellm.team_id", ["equals", "glob"]),
-    field("litellm.user_id", "litellm", "field", "litellm.user_id", ["equals", "glob"]),
-    field("a2a.version", "a2a", "field", "a2a.version", ["equals"], ["0.3", "1.0"]),
-    field("a2a.extensions", "a2a", "field", "a2a.extensions", ["contains", "glob"]),
-    field("a2a.operation", "a2a", "field", "a2a.operation", ["equals", "glob"]),
-    field("a2a.context_id", "a2a", "field", "a2a.context_id", ["equals", "glob"]),
-    field("a2a.task_id", "a2a", "field", "a2a.task_id", ["equals", "glob"]),
-    field("adapter.field", "request", "field", "", ["equals", "contains", "starts_with", "glob"], [], true),
-  ];
-}
-
-export function assertTrafficScopeSupported(scope: TrafficScope): void {
-  const definitions = new Map(trafficScopeFields().map((item) => [item.id, item]));
-  let conditionCount = 0;
-  const visit = (group: TrafficScope, depth: number, root: boolean) => {
-    if (depth > 4) throw new ValidationError("Traffic Scope nesting cannot exceed four levels.");
-    if (!root && group.conditions.length === 0) throw new ValidationError("Nested Traffic Scope groups cannot be empty.");
-    for (const item of group.conditions) {
-      if ("conditions" in item) {
-        visit(item, depth + 1, false);
-        continue;
-      }
-      conditionCount += 1;
-      if (conditionCount > 16) throw new ValidationError("Traffic Scope cannot contain more than 16 conditions.");
-      const definition = definitions.get(item.field);
-      if (!definition) throw new ValidationError(`Traffic Scope field ${item.field} is not supported by Runner.`);
-      if (!definition.operators.includes(item.operator)) {
-        throw new ValidationError(`Operator ${item.operator} is not supported for Traffic Scope field ${item.field}.`);
-      }
-      if (definition.custom_key && !item.key.trim()) {
-        throw new ValidationError(`Traffic Scope field ${item.field} requires a key.`);
-      }
-      if (!definition.custom_key && item.key.trim()) {
-        throw new ValidationError(`Traffic Scope field ${item.field} does not accept a custom key.`);
-      }
-      if (definition.values.length && !definition.values.includes(item.value)) {
-        throw new ValidationError(`Value ${item.value} is not supported for Traffic Scope field ${item.field}.`);
-      }
-    }
-  };
-  visit(scope, 1, true);
-}
-
-function field(
-  id: string,
-  group: "request" | "authentication" | "http" | "model" | "litellm" | "a2a",
-  source: "field" | "header" | "jwt_claim",
-  key: string,
-  operators: Array<"equals" | "contains" | "starts_with" | "glob">,
-  values: string[] = [],
-  customKey = false,
-) {
-  return { id, group, source, key, operators, values, ...(customKey ? { custom_key: true } : {}) };
 }
 
 function runnerAuthentication(token: string): MiddlewareHandler {

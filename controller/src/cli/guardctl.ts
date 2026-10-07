@@ -210,7 +210,7 @@ function outputHuman(resource: string, data: any, detail = false) {
     ],
     routes: [
       { label: 'ID', value: (r) => r.id }, { label: 'NAME', value: (r) => r.name }, { label: 'ENABLED', value: (r) => r.enabled },
-      { label: 'ORDER', value: (r) => r.order ?? r.routeOrder }, { label: 'TARGETS', value: (r) => r.targets?.length ?? 0 },
+      { label: 'ORDER', value: (r) => r.order }, { label: 'TARGETS', value: (r) => r.targets?.length ?? 0 },
       { label: 'FALLBACK', value: (r) => r.fallback ?? r.isFallback },
     ],
     'telemetry-events': [

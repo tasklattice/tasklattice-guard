@@ -123,7 +123,10 @@ message DesiredState {
   repeated Artifact artifacts = 2;
   repeated string disabled_guardrail_ids = 3;
   repeated string disabled_endpoint_ids = 4;
-  repeated RouterRoute routers = 5;
+  // Field 5 carried the retired per-Endpoint RouterRoute list; Endpoints now
+  // reach Guardrails only through their bound RouterRevision.
+  reserved 5;
+  reserved "routers";
   repeated EndpointRuntime endpoints = 6;
   map<string, string> guardrail_logging_levels = 7;
   DataPlaneModelConfiguration model_configuration = 8;
@@ -131,7 +134,7 @@ message DesiredState {
 }
 
 // ACK/NACK for the complete atomic desired-state generation. A NACK keeps the
-// prior artifacts, routes, endpoints, and model Provider registry active.
+// prior artifacts, Router revisions, endpoints, and model Provider registry active.
 message DesiredStateResult {
   string runner_id = 1;
   // Complete desired-state generation that was either applied or rejected.
@@ -141,17 +144,6 @@ message DesiredStateResult {
   // Human-readable NACK detail; empty for an ACK.
   string reason = 4;
   string model_revision_id = 5;
-}
-
-// Ordered traffic route from one Endpoint to one immutable artifact.
-message RouterRoute {
-  string router_id = 1;
-  string guardrail_id = 2;
-  string artifact_id = 3;
-  string endpoint_id = 4;
-  // Ascending precedence within an Endpoint; the first matching route wins.
-  int32 route_order = 5;
-  TrafficScope traffic_scope = 6;
 }
 
 // Runtime-only Endpoint projection; it contains no plaintext credential.

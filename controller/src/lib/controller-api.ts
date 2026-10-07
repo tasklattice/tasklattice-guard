@@ -211,20 +211,6 @@ export type Endpoint = {
   distributionStatus?: "ready" | "syncing";
 };
 
-export type Router = {
-  id: string;
-  name: string;
-  guardrailId: string;
-  endpointId: string | null;
-  poolId: string;
-  guardrailVersion: string | null;
-  routeOrder: number;
-  enabled: boolean;
-  trafficScope: Record<string, unknown>;
-  createdAt: string;
-  updatedAt: string;
-};
-
 export type ValidationRun = {
   id: string;
   guardrailId: string;

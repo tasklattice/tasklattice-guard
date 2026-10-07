@@ -4,7 +4,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { Router, Guardrail, GuardrailFindingPage, GuardrailPolicyBinding, GuardrailVersion, GuardrailVersionDetail, Metrics, Policy, TestCase } from "@/lib/api";
+import type { Guardrail, GuardrailFindingPage, GuardrailPolicyBinding, GuardrailVersion, GuardrailVersionDetail, Metrics, Policy, TestCase } from "@/lib/api";
+import type { TrafficRouter } from "@/lib/traffic-routing-api";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { defaultGuardrailDraft, DEFAULT_GUARDRAIL_ID } from "../../server/domain/defaults";
 import { PolicyCatalog } from "../../server/policy-catalog/catalog";
@@ -36,21 +37,29 @@ vi.mock("@/lib/auth", () => ({ useAuth: () => ({ user: { role: "admin" } }) }));
 vi.mock("@/routes/create-guardrail-wizard", () => ({ CreateGuardrailWizard: () => null }));
 vi.mock("@/routes/routers", () => ({
   CreateRouterSheet: () => null,
-  TrafficScopeBadges: ({ router }: { router: Router }) => <span>{router.name} scope</span>,
+  TrafficScopeBadges: ({ router }: { router: TrafficRouter }) => <span>{router.name} scope</span>,
 }));
 
-const router: Router = {
+const routerDraft = {
+  routes: [{
+    id: "route-observed", name: "Observed traffic", kind: "fallback" as const, enabled: true,
+    selector: { expression: { combinator: "and" as const, conditions: [] } },
+    targets: [{ id: "target-observed", guardrailId: "guardrail-observed", guardrailVersion: VERSION_ID, weightBps: 10000 }],
+  }],
+};
+const router: TrafficRouter = {
   id: "router-observed",
   name: "Observed traffic",
-  guardrail_id: "guardrail-observed",
-  guardrail_version: VERSION_ID,
-  endpoint_id: "endpoint-observed",
-  route_order: 1,
-  traffic_scope: { combinator: "and", conditions: [{ field: "protocol", operator: "equals", value: "litellm" }] },
-  enabled: true,
-  is_default: false,
-  system_managed: false,
-  updated_at: "2026-08-13T08:00:00Z",
+  description: "",
+  draftRevision: 1,
+  draft: routerDraft,
+  activeRevision: 1,
+  activeDraftRevision: 1,
+  activeSnapshot: routerDraft,
+  desiredGeneration: 1,
+  rolloutStatus: "active",
+  endpointIds: ["endpoint-observed"],
+  updatedAt: "2026-08-13T08:00:00Z",
 };
 
 const deletableGuardrail = {

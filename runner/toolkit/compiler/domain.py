@@ -221,33 +221,6 @@ class GuardrailVersion:
 
 
 @dataclass(frozen=True, slots=True)
-class TrafficCondition:
-    field: str
-    operator: str
-    value: str
-    key: str = ""
-
-
-@dataclass(frozen=True, slots=True)
-class TrafficScopeExpression:
-    combinator: str
-    conditions: tuple[TrafficCondition | TrafficScopeExpression, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class Router:
-    id: str
-    name: str
-    guardrail_id: str
-    guardrail_version: str
-    endpoint_id: str | None
-    route_order: int
-    traffic_scope: TrafficScopeExpression
-    enabled: bool
-    updated_at: str
-
-
-@dataclass(frozen=True, slots=True)
 class EndpointCredential:
     id: str
     key_hint: str

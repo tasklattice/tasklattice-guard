@@ -292,20 +292,6 @@ export type PolicyCoverage = {
   score: number | null;
 };
 
-export type Router = {
-  id: string;
-  name: string;
-  guardrail_id: string;
-  guardrail_version: string;
-  endpoint_id: string | null;
-  route_order: number;
-  traffic_scope: TrafficScopeExpression;
-  enabled: boolean;
-  is_default: boolean;
-  system_managed: boolean;
-  updated_at: string;
-};
-
 export type RouterDeletionImpact = {
   router_id: string;
   router_name: string;
@@ -424,36 +410,11 @@ export type RouterRuntimeTrace = {
   evidence_status?: "collected" | "not_collected";
 };
 
-export type TrafficScopeSource = "field" | "header" | "jwt_claim";
-export type TrafficScopeOperator = "equals" | "contains" | "starts_with" | "glob";
-
-export type TrafficCondition = {
-  field: string;
-  key?: string;
-  operator: TrafficScopeOperator;
-  value: string;
-};
-
-export type TrafficScopeExpression = {
-  combinator: "and" | "or";
-  conditions: Array<TrafficCondition | TrafficScopeExpression>;
-};
-
 export type PolicyIntentDetails = {
   audience: string;
   tasks: string;
   protect: string;
   out_of_scope: string;
-};
-
-export type TrafficScopeField = {
-  id: string;
-  group: "request" | "authentication" | "http" | "model" | "litellm" | "a2a";
-  source: TrafficScopeSource;
-  key: string;
-  operators: TrafficScopeOperator[];
-  values: string[];
-  custom_key?: boolean;
 };
 
 export type Guardrail = {
