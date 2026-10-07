@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 /** Wire the test LiteLLM gateway to a local Guard release: Endpoint + Router + Secret. */
 import { execFile } from "node:child_process";
-import { randomUUID } from "node:crypto";
 import { promisify } from "node:util";
 import { setTimeout as delay } from "node:timers/promises";
 
@@ -74,8 +73,16 @@ async function ensureRouter(endpointId, guardrail) {
   }
   router = (await api(`/api/v1/routers/${router.id}`)).result;
   if (!router.activeRevision || router.activeDraftRevision !== router.draftRevision) {
-    const published = (await api(`/api/v1/routers/${router.id}/publish`, { expectedDraftRevision: router.draftRevision, idempotencyKey: randomUUID() }, 202)).result;
-    log("router-published", { routerId: router.id, rolloutStatus: published.rolloutStatus ?? published.router?.rolloutStatus ?? null });
+    // The dev stack has a single administrator, so it applies its own change
+    // through the audited emergency path instead of waiting for a second approver.
+    let change = router.pendingChangeRequest;
+    if (!change) {
+      const review = (await api(`/api/v1/routers/${router.id}/publication-preview`, { expectedDraftRevision: router.draftRevision })).result;
+      change = (await api(`/api/v1/routers/${router.id}/change-requests`, { expectedDraftRevision: review.draftRevision, reviewedSnapshot: review.snapshot,
+        reviewedEndpointIds: review.endpointIds, reason: "LiteLLM integration test stack wiring" }, 201)).result;
+    }
+    const published = (await api(`/api/v1/routers/${router.id}/change-requests/${change.id}/emergency-apply`, { reason: "Automated LiteLLM dev stack wiring", managerContact: "LiteLLM dev stack (no manager)" }, 202)).result;
+    log("router-published", { routerId: router.id, changeRequestId: change.id, rolloutStatus: published.rolloutStatus ?? null });
   }
   return router;
 }

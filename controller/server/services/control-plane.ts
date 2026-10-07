@@ -26,6 +26,7 @@ import {
   guardrails,
   guardrailVersions,
   trafficRouters,
+  trafficRouterChangeRequests,
   trafficRouterRevisions,
   routeAssignments,
   endpoints,
@@ -918,7 +919,8 @@ export class ControlPlaneService {
       const references = (draft: { routes: Array<{ targets: Array<{ guardrailId: string; guardrailVersion?: string; versionStrategy?: string | undefined }> }> } | null) => draft?.routes.some(r => r.targets.some(t => t.guardrailId === input.guardrailId && (t.guardrailVersion === input.version || t.versionStrategy === "latest")));
       const current = await tx.select().from(trafficRouters).where(isNull(trafficRouters.deletedAt));
       const history = await tx.select().from(trafficRouterRevisions);
-      if (current.some(r => references(r.draft) || references(r.activeSnapshot)) || history.some(r => references(r.snapshot))) throw new ConflictError("This version is referenced by Router drafts or published revisions. Remove those references first.", "version_in_use");
+      const pendingChanges = await tx.select({ snapshot: trafficRouterChangeRequests.snapshot }).from(trafficRouterChangeRequests).where(eq(trafficRouterChangeRequests.status, "pending"));
+      if (current.some(r => references(r.draft) || references(r.activeSnapshot)) || history.some(r => references(r.snapshot)) || pendingChanges.some(r => references(r.snapshot))) throw new ConflictError("This version is referenced by Router drafts, pending change requests or published revisions. Remove those references first.", "version_in_use");
       const [pending] = await tx.select().from(routeAssignments).where(and(eq(routeAssignments.guardrailId, input.guardrailId), eq(routeAssignments.guardrailVersion, input.version), isNull(routeAssignments.completedAt), gte(routeAssignments.occurredAt, new Date(Date.now() - 300000)))).limit(1);
       if (pending) throw new ConflictError("This version has in-flight calls.", "version_in_use");
       await tx.insert(auditEvents).values({ id: randomUUID(), kind: "guardrail.version_deleted", actorId: input.actorId, resourceType: "guardrail", resourceId: input.guardrailId, detail: { version: input.version, artifactId: version.artifactId } });

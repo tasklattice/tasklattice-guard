@@ -77,10 +77,23 @@ export const routerDraftSchema = z.object({ routes: z.array(routeSchema).min(1).
 export type RouteTarget = z.infer<typeof targetSchema>;
 export type TrafficRoute = z.infer<typeof routeSchema>;
 export type RouterDraft = z.infer<typeof routerDraftSchema>;
+export type RouterChangeRequestStatus = "pending" | "applied" | "rejected" | "withdrawn" | "superseded";
+/** A frozen Router publication. Approval applies exactly this snapshot and Endpoint set. */
+export type RouterChangeRequest = {
+  id: string; routerId: string; kind: "publish" | "revert"; status: RouterChangeRequestStatus;
+  sourceDraftRevision: number | null; baseRevision: number | null; snapshot: RouterDraft; endpointIds: string[];
+  context: { endpoints: Array<{ id: string; name: string; adapter: string }>; guardrails: Array<{ id: string; name: string; version: string }> } | null;
+  ticket: string; reason: string; submittedBy: string; submittedByName: string | null; submittedAt: string;
+  decidedBy: string | null; decidedByName: string | null; decidedAt: string | null; decisionNote: string | null;
+  emergencyReason: string | null; emergencyContact: string | null; appliedRevision: number | null; revertsChangeRequestId: string | null;
+};
 export type TrafficRouter = {
   id: string; name: string; description: string; draftRevision: number; draft: RouterDraft; activeRevision: number | null;
   activeDraftRevision: number | null; activeSnapshot: RouterDraft | null; desiredGeneration: number;
   rolloutStatus: RouterRolloutState; endpointIds: string[]; updatedAt: string;
+  pendingChangeRequest: RouterChangeRequest | null;
+  /** The applied change whose base revision may be restored without another approval. */
+  revertibleChangeRequest: { id: string; baseRevision: number; appliedRevision: number } | null;
 };
 export type SelectorField = { id: string; label: string; group: string; customKey?: boolean; http?: boolean; cardinality: "one" | "many"; operators: readonly string[]; valueType?: "string"; availableAt?: "first_assignment"; sourceDescription?: string };
 const strings = selectorOperators;

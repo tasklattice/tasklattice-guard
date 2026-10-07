@@ -72,9 +72,11 @@ describe("Generated OpenAPI contract", () => {
     const traffic = contract.paths["/api/v1/routers/{id}/traffic-distribution"].get;
     expect(traffic.tags).toEqual(["telemetry"]);
     expect(traffic["x-token-permission"]).toEqual({ module: "routers", access: "read" });
-    const publish = contract.paths["/api/v1/routers/{id}/publish"].post;
-    expect(publish["x-idempotency"]).toMatchObject({ mode: "keyed", conflictStatus: 409 });
-    expect(publish.description).toContain("publication.revision");
+    const approve = contract.paths["/api/v1/routers/{id}/change-requests/{changeId}/approve"].post;
+    expect(approve["x-idempotency"]).toMatchObject({ mode: "state-transition" });
+    expect(approve["x-token-permission"]).toEqual({ module: "routers", access: "write" });
+    expect(approve.description).toContain("must differ from the submitter");
+    expect(contract.paths["/api/v1/routers/{id}/publish"]).toBeUndefined();
   });
   it("returns JSON 404 for removed API routes rather than the SPA", async () => {
     const app = setup();
@@ -89,11 +91,14 @@ describe("Generated OpenAPI contract", () => {
     expect(validate(tokens, { name: "Automation", permissions: { routers: "read" }, expiresInDays: 30 }).valid).toBe(true);
     expect(validate(tokens, { name: "Automation", permissions: { routers: "read" }, expiresInDays: 31 }).valid).toBe(false);
     expect(validate(tokens, { name: "Automation", permissions: { audit: "write" }, expiresInDays: 30 }).valid).toBe(false);
-    const publish = contract.paths["/api/v1/routers/{id}/publish"].post;
-    expect(validate(publish.requestBody.content["application/json"].schema, { expectedDraftRevision: 1, idempotencyKey: "review-1" }).valid).toBe(true);
-    expect(validate(publish.requestBody.content["application/json"].schema, { expectedDraftRevision: 1 }).valid).toBe(false);
-    expect(validate(publish.requestBody.content["application/json"].schema, { expectedDraftRevision: 0, idempotencyKey: "review-1" }).valid).toBe(false);
-    expect(publish.responses[202].description).toContain("does not guarantee");
+    const submit = contract.paths["/api/v1/routers/{id}/change-requests"].post.requestBody.content["application/json"].schema;
+    const snapshot = { routes: [{ id: "fallback", name: "Fallback", kind: "fallback", enabled: true, selector: { expression: { combinator: "and", conditions: [] } }, targets: [{ id: "t", guardrailId: "g", guardrailVersion: "1", weightBps: 10000 }] }] };
+    expect(validate(submit, { expectedDraftRevision: 1, reviewedSnapshot: snapshot, reviewedEndpointIds: [], reason: "Enable v7" }).valid).toBe(true);
+    expect(validate(submit, { expectedDraftRevision: 1, reviewedSnapshot: snapshot, reviewedEndpointIds: [] }).valid).toBe(false);
+    expect(validate(submit, { expectedDraftRevision: 0, reviewedSnapshot: snapshot, reviewedEndpointIds: [], reason: "Enable v7" }).valid).toBe(false);
+    const emergency = contract.paths["/api/v1/routers/{id}/change-requests/{changeId}/emergency-apply"].post;
+    expect(validate(emergency.requestBody.content["application/json"].schema, { reason: "Abuse" }).valid).toBe(false);
+    expect(emergency.responses[202].description).toContain("does not guarantee");
     const intent = contract.paths["/api/v1/authoring/intent-analyses"].post.requestBody.content["application/json"].schema;
     expect(validate(intent, { purpose: "Explain account features", deniedPurpose: "Refuse unauthorized account access", topicControlMode: "permissive" }).valid).toBe(true);
     expect(validate(intent, { purpose: "Explain account features" }).valid).toBe(true);
@@ -109,17 +114,17 @@ describe("Generated OpenAPI contract", () => {
   });
   it("serves docs and a single-operation contract without a session, rejects unknown filters", async () => {
     const app = setup();
-    const response = await app.request("/api/openapi.json?operationId=postRoutersByIdPublish");
+    const response = await app.request("/api/openapi.json?operationId=postRoutersByIdChangeRequestsByChangeIdApprove");
     expect(response.status).toBe(200);
     const document = await response.json() as any;
-    expect(Object.keys(document.paths)).toEqual(["/api/v1/routers/{id}/publish"]);
+    expect(Object.keys(document.paths)).toEqual(["/api/v1/routers/{id}/change-requests/{changeId}/approve"]);
     await SwaggerParser.validate(document);
     expect((await app.request("/api/openapi.json?module=missing")).status).toBe(404);
     expect((await app.request("/api/openapi.json?module=routers&operationId=getGuardrails")).status).toBe(404);
     const html = await app.request("/api/docs");
     expect(html.headers.get("content-type")).toContain("text/html");
     expect(await html.text()).toContain("Download full OpenAPI JSON");
-    expect(await (await app.request("/api/llms.txt")).text()).toContain("postRoutersByIdPublish: POST");
+    expect(await (await app.request("/api/llms.txt")).text()).toContain("postRoutersByIdChangeRequestsByChangeIdApprove: POST");
   });
   it("validates serialized handler responses including identity, nulls and errors", async () => {
     const app = setup();

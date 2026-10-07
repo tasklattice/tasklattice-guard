@@ -393,11 +393,11 @@ Paths are relative to the Controller. Authentication is required; mutations and 
 | `GET /api/v1/routers/:id` | Current Router, draft/publication identity, bindings, and rollout state |
 | `PUT /api/v1/routers/:id/draft` | `expectedDraftRevision`, `draft`; save the whole structurally valid draft with concurrency control |
 | `POST /api/v1/routers/:id/publication-preview` | `expectedDraftRevision`; read-only resolution to `{ draftRevision, snapshot, endpointIds }` |
-| `POST /api/v1/routers/:id/publish` | `expectedDraftRevision`, `idempotencyKey`, optional paired `reviewedSnapshot` and `reviewedEndpointIds`; HTTP 202 |
+| `POST /api/v1/routers/:id/change-requests` | `expectedDraftRevision`, `reviewedSnapshot`, `reviewedEndpointIds`, `reason`, optional `ticket`; freezes a pending change without publishing; HTTP 201. Approval and rollback are described in [Guardrail promotion and Routing approval](guardrail-promotion-design.zh-CN.md) |
 | `GET /api/v1/routers/:id/revisions` | List immutable revisions |
 | `GET /api/v1/routers/:id/revisions/:revision` | Read one revision |
 | `DELETE /api/v1/routers/:id/revisions/:revision` | Delete eligible historical revision; current/in-use/retained revisions are rejected |
-| `POST /api/v1/routers/:id/rollback` | `expectedDraftRevision`, historical `revision`, `idempotencyKey`; publish historical routing as a new revision; HTTP 202 |
+| `POST /api/v1/routers/:id/change-requests/:changeId/approve` | A different administrator applies the frozen snapshot as a new revision; HTTP 202 |
 | `PUT /api/v1/routers/:id/endpoints` | `endpointIds`; atomically replace sources after ownership/capability validation; identical normalized sets are no-ops |
 | `DELETE /api/v1/routers/:id` | Delete an unbound Router; HTTP 204 |
 | `GET /api/v1/routing/selector-fields` | Optional comma-separated `endpointIds` query; field catalog and Endpoint capabilities |

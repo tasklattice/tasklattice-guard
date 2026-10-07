@@ -364,7 +364,26 @@ export type RouterRevisionContext = {
   endpoints: Array<{ id: string; name: string; adapter: string }>;
   guardrails: Array<{ id: string; name: string; version: string }>;
 };
+export type RouterChangeRequestKind = "publish" | "revert";
+export type RouterChangeRequestStatus = "pending" | "applied" | "rejected" | "withdrawn" | "superseded";
+/** A frozen Router publication awaiting, or recording, an administrator decision. */
+export const trafficRouterChangeRequests = pgTable("traffic_router_change_request", {
+  id: text("id").primaryKey(), routerId: text("router_id").notNull().references(() => trafficRouters.id),
+  kind: text("kind").$type<RouterChangeRequestKind>().notNull(), status: text("status").$type<RouterChangeRequestStatus>().notNull(),
+  sourceDraftRevision: integer("source_draft_revision"), baseRevision: integer("base_revision"),
+  snapshot: jsonb("snapshot").$type<RouterDraft>().notNull(), endpointIds: jsonb("endpoint_ids").$type<string[]>().notNull(),
+  context: jsonb("context").$type<RouterRevisionContext>(),
+  ticket: text("ticket").notNull().default(""), reason: text("reason").notNull(),
+  submittedBy: text("submitted_by").notNull().references(() => user.id), submittedAt: timestamp("submitted_at", { withTimezone: true }).notNull().defaultNow(),
+  decidedBy: text("decided_by").references(() => user.id), decidedAt: timestamp("decided_at", { withTimezone: true }), decisionNote: text("decision_note"),
+  emergencyReason: text("emergency_reason"), emergencyContact: text("emergency_contact"),
+  appliedRevision: integer("applied_revision"), revertsChangeRequestId: text("reverts_change_request_id"), updatedAt,
+}, t => [
+  uniqueIndex("traffic_router_change_request_pending_idx").on(t.routerId).where(sql`${t.status} = 'pending'`),
+  index("traffic_router_change_request_router_idx").on(t.routerId, t.submittedAt),
+]);
 export const trafficRouterRevisions = pgTable("traffic_router_revision", {
+  changeRequestId: text("change_request_id").references(() => trafficRouterChangeRequests.id),
   context: jsonb("context").$type<RouterRevisionContext>(),
   routerId: text("router_id").notNull().references(() => trafficRouters.id), revision: integer("revision").notNull(),
   sourceDraftRevision: integer("source_draft_revision").notNull(), snapshot: jsonb("snapshot").$type<RouterDraft>().notNull(),

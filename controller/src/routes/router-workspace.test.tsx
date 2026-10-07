@@ -11,15 +11,19 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RouterWorkspace } from "./router-detail";
-import type { TrafficRouter, RouterDraft } from "@/lib/traffic-routing-api";
-const { save, preview, publish, role } = vi.hoisted(() => ({
+import type { TrafficRouter, RouterChangeRequest, RouterDraft } from "@/lib/traffic-routing-api";
+const { save, preview, publish, approve, emergencyApply, withdraw, revert, role } = vi.hoisted(() => ({
   save: vi.fn(),
   preview: vi.fn(),
   publish: vi.fn(),
-  role: { value: "admin" },
+  approve: vi.fn(),
+  emergencyApply: vi.fn(),
+  withdraw: vi.fn(),
+  revert: vi.fn(),
+  role: { value: "admin", id: "submitter" },
 }));
 vi.mock("@/lib/auth", () => ({
-  useAuth: () => ({ user: { role: role.value } }),
+  useAuth: () => ({ user: { id: role.id, role: role.value } }),
 }));
 
 const navigation = vi.hoisted(() => ({
@@ -57,10 +61,15 @@ vi.mock("@/lib/traffic-routing-api", async (original) => ({
   ...(await original<typeof import("@/lib/traffic-routing-api")>()),
   listTrafficRouters: async () => ({ items: [] }),
   getSelectorFields: async () => ({ items: [] }),
-  getRouterRevisions: async () => ({ items: [] }),
+  getRouterRevisions: async () => ({ items: [{ revision: 1, sourceDraftRevision: 1, snapshot: { routes: [] }, createdAt: "2026-10-01T08:00:00.000Z", createdBy: "approver" }] }),
   saveTrafficRouter: save,
   previewTrafficRouter: preview,
-  publishTrafficRouter: publish,
+  submitRouterChange: publish,
+  approveRouterChange: approve,
+  emergencyApplyRouterChange: emergencyApply,
+  withdrawRouterChange: withdraw,
+  revertRouterChange: revert,
+  listRouterChangeRequests: async () => ({ items: [] }),
 }));
 vi.mock("@/components/traffic-routing/distribution", () => ({
   DistributionOverview: () => <div data-testid="monitoring-distribution">Runtime distribution</div>,
@@ -119,6 +128,15 @@ const router: TrafficRouter = {
   activeSnapshot: structuredClone(draft),
   desiredGeneration: 1,
   updatedAt: "",
+  pendingChangeRequest: null,
+  revertibleChangeRequest: null,
+};
+const pendingChange: RouterChangeRequest = {
+  id: "change", routerId: "router", kind: "publish", status: "pending", sourceDraftRevision: 2, baseRevision: 1,
+  snapshot: draft, endpointIds: [], context: null, ticket: "CHG-7", reason: "Enable partner v2",
+  submittedBy: "submitter", submittedByName: "Submitter", submittedAt: "2026-10-07T10:00:00.000Z",
+  decidedBy: null, decidedByName: null, decidedAt: null, decisionNote: null, emergencyReason: null, emergencyContact: null,
+  appliedRevision: null, revertsChangeRequestId: null,
 };
 function mount(value = router) {
   return render(
@@ -156,6 +174,7 @@ async function edit() {
 describe("Router detail workflow", () => {
   beforeEach(() => {
     role.value = "admin";
+    role.id = "submitter";
     navigation.search = {};
     navigation.navigate.mockImplementation(({ search }: { search: (previous: typeof navigation.search) => typeof navigation.search }) => {
       navigation.search = search(navigation.search);
@@ -180,12 +199,11 @@ describe("Router detail workflow", () => {
       snapshot: draft,
       endpointIds: [],
     });
-    publish.mockResolvedValue({
-      ...router,
-      activeRevision: 2,
-      activeDraftRevision: 2,
-      draftRevision: 2,
-    });
+    publish.mockResolvedValue(pendingChange);
+    approve.mockResolvedValue({ ...router, activeRevision: 2 });
+    emergencyApply.mockResolvedValue({ ...router, activeRevision: 2 });
+    withdraw.mockResolvedValue({ ...pendingChange, status: "withdrawn" });
+    revert.mockResolvedValue({ ...router, activeRevision: 3 });
   });
   afterEach(() => {
     cleanup();
@@ -288,7 +306,7 @@ describe("Router detail workflow", () => {
     ).toBeTruthy();
     expect(publish).not.toHaveBeenCalled();
   });
-  it("reviews resolved versions and publishes the exact reviewed snapshot", async () => {
+  it("reviews resolved versions and submits the exact reviewed snapshot for approval", async () => {
     mount();
     await edit();
     fireEvent.change(screen.getByLabelText("Route name"), {
@@ -301,11 +319,18 @@ describe("Router detail workflow", () => {
     await screen.findByRole("heading", { name: "Review routing changes" });
     expect(save).toHaveBeenCalledTimes(1);
     expect(preview).toHaveBeenCalledWith("router", 2);
-    fireEvent.click(screen.getByRole("button", { name: "Publish revision" }));
+    const submit = screen.getByRole("button", { name: "Submit for approval" });
+    expect(submit.hasAttribute("disabled")).toBe(true);
+    fireEvent.change(screen.getByLabelText("Change description"), { target: { value: " Rename partner route " } });
+    fireEvent.change(screen.getByLabelText("Change ticket (optional)"), { target: { value: "CHG-7" } });
+    fireEvent.click(submit);
     await waitFor(() =>
-      expect(publish).toHaveBeenCalledWith("router", 2, expect.any(String), {
+      expect(publish).toHaveBeenCalledWith("router", {
+        expectedDraftRevision: 2,
         reviewedSnapshot: draft,
         reviewedEndpointIds: [],
+        reason: "Rename partner route",
+        ticket: "CHG-7",
       }),
     );
     await waitFor(() =>
@@ -315,6 +340,41 @@ describe("Router detail workflow", () => {
           .getAttribute("aria-selected"),
       ).toBe("true"),
     );
+  });
+  it("lets another administrator approve a pending change exactly once", async () => {
+    role.id = "approver";
+    mount({ ...router, draftRevision: 2, pendingChangeRequest: pendingChange });
+    expect(screen.getByText("Change awaiting approval")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Review & submit" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Review change" }));
+    const sheet = await screen.findByRole("dialog", { name: "Review pending change" });
+    expect(within(sheet).getByText("Enable partner v2")).toBeTruthy();
+    expect(within(sheet).queryByRole("button", { name: "Withdraw" })).toBeNull();
+    fireEvent.change(within(sheet).getByLabelText("Approval note (optional)"), { target: { value: "CAB approved" } });
+    fireEvent.click(within(sheet).getByRole("button", { name: "Approve and apply" }));
+    await waitFor(() => expect(approve).toHaveBeenCalledExactlyOnceWith("router", "change", "CAB approved"));
+  });
+  it("requires a reason and manager contact before the submitter applies in an emergency", async () => {
+    mount({ ...router, draftRevision: 2, pendingChangeRequest: pendingChange });
+    fireEvent.click(screen.getByRole("button", { name: "Review change" }));
+    const sheet = await screen.findByRole("dialog", { name: "Review pending change" });
+    expect(within(sheet).queryByRole("button", { name: "Approve and apply" })).toBeNull();
+    fireEvent.click(within(sheet).getByRole("button", { name: "Emergency apply" }));
+    const apply = within(sheet).getByRole("button", { name: "Apply now" });
+    fireEvent.change(within(sheet).getByLabelText("Emergency reason"), { target: { value: "Active abuse" } });
+    expect(apply.hasAttribute("disabled")).toBe(true);
+    fireEvent.change(within(sheet).getByLabelText("Manager contact"), { target: { value: "Duty manager 138" } });
+    fireEvent.click(apply);
+    await waitFor(() => expect(emergencyApply).toHaveBeenCalledExactlyOnceWith("router", "change", { reason: "Active abuse", managerContact: "Duty manager 138" }));
+    expect(approve).not.toHaveBeenCalled();
+  });
+  it("rolls back the active change to its pre-approved base revision with a reason", async () => {
+    mount({ ...router, activeRevision: 2, revertibleChangeRequest: { id: "change", baseRevision: 1, appliedRevision: 2 } });
+    fireEvent.click(await screen.findByRole("button", { name: "Roll back to 20261001-080000.000Z" }));
+    const sheet = await screen.findByRole("dialog", { name: "Roll back to 20261001-080000.000Z" });
+    fireEvent.change(within(sheet).getByLabelText("Rollback reason"), { target: { value: "False positives" } });
+    fireEvent.click(within(sheet).getByRole("button", { name: "Roll back" }));
+    await waitFor(() => expect(revert).toHaveBeenCalledExactlyOnceWith("router", "change", "False positives"));
   });
   it("keeps fallback separate, without delete or reorder", async () => {
     mount();
@@ -418,6 +478,7 @@ describe("Router detail workflow", () => {
     mount();
     await screen.findByRole("heading", { name: "Traffic Flow" });
     expect(screen.queryByRole("button", { name: "Edit routing" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Roll back/ })).toBeNull();
     fireEvent.click(screen.getByRole("tab", { name: "Endpoints" }), {
       button: 0,
       ctrlKey: false,

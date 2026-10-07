@@ -6814,6 +6814,24 @@
         ],
         "type": "object"
       },
+      "getRoutersByIdChangeRequestsResponse": {
+        "properties": {
+          "count": {
+            "type": "number"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/getRoutersResponseItemsItemPendingChangeRequest"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "count"
+        ],
+        "type": "object"
+      },
       "getRoutersByIdRevisionsByRevisionParamRevision": {
         "exclusiveMinimum": 0,
         "maximum": 9007199254740991,
@@ -6835,6 +6853,16 @@
       },
       "getRoutersByIdRevisionsResponseItemsItem": {
         "properties": {
+          "changeRequestId": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
           "context": {
             "anyOf": [
               {
@@ -6902,6 +6930,7 @@
           }
         },
         "required": [
+          "changeRequestId",
           "context",
           "routerId",
           "revision",
@@ -7374,6 +7403,26 @@
           "name": {
             "type": "string"
           },
+          "pendingChangeRequest": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/getRoutersResponseItemsItemPendingChangeRequest"
+              }
+            ]
+          },
+          "revertibleChangeRequest": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/getRoutersResponseItemsItemRevertibleChangeRequest"
+              }
+            ]
+          },
           "rolloutError": {
             "anyOf": [
               {
@@ -7413,7 +7462,9 @@
           "createdAt",
           "updatedAt",
           "endpointIds",
-          "rolloutStatus"
+          "rolloutStatus",
+          "pendingChangeRequest",
+          "revertibleChangeRequest"
         ],
         "type": "object"
       },
@@ -7599,6 +7650,277 @@
           "guardrailId",
           "guardrailVersion",
           "weightBps"
+        ],
+        "type": "object"
+      },
+      "getRoutersResponseItemsItemPendingChangeRequest": {
+        "properties": {
+          "appliedRevision": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "baseRevision": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "context": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/getRoutersResponseItemsItemPendingChangeRequestContext"
+              }
+            ]
+          },
+          "decidedAt": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "decidedBy": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "decidedByName": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "decisionNote": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "emergencyContact": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "emergencyReason": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "endpointIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "publish",
+              "revert"
+            ],
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "revertsChangeRequestId": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "routerId": {
+            "type": "string"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/getRoutersResponseItemsItemDraft"
+          },
+          "sourceDraftRevision": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "status": {
+            "enum": [
+              "applied",
+              "pending",
+              "rejected",
+              "superseded",
+              "withdrawn"
+            ],
+            "type": "string"
+          },
+          "submittedAt": {
+            "type": "string"
+          },
+          "submittedBy": {
+            "type": "string"
+          },
+          "submittedByName": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "ticket": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "routerId",
+          "kind",
+          "status",
+          "sourceDraftRevision",
+          "baseRevision",
+          "snapshot",
+          "endpointIds",
+          "context",
+          "ticket",
+          "reason",
+          "submittedBy",
+          "submittedByName",
+          "submittedAt",
+          "decidedBy",
+          "decidedByName",
+          "decidedAt",
+          "decisionNote",
+          "emergencyReason",
+          "emergencyContact",
+          "appliedRevision",
+          "revertsChangeRequestId"
+        ],
+        "type": "object"
+      },
+      "getRoutersResponseItemsItemPendingChangeRequestContext": {
+        "properties": {
+          "endpoints": {
+            "items": {
+              "$ref": "#/components/schemas/getRoutersResponseItemsItemPendingChangeRequestContextEndpointsItem"
+            },
+            "type": "array"
+          },
+          "guardrails": {
+            "items": {
+              "$ref": "#/components/schemas/getRoutersResponseItemsItemPendingChangeRequestContextGuardrailsItem"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "endpoints",
+          "guardrails"
+        ],
+        "type": "object"
+      },
+      "getRoutersResponseItemsItemPendingChangeRequestContextEndpointsItem": {
+        "properties": {
+          "adapter": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "adapter"
+        ],
+        "type": "object"
+      },
+      "getRoutersResponseItemsItemPendingChangeRequestContextGuardrailsItem": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "version"
+        ],
+        "type": "object"
+      },
+      "getRoutersResponseItemsItemRevertibleChangeRequest": {
+        "properties": {
+          "appliedRevision": {
+            "type": "number"
+          },
+          "baseRevision": {
+            "type": "number"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "baseRevision",
+          "appliedRevision"
         ],
         "type": "object"
       },
@@ -14892,21 +15214,71 @@
         ],
         "type": "object"
       },
-      "postRoutersByIdPublicationPreviewRequest": {
+      "postRoutersByIdChangeRequestsByChangeIdApproveRequest": {
         "properties": {
-          "expectedDraftRevision": {
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991,
-            "type": "integer"
+          "note": {
+            "maxLength": 2000,
+            "type": "string"
           }
         },
-        "required": [
-          "expectedDraftRevision"
-        ],
         "type": "object"
       },
-      "postRoutersByIdPublicationPreviewResponse": {
+      "postRoutersByIdChangeRequestsByChangeIdApproveResponse": {
         "properties": {
+          "activeDraftRevision": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "activeRevision": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "activeSnapshot": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/getRoutersResponseItemsItemDraft"
+              }
+            ]
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "deletedAt": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "format": "date-time",
+                "type": "string"
+              }
+            ]
+          },
+          "description": {
+            "type": "string"
+          },
+          "desiredGeneration": {
+            "type": "number"
+          },
+          "draft": {
+            "$ref": "#/components/schemas/getRoutersResponseItemsItemDraft"
+          },
           "draftRevision": {
             "type": "number"
           },
@@ -14916,26 +15288,169 @@
             },
             "type": "array"
           },
-          "snapshot": {
-            "$ref": "#/components/schemas/getRoutersResponseItemsItemDraft"
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "pendingChangeRequest": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/getRoutersResponseItemsItemPendingChangeRequest"
+              }
+            ]
+          },
+          "publication": {
+            "$ref": "#/components/schemas/postRoutersByIdChangeRequestsByChangeIdApproveResponsePublication"
+          },
+          "revertibleChangeRequest": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/getRoutersResponseItemsItemRevertibleChangeRequest"
+              }
+            ]
+          },
+          "rolloutError": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "rolloutStatus": {
+            "enum": [
+              "active",
+              "distributing",
+              "failed",
+              "unpublished"
+            ],
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
           }
         },
         "required": [
+          "id",
+          "name",
+          "description",
           "draftRevision",
-          "snapshot",
-          "endpointIds"
+          "draft",
+          "deletedAt",
+          "rolloutError",
+          "activeRevision",
+          "activeDraftRevision",
+          "activeSnapshot",
+          "desiredGeneration",
+          "createdAt",
+          "updatedAt",
+          "endpointIds",
+          "rolloutStatus",
+          "pendingChangeRequest",
+          "revertibleChangeRequest",
+          "publication"
         ],
         "type": "object"
       },
-      "postRoutersByIdPublishRequest": {
+      "postRoutersByIdChangeRequestsByChangeIdApproveResponsePublication": {
+        "properties": {
+          "generation": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "replayed": {
+            "type": "boolean"
+          },
+          "revision": {
+            "type": "number"
+          },
+          "revisionUrl": {
+            "type": "string"
+          },
+          "statusUrl": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "revision",
+          "generation",
+          "replayed",
+          "revisionUrl",
+          "statusUrl"
+        ],
+        "type": "object"
+      },
+      "postRoutersByIdChangeRequestsByChangeIdEmergencyApplyRequest": {
+        "properties": {
+          "managerContact": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason",
+          "managerContact"
+        ],
+        "type": "object"
+      },
+      "postRoutersByIdChangeRequestsByChangeIdRejectRequest": {
+        "properties": {
+          "note": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "note"
+        ],
+        "type": "object"
+      },
+      "postRoutersByIdChangeRequestsByChangeIdRevertRequest": {
+        "properties": {
+          "reason": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "type": "object"
+      },
+      "postRoutersByIdChangeRequestsRequest": {
         "properties": {
           "expectedDraftRevision": {
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991,
             "type": "integer"
           },
-          "idempotencyKey": {
-            "maxLength": 128,
+          "reason": {
+            "maxLength": 2000,
             "minLength": 1,
             "type": "string"
           },
@@ -15319,70 +15834,36 @@
               "routes"
             ],
             "type": "object"
+          },
+          "ticket": {
+            "default": "",
+            "maxLength": 128,
+            "type": "string"
           }
         },
         "required": [
           "expectedDraftRevision",
-          "idempotencyKey"
+          "reviewedSnapshot",
+          "reviewedEndpointIds",
+          "reason"
         ],
         "type": "object"
       },
-      "postRoutersByIdPublishResponse": {
+      "postRoutersByIdPublicationPreviewRequest": {
         "properties": {
-          "activeDraftRevision": {
-            "anyOf": [
-              {
-                "type": "null"
-              },
-              {
-                "type": "number"
-              }
-            ]
-          },
-          "activeRevision": {
-            "anyOf": [
-              {
-                "type": "null"
-              },
-              {
-                "type": "number"
-              }
-            ]
-          },
-          "activeSnapshot": {
-            "anyOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/getRoutersResponseItemsItemDraft"
-              }
-            ]
-          },
-          "createdAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "deletedAt": {
-            "anyOf": [
-              {
-                "type": "null"
-              },
-              {
-                "format": "date-time",
-                "type": "string"
-              }
-            ]
-          },
-          "description": {
-            "type": "string"
-          },
-          "desiredGeneration": {
-            "type": "number"
-          },
-          "draft": {
-            "$ref": "#/components/schemas/getRoutersResponseItemsItemDraft"
-          },
+          "expectedDraftRevision": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expectedDraftRevision"
+        ],
+        "type": "object"
+      },
+      "postRoutersByIdPublicationPreviewResponse": {
+        "properties": {
           "draftRevision": {
             "type": "number"
           },
@@ -15392,115 +15873,14 @@
             },
             "type": "array"
           },
-          "id": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "publication": {
-            "$ref": "#/components/schemas/postRoutersByIdPublishResponsePublication"
-          },
-          "rolloutError": {
-            "anyOf": [
-              {
-                "type": "null"
-              },
-              {
-                "type": "string"
-              }
-            ]
-          },
-          "rolloutStatus": {
-            "enum": [
-              "active",
-              "distributing",
-              "failed",
-              "unpublished"
-            ],
-            "type": "string"
-          },
-          "updatedAt": {
-            "format": "date-time",
-            "type": "string"
+          "snapshot": {
+            "$ref": "#/components/schemas/getRoutersResponseItemsItemDraft"
           }
         },
         "required": [
-          "id",
-          "name",
-          "description",
           "draftRevision",
-          "draft",
-          "deletedAt",
-          "rolloutError",
-          "activeRevision",
-          "activeDraftRevision",
-          "activeSnapshot",
-          "desiredGeneration",
-          "createdAt",
-          "updatedAt",
-          "endpointIds",
-          "rolloutStatus",
-          "publication"
-        ],
-        "type": "object"
-      },
-      "postRoutersByIdPublishResponsePublication": {
-        "properties": {
-          "generation": {
-            "anyOf": [
-              {
-                "type": "null"
-              },
-              {
-                "type": "number"
-              }
-            ]
-          },
-          "replayed": {
-            "type": "boolean"
-          },
-          "revision": {
-            "type": "number"
-          },
-          "revisionUrl": {
-            "type": "string"
-          },
-          "statusUrl": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "revision",
-          "generation",
-          "replayed",
-          "revisionUrl",
-          "statusUrl"
-        ],
-        "type": "object"
-      },
-      "postRoutersByIdRollbackRequest": {
-        "properties": {
-          "expectedDraftRevision": {
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991,
-            "type": "integer"
-          },
-          "idempotencyKey": {
-            "maxLength": 128,
-            "minLength": 1,
-            "type": "string"
-          },
-          "revision": {
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "expectedDraftRevision",
-          "idempotencyKey",
-          "revision"
+          "snapshot",
+          "endpointIds"
         ],
         "type": "object"
       },
@@ -17342,6 +17722,26 @@
           "name": {
             "type": "string"
           },
+          "pendingChangeRequest": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/getRoutersResponseItemsItemPendingChangeRequest"
+              }
+            ]
+          },
+          "revertibleChangeRequest": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/getRoutersResponseItemsItemRevertibleChangeRequest"
+              }
+            ]
+          },
           "rolloutError": {
             "anyOf": [
               {
@@ -17382,6 +17782,8 @@
           "updatedAt",
           "endpointIds",
           "rolloutStatus",
+          "pendingChangeRequest",
+          "revertibleChangeRequest",
           "changed"
         ],
         "type": "object"
@@ -17549,7 +17951,7 @@
         },
         "x-product-area": "Account",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#310"
+        "x-source": "server/http/app.ts#312"
       },
       "post": {
         "description": "Creates a resource or executes the named operation. A network failure does not prove that execution failed. Browser session only. Revocation is a no-op when already revoked. Creation returns the secret once; it cannot be recovered or transparently replayed. Browser session only. Personal access tokens cannot manage credentials. Ownership is taken from the authenticated session.",
@@ -17700,7 +18102,7 @@
         },
         "x-product-area": "Account",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#312"
+        "x-source": "server/http/app.ts#314"
       }
     },
     "/api/v1/account/access-tokens/{id}": {
@@ -17846,7 +18248,7 @@
         },
         "x-product-area": "Account",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#317"
+        "x-source": "server/http/app.ts#319"
       }
     },
     "/api/v1/account/identity": {
@@ -17982,7 +18384,7 @@
         },
         "x-product-area": "Account",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#321"
+        "x-source": "server/http/app.ts#323"
       }
     },
     "/api/v1/audit-events": {
@@ -18202,7 +18604,7 @@
         },
         "x-product-area": "Observability",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#960",
+        "x-source": "server/http/app.ts#983",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -18334,7 +18736,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#493",
+        "x-source": "server/http/app.ts#495",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -18499,7 +18901,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#514",
+        "x-source": "server/http/app.ts#516",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -18641,7 +19043,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#502",
+        "x-source": "server/http/app.ts#504",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -18783,7 +19185,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#639",
+        "x-source": "server/http/app.ts#641",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -18915,7 +19317,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#749",
+        "x-source": "server/http/app.ts#751",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -19055,7 +19457,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#756",
+        "x-source": "server/http/app.ts#758",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -19200,7 +19602,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#792",
+        "x-source": "server/http/app.ts#794",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -19340,7 +19742,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#761",
+        "x-source": "server/http/app.ts#763",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -19490,7 +19892,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#764",
+        "x-source": "server/http/app.ts#766",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -19632,7 +20034,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#773",
+        "x-source": "server/http/app.ts#775",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -19775,7 +20177,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#780",
+        "x-source": "server/http/app.ts#782",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -19917,7 +20319,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#789",
+        "x-source": "server/http/app.ts#791",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "read",
@@ -20049,7 +20451,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#441",
+        "x-source": "server/http/app.ts#443",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -20181,7 +20583,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#535",
+        "x-source": "server/http/app.ts#537",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -20321,7 +20723,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#643",
+        "x-source": "server/http/app.ts#645",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -20463,7 +20865,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#714",
+        "x-source": "server/http/app.ts#716",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -20613,7 +21015,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#719",
+        "x-source": "server/http/app.ts#721",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -20756,7 +21158,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#723",
+        "x-source": "server/http/app.ts#725",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -20898,7 +21300,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#741",
+        "x-source": "server/http/app.ts#743",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -21043,7 +21445,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#707",
+        "x-source": "server/http/app.ts#709",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -21183,7 +21585,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#647",
+        "x-source": "server/http/app.ts#649",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -21333,7 +21735,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#663",
+        "x-source": "server/http/app.ts#665",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -21485,7 +21887,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#682",
+        "x-source": "server/http/app.ts#684",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -21627,7 +22029,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#704",
+        "x-source": "server/http/app.ts#706",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "read",
@@ -21786,7 +22188,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the original key and body; do not create a new key merely because the response was lost.",
-        "x-source": "server/http/app.ts#658",
+        "x-source": "server/http/app.ts#660",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -21928,7 +22330,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#690",
+        "x-source": "server/http/app.ts#692",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -22078,7 +22480,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#693",
+        "x-source": "server/http/app.ts#695",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -22237,7 +22639,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#669",
+        "x-source": "server/http/app.ts#671",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -22389,7 +22791,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#727",
+        "x-source": "server/http/app.ts#729",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -22532,7 +22934,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#678",
+        "x-source": "server/http/app.ts#680",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -22682,7 +23084,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#650",
+        "x-source": "server/http/app.ts#652",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -22814,7 +23216,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#330",
+        "x-source": "server/http/app.ts#332",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -22966,7 +23368,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#424",
+        "x-source": "server/http/app.ts#426",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -23108,7 +23510,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#394",
+        "x-source": "server/http/app.ts#396",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -23260,7 +23662,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#398",
+        "x-source": "server/http/app.ts#400",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -23412,7 +23814,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#409",
+        "x-source": "server/http/app.ts#411",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -23562,7 +23964,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#415",
+        "x-source": "server/http/app.ts#417",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -23704,7 +24106,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#404",
+        "x-source": "server/http/app.ts#406",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -23836,7 +24238,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#420",
+        "x-source": "server/http/app.ts#422",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -23978,7 +24380,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#342",
+        "x-source": "server/http/app.ts#344",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -24120,7 +24522,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#346",
+        "x-source": "server/http/app.ts#348",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -24255,7 +24657,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#363",
+        "x-source": "server/http/app.ts#365",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -24395,7 +24797,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#334",
+        "x-source": "server/http/app.ts#336",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -24530,7 +24932,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#358",
+        "x-source": "server/http/app.ts#360",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -24680,7 +25082,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#338",
+        "x-source": "server/http/app.ts#340",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -24822,7 +25224,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#350",
+        "x-source": "server/http/app.ts#352",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -24964,7 +25366,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#354",
+        "x-source": "server/http/app.ts#356",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -25099,7 +25501,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#368",
+        "x-source": "server/http/app.ts#370",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -25239,7 +25641,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#373",
+        "x-source": "server/http/app.ts#375",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -25374,7 +25776,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#389",
+        "x-source": "server/http/app.ts#391",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -25516,7 +25918,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#377",
+        "x-source": "server/http/app.ts#379",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -25658,7 +26060,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#381",
+        "x-source": "server/http/app.ts#383",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -25810,7 +26212,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#385",
+        "x-source": "server/http/app.ts#387",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -25969,7 +26371,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#574",
+        "x-source": "server/http/app.ts#576",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -26111,7 +26513,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#541",
+        "x-source": "server/http/app.ts#543",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -26270,7 +26672,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#608",
+        "x-source": "server/http/app.ts#610",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -26402,7 +26804,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#536",
+        "x-source": "server/http/app.ts#538",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -26551,7 +26953,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Simulation may repeat. Execution can incur model work; inspect the result before retrying.",
-        "x-source": "server/http/app.ts#890",
+        "x-source": "server/http/app.ts#913",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -26683,7 +27085,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#437",
+        "x-source": "server/http/app.ts#439",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -26823,7 +27225,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#452",
+        "x-source": "server/http/app.ts#454",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -26958,7 +27360,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#460",
+        "x-source": "server/http/app.ts#462",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -27105,7 +27507,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#451",
+        "x-source": "server/http/app.ts#453",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -27255,7 +27657,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#456",
+        "x-source": "server/http/app.ts#458",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -27397,7 +27799,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#464",
+        "x-source": "server/http/app.ts#466",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -27549,7 +27951,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same expectedDraftRevision; a different revision is a different publication.",
-        "x-source": "server/http/app.ts#481",
+        "x-source": "server/http/app.ts#483",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -27691,7 +28093,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#472",
+        "x-source": "server/http/app.ts#474",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -27840,7 +28242,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#467",
+        "x-source": "server/http/app.ts#469",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -27990,7 +28392,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#470",
+        "x-source": "server/http/app.ts#472",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -28122,7 +28524,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#488",
+        "x-source": "server/http/app.ts#490",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -28254,7 +28656,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#446",
+        "x-source": "server/http/app.ts#448",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -28386,7 +28788,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#829",
+        "x-source": "server/http/app.ts#831",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -28526,7 +28928,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#834",
+        "x-source": "server/http/app.ts#836",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -28661,7 +29063,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#842",
+        "x-source": "server/http/app.ts#844",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -28801,10 +29203,1242 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#833",
+        "x-source": "server/http/app.ts#835",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
+          "module": "routers"
+        }
+      }
+    },
+    "/api/v1/routers/{id}/change-requests": {
+      "get": {
+        "description": "Reads current state without creating resources or advancing a lifecycle. Requires routers:read for personal access tokens. Token access covers all resources in the selected module.",
+        "operationId": "getRoutersByIdChangeRequests",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/getRoutersByIdChangeRequestsResponse"
+                }
+              }
+            },
+            "description": "Successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request schema validation failed."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, invalid, expired or revoked credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Insufficient token permission, account role, or session requirement."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Resource not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "State conflict; reload and review before retrying."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Domain validation failed."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal server error."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Required service or runtime is unavailable."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Other Controller or upstream failure. Inspect error.code and error.message before deciding whether to retry."
+          }
+        },
+        "security": [
+          {
+            "personalAccessToken": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Read change requests",
+        "tags": [
+          "routers"
+        ],
+        "x-account-role": "user",
+        "x-idempotency": {
+          "mode": "safe-read"
+        },
+        "x-product-area": "Integration",
+        "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
+        "x-source": "server/http/app.ts#853",
+        "x-token-account-role": "user",
+        "x-token-permission": {
+          "access": "read",
+          "module": "routers"
+        }
+      },
+      "post": {
+        "description": "Creates a resource or executes the named operation. A network failure does not prove that execution failed. Freezes the reviewed snapshot, with latest Guardrail versions already resolved, and the bound Endpoint set. Nothing is published until another administrator approves it. expectedDraftRevision prevents stale submission; a Router has at most one pending change request (409 router_change_request_pending). Requires routers:write for personal access tokens. Write includes read access and requires a current administrator account. This operation also requires the admin account role. Token access covers all resources in the selected module.",
+        "operationId": "postRoutersByIdChangeRequests",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/postRoutersByIdChangeRequestsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/getRoutersResponseItemsItemPendingChangeRequest"
+                }
+              }
+            },
+            "description": "Resource created."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request schema validation failed."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, invalid, expired or revoked credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Insufficient token permission, account role, or session requirement."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Resource not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "State conflict; reload and review before retrying."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Domain validation failed."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal server error."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Required service or runtime is unavailable."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Other Controller or upstream failure. Inspect error.code and error.message before deciding whether to retry."
+          }
+        },
+        "security": [
+          {
+            "personalAccessToken": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Submit a reviewed Router change for approval",
+        "tags": [
+          "routers"
+        ],
+        "x-account-role": "admin",
+        "x-idempotency": {
+          "mode": "not-guaranteed"
+        },
+        "x-product-area": "Integration",
+        "x-retry-policy": "After uncertainty, read GET /routers/{id}; pendingChangeRequest identifies a submission that succeeded.",
+        "x-source": "server/http/app.ts#857",
+        "x-token-account-role": "admin",
+        "x-token-permission": {
+          "access": "write",
+          "module": "routers"
+        }
+      }
+    },
+    "/api/v1/routers/{id}/change-requests/{changeId}": {
+      "get": {
+        "description": "Reads current state without creating resources or advancing a lifecycle. Requires routers:read for personal access tokens. Token access covers all resources in the selected module.",
+        "operationId": "getRoutersByIdChangeRequestsByChangeId",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "changeId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/getRoutersResponseItemsItemPendingChangeRequest"
+                }
+              }
+            },
+            "description": "Successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request schema validation failed."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, invalid, expired or revoked credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Insufficient token permission, account role, or session requirement."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Resource not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "State conflict; reload and review before retrying."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Domain validation failed."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal server error."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Required service or runtime is unavailable."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Other Controller or upstream failure. Inspect error.code and error.message before deciding whether to retry."
+          }
+        },
+        "security": [
+          {
+            "personalAccessToken": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Read change requests",
+        "tags": [
+          "routers"
+        ],
+        "x-account-role": "user",
+        "x-idempotency": {
+          "mode": "safe-read"
+        },
+        "x-product-area": "Integration",
+        "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
+        "x-source": "server/http/app.ts#862",
+        "x-token-account-role": "user",
+        "x-token-permission": {
+          "access": "read",
+          "module": "routers"
+        }
+      }
+    },
+    "/api/v1/routers/{id}/change-requests/{changeId}/approve": {
+      "post": {
+        "description": "Creates a resource or executes the named operation. A network failure does not prove that execution failed. The approver must differ from the submitter. Applies exactly the frozen snapshot as a new Router revision and starts distribution; 202 confirms the revision, not Runner readiness. If the active revision, bound Endpoints or referenced versions changed, the request becomes superseded and 409 router_change_request_stale is returned. Approval also pre-approves reverting to the base revision. Requires routers:write for personal access tokens. Write includes read access and requires a current administrator account. This operation also requires the admin account role. Token access covers all resources in the selected module.",
+        "operationId": "postRoutersByIdChangeRequestsByChangeIdApprove",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "changeId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/postRoutersByIdChangeRequestsByChangeIdApproveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/postRoutersByIdChangeRequestsByChangeIdApproveResponse"
+                }
+              }
+            },
+            "description": "Accepted for asynchronous processing; this does not guarantee deployment or completion."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request schema validation failed."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, invalid, expired or revoked credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Insufficient token permission, account role, or session requirement."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Resource not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "State conflict; reload and review before retrying."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Domain validation failed."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal server error."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Required service or runtime is unavailable."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Other Controller or upstream failure. Inspect error.code and error.message before deciding whether to retry."
+          }
+        },
+        "security": [
+          {
+            "personalAccessToken": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Approve and apply a pending Router change",
+        "tags": [
+          "routers"
+        ],
+        "x-account-role": "admin",
+        "x-idempotency": {
+          "mode": "state-transition"
+        },
+        "x-product-area": "Integration",
+        "x-retry-policy": "The same approver may repeat the request; an applied request returns publication.replayed=true without another revision.",
+        "x-source": "server/http/app.ts#863",
+        "x-token-account-role": "admin",
+        "x-token-permission": {
+          "access": "write",
+          "module": "routers"
+        }
+      }
+    },
+    "/api/v1/routers/{id}/change-requests/{changeId}/emergency-apply": {
+      "post": {
+        "description": "Creates a resource or executes the named operation. A network failure does not prove that execution failed. For emergencies only. Requires a reason and a manager contact, both recorded on the change request and in audit history. Validation and staleness rules are the same as approval. Requires routers:write for personal access tokens. Write includes read access and requires a current administrator account. This operation also requires the admin account role. Token access covers all resources in the selected module.",
+        "operationId": "postRoutersByIdChangeRequestsByChangeIdEmergencyApply",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "changeId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/postRoutersByIdChangeRequestsByChangeIdEmergencyApplyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/postRoutersByIdChangeRequestsByChangeIdApproveResponse"
+                }
+              }
+            },
+            "description": "Accepted for asynchronous processing; this does not guarantee deployment or completion."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request schema validation failed."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, invalid, expired or revoked credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Insufficient token permission, account role, or session requirement."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Resource not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "State conflict; reload and review before retrying."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Domain validation failed."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal server error."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Required service or runtime is unavailable."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Other Controller or upstream failure. Inspect error.code and error.message before deciding whether to retry."
+          }
+        },
+        "security": [
+          {
+            "personalAccessToken": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Apply a pending Router change without a second approver",
+        "tags": [
+          "routers"
+        ],
+        "x-account-role": "admin",
+        "x-idempotency": {
+          "mode": "state-transition"
+        },
+        "x-product-area": "Integration",
+        "x-retry-policy": "The same administrator may repeat the request; an applied request returns publication.replayed=true.",
+        "x-source": "server/http/app.ts#869",
+        "x-token-account-role": "admin",
+        "x-token-permission": {
+          "access": "write",
+          "module": "routers"
+        }
+      }
+    },
+    "/api/v1/routers/{id}/change-requests/{changeId}/reject": {
+      "post": {
+        "description": "Creates a resource or executes the named operation. A network failure does not prove that execution failed. Another administrator closes the request with a required note. Nothing is published. Requires routers:write for personal access tokens. Write includes read access and requires a current administrator account. This operation also requires the admin account role. Token access covers all resources in the selected module.",
+        "operationId": "postRoutersByIdChangeRequestsByChangeIdReject",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "changeId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/postRoutersByIdChangeRequestsByChangeIdRejectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/getRoutersResponseItemsItemPendingChangeRequest"
+                }
+              }
+            },
+            "description": "Successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request schema validation failed."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, invalid, expired or revoked credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Insufficient token permission, account role, or session requirement."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Resource not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "State conflict; reload and review before retrying."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Domain validation failed."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal server error."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Required service or runtime is unavailable."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Other Controller or upstream failure. Inspect error.code and error.message before deciding whether to retry."
+          }
+        },
+        "security": [
+          {
+            "personalAccessToken": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Reject a pending Router change",
+        "tags": [
+          "routers"
+        ],
+        "x-account-role": "admin",
+        "x-idempotency": {
+          "mode": "not-guaranteed"
+        },
+        "x-product-area": "Integration",
+        "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
+        "x-source": "server/http/app.ts#875",
+        "x-token-account-role": "admin",
+        "x-token-permission": {
+          "access": "write",
+          "module": "routers"
+        }
+      }
+    },
+    "/api/v1/routers/{id}/change-requests/{changeId}/revert": {
+      "post": {
+        "description": "Creates a resource or executes the named operation. A network failure does not prove that execution failed. Available only while the change still produced the active revision. Publishes the base revision again as a new revision without another approval, records a revert change request, and supersedes any pending change. Requires routers:write for personal access tokens. Write includes read access and requires a current administrator account. This operation also requires the admin account role. Token access covers all resources in the selected module.",
+        "operationId": "postRoutersByIdChangeRequestsByChangeIdRevert",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "changeId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/postRoutersByIdChangeRequestsByChangeIdRevertRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/postRoutersByIdChangeRequestsByChangeIdApproveResponse"
+                }
+              }
+            },
+            "description": "Accepted for asynchronous processing; this does not guarantee deployment or completion."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request schema validation failed."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, invalid, expired or revoked credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Insufficient token permission, account role, or session requirement."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Resource not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "State conflict; reload and review before retrying."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Domain validation failed."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal server error."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Required service or runtime is unavailable."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Other Controller or upstream failure. Inspect error.code and error.message before deciding whether to retry."
+          }
+        },
+        "security": [
+          {
+            "personalAccessToken": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Revert the active change to its approved base revision",
+        "tags": [
+          "routers"
+        ],
+        "x-account-role": "admin",
+        "x-idempotency": {
+          "mode": "not-guaranteed"
+        },
+        "x-product-area": "Integration",
+        "x-retry-policy": "Do not repeat blindly: after success the change is no longer active and a repeat returns 409. Read GET /routers/{id} first.",
+        "x-source": "server/http/app.ts#880",
+        "x-token-account-role": "admin",
+        "x-token-permission": {
+          "access": "write",
+          "module": "routers"
+        }
+      }
+    },
+    "/api/v1/routers/{id}/change-requests/{changeId}/withdraw": {
+      "post": {
+        "description": "Creates a resource or executes the named operation. A network failure does not prove that execution failed. Only the submitter can withdraw. Nothing is published. Requires routers:write for personal access tokens. Write includes read access and requires a current administrator account. This operation also requires the admin account role. Token access covers all resources in the selected module.",
+        "operationId": "postRoutersByIdChangeRequestsByChangeIdWithdraw",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "changeId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/getRoutersResponseItemsItemPendingChangeRequest"
+                }
+              }
+            },
+            "description": "Successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request schema validation failed."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, invalid, expired or revoked credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Insufficient token permission, account role, or session requirement."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Resource not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "State conflict; reload and review before retrying."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Domain validation failed."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal server error."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Required service or runtime is unavailable."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Other Controller or upstream failure. Inspect error.code and error.message before deciding whether to retry."
+          }
+        },
+        "security": [
+          {
+            "personalAccessToken": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Withdraw your pending Router change",
+        "tags": [
+          "routers"
+        ],
+        "x-account-role": "admin",
+        "x-idempotency": {
+          "mode": "not-guaranteed"
+        },
+        "x-product-area": "Integration",
+        "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
+        "x-source": "server/http/app.ts#879",
+        "x-token-account-role": "admin",
+        "x-token-permission": {
+          "access": "write",
           "module": "routers"
         }
       }
@@ -28953,7 +30587,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "GET the draft and compare contents after uncertainty; never substitute a newer expectedDraftRevision without review.",
-        "x-source": "server/http/app.ts#838",
+        "x-source": "server/http/app.ts#840",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -29105,7 +30739,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#867",
+        "x-source": "server/http/app.ts#890",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -29115,7 +30749,7 @@
     },
     "/api/v1/routers/{id}/publication-preview": {
       "post": {
-        "description": "Creates a resource or executes the named operation. A network failure does not prove that execution failed. Resolves latest Guardrail versions and bound Endpoints for the expectedDraftRevision without publishing. Send snapshot and endpointIds back as reviewedSnapshot and reviewedEndpointIds when publishing. Requires routers:write for personal access tokens. Write includes read access and requires a current administrator account. This operation also requires the admin account role. Token access covers all resources in the selected module.",
+        "description": "Creates a resource or executes the named operation. A network failure does not prove that execution failed. Resolves latest Guardrail versions and bound Endpoints for the expectedDraftRevision without publishing. Send snapshot and endpointIds back as reviewedSnapshot and reviewedEndpointIds when submitting a change request. Requires routers:write for personal access tokens. Write includes read access and requires a current administrator account. This operation also requires the admin account role. Token access covers all resources in the selected module.",
         "operationId": "postRoutersByIdPublicationPreview",
         "parameters": [
           {
@@ -29257,166 +30891,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "May repeat; referenced versions or Endpoint bindings may have changed. Review the new result.",
-        "x-source": "server/http/app.ts#847",
-        "x-token-account-role": "admin",
-        "x-token-permission": {
-          "access": "write",
-          "module": "routers"
-        }
-      }
-    },
-    "/api/v1/routers/{id}/publish": {
-      "post": {
-        "description": "Creates a resource or executes the named operation. A network failure does not prove that execution failed. expectedDraftRevision prevents stale publication. reviewedSnapshot and reviewedEndpointIds must be supplied together. The resource fields are current; publication.revision and publication.generation identify the original operation even on replay. GET publication.revisionUrl reads the immutable revision; GET publication.statusUrl reports current rolloutStatus and desiredGeneration. A later publication may supersede this revision. Requires routers:write for personal access tokens. Write includes read access and requires a current administrator account. This operation also requires the admin account role. Token access covers all resources in the selected module.",
-        "operationId": "postRoutersByIdPublish",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/postRoutersByIdPublishRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "202": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/postRoutersByIdPublishResponse"
-                }
-              }
-            },
-            "description": "Accepted for asynchronous processing; this does not guarantee deployment or completion."
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Request schema validation failed."
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Missing, invalid, expired or revoked credential."
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Insufficient token permission, account role, or session requirement."
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Resource not found."
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "State conflict; reload and review before retrying."
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Domain validation failed."
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Internal server error."
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Required service or runtime is unavailable."
-          },
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Other Controller or upstream failure. Inspect error.code and error.message before deciding whether to retry."
-          }
-        },
-        "security": [
-          {
-            "personalAccessToken": []
-          },
-          {
-            "sessionCookie": []
-          }
-        ],
-        "summary": "Publish the reviewed Router draft",
-        "tags": [
-          "routers"
-        ],
-        "x-account-role": "admin",
-        "x-idempotency": {
-          "concurrentDuplicates": "Serialized under the Router transaction lock.",
-          "conflictStatus": 409,
-          "key": "body.idempotencyKey",
-          "mode": "keyed",
-          "replay": "Original publication identity plus current Router; no new publication or distribution.",
-          "requestComparison": "SHA-256 of actorId, expectedDraftRevision, rollback revision, reviewed snapshot and normalized Endpoint set.",
-          "retention": "No time expiry. Deleted revisions retain a tombstone in audit history and reject replay.",
-          "scope": "routerId; publish and rollback share a namespace"
-        },
-        "x-product-area": "Integration",
-        "x-retry-policy": "Repeat the same key and normalized body after uncertainty. Inspect publication.replayed and the original revision; do not issue a new key blindly.",
-        "x-source": "server/http/app.ts#851",
+        "x-source": "server/http/app.ts#849",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -29558,7 +31033,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#873",
+        "x-source": "server/http/app.ts#896",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -29701,7 +31176,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#857",
+        "x-source": "server/http/app.ts#886",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -29849,169 +31324,10 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#874",
+        "x-source": "server/http/app.ts#897",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
-          "module": "routers"
-        }
-      }
-    },
-    "/api/v1/routers/{id}/rollback": {
-      "post": {
-        "description": "Creates a resource or executes the named operation. A network failure does not prove that execution failed. expectedDraftRevision prevents stale publication. reviewedSnapshot and reviewedEndpointIds must be supplied together. The resource fields are current; publication.revision and publication.generation identify the original operation even on replay. GET publication.revisionUrl reads the immutable revision; GET publication.statusUrl reports current rolloutStatus and desiredGeneration. A later publication may supersede this revision. Requires routers:write for personal access tokens. Write includes read access and requires a current administrator account. This operation also requires the admin account role. Token access covers all resources in the selected module.",
-        "operationId": "postRoutersByIdRollback",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/postRoutersByIdRollbackRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "202": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/postRoutersByIdPublishResponse"
-                }
-              }
-            },
-            "description": "Accepted for asynchronous processing; this does not guarantee deployment or completion."
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Request schema validation failed."
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Missing, invalid, expired or revoked credential."
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Insufficient token permission, account role, or session requirement."
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Resource not found."
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "State conflict; reload and review before retrying."
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Domain validation failed."
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Internal server error."
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Required service or runtime is unavailable."
-          },
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            },
-            "description": "Other Controller or upstream failure. Inspect error.code and error.message before deciding whether to retry."
-          }
-        },
-        "security": [
-          {
-            "personalAccessToken": []
-          },
-          {
-            "sessionCookie": []
-          }
-        ],
-        "summary": "Publish a previous Router revision",
-        "tags": [
-          "routers"
-        ],
-        "x-account-role": "admin",
-        "x-idempotency": {
-          "concurrentDuplicates": "Serialized under the Router transaction lock.",
-          "conflictStatus": 409,
-          "key": "body.idempotencyKey",
-          "mode": "keyed",
-          "replay": "Original publication identity plus current Router; no new publication or distribution.",
-          "requestComparison": "SHA-256 of actorId, expectedDraftRevision, rollback revision, reviewed snapshot and normalized Endpoint set.",
-          "retention": "No time expiry. Deleted revisions retain a tombstone in audit history and reject replay.",
-          "scope": "routerId; publish and rollback share a namespace"
-        },
-        "x-product-area": "Integration",
-        "x-retry-policy": "Repeat the same key and normalized body after uncertainty. Inspect publication.replayed and the original revision; do not issue a new key blindly.",
-        "x-source": "server/http/app.ts#861",
-        "x-token-account-role": "admin",
-        "x-token-permission": {
-          "access": "write",
           "module": "routers"
         }
       }
@@ -30188,7 +31504,7 @@
         },
         "x-product-area": "Observability",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#885",
+        "x-source": "server/http/app.ts#908",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -30340,7 +31656,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "May repeat with the same input.",
-        "x-source": "server/http/app.ts#916",
+        "x-source": "server/http/app.ts#939",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -30512,7 +31828,7 @@
         },
         "x-product-area": "Observability",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#881",
+        "x-source": "server/http/app.ts#904",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -30655,7 +31971,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#921",
+        "x-source": "server/http/app.ts#944",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -30813,7 +32129,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Refresh Runner state after an uncertain response. A reconnect may create a new registration.",
-        "x-source": "server/http/app.ts#816",
+        "x-source": "server/http/app.ts#818",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -30945,7 +32261,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#811",
+        "x-source": "server/http/app.ts#813",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -31097,7 +32413,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#812",
+        "x-source": "server/http/app.ts#814",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -31202,7 +32518,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#228"
+        "x-source": "server/http/app.ts#230"
       }
     },
     "/api/v1/system/version": {
@@ -31329,7 +32645,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#799",
+        "x-source": "server/http/app.ts#801",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -31468,7 +32784,7 @@
         },
         "x-product-area": "Observability",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#955",
+        "x-source": "server/http/app.ts#978",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -31771,7 +33087,7 @@
         },
         "x-product-area": "Observability",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#929",
+        "x-source": "server/http/app.ts#952",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -31926,7 +33242,7 @@
         },
         "x-product-area": "Observability",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#951",
+        "x-source": "server/http/app.ts#974",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -32094,7 +33410,7 @@
         },
         "x-product-area": "Observability",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#956",
+        "x-source": "server/http/app.ts#979",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -32236,7 +33552,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#734",
+        "x-source": "server/http/app.ts#736",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -32378,7 +33694,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#738",
+        "x-source": "server/http/app.ts#740",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",

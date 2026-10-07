@@ -50,8 +50,10 @@ const adminRoutes = [
   ["GET", "/endpoints/endpoint/deletion-impact"], ["DELETE", "/endpoints/endpoint"],
   ["PATCH", "/runner-pools/pool"], ["DELETE", "/runner-instances/runner"],
   ["POST", "/routers"],
-  ["PUT", "/routers/router/draft"], ["POST", "/routers/router/publish"], ["POST", "/routers/router/publication-preview"],
-  ["POST", "/routers/router/rollback"], ["PUT", "/routers/router/endpoints"],
+  ["PUT", "/routers/router/draft"], ["POST", "/routers/router/publication-preview"], ["POST", "/routers/router/change-requests"],
+  ["POST", "/routers/router/change-requests/change/approve"], ["POST", "/routers/router/change-requests/change/emergency-apply"],
+  ["POST", "/routers/router/change-requests/change/reject"], ["POST", "/routers/router/change-requests/change/withdraw"],
+  ["POST", "/routers/router/change-requests/change/revert"], ["PUT", "/routers/router/endpoints"],
   ["POST", "/guardrails/guard/duplicate"], ["DELETE", "/routers/router"],
 ] as const;
 

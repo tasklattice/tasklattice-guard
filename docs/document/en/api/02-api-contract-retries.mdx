@@ -21,14 +21,15 @@ These `x-` fields describe an OpenAPI operation; they are **not** HTTP headers t
 `202 Accepted` means the request was accepted, but asynchronous work may still be running. For example, after starting a Guardrail validation run, use the returned `runId` with `GET /api/v1/test-runs/{runId}` to read its result. Do not report “validation passed” based on `202` alone.
 
 <a id="api-contract-router-publish" />
-## Publish a Router by revision, then decide whether to retry
+## Change a Router by revision, then decide whether to retry
 
 1. Read the Router and confirm the current draft and its revision.
 2. Save the draft with `PUT /api/v1/routers/{id}/draft`. If the response is lost, read the draft again and compare its contents. Do not substitute a newer `expectedDraftRevision` without review.
 3. Call `POST /api/v1/routers/{id}/publication-preview` and review the versions and Endpoint bindings that will be published. A repeated preview may differ if those references changed.
-4. Call `POST /api/v1/routers/{id}/publish` with the reviewed `expectedDraftRevision` and `idempotencyKey` in the request body.
+4. Submit the change: `POST /api/v1/routers/{id}/change-requests` with the reviewed `expectedDraftRevision`, `reviewedSnapshot`, `reviewedEndpointIds`, a `reason`, and an optional change `ticket`. Nothing is published yet.
+5. Another administrator approves it: `POST /api/v1/routers/{id}/change-requests/{changeId}/approve`. Approval publishes exactly the submitted snapshot. In an emergency, `.../emergency-apply` applies it without a second approver and records the reason and manager contact.
 
-If the publish request times out or its response is lost, retry with **the same `idempotencyKey` and the same request content**, then inspect `publication.replayed` and the original publication revision. Do not issue a new key blindly. Check `x-retry-policy` for every other `POST`: starting a validation run, for example, is not guaranteed to be idempotent and must not be automatically retried after an uncertain response.
+If a submission times out, read the Router: `pendingChangeRequest` shows a submission that succeeded. If an approval times out, the same approver may repeat it; check `publication.replayed` and the revision before doing anything else. Check `x-retry-policy` for every other `POST`: starting a validation run, for example, is not guaranteed to be idempotent and must not be automatically retried after an uncertain response.
 
 <a id="api-contract-resource-ids" />
 ## Find results by resource ID

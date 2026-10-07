@@ -1,19 +1,15 @@
 import { routerRolloutState } from "../../shared/router-lifecycle.js";
 import { z } from "zod";
 import { isDeepStrictEqual } from "node:util";
-import { createHash, randomUUID } from "node:crypto";
-import { and, asc, desc, eq, gte, inArray, isNull, lte, lt, sql } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
+import { and, asc, desc, eq, gte, inArray, isNull, lte, lt, or, sql } from "drizzle-orm";
 import type { ControllerDatabase } from "../db/client.js";
-import { auditEvents, controllerState, endpoints, guardrails, guardrailVersions, routeAssignments, runnerInstances, telemetryWatermarks, trafficRouters, trafficRouterRevisions, type RouterRevisionContext } from "../db/schema.js";
-import { ConflictError, NotFoundError, ValidationError } from "../domain/errors.js";
-import { capabilityIssues, routingIssues, type RouterDraft } from "../../shared/traffic-routing.js";
+import { auditEvents, controllerState, endpoints, guardrails, guardrailVersions, routeAssignments, runnerInstances, telemetryWatermarks, trafficRouterChangeRequests, trafficRouters, trafficRouterRevisions, user, type RouterRevisionContext } from "../db/schema.js";
+import { ConflictError, ControllerError, NotFoundError, ValidationError } from "../domain/errors.js";
+import { capabilityIssues, routingIssues, type RouterChangeRequest, type RouterDraft } from "../../shared/traffic-routing.js";
 import { advisoryTransactionLock } from "../db/postgres-locks.js";
 
-function canonical(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  if (value && typeof value === "object") return `{${Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, child]) => `${JSON.stringify(key)}:${canonical(child)}`).join(",")}}`;
-  return JSON.stringify(value);
-}
+const sortedIds = (ids: readonly string[]) => [...new Set(ids)].sort((a, b) => a.localeCompare(b));
 
 export const routingEventSchema = z.object({
   id: z.string().min(1).max(300), eventType: z.enum(["route_assignment", "completion"]),
@@ -38,14 +34,24 @@ type Tx = Parameters<Parameters<ControllerDatabase["transaction"]>[0]>[0];
 export class TrafficRoutingService {
   constructor(private db: ControllerDatabase) {}
   async list() {
-    const [rows, bindings, runners] = await Promise.all([
+    const [rows, bindings, runners, changes] = await Promise.all([
       this.db.select().from(trafficRouters).where(isNull(trafficRouters.deletedAt)).orderBy(asc(trafficRouters.name)),
       this.db.select({ id: endpoints.id, routerId: endpoints.trafficRouterId }).from(endpoints).where(isNull(endpoints.deletedAt)),
       this.db.select().from(runnerInstances).where(eq(runnerInstances.poolId, "default")),
+      this.db.select({ change: trafficRouterChangeRequests }).from(trafficRouterChangeRequests)
+        .innerJoin(trafficRouters, eq(trafficRouters.id, trafficRouterChangeRequests.routerId))
+        .where(or(eq(trafficRouterChangeRequests.status, "pending"), and(eq(trafficRouterChangeRequests.status, "applied"),
+          eq(trafficRouterChangeRequests.kind, "publish"), eq(trafficRouterChangeRequests.appliedRevision, trafficRouters.activeRevision))))
+        .then(found => this.withNames(this.db, found.map(row => row.change))),
     ]);
-    return rows.map(r => ({ ...r, endpointIds: bindings.filter(e => e.routerId === r.id).map(e => e.id),
-      rolloutStatus: routerRolloutState(r, runners),
-    }));
+    return rows.map(r => {
+      const revertible = changes.find(c => c.routerId === r.id && c.status === "applied" && c.baseRevision !== null);
+      return { ...r, endpointIds: bindings.filter(e => e.routerId === r.id).map(e => e.id),
+        rolloutStatus: routerRolloutState(r, runners),
+        pendingChangeRequest: changes.find(c => c.routerId === r.id && c.status === "pending") ?? null,
+        revertibleChangeRequest: revertible ? { id: revertible.id, baseRevision: revertible.baseRevision!, appliedRevision: revertible.appliedRevision! } : null,
+      };
+    });
   }
   async get(id: string) {
     const found = (await this.list()).find(r => r.id === id);
@@ -134,47 +140,167 @@ export class TrafficRoutingService {
       return { draftRevision: router.draftRevision, snapshot, endpointIds };
     }, { isolationLevel: "repeatable read", accessMode: "read only" });
   }
-  async publish(id: string, expectedDraftRevision: number, idempotencyKey: string, actorId: string, rollbackRevision?: number, reviewedSnapshot?: RouterDraft, reviewedEndpointIds?: string[]) {
-    const requestDigest = createHash("sha256").update(canonical({ actorId, expectedDraftRevision, rollbackRevision: rollbackRevision ?? null, reviewedSnapshot: reviewedSnapshot ?? null, reviewedEndpointIds: reviewedEndpointIds ? [...new Set(reviewedEndpointIds)].sort() : null })).digest("hex");
-    const publication = await this.db.transaction(async tx => {
+  async changeRequests(id: string) {
+    await this.get(id);
+    const rows = await this.db.select().from(trafficRouterChangeRequests).where(eq(trafficRouterChangeRequests.routerId, id)).orderBy(desc(trafficRouterChangeRequests.submittedAt));
+    return this.withNames(this.db, rows);
+  }
+  async changeRequest(id: string, changeId: string) {
+    const found = (await this.changeRequests(id)).find(change => change.id === changeId);
+    if (!found) throw new NotFoundError("Router change request", changeId);
+    return found;
+  }
+  /** Freeze the reviewed draft as a pending change. Nothing is published until approval. */
+  async submitChange(id: string, input: { expectedDraftRevision: number; reviewedSnapshot: RouterDraft; reviewedEndpointIds: string[]; reason: string; ticket: string }, actorId: string) {
+    const changeId = randomUUID();
+    await this.db.transaction(async tx => {
       await advisoryTransactionLock(tx, "traffic-router-bindings");
-      const [router] = await tx.select().from(trafficRouters).where(eq(trafficRouters.id, id)).for("update");
-      if (!router || router.deletedAt) throw new NotFoundError("Router", id);
-      const [prior] = await tx.select().from(trafficRouterRevisions).where(and(eq(trafficRouterRevisions.routerId, id), eq(trafficRouterRevisions.idempotencyKey, idempotencyKey)));
-      if (prior) {
-        if (prior.requestDigest !== requestDigest) throw new ConflictError("Idempotency key belongs to another publish request.", "router_publish_key_conflict");
-        return { revision: prior.revision, generation: prior.generation, replayed: true };
-      }
-      const [deletedPublication] = await tx.select({ id: auditEvents.id }).from(auditEvents).where(and(eq(auditEvents.resourceId, id), eq(auditEvents.kind, "router.revision_deleted"), sql`${auditEvents.detail}->>'idempotencyKey' = ${idempotencyKey}`)).limit(1);
-      if (deletedPublication) throw new ConflictError("The revision created by this publication was deleted. Use a new publication key.", "router_revision_deleted");
-      if (router.draftRevision !== expectedDraftRevision) throw new ConflictError("Router draft changed; reload before publishing.", "router_draft_conflict");
-      let draft = router.draft;
-      if (rollbackRevision !== undefined) {
-        const [revision] = await tx.select().from(trafficRouterRevisions).where(and(eq(trafficRouterRevisions.routerId, id), eq(trafficRouterRevisions.revision, rollbackRevision)));
-        if (!revision) throw new NotFoundError("Router revision", String(rollbackRevision));
-        draft = revision.snapshot;
-      }
-      if ((reviewedSnapshot === undefined) !== (reviewedEndpointIds === undefined)) throw new ValidationError("Provide both reviewedSnapshot and reviewedEndpointIds.");
-      const resolved = await this.resolvePublication(tx, id, draft).catch(error => {
-        if (reviewedSnapshot !== undefined && error instanceof ValidationError) {
-          throw new ConflictError("Router publication is no longer valid. Review again before publishing.", "router_review_conflict");
-        }
+      const router = await this.lockRouter(tx, id);
+      if (router.draftRevision !== input.expectedDraftRevision) throw new ConflictError("Router draft changed; review again before submitting.", "router_draft_conflict");
+      const [pending] = await tx.select({ id: trafficRouterChangeRequests.id }).from(trafficRouterChangeRequests)
+        .where(and(eq(trafficRouterChangeRequests.routerId, id), eq(trafficRouterChangeRequests.status, "pending")));
+      if (pending) throw new ConflictError("This Router already has a pending change request.", "router_change_request_pending", { changeRequestId: pending.id });
+      const { snapshot, context, endpointIds } = await this.resolvePublication(tx, id, router.draft).catch(error => {
+        if (error instanceof ValidationError) throw new ConflictError("Router publication is no longer valid. Review again before submitting.", "router_review_conflict");
         throw error;
       });
-      const { snapshot, context, endpointIds } = resolved;
-      if (reviewedSnapshot !== undefined && (!isDeepStrictEqual(snapshot, reviewedSnapshot) ||
-        !isDeepStrictEqual(endpointIds, [...new Set(reviewedEndpointIds!)].sort((a, b) => a.localeCompare(b))))) {
-        throw new ConflictError("Router publication changed since review. Review again before publishing.", "router_review_conflict");
+      if (!isDeepStrictEqual(snapshot, input.reviewedSnapshot) || !isDeepStrictEqual(endpointIds, sortedIds(input.reviewedEndpointIds))) {
+        throw new ConflictError("Router publication changed since review. Review again before submitting.", "router_review_conflict");
       }
-      const revision = (router.activeRevision ?? 0) + 1;
-      const sourceDraftRevision = rollbackRevision === undefined ? router.draftRevision : router.draftRevision + 1;
-      const generation = await this.advance(tx);
-      await tx.insert(trafficRouterRevisions).values({ routerId: id, revision, sourceDraftRevision, snapshot, context, idempotencyKey, requestDigest, generation, requestDraftRevision: expectedDraftRevision, rollbackRevision: rollbackRevision ?? null, createdBy: actorId });
-      await tx.update(trafficRouters).set({ draft: rollbackRevision === undefined ? router.draft : snapshot, draftRevision: sourceDraftRevision, activeDraftRevision: sourceDraftRevision, activeRevision: revision, activeSnapshot: snapshot, rolloutError: null, desiredGeneration: generation, updatedAt: new Date() }).where(eq(trafficRouters.id, id));
-      await this.audit(tx, id, actorId, rollbackRevision ? "router.rolled_back" : "router.published", { revision, previous: router.activeSnapshot, snapshot, endpointIds });
-      return { revision, generation, replayed: false };
+      await tx.insert(trafficRouterChangeRequests).values({ id: changeId, routerId: id, kind: "publish", status: "pending",
+        sourceDraftRevision: router.draftRevision, baseRevision: router.activeRevision, snapshot, endpointIds, context,
+        ticket: input.ticket, reason: input.reason, submittedBy: actorId });
+      await this.audit(tx, id, actorId, "router.change_submitted", { changeRequestId: changeId, ticket: input.ticket, baseRevision: router.activeRevision, snapshot, endpointIds });
     });
+    return this.changeRequest(id, changeId);
+  }
+  /** Apply a pending change. Approval requires a second administrator; emergency application requires a reason and manager contact. */
+  async approveChange(id: string, changeId: string, actorId: string, decision: { note?: string | undefined } | { emergency: { reason: string; managerContact: string } }) {
+    const emergency = "emergency" in decision ? decision.emergency : null;
+    const outcome = await this.db.transaction(async tx => {
+      await advisoryTransactionLock(tx, "traffic-router-bindings");
+      const router = await this.lockRouter(tx, id);
+      const change = await this.lockChange(tx, id, changeId);
+      if (change.status === "applied" && change.decidedBy === actorId && change.kind === "publish" && Boolean(change.emergencyReason) === Boolean(emergency)) {
+        const [revision] = await tx.select().from(trafficRouterRevisions).where(and(eq(trafficRouterRevisions.routerId, id), eq(trafficRouterRevisions.revision, change.appliedRevision!)));
+        return { revision: change.appliedRevision!, generation: revision?.generation ?? null, replayed: true };
+      }
+      if (change.status !== "pending") throw new ConflictError(`This change request is already ${change.status}.`, "router_change_request_closed");
+      if (!emergency && change.submittedBy === actorId) {
+        throw new ControllerError("The submitter cannot approve their own change request. Ask another administrator, or use emergency apply.", 403, "router_change_request_self_approval");
+      }
+      const stale = await this.staleReason(tx, router, change);
+      if (stale) {
+        await tx.update(trafficRouterChangeRequests).set({ status: "superseded", decidedAt: new Date(), decisionNote: stale, updatedAt: new Date() }).where(eq(trafficRouterChangeRequests.id, changeId));
+        await this.audit(tx, id, actorId, "router.change_superseded", { changeRequestId: changeId, reason: stale });
+        return { stale };
+      }
+      const applied = await this.applySnapshot(tx, router, { snapshot: change.snapshot, context: change.context, changeId, actorId,
+        sourceDraftRevision: change.sourceDraftRevision!, requestDraftRevision: change.sourceDraftRevision!, rollbackRevision: null });
+      await tx.update(trafficRouterChangeRequests).set({ status: "applied", decidedBy: actorId, decidedAt: new Date(), appliedRevision: applied.revision,
+        decisionNote: emergency ? null : ("note" in decision ? decision.note ?? null : null),
+        emergencyReason: emergency?.reason ?? null, emergencyContact: emergency?.managerContact ?? null, updatedAt: new Date() })
+        .where(eq(trafficRouterChangeRequests.id, changeId));
+      await this.audit(tx, id, actorId, emergency ? "router.change_emergency_applied" : "router.change_approved", {
+        changeRequestId: changeId, ticket: change.ticket, submittedBy: change.submittedBy, revision: applied.revision,
+        previous: router.activeSnapshot, snapshot: change.snapshot, endpointIds: change.endpointIds,
+        ...(emergency ? { emergencyReason: emergency.reason, emergencyContact: emergency.managerContact } : {}),
+      });
+      return { ...applied, replayed: false };
+    });
+    if ("stale" in outcome) throw new ConflictError(`This change request is no longer valid: ${outcome.stale} Submit the change again.`, "router_change_request_stale");
+    return this.withPublication(id, outcome);
+  }
+  async rejectChange(id: string, changeId: string, actorId: string, note: string) {
+    return this.closeChange(id, changeId, actorId, "rejected", note);
+  }
+  async withdrawChange(id: string, changeId: string, actorId: string) {
+    return this.closeChange(id, changeId, actorId, "withdrawn", null);
+  }
+  /** Restore the base revision of the active change; it was approved together with that change. */
+  async revertChange(id: string, changeId: string, actorId: string, reason: string) {
+    const revertId = randomUUID();
+    const outcome = await this.db.transaction(async tx => {
+      await advisoryTransactionLock(tx, "traffic-router-bindings");
+      const router = await this.lockRouter(tx, id);
+      const change = await this.lockChange(tx, id, changeId);
+      if (change.kind !== "publish" || change.status !== "applied" || change.baseRevision === null || change.appliedRevision !== router.activeRevision) {
+        throw new ConflictError("Only the change that produced the active revision can be reverted without approval.", "router_revert_unavailable");
+      }
+      const [base] = await tx.select().from(trafficRouterRevisions).where(and(eq(trafficRouterRevisions.routerId, id), eq(trafficRouterRevisions.revision, change.baseRevision)));
+      if (!base) throw new ConflictError(`Router revision ${change.baseRevision} is no longer available.`, "router_revert_unavailable");
+      const { snapshot, context, endpointIds } = await this.resolvePublication(tx, id, base.snapshot).catch(error => {
+        if (error instanceof ValidationError) throw new ConflictError(`Router revision ${change.baseRevision} can no longer be applied: ${error.message}`, "router_revert_unavailable");
+        throw error;
+      });
+      await tx.insert(trafficRouterChangeRequests).values({ id: revertId, routerId: id, kind: "revert", status: "applied",
+        sourceDraftRevision: null, baseRevision: router.activeRevision, snapshot, endpointIds, context, ticket: change.ticket, reason,
+        submittedBy: actorId, decidedBy: actorId, decidedAt: new Date(), decisionNote: null, revertsChangeRequestId: changeId });
+      const applied = await this.applySnapshot(tx, router, { snapshot, context, changeId: revertId, actorId,
+        sourceDraftRevision: router.draftRevision + 1, requestDraftRevision: router.draftRevision, rollbackRevision: change.baseRevision, replaceDraft: true });
+      await tx.update(trafficRouterChangeRequests).set({ appliedRevision: applied.revision }).where(eq(trafficRouterChangeRequests.id, revertId));
+      // A pending change was reviewed against the revision just replaced.
+      await tx.update(trafficRouterChangeRequests).set({ status: "superseded", decidedAt: new Date(), decisionNote: "The active Router revision was reverted.", updatedAt: new Date() })
+        .where(and(eq(trafficRouterChangeRequests.routerId, id), eq(trafficRouterChangeRequests.status, "pending")));
+      await this.audit(tx, id, actorId, "router.change_reverted", { changeRequestId: revertId, revertsChangeRequestId: changeId, reason, revision: applied.revision, restoredRevision: change.baseRevision, previous: router.activeSnapshot, snapshot, endpointIds });
+      return { ...applied, replayed: false };
+    });
+    return this.withPublication(id, outcome);
+  }
+  private async closeChange(id: string, changeId: string, actorId: string, status: "rejected" | "withdrawn", note: string | null) {
+    await this.db.transaction(async tx => {
+      await this.lockRouter(tx, id);
+      const change = await this.lockChange(tx, id, changeId);
+      if (change.status !== "pending") throw new ConflictError(`This change request is already ${change.status}.`, "router_change_request_closed");
+      if (status === "withdrawn" && change.submittedBy !== actorId) throw new ControllerError("Only the submitter can withdraw a change request.", 403, "router_change_request_not_submitter");
+      if (status === "rejected" && change.submittedBy === actorId) throw new ControllerError("Withdraw your own change request instead of rejecting it.", 403, "router_change_request_self_approval");
+      await tx.update(trafficRouterChangeRequests).set({ status, decidedBy: actorId, decidedAt: new Date(), decisionNote: note, updatedAt: new Date() }).where(eq(trafficRouterChangeRequests.id, changeId));
+      await this.audit(tx, id, actorId, `router.change_${status}`, { changeRequestId: changeId, note });
+    });
+    return this.changeRequest(id, changeId);
+  }
+  /** Why a frozen change can no longer be applied as reviewed, or null when it still can. */
+  private async staleReason(tx: Tx, router: typeof trafficRouters.$inferSelect, change: typeof trafficRouterChangeRequests.$inferSelect) {
+    if (router.activeRevision !== change.baseRevision) return "The active Router revision changed after submission.";
+    try {
+      const resolved = await this.resolvePublication(tx, router.id, change.snapshot);
+      if (!isDeepStrictEqual(resolved.snapshot, change.snapshot)) return "The referenced Guardrail versions changed after submission.";
+      if (!isDeepStrictEqual(resolved.endpointIds, sortedIds(change.endpointIds))) return "The bound Endpoints changed after submission.";
+      return null;
+    } catch (error) {
+      if (error instanceof ValidationError) return error.message.endsWith(".") ? error.message : `${error.message}.`;
+      throw error;
+    }
+  }
+  private async applySnapshot(tx: Tx, router: typeof trafficRouters.$inferSelect, input: { snapshot: RouterDraft; context: RouterRevisionContext | null; changeId: string; actorId: string; sourceDraftRevision: number; requestDraftRevision: number; rollbackRevision: number | null; replaceDraft?: boolean }) {
+    const revision = (router.activeRevision ?? 0) + 1;
+    const generation = await this.advance(tx);
+    await tx.insert(trafficRouterRevisions).values({ routerId: router.id, revision, sourceDraftRevision: input.sourceDraftRevision, snapshot: input.snapshot, context: input.context,
+      idempotencyKey: `change-request:${input.changeId}`, changeRequestId: input.changeId, generation, requestDraftRevision: input.requestDraftRevision, rollbackRevision: input.rollbackRevision, createdBy: input.actorId });
+    await tx.update(trafficRouters).set({ ...(input.replaceDraft ? { draft: input.snapshot, draftRevision: input.sourceDraftRevision } : {}),
+      activeDraftRevision: input.sourceDraftRevision, activeRevision: revision, activeSnapshot: input.snapshot, rolloutError: null, desiredGeneration: generation, updatedAt: new Date() })
+      .where(eq(trafficRouters.id, router.id));
+    return { revision, generation };
+  }
+  private async withPublication(id: string, publication: { revision: number; generation: number | null; replayed: boolean }) {
     return { ...await this.get(id), publication: { ...publication, revisionUrl: `/api/v1/routers/${encodeURIComponent(id)}/revisions/${publication.revision}`, statusUrl: `/api/v1/routers/${encodeURIComponent(id)}` } };
+  }
+  private async lockRouter(tx: Tx, id: string) {
+    const [router] = await tx.select().from(trafficRouters).where(eq(trafficRouters.id, id)).for("update");
+    if (!router || router.deletedAt) throw new NotFoundError("Router", id);
+    return router;
+  }
+  private async lockChange(tx: Tx, id: string, changeId: string) {
+    const [change] = await tx.select().from(trafficRouterChangeRequests).where(and(eq(trafficRouterChangeRequests.id, changeId), eq(trafficRouterChangeRequests.routerId, id))).for("update");
+    if (!change) throw new NotFoundError("Router change request", changeId);
+    return change;
+  }
+  private async withNames(tx: Tx | ControllerDatabase, rows: Array<typeof trafficRouterChangeRequests.$inferSelect>): Promise<RouterChangeRequest[]> {
+    const ids = [...new Set(rows.flatMap(row => [row.submittedBy, row.decidedBy].filter((value): value is string => Boolean(value))))];
+    const people = ids.length ? await tx.select({ id: user.id, name: user.name }).from(user).where(inArray(user.id, ids)) : [];
+    const name = (userId: string | null) => people.find(person => person.id === userId)?.name ?? null;
+    return rows.map(row => ({ ...row, submittedByName: name(row.submittedBy), decidedByName: name(row.decidedBy),
+      submittedAt: row.submittedAt.toISOString(), decidedAt: row.decidedAt?.toISOString() ?? null }));
   }
   async revisions(id: string) {
     await this.get(id);
@@ -188,6 +314,10 @@ export class TrafficRoutingService {
       const [record] = await tx.select().from(trafficRouterRevisions).where(and(eq(trafficRouterRevisions.routerId, id), eq(trafficRouterRevisions.revision, revision)));
       if (!record) throw new NotFoundError("Router revision", String(revision));
       if (router.activeRevision === revision) throw new ConflictError("The current Router revision cannot be deleted. Publish another revision first.", "revision_in_use");
+      const [rollbackTarget] = await tx.select({ id: trafficRouterChangeRequests.id }).from(trafficRouterChangeRequests).where(and(
+        eq(trafficRouterChangeRequests.routerId, id), eq(trafficRouterChangeRequests.status, "applied"), eq(trafficRouterChangeRequests.kind, "publish"),
+        eq(trafficRouterChangeRequests.appliedRevision, router.activeRevision ?? -1), eq(trafficRouterChangeRequests.baseRevision, revision))).limit(1);
+      if (rollbackTarget) throw new ConflictError("This revision is the pre-approved rollback target of the active change.", "revision_in_use");
       const runners = await tx.select().from(runnerInstances).where(eq(runnerInstances.poolId, "default"));
       if (routerRolloutState(router, runners) !== "active" || Date.now() - router.updatedAt.getTime() < 300000) throw new ConflictError("Wait for Runner convergence and the five-minute call retention window before deleting historical revisions.", "revision_in_use");
       const [pending] = await tx.select().from(routeAssignments).where(and(eq(routeAssignments.routerId, id), eq(routeAssignments.routerRevision, revision), isNull(routeAssignments.completedAt), gte(routeAssignments.occurredAt, new Date(Date.now() - 300000)))).limit(1);
@@ -307,6 +437,9 @@ export class TrafficRoutingService {
     const [pending] = await tx.select({ count: sql<number>`count(*)::int` }).from(routeAssignments).where(and(eq(routeAssignments.guardrailId, id), isNull(routeAssignments.completedAt), gte(routeAssignments.occurredAt, new Date(Date.now() - 300000))));
     if (pending?.count) throw new ConflictError("Guardrail still has in-flight calls.", "guardrail_in_use");
     if (refs.length) throw new ConflictError(`Guardrail is referenced by published Routers: ${refs.map(r => r.name).join(", ")}`, "guardrail_in_use");
+    const pendingChanges = await tx.select({ routerId: trafficRouterChangeRequests.routerId, snapshot: trafficRouterChangeRequests.snapshot }).from(trafficRouterChangeRequests).where(eq(trafficRouterChangeRequests.status, "pending"));
+    const awaiting = rows.filter(r => pendingChanges.some(c => c.routerId === r.id && c.snapshot.routes.some(route => route.targets.some(t => t.guardrailId === id))));
+    if (awaiting.length) throw new ConflictError(`Guardrail is referenced by pending Router change requests: ${awaiting.map(r => r.name).join(", ")}`, "guardrail_in_use");
   }
   async reportRolloutFailure(generation: number, runnerId: string, reason: string) {
     await this.db.update(trafficRouters).set({ rolloutError: `${runnerId}: ${reason}` }).where(and(isNull(trafficRouters.deletedAt), lte(trafficRouters.desiredGeneration, generation), sql`${trafficRouters.activeRevision} IS NOT NULL`));

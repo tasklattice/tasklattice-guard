@@ -1,9 +1,10 @@
 import { useTranslation } from "react-i18next";
 import { discardRouterDraft } from "@/components/traffic-routing/discard-router-draft";
 import { DistributionOverview } from "@/components/traffic-routing/distribution";
-import { ReviewPublishSheet } from "@/components/traffic-routing/review-publish-sheet";
+import { ReviewSubmitSheet, type ChangeSubmission } from "@/components/traffic-routing/review-submit-sheet";
+import { ChangeRequestHistory, ChangeRequestSheet, PendingChangeNotice, RevertChangeSheet } from "@/components/traffic-routing/change-requests";
 import { useEffect, useRef, useState } from "react";
-import { Activity, Cable, GitBranch, History, LayoutDashboard, AlertTriangle, FlaskConical, Pencil } from "lucide-react";
+import { Activity, Cable, GitBranch, History, LayoutDashboard, AlertTriangle, FlaskConical, Pencil, Undo2 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams, useSearch, useNavigate, useBlocker } from "@tanstack/react-router";
 import { toast } from "@/components/ui/notifications";
@@ -68,6 +69,7 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
   const { t: localize } = useTranslation();
   const auth = useAuth(),
     canEdit = auth.user?.role === "admin";
+  const awaiting = router.pendingChangeRequest;
   const client = useQueryClient();
   const search = useSearch({ strict: false }) as { routeId?: string; tab?: string };
   const navigate = useNavigate();
@@ -103,7 +105,6 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
   const hasDraftChanges = JSON.stringify(draft) !== JSON.stringify(discardTarget);
   const [review, setReview] = useState<
     | (api.RouterPublicationPreview & {
-        key: string;
         sourceDraft: api.RouterDraft;
       })
     | null
@@ -112,6 +113,7 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
     null,
   );
   const [restore, setRestore] = useState<api.RouterRevision | null>(null);
+  const [changeSheet, setChangeSheet] = useState<"review" | "revert" | null>(null);
   const opener = useRef<HTMLElement | null>(null);
   const dirty = JSON.stringify(draft) !== JSON.stringify(base.draft);
   const unpublished =
@@ -164,7 +166,6 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
       }
       return {
         ...(await api.previewTrafficRouter(router.id, next.draftRevision)),
-        key: crypto.randomUUID(),
         sourceDraft: next.draft,
       };
     },
@@ -174,26 +175,20 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
     },
   });
   const release = useMutation({
-    mutationFn: () =>
-      api.publishTrafficRouter(router.id, review!.draftRevision, review!.key, {
+    // Submission freezes the reviewed snapshot; another administrator applies it.
+    mutationFn: (submission: ChangeSubmission) =>
+      api.submitRouterChange(router.id, {
+        expectedDraftRevision: review!.draftRevision,
         reviewedSnapshot: review!.snapshot,
         reviewedEndpointIds: review!.endpointIds,
+        ...submission,
       }),
-    onSuccess: async (next) => {
+    onSuccess: async () => {
       setReview(null);
       setEditing(false);
-      setBase(next);
-      setDraft(next.draft);
       setTab("overview");
-      await accept(next);
-      await client.invalidateQueries({
-        queryKey: [...api.trafficRouterKeys.detail(router.id), "revisions"],
-      });
-      toast.success(
-        next.rolloutStatus === "active"
-          ? localize("routing.revisionIsActive")
-          : localize("routing.revisionPublishedWaitingForRunnerDeployment"),
-      );
+      await client.invalidateQueries({ queryKey: api.trafficRouterKeys.all });
+      toast.success(localize("routing.changeSubmitted"));
     },
   });
   const discard = useMutation({
@@ -232,6 +227,8 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
     prepare.mutate();
   };
   const serverChanged = router.draftRevision !== base.draftRevision;
+  const rollbackLabel = revisionLabel(revisions.data?.items.find(r => r.revision === router.revertibleChangeRequest?.baseRevision));
+  const draftIsAwaiting = Boolean(awaiting) && !dirty && awaiting!.sourceDraftRevision === router.draftRevision;
   return (
     <section className="router-workspace space-y-5 py-8">
       <Link
@@ -247,6 +244,11 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
       <div className="router-workspace-status">
         <StateBadge state={router.rolloutStatus} label={router.rolloutStatus === "active" ? localize("routing.active") : router.rolloutStatus === "failed" ? localize("routing.rolloutFailed") : router.rolloutStatus === "distributing" ? localize("routing.distributing") : localize("routing.unpublished")} />
         {router.activeRevision !== null && <code className="text-xs text-muted-foreground">{revisionLabel(revisions.data?.items.find(r => r.revision === router.activeRevision))}</code>}
+        {canEdit && router.revertibleChangeRequest && (
+          <Button variant="outline" size="sm" onClick={() => setChangeSheet("revert")}>
+            <Undo2 aria-hidden="true" />{localize("routing.rollBackToRevision", { revision: rollbackLabel })}
+          </Button>
+        )}
         <p className="text-muted-foreground">
           {localize("routing.summary", {
             endpoints: router.endpointIds.length,
@@ -259,7 +261,8 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
         <p role="alert" className="router-deployment-error">
           <AlertTriangle aria-hidden="true" />{localize("routing.runnerDeploymentFailedReviewTheConfigurationAndPublishA")}</p>
       )}
-      {unpublished && (!editing || tab !== "routing") && (
+      {awaiting && <PendingChangeNotice change={awaiting} onOpen={() => setChangeSheet("review")} />}
+      {unpublished && !draftIsAwaiting && (!editing || tab !== "routing") && (
         <div className="router-draft-notice" role="status">
           <Pencil aria-hidden="true" className="router-draft-icon" />
           <div className="router-draft-copy">
@@ -278,7 +281,8 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
                 onClick={() => { discard.reset(); setDialog("discard"); }}
               >{localize("routing.discard")}</Button>}
               <Button
-                disabled={busy}
+                disabled={busy || Boolean(awaiting)}
+                title={awaiting ? localize("routing.waitForPendingChange") : undefined}
                 onClick={() => {
                   if (errors.length) {
                     beginEdit();
@@ -289,7 +293,7 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
                   } else openReview();
                 }}
               >
-                {prepare.isPending ? localize("routing.preparing") : localize("routing.reviewPublish")}
+                {prepare.isPending ? localize("routing.preparing") : localize("routing.reviewSubmit")}
               </Button>
             </div>
           )}
@@ -381,7 +385,7 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/30 p-4">
               <div>
                 <p className="text-sm font-medium">{localize("routing.editingDraft")}</p>
-                <p className="text-sm text-muted-foreground">{localize("routing.changesAreNotServingTrafficUntilPublished")}</p>
+                <p className="text-sm text-muted-foreground">{awaiting ? localize("routing.waitForPendingChange") : localize("routing.changesAreNotServingTrafficUntilPublished")}</p>
               </div>
               <div className="flex gap-2">
                 <Button
@@ -394,6 +398,7 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
                 <Button
                   disabled={
                     busy ||
+                    Boolean(awaiting) ||
                     errors.length > 0 ||
                     serverChanged ||
                     fields.isPending ||
@@ -459,17 +464,34 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
           ) : revisions.isPending ? (
             <p role="status">{localize("routing.loadingRevisions")}</p>
           ) : (
-            <RouterRevisions
-              router={router}
-              revisions={revisions.data?.items ?? []}
-              canEdit={canEdit && !busy}
-              onRestore={setRestore}
-            />
+            <div className="space-y-8">
+              <ChangeRequestHistory routerId={router.id} revisions={revisions.data?.items ?? []} />
+              <RouterRevisions
+                router={router}
+                revisions={revisions.data?.items ?? []}
+                canEdit={canEdit && !busy}
+                onRestore={setRestore}
+              />
+            </div>
           )}
         </TabsContent>
       </Tabs>
+      {changeSheet === "review" && awaiting && (
+        <ChangeRequestSheet
+          router={router}
+          change={awaiting}
+          names={names}
+          endpoints={endpoints.data?.items ?? []}
+          currentUserId={auth.user?.id}
+          canDecide={canEdit}
+          onClose={() => setChangeSheet(null)}
+        />
+      )}
+      {changeSheet === "revert" && router.revertibleChangeRequest && (
+        <RevertChangeSheet router={router} label={rollbackLabel} onClose={() => setChangeSheet(null)} />
+      )}
       {review && (
-        <ReviewPublishSheet
+        <ReviewSubmitSheet
           review={review}
           before={router.activeSnapshot}
           names={names}
@@ -479,7 +501,7 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
           error={release.error}
           opener={opener}
           onClose={() => setReview(null)}
-          onPublish={() => release.mutate()}
+          onSubmit={(submission) => release.mutate(submission)}
           onReviewAgain={() => prepare.mutate()}
         />
       )}

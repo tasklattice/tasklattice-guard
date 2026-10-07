@@ -94,6 +94,8 @@ const intentAnalysisInput = z.object({
   topicControlMode: z.enum(["strict", "permissive"]).default("permissive"),
   language: z.enum(["en", "zh-CN"]).default("en"),
 });
+// Router change justification, rejection note or emergency reason.
+const changeReason = z.string().trim().min(1).max(2000);
 const loggingInput = z.object({ level: z.enum(["info", "debug", "trace"]), acknowledgeCost: z.boolean().default(false) });
 const testCaseInput = z.object({
   guardrailId: z.string().min(1),
@@ -848,21 +850,42 @@ export function createHttpApp(input: {
     const body = z.object({ expectedDraftRevision: z.number().int().positive() }).parse(await context.req.json());
     return context.json(await input.service.trafficRouting.preview(context.req.param("id"), body.expectedDraftRevision));
   });
-  app.post("/api/v1/routers/:id/publish", authenticated, administrator, async context => {
-    const body = z.object({ expectedDraftRevision: z.number().int().positive(), idempotencyKey: z.string().min(1).max(128), reviewedSnapshot: routerDraftSchema.optional(), reviewedEndpointIds: z.array(z.string().min(1).max(256)).max(10000).optional() }).parse(await context.req.json());
-    const result = await input.service.trafficRouting.publish(context.req.param("id"), body.expectedDraftRevision, body.idempotencyKey, context.get("actor").id, undefined, body.reviewedSnapshot, body.reviewedEndpointIds);
+  app.get("/api/v1/routers/:id/change-requests", authenticated, async context => {
+    const items = await input.service.trafficRouting.changeRequests(context.req.param("id"));
+    return context.json({ items, count: items.length });
+  });
+  app.post("/api/v1/routers/:id/change-requests", authenticated, administrator, async context => {
+    const body = z.object({ expectedDraftRevision: z.number().int().positive(), reviewedSnapshot: routerDraftSchema, reviewedEndpointIds: z.array(z.string().min(1).max(256)).max(10000),
+      reason: changeReason, ticket: z.string().trim().max(128).default("") }).parse(await context.req.json());
+    return context.json(await input.service.trafficRouting.submitChange(context.req.param("id"), body, context.get("actor").id), 201);
+  });
+  app.get("/api/v1/routers/:id/change-requests/:changeId", authenticated, async context => context.json(await input.service.trafficRouting.changeRequest(context.req.param("id"), context.req.param("changeId"))));
+  app.post("/api/v1/routers/:id/change-requests/:changeId/approve", authenticated, administrator, async context => {
+    const { note } = z.object({ note: z.string().trim().max(2000).optional() }).parse(await context.req.json());
+    const result = await input.service.trafficRouting.approveChange(context.req.param("id"), context.req.param("changeId"), context.get("actor").id, { note });
     if (!result.publication.replayed) await input.runnerControl.distributeDesiredState();
+    return context.json(result, 202);
+  });
+  app.post("/api/v1/routers/:id/change-requests/:changeId/emergency-apply", authenticated, administrator, async context => {
+    const emergency = z.object({ reason: changeReason, managerContact: z.string().trim().min(1).max(256) }).parse(await context.req.json());
+    const result = await input.service.trafficRouting.approveChange(context.req.param("id"), context.req.param("changeId"), context.get("actor").id, { emergency });
+    if (!result.publication.replayed) await input.runnerControl.distributeDesiredState();
+    return context.json(result, 202);
+  });
+  app.post("/api/v1/routers/:id/change-requests/:changeId/reject", authenticated, administrator, async context => {
+    const { note } = z.object({ note: changeReason }).parse(await context.req.json());
+    return context.json(await input.service.trafficRouting.rejectChange(context.req.param("id"), context.req.param("changeId"), context.get("actor").id, note));
+  });
+  app.post("/api/v1/routers/:id/change-requests/:changeId/withdraw", authenticated, administrator, async context => context.json(await input.service.trafficRouting.withdrawChange(context.req.param("id"), context.req.param("changeId"), context.get("actor").id)));
+  app.post("/api/v1/routers/:id/change-requests/:changeId/revert", authenticated, administrator, async context => {
+    const { reason } = z.object({ reason: changeReason }).parse(await context.req.json());
+    const result = await input.service.trafficRouting.revertChange(context.req.param("id"), context.req.param("changeId"), context.get("actor").id, reason);
+    await input.runnerControl.distributeDesiredState();
     return context.json(result, 202);
   });
   app.delete("/api/v1/routers/:id/revisions/:revision", authenticated, administrator, async context => {
     await input.service.trafficRouting.deleteRevision(context.req.param("id"), z.coerce.number().int().positive().parse(context.req.param("revision")), context.get("actor").id);
     return context.body(null, 204);
-  });
-  app.post("/api/v1/routers/:id/rollback", authenticated, administrator, async context => {
-    const body = z.object({ expectedDraftRevision: z.number().int().positive(), idempotencyKey: z.string().min(1).max(128), revision: z.number().int().positive() }).parse(await context.req.json());
-    const result = await input.service.trafficRouting.publish(context.req.param("id"), body.expectedDraftRevision, body.idempotencyKey, context.get("actor").id, body.revision);
-    if (!result.publication.replayed) await input.runnerControl.distributeDesiredState();
-    return context.json(result, 202);
   });
   app.put("/api/v1/routers/:id/endpoints", authenticated, administrator, async context => {
     const body = z.object({ endpointIds: z.array(z.string().min(1)).max(128) }).parse(await context.req.json());

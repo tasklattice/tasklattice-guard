@@ -19,6 +19,7 @@ function stableJson(value: unknown): string {
 }
 const url = process.env.GUARD_TEST_POSTGRES_URL;
 const actor = "admin";
+const approver = "approver";
 const draft = (): RouterDraft => ({ routes: [{ id: "fallback", name: "Fallback", kind: "fallback", enabled: true,
   selector: { expression: { combinator: "and", conditions: [] } },
   targets: [{ id: "target-a", guardrailId: "guard-a", guardrailVersion: "1", weightBps: 10000 }],
@@ -47,7 +48,7 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
   afterAll(async () => { await pool?.end(); await admin?.query(`DROP SCHEMA IF EXISTS "${namespace}" CASCADE`); await admin?.end(); });
   beforeEach(async () => {
     await pool.query('TRUNCATE auth_user, guardrail, runner_pool, controller_state, traffic_router, route_assignment, telemetry_watermark CASCADE');
-    await pool.query(`INSERT INTO auth_user (id,name,email,role) VALUES ('admin','Admin','admin@example.test','admin');
+    await pool.query(`INSERT INTO auth_user (id,name,email,role) VALUES ('admin','Admin','admin@example.test','admin'),('approver','Approver','approver@example.test','admin');
       INSERT INTO controller_state (id) VALUES ('singleton');
       INSERT INTO runner_pool (id,name) VALUES ('default','Default');
       INSERT INTO guardrail (id,name,draft_config) VALUES ('guard-a','Original','{}'),('guard-b','Other','{}');
@@ -56,7 +57,17 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
       INSERT INTO endpoint (id,name,adapter) VALUES ('http','HTTP','HTTP'),('a2a','A2A','A2A');`);
   });
   async function create(value = draft()) { return service.trafficRouting.create("Router", "", value, actor); }
-  async function publish(value = draft()) { const router = await create(value); return service.trafficRouting.publish(router.id, 1, randomUUID(), actor); }
+  /** Review the current draft and submit it as the actor. */
+  async function submit(routerId: string, draftRevision = 1, reason = "Change ticket", by = actor) {
+    const review = await service.trafficRouting.preview(routerId, draftRevision);
+    return service.trafficRouting.submitChange(routerId, { expectedDraftRevision: draftRevision, reviewedSnapshot: review.snapshot, reviewedEndpointIds: review.endpointIds, reason, ticket: "CHG-1" }, by);
+  }
+  /** Submit as the actor and approve as a second administrator. */
+  async function apply(routerId: string, draftRevision = 1) {
+    const change = await submit(routerId, draftRevision);
+    return service.trafficRouting.approveChange(routerId, change.id, approver, {});
+  }
+  async function publish(value = draft()) { const router = await create(value); return apply(router.id); }
   async function generation() { return Number((await pool.query("SELECT desired_generation FROM controller_state WHERE id='singleton'")).rows[0].desired_generation); }
   async function count(table: string, where = "TRUE") { return (await pool.query(`SELECT count(*)::int AS n FROM ${table} WHERE ${where}`)).rows[0].n as number; }
 
@@ -76,33 +87,116 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
     expect(await generation()).toBe(before);
     expect(await count("audit_event", "kind='router.source_endpoints_changed'")).toBe(1);
   });
-  it("checks the whole publication request and returns the original identity on replay", async () => {
+
+  it("publishes a submitted change only after a different administrator approves it", async () => {
     const router = await create();
-    const review = await service.trafficRouting.preview(router.id, 1);
-    const first = await service.trafficRouting.publish(router.id, 1, "key-a", actor, undefined, review.snapshot, review.endpointIds);
-    await expect(service.trafficRouting.publish(router.id, 1, "key-a", actor, undefined, { routes: [] }, [])).rejects.toMatchObject({ code: "router_publish_key_conflict" });
-    await service.trafficRouting.publish(router.id, 1, "key-b", actor);
-    const before = await generation();
-    const replay = await service.trafficRouting.publish(router.id, 1, "key-a", actor, undefined, review.snapshot, review.endpointIds);
-    expect(replay.activeRevision).toBe(2);
-    expect(replay.publication).toMatchObject({ revision: 1, generation: first.publication.generation, replayed: true });
-    expect(replay.publication.revisionUrl).toContain("/revisions/1");
-    expect(await generation()).toBe(before);
-    expect(await count("traffic_router_revision")).toBe(2);
+    const change = await submit(router.id);
+    expect(change).toMatchObject({ status: "pending", kind: "publish", baseRevision: null, sourceDraftRevision: 1, ticket: "CHG-1", submittedByName: "Admin", snapshot: draft() });
+    expect(await generation()).toBe(0); expect(await count("traffic_router_revision")).toBe(0);
+    expect((await service.trafficRouting.get(router.id)).pendingChangeRequest?.id).toBe(change.id);
+    await expect(submit(router.id)).rejects.toMatchObject({ code: "router_change_request_pending" });
+    await expect(service.trafficRouting.approveChange(router.id, change.id, actor, {})).rejects.toMatchObject({ status: 403, code: "router_change_request_self_approval" });
+    const applied = await service.trafficRouting.approveChange(router.id, change.id, approver, { note: "Approved in CAB" });
+    expect(applied).toMatchObject({ activeRevision: 1, activeSnapshot: draft(), pendingChangeRequest: null, publication: { revision: 1, replayed: false } });
+    expect(await generation()).toBe(1);
+    expect(await service.trafficRouting.changeRequest(router.id, change.id)).toMatchObject({ status: "applied", decidedBy: approver, decidedByName: "Approver", decisionNote: "Approved in CAB", appliedRevision: 1 });
+    expect((await service.trafficRouting.revisions(router.id))[0]).toMatchObject({ revision: 1, changeRequestId: change.id, createdBy: approver });
+    const replay = await service.trafficRouting.approveChange(router.id, change.id, approver, {});
+    expect(replay.publication).toMatchObject({ revision: 1, generation: 1, replayed: true });
+    expect(await generation()).toBe(1); expect(await count("traffic_router_revision")).toBe(1);
+    expect(await count("audit_event", "kind IN ('router.change_submitted','router.change_approved')")).toBe(2);
   });
 
-  it("deletes only retired Router revisions and retains publication idempotency", async () => {
+  it("serializes concurrent approvals and submissions", async () => {
+    const router = await create();
+    const change = await submit(router.id);
+    const results = await Promise.all(Array.from({ length: 8 }, () => service.trafficRouting.approveChange(router.id, change.id, approver, {})));
+    expect(results.filter(r => !r.publication.replayed)).toHaveLength(1);
+    expect(await generation()).toBe(1); expect(await count("traffic_router_revision")).toBe(1);
+    expect(await count("audit_event", "kind='router.change_approved'")).toBe(1);
+    const submissions = await Promise.allSettled(Array.from({ length: 4 }, () => submit(router.id)));
+    expect(submissions.filter(r => r.status === "fulfilled")).toHaveLength(1);
+    expect(await count("traffic_router_change_request", "status='pending'")).toBe(1);
+  });
+
+  it("closes rejected and withdrawn changes without publishing", async () => {
+    const router = await create();
+    const rejected = await submit(router.id);
+    await expect(service.trafficRouting.rejectChange(router.id, rejected.id, actor, "Mine")).rejects.toMatchObject({ status: 403 });
+    expect(await service.trafficRouting.rejectChange(router.id, rejected.id, approver, "Weights need CAB")).toMatchObject({ status: "rejected", decisionNote: "Weights need CAB" });
+    await expect(service.trafficRouting.approveChange(router.id, rejected.id, approver, {})).rejects.toMatchObject({ code: "router_change_request_closed" });
+    const withdrawn = await submit(router.id);
+    await expect(service.trafficRouting.withdrawChange(router.id, withdrawn.id, approver)).rejects.toMatchObject({ code: "router_change_request_not_submitter" });
+    expect(await service.trafficRouting.withdrawChange(router.id, withdrawn.id, actor)).toMatchObject({ status: "withdrawn" });
+    expect(await generation()).toBe(0); expect(await count("traffic_router_revision")).toBe(0);
+    expect((await service.trafficRouting.changeRequests(router.id)).map(c => c.status)).toEqual(["withdrawn", "rejected"]);
+  });
+
+  it("lets the submitter apply an emergency change with a recorded reason and manager contact", async () => {
+    const router = await create();
+    const change = await submit(router.id);
+    const applied = await service.trafficRouting.approveChange(router.id, change.id, actor, { emergency: { reason: "Active abuse", managerContact: "Duty manager +86 138 0000 0000" } });
+    expect(applied.activeRevision).toBe(1);
+    expect(await service.trafficRouting.changeRequest(router.id, change.id)).toMatchObject({ status: "applied", decidedBy: actor, emergencyReason: "Active abuse", emergencyContact: "Duty manager +86 138 0000 0000" });
+    expect((await pool.query("SELECT detail FROM audit_event WHERE kind='router.change_emergency_applied'")).rows[0].detail).toMatchObject({ emergencyReason: "Active abuse" });
+  });
+
+  it("applies the version frozen at submission even when a newer latest version appears", async () => {
+    const router = await service.trafficRouting.create("Latest", "", latestDraft(), actor, ["http"]);
+    const change = await submit(router.id);
+    expect(change.snapshot.routes[0]!.targets[0]!.guardrailVersion).toBe("1");
+    await addVersion("2", 3);
+    const applied = await service.trafficRouting.approveChange(router.id, change.id, approver, {});
+    expect(applied.activeSnapshot!.routes[0]!.targets[0]!.guardrailVersion).toBe("1");
+  });
+
+  it.each(["binding", "readiness", "revision"])("supersedes a pending change after %s drift instead of applying it", async drift => {
+    const router = await service.trafficRouting.create("Drift", "", draft(), actor, ["http"]);
+    if (drift === "revision") await apply(router.id);
+    const change = await submit(router.id);
+    if (drift === "binding") await service.trafficRouting.bind(router.id, ["http", "a2a"], actor);
+    else if (drift === "readiness") await pool.query("UPDATE guardrail_version SET status='compiling' WHERE guardrail_id='guard-a'");
+    else await pool.query("UPDATE traffic_router SET active_revision = 7 WHERE id=$1", [router.id]);
+    const before = await generation(), revisions = await count("traffic_router_revision");
+    await expect(service.trafficRouting.approveChange(router.id, change.id, approver, {})).rejects.toMatchObject({ code: "router_change_request_stale" });
+    expect(await service.trafficRouting.changeRequest(router.id, change.id)).toMatchObject({ status: "superseded" });
+    expect(await generation()).toBe(before); expect(await count("traffic_router_revision")).toBe(revisions);
+  });
+
+  it("reverts the active change to its approved base revision without another approval", async () => {
+    const router = await publish();
+    expect((await service.trafficRouting.get(router.id)).revertibleChangeRequest).toBeNull();
+    const changed = draft(); changed.routes[0]!.targets[0]!.guardrailId = "guard-b";
+    await service.trafficRouting.save(router.id, 1, changed, actor);
+    const second = await apply(router.id, 2);
+    const forward = second.revertibleChangeRequest!;
+    expect(forward).toMatchObject({ baseRevision: 1, appliedRevision: 2 });
+    await expect(service.trafficRouting.deleteRevision(router.id, 1, actor)).rejects.toThrow("pre-approved rollback target");
+    const edited = draft(); edited.routes[0]!.name = "Pending";
+    await service.trafficRouting.save(router.id, 2, edited, actor);
+    const pending = await submit(router.id, 3);
+    const reverted = await service.trafficRouting.revertChange(router.id, forward.id, actor, "Spike in false positives");
+    expect(reverted).toMatchObject({ activeRevision: 3, activeSnapshot: draft(), draft: draft(), draftRevision: 4, revertibleChangeRequest: null, pendingChangeRequest: null });
+    expect(await service.trafficRouting.changeRequest(router.id, pending.id)).toMatchObject({ status: "superseded" });
+    const record = (await service.trafficRouting.changeRequests(router.id)).find(c => c.kind === "revert")!;
+    expect(record).toMatchObject({ status: "applied", baseRevision: 2, appliedRevision: 3, revertsChangeRequestId: forward.id, decidedBy: actor, reason: "Spike in false positives" });
+    expect((await service.trafficRouting.revisions(router.id))[0]).toMatchObject({ revision: 3, rollbackRevision: 1, changeRequestId: record.id });
+    await expect(service.trafficRouting.revertChange(router.id, forward.id, actor, "Again")).rejects.toMatchObject({ code: "router_revert_unavailable" });
+    expect(await generation()).toBe(3);
+  });
+
+  it("deletes only retired Router revisions that are not the active rollback target", async () => {
     const first = await publish();
     await expect(service.trafficRouting.deleteRevision(first.id, 1, actor)).rejects.toMatchObject({ code: "revision_in_use" });
-    const oldKey = (await service.trafficRouting.revisions(first.id))[0]!.idempotencyKey;
-    const second = await service.trafficRouting.publish(first.id, 1, randomUUID(), actor);
+    await apply(first.id);
     await expect(service.trafficRouting.deleteRevision(first.id, 1, actor)).rejects.toMatchObject({ code: "revision_in_use" });
+    const third = await apply(first.id);
     await pool.query("UPDATE traffic_router SET updated_at = now() - interval '10 minutes' WHERE id=$1", [first.id]);
-    await pool.query("INSERT INTO runner_instance (runner_id,boot_id,pool_id,runner_version,nemo_version,max_concurrency,applied_generation,last_heartbeat_at) VALUES ('deletion-runner','boot','default','test','test',10,$1,now())", [second.desiredGeneration]);
+    await pool.query("INSERT INTO runner_instance (runner_id,boot_id,pool_id,runner_version,nemo_version,max_concurrency,applied_generation,last_heartbeat_at) VALUES ('deletion-runner','boot','default','test','test',10,$1,now())", [third.desiredGeneration]);
+    await expect(service.trafficRouting.deleteRevision(first.id, 2, actor)).rejects.toThrow("pre-approved rollback target");
     await service.trafficRouting.deleteRevision(first.id, 1, actor);
-    expect((await service.trafficRouting.revisions(first.id)).map(r => r.revision)).toEqual([2]);
-    await expect(service.trafficRouting.publish(first.id, 1, oldKey, actor)).rejects.toMatchObject({ code: "router_revision_deleted" });
-    expect((await service.trafficRouting.publish(first.id, 1, randomUUID(), actor)).activeRevision).toBe(3);
+    expect((await service.trafficRouting.revisions(first.id)).map(r => r.revision)).toEqual([3, 2]);
+    expect((await apply(first.id)).activeRevision).toBe(4);
   });
   it("blocks referenced Guardrail versions and deletes unused versions without deleting artifacts", async () => {
     await pool.query("UPDATE guardrail SET updated_at = now() - interval '10 minutes'");
@@ -111,6 +205,15 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
     await service.deleteGuardrailVersion({ guardrailId: 'guard-b', version: '1', actorId: actor });
     expect(await count('guardrail_version', "guardrail_id='guard-b'")).toBe(0);
     expect(await count('audit_event', "kind='guardrail.version_deleted'")).toBe(1);
+  });
+  it("protects Guardrail versions referenced only by a pending change request", async () => {
+    await pool.query("UPDATE guardrail SET updated_at = now() - interval '10 minutes'");
+    const value = draft(); value.routes[0]!.targets[0]!.guardrailId = "guard-b";
+    const router = await create(value);
+    await submit(router.id);
+    await service.trafficRouting.save(router.id, 1, draft(), actor);
+    await expect(service.deleteGuardrailVersion({ guardrailId: 'guard-b', version: '1', actorId: actor })).rejects.toThrow("pending change requests");
+    await expect(service.trafficRouting.assertGuardrailUnused("guard-b")).rejects.toThrow("pending Router change requests");
   });
   it("creates a draft with multiple exclusive source Endpoints atomically", async () => {
     const router = await service.trafficRouting.create("Sources", "", draft(), actor, ["http", "a2a"]);
@@ -131,35 +234,18 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
     expect(await count("traffic_router")).toBe(1);
   });
 
-  it("serializes concurrent publication retries into one immutable revision, generation and audit", async () => {
-    const router = await create();
-    const results = await Promise.all(Array.from({ length: 8 }, () => service.trafficRouting.publish(router.id, 1, "same-request", actor)));
-    expect(results.every(r => r.activeRevision === 1)).toBe(true);
-    expect(await generation()).toBe(1);
-    expect(await count("traffic_router_revision")).toBe(1);
-    expect(await count("audit_event", "kind='router.published'")).toBe(1);
-    expect((await service.trafficRouting.revisions(router.id))[0]?.snapshot).toEqual(draft());
-    const changed = draft(); changed.routes[0]!.name = "Edited later";
-    await service.trafficRouting.save(router.id, 1, changed, actor);
-    await service.trafficRouting.publish(router.id, 1, "same-request", actor);
-    expect(await generation()).toBe(1);
-    expect((await service.trafficRouting.get(router.id)).activeSnapshot).toEqual(draft());
-    await expect(service.trafficRouting.publish(router.id, 2, "same-request", actor)).rejects.toMatchObject({ code: "router_publish_key_conflict" });
-  });
-
-  it("captures immutable endpoint and version names across edits, binding changes, retries and rollback", async () => {
+  it("captures immutable endpoint and version names across edits and binding changes", async () => {
     const router = await service.trafficRouting.create("Context", "", draft(), actor, ["http"]);
-    await service.trafficRouting.publish(router.id, 1, "first", actor);
+    await apply(router.id);
     const original = { endpoints: [{ id: "http", name: "HTTP", adapter: "HTTP" }], guardrails: [{ id: "guard-a", name: "Original", version: "1" }] };
     expect((await service.trafficRouting.revisions(router.id))[0]?.context).toEqual(original);
     await pool.query("UPDATE endpoint SET name='Renamed', adapter='LITELLM' WHERE id='http'; UPDATE guardrail SET name='Renamed guard' WHERE id='guard-a'");
     await service.trafficRouting.bind(router.id, ["a2a"], actor);
-    await service.trafficRouting.publish(router.id, 1, "first", actor);
     expect((await service.trafficRouting.revisions(router.id))[0]?.context).toEqual(original);
     expect((await service.trafficRouting.distribution(router.id, 1)).revisions[0]?.context).toEqual(original);
     const audit = (await pool.query("SELECT detail FROM audit_event WHERE kind='router.source_endpoints_changed'")).rows[0].detail;
     expect(audit).toMatchObject({ routerRevision: 1, previousEndpoints: [{ id: "http", name: "Renamed", adapter: "LITELLM" }], endpoints: [{ id: "a2a", name: "A2A", adapter: "A2A" }] });
-    await service.trafficRouting.publish(router.id, 1, "rollback-context", actor, 1);
+    await apply(router.id);
     const revisions = await service.trafficRouting.revisions(router.id);
     expect(revisions[1]?.context).toEqual(original);
     expect(revisions[0]?.context).toEqual({ endpoints: [{ id: "a2a", name: "A2A", adapter: "A2A" }], guardrails: [{ id: "guard-a", name: "Renamed guard", version: "1" }] });
@@ -181,7 +267,7 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
     await service.trafficRouting.bind(router.id, ["http"], actor);
     expect((await service.trafficRouting.revisions(router.id))[0]?.context).toBeNull();
     expect((await service.trafficRouting.distribution(router.id, 1)).revisions[0]?.context).toBeNull();
-    await service.trafficRouting.publish(router.id, 1, "legacy-rollback", actor, 1);
+    await apply(router.id);
     const revisions = await service.trafficRouting.revisions(router.id);
     expect(revisions[1]?.context).toBeNull();
     expect(revisions[0]?.context?.endpoints).toEqual([{ id: "http", name: "HTTP", adapter: "HTTP" }]);
@@ -196,7 +282,7 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
   async function addVersion(version: string, generation: number, status = "ready", artifact: string | null = "artifact-new") {
     await pool.query("INSERT INTO guardrail_version (guardrail_id,version,generation,status,runtime_profile,plan,artifact_id) VALUES ('guard-a',$1,$2,$3,'auto','{}',$4)", [version, generation, status, artifact]);
   }
-  it("previews latest read-only by generation, strips strategies, and preserves the editable draft on publish", async () => {
+  it("previews latest read-only by generation, strips strategies, and preserves the editable draft on approval", async () => {
     await addVersion("z-old-label", 3);
     await addVersion("a-new-label", 4);
     await addVersion("compiling", 5, "compiling");
@@ -208,29 +294,22 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
     expect(preview).toMatchObject({ draftRevision: 1, endpointIds: ["http"] });
     expect(preview.snapshot.routes[0]!.targets[0]).toEqual({ ...draft().routes[0]!.targets[0], guardrailVersion: "a-new-label" });
     expect(await generation()).toBe(before); expect(await count("audit_event")).toBe(audits); expect(await count("traffic_router_revision")).toBe(0);
-    const published = await service.trafficRouting.publish(router.id, 1, "reviewed", actor, undefined, preview.snapshot, preview.endpointIds);
+    const published = await apply(router.id);
     expect(published.draft).toEqual(value); expect(published.activeSnapshot).toEqual(preview.snapshot);
     expect((await service.trafficRouting.revisions(router.id))[0]?.context?.guardrails).toEqual([{ id: "guard-a", name: "Original", version: "a-new-label" }]);
-    await addVersion("next", 7);
-    await service.trafficRouting.publish(router.id, 1, "reviewed", actor, undefined, preview.snapshot, preview.endpointIds);
-    expect(await count("traffic_router_revision")).toBe(1);
-    const rollback = await service.trafficRouting.publish(router.id, 1, "fixed-rollback", actor, 1);
-    expect(rollback.activeSnapshot).toEqual(preview.snapshot);
   });
 
-  it.each(["version", "binding", "readiness"])("requires re-review after %s drift and leaves publication atomic", async drift => {
+  it.each(["version", "binding", "readiness"])("requires re-review after %s drift before submission", async drift => {
     const router = await create(latestDraft());
     const preview = await service.trafficRouting.preview(router.id, 1);
     if (drift === "version") await addVersion("2", 3);
     else if (drift === "readiness") await pool.query("UPDATE guardrail_version SET status='compiling' WHERE guardrail_id='guard-a'");
     else await service.trafficRouting.bind(router.id, ["http"], actor);
-    const before = await generation();
-    await expect(service.trafficRouting.publish(router.id, 1, "drift", actor, undefined, preview.snapshot, preview.endpointIds)).rejects.toMatchObject({ code: "router_review_conflict" });
-    expect(await count("traffic_router_revision")).toBe(0); expect(await generation()).toBe(before);
-    expect((await service.trafficRouting.get(router.id)).activeSnapshot).toBeNull();
+    await expect(service.trafficRouting.submitChange(router.id, { expectedDraftRevision: 1, reviewedSnapshot: preview.snapshot, reviewedEndpointIds: preview.endpointIds, reason: "Drift", ticket: "" }, actor))
+      .rejects.toMatchObject({ code: "router_review_conflict" });
+    expect(await count("traffic_router_change_request")).toBe(0);
     if (drift === "readiness") await pool.query("UPDATE guardrail_version SET status='ready' WHERE guardrail_id='guard-a'");
-    const reviewed = await service.trafficRouting.preview(router.id, 1);
-    await service.trafficRouting.publish(router.id, 1, "drift", actor, undefined, reviewed.snapshot, reviewed.endpointIds);
+    await apply(router.id);
     expect(await count("traffic_router_revision")).toBe(1);
   });
 
@@ -250,45 +329,36 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
     expect(await count("traffic_router_revision")).toBe(0); expect(await generation()).toBe(0);
   });
 
-  it("allows one concurrent draft writer and never publishes a stale draft", async () => {
+  it("allows one concurrent draft writer and never submits a stale draft", async () => {
     const router = await create();
     const a = draft(), b = draft(); a.routes[0]!.name = "A"; b.routes[0]!.name = "B";
     const saves = await Promise.allSettled([service.trafficRouting.save(router.id, 1, a, actor), service.trafficRouting.save(router.id, 1, b, actor)]);
     expect(saves.filter(r => r.status === "fulfilled")).toHaveLength(1);
     expect(saves.find(r => r.status === "rejected")).toMatchObject({ reason: { code: "router_draft_conflict" } });
-    await expect(service.trafficRouting.publish(router.id, 1, "stale", actor)).rejects.toMatchObject({ code: "router_draft_conflict" });
-    expect(await generation()).toBe(0); expect(await count("traffic_router_revision")).toBe(0);
+    await expect(service.trafficRouting.submitChange(router.id, { expectedDraftRevision: 1, reviewedSnapshot: draft(), reviewedEndpointIds: [], reason: "Stale", ticket: "" }, actor))
+      .rejects.toMatchObject({ code: "router_draft_conflict" });
+    expect(await generation()).toBe(0); expect(await count("traffic_router_change_request")).toBe(0);
     const saved = await service.trafficRouting.get(router.id);
-    const live = await service.trafficRouting.publish(router.id, 2, "current", actor);
+    const live = await apply(router.id, 2);
     expect(live.activeSnapshot).toEqual(saved.draft);
   });
 
-  it("rolls back by publishing old content as a new revision and replays that request once", async () => {
-    const router = await publish(); const changed = draft(); changed.routes[0]!.targets[0]!.guardrailId = "guard-b";
-    await service.trafficRouting.save(router.id, 1, changed, actor);
-    await service.trafficRouting.publish(router.id, 2, "second", actor);
-    const rolled = await service.trafficRouting.publish(router.id, 2, "rollback", actor, 1);
-    expect(rolled).toMatchObject({ activeRevision: 3, draftRevision: 3, activeSnapshot: draft() });
-    await service.trafficRouting.publish(router.id, 2, "rollback", actor, 1);
-    expect(await generation()).toBe(3); expect(await count("traffic_router_revision")).toBe(3);
-    await expect(service.trafficRouting.publish(router.id, 2, "rollback", actor, 2)).rejects.toMatchObject({ code: "router_publish_key_conflict" });
-  });
-
-  it.each([9900, 10100])("preserves a %i bps draft but rejects publication atomically", async total => {
+  it.each([9900, 10100])("preserves a %i bps draft but rejects its review atomically", async total => {
     const value = withHeader(); value.routes[0]!.targets = [{ id: "a", guardrailId: "guard-a", guardrailVersion: "1", weightBps: 5000 }, { id: "b", guardrailId: "guard-b", guardrailVersion: "1", weightBps: total - 5000 }];
     const router = await create(value);
-    await expect(service.trafficRouting.publish(router.id, 1, "invalid", actor)).rejects.toMatchObject({ code: "validation_failed" });
+    await expect(service.trafficRouting.preview(router.id, 1)).rejects.toMatchObject({ code: "validation_failed" });
     expect((await service.trafficRouting.get(router.id)).draft).toEqual(value);
     expect(await generation()).toBe(0); expect(await count("traffic_router_revision")).toBe(0);
   });
 
-  it("rejects multi-target Fallback publication and preview even when weights total 100%", async () => {
+  it("rejects multi-target Fallback submission and preview even when weights total 100%", async () => {
     const value = draft(); value.routes[0]!.targets[0]!.weightBps = 5000;
     value.routes[0]!.targets.push({ id: "second", guardrailId: "guard-b", guardrailVersion: "1", weightBps: 5000 });
     const router = await create(value);
     await expect(service.trafficRouting.preview(router.id, 1)).rejects.toThrow("exactly one Target at 100%");
-    await expect(service.trafficRouting.publish(router.id, 1, "multi-fallback", actor)).rejects.toThrow("exactly one Target at 100%");
-    expect(await count("traffic_router_revision")).toBe(0); expect(await generation()).toBe(0);
+    await expect(service.trafficRouting.submitChange(router.id, { expectedDraftRevision: 1, reviewedSnapshot: value, reviewedEndpointIds: [], reason: "Split", ticket: "" }, actor))
+      .rejects.toMatchObject({ code: "router_review_conflict" });
+    expect(await count("traffic_router_change_request")).toBe(0); expect(await generation()).toBe(0);
   });
 
   it("requires ready positive targets while retaining an unready zero-weight candidate", async () => {
@@ -297,7 +367,7 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
     const router = await publish(value);
     value.routes[0]!.targets[0]!.weightBps = 9000; value.routes[0]!.targets[1]!.weightBps = 1000;
     await service.trafficRouting.save(router.id, 1, value, actor);
-    await expect(service.trafficRouting.publish(router.id, 2, "unready", actor)).rejects.toMatchObject({ code: "validation_failed" });
+    await expect(service.trafficRouting.preview(router.id, 2)).rejects.toMatchObject({ code: "validation_failed" });
     expect((await service.trafficRouting.get(router.id)).activeRevision).toBe(1);
     expect(await generation()).toBe(1);
   });
@@ -317,18 +387,17 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
     expect((await service.trafficRouting.bind(other, ["http"], actor)).endpointIds).toEqual(["http"]);
   });
 
-  it("checks endpoint capability at both binding and publication against the active snapshot", async () => {
+  it("checks endpoint capability at both binding and review against the active snapshot", async () => {
     const router = await publish(withHeader());
     await expect(service.trafficRouting.bind(router.id, ["a2a"], actor)).rejects.toMatchObject({ code: "validation_failed" });
     await service.trafficRouting.bind(router.id, ["http"], actor);
     const plain = await publish(); await service.trafficRouting.bind(plain.id, ["a2a"], actor);
     await service.trafficRouting.save(plain.id, 1, withHeader(), actor);
-    await expect(service.trafficRouting.publish(plain.id, 2, "unsupported", actor)).rejects.toMatchObject({ code: "validation_failed" });
+    await expect(service.trafficRouting.preview(plain.id, 2)).rejects.toMatchObject({ code: "validation_failed" });
     expect((await service.trafficRouting.get(plain.id)).activeSnapshot).toEqual(draft());
     const unpublished = await create();
     await expect(service.trafficRouting.bind(unpublished.id, ["http"], actor)).rejects.toMatchObject({ code: "endpoint_router_conflict" });
   });
-
   function event(routerId: string, decisionId: string, overrides: Partial<RoutingEvent> = {}): RoutingEvent {
     return routingEventSchema.parse({ id: `assignment-${decisionId}`, eventType: "route_assignment", decisionId, callId: `call-${decisionId}`, runnerId: "runner", endpointId: "http", routerId, routerRevision: 1,
       routeId: "fallback", targetId: "target-a", guardrailId: "guard-a", guardrailVersion: "1", occurredAt: new Date(), decisionAt: new Date(Date.now() - 1000), assignmentStatus: "assigned", ...overrides });

@@ -15,9 +15,22 @@ order: 4
 2. **将 Endpoint 绑定到已发布 Router**：一个 Endpoint 最多绑定一个 Router；一个 Router 可服务多个 Endpoints。绑定生效后，网关在模型调用前后使用该 Endpoint 发起检查。
 3. **在 Router 中添加 Route**：用 Selector 描述要保护的流量。例如选择适配器可提取的 `model = gateway-model-alias`，也可结合 `endpoint.id` 或 `protocol` 缩小范围。可用字段取决于绑定 Endpoint 的协议能力；调用方传入的 headers 或 `jwt_claims` 不会自动成为可信身份。Router 按顺序匹配 Route，第一条命中的 Route 生效。
 4. **把 Route 指向 Guardrail Target**：选择已发布的 Guardrail Version，单一 Target 设为 100%。如果配置 90%／10% 两个 Target，是将命中的请求分流到两个版本，**每次请求只选一个 Target**；想对同一次请求执行多项检查，应将多个 Policies 组合在同一个 Guardrail 中。
-5. **保留最后的 fallback 并预览**：未命中前面 Route 的请求会进入无条件 fallback。发布前用 Route 的 **Test matching** 预览示例请求会命中哪条规则；然后发布 Router 并检查 Runner 的下发状态。
+5. **保留最后的 fallback 并预览**：未命中前面 Route 的请求会进入无条件 fallback。先用 Route 的 **Test matching** 预览示例请求会命中哪条规则，再点击 **审阅并提交**；另一位管理员批准后变更才会发布，随后检查 Runner 的下发状态。
 
-选择 `latest` 的 Target 也会在 Router 发布时解析为确切 Guardrail Version；日后 Guardrail 发布新版，不会悄悄改变已发布 Router 的目标。
+选择 `latest` 的 Target 会在提交变更时解析为确切 Guardrail Version，批准后生效的就是这个版本；日后 Guardrail 发布新版，不会悄悄改变已发布 Router 的目标。
+
+<a id="operator-routing-approval" />
+
+## 每次路由变更都需要审批
+
+只有 Router 变更会改变生产流量，所以每次变更都是一张变更单：
+
+1. **提交**：**审阅并提交** 会冻结审阅过的快照、确切的 Guardrail Versions 和绑定的 Endpoints，并附上变更说明和可选的变更单号。此时不影响流量；一个 Router 同时最多一张待审批变更。
+2. **审批**：另一位管理员打开 **查看变更**，对照当前生效的 revision，选择 **批准并生效** 或 **驳回**。提交人可以撤回，但不能自己批准。
+3. **紧急生效**：无人可审批时，提交人可以选择 **紧急生效**，必须填写原因和批准此操作的经理联系方式，系统会记录在案。
+4. **回退**：批准变更的同时也批准了回到上一个 revision。该变更仍在生效时，**回退到版本 N** 只需填写原因，无需再次审批。
+
+如果批准前当前生效的 revision、绑定的 Endpoints 或引用的 Guardrail Versions 发生变化，变更单会变为 **已失效**，需要重新提交。完整记录见 Revisions 页的 **变更记录**。
 
 [管理 Endpoints](/integration/endpoints)
 
@@ -42,9 +55,9 @@ order: 4
 
 1. **准备候选版本**：先让两个 Guardrails 都通过当前验证并发布确切版本，确认候选方案的规则、依赖和模型能力已就绪。记录稳定版和候选版的 Guardrail ID 与 Version。
 2. **编辑同一条 Route 的 Targets**：在 [Routers](/integration/routers) 的 Routing 页面，找到客服请求使用的 Route，保持 Selector 不变，添加第二个 Target，分别设置 90% 和 10%。检查其他 Route 的优先级以及最后的 fallback；共享 Router 的发布会影响所有绑定的 Endpoints。
-3. **预览后发布 Router**：先用 **Test matching** 检查示例请求是否命中这条 Route；它只测试匹配，不执行 Guardrail，也不能证明真实分流比例。点击 **Review changes** 保存并预览草稿，核对 Target 的 Guardrail ID、固定 Version、权重和 Endpoint 绑定，再发布新的 Router revision。等目标 generation 被 Runner 应用后，才把新调用视为进入灰度。
+3. **预览、提交并审批**：先用 **Test matching** 检查示例请求是否命中这条 Route；它只测试匹配，不执行 Guardrail，也不能证明真实分流比例。点击 **Review changes** 保存并预览草稿，核对 Target 的 Guardrail ID、固定 Version、权重和 Endpoint 绑定后提交变更；批准后才会发布新的 Router revision。等目标 generation 被 Runner 应用后，才把新调用视为进入灰度。
 4. **观察真实效果**：在 Router 的 **Monitoring** 中按 revision 和 Endpoint 查看 Target 的配置占比与实际占比、分配量、阻断／转换结果、错误率和延迟；结合[运行日志](/logs)检查候选方案是否误拦正常问题。统计可能延迟，小样本的实际占比也会波动。
-5. **扩大或回退**：表现符合预期时，按“稳定／候选”75%／25%、50%／50%、0%／100% 等阶段调整权重；每次都审阅并发布新的 Router revision，确认 Runner 收敛。出现问题时，把候选 Target 调为 0%、稳定 Target 调为 100% 并重新发布，或从历史 Router revision 回滚；回滚本身也会发布新的 revision，不会修改历史版本。进行中的调用仍沿用开始时固定的目标。
+5. **扩大或回退**：表现符合预期时，按“稳定／候选”75%／25%、50%／50%、0%／100% 等阶段调整权重；每一步权重调整都是一张需要审批的变更单，每次生效后确认 Runner 收敛。出现问题时，用 **回退到版本 N** 无需再次审批即可恢复上一组权重，或把稳定 Target 设为 100% 作为新变更提交；回退本身也会发布新的 revision，不会修改历史版本。进行中的调用仍沿用开始时固定的目标。
 
 这种灰度用于比较**两套保护方案对不同调用的表现**。如果业务要求同一次模型请求同时执行多项检查，应把多个 Policies 组合进同一个 Guardrail，而不是期待加权 Targets 串行执行。
 
@@ -56,7 +69,7 @@ order: 4
 
 - 发布前确认当前 Validation Run 通过、checksum 已生成、依赖和专用模型可用。
 - 在 Settings / Health 查看运行健康，并在 Router Overview 核对 rolloutStatus 和 desiredGeneration。
-- Router 回滚会基于历史快照发布新的 revision；Guardrail **设为活动版本（Mark active）** 选择已有的就绪版本。已发布 Router 固定的 Guardrail Target 如需变更，应重新发布 Router。
+- Router 回退会基于当前生效变更已批准的基线 revision 发布新的 revision；更早的 revision 需复制为草稿后重新提交；Guardrail **设为活动版本（Mark active）** 选择已有的就绪版本。已发布 Router 固定的 Guardrail Target 如需变更，应重新发布 Router。
 - 进行中的调用继续使用开始时固定的版本；Runner 应用新的 Router revision 后，新调用才使用新的路由快照。
 - 不要修改历史 artifact 或在进程外替换源码；任何语义变化都应创建新版本。
 
