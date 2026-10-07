@@ -53,7 +53,7 @@ async def protect_output(runtime, request, source, *, emit, observe, ready, time
             if request.phase != "output" or timeout_seconds <= 0:
                 raise ValueError("Output protection requires output phase and a positive timeout.")
             async with asyncio.timeout(timeout_seconds):
-                acquisition = runtime._registry.acquire(request.plan,
+                acquisition = await runtime._registry.acquire_async(request.plan,
                     **({"release_id": request.effective_release_id} if request.effective_release_id else {}))
                 native = bool(native_output_config(acquisition[0].config).get("streaming", {}).get("enabled"))
                 contract = OutputStreamContract(request.plan.output_delivery,

@@ -16,14 +16,15 @@ async def test_runtime_checks_additional_declared_model_contract_without_action_
     try:
         guardrail_id, version = store.active_plan_keys()[0]
         config = store.nemo_config(guardrail_id, version)
-        registry._validate_bindings(config)
+        builder = registry._current.prepared.builder
+        builder._validate_bindings(config)
         # This is an isolated manifest validation test, not a claim that a
         # modified unsigned fixture passes artifact signature verification.
         declared = replace(config, dependency_manifest=(
             *config.dependency_manifest, ("evaluation_contract", contract, "required"),
         ))
         with pytest.raises(PlanCompilationError, match=f"Declared.*{contract}"):
-            registry._validate_bindings(declared)
+            builder._validate_bindings(declared)
         assert registry.readiness()["ready"]
     finally:
         await runtime.shutdown()
@@ -49,8 +50,8 @@ async def test_artifact_binding_requires_its_exact_evaluator_direction(tmp_path,
         required = replace(config, action_bindings=(binding,))
         if configured_phase != required_phase:
             with pytest.raises(PlanCompilationError, match=f"No Evaluator Binding.*{required_phase}"):
-                registry._validate_bindings(required)
+                registry._current.prepared.builder._validate_bindings(required)
         else:
-            registry._validate_bindings(required)
+            registry._current.prepared.builder._validate_bindings(required)
     finally:
         await runtime.shutdown()

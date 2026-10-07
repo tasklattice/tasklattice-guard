@@ -927,14 +927,14 @@ class NeMoRuntime:
         except Exception as error:
             if decisions and decisions[-1].usage and decisions[-1].usage.fail_closed:
                 return decisions[-1]
-            instance, cache_hit, queue_wait = self._registry.acquire(request.plan,
+            instance, cache_hit, queue_wait = await self._registry.acquire_async(request.plan,
                 **({"release_id": request.effective_release_id} if request.effective_release_id else {}))
             return _failed_decision(request, error,
                 max(0, round((time.perf_counter() - started) * 1000)), instance.config,
                 cache_hit=cache_hit, queue_latency_ms=queue_wait)
 
     async def _evaluate_complete(self, request: EngineRequest, *, acquisition=None) -> ProtectionDecision:
-        instance, cache_hit, registry_queue_latency_ms = acquisition or self._registry.acquire(
+        instance, cache_hit, registry_queue_latency_ms = acquisition or await self._registry.acquire_async(
             request.plan,
             **({"release_id": request.effective_release_id} if request.effective_release_id else {}),
         )

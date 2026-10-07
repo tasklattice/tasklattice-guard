@@ -27,6 +27,7 @@ from runner.toolkit.runtime.contracts import (
 
 from . import generated as protocol
 from .artifact_config import config_snapshot_from_artifact
+from .diagnostics import diagnostic_phase
 from .protocol_codec import (
     artifact_content,
     endpoint_verification_from_proto,
@@ -80,6 +81,8 @@ class ArtifactStore:
         self._router_revisions: dict[str, Any] = {}
         self._endpoints: dict[str, dict[str, Any]] = {}
         self._logging_levels: dict[str, str] = {}
+        self._artifact_digests: dict[str, str] = {}
+        self._materialization_key = ""
         self._persisted_state: protocol.DesiredState | None = self._read_snapshot()
 
     def attach_registry(self, registry: NeMoRuntimeRegistry) -> None:
@@ -126,7 +129,8 @@ class ArtifactStore:
     def active_plan_keys(self) -> tuple[tuple[str, str], ...]:
         with self._lock:
             active_artifact_ids = {route.artifact_id for route in self._routes}
-            active_artifact_ids.update(t.artifact_id for r in self._router_revisions.values() for route in r.routes for t in route.targets if t.weight_bps)
+            active_artifact_ids.update(t.artifact_id for r in self._router_revisions.values()
+                                       for route in r.routes if route.enabled for t in route.targets if t.weight_bps > 0)
             return tuple(
                 (artifact.plan.guardrail_id, artifact.plan.guardrail_version)
                 for artifact_id, artifact in self._artifacts.items()
@@ -303,9 +307,12 @@ class ArtifactStore:
         persist: bool = True,
         providers: ActionProviders | None = None,
         native_models: tuple[NativeRailModel, ...] | None = None,
+        materialization_key: str | None = None,
     ) -> None:
-        with self._apply_lock:
-            self._apply(desired_state, persist=persist, providers=providers, native_models=native_models)
+        with diagnostic_phase("desired_state.apply", generation=int(desired_state.generation),
+                              artifacts=len(desired_state.artifacts), endpoints=len(desired_state.endpoints),
+                              replace_providers=providers is not None), self._apply_lock:
+            self._apply(desired_state, persist=persist, providers=providers, native_models=native_models, materialization_key=materialization_key)
 
     def _apply(
         self,
@@ -314,15 +321,25 @@ class ArtifactStore:
         persist: bool,
         providers: ActionProviders | None,
         native_models: tuple[NativeRailModel, ...] | None,
+        materialization_key: str | None,
     ) -> None:
         generation = int(desired_state.generation)
         with self._lock:
             if generation < self._generation:
-                return
-        staged = {
-            message.artifact_id: self._artifact_from_message(message)
-            for message in desired_state.artifacts
-        }
+                raise ValueError("Desired generation is older than the applied generation.")
+        with self._lock:
+            previous_artifacts, previous_digests = self._artifacts, self._artifact_digests
+        with diagnostic_phase("desired_state.verify", generation=generation, artifacts=len(desired_state.artifacts)):
+            staged = {}
+            digests = {}
+            for message in desired_state.artifacts:
+                if message.artifact_id in staged:
+                    raise ValueError("Duplicate Artifact ID in desired state.")
+                digest = hashlib.sha256(message.SerializeToString(deterministic=True)).hexdigest()
+                staged[message.artifact_id] = (previous_artifacts[message.artifact_id]
+                    if previous_digests.get(message.artifact_id) == digest
+                    else self._artifact_from_message(message))
+                digests[message.artifact_id] = digest
         routes = tuple(
             RouterRoute(
                 router_id=item.router_id,
@@ -351,44 +368,42 @@ class ArtifactStore:
         registry = self._registry
         if registry is None:
             raise RuntimeError("NeMo Runtime Registry is not attached.")
-        if providers is None and native_models is None:
-            for artifact in staged.values():
-                registry.validate(artifact.plan, artifact.config)
-        else:
-            if providers is None:
-                raise ValueError(
-                    "Native model configuration must be swapped with a complete Action provider registry."
-                )
-            registry.replace_providers(
-                providers,
-                tuple((artifact.plan, artifact.config) for artifact in staged.values()),
-                native_models,
-            )
+        active_ids = {route.artifact_id for route in routes}
+        active_ids.update(target.artifact_id for router in router_revisions.values()
+                          for route in router.routes if route.enabled
+                          for target in route.targets if target.weight_bps > 0)
+        active = frozenset((staged[key].plan.guardrail_id, staged[key].plan.guardrail_version) for key in active_ids)
         candidates = tuple((artifact.plan, artifact.config) for artifact in staged.values())
+        prepared = registry.prepare_release(candidates, active, providers=providers, native_models=native_models)
+        model_key = materialization_key if materialization_key is not None else self._materialization_key
         release_id = hashlib.sha256(
-            str(generation).encode() + b":"
+            str(generation).encode() + b":" + model_key.encode() + b":"
             + desired_state.model_configuration.SerializeToString(deterministic=True)
             + ":".join(sorted(artifact.checksum for artifact in staged.values())).encode()
         ).hexdigest()
-        # Publish materialized instances before exposing their routing identity.
-        # Registry observers acquire registry -> store; never take those locks
-        # in the reverse order here. Existing requests keep their old release.
-        registry.publish_release(release_id, candidates)
-        with self._lock:
-            self._artifacts = staged
-            self._routes = routes
-            self._router_revisions = router_revisions
-            self._endpoints = endpoints
-            self._logging_levels = dict(desired_state.guardrail_logging_levels)
-            self._generation = generation
-            self._release_id = release_id
-            self._model_revision_id = desired_state.model_configuration.revision_id or None
+
+        def publish():
+            with self._lock:
+                self._artifacts = staged
+                self._artifact_digests = digests
+                self._routes = routes
+                self._router_revisions = router_revisions
+                self._endpoints = endpoints
+                self._logging_levels = dict(desired_state.guardrail_logging_levels)
+                self._generation = generation
+                self._release_id = release_id
+                self._model_revision_id = desired_state.model_configuration.revision_id or None
+                self._materialization_key = model_key
+
+        try:
             if persist:
-                self._persist_snapshot(desired_state)
-        if providers is None and native_models is None:
-            registry.reload()
-        else:
-            registry.readiness()
+                with diagnostic_phase("desired_state.persist", generation=generation):
+                    self._persist_snapshot(desired_state)
+            # Neither the serving registry lock nor store lock covers prewarm or disk I/O.
+            registry.publish_release(release_id, prepared, publish)
+        except BaseException:
+            registry.discard_prepared(prepared)
+            raise
 
     def _artifact_from_message(self, message: Any) -> RuntimeArtifact:
         content = artifact_content(message)
@@ -433,7 +448,7 @@ class ArtifactStore:
         temporary = self._state_path / "last-known-good.json.tmp"
         temporary.write_text(
             json.dumps({
-                "generation": self._generation,
+                "generation": int(desired_state.generation),
                 "desired_state_b64": _encode_base64(desired_state.SerializeToString()),
             }, sort_keys=True),
             encoding="utf-8",

@@ -21,6 +21,7 @@ from .call_context import RedisCallContextStore
 from .config import RunnerSettings
 from .control_client import RunnerControlClient
 from .draft_preview import DraftPreviewRuntime
+from .diagnostics import EventLoopWatchdog, diagnostic_phase
 from .http_metrics import instrument_http_metrics
 from .metrics import RunnerMetrics
 from .observability import configure_observability
@@ -32,7 +33,8 @@ def create_app(settings: RunnerSettings | None = None) -> FastAPI:
     configured = settings or RunnerSettings.from_env()
     # Reject incompatible bundled assets before reporting a healthy Runner.
     # Otherwise lazy catalog loading turns every local check into fail-closed.
-    policy_registry()
+    with diagnostic_phase("startup.policy_library"):
+        policy_registry()
     observability = configure_observability(configured)
     store = ArtifactStore(configured.artifact_public_key_path, configured.artifact_state_path)
     providers = action_providers(*runtime_action_providers(configured))
@@ -42,7 +44,9 @@ def create_app(settings: RunnerSettings | None = None) -> FastAPI:
         providers,
         max_concurrency_per_guardrail=configured.max_concurrency,
     )
-    store.attach_registry(registry)
+    with diagnostic_phase("startup.restore_artifacts"):
+        store.attach_registry(registry)
+    watchdog = EventLoopWatchdog(metrics.registry, runner_id=configured.runner_id)
     engine = NeMoRuntime(registry, model_call_observer=metrics)
     contexts = (
         RedisCallContextStore(configured.call_context_redis_url)
@@ -103,12 +107,14 @@ def create_app(settings: RunnerSettings | None = None) -> FastAPI:
                 await asyncio.sleep(30)
                 await registry.collect_retired()
 
+        watchdog.start()
         control_task = asyncio.create_task(control.run(), name="runner-control")
         telemetry_task = asyncio.create_task(telemetry.run(), name="runtime-telemetry")
         retirement_task = asyncio.create_task(retire_runtimes(), name="runtime-retirement")
         try:
             yield
         finally:
+            await watchdog.stop()
             await control.stop()
             await telemetry.stop()
             control_task.cancel()

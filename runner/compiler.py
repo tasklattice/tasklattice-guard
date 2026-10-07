@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import hashlib
 import importlib.metadata
 import json
@@ -18,6 +19,7 @@ from runner.toolkit.nemo.native_models import (
 
 from . import generated as protocol
 from .config import RunnerSettings
+from .diagnostics import diagnostic_phase
 from .protocol_codec import (
     action_bindings_to_proto,
     artifact_content,
@@ -47,6 +49,13 @@ class DefaultRunnerCompiler:
             self._native_models = models
             self._compiler = self._new_compiler()
 
+    def snapshot(self) -> DefaultRunnerCompiler:
+        """Pin one model/compiler pair for work that outlives a config update."""
+        with self._lock:
+            snapshot = copy.copy(self)
+            snapshot._lock = threading.RLock()
+            return snapshot
+
     @property
     def native_models(self) -> tuple[NativeRailModel, ...]:
         with self._lock:
@@ -58,6 +67,7 @@ class DefaultRunnerCompiler:
             builtin_prompts_yaml=prompt_catalog_yaml(),
         )
 
+    @diagnostic_phase("artifact.compile")
     def compile(self, request: protocol.CompileRequest) -> protocol.Artifact:
         payload = plan_from_proto(request.plan)
         payload.update({

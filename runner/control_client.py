@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import hashlib
 import importlib.metadata
 import logging
 import time
@@ -13,13 +14,15 @@ import grpc
 import httpx
 
 from runner.toolkit.nemo.action_registry import ActionProviders, action_providers
-from runner.toolkit.nemo.native_models import native_rail_models
+from runner.toolkit.nemo.native_models import NativeRailModel, native_rail_models
 
 from .software_version import SOFTWARE_VERSION
 from .artifact_store import ArtifactStore
 from .compiler import DefaultRunnerCompiler
 from .capability_validation import validate_capability
 from .config import RunnerSettings
+from .diagnostics import diagnostic_phase
+from .preparation import prepare
 from .control_transport import CONTROL_CHANNEL_OPTIONS
 from . import generated as protocol
 from .generated import runner_control_pb2_grpc as services
@@ -30,6 +33,14 @@ from .validator import DefaultRunnerValidator
 
 
 logger = logging.getLogger("tasklattice.guard.runner.control")
+
+
+def _prepare_model_dependencies(
+    configuration: protocol.DataPlaneModelConfiguration, credentials: dict[str, str],
+) -> tuple[ActionProviders, tuple[NativeRailModel, ...]]:
+    with diagnostic_phase("desired_state.models", model_revision_id=configuration.revision_id):
+        providers = action_providers(*dynamic_runtime_action_providers(configuration, credentials))
+        return providers, native_rail_models(configuration, credentials)
 
 
 class RunnerControlClient:
@@ -60,6 +71,7 @@ class RunnerControlClient:
         if settings.compiler_capable:
             self._compiler = compiler or DefaultRunnerCompiler(settings)
         self._providers = providers
+        self._materialization_key: str | None = None
         self._provider_observer = provider_observer
         self._validator = (
             DefaultRunnerValidator(self._compiler, providers)
@@ -206,30 +218,30 @@ class RunnerControlClient:
             providers = None
             native_models = None
             if desired_state.HasField("model_configuration"):
-                credentials = await self._model_credentials(
-                    desired_state.model_configuration
-                )
-                providers = action_providers(*dynamic_runtime_action_providers(
-                    desired_state.model_configuration,
-                    credentials,
-                ))
-                native_models = native_rail_models(
-                    desired_state.model_configuration,
-                    credentials,
-                )
-            if providers is None:
-                await asyncio.to_thread(self._store.apply, desired_state)
+                with diagnostic_phase("desired_state.credentials", generation=desired_state.generation,
+                                      model_revision_id=model_revision_id):
+                    credentials = await self._model_credentials(
+                        desired_state.model_configuration
+                    )
+                # Include leased credential values: a rotation must not reuse clients
+                # merely because the assignment's revision ID stayed the same.
+                materialization_key = hashlib.sha256(
+                    desired_state.model_configuration.SerializeToString(deterministic=True)
+                    + json.dumps(credentials, sort_keys=True, separators=(",", ":")).encode()
+                ).hexdigest()
+                if materialization_key != self._materialization_key:
+                    providers, native_models = await prepare(
+                        _prepare_model_dependencies, desired_state.model_configuration, credentials,
+                    )
             else:
-                await asyncio.to_thread(
-                    self._store.apply,
-                    desired_state,
-                    providers=providers,
-                    native_models=native_models,
-                )
+                materialization_key = None
+            await prepare(self._store.apply, desired_state, providers=providers, native_models=native_models,
+                          materialization_key=materialization_key)
+            self._materialization_key = materialization_key
             if providers is not None:
                 self._providers = providers
                 if self._compiler is not None:
-                    self._compiler.configure_native_models(native_models or ())
+                    await prepare(self._compiler.configure_native_models, native_models or ())
                     self._validator = DefaultRunnerValidator(self._compiler, providers)
                 if self._provider_observer is not None:
                     try:
@@ -334,7 +346,9 @@ class RunnerControlClient:
             return
         self._metrics.job("compile", True)
         try:
-            artifact = await asyncio.to_thread(self._compiler.compile, request)
+            with diagnostic_phase("guardrail.compile", compile_id=request.compile_id,
+                                  guardrail_id=request.guardrail_id, version=request.guardrail_version):
+                artifact = await prepare(self._compiler.compile, request)
             result = protocol.CompileResult(
                 runner_id=self._settings.runner_id,
                 compile_id=request.compile_id,
@@ -365,7 +379,9 @@ class RunnerControlClient:
             return
         self._metrics.job("validation", True)
         try:
-            status, metrics, results = await self._validator.validate(request)
+            with diagnostic_phase("guardrail.validation", run_id=request.run_id,
+                                  guardrail_id=request.guardrail_id, cases=len(request.test_cases)):
+                status, metrics, results = await self._validator.validate(request)
             result = protocol.ValidationResult(
                 runner_id=self._settings.runner_id,
                 run_id=request.run_id,

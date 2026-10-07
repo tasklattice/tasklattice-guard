@@ -28,6 +28,7 @@ from runner.toolkit.runtime.contracts import (
 )
 
 from .compiler import DefaultRunnerCompiler
+from .preparation import prepare
 from .artifact_config import config_snapshot_from_artifact
 from . import generated as protocol
 from .protocol_codec import (
@@ -45,14 +46,32 @@ class DefaultRunnerValidator:
         compiler: DefaultRunnerCompiler,
         providers: ActionProviders | None = None,
     ) -> None:
-        self._compiler = compiler
+        self._compiler = compiler.snapshot()
         self._providers = providers or _local_validation_providers()
 
     async def validate(
         self, request: protocol.ValidationRequest
     ) -> tuple[str, dict[str, Any], list[dict[str, Any]]]:
-        artifact = await asyncio.to_thread(
-            self._compiler.compile,
+        async def cleanup(prepared):
+            await prepared[0].shutdown()
+
+        registry, plan = await prepare(self._prepare, request, on_cancel=cleanup)
+        runtime = NeMoRuntime(registry)
+        try:
+            cases = [validation_test_from_proto(item) for item in request.test_cases]
+            if not cases:
+                raise ValueError("Validation requires at least one Test Case.")
+            results = await asyncio.gather(
+                *(self._evaluate(runtime, plan, item) for item in cases)
+            )
+        finally:
+            await runtime.shutdown()
+        required = [item for item in results if item["required"]]
+        status = "passed" if required and all(item["passed"] for item in required) else "failed"
+        return status, _metrics(results), results
+
+    def _prepare(self, request: protocol.ValidationRequest):
+        artifact = self._compiler.compile(
             protocol.CompileRequest(
                 compile_id=request.run_id,
                 guardrail_id=request.guardrail_id,
@@ -72,19 +91,7 @@ class DefaultRunnerValidator:
             max_concurrency_per_guardrail=8,
             native_models=self._compiler.native_models,
         )
-        runtime = NeMoRuntime(registry)
-        try:
-            cases = [validation_test_from_proto(item) for item in request.test_cases]
-            if not cases:
-                raise ValueError("Validation requires at least one Test Case.")
-            results = await asyncio.gather(
-                *(self._evaluate(runtime, plan, item) for item in cases)
-            )
-        finally:
-            await runtime.shutdown()
-        required = [item for item in results if item["required"]]
-        status = "passed" if required and all(item["passed"] for item in required) else "failed"
-        return status, _metrics(results), results
+        return registry, plan
 
     async def _evaluate(
         self,

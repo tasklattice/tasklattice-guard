@@ -4,12 +4,14 @@ import asyncio
 import logging
 import threading
 import time
-from collections import OrderedDict
-from dataclasses import dataclass
-from typing import Protocol
+from dataclasses import dataclass, field
+from typing import Callable, Protocol
 
 import yaml
 from nemoguardrails import Guardrails, RailsConfig
+
+from runner.diagnostics import diagnostic_phase
+from runner.preparation import prepare
 
 from ..compiler.domain import PlanCompilationError
 from ..evaluation.contracts import (
@@ -86,258 +88,355 @@ class NeMoRuntimeInstance:
     waiting_requests: int = 0
 
 
-class NeMoRuntimeRegistry:
-    """Prewarmed, version-isolated NeMo Runtime registry."""
+RuntimeKey = tuple[str, str]
 
-    def __init__(
-        self,
-        store: NeMoConfigStore,
-        providers: ActionProviders,
-        *,
-        max_entries: int = 128,
-        max_concurrency_per_guardrail: int = 64,
-        native_models: tuple[NativeRailModel, ...] = (),
-    ) -> None:
-        self._store = store
-        self._providers = providers
+
+@dataclass(frozen=True, slots=True)
+class RuntimeCandidate:
+    plan: GuardrailPlanSnapshot
+    config: NeMoConfigSnapshot
+    checksum: str
+
+
+@dataclass(slots=True)
+class PreparedRuntimeRelease:
+    builder: _RuntimeBuilder
+    candidates: dict[RuntimeKey, RuntimeCandidate]
+    items: dict[RuntimeKey, NeMoRuntimeInstance]
+    active: frozenset[RuntimeKey]
+    created: list[NeMoRuntimeInstance] = field(default_factory=list)
+    token: object = field(default_factory=object)
+
+
+@dataclass(slots=True)
+class _Release:
+    prepared: PreparedRuntimeRelease
+    expires_at: float
+    used_until: dict[RuntimeKey, float] = field(default_factory=dict)
+    pending: int = 0
+
+
+class RuntimeNotPrepared(LookupError):
+    pass
+
+
+class NeMoRuntimeRegistry:
+    """Prepare privately; publish complete releases with short, memory-only locks."""
+
+    def __init__(self, store: NeMoConfigStore, providers: ActionProviders, *,
+                 max_entries: int = 128, max_concurrency_per_guardrail: int = 64,
+                 native_models: tuple[NativeRailModel, ...] = ()) -> None:
         self._max_entries = max(1, max_entries)
         self._max_concurrency_per_guardrail = max(1, max_concurrency_per_guardrail)
-        self._native_models = native_models
-        self._items: OrderedDict[tuple[str, str, str], NeMoRuntimeInstance] = OrderedDict()
-        self._retired: list[Guardrails] = []
-        self._retired_instances: dict[int, NeMoRuntimeInstance] = {}
-        # A call pins both the artifact and its materialized provider/model set.
-        # Retain leases longer than the input/output context timeout (300s).
-        self._releases: dict[str, tuple[dict[tuple[str, str], NeMoRuntimeInstance], float]] = {}
+        self._lock = threading.RLock()
+        self._build_lock = threading.Lock()  # Only builders use this; never serving readers.
+        self._retired: dict[int, NeMoRuntimeInstance] = {}
+        self._orphaned: list[Guardrails] = []
+        self._releases: dict[str, _Release] = {}
+        self._staged_refs: dict[object, list[NeMoRuntimeInstance]] = {}
         self._release_ttl_seconds = 600.0
         self._current_release_id: str | None = None
-        self._lock = threading.RLock()
-        self._hits = 0
-        self._misses = 0
-        self._last_missing_versions: tuple[tuple[str, str], ...] | None = None
-        self.reload()
+        self._closed = False
+        self._hits = self._misses = 0
+        builder = _RuntimeBuilder(providers, native_models, self._max_concurrency_per_guardrail, self._discard_rails)
+        self._current = _Release(PreparedRuntimeRelease(builder, {}, {}, frozenset()), float("inf"))
+        active = frozenset(store.active_plan_keys())
+        if active:
+            # Constructors used by validation/preview run on the preparation lane.
+            try:
+                staged = self.prepare_release(tuple((store.plan(*key), store.nemo_config(*key)) for key in active), active)
+            except BaseException:
+                rails = self._drain()
+                if rails:
+                    try:
+                        loop = asyncio.get_running_loop()
+                    except RuntimeError:
+                        asyncio.run(_close_runtimes(rails))
+                    else:
+                        # Direct synchronous construction in async test/tool code.
+                        task = loop.create_task(_close_runtimes(rails))
+                        _cleanup_tasks.add(task)
+                        task.add_done_callback(_cleanup_tasks.discard)
+                raise
+            self._current = _Release(staged, float("inf"))
+            staged.created.clear()
+            self._staged_refs.pop(staged.token)
 
     def get(self, plan: GuardrailPlanSnapshot) -> NeMoRuntimeInstance:
         return self.acquire(plan)[0]
 
-    def acquire(
-        self, plan: GuardrailPlanSnapshot, *, release_id: str | None = None,
-    ) -> tuple[NeMoRuntimeInstance, bool, int]:
-        if release_id is not None:
-            with self._lock:
-                self.retain_release(release_id)
-                item = self._releases[release_id][0].get((plan.guardrail_id, plan.guardrail_version))
-                if item is None or item.plan != plan:
-                    raise LookupError("The pinned effective release does not contain this execution plan.")
-                self._hits += 1
-                return item, True, 0
-        config = self._store.nemo_config(plan.guardrail_id, plan.guardrail_version)
-        key = (plan.guardrail_id, plan.guardrail_version, config_checksum(config))
-        waiting_started = time.perf_counter()
+    def _release(self, release_id: str | None) -> _Release:
+        if self._closed:
+            raise LookupError("NeMo Runtime Registry is closed.")
+        if release_id is None:
+            return self._current
+        entry = self._releases.get(release_id)
+        if entry is None or (release_id != self._current_release_id and entry.expires_at <= time.monotonic() and not entry.pending):
+            raise LookupError("Pinned effective release is unavailable on this Runner. Start a new call; no fallback to newer models is allowed.")
+        return entry
+
+    def acquire(self, plan: GuardrailPlanSnapshot, *, release_id: str | None = None) -> tuple[NeMoRuntimeInstance, bool, int]:
         with self._lock:
-            queue_latency_ms = max(
-                0, round((time.perf_counter() - waiting_started) * 1_000)
-            )
-            item = self._items.get(key)
-            if item is not None:
-                self._hits += 1
-                self._items.move_to_end(key)
-                return item, True, queue_latency_ms
-            self._misses += 1
-            return self._build_with_logging(plan, config, key), False, queue_latency_ms
+            return self._acquire_entry(self._release(release_id), plan)
+
+    def _acquire_entry(self, entry: _Release, plan: GuardrailPlanSnapshot) -> tuple[NeMoRuntimeInstance, bool, int]:
+        key = (plan.guardrail_id, plan.guardrail_version)
+        candidate = entry.prepared.candidates.get(key)
+        if candidate is None or candidate.plan != plan:
+            raise LookupError("The pinned effective release does not contain this execution plan.")
+        item = entry.prepared.items.get(key)
+        if item is None:
+            raise RuntimeNotPrepared("Runtime must be prepared asynchronously before execution.")
+        now = time.monotonic()
+        entry.expires_at = now + self._release_ttl_seconds
+        entry.used_until[key] = now + self._release_ttl_seconds
+        self._hits += 1
+        return item, True, 0
+
+    async def acquire_async(self, plan: GuardrailPlanSnapshot, *, release_id: str | None = None) -> tuple[NeMoRuntimeInstance, bool, int]:
+        try:
+            return self.acquire(plan, release_id=release_id)
+        except RuntimeNotPrepared:
+            pass
+        started = time.perf_counter()
+        with self._lock:
+            entry = self._release(release_id)
+            entry.pending += 1
+            entry.expires_at = time.monotonic() + self._release_ttl_seconds
+        try:
+            await prepare(self._prepare_one, entry, (plan.guardrail_id, plan.guardrail_version))
+            with self._lock:
+                if self._closed:
+                    raise LookupError("NeMo Runtime Registry is closed.")
+                item, _, _ = self._acquire_entry(entry, plan)
+            return item, False, round((time.perf_counter() - started) * 1_000)
+        finally:
+            with self._lock:
+                entry.pending -= 1
+
+    def _prepare_one(self, entry: _Release, key: RuntimeKey) -> None:
+        with self._build_lock:
+            with self._lock:
+                if key in entry.prepared.items:
+                    return
+                self._prune_items(entry)
+                if key not in entry.prepared.active and len(entry.prepared.items.keys() - entry.prepared.active) >= self._max_entries:
+                    raise RuntimeError("Runner on-demand runtime capacity is in use. Retry after existing leases expire.")
+                candidate = entry.prepared.candidates[key]
+                if self._closed:
+                    raise LookupError("NeMo Runtime Registry is closed.")
+            item = self._build_with_logging(entry.prepared.builder, candidate)
+            with self._lock:
+                entry.prepared.items[key] = item
+                entry.used_until[key] = time.monotonic() + self._release_ttl_seconds
+                self._misses += 1
+                self._prune_items(entry)
 
     def retain_release(self, release_id: str) -> None:
         with self._lock:
-            entry = self._releases.get(release_id)
-            if entry is None or (release_id != self._current_release_id and entry[1] <= time.monotonic()):
-                raise LookupError("Pinned effective release is unavailable on this Runner. Start a new call; no fallback to newer models is allowed.")
-            self._releases[release_id] = (entry[0], time.monotonic() + self._release_ttl_seconds)
+            entry = self._release(release_id)
+            entry.expires_at = time.monotonic() + self._release_ttl_seconds
 
-    def publish_release(self, release_id: str, candidates: tuple[tuple[GuardrailPlanSnapshot, NeMoConfigSnapshot], ...]) -> None:
-        with self._lock:
-            now = time.monotonic()
-            if self._current_release_id in self._releases:
-                previous = self._releases[self._current_release_id]
-                self._releases[self._current_release_id] = (previous[0], now + self._release_ttl_seconds)
-            self._releases = {key: entry for key, entry in self._releases.items()
-                              if entry[1] > now or any(item.active_requests or item.waiting_requests for item in entry[0].values())}
-            instances = {}
-            for plan, config in candidates:
-                key = (plan.guardrail_id, plan.guardrail_version, config_checksum(config))
-                instances[key[:2]] = self._items[key]
-            # Replayed desired state must not silently rebind a release ID.
-            if release_id not in self._releases:
-                self._releases[release_id] = (instances, now + self._release_ttl_seconds)
-            else:
-                self.retain_release(release_id)
-            self._current_release_id = release_id
-
-    def validate(
-        self, plan: GuardrailPlanSnapshot, config: NeMoConfigSnapshot
-    ) -> None:
-        key = (plan.guardrail_id, plan.guardrail_version, config_checksum(config))
-        with self._lock:
-            if key not in self._items:
-                self._build_with_logging(plan, config, key)
-
-    def reload(self) -> None:
-        active = tuple(sorted(set(self._store.active_plan_keys())))
-        started = time.perf_counter()
-        before = self.stats()["entries"]
-        logger.info("Synchronizing %d active NeMo Guardrail Version(s).", len(active))
-        try:
+    def prepare_release(self, candidates: tuple[tuple[GuardrailPlanSnapshot, NeMoConfigSnapshot], ...],
+                        active: frozenset[RuntimeKey], *, providers: ActionProviders | None = None,
+                        native_models: tuple[NativeRailModel, ...] | None = None) -> PreparedRuntimeRelease:
+        with diagnostic_phase("runtime.prepare_release", candidates=len(candidates), active=len(active)), self._build_lock:
             with self._lock:
-                for guardrail_id, version in active:
-                    self.get(self._store.plan(guardrail_id, version))
-        except Exception:
-            logger.exception("NeMo runtime synchronization failed.")
-            raise
-        duration_ms = max(0, round((time.perf_counter() - started) * 1_000))
-        after = self.stats()["entries"]
-        logger.info(
-            "NeMo runtime synchronization completed: active=%d newly_prewarmed=%d duration_ms=%d.",
-            len(active),
-            max(0, after - before),
-            duration_ms,
-        )
-        self.readiness()
-
-    def replace_providers(
-        self,
-        providers: ActionProviders,
-        candidates: tuple[tuple[GuardrailPlanSnapshot, NeMoConfigSnapshot], ...],
-        native_models: tuple[NativeRailModel, ...] | None = None,
-    ) -> None:
-        """Prewarm against a new registry, then swap it in as one atomic unit."""
-
-        with self._lock:
-            previous_providers = self._providers
-            previous_native_models = self._native_models
-            previous_items = self._items
-            previous_retired = list(self._retired)
-            self._providers = providers
-            if native_models is not None:
-                self._native_models = native_models
-            self._items = OrderedDict()
+                previous = self._current.prepared
+                previous_items = dict(previous.items)
+                used_until = dict(self._current.used_until)
+                if self._closed:
+                    raise LookupError("NeMo Runtime Registry is closed.")
+                token = object()
+                self._staged_refs[token] = list(previous_items.values())
+            builder = previous.builder
+            if ((providers is not None and providers is not builder._providers)
+                    or (native_models is not None and native_models != builder._native_models)):
+                builder = _RuntimeBuilder(providers if providers is not None else builder._providers,
+                    native_models if native_models is not None else builder._native_models,
+                    self._max_concurrency_per_guardrail, self._discard_rails)
+            staged = PreparedRuntimeRelease(builder, {}, {}, active, token=token)
             try:
                 for plan, config in candidates:
-                    key = (plan.guardrail_id, plan.guardrail_version, config_checksum(config))
-                    self._build_with_logging(plan, config, key)
-                self.readiness()
-            except Exception:
-                rejected = [item.rails for item in self._items.values()]
-                self._providers = previous_providers
-                self._native_models = previous_native_models
-                self._items = previous_items
-                self._retired = [*previous_retired, *rejected]
+                    key = (plan.guardrail_id, plan.guardrail_version)
+                    if key in staged.candidates:
+                        raise ValueError("Duplicate Guardrail Version in desired state.")
+                    candidate = RuntimeCandidate(plan, config, config_checksum(config))
+                    staged.candidates[key] = candidate
+                    old = previous.candidates.get(key)
+                    if (builder is previous.builder and old is not None and old.checksum == candidate.checksum
+                            and old.plan == plan and key in previous_items
+                            and (key in active or used_until.get(key, 0) > time.monotonic()
+                                 or previous_items[key].active_requests or previous_items[key].waiting_requests)):
+                        staged.items[key] = previous_items[key]
+                if active - staged.candidates.keys():
+                    raise ValueError("Active Guardrail Versions are missing from desired state.")
+                for key in sorted(active):
+                    if key not in staged.items:
+                        item = self._build_with_logging(builder, staged.candidates[key])
+                        staged.items[key] = item
+                        staged.created.append(item)
+                        with self._lock:
+                            self._staged_refs[token].append(item)
+                return staged
+            except BaseException:
+                self.discard_prepared(staged)
                 raise
-            self._retired = [
-                *previous_retired,
-                *(item.rails for item in previous_items.values()),
-            ]
-            self._retired_instances.update((id(item.rails), item) for item in previous_items.values())
+
+    def discard_prepared(self, staged: PreparedRuntimeRelease) -> None:
+        with self._lock:
+            self._retired.update((id(item.rails), item) for item in staged.created)
+            staged.created.clear()
+            self._staged_refs.pop(staged.token, None)
+
+    def publish_release(self, release_id: str, staged: PreparedRuntimeRelease,
+                        publish: Callable[[], None]) -> None:
+        with self._lock:
+            if self._closed:
+                raise LookupError("NeMo Runtime Registry is closed.")
+            now = time.monotonic()
+            old = self._current
+            old.expires_at = now + self._release_ttl_seconds
+            entry = self._releases.get(release_id)
+            if entry is None:
+                entry = _Release(staged, now + self._release_ttl_seconds)
+                # Preserve outstanding input/output leases when reusing instances.
+                entry.used_until = {key: deadline for key, deadline in old.used_until.items()
+                                    if staged.items.get(key) is old.prepared.items.get(key)}
+            else:
+                self.discard_prepared(staged)
+            # Store readers never acquire this lock while holding the store lock.
+            # All expensive validation, hashing, and disk I/O precede this callback.
+            publish()
+            reused = {id(item.rails) for item in entry.prepared.items.values()}
+            self._retired.update((id(item.rails), item) for item in old.prepared.items.values() if id(item.rails) not in reused)
+            self._releases[release_id] = entry
+            self._current = entry
+            self._current_release_id = release_id
+            staged.created.clear()
+            self._staged_refs.pop(staged.token, None)
+
+    def _prune_items(self, entry: _Release) -> None:
+        now = time.monotonic()
+        for key, item in tuple(entry.prepared.items.items()):
+            if ((entry is self._current and key in entry.prepared.active) or entry.used_until.get(key, 0) > now
+                    or item.active_requests or item.waiting_requests):
+                continue
+            self._retired[id(item.rails)] = entry.prepared.items.pop(key)
+            entry.used_until.pop(key, None)
 
     async def collect_retired(self) -> None:
-        """Close expired runtime clients only after all call leases and work drain."""
         with self._lock:
             now = time.monotonic()
-            self._releases = {key: entry for key, entry in self._releases.items()
-                              if key == self._current_release_id or entry[1] > now
-                              or any(item.active_requests or item.waiting_requests for item in entry[0].values())}
-            retained = {id(item.rails) for item in self._items.values()}
-            retained.update(id(item.rails) for entry in self._releases.values() for item in entry[0].values())
-            retained.update(key for key, item in self._retired_instances.items() if item.active_requests or item.waiting_requests)
-            closing = {id(item): item for item in self._retired if id(item) not in retained}
-            self._retired = [item for item in self._retired if id(item) not in closing]
-            for key in closing:
-                self._retired_instances.pop(key, None)
-        await asyncio.gather(*(item.shutdown() for item in closing.values()), return_exceptions=True)
+            retained_releases = {key: entry for key, entry in self._releases.items()
+                if key == self._current_release_id or entry.expires_at > now or entry.pending
+                or any(item.active_requests or item.waiting_requests for item in entry.prepared.items.values())}
+            for key, entry in self._releases.items():
+                if key not in retained_releases:
+                    self._retired.update((id(item.rails), item) for item in entry.prepared.items.values())
+            self._releases = retained_releases
+            for entry in [self._current, *self._releases.values()]:
+                self._prune_items(entry)
+            retained = {id(item.rails) for entry in [self._current, *self._releases.values()]
+                        for item in entry.prepared.items.values()}
+            retained.update(id(item.rails) for items in self._staged_refs.values() for item in items)
+            closing = {key: item.rails for key, item in self._retired.items()
+                       if key not in retained and not item.active_requests and not item.waiting_requests}
+            self._retired = {key: item for key, item in self._retired.items() if key not in closing}
+            closing.update((id(rails), rails) for rails in self._orphaned)
+            self._orphaned.clear()
+        await asyncio.gather(*(rails.shutdown() for rails in closing.values()), return_exceptions=True)
 
     def stats(self) -> dict[str, int]:
         with self._lock:
-            return {
-                "entries": len(self._items),
-                "retired": len(self._retired),
-                "hits": self._hits,
-                "misses": self._misses,
-            }
+            return {"entries": len(self._current.prepared.items), "retired": len(self._retired),
+                    "hits": self._hits, "misses": self._misses}
 
     def admission_load(self) -> tuple[int, int, int]:
-        """Return aggregate active, waiting, and available admission slots."""
         with self._lock:
-            active_keys = set(self._store.active_plan_keys())
-            draining_inactive = sum(
-                1
-                for key, item in self._items.items()
-                if key[:2] not in active_keys and (item.active_requests or item.waiting_requests)
-            )
-            return (
-                sum(item.active_requests for item in self._items.values()),
-                sum(item.waiting_requests for item in self._items.values()),
-                max(1, len(active_keys) + draining_inactive) * self._max_concurrency_per_guardrail,
-            )
+            items = {id(item): item for entry in [self._current, *self._releases.values()]
+                     for item in entry.prepared.items.values()}
+            active_items = {id(self._current.prepared.items[key]) for key in self._current.prepared.active if key in self._current.prepared.items}
+            serving = sum(1 for key, item in items.items()
+                          if key in active_items or item.active_requests or item.waiting_requests)
+            return (sum(item.active_requests for item in items.values()),
+                    sum(item.waiting_requests for item in items.values()),
+                    max(1, serving) * self._max_concurrency_per_guardrail)
 
     def ready(self) -> bool:
         return bool(self.readiness()["ready"])
 
     def readiness(self) -> dict[str, object]:
         with self._lock:
-            active = set(self._store.active_plan_keys())
-            available = {key[:2] for key in self._items}
-            missing = tuple(sorted(active - available))
-            if missing != self._last_missing_versions:
-                if missing:
-                    logger.warning(
-                        "NeMo registry is not ready: active=%d prewarmed_active=%d missing=%s.",
-                        len(active),
-                        len(active & available),
-                        ",".join(f"{guardrail_id}@{version}" for guardrail_id, version in missing),
-                    )
-                else:
-                    logger.info(
-                        "NeMo registry is ready: active=%d prewarmed_active=%d.",
-                        len(active),
-                        len(active & available),
-                    )
-                self._last_missing_versions = missing
-            return {
-                "ready": not missing,
-                "status": "ready" if not missing else "not_ready",
-                "reason": (
-                    "all_active_guardrail_versions_prewarmed"
-                    if not missing
-                    else "missing_prewarmed_guardrail_versions"
-                ),
-                "active_versions": len(active),
-                "prewarmed_active_versions": len(active & available),
-                "missing_versions": [
-                    {
-                        "guardrail_id": guardrail_id,
-                        "guardrail_version": version,
-                    }
-                    for guardrail_id, version in missing
-                ],
-            }
+            current = self._current.prepared
+            missing = current.active - current.items.keys()
+            return {"ready": not missing and not self._closed,
+                    "status": "not_ready" if missing or self._closed else "ready",
+                    "reason": "registry_closed" if self._closed else "missing_prewarmed_guardrail_versions" if missing else "all_active_guardrail_versions_prewarmed",
+                    "active_versions": len(current.active),
+                    "prewarmed_active_versions": len(current.active) - len(missing),
+                    "missing_versions": [{"guardrail_id": key[0], "guardrail_version": key[1]} for key in sorted(missing)]}
 
     async def shutdown(self) -> None:
         with self._lock:
-            rails = (
-                *(item.rails for item in self._items.values()),
-                *self._retired,
-            )
-            self._items.clear()
-            self._retired.clear()
-            self._retired_instances.clear()
-            self._releases.clear()
-        await asyncio.gather(
-            *(item.shutdown() for item in rails), return_exceptions=True
-        )
+            self._closed = True
+        rails = await prepare(self._drain, on_cancel=_close_runtimes)
+        await _close_runtimes(rails)
 
-    def _build(
+    def _drain(self) -> list[Guardrails]:
+        with self._build_lock, self._lock:
+            rails = {id(item.rails): item.rails for entry in [self._current, *self._releases.values()]
+                     for item in entry.prepared.items.values()}
+            rails.update((id(item.rails), item.rails) for item in self._retired.values())
+            rails.update((id(item), item) for item in self._orphaned)
+            rails.update((id(item.rails), item.rails) for items in self._staged_refs.values() for item in items)
+            self._current.prepared.items.clear()
+            self._releases.clear()
+            self._retired.clear()
+            self._orphaned.clear()
+            self._staged_refs.clear()
+            return list(rails.values())
+
+    def _discard_rails(self, rails: Guardrails) -> None:
+        with self._lock:
+            self._orphaned.append(rails)
+
+    def _build_with_logging(self, builder: _RuntimeBuilder, candidate: RuntimeCandidate) -> NeMoRuntimeInstance:
+        with diagnostic_phase("runtime.prewarm", guardrail_id=candidate.plan.guardrail_id,
+                              version=candidate.plan.guardrail_version, profile=candidate.config.runtime_profile):
+            return builder.build(candidate.plan, candidate.config)
+
+
+_cleanup_tasks: set[asyncio.Task] = set()
+
+
+async def _close_runtimes(rails: list[Guardrails]) -> None:
+    closing = asyncio.gather(*(item.shutdown() for item in rails), return_exceptions=True)
+    try:
+        await asyncio.shield(closing)
+    except asyncio.CancelledError:
+        while not closing.done():
+            try:
+                await asyncio.shield(closing)
+            except asyncio.CancelledError:
+                continue
+        raise
+
+
+class _RuntimeBuilder:
+    """Model/provider dependencies captured once; never mutate a serving builder."""
+
+    def __init__(self, providers: ActionProviders, native_models: tuple[NativeRailModel, ...],
+                 concurrency: int, discard: Callable[[Guardrails], None]) -> None:
+        self._providers = providers
+        self._native_models = native_models
+        self._max_concurrency_per_guardrail = concurrency
+        self._discard = discard
+
+    def build(
         self,
         plan: GuardrailPlanSnapshot,
         config: NeMoConfigSnapshot,
-        key: tuple[str, str, str],
     ) -> NeMoRuntimeInstance:
         from .runtime import NeMoActionBridge
 
@@ -369,73 +468,33 @@ class NeMoRuntimeRegistry:
             use_iorails=use_iorails,
             require_iorails=use_iorails,
         )
-        if not use_iorails:
-            instrument_nemo_models(rails, config.required_models)
-        bridge = NeMoActionBridge(
-            plan,
-            config,
-            self._providers_for(config),
-        )
-        if config.runtime_profile in {
-            "llmrails_colang1_standard",
-            "llmrails_colang2_programmable",
-        }:
-            bridge.register(rails)
-        item = NeMoRuntimeInstance(
-            config,
-            plan,
-            rails,
-            asyncio.BoundedSemaphore(self._max_concurrency_per_guardrail),
-            native_models=tuple(
-                item
-                for item in self._native_models
-                if item.type in config.required_models
-            ),
-        )
-        self._items[key] = item
-        self._items.move_to_end(key)
-        active = set(self._store.active_plan_keys())
-        while len(self._items) > self._max_entries:
-            candidate = next(iter(self._items))
-            if candidate[:2] in active:
-                self._items.move_to_end(candidate)
-                if all(item_key[:2] in active for item_key in self._items):
-                    break
-                continue
-            retired = self._items.pop(candidate)
-            self._retired.append(retired.rails)
-            self._retired_instances[id(retired.rails)] = retired
-        return item
-
-    def _build_with_logging(
-        self,
-        plan: GuardrailPlanSnapshot,
-        config: NeMoConfigSnapshot,
-        key: tuple[str, str, str],
-    ) -> NeMoRuntimeInstance:
-        started = time.perf_counter()
-        logger.info(
-            "Prewarming NeMo runtime: guardrail_id=%s version=%s profile=%s.",
-            plan.guardrail_id,
-            plan.guardrail_version,
-            config.runtime_profile,
-        )
         try:
-            item = self._build(plan, config, key)
-        except Exception:
-            logger.exception(
-                "NeMo runtime prewarm failed: guardrail_id=%s version=%s profile=%s.",
-                plan.guardrail_id,
-                plan.guardrail_version,
-                config.runtime_profile,
+            if not use_iorails:
+                instrument_nemo_models(rails, config.required_models)
+            bridge = NeMoActionBridge(
+                plan,
+                config,
+                self._providers_for(config),
             )
+            if config.runtime_profile in {
+                "llmrails_colang1_standard",
+                "llmrails_colang2_programmable",
+            }:
+                bridge.register(rails)
+            item = NeMoRuntimeInstance(
+                config,
+                plan,
+                rails,
+                asyncio.BoundedSemaphore(self._max_concurrency_per_guardrail),
+                native_models=tuple(
+                    item
+                    for item in self._native_models
+                    if item.type in config.required_models
+                ),
+            )
+        except BaseException:
+            self._discard(rails)
             raise
-        logger.info(
-            "NeMo runtime prewarm completed: guardrail_id=%s version=%s duration_ms=%d.",
-            plan.guardrail_id,
-            plan.guardrail_version,
-            max(0, round((time.perf_counter() - started) * 1_000)),
-        )
         return item
 
     def _validate_runtime_profile(self, config: NeMoConfigSnapshot) -> None:

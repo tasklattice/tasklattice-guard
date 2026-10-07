@@ -43,11 +43,12 @@ class Store:
     providers = None
     fail = False
 
-    def apply(self, desired_state, *, providers=None, native_models=None):
+    def apply(self, desired_state, *, providers=None, native_models=None, materialization_key=None):
         if self.fail:
             raise RuntimeError("provider prewarm failed")
         self.providers = providers
         self.native_models = native_models
+        self.materialization_key = materialization_key
         self.generation = desired_state.generation
 
     def observability_counts(self):
@@ -177,3 +178,42 @@ def _model_desired_state(*, generation: int) -> protocol.DesiredState:
             )],
         ),
     )
+
+
+@pytest.mark.asyncio
+async def test_route_updates_reuse_models_but_credential_rotation_rebuilds_them():
+    store = Store()
+    client = RunnerControlClient(_settings(), store, Metrics())
+    client._model_credentials = AsyncMock(return_value={"provider-1": "first-secret"})
+    state = _model_desired_state(generation=20)
+    await client._apply_desired_state(state)
+    original_providers = client._providers
+    original_key = store.materialization_key
+    assert original_providers is not None
+
+    state.generation = 21
+    await client._apply_desired_state(state)
+    assert store.providers is None  # An unchanged model set does not trigger replacement.
+    assert client._providers is original_providers
+    assert store.materialization_key == original_key
+
+    client._model_credentials.return_value = {"provider-1": "rotated-secret"}
+    state.generation = 22
+    await client._apply_desired_state(state)
+    assert store.providers is not None and store.providers is not original_providers
+    assert store.materialization_key != original_key
+    assert "secret" not in store.materialization_key
+
+
+@pytest.mark.asyncio
+async def test_failed_apply_does_not_cache_unapplied_model_configuration():
+    store = Store()
+    client = RunnerControlClient(_settings(), store, Metrics())
+    client._model_credentials = AsyncMock(return_value={"provider-1": "test-secret"})
+    state = _model_desired_state(generation=23)
+    store.fail = True
+    await client._apply_desired_state(state)
+    assert client._materialization_key is None
+    store.fail = False
+    await client._apply_desired_state(state)
+    assert store.providers is not None and store.generation == 23

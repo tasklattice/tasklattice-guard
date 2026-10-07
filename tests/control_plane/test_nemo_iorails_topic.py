@@ -64,7 +64,7 @@ class _ControlStore:
         self.fail = fail
         self.native_models = ()
 
-    def apply(self, desired_state, *, providers=None, native_models=None):
+    def apply(self, desired_state, *, providers=None, native_models=None, materialization_key=None):
         if self.fail:
             raise RuntimeError("provider prewarm failed")
         self.native_models = native_models
@@ -410,7 +410,7 @@ async def test_iorails_check_async_maps_to_protection_decision(
     )
 
     class Registry:
-        def acquire(self, _plan):
+        async def acquire_async(self, _plan):
             return instance, False, 0
 
     decision = await NeMoRuntime(Registry()).evaluate(  # type: ignore[arg-type]

@@ -52,3 +52,35 @@ GET `/api/v1/routers/{id}/traffic-distribution`，可按 Route 查询。使用 `
 [查看运行日志](/logs)
 
 [查看 Endpoints](/integration/endpoints)
+
+## Runner liveness 超时
+
+Runner 通过单个后台构建线程准备运行实例，再用只操作内存的短锁切换整组实例。校验、NeMo 初始化、快照持久化都在切换之前完成；健康检查和已有请求继续使用当前版本，准备失败会保留当前可服务状态。模型配置与实际租用凭据共同生成指纹：未变化时复用实例，凭据轮换则重新构建。
+
+只预热已启用 Route 中权重大于零的目标版本。其他已校验 Artifact 定义仍可供 Playground 使用，首次使用时异步加载运行实例。按需实例租约为 600 秒，每个发布快照最多保留 128 个非路由实例；全部被租用时，新的冷加载会返回容量错误，等待腾出空间后重试。旧发布快照保留已绑定调用的依赖，待租约和在途工作结束后关闭客户端。草稿预览和验证共用这条后台构建队列，取消后完成的临时实例也会清理。
+
+`/health/live` 与运行请求共用事件循环，只返回固定结果。即使进程仍在运行，事件循环阻塞也可能导致探针超时。readiness 返回 503、启动期间连接被拒绝属于不同信号，应先记录 Kubernetes 的具体探针错误和容器退出原因。
+
+Runner 默认启用诊断，并写入容器日志：
+
+| 事件 | 含义 |
+| --- | --- |
+| `runner_event_loop_stalled` | 独立线程每 0.5 秒采样，发现调度延迟超过 2 秒时告警，记录主线程调用栈、正在执行的阶段及对应线程栈、RSS、进程累计 CPU 时间和可用的 cgroup v2 CPU/内存计数器。持续阻塞期间每 30 秒最多重复一次。 |
+| `runner_event_loop_delayed` / `runner_event_loop_recovered` | 恢复后测得的完整调度延迟 / 监测线程观察到的恢复。即使监测线程在阻塞期间无法运行，恢复后仍会记录完整延迟。 |
+| `runner_phase_started` / `runner_phase_finished` | Artifact 校验、运行实例预热与 Provider 替换、快照持久化、编译、验证和启动恢复。结束日志包含耗时与结果；没有结束记录的阶段有助于定位被中断的工作。 |
+
+阶段元数据仅记录 ID 和数量；调用栈只记录文件名、行号和函数名，不记录源码行、局部变量、凭据或请求内容。如果原生扩展长时间持有 GIL，或整个容器被暂停、杀死，Python 监测线程也无法运行，没有告警不能排除这些情况。
+
+重启后同时保留当前和上一次容器的日志：
+
+```sh
+kubectl -n <namespace> describe pod <runner-pod>
+kubectl -n <namespace> logs <runner-pod> --timestamps --since=30m
+kubectl -n <namespace> logs <runner-pod> --previous --timestamps
+```
+
+将 Runner stdout/stderr 接入集中日志采集，Pod 删除后 Kubernetes 不会保留其 previous 日志。按故障时间关联 `runtime.prepare_release` 的候选数量、`runtime.prewarm` 的耗时，以及是否意外停在 `readiness`、`admission_load` 的锁等待。同时检查 `cpu.stat` 节流计数和 `memory.events` OOM 计数的变化、内存使用量与限额、节点压力。累计 CPU 计数需用两次采样计算速率。
+
+Prometheus 提供 `guard_runner_event_loop_lag_seconds`、`guard_runner_event_loop_delay_seconds` 直方图和 `guard_runner_event_loop_stalls_total`。例如用 `increase(guard_runner_event_loop_stalls_total[5m])` 查找监测线程捕获的阻塞；延迟直方图还会记录线程未能捕获但已经恢复的阻塞。HTTP 事件循环阻塞时 `/metrics` 也可能无法采集，因此必须同时保留诊断日志。
+
+在源码目录运行 `.venv/bin/python scripts/benchmark_runner_liveness.py --versions 1 8 32 --repeats 2` 可进行隔离性能检查。脚本使用仓库内 fixture 的多个版本副本，比较真实 NeMo 预热期间有无 readiness 并发读取时的事件循环延迟、CPU 时间和 RSS，不调用外部模型、不修改集群，结果不能直接当作 UAT 容量估计。`--injected-prewarm-seconds` 仅用于主动模拟慢预热，输出会单独标明注入延迟。

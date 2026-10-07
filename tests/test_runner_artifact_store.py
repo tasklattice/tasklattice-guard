@@ -22,17 +22,19 @@ FIXTURE = Path(__file__).parent / "fixtures" / "artifacts" / "local-secrets-v1"
 
 
 class Registry:
-    def publish_release(self, release_id, candidates):
+    def publish_release(self, release_id, candidates, publish):
         self.release_id = release_id
+        publish()
 
     def __init__(self) -> None:
-        self.reloads = 0
+        self.preparations = 0
 
-    def validate(self, _plan, _config) -> None:
-        return None
+    def prepare_release(self, candidates, active, **_kwargs):
+        self.preparations += 1
+        return candidates
 
-    def reload(self) -> None:
-        self.reloads += 1
+    def discard_prepared(self, prepared):
+        pass
 
 
 def test_runner_verifies_and_restores_complete_last_known_good(tmp_path):
@@ -112,7 +114,7 @@ def test_runner_verifies_and_restores_complete_last_known_good(tmp_path):
     assert restarted.generation == 7
     assert restarted.endpoint_adapter("endpoint-1") == "http"
     assert restarted.resolve(RequestContext(protocol="http", endpoint_id="endpoint-1")).route_assignment["routeId"] == "fallback"
-    assert restarted_registry.reloads == 1
+    assert restarted_registry.preparations == 1
 
 
 def test_runner_accepts_active_multi_credentials_and_rejects_revoked_credentials(tmp_path):
