@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { useId, useState } from "react";
+import { useId, useState, type RefObject } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Download } from "lucide-react";
 import { getControllerGuardrail } from "@/lib/controller-api";
@@ -14,7 +14,8 @@ import { Skeleton } from "./ui/skeleton";
 import { toast } from "./ui/notifications";
 
 /** Choose one ready immutable version and download its signed Artifact. */
-export function ExportGuardrailSheet({ guardrailId, guardrailName, initialVersion, onClose }: {
+export function ExportGuardrailSheet({ guardrailId, guardrailName, initialVersion, onClose, returnFocusRef }: {
+  returnFocusRef?: RefObject<HTMLElement | null>;
   guardrailId: string;
   guardrailName: string;
   initialVersion?: string | undefined;
@@ -31,6 +32,7 @@ export function ExportGuardrailSheet({ guardrailId, guardrailName, initialVersio
   });
   return (
     <EntitySheet
+      returnFocusRef={returnFocusRef}
       open
       eyebrow={t("guardrails.export")}
       title={t("guardrails.exportTitle", { name: guardrailName })}

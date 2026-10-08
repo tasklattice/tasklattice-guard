@@ -258,6 +258,7 @@ function mapVersion(value: controllerApi.GuardrailVersion, guardrail: controller
     runtime_engine: runtimeEngine(value.runtimeProfile),
     config_checksum: value.artifact?.checksum ?? "",
     execution_mode: "nemo_only",
+    policy_count: arrayOfRecords(value.plan.policy_bindings).length,
     compile_status: value.status,
     failure_reason: value.failureReason,
   };

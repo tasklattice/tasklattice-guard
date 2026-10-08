@@ -1,0 +1,23 @@
+.syntax-code {
+  --syntax-key: var(--color-blue-700);
+  --syntax-string: var(--color-emerald-700);
+  --syntax-number: var(--color-amber-700);
+  --syntax-keyword: var(--color-rose-700);
+  --syntax-function: var(--color-violet-700);
+}
+
+.dark .syntax-code {
+  --syntax-key: var(--color-blue-300);
+  --syntax-string: var(--color-emerald-300);
+  --syntax-number: var(--color-amber-300);
+  --syntax-keyword: var(--color-rose-300);
+  --syntax-function: var(--color-violet-300);
+}
+
+.syntax-code :is(.property, .key, .atrule) { color: var(--syntax-key); }
+.syntax-code :is(.string, .scalar) { color: var(--syntax-string); }
+.syntax-code .number { color: var(--syntax-number); }
+.syntax-code :is(.boolean, .keyword, .null, .variable) { color: var(--syntax-keyword); }
+.syntax-code :is(.function, .tag, .important) { color: var(--syntax-function); }
+.syntax-code :is(.punctuation, .operator) { color: var(--muted-foreground); }
+.syntax-code .comment { color: var(--muted-foreground); font-style: italic; }

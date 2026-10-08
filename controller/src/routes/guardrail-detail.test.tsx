@@ -312,16 +312,18 @@ describe("Guardrail detail information hierarchy", () => {
     const client = new QueryClient();
     const markLatest = vi.spyOn(api, "markGuardrailVersionLatest").mockResolvedValue({ ...version, latest: true });
     const onChanged = vi.fn().mockResolvedValue(undefined);
-    render(<QueryClientProvider client={client}><TooltipProvider><ImmutableVersionView detail={detail} selectedVersion={version} versions={[version]} loading={false} comparisonActive={false} comparisonLoading={false} compareOptions={[]} guardrailId="guardrail-observed" guardrailName="Observed" validation={null} onChanged={onChanged} onOpenDraft={() => undefined} onSelectVersion={() => undefined} onStartCompare={() => undefined} onCompareBaseChange={() => undefined} onCloseCompare={() => undefined} /></TooltipProvider></QueryClientProvider>);
+    render(<QueryClientProvider client={client}><TooltipProvider><ImmutableVersionView detail={detail} selectedVersion={version} versions={[version]} loading={false} comparisonActive={false} comparisonLoading={false} compareOptions={[]} guardrailId="guardrail-observed" guardrailName="Observed" validation={null} onChanged={onChanged} onOpenDraft={() => undefined} onOpenValidation={() => undefined} onSelectVersion={() => undefined} onStartCompare={() => undefined} onCompareBaseChange={() => undefined} onCloseCompare={() => undefined} /></TooltipProvider></QueryClientProvider>);
 
-    const configuration = screen.getAllByText(VERSION_ID)[1];
-    const compiledRuntime = screen.getByText("guardrails.compiledRuntime");
-    expect(configuration.compareDocumentPosition(compiledRuntime) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(screen.getByText("pii@1.95.0")).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: `immutableVersions.view version:${VERSION_ID}` }));
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    fireEvent.click(screen.getByRole("tab", { name: /immutableVersions.policies/ }));
+    expect(screen.getByText("pii")).toBeTruthy();
+    fireEvent.click(screen.getByRole("tab", { name: "immutableVersions.compiled" }));
     expect(screen.getByText("guardrails.compiledRailsActions")).toBeTruthy();
     expect(screen.getByText("guardrails.dependenciesModels")).toBeTruthy();
 
-    const generatedFilesTab = screen.getByRole("tab", { name: "guardrails.generatedFilesTab count:1" });
+    const generatedFilesTab = screen.getByRole("tab", { name: /immutableVersions.files/ });
     fireEvent.click(generatedFilesTab, { button: 0, ctrlKey: false });
     fireEvent.mouseUp(generatedFilesTab, { button: 0, ctrlKey: false });
     fireEvent.click(generatedFilesTab);
@@ -334,14 +336,14 @@ describe("Guardrail detail information hierarchy", () => {
       expect(markLatest).not.toHaveBeenCalled();
     } else {
       fireEvent.click(action);
-      const confirmation = screen.getByRole("dialog", { name: `guardrails.confirmMarkLatestTitle version:${VERSION_ID}` });
+      const confirmation = await screen.findByRole("dialog", { name: `guardrails.confirmMarkLatestTitle version:${VERSION_ID}` });
       expect(within(confirmation).getByText("guardrails.confirmMarkLatestDescription")).toBeTruthy();
       expect(within(confirmation).getByText("guardrails.confirmMarkLatestImpact")).toBeTruthy();
       expect(markLatest).not.toHaveBeenCalled();
       fireEvent.click(within(confirmation).getByRole("button", { name: "guardrails.markLatest" }));
       await waitFor(() => expect(markLatest).toHaveBeenCalledWith("guardrail-observed", VERSION_ID));
       await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1));
-      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      await waitFor(() => expect(screen.getByRole("dialog").textContent).toContain("immutableVersions.readOnly"));
     }
   });
 

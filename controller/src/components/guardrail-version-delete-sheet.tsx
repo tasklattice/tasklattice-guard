@@ -1,3 +1,4 @@
+import type { RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -12,7 +13,8 @@ import { Skeleton } from "./ui/skeleton";
 type Reference = GuardrailVersionDeletionImpact["references"][number];
 
 /** Deletes one immutable version only after showing everything that still depends on it. */
-export function DeleteGuardrailVersionSheet({ guardrailId, version, onDeleted, onClose }: {
+export function DeleteGuardrailVersionSheet({ guardrailId, version, onDeleted, onClose, returnFocusRef }: {
+  returnFocusRef?: RefObject<HTMLElement | null>;
   guardrailId: string;
   version: string;
   onDeleted: () => Promise<void>;
@@ -33,6 +35,7 @@ export function DeleteGuardrailVersionSheet({ guardrailId, version, onDeleted, o
   const data = impact.data;
   return (
     <ConfirmationSheet
+      returnFocusRef={returnFocusRef}
       open
       onOpenChange={open => { if (!open && !remove.isPending) onClose(); }}
       eyebrow={t("uiCopy.guardrailVersion")}

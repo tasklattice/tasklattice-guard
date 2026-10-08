@@ -1,5 +1,5 @@
 import { LoaderCircle, Save, Trash2, TriangleAlert } from "lucide-react";
-import type { ReactNode } from "react";
+import type { ReactNode, RefObject } from "react";
 
 import { EntitySheet } from "@/components/entity-sheet";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ export function ConfirmationSheet({
   open,
   pending = false,
   pendingLabel,
+  returnFocusRef,
   title,
   variant = "default",
 }: {
@@ -32,6 +33,7 @@ export function ConfirmationSheet({
   open: boolean;
   pending?: boolean;
   pendingLabel?: string;
+  returnFocusRef?: RefObject<HTMLElement | null>;
   title: ReactNode;
   variant?: "default" | "warning" | "destructive";
 }) {
@@ -39,6 +41,7 @@ export function ConfirmationSheet({
   return (
     <EntitySheet
       open={open}
+      returnFocusRef={returnFocusRef}
       closeDisabled={pending}
       onOpenChange={(next) => { if (!pending) onOpenChange(next); }}
       eyebrow={eyebrow}

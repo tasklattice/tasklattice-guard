@@ -475,6 +475,7 @@ export type GuardrailVersion = {
   runtime_engine: "iorails" | "llmrails" | string;
   config_checksum: string;
   execution_mode: "nemo_only";
+  policy_count?: number;
   compile_status?: "compiling" | "ready" | "failed";
   failure_reason?: string | null;
 };

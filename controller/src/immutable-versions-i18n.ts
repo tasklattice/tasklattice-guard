@@ -1,0 +1,33 @@
+export const immutableVersionsEn = {
+  description: "Published snapshots, newest first. Select a version to inspect its configuration and test results.",
+  version: "Version", published: "Published", policies: "Policies", tests: "Latest test", actions: "Actions",
+  readOnly: "Read only", detailDescription: "Published {{date}} · Immutable snapshot",
+  overview: "Overview", compiled: "Compiled details", files: "Generated files",
+  views: "Version details", previous: "Previous version", next: "Next version", position: "{{current}} of {{total}}",
+  view: "View version {{version}}", compare: "Compare", retry: "Try again",
+  requestHandling: "Request handling", testDescription: "Most recent test run targeting this immutable version.",
+  noTest: "Not tested", noTestDescription: "No test run targets this version yet.",
+  compiling: "Compiling", failed: "Compilation failed", testUnavailable: "Test results unavailable",
+  loading: "Loading…", loadingDetail: "Loading version details…", noDetail: "Version details could not be loaded.",
+  policyDescription: "Pinned Policy versions and enabled rules in this snapshot.",
+  policyVersion: "Policy version", rules: "Enabled rules", phases: "Rails", behavior: "Behavior",
+  noPolicies: "No Policies in this version.", rows: "{{start}}–{{end}} of {{total}}", previousPage: "Previous page", nextPage: "Next page",
+  versionActions: "Actions for version {{version}}", compiledDescription: "Runtime configuration and dependencies produced by this release.",
+};
+
+export const immutableVersionsZh: typeof immutableVersionsEn = {
+  description: "已发布的快照，按发布时间倒序排列。选择版本查看配置和测试结果。",
+  version: "版本", published: "发布时间", policies: "Policies", tests: "最近测试", actions: "操作",
+  readOnly: "只读", detailDescription: "发布于 {{date}} · 不可变快照",
+  overview: "概览", compiled: "编译详情", files: "生成文件",
+  views: "版本详情", previous: "上一个版本", next: "下一个版本", position: "第 {{current}} 个，共 {{total}} 个",
+  view: "查看版本 {{version}}", compare: "比较", retry: "重试",
+  requestHandling: "请求处理", testDescription: "以此不可变版本为目标的最近一次测试。",
+  noTest: "未测试", noTestDescription: "尚无以此版本为目标的测试记录。",
+  compiling: "编译中", failed: "编译失败", testUnavailable: "测试结果暂不可用",
+  loading: "加载中…", loadingDetail: "正在加载版本详情…", noDetail: "无法加载版本详情。",
+  policyDescription: "此快照固定的 Policy 版本及其启用的规则。",
+  policyVersion: "Policy 版本", rules: "启用规则", phases: "Rails", behavior: "行为",
+  noPolicies: "此版本未包含 Policy。", rows: "第 {{start}}–{{end}} 项，共 {{total}} 项", previousPage: "上一页", nextPage: "下一页",
+  versionActions: "版本 {{version}} 的操作", compiledDescription: "此版本编译生成的运行时配置和依赖。",
+};

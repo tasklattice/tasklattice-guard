@@ -1,3 +1,5 @@
+import { ImmutableVersionView } from "@/components/guardrail-immutable-versions";
+export { ImmutableVersionView } from "@/components/guardrail-immutable-versions";
 import { ResourceList } from "@/components/resource-list";
 import { EventFilterToolbar } from "@/components/event-filter-toolbar";
 import { selectedSeverities, type EventSeverity } from "../../shared/security-severity";
@@ -7,16 +9,12 @@ import { upgradeTopicBinding } from "@/lib/topic-policy-upgrade";
 import { GuardrailValidationReadiness, useGuardrailValidationReadiness } from "@/components/guardrail-validation-readiness";
 import { useCorrectnessAvailability } from "@/components/correctness-availability";
 import { TopicControlFields, type TopicControlMode } from "@/components/topic-control-fields";
-import { DeleteGuardrailVersionSheet } from "@/components/guardrail-version-delete-sheet";
-import { ExportGuardrailSheet } from "@/components/guardrail-export-sheet";
-import { MoreHorizontal as VersionActionsIcon } from "lucide-react";
-import { DropdownMenu as VersionMenu, DropdownMenuContent as VersionMenuContent, DropdownMenuItem as VersionMenuItem, DropdownMenuTrigger as VersionMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useEffect, useMemo, useRef, useState, type ReactNode, type MouseEvent } from "react";
 import { boundPolicy } from "@/lib/bound-policy";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { EventPagination, useEventCursor } from '@/components/event-pagination';
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { Activity, ArrowLeft, ArrowUpRight, Ban, Check, ChevronDown, Circle, CircleAlert, Download, FlaskConical, GitCompareArrows, History, LoaderCircle, LockKeyhole, Pencil, Plus, RefreshCw, Rocket, RotateCcw, Save, ScrollText, ShieldAlert, ShieldCheck, Trash2 } from "lucide-react";
+import { Activity, ArrowLeft, ArrowUpRight, Ban, Check, ChevronDown, Circle, CircleAlert, FlaskConical, History, LoaderCircle, Pencil, Plus, RefreshCw, Rocket, RotateCcw, Save, ScrollText, ShieldAlert, ShieldCheck, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "@/components/ui/notifications";
 
@@ -24,11 +22,8 @@ import { RuntimeHealthAlert } from "@/components/dashboard/runtime-health-alert"
 import { RuntimeMetricChart } from "@/components/dashboard/runtime-metric-chart";
 import { formatEventTimestamp } from "@/components/dashboard/event-time";
 import { AddTestCaseSheet } from "@/components/add-test-case-sheet";
-import { CompiledRuntime } from "@/components/compiled-runtime";
 import { ConfirmationSheet } from "@/components/confirmation-sheet";
-import { CopyableChecksum } from "@/components/copyable-checksum";
 import { EntitySheet } from "@/components/entity-sheet";
-import { GuardrailVersionComparison, GuardrailVersionNavigator } from "@/components/guardrail-version-workspace";
 import { GuardrailRegistry } from "@/components/guardrail-registry";
 import { getPolicyBindingValidation, PolicyBindingEditor } from "@/components/policy-binding-editor";
 import { ProtectionDependencies } from "@/components/protection-dependencies";
@@ -70,14 +65,12 @@ import {
   getValidationRuns,
   publishGuardrail,
   restoreGuardrailTestCase,
-  markGuardrailVersionLatest,
   updateGuardrail,
   updateGuardrailLoggingSettings,
   type Guardrail,
   type GuardrailFindingPage,
   type GuardrailPolicyBinding,
   type GuardrailVersion,
-  type GuardrailVersionDetail,
   type MetricWindow,
   type Metrics,
   type LoggingLevel,
@@ -151,9 +144,10 @@ export function GuardrailDetailPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [validationConfirmOpen, setValidationConfirmOpen] = useState(false);
   const [selectedValidationRun, setSelectedValidationRun] = useState<ValidationRun | null>(null);
+  const [versionDetailRequested, setVersionDetailRequested] = useState(false);
   const [selectedVersionOverride, setSelectedVersionOverride] = useState<string | null>(null);
   const [compareBaseVersionNumber, setCompareBaseVersionNumber] = useState<string | null>(null);
-  const guardrailVersions = versionsQuery.data?.items ?? [];
+  const guardrailVersions = [...(versionsQuery.data?.items ?? [])].sort((a, b) => b.created_at.localeCompare(a.created_at) || b.version.localeCompare(a.version));
   const compilationPending = guardrailVersions.some((item) => item.compile_status === "compiling");
   useEffect(() => {
     if (!compilationPending) return;
@@ -165,12 +159,13 @@ export function GuardrailDetailPage() {
   const latestVersion = guardrailVersions.find((item) => item.latest);
   const selectedVersionNumber = selectedVersionOverride && guardrailVersions.some((item) => item.version === selectedVersionOverride) ? selectedVersionOverride : latestVersion?.version ?? guardrailVersions[0]?.version ?? "";
   const selectedVersion = guardrailVersions.find((item) => item.version === selectedVersionNumber);
-  const selectedValidation = validationRunsQuery.data?.items.find((run) => run.guardrail_version === selectedVersionNumber && run.status === "passed") ?? null;
-  const compareOptions = guardrailVersions.filter((item) => item.version < selectedVersionNumber);
+  const selectedValidation = [...(validationRunsQuery.data?.items ?? [])].sort((a, b) => b.created_at.localeCompare(a.created_at)).find((run) => run.guardrail_version === selectedVersionNumber) ?? null;
+  const compareOptions = guardrailVersions.filter((item) => item.version !== selectedVersionNumber && (!item.compile_status || item.compile_status === "ready"));
   const immutableQuery = useQuery({
     queryKey: queryKeys.guardrailVersion(guardrailId, selectedVersionNumber),
     queryFn: () => getGuardrailVersion(guardrailId, selectedVersionNumber),
-    enabled: Boolean(selectedVersionNumber),
+    enabled: section === "immutable" && Boolean(selectedVersionNumber),
+    refetchInterval: selectedVersion?.compile_status === "compiling" ? 1_500 : false,
   });
   const compareQuery = useQuery({
     queryKey: queryKeys.guardrailVersion(guardrailId, compareBaseVersionNumber ?? ""),
@@ -244,6 +239,7 @@ export function GuardrailDetailPage() {
     if (guardrailVersions.some((version) => version.version === run.guardrail_version)) {
       setSelectedVersionOverride(run.guardrail_version);
       setCompareBaseVersionNumber(null);
+      setVersionDetailRequested(true);
       setSection("immutable");
       return;
     }
@@ -307,10 +303,21 @@ export function GuardrailDetailPage() {
         </TabsContent>
         <TabsContent value="immutable" className="pt-5">
           <ImmutableVersionView
+            openRequested={versionDetailRequested}
+            onOpenRequestHandled={() => setVersionDetailRequested(false)}
             detail={immutableQuery.data}
             selectedVersion={selectedVersion}
             versions={guardrailVersions}
-            loading={versionsQuery.isLoading || immutableQuery.isLoading || validationRunsQuery.isLoading}
+            loading={versionsQuery.isLoading}
+            error={versionsQuery.error}
+            detailLoading={immutableQuery.isFetching}
+            detailError={immutableQuery.error}
+            comparisonError={compareQuery.error}
+            validationRuns={validationRunsQuery.data?.items ?? []}
+            validationLoading={validationRunsQuery.isLoading}
+            validationError={validationRunsQuery.error}
+            onRetry={() => { void versionsQuery.refetch(); void immutableQuery.refetch(); void validationRunsQuery.refetch(); }}
+            onRetryComparison={() => { void compareQuery.refetch(); }}
             comparisonDetail={compareQuery.data}
             comparisonActive={Boolean(compareBaseVersionNumber)}
             comparisonLoading={compareQuery.isLoading}
@@ -322,7 +329,7 @@ export function GuardrailDetailPage() {
             onOpenDraft={() => setSection("draft")}
             onOpenValidation={setSelectedValidationRun}
             onSelectVersion={(version) => { setSelectedVersionOverride(version); setCompareBaseVersionNumber(null); }}
-            onStartCompare={() => { const previous = compareOptions[0]; if (previous) setCompareBaseVersionNumber(previous.version); }}
+            onStartCompare={() => { const previous = compareOptions.find((item) => item.created_at < (selectedVersion?.created_at ?? "")) ?? compareOptions[0]; if (previous) setCompareBaseVersionNumber(previous.version); }}
             onCompareBaseChange={setCompareBaseVersionNumber}
             onCloseCompare={() => setCompareBaseVersionNumber(null)}
           />
@@ -520,120 +527,6 @@ function CallerDistribution({ metrics, routers, versions }: { metrics: Metrics; 
   const { t, i18n } = useTranslation();
   return <Card size="sm" className="gap-0 overflow-hidden py-0 shadow-none"><CardHeader className="border-b px-4 py-3"><CardTitle className="text-sm">{t("guardrails.callersTitle")}</CardTitle><CardDescription className="text-xs leading-5">{t("guardrails.callersDescription")}</CardDescription></CardHeader>{metrics.caller_distribution.length ? <Table className="text-xs"><TableHeader><TableRow className="hover:bg-transparent"><TableHead className="h-9 pl-4">{t("guardrails.caller")}</TableHead><TableHead className="h-9">{t("guardrails.trafficScope")}</TableHead><TableHead className="h-9">{t("guardrails.volumeShare")}</TableHead><TableHead className="h-9">{t("guardrails.servedVersion")}</TableHead><TableHead className="h-9">{t("guardrails.outcome")}</TableHead><TableHead className="h-9">{t("dashboard.p95Latency")}</TableHead></TableRow></TableHeader><TableBody>{metrics.caller_distribution.map((item) => { const router = routers.find((candidate) => candidate.id === item.router_id); return <TableRow key={`${item.endpoint_id}:${item.router_id}:${item.protocol}`}><TableCell className="py-2.5 pl-4 align-top"><strong className="text-sm font-medium">{item.endpoint_name}</strong><p className="mt-0.5 font-mono text-xs text-muted-foreground">{item.protocol}</p></TableCell><TableCell className="max-w-80 py-2.5 align-top"><p className="mb-1 text-xs font-medium">{item.router_name}</p>{router ? <TrafficScopeBadges router={router} /> : <span className="text-xs text-muted-foreground">{t("guardrails.unassignedTraffic")}</span>}</TableCell><TableCell className="py-2.5 align-top"><strong className="text-sm tabular-nums">{item.requests.toLocaleString(i18n.language)}</strong><div className="mt-1.5 flex items-center gap-2"><Progress className="h-1 w-16" value={item.share} /><span className="text-xs text-muted-foreground">{item.share}%</span></div></TableCell><TableCell className="py-2.5 align-top"><div className="flex flex-wrap gap-1">{item.guardrail_versions.map((version) => <Badge key={version} variant="outline" className="font-mono text-[10px]">{version}</Badge>)}</div></TableCell><TableCell className="py-2.5 align-top"><p className="text-xs">{t("guardrails.interventionSummary", { rate: item.intervention_rate })}</p><p className="mt-0.5 text-xs text-muted-foreground">{t("guardrails.errorSummary", { rate: item.error_rate })}</p></TableCell><TableCell className="py-2.5 align-top font-mono text-xs">{item.p95_latency_ms} ms</TableCell></TableRow>; })}</TableBody></Table> : <div className="px-4 pb-4"><EmptyState title={t("guardrails.noRuntimeCalls")} description={t("guardrails.noRuntimeCallsDescription")} /></div>}</Card>;
 }
-
-export function ImmutableVersionView({ detail, selectedVersion, versions, loading, comparisonDetail, comparisonActive, comparisonLoading, compareOptions, guardrailId, guardrailName, validation, onChanged, onOpenDraft, onOpenValidation, onSelectVersion, onStartCompare, onCompareBaseChange, onCloseCompare }: {
-  detail?: GuardrailVersionDetail;
-  selectedVersion?: GuardrailVersion;
-  versions: GuardrailVersion[];
-  loading: boolean;
-  comparisonDetail?: GuardrailVersionDetail;
-  comparisonActive: boolean;
-  comparisonLoading: boolean;
-  compareOptions: GuardrailVersion[];
-  guardrailId: string;
-  guardrailName: string;
-  validation: Guardrail["latest_validation_run"];
-  onChanged: () => Promise<void>;
-  onOpenDraft: () => void;
-  onOpenValidation: (run: ValidationRun) => void;
-  onSelectVersion: (version: string) => void;
-  onStartCompare: () => void;
-  onCompareBaseChange: (version: string) => void;
-  onCloseCompare: () => void;
-}) {
-  const { t: uiText } = useTranslation();
-  const { t, i18n } = useTranslation();
-  const auth = useAuth();
-  const [deleteVersion, setDeleteVersion] = useState<string | null>(null);
-  const [exportVersion, setExportVersion] = useState<string | null>(null);
-  const [latestCandidate, setLatestCandidate] = useState<string | null>(null);
-  const markLatest = useMutation({ mutationFn: (version: string) => markGuardrailVersionLatest(guardrailId, version), onSuccess: async (_result, version) => { setLatestCandidate(null); toast.success(t("guardrails.markLatestSucceeded", { version })); await onChanged(); }, onError: (error) => notifyError(error, t("guardrails.operationFailed")) });
-  if (loading) return <Skeleton className="h-[34rem] rounded-xl" />;
-  if (!selectedVersion || !detail) return <EmptyState title={t("guardrails.noPublishedVersion")} description={t("guardrails.noPublishedVersionDescription")} action={<Button onClick={onOpenDraft}>{t("guardrails.openDraftRelease")}</Button>} />;
-  const releaseId = detail.version;
-  if (selectedVersion.compile_status && selectedVersion.compile_status !== "ready") {
-    const failed = selectedVersion.compile_status === "failed";
-    return <Card className={failed ? "border-destructive/30 shadow-none" : "shadow-none"}>
-      <CardHeader>
-        <div className="flex flex-wrap items-center gap-2"><CardTitle className="font-mono">{releaseId}</CardTitle><StateBadge state={failed ? "failed" : "running"} /></div>
-        <CardDescription>{failed ? t("guardrails.versionCompilationFailed") : t("guardrails.versionCompilationPending")}</CardDescription>
-      </CardHeader>
-      <CardContent>{failed ? <ErrorNotice error={new Error(selectedVersion.failure_reason ?? t("guardrails.compilationFailedDetail"))} /> : <div className="flex items-center gap-2 rounded-lg border bg-muted/20 p-4 text-sm text-muted-foreground"><LoaderCircle className="size-4 animate-spin" />{t("guardrails.compilationPendingDetail")}</div>}</CardContent>
-    </Card>;
-  }
-  return <><div className="grid min-w-0 gap-4 lg:grid-cols-[17rem_minmax(0,1fr)]">
-    <GuardrailVersionNavigator versions={versions} selectedVersion={selectedVersion.version} onSelect={onSelectVersion} />
-    <div className="min-w-0 space-y-4">
-      {comparisonActive ? comparisonLoading || !comparisonDetail ? <Skeleton className="h-[34rem] rounded-xl" /> : <GuardrailVersionComparison base={comparisonDetail} target={detail} baseOptions={compareOptions} onBaseChange={onCompareBaseChange} onClose={onCloseCompare} /> : <>
-        <Card className="shadow-none">
-          <CardHeader className="border-b">
-            <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <LockKeyhole className="size-4 text-primary" />
-                  <CardTitle className="font-mono">{releaseId}</CardTitle>
-                  {selectedVersion.latest ? <StateBadge state="active" label={t("guardrails.latestVersionLabel")} /> : <Badge variant="outline">{t("guardrails.historicalVersion")}</Badge>}
-                </div>
-                <CardDescription className="mt-2">{t("guardrails.immutableDescription")}</CardDescription>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {compareOptions.length ? <Button variant="outline" className="min-h-11" onClick={onStartCompare}><GitCompareArrows />{t("guardrails.compareWithPrevious")}</Button> : null}
-                <Button variant="outline" className="min-h-11" onClick={() => setExportVersion(selectedVersion.version)}><Download />{t("guardrails.exportEllipsis")}</Button>
-                {auth.user?.role === "admin" ? <VersionMenu><VersionMenuTrigger asChild><Button variant="ghost" className="size-11" aria-label={uiText("uiCopy.versionActions")}><VersionActionsIcon /></Button></VersionMenuTrigger><VersionMenuContent align="end">
-                  <VersionMenuItem variant="edit" disabled={selectedVersion.latest || markLatest.isPending} onSelect={() => setLatestCandidate(selectedVersion.version)}><Check />{t("guardrails.markLatest")}</VersionMenuItem>
-                  <VersionMenuItem variant="destructive" disabled={markLatest.isPending} onSelect={() => setDeleteVersion(selectedVersion.version)}><Trash2 />{uiText("uiCopy.delete")}</VersionMenuItem>
-                </VersionMenuContent></VersionMenu> : null}
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-6 pt-6">
-          <dl className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><VersionFact label={t("guardrails.runtimeEngine")} value={`${detail.runtime_engine} · ${detail.runtime_profile}`} /><VersionFact label={t("guardrails.compiledWith")} value={detail.compiler_version} mono /><VersionFact label={t("guardrails.createdAt")} value={new Date(detail.created_at).toLocaleString(i18n.language)} /><div className="min-w-0"><dt className="text-xs text-muted-foreground">{t("guardrails.configIdentity")}</dt><dd className="mt-0.5"><CopyableChecksum value={detail.config_checksum} /></dd></div></dl>
-          <div className="grid gap-4 xl:grid-cols-2"><ImmutablePosture detail={detail} /><PinnedPolicies bindings={detail.policy_bindings} /></div>
-        </CardContent></Card>
-        <CompiledRuntime detail={detail} />
-        <Card className="shadow-none"><CardHeader><CardTitle>{t("guardrails.validationEvidence")}</CardTitle><CardDescription>{t("guardrails.validationEvidenceDescription")}</CardDescription></CardHeader><CardContent>{validation ? <div className="flex flex-col gap-3 rounded-lg border bg-muted/20 p-4 sm:flex-row sm:items-center sm:justify-between"><div><div className="flex items-center gap-2"><StateBadge state={validation.status} /><span className="text-sm font-medium">{t("guardrails.compliance", { rate: validation.metrics.compliance_rate })}</span></div><p className="mt-2 text-xs text-muted-foreground">{new Date(validation.created_at).toLocaleString(i18n.language)}</p></div><Button variant="outline" onClick={() => onOpenValidation(validation)}><FlaskConical />{t("guardrails.openValidation")}</Button></div> : <InfoNotice title={t("guardrails.noValidationEvidence")}>{t("guardrails.noEvidence")}</InfoNotice>}</CardContent></Card>
-      </>}
-    </div>
-  </div><ConfirmationSheet
-    open={latestCandidate !== null}
-    onOpenChange={(open) => { if (!open && !markLatest.isPending) { setLatestCandidate(null); markLatest.reset(); } }}
-    eyebrow={t("guardrails.confirmActionEyebrow")}
-    title={t("guardrails.confirmMarkLatestTitle", { version: latestCandidate ?? "" })}
-    description={t("guardrails.confirmMarkLatestDescription")}
-    cancelLabel={t("common.cancel")}
-    confirmLabel={t("guardrails.markLatest")}
-    pendingLabel={t("common.saving")}
-    pending={markLatest.isPending}
-    confirmIcon={<Check />}
-    onConfirm={() => { if (latestCandidate !== null) markLatest.mutate(latestCandidate); }}
-  >
-    <div className="text-sm leading-6 text-muted-foreground">{t("guardrails.confirmMarkLatestImpact")}</div>
-    {markLatest.error ? <p role="alert" className="rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">{markLatest.error instanceof Error ? markLatest.error.message : t("guardrails.operationFailed")}</p> : null}
-  </ConfirmationSheet>
-  {deleteVersion !== null && <DeleteGuardrailVersionSheet guardrailId={guardrailId} version={deleteVersion} onClose={() => setDeleteVersion(null)}
-    onDeleted={async () => { toast.success(t("guardrails.versionDeleted", { version: deleteVersion })); setDeleteVersion(null); await onChanged(); onOpenDraft(); }} />}
-  {exportVersion !== null && <ExportGuardrailSheet guardrailId={guardrailId} guardrailName={guardrailName} initialVersion={exportVersion} onClose={() => setExportVersion(null)} />}
-  </>;
-}
-
-function VersionFact({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) { return <div className="min-w-0"><dt className="text-xs text-muted-foreground">{label}</dt><dd className={`${mono ? "font-mono text-xs" : "text-sm font-medium"} mt-1.5 truncate`} title={value}>{value}</dd></div>; }
-
-function ImmutablePosture({ detail }: { detail: GuardrailVersionDetail }) {
-  const { t } = useTranslation();
-  const effective = detail.effective_output_delivery ?? detail.output_delivery;
-  return <section className="rounded-lg border p-4"><h3 className="text-sm font-semibold">{t("guardrails.decisionPosture")}</h3>
-    <dl className="mt-4 grid gap-4 sm:grid-cols-2">
-      <VersionFact label={t("guardrailWizard.safetyLevel")} value={t(`guardrailWizard.safetyLevelOptions.${detail.safety_level}`)} />
-      <VersionFact label={t("guardrailWizard.outputDelivery")} value={t(`guardrailWizard.outputDeliveryOptions.${effective}`)} />
-      <VersionFact label={t("modelSettings.inputRail")} value={t("guardrails.compiledFlowCount", { count: detail.rails.filter((rail) => rail.rail_type === "input").length })} />
-      <VersionFact label={t("modelSettings.outputRail")} value={t("guardrails.compiledFlowCount", { count: detail.rails.filter((rail) => rail.rail_type === "output").length })} />
-      <VersionFact label={t("guardrails.colangVersion")} value={detail.colang_version} /><VersionFact label={t("guardrails.criticalPath")} value={`${detail.estimated_critical_path_ms} ms`} />
-    </dl><p className="mt-4 border-t pt-3 text-xs leading-5 text-muted-foreground">{t(effective === "full_buffered" ? "modelSettings.streamFull" : "modelSettings.streamWindow")}</p>
-    {effective !== detail.output_delivery ? <p className="mt-2 text-xs text-muted-foreground">{t("guardrails.deliverySafetyFallback")}</p> : null}
-  </section>;
-}
-
-function PinnedPolicies({ bindings }: { bindings: GuardrailVersionDetail["policy_bindings"] }) { const { t } = useTranslation(); return <section className="rounded-lg border p-4"><h3 className="text-sm font-semibold">{t("guardrails.pinnedPolicies")}</h3><div className="mt-3 divide-y">{bindings.map((binding) => <div key={`${binding.policy_id}@${binding.policy_version}`} className="py-3 first:pt-0 last:pb-0"><div className="flex flex-wrap items-center justify-between gap-2"><code className="text-xs">{binding.policy_id}@{binding.policy_version}</code><Badge variant="outline">{binding.action ?? t("guardrails.policyBehavior")}</Badge></div><p className="mt-2 text-xs text-muted-foreground">{t("guardrails.pinnedPolicyRules", { count: binding.enabled_rule_ids.length })}</p></div>)}</div></section>; }
 
 export function DraftReleaseView({ guardrail, policies, cases, casesLoading, latestVersion, versions, routers, canManage, validationBlockedReason, validationRunning = false, onRunValidation = () => undefined, onOpenValidation = () => undefined, onEdit, onAddCase, onCreateRouter, onChanged }: { guardrail: Guardrail; policies: Policy[]; cases: TestCase[]; casesLoading: boolean; latestVersion?: GuardrailVersion; versions?: GuardrailVersion[]; routers: Awaited<ReturnType<typeof getRouters>>["items"]; canManage?: boolean; validationBlockedReason?: string | null; validationRunning?: boolean; onRunValidation?: () => void; onOpenValidation?: (run: ValidationRun) => void; onEdit: () => void; onAddCase: () => void; onCreateRouter: () => void; onChanged: () => Promise<void> }) {
   const { t } = useTranslation();

@@ -141,3 +141,16 @@ describe("routing translation contract", () => {
     }
   });
 });
+
+
+describe("Immutable version workspace translations", () => {
+  it("resolves list, drawer and recovery copy in both languages", async () => {
+    const { default: i18n } = await import("./i18n");
+    const { immutableVersionsEn } = await import("./immutable-versions-i18n");
+    for (const lng of ["en", "zh-CN"]) {
+      for (const key of Object.keys(immutableVersionsEn)) {
+        expect(i18n.exists(`immutableVersions.${key}`, { lng, fallbackLng: false }), `${lng}: ${key}`).toBe(true);
+      }
+    }
+  });
+});

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { GuardrailVersionDetail } from "@/lib/api";
 
-import { CompiledRuntime } from "./compiled-runtime";
+import { CompiledRuntime, GeneratedVersionFiles } from "./compiled-runtime";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -43,7 +43,7 @@ describe("CompiledRuntime", () => {
   afterEach(cleanup);
 
   it("keeps the semantic summary and generated files in one tabbed component", () => {
-    render(<CompiledRuntime detail={detail} />);
+    const { container } = render(<CompiledRuntime detail={detail} />);
 
     expect(screen.getByText("guardrails.compiledRuntime")).toBeTruthy();
     expect(screen.getByText("guardrails.compiledRuntimeSummary rails:1 actions:1 models:1 files:2")).toBeTruthy();
@@ -59,9 +59,28 @@ describe("CompiledRuntime", () => {
     fireEvent.click(filesTab);
     expect(filesTab.getAttribute("data-state")).toBe("active");
     expect(screen.getAllByText("config.yml").length).toBeGreaterThan(0);
-    expect(screen.getByText(/input: protect input/)).toBeTruthy();
+    expect(container.querySelector("pre")!.textContent).toContain("input: protect input");
 
     fireEvent.click(screen.getByRole("button", { name: "rails.co" }));
-    expect(screen.getByText("define flow protect input")).toBeTruthy();
+    expect(container.querySelector("pre")!.textContent).toBe("define flow protect input");
   });
+});
+
+
+it("uses the selected file's language and resets its code scroll position on file changes", () => {
+  const { container } = render(<GeneratedVersionFiles fillHeight detail={{ ...detail, artifacts: [
+    { path: "config/config.yml", language: "yaml", content: "enabled: true\n" },
+    { path: "artifact/plan.json", language: "json", content: '{"steps":[],"limit":32}' },
+  ] }} />);
+  const previous = container.querySelector("pre")!;
+  expect(previous.dataset.language).toBe("yaml");
+  previous.scrollTop = 200;
+  previous.scrollLeft = 100;
+  fireEvent.click(screen.getByRole("button", { name: "artifact/plan.json" }));
+  const current = container.querySelector("pre")!;
+  expect(current.dataset.language).toBe("json");
+  expect(current.querySelector(".token.property")!.textContent).toBe('"steps"');
+  expect(current.textContent).toBe('{"steps":[],"limit":32}');
+  expect(current.scrollTop).toBe(0);
+  expect(current.scrollLeft).toBe(0);
 });

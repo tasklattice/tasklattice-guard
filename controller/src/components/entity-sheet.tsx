@@ -83,9 +83,9 @@ export function EntitySheet({
           {children}
         </div>
 
-        <SheetFooter className={cn("shrink-0 flex-row items-center justify-end gap-2 border-t bg-card px-4 sm:px-6 [&_[data-slot=button]]:min-h-11", density === "compact" ? "py-3" : "py-4")}>
+        {footer != null && <SheetFooter className={cn("shrink-0 flex-row items-center justify-end gap-2 border-t bg-card px-4 sm:px-6 [&_[data-slot=button]]:min-h-11", density === "compact" ? "py-3" : "py-4")}>
           {footer}
-        </SheetFooter>
+        </SheetFooter>}
       </SheetContent>
     </Sheet>
   );
