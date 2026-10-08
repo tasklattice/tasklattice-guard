@@ -394,7 +394,7 @@ async function handleImport(args: string[]) {
   console.log(`Guardrail: ${preview.guardrail.name} (${preview.guardrail.id})${preview.guardrail.exists ? '' : ' — new in this environment'}`);
   for (const item of preview.versions) {
     const metrics = item.evidence.metrics ?? {};
-    const tested = typeof metrics.total === 'number' ? ` ${metrics.passed ?? 0}/${metrics.total} passed` : '';
+    const tested = typeof metrics.total === 'number' ? ` (${metrics.passed ?? 0}/${metrics.total} cases)` : '';
     console.log(`  ${item.version}${item.version === preview.recommendedVersion ? ' (recommended)' : ''}  ${item.state.padEnd(8)} source test: ${item.evidence.status}${tested}  environment: ${item.environment?.status ?? 'not checked'}`);
     for (const pool of item.environment?.pools ?? []) if (!pool.admitted && !pool.unavailable) console.log(`      ${pool.poolId}/${pool.runnerId}: ${pool.reason}`);
   }

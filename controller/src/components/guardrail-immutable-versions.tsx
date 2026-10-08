@@ -172,7 +172,7 @@ export function ImmutableVersionView({ openRequested, onOpenRequestHandled, deta
                 </div></TableCell>
                 <TableCell><time dateTime={version.created_at} className="text-muted-foreground">{new Date(version.created_at).toLocaleString(i18n.language)}</time></TableCell>
                 <TableCell className="tabular-nums">{version.policy_count ?? (detail?.version === version.version ? detail.policy_bindings.length : "—")}</TableCell>
-                <TableCell>{testStatus(latestTests.get(version.version))}</TableCell>
+                <TableCell>{version.provenance ? <StateBadge state="passed" label={t("guardrailPackage.sourceTestPassed", { source: version.provenance.uatEvidence.source.name })} /> : testStatus(latestTests.get(version.version))}</TableCell>
                 <TableCell>{menu(version)}</TableCell>
               </TableRow>)}</TableBody>
             </Table>

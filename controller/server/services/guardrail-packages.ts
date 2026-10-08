@@ -232,6 +232,11 @@ export class GuardrailPackageService {
       });
       return { guardrailId: manifest.guardrail.id, imported: imported.map(item => item.version), existing: existingVersions, latestVersion };
     });
+    // Record a fresh Runner load check for what just arrived, without delaying
+    // the import. Routing re-checks anyway; this keeps the detail view current.
+    if (this.admission) {
+      void Promise.allSettled(result.imported.map(version => this.checkVersionEnvironment(result.guardrailId, version)));
+    }
     return result;
   }
 

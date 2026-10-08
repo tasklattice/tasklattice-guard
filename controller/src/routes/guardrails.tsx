@@ -118,7 +118,7 @@ export function GuardrailsPage() {
 
   return (
     <section className="py-8">
-      <PageHeader title={t("pages.guardrails.title")} description={t("guardrails.description")} />
+      <PageHeader title={t("pages.guardrails.title")} description={t(capabilities.authoringEnabled ? "guardrails.description" : "guardrailPackage.receivingDescription")} />
       <ResourceList items={guardrails} label={t("pages.guardrails.title")} searchPlaceholder={t("resourceList.searchGuardrails")} searchText={item => `${item.name} ${item.id}`}
         filter={{ label: t("common.status"), options: [{ value: "", label: t("resourceList.allStatuses") }, ...[...new Set(guardrails.map(item => item.status))].sort().map(value => ({ value, label: t(`states.${value}`, { defaultValue: value.replaceAll("_", " ") }) }))], matches: (item, value) => item.status === value }}
         loading={query.isPending} refreshing={query.isFetching} error={query.error} onRefresh={() => void query.refetch()}
@@ -320,7 +320,7 @@ export function GuardrailDetailPage() {
         </div>
       </div>
 
-      {guardrail.is_default ? <div className="mt-5"><InfoNotice title={t("guardrails.defaultNoticeTitle")}>{t("guardrails.defaultNoticeDescription")}</InfoNotice></div> : null}
+      {guardrail.is_default ? <div className="mt-5"><InfoNotice title={t("guardrails.defaultNoticeTitle")}>{t(releaseOnly ? "guardrailPackage.defaultReleaseNotice" : "guardrails.defaultNoticeDescription")}</InfoNotice></div> : null}
 
       {hasDraft && !releaseOnly ? <div className="mt-5"><GuardrailValidationReadiness readiness={validationReadiness} onEdit={canManageDraft ? () => setEditOpen(true) : undefined} onRetry={() => { void policiesQuery.refetch(); validationReadiness.refresh(); }} /></div> : null}
 

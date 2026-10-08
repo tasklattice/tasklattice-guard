@@ -49,7 +49,7 @@ export function ImportGuardrailSheet({ onClose, returnFocusRef }: { onClose: () 
   };
 
   return (
-    <EntitySheet open width="lg" returnFocusRef={returnFocusRef}
+    <EntitySheet open width="xl" returnFocusRef={returnFocusRef}
       eyebrow={t("guardrailPackage.import")} title={t("guardrailPackage.importTitle")} description={t("guardrailPackage.importDescription")}
       closeDisabled={importing.isPending} onOpenChange={open => { if (!open && !importing.isPending) onClose(); }}
       footer={<>
@@ -106,10 +106,10 @@ function PackageSummary({ preview, language }: { preview: PackagePreview; langua
         <TableHead>{t("guardrailPackage.state")}</TableHead><TableHead>{t("guardrailPackage.environment")}</TableHead>
       </TableRow></TableHeader>
       <TableBody>{preview.versions.map(item => <TableRow key={item.version}>
-        <TableCell><div className="flex items-center gap-2"><span className="font-mono text-sm">{item.version}</span>{item.version === preview.recommendedVersion ? <Badge variant="outline">{t("guardrailPackage.recommended")}</Badge> : null}</div></TableCell>
-        <TableCell><div className="flex flex-col gap-1"><StateBadge state="passed" label={t("guardrailPackage.sourceTestPassed", { source: item.evidence.source.name })} />
+        <TableCell><div className="flex flex-col items-start gap-1"><span className="whitespace-nowrap font-mono text-sm">{item.version}</span>{item.version === preview.recommendedVersion ? <Badge variant="outline" className="whitespace-nowrap">{t("guardrailPackage.recommended")}</Badge> : null}</div></TableCell>
+        <TableCell><div className="flex flex-col items-start gap-1"><StateBadge state="passed" />
           <span className="text-xs text-muted-foreground">{typeof item.evidence.metrics.total === "number" ? `${t("guardrailPackage.passedCases", { passed: item.evidence.metrics.passed ?? 0, total: item.evidence.metrics.total })} · ` : ""}{t("guardrailPackage.testedAt", { time: new Date(item.evidence.testedAt).toLocaleString(language) })}</span></div></TableCell>
-        <TableCell><StateBadge state={item.state === "new" ? "ready" : item.state === "existing" ? "active" : "failed"} label={t(`guardrailPackage.state${item.state === "new" ? "New" : item.state === "existing" ? "Existing" : "Conflict"}`)} /></TableCell>
+        <TableCell className="whitespace-nowrap"><StateBadge state={item.state === "new" ? "ready" : item.state === "existing" ? "active" : "failed"} label={t(`guardrailPackage.state${item.state === "new" ? "New" : item.state === "existing" ? "Existing" : "Conflict"}`)} /></TableCell>
         <TableCell><EnvironmentStatus check={item.environment} /></TableCell>
       </TableRow>)}</TableBody>
     </Table>
@@ -122,8 +122,8 @@ export function EnvironmentStatus({ check }: { check: EnvironmentCheck | null | 
   if (!check) return <span className="text-sm text-muted-foreground">{t("guardrailPackage.neverChecked")}</span>;
   const label = t(check.status === "compatible" ? "guardrailPackage.envCompatible" : check.status === "missing" ? "guardrailPackage.envMissing" : "guardrailPackage.envPending");
   const rejected = check.pools.filter(pool => !pool.admitted && !pool.unavailable);
-  return <div className="flex flex-col gap-1">
-    <StateBadge state={check.status === "compatible" ? "ready" : check.status === "missing" ? "failed" : "unknown"} label={label} />
+  return <div className="flex flex-col items-start gap-1">
+    <span className="whitespace-nowrap"><StateBadge state={check.status === "compatible" ? "ready" : check.status === "missing" ? "failed" : "unknown"} label={label} /></span>
     {rejected.map(pool => <span key={pool.poolId} className="text-xs text-destructive">{t("guardrailPackage.poolResult", { pool: pool.poolId, runner: pool.runnerId })}: {pool.reason}</span>)}
     {check.status === "pending" ? <span className="text-xs text-muted-foreground">{t("guardrailPackage.envPendingHint")}</span> : null}
   </div>;

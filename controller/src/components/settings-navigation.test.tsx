@@ -13,8 +13,18 @@ vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
+const deployment = vi.hoisted(() => ({ authoringEnabled: true }));
+vi.mock("@/lib/deployment", () => ({ useDeploymentCapabilities: () => deployment }));
+
 describe("SettingsNavigation", () => {
-  afterEach(cleanup);
+  afterEach(() => { cleanup(); deployment.authoringEnabled = true; });
+
+  it("omits the authoring catalog where Guardrails are only received", () => {
+    deployment.authoringEnabled = false;
+    render(<SettingsNavigation />);
+    expect(screen.queryByRole("tab", { name: "nav.guardrailCatalog" })).toBeNull();
+    expect(screen.getByRole("tab", { name: "nav.models" })).toBeTruthy();
+  });
 
   it("uses route-backed tabs for Health, Runner, Providers, Models, and Guardrail Catalog", () => {
     render(<SettingsNavigation />);
