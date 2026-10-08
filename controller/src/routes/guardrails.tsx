@@ -335,20 +335,31 @@ export function GuardrailDetailPage() {
           />
         </TabsContent>
         <TabsContent value="testing" className="pt-5">
-          <GuardrailValidationHistory
-            runs={validationRunsQuery.data?.items ?? []}
-            loading={validationRunsQuery.isLoading}
-            error={validationRunsQuery.error}
+          <GuardrailTestingView
+            guardrail={guardrail}
+            policies={policies}
+            cases={testsQuery.data?.items ?? []}
+            casesLoading={testsQuery.isLoading}
+            casesError={testsQuery.error}
+            onRetryCases={() => { void testsQuery.refetch(); }}
             canManage={canManageDraft}
-            blockedReason={validationReadiness.reason}
-            running={validationMutation.isPending}
-            onRun={() => setValidationConfirmOpen(true)}
-            onOpen={setSelectedValidationRun}
-            onOpenTarget={openValidationTarget}
+            onAddCase={() => setTestOpen(true)}
+            onChanged={refresh}
+            reports={<GuardrailValidationHistory
+              runs={validationRunsQuery.data?.items ?? []}
+              loading={validationRunsQuery.isLoading}
+              error={validationRunsQuery.error}
+              canManage={canManageDraft}
+              blockedReason={validationReadiness.reason}
+              running={validationMutation.isPending}
+              onRun={() => setValidationConfirmOpen(true)}
+              onOpen={setSelectedValidationRun}
+              onOpenTarget={openValidationTarget}
+            />}
           />
         </TabsContent>
         <TabsContent value="draft" className="pt-5">
-          <DraftReleaseView guardrail={guardrail} policies={policies} cases={testsQuery.data?.items ?? []} casesLoading={testsQuery.isLoading} latestVersion={latestVersion} versions={guardrailVersions} routers={routers} canManage={canManageDraft} validationBlockedReason={validationReadiness.reason} validationRunning={validationMutation.isPending} onRunValidation={() => setValidationConfirmOpen(true)} onOpenValidation={setSelectedValidationRun} onEdit={() => setEditOpen(true)} onAddCase={() => setTestOpen(true)} onCreateRouter={() => setRouterOpen(true)} onChanged={refresh} />
+          <DraftReleaseView guardrail={guardrail} policies={policies} latestVersion={latestVersion} versions={guardrailVersions} routers={routers} canManage={canManageDraft} validationBlockedReason={validationReadiness.reason} validationRunning={validationMutation.isPending} onRunValidation={() => setValidationConfirmOpen(true)} onOpenValidation={setSelectedValidationRun} onEdit={() => setEditOpen(true)} onCreateRouter={() => setRouterOpen(true)} onChanged={refresh} />
         </TabsContent>
       </Tabs>
 
@@ -528,10 +539,9 @@ function CallerDistribution({ metrics, routers, versions }: { metrics: Metrics; 
   return <Card size="sm" className="gap-0 overflow-hidden py-0 shadow-none"><CardHeader className="border-b px-4 py-3"><CardTitle className="text-sm">{t("guardrails.callersTitle")}</CardTitle><CardDescription className="text-xs leading-5">{t("guardrails.callersDescription")}</CardDescription></CardHeader>{metrics.caller_distribution.length ? <Table className="text-xs"><TableHeader><TableRow className="hover:bg-transparent"><TableHead className="h-9 pl-4">{t("guardrails.caller")}</TableHead><TableHead className="h-9">{t("guardrails.trafficScope")}</TableHead><TableHead className="h-9">{t("guardrails.volumeShare")}</TableHead><TableHead className="h-9">{t("guardrails.servedVersion")}</TableHead><TableHead className="h-9">{t("guardrails.outcome")}</TableHead><TableHead className="h-9">{t("dashboard.p95Latency")}</TableHead></TableRow></TableHeader><TableBody>{metrics.caller_distribution.map((item) => { const router = routers.find((candidate) => candidate.id === item.router_id); return <TableRow key={`${item.endpoint_id}:${item.router_id}:${item.protocol}`}><TableCell className="py-2.5 pl-4 align-top"><strong className="text-sm font-medium">{item.endpoint_name}</strong><p className="mt-0.5 font-mono text-xs text-muted-foreground">{item.protocol}</p></TableCell><TableCell className="max-w-80 py-2.5 align-top"><p className="mb-1 text-xs font-medium">{item.router_name}</p>{router ? <TrafficScopeBadges router={router} /> : <span className="text-xs text-muted-foreground">{t("guardrails.unassignedTraffic")}</span>}</TableCell><TableCell className="py-2.5 align-top"><strong className="text-sm tabular-nums">{item.requests.toLocaleString(i18n.language)}</strong><div className="mt-1.5 flex items-center gap-2"><Progress className="h-1 w-16" value={item.share} /><span className="text-xs text-muted-foreground">{item.share}%</span></div></TableCell><TableCell className="py-2.5 align-top"><div className="flex flex-wrap gap-1">{item.guardrail_versions.map((version) => <Badge key={version} variant="outline" className="font-mono text-[10px]">{version}</Badge>)}</div></TableCell><TableCell className="py-2.5 align-top"><p className="text-xs">{t("guardrails.interventionSummary", { rate: item.intervention_rate })}</p><p className="mt-0.5 text-xs text-muted-foreground">{t("guardrails.errorSummary", { rate: item.error_rate })}</p></TableCell><TableCell className="py-2.5 align-top font-mono text-xs">{item.p95_latency_ms} ms</TableCell></TableRow>; })}</TableBody></Table> : <div className="px-4 pb-4"><EmptyState title={t("guardrails.noRuntimeCalls")} description={t("guardrails.noRuntimeCallsDescription")} /></div>}</Card>;
 }
 
-export function DraftReleaseView({ guardrail, policies, cases, casesLoading, latestVersion, versions, routers, canManage, validationBlockedReason, validationRunning = false, onRunValidation = () => undefined, onOpenValidation = () => undefined, onEdit, onAddCase, onCreateRouter, onChanged }: { guardrail: Guardrail; policies: Policy[]; cases: TestCase[]; casesLoading: boolean; latestVersion?: GuardrailVersion; versions?: GuardrailVersion[]; routers: Awaited<ReturnType<typeof getRouters>>["items"]; canManage?: boolean; validationBlockedReason?: string | null; validationRunning?: boolean; onRunValidation?: () => void; onOpenValidation?: (run: ValidationRun) => void; onEdit: () => void; onAddCase: () => void; onCreateRouter: () => void; onChanged: () => Promise<void> }) {
+export function DraftReleaseView({ guardrail, policies, latestVersion, versions, routers, canManage, validationBlockedReason, validationRunning = false, onRunValidation = () => undefined, onOpenValidation = () => undefined, onEdit, onCreateRouter, onChanged }: { guardrail: Guardrail; policies: Policy[]; latestVersion?: GuardrailVersion; versions?: GuardrailVersion[]; routers: Awaited<ReturnType<typeof getRouters>>["items"]; canManage?: boolean; validationBlockedReason?: string | null; validationRunning?: boolean; onRunValidation?: () => void; onOpenValidation?: (run: ValidationRun) => void; onEdit: () => void; onCreateRouter: () => void; onChanged: () => Promise<void> }) {
   const { t } = useTranslation();
   const [publishOpen, setPublishOpen] = useState(false);
-  const [scopeChange, setScopeChange] = useState<{ caseId: string; action: "exclude" | "restore" } | null>(null);
   const releaseId = latestVersion?.version ?? "";
   const draftConfigured = Boolean(guardrail.policy_bindings.length);
   const validated = guardrail.tested_current;
@@ -550,15 +560,6 @@ export function DraftReleaseView({ guardrail, policies, cases, casesLoading, lat
       await onChanged();
     },
     onError: (error) => notifyError(error, t("guardrails.publishFailed")),
-  });
-  const validationScope = useMutation({
-    mutationFn: ({ caseId, action }: { caseId: string; action: "exclude" | "restore" }) => action === "exclude" ? excludeGuardrailTestCase(guardrail.id, caseId) : restoreGuardrailTestCase(guardrail.id, caseId),
-    onSuccess: async (_, variables) => {
-      setScopeChange(null);
-      toast.success(t(variables.action === "exclude" ? "guardrails.testCaseExcluded" : "guardrails.testCaseRestored"));
-      await onChanged();
-    },
-    onError: (error) => notifyError(error, t("guardrails.operationFailed")),
   });
   const steps = [
     { label: t("guardrails.releaseStepDraft"), complete: draftConfigured, current: !draftConfigured, detail: t("guardrails.policyCheckDetail", { count: guardrail.policy_bindings.length }) },
@@ -606,10 +607,6 @@ export function DraftReleaseView({ guardrail, policies, cases, casesLoading, lat
       <PolicyBindings bindings={guardrail.policy_bindings} policies={policies} />
       <div className="mt-4"><ProtectionDependencies bindings={guardrail.policy_bindings} policies={policies} /></div>
     </section>
-    <section>
-      <div className="mb-3"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("guardrails.releaseEvidenceEyebrow")}</p><h2 className="mt-1 text-base font-semibold">{t("guardrails.validationInputs")}</h2><p className="mt-1 text-xs text-muted-foreground">{t("guardrails.validationInputsDescription")}</p></div>
-      <TestCases cases={cases} bindings={guardrail.policy_bindings} policies={policies} loading={casesLoading} onAdd={onAddCase} onExclude={(caseId) => setScopeChange({ caseId, action: "exclude" })} onRestore={(caseId) => setScopeChange({ caseId, action: "restore" })} busyCaseId={validationScope.isPending ? validationScope.variables?.caseId : undefined} />
-    </section>
     {routers.length ? <Card className="shadow-none"><CardHeader className="py-4"><CardTitle>{t("guardrails.guardrailRouters")}</CardTitle><CardDescription>{t("guardrails.guardrailRoutersDescription")}</CardDescription></CardHeader><CardContent className="space-y-2">{routers.map((router) => <div key={router.id} className="rounded-lg border px-4 py-3"><div className="flex flex-wrap items-center justify-between gap-2"><strong className="text-sm font-medium">{router.name}</strong><Badge variant="outline" className="font-mono text-[10px]">{router.activeRevision ? `r${router.activeRevision}` : "—"}</Badge></div><div className="mt-2"><TrafficScopeBadges router={router} /></div></div>)}</CardContent></Card> : null}
   </div>
   <ConfirmationSheet
@@ -626,23 +623,71 @@ export function DraftReleaseView({ guardrail, policies, cases, casesLoading, lat
   >
     <div className="rounded-lg border bg-muted/35 px-4 py-3 text-sm leading-6 text-muted-foreground">{t("guardrails.confirmPublishImpact")}</div>
     {publish.error ? <p role="alert" className="rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">{publish.error instanceof Error ? publish.error.message : t("guardrails.publishFailed")}</p> : null}
-  </ConfirmationSheet>
-  <ConfirmationSheet
-    open={Boolean(scopeChange)}
-    onOpenChange={(open) => { if (!open && !validationScope.isPending) { setScopeChange(null); validationScope.reset(); } }}
-    eyebrow={t("guardrails.confirmActionEyebrow")}
-    title={t(scopeChange?.action === "restore" ? "guardrails.confirmRestoreCaseTitle" : "guardrails.confirmExcludeCaseTitle")}
-    description={t("guardrails.confirmScopeChangeDescription")}
-    cancelLabel={t("common.cancel")}
-    confirmLabel={t(scopeChange?.action === "restore" ? "guardrails.restoreTestCase" : "guardrails.excludeTestCase")}
-    pendingLabel={t("common.saving")}
-    pending={validationScope.isPending}
-    variant={scopeChange?.action === "exclude" ? "warning" : "default"}
-    onConfirm={() => { if (scopeChange) validationScope.mutate(scopeChange); }}
-  >
-    <div className="rounded-lg border bg-muted/35 px-4 py-3 text-sm leading-6 text-muted-foreground">{t("guardrails.confirmScopeChangeImpact")}</div>
-    {validationScope.error ? <p role="alert" className="rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">{validationScope.error instanceof Error ? validationScope.error.message : t("guardrails.operationFailed")}</p> : null}
   </ConfirmationSheet></>;
+}
+
+export function GuardrailTestingView({ guardrail, policies, cases, casesLoading, casesError, canManage, reports, onAddCase, onChanged, onRetryCases }: {
+  guardrail: Guardrail;
+  policies: Policy[];
+  cases: TestCase[];
+  casesLoading: boolean;
+  casesError?: unknown;
+  canManage: boolean;
+  reports: ReactNode;
+  onAddCase: () => void;
+  onChanged: () => Promise<void>;
+  onRetryCases: () => void;
+}) {
+  const { t } = useTranslation();
+  const [scopeChange, setScopeChange] = useState<{ caseId: string; action: "exclude" | "restore" } | null>(null);
+  const validationScope = useMutation({
+    mutationFn: ({ caseId, action }: { caseId: string; action: "exclude" | "restore" }) => action === "exclude" ? excludeGuardrailTestCase(guardrail.id, caseId) : restoreGuardrailTestCase(guardrail.id, caseId),
+    onSuccess: async (_, variables) => {
+      setScopeChange(null);
+      toast.success(t(variables.action === "exclude" ? "guardrails.testCaseExcluded" : "guardrails.testCaseRestored"));
+      await onChanged();
+    },
+    onError: (error) => notifyError(error, t("guardrails.operationFailed")),
+  });
+
+  return <>
+    <Tabs defaultValue="reports">
+      <TabsList aria-label={t("guardrails.testingViews")}>
+        <TabsTrigger value="reports">{t("guardrails.testReportsTab")}</TabsTrigger>
+        <TabsTrigger value="configuration">{t("guardrails.testConfigurationTab")}</TabsTrigger>
+      </TabsList>
+      <TabsContent value="reports" className="pt-5">{reports}</TabsContent>
+      <TabsContent value="configuration" className="space-y-4 pt-5">
+        <p className="text-sm text-muted-foreground">{t("guardrails.testConfigurationDescription")}</p>
+        {casesError ? <div className="space-y-3"><ErrorNotice error={casesError} /><Button variant="outline" onClick={onRetryCases}><RefreshCw />{t("common.retry")}</Button></div> : <TestCases
+          cases={cases}
+          bindings={guardrail.policy_bindings}
+          policies={policies}
+          loading={casesLoading}
+          onAdd={canManage ? onAddCase : undefined}
+          onExclude={canManage ? (caseId) => setScopeChange({ caseId, action: "exclude" }) : undefined}
+          onRestore={canManage ? (caseId) => setScopeChange({ caseId, action: "restore" }) : undefined}
+          busyCaseId={validationScope.isPending ? validationScope.variables?.caseId : undefined}
+        />}
+      </TabsContent>
+    </Tabs>
+    <ConfirmationSheet
+      open={Boolean(scopeChange)}
+      onOpenChange={(open) => { if (!open && !validationScope.isPending) { setScopeChange(null); validationScope.reset(); } }}
+      eyebrow={t("guardrails.confirmActionEyebrow")}
+      title={t(scopeChange?.action === "restore" ? "guardrails.confirmRestoreCaseTitle" : "guardrails.confirmExcludeCaseTitle")}
+      description={t("guardrails.confirmScopeChangeDescription")}
+      cancelLabel={t("common.cancel")}
+      confirmLabel={t(scopeChange?.action === "restore" ? "guardrails.restoreTestCase" : "guardrails.excludeTestCase")}
+      pendingLabel={t("common.saving")}
+      pending={validationScope.isPending}
+      variant={scopeChange?.action === "exclude" ? "warning" : "default"}
+      onConfirm={() => { if (scopeChange) validationScope.mutate(scopeChange); }}
+    >
+      <div className="rounded-lg border bg-muted/35 px-4 py-3 text-sm leading-6 text-muted-foreground">{t("guardrails.confirmScopeChangeImpact")}</div>
+      {validationScope.error ? <p role="alert" className="rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">{validationScope.error instanceof Error ? validationScope.error.message : t("guardrails.operationFailed")}</p> : null}
+    </ConfirmationSheet>
+  </>;
 }
 
 function PolicyBindings({ bindings, policies }: { bindings: GuardrailPolicyBinding[]; policies: Policy[] }) {
@@ -719,7 +764,7 @@ function groupTestCasesBySource(cases: TestCase[], bindings: GuardrailPolicyBind
   }];
 }
 
-export function TestCases({ cases, bindings, policies, loading, onAdd, onExclude, onRestore, busyCaseId }: { cases: TestCase[]; bindings: GuardrailPolicyBinding[]; policies: Policy[]; loading: boolean; onAdd: () => void; onExclude?: (caseId: string) => void; onRestore?: (caseId: string) => void; busyCaseId?: string }) {
+export function TestCases({ cases, bindings, policies, loading, onAdd, onExclude, onRestore, busyCaseId }: { cases: TestCase[]; bindings: GuardrailPolicyBinding[]; policies: Policy[]; loading: boolean; onAdd?: () => void; onExclude?: (caseId: string) => void; onRestore?: (caseId: string) => void; busyCaseId?: string }) {
   const { t } = useTranslation();
   if (loading) return <Skeleton className="h-64 rounded-xl" />;
   const groups = groupTestCasesBySource(cases, bindings, policies);
@@ -748,7 +793,7 @@ export function TestCases({ cases, bindings, policies, loading, onAdd, onExclude
             {group.kind === "policy" && item.excluded && onRestore ? <Button type="button" size="sm" variant="outline" className="min-h-11" disabled={busyCaseId === item.id} onClick={() => onRestore(item.id)}>{busyCaseId === item.id ? <LoaderCircle className="animate-spin" /> : <RotateCcw />}{t("guardrails.restoreTestCase")}</Button> : null}
             {group.kind === "policy" && !item.excluded && onExclude ? <Button type="button" size="sm" variant="outline" className="min-h-11 text-foreground" disabled={busyCaseId === item.id} onClick={() => onExclude(item.id)}>{busyCaseId === item.id ? <LoaderCircle className="animate-spin" /> : <Ban />}{t("guardrails.excludeTestCase")}</Button> : null}
           </article>)}</div> : <div className="px-4 py-4 pl-15"><p className="text-xs leading-5 text-muted-foreground">{group.kind === "policy" ? t("guardrails.noInheritedTests") : t("guardrails.noCustomTests")}</p></div>}
-          {group.kind === "guardrail" ? <div className="px-4 py-4 pl-15"><Button className="min-h-11" size="sm" variant="create" onClick={onAdd}><Plus />{t("guardrails.addTestCase")}</Button></div> : null}
+          {group.kind === "guardrail" && onAdd ? <div className="px-4 py-4 pl-15"><Button className="min-h-11" size="sm" variant="create" onClick={onAdd}><Plus />{t("guardrails.addTestCase")}</Button></div> : null}
         </div>
       </details>;
     })}</div>

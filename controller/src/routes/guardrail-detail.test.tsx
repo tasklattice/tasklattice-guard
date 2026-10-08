@@ -13,7 +13,7 @@ import * as api from "@/lib/api";
 import * as controllerApi from "@/lib/controller-api";
 import { defaultPolicyBinding } from "@/components/policy-binding-editor";
 
-import { DeleteGuardrailSheet, DraftReleaseView, EditGuardrailSheet, GuardrailFindingsView, GuardrailLoggingCard, GuardrailRuntimeView, ImmutableVersionView, TestCases } from "./guardrails";
+import { DeleteGuardrailSheet, DraftReleaseView, EditGuardrailSheet, GuardrailFindingsView, GuardrailLoggingCard, GuardrailRuntimeView, GuardrailTestingView, ImmutableVersionView, TestCases } from "./guardrails";
 
 const VERSION_ID = "20260813-080000.000Z";
 
@@ -443,9 +443,11 @@ describe("Guardrail detail information hierarchy", () => {
     } satisfies Guardrail;
     const client = new QueryClient();
     const onOpenValidation = vi.fn();
-    const props = { guardrail: validatedGuardrail, policies: [], cases: [], casesLoading: false, latestVersion: undefined, routers: [], onOpenValidation, onEdit: vi.fn(), onAddCase: vi.fn(), onCreateRouter: vi.fn(), onChanged: async () => undefined };
+    const props = { guardrail: validatedGuardrail, policies: [], latestVersion: undefined, routers: [], onOpenValidation, onEdit: vi.fn(), onCreateRouter: vi.fn(), onChanged: async () => undefined };
 
     const view = render(<QueryClientProvider client={client}><DraftReleaseView {...props} /></QueryClientProvider>);
+    expect(screen.queryByText("guardrails.validationInputs")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "guardrails.testCaseSources" })).toBeNull();
     expect(screen.getByRole("button", { name: "guardrails.publishVersion" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "guardrails.createRouter" })).toBeNull();
     expect(screen.queryByRole("link", { name: "guardrails.openValidation" })).toBeNull();
@@ -455,6 +457,71 @@ describe("Guardrail detail information hierarchy", () => {
     view.rerender(<QueryClientProvider client={client}><DraftReleaseView {...props} guardrail={{ ...validatedGuardrail, published_current: true }} latestVersion={{ guardrail_id: validatedGuardrail.id, version: "20260814-080000.000Z", source_draft_version: 2, compiler_version: "compiler", plan_checksum: "plan", config_checksum: "config", created_at: "2026-08-14T08:00:00Z", latest: true, runtime_engine: "llmrails", execution_mode: "nemo_only" }} /></QueryClientProvider>);
     expect(screen.queryByRole("button", { name: "guardrails.publishVersion" })).toBeNull();
     expect(screen.getByRole("button", { name: "guardrails.createRouter" })).toBeTruthy();
+  });
+
+  it("defaults Testing to reports and offers custom test creation in the second tab", () => {
+    const onAddCase = vi.fn();
+    render(<QueryClientProvider client={new QueryClient()}><GuardrailTestingView guardrail={deletableGuardrail} policies={[]} cases={[]} casesLoading={false} canManage reports={<p>Existing test reports</p>} onAddCase={onAddCase} onChanged={vi.fn()} onRetryCases={vi.fn()} /></QueryClientProvider>);
+    expect(screen.getByRole("tab", { name: "guardrails.testReportsTab" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByText("Existing test reports")).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "guardrails.testCaseSources" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("tab", { name: "guardrails.testConfigurationTab" }));
+    expect(screen.queryByText("Existing test reports")).toBeNull();
+    const customGroup = screen.getByTestId("test-source-guardrail:custom");
+    fireEvent.click(customGroup.querySelector("summary")!);
+    fireEvent.click(screen.getByRole("button", { name: "guardrails.addTestCase" }));
+    expect(onAddCase).toHaveBeenCalledOnce();
+    expect(screen.getByRole("tab", { name: "guardrails.testConfigurationTab" }).getAttribute("aria-selected")).toBe("true");
+
+    fireEvent.click(screen.getByRole("tab", { name: "guardrails.testReportsTab" }));
+    expect(screen.getByText("Existing test reports")).toBeTruthy();
+  });
+
+  it.each(["exclude", "restore"] as const)("preserves confirmation, error recovery and refresh when Testing will %s an inherited case", async (action) => {
+    const testCase = {
+      id: "case-inherited", name: "Inherited case", guardrail_id: deletableGuardrail.id, policy_id: "policy-one",
+      phase: "input", content: "reviewed content", expected_decision: "block", updated_at: "2026-08-13T08:00:00Z",
+      trusted_instruction: "", target_source: "user_input", query: "", grounding_sources: [], expected_reasoning_result: null,
+      case_type: "rule_acceptance", required: true, excluded: action === "restore", origin: "generated",
+      source_policy_id: "policy-one", source_policy_version: "1.0.0", source_case_id: "source-1", covered_rule_ids: ["rule-1"],
+    } satisfies TestCase;
+    const mutate = vi.spyOn(api, action === "exclude" ? "excludeGuardrailTestCase" : "restoreGuardrailTestCase")
+      .mockRejectedValueOnce(new Error("Scope temporarily unavailable"))
+      .mockResolvedValue({ ...testCase, excluded: action === "exclude" });
+    const onChanged = vi.fn();
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { mutations: { retry: false } } })}><GuardrailTestingView guardrail={deletableGuardrail} policies={[]} cases={[testCase]} casesLoading={false} canManage reports={<p>Reports</p>} onAddCase={vi.fn()} onChanged={onChanged} onRetryCases={vi.fn()} /></QueryClientProvider>);
+    fireEvent.click(screen.getByRole("tab", { name: "guardrails.testConfigurationTab" }));
+    fireEvent.click(screen.getByTestId("test-source-policy:policy-one").querySelector("summary")!);
+    const label = action === "exclude" ? "guardrails.excludeTestCase" : "guardrails.restoreTestCase";
+    fireEvent.click(screen.getByRole("button", { name: label }));
+    expect(mutate).not.toHaveBeenCalled();
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "common.cancel" }));
+    expect(mutate).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: label }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: label }));
+    await screen.findByRole("alert");
+    expect(screen.getByRole("alert").textContent).toContain("Scope temporarily unavailable");
+    expect(onChanged).not.toHaveBeenCalled();
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: label }));
+    await waitFor(() => expect(onChanged).toHaveBeenCalledOnce());
+    expect(mutate).toHaveBeenLastCalledWith(deletableGuardrail.id, testCase.id);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByRole("tab", { name: "guardrails.testConfigurationTab" }).getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("offers retry for unavailable test configuration and preserves read-only access", () => {
+    const onRetryCases = vi.fn();
+    const props = { guardrail: deletableGuardrail, policies: [], cases: [], casesLoading: false, canManage: false, reports: <p>Reports</p>, onAddCase: vi.fn(), onChanged: vi.fn(), onRetryCases };
+    const client = new QueryClient();
+    const view = render(<QueryClientProvider client={client}><GuardrailTestingView {...props} casesError={new Error("Cases unavailable")} /></QueryClientProvider>);
+    fireEvent.click(screen.getByRole("tab", { name: "guardrails.testConfigurationTab" }));
+    expect(screen.getByText("Cases unavailable")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "common.retry" }));
+    expect(onRetryCases).toHaveBeenCalledOnce();
+    view.rerender(<QueryClientProvider client={client}><GuardrailTestingView {...props} /></QueryClientProvider>);
+    fireEvent.click(screen.getByTestId("test-source-guardrail:custom").querySelector("summary")!);
+    expect(screen.queryByRole("button", { name: "guardrails.addTestCase" })).toBeNull();
   });
 
   it("lets the Default Guardrail edit and validate its draft without creating another Router", () => {
@@ -484,7 +551,7 @@ describe("Guardrail detail information hierarchy", () => {
     const onEdit = vi.fn();
     const onRunValidation = vi.fn();
 
-    render(<QueryClientProvider client={client}><DraftReleaseView guardrail={defaultGuardrail} policies={[]} cases={[]} casesLoading={false} routers={[]} onRunValidation={onRunValidation} onEdit={onEdit} onAddCase={vi.fn()} onCreateRouter={vi.fn()} onChanged={async () => undefined} /></QueryClientProvider>);
+    render(<QueryClientProvider client={client}><DraftReleaseView guardrail={defaultGuardrail} policies={[]} routers={[]} onRunValidation={onRunValidation} onEdit={onEdit} onCreateRouter={vi.fn()} onChanged={async () => undefined} /></QueryClientProvider>);
 
     expect(screen.queryByRole("link", { name: "guardrails.runReviewed" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "guardrails.runReviewed" }));
@@ -531,7 +598,7 @@ describe("Guardrail detail information hierarchy", () => {
     const run = { id: "failed-run", status: "failed", failure_reason: "No Evaluator Binding is available for content_safety.", metrics: { compliance_rate: 0 } } as NonNullable<Guardrail["latest_validation_run"]>;
     const guardrail = { ...deletableGuardrail, tested_current: false, published_current: false, latest_validation_run: run };
     const onOpenValidation = vi.fn();
-    render(<QueryClientProvider client={new QueryClient()}><DraftReleaseView guardrail={guardrail} policies={[]} cases={[]} casesLoading={false} routers={[]} onOpenValidation={onOpenValidation} onEdit={vi.fn()} onAddCase={vi.fn()} onCreateRouter={vi.fn()} onChanged={async () => undefined} /></QueryClientProvider>);
+    render(<QueryClientProvider client={new QueryClient()}><DraftReleaseView guardrail={guardrail} policies={[]} routers={[]} onOpenValidation={onOpenValidation} onEdit={vi.fn()} onCreateRouter={vi.fn()} onChanged={async () => undefined} /></QueryClientProvider>);
     expect(screen.getByText(run.failure_reason!)).toBeTruthy();
     expect(screen.queryByText(/guardrails.lastValidationFailedDetail/)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "guardrails.openValidation" }));
@@ -560,7 +627,7 @@ describe("Guardrail detail information hierarchy", () => {
       })),
     };
     const client = new QueryClient();
-    render(<QueryClientProvider client={client}><DraftReleaseView guardrail={guardrail} policies={policies} cases={[]} casesLoading={false} routers={[]} onEdit={vi.fn()} onAddCase={vi.fn()} onCreateRouter={vi.fn()} onChanged={async () => undefined} /></QueryClientProvider>);
+    render(<QueryClientProvider client={client}><DraftReleaseView guardrail={guardrail} policies={policies} routers={[]} onEdit={vi.fn()} onCreateRouter={vi.fn()} onChanged={async () => undefined} /></QueryClientProvider>);
 
     for (const binding of draft.policyBindings) {
       const policy = policies.find((item) => item.id === binding.policyId)!;
