@@ -122,20 +122,20 @@ describe("Controller/Runner control protocol", () => {
     const encoded = connect.responseSerialize({
       messageId: "message-1",
       sentAtUnixMs: "1",
-      compileRequest: {
-        compileId: "compile-1", guardrailId: "guardrail-1", guardrailVersion: versionId,
-        generation: "11", plan: planToWire({ ...plan,
+      validationRequest: {
+        runId: "run-1", guardrailId: "guardrail-1", candidateVersion: versionId, sourceDraftRevision: 1,
+        plan: planToWire({ ...plan,
           steps: [{ ...plan.steps[0], on_unsafe: action }],
           policy_bindings: [{ ...plan.policy_bindings[0], action }],
-        }), runtimeProfile: "nemo-default",
+        }), runtimeProfile: "nemo-default", testCases: [],
       },
     });
 
     const decoded = connect.responseDeserialize(encoded);
-    expect(decoded.body).toBe("compileRequest");
-    expect(decoded.compileRequest?.plan?.safetyLevel).toBe("SAFETY_LEVEL_STRICT");
-    expect(decoded.compileRequest?.plan?.steps[0]?.onUnsafe).toBe(`ENFORCEMENT_ACTION_${action.toUpperCase()}`);
-    expect(decoded.compileRequest?.plan?.policyBindings[0]?.action).toBe(`ENFORCEMENT_ACTION_${action.toUpperCase()}`);
+    expect(decoded.body).toBe("validationRequest");
+    expect(decoded.validationRequest?.plan?.safetyLevel).toBe("SAFETY_LEVEL_STRICT");
+    expect(decoded.validationRequest?.plan?.steps[0]?.onUnsafe).toBe(`ENFORCEMENT_ACTION_${action.toUpperCase()}`);
+    expect(decoded.validationRequest?.plan?.policyBindings[0]?.action).toBe(`ENFORCEMENT_ACTION_${action.toUpperCase()}`);
   });
 
   it("round-trips the complete Guardrail Plan through generated wire types", () => {

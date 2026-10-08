@@ -9,6 +9,15 @@ export type DeletionImpact = {
   requiresSecondConfirmation: boolean;
 };
 
+/** Runtime that compiled and executed a validation candidate. */
+export type ValidationRuntimeFingerprint = {
+  runnerId: string;
+  runnerVersion: string;
+  nemoVersion: string;
+  modelRevisionId: string;
+  compilerModelTypes: string[];
+};
+
 export type CompiledArtifactInput = {
   id: string;
   guardrailId: string;

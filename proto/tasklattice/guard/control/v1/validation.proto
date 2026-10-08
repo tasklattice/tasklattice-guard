@@ -2,11 +2,13 @@ syntax = "proto3";
 
 package tasklattice.guard.control.v1;
 
+import "artifact.proto";
 import "common.proto";
 import "enforcement_action.proto";
 import "evaluation.proto";
 import "runtime.proto";
 
+// Coarse execution stage reported while a validation run is in progress.
 enum ValidationExecutionPhase {
   VALIDATION_EXECUTION_PHASE_UNSPECIFIED = 0;
   VALIDATION_EXECUTION_PHASE_PREPARING = 1;
@@ -188,4 +190,22 @@ message ValidationResult {
   ValidationMetrics metrics = 6;
   // Per-case results; meaningful only when accepted is true.
   repeated ValidationCaseResult results = 7;
+  // The exact compiled Artifact the cases ran against, without envelope or
+  // signature. Present for accepted Guardrail runs with PASSED status; the
+  // Controller publishes this content unchanged instead of recompiling.
+  optional Artifact candidate_artifact = 8;
+  // Runtime that compiled and executed the candidate.
+  ValidationRuntime runtime = 9;
+}
+
+// Runtime fingerprint recorded with validation evidence.
+message ValidationRuntime {
+  string runner_id = 1;
+  string runner_version = 2;
+  // NeMo Guardrails version that compiled and executed the candidate.
+  string nemo_version = 3;
+  // Applied model configuration revision; empty when none was configured.
+  string model_revision_id = 4;
+  // Native model types the compiler bound into the candidate configuration.
+  repeated string compiler_model_types = 5;
 }

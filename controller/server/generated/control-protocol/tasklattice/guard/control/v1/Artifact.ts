@@ -51,8 +51,8 @@ export interface Artifact {
   'actionBindings'?: (_tasklattice_guard_control_v1_ActionBinding)[];
   'dependencyManifest'?: (_tasklattice_guard_control_v1_ArtifactDependency)[];
   /**
-   * Lowercase SHA-256 hex digest of canonical JSON (see canonical-json.ts /
-   * protocol_codec.canonical_json) over every field except artifact_id,
+   * Lowercase SHA-256 hex digest of the shared canonical encoding (see
+   * controller/shared/canonical-json.ts) over every field except artifact_id,
    * generation, checksum and signature.
    */
   'checksum'?: (string);
@@ -107,8 +107,8 @@ export interface Artifact__Output {
   'actionBindings': (_tasklattice_guard_control_v1_ActionBinding__Output)[];
   'dependencyManifest': (_tasklattice_guard_control_v1_ArtifactDependency__Output)[];
   /**
-   * Lowercase SHA-256 hex digest of canonical JSON (see canonical-json.ts /
-   * protocol_codec.canonical_json) over every field except artifact_id,
+   * Lowercase SHA-256 hex digest of the shared canonical encoding (see
+   * controller/shared/canonical-json.ts) over every field except artifact_id,
    * generation, checksum and signature.
    */
   'checksum': (string);

@@ -675,8 +675,7 @@ export function createHttpApp(input: {
       expectedDraftRevision: body.expectedDraftRevision,
       guardrailId: context.req.param("id"),
       actorId: context.get("actor").id,
-      compilerAvailable: input.runnerControl.hasDefaultCompiler(),
-    }), 202);
+    }), 201);
   });
   app.get("/api/v1/guardrails/:id/draft-changes", authenticated, async context => {
     return context.json(await input.service.guardrailDraftChanges(context.req.param("id")));

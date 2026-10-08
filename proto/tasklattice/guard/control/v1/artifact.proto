@@ -82,39 +82,25 @@ message Artifact {
   repeated PromptDefinition prompts = 11;
   repeated ActionBinding action_bindings = 12;
   repeated ArtifactDependency dependency_manifest = 13;
-  // Lowercase SHA-256 hex digest of canonical JSON (see canonical-json.ts /
-  // protocol_codec.canonical_json) over every field except artifact_id,
+  // Lowercase SHA-256 hex digest of the shared canonical encoding (see
+  // controller/shared/canonical-json.ts) over every field except artifact_id,
   // generation, checksum and signature.
   string checksum = 14;
   // Base64 Ed25519 signature over the UTF-8 checksum, produced by Controller.
   string signature = 15;
 }
 
-// Command sent to a compiler-capable GuardRails 0 Runner.
+// Input to the offline Artifact compiler (validation candidates, fixtures and
+// tooling). It is not a control-channel command.
 message CompileRequest {
-  // Idempotency/correlation ID for exactly one requested compilation.
+  // Correlation ID for exactly one requested compilation.
   string compile_id = 1;
   string guardrail_id = 2;
   // Candidate immutable version that the result must preserve.
   string guardrail_version = 3;
-  // Desired-state generation reserved by Controller for this candidate.
+  // Delivery generation copied into the Artifact envelope; zero for candidates.
   int64 generation = 4;
   GuardrailPlan plan = 5;
   // Extensible runtime registry identifier, not a model or Provider name.
   string runtime_profile = 6;
-}
-
-// Compiler response. Accepted results must contain an artifact; rejected
-// results must contain a reason and must not be activated by Controller.
-message CompileResult {
-  // Runner that executed the compile command.
-  string runner_id = 1;
-  // Must exactly match the originating CompileRequest.compile_id.
-  string compile_id = 2;
-  // True only when compilation produced the complete candidate artifact below.
-  bool accepted = 3;
-  // Human-readable rejection detail; empty on successful compilation.
-  string reason = 4;
-  // Required when accepted is true and absent when accepted is false.
-  optional Artifact artifact = 5;
 }

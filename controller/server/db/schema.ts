@@ -34,6 +34,9 @@ import type {
   RunnerStatus,
   ValidationRunState,
 } from "../../shared/lifecycle.js";
+import type { ArtifactContent } from "../domain/artifact-content.js";
+import type { GuardrailInspection } from "../domain/guardrail-inspection.js";
+import type { ValidationRuntimeFingerprint } from "../domain/models.js";
 
 const createdAt = timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 const updatedAt = timestamp("updated_at", { withTimezone: true }).notNull().defaultNow();
@@ -266,11 +269,14 @@ export const guardrailVersions = pgTable("guardrail_version", {
   version: text("version").notNull(),
   generation: bigint("generation", { mode: "number" }).notNull(),
   sourceDraftRevision: integer("source_draft_revision").notNull().default(1),
-  status: text("status").$type<GuardrailVersionState>().notNull().default("compiling"),
+  status: text("status").$type<GuardrailVersionState>().notNull().default("ready"),
   runtimeProfile: text("runtime_profile").notNull(),
   plan: jsonb("plan").$type<Record<string, unknown>>().notNull(),
   artifactId: text("artifact_id"),
   failureReason: text("failure_reason"),
+  // Passed test run whose exact candidate Artifact this version publishes.
+  validationRunId: text("validation_run_id"),
+  inspection: jsonb("inspection").$type<GuardrailInspection>(),
   createdBy: text("created_by").references(() => user.id),
   createdAt,
 }, (table) => [
@@ -325,6 +331,12 @@ export const validationRuns = pgTable("guardrail_validation_run", {
   results: jsonb("results").$type<ValidationCaseResult[]>().notNull().default([]),
   excludedCaseIds: jsonb("excluded_case_ids").$type<string[]>().notNull().default([]),
   failureReason: text("failure_reason"),
+  // The exact content the cases ran against; publication reuses it unchanged.
+  candidateArtifact: jsonb("candidate_artifact").$type<ArtifactContent>(),
+  candidateDigest: text("candidate_digest"),
+  candidateInspection: jsonb("candidate_inspection").$type<GuardrailInspection>(),
+  testSuiteDigest: text("test_suite_digest"),
+  runtimeFingerprint: jsonb("runtime_fingerprint").$type<ValidationRuntimeFingerprint>(),
   // Null identifies the audited system-baseline validation, not a human user.
   createdBy: text("created_by").references(() => user.id),
   createdAt,

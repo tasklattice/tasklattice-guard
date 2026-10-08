@@ -189,8 +189,6 @@ class RunnerControlClient:
             self._metrics.set_desired_generation(message.registration_accepted.desired_generation)
         elif body == "desired_state":
             await self._apply_desired_state(message.desired_state)
-        elif body == "compile_request":
-            await self._compile(message.compile_request)
         elif body == "validation_request":
             await self._validate(message.validation_request)
         elif body == "capability_validation_request":
@@ -341,39 +339,6 @@ class RunnerControlClient:
         await self._send(protocol.RunnerMessage(message_id=str(uuid.uuid4()), sent_at_unix_ms=_now_ms(),
                                               capability_validation_result=result))
 
-    async def _compile(self, request: protocol.CompileRequest) -> None:
-        if self._compiler is None:
-            return
-        self._metrics.job("compile", True)
-        try:
-            with diagnostic_phase("guardrail.compile", compile_id=request.compile_id,
-                                  guardrail_id=request.guardrail_id, version=request.guardrail_version):
-                artifact = await prepare(self._compiler.compile, request)
-            result = protocol.CompileResult(
-                runner_id=self._settings.runner_id,
-                compile_id=request.compile_id,
-                accepted=True,
-                artifact=artifact,
-            )
-        except Exception as error:
-            logger.exception("Guardrail compile %s failed.", request.compile_id)
-            result = protocol.CompileResult(
-                runner_id=self._settings.runner_id,
-                compile_id=request.compile_id,
-                accepted=False,
-                reason=str(error),
-                artifact=protocol.Artifact(
-                    guardrail_id=request.guardrail_id,
-                    guardrail_version=request.guardrail_version,
-                    generation=request.generation,
-                ),
-            )
-        finally:
-            self._metrics.job("compile", False)
-        await self._send(protocol.RunnerMessage(
-            message_id=str(uuid.uuid4()), sent_at_unix_ms=_now_ms(), compile_result=result,
-        ))
-
     async def _validate(self, request: protocol.ValidationRequest) -> None:
         if self._validator is None:
             return
@@ -390,19 +355,30 @@ class RunnerControlClient:
         try:
             with diagnostic_phase("guardrail.validation", run_id=request.run_id,
                                   guardrail_id=request.guardrail_id, cases=len(request.test_cases)):
-                status, metrics, results = await self._validator.validate(request, on_progress=report_progress)
+                outcome = await self._validator.run(request, on_progress=report_progress)
+            passed = outcome.status == "passed"
             result = protocol.ValidationResult(
                 runner_id=self._settings.runner_id,
                 run_id=request.run_id,
                 accepted=True,
                 status=(
                     protocol.VALIDATION_STATUS_PASSED
-                    if status == "passed"
+                    if passed
                     else protocol.VALIDATION_STATUS_FAILED
                 ),
-                metrics=validation_metrics_to_proto(metrics),
-                results=[validation_case_result_to_proto(item) for item in results],
+                metrics=validation_metrics_to_proto(outcome.metrics),
+                results=[validation_case_result_to_proto(item) for item in outcome.results],
+                runtime=protocol.ValidationRuntime(
+                    runner_id=self._settings.runner_id,
+                    runner_version=SOFTWARE_VERSION["version"],
+                    nemo_version=importlib.metadata.version("nemoguardrails"),
+                    model_revision_id=self._store.model_revision_id,
+                    compiler_model_types=list(self._validator.compiler_model_types),
+                ),
             )
+            if passed:
+                # Publication reuses exactly this tested content.
+                result.candidate_artifact.CopyFrom(outcome.artifact)
         except Exception as error:
             logger.exception("Guardrail Validation %s failed.", request.run_id)
             result = protocol.ValidationResult(

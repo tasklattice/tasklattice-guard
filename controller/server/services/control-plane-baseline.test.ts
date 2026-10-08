@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import { generateKeyPairSync } from "node:crypto";
+import { generateKeyPairSync, verify } from "node:crypto";
 import { mkdtempSync, writeFileSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { getTableName } from "drizzle-orm";
@@ -11,6 +11,7 @@ import { buildGuardrailPlan, normalizeGuardrailDraft } from "../domain/guardrail
 import { emptyValidationMetrics, generatedTestCases } from "../domain/validation.js";
 import { PolicyCatalog } from "../policy-catalog/catalog.js";
 import { ControlPlaneService } from "./control-plane.js";
+import { artifactContentDigest } from "../domain/artifact-content.js";
 
 const policyCatalogDir = resolve("../runner/toolkit/policy_library/assets");
 const policies = PolicyCatalog.load(policyCatalogDir).list();
@@ -31,6 +32,22 @@ function legacyBaseline() {
         enabledRails: policy.rails, reasoningPolicy: null };
     }),
   }) };
+}
+
+const keyDirectory = mkdtempSync(resolve(tmpdir(), "guard-baseline-signing-test-"));
+const keyPath = resolve(keyDirectory, "key.pem");
+const keyPair = generateKeyPairSync("ed25519");
+const publicKey = keyPair.publicKey;
+writeFileSync(keyPath, keyPair.privateKey.export({ format: "pem", type: "pkcs8" }), { mode: 0o600 });
+afterAll(() => rmSync(keyDirectory, { recursive: true, force: true }));
+
+/** A compiled candidate exactly as a Runner returns it with a passed run. */
+function candidate() {
+  const guardrailVersion = "20260906-010000.001Z";
+  return { guardrailId: "guardrail-default", guardrailVersion, compilerVersion: "compiler", nemoVersion: "0.24.0",
+    runtimeProfile: "llmrails_colang1_standard",
+    plan: buildGuardrailPlan({ guardrailId: "guardrail-default", guardrailVersion, draft: baseline().draftConfig, policies }),
+    configYaml: "", colangContent: "", prompts: [] as unknown[], actionBindings: [] as unknown[], dependencyManifest: [] as unknown[] };
 }
 
 function harness(reads: unknown[][], config: Partial<ControllerConfig> = {}, updateRows: Record<string, unknown[]> = {}) {
@@ -123,31 +140,43 @@ describe("Default baseline validation gate", () => {
     expect(test.inserts.map((item) => item.table)).toEqual(["controller_state", "runner_pool"]);
   });
 
-  it("compiles precisely the validated revision and preserves the old active artifact until acceptance", async () => {
+  it("publishes precisely the validated candidate for the system-owned Default", async () => {
     const stored = { ...baseline(), status: "active", latestVersion: "old", latestArtifactId: "old-artifact" };
-    const validation = { id: "validation-new", status: "passed", createdAt: new Date("2026-09-06T01:00:00.001Z") };
-    const plan = buildGuardrailPlan({ guardrailId: stored.id, guardrailVersion: "20260906-010000.001Z", draft: stored.draftConfig, policies });
-    const test = harness([[stored], [], [{ sourceDraftRevision: 1 }], [validation], [], [{ payload: { plan, runtimeProfile: "auto" } }], []]);
+    const content = candidate();
+    const validation = { id: "validation-new", status: "passed", guardrailVersion: content.guardrailVersion, sourceDraftRevision: 2,
+      candidateArtifact: content, candidateDigest: artifactContentDigest(content), candidateInspection: { testSuite: { total: 1, digest: "d" } } };
+    const test = harness([[stored], [], [{ sourceDraftRevision: 1 }], [validation], [], []], { artifactSigningKeyPath: keyPath });
     await test.service.initialize();
     expect(test.reads).toEqual([]);
+    expect(test.inserts).toContainEqual({ table: "guardrail_artifact", value: expect.objectContaining({
+      checksum: validation.candidateDigest, plan: content.plan, generation: 10,
+    }) });
     expect(test.inserts).toContainEqual({ table: "guardrail_version", value: expect.objectContaining({
-      version: "20260906-010000.001Z", sourceDraftRevision: 2, status: "compiling", createdBy: null,
+      version: content.guardrailVersion, sourceDraftRevision: 2, status: "ready", createdBy: null, validationRunId: validation.id,
     }) });
     expect(test.inserts).toContainEqual({ table: "audit_event", value: expect.objectContaining({
-      kind: "guardrail.default.compile_requested", detail: expect.objectContaining({ validationRunId: validation.id }),
+      kind: "guardrail.published", detail: expect.objectContaining({ validationRunId: validation.id, contentDigest: validation.candidateDigest }),
     }) });
-    expect(test.updates.filter((item) => item.table === "guardrail")).toEqual([
-      { table: "guardrail", value: expect.objectContaining({ status: "active" }) },
-    ]);
-    expect(test.updates.some((item) => "latestArtifactId" in item.value || "latestVersion" in item.value)).toBe(false);
+    expect(test.updates).toContainEqual({ table: "guardrail", value: expect.objectContaining({ latestVersion: content.guardrailVersion, status: "active" }) });
+    expect(test.inserts.some((item) => item.value.kind === "guardrail.compile_requested")).toBe(false);
   });
 
-  it("does not queue duplicate compilation when the validated version already exists", async () => {
-    const test = harness([[baseline()], [], [{ status: "passed", createdAt: new Date("2026-09-06T01:00:00.001Z") }], [{ version: "20260906-010000.001Z" }]]);
+  it("does not publish twice when the validated version already exists", async () => {
+    const test = harness([[baseline()], [], [{ status: "passed", guardrailVersion: "20260906-010000.001Z" }], [{ version: "20260906-010000.001Z" }]]);
     await test.service.initialize();
     expect(test.reads).toEqual([]);
     expect(test.updates).toEqual([]);
     expect(test.inserts.map((item) => item.table)).toEqual(["controller_state", "runner_pool"]);
+  });
+
+  it("tests again instead of publishing a run that passed before candidates were retained", async () => {
+    const stored = baseline();
+    const cases = generatedTestCases(stored.id, stored.draftConfig, policies);
+    const test = harness([[stored], [], [{ status: "passed", guardrailVersion: "20260906-010000.001Z", candidateArtifact: null }], [], cases, [{ id: "retest" }]]);
+    await test.service.initialize();
+    expect(test.reads).toEqual([]);
+    expect(test.inserts.some((item) => item.table === "guardrail_version")).toBe(false);
+    expect(test.inserts).toContainEqual({ table: "guardrail_validation_run", value: expect.objectContaining({ status: "queued", createdBy: null }) });
   });
 
   it("leaves user-authored Default changes to explicit Validate and Publish", async () => {
@@ -163,90 +192,82 @@ describe("Default baseline validation gate", () => {
   });
 
   it.each([null, "admin-user"])("only resumes automatic publication for system validation (actor %s)", async (createdBy) => {
-    const test = harness([[], [{ id: "validation-1", guardrailId: "guardrail-default", createdBy, status: "running" }]]);
+    const content = candidate();
+    const run = { id: "validation-1", guardrailId: "guardrail-default", guardrailVersion: content.guardrailVersion, createdBy, status: "running" };
+    const test = harness([[], [run], [{ payload: { plan: content.plan, runtimeProfile: "auto" } }]]);
     const reconcile = vi.spyOn(test.service, "initialize").mockResolvedValue();
-    await test.service.completeValidation({ runId: "validation-1", status: "passed", metrics: emptyValidationMetrics(), results: [] });
+    await test.service.completeValidation({ runId: "validation-1", status: "passed", metrics: emptyValidationMetrics(), results: [], candidateArtifact: content });
     expect(reconcile).toHaveBeenCalledTimes(createdBy === null ? 1 : 0);
     expect(test.reads).toEqual([]);
   });
 });
 
-describe("Compiled artifact publication gate", () => {
-  const directory = mkdtempSync(resolve(tmpdir(), "guard-baseline-signing-test-"));
-  const keyPath = resolve(directory, "key.pem");
-  writeFileSync(keyPath, generateKeyPairSync("ed25519").privateKey.export({ format: "pem", type: "pkcs8" }), { mode: 0o600 });
-  afterAll(() => rmSync(directory, { recursive: true, force: true }));
-  const plan = buildGuardrailPlan({ guardrailId: "guardrail-default", guardrailVersion: "20260906-010000.001Z", draft: baseline().draftConfig, policies });
-  const version = { status: "compiling", sourceDraftRevision: 2, plan };
-  const input = { compileId: "compile-1", guardrailId: "guardrail-default", guardrailVersion: "20260906-010000.001Z", generation: 1,
-    compilerVersion: "compiler", nemoVersion: "0.24.0", runtimeProfile: "llmrails_colang1_standard", plan,
-    configYaml: "", colangContent: "", prompts: [], actionBindings: [], dependencyManifest: [] };
+describe("Validated candidate gate", () => {
+  const run = { id: "validation-1", guardrailId: "guardrail-default", guardrailVersion: "20260906-010000.001Z", createdBy: "admin", status: "running" };
+  const request = (plan: Record<string, unknown>, runtimeProfile = "auto") => [{ payload: { plan, runtimeProfile } }];
+  const complete = (test: ReturnType<typeof harness>, candidateArtifact?: ReturnType<typeof candidate>) => test.service.completeValidation({
+    runId: run.id, status: "passed", metrics: emptyValidationMetrics(), results: [], candidateArtifact,
+    runtime: { runnerId: "runner-0", runnerVersion: "1.0.0", nemoVersion: "0.24.0", modelRevisionId: "", compilerModelTypes: [] },
+  });
+  const stored = (test: ReturnType<typeof harness>) => test.updates.find((item) => item.table === "guardrail_validation_run")!.value;
 
-  it("refuses old bootstrap artifacts that have never passed validation", async () => {
-    const test = harness([[baseline()], [version], []], { artifactSigningKeyPath: keyPath });
-    await expect(test.service.acceptCompiledArtifact(input)).rejects.toMatchObject({ code: "guardrail_validation_required" });
-    expect(test.inserts).toEqual([]);
-    expect(test.updates).toEqual([]);
-    expect(test.reads).toEqual([]);
+  it("stores the exact tested candidate and its digest", async () => {
+    const content = candidate();
+    const test = harness([[], [run], request(content.plan)]);
+    await complete(test, content);
+    expect(stored(test)).toMatchObject({ status: "passed", candidateArtifact: content, candidateDigest: artifactContentDigest(content),
+      runtimeFingerprint: expect.objectContaining({ nemoVersion: "0.24.0" }) });
   });
 
-  it("refuses a compiler response that changes an executable Rule action", async () => {
-    const altered = structuredClone(plan);
-    (altered.steps as Array<{ on_unsafe: string }>)[0]!.on_unsafe = "allow";
-    const test = harness([[baseline()], [version]], { artifactSigningKeyPath: keyPath });
-    await expect(test.service.acceptCompiledArtifact({ ...input, plan: altered })).rejects.toMatchObject({ code: "compile_plan_mismatch" });
-    expect(test.inserts).toEqual([]);
-    expect(test.updates).toEqual([]);
+  it.each([
+    ["missing", undefined, undefined],
+    ["changed Rule action", (plan: Record<string, unknown>) => { (plan.steps as Array<{ on_unsafe: string }>)[0]!.on_unsafe = "allow"; }, undefined],
+    ["other version", undefined, "20260906-020000.000Z"],
+  ] as const)("fails a passed run whose candidate is %s", async (name, mutate, otherVersion) => {
+    const content = candidate();
+    if (mutate) mutate(content.plan);
+    if (otherVersion) content.guardrailVersion = otherVersion;
+    const test = harness([[], [run], request(candidate().plan)]);
+    await complete(test, name === "missing" ? undefined : content);
+    expect(stored(test)).toMatchObject({ status: "failed", failureReason: expect.any(String) });
+    expect(stored(test)).not.toHaveProperty("candidateArtifact");
   });
 
-  it("retains a late approved artifact without overwriting a newer publish or explicit rollback", async () => {
-    const test = harness([[{ ...baseline(), desiredGeneration: 2, latestArtifactId: "newer-artifact" }], [version], [{ id: "passed-validation" }]], { artifactSigningKeyPath: keyPath });
-    await test.service.acceptCompiledArtifact(input);
-    expect(test.reads).toEqual([]);
-    expect(test.updates).toContainEqual({ table: "guardrail_version", value: expect.objectContaining({ status: "ready" }) });
-    expect(test.updates.some((item) => item.table === "guardrail" || item.table === "router")).toBe(false);
-    expect(test.inserts).toContainEqual({ table: "audit_event", value: expect.objectContaining({
-      kind: "guardrail.compiled", detail: expect.objectContaining({ activated: false }),
-    }) });
-    expect(test.inserts).toContainEqual({ table: "controller_outbox", value: expect.objectContaining({
-      kind: "runner.desired_state_changed", payload: expect.objectContaining({ generation: 10 }),
-    }) });
-  });
-
-  it("advances delivery generation when compilation finishes after the request generation was sent", async () => {
-    const test = harness([[{ ...baseline(), id: 'test-rail', desiredGeneration: 1 }], [version], [{ id: 'passed-validation' }]],
-      { artifactSigningKeyPath: keyPath });
-    await test.service.acceptCompiledArtifact({ ...input, guardrailId: 'test-rail' });
-    expect(test.updates).toContainEqual({ table: 'controller_state', value: expect.objectContaining({ desiredGeneration: expect.anything() }) });
-    expect(test.inserts).toContainEqual({ table: 'controller_outbox', value: expect.objectContaining({
-      kind: 'runner.desired_state_changed', payload: expect.objectContaining({ generation: 10 }),
-    }) });
-    expect(test.inserts).toContainEqual({ table: 'guardrail_artifact', value: expect.objectContaining({ generation: 1 }) });
-    expect(test.updates).toContainEqual({ table: 'guardrail', value: expect.objectContaining({ desiredGeneration: 1 }) });
+  it("fails a candidate compiled for a different runtime profile than requested", async () => {
+    const test = harness([[], [run], request(candidate().plan, "iorails_native")]);
+    await complete(test, candidate());
+    expect(stored(test)).toMatchObject({ status: "failed" });
   });
 });
 
-describe("Validated executable snapshot", () => {
-  const createdAt = new Date("2026-09-06T01:00:00.001Z");
-  const validation = { id: "validation-1", status: "passed", sourceDraftRevision: 2, createdAt };
-  const plan = buildGuardrailPlan({ guardrailId: "guardrail-default", guardrailVersion: "20260906-010000.001Z", draft: baseline().draftConfig, policies });
+describe("Publishing the validated candidate", () => {
+  const content = candidate();
+  const validation = { id: "validation-1", status: "passed", guardrailVersion: content.guardrailVersion, sourceDraftRevision: 2,
+    candidateArtifact: content, candidateDigest: artifactContentDigest(content), candidateInspection: { testSuite: { total: 1, digest: "d" } } };
 
-  it.each(["missing", "catalog-action", "runtime-profile"])("requires new validation when the validated snapshot differs: %s", async (change) => {
-    const snapshot = { payload: { plan: structuredClone(plan), runtimeProfile: "auto" } };
-    if (change === "catalog-action") (snapshot.payload.plan.steps as Array<{ on_unsafe: string }>)[0]!.on_unsafe = "allow";
-    if (change === "runtime-profile") snapshot.payload.runtimeProfile = "iorails_native";
-    const test = harness([[baseline()], [validation], [], change === "missing" ? [] : [snapshot]]);
-    await expect(test.service.requestGuardrailPublish({ guardrailId: "guardrail-default", actorId: "admin", compilerAvailable: true }))
-      .rejects.toMatchObject({ code: "guardrail_validation_plan_changed" });
-    expect(test.inserts).toEqual([]);
+  it("signs and publishes the tested content without rebuilding it from the draft or Library", async () => {
+    const test = harness([[baseline()], [validation], [], []], { artifactSigningKeyPath: keyPath, policyCatalogDir: "/nonexistent-policy-library" });
+    await expect(test.service.requestGuardrailPublish({ guardrailId: "guardrail-default", actorId: "admin" }))
+      .resolves.toMatchObject({ status: "ready", version: content.guardrailVersion });
+    const artifact = test.inserts.find((item) => item.table === "guardrail_artifact")!.value;
+    expect(artifact).toMatchObject({ ...content, checksum: validation.candidateDigest });
+    expect(verify(null, Buffer.from(String(artifact.checksum)), publicKey, Buffer.from(String(artifact.signature), "base64"))).toBe(true);
+    expect(test.inserts).toContainEqual({ table: "guardrail_version", value: expect.objectContaining({ plan: content.plan, status: "ready", validationRunId: validation.id, inspection: validation.candidateInspection }) });
+    expect(test.inserts.some((item) => item.value.kind === "guardrail.compile_requested")).toBe(false);
     expect(test.reads).toEqual([]);
   });
 
-  it("publishes when the saved executable contract exactly matches what passed validation", async () => {
-    const test = harness([[baseline()], [validation], [], [{ payload: { plan, runtimeProfile: "auto" } }], []]);
-    await expect(test.service.requestGuardrailPublish({ guardrailId: "guardrail-default", actorId: "admin", compilerAvailable: true }))
-      .resolves.toMatchObject({ status: "compiling", version: "20260906-010000.001Z" });
-    expect(test.inserts).toContainEqual({ table: "guardrail_version", value: expect.objectContaining({ plan }) });
-    expect(test.reads).toEqual([]);
+  it("requires a new test run when the passed run kept no candidate", async () => {
+    const test = harness([[baseline()], [{ ...validation, candidateArtifact: null }], []]);
+    await expect(test.service.requestGuardrailPublish({ guardrailId: "guardrail-default", actorId: "admin" }))
+      .rejects.toMatchObject({ code: "guardrail_validation_required" });
+    expect(test.inserts).toEqual([]);
+  });
+
+  it("refuses a stored candidate that no longer matches its digest", async () => {
+    const test = harness([[baseline()], [{ ...validation, candidateDigest: "0".repeat(64) }], []], { artifactSigningKeyPath: keyPath });
+    await expect(test.service.requestGuardrailPublish({ guardrailId: "guardrail-default", actorId: "admin" }))
+      .rejects.toMatchObject({ code: "guardrail_candidate_corrupt" });
+    expect(test.inserts).toEqual([]);
   });
 });

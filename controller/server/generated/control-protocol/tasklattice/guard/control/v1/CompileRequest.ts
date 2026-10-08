@@ -4,11 +4,12 @@ import type { GuardrailPlan as _tasklattice_guard_control_v1_GuardrailPlan, Guar
 import type { Long } from '@grpc/proto-loader';
 
 /**
- * Command sent to a compiler-capable GuardRails 0 Runner.
+ * Input to the offline Artifact compiler (validation candidates, fixtures and
+ * tooling). It is not a control-channel command.
  */
 export interface CompileRequest {
   /**
-   * Idempotency/correlation ID for exactly one requested compilation.
+   * Correlation ID for exactly one requested compilation.
    */
   'compileId'?: (string);
   'guardrailId'?: (string);
@@ -17,7 +18,7 @@ export interface CompileRequest {
    */
   'guardrailVersion'?: (string);
   /**
-   * Desired-state generation reserved by Controller for this candidate.
+   * Delivery generation copied into the Artifact envelope; zero for candidates.
    */
   'generation'?: (number | string | Long);
   'plan'?: (_tasklattice_guard_control_v1_GuardrailPlan | null);
@@ -28,11 +29,12 @@ export interface CompileRequest {
 }
 
 /**
- * Command sent to a compiler-capable GuardRails 0 Runner.
+ * Input to the offline Artifact compiler (validation candidates, fixtures and
+ * tooling). It is not a control-channel command.
  */
 export interface CompileRequest__Output {
   /**
-   * Idempotency/correlation ID for exactly one requested compilation.
+   * Correlation ID for exactly one requested compilation.
    */
   'compileId': (string);
   'guardrailId': (string);
@@ -41,7 +43,7 @@ export interface CompileRequest__Output {
    */
   'guardrailVersion': (string);
   /**
-   * Desired-state generation reserved by Controller for this candidate.
+   * Delivery generation copied into the Artifact envelope; zero for candidates.
    */
   'generation': (string);
   'plan': (_tasklattice_guard_control_v1_GuardrailPlan__Output | null);

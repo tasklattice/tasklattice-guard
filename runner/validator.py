@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import math
 import time
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -39,6 +39,16 @@ from .protocol_codec import (
 from .serialization import plan_from_dict
 
 
+@dataclass(frozen=True)
+class ValidationOutcome:
+    """Test evidence plus the exact Artifact content the cases ran against."""
+
+    status: str
+    metrics: dict[str, Any]
+    results: list[dict[str, Any]]
+    artifact: protocol.Artifact
+
+
 class DefaultRunnerValidator:
     """Compile a draft and run its reviewed cases through the real NeMo runtime."""
 
@@ -50,10 +60,21 @@ class DefaultRunnerValidator:
         self._compiler = compiler.snapshot()
         self._providers = providers or _local_validation_providers()
 
+    @property
+    def compiler_model_types(self) -> tuple[str, ...]:
+        return tuple(model.type for model in self._compiler.native_models)
+
     async def validate(
         self, request: protocol.ValidationRequest,
         on_progress: Callable[[str, int, int], Awaitable[None]] | None = None,
     ) -> tuple[str, dict[str, Any], list[dict[str, Any]]]:
+        outcome = await self.run(request, on_progress)
+        return outcome.status, outcome.metrics, outcome.results
+
+    async def run(
+        self, request: protocol.ValidationRequest,
+        on_progress: Callable[[str, int, int], Awaitable[None]] | None = None,
+    ) -> ValidationOutcome:
         async def cleanup(prepared):
             await prepared[0].shutdown()
 
@@ -62,7 +83,7 @@ class DefaultRunnerValidator:
                 await on_progress(phase, completed, passed)
 
         await report("preparing")
-        registry, plan = await prepare(self._prepare, request, on_cancel=cleanup)
+        registry, plan, artifact = await prepare(self._prepare, request, on_cancel=cleanup)
         runtime = NeMoRuntime(registry)
         try:
             cases = [validation_test_from_proto(item) for item in request.test_cases]
@@ -97,7 +118,7 @@ class DefaultRunnerValidator:
             await runtime.shutdown()
         required = [item for item in results if item["required"]]
         status = "passed" if required and all(item["passed"] for item in required) else "failed"
-        return status, _metrics(results), results
+        return ValidationOutcome(status, _metrics(results), results, artifact)
 
     def _prepare(self, request: protocol.ValidationRequest):
         artifact = self._compiler.compile(
@@ -120,7 +141,7 @@ class DefaultRunnerValidator:
             max_concurrency_per_guardrail=8,
             native_models=self._compiler.native_models,
         )
-        return registry, plan
+        return registry, plan, artifact
 
     async def _evaluate(
         self,

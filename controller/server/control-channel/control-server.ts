@@ -13,7 +13,6 @@ import { loadSync } from "@grpc/proto-loader";
 
 import type { ControllerConfig } from "../config.js";
 import type { RunnerLoad } from "../db/schema.js";
-import type { CompileResult__Output } from "../generated/control-protocol/tasklattice/guard/control/v1/CompileResult.js";
 import type { ControllerMessage } from "../generated/control-protocol/tasklattice/guard/control/v1/ControllerMessage.js";
 import type { CapabilityValidationRequest } from "../generated/control-protocol/tasklattice/guard/control/v1/CapabilityValidationRequest.js";
 import type { RailValidationEvidence } from "../model-config/service.js";
@@ -27,6 +26,7 @@ import { capabilityBindingContracts } from "../model-config/domain.js";
 import { capabilityBindingDefinitions } from "../../shared/guardrail-catalog.js";
 import type { ModelConfigurationService } from "../model-config/service.js";
 import type { ControlPlaneService } from "../services/control-plane.js";
+import type { ArtifactContent } from "../domain/artifact-content.js";
 import { controlChannelOptions } from "./transport.js";
 import {
   artifactFromWire,
@@ -105,7 +105,6 @@ export class RunnerControlServer {
       });
     });
     this.timers = [
-      setInterval(() => void this.dispatchCompileRequests(), 1_000),
       setInterval(() => void this.dispatchValidationRequests(), 1_000),
       setInterval(() => void this.dispatchDesiredStateChanges(), 1_000),
       setInterval(() => void this.reconcileAll(), 30_000),
@@ -283,11 +282,6 @@ export class RunnerControlServer {
       current.appliedGeneration = number(heartbeat.appliedGeneration);
       const desired = await this.service.desiredGeneration();
       if (number(heartbeat.appliedGeneration) !== desired) await this.reconcile(current);
-    } else if (message.compileResult) {
-      const result = message.compileResult;
-      this.metrics.observeJob("compile", result.accepted);
-      await this.handleCompileResult(result);
-      await this.reconcileAll();
     } else if (message.validationProgress) {
       const progress = message.validationProgress;
       if (progress.runnerId !== current.runnerId || !current.compilerCapable || current.poolId !== "default") {
@@ -360,36 +354,6 @@ export class RunnerControlServer {
     return null;
   }
 
-  private async handleCompileResult(result: CompileResult__Output): Promise<void> {
-    const artifact = result.artifact;
-    if (!result.accepted) {
-      await this.service.rejectCompile({
-        compileId: result.compileId,
-        guardrailId: artifact?.guardrailId ?? "",
-        guardrailVersion: artifact?.guardrailVersion ?? "",
-        reason: result.reason || "GuardRails 0 rejected the Guardrail plan.",
-      });
-      return;
-    }
-    if (!artifact) throw new Error("Accepted compile result is missing its Artifact.");
-    const content = artifactFromWire(artifact);
-    await this.service.acceptCompiledArtifact({
-      compileId: result.compileId,
-      guardrailId: string(content.guardrailId),
-      guardrailVersion: string(content.guardrailVersion),
-      generation: number(content.generation),
-      compilerVersion: string(content.compilerVersion),
-      nemoVersion: string(content.nemoVersion),
-      runtimeProfile: string(content.runtimeProfile),
-      plan: record(content.plan),
-      configYaml: string(content.configYaml),
-      colangContent: string(content.colangContent),
-      prompts: array(content.prompts),
-      actionBindings: array(content.actionBindings),
-      dependencyManifest: array(content.dependencyManifest),
-    });
-  }
-
   private async handleValidationResult(result: ValidationResult__Output): Promise<void> {
     if (!result.accepted) {
       await this.service.rejectValidation({
@@ -407,6 +371,11 @@ export class RunnerControlServer {
       metrics,
       results,
       ...(result.reason ? { reason: result.reason } : {}),
+      ...(result.candidateArtifact ? { candidateArtifact: artifactFromWire(result.candidateArtifact) as unknown as ArtifactContent } : {}),
+      ...(result.runtime ? { runtime: {
+        runnerId: result.runtime.runnerId, runnerVersion: result.runtime.runnerVersion, nemoVersion: result.runtime.nemoVersion,
+        modelRevisionId: result.runtime.modelRevisionId, compilerModelTypes: [...result.runtime.compilerModelTypes],
+      } } : {}),
     });
   }
 
@@ -501,26 +470,6 @@ export class RunnerControlServer {
     } catch (error) {
       this.metrics.observeReconcile(connection.poolId, "error", (performance.now() - started) / 1_000);
       throw error;
-    }
-  }
-
-  private async dispatchCompileRequests(): Promise<void> {
-    const compiler = [...this.connections.values()].find((item) => item.poolId === "default" && item.compilerCapable);
-    if (!compiler) return;
-    const events = await this.service.pendingOutbox("guardrail.compile_requested", 10);
-    for (const event of events) {
-      const payload = event.payload;
-      this.write(compiler.stream, {
-        compileRequest: {
-          compileId: string(payload.compileId),
-          guardrailId: string(payload.guardrailId),
-          guardrailVersion: string(payload.guardrailVersion),
-          generation: String(number(payload.generation)),
-          plan: planToWire(payload.plan ?? {}),
-          runtimeProfile: string(payload.runtimeProfile),
-        },
-      });
-      await this.service.deferOutbox(event.id, 30);
     }
   }
 

@@ -18,6 +18,9 @@ service RunnerControl {
 // Runner-to-Controller stream envelope. Registration must be the first body;
 // every later body belongs to the registered runner and boot identity.
 message RunnerMessage {
+  // Former compile_result: publication now reuses the validated candidate.
+  reserved 13;
+  reserved "compile_result";
   // Sender-generated correlation/deduplication identifier for this envelope.
   string message_id = 1;
   // UTC Unix epoch time in milliseconds when the envelope was created.
@@ -26,7 +29,6 @@ message RunnerMessage {
     RunnerRegistration registration = 10;
     RunnerHeartbeat heartbeat = 11;
     ArtifactResult artifact_result = 12;
-    CompileResult compile_result = 13;
     ValidationResult validation_result = 14;
     DesiredStateResult desired_state_result = 15;
     CapabilityValidationResult capability_validation_result = 16;
@@ -36,6 +38,9 @@ message RunnerMessage {
 
 // Controller-to-Runner stream envelope containing commands and desired state.
 message ControllerMessage {
+  // Former compile_request: publication now reuses the validated candidate.
+  reserved 12;
+  reserved "compile_request";
   // Sender-generated correlation/deduplication identifier for this envelope.
   string message_id = 1;
   // UTC Unix epoch time in milliseconds when the envelope was created.
@@ -43,7 +48,6 @@ message ControllerMessage {
   oneof body {
     RegistrationAccepted registration_accepted = 10;
     DesiredState desired_state = 11;
-    CompileRequest compile_request = 12;
     DrainRequest drain_request = 13;
     ValidationRequest validation_request = 14;
     CapabilityValidationRequest capability_validation_request = 15;
@@ -63,7 +67,7 @@ message RunnerRegistration {
   string nemo_version = 5;
   // Admission-slot capacity advertised by this Runner; must be greater than zero.
   int32 max_concurrency = 6;
-  // True only when the Runner may execute CompileRequest and ValidationRequest.
+  // True only when the Runner may compile and execute ValidationRequest candidates.
   bool compiler_capable = 7;
   map<string, string> labels = 8;
   // Last atomically activated desired-state generation, or zero before first sync.

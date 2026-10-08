@@ -23,6 +23,7 @@ from runner.toolkit.evaluation.contracts import (
     CONTRACT_PII_SEMANTIC,
 )
 from runner.toolkit.nemo.registry import NeMoRuntimeRegistry
+from runner.validator import ValidationOutcome
 from tests.capability_binding import capability_binding
 
 
@@ -64,8 +65,8 @@ async def test_large_validation_round_trip_and_reconnect_sender_cleanup(tmp_path
         controller_target=f"127.0.0.1:{port}", controller_token="e2e-runner-token",
     )
     client = RunnerControlClient(settings, ArtifactStore(FIXTURE / "public-key.pem", tmp_path), RunnerMetrics(4))
-    client._validator = SimpleNamespace(validate=AsyncMock(return_value=(
-        "passed", {"total": 321, "passed": 321}, results,
+    client._validator = SimpleNamespace(compiler_model_types=(), run=AsyncMock(return_value=ValidationOutcome(
+        "passed", {"total": 321, "passed": 321}, results, protocol.Artifact(guardrail_id="large", guardrail_version="v"),
     )))
     baseline_tasks = asyncio.all_tasks()
     try:

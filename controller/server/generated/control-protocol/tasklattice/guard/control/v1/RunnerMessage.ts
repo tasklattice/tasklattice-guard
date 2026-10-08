@@ -3,7 +3,6 @@
 import type { RunnerRegistration as _tasklattice_guard_control_v1_RunnerRegistration, RunnerRegistration__Output as _tasklattice_guard_control_v1_RunnerRegistration__Output } from '../../../../tasklattice/guard/control/v1/RunnerRegistration.js';
 import type { RunnerHeartbeat as _tasklattice_guard_control_v1_RunnerHeartbeat, RunnerHeartbeat__Output as _tasklattice_guard_control_v1_RunnerHeartbeat__Output } from '../../../../tasklattice/guard/control/v1/RunnerHeartbeat.js';
 import type { ArtifactResult as _tasklattice_guard_control_v1_ArtifactResult, ArtifactResult__Output as _tasklattice_guard_control_v1_ArtifactResult__Output } from '../../../../tasklattice/guard/control/v1/ArtifactResult.js';
-import type { CompileResult as _tasklattice_guard_control_v1_CompileResult, CompileResult__Output as _tasklattice_guard_control_v1_CompileResult__Output } from '../../../../tasklattice/guard/control/v1/CompileResult.js';
 import type { ValidationResult as _tasklattice_guard_control_v1_ValidationResult, ValidationResult__Output as _tasklattice_guard_control_v1_ValidationResult__Output } from '../../../../tasklattice/guard/control/v1/ValidationResult.js';
 import type { DesiredStateResult as _tasklattice_guard_control_v1_DesiredStateResult, DesiredStateResult__Output as _tasklattice_guard_control_v1_DesiredStateResult__Output } from '../../../../tasklattice/guard/control/v1/DesiredStateResult.js';
 import type { CapabilityValidationResult as _tasklattice_guard_control_v1_CapabilityValidationResult, CapabilityValidationResult__Output as _tasklattice_guard_control_v1_CapabilityValidationResult__Output } from '../../../../tasklattice/guard/control/v1/CapabilityValidationResult.js';
@@ -26,12 +25,11 @@ export interface RunnerMessage {
   'registration'?: (_tasklattice_guard_control_v1_RunnerRegistration | null);
   'heartbeat'?: (_tasklattice_guard_control_v1_RunnerHeartbeat | null);
   'artifactResult'?: (_tasklattice_guard_control_v1_ArtifactResult | null);
-  'compileResult'?: (_tasklattice_guard_control_v1_CompileResult | null);
   'validationResult'?: (_tasklattice_guard_control_v1_ValidationResult | null);
   'desiredStateResult'?: (_tasklattice_guard_control_v1_DesiredStateResult | null);
   'capabilityValidationResult'?: (_tasklattice_guard_control_v1_CapabilityValidationResult | null);
   'validationProgress'?: (_tasklattice_guard_control_v1_ValidationProgress | null);
-  'body'?: "registration"|"heartbeat"|"artifactResult"|"compileResult"|"validationResult"|"desiredStateResult"|"capabilityValidationResult"|"validationProgress";
+  'body'?: "registration"|"heartbeat"|"artifactResult"|"validationResult"|"desiredStateResult"|"capabilityValidationResult"|"validationProgress";
 }
 
 /**
@@ -50,10 +48,9 @@ export interface RunnerMessage__Output {
   'registration'?: (_tasklattice_guard_control_v1_RunnerRegistration__Output | null);
   'heartbeat'?: (_tasklattice_guard_control_v1_RunnerHeartbeat__Output | null);
   'artifactResult'?: (_tasklattice_guard_control_v1_ArtifactResult__Output | null);
-  'compileResult'?: (_tasklattice_guard_control_v1_CompileResult__Output | null);
   'validationResult'?: (_tasklattice_guard_control_v1_ValidationResult__Output | null);
   'desiredStateResult'?: (_tasklattice_guard_control_v1_DesiredStateResult__Output | null);
   'capabilityValidationResult'?: (_tasklattice_guard_control_v1_CapabilityValidationResult__Output | null);
   'validationProgress'?: (_tasklattice_guard_control_v1_ValidationProgress__Output | null);
-  'body'?: "registration"|"heartbeat"|"artifactResult"|"compileResult"|"validationResult"|"desiredStateResult"|"capabilityValidationResult"|"validationProgress";
+  'body'?: "registration"|"heartbeat"|"artifactResult"|"validationResult"|"desiredStateResult"|"capabilityValidationResult"|"validationProgress";
 }

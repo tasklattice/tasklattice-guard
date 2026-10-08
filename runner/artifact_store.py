@@ -338,6 +338,12 @@ class ArtifactStore:
             registry.discard_prepared(prepared)
             raise
 
+    @property
+    def model_revision_id(self) -> str:
+        """Model configuration revision of the currently applied desired state."""
+        with self._lock:
+            return self._model_revision_id or ""
+
     def _artifact_from_message(self, message: Any) -> RuntimeArtifact:
         content = artifact_content(message)
         checksum = hashlib.sha256(canonical_json(content).encode()).hexdigest()

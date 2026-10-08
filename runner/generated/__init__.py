@@ -10,7 +10,6 @@ from .artifact_pb2 import (
     Artifact,
     ArtifactDependency,
     CompileRequest,
-    CompileResult,
     PromptDefinition,
 )
 from .common_pb2 import *  # noqa: F403 - generated protocol facade

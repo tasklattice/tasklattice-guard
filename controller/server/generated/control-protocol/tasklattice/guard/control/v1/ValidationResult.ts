@@ -3,6 +3,8 @@
 import type { ValidationStatus as _tasklattice_guard_control_v1_ValidationStatus, ValidationStatus__Output as _tasklattice_guard_control_v1_ValidationStatus__Output } from '../../../../tasklattice/guard/control/v1/ValidationStatus.js';
 import type { ValidationMetrics as _tasklattice_guard_control_v1_ValidationMetrics, ValidationMetrics__Output as _tasklattice_guard_control_v1_ValidationMetrics__Output } from '../../../../tasklattice/guard/control/v1/ValidationMetrics.js';
 import type { ValidationCaseResult as _tasklattice_guard_control_v1_ValidationCaseResult, ValidationCaseResult__Output as _tasklattice_guard_control_v1_ValidationCaseResult__Output } from '../../../../tasklattice/guard/control/v1/ValidationCaseResult.js';
+import type { Artifact as _tasklattice_guard_control_v1_Artifact, Artifact__Output as _tasklattice_guard_control_v1_Artifact__Output } from '../../../../tasklattice/guard/control/v1/Artifact.js';
+import type { ValidationRuntime as _tasklattice_guard_control_v1_ValidationRuntime, ValidationRuntime__Output as _tasklattice_guard_control_v1_ValidationRuntime__Output } from '../../../../tasklattice/guard/control/v1/ValidationRuntime.js';
 
 /**
  * Validation response. `accepted` reports whether the Runner executed the
@@ -39,6 +41,17 @@ export interface ValidationResult {
    * Per-case results; meaningful only when accepted is true.
    */
   'results'?: (_tasklattice_guard_control_v1_ValidationCaseResult)[];
+  /**
+   * The exact compiled Artifact the cases ran against, without envelope or
+   * signature. Present for accepted Guardrail runs with PASSED status; the
+   * Controller publishes this content unchanged instead of recompiling.
+   */
+  'candidateArtifact'?: (_tasklattice_guard_control_v1_Artifact | null);
+  /**
+   * Runtime that compiled and executed the candidate.
+   */
+  'runtime'?: (_tasklattice_guard_control_v1_ValidationRuntime | null);
+  '_candidateArtifact'?: "candidateArtifact";
 }
 
 /**
@@ -76,4 +89,15 @@ export interface ValidationResult__Output {
    * Per-case results; meaningful only when accepted is true.
    */
   'results': (_tasklattice_guard_control_v1_ValidationCaseResult__Output)[];
+  /**
+   * The exact compiled Artifact the cases ran against, without envelope or
+   * signature. Present for accepted Guardrail runs with PASSED status; the
+   * Controller publishes this content unchanged instead of recompiling.
+   */
+  'candidateArtifact'?: (_tasklattice_guard_control_v1_Artifact__Output | null);
+  /**
+   * Runtime that compiled and executed the candidate.
+   */
+  'runtime': (_tasklattice_guard_control_v1_ValidationRuntime__Output | null);
+  '_candidateArtifact'?: "candidateArtifact";
 }

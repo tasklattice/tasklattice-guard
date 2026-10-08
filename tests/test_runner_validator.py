@@ -4,7 +4,7 @@ import pytest
 
 from runner.compiler import DefaultRunnerCompiler
 from runner import generated as protocol
-from runner.protocol_codec import plan_to_proto, validation_test_to_proto
+from runner.protocol_codec import artifact_digest, plan_to_proto, validation_test_to_proto
 from runner.validator import DefaultRunnerValidator
 
 
@@ -75,7 +75,8 @@ async def test_default_runner_validates_cases_through_the_real_nemo_runtime() ->
     async def on_progress(phase, completed, passed):
         progress.append((phase, completed, passed))
 
-    status, metrics, results = await DefaultRunnerValidator(DefaultRunnerCompiler()).validate(
+    compiler = DefaultRunnerCompiler()
+    outcome = await DefaultRunnerValidator(compiler).run(
         protocol.ValidationRequest(
             run_id="validation-1",
             guardrail_id="guardrail-1",
@@ -93,8 +94,18 @@ async def test_default_runner_validates_cases_through_the_real_nemo_runtime() ->
         ),
         on_progress=on_progress,
     )
+    status, metrics, results = outcome.status, outcome.metrics, outcome.results
 
     assert status == "passed"
+    # The tested candidate is the exact offline-compiled content: publication
+    # can reuse it without compiling again.
+    expected = compiler.compile(protocol.CompileRequest(
+        guardrail_id="guardrail-1", guardrail_version="20260904-010000.001Z",
+        plan=plan_to_proto(plan), runtime_profile="auto",
+    ))
+    assert outcome.artifact.checksum == expected.checksum == artifact_digest(outcome.artifact)
+    assert outcome.artifact.generation == 0
+    assert not outcome.artifact.signature and not outcome.artifact.artifact_id
     assert progress[0:2] == [("preparing", 0, 0), ("executing", 0, 0)]
     assert progress[-2:] == [("executing", 2, 2), ("finalizing", 2, 2)]
     assert all(a[1] <= b[1] for a, b in zip(progress, progress[1:]))
@@ -123,7 +134,7 @@ async def test_local_cases_allow_progress_to_flush_before_the_suite_finishes(mon
             pass
 
     async def prepared(*_args, **_kwargs):
-        return None, None
+        return None, None, None
 
     monkeypatch.setattr(module, "NeMoRuntime", Runtime)
     monkeypatch.setattr(module, "prepare", prepared)

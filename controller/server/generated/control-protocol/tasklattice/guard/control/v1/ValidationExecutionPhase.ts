@@ -1,5 +1,8 @@
 // Original file: validation.proto
 
+/**
+ * Coarse execution stage reported while a validation run is in progress.
+ */
 export const ValidationExecutionPhase = {
   VALIDATION_EXECUTION_PHASE_UNSPECIFIED: 'VALIDATION_EXECUTION_PHASE_UNSPECIFIED',
   VALIDATION_EXECUTION_PHASE_PREPARING: 'VALIDATION_EXECUTION_PHASE_PREPARING',
@@ -7,6 +10,9 @@ export const ValidationExecutionPhase = {
   VALIDATION_EXECUTION_PHASE_FINALIZING: 'VALIDATION_EXECUTION_PHASE_FINALIZING',
 } as const;
 
+/**
+ * Coarse execution stage reported while a validation run is in progress.
+ */
 export type ValidationExecutionPhase =
   | 'VALIDATION_EXECUTION_PHASE_UNSPECIFIED'
   | 0
@@ -17,4 +23,7 @@ export type ValidationExecutionPhase =
   | 'VALIDATION_EXECUTION_PHASE_FINALIZING'
   | 3
 
+/**
+ * Coarse execution stage reported while a validation run is in progress.
+ */
 export type ValidationExecutionPhase__Output = typeof ValidationExecutionPhase[keyof typeof ValidationExecutionPhase]

@@ -28,7 +28,7 @@ export interface RunnerRegistration {
    */
   'maxConcurrency'?: (number);
   /**
-   * True only when the Runner may execute CompileRequest and ValidationRequest.
+   * True only when the Runner may compile and execute ValidationRequest candidates.
    */
   'compilerCapable'?: (boolean);
   'labels'?: ({[key: string]: string});
@@ -64,7 +64,7 @@ export interface RunnerRegistration__Output {
    */
   'maxConcurrency': (number);
   /**
-   * True only when the Runner may execute CompileRequest and ValidationRequest.
+   * True only when the Runner may compile and execute ValidationRequest candidates.
    */
   'compilerCapable': (boolean);
   'labels': ({[key: string]: string});

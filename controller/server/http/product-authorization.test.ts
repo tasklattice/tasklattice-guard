@@ -107,9 +107,9 @@ describe("Session freshness and read-only access", () => {
       service: { requestGuardrailPublish: unexpected } as unknown as ControlPlaneService,
       runnerControl: { hasDefaultCompiler: () => true } as RunnerControlServer, metrics: {} as ControllerMetrics });
     const response = await app.request("/api/v1/guardrails/guard/publish", { method: "POST", headers, body: JSON.stringify({ expectedDraftRevision: 1 }) });
-    expect(response.status).toBe(state === "active" ? 202 : state === "demoted" ? 403 : 401);
+    expect(response.status).toBe(state === "active" ? 201 : state === "demoted" ? 403 : 401);
     if (state === "active") expect(unexpected).toHaveBeenCalledExactlyOnceWith({
-      guardrailId: "guard", actorId: data.user![0]!.id, compilerAvailable: true, expectedDraftRevision: 1,
+      guardrailId: "guard", actorId: data.user![0]!.id, expectedDraftRevision: 1,
     });
     else expect(unexpected).not.toHaveBeenCalled();
   });
