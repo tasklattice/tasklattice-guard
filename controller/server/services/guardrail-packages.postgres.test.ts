@@ -32,10 +32,12 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
   const uatPackageKey = keyPair(keys, "uat-package");
   const otherPackageKey = keyPair(keys, "other-package");
   const prodArtifactKey = keyPair(keys, "prod-artifact");
+  const systemPackageKey = keyPair(keys, "system-package");
   const trustPath = join(keys, "trust.json");
   writeFileSync(trustPath, JSON.stringify({ sources: [
     { id: "bank-uat", name: "Bank UAT", keys: [{ id: "uat-2026", publicKeyPem: uatPackageKey.publicKeyPem }], reservedGuardrailIds: [] },
     { id: "bank-uat-b", name: "Second UAT", keys: [{ id: "uat-b", publicKeyPem: otherPackageKey.publicKeyPem }] },
+    { id: "bank-uat-system", name: "UAT system baseline", keys: [{ id: "system", publicKeyPem: systemPackageKey.publicKeyPem }], reservedGuardrailIds: [DEFAULT_GUARDRAIL_ID] },
   ] }));
   const environment = (artifactKey: string, extra: Record<string, string>) => loadConfig({
     NODE_ENV: "test", CONTROLLER_DATABASE_URL: url!, CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters",
@@ -44,7 +46,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
   });
   if (!url) return;
   const uatConfig = environment(uatArtifactKey.path, { CONTROLLER_PACKAGE_SOURCE_ID: "bank-uat", CONTROLLER_PACKAGE_SOURCE_NAME: "Bank UAT", CONTROLLER_PACKAGE_SIGNING_KEY_PATH: uatPackageKey.path, CONTROLLER_PACKAGE_SIGNING_KEY_ID: "uat-2026" });
-  const prodConfig = environment(prodArtifactKey.path, { CONTROLLER_PACKAGE_TRUST_PATH: trustPath, CONTROLLER_POLICY_CATALOG_DIR: "/nonexistent-policy-library" });
+  const prodConfig = environment(prodArtifactKey.path, { CONTROLLER_PACKAGE_TRUST_PATH: trustPath, CONTROLLER_POLICY_CATALOG_DIR: "/nonexistent-policy-library", CONTROLLER_AUTHORING_ENABLED: "false" });
   let uatDb: Awaited<ReturnType<typeof createTestDatabase>>;
   let prodDb: Awaited<ReturnType<typeof createTestDatabase>>;
   let uat: ControlPlaneService;
@@ -91,6 +93,14 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     await uatDb?.drop();
     await prodDb?.drop();
     rmSync(keys, { recursive: true, force: true });
+  });
+
+  it("starts a receiving environment without a Policy Library, Default build or baseline", async () => {
+    await prod.initialize();
+    expect((await prodDb.pool.query("SELECT count(*)::int AS n FROM guardrail")).rows[0].n).toBe(0);
+    expect(await prod.defaultGuardrailReadiness()).toMatchObject({ status: "unconfigured" });
+    expect(await prod.systemBaseline()).toEqual({ guardrailId: DEFAULT_GUARDRAIL_ID, version: null, explicit: false });
+    await expect(prod.listPolicies()).rejects.toMatchObject({ code: "authoring_disabled" });
   });
 
   it("exports byte-identical version files and a deterministic layout", async () => {
@@ -241,6 +251,33 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     await prod.trafficRouting.approveChange(router.id, change.id, "approver", {});
     const desired = await prod.desiredStateForPool("default");
     expect(desired.artifacts.map(item => [item.guardrailVersion, item.checksum])).toEqual([[version, expect.stringMatching(/^[0-9a-f]{64}$/)]]);
+  });
+
+  it("imports a Default only from an authorized source and switches the baseline explicitly", async () => {
+    const parsed = parsePackage((await uat.packages.exportPackage(guardrailId, [published[0]!])).bytes);
+    const versions = parsed.versions.map(item => {
+      const content = { ...item.content, guardrailId: DEFAULT_GUARDRAIL_ID, plan: { ...item.content.plan, guardrail_id: DEFAULT_GUARDRAIL_ID } };
+      return { content, inspection: item.inspection, evidence: { ...item.evidence, guardrailId: DEFAULT_GUARDRAIL_ID, source: { id: "bank-uat-system", name: "UAT system baseline" }, contentDigest: artifactContentDigest(content) } };
+    });
+    const signer = packageSigner({ ...uatConfig, packageExport: { sourceId: "bank-uat-system", sourceName: "UAT system baseline", signingKeyPath: systemPackageKey.path, signingKeyId: "system" } });
+    const bytes = buildPackage({ source: { id: "bank-uat-system", name: "UAT system baseline" }, guardrail: { id: DEFAULT_GUARDRAIL_ID, name: "Default Guardrail" },
+      recommendedVersion: parsed.manifest.recommendedVersion, exportedAt: new Date(), sign: signer.sign, versions });
+    const preview = await prod.packages.inspectUpload(bytes, "admin");
+    expect(preview.blockers).toEqual([]);
+    await prod.packages.importPackage(preview.packageId, { actorId: "admin" });
+    // Import alone never changes basic protection.
+    expect(await prod.systemBaseline()).toMatchObject({ version: null });
+    expect(await prod.defaultGuardrailReadiness()).toMatchObject({ status: "unconfigured" });
+    const before = await prod.desiredStateForPool("default");
+
+    const baseline = await prod.setSystemBaseline({ version: published[0]!, reason: "CR-7 adopt UAT baseline", actorId: "admin" });
+    expect(baseline).toEqual({ guardrailId: DEFAULT_GUARDRAIL_ID, version: published[0], explicit: true });
+    const after = await prod.desiredStateForPool("default");
+    expect(after.artifacts.length).toBe(before.artifacts.length + 1);
+    expect(after.artifacts.some(item => item.guardrailId === DEFAULT_GUARDRAIL_ID && item.guardrailVersion === published[0])).toBe(true);
+    expect((await prod.defaultGuardrailReadiness()).status).not.toBe("unconfigured");
+    const { rows: [audit] } = await prodDb.pool.query("SELECT detail FROM audit_event WHERE kind = 'system.baseline_changed'");
+    expect(audit.detail).toMatchObject({ previousVersion: null, version: published[0], reason: "CR-7 adopt UAT baseline" });
   });
 });
 

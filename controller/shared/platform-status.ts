@@ -13,13 +13,15 @@ export const platformStatusReasons = [
   "default_guardrail_unavailable",
   "default_model_bindings_missing",
   "default_dependencies_unknown",
+  "baseline_not_configured",
   "runner_heartbeat_stale",
 ] as const;
 export type PlatformStatusReason = (typeof platformStatusReasons)[number];
 
 export type ModelConfigurationStatus = "configured" | "unconfigured";
 export type RuntimeModelStatus = ModelConfigurationStatus;
-export type BasicProtectionStatus = "ready" | "initializing" | "unavailable";
+/** "unconfigured": a receiving environment has no runtime baseline set yet. */
+export type BasicProtectionStatus = "ready" | "initializing" | "unavailable" | "unconfigured";
 
 /** Coverage of the published plan, never the editable draft or a preset name. */
 export type ProtectionCoverage = {

@@ -1106,3 +1106,49 @@ def test_helm_health_script_checks_http_status_and_component():
         server.shutdown()
         server.server_close()
         thread.join()
+
+
+def _controller(documents):
+    deployment = next(doc for doc in documents if doc["kind"] == "Deployment" and doc["metadata"]["name"].endswith("controller"))
+    return deployment["spec"]["template"]["spec"]
+
+
+def test_promotion_defaults_keep_authoring_and_mount_no_promotion_material():
+    spec = _controller(render())
+    container = spec["containers"][0]
+    environment = {entry["name"]: entry.get("value") for entry in container["env"]}
+    assert environment["CONTROLLER_AUTHORING_ENABLED"] == "true"
+    assert not {"CONTROLLER_PACKAGE_SIGNING_KEY_PATH", "CONTROLLER_PACKAGE_TRUST_PATH", "CONTROLLER_BASELINE_PACKAGE_PATH"} & environment.keys()
+    assert not {"package-signing", "package-trust", "baseline-package"} & {volume["name"] for volume in spec["volumes"]}
+
+
+def test_receiving_environment_mounts_trust_and_baseline_read_only_without_authoring():
+    spec = _controller(render(
+        "--set", "controller.promotion.authoringEnabled=false",
+        "--set", "controller.promotion.trust.existingConfigMap=guard-package-trust",
+        "--set", "controller.promotion.baselinePackage.existingConfigMap=guard-baseline",
+    ))
+    container = spec["containers"][0]
+    environment = {entry["name"]: entry.get("value") for entry in container["env"]}
+    assert environment["CONTROLLER_AUTHORING_ENABLED"] == "false"
+    assert environment["CONTROLLER_PACKAGE_TRUST_PATH"] == "/etc/tasklattice/package-trust/trust.json"
+    assert environment["CONTROLLER_BASELINE_PACKAGE_PATH"] == "/etc/tasklattice/baseline-package/baseline.guardrail.zip"
+    mounts = {mount["name"]: mount for mount in container["volumeMounts"]}
+    assert mounts["package-trust"]["readOnly"] and mounts["baseline-package"]["readOnly"]
+    volumes = {volume["name"]: volume for volume in spec["volumes"]}
+    assert volumes["package-trust"]["configMap"]["name"] == "guard-package-trust"
+
+
+def test_authoring_environment_signs_packages_with_a_separate_key_and_source_identity():
+    spec = _controller(render(
+        "--set", "controller.promotion.export.existingSecret=guard-package-signing",
+        "--set", "controller.promotion.export.sourceId=bank-uat",
+        "--set", "controller.promotion.export.keyId=uat-2026",
+    ))
+    environment = {entry["name"]: entry.get("value") for entry in spec["containers"][0]["env"]}
+    assert environment["CONTROLLER_PACKAGE_SOURCE_ID"] == "bank-uat"
+    assert environment["CONTROLLER_PACKAGE_SOURCE_NAME"] == "bank-uat"
+    assert environment["CONTROLLER_PACKAGE_SIGNING_KEY_ID"] == "uat-2026"
+    assert environment["CONTROLLER_PACKAGE_SIGNING_KEY_PATH"] == "/var/run/tasklattice/package-signing/private-key.pem"
+    assert {volume["name"]: volume for volume in spec["volumes"]}["package-signing"]["secret"]["secretName"] == "guard-package-signing"
+    assert "controller.promotion.export.sourceId is required" in render_error("--set", "controller.promotion.export.existingSecret=guard-package-signing")

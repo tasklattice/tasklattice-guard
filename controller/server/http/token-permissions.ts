@@ -55,6 +55,8 @@ export const tokenRoutePermissions: ReadonlyArray<readonly [string, string, Toke
   ["GET", "/api/v1/guardrail-packages/:packageId", "guardrails", "read"],
   ["POST", "/api/v1/guardrail-packages/:packageId/imports", "guardrails", "write"],
   ["POST", "/api/v1/guardrails/:id/versions/:version/environment-check", "guardrails", "write"],
+  ["GET", "/api/v1/system/baseline", "guardrails", "read"],
+  ["PUT", "/api/v1/system/baseline", "guardrails", "write"],
   ["POST", "/api/v1/guardrails/:id/duplicate", "guardrails", "write"],
   ["PATCH", "/api/v1/guardrails/:id", "guardrails", "write"],
   ["POST", "/api/v1/guardrails/:id/publish", "guardrails", "write"],

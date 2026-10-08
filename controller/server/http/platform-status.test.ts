@@ -44,6 +44,15 @@ describe("Health endpoint evidence", () => {
     expect(body.components.basicProtection).toMatchObject({ status: "ready", draft: { validationStatus: "failed", activeRevision: 1 } });
     expect(body.components.runtimeModels.status).toBe("unconfigured");
   });
+  it("reports a receiving environment without a baseline as degraded, not down", async () => {
+    const protection: BasicProtectionSnapshot = { status: "unconfigured", guardrailStatus: "unavailable", latestVersion: null, modelIndependent: null, coverage: null,
+      draft: { revision: 0, activeRevision: null, validationStatus: null, validationFailureReason: null } };
+    const { code, body } = await snapshot({ protection });
+    expect(code).toBe(200);
+    expect(body.status).toBe("degraded");
+    expect(body.components.basicProtection.status).toBe("unconfigured");
+    expect(body.reasons).toEqual(["baseline_not_configured"]);
+  });
   it("does not claim basic protection if the configured router has no Runner", async () => {
     const { code, body } = await snapshot({ instances: [] });
     expect(code).toBe(503);

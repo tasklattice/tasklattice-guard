@@ -7,6 +7,7 @@ import { openApiDocument, apiReferenceHtml, apiAgentIndex } from "./openapi.js";
 import { allowsTokenPermission } from "../../shared/access-tokens.js";
 import type { AccessTokenService, TokenIdentity } from "../services/access-tokens.js";
 import { requiredTokenPermission } from "./token-permissions.js";
+import { routeCapability } from "./route-capabilities.js";
 import { partialModelActivationSchema } from "../../shared/model-activation.js";
 import { routerDraftSchema, previewRouter, selectorFields, selectableSelectorFields, RoutingEvaluationError, routingInputSchema } from "../../shared/traffic-routing.js";
 import { routingEventSchema } from "../services/traffic-routing.js";
@@ -194,7 +195,9 @@ export function createHttpApp(input: {
     collectDefaultMetrics: false,
   });
   const controllerVersion = readSoftwareVersion();
-  const policyCatalog = PolicyCatalog.load(input.config.policyCatalogDir);
+  const authoringEnabled = input.config.authoringEnabled !== false;
+  // Authoring environments fail fast on a broken Library; receiving ones never load it.
+  if (authoringEnabled) PolicyCatalog.load(input.config.policyCatalogDir);
   const legacyIntentAnalyzer = input.intentAnalyzer ?? null;
   const legacyPlaygroundModel = input.playgroundModel ?? null;
   const playgroundRunner = input.playgroundRunner ?? null;
@@ -238,6 +241,17 @@ export function createHttpApp(input: {
     200,
     { "content-type": input.metrics.registry.contentType },
   ));
+  app.use("/api/v1/*", async (context, next) => {
+    if (!authoringEnabled && routeCapability(context.req.method, context.req.path) !== "core") {
+      throw new ControllerError("Guardrail authoring is disabled in this environment. Import released versions instead.", 403, "authoring_disabled");
+    }
+    return next();
+  });
+  app.get("/api/v1/deployment/capabilities", context => context.json({
+    authoringEnabled,
+    packageExport: { available: Boolean(input.config.packageExport), sourceId: input.config.packageExport?.sourceId ?? null },
+    packageImport: { available: Boolean(input.config.packageTrustPath) },
+  }));
   app.get("/api/v1/system/status", async (context) => {
     const desiredGeneration = await input.service.desiredGeneration();
     const pools = await input.service.listRunnerPoolsWithCapacity();
@@ -270,13 +284,18 @@ export function createHttpApp(input: {
       ? "default_guardrail_initializing" as const
       : configuredProtection.status === "unavailable"
         ? "default_guardrail_unavailable" as const
-        : null;
+        : configuredProtection.status === "unconfigured"
+          ? "baseline_not_configured" as const
+          : null;
     const status = basicProtection.status === "unavailable"
       ? "unavailable" as const
       : runnerFleet.status === "unavailable"
         ? "unavailable" as const
         : basicProtection.status === "initializing"
           ? "initializing" as const
+          // Released Guardrails can serve traffic before a baseline is chosen.
+          : basicProtection.status === "unconfigured"
+            ? "degraded" as const
           : configuredProtection.coverage?.hasUnknownDependencies && runnerFleet.status === "healthy"
             ? "degraded" as const : runnerFleet.status;
     const reasons: PlatformStatusSnapshot["reasons"] = [
@@ -792,6 +811,13 @@ export function createHttpApp(input: {
     }), 202);
   });
 
+  app.get("/api/v1/system/baseline", authenticated, async context => context.json(await input.service.systemBaseline()));
+  app.put("/api/v1/system/baseline", authenticated, administrator, async context => {
+    const body = z.object({ version: guardrailVersionInput, reason: z.string().trim().min(1).max(500) }).parse(await context.req.json());
+    const baseline = await input.service.setSystemBaseline({ ...body, actorId: context.get("actor").id });
+    await input.runnerControl.distributeDesiredState();
+    return context.json(baseline);
+  });
   app.get("/api/v1/endpoints", authenticated, async (context) => {
     const [items, distribution] = await Promise.all([
       input.service.listEndpoints(),

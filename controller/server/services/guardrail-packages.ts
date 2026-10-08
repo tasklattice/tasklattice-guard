@@ -145,7 +145,7 @@ export class GuardrailPackageService {
   }
 
   /** Verify an upload, keep its exact bytes, and preview what an import would do. */
-  async inspectUpload(bytes: Buffer, actorId: string): Promise<PackagePreview> {
+  async inspectUpload(bytes: Buffer, actorId: string | null): Promise<PackagePreview> {
     const verified = this.verify(bytes);
     const id = createHash("sha256").update(bytes).digest("hex");
     await this.db.insert(guardrailPackages).values({
@@ -160,7 +160,7 @@ export class GuardrailPackageService {
   }
 
   /** Append the selected versions atomically: all are imported or none is. */
-  async importPackage(packageId: string, input: { versions?: string[] | undefined; actorId: string }) {
+  async importPackage(packageId: string, input: { versions?: string[] | undefined; actorId: string | null }) {
     const bytes = await this.storedPackage(packageId);
     const result = await this.db.transaction(async tx => {
       await advisoryTransactionLock(tx, "guardrail-package-import");

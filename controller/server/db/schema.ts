@@ -131,6 +131,9 @@ export const runnerPools = pgTable("runner_pool", {
 export const controllerState = pgTable("controller_state", {
   id: text("id").primaryKey(),
   desiredGeneration: bigint("desired_generation", { mode: "number" }).notNull().default(0),
+  // Explicit Default Guardrail version served as basic protection. Null in
+  // authoring environments means "follow the Default's Latest version".
+  baselineVersion: text("baseline_version"),
   updatedAt,
 });
 

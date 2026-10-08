@@ -126,6 +126,11 @@ const environmentSchema = z.object({
   CONTROLLER_PACKAGE_SIGNING_KEY_PATH: z.string().min(1).optional(),
   CONTROLLER_PACKAGE_SIGNING_KEY_ID: z.string().trim().min(1).max(120).optional(),
   CONTROLLER_PACKAGE_TRUST_PATH: z.string().min(1).optional(),
+  // Optional signed package imported at startup to supply the runtime baseline.
+  CONTROLLER_BASELINE_PACKAGE_PATH: z.string().min(1).optional(),
+  // Production receives released Guardrails only: no Policy Library, drafts,
+  // tests or publication. Enforced by the API, not just hidden in the UI.
+  CONTROLLER_AUTHORING_ENABLED: z.enum(["true", "false"]).default("true").transform((value) => value === "true"),
   BETTER_AUTH_SECRET: z.string().min(32),
   BETTER_AUTH_TRUSTED_ORIGINS: z.string().default("http://localhost:8080,http://localhost:8092"),
   BETTER_AUTH_MIN_PASSWORD_LENGTH: z.coerce.number().int().min(5).max(128).default(12),
@@ -282,6 +287,8 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env) {
         }
       : null,
     packageTrustPath: parsed.CONTROLLER_PACKAGE_TRUST_PATH ?? null,
+    baselinePackagePath: parsed.CONTROLLER_BASELINE_PACKAGE_PATH ?? null,
+    authoringEnabled: parsed.CONTROLLER_AUTHORING_ENABLED,
     betterAuthSecret: parsed.BETTER_AUTH_SECRET,
     trustedOrigins: parsed.BETTER_AUTH_TRUSTED_ORIGINS.split(",").map((item) => item.trim()).filter(Boolean),
     minPasswordLength: parsed.BETTER_AUTH_MIN_PASSWORD_LENGTH,

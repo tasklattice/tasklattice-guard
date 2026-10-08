@@ -1,5 +1,6 @@
 import { AccessTokenService } from "./services/access-tokens.js";
 import { serve, type ServerType } from "@hono/node-server";
+import { readFileSync } from "node:fs";
 
 import { createAuth } from "./auth.js";
 import { loadConfig } from "./config.js";
@@ -21,7 +22,11 @@ const service = new ControlPlaneService(db, config);
 const resealed = await service.resealArtifacts();
 if (resealed) process.stdout.write(`Re-sealed ${resealed} Artifact(s) under the current content digest contract.\n`);
 await service.initialize();
-const models = new ModelConfigurationService(db, config.betterAuthSecret, config.policyCatalogDir);
+if (config.baselinePackagePath) {
+  const baseline = await service.importBaselinePackage(readFileSync(config.baselinePackagePath));
+  process.stdout.write(`Baseline package: Default Guardrail ${baseline.version}${baseline.adopted ? " adopted as the runtime baseline" : " present; the existing baseline is unchanged"}.\n`);
+}
+const models = new ModelConfigurationService(db, config.betterAuthSecret, config.authoringEnabled ? config.policyCatalogDir : null);
 await models.initialize();
 
 const auth = createAuth(config, db);

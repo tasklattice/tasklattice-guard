@@ -59,7 +59,7 @@ import {
   DEFAULT_GUARDRAIL_NAME,
   defaultGuardrailDraft,
 } from "../domain/defaults.js";
-import { ConflictError, NotFoundError, ValidationError } from "../domain/errors.js";
+import { ConflictError, ControllerError, NotFoundError, ValidationError } from "../domain/errors.js";
 import { buildGuardrailPlan, normalizeGuardrailDraft, type GuardrailDraftConfig } from "../domain/guardrail-plan.js";
 import type { DeletionImpact, RuntimeEventInput, ValidationCaseResult, ValidationMetrics, ValidationRuntimeFingerprint } from "../domain/models.js";
 import { guardrailInspection } from "../domain/guardrail-inspection.js";
@@ -132,8 +132,98 @@ export class ControlPlaneService {
         maxConcurrencyPerRunner: 64,
       }).onConflictDoNothing();
       await advisoryTransactionLock(tx, 'tasklattice-guard-product-defaults');
-      await this.ensureDefaultGuardrail(tx);
+      // A receiving environment never builds the Default from a Library: its
+      // runtime baseline arrives as a released version and is set explicitly.
+      if (this.authoringEnabled) await this.ensureDefaultGuardrail(tx);
     });
+  }
+
+  /**
+   * The Default Guardrail version every pool serves as basic protection. An
+   * explicit pointer wins; authoring environments otherwise follow the
+   * Default's Latest version as before.
+   */
+  private async baselineVersion(db: Pick<ControllerDatabase, "select"> = this.db): Promise<string | null> {
+    const [state] = await db.select({ baselineVersion: controllerState.baselineVersion }).from(controllerState).where(eq(controllerState.id, "singleton")).limit(1);
+    if (state?.baselineVersion) return state.baselineVersion;
+    if (!this.authoringEnabled) return null;
+    const [guardrail] = await db.select({ latestVersion: guardrails.latestVersion }).from(guardrails)
+      .where(and(eq(guardrails.id, DEFAULT_GUARDRAIL_ID), isNull(guardrails.deletedAt))).limit(1);
+    return guardrail?.latestVersion ?? null;
+  }
+
+  async systemBaseline() {
+    const version = await this.baselineVersion();
+    const [state] = await this.db.select({ baselineVersion: controllerState.baselineVersion }).from(controllerState).where(eq(controllerState.id, "singleton"));
+    return { guardrailId: DEFAULT_GUARDRAIL_ID, version, explicit: Boolean(state?.baselineVersion) };
+  }
+
+  /**
+   * Switch the runtime baseline to a ready Default version: an explicit,
+   * audited change, never a side effect of importing or marking Latest.
+   */
+  async setSystemBaseline(input: { version: string; reason: string; actorId: string }) {
+    if (!this.authoringEnabled) await this.packages.checkVersionEnvironment(DEFAULT_GUARDRAIL_ID, input.version).catch(() => undefined);
+    return this.db.transaction(async tx => {
+      const [version] = await tx.select().from(guardrailVersions)
+        .innerJoin(guardrails, eq(guardrails.id, guardrailVersions.guardrailId))
+        .where(and(eq(guardrailVersions.guardrailId, DEFAULT_GUARDRAIL_ID), eq(guardrailVersions.version, input.version), isNull(guardrails.deletedAt)));
+      if (!version || version.guardrail_version.status !== "ready" || !version.guardrail_version.artifactId) {
+        throw new ConflictError(`Default Guardrail version ${input.version} is not a ready version.`, "baseline_version_not_ready");
+      }
+      const check = version.guardrail_version.environmentCheck;
+      if (version.guardrail_version.origin === "imported" && check?.status !== "compatible") {
+        throw new ConflictError("This environment has not confirmed it can serve this version. Resolve the missing dependencies and try again.",
+          "guardrail_version_environment_unverified", { environment: check ?? null });
+      }
+      const previous = await this.baselineVersion(tx);
+      if (previous === input.version) return this.systemBaselineIn(tx);
+      const [state] = await tx.update(controllerState).set({
+        baselineVersion: input.version, desiredGeneration: increment(controllerState.desiredGeneration), updatedAt: new Date(),
+      }).where(eq(controllerState.id, "singleton")).returning();
+      if (!state) throw new Error("Controller state is not initialized.");
+      await tx.insert(outboxEvents).values({
+        id: randomUUID(), kind: "runner.desired_state_changed", aggregateId: DEFAULT_GUARDRAIL_ID,
+        payload: { guardrailId: DEFAULT_GUARDRAIL_ID, version: input.version, generation: state.desiredGeneration, baseline: true },
+      });
+      await tx.insert(auditEvents).values({
+        id: randomUUID(), kind: "system.baseline_changed", actorId: input.actorId, resourceType: "guardrail", resourceId: DEFAULT_GUARDRAIL_ID,
+        detail: { previousVersion: previous, version: input.version, reason: input.reason, generation: state.desiredGeneration },
+      });
+      return this.systemBaselineIn(tx);
+    });
+  }
+
+  /**
+   * Import a deployment-supplied Default Guardrail package at startup and,
+   * when no baseline is set yet, adopt its recommended version. Idempotent.
+   */
+  async importBaselinePackage(bytes: Buffer): Promise<{ version: string; adopted: boolean }> {
+    const preview = await this.packages.inspectUpload(bytes, null);
+    if (preview.guardrail.id !== DEFAULT_GUARDRAIL_ID) throw new ConflictError("The baseline package must contain the Default Guardrail.", "baseline_package_invalid");
+    if (preview.blockers.length) throw new ConflictError(preview.blockers.map(item => item.message).join(" "), preview.blockers[0]!.code);
+    await this.packages.importPackage(preview.packageId, { actorId: null });
+    return this.db.transaction(async tx => {
+      const [state] = await tx.select().from(controllerState).where(eq(controllerState.id, "singleton")).for("update");
+      if (state?.baselineVersion) return { version: state.baselineVersion, adopted: false };
+      const [updated] = await tx.update(controllerState).set({
+        baselineVersion: preview.recommendedVersion, desiredGeneration: increment(controllerState.desiredGeneration), updatedAt: new Date(),
+      }).where(eq(controllerState.id, "singleton")).returning();
+      await tx.insert(outboxEvents).values({
+        id: randomUUID(), kind: "runner.desired_state_changed", aggregateId: DEFAULT_GUARDRAIL_ID,
+        payload: { guardrailId: DEFAULT_GUARDRAIL_ID, version: preview.recommendedVersion, generation: updated?.desiredGeneration ?? 0, baseline: true },
+      });
+      await tx.insert(auditEvents).values({
+        id: randomUUID(), kind: "system.baseline_changed", actorId: null, resourceType: "guardrail", resourceId: DEFAULT_GUARDRAIL_ID,
+        detail: { previousVersion: null, version: preview.recommendedVersion, reason: "Deployment baseline package", packageId: preview.packageId },
+      });
+      return { version: preview.recommendedVersion, adopted: true };
+    });
+  }
+
+  private async systemBaselineIn(tx: Transaction) {
+    const [state] = await tx.select({ baselineVersion: controllerState.baselineVersion }).from(controllerState).where(eq(controllerState.id, "singleton"));
+    return { guardrailId: DEFAULT_GUARDRAIL_ID, version: await this.baselineVersion(tx), explicit: Boolean(state?.baselineVersion) };
   }
 
   /**
@@ -443,16 +533,22 @@ export class ControlPlaneService {
       eq(validationRuns.sourceDraftRevision, guardrail.draftRevision),
     )).orderBy(desc(validationRuns.createdAt)).limit(1) : [];
 
-    const [version] = guardrail?.latestVersion ? await this.db.select().from(guardrailVersions).where(and(
+    const baseline = guardrail ? await this.baselineVersion() : null;
+    const [version] = baseline ? await this.db.select().from(guardrailVersions).where(and(
       eq(guardrailVersions.guardrailId, DEFAULT_GUARDRAIL_ID),
-      eq(guardrailVersions.version, guardrail.latestVersion),
+      eq(guardrailVersions.version, baseline),
     )).limit(1) : [];
-    const [artifact] = guardrail?.latestArtifactId ? await this.db.select().from(artifacts)
-      .where(eq(artifacts.id, guardrail.latestArtifactId)).limit(1) : [];
+    const [artifact] = version?.artifactId ? await this.db.select().from(artifacts)
+      .where(eq(artifacts.id, version.artifactId)).limit(1) : [];
+    if (!this.authoringEnabled && !version) {
+      // A receiving environment has basic protection only once a released
+      // Default version is explicitly set as the runtime baseline.
+      return { status: "unconfigured", guardrailStatus: "unavailable", latestVersion: null, modelIndependent: null, coverage: null,
+        draft: { revision: 0, activeRevision: null, validationStatus: null, validationFailureReason: null } };
+    }
     const guardrailActive = Boolean(guardrail && guardrail.status !== "disabled"
       && version?.status === "ready" && version.artifactId === artifact?.id
-      && artifact?.id === guardrail.latestArtifactId
-      && artifact?.guardrailId === DEFAULT_GUARDRAIL_ID && artifact.guardrailVersion === guardrail.latestVersion
+      && artifact?.guardrailId === DEFAULT_GUARDRAIL_ID && artifact.guardrailVersion === baseline
       && artifact.checksum && artifact.signature);
     const coverage = guardrailActive ? publishedProtectionCoverage(artifact?.plan) : null;
     const hasChecks = Boolean(coverage && (coverage.inputChecks > 0 || coverage.outputChecks > 0));
@@ -462,7 +558,7 @@ export class ControlPlaneService {
     return {
       status: guardrailActive && hasChecks ? "ready" : initializing ? "initializing" : "unavailable",
       guardrailStatus: guardrailActive ? "active" as const : preparing ? "initializing" as const : "unavailable" as const,
-      latestVersion: guardrail?.latestVersion ?? null,
+      latestVersion: baseline,
       modelIndependent: isModelIndependent(coverage),
       coverage,
       draft: {
@@ -1884,9 +1980,11 @@ export class ControlPlaneService {
     // address it. Imported versions load only once a Router references them,
     // so an unused package can never break an applied release.
     const referencedArtifactIds = new Set(routerRevisions.flatMap((router) => router.routes.flatMap((route) => route.targets.map((target) => target.artifactId).filter(Boolean))));
-    const [defaultGuardrail] = await tx.select({ latestArtifactId: guardrails.latestArtifactId }).from(guardrails)
-      .where(and(eq(guardrails.id, DEFAULT_GUARDRAIL_ID), isNull(guardrails.deletedAt)));
-    if (defaultGuardrail?.latestArtifactId) referencedArtifactIds.add(defaultGuardrail.latestArtifactId);
+    const baseline = await this.baselineVersion(tx);
+    const [baselineArtifact] = baseline ? await tx.select({ artifactId: guardrailVersions.artifactId }).from(guardrailVersions)
+      .innerJoin(guardrails, and(eq(guardrails.id, guardrailVersions.guardrailId), isNull(guardrails.deletedAt)))
+      .where(and(eq(guardrailVersions.guardrailId, DEFAULT_GUARDRAIL_ID), eq(guardrailVersions.version, baseline), eq(guardrailVersions.status, "ready"))) : [];
+    if (baselineArtifact?.artifactId) referencedArtifactIds.add(baselineArtifact.artifactId);
     const readyArtifacts = await tx.select({ artifact: artifacts }).from(guardrailVersions)
       .innerJoin(guardrails, and(eq(guardrails.id, guardrailVersions.guardrailId), isNull(guardrails.deletedAt)))
       .innerJoin(artifacts, eq(artifacts.id, guardrailVersions.artifactId))
@@ -2202,7 +2300,15 @@ export class ControlPlaneService {
     if (uncovered.length) throw new ValidationError(`Every Policy Rule requires a reviewed Test Case; missing ${uncovered.join(", ")}.`);
   }
 
+  /** Whether this deployment authors Guardrails (UAT) or only receives releases. */
+  get authoringEnabled(): boolean {
+    return this.config.authoringEnabled !== false;
+  }
+
   private policyCatalog(): PolicyCatalog {
+    // Defense in depth behind the API gate: a receiving environment never
+    // resolves Policies, so nothing may silently depend on a Library there.
+    if (!this.authoringEnabled) throw new ControllerError("Guardrail authoring is disabled in this environment.", 403, "authoring_disabled");
     this.catalog ??= PolicyCatalog.load(this.config.policyCatalogDir);
     return this.catalog;
   }

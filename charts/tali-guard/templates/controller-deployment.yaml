@@ -85,6 +85,23 @@ spec:
             - name: CONTROLLER_BOOTSTRAP_ADMIN_NAME
               valueFrom: { secretKeyRef: { name: {{ include "tali-guard.bootstrapAdminSecretName" . }}, key: {{ .Values.security.bootstrapAdmin.nameKey }} } }
             - { name: CONTROLLER_ARTIFACT_SIGNING_KEY_PATH, value: /var/run/tasklattice/artifact/private-key.pem }
+            {{- with .Values.controller.promotion }}
+            - { name: CONTROLLER_AUTHORING_ENABLED, value: {{ ternary "true" "false" (ne .authoringEnabled false) | quote }} }
+            {{- if .export.existingSecret }}
+            - { name: CONTROLLER_PACKAGE_SOURCE_ID, value: {{ required "controller.promotion.export.sourceId is required with an export key" .export.sourceId | quote }} }
+            - { name: CONTROLLER_PACKAGE_SOURCE_NAME, value: {{ default .export.sourceId .export.sourceName | quote }} }
+            - { name: CONTROLLER_PACKAGE_SIGNING_KEY_PATH, value: /var/run/tasklattice/package-signing/private-key.pem }
+            {{- if .export.keyId }}
+            - { name: CONTROLLER_PACKAGE_SIGNING_KEY_ID, value: {{ .export.keyId | quote }} }
+            {{- end }}
+            {{- end }}
+            {{- if .trust.existingConfigMap }}
+            - { name: CONTROLLER_PACKAGE_TRUST_PATH, value: /etc/tasklattice/package-trust/trust.json }
+            {{- end }}
+            {{- if .baselinePackage.existingConfigMap }}
+            - { name: CONTROLLER_BASELINE_PACKAGE_PATH, value: /etc/tasklattice/baseline-package/baseline.guardrail.zip }
+            {{- end }}
+            {{- end }}
             {{- if .Values.security.controlTls.enabled }}
             - { name: CONTROLLER_GRPC_TLS_CERT_PATH, value: /var/run/tasklattice/control-tls/tls.crt }
             - { name: CONTROLLER_GRPC_TLS_KEY_PATH, value: /var/run/tasklattice/control-tls/tls.key }
@@ -94,6 +111,15 @@ spec:
             - { name: CONTROLLER_UI_DIST, value: /opt/tasklattice/guard-controller/dist }
           volumeMounts:
             - { name: artifact-signing, mountPath: /var/run/tasklattice/artifact, readOnly: true }
+            {{- if .Values.controller.promotion.export.existingSecret }}
+            - { name: package-signing, mountPath: /var/run/tasklattice/package-signing, readOnly: true }
+            {{- end }}
+            {{- if .Values.controller.promotion.trust.existingConfigMap }}
+            - { name: package-trust, mountPath: /etc/tasklattice/package-trust, readOnly: true }
+            {{- end }}
+            {{- if .Values.controller.promotion.baselinePackage.existingConfigMap }}
+            - { name: baseline-package, mountPath: /etc/tasklattice/baseline-package, readOnly: true }
+            {{- end }}
             {{- if .Values.security.controlTls.enabled }}
             - { name: control-tls, mountPath: /var/run/tasklattice/control-tls, readOnly: true }
             {{- end }}
@@ -126,6 +152,29 @@ spec:
             secretName: {{ include "tali-guard.customCaSecretName" . }}
             items:
               - { key: {{ .Values.security.customCa.certificateKey }}, path: tasklattice-custom-ca.crt }
+        {{- end }}
+        {{- with .Values.controller.promotion }}
+        {{- if .export.existingSecret }}
+        - name: package-signing
+          secret:
+            secretName: {{ .export.existingSecret }}
+            items:
+              - { key: {{ .export.privateKeyKey }}, path: private-key.pem }
+        {{- end }}
+        {{- if .trust.existingConfigMap }}
+        - name: package-trust
+          configMap:
+            name: {{ .trust.existingConfigMap }}
+            items:
+              - { key: {{ .trust.key }}, path: trust.json }
+        {{- end }}
+        {{- if .baselinePackage.existingConfigMap }}
+        - name: baseline-package
+          configMap:
+            name: {{ .baselinePackage.existingConfigMap }}
+            items:
+              - { key: {{ .baselinePackage.key }}, path: baseline.guardrail.zip }
+        {{- end }}
         {{- end }}
         - name: tmp
           emptyDir: {}

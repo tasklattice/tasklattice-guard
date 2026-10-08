@@ -32,6 +32,29 @@ controller:
       memory: 256Mi
     limits:
       memory: 1Gi
+  # Guardrail promotion between isolated environments (UAT -> production).
+  promotion:
+    # false for an environment that only receives released Guardrails: no
+    # Policy Library, drafts, tests or publication. Enforced by the API.
+    authoringEnabled: true
+    # UAT: source identity and Ed25519 key that sign exported release
+    # packages. Keep this key separate from the Artifact signing key.
+    export:
+      sourceId: ""
+      sourceName: ""
+      keyId: ""
+      existingSecret: ""
+      privateKeyKey: private-key.pem
+    # Production: trusted package sources as JSON
+    # ({"sources":[{"id","name","keys":[{"id","publicKeyPem"}],"reservedGuardrailIds"}]}).
+    trust:
+      existingConfigMap: ""
+      key: trust.json
+    # Optional signed Default Guardrail package imported at startup; adopted as
+    # the runtime baseline only when none is set.
+    baselinePackage:
+      existingConfigMap: ""
+      key: baseline.guardrail.zip
 
 runner:
   # All data-plane pools use this image. GuardRails 0 is the mandatory baseline

@@ -105,6 +105,65 @@
               }
             }
           }
+        },
+        "promotion": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "authoringEnabled": {
+              "type": "boolean",
+              "description": "false for a receiving environment: authoring APIs return 403 and no Policy Library is loaded."
+            },
+            "export": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "sourceId": {
+                  "type": "string",
+                  "pattern": "^$|^[a-z0-9][a-z0-9._-]{0,63}$"
+                },
+                "sourceName": {
+                  "type": "string"
+                },
+                "keyId": {
+                  "type": "string"
+                },
+                "existingSecret": {
+                  "type": "string"
+                },
+                "privateKeyKey": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "trust": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "existingConfigMap": {
+                  "type": "string"
+                },
+                "key": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "baselinePackage": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "existingConfigMap": {
+                  "type": "string"
+                },
+                "key": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          }
         }
       }
     },
