@@ -78,6 +78,14 @@ describe("Composed Router HTTP contract", () => {
     expect(trafficRouting.submitChange).toHaveBeenCalledExactlyOnceWith("router", { expectedDraftRevision: 7, reviewedSnapshot: routerDraftSchema.parse(review.snapshot), reviewedEndpointIds: ["http"], reason: "Enable v7", ticket: "CHG-1" }, "actor");
     expect(distributeDesiredState).not.toHaveBeenCalled();
   });
+  it("validates a historical restoration and submits it without distributing", async () => {
+    const { send, trafficRouting, distributeDesiredState } = setupRoutingHttp();
+    const body = { expectedDraftRevision: 7, reviewedSnapshot: fallbackDraft(), reviewedEndpointIds: ["http"], reason: "Restore stable routing", ticket: "", restore: { revision: 1, expectedActiveRevision: 2 } };
+    expect((await send("POST", "/routers/router/change-requests", body)).status).toBe(201);
+    expect(trafficRouting.submitChange).toHaveBeenCalledExactlyOnceWith("router", { ...body, reviewedSnapshot: routerDraftSchema.parse(body.reviewedSnapshot) }, "actor");
+    expect((await send("POST", "/routers/router/change-requests", { ...body, restore: { revision: 1 } })).status).toBe(400);
+    expect(distributeDesiredState).not.toHaveBeenCalled();
+  });
   it.each([
     ["approve", {}, { note: undefined }],
     ["emergency-apply", { reason: "Abuse", managerContact: "Duty manager" }, { emergency: { reason: "Abuse", managerContact: "Duty manager" } }],

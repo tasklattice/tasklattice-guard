@@ -151,7 +151,7 @@ export class TrafficRoutingService {
     return found;
   }
   /** Freeze the reviewed draft as a pending change. Nothing is published until approval. */
-  async submitChange(id: string, input: { expectedDraftRevision: number; reviewedSnapshot: RouterDraft; reviewedEndpointIds: string[]; reason: string; ticket: string }, actorId: string) {
+  async submitChange(id: string, input: { expectedDraftRevision: number; reviewedSnapshot: RouterDraft; reviewedEndpointIds: string[]; reason: string; ticket: string; restore?: { revision: number; expectedActiveRevision: number } | undefined }, actorId: string) {
     const changeId = randomUUID();
     await this.db.transaction(async tx => {
       await advisoryTransactionLock(tx, "traffic-router-bindings");
@@ -160,17 +160,29 @@ export class TrafficRoutingService {
       const [pending] = await tx.select({ id: trafficRouterChangeRequests.id }).from(trafficRouterChangeRequests)
         .where(and(eq(trafficRouterChangeRequests.routerId, id), eq(trafficRouterChangeRequests.status, "pending")));
       if (pending) throw new ConflictError("This Router already has a pending change request.", "router_change_request_pending", { changeRequestId: pending.id });
-      const { snapshot, context, endpointIds } = await this.resolvePublication(tx, id, router.draft).catch(error => {
+      let source = router.draft;
+      if (input.restore) {
+        if (router.activeRevision !== input.restore.expectedActiveRevision) throw new ConflictError("The active Router revision changed; review the restoration again.", "router_review_conflict");
+        if (input.restore.revision === router.activeRevision) throw new ConflictError("This Router revision is already active.", "router_restore_unavailable");
+        const [target] = await tx.select().from(trafficRouterRevisions).where(and(eq(trafficRouterRevisions.routerId, id), eq(trafficRouterRevisions.revision, input.restore.revision)));
+        if (!target) throw new NotFoundError("Router revision", String(input.restore.revision));
+        source = target.snapshot;
+      }
+      const { snapshot, context, endpointIds } = await this.resolvePublication(tx, id, source).catch(error => {
         if (error instanceof ValidationError) throw new ConflictError("Router publication is no longer valid. Review again before submitting.", "router_review_conflict");
         throw error;
       });
       if (!isDeepStrictEqual(snapshot, input.reviewedSnapshot) || !isDeepStrictEqual(endpointIds, sortedIds(input.reviewedEndpointIds))) {
         throw new ConflictError("Router publication changed since review. Review again before submitting.", "router_review_conflict");
       }
+      // Persist the restored draft and its request atomically: a failed submission
+      // must never replace an existing draft, and submission never publishes.
+      const sourceDraftRevision = router.draftRevision + (input.restore ? 1 : 0);
+      if (input.restore) await tx.update(trafficRouters).set({ draft: snapshot, draftRevision: sourceDraftRevision, updatedAt: new Date() }).where(eq(trafficRouters.id, id));
       await tx.insert(trafficRouterChangeRequests).values({ id: changeId, routerId: id, kind: "publish", status: "pending",
-        sourceDraftRevision: router.draftRevision, baseRevision: router.activeRevision, snapshot, endpointIds, context,
+        sourceDraftRevision, baseRevision: router.activeRevision, snapshot, endpointIds, context,
         ticket: input.ticket, reason: input.reason, submittedBy: actorId });
-      await this.audit(tx, id, actorId, "router.change_submitted", { changeRequestId: changeId, ticket: input.ticket, baseRevision: router.activeRevision, snapshot, endpointIds });
+      await this.audit(tx, id, actorId, "router.change_submitted", { changeRequestId: changeId, ticket: input.ticket, baseRevision: router.activeRevision, snapshot, endpointIds, ...(input.restore ? { restoredRevision: input.restore.revision } : {}) });
     });
     return this.changeRequest(id, changeId);
   }

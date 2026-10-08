@@ -12,7 +12,7 @@ const router = { id: 'router', activeRevision: 2, rolloutStatus: 'active' } as T
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 function setup(canEdit = true) {
  const restore = vi.fn();
- render(<QueryClientProvider client={new QueryClient({ defaultOptions: { mutations: { retry: false } } })}><RouterRevisions router={router} revisions={history} canEdit={canEdit} onRestore={restore} /></QueryClientProvider>);
+ render(<QueryClientProvider client={new QueryClient({ defaultOptions: { mutations: { retry: false } } })}><RouterRevisions router={router} revisions={history} canEdit={canEdit} onRestore={restore} selectedRevision={null} onSelectRevision={vi.fn()} onOpenChange={vi.fn()} /></QueryClientProvider>);
  return restore;
 }
 function openMenu(index = 1) { fireEvent.click(screen.getAllByRole('button', { name: /Actions for revision/ })[index]!, { button: 0, ctrlKey: false, pointerType: 'mouse' }); }
@@ -21,11 +21,11 @@ it('shows colored status and protects the current revision', async () => {
  expect(screen.getByText('Active').closest('[data-slot=badge]')?.className).toContain('text-[var(--success)]');
  openMenu(0);
  expect((await screen.findByRole('menuitem', { name: 'Delete' })).hasAttribute('disabled')).toBe(true);
- expect(screen.getByRole('menuitem', { name: 'Rollback' }).hasAttribute('disabled')).toBe(true);
+ expect(screen.queryByRole('menuitem', { name: 'Restore this version…' })).toBeNull();
 });
 it('restores from the historical menu without deleting', async () => {
  const restore = setup(); openMenu();
- fireEvent.click(await screen.findByRole('menuitem', { name: 'Rollback' }));
+ fireEvent.click(await screen.findByRole('menuitem', { name: 'Restore this version…' }));
  expect(restore).toHaveBeenCalledWith(history[1]); expect(remove).not.toHaveBeenCalled();
 });
 it('requires drawer confirmation and keeps rejection visible', async () => {

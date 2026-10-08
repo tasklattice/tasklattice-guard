@@ -29,6 +29,8 @@ describe("Integration navigation", () => {
     history.forward();
     await router.load();
     expect(router.state.matches.at(-1)?.search.tab).toBe("revisions");
+    await router.navigate({ to: "/integration/routers/$routerId", params: { routerId: "router-123" }, search: { tab: "change-requests" } });
+    expect(router.state.matches.at(-1)?.search.tab).toBe("change-requests");
     await router.navigate({ to: "/integration/routers/$routerId", params: { routerId: "router-123" }, search: { tab: "unknown" } });
     expect(router.state.matches.at(-1)?.search.tab).toBeUndefined();
   });

@@ -874,7 +874,8 @@ export function createHttpApp(input: {
   });
   app.post("/api/v1/routers/:id/change-requests", authenticated, administrator, async context => {
     const body = z.object({ expectedDraftRevision: z.number().int().positive(), reviewedSnapshot: routerDraftSchema, reviewedEndpointIds: z.array(z.string().min(1).max(256)).max(10000),
-      reason: changeReason, ticket: z.string().trim().max(128).default("") }).parse(await context.req.json());
+      reason: changeReason, ticket: z.string().trim().max(128).default(""),
+      restore: z.object({ revision: z.number().int().positive(), expectedActiveRevision: z.number().int().positive() }).optional() }).parse(await context.req.json());
     return context.json(await input.service.trafficRouting.submitChange(context.req.param("id"), body, context.get("actor").id), 201);
   });
   app.get("/api/v1/routers/:id/change-requests/:changeId", authenticated, async context => context.json(await input.service.trafficRouting.changeRequest(context.req.param("id"), context.req.param("changeId"))));

@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ClipboardCheck, Siren, Undo2 } from "lucide-react";
+import { ClipboardCheck, Siren, ArrowUpRight } from "lucide-react";
 import * as api from "@/lib/traffic-routing-api";
 import { toast } from "@/components/ui/notifications";
 import { EntitySheet } from "../entity-sheet";
@@ -11,6 +11,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Field } from "./form";
 import { Changes } from "./routing-changes";
 import { AttachedEndpoints, ResolvedVersions } from "./review-submit-sheet";
@@ -82,6 +83,31 @@ export function PendingChangeNotice({ change, onOpen }: { change: api.RouterChan
   );
 }
 
+type ChangeRequestSheetProps = {
+  router: api.TrafficRouter;
+  change: api.RouterChangeRequest;
+  revisions: api.RouterRevision[];
+  names: Array<{ id: string; name: string }>;
+  endpoints: Array<{ id: string; name: string }>;
+  currentUserId: string | undefined;
+  canDecide: boolean;
+  onClose: () => void;
+  onOpenRevision: (revision: number) => void;
+};
+
+export function ChangeRequestDetails({ changeId, ...props }: Omit<ChangeRequestSheetProps, "change"> & { changeId: string }) {
+  const { t } = useTranslation();
+  const query = useQuery({
+    queryKey: [...changeKeys(props.router.id), changeId],
+    queryFn: () => api.getRouterChangeRequest(props.router.id, changeId),
+    refetchInterval: 10000,
+  });
+  if (!query.data || query.error) return <EntitySheet open title={t("routing.changeRequest")} eyebrow={props.router.name} description={null} footer={<Button variant="outline" onClick={props.onClose}>{t("routing.close")}</Button>} onOpenChange={open => { if (!open) props.onClose(); }}>
+    {query.error ? <><ErrorNotice error={query.error} /><Button variant="outline" onClick={() => void query.refetch()}>{t("routing.retry")}</Button></> : <p role="status">{t("routing.loadingChangeRequests")}</p>}
+  </EntitySheet>;
+  return <ChangeRequestSheet {...props} change={query.data} />;
+}
+
 type Decision = "view" | "reject" | "emergency";
 
 /** Review a pending change. The submitter may withdraw or apply it in an emergency; another administrator approves or rejects it. */
@@ -93,15 +119,9 @@ export function ChangeRequestSheet({
   currentUserId,
   canDecide,
   onClose,
-}: {
-  router: api.TrafficRouter;
-  change: api.RouterChangeRequest;
-  names: Array<{ id: string; name: string }>;
-  endpoints: Array<{ id: string; name: string }>;
-  currentUserId: string | undefined;
-  canDecide: boolean;
-  onClose: () => void;
-}) {
+  revisions,
+  onOpenRevision,
+}: ChangeRequestSheetProps) {
   const { t: localize } = useTranslation();
   const refresh = useRefreshRouter(router.id);
   const [decision, setDecision] = useState<Decision>("view");
@@ -109,10 +129,13 @@ export function ChangeRequestSheet({
   const [emergencyReason, setEmergencyReason] = useState("");
   const [managerContact, setManagerContact] = useState("");
   const submitter = change.submittedBy === currentUserId;
+  const awaiting = change.status === "pending";
+  const base = revisions.find(r => r.revision === change.baseRevision);
+  const published = revisions.find(r => r.revision === change.appliedRevision);
   const finish = async (message: string) => {
     toast.success(message);
     await refresh();
-    onClose();
+    setDecision("view");
   };
   const approve = useMutation({
     mutationFn: () => api.approveRouterChange(router.id, change.id, note.trim() || undefined),
@@ -132,7 +155,7 @@ export function ChangeRequestSheet({
   });
   const pending = approve.isPending || emergency.isPending || reject.isPending || withdraw.isPending;
   const error = approve.error ?? emergency.error ?? reject.error ?? withdraw.error;
-  const actions = !canDecide ? null : decision === "reject" ? (
+  const actions = !canDecide || !awaiting ? null : decision === "reject" ? (
     <>
       <Button variant="outline" disabled={pending} onClick={() => setDecision("view")}>{localize("routing.back")}</Button>
       <Button variant="destructive" disabled={pending || !note.trim()} onClick={() => reject.mutate()}>{localize("routing.rejectChange")}</Button>
@@ -160,30 +183,32 @@ export function ChangeRequestSheet({
       open
       width="xl"
       eyebrow={localize("routing.changeRequest")}
-      title={localize("routing.reviewPendingChange")}
-      description={submitter && canDecide ? localize("routing.ownChangeNeedsAnotherApprover") : localize("routing.approvalAppliesExactlyThisSnapshot")}
+      title={localize(awaiting ? "routing.reviewPendingChange" : "routing.changeRequest")}
+      description={localize(!awaiting ? "routing.closedChangeDescription" : submitter && canDecide ? "routing.ownChangeNeedsAnotherApprover" : "routing.approvalAppliesExactlyThisSnapshot")}
       closeDisabled={pending}
       onOpenChange={(open) => { if (!open && !pending) onClose(); }}
       footer={
         <>
           <Button variant="ghost" disabled={pending} onClick={onClose}>{localize("routing.close")}</Button>
+          {published && <Button onClick={() => onOpenRevision(published.revision)}>{localize("routing.viewPublishedRevision")}<ArrowUpRight /></Button>}
           {actions}
         </>
       }
     >
       <div className="space-y-4">
+        <ChangeStatus change={change} />
         <ChangeFacts change={change} />
-        {decision === "view" && canDecide && !submitter && (
+        {awaiting && decision === "view" && canDecide && !submitter && (
           <Field label={localize("routing.approvalNoteOptional")}>
             <Textarea value={note} maxLength={2000} rows={2} onChange={(event) => setNote(event.target.value)} />
           </Field>
         )}
-        {decision === "reject" && (
+        {awaiting && canDecide && decision === "reject" && (
           <Field label={localize("routing.rejectionNote")}>
             <Textarea value={note} maxLength={2000} rows={3} autoFocus onChange={(event) => setNote(event.target.value)} />
           </Field>
         )}
-        {decision === "emergency" && (
+        {awaiting && canDecide && decision === "emergency" && (
           <div role="group" aria-label={localize("routing.emergencyApply")} className="space-y-4 rounded-lg border border-destructive/40 p-4">
             <p className="text-sm">{localize("routing.emergencyApplyWarning")}</p>
             <Field label={localize("routing.emergencyReason")}>
@@ -197,86 +222,130 @@ export function ChangeRequestSheet({
         {error && <ErrorNotice error={error} />}
       </div>
       <div className="mt-6">
-        <Changes before={router.activeSnapshot} after={change.snapshot} names={names} />
+        {change.baseRevision === null || base ? <Changes before={base?.snapshot ?? null} after={change.snapshot} names={change.context?.guardrails ?? names} /> : <p className="text-sm text-muted-foreground">{localize("routing.changeBaseUnavailable")}</p>}
       </div>
-      <ResolvedVersions snapshot={change.snapshot} names={names} />
-      <AttachedEndpoints ids={change.endpointIds} endpoints={endpoints} />
+      <ResolvedVersions snapshot={change.snapshot} names={change.context?.guardrails ?? names} />
+      <AttachedEndpoints ids={change.endpointIds} endpoints={change.context?.endpoints ?? endpoints} />
     </EntitySheet>
   );
 }
 
-/** Restore the base revision of the active change; it was approved together with that change. */
-export function RevertChangeSheet({ router, label, onClose }: { router: api.TrafficRouter; label: string; onClose: () => void }) {
-  const { t: localize } = useTranslation();
+/** Submit a historical snapshot through the same approval flow as routing edits. */
+export function RestoreRevisionSheet({ router, target, revisions, names, endpoints, hasLocalEdits, onClose, onSubmitted }: {
+  router: api.TrafficRouter; target: api.RouterRevision; revisions: api.RouterRevision[];
+  names: Array<{ id: string; name: string }>; endpoints: Array<{ id: string; name: string }>;
+  hasLocalEdits: boolean; onClose: () => void; onSubmitted: (change: api.RouterChangeRequest) => void;
+}) {
+  const { t } = useTranslation();
   const refresh = useRefreshRouter(router.id);
-  const target = router.revertibleChangeRequest!;
+  const [reviewedRouter] = useState(router);
   const [reason, setReason] = useState("");
-  const revert = useMutation({
-    mutationFn: () => api.revertRouterChange(router.id, target.id, reason.trim()),
-    onSuccess: async () => {
-      toast.success(localize("routing.rolledBack", { revision: label }));
+  const [ticket, setTicket] = useState("");
+  const current = revisions.find(r => r.revision === reviewedRouter.activeRevision);
+  const stale = router.activeRevision !== reviewedRouter.activeRevision || router.draftRevision !== reviewedRouter.draftRevision
+    || JSON.stringify([...router.endpointIds].sort()) !== JSON.stringify([...reviewedRouter.endpointIds].sort());
+  const blocked = stale || Boolean(router.pendingChangeRequest) || !current || target.revision === router.activeRevision;
+  const replacesDraft = hasLocalEdits || JSON.stringify(reviewedRouter.draft) !== JSON.stringify(reviewedRouter.activeSnapshot);
+  const submit = useMutation({
+    mutationFn: () => api.submitRouterChange(router.id, {
+      expectedDraftRevision: reviewedRouter.draftRevision,
+      restore: { revision: target.revision, expectedActiveRevision: reviewedRouter.activeRevision! },
+      reviewedSnapshot: target.snapshot,
+      reviewedEndpointIds: reviewedRouter.endpointIds,
+      reason: reason.trim(), ticket: ticket.trim(),
+    }),
+    onSuccess: async change => {
+      onSubmitted(change);
       await refresh();
-      onClose();
+      toast.success(t("routing.changeSubmitted"));
     },
   });
-  return (
-    <EntitySheet
-      open
-      eyebrow={localize("routing.router")}
-      title={localize("routing.rollBackToRevision", { revision: label })}
-      description={localize("routing.preApprovedRollbackDescription", { revision: label })}
-      closeDisabled={revert.isPending}
-      onOpenChange={(open) => { if (!open && !revert.isPending) onClose(); }}
-      footer={
-        <>
-          <Button variant="outline" disabled={revert.isPending} onClick={onClose}>{localize("routing.cancel")}</Button>
-          <Button variant="destructive" disabled={revert.isPending || !reason.trim()} onClick={() => revert.mutate()}>
-            <Undo2 aria-hidden="true" />{localize("routing.rollBack")}
-          </Button>
-        </>
-      }
-    >
-      <Field label={localize("routing.rollbackReason")}>
-        <Textarea value={reason} maxLength={2000} rows={3} autoFocus onChange={(event) => setReason(event.target.value)} />
-      </Field>
-      {revert.error && <div className="mt-4"><ErrorNotice error={revert.error} /></div>}
-    </EntitySheet>
-  );
+  return <EntitySheet open width="xl" eyebrow={t("routing.routerRevision")}
+    title={t("routing.restoreVersionTitle", { revision: revisionLabel(target) })}
+    description={t("routing.restoreVersionDescription")}
+    closeDisabled={submit.isPending}
+    onOpenChange={open => { if (!open && !submit.isPending) onClose(); }}
+    footer={<>
+      <Button variant="outline" disabled={submit.isPending} onClick={onClose}>{t("routing.cancel")}</Button>
+      <Button disabled={submit.isPending || blocked || !reason.trim()} onClick={() => submit.mutate()}>{t(submit.isPending ? "routing.submitting" : "routing.submitForApproval")}</Button>
+    </>}>
+    <dl className="mb-5 grid grid-cols-[10rem_1fr] gap-x-4 gap-y-3 text-sm">
+      <dt className="text-muted-foreground">{t("routing.restoreCurrentVersion")}</dt><dd className="font-mono">{revisionLabel(current)}</dd>
+      <dt className="text-muted-foreground">{t("routing.restoreTargetVersion")}</dt><dd className="font-mono">{revisionLabel(target)}</dd>
+    </dl>
+    <div className="space-y-4">
+      {stale && <p role="alert" className="text-sm text-destructive">{t("routing.restoreReviewStale")}</p>}
+      {router.pendingChangeRequest && <p role="alert" className="text-sm">{t("routing.restorePendingChange")}</p>}
+      {!current && <p role="alert" className="text-sm">{t("routing.restoreCurrentUnavailable")}</p>}
+      {replacesDraft && <p className="text-sm">{t("routing.restoreReplacesDraft")}</p>}
+      <Field label={t("routing.changeReason")}><Textarea value={reason} maxLength={2000} rows={3} onChange={event => setReason(event.target.value)} /></Field>
+      <Field label={t("routing.changeTicketOptional")}><Input value={ticket} maxLength={128} onChange={event => setTicket(event.target.value)} /></Field>
+      {submit.error && <ErrorNotice error={submit.error} />}
+    </div>
+    {current && <div className="mt-6"><Changes before={current.snapshot} after={target.snapshot} names={[...names, ...(target.context?.guardrails ?? []), ...(current.context?.guardrails ?? [])]} /></div>}
+    <ResolvedVersions snapshot={target.snapshot} names={target.context?.guardrails ?? names} />
+    <AttachedEndpoints ids={reviewedRouter.endpointIds} endpoints={endpoints} />
+  </EntitySheet>;
 }
 
-export function ChangeRequestHistory({ routerId, revisions }: { routerId: string; revisions: api.RouterRevision[] }) {
+export function ChangeRequestHistory({ routerId, revisions, onOpenChange, onOpenRevision }: {
+  routerId: string; revisions: api.RouterRevision[];
+  onOpenChange: (id: string) => void; onOpenRevision: (revision: number) => void;
+}) {
   const { t: localize } = useTranslation();
-  const changes = useQuery({ queryKey: changeKeys(routerId), queryFn: () => api.listRouterChangeRequests(routerId) });
+  const [filter, setFilter] = useState("all");
+  const [page, setPage] = useState(1);
+  const changes = useQuery({ queryKey: changeKeys(routerId), queryFn: () => api.listRouterChangeRequests(routerId), refetchInterval: 10000 });
+  const filtered = (changes.data?.items ?? []).filter(change => filter === "all" || change.status === filter)
+    .sort((a, b) => Number(b.status === "pending") - Number(a.status === "pending") || Date.parse(b.submittedAt) - Date.parse(a.submittedAt));
+  const pageSize = 10;
+  const currentPage = Math.min(page, Math.max(1, Math.ceil(filtered.length / pageSize)));
+  const visible = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   return (
-    <section className="space-y-4">
-      <h2 className="text-lg font-semibold">{localize("routing.changeRequests")}</h2>
-      <p className="text-sm text-muted-foreground">{localize("routing.changeRequestsDescription")}</p>
-      {changes.error ? <ErrorNotice error={changes.error} />
+    <section className="space-y-4" aria-label={localize("routing.tabs.change-requests")}>
+      <div className="flex items-center justify-between gap-4">
+        <p className="text-sm text-muted-foreground">{localize("routing.changeRequestsDescription")}</p>
+        <Select value={filter} onValueChange={value => { setFilter(value); setPage(1); }}>
+          <SelectTrigger className="w-56 shrink-0" aria-label={localize("routing.changeStatusFilter")}><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{localize("routing.allChangeStatuses")}</SelectItem>
+            {(["pending", "applied", "rejected", "withdrawn", "superseded"] as const).map(status => <SelectItem key={status} value={status}>{localize(`routing.changeStatus.${status}`)}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </div>
+      {changes.error ? <><ErrorNotice error={changes.error} /><Button variant="outline" onClick={() => void changes.refetch()}>{localize("routing.retry")}</Button></>
         : changes.isPending ? <p role="status">{localize("routing.loadingChangeRequests")}</p>
-        : !changes.data.items.length ? <p className="rounded-lg border border-dashed p-6 text-sm">{localize("routing.noChangeRequests")}</p>
-        : (
+        : !filtered.length ? <p className="border border-dashed p-6 text-sm">{localize(filter === "all" ? "routing.noChangeRequests" : "routing.noMatchingChangeRequests")}</p>
+        : <>
           <Table>
-            <TableHeader>
-              <TableRow>
-                {[localize("routing.submitted"), localize("routing.status"), localize("routing.changeTicket"), localize("routing.changeReason"),
-                  localize("routing.submittedBy"), localize("routing.decidedBy"), localize("routing.revision")].map(h => <TableHead key={h}>{h}</TableHead>)}
-              </TableRow>
-            </TableHeader>
+            <TableHeader><TableRow>
+              {[localize("routing.changeReason"), localize("routing.status"), localize("routing.submitted"), localize("routing.submittedBy"), localize("routing.decidedBy"), localize("routing.revision")].map(h => <TableHead key={h}>{h}</TableHead>)}
+            </TableRow></TableHeader>
             <TableBody>
-              {changes.data.items.map(change => (
-                <TableRow key={change.id}>
-                  <TableCell className="whitespace-nowrap">{new Date(change.submittedAt).toLocaleString()}</TableCell>
+              {visible.map(change => {
+                const revision = revisions.find(r => r.revision === change.appliedRevision);
+                return <TableRow key={change.id}>
+                  <TableCell className="max-w-80">
+                    <button type="button" className="min-h-11 text-left text-primary hover:underline whitespace-pre-wrap break-words" onClick={() => onOpenChange(change.id)}>{change.reason}</button>
+                    {change.ticket && <p className="text-xs text-muted-foreground">{change.ticket}</p>}
+                  </TableCell>
                   <TableCell><ChangeStatus change={change} /></TableCell>
-                  <TableCell>{change.ticket || "—"}</TableCell>
-                  <TableCell className="max-w-80 whitespace-pre-wrap break-words">{change.emergencyReason ? `${change.reason}\n${localize("routing.emergencyReason")}: ${change.emergencyReason} (${change.emergencyContact})` : change.reason}</TableCell>
+                  <TableCell className="whitespace-nowrap">{new Date(change.submittedAt).toLocaleString()}</TableCell>
                   <TableCell>{change.submittedByName ?? change.submittedBy}</TableCell>
                   <TableCell>{change.decidedAt ? change.decidedByName ?? change.decidedBy ?? localize("routing.system") : "—"}</TableCell>
-                  <TableCell className="font-mono text-xs">{change.appliedRevision === null ? "—" : revisionLabel(revisions.find(r => r.revision === change.appliedRevision))}</TableCell>
-                </TableRow>
-              ))}
+                  <TableCell>{revision ? <Button variant="link" className="px-0 font-mono text-xs" onClick={() => onOpenRevision(revision.revision)}>{revisionLabel(revision)}<ArrowUpRight /></Button> : change.appliedRevision !== null ? <span className="text-xs text-muted-foreground">{localize("routing.revisionUnavailable")}</span> : "—"}</TableCell>
+                </TableRow>;
+              })}
             </TableBody>
           </Table>
-        )}
+          {filtered.length > pageSize && <nav className="flex items-center justify-between gap-3 border-t py-3" aria-label={localize("routing.requestPages")}>
+            <span className="text-xs tabular-nums text-muted-foreground">{localize("immutableVersions.rows", { start: (currentPage - 1) * pageSize + 1, end: Math.min(currentPage * pageSize, filtered.length), total: filtered.length })}</span>
+            <div className="flex gap-2">
+              <Button variant="outline" disabled={changes.isFetching || currentPage === 1} onClick={() => setPage(currentPage - 1)}>{localize("immutableVersions.previousPage")}</Button>
+              <Button variant="outline" disabled={changes.isFetching || currentPage * pageSize >= filtered.length} onClick={() => setPage(currentPage + 1)}>{localize("immutableVersions.nextPage")}</Button>
+            </div>
+          </nav>}
+        </>}
     </section>
   );
 }

@@ -2,9 +2,9 @@ import { useTranslation } from "react-i18next";
 import { discardRouterDraft } from "@/components/traffic-routing/discard-router-draft";
 import { DistributionOverview } from "@/components/traffic-routing/distribution";
 import { ReviewSubmitSheet, type ChangeSubmission } from "@/components/traffic-routing/review-submit-sheet";
-import { ChangeRequestHistory, ChangeRequestSheet, PendingChangeNotice, RevertChangeSheet } from "@/components/traffic-routing/change-requests";
+import { ChangeRequestHistory, ChangeRequestDetails, PendingChangeNotice, RestoreRevisionSheet } from "@/components/traffic-routing/change-requests";
 import { useEffect, useRef, useState } from "react";
-import { Activity, Cable, GitBranch, History, LayoutDashboard, AlertTriangle, FlaskConical, Pencil, Undo2 } from "lucide-react";
+import { Activity, Cable, ClipboardCheck, GitBranch, History, LayoutDashboard, AlertTriangle, FlaskConical, Pencil } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams, useSearch, useNavigate, useBlocker } from "@tanstack/react-router";
 import { toast } from "@/components/ui/notifications";
@@ -15,6 +15,7 @@ import { queryKeys } from "@/features/query-keys";
 import * as api from "@/lib/traffic-routing-api";
 import { PageHeader, ErrorNotice, StateBadge } from "@/components/product-shell";
 import { EntitySheet } from "@/components/entity-sheet";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
@@ -113,7 +114,10 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
     null,
   );
   const [restore, setRestore] = useState<api.RouterRevision | null>(null);
-  const [changeSheet, setChangeSheet] = useState<"review" | "revert" | null>(null);
+  const [selectedChangeId, setSelectedChangeId] = useState<string | null>(null);
+  const [selectedRevision, setSelectedRevision] = useState<number | null>(null);
+  const openChange = (id: string) => { setSelectedRevision(null); setSelectedChangeId(id); setTab("change-requests"); };
+  const openRevision = (revision: number) => { setSelectedChangeId(null); setSelectedRevision(revision); setTab("revisions"); };
   const opener = useRef<HTMLElement | null>(null);
   const dirty = JSON.stringify(draft) !== JSON.stringify(base.draft);
   const unpublished =
@@ -183,10 +187,10 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
         reviewedEndpointIds: review!.endpointIds,
         ...submission,
       }),
-    onSuccess: async () => {
+    onSuccess: async (change) => {
       setReview(null);
       setEditing(false);
-      setTab("overview");
+      openChange(change.id);
       await client.invalidateQueries({ queryKey: api.trafficRouterKeys.all });
       toast.success(localize("routing.changeSubmitted"));
     },
@@ -227,7 +231,6 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
     prepare.mutate();
   };
   const serverChanged = router.draftRevision !== base.draftRevision;
-  const rollbackLabel = revisionLabel(revisions.data?.items.find(r => r.revision === router.revertibleChangeRequest?.baseRevision));
   const draftIsAwaiting = Boolean(awaiting) && !dirty && awaiting!.sourceDraftRevision === router.draftRevision;
   return (
     <section className="router-workspace space-y-5 py-8">
@@ -239,16 +242,14 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
         className="router-workspace-header"
         title={router.name}
         description={localize("routing.manageTrafficRoutingFromIncomingEndpointsToGuardRails")}
-        action={<Button asChild variant="testing" className="router-workspace-action"><Link to="/playground" search={{ mode: "advanced", router: router.id }}><FlaskConical aria-hidden="true" />{localize("routing.testRouter")}</Link></Button>}
+        action={<div className="flex shrink-0 items-center gap-2">
+          <Button asChild variant="testing" className="router-workspace-action"><Link to="/playground" search={{ mode: "advanced", router: router.id }}><FlaskConical aria-hidden="true" />{localize("routing.testRouter")}</Link></Button>
+
+        </div>}
       />
       <div className="router-workspace-status">
         <StateBadge state={router.rolloutStatus} label={router.rolloutStatus === "active" ? localize("routing.active") : router.rolloutStatus === "failed" ? localize("routing.rolloutFailed") : router.rolloutStatus === "distributing" ? localize("routing.distributing") : localize("routing.unpublished")} />
         {router.activeRevision !== null && <code className="text-xs text-muted-foreground">{revisionLabel(revisions.data?.items.find(r => r.revision === router.activeRevision))}</code>}
-        {canEdit && router.revertibleChangeRequest && (
-          <Button variant="outline" size="sm" onClick={() => setChangeSheet("revert")}>
-            <Undo2 aria-hidden="true" />{localize("routing.rollBackToRevision", { revision: rollbackLabel })}
-          </Button>
-        )}
         <p className="text-muted-foreground">
           {localize("routing.summary", {
             endpoints: router.endpointIds.length,
@@ -261,7 +262,7 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
         <p role="alert" className="router-deployment-error">
           <AlertTriangle aria-hidden="true" />{localize("routing.runnerDeploymentFailedReviewTheConfigurationAndPublishA")}</p>
       )}
-      {awaiting && <PendingChangeNotice change={awaiting} onOpen={() => setChangeSheet("review")} />}
+      {awaiting && <PendingChangeNotice change={awaiting} onOpen={() => openChange(awaiting.id)} />}
       {unpublished && !draftIsAwaiting && (!editing || tab !== "routing") && (
         <div className="router-draft-notice" role="status">
           <Pencil aria-hidden="true" className="router-draft-icon" />
@@ -332,10 +333,12 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
               ["routing", GitBranch],
               ["monitoring", Activity],
               ["revisions", History],
+              ["change-requests", ClipboardCheck],
             ] as const).map(([value, Icon]) => (
               <TabsTrigger value={value} key={value}>
                 <Icon aria-hidden="true" />
                 {localize(`routing.tabs.${value}`)}
+                {value === "change-requests" && awaiting ? <Badge variant="secondary">1</Badge> : null}
               </TabsTrigger>
             ))}
           </TabsList>
@@ -464,31 +467,34 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
           ) : revisions.isPending ? (
             <p role="status">{localize("routing.loadingRevisions")}</p>
           ) : (
-            <div className="space-y-8">
-              <ChangeRequestHistory routerId={router.id} revisions={revisions.data?.items ?? []} />
               <RouterRevisions
                 router={router}
                 revisions={revisions.data?.items ?? []}
                 canEdit={canEdit && !busy}
                 onRestore={setRestore}
+                selectedRevision={selectedRevision}
+                onSelectRevision={setSelectedRevision}
+                onOpenChange={openChange}
               />
-            </div>
           )}
         </TabsContent>
+        <TabsContent value="change-requests" className="min-w-0 pt-5">
+          <ChangeRequestHistory routerId={router.id} revisions={revisions.data?.items ?? []} onOpenChange={openChange} onOpenRevision={openRevision} />
+        </TabsContent>
       </Tabs>
-      {changeSheet === "review" && awaiting && (
-        <ChangeRequestSheet
+      {selectedChangeId && (
+        <ChangeRequestDetails
+          key={selectedChangeId}
+          changeId={selectedChangeId}
           router={router}
-          change={awaiting}
+          revisions={revisions.data?.items ?? []}
           names={names}
           endpoints={endpoints.data?.items ?? []}
           currentUserId={auth.user?.id}
           canDecide={canEdit}
-          onClose={() => setChangeSheet(null)}
+          onClose={() => setSelectedChangeId(null)}
+          onOpenRevision={openRevision}
         />
-      )}
-      {changeSheet === "revert" && router.revertibleChangeRequest && (
-        <RevertChangeSheet router={router} label={rollbackLabel} onClose={() => setChangeSheet(null)} />
       )}
       {review && (
         <ReviewSubmitSheet
@@ -506,36 +512,22 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
         />
       )}
       {restore && (
-        <EntitySheet
-          open
-          eyebrow={localize("routing.router")}
-          title={localize("routing.restoreTitle", { revision: revisionLabel(restore) })}
-          description={localize("routing.copyTheHistoricalRoutingConfigurationIntoANewDraft")}
-          onOpenChange={(open) => {
-            if (!open) setRestore(null);
+        <RestoreRevisionSheet
+          router={router}
+          target={restore}
+          revisions={revisions.data?.items ?? []}
+          names={names}
+          endpoints={endpoints.data?.items ?? []}
+          hasLocalEdits={dirty}
+          onClose={() => setRestore(null)}
+          onSubmitted={change => {
+            setRestore(null);
+            setEditing(false);
+            setDraft(change.snapshot);
+            setBase({ ...router, draft: change.snapshot, draftRevision: change.sourceDraftRevision! });
+            openChange(change.id);
           }}
-          footer={
-            <>
-              <Button variant="outline" onClick={() => setRestore(null)}>{localize("routing.cancel")}</Button>
-              <Button
-                onClick={() => {
-                  setBase(router);
-                  setDraft(structuredClone(restore.snapshot));
-                  setEditing(true);
-                  setSelected(null);
-                  setTab("routing");
-                  setRestore(null);
-                  prepare.reset();
-                }}
-              >{localize("routing.createDraft")}</Button>
-            </>
-          }
-        >
-          <p className="text-sm">
-            {dirty
-              ? localize("routing.thisReplacesYourUnsavedRoutingEdits")
-              : localize("routing.thisReplacesTheRoutingConfigurationInTheEditor")}{" "}{localize("routing.immutableRevision", { revision: revisionLabel(restore) })}</p>
-        </EntitySheet>
+        />
       )}
       {dialog && (
         <EntitySheet

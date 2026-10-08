@@ -109,6 +109,45 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
     expect(await count("audit_event", "kind IN ('router.change_submitted','router.change_approved')")).toBe(2);
   });
 
+  it("restores a historical version only through approval and preserves history", async () => {
+    let router = await publish();
+    router = await service.trafficRouting.save(router.id, 1, withHeader(), actor);
+    router = await apply(router.id, router.draftRevision);
+    const before = await generation();
+    const change = await service.trafficRouting.submitChange(router.id, {
+      expectedDraftRevision: router.draftRevision, restore: { revision: 1, expectedActiveRevision: 2 },
+      reviewedSnapshot: draft(), reviewedEndpointIds: [], reason: "Restore stable routing", ticket: "CHG-2",
+    }, actor);
+    expect(change).toMatchObject({ status: "pending", kind: "publish", baseRevision: 2, snapshot: draft(), sourceDraftRevision: 3 });
+    expect((await service.trafficRouting.get(router.id)).activeSnapshot).toEqual(withHeader());
+    expect(await generation()).toBe(before);
+    expect(await count("traffic_router_revision")).toBe(2);
+    await expect(service.trafficRouting.approveChange(router.id, change.id, actor, {})).rejects.toMatchObject({ code: "router_change_request_self_approval" });
+    const applied = await service.trafficRouting.approveChange(router.id, change.id, approver, {});
+    expect(applied).toMatchObject({ activeRevision: 3, activeSnapshot: draft(), draft: draft(), activeDraftRevision: 3 });
+    expect(await count("traffic_router_revision")).toBe(3);
+  });
+  it("does not replace the draft when restore review is stale, missing, invalid or blocked", async () => {
+    let router = await publish();
+    router = await service.trafficRouting.save(router.id, 1, withHeader(), actor);
+    router = await apply(router.id, router.draftRevision);
+    const input = { expectedDraftRevision: 2, restore: { revision: 1, expectedActiveRevision: 2 }, reviewedSnapshot: draft(), reviewedEndpointIds: [] as string[], reason: "Restore", ticket: "" };
+    for (const patch of [
+      { expectedDraftRevision: 1 },
+      { restore: { revision: 1, expectedActiveRevision: 1 } },
+      { restore: { revision: 2, expectedActiveRevision: 2 } },
+      { restore: { revision: 99, expectedActiveRevision: 2 } },
+      { reviewedSnapshot: withHeader() },
+      { reviewedEndpointIds: ["http"] },
+    ]) {
+      await expect(service.trafficRouting.submitChange(router.id, { ...input, ...patch }, actor)).rejects.toBeTruthy();
+      expect(await service.trafficRouting.get(router.id)).toMatchObject({ draftRevision: 2, draft: withHeader(), activeRevision: 2 });
+    }
+    await submit(router.id, 2);
+    await expect(service.trafficRouting.submitChange(router.id, input, actor)).rejects.toMatchObject({ code: "router_change_request_pending" });
+    expect(await service.trafficRouting.get(router.id)).toMatchObject({ draftRevision: 2, draft: withHeader() });
+  });
+
   it("serializes concurrent approvals and submissions", async () => {
     const router = await create();
     const change = await submit(router.id);

@@ -96,6 +96,8 @@ describe("Generated OpenAPI contract", () => {
     expect(validate(submit, { expectedDraftRevision: 1, reviewedSnapshot: snapshot, reviewedEndpointIds: [], reason: "Enable v7" }).valid).toBe(true);
     expect(validate(submit, { expectedDraftRevision: 1, reviewedSnapshot: snapshot, reviewedEndpointIds: [] }).valid).toBe(false);
     expect(validate(submit, { expectedDraftRevision: 0, reviewedSnapshot: snapshot, reviewedEndpointIds: [], reason: "Enable v7" }).valid).toBe(false);
+    expect(validate(submit, { expectedDraftRevision: 2, reviewedSnapshot: snapshot, reviewedEndpointIds: [], reason: "Restore", restore: { revision: 1, expectedActiveRevision: 2 } }).valid).toBe(true);
+    expect(validate(submit, { expectedDraftRevision: 2, reviewedSnapshot: snapshot, reviewedEndpointIds: [], reason: "Restore", restore: { revision: 1 } }).valid).toBe(false);
     const emergency = contract.paths["/api/v1/routers/{id}/change-requests/{changeId}/emergency-apply"].post;
     expect(validate(emergency.requestBody.content["application/json"].schema, { reason: "Abuse" }).valid).toBe(false);
     expect(emergency.responses[202].description).toContain("does not guarantee");

@@ -12,7 +12,9 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RouterWorkspace } from "./router-detail";
 import type { TrafficRouter, RouterChangeRequest, RouterDraft } from "@/lib/traffic-routing-api";
-const { save, preview, publish, approve, emergencyApply, withdraw, revert, role } = vi.hoisted(() => ({
+const { save, preview, publish, approve, emergencyApply, withdraw, revert, role, requestRows, changeDetail } = vi.hoisted(() => ({
+  requestRows: { items: [] as RouterChangeRequest[] },
+  changeDetail: vi.fn(),
   save: vi.fn(),
   preview: vi.fn(),
   publish: vi.fn(),
@@ -61,7 +63,7 @@ vi.mock("@/lib/traffic-routing-api", async (original) => ({
   ...(await original<typeof import("@/lib/traffic-routing-api")>()),
   listTrafficRouters: async () => ({ items: [] }),
   getSelectorFields: async () => ({ items: [] }),
-  getRouterRevisions: async () => ({ items: [{ revision: 1, sourceDraftRevision: 1, snapshot: { routes: [] }, createdAt: "2026-10-01T08:00:00.000Z", createdBy: "approver" }] }),
+  getRouterRevisions: async () => ({ items: [{ revision: 2, sourceDraftRevision: 2, snapshot: { routes: [] }, createdAt: "2026-10-02T08:00:00.000Z", createdBy: "approver" }, { revision: 1, sourceDraftRevision: 1, snapshot: { routes: [] }, createdAt: "2026-10-01T08:00:00.000Z", createdBy: "approver", changeRequestId: "change" }] }),
   saveTrafficRouter: save,
   previewTrafficRouter: preview,
   submitRouterChange: publish,
@@ -69,7 +71,8 @@ vi.mock("@/lib/traffic-routing-api", async (original) => ({
   emergencyApplyRouterChange: emergencyApply,
   withdrawRouterChange: withdraw,
   revertRouterChange: revert,
-  listRouterChangeRequests: async () => ({ items: [] }),
+  listRouterChangeRequests: async () => ({ items: requestRows.items }),
+  getRouterChangeRequest: changeDetail,
 }));
 vi.mock("@/components/traffic-routing/distribution", () => ({
   DistributionOverview: () => <div data-testid="monitoring-distribution">Runtime distribution</div>,
@@ -175,6 +178,8 @@ describe("Router detail workflow", () => {
   beforeEach(() => {
     role.value = "admin";
     role.id = "submitter";
+    requestRows.items = [];
+    changeDetail.mockImplementation(async (_id: string, id: string) => requestRows.items.find(item => item.id === id) ?? pendingChange);
     navigation.search = {};
     navigation.navigate.mockImplementation(({ search }: { search: (previous: typeof navigation.search) => typeof navigation.search }) => {
       navigation.search = search(navigation.search);
@@ -210,7 +215,7 @@ describe("Router detail workflow", () => {
     vi.clearAllMocks();
     vi.unstubAllGlobals();
   });
-  it("defaults to Overview with five tabs and read-only topology", async () => {
+  it("defaults to Overview with six tabs and read-only topology", async () => {
     mount();
     expect(
       screen
@@ -223,8 +228,11 @@ describe("Router detail workflow", () => {
       "Routing",
       "Monitoring",
       "Revisions",
+      "Change Requests",
     ]);
     await screen.findByRole("heading", { name: "Traffic Flow" });
+    expect(screen.queryByText("Published routing rules")).toBeNull();
+    expect(screen.queryByText("Pinned in the published revision")).toBeNull();
     expect(screen.queryByRole("button", { name: "Save rules" })).toBeNull();
     for (const name of ["Edit routing", "Rename Router", "View revisions"]) {
       expect(screen.queryByRole("button", { name, exact: true })).toBeNull();
@@ -333,13 +341,56 @@ describe("Router detail workflow", () => {
         ticket: "CHG-7",
       }),
     );
-    await waitFor(() =>
-      expect(
-        screen
-          .getByRole("tab", { name: "Overview" })
-          .getAttribute("aria-selected"),
-      ).toBe("true"),
-    );
+    await waitFor(() => expect(navigation.search.tab).toBe("change-requests"));
+    expect(await screen.findByRole("dialog", { name: "Review pending change" })).toBeTruthy();
+  });
+  it("separates request history from revisions and links their drawers in both directions", async () => {
+    requestRows.items = [{ ...pendingChange, status: "applied", appliedRevision: 1, decidedAt: "2026-10-07T10:05:00Z", decidedBy: "approver" }];
+    navigation.search = { tab: "revisions" };
+    mount();
+    expect(await screen.findByRole("button", { name: "20261001-080000.000Z" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Enable partner v2" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Deployment history" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "20261001-080000.000Z" }));
+    fireEvent.click(await screen.findByRole("button", { name: "View change request" }));
+    await screen.findByRole("button", { name: "View published revision" });
+    const sheet = screen.getByRole("dialog", { name: "Change request", exact: true });
+    expect(within(sheet).queryByRole("button", { name: "Approve and apply" })).toBeNull();
+    expect(within(sheet).queryByRole("button", { name: "Withdraw request" })).toBeNull();
+    // The active snapshot already matches the request; only the historical base has a diff.
+    expect(within(sheet).getByRole("region", { name: "Routing configuration diff" })).toBeTruthy();
+    fireEvent.click(within(sheet).getByRole("button", { name: "View published revision" }));
+    expect(await screen.findByRole("dialog", { name: "Revision 20261001-080000.000Z" })).toBeTruthy();
+    expect(navigation.search.tab).toBe("revisions");
+  });
+  it("prioritizes pending requests, paginates history, and resets pagination on filtering", async () => {
+    requestRows.items = [
+      ...Array.from({ length: 11 }, (_, i) => ({ ...pendingChange, id: `closed-${i}`, reason: `Closed ${i}`, status: "withdrawn" as const, submittedAt: `2026-10-${String(i + 8).padStart(2, "0")}T10:00:00Z` })),
+      pendingChange,
+    ];
+    navigation.search = { tab: "change-requests" };
+    mount({ ...router, pendingChangeRequest: pendingChange });
+    expect(screen.getByRole("tab", { name: "Change Requests 1" })).toBeTruthy();
+    await screen.findByRole("button", { name: "Enable partner v2" });
+    expect(screen.getAllByRole("row")[1]?.textContent).toContain("Enable partner v2");
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+    expect(screen.queryByRole("button", { name: "Enable partner v2" })).toBeNull();
+    fireEvent.click(screen.getByRole("combobox", { name: "Filter requests by status" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Awaiting approval" }));
+    expect(screen.getByRole("button", { name: "Enable partner v2" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Next page" })).toBeNull();
+  });
+  it("keeps withdrawn requests read-only for their submitter", async () => {
+    requestRows.items = [{ ...pendingChange, status: "withdrawn" }];
+    navigation.search = { tab: "change-requests" };
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: "Enable partner v2" }));
+    await screen.findByText("This request is closed. Its decision and submitted configuration are retained for reference.");
+    const sheet = screen.getByRole("dialog", { name: "Change request", exact: true });
+    expect(within(sheet).getByText("Withdrawn")).toBeTruthy();
+    expect(within(sheet).queryByRole("button", { name: "Withdraw request" })).toBeNull();
+    expect(within(sheet).queryByRole("button", { name: "Emergency apply" })).toBeNull();
+    expect(within(sheet).queryByRole("button", { name: "Approve and apply" })).toBeNull();
   });
   it("lets another administrator approve a pending change exactly once", async () => {
     role.id = "approver";
@@ -349,10 +400,32 @@ describe("Router detail workflow", () => {
     fireEvent.click(screen.getByRole("button", { name: "Review change" }));
     const sheet = await screen.findByRole("dialog", { name: "Review pending change" });
     expect(within(sheet).getByText("Enable partner v2")).toBeTruthy();
-    expect(within(sheet).queryByRole("button", { name: "Withdraw" })).toBeNull();
+    expect(within(sheet).queryByRole("button", { name: "Withdraw request" })).toBeNull();
     fireEvent.change(within(sheet).getByLabelText("Approval note (optional)"), { target: { value: "CAB approved" } });
     fireEvent.click(within(sheet).getByRole("button", { name: "Approve and apply" }));
     await waitFor(() => expect(approve).toHaveBeenCalledExactlyOnceWith("router", "change", "CAB approved"));
+  });
+  it("keeps the applied request open with a published-version link after approval", async () => {
+    role.id = "approver";
+    approve.mockImplementationOnce(async () => {
+      changeDetail.mockResolvedValue({ ...pendingChange, status: "applied", appliedRevision: 1 });
+      return router;
+    });
+    mount({ ...router, pendingChangeRequest: pendingChange });
+    fireEvent.click(screen.getByRole("button", { name: "Review change" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Approve and apply" }));
+    expect(await screen.findByRole("button", { name: "View published revision" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Approve and apply" })).toBeNull();
+    expect(screen.getByRole("dialog", { name: "Change request", exact: true })).toBeTruthy();
+  });
+  it("does not expose approval controls when request detail loading fails", async () => {
+    changeDetail.mockRejectedValueOnce(new Error("Request unavailable"));
+    mount({ ...router, pendingChangeRequest: pendingChange });
+    fireEvent.click(screen.getByRole("button", { name: "Review change" }));
+    expect(await screen.findByText("Request unavailable")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Approve and apply" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByRole("button", { name: "Withdraw request" })).toBeTruthy();
   });
   it("requires a reason and manager contact before the submitter applies in an emergency", async () => {
     mount({ ...router, draftRevision: 2, pendingChangeRequest: pendingChange });
@@ -368,13 +441,52 @@ describe("Router detail workflow", () => {
     await waitFor(() => expect(emergencyApply).toHaveBeenCalledExactlyOnceWith("router", "change", { reason: "Active abuse", managerContact: "Duty manager 138" }));
     expect(approve).not.toHaveBeenCalled();
   });
-  it("rolls back the active change to its pre-approved base revision with a reason", async () => {
-    mount({ ...router, activeRevision: 2, revertibleChangeRequest: { id: "change", baseRevision: 1, appliedRevision: 2 } });
-    fireEvent.click(await screen.findByRole("button", { name: "Roll back to 20261001-080000.000Z" }));
-    const sheet = await screen.findByRole("dialog", { name: "Roll back to 20261001-080000.000Z" });
-    fireEvent.change(within(sheet).getByLabelText("Rollback reason"), { target: { value: "False positives" } });
-    fireEvent.click(within(sheet).getByRole("button", { name: "Roll back" }));
-    await waitFor(() => expect(revert).toHaveBeenCalledExactlyOnceWith("router", "change", "False positives"));
+  async function openRestore(value = { ...router, activeRevision: 2 }) {
+    mount(value);
+    expect(screen.queryByRole("button", { name: "Actions", exact: true })).toBeNull();
+    fireEvent.click(screen.getByRole("tab", { name: "Revisions", exact: true }));
+    fireEvent.click(await screen.findByRole("button", { name: "Actions for revision 20261001-080000.000Z" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Restore this version…" }));
+    return screen.findByRole("dialog", { name: "Restore 20261001-080000.000Z", exact: true });
+  }
+  it("submits a chosen historical version for approval without calling direct rollback", async () => {
+    publish.mockResolvedValueOnce({ ...pendingChange, snapshot: { routes: [] } });
+    const sheet = await openRestore();
+    expect(within(sheet).getByText("20261002-080000.000Z")).toBeTruthy();
+    expect(within(sheet).getByText("20261001-080000.000Z")).toBeTruthy();
+    expect(within(sheet).getByRole("button", { name: "Submit for approval" }).hasAttribute("disabled")).toBe(true);
+    fireEvent.change(within(sheet).getByLabelText("Change description"), { target: { value: "Restore stable routing" } });
+    fireEvent.click(within(sheet).getByRole("button", { name: "Submit for approval" }));
+    await waitFor(() => expect(publish).toHaveBeenCalledExactlyOnceWith("router", {
+      expectedDraftRevision: 1, restore: { revision: 1, expectedActiveRevision: 2 },
+      reviewedSnapshot: { routes: [] }, reviewedEndpointIds: [], reason: "Restore stable routing", ticket: "",
+    }));
+    expect(await screen.findByRole("dialog", { name: "Review pending change" })).toBeTruthy();
+    expect(navigation.search.tab).toBe("change-requests");
+    expect(revert).not.toHaveBeenCalled();
+    expect(save).not.toHaveBeenCalled();
+    expect(approve).not.toHaveBeenCalled();
+  });
+  it("cancels restoration without changing the draft or submitting a request", async () => {
+    const sheet = await openRestore();
+    fireEvent.click(within(sheet).getByRole("button", { name: "Cancel" }));
+    expect(publish).not.toHaveBeenCalled(); expect(save).not.toHaveBeenCalled(); expect(revert).not.toHaveBeenCalled();
+  });
+  it("explains why restoration cannot submit while another request is pending", async () => {
+    const sheet = await openRestore({ ...router, activeRevision: 2, pendingChangeRequest: pendingChange });
+    fireEvent.change(within(sheet).getByLabelText("Change description"), { target: { value: "Restore" } });
+    expect(within(sheet).getByRole("alert").textContent).toContain("already has a pending change request");
+    expect(within(sheet).getByRole("button", { name: "Submit for approval" }).hasAttribute("disabled")).toBe(true);
+    expect(publish).not.toHaveBeenCalled();
+  });
+  it("keeps a failed restoration review open and allows retry", async () => {
+    publish.mockRejectedValueOnce(new Error("Target is no longer available"));
+    const sheet = await openRestore();
+    fireEvent.change(within(sheet).getByLabelText("Change description"), { target: { value: "Restore" } });
+    fireEvent.click(within(sheet).getByRole("button", { name: "Submit for approval" }));
+    expect(await within(sheet).findByText("Target is no longer available")).toBeTruthy();
+    expect(within(sheet).getByRole("button", { name: "Submit for approval" }).hasAttribute("disabled")).toBe(false);
+    expect(save).not.toHaveBeenCalled();
   });
   it("keeps fallback separate, without delete or reorder", async () => {
     mount();

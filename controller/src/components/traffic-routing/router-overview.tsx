@@ -33,23 +33,8 @@ export function RouterOverview({
   const { t: localize } = useTranslation();
   const snapshot = router.activeSnapshot;
   const revision = revisions.find((r) => r.revision === router.activeRevision);
-  const versions = new Set(
-    snapshot?.routes.flatMap((r) =>
-      r.targets.map((t) => `${t.guardrailId}:${t.guardrailVersion}`),
-    ) ?? [],
-  );
-  const healthy = endpoints.filter(e => e.runtime_status === "healthy").length;
-  const unhealthy = endpoints.filter(e => e.runtime_status === "degraded").length;
-  const unknown = endpoints.filter(e => e.enabled && !["healthy", "degraded"].includes(e.runtime_status)).length;
-  const disabled = endpoints.filter(e => !e.enabled).length;
-  const normalRules = snapshot?.routes.filter(r => r.kind === "normal") ?? [];
   return (
     <div className="router-overview">
-      <div className="router-overview-metrics">
-        <div><button type="button" className="router-metric-label" onClick={onEndpoints}><Cable aria-hidden="true" />{localize("routing.endpoints2")}<ArrowRight aria-hidden="true" /></button><strong>{endpoints.length}</strong><span className="router-metric-detail">{localize("routing.healthyCount", { count: healthy })}{unhealthy ? localize("routing.needAttentionCount", { count: unhealthy }) : ''}{unknown ? localize("routing.unknownCount", { count: unknown }) : ''}{disabled ? localize("routing.disabledCount", { count: disabled }) : ''}</span></div>
-        <div><button type="button" className="router-metric-label" onClick={onRouting}><GitBranch aria-hidden="true" />{localize("routing.publishedRoutingRules")}<ArrowRight aria-hidden="true" /></button><strong>{normalRules.length}</strong><span className="router-metric-detail">{snapshot ? localize("routing.fallbackCount", { count: snapshot.routes.filter(r => r.kind === "fallback").length }) : localize("routing.noPublishedRuleSet")}</span></div>
-        <div><span className="router-metric-label"><ShieldCheck aria-hidden="true" />{localize("routing.guardrailVersions")}</span><strong>{versions.size}</strong><span className="router-metric-detail">{snapshot ? localize("routing.pinnedInThePublishedRevision") : localize("routing.assignedWhenARevisionIsPublished")}</span></div>
-      </div>
       <section className="router-overview-panel router-flow-panel" aria-label={localize("routing.trafficFlow")}>
         <header className="router-panel-heading">
           <div><h2>{localize("routing.trafficFlow")}</h2><p>{snapshot ? localize("routing.flowDescription", { revision: revisionLabel(revision) }) : localize("routing.noRevisionHasBeenPublishedDraftRulesAreNot")}</p></div>

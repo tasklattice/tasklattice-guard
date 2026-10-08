@@ -35,14 +35,21 @@ export function RouterRevisions({
   revisions,
   canEdit,
   onRestore,
+  selectedRevision,
+  onSelectRevision,
+  onOpenChange,
 }: {
   router: TrafficRouter;
   revisions: RouterRevision[];
   canEdit: boolean;
   onRestore: (r: RouterRevision) => void;
+  selectedRevision: number | null;
+  onSelectRevision: (revision: number | null) => void;
+  onOpenChange: (id: string) => void;
 }) {
   const { t: localize } = useTranslation();
-  const [selected, setSelected] = useState<RouterRevision | null>(null);
+  const selected = revisions.find(r => r.revision === selectedRevision);
+  const setSelected = (r: RouterRevision | null) => onSelectRevision(r?.revision ?? null);
   const [deleting, setDeleting] = useState<RouterRevision | null>(null);
   const client = useQueryClient();
   const remove = useMutation({ mutationFn: (revision: number) => deleteRouterRevision(router.id, revision), onSuccess: async () => { setDeleting(null); setSelected(null); await client.invalidateQueries({ queryKey: trafficRouterKeys.all }); } });
@@ -55,9 +62,8 @@ export function RouterRevisions({
           : localize("routing.deploying")
       : localize("routing.previous");
   return (
-    <section className="space-y-4">
-      <h2 className="text-lg font-semibold">{localize("routing.deploymentHistory")}</h2>
-      <p className="text-sm text-muted-foreground">{localize("routing.publishedRevisionsAreImmutableRestoreCreatesADraftFor")}</p>
+    <section className="space-y-4" aria-label={localize("routing.tabs.revisions")}>
+      <p className="text-sm text-muted-foreground">{localize("routing.revisionsRestoreDescription")}</p>
       {!revisions.length ? (
         <p className="rounded-lg border border-dashed p-6 text-sm">{localize("routing.noPublishedRevisions2")}</p>
       ) : (
@@ -100,7 +106,7 @@ export function RouterRevisions({
                   }{" "}{localize("routing.changes")}</TableCell>
                 <TableCell>
                   {canEdit && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" className="size-11" aria-label={localize("routing.revisionActions", { revision: revisionLabel(r) })}><MoreHorizontal /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">
-                    <DropdownMenuItem variant="edit" disabled={r.revision === router.activeRevision || remove.isPending} onSelect={() => onRestore(r)}><RotateCcw />{localize("routing.rollback")}</DropdownMenuItem>
+                    {r.revision !== router.activeRevision && <DropdownMenuItem variant="edit" disabled={remove.isPending} onSelect={() => onRestore(r)}><RotateCcw />{localize("routing.restoreVersionAction")}</DropdownMenuItem>}
                     <DropdownMenuItem variant="destructive" disabled={r.revision === router.activeRevision || remove.isPending} onSelect={() => { remove.reset(); setDeleting(r); }}><Trash2 />{localize("routing.delete")}</DropdownMenuItem>
                   </DropdownMenuContent></DropdownMenu>}
                 </TableCell>
@@ -131,13 +137,14 @@ export function RouterRevisions({
                     onRestore(selected);
                     setSelected(null);
                   }}
-                >{localize("routing.restoreAsDraft")}</Button>
+                >{localize("routing.restoreVersionAction")}</Button>
               )}
             </>
           }
         >
           <section className="space-y-3">
             <StateBadge state={status(selected)} />
+            {selected.changeRequestId && <Button variant="link" onClick={() => onOpenChange(selected.changeRequestId!)}>{localize("routing.viewChangeRequest")}</Button>}
             <h3 className="font-medium">{localize("routing.endpointsSnapshot")}</h3>
             {selected.context ? (
               selected.context.endpoints.length ? (

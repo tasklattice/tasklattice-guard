@@ -48,7 +48,7 @@ const playgroundSearch = (search: Record<string, unknown>): { guardrail?: string
 };
 const playgroundRoute = createRoute({ getParentRoute: () => rootRoute, path: "/playground", validateSearch: playgroundSearch, component: PlaygroundPage });
 const routersRoute = createRoute({ getParentRoute: () => rootRoute, path: "/integration/routers", component: RoutersPage });
-const routerDetailRoute = createRoute({ getParentRoute: () => rootRoute, path: "/integration/routers/$routerId", validateSearch: (search: Record<string, unknown>): { routeId?: string; tab?: string } => ({ routeId: typeof search.routeId === "string" ? search.routeId : undefined, tab: ['overview', 'endpoints', 'routing', 'monitoring', 'revisions'].includes(String(search.tab)) ? String(search.tab) : undefined }), component: RouterDetailPage });
+const routerDetailRoute = createRoute({ getParentRoute: () => rootRoute, path: "/integration/routers/$routerId", validateSearch: (search: Record<string, unknown>): { routeId?: string; tab?: string } => ({ routeId: typeof search.routeId === "string" ? search.routeId : undefined, tab: ['overview', 'endpoints', 'routing', 'monitoring', 'revisions', 'change-requests'].includes(String(search.tab)) ? String(search.tab) : undefined }), component: RouterDetailPage });
 const endpointsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/integration/endpoints",
