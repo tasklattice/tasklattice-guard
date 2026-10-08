@@ -39,7 +39,7 @@ function open(day = 3) {
   return screen.getByRole("dialog");
 }
 beforeEach(() => {
-  vi.mocked(getControllerGuardrail).mockResolvedValue({ id: "g1", latestVersion: versions[1].version, versions: versions.map(v => ({ version: v.version, createdAt: v.created_at, status: "ready", artifactId: v.version })) } as never);
+  vi.mocked(getControllerGuardrail).mockResolvedValue({ id: "g1", latestVersion: versions[1].version, versions: versions.map(v => ({ version: v.version, createdAt: v.created_at, status: "ready", artifactId: v.version, validationRunId: `run-${v.version}` })) } as never);
   vi.mocked(getGuardrailVersionDeletionImpact).mockResolvedValue({ deletable: false, blockers: [{ code: "latest", until: null }], references: [], unrestorableRevisions: [] } as never);
 });
 afterEach(() => { cleanup(); vi.clearAllMocks(); auth.user.role = "admin"; });
@@ -108,12 +108,12 @@ describe("Immutable version list and detail drawer", () => {
     expect(screen.getByText("policy-2-10")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "uiCopy.versionActions" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "guardrails.exportEllipsis" }));
-    const dialog = await screen.findByRole("dialog", { name: /guardrails.exportTitle/ });
+    const dialog = await screen.findByRole("dialog", { name: /guardrailPackage.exportTitle/ });
     expect(screen.getAllByRole("dialog")).toHaveLength(1);
-    expect(dialog.textContent).toContain("guardrails.exportTitle");
-    await waitFor(() => expect(within(dialog).getAllByRole("radio")).toHaveLength(3));
-    const chosen = within(dialog).getAllByRole("radio").find(radio => (radio as HTMLInputElement).checked) as HTMLInputElement;
-    expect(chosen.value).toBe(version(2).version);
+    expect(dialog.textContent).toContain("guardrailPackage.exportTitle");
+    await waitFor(() => expect(within(dialog).getAllByRole("checkbox")).toHaveLength(3));
+    const chosen = within(dialog).getAllByRole("checkbox").filter(box => (box as HTMLInputElement).checked);
+    expect(chosen.map(box => box.getAttribute("aria-label"))).toEqual([version(2).version]);
     fireEvent.click(within(dialog).getByRole("button", { name: "common.cancel" }));
     expect(screen.getAllByRole("dialog")).toHaveLength(1);
     expect(screen.getByRole("tab", { name: /immutableVersions.policies/ }).getAttribute("data-state")).toBe("active");

@@ -2,7 +2,7 @@ import readline from 'readline';
 import { Writable } from 'node:stream';
 import axios, { AxiosRequestConfig } from 'axios';
 import { readFileSync, existsSync, writeFileSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
+import { resolve, dirname, basename } from 'node:path';
 const cliDirectory = dirname(resolve(process.argv[1]));
 
 function loadEnvFile(path: string): Record<string, string> {
@@ -332,12 +332,98 @@ async function runApi(
       } else if (typeof setCookies === 'string') {
         session.authCookie = setCookies.split(';')[0];
       }
-      return { ok: true, status: response.status, data: response.data as any };
+      return { ok: true, status: response.status, data: response.data as any, headers: response.headers as Record<string, unknown> };
     }
     return { ok: false, status: response.status, data: response.data as any };
   } catch (error: any) {
     return { ok: false, status: -1, error: error.message as string };
   }
+}
+
+function option(args: string[], name: string): string | undefined {
+  return args.find(arg => arg.startsWith(`--${name}=`))?.slice(name.length + 3);
+}
+
+function apiError(response: { status: number; data?: any; error?: string }): string {
+  let data = response.data;
+  if (data instanceof ArrayBuffer || Buffer.isBuffer(data)) {
+    try { data = JSON.parse(Buffer.from(data as ArrayBuffer).toString('utf8')); } catch { data = undefined; }
+  }
+  const detail = data?.error?.detail ? `\n${JSON.stringify(data.error.detail, null, 2)}` : '';
+  return `${data?.error?.code ?? `HTTP ${response.status}`}: ${data?.error?.message ?? response.error ?? 'request failed'}${detail}`;
+}
+
+/** Download a signed release package for published versions. */
+async function handleExport(args: string[]) {
+  const id = args.find(arg => !arg.startsWith('--'));
+  if (!id) {
+    console.log('Usage: export <guardrail-id> [--versions=a,b] [--out=<file>]');
+    return;
+  }
+  const versions = option(args, 'versions');
+  const response = await runApi('GET', `/api/v1/guardrails/${encodeURIComponent(id)}/package${versions ? `?versions=${encodeURIComponent(versions)}` : ''}`,
+    undefined, { responseType: 'arraybuffer', timeout: 60_000 });
+  if (!response.ok) {
+    console.error(`Export failed: ${apiError(response)}`);
+    process.exitCode = 1;
+    return;
+  }
+  const disposition = String(response.headers?.['content-disposition'] ?? '');
+  const out = option(args, 'out') ?? /filename="([^"]+)"/.exec(disposition)?.[1] ?? `${id}.guardrail.zip`;
+  writeFileSync(out, Buffer.from(response.data as ArrayBuffer));
+  console.log(`Wrote ${out}`);
+}
+
+/** Verify a package against this environment, preview it, and import with --confirm. */
+async function handleImport(args: string[]) {
+  const file = args.find(arg => !arg.startsWith('--'));
+  if (!file || !existsSync(file)) {
+    console.log('Usage: import <file> [--versions=a,b] [--confirm]');
+    return;
+  }
+  const form = new FormData();
+  form.append('package', new Blob([readFileSync(file)], { type: 'application/zip' }), basename(file));
+  const uploaded = await runApi('POST', '/api/v1/guardrail-packages', form, { timeout: 120_000 });
+  if (!uploaded.ok) {
+    console.error(`Package rejected: ${apiError(uploaded)}`);
+    process.exitCode = 1;
+    return;
+  }
+  const preview = uploaded.data;
+  console.log(`Source:    ${preview.source.name} (${preview.source.id}), key ${preview.keyId}`);
+  console.log(`Guardrail: ${preview.guardrail.name} (${preview.guardrail.id})${preview.guardrail.exists ? '' : ' — new in this environment'}`);
+  for (const item of preview.versions) {
+    const metrics = item.evidence.metrics ?? {};
+    const tested = typeof metrics.total === 'number' ? ` ${metrics.passed ?? 0}/${metrics.total} passed` : '';
+    console.log(`  ${item.version}${item.version === preview.recommendedVersion ? ' (recommended)' : ''}  ${item.state.padEnd(8)} source test: ${item.evidence.status}${tested}  environment: ${item.environment?.status ?? 'not checked'}`);
+    for (const pool of item.environment?.pools ?? []) if (!pool.admitted && !pool.unavailable) console.log(`      ${pool.poolId}/${pool.runnerId}: ${pool.reason}`);
+  }
+  for (const blocker of preview.blockers) console.log(`Blocked: ${blocker.message}`);
+  const requested = option(args, 'versions')?.split(',').filter(Boolean);
+  const fresh = preview.versions.filter((item: any) => item.state === 'new' && (!requested || requested.includes(item.version)));
+  if (preview.blockers.length || !fresh.length) {
+    console.log(preview.blockers.length ? 'Nothing was imported.' : 'Nothing new to import.');
+    if (preview.blockers.length) process.exitCode = 1;
+    return;
+  }
+  let confirmed = args.includes('--confirm');
+  if (!confirmed && process.stdin.isTTY) {
+    confirmed = (await prompt(`Import ${fresh.length} version(s)? [y/N] `))?.trim().toLowerCase() === 'y';
+  } else if (!confirmed) {
+    console.log('Preview only. Re-run with --confirm to import.');
+    return;
+  }
+  if (!confirmed) {
+    console.log('Nothing was imported.');
+    return;
+  }
+  const imported = await runApi('POST', `/api/v1/guardrail-packages/${preview.packageId}/imports`, requested ? { versions: requested } : {});
+  if (!imported.ok) {
+    console.error(`Import failed: ${apiError(imported)}`);
+    process.exitCode = 1;
+    return;
+  }
+  console.log(`Imported ${imported.data.imported.length} version(s), ${imported.data.existing.length} already present. Latest: ${imported.data.latestVersion ?? 'unset'}.`);
 }
 
 async function handleShow(args: string[]) {
@@ -556,6 +642,10 @@ async function handleCommand(line: string) {
     console.log('  disable                      Drop back to read-only credentials');
     console.log('  show <resource> ...          Read a resource; run "show" for list');
     console.log('  d | detail                   Repeat the last show with all rows');
+    console.log('  export <guardrail-id> [--versions=a,b] [--out=<file>]');
+    console.log('                               Download a signed .guardrail.zip (default: Latest)');
+    console.log('  import <file> [--versions=a,b] [--confirm]');
+    console.log('                               Verify and preview a package; --confirm imports it');
     console.log('  exit | quit                  Close the CLI');
     return;
   }
@@ -645,6 +735,16 @@ async function handleCommand(line: string) {
 
   if (cmd === 'show') {
     await handleShow(args);
+    return;
+  }
+
+  if (cmd === 'export') {
+    await handleExport(args);
+    return;
+  }
+
+  if (cmd === 'import') {
+    await handleImport(args);
     return;
   }
 

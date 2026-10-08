@@ -9,12 +9,14 @@ import { DuplicateGuardrailSheet } from './guardrail-duplicate';
 import { DeleteGuardrailSheet, type GuardrailDeletionConfirmation } from './guardrail-delete-sheet';
 import { ExportGuardrailSheet } from './guardrail-export-sheet';
 import { queryKeys } from '@/features/query-keys';
+import { useDeploymentCapabilities } from '@/lib/deployment';
 import { deleteGuardrail, getGuardrailDeletionImpact, type Guardrail } from '@/lib/api';
 
 
 export function GuardrailRowActions({ guardrail }: { guardrail: Guardrail }) {
   const { t } = useTranslation();
   const canEdit = useAuth().user?.role === 'admin';
+  const { authoringEnabled } = useDeploymentCapabilities();
   const [action, setAction] = useState<'delete' | 'duplicate' | 'export' | null>(null);
   return <>
     <DropdownMenu>
@@ -24,7 +26,7 @@ export function GuardrailRowActions({ guardrail }: { guardrail: Guardrail }) {
       <DropdownMenuContent align="end" onCloseAutoFocus={event => { if (action) event.preventDefault(); }}>
         <DropdownMenuItem disabled={!guardrail.latest_version} onSelect={() => setAction('export')}><Download />{t('guardrails.exportEllipsis')}</DropdownMenuItem>
         {!guardrail.latest_version && <DropdownMenuLabel>{t('guardrails.exportRequiresPublish')}</DropdownMenuLabel>}
-        {canEdit && <DropdownMenuItem onSelect={() => setAction('duplicate')}><Copy />{t("routing.duplicate")}</DropdownMenuItem>}
+        {canEdit && authoringEnabled && <DropdownMenuItem onSelect={() => setAction('duplicate')}><Copy />{t("routing.duplicate")}</DropdownMenuItem>}
         {canEdit && <DropdownMenuItem variant="destructive" onSelect={() => setAction('delete')}><Trash2 />{t("routing.delete")}</DropdownMenuItem>}
       </DropdownMenuContent>
     </DropdownMenu>

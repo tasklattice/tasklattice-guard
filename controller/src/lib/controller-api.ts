@@ -153,6 +153,9 @@ export type Guardrail = {
   latestValidationRun: ValidationRun | null;
   testCaseCount: number;
   excludedTestCaseCount: number;
+  /** "imported" Guardrails have no draft; versions arrive in release packages. */
+  origin?: "local" | "imported";
+  sourceId?: string | null;
 };
 
 export type GuardrailVersion = {
@@ -169,7 +172,75 @@ export type GuardrailVersion = {
   createdBy: string | null;
   createdAt: string;
   artifact?: GuardrailArtifact | null;
+  origin?: "local" | "imported";
+  /** Passed test run whose candidate this version publishes; absent on older versions. */
+  validationRunId?: string | null;
+  environmentCheck?: EnvironmentCheck | null;
+  provenance?: VersionProvenance | null;
 };
+
+export type EnvironmentCheck = {
+  status: "compatible" | "missing" | "pending";
+  checkedAt: string;
+  pools: Array<{ poolId: string; runnerId: string; admitted: boolean; unavailable: boolean; reason: string; nemoVersion: string; modelRevisionId: string }>;
+};
+
+export type ArtifactRequirements = {
+  contentContract: string;
+  runtime: { nemoVersion: string; runtimeProfile: string; compilerVersion: string; planCompilerVersion: string };
+  actions: Array<{ name: string; version: string }>;
+  models: Array<{ type: string; profile: string }>;
+  evaluationContracts: Array<{ contract: string; capability: string; phases: string[] }>;
+};
+
+export type SourceEvidence = {
+  status: "passed";
+  testedAt: string;
+  completedAt: string | null;
+  publishedAt: string;
+  metrics: { total?: number; passed?: number; complianceRate?: number } & Record<string, unknown>;
+  source: { id: string; name: string };
+  validationRunId: string;
+};
+
+export type VersionProvenance = {
+  sourceId: string;
+  sourceKeyId: string;
+  contentDigest: string;
+  packageId: string;
+  importedAt: string;
+  importedBy: string | null;
+  requirements: ArtifactRequirements;
+  uatEvidence: SourceEvidence;
+};
+
+export type PackagePreview = {
+  packageId: string;
+  source: { id: string; name: string };
+  keyId: string;
+  exportedAt: string;
+  guardrail: { id: string; name: string; exists: boolean };
+  recommendedVersion: string;
+  versions: Array<{
+    version: string;
+    state: "new" | "existing" | "conflict";
+    contentDigest: string;
+    evidence: SourceEvidence;
+    requirements: ArtifactRequirements;
+    environment: EnvironmentCheck | null;
+  }>;
+  blockers: Array<{ code: string; message: string }>;
+};
+
+export type PackageImportResult = { guardrailId: string; imported: string[]; existing: string[]; latestVersion: string | null };
+
+export type DeploymentCapabilities = {
+  authoringEnabled: boolean;
+  packageExport: { available: boolean; sourceId: string | null };
+  packageImport: { available: boolean };
+};
+
+export type SystemBaseline = { guardrailId: string; version: string | null; explicit: boolean };
 
 export type GuardrailArtifact = {
   id: string;
@@ -441,6 +512,38 @@ export const previewControllerGuardrailPlan = (input: Pick<Guardrail, "name" | "
 export const updateControllerGuardrail = (id: string, input: Partial<Pick<Guardrail, "name" | "draftConfig" | "runtimeProfile">> & { expectedDraftRevision?: number }) => requestController<Guardrail>(`/api/v1/guardrails/${encodeURIComponent(id)}`, json("PATCH", input));
 export const publishControllerGuardrail = (id: string, expectedDraftRevision: number) => requestController<{ status: string; version: string }>(`/api/v1/guardrails/${encodeURIComponent(id)}/publish`, json("POST", { expectedDraftRevision }));
 export const markControllerGuardrailVersionActive = (id: string, version: string) => requestController<GuardrailVersion>(`/api/v1/guardrails/${encodeURIComponent(id)}/latest-version`, json("PUT", { version }));
+export const getDeploymentCapabilities = () => requestController<DeploymentCapabilities>("/api/v1/deployment/capabilities");
+export const uploadGuardrailPackage = (file: File) => {
+  const body = new FormData();
+  body.append("package", file);
+  return requestController<PackagePreview>("/api/v1/guardrail-packages", { method: "POST", body });
+};
+export const importGuardrailPackage = (packageId: string, versions?: string[]) => requestController<PackageImportResult>(
+  `/api/v1/guardrail-packages/${encodeURIComponent(packageId)}/imports`, { method: "POST", body: JSON.stringify(versions ? { versions } : {}) });
+export const checkGuardrailVersionEnvironment = (id: string, version: string) => requestController<EnvironmentCheck>(
+  `/api/v1/guardrails/${encodeURIComponent(id)}/versions/${encodeURIComponent(version)}/environment-check`, { method: "POST" });
+export const getSystemBaseline = () => requestController<SystemBaseline>("/api/v1/system/baseline");
+export const setSystemBaseline = (version: string, reason: string) => requestController<SystemBaseline>("/api/v1/system/baseline", { method: "PUT", body: JSON.stringify({ version, reason }) });
+
+/** Download a signed release package; JSON errors become ControllerRequestError. */
+export async function downloadGuardrailPackage(id: string, versions: string[]): Promise<string> {
+  const response = await fetch(`/api/v1/guardrails/${encodeURIComponent(id)}/package?versions=${versions.map(encodeURIComponent).join(",")}`, { credentials: "same-origin" });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({})) as { error?: { code?: string; message?: string; detail?: unknown } };
+    throw new ControllerRequestError(payload.error?.message ?? `Request failed with status ${response.status}.`, response.status, payload.error?.code, payload.error?.detail);
+  }
+  const filename = /filename="([^"]+)"/.exec(response.headers.get("content-disposition") ?? "")?.[1] ?? `${id}.guardrail.zip`;
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  // Allow the browser to begin the download before releasing its Blob URL.
+  setTimeout(() => URL.revokeObjectURL(url), 1_000);
+  return filename;
+}
 export const getControllerGuardrailDeletionImpact = (id: string) => requestController<DeletionImpact>(`/api/v1/guardrails/${encodeURIComponent(id)}/deletion-impact`);
 export const deleteControllerGuardrail = (id: string, input: { reason: string; confirmRecentTraffic: boolean; confirmationName?: string | undefined }) => requestController<void>(`/api/v1/guardrails/${encodeURIComponent(id)}`, json("DELETE", input));
 

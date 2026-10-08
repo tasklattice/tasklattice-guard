@@ -144,6 +144,8 @@ function mapGuardrail(
     system_managed: isDefault,
     local_only: isDefault,
     coverage: [],
+    origin: value.origin ?? "local",
+    source_id: value.sourceId ?? null,
   };
 }
 
@@ -269,6 +271,9 @@ function mapVersion(value: controllerApi.GuardrailVersion, guardrail: controller
     policy_count: arrayOfRecords(value.plan.policy_bindings).length,
     compile_status: value.status,
     failure_reason: value.failureReason,
+    origin: value.origin ?? "local",
+    environment_check: value.environmentCheck ?? null,
+    provenance: value.provenance ?? null,
   };
 }
 

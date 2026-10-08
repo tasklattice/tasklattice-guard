@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Field, percent } from "./form";
+import { EnvironmentStatus } from "@/components/guardrail-import-sheet";
 
 export function distributeEqually(targets: RouteTarget[]): RouteTarget[] {
   const weight = targets.length ? Math.floor(10000 / targets.length) : 0;
@@ -145,6 +146,9 @@ function TargetRow({
   // Pinning starts from the Guardrail's Latest version, the one "Use latest" would resolve to.
   const latestVersion = versions.find((version) => version.version === query.data?.latestVersion)?.version;
   const defaultVersion = latestVersion ?? versions[0]?.version;
+  // Imported content is served only after Runners here confirm they can load it.
+  const chosen = versions.find((version) => version.version === (target.versionStrategy === "latest" ? latestVersion : target.guardrailVersion));
+  const chosenImported = chosen?.origin === "imported" ? chosen : undefined;
   useEffect(() => {
     const guardrailVersion =
       target.versionStrategy === "latest"
@@ -267,6 +271,10 @@ function TargetRow({
           </SelectContent>
         </Select>
       )}
+      {chosenImported ? <div className="space-y-1">
+        <EnvironmentStatus check={chosenImported.environmentCheck} />
+        <p className="text-xs text-muted-foreground">{t("routing.importedVersionCheckedOnSubmit")}</p>
+      </div> : null}
       {query.error && <ErrorNotice error={query.error} />}
       {query.data && !versions.length && (
         <p className="text-xs text-muted-foreground">

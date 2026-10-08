@@ -49,7 +49,6 @@ export const tokenRoutePermissions: ReadonlyArray<readonly [string, string, Toke
   ["POST", "/api/v1/authoring/plan-previews", "guardrails", "write"],
   ["POST", "/api/v1/guardrails", "guardrails", "write"],
   ["GET", "/api/v1/guardrails/:id", "guardrails", "read"],
-  ["GET", "/api/v1/guardrails/:id/versions/:version/export", "guardrails", "read"],
   ["GET", "/api/v1/guardrails/:id/package", "guardrails", "read"],
   ["POST", "/api/v1/guardrail-packages", "guardrails", "write"],
   ["GET", "/api/v1/guardrail-packages/:packageId", "guardrails", "read"],

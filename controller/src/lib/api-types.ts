@@ -446,6 +446,9 @@ export type Guardrail = {
   system_managed: boolean;
   local_only: boolean;
   coverage: PolicyCoverage[];
+  /** Imported from a trusted source: read-only, no draft. */
+  origin?: "local" | "imported";
+  source_id?: string | null;
 };
 
 export type GuardrailDeletionImpact = {
@@ -481,6 +484,9 @@ export type GuardrailVersion = {
   policy_count?: number;
   compile_status?: "compiling" | "ready" | "failed";
   failure_reason?: string | null;
+  origin?: "local" | "imported";
+  environment_check?: import("./controller-api").EnvironmentCheck | null;
+  provenance?: import("./controller-api").VersionProvenance | null;
 };
 
 export type GuardrailVersionArtifact = {

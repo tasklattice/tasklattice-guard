@@ -19,14 +19,15 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { listControllerRouters, listControllerGuardrails, listControllerEndpoints } from "@/lib/controller-api";
+import { useDeploymentCapabilities } from "@/lib/deployment";
 
 const navigation = [
   {
     label: "nav.guardrailDesign",
     items: [
       { label: "nav.guardrails", to: "/guardrails", icon: ShieldCheck, count: "guardrails" },
-      { label: "nav.playground", to: "/playground", icon: FlaskConical },
-      { label: "nav.policyLibrary", to: "/policy-library", icon: LibraryBig },
+      { label: "nav.playground", to: "/playground", icon: FlaskConical, authoring: true },
+      { label: "nav.policyLibrary", to: "/policy-library", icon: LibraryBig, authoring: true },
     ],
   },
   {
@@ -48,6 +49,8 @@ const navigation = [
 export function ControlPlaneSidebar() {
   const { t } = useTranslation();
   const { setOpenMobile, state } = useSidebar();
+  // Receiving environments do not author Guardrails; the API refuses these areas too.
+  const { authoringEnabled } = useDeploymentCapabilities();
   const pathname = useRouterState({ select: (routerState) => routerState.location.pathname });
   const settingsActive = pathname.startsWith("/settings/");
   const guardrails = useQuery({ queryKey: ["controller", "guardrails"], queryFn: listControllerGuardrails });
@@ -83,7 +86,7 @@ export function ControlPlaneSidebar() {
                 </SidebarGroupLabel> : null}
                 <SidebarGroupContent>
                   <SidebarMenu className="gap-1">
-                    {group.items.map((item) => {
+                    {group.items.filter((item) => authoringEnabled || !("authoring" in item)).map((item) => {
                       const active = pathname === item.to || pathname.startsWith(`${item.to}/`);
                       const count = "count" in item ? counts[item.count] : undefined;
                       const label = t(item.label);

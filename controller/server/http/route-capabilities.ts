@@ -64,7 +64,6 @@ export const routeCapabilities: ReadonlyArray<readonly [string, string, "core" |
   ["GET", "/api/v1/guardrails", "core"],
   ["POST", "/api/v1/guardrails", "authoring"],
   ["GET", "/api/v1/guardrails/:id", "core"],
-  ["GET", "/api/v1/guardrails/:id/versions/:version/export", "core"],
   ["GET", "/api/v1/guardrails/:id/package", "core"],
   ["POST", "/api/v1/guardrail-packages", "core"],
   ["GET", "/api/v1/guardrail-packages/:packageId", "core"],

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
-import { Check, ChevronLeft, ChevronRight, Download, FlaskConical, GitCompareArrows, LoaderCircle, LockKeyhole, MoreHorizontal, Trash2 } from "lucide-react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { Check, ChevronLeft, ChevronRight, Download, FlaskConical, GitCompareArrows, LoaderCircle, LockKeyhole, MoreHorizontal, RefreshCw, ShieldCheck, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { GeneratedVersionFiles, RuntimeDependencySummary, RuntimeExecutionSummary } from "./compiled-runtime";
@@ -20,8 +20,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { markGuardrailVersionLatest, type GuardrailVersion, type GuardrailVersionDetail, type ValidationRun } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { checkGuardrailVersionEnvironment, getSystemBaseline, setSystemBaseline } from "@/lib/controller-api";
+import { useDeploymentCapabilities } from "@/lib/deployment";
+import { queryKeys } from "@/features/query-keys";
+import { CopyableChecksum as Digest } from "./copyable-checksum";
+import { EnvironmentStatus } from "./guardrail-import-sheet";
+import { Input } from "./ui/input";
 
-type VersionAction = { kind: "export" | "latest" | "delete"; version: string };
+type VersionAction = { kind: "export" | "latest" | "delete" | "baseline"; version: string };
 type Props = {
   openRequested?: boolean;
   onOpenRequestHandled?: () => void;
@@ -39,6 +45,8 @@ type Props = {
   compareOptions: GuardrailVersion[];
   guardrailId: string;
   guardrailName: string;
+  /** The Default Guardrail supplies the runtime baseline. */
+  isDefault?: boolean;
   validation: ValidationRun | null;
   validationRuns?: ValidationRun[];
   validationLoading?: boolean;
@@ -56,7 +64,7 @@ type Props = {
 
 const PAGE_SIZE = 10;
 
-export function ImmutableVersionView({ openRequested, onOpenRequestHandled, detail, selectedVersion, versions, loading, error, detailLoading, detailError, comparisonDetail, comparisonActive, comparisonLoading, comparisonError, compareOptions, guardrailId, guardrailName, validation, validationRuns = [], validationLoading, validationError, onRetry, onRetryComparison, onChanged, onOpenDraft, onOpenValidation, onSelectVersion, onStartCompare, onCompareBaseChange, onCloseCompare }: Props) {
+export function ImmutableVersionView({ openRequested, onOpenRequestHandled, detail, selectedVersion, versions, loading, error, detailLoading, detailError, comparisonDetail, comparisonActive, comparisonLoading, comparisonError, compareOptions, guardrailId, guardrailName, isDefault = false, validation, validationRuns = [], validationLoading, validationError, onRetry, onRetryComparison, onChanged, onOpenDraft, onOpenValidation, onSelectVersion, onStartCompare, onCompareBaseChange, onCloseCompare }: Props) {
   const { t, i18n } = useTranslation();
   const auth = useAuth();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -82,6 +90,22 @@ export function ImmutableVersionView({ openRequested, onOpenRequestHandled, deta
   for (const run of [...validationRuns].sort((a, b) => b.created_at.localeCompare(a.created_at))) {
     if (!latestTests.has(run.guardrail_version)) latestTests.set(run.guardrail_version, run);
   }
+  const capabilities = useDeploymentCapabilities();
+  const baseline = useQuery({ queryKey: queryKeys.systemBaseline, queryFn: getSystemBaseline, enabled: isDefault });
+  const [baselineReason, setBaselineReason] = useState("");
+  const switchBaseline = useMutation({
+    mutationFn: ({ version, reason }: { version: string; reason: string }) => setSystemBaseline(version, reason),
+    onSuccess: async (_result, { version }) => {
+      await Promise.all([onChanged(), baseline.refetch()]);
+      setAction(null);
+      setBaselineReason("");
+      toast.success(t("guardrailPackage.baselineSet", { version }));
+    },
+  });
+  const environmentCheck = useMutation({
+    mutationFn: (version: string) => checkGuardrailVersionEnvironment(guardrailId, version),
+    onSuccess: () => onChanged(),
+  });
   const markLatest = useMutation({
     mutationFn: (version: string) => markGuardrailVersionLatest(guardrailId, version),
     onSuccess: async (_result, version) => {
@@ -116,6 +140,8 @@ export function ImmutableVersionView({ openRequested, onOpenRequestHandled, deta
         <DropdownMenuItem disabled={Boolean(version.compile_status && version.compile_status !== "ready")} onSelect={() => setAction({ kind: "export", version: version.version })}><Download />{t("guardrails.exportEllipsis")}</DropdownMenuItem>
         {auth.user?.role === "admin" ?
           <DropdownMenuItem variant="edit" disabled={version.latest || Boolean(version.compile_status && version.compile_status !== "ready")} onSelect={() => setAction({ kind: "latest", version: version.version })}><Check />{t("guardrails.markLatest")}</DropdownMenuItem> : null}
+        {auth.user?.role === "admin" && isDefault && !capabilities.authoringEnabled ?
+          <DropdownMenuItem variant="edit" disabled={baseline.data?.version === version.version || Boolean(version.compile_status && version.compile_status !== "ready")} onSelect={() => setAction({ kind: "baseline", version: version.version })}><ShieldCheck />{t("guardrailPackage.setBaseline")}</DropdownMenuItem> : null}
         {auth.user?.role === "admin" ? <DropdownMenuItem variant="destructive" onSelect={() => setAction({ kind: "delete", version: version.version })}><Trash2 />{t("uiCopy.delete")}</DropdownMenuItem>
         : null}
       </DropdownMenuContent>
@@ -141,6 +167,7 @@ export function ImmutableVersionView({ openRequested, onOpenRequestHandled, deta
                 <TableCell><div className="flex items-center gap-3">
                   <Button variant="ghost" className="min-h-11 px-0 font-mono text-sm text-primary hover:underline" aria-label={t("immutableVersions.view", { version: version.version })} ref={node => { if (node) versionButtons.current.set(version.version, node); else versionButtons.current.delete(version.version); }} aria-haspopup="dialog" onClick={event => openVersion(version.version, event.currentTarget)}>{version.version}</Button>
                   {version.latest ? <StateBadge state="active" label={t("guardrails.latestVersionLabel")} /> : null}
+                  {isDefault && baseline.data?.version === version.version ? <StateBadge state="protected" label={t("guardrailPackage.baselineCurrent")} /> : null}
                   {version.compile_status && version.compile_status !== "ready" ? <StateBadge state={version.compile_status === "failed" ? "failed" : "running"} label={t(`immutableVersions.${version.compile_status === "failed" ? "failed" : "compiling"}`)} /> : null}
                 </div></TableCell>
                 <TableCell><time dateTime={version.created_at} className="text-muted-foreground">{new Date(version.created_at).toLocaleString(i18n.language)}</time></TableCell>
@@ -185,11 +212,14 @@ export function ImmutableVersionView({ openRequested, onOpenRequestHandled, deta
                     </TabsList>
                     <TabsContent value="overview" className="min-h-0 flex-1 overflow-y-auto overscroll-contain space-y-7 pt-6">
                       <ImmutablePosture detail={currentDetail} />
-                      <section className="space-y-3 border-t pt-6">
+                      {selectedVersion.origin === "imported" || !capabilities.authoringEnabled ? <ReleaseEnvironment version={selectedVersion}
+                        checking={environmentCheck.isPending} error={environmentCheck.error} canCheck={auth.user?.role === "admin"}
+                        onCheck={() => environmentCheck.mutate(selectedVersion.version)} /> : null}
+                      {selectedVersion.provenance ? <ReleaseEvidence version={selectedVersion} /> : <section className="space-y-3 border-t pt-6">
                         <div><h3 className="text-base font-semibold">{t("guardrails.validationEvidence")}</h3><p className="mt-1 text-sm text-muted-foreground">{t("immutableVersions.testDescription")}</p></div>
                         {validationError ? <RetryNotice error={validationError} onRetry={onRetry} /> : validationLoading ? <Skeleton className="h-20" /> : validation ? <div className="flex items-center justify-between gap-4 border p-4"><div><div className="flex items-center gap-3">{testStatus(validation)}<span className="text-sm">{t("guardrails.compliance", { rate: validation.metrics.compliance_rate })}</span></div><p className="mt-2 text-xs text-muted-foreground">{new Date(validation.created_at).toLocaleString(i18n.language)}</p></div><Button variant="outline" onClick={() => { setDrawerOpen(false); onOpenValidation(validation); }}><FlaskConical />{t("guardrails.openValidation")}</Button></div>
                           : <p className="border bg-muted/20 p-4 text-sm text-muted-foreground">{t("immutableVersions.noTestDescription")}</p>}
-                      </section>
+                      </section>}
                     </TabsContent>
                     <TabsContent value="policies" className="min-h-0 flex-1 overflow-y-auto overscroll-contain pt-5"><PinnedPolicies key={currentDetail.version} bindings={currentDetail.policy_bindings} page={policyPage} onPageChange={setPolicyPage} /></TabsContent>
                     <TabsContent value="compiled" className="min-h-0 flex-1 overflow-y-auto overscroll-contain space-y-5 pt-5">
@@ -219,8 +249,47 @@ export function ImmutableVersionView({ openRequested, onOpenRequestHandled, deta
       onCloseCompare();
       await onChanged();
     }} /> : null}
+    {action?.kind === "baseline" ? <ConfirmationSheet open returnFocusRef={drawerOpen ? undefined : opener} onOpenChange={open => { if (!open && !switchBaseline.isPending) { setAction(null); switchBaseline.reset(); } }}
+      eyebrow={t("guardrails.confirmActionEyebrow")} title={t("guardrailPackage.baselineTitle", { version: action.version })} description={t("guardrailPackage.baselineDescription")}
+      cancelLabel={t("common.cancel")} confirmLabel={t("guardrailPackage.setBaseline")} pendingLabel={t("common.saving")} pending={switchBaseline.isPending}
+      confirmDisabled={!baselineReason.trim()} confirmIcon={<ShieldCheck />} onConfirm={() => switchBaseline.mutate({ version: action.version, reason: baselineReason.trim() })}>
+      <label className="block space-y-2 text-sm"><span className="font-medium">{t("guardrailPackage.baselineReason")}</span>
+        <Input value={baselineReason} maxLength={500} placeholder={t("guardrailPackage.baselineReasonPlaceholder")} onChange={event => setBaselineReason(event.target.value)} /></label>
+      {switchBaseline.error ? <ErrorNotice error={switchBaseline.error} /> : null}
+    </ConfirmationSheet> : null}
     {action?.kind === "export" ? <ExportGuardrailSheet returnFocusRef={drawerOpen ? undefined : opener} guardrailId={guardrailId} guardrailName={guardrailName} initialVersion={action.version} onClose={closeAction} /> : null}
   </>;
+}
+
+/** Source evidence for an imported version: recorded at the source, never re-run here. */
+function ReleaseEvidence({ version }: { version: GuardrailVersion }) {
+  const { t, i18n } = useTranslation();
+  const provenance = version.provenance!;
+  const evidence = provenance.uatEvidence;
+  return <section className="space-y-3 border-t pt-6">
+    <div><h3 className="text-base font-semibold">{t("guardrailPackage.provenanceTitle")}</h3><p className="mt-1 text-sm text-muted-foreground">{t("guardrailPackage.provenanceDescription")}</p></div>
+    <div className="space-y-3 border p-4">
+      <div className="flex flex-wrap items-center gap-3"><StateBadge state="passed" label={t("guardrailPackage.sourceTestPassed", { source: evidence.source.name })} />
+        {typeof evidence.metrics.total === "number" ? <span className="text-sm">{t("guardrailPackage.passedCases", { passed: evidence.metrics.passed ?? 0, total: evidence.metrics.total })}</span> : null}</div>
+      <p className="text-xs text-muted-foreground">{t("guardrailPackage.testedAt", { time: new Date(evidence.testedAt).toLocaleString(i18n.language) })} · {t("guardrailPackage.importedAt", { time: new Date(provenance.importedAt).toLocaleString(i18n.language) })} · {t("guardrailPackage.signedBy", { keyId: provenance.sourceKeyId })}</p>
+      <div><p className="mb-1 text-xs text-muted-foreground">{t("guardrailPackage.contentDigest")}</p><Digest value={provenance.contentDigest} /></div>
+    </div>
+  </section>;
+}
+
+/** Whether this environment's Runners can load the version; required before routing imported content. */
+function ReleaseEnvironment({ version, checking, error, canCheck, onCheck }: { version: GuardrailVersion; checking: boolean; error: unknown; canCheck: boolean; onCheck: () => void }) {
+  const { t, i18n } = useTranslation();
+  const check = version.environment_check;
+  return <section className="space-y-3 border-t pt-6">
+    <div className="flex items-start justify-between gap-4">
+      <div><h3 className="text-base font-semibold">{t("guardrailPackage.environmentTitle")}</h3><p className="mt-1 text-sm text-muted-foreground">{t("guardrailPackage.environmentDescription")}</p></div>
+      {canCheck ? <Button variant="outline" className="min-h-11 shrink-0" disabled={checking} onClick={onCheck}>{checking ? <LoaderCircle className="animate-spin" /> : <RefreshCw />}{t(checking ? "guardrailPackage.checking" : "guardrailPackage.checkEnvironment")}</Button> : null}
+    </div>
+    <div className="border p-4"><EnvironmentStatus check={check} />
+      {check ? <p className="mt-2 text-xs text-muted-foreground">{t("guardrailPackage.lastChecked", { time: new Date(check.checkedAt).toLocaleString(i18n.language) })}</p> : null}</div>
+    {error ? <ErrorNotice error={error} /> : null}
+  </section>;
 }
 
 function RetryNotice({ error, onRetry }: { error: unknown; onRetry?: () => void }) {

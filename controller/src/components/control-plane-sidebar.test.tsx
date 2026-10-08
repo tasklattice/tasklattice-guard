@@ -9,8 +9,9 @@ import i18n from "@/i18n";
 
 import { ControlPlaneSidebar } from "./control-plane-sidebar";
 
+const queryData = vi.hoisted(() => ({ value: { items: [] } as Record<string, unknown> }));
 vi.mock("@tanstack/react-query", () => ({
-  useQuery: () => ({ data: { items: [] } }),
+  useQuery: () => ({ data: queryData.value }),
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -21,7 +22,17 @@ vi.mock("@tanstack/react-router", () => ({
 vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => false }));
 
 describe("ControlPlaneSidebar", () => {
-  afterEach(cleanup);
+  afterEach(() => { cleanup(); queryData.value = { items: [] }; });
+
+  it("hides authoring areas in an environment that only receives released Guardrails", () => {
+    queryData.value = { items: [], authoringEnabled: false };
+    render(<SidebarProvider><TooltipProvider><ControlPlaneSidebar /></TooltipProvider></SidebarProvider>);
+    expect(screen.getByRole("link", { name: "Guardrails" })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Playground" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Policy Library" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Routers" })).toBeTruthy();
+  });
+
   beforeEach(async () => { await i18n.changeLanguage("en"); });
 
   it("keeps the primary workflow flat while Dashboard remains on the logo", () => {

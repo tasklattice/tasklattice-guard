@@ -33,5 +33,7 @@ export const queryKeys = {
   metrics: ["resources", "metrics"] as const,
   metricsScope: (filters: { guardrailId?: string; routerId?: string; window: string }) => ["resources", "metrics", filters] as const,
   systemStatus: ["resources", "system-status"] as const,
+  deploymentCapabilities: ["resources", "deployment-capabilities"] as const,
+  systemBaseline: ["resources", "system-baseline"] as const,
   systemHealth: ["resources", "system-health"] as const,
 };

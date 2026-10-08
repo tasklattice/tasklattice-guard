@@ -1,4 +1,6 @@
 import { ImmutableVersionView } from "@/components/guardrail-immutable-versions";
+import { ImportGuardrailSheet } from "@/components/guardrail-import-sheet";
+import { useDeploymentCapabilities } from "@/lib/deployment";
 export { ImmutableVersionView } from "@/components/guardrail-immutable-versions";
 import { ResourceList } from "@/components/resource-list";
 import { EventFilterToolbar } from "@/components/event-filter-toolbar";
@@ -15,7 +17,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { EventPagination, useEventCursor } from '@/components/event-pagination';
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { MenuButton, MenuItem, MenuItemDivider } from "@carbon/react";
-import { Activity, ArrowLeft, ArrowUpRight, Ban, ChevronDown, CircleAlert, FileText, FlaskConical, History, LoaderCircle, Pencil, Plus, RefreshCw, RotateCcw, Save, ScrollText, ShieldAlert, ShieldCheck, Trash2 } from "lucide-react";
+import { Activity, ArrowLeft, ArrowUpRight, Ban, ChevronDown, CircleAlert, FileText, FlaskConical, History, LoaderCircle, LockKeyhole, Pencil, Plus, RefreshCw, RotateCcw, Save, ScrollText, ShieldAlert, ShieldCheck, Trash2, Upload } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "@/components/ui/notifications";
 
@@ -105,6 +107,14 @@ export function GuardrailsPage() {
     setCreateOpen(true);
   };
   const guardrails = query.data?.items ?? [];
+  const capabilities = useDeploymentCapabilities();
+  const [importOpen, setImportOpen] = useState(false);
+  const importOpener = useRef<HTMLButtonElement | null>(null);
+  const isAdmin = auth.user?.role === "admin";
+  const actions = isAdmin ? <div className="flex items-center gap-2">
+    {capabilities.packageImport.available ? <Button variant="outline" size="lg" onClick={event => { importOpener.current = event.currentTarget; setImportOpen(true); }}><Upload />{t("guardrailPackage.import")}</Button> : null}
+    {capabilities.authoringEnabled ? <Button variant="create" size="lg" onClick={openCreation}><Plus />{t("guardrails.create")}</Button> : null}
+  </div> : undefined;
 
   return (
     <section className="py-8">
@@ -113,9 +123,10 @@ export function GuardrailsPage() {
         filter={{ label: t("common.status"), options: [{ value: "", label: t("resourceList.allStatuses") }, ...[...new Set(guardrails.map(item => item.status))].sort().map(value => ({ value, label: t(`states.${value}`, { defaultValue: value.replaceAll("_", " ") }) }))], matches: (item, value) => item.status === value }}
         loading={query.isPending} refreshing={query.isFetching} error={query.error} onRefresh={() => void query.refetch()}
         emptyTitle={t("guardrails.emptyTitle")} emptyDescription={t("guardrails.emptyDescription")}
-        action={auth.user?.role === "admin" ? <Button variant="create" size="lg" onClick={openCreation}><Plus />{t("guardrails.create")}</Button> : undefined}>
+        action={actions}>
         {items => <GuardrailRegistry guardrails={items} onOpen={guardrailId => navigate({ to: "/guardrails/$guardrailId", params: { guardrailId } })} />}
       </ResourceList>
+      {importOpen ? <ImportGuardrailSheet returnFocusRef={importOpener} onClose={() => setImportOpen(false)} /> : null}
       <CreateGuardrailWizard open={createOpen} returnFocusRef={createOpener} onOpenChange={setCreateOpen} onCreated={async (id) => { setCreateOpen(false); await queryClient.invalidateQueries({ queryKey: queryKeys.guardrails }); navigate({ to: "/guardrails/$guardrailId", params: { guardrailId: id } }); }} />
     </section>
   );
@@ -129,16 +140,20 @@ export function GuardrailDetailPage() {
   const auth = useAuth();
   const queryClient = useQueryClient();
   const guardrailQuery = useQuery({ queryKey: queryKeys.guardrail(guardrailId), queryFn: () => getGuardrail(guardrailId) });
-  const policiesQuery = useQuery({ queryKey: queryKeys.policies, queryFn: getPolicies });
+  const capabilities = useDeploymentCapabilities();
+  // Imported Guardrails and receiving environments have no draft: versions are the whole state.
+  const releaseOnly = !capabilities.authoringEnabled || guardrailQuery.data?.origin === "imported";
+  const policiesQuery = useQuery({ queryKey: queryKeys.policies, queryFn: getPolicies, enabled: capabilities.authoringEnabled });
   const validationReadiness = useGuardrailValidationReadiness({ bindings: guardrailQuery.data?.policy_bindings ?? [], policies: policiesQuery.data?.items ?? EMPTY_POLICIES,
     enabled: Boolean(guardrailQuery.data), policiesReady: policiesQuery.isSuccess, policiesError: policiesQuery.isError });
   const versionsQuery = useQuery({ queryKey: queryKeys.guardrailVersions(guardrailId), queryFn: () => getGuardrailVersions(guardrailId) });
   const validationRunsQuery = useQuery({ queryKey: queryKeys.validationRuns(guardrailId), queryFn: () => getValidationRuns(guardrailId) });
-  const testsQuery = useQuery({ queryKey: queryKeys.testCases(guardrailId), queryFn: () => getTestCases(guardrailId) });
+  const testsQuery = useQuery({ queryKey: queryKeys.testCases(guardrailId), queryFn: () => getTestCases(guardrailId), enabled: Boolean(guardrailQuery.data) && !releaseOnly });
   const routersQuery = useQuery({ queryKey: queryKeys.routers, queryFn: getRouters });
   const endpointsQuery = useQuery({ queryKey: queryKeys.endpoints, queryFn: getEndpoints });
   const search = useSearch({ from: "/guardrails/$guardrailId" });
-  const section = search.tab === "draft" ? "runtime" : search.tab ?? "runtime";
+  const requestedSection = search.tab === "draft" ? "runtime" : search.tab ?? (guardrailQuery.data?.origin === "imported" ? "immutable" : "runtime");
+  const section = releaseOnly && requestedSection === "testing" ? "immutable" : requestedSection;
   const setSection = (tab: string) => void navigate({ to: "/guardrails/$guardrailId", params: { guardrailId }, search: previous => ({ ...previous, tab }) });
   const window: MetricWindow = search.window ?? "24h";
   const setWindow = (window: MetricWindow) => void navigate({ to: "/guardrails/$guardrailId", params: { guardrailId }, search: previous => ({ ...previous, window }) });
@@ -260,7 +275,7 @@ export function GuardrailDetailPage() {
   const guardrail = guardrailQuery.data;
   const policies = policiesQuery.data?.items ?? EMPTY_POLICIES;
   const routers = routersQuery.data?.items.filter((item) => item.activeSnapshot?.routes.some(route => route.enabled && route.targets.some(target => target.guardrailId === guardrail.id && target.weightBps > 0))) ?? [];
-  const canManageDraft = auth.user?.role === "admin" && isGuardrailDraftManageable(guardrail);
+  const canManageDraft = auth.user?.role === "admin" && isGuardrailDraftManageable(guardrail) && !releaseOnly;
   const currentRelease = guardrailVersions.find(version => version.source_draft_version === guardrail.draft_revision);
   const hasDraft = hasUnpublishedDraft(guardrail);
   const currentTest = guardrail.latest_validation_run?.source_draft_version === guardrail.draft_revision ? guardrail.latest_validation_run : null;
@@ -278,6 +293,7 @@ export function GuardrailDetailPage() {
             {routers.length ? <StateBadge state="protected" /> : latestVersion ? <StateBadge state="ready" /> : null}
             {guardrail.is_default ? <Badge variant="outline">{t("guardrails.defaultBadge")}</Badge> : guardrail.system_managed ? <Badge variant="outline">{t("guardrails.systemManaged")}</Badge> : null}
           </div>
+          {guardrail.origin === "imported" ? <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground"><LockKeyhole className="size-3.5" aria-hidden="true" />{t("guardrailPackage.importedFrom", { source: guardrail.source_id ?? "" })}</p> : null}
           {guardrail.copy_origin && <p className="mt-2 text-sm text-muted-foreground">{uiText("uiCopy.copiedFrom")}{" "}{guardrail.copy_origin.sourceName} · {guardrail.copy_origin.sourceVersion ?? `draft r${guardrail.copy_origin.sourceDraftRevision}`} · {guardrail.copy_origin.sourceGuardrailId}</p>}
           {hasDraft ? <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
             <p role="status"><span className="font-medium">{t(latestVersion ? "guardrails.unpublishedChanges" : "guardrails.newDraft")}</span> · {t(draftStateKey(guardrail, currentRelease))}{currentTest?.status === "failed" ? ` (${currentTest.metrics.total - currentTest.metrics.passed}/${currentTest.metrics.total})` : ""}</p>
@@ -306,7 +322,7 @@ export function GuardrailDetailPage() {
 
       {guardrail.is_default ? <div className="mt-5"><InfoNotice title={t("guardrails.defaultNoticeTitle")}>{t("guardrails.defaultNoticeDescription")}</InfoNotice></div> : null}
 
-      {hasDraft ? <div className="mt-5"><GuardrailValidationReadiness readiness={validationReadiness} onEdit={canManageDraft ? () => setEditOpen(true) : undefined} onRetry={() => { void policiesQuery.refetch(); validationReadiness.refresh(); }} /></div> : null}
+      {hasDraft && !releaseOnly ? <div className="mt-5"><GuardrailValidationReadiness readiness={validationReadiness} onEdit={canManageDraft ? () => setEditOpen(true) : undefined} onRetry={() => { void policiesQuery.refetch(); validationReadiness.refresh(); }} /></div> : null}
 
       <Tabs value={section} onValueChange={setSection} className="mt-7">
         <div className="overflow-x-auto">
@@ -314,7 +330,7 @@ export function GuardrailDetailPage() {
             <TabsTrigger value="runtime"><Activity aria-hidden="true" />{t("guardrails.runtimeTab")}</TabsTrigger>
             <TabsTrigger value="event"><ShieldAlert aria-hidden="true" /><span className="flex items-center gap-2">{t("guardrails.eventTab")}{metricsQuery.data?.findings_summary?.total ? <Badge variant="outline" className={metricsQuery.data?.findings_summary?.critical ? "border-red-200 bg-red-50 font-mono text-[10px] text-red-700" : "font-mono text-[10px]"}>{metricsQuery.data?.findings_summary?.total}</Badge> : null}</span></TabsTrigger>
             <TabsTrigger value="immutable"><History aria-hidden="true" /><span className="flex items-center gap-2">{t("guardrails.versions")}{versionsQuery.data ? <Badge variant="outline" className="font-mono text-[10px]">{guardrailVersions.length}</Badge> : null}</span></TabsTrigger>
-            <TabsTrigger value="testing"><FileText aria-hidden="true" /><span className="flex items-center gap-2">{t("guardrails.validationHistoryTab")}{validationRunsQuery.data?.items.length ? <Badge variant="outline" className="font-mono text-[10px]">{validationRunsQuery.data.items.length}</Badge> : null}</span></TabsTrigger>
+            {releaseOnly ? null : <TabsTrigger value="testing"><FileText aria-hidden="true" /><span className="flex items-center gap-2">{t("guardrails.validationHistoryTab")}{validationRunsQuery.data?.items.length ? <Badge variant="outline" className="font-mono text-[10px]">{validationRunsQuery.data.items.length}</Badge> : null}</span></TabsTrigger>}
           </TabsList>
         </div>
         <TabsContent value="runtime" className="space-y-5 pt-5">
@@ -348,6 +364,7 @@ export function GuardrailDetailPage() {
             compareOptions={compareOptions}
             guardrailId={guardrail.id}
             guardrailName={guardrail.name}
+            isDefault={guardrail.is_default}
             validation={selectedValidation}
             onChanged={refresh}
             onOpenDraft={canManageDraft ? () => setEditOpen(true) : () => setSection("testing")}

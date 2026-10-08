@@ -47,7 +47,6 @@ import {
   runPlaygroundInteraction,
 } from "../playground/service.js";
 import { isGuardrailVersionId } from "../../shared/guardrail-version.js";
-import { guardrailArtifactFilename } from "../../shared/guardrail-export.js";
 import type { PlatformStatusSnapshot } from "../../shared/platform-status.js";
 import { protectionDirectories } from "../../shared/protection-map.js";
 
@@ -678,14 +677,6 @@ export function createHttpApp(input: {
   });
   app.get("/api/v1/guardrails/:id", authenticated, async (context) => {
     return context.json(await input.service.getGuardrail(context.req.param("id")));
-  });
-  app.get("/api/v1/guardrails/:id/versions/:version/export", authenticated, async context => {
-    const id = context.req.param("id");
-    const version = guardrailVersionInput.parse(context.req.param("version"));
-    const artifact = await input.service.exportGuardrailVersion(id, version);
-    context.header("Content-Disposition", `attachment; filename="${guardrailArtifactFilename(id, version)}"`);
-    context.header("Cache-Control", "no-store");
-    return context.json(artifact);
   });
   app.get("/api/v1/guardrails/:id/package", authenticated, async context => {
     const versions = packageVersionsQuery.parse(context.req.query("versions"));

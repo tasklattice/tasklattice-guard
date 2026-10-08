@@ -79,6 +79,23 @@ describe("Guardrail edit, test and publish workflow", () => {
     expect(screen.queryByRole("menuitem", { name: "guardrails.draftChanges.discard" })).toBeNull();
   });
 
+  it("shows an imported Guardrail read-only: no draft, editing, testing or Playground", async () => {
+    routing.tab = undefined as unknown as string;
+    setupPage({ origin: "imported", source_id: "bank-uat", published_current: true, has_unpublished_changes: false, latest_version: "20261008-000000.000Z", status: "ready" });
+    render(wrap(<GuardrailDetailPage />));
+    await screen.findByRole("heading", { name: draft.name });
+    expect(screen.getByText("guardrailPackage.importedFrom")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "guardrails.testDraft" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "guardrails.publishVersion" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: /guardrails.validationHistoryTab/ })).toBeNull();
+    expect(screen.getByRole("tab", { name: /guardrails.versions/ }).getAttribute("data-state")).toBe("active");
+    fireEvent.click(screen.getByRole("button", { name: "routing.actions" }));
+    expect(screen.queryByRole("menuitem", { name: "guardrails.editAction" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "guardrails.editTestCases" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "guardrails.openPlayground" })).toBeNull();
+    expect(api.getTestCases).not.toHaveBeenCalled();
+  });
+
   it("reviews changes before confirming discard and uses exactly the reviewed revision", async () => {
     vi.spyOn(api, "getGuardrailDraftChanges").mockResolvedValue({ draftRevision: 2, baselineVersion: "20261008-000000.000Z", baselineAvailable: true, hasUnpublishedChanges: true, canDiscard: true,
       changes: [{ kind: "policyOrder", subject: "", field: "policyOrder", before: "credentials\ncontact", after: "contact\ncredentials" }] });
