@@ -6,6 +6,8 @@ import type { EventSeverity } from "../../shared/security-severity.js";
 import { readGuardrailProfiles } from "./guardrail-profiles.js";
 import { expandProtectionPreset } from "../policy-catalog/presets.js";
 import { TrafficRoutingService } from "./traffic-routing.js";
+import { GuardrailPackageService } from "./guardrail-packages.js";
+import type { ArtifactAdmission } from "../domain/environment-check.js";
 import { createHash, randomUUID } from "node:crypto";
 import { canonicalJson } from "../../shared/canonical-json.js";
 import { artifactContent, artifactContentDigest, ARTIFACT_CONTENT_DIGEST_VERSION, signArtifactDigest, type ArtifactContent } from "../domain/artifact-content.js";
@@ -29,6 +31,7 @@ import {
   auditEvents,
   controllerState,
   guardrails,
+  guardrailVersionProvenance,
   guardrailVersions,
   trafficRouters,
   trafficRouterChangeRequests,
@@ -99,6 +102,7 @@ type RunnerRegistration = {
 
 export class ControlPlaneService {
   readonly trafficRouting: TrafficRoutingService;
+  readonly packages: GuardrailPackageService;
   private catalog: PolicyCatalog | null = null;
   private readonly runtimeLogEncryptionKey: Buffer | null;
 
@@ -107,7 +111,13 @@ export class ControlPlaneService {
     private readonly config: ControllerConfig,
   ) {
     this.trafficRouting = new TrafficRoutingService(db);
+    this.packages = new GuardrailPackageService(db, config);
     this.runtimeLogEncryptionKey = decodeRuntimeLogKey(config.runtimeLogEncryptionKey);
+  }
+
+  /** Runner load checks for environment readiness (wired by the control channel). */
+  setArtifactAdmission(admission: ArtifactAdmission): void {
+    this.packages.setArtifactAdmission(admission);
   }
 
   async initialize(): Promise<void> {
@@ -471,13 +481,22 @@ export class ControlPlaneService {
       .where(eq(guardrailVersions.guardrailId, id)).orderBy(desc(guardrailVersions.version));
     const artifactRows = await this.db.select().from(artifacts).where(eq(artifacts.guardrailId, id));
     const artifactsById = new Map(artifactRows.map((artifact) => [artifact.id, artifact]));
+    const provenanceRows = await this.db.select().from(guardrailVersionProvenance).where(eq(guardrailVersionProvenance.guardrailId, id));
     return {
       ...await this.guardrailSummary(guardrail),
-      versions: versions.map(({ sourceSnapshot, ...version }) => ({
-        ...version,
-        hasSourceSnapshot: Boolean(sourceSnapshot),
-        artifact: version.artifactId ? artifactsById.get(version.artifactId) ?? null : null,
-      })),
+      versions: versions.map(({ sourceSnapshot, ...version }) => {
+        const provenance = provenanceRows.find(item => item.version === version.version);
+        return {
+          ...version,
+          hasSourceSnapshot: Boolean(sourceSnapshot),
+          artifact: version.artifactId ? artifactsById.get(version.artifactId) ?? null : null,
+          provenance: provenance ? {
+            sourceId: provenance.sourceId, sourceKeyId: provenance.sourceKeyId, contentDigest: provenance.contentDigest,
+            packageId: provenance.packageId, importedAt: provenance.importedAt, importedBy: provenance.importedBy,
+            requirements: provenance.requirements, uatEvidence: provenance.uatEvidence,
+          } : null,
+        };
+      }),
     };
   }
 
@@ -1220,7 +1239,8 @@ export class ControlPlaneService {
     )).limit(1);
     const plan = request?.payload.plan;
     const profile = request?.payload.runtimeProfile;
-    const artifact = artifactContent(returned);
+    // Keep exactly what a Runner decodes, so every environment computes one digest.
+    const artifact = canonicalArtifactContent(artifactContent(returned), this.config.protoPath);
     if (artifact.guardrailId !== run.guardrailId || artifact.guardrailVersion !== run.guardrailVersion
       || !plan || typeof plan !== "object" || Array.isArray(plan)
       || canonicalJson(planToWire(artifact.plan)) !== canonicalJson(planToWire(plan as Record<string, unknown>))
@@ -1860,7 +1880,9 @@ export class ControlPlaneService {
     const routerRevisions = await this.trafficRouting.runtimeSnapshots(tx);
     // Every pool receives the artifacts its published Router revisions pin plus
     // the Default Guardrail baseline. The default pool additionally keeps every
-    // ready version so Playground and internal checks can address any version.
+    // locally published ready version so Playground and internal checks can
+    // address it. Imported versions load only once a Router references them,
+    // so an unused package can never break an applied release.
     const referencedArtifactIds = new Set(routerRevisions.flatMap((router) => router.routes.flatMap((route) => route.targets.map((target) => target.artifactId).filter(Boolean))));
     const [defaultGuardrail] = await tx.select({ latestArtifactId: guardrails.latestArtifactId }).from(guardrails)
       .where(and(eq(guardrails.id, DEFAULT_GUARDRAIL_ID), isNull(guardrails.deletedAt)));
@@ -1868,7 +1890,7 @@ export class ControlPlaneService {
     const readyArtifacts = await tx.select({ artifact: artifacts }).from(guardrailVersions)
       .innerJoin(guardrails, and(eq(guardrails.id, guardrailVersions.guardrailId), isNull(guardrails.deletedAt)))
       .innerJoin(artifacts, eq(artifacts.id, guardrailVersions.artifactId))
-      .where(eq(guardrailVersions.status, "ready"));
+      .where(and(eq(guardrailVersions.status, "ready"), or(eq(guardrailVersions.origin, "local"), inArray(artifacts.id, [...referencedArtifactIds]))));
     const activeArtifacts = poolId === "default"
       ? readyArtifacts
       : readyArtifacts.filter((row) => referencedArtifactIds.has(row.artifact.id));
@@ -2351,7 +2373,8 @@ export class ControlPlaneService {
       .from(guardrailVersions).where(and(
         eq(guardrailVersions.guardrailId, row.id), eq(guardrailVersions.version, row.latestVersion),
       ));
-    let hasUnpublishedChanges = !latestVersion || latestVersion.sourceDraftRevision !== row.draftRevision;
+    // Imported Guardrails have no working draft: their versions are the whole state.
+    let hasUnpublishedChanges = row.origin !== "imported" && (!latestVersion || latestVersion.sourceDraftRevision !== row.draftRevision);
     if (hasUnpublishedChanges && latestVersion?.sourceSnapshot?.testCases) {
       const cases = await this.db.select().from(testCases).where(eq(testCases.guardrailId, row.id));
       hasUnpublishedChanges = !sameDraftContent(latestVersion.sourceSnapshot, { draftConfig: row.draftConfig, runtimeProfile: row.runtimeProfile,
@@ -2363,7 +2386,7 @@ export class ControlPlaneService {
       ...publicRow,
       copyOrigin: copyOrigin ? publicOrigin : null,
       draftConfig: normalizeGuardrailDraft(row.draftConfig),
-      latestValidationRun: latestValidation ?? null,
+      latestValidationRun: latestValidation ? publicValidationRun(latestValidation) : null,
       testCaseCount: caseCount?.value ?? 0,
       excludedTestCaseCount: row.excludedTestCaseIds.length,
       latestSourceDraftRevision: latestVersion?.sourceDraftRevision ?? null,

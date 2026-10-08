@@ -28,7 +28,7 @@ export function setupRoutingHttp(role: string | null = "admin") {
   const listEndpoints = vi.fn().mockResolvedValue([{ id: "http", adapter: "HTTP" }, { id: "a2a", adapter: "A2A" }]);
   const distributeDesiredState = vi.fn().mockResolvedValue({ desiredGeneration: 2, distributionStatus: "pending" });
   const app = createHttpApp({ config, auth: { api: { getSession: vi.fn().mockResolvedValue(role === null ? null : { user: { id: "actor", role } }) }, handler: vi.fn() } as unknown as ControllerAuth,
-    service: { trafficRouting, duplicateGuardrail, deleteGuardrailVersion, listEndpoints } as unknown as ControlPlaneService,
+    service: { trafficRouting, duplicateGuardrail, deleteGuardrailVersion, listEndpoints, packages: { checkRoutedImports: vi.fn(async () => undefined) } } as unknown as ControlPlaneService,
     runnerControl: { distributeDesiredState } as unknown as RunnerControlServer, metrics: {} as ControllerMetrics });
   const send = (method: string, path: string, body?: unknown) => app.request(`/api/v1${path}`, { method, headers: { "content-type": "application/json" }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
   return { app, send, trafficRouting, deleteGuardrailVersion, duplicateGuardrail, distributeDesiredState, listEndpoints };

@@ -5,6 +5,7 @@ import type { DesiredState as _tasklattice_guard_control_v1_DesiredState, Desire
 import type { DrainRequest as _tasklattice_guard_control_v1_DrainRequest, DrainRequest__Output as _tasklattice_guard_control_v1_DrainRequest__Output } from '../../../../tasklattice/guard/control/v1/DrainRequest.js';
 import type { ValidationRequest as _tasklattice_guard_control_v1_ValidationRequest, ValidationRequest__Output as _tasklattice_guard_control_v1_ValidationRequest__Output } from '../../../../tasklattice/guard/control/v1/ValidationRequest.js';
 import type { CapabilityValidationRequest as _tasklattice_guard_control_v1_CapabilityValidationRequest, CapabilityValidationRequest__Output as _tasklattice_guard_control_v1_CapabilityValidationRequest__Output } from '../../../../tasklattice/guard/control/v1/CapabilityValidationRequest.js';
+import type { ArtifactAdmissionRequest as _tasklattice_guard_control_v1_ArtifactAdmissionRequest, ArtifactAdmissionRequest__Output as _tasklattice_guard_control_v1_ArtifactAdmissionRequest__Output } from '../../../../tasklattice/guard/control/v1/ArtifactAdmissionRequest.js';
 import type { Long } from '@grpc/proto-loader';
 
 /**
@@ -24,7 +25,8 @@ export interface ControllerMessage {
   'drainRequest'?: (_tasklattice_guard_control_v1_DrainRequest | null);
   'validationRequest'?: (_tasklattice_guard_control_v1_ValidationRequest | null);
   'capabilityValidationRequest'?: (_tasklattice_guard_control_v1_CapabilityValidationRequest | null);
-  'body'?: "registrationAccepted"|"desiredState"|"drainRequest"|"validationRequest"|"capabilityValidationRequest";
+  'artifactAdmissionRequest'?: (_tasklattice_guard_control_v1_ArtifactAdmissionRequest | null);
+  'body'?: "registrationAccepted"|"desiredState"|"drainRequest"|"validationRequest"|"capabilityValidationRequest"|"artifactAdmissionRequest";
 }
 
 /**
@@ -44,5 +46,6 @@ export interface ControllerMessage__Output {
   'drainRequest'?: (_tasklattice_guard_control_v1_DrainRequest__Output | null);
   'validationRequest'?: (_tasklattice_guard_control_v1_ValidationRequest__Output | null);
   'capabilityValidationRequest'?: (_tasklattice_guard_control_v1_CapabilityValidationRequest__Output | null);
-  'body'?: "registrationAccepted"|"desiredState"|"drainRequest"|"validationRequest"|"capabilityValidationRequest";
+  'artifactAdmissionRequest'?: (_tasklattice_guard_control_v1_ArtifactAdmissionRequest__Output | null);
+  'body'?: "registrationAccepted"|"desiredState"|"drainRequest"|"validationRequest"|"capabilityValidationRequest"|"artifactAdmissionRequest";
 }

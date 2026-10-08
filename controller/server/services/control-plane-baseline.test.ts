@@ -12,6 +12,7 @@ import { emptyValidationMetrics, generatedTestCases } from "../domain/validation
 import { PolicyCatalog } from "../policy-catalog/catalog.js";
 import { ControlPlaneService } from "./control-plane.js";
 import { artifactContentDigest } from "../domain/artifact-content.js";
+import { canonicalArtifactContent } from "../control-channel/artifact-codec.js";
 
 const policyCatalogDir = resolve("../runner/toolkit/policy_library/assets");
 const policies = PolicyCatalog.load(policyCatalogDir).list();
@@ -80,7 +81,7 @@ function harness(reads: unknown[][], config: Partial<ControllerConfig> = {}, upd
     execute: vi.fn(async () => []),
   };
   const db = { ...tx, transaction: vi.fn(async (callback) => callback(tx)) } as unknown as ControllerDatabase;
-  const service = new ControlPlaneService(db, { policyCatalogDir, ...config } as ControllerConfig);
+  const service = new ControlPlaneService(db, { policyCatalogDir, protoPath: resolve("../proto/tasklattice/guard/control/v1/runner_control.proto"), ...config } as ControllerConfig);
   return { service, inserts, updates, reads };
 }
 
@@ -215,7 +216,9 @@ describe("Validated candidate gate", () => {
     const content = candidate();
     const test = harness([[], [run], request(content.plan)]);
     await complete(test, content);
-    expect(stored(test)).toMatchObject({ status: "passed", candidateArtifact: content, candidateDigest: artifactContentDigest(content),
+    // Stored exactly as a Runner decodes it from the wire.
+    const decoded = canonicalArtifactContent(content, resolve("../proto/tasklattice/guard/control/v1/runner_control.proto"));
+    expect(stored(test)).toMatchObject({ status: "passed", candidateArtifact: decoded, candidateDigest: artifactContentDigest(decoded),
       runtimeFingerprint: expect.objectContaining({ nemoVersion: "0.24.0" }) });
   });
 

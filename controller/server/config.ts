@@ -119,6 +119,13 @@ const environmentSchema = z.object({
   CONTROLLER_RUNNER_TOKEN: z.string().min(32),
   CONTROLLER_METRICS_TOKEN: z.string().min(32).optional(),
   CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: z.string().min(1),
+  // Guardrail release packages. Export identity (UAT) and trusted sources
+  // (production) are deployment configuration, never stored in a package.
+  CONTROLLER_PACKAGE_SOURCE_ID: z.string().trim().regex(/^[a-z0-9][a-z0-9._-]{0,63}$/, "Use a lowercase source ID such as bank-uat.").optional(),
+  CONTROLLER_PACKAGE_SOURCE_NAME: z.string().trim().min(1).max(120).optional(),
+  CONTROLLER_PACKAGE_SIGNING_KEY_PATH: z.string().min(1).optional(),
+  CONTROLLER_PACKAGE_SIGNING_KEY_ID: z.string().trim().min(1).max(120).optional(),
+  CONTROLLER_PACKAGE_TRUST_PATH: z.string().min(1).optional(),
   BETTER_AUTH_SECRET: z.string().min(32),
   BETTER_AUTH_TRUSTED_ORIGINS: z.string().default("http://localhost:8080,http://localhost:8092"),
   BETTER_AUTH_MIN_PASSWORD_LENGTH: z.coerce.number().int().min(5).max(128).default(12),
@@ -266,6 +273,15 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env) {
     runnerToken: parsed.CONTROLLER_RUNNER_TOKEN,
     metricsToken: parsed.CONTROLLER_METRICS_TOKEN ?? null,
     artifactSigningKeyPath: parsed.CONTROLLER_ARTIFACT_SIGNING_KEY_PATH,
+    packageExport: parsed.CONTROLLER_PACKAGE_SOURCE_ID && parsed.CONTROLLER_PACKAGE_SIGNING_KEY_PATH
+      ? {
+          sourceId: parsed.CONTROLLER_PACKAGE_SOURCE_ID,
+          sourceName: parsed.CONTROLLER_PACKAGE_SOURCE_NAME ?? parsed.CONTROLLER_PACKAGE_SOURCE_ID,
+          signingKeyPath: parsed.CONTROLLER_PACKAGE_SIGNING_KEY_PATH,
+          signingKeyId: parsed.CONTROLLER_PACKAGE_SIGNING_KEY_ID ?? null,
+        }
+      : null,
+    packageTrustPath: parsed.CONTROLLER_PACKAGE_TRUST_PATH ?? null,
     betterAuthSecret: parsed.BETTER_AUTH_SECRET,
     trustedOrigins: parsed.BETTER_AUTH_TRUSTED_ORIGINS.split(",").map((item) => item.trim()).filter(Boolean),
     minPasswordLength: parsed.BETTER_AUTH_MIN_PASSWORD_LENGTH,

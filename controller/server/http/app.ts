@@ -18,6 +18,7 @@ import { prometheus } from "@hono/prometheus";
 import { Hono, type Context, type MiddlewareHandler } from "hono";
 import { logger } from "hono/logger";
 import { secureHeaders } from "hono/secure-headers";
+import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 
 import type { ControllerAuth } from "../auth.js";
@@ -35,6 +36,7 @@ import { PolicyCatalog } from "../policy-catalog/catalog.js";
 import { actionCatalog } from "../action-catalog/catalog.js";
 import { createProgrammablePolicySchema, updateProgrammablePolicySchema } from "../policy-studio/model.js";
 import { extractDocuments } from "../control-plane-ai/document-ingestion.js";
+import { PACKAGE_UPLOAD_LIMIT_BYTES } from "../domain/guardrail-package.js";
 import type { ModelConfigurationService } from "../model-config/service.js";
 import { modelAssignmentTargetSchema, modelInputSchema, providerInputSchema, providerRegistrationSchema, providerUpdateSchema } from "../model-config/domain.js";
 import {
@@ -50,6 +52,14 @@ import { protectionDirectories } from "../../shared/protection-map.js";
 
 type Actor = { id: string; role: string; tokenId?: string; permissions?: TokenIdentity["permissions"] };
 type Variables = { actor: Actor };
+const packageVersionsQuery = z.string().max(4_000).optional()
+  .transform(value => value?.split(",").map(item => item.trim()).filter(Boolean) ?? [])
+  .pipe(z.array(z.string().refine(isGuardrailVersionId, "Guardrail Version must be a canonical UTC timestamp.")).max(64));
+const packageImportInput = z.object({ versions: z.array(z.string().refine(isGuardrailVersionId, "Guardrail Version must be a canonical UTC timestamp.")).max(64).optional() });
+// Multipart framing adds a little to the archive itself.
+const packageUploadLimit = bodyLimit({ maxSize: PACKAGE_UPLOAD_LIMIT_BYTES + 64 * 1024, onError: () => {
+  throw new ControllerError("The package exceeds the 32 MiB upload limit.", 413, "guardrail_package_too_large");
+} });
 const guardrailVersionInput = z.string().refine(isGuardrailVersionId, "Guardrail Version must be a canonical UTC timestamp.")
   .describe("Immutable Guardrail Version ID in YYYYMMDD-HHmmss.SSSZ UTC format, for example 20260912-083000.123Z. Use a version returned by the API; numeric revisions and ISO date strings are not version IDs.");
 
@@ -658,6 +668,30 @@ export function createHttpApp(input: {
     context.header("Cache-Control", "no-store");
     return context.json(artifact);
   });
+  app.get("/api/v1/guardrails/:id/package", authenticated, async context => {
+    const versions = packageVersionsQuery.parse(context.req.query("versions"));
+    const exported = await input.service.packages.exportPackage(context.req.param("id"), versions);
+    context.header("Content-Type", "application/zip");
+    context.header("Content-Disposition", `attachment; filename="${exported.filename}"`);
+    context.header("Cache-Control", "no-store");
+    return context.body(new Uint8Array(exported.bytes), 200);
+  });
+  app.post("/api/v1/guardrail-packages", authenticated, administrator, packageUploadLimit, async context => {
+    const form = await context.req.formData();
+    const upload = form.get("package");
+    if (!(upload instanceof File)) throw new ControllerError("Upload a .guardrail.zip file in the package field.", 422, "guardrail_package_invalid");
+    return context.json(await input.service.packages.inspectUpload(Buffer.from(await upload.arrayBuffer()), context.get("actor").id), 201);
+  });
+  app.get("/api/v1/guardrail-packages/:packageId", authenticated, administrator, async context => {
+    return context.json(await input.service.packages.previewPackage(context.req.param("packageId")));
+  });
+  app.post("/api/v1/guardrail-packages/:packageId/imports", authenticated, administrator, async context => {
+    const body = packageImportInput.parse(await context.req.json());
+    return context.json(await input.service.packages.importPackage(context.req.param("packageId"), { versions: body.versions, actorId: context.get("actor").id }), 201);
+  });
+  app.post("/api/v1/guardrails/:id/versions/:version/environment-check", authenticated, administrator, async context => {
+    return context.json(await input.service.packages.checkVersionEnvironment(context.req.param("id"), guardrailVersionInput.parse(context.req.param("version"))));
+  });
   app.post("/api/v1/guardrails/:id/duplicate", authenticated, administrator, async context => {
     const body = z.object({ name: z.string().trim().min(1).max(160), sourceVersion: guardrailVersionInput.optional(), sourceDraftRevision: z.number().int().positive().optional(), idempotencyKey: z.string().min(1).max(128) })
       .refine(value => !(value.sourceVersion && value.sourceDraftRevision), "Choose one copy source").parse(await context.req.json());
@@ -875,17 +909,20 @@ export function createHttpApp(input: {
     const body = z.object({ expectedDraftRevision: z.number().int().positive(), reviewedSnapshot: routerDraftSchema, reviewedEndpointIds: z.array(z.string().min(1).max(256)).max(10000),
       reason: changeReason, ticket: z.string().trim().max(128).default(""),
       restore: z.object({ revision: z.number().int().positive(), expectedActiveRevision: z.number().int().positive() }).optional() }).parse(await context.req.json());
+    await input.service.packages.checkRoutedImports(body.reviewedSnapshot);
     return context.json(await input.service.trafficRouting.submitChange(context.req.param("id"), body, context.get("actor").id), 201);
   });
   app.get("/api/v1/routers/:id/change-requests/:changeId", authenticated, async context => context.json(await input.service.trafficRouting.changeRequest(context.req.param("id"), context.req.param("changeId"))));
   app.post("/api/v1/routers/:id/change-requests/:changeId/approve", authenticated, administrator, async context => {
     const { note } = z.object({ note: z.string().trim().max(2000).optional() }).parse(await context.req.json());
+    await input.service.packages.checkRoutedImports((await input.service.trafficRouting.changeRequest(context.req.param("id"), context.req.param("changeId"))).snapshot);
     const result = await input.service.trafficRouting.approveChange(context.req.param("id"), context.req.param("changeId"), context.get("actor").id, { note });
     if (!result.publication.replayed) await input.runnerControl.distributeDesiredState();
     return context.json(result, 202);
   });
   app.post("/api/v1/routers/:id/change-requests/:changeId/emergency-apply", authenticated, administrator, async context => {
     const emergency = z.object({ reason: changeReason, managerContact: z.string().trim().min(1).max(256) }).parse(await context.req.json());
+    await input.service.packages.checkRoutedImports((await input.service.trafficRouting.changeRequest(context.req.param("id"), context.req.param("changeId"))).snapshot);
     const result = await input.service.trafficRouting.approveChange(context.req.param("id"), context.req.param("changeId"), context.get("actor").id, { emergency });
     if (!result.publication.replayed) await input.runnerControl.distributeDesiredState();
     return context.json(result, 202);

@@ -27,6 +27,7 @@ import { capabilityBindingDefinitions } from "../../shared/guardrail-catalog.js"
 import type { ModelConfigurationService } from "../model-config/service.js";
 import type { ControlPlaneService } from "../services/control-plane.js";
 import type { ArtifactContent } from "../domain/artifact-content.js";
+import type { PoolAdmission, SignedArtifact } from "../domain/environment-check.js";
 import { controlChannelOptions } from "./transport.js";
 import {
   artifactFromWire,
@@ -59,6 +60,7 @@ export class RunnerControlServer {
   private readonly connections = new Map<string, Connection>();
   private timers: NodeJS.Timeout[] = [];
   private readonly railValidations = new Map<string, { runnerId: string; bootId: string; finish: (result: RailValidationEvidence) => void }>();
+  private readonly admissions = new Map<string, { runnerId: string; bootId: string; finish: (result: PoolAdmission) => void }>();
 
   constructor(
     private readonly config: ControllerConfig,
@@ -80,6 +82,34 @@ export class RunnerControlServer {
     };
     this.grpc.addService(descriptor.tasklattice.guard.control.v1.RunnerControl.service, handlers);
     this.models.setRailValidator?.((request) => this.validateRail(request));
+    this.service.setArtifactAdmission?.((artifact) => this.checkArtifactAdmission(artifact));
+  }
+
+  /**
+   * Dry-run load one signed Artifact on one connected Runner in every pool.
+   * Runner pools receive every Router-referenced Artifact, so each pool must
+   * be able to serve it. Prefer Runners that applied the current models.
+   */
+  async checkArtifactAdmission(artifact: SignedArtifact): Promise<PoolAdmission[]> {
+    const expectedModelRevisionId = (await this.models.activeConfiguration(true))?.revisionId ?? "";
+    const byPool = new Map<string, Connection>();
+    for (const connection of this.connections.values()) {
+      const current = byPool.get(connection.poolId);
+      if (!current || (current.appliedModelRevisionId !== expectedModelRevisionId && connection.appliedModelRevisionId === expectedModelRevisionId)) {
+        byPool.set(connection.poolId, connection);
+      }
+    }
+    const wire = artifactToWire(artifact);
+    return Promise.all([...byPool.values()].map((runner) => new Promise<PoolAdmission>((resolve) => {
+      const requestId = randomUUID();
+      const unavailable = (reason: string) => ({ poolId: runner.poolId, runnerId: runner.runnerId, admitted: false, unavailable: true, reason, nemoVersion: "", modelRevisionId: "" });
+      const timer = setTimeout(() => finish(unavailable("The Runner did not answer the load check in time.")), 60_000);
+      timer.unref();
+      const finish = (result: PoolAdmission) => { clearTimeout(timer); this.admissions.delete(requestId); resolve(result); };
+      this.admissions.set(requestId, { runnerId: runner.runnerId, bootId: runner.bootId, finish });
+      try { this.write(runner.stream, { artifactAdmissionRequest: { requestId, artifact: wire } }); }
+      catch { finish(unavailable("The Runner disconnected before the load check could start.")); }
+    })));
   }
 
   async validateRail(request: CapabilityValidationRequest): Promise<RailValidationEvidence> {
@@ -116,6 +146,7 @@ export class RunnerControlServer {
 
   async stop(): Promise<void> {
     for (const validation of this.railValidations.values()) validation.finish({ passed: false, message: "Controller stopped during Rail validation.", latencyMs: 0 });
+    for (const [requestId, admission] of this.admissions) admission.finish({ poolId: "", runnerId: admission.runnerId, admitted: false, unavailable: true, reason: `Controller stopped during load check ${requestId}.`, nemoVersion: "", modelRevisionId: "" });
     for (const timer of this.timers) clearInterval(timer);
     this.timers = [];
     for (const connection of this.connections.values()) connection.stream.end();
@@ -301,6 +332,13 @@ export class RunnerControlServer {
       if (result.runnerId !== current.runnerId) throw new Error("Validation result identity does not match the registered stream.");
       this.metrics.observeJob("validation", result.accepted);
       await this.handleValidationResult(result);
+    } else if (message.artifactAdmissionResult) {
+      const result = message.artifactAdmissionResult;
+      const pending = this.admissions.get(result.requestId);
+      if (pending && pending.runnerId === current.runnerId && pending.bootId === current.bootId) {
+        pending.finish({ poolId: current.poolId, runnerId: current.runnerId, admitted: result.admitted, unavailable: false,
+          reason: result.reason, nemoVersion: result.nemoVersion, modelRevisionId: result.modelRevisionId });
+      }
     } else if (message.capabilityValidationResult) {
       const result = message.capabilityValidationResult;
       const pending = this.railValidations.get(result.requestId);

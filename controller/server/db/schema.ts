@@ -3,6 +3,7 @@ import type { ValidationProgress } from "../../shared/validation-progress.js";
 import {
   bigint,
   boolean,
+  customType,
   doublePrecision,
   index,
   integer,
@@ -37,6 +38,9 @@ import type {
 import type { ArtifactContent } from "../domain/artifact-content.js";
 import type { GuardrailInspection } from "../domain/guardrail-inspection.js";
 import type { ValidationRuntimeFingerprint } from "../domain/models.js";
+import type { ArtifactRequirements } from "../domain/artifact-requirements.js";
+import type { EnvironmentCheck } from "../domain/environment-check.js";
+import type { PackageManifest, PackageSignature, UatEvidence } from "../domain/guardrail-package.js";
 
 const createdAt = timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 const updatedAt = timestamp("updated_at", { withTimezone: true }).notNull().defaultNow();
@@ -259,6 +263,10 @@ export const guardrails = pgTable("guardrail", {
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
   deletedBy: text("deleted_by").references(() => user.id),
   deleteReason: text("delete_reason"),
+  // "imported" Guardrails are owned by one trusted source and have no
+  // working draft; their versions arrive only through release packages.
+  origin: text("origin").$type<"local" | "imported">().notNull().default("local"),
+  sourceId: text("source_id"),
   createdAt,
   updatedAt,
 }, (table) => [index("guardrail_status_idx").on(table.status)]);
@@ -277,12 +285,48 @@ export const guardrailVersions = pgTable("guardrail_version", {
   // Passed test run whose exact candidate Artifact this version publishes.
   validationRunId: text("validation_run_id"),
   inspection: jsonb("inspection").$type<GuardrailInspection>(),
+  origin: text("origin").$type<"local" | "imported">().notNull().default("local"),
+  // Latest Runner load check in this environment; informational only.
+  environmentCheck: jsonb("environment_check").$type<EnvironmentCheck>(),
   createdBy: text("created_by").references(() => user.id),
   createdAt,
 }, (table) => [
   primaryKey({ columns: [table.guardrailId, table.version] }),
   uniqueIndex("guardrail_version_generation_idx").on(table.generation),
 ]);
+
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => "bytea" });
+
+/** Uploaded release packages, kept verbatim for audit and re-verification. */
+export const guardrailPackages = pgTable("guardrail_package", {
+  // SHA-256 of the exact uploaded bytes.
+  id: text("id").primaryKey(),
+  content: bytea("content").notNull(),
+  sizeBytes: integer("size_bytes").notNull(),
+  sourceId: text("source_id").notNull(),
+  keyId: text("key_id").notNull(),
+  guardrailId: text("guardrail_id").notNull(),
+  manifest: jsonb("manifest").$type<PackageManifest>().notNull(),
+  uploadedBy: text("uploaded_by").references(() => user.id),
+  uploadedAt: timestamp("uploaded_at", { withTimezone: true }).notNull().defaultNow(),
+  lastImportedAt: timestamp("last_imported_at", { withTimezone: true }),
+});
+
+/** Where an imported version came from and the evidence it arrived with. */
+export const guardrailVersionProvenance = pgTable("guardrail_version_provenance", {
+  guardrailId: text("guardrail_id").notNull(),
+  version: text("version").notNull(),
+  sourceId: text("source_id").notNull(),
+  sourceKeyId: text("source_key_id").notNull(),
+  contentDigest: text("content_digest").notNull(),
+  fileDigests: jsonb("file_digests").$type<Record<string, string>>().notNull(),
+  requirements: jsonb("requirements").$type<ArtifactRequirements>().notNull(),
+  uatEvidence: jsonb("uat_evidence").$type<UatEvidence>().notNull(),
+  sourceSignature: jsonb("source_signature").$type<PackageSignature>().notNull(),
+  packageId: text("package_id").notNull().references(() => guardrailPackages.id),
+  importedBy: text("imported_by").references(() => user.id),
+  importedAt: timestamp("imported_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [primaryKey({ columns: [table.guardrailId, table.version] })]);
 
 export const testCases = pgTable("guardrail_test_case", {
   id: text("id").notNull(),

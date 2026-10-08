@@ -3,6 +3,8 @@ import type { EnumTypeDefinition, MessageTypeDefinition } from '@grpc/proto-load
 
 import type { ActionBinding as _tasklattice_guard_control_v1_ActionBinding, ActionBinding__Output as _tasklattice_guard_control_v1_ActionBinding__Output } from './tasklattice/guard/control/v1/ActionBinding.js';
 import type { Artifact as _tasklattice_guard_control_v1_Artifact, Artifact__Output as _tasklattice_guard_control_v1_Artifact__Output } from './tasklattice/guard/control/v1/Artifact.js';
+import type { ArtifactAdmissionRequest as _tasklattice_guard_control_v1_ArtifactAdmissionRequest, ArtifactAdmissionRequest__Output as _tasklattice_guard_control_v1_ArtifactAdmissionRequest__Output } from './tasklattice/guard/control/v1/ArtifactAdmissionRequest.js';
+import type { ArtifactAdmissionResult as _tasklattice_guard_control_v1_ArtifactAdmissionResult, ArtifactAdmissionResult__Output as _tasklattice_guard_control_v1_ArtifactAdmissionResult__Output } from './tasklattice/guard/control/v1/ArtifactAdmissionResult.js';
 import type { ArtifactDependency as _tasklattice_guard_control_v1_ArtifactDependency, ArtifactDependency__Output as _tasklattice_guard_control_v1_ArtifactDependency__Output } from './tasklattice/guard/control/v1/ArtifactDependency.js';
 import type { ArtifactResult as _tasklattice_guard_control_v1_ArtifactResult, ArtifactResult__Output as _tasklattice_guard_control_v1_ArtifactResult__Output } from './tasklattice/guard/control/v1/ArtifactResult.js';
 import type { AutomatedReasoningFinding as _tasklattice_guard_control_v1_AutomatedReasoningFinding, AutomatedReasoningFinding__Output as _tasklattice_guard_control_v1_AutomatedReasoningFinding__Output } from './tasklattice/guard/control/v1/AutomatedReasoningFinding.js';
@@ -72,6 +74,8 @@ export interface ProtoGrpcType {
         v1: {
           ActionBinding: MessageTypeDefinition<_tasklattice_guard_control_v1_ActionBinding, _tasklattice_guard_control_v1_ActionBinding__Output>
           Artifact: MessageTypeDefinition<_tasklattice_guard_control_v1_Artifact, _tasklattice_guard_control_v1_Artifact__Output>
+          ArtifactAdmissionRequest: MessageTypeDefinition<_tasklattice_guard_control_v1_ArtifactAdmissionRequest, _tasklattice_guard_control_v1_ArtifactAdmissionRequest__Output>
+          ArtifactAdmissionResult: MessageTypeDefinition<_tasklattice_guard_control_v1_ArtifactAdmissionResult, _tasklattice_guard_control_v1_ArtifactAdmissionResult__Output>
           ArtifactDependency: MessageTypeDefinition<_tasklattice_guard_control_v1_ArtifactDependency, _tasklattice_guard_control_v1_ArtifactDependency__Output>
           ArtifactResult: MessageTypeDefinition<_tasklattice_guard_control_v1_ArtifactResult, _tasklattice_guard_control_v1_ArtifactResult__Output>
           AutomatedReasoningFinding: MessageTypeDefinition<_tasklattice_guard_control_v1_AutomatedReasoningFinding, _tasklattice_guard_control_v1_AutomatedReasoningFinding__Output>

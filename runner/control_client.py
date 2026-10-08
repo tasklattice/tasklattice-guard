@@ -201,6 +201,14 @@ class RunnerControlClient:
                 task = asyncio.create_task(self._validate_capability(message.capability_validation_request))
                 self._capability_tasks.add(task)
                 task.add_done_callback(self._capability_tasks.discard)
+        elif body == "artifact_admission_request":
+            if len(self._capability_tasks) >= 4:
+                await self._send_admission_result(message.artifact_admission_request.request_id, False,
+                                                  "Runner check capacity reached. Retry shortly.")
+            else:
+                task = asyncio.create_task(self._admit(message.artifact_admission_request))
+                self._capability_tasks.add(task)
+                task.add_done_callback(self._capability_tasks.discard)
         elif body == "drain_request":
             logger.warning("Controller requested Runner drain: %s", message.drain_request.reason)
 
@@ -338,6 +346,27 @@ class RunnerControlClient:
     async def _send_capability_result(self, result: protocol.CapabilityValidationResult) -> None:
         await self._send(protocol.RunnerMessage(message_id=str(uuid.uuid4()), sent_at_unix_ms=_now_ms(),
                                               capability_validation_result=result))
+
+    async def _admit(self, request: protocol.ArtifactAdmissionRequest) -> None:
+        try:
+            with diagnostic_phase("artifact.admission", request_id=request.request_id,
+                                  guardrail_id=request.artifact.guardrail_id, version=request.artifact.guardrail_version):
+                await prepare(self._store.admit, request.artifact)
+        except Exception as error:
+            logger.warning("Artifact admission check %s rejected: %s", request.request_id, error)
+            await self._send_admission_result(request.request_id, False, str(error) or type(error).__name__)
+            return
+        await self._send_admission_result(request.request_id, True, "")
+
+    async def _send_admission_result(self, request_id: str, admitted: bool, reason: str) -> None:
+        await self._send(protocol.RunnerMessage(
+            message_id=str(uuid.uuid4()), sent_at_unix_ms=_now_ms(),
+            artifact_admission_result=protocol.ArtifactAdmissionResult(
+                runner_id=self._settings.runner_id, request_id=request_id, admitted=admitted, reason=reason,
+                nemo_version=importlib.metadata.version("nemoguardrails"),
+                model_revision_id=self._store.model_revision_id,
+            ),
+        ))
 
     async def _validate(self, request: protocol.ValidationRequest) -> None:
         if self._validator is None:

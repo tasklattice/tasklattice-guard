@@ -277,3 +277,49 @@ def test_signed_artifact_rejects_tampering(tmp_path, tamper):
     with pytest.raises((ValueError, InvalidSignature)):
         store.apply(protocol.DesiredState(generation=8, artifacts=[artifact]))
     assert store.generation == 7
+
+
+@pytest.mark.parametrize("fixture", ["local-secrets-v1", "custom-symbol-ownership-v1"])
+def test_admission_check_builds_the_runtime_without_serving_it(tmp_path, fixture):
+    from runner.toolkit.nemo.action_registry import action_providers
+    from runner.toolkit.nemo.actions import local_action_providers
+    from runner.toolkit.nemo.registry import NeMoRuntimeRegistry
+
+    path = Path(__file__).parent / "fixtures" / "artifacts" / fixture
+    artifact = protocol.DesiredState.FromString(base64.b64decode((path / "desired-state.pb.b64").read_bytes())).artifacts[0]
+    store = ArtifactStore(path / "public-key.pem", tmp_path / "state")
+    registry = NeMoRuntimeRegistry(store, action_providers(*local_action_providers()))
+    store.attach_registry(registry)
+
+    store.admit(artifact)
+
+    assert store.generation == 0
+    assert registry.stats()["entries"] == 0
+    assert not (tmp_path / "state" / "last-known-good.json").exists()
+
+
+@pytest.mark.parametrize("change", ["content", "signature", "runtime"])
+def test_admission_check_rejects_what_a_real_load_would_reject(tmp_path, change):
+    from cryptography.exceptions import InvalidSignature
+    from runner.toolkit.nemo.action_registry import action_providers
+    from runner.toolkit.nemo.registry import NeMoRuntimeRegistry
+
+    key = Ed25519PrivateKey.generate()
+    public_path = tmp_path / "public.pem"
+    public_path.write_bytes(key.public_key().public_bytes(
+        serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo,
+    ))
+    artifact = protocol.DesiredState.FromString(base64.b64decode((FIXTURE / "desired-state.pb.b64").read_bytes())).artifacts[0]
+    artifact.signature = _signature(key, artifact.checksum)
+    if change == "content":
+        artifact.config_yaml += "\n# changed after signing\n"
+    elif change == "signature":
+        artifact.signature = _signature(Ed25519PrivateKey.generate(), artifact.checksum)
+    store = ArtifactStore(public_path, tmp_path / "state")
+    # "runtime": a Runner without the Actions this Artifact pins cannot serve it.
+    store.attach_registry(NeMoRuntimeRegistry(store, action_providers()))
+    expected = {"content": ValueError, "signature": InvalidSignature, "runtime": Exception}[change]
+    with pytest.raises(expected) as failure:
+        store.admit(artifact)
+    if change == "runtime":
+        assert "Action providers are unavailable" in str(failure.value)

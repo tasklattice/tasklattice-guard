@@ -284,6 +284,20 @@ class NeMoRuntimeRegistry:
                 self.discard_prepared(staged)
                 raise
 
+    def check_candidate(self, plan: GuardrailPlanSnapshot, config: NeMoConfigSnapshot) -> None:
+        """Build one runtime with the serving providers and models, then retire it.
+
+        The same validation and NeMo construction as a real release, without
+        touching any prepared or published release.
+        """
+        with self._lock:
+            if self._closed:
+                raise LookupError("NeMo Runtime Registry is closed.")
+            builder = self._current.prepared.builder
+        with self._build_lock:
+            item = self._build_with_logging(builder, RuntimeCandidate(plan, config, config_checksum(config)))
+        self._discard_rails(item.rails)
+
     def discard_prepared(self, staged: PreparedRuntimeRelease) -> None:
         with self._lock:
             self._retired.update((id(item.rails), item) for item in staged.created)

@@ -344,6 +344,14 @@ class ArtifactStore:
         with self._lock:
             return self._model_revision_id or ""
 
+    def admit(self, message: Any) -> None:
+        """Dry-run load: verify the Artifact and build its runtime, then discard it."""
+        artifact = self._artifact_from_message(message)
+        registry = self._registry
+        if registry is None:
+            raise RuntimeError("NeMo Runtime Registry is not attached.")
+        registry.check_candidate(artifact.plan, artifact.config)
+
     def _artifact_from_message(self, message: Any) -> RuntimeArtifact:
         content = artifact_content(message)
         checksum = hashlib.sha256(canonical_json(content).encode()).hexdigest()

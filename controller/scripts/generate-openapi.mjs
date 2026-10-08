@@ -170,12 +170,18 @@ try {
     if (bodyOverrides.has(`${method} ${path}`)) operation.requestBody={required:true,content:{'application/json':{schema:inputSchema(bodyOverrides.get(`${method} ${path}`),`${id}Body`)}}};
     const hasBody = route.nodes.some(n=>ast.isCallExpression(n)&&['context.req.json','context.req.text'].includes(n.expression.getText()));
     assert(!hasBody||operation.requestBody,`Undocumented request body: ${id}`);
-    if (route.nodes.some(n=>ast.isCallExpression(n)&&n.expression.getText()==='context.req.formData')) {
+    if (route.nodes.some(n=>ast.isCallExpression(n)&&n.expression.getText()==='context.req.formData') && path==='/api/v1/guardrail-packages') {
+      operation.requestBody={required:true,content:{'multipart/form-data':{schema:{type:'object',required:['package'],properties:{package:{type:'string',format:'binary',description:'A signed .guardrail.zip release package; at most 32 MiB.'}}}}}};
+    } else if (route.nodes.some(n=>ast.isCallExpression(n)&&n.expression.getText()==='context.req.formData')) {
       assert(path==='/api/v1/authoring/document-analyses',`Undocumented multipart body: ${id}`);
       operation.requestBody={required:true,content:{'multipart/form-data':{schema:{type:'object',required:['files'],properties:{language:{type:'string',enum:['en','zh-CN'],default:'en'},files:{type:'array',minItems:1,maxItems:MAX_DOCUMENTS,items:{type:'string',format:'binary'},description:`DOC, DOCX or TXT; each file <= ${MAX_DOCUMENT_BYTES} bytes; combined <= ${MAX_TOTAL_BYTES} bytes.`}}}}}};
     }
     for(const call of route.nodes.filter(ast.isCallExpression)) {
       if(!['context.json','context.body'].includes(call.expression.getText()))continue;
+      if(call.expression.getText()==='context.body' && path==='/api/v1/guardrails/:id/package'){
+        operation.responses[200]={description:'Signed Guardrail release package (.guardrail.zip).',content:{'application/zip':{schema:{type:'string',format:'binary'}}}};
+        continue;
+      }
       const statusType=call.arguments[1] ? checker.getTypeAtLocation(call.arguments[1]) : null;
       const statuses=statusType ? (statusType.isUnionType()?statusType.getTypes():[statusType]).map(t=>t.value) : [200];
       assert(statuses.every(s=>Number.isInteger(s)&&s>=100&&s<=599),`Dynamic response status: ${id}`);

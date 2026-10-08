@@ -169,6 +169,13 @@
       "when": 1791510000000,
       "tag": "0023_validated_artifact_binding",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1791520000000,
+      "tag": "0024_guardrail_packages",
+      "breakpoints": true
     }
   ]
 }

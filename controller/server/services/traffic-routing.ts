@@ -9,6 +9,9 @@ import { ConflictError, ControllerError, NotFoundError, ValidationError } from "
 import { capabilityIssues, routingIssues, type RouterChangeRequest, type RouterDraft } from "../../shared/traffic-routing.js";
 import { advisoryTransactionLock } from "../db/postgres-locks.js";
 
+/** How long a Runner load check of an imported version counts as current. */
+export const IMPORTED_VERSION_CHECK_TTL_MS = 10 * 60_000;
+
 const sortedIds = (ids: readonly string[]) => [...new Set(ids)].sort((a, b) => a.localeCompare(b));
 
 export const routingEventSchema = z.object({
@@ -93,14 +96,14 @@ export class TrafficRoutingService {
     });
     return this.get(id);
   }
-  private async resolvePublication(tx: Tx, id: string, draft: RouterDraft) {
+  private async resolvePublication(tx: Tx, id: string, draft: RouterDraft, options: { verifyImports?: boolean } = {}) {
     const initialErrors = routingIssues(draft, true);
     if (initialErrors.length) throw new ValidationError(initialErrors.join("; "));
     const bound = await tx.select().from(endpoints).where(and(eq(endpoints.trafficRouterId, id), isNull(endpoints.deletedAt)));
     const ids = [...new Set(draft.routes.flatMap(r => r.targets.map(t => t.guardrailId)))];
     const versions = ids.length ? await tx.select({ id: guardrailVersions.guardrailId, version: guardrailVersions.version,
       artifactId: guardrailVersions.artifactId, status: guardrailVersions.status, name: guardrails.name, deletedAt: guardrails.deletedAt,
-      latestVersion: guardrails.latestVersion })
+      latestVersion: guardrails.latestVersion, origin: guardrailVersions.origin, environmentCheck: guardrailVersions.environmentCheck })
       .from(guardrailVersions).innerJoin(guardrails, eq(guardrails.id, guardrailVersions.guardrailId))
       .where(inArray(guardrailVersions.guardrailId, ids)) : [];
     const snapshot: RouterDraft = { routes: draft.routes.map(route => ({ ...route, targets: route.targets.map(target => {
@@ -121,6 +124,19 @@ export class TrafficRoutingService {
       const version = versions.find(v => v.id === target.guardrailId && v.version === target.guardrailVersion);
       if (route.enabled && target.weightBps > 0 && (!version?.artifactId || version.status !== "ready" || version.deletedAt)) {
         throw new ValidationError(`${route.name}: ${target.guardrailId} ${target.guardrailVersion} is not a ready Guardrail Version`);
+      }
+      // An imported version was tested elsewhere. It may receive traffic only
+      // after Runners here proved they can load it (see checkRoutedImports).
+      if (options.verifyImports && route.enabled && target.weightBps > 0 && version?.origin === "imported") {
+        const check = version.environmentCheck;
+        const fresh = check && Date.now() - Date.parse(check.checkedAt) <= IMPORTED_VERSION_CHECK_TTL_MS;
+        if (!fresh || check.status !== "compatible") {
+          throw new ConflictError(
+            `${route.name}: this environment has not confirmed it can serve ${target.guardrailId} ${target.guardrailVersion}. Resolve the missing dependencies and check again.`,
+            "guardrail_version_environment_unverified",
+            { guardrailId: target.guardrailId, version: target.guardrailVersion, environment: check ?? null },
+          );
+        }
       }
       // Missing inactive references remain in snapshot, without invented metadata.
       const key = JSON.stringify([target.guardrailId, target.guardrailVersion]);
@@ -168,7 +184,7 @@ export class TrafficRoutingService {
         if (!target) throw new NotFoundError("Router revision", String(input.restore.revision));
         source = target.snapshot;
       }
-      const { snapshot, context, endpointIds } = await this.resolvePublication(tx, id, source).catch(error => {
+      const { snapshot, context, endpointIds } = await this.resolvePublication(tx, id, source, { verifyImports: true }).catch(error => {
         if (error instanceof ValidationError) throw new ConflictError("Router publication is no longer valid. Review again before submitting.", "router_review_conflict");
         throw error;
       });
@@ -275,7 +291,7 @@ export class TrafficRoutingService {
   private async staleReason(tx: Tx, router: typeof trafficRouters.$inferSelect, change: typeof trafficRouterChangeRequests.$inferSelect) {
     if (router.activeRevision !== change.baseRevision) return "The active Router revision changed after submission.";
     try {
-      const resolved = await this.resolvePublication(tx, router.id, change.snapshot);
+      const resolved = await this.resolvePublication(tx, router.id, change.snapshot, { verifyImports: true });
       if (!isDeepStrictEqual(resolved.snapshot, change.snapshot)) return "The referenced Guardrail versions changed after submission.";
       if (!isDeepStrictEqual(resolved.endpointIds, sortedIds(change.endpointIds))) return "The bound Endpoints changed after submission.";
       return null;

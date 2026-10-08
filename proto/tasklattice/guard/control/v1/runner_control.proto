@@ -33,6 +33,7 @@ message RunnerMessage {
     DesiredStateResult desired_state_result = 15;
     CapabilityValidationResult capability_validation_result = 16;
     ValidationProgress validation_progress = 17;
+    ArtifactAdmissionResult artifact_admission_result = 18;
   }
 }
 
@@ -51,6 +52,7 @@ message ControllerMessage {
     DrainRequest drain_request = 13;
     ValidationRequest validation_request = 14;
     CapabilityValidationRequest capability_validation_request = 15;
+    ArtifactAdmissionRequest artifact_admission_request = 16;
   }
 }
 
@@ -172,6 +174,30 @@ message ArtifactResult {
   bool accepted = 4;
   // Human-readable NACK detail; empty for an ACK.
   string reason = 5;
+}
+
+// Dry-run load check: verify a signed Artifact and build its runtime with the
+// Runner's current software, Actions and model configuration, then discard it.
+// Nothing is activated or served.
+message ArtifactAdmissionRequest {
+  // Correlation ID echoed by the result.
+  string request_id = 1;
+  Artifact artifact = 2;
+}
+
+// Outcome of an ArtifactAdmissionRequest on one Runner.
+message ArtifactAdmissionResult {
+  string runner_id = 1;
+  // Must exactly match the originating ArtifactAdmissionRequest.request_id.
+  string request_id = 2;
+  // True only when verification and a full runtime build succeeded.
+  bool admitted = 3;
+  // Human-readable rejection detail; empty when admitted.
+  string reason = 4;
+  // NeMo Guardrails version the check ran against.
+  string nemo_version = 5;
+  // Applied model configuration revision; empty when none was configured.
+  string model_revision_id = 6;
 }
 
 // Graceful shutdown command with an absolute admission deadline.

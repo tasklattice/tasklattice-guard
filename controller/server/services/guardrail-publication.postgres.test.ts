@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { loadConfig } from "../config.js";
+import { canonicalArtifactContent } from "../control-channel/artifact-codec.js";
 import { artifactContentDigest, verifyArtifactDigest, type ArtifactContent } from "../domain/artifact-content.js";
 import { defaultGuardrailDraft } from "../domain/defaults.js";
 import { emptyValidationMetrics } from "../domain/validation.js";
@@ -14,6 +15,7 @@ import { ControlPlaneService } from "./control-plane.js";
 
 const url = process.env.GUARD_TEST_POSTGRES_URL;
 const catalogDir = resolve("../runner/toolkit/policy_library/assets");
+const protoPath = resolve("../proto/tasklattice/guard/control/v1/runner_control.proto");
 
 describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", () => {
   const keys = mkdtempSync(join(tmpdir(), "guard-publication-"));
@@ -28,7 +30,7 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", () => {
     service = new ControlPlaneService(database.db, loadConfig({
       NODE_ENV: "test", CONTROLLER_DATABASE_URL: url!, CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters",
       CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: join(keys, "private.pem"), CONTROLLER_POLICY_CATALOG_DIR: catalogDir,
-      CONTROLLER_PROTO_PATH: resolve("../proto/tasklattice/guard/control/v1/runner_control.proto"),
+      CONTROLLER_PROTO_PATH: protoPath,
       BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters",
     }));
     await database.pool.query("INSERT INTO auth_user (id, name, email, role) VALUES ('admin', 'Admin', 'admin@example.test', 'admin')");
@@ -60,7 +62,8 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", () => {
     const published = await service.requestGuardrailPublish({ guardrailId: guardrail.id, actorId: "admin", expectedDraftRevision: 1 });
     expect(published).toMatchObject({ status: "ready", version: run.guardrailVersion, generation: 4 });
 
-    const digest = artifactContentDigest(candidate);
+    // The digest covers exactly what a Runner decodes from the wire.
+    const digest = artifactContentDigest(canonicalArtifactContent(candidate, protoPath));
     const { rows: [artifact] } = await database.pool.query("SELECT * FROM guardrail_artifact WHERE guardrail_id = $1", [guardrail.id]);
     expect(artifact).toMatchObject({ checksum: digest, guardrail_version: run.guardrailVersion, content_digest_version: 2, generation: "4" });
     expect(verifyArtifactDigest(digest, artifact.signature, publicKey)).toBe(true);
