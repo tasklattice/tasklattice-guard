@@ -11,7 +11,7 @@ import type { ControlPlaneService } from "../services/control-plane.js";
 import { createHttpApp } from "./app.js";
 
 const configured: BasicProtectionSnapshot = {
-  status: "ready", guardrailStatus: "active", activeVersion: "published-v1", modelIndependent: true,
+  status: "ready", guardrailStatus: "active", latestVersion: "published-v1", modelIndependent: true,
   coverage: { policyCount: 2, inputChecks: 2, outputChecks: 1, requiredModelBindings: [], hasUnknownDependencies: false },
   draft: { revision: 2, activeRevision: 1, validationStatus: "failed", validationFailureReason: "New draft failed" },
 };

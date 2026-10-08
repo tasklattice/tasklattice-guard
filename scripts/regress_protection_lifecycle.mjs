@@ -100,11 +100,11 @@ for (const preset of presets) {
   const detail = await until("signed publication", async () => (await call(controller, path)).result, (value) => {
     const version = value.versions.find((item) => item.version === publication.version);
     assert.notEqual(version?.status, "failed", version?.failureReason ?? "Compilation failed.");
-    return value.activeVersion === publication.version && version?.status === "ready";
+    return value.latestVersion === publication.version && version?.status === "ready";
   });
   const version = detail.versions.find((item) => item.version === publication.version);
   assert.equal(version.sourceDraftRevision, saved.draftRevision);
-  assert.equal(version.artifactId, detail.activeArtifactId);
+  assert.equal(version.artifactId, detail.latestArtifactId);
   assert.match(version.artifact.checksum, /^[a-f0-9]{64}$/);
   assert(version.artifact.signature, "Published artifacts must be signed.");
   assert.deepEqual(version.plan.policy_bindings.map((item) => [item.policy_id, item.policy_version]),

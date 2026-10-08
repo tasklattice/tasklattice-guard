@@ -374,7 +374,7 @@ function RuleRow(
                     </p>
                     <p className="mt-1 break-all text-xs text-muted-foreground">
                       {target.versionStrategy === "latest"
-                        ? localize("routing.latestWhenPublished")
+                        ? localize("routing.useLatest")
                         : target.guardrailVersion || localize("routing.versionNotSelected")}
                     </p>
                   </div>

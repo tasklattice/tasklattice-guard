@@ -69,7 +69,7 @@ These three identifiers answer different questions: a **Guardrail Version** fixe
 
 - Confirm the current Validation Run, checksum, dependencies, and specialized models.
 - Check Settings / Health and the Router Overview rollout status and desired generation.
-- Router rollback publishes a new revision from the active change's approved base revision; older revisions are restored as a draft and submitted again. Guardrail **Mark active** selects an existing ready version; changing a published Router’s pinned Guardrail Targets requires another Router publication.
+- Router rollback publishes a new revision from the active change's approved base revision; older revisions are restored as a draft and submitted again. Guardrail **Mark as latest** moves the Latest pointer to an existing ready version; Targets set to **Use latest** pick it up only when their next routing change is submitted and approved.
 - In-flight calls retain their pinned version. New calls use the new routing snapshot after the Runner applies the Router revision.
 - Never patch historical artifacts; create a new version for semantic changes.
 

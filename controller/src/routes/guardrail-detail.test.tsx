@@ -170,7 +170,7 @@ describe("Guardrail detail information hierarchy", () => {
       plan_checksum: "plan-checksum",
       config_checksum: "config-checksum",
       created_at: "2026-08-13T08:00:00Z",
-      active: true,
+      latest: true,
       runtime_engine: "llmrails",
       execution_mode: "nemo_only",
     }]} window="24h" onWindowChange={() => undefined} /></QueryClientProvider>);
@@ -279,7 +279,7 @@ describe("Guardrail detail information hierarchy", () => {
     expect(screen.queryByText("guardrails.noSecurityFindings")).toBeNull();
   });
 
-  it.each([true, false])("shows immutable configuration and marks an existing version active (active=%s)", async active => {
+  it.each([true, false])("shows immutable configuration and marks an existing version as latest (latest=%s)", async latest => {
     const version: GuardrailVersion = {
       guardrail_id: "guardrail-observed",
       version: VERSION_ID,
@@ -287,7 +287,7 @@ describe("Guardrail detail information hierarchy", () => {
       compiler_version: "tasklattice-nemo-config-v6",
       plan_checksum: "plan-checksum",
       created_at: "2026-08-13T08:00:00Z",
-      active,
+      latest,
       compile_status: "ready",
       runtime_engine: "llmrails",
       config_checksum: "config-checksum",
@@ -310,9 +310,9 @@ describe("Guardrail detail information hierarchy", () => {
     };
 
     const client = new QueryClient();
-    const markActive = vi.spyOn(api, "markGuardrailVersionActive").mockResolvedValue({ ...version, active: true });
+    const markLatest = vi.spyOn(api, "markGuardrailVersionLatest").mockResolvedValue({ ...version, latest: true });
     const onChanged = vi.fn().mockResolvedValue(undefined);
-    render(<QueryClientProvider client={client}><TooltipProvider><ImmutableVersionView detail={detail} selectedVersion={version} versions={[version]} loading={false} comparisonActive={false} comparisonLoading={false} compareOptions={[]} guardrailId="guardrail-observed" validation={null} onChanged={onChanged} onOpenDraft={() => undefined} onSelectVersion={() => undefined} onStartCompare={() => undefined} onCompareBaseChange={() => undefined} onCloseCompare={() => undefined} /></TooltipProvider></QueryClientProvider>);
+    render(<QueryClientProvider client={client}><TooltipProvider><ImmutableVersionView detail={detail} selectedVersion={version} versions={[version]} loading={false} comparisonActive={false} comparisonLoading={false} compareOptions={[]} guardrailId="guardrail-observed" guardrailName="Observed" validation={null} onChanged={onChanged} onOpenDraft={() => undefined} onSelectVersion={() => undefined} onStartCompare={() => undefined} onCompareBaseChange={() => undefined} onCloseCompare={() => undefined} /></TooltipProvider></QueryClientProvider>);
 
     const configuration = screen.getAllByText(VERSION_ID)[1];
     const compiledRuntime = screen.getByText("guardrails.compiledRuntime");
@@ -327,19 +327,19 @@ describe("Guardrail detail information hierarchy", () => {
     fireEvent.click(generatedFilesTab);
     expect(screen.getAllByText("config.yml").length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: "uiCopy.versionActions" }));
-    const action = screen.getByRole("menuitem", { name: "guardrails.markActive" });
-    expect(action.hasAttribute("disabled")).toBe(active);
-    if (active) {
-      expect(screen.getAllByText("guardrails.activeVersionLabel")).toHaveLength(2);
-      expect(markActive).not.toHaveBeenCalled();
+    const action = screen.getByRole("menuitem", { name: "guardrails.markLatest" });
+    expect(action.hasAttribute("disabled")).toBe(latest);
+    if (latest) {
+      expect(screen.getAllByText("guardrails.latestVersionLabel")).toHaveLength(2);
+      expect(markLatest).not.toHaveBeenCalled();
     } else {
       fireEvent.click(action);
-      const confirmation = screen.getByRole("dialog", { name: `guardrails.confirmMarkActiveTitle version:${VERSION_ID}` });
-      expect(within(confirmation).getByText("guardrails.confirmMarkActiveDescription")).toBeTruthy();
-      expect(within(confirmation).getByText("guardrails.confirmMarkActiveImpact")).toBeTruthy();
-      expect(markActive).not.toHaveBeenCalled();
-      fireEvent.click(within(confirmation).getByRole("button", { name: "guardrails.markActive" }));
-      await waitFor(() => expect(markActive).toHaveBeenCalledWith("guardrail-observed", VERSION_ID));
+      const confirmation = screen.getByRole("dialog", { name: `guardrails.confirmMarkLatestTitle version:${VERSION_ID}` });
+      expect(within(confirmation).getByText("guardrails.confirmMarkLatestDescription")).toBeTruthy();
+      expect(within(confirmation).getByText("guardrails.confirmMarkLatestImpact")).toBeTruthy();
+      expect(markLatest).not.toHaveBeenCalled();
+      fireEvent.click(within(confirmation).getByRole("button", { name: "guardrails.markLatest" }));
+      await waitFor(() => expect(markLatest).toHaveBeenCalledWith("guardrail-observed", VERSION_ID));
       await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1));
       await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     }
@@ -441,7 +441,7 @@ describe("Guardrail detail information hierarchy", () => {
     } satisfies Guardrail;
     const client = new QueryClient();
     const onOpenValidation = vi.fn();
-    const props = { guardrail: validatedGuardrail, policies: [], cases: [], casesLoading: false, activeVersion: undefined, routers: [], onOpenValidation, onEdit: vi.fn(), onAddCase: vi.fn(), onCreateRouter: vi.fn(), onChanged: async () => undefined };
+    const props = { guardrail: validatedGuardrail, policies: [], cases: [], casesLoading: false, latestVersion: undefined, routers: [], onOpenValidation, onEdit: vi.fn(), onAddCase: vi.fn(), onCreateRouter: vi.fn(), onChanged: async () => undefined };
 
     const view = render(<QueryClientProvider client={client}><DraftReleaseView {...props} /></QueryClientProvider>);
     expect(screen.getByRole("button", { name: "guardrails.publishVersion" })).toBeTruthy();
@@ -450,7 +450,7 @@ describe("Guardrail detail information hierarchy", () => {
     fireEvent.click(screen.getByRole("button", { name: "guardrails.openValidation" }));
     expect(onOpenValidation).toHaveBeenCalledWith(validatedGuardrail.latest_validation_run);
 
-    view.rerender(<QueryClientProvider client={client}><DraftReleaseView {...props} guardrail={{ ...validatedGuardrail, published_current: true }} activeVersion={{ guardrail_id: validatedGuardrail.id, version: "20260814-080000.000Z", source_draft_version: 2, compiler_version: "compiler", plan_checksum: "plan", config_checksum: "config", created_at: "2026-08-14T08:00:00Z", active: true, runtime_engine: "llmrails", execution_mode: "nemo_only" }} /></QueryClientProvider>);
+    view.rerender(<QueryClientProvider client={client}><DraftReleaseView {...props} guardrail={{ ...validatedGuardrail, published_current: true }} latestVersion={{ guardrail_id: validatedGuardrail.id, version: "20260814-080000.000Z", source_draft_version: 2, compiler_version: "compiler", plan_checksum: "plan", config_checksum: "config", created_at: "2026-08-14T08:00:00Z", latest: true, runtime_engine: "llmrails", execution_mode: "nemo_only" }} /></QueryClientProvider>);
     expect(screen.queryByRole("button", { name: "guardrails.publishVersion" })).toBeNull();
     expect(screen.getByRole("button", { name: "guardrails.createRouter" })).toBeTruthy();
   });

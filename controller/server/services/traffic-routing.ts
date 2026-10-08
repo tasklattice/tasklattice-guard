@@ -99,16 +99,16 @@ export class TrafficRoutingService {
     const bound = await tx.select().from(endpoints).where(and(eq(endpoints.trafficRouterId, id), isNull(endpoints.deletedAt)));
     const ids = [...new Set(draft.routes.flatMap(r => r.targets.map(t => t.guardrailId)))];
     const versions = ids.length ? await tx.select({ id: guardrailVersions.guardrailId, version: guardrailVersions.version,
-      artifactId: guardrailVersions.artifactId, status: guardrailVersions.status, name: guardrails.name, deletedAt: guardrails.deletedAt })
+      artifactId: guardrailVersions.artifactId, status: guardrailVersions.status, name: guardrails.name, deletedAt: guardrails.deletedAt,
+      latestVersion: guardrails.latestVersion })
       .from(guardrailVersions).innerJoin(guardrails, eq(guardrails.id, guardrailVersions.guardrailId))
-      .where(inArray(guardrailVersions.guardrailId, ids))
-      .orderBy(desc(guardrailVersions.generation), asc(guardrailVersions.version)) : [];
+      .where(inArray(guardrailVersions.guardrailId, ids)) : [];
     const snapshot: RouterDraft = { routes: draft.routes.map(route => ({ ...route, targets: route.targets.map(target => {
       const { versionStrategy, ...pinned } = target;
       if (versionStrategy === "latest") {
-        // Generation is globally unique and monotonic; version labels are opaque strings.
-        const latest = versions.find(v => v.id === target.guardrailId && !v.deletedAt && v.status === "ready" && v.artifactId);
-        if (!latest) throw new ValidationError(`${route.name}: ${target.guardrailId} has no ready Guardrail Version`);
+        // "Use latest" follows the Guardrail's Latest pointer, resolved now and pinned in the snapshot.
+        const latest = versions.find(v => v.id === target.guardrailId && v.version === v.latestVersion && !v.deletedAt && v.status === "ready" && v.artifactId);
+        if (!latest) throw new ValidationError(`${route.name}: ${target.guardrailId} has no ready Latest Guardrail Version`);
         pinned.guardrailVersion = latest.version;
       }
       return pinned;
@@ -424,6 +424,45 @@ export class TrafficRoutingService {
     const bindings = await tx.select({ id: endpoints.id, routerId: endpoints.trafficRouterId }).from(endpoints).where(isNull(endpoints.deletedAt));
     const versions = await tx.select().from(guardrailVersions);
     return rows.filter(r => r.activeSnapshot).map(r => ({ routerId: r.id, revision: r.activeRevision!, endpointIds: bindings.filter(e => e.routerId === r.id).map(e => e.id), routes: r.activeSnapshot!.routes.map(route => ({ ...route, targets: route.targets.map(t => ({ ...t, artifactId: versions.find(v => v.guardrailId === t.guardrailId && v.version === t.guardrailVersion)?.artifactId ?? "" })) })) }));
+  }
+  /**
+   * Routing that still depends on one immutable Guardrail version. Historical
+   * revisions are not references: they are reported because deleting the
+   * version makes them non-restorable. `retired` is when, and at which
+   * generation, the version last stopped being served by an active revision.
+   */
+  async versionReferences(guardrailId: string, version: string, tx: Tx | ControllerDatabase = this.db) {
+    const pinned = (draft: RouterDraft | null) => Boolean(draft?.routes.some(route => route.targets.some(t =>
+      t.guardrailId === guardrailId && t.versionStrategy !== "latest" && t.guardrailVersion === version)));
+    const routers = await tx.select().from(trafficRouters).where(isNull(trafficRouters.deletedAt)).orderBy(asc(trafficRouters.name));
+    const ids = routers.map(r => r.id);
+    const [history, changes] = ids.length ? await Promise.all([
+      tx.select().from(trafficRouterRevisions).where(inArray(trafficRouterRevisions.routerId, ids)).orderBy(asc(trafficRouterRevisions.routerId), asc(trafficRouterRevisions.revision)),
+      tx.select().from(trafficRouterChangeRequests).where(and(inArray(trafficRouterChangeRequests.routerId, ids),
+        or(eq(trafficRouterChangeRequests.status, "pending"), and(eq(trafficRouterChangeRequests.status, "applied"), eq(trafficRouterChangeRequests.kind, "publish"))))),
+    ]) : [[], []];
+    const references: Array<{ kind: "router_active" | "router_draft" | "change_request" | "rollback_target"; routerId: string; routerName: string; changeRequestId?: string; ticket?: string; revision?: number }> = [];
+    const historical: Array<{ routerId: string; routerName: string; revision: number; createdAt: string }> = [];
+    let retired: { at: Date; generation: number | null } | null = null;
+    for (const router of routers) {
+      const at = { routerId: router.id, routerName: router.name };
+      if (pinned(router.activeSnapshot)) references.push({ kind: "router_active", ...at, revision: router.activeRevision! });
+      const pending = changes.find(c => c.routerId === router.id && c.status === "pending");
+      if (pending && pinned(pending.snapshot)) references.push({ kind: "change_request", ...at, changeRequestId: pending.id, ticket: pending.ticket });
+      // A draft unchanged since the active or pending snapshot is already reported through it.
+      const draftEdited = router.draftRevision !== router.activeDraftRevision && router.draftRevision !== pending?.sourceDraftRevision;
+      if (draftEdited && pinned(router.draft)) references.push({ kind: "router_draft", ...at });
+      const active = changes.find(c => c.routerId === router.id && c.status === "applied" && c.appliedRevision === router.activeRevision && c.baseRevision !== null);
+      const revisions = history.filter(r => r.routerId === router.id);
+      revisions.forEach((revision, index) => {
+        if (!pinned(revision.snapshot)) return;
+        if (revision.revision === active?.baseRevision) references.push({ kind: "rollback_target", ...at, revision: revision.revision, changeRequestId: active.id });
+        else if (revision.revision !== router.activeRevision) historical.push({ ...at, revision: revision.revision, createdAt: revision.createdAt.toISOString() });
+        const successor = revisions[index + 1];
+        if (successor && !pinned(successor.snapshot) && (!retired || successor.createdAt > retired.at)) retired = { at: successor.createdAt, generation: successor.generation };
+      });
+    }
+    return { references, historical, retired: retired as { at: Date; generation: number | null } | null };
   }
   async assertGuardrailUnused(id: string, tx: Tx | ControllerDatabase = this.db) {
     const rows = await tx.select().from(trafficRouters).where(isNull(trafficRouters.deletedAt));

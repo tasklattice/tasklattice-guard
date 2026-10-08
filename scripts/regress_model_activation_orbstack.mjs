@@ -123,7 +123,7 @@ try {
     const done=await until('guardrail validation',()=>api(`/api/v1/test-runs/${validation.id}`),v=>['passed','failed'].includes(v.status));
     assert.equal(done.status,'passed',JSON.stringify(done.results));assert.deepEqual(done.excludedCaseIds,[]);
     if(!report.version){const pub=g.versions.find(v=>v.sourceDraftRevision===1)??await api(path+'/publish',{body:{},expected:[202]});report.version=pub.version;save();}
-    g=await until('signed publication',()=>api(path),v=>v.activeVersion===report.version&&v.versions.some(x=>x.version===report.version&&x.status==='ready'));
+    g=await until('signed publication',()=>api(path),v=>v.latestVersion===report.version&&v.versions.some(x=>x.version===report.version&&x.status==='ready'));
     const v=g.versions.find(v=>v.version===report.version);assert(v.artifact.signature);
     return {guardrailId:g.id,version:v.version,artifact:v.artifactId,checksum:v.artifact.checksum,validationCases:done.metrics.total};
   });

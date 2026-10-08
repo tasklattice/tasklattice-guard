@@ -114,7 +114,7 @@ try {
   guard = await until(path, g => {
     const v = g.versions.find(v => v.version === report.version);
     assert.notEqual(v?.status, 'failed');
-    return g.activeVersion === report.version && v?.status === 'ready';
+    return g.latestVersion === report.version && v?.status === 'ready';
   });
   const version = guard.versions.find(v => v.version === report.version);
   assert(version.artifact.signature);

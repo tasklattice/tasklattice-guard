@@ -677,13 +677,16 @@ export function createHttpApp(input: {
       compilerAvailable: input.runnerControl.hasDefaultCompiler(),
     }), 202);
   });
+  app.get("/api/v1/guardrails/:id/versions/:version/deletion-impact", authenticated, administrator, async context => {
+    return context.json(await input.service.guardrailVersionDeletionImpact(context.req.param("id"), guardrailVersionInput.parse(context.req.param("version"))));
+  });
   app.delete("/api/v1/guardrails/:id/versions/:version", authenticated, administrator, async context => {
     await input.service.deleteGuardrailVersion({ guardrailId: context.req.param("id"), version: guardrailVersionInput.parse(context.req.param("version")), actorId: context.get("actor").id });
     return context.body(null, 204);
   });
-  app.put("/api/v1/guardrails/:id/active-version", authenticated, administrator, async (context) => {
+  app.put("/api/v1/guardrails/:id/latest-version", authenticated, administrator, async (context) => {
     const { version } = z.object({ version: guardrailVersionInput }).parse(await context.req.json());
-    const result = await input.service.markGuardrailVersionActive({
+    const result = await input.service.markGuardrailVersionLatest({
       guardrailId: context.req.param("id"), version, actorId: context.get("actor").id,
     });
     await input.runnerControl.distributeDesiredState();

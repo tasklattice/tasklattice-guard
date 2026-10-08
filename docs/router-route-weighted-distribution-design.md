@@ -101,9 +101,9 @@ Adding or removing a target explicitly redistributes the remaining collection eq
 - The schema permits at most 128 Routes, including Fallback, and 32 targets per Route.
 - A 90% / 10% configuration expresses an expected proportion across many calls, not an exact nine-to-one quota for every ten requests.
 
-Draft targets support `versionStrategy: "latest" | "pinned"`. Omitting the strategy treats `guardrailVersion` as explicit. In the detail editor, new targets default to **Latest when published**. The separate creation sheet currently uses explicit ready versions.
+Draft targets support `versionStrategy: "latest" | "pinned"`. Omitting the strategy treats `guardrailVersion` as explicit. In the detail editor, new targets default to **Use latest**. The separate creation sheet currently uses explicit ready versions.
 
-`latest` means the ready version with an artifact and the highest publication generation for that Guardrail. It does not mean the lexically greatest version label or necessarily the Guardrail's active pointer. Publication preview resolves the strategy; publishing resolves it again. Published snapshots remove `versionStrategy` and contain concrete `guardrailVersion` values. Publishing a new Guardrail version never changes an existing Router revision.
+`latest` means the Guardrail's Latest pointer, which publishing moves to the new version and **Mark as latest** can move to any ready version. Publication preview resolves the strategy; submitting a change request resolves it again and freezes the result. Published snapshots remove `versionStrategy` and contain concrete `guardrailVersion` values. Publishing a new Guardrail version never changes an existing Router revision.
 
 Enabled, positive-weight targets must resolve to ready, non-deleted Guardrails with artifacts. Pinned inactive references can remain in the Controller snapshot without available metadata; `latest` still requires a resolvable ready version even for an inactive target. Runner validation also requires artifacts for positive-weight targets on disabled Routes. A Controller preview therefore does not replace Runner acceptance.
 
@@ -404,7 +404,7 @@ Paths are relative to the Controller. Authentication is required; mutations and 
 | `POST /api/v1/routers/:id/simulations` | `draft`, normalized `input`; return ordered/independent selector explanations and normalized input; no execution or traffic counts |
 | `GET /api/v1/routers/:id/traffic-distribution` | `hours` from 0.25 to 168, default 24; optional positive numeric `revision` and `endpointId` |
 | `GET /api/v1/routers/:id/routes/:routeId/traffic-distribution` | Same filters; only `rows` is restricted to the Route; report totals, trend, and other metadata remain Router-wide |
-| `POST /api/v1/guardrails/:id/duplicate` | `name`, `idempotencyKey`, and one of `sourceVersion` / `sourceDraftRevision`; omitting both source fields defaults to the active version; HTTP 201 |
+| `POST /api/v1/guardrails/:id/duplicate` | `name`, `idempotencyKey`, and one of `sourceVersion` / `sourceDraftRevision`; omitting both source fields defaults to the Latest version; HTTP 201 |
 
 There is no Router `PATCH` operation. The earlier `/traffic-selector-fields`, `/selector-preview`, `/distribution`, and Router `/preview` paths are not aliases for these operations. The actual contracts are defined in [HTTP route registration](../controller/server/http/app.ts) and [the generated OpenAPI document](../controller/openapi/controller.openapi.json).
 

@@ -16,7 +16,7 @@ const policyCatalogDir = resolve("../runner/toolkit/policy_library/assets");
 const policies = PolicyCatalog.load(policyCatalogDir).list();
 const baseline = () => ({
   id: "guardrail-default", draftRevision: 2, draftConfig: normalizeGuardrailDraft(defaultGuardrailDraft(policies)),
-  status: "draft", activeVersion: null, activeArtifactId: null, excludedTestCaseIds: [],
+  status: "draft", latestVersion: null, latestArtifactId: null, excludedTestCaseIds: [],
   runtimeProfile: "auto", deletedAt: null,
 });
 
@@ -69,7 +69,7 @@ function harness(reads: unknown[][], config: Partial<ControllerConfig> = {}, upd
 
 describe("Default baseline validation gate", () => {
   it.each(["missing", "failed"])("migrates the system-owned mixed Default through validation, retaining the old release (%s validation)", async (validationStatus) => {
-    const stored = { ...legacyBaseline(), status: "active", activeVersion: "legacy", activeArtifactId: "legacy-artifact" };
+    const stored = { ...legacyBaseline(), status: "active", latestVersion: "legacy", latestArtifactId: "legacy-artifact" };
     const upgraded = { ...stored, draftRevision: 3, draftConfig: baseline().draftConfig };
     const cases = generatedTestCases(stored.id, upgraded.draftConfig, policies);
     const reads: unknown[][] = [[stored], [], [{ sourceDraftRevision: 2 }], validationStatus === "failed" ? [{ status: "failed" }] : []];
@@ -80,7 +80,7 @@ describe("Default baseline validation gate", () => {
     expect(test.updates).toEqual([{ table: "guardrail", value: expect.objectContaining({
       draftConfig: defaultGuardrailDraft(policies), excludedTestCaseIds: [],
     }) }]);
-    expect(test.updates.some((item) => "activeArtifactId" in item.value || "activeVersion" in item.value)).toBe(false);
+    expect(test.updates.some((item) => "latestArtifactId" in item.value || "latestVersion" in item.value)).toBe(false);
     expect(test.inserts.some((item) => ["guardrail_version", "router"].includes(item.table))).toBe(false);
     expect(test.inserts).toContainEqual({ table: "guardrail_test_case", value: cases });
     expect(test.inserts).toContainEqual({ table: "audit_event", value: expect.objectContaining({
@@ -124,7 +124,7 @@ describe("Default baseline validation gate", () => {
   });
 
   it("compiles precisely the validated revision and preserves the old active artifact until acceptance", async () => {
-    const stored = { ...baseline(), status: "active", activeVersion: "old", activeArtifactId: "old-artifact" };
+    const stored = { ...baseline(), status: "active", latestVersion: "old", latestArtifactId: "old-artifact" };
     const validation = { id: "validation-new", status: "passed", createdAt: new Date("2026-09-06T01:00:00.001Z") };
     const plan = buildGuardrailPlan({ guardrailId: stored.id, guardrailVersion: "20260906-010000.001Z", draft: stored.draftConfig, policies });
     const test = harness([[stored], [], [{ sourceDraftRevision: 1 }], [validation], [], [{ payload: { plan, runtimeProfile: "auto" } }], []]);
@@ -139,7 +139,7 @@ describe("Default baseline validation gate", () => {
     expect(test.updates.filter((item) => item.table === "guardrail")).toEqual([
       { table: "guardrail", value: expect.objectContaining({ status: "active" }) },
     ]);
-    expect(test.updates.some((item) => "activeArtifactId" in item.value || "activeVersion" in item.value)).toBe(false);
+    expect(test.updates.some((item) => "latestArtifactId" in item.value || "latestVersion" in item.value)).toBe(false);
   });
 
   it("does not queue duplicate compilation when the validated version already exists", async () => {
@@ -200,7 +200,7 @@ describe("Compiled artifact publication gate", () => {
   });
 
   it("retains a late approved artifact without overwriting a newer publish or explicit rollback", async () => {
-    const test = harness([[{ ...baseline(), desiredGeneration: 2, activeArtifactId: "newer-artifact" }], [version], [{ id: "passed-validation" }]], { artifactSigningKeyPath: keyPath });
+    const test = harness([[{ ...baseline(), desiredGeneration: 2, latestArtifactId: "newer-artifact" }], [version], [{ id: "passed-validation" }]], { artifactSigningKeyPath: keyPath });
     await test.service.acceptCompiledArtifact(input);
     expect(test.reads).toEqual([]);
     expect(test.updates).toContainEqual({ table: "guardrail_version", value: expect.objectContaining({ status: "ready" }) });

@@ -16,7 +16,7 @@ const auth=JSON.parse(execFileSync('kubectl',['--context','orbstack','-n','tali'
 await api('/api/auth/sign-in/email',Object.fromEntries(Object.entries(auth.data).map(([k,v])=>[k,Buffer.from(v,'base64').toString()])));
 const guard=await api('/api/v1/guardrails/guardrail-default');
 const model=(await api('/api/v1/playground/models')).items[0];assert.equal(model.id,'deepseek-v4-flash');
-assert(guard.versions.find(v=>v.version===guard.activeVersion).plan.steps.every(s=>s.capability==='builtin_content_filter'));
+assert(guard.versions.find(v=>v.version===guard.latestVersion).plan.steps.every(s=>s.capability==='builtin_content_filter'));
 const preview=await api('/api/v1/playground/draft-previews/guardrail-default',{});
 for(const test of [
  {id:'published-safe',message:'Write one cheerful sentence about flowers in a public garden.'},
@@ -27,7 +27,7 @@ for(const test of [
  const row={id:test.id};report.cases.push(row);report.reservedDeepSeekCalls++;save();
  try{
   row.result=await api(`/api/v1/playground/${test.draft?'draft-interactions':'interactions'}/guardrail-default`,{
-   model_id:model.id,message:test.message,history:[],...(test.draft?{preview_id:preview.preview_id}:{guardrail_version:guard.activeVersion})});
+   model_id:model.id,message:test.message,history:[],...(test.draft?{preview_id:preview.preview_id}:{guardrail_version:guard.latestVersion})});
   assert(row.result.input_check);
   if(test.block){assert.equal(row.result.state,'input_blocked');assert(!row.result.output_check);}
   else {assert.equal(row.result.state,'completed');assert(row.result.output_check);assert(row.result.assistant_message.length>0);}

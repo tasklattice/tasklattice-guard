@@ -34,7 +34,7 @@ function desiredStateService(results: unknown[][]) {
 // disabled Guardrails, logging levels, disabled Endpoints, active Endpoints.
 const desiredStateResults = () => [
   [{ desiredGeneration: 9 }],
-  [{ activeArtifactId: "art-default" }],
+  [{ latestArtifactId: "art-default" }],
   [artifact("art-1"), artifact("art-2"), artifact("art-default")],
   [], [], [],
   [{ id: "endpoint-1", trafficRouterId: "router-1", adapter: "generic-http-guard", verification: { credentials: [] } }],

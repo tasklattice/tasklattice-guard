@@ -99,8 +99,8 @@ export function HealthPage() {
               <Requirement
                 icon={ShieldCheck}
                 label={t("platformStatus.defaultGuardrail")}
-                value={basicProtection?.guardrailStatus === "active" && basicProtection.activeVersion
-                  ? t("platformStatus.activeVersion", { version: basicProtection.activeVersion })
+                value={basicProtection?.guardrailStatus === "active" && basicProtection.latestVersion
+                  ? t("platformStatus.latestVersion", { version: basicProtection.latestVersion })
                   : t(`platformStatus.state.${basicProtection?.guardrailStatus ?? "unknown"}`)}
                 ready={basicProtection?.guardrailStatus === "active"}
               />

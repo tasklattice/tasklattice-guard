@@ -61,6 +61,9 @@ import { registeredAction } from "../action-catalog/catalog.js";
 import type { ValidationTerminalState } from "../../shared/lifecycle.js";
 import { guardrailCategoryLabels } from "../../shared/guardrail-catalog.js";
 import { guardrailVersionId } from "../../shared/guardrail-version.js";
+import type { GuardrailVersionDeletionBlocker, GuardrailVersionDeletionImpact, GuardrailVersionReference } from "../../shared/guardrail-version-deletion.js";
+
+type Transaction = Parameters<Parameters<ControllerDatabase["transaction"]>[0]>[0];
 import {
   flowRuleId,
   programmablePolicyDraftSchema,
@@ -373,16 +376,16 @@ export class ControlPlaneService {
       eq(validationRuns.sourceDraftRevision, guardrail.draftRevision),
     )).orderBy(desc(validationRuns.createdAt)).limit(1) : [];
 
-    const [version] = guardrail?.activeVersion ? await this.db.select().from(guardrailVersions).where(and(
+    const [version] = guardrail?.latestVersion ? await this.db.select().from(guardrailVersions).where(and(
       eq(guardrailVersions.guardrailId, DEFAULT_GUARDRAIL_ID),
-      eq(guardrailVersions.version, guardrail.activeVersion),
+      eq(guardrailVersions.version, guardrail.latestVersion),
     )).limit(1) : [];
-    const [artifact] = guardrail?.activeArtifactId ? await this.db.select().from(artifacts)
-      .where(eq(artifacts.id, guardrail.activeArtifactId)).limit(1) : [];
+    const [artifact] = guardrail?.latestArtifactId ? await this.db.select().from(artifacts)
+      .where(eq(artifacts.id, guardrail.latestArtifactId)).limit(1) : [];
     const guardrailActive = Boolean(guardrail && guardrail.status !== "disabled"
       && version?.status === "ready" && version.artifactId === artifact?.id
-      && artifact?.id === guardrail.activeArtifactId
-      && artifact?.guardrailId === DEFAULT_GUARDRAIL_ID && artifact.guardrailVersion === guardrail.activeVersion
+      && artifact?.id === guardrail.latestArtifactId
+      && artifact?.guardrailId === DEFAULT_GUARDRAIL_ID && artifact.guardrailVersion === guardrail.latestVersion
       && artifact.checksum && artifact.signature);
     const coverage = guardrailActive ? publishedProtectionCoverage(artifact?.plan) : null;
     const hasChecks = Boolean(coverage && (coverage.inputChecks > 0 || coverage.outputChecks > 0));
@@ -392,7 +395,7 @@ export class ControlPlaneService {
     return {
       status: guardrailActive && hasChecks ? "ready" : initializing ? "initializing" : "unavailable",
       guardrailStatus: guardrailActive ? "active" as const : preparing ? "initializing" as const : "unavailable" as const,
-      activeVersion: guardrail?.activeVersion ?? null,
+      latestVersion: guardrail?.latestVersion ?? null,
       modelIndependent: isModelIndependent(coverage),
       coverage,
       draft: {
@@ -559,7 +562,7 @@ export class ControlPlaneService {
         if (source.draftRevision !== input.sourceDraftRevision) throw new ConflictError("The source draft changed. Reload before copying.", "guardrail_draft_conflict");
         snapshot = { draftConfig: source.draftConfig, runtimeProfile: source.runtimeProfile, loggingLevel: source.loggingLevel, excludedTestCaseIds: source.excludedTestCaseIds, testCases: await tx.select().from(testCases).where(eq(testCases.guardrailId, input.id)) };
       } else {
-        sourceVersion ??= source.activeVersion ?? undefined;
+        sourceVersion ??= source.latestVersion ?? undefined;
         if (!sourceVersion) throw new ValidationError("Choose a source draft revision or a published Guardrail Version.");
         const [version] = await tx.select().from(guardrailVersions).where(and(eq(guardrailVersions.guardrailId, input.id), eq(guardrailVersions.version, sourceVersion)));
         if (!version?.sourceSnapshot) throw new ConflictError("This version has no complete source snapshot. Choose the current draft explicitly, or publish a new version before copying.", "source_snapshot_unavailable");
@@ -649,12 +652,12 @@ export class ControlPlaneService {
       if (existingVersion && existingVersion.status !== "failed") {
         await tx.update(validationRuns).set({ guardrailVersion: existingVersion.version })
           .where(eq(validationRuns.id, latestValidation.id));
-        const needsActivation = existingVersion.status === "ready" && (
+        const needsLatest = existingVersion.status === "ready" && (
           guardrail.status !== "active"
-          || guardrail.activeVersion !== existingVersion.version
-          || guardrail.activeArtifactId !== existingVersion.artifactId
+          || guardrail.latestVersion !== existingVersion.version
+          || guardrail.latestArtifactId !== existingVersion.artifactId
         );
-        if (needsActivation) {
+        if (needsLatest) {
           if (!existingVersion.artifactId) {
             throw new ConflictError(
               "The ready Guardrail Version does not have a compiled Artifact.",
@@ -668,8 +671,8 @@ export class ControlPlaneService {
           if (!state) throw new Error("Controller state is not initialized.");
           await tx.update(guardrails).set({
             status: "active",
-            activeVersion: existingVersion.version,
-            activeArtifactId: existingVersion.artifactId,
+            latestVersion: existingVersion.version,
+            latestArtifactId: existingVersion.artifactId,
             desiredGeneration: state.desiredGeneration,
             updatedAt: new Date(),
           }).where(eq(guardrails.id, input.guardrailId));
@@ -683,7 +686,7 @@ export class ControlPlaneService {
             },
           });
           await tx.insert(auditEvents).values({
-            id: randomUUID(), kind: "guardrail.version_activated", actorId: input.actorId,
+            id: randomUUID(), kind: "guardrail.latest_version_marked", actorId: input.actorId,
             resourceType: "guardrail", resourceId: input.guardrailId,
             detail: { version: existingVersion.version, generation: state.desiredGeneration, reusedArtifact: true },
           });
@@ -743,7 +746,7 @@ export class ControlPlaneService {
         createdBy: input.actorId,
       });
       await tx.update(guardrails).set({
-        status: guardrail.activeArtifactId ? "active" : "draft",
+        status: guardrail.latestArtifactId ? "active" : "draft",
         desiredGeneration: state.desiredGeneration,
         updatedAt: new Date(),
       }).where(eq(guardrails.id, input.guardrailId));
@@ -858,8 +861,8 @@ export class ControlPlaneService {
       if (activated) {
         await tx.update(guardrails).set({
           status: "active",
-          activeVersion: input.guardrailVersion,
-          activeArtifactId: artifact.id,
+          latestVersion: input.guardrailVersion,
+          latestArtifactId: artifact.id,
           desiredGeneration: input.generation,
           updatedAt: new Date(),
         }).where(eq(guardrails.id, input.guardrailId));
@@ -893,7 +896,7 @@ export class ControlPlaneService {
         .where(and(eq(guardrailVersions.guardrailId, input.guardrailId), eq(guardrailVersions.version, input.guardrailVersion)));
       await tx.update(outboxEvents).set({ processedAt: new Date() }).where(eq(outboxEvents.id, input.compileId));
       const [guardrail] = await tx.select().from(guardrails).where(eq(guardrails.id, input.guardrailId));
-      if (guardrail && !guardrail.activeArtifactId) {
+      if (guardrail && !guardrail.latestArtifactId) {
         await tx.update(guardrails).set({ status: "draft", updatedAt: new Date() }).where(eq(guardrails.id, input.guardrailId));
       }
       await tx.insert(auditEvents).values({
@@ -904,32 +907,64 @@ export class ControlPlaneService {
     });
   }
 
+  async guardrailVersionDeletionImpact(guardrailId: string, version: string) {
+    return this.db.transaction(async tx => {
+      const { guardrail, record } = await this.loadGuardrailVersion(tx, guardrailId, version);
+      return this.versionDeletionImpact(tx, guardrail, record);
+    }, { isolationLevel: "repeatable read", accessMode: "read only" });
+  }
+
+  /** A version can be deleted once nothing routes to it, it is not Latest, and Runners have stopped serving it. */
   async deleteGuardrailVersion(input: { guardrailId: string; version: string; actorId: string }) {
     await this.db.transaction(async tx => {
       // Same lock ordering as composed Router publication: bindings, then resource.
       await advisoryTransactionLock(tx, "traffic-router-bindings");
-      const [guardrail] = await tx.select().from(guardrails).where(and(eq(guardrails.id, input.guardrailId), isNull(guardrails.deletedAt))).for("update");
-      if (!guardrail) throw new NotFoundError("Guardrail", input.guardrailId);
-      const [version] = await tx.select().from(guardrailVersions).where(and(eq(guardrailVersions.guardrailId, input.guardrailId), eq(guardrailVersions.version, input.version)));
-      if (!version) throw new NotFoundError("Guardrail version", input.version);
-      if (guardrail.activeVersion === input.version || version.status === "compiling") throw new ConflictError("Active or compiling versions cannot be deleted.", "version_in_use");
-      if (Date.now() - guardrail.updatedAt.getTime() < 300000) throw new ConflictError("Wait for the five-minute call retention window before deleting a version.", "version_in_use");
-      const runners = await tx.select().from(runnerInstances).where(eq(runnerInstances.poolId, "default"));
-      if (runners.some(r => r.appliedGeneration < guardrail.desiredGeneration || !r.lastHeartbeatAt || Date.now() - r.lastHeartbeatAt.getTime() >= 60000)) throw new ConflictError("Wait for Runner convergence before deleting a version.", "version_in_use");
-      const references = (draft: { routes: Array<{ targets: Array<{ guardrailId: string; guardrailVersion?: string; versionStrategy?: string | undefined }> }> } | null) => draft?.routes.some(r => r.targets.some(t => t.guardrailId === input.guardrailId && (t.guardrailVersion === input.version || t.versionStrategy === "latest")));
-      const current = await tx.select().from(trafficRouters).where(isNull(trafficRouters.deletedAt));
-      const history = await tx.select().from(trafficRouterRevisions);
-      const pendingChanges = await tx.select({ snapshot: trafficRouterChangeRequests.snapshot }).from(trafficRouterChangeRequests).where(eq(trafficRouterChangeRequests.status, "pending"));
-      if (current.some(r => references(r.draft) || references(r.activeSnapshot)) || history.some(r => references(r.snapshot)) || pendingChanges.some(r => references(r.snapshot))) throw new ConflictError("This version is referenced by Router drafts, pending change requests or published revisions. Remove those references first.", "version_in_use");
-      const [pending] = await tx.select().from(routeAssignments).where(and(eq(routeAssignments.guardrailId, input.guardrailId), eq(routeAssignments.guardrailVersion, input.version), isNull(routeAssignments.completedAt), gte(routeAssignments.occurredAt, new Date(Date.now() - 300000)))).limit(1);
-      if (pending) throw new ConflictError("This version has in-flight calls.", "version_in_use");
-      await tx.insert(auditEvents).values({ id: randomUUID(), kind: "guardrail.version_deleted", actorId: input.actorId, resourceType: "guardrail", resourceId: input.guardrailId, detail: { version: input.version, artifactId: version.artifactId } });
+      const { guardrail, record } = await this.loadGuardrailVersion(tx, input.guardrailId, input.version, true);
+      const impact = await this.versionDeletionImpact(tx, guardrail, record);
+      if (!impact.deletable) {
+        const reason = impact.references.length ? "This version is still referenced. Remove the references first." : "This version cannot be deleted yet. Try again after it stops serving traffic.";
+        throw new ConflictError(reason, "version_in_use", { impact });
+      }
+      await tx.insert(auditEvents).values({ id: randomUUID(), kind: "guardrail.version_deleted", actorId: input.actorId, resourceType: "guardrail", resourceId: input.guardrailId,
+        detail: { version: input.version, artifactId: record.artifactId, unrestorableRevisions: impact.unrestorableRevisions } });
       // Keep artifacts and telemetry: deleting a version must not purge evidence.
       await tx.delete(guardrailVersions).where(and(eq(guardrailVersions.guardrailId, input.guardrailId), eq(guardrailVersions.version, input.version)));
     });
   }
 
-  async markGuardrailVersionActive(input: { guardrailId: string; version: string; actorId: string }) {
+  private async loadGuardrailVersion(tx: Transaction, guardrailId: string, version: string, lock = false) {
+    const query = tx.select().from(guardrails).where(and(eq(guardrails.id, guardrailId), isNull(guardrails.deletedAt)));
+    const [guardrail] = lock ? await query.for("update") : await query;
+    if (!guardrail) throw new NotFoundError("Guardrail", guardrailId);
+    const [record] = await tx.select().from(guardrailVersions).where(and(eq(guardrailVersions.guardrailId, guardrailId), eq(guardrailVersions.version, version)));
+    if (!record) throw new NotFoundError("Guardrail version", version);
+    return { guardrail, record };
+  }
+
+  private async versionDeletionImpact(tx: Transaction, guardrail: typeof guardrails.$inferSelect, record: typeof guardrailVersions.$inferSelect): Promise<GuardrailVersionDeletionImpact> {
+    const routing = await this.trafficRouting.versionReferences(guardrail.id, record.version, tx);
+    const references: GuardrailVersionReference[] = [...(guardrail.latestVersion === record.version ? [{ kind: "latest" as const }] : []), ...routing.references];
+    const blockers: GuardrailVersionDeletionBlocker[] = [];
+    if (record.status === "compiling") blockers.push({ code: "compiling" });
+    const retention = 300_000;
+    const [call] = await tx.select({ id: routeAssignments.decisionId }).from(routeAssignments).where(and(eq(routeAssignments.guardrailId, guardrail.id),
+      eq(routeAssignments.guardrailVersion, record.version), isNull(routeAssignments.completedAt), gte(routeAssignments.occurredAt, new Date(Date.now() - retention)))).limit(1);
+    if (call) blockers.push({ code: "in_flight_calls" });
+    if (routing.retired) {
+      // Calls that started before the version left routing may still be running.
+      const until = routing.retired.at.getTime() + retention;
+      if (until > Date.now()) blockers.push({ code: "recently_served", until: new Date(until).toISOString() });
+      const generation = routing.retired.generation;
+      if (generation !== null) {
+        const runners = await tx.select().from(runnerInstances).where(eq(runnerInstances.poolId, "default"));
+        const online = runners.filter(r => r.lastHeartbeatAt && Date.now() - r.lastHeartbeatAt.getTime() < 60_000);
+        if (online.some(r => r.appliedGeneration < generation)) blockers.push({ code: "runner_sync" });
+      }
+    }
+    return { guardrailId: guardrail.id, version: record.version, deletable: !references.length && !blockers.length, references, blockers, unrestorableRevisions: routing.historical };
+  }
+
+  async markGuardrailVersionLatest(input: { guardrailId: string; version: string; actorId: string }) {
     return this.db.transaction(async (tx) => {
       const [guardrail] = await tx.select().from(guardrails).where(and(
         eq(guardrails.id, input.guardrailId), isNull(guardrails.deletedAt),
@@ -940,8 +975,8 @@ export class ControlPlaneService {
         eq(guardrailVersions.version, input.version),
         eq(guardrailVersions.status, "ready"),
       ));
-      if (!version?.artifactId) throw new ConflictError("Only a ready immutable Guardrail Version can be activated.", "guardrail_version_not_ready");
-      if (guardrail.status === "active" && guardrail.activeVersion === input.version && guardrail.activeArtifactId === version.artifactId) {
+      if (!version?.artifactId) throw new ConflictError("Only a ready immutable Guardrail Version can be marked latest.", "guardrail_version_not_ready");
+      if (guardrail.status === "active" && guardrail.latestVersion === input.version && guardrail.latestArtifactId === version.artifactId) {
         return version;
       }
       const [state] = await tx.update(controllerState)
@@ -950,8 +985,8 @@ export class ControlPlaneService {
       if (!state) throw new Error("Controller state is not initialized.");
       await tx.update(guardrails).set({
         status: "active",
-        activeVersion: input.version,
-        activeArtifactId: version.artifactId,
+        latestVersion: input.version,
+        latestArtifactId: version.artifactId,
         desiredGeneration: state.desiredGeneration,
         updatedAt: new Date(),
       }).where(eq(guardrails.id, input.guardrailId));
@@ -960,7 +995,7 @@ export class ControlPlaneService {
         payload: { guardrailId: input.guardrailId, version: input.version, generation: state.desiredGeneration },
       });
       await tx.insert(auditEvents).values({
-        id: randomUUID(), kind: "guardrail.version_activated", actorId: input.actorId,
+        id: randomUUID(), kind: "guardrail.latest_version_marked", actorId: input.actorId,
         resourceType: "guardrail", resourceId: input.guardrailId,
         detail: { version: input.version, generation: state.desiredGeneration },
       });
@@ -1801,9 +1836,9 @@ export class ControlPlaneService {
     // the Default Guardrail baseline. The default pool additionally keeps every
     // ready version so Playground and internal checks can address any version.
     const referencedArtifactIds = new Set(routerRevisions.flatMap((router) => router.routes.flatMap((route) => route.targets.map((target) => target.artifactId).filter(Boolean))));
-    const [defaultGuardrail] = await tx.select({ activeArtifactId: guardrails.activeArtifactId }).from(guardrails)
+    const [defaultGuardrail] = await tx.select({ latestArtifactId: guardrails.latestArtifactId }).from(guardrails)
       .where(and(eq(guardrails.id, DEFAULT_GUARDRAIL_ID), isNull(guardrails.deletedAt)));
-    if (defaultGuardrail?.activeArtifactId) referencedArtifactIds.add(defaultGuardrail.activeArtifactId);
+    if (defaultGuardrail?.latestArtifactId) referencedArtifactIds.add(defaultGuardrail.latestArtifactId);
     const readyArtifacts = await tx.select({ artifact: artifacts }).from(guardrailVersions)
       .innerJoin(guardrails, and(eq(guardrails.id, guardrailVersions.guardrailId), isNull(guardrails.deletedAt)))
       .innerJoin(artifacts, eq(artifacts.id, guardrailVersions.artifactId))
@@ -1882,7 +1917,7 @@ export class ControlPlaneService {
         id: guardrails.id,
         name: guardrails.name,
         status: guardrails.status,
-        activeVersion: guardrails.activeVersion,
+        latestVersion: guardrails.latestVersion,
       }).from(guardrails).where(isNull(guardrails.deletedAt)),
       this.db.select({
         id: trafficRouters.id,
@@ -1924,7 +1959,7 @@ export class ControlPlaneService {
           if (!guardrail) continue;
           // Publication pins every target version; fall back to the active
           // version only for snapshots that predate pinning.
-          const guardrailVersion = target.guardrailVersion || guardrail.activeVersion;
+          const guardrailVersion = target.guardrailVersion || guardrail.latestVersion;
           targets.set(`${target.guardrailId}\u0000${guardrailVersion ?? ""}`, { guardrailId: target.guardrailId, guardrailVersion });
         }
       }
@@ -1953,7 +1988,7 @@ export class ControlPlaneService {
         guardrailId: item.id,
         guardrailName: item.name,
         status: item.status,
-        activeVersion: item.activeVersion,
+        latestVersion: item.latestVersion,
       })),
       endpoints: endpointRows.filter((item) => item.deletedAt === null).map((item) => ({
         endpointId: item.id,
@@ -2146,7 +2181,7 @@ export class ControlPlaneService {
       });
     } else if (stored.deletedAt || stored.status === "disabled") {
       const [enabled] = await tx.update(guardrails).set({
-        status: stored.activeArtifactId ? "active" : "draft",
+        status: stored.latestArtifactId ? "active" : "draft",
         deletedAt: null,
         deletedBy: null,
         deleteReason: null,
@@ -2196,10 +2231,10 @@ export class ControlPlaneService {
       });
     }
 
-    const [activeVersion] = stored.activeVersion ? await tx.select({ sourceDraftRevision: guardrailVersions.sourceDraftRevision })
-      .from(guardrailVersions).where(and(eq(guardrailVersions.guardrailId, DEFAULT_GUARDRAIL_ID), eq(guardrailVersions.version, stored.activeVersion))) : [];
-    if (stored.activeArtifactId && stored.activeVersion && !baselineChanged
-      && (userCustomization || activeVersion?.sourceDraftRevision === stored.draftRevision)) {
+    const [latestVersion] = stored.latestVersion ? await tx.select({ sourceDraftRevision: guardrailVersions.sourceDraftRevision })
+      .from(guardrailVersions).where(and(eq(guardrailVersions.guardrailId, DEFAULT_GUARDRAIL_ID), eq(guardrailVersions.version, stored.latestVersion))) : [];
+    if (stored.latestArtifactId && stored.latestVersion && !baselineChanged
+      && (userCustomization || latestVersion?.sourceDraftRevision === stored.draftRevision)) {
       if (restored) {
         const [state] = await tx.update(controllerState)
           .set({ desiredGeneration: increment(controllerState.desiredGeneration), updatedAt: new Date() })
@@ -2262,7 +2297,7 @@ export class ControlPlaneService {
       createdBy: null,
     });
     await tx.update(guardrails).set({
-      status: stored.activeArtifactId ? "active" : "draft",
+      status: stored.latestArtifactId ? "active" : "draft",
       desiredGeneration: state.desiredGeneration,
       updatedAt: new Date(),
     }).where(eq(guardrails.id, DEFAULT_GUARDRAIL_ID));
@@ -2326,9 +2361,9 @@ export class ControlPlaneService {
       .where(eq(validationRuns.guardrailId, row.id)).orderBy(desc(validationRuns.createdAt)).limit(1);
     const [caseCount] = await this.db.select({ value: count() }).from(testCases)
       .where(eq(testCases.guardrailId, row.id));
-    const [activeVersion] = row.activeVersion === null ? [] : await this.db.select({ sourceDraftRevision: guardrailVersions.sourceDraftRevision })
+    const [latestVersion] = row.latestVersion === null ? [] : await this.db.select({ sourceDraftRevision: guardrailVersions.sourceDraftRevision })
       .from(guardrailVersions).where(and(
-        eq(guardrailVersions.guardrailId, row.id), eq(guardrailVersions.version, row.activeVersion),
+        eq(guardrailVersions.guardrailId, row.id), eq(guardrailVersions.version, row.latestVersion),
       ));
     const { duplicateKey: _duplicateKey, copyOrigin, ...publicRow } = row;
     const { requestDigest: _requestDigest, ...publicOrigin } = copyOrigin ?? {};
@@ -2339,7 +2374,7 @@ export class ControlPlaneService {
       latestValidationRun: latestValidation ?? null,
       testCaseCount: caseCount?.value ?? 0,
       excludedTestCaseCount: row.excludedTestCaseIds.length,
-      activeSourceDraftRevision: activeVersion?.sourceDraftRevision ?? null,
+      latestSourceDraftRevision: latestVersion?.sourceDraftRevision ?? null,
     };
   }
 

@@ -31,7 +31,7 @@ The detail Header, Overview, Revisions, restore confirmation, and distribution r
 
 Numeric database/API revisions remain the keys for ordering, concurrency control, restoration, and log correlation. Timestamps are display identifiers, not unique database keys. Missing data displays “—”; current time never substitutes for historical time.
 
-1. Draft targets add optional `versionStrategy: latest | pinned`. New targets default to Latest when published; existing explicit versions are interpreted as pinned.
+1. Draft targets add optional `versionStrategy: latest | pinned`. New targets default to Use latest; existing explicit versions are interpreted as pinned.
 2. `POST /api/v1/routers/:id/preview` validates draftRevision, resolves the latest usable published GuardRail, and returns a pinned snapshot and Endpoint set.
 3. Publish submits `reviewedSnapshot` / `reviewedEndpointIds`. The transaction resolves and compares again; version or binding drift is rejected and requires another review. Retries reuse the same idempotency key.
 4. Revision / activeSnapshot store only pinned versions; drafts preserve latest/pinned intent. Later GuardRail publications do not change old Router Revisions.

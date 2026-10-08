@@ -10,8 +10,8 @@ describe("Guardrail publication", () => {
       id: "guardrail-default",
       draftRevision: 2,
       status: "active",
-      activeVersion: "20260904-010000.001Z",
-      activeArtifactId: "artifact-1",
+      latestVersion: "20260904-010000.001Z",
+      latestArtifactId: "artifact-1",
     };
     const validation = { id: "validation-2", sourceDraftRevision: 2, status: "passed", createdAt: new Date("2026-09-04T02:00:00.002Z") };
     const readyVersion = {
@@ -63,8 +63,8 @@ describe("Guardrail publication", () => {
     expect(result).toMatchObject({ version: "20260904-020000.002Z", generation: 23, status: "ready" });
     expect(updatePayloads).toContainEqual(expect.objectContaining({
       status: "active",
-      activeVersion: "20260904-020000.002Z",
-      activeArtifactId: "artifact-2",
+      latestVersion: "20260904-020000.002Z",
+      latestArtifactId: "artifact-2",
       desiredGeneration: 23,
     }));
     expect(inserted).toContainEqual(expect.objectContaining({
@@ -72,7 +72,7 @@ describe("Guardrail publication", () => {
       payload: expect.objectContaining({ version: "20260904-020000.002Z", artifactId: "artifact-2", generation: 23 }),
     }));
     expect(inserted).toContainEqual(expect.objectContaining({
-      kind: "guardrail.version_activated",
+      kind: "guardrail.latest_version_marked",
       actorId: "admin-1",
       detail: { version: "20260904-020000.002Z", generation: 23, reusedArtifact: true },
     }));

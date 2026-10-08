@@ -130,10 +130,10 @@ try {
   cookie = auth.response.headers.getSetCookie().map((value) => value.split(";")[0]).join("; ");
   const guardrail = (await api(`/api/v1/guardrails/${guardrailId}`)).result;
   const allowDefault = guardrailId === "guardrail-default" && process.env.GUARD_REGRESSION_ALLOW_DEFAULT === "1";
-  assert((guardrail.name.startsWith("Regression ") || allowDefault) && guardrail.activeArtifactId,
+  assert((guardrail.name.startsWith("Regression ") || allowDefault) && guardrail.latestArtifactId,
     "Select a published regression Guardrail, or explicitly allow the isolated Default. Never select a user draft.");
   assert.equal(guardrail.draftConfig.outputDelivery, "full_buffered", "This suite verifies the complete-buffering contract.");
-  const published = guardrail.versions.find(version => version.version === guardrail.activeVersion);
+  const published = guardrail.versions.find(version => version.version === guardrail.latestVersion);
   assert(published?.status === "ready" && published.sourceDraftRevision === guardrail.draftRevision,
     "Replay the current reviewed published revision, not an older artifact.");
   assert(published.plan.steps.length > 0 && published.plan.steps.every(step => step.capability === "builtin_content_filter"),
@@ -159,7 +159,7 @@ try {
     "-e", `REPLAY_PROXY_MASTER_KEY=${proxyKey}`, "-e", "LITELLM_LOCAL_MODEL_COST_MAP=True", "-e", "DISABLE_ADMIN_UI=true",
     verifiedImage, "--config", "/tmp/replay.yaml", "--host", "0.0.0.0", "--port", "4000"], { timeout: 30_000 });
   started = Boolean(containerId.trim());
-  report("proxy-starting", { image: imageId.trim(), endpointId: endpoint.id, routerId: router.id, guardrailId, version: guardrail.activeVersion });
+  report("proxy-starting", { image: imageId.trim(), endpointId: endpoint.id, routerId: router.id, guardrailId, version: guardrail.latestVersion });
   ready = false;
   for (let attempt = 0; attempt < 90; attempt++) {
     try { if ((await fetch(`http://127.0.0.1:${proxyPort}/health/liveliness`, { signal: AbortSignal.timeout(1_000) })).ok) { ready = true; break; } } catch { /* bounded startup wait */ }
@@ -316,10 +316,10 @@ try {
   report("case", outcomes.at(-1));
   assert(outcomes.every((item) => item.passed), "Business-proxy replay failed; inspect the per-case evidence.");
   const after = (await api(`/api/v1/guardrails/${guardrailId}`)).result;
-  assert.equal(after.activeArtifactId, guardrail.activeArtifactId, "Published artifact changed during replay.");
+  assert.equal(after.latestArtifactId, guardrail.latestArtifactId, "Published artifact changed during replay.");
   assert.equal(after.draftRevision, guardrail.draftRevision, "Draft changed during replay.");
-  report("passed", { cases: outcomes.length, guardrailId, version: guardrail.activeVersion,
-    artifactId: guardrail.activeArtifactId, image: imageId.trim(),
+  report("passed", { cases: outcomes.length, guardrailId, version: guardrail.latestVersion,
+    artifactId: guardrail.latestArtifactId, image: imageId.trim(),
     scope: "actual Relay/LiteLLM proxy and Guard runtime; controlled business responses and explicit HTTP transport-failure injection; no mocked safety verdict" });
 } catch (error) {
   if (started) {

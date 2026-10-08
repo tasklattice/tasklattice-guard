@@ -142,7 +142,9 @@ function TargetRow({
     query.data?.versions.filter(
       (version) => version.status === "ready" && version.artifactId,
     ) ?? [];
-  const defaultVersion = versions[0]?.version;
+  // Pinning starts from the Guardrail's Latest version, the one "Use latest" would resolve to.
+  const latestVersion = versions.find((version) => version.version === query.data?.latestVersion)?.version;
+  const defaultVersion = latestVersion ?? versions[0]?.version;
   useEffect(() => {
     const guardrailVersion =
       target.versionStrategy === "latest"
@@ -235,11 +237,16 @@ function TargetRow({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="latest">{t("routing.latestWhenPublished")}</SelectItem>
+              <SelectItem value="latest">{t("routing.useLatest")}</SelectItem>
               <SelectItem value="pinned">{t("routing.pinVersion")}</SelectItem>
             </SelectContent>
           </Select>
         </Field>
+      )}
+      {target.guardrailId && target.versionStrategy === "latest" && query.data && (
+        <p className="text-xs text-muted-foreground">
+          {latestVersion ? t("routing.useLatestResolves", { version: latestVersion }) : t("routing.noLatestVersion")}
+        </p>
       )}
       {target.guardrailId && target.versionStrategy !== "latest" && (
         <Select
@@ -254,7 +261,7 @@ function TargetRow({
           <SelectContent>
             {versions.map((version) => (
               <SelectItem key={version.version} value={version.version}>
-                {version.version}
+                {version.version === latestVersion ? t("routing.versionIsLatest", { version: version.version }) : version.version}
               </SelectItem>
             ))}
           </SelectContent>

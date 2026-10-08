@@ -47,14 +47,14 @@ assert.deepEqual(before.excludedTestCaseIds, []);
 if (!isDeepStrictEqual(normalizeGuardrailDraft(before.draftConfig), desired)) {
   assert.equal(before.draftRevision, backup.draftRevision, 'Draft changed since backup; do not overwrite it.');
   assert.deepEqual(before.draftConfig, backup.draftConfig);
-  assert.equal(before.activeArtifactId, backup.activeArtifactId);
+  assert.equal(before.latestArtifactId, backup.latestArtifactId);
   await call(path, { draftConfig: desired }, 'PATCH');
 }
 const current = (await call(path)).data;
 assert.deepEqual(normalizeGuardrailDraft(current.draftConfig), desired);
 assert.deepEqual(current.excludedTestCaseIds, []);
 report('default-draft-prepared', { draftRevision: current.draftRevision, policies: desired.policyBindings.length,
-  outputDelivery: desired.outputDelivery, previousActiveVersion: before.activeVersion });
+  outputDelivery: desired.outputDelivery, previousLatestVersion: before.latestVersion });
 const previousRun = current.latestValidationRun;
 const job = previousRun?.sourceDraftRevision === current.draftRevision && ['passed', 'queued', 'running'].includes(previousRun.status)
   ? previousRun : (await call('/api/v1/guardrails/guardrail-default/test-runs', { guardrailId: 'guardrail-default' }, 'POST', 202)).data;
@@ -72,7 +72,7 @@ const version = current.versions.find(v => v.sourceDraftRevision === current.dra
 const published = await until(async () => (await call(path)).data, d => {
   const v = d.versions.find(v => v.version === version.version);
   assert.notEqual(v?.status, 'failed', v?.failureReason);
-  return v?.status === 'ready' && d.activeVersion === version.version;
+  return v?.status === 'ready' && d.latestVersion === version.version;
 });
 const result = published.versions.find(v => v.version === version.version);
 assert(result.artifact.signature);

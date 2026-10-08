@@ -36,8 +36,8 @@ const releases = {};
 for (const preset of [...new Set(Object.values(corpus.preset_groups).flat())]) {
   assert(ids[preset], `Pin ${preset}`);
   const g = (await call(controller, `/api/v1/guardrails/${ids[preset]}`)).value;
-  const v = g.versions.find(x=>x.version===g.activeVersion);
-  assert(v?.status==='ready' && v.artifact?.signature && v.artifactId===g.activeArtifactId);
+  const v = g.versions.find(x=>x.version===g.latestVersion);
+  assert(v?.status==='ready' && v.artifact?.signature && v.artifactId===g.latestArtifactId);
   assert.equal(v.sourceDraftRevision,g.draftRevision);
   assert.equal(g.draftConfig.outputDelivery,'full_buffered');
   assert.deepEqual(g.excludedTestCaseIds,[]);
@@ -99,7 +99,7 @@ for (const c of corpus.cases) for (const preset of corpus.preset_groups[c.group]
 const identityFailures=[];
 for(const [preset,r] of Object.entries(releases)) {
   const g=(await call(controller,`/api/v1/guardrails/${r.id}`)).value;
-  assert.equal(g.activeArtifactId,r.artifactId,'Release changed during acceptance');
+  assert.equal(g.latestArtifactId,r.artifactId,'Release changed during acceptance');
   assert.equal(g.draftRevision,r.draftRevision,'Draft changed during acceptance');
   if(r.runtimeChecksums.size!==1 || r.effectiveReleases.size!==1) identityFailures.push(preset);
   assert.match([...r.runtimeChecksums][0],/^[a-f0-9]{64}$/);

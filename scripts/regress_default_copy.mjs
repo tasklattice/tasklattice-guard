@@ -23,7 +23,7 @@ async function until(read,ready){
 const a=await call('/api/auth/sign-in/email',{email:required('GUARD_REGRESSION_EMAIL'),password:required('GUARD_REGRESSION_PASSWORD')});
 cookie=a.response.headers.getSetCookie().map(x=>x.split(';')[0]).join('; ');
 const original=(await call('/api/v1/guardrails/guardrail-default')).value;
-assert(original.activeArtifactId && original.versions.some(v=>v.version===original.activeVersion && v.sourceDraftRevision===original.draftRevision));
+assert(original.latestArtifactId && original.versions.some(v=>v.version===original.latestVersion && v.sourceDraftRevision===original.draftRevision));
 assert.deepEqual(original.excludedTestCaseIds,[]);
 const name=`Regression Default copy ${required('GUARD_REGRESSION_RUN_ID')}`;
 const found=(await call('/api/v1/guardrails')).value.items.filter(x=>x.name===name);
@@ -41,12 +41,12 @@ assert(validation.results.every(x=>x.modelInvocations===0&&!x.actualFailure));
 console.log(JSON.stringify({stage:'copy-validated',id:copy.id,cases:validation.metrics.total,validationId:validation.id}));
 const publication=detail.versions.find(v=>v.sourceDraftRevision===detail.draftRevision&&v.status!=='failed')
   ??(await call(`${path}/publish`,{},202)).value;
-detail=await until(async()=>(await call(path)).value,g=>g.versions.some(v=>v.version===publication.version&&v.status==='ready')&&g.activeVersion===publication.version);
-const version=detail.versions.find(v=>v.version===detail.activeVersion);
+detail=await until(async()=>(await call(path)).value,g=>g.versions.some(v=>v.version===publication.version&&v.status==='ready')&&g.latestVersion===publication.version);
+const version=detail.versions.find(v=>v.version===detail.latestVersion);
 assert.equal(version.artifact.compilerVersion,'tasklattice-nemo-config-v18-selected-policy-dependencies');
 const after=(await call('/api/v1/guardrails/guardrail-default')).value;
 assert.deepEqual(after.draftConfig,original.draftConfig);
-assert.equal(after.draftRevision,original.draftRevision);assert.equal(after.activeArtifactId,original.activeArtifactId);
+assert.equal(after.draftRevision,original.draftRevision);assert.equal(after.latestArtifactId,original.latestArtifactId);
 console.log(JSON.stringify({stage:'copy-published',id:copy.id,version:version.version,artifactId:version.artifactId,
   checksum:version.artifact.checksum,compiler:version.artifact.compilerVersion,
   originalDefaultUnchanged:true,next:'Run regress_default_runtime.mjs with GUARD_REGRESSION_DEFAULT_COPY_ID set to this id after Runner convergence.'}));

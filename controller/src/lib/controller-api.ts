@@ -9,6 +9,8 @@ import type {
 } from "../../shared/lifecycle";
 import type { CapabilityBindingId, ImplementedGuardrailRailType } from "../../shared/guardrail-catalog";
 import type { PlatformStatusSnapshot } from "../../shared/platform-status";
+import type { GuardrailVersionDeletionImpact } from "../../shared/guardrail-version-deletion";
+export type { GuardrailVersionDeletionImpact } from "../../shared/guardrail-version-deletion";
 
 export type Collection<T> = { items: T[]; count?: number; nextCursor?: string | null };
 
@@ -140,9 +142,9 @@ export type Guardrail = {
   draftRevision: number;
   excludedTestCaseIds: string[];
   loggingLevel: "info" | "debug" | "trace";
-  activeVersion: string | null;
-  activeSourceDraftRevision: number | null;
-  activeArtifactId: string | null;
+  latestVersion: string | null;
+  latestSourceDraftRevision: number | null;
+  latestArtifactId: string | null;
   createdAt: string;
   updatedAt: string;
   latestValidationRun: ValidationRun | null;
@@ -422,7 +424,7 @@ export const createControllerGuardrail = (input: Pick<Guardrail, "name" | "draft
 export const previewControllerGuardrailPlan = (input: Pick<Guardrail, "name" | "draftConfig" | "runtimeProfile">) => requestController<GuardrailPlanPreview>("/api/v1/authoring/plan-previews", json("POST", input));
 export const updateControllerGuardrail = (id: string, input: Partial<Pick<Guardrail, "name" | "draftConfig" | "runtimeProfile">>) => requestController<Guardrail>(`/api/v1/guardrails/${encodeURIComponent(id)}`, json("PATCH", input));
 export const publishControllerGuardrail = (id: string, expectedDraftRevision: number) => requestController<{ status: string; version: string }>(`/api/v1/guardrails/${encodeURIComponent(id)}/publish`, json("POST", { expectedDraftRevision }));
-export const markControllerGuardrailVersionActive = (id: string, version: string) => requestController<GuardrailVersion>(`/api/v1/guardrails/${encodeURIComponent(id)}/active-version`, json("PUT", { version }));
+export const markControllerGuardrailVersionActive = (id: string, version: string) => requestController<GuardrailVersion>(`/api/v1/guardrails/${encodeURIComponent(id)}/latest-version`, json("PUT", { version }));
 export const getControllerGuardrailDeletionImpact = (id: string) => requestController<DeletionImpact>(`/api/v1/guardrails/${encodeURIComponent(id)}/deletion-impact`);
 export const deleteControllerGuardrail = (id: string, input: { reason: string; confirmRecentTraffic: boolean; confirmationName?: string | undefined }) => requestController<void>(`/api/v1/guardrails/${encodeURIComponent(id)}`, json("DELETE", input));
 
@@ -451,6 +453,7 @@ export const listAuditEvents = (query: Partial<AuditQuery> = {}, signal?: AbortS
   return requestController<AuditEventPage>(`/api/v1/audit-events?${search}`, signal ? { signal } : undefined);
 };
 
+export const getGuardrailVersionDeletionImpact = (id: string, version: string) => requestController<GuardrailVersionDeletionImpact>(`/api/v1/guardrails/${encodeURIComponent(id)}/versions/${encodeURIComponent(version)}/deletion-impact`);
 export const deleteControllerGuardrailVersion = (id: string, version: string) => requestController<void>(`/api/v1/guardrails/${encodeURIComponent(id)}/versions/${encodeURIComponent(version)}`, { method: "DELETE" });
 
 export type SystemVersion = {

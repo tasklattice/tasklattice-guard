@@ -31,10 +31,10 @@ const targetId = process.env.GUARD_REGRESSION_DEFAULT_COPY_ID ?? "guardrail-defa
 const path = `/api/v1/guardrails/${encodeURIComponent(targetId)}`;
 const rail = (await call(controller, path)).value;
 if (targetId !== "guardrail-default") assert(rail.name.startsWith("Regression Default copy "), "Only a named isolated Default copy may be replayed here.");
-const version = rail.versions.find((item) => item.version === rail.activeVersion);
+const version = rail.versions.find((item) => item.version === rail.latestVersion);
 assert(version?.status === "ready" && version.artifact.signature);
 assert.equal(version.sourceDraftRevision, rail.draftRevision, "Publish the reviewed Default draft before replay.");
-assert.equal(version.artifactId, rail.activeArtifactId);
+assert.equal(version.artifactId, rail.latestArtifactId);
 assert(version.plan.steps.length > 0 && version.plan.steps.every(step => step.capability === "builtin_content_filter"),
   "Refuse to replay a Default with model-backed or unknown steps under the zero-external-call budget.");
 assert.equal(rail.draftConfig.outputDelivery, "full_buffered");
@@ -106,7 +106,7 @@ for (const phase of ["input", "output"]) {
 }
 const after = (await call(controller, path)).value;
 assert.equal(after.draftRevision, rail.draftRevision);
-assert.equal(after.activeArtifactId, rail.activeArtifactId);
+assert.equal(after.latestArtifactId, rail.latestArtifactId);
 assert.equal(configChecksums.size, 1, "All calls must execute the same compiled configuration.");
 console.log(JSON.stringify({ stage: "passed", guardrailId: rail.id, draftRevision: rail.draftRevision,
   version: version.version, artifactId: version.artifactId, checksum: version.artifact.checksum,

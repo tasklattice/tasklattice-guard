@@ -190,11 +190,11 @@ function outputHuman(resource: string, data: any, detail = false) {
     ],
     policies: [
       { label: 'ID', value: (r) => r.id }, { label: 'NAME', value: (r) => r.name }, { label: 'STATUS', value: (r) => r.status },
-      { label: 'VERSION', value: (r) => r.activeVersion ?? r.version }, { label: 'UPDATED', value: (r) => r.updatedAt },
+      { label: 'VERSION', value: (r) => r.latestVersion ?? r.version }, { label: 'UPDATED', value: (r) => r.updatedAt },
     ],
     guardrails: [
       { label: 'ID', value: (r) => r.id }, { label: 'NAME', value: (r) => r.name }, { label: 'STATUS', value: (r) => r.status },
-      { label: 'ACTIVE VERSION', value: (r) => r.activeVersion }, { label: 'DRAFT', value: (r) => r.draftRevision },
+      { label: 'ACTIVE VERSION', value: (r) => r.latestVersion }, { label: 'DRAFT', value: (r) => r.draftRevision },
       { label: 'GENERATION', value: (r) => r.desiredGeneration }, { label: 'TESTS', value: (r) => r.testCaseCount },
     ],
     endpoints: [

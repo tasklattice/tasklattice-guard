@@ -52,12 +52,12 @@ async function ensureRouter(endpointId, guardrail) {
   const draft = { routes: [{
     id: "default-fallback", name: "Default Guardrail", kind: "fallback", enabled: true,
     selector: { expression: { combinator: "and", conditions: [] } },
-    targets: [{ id: "default-target", guardrailId, guardrailVersion: guardrail.activeVersion, versionStrategy: "pinned", weightBps: 10000 }],
+    targets: [{ id: "default-target", guardrailId, guardrailVersion: guardrail.latestVersion, versionStrategy: "pinned", weightBps: 10000 }],
   }] };
   // The Controller normalizes key order, so compare the routing facts instead.
   const sameDraft = (stored) => stored?.routes?.length === 1 && stored.routes[0].kind === "fallback" && stored.routes[0].enabled
     && stored.routes[0].selector?.expression?.conditions?.length === 0 && stored.routes[0].targets?.length === 1
-    && stored.routes[0].targets[0].guardrailId === guardrailId && stored.routes[0].targets[0].guardrailVersion === guardrail.activeVersion
+    && stored.routes[0].targets[0].guardrailId === guardrailId && stored.routes[0].targets[0].guardrailVersion === guardrail.latestVersion
     && stored.routes[0].targets[0].weightBps === 10000;
   let router = (await api("/api/v1/routers")).result.items.find((item) => item.name === resourceName);
   if (!router) {
@@ -112,7 +112,7 @@ async function writeSecret(apiBase, apiKey) {
 try {
   await signIn();
   const guardrail = (await api(`/api/v1/guardrails/${guardrailId}`)).result;
-  if (guardrail.status !== "active" || !guardrail.activeArtifactId || !guardrail.activeVersion) {
+  if (guardrail.status !== "active" || !guardrail.latestArtifactId || !guardrail.latestVersion) {
     throw new Error(`Guardrail ${guardrailId} has no published artifact yet. Deploy tali-guard and wait for the Default Guardrail to become active.`);
   }
   const endpoint = await ensureEndpoint();
@@ -122,7 +122,7 @@ try {
   const apiBase = `http://${guardRelease}-runtime.${namespace}.svc.cluster.local:8091/runtime/v1/endpoints/${endpoint.id}`;
   await writeSecret(apiBase, endpoint.credential);
   log("secret-written", { secret: secretName, namespace });
-  console.log(JSON.stringify({ endpointId: endpoint.id, routerId: router.id, guardrailId, guardrailVersion: guardrail.activeVersion, apiBase, secret: secretName }));
+  console.log(JSON.stringify({ endpointId: endpoint.id, routerId: router.id, guardrailId, guardrailVersion: guardrail.latestVersion, apiBase, secret: secretName }));
 } catch (error) {
   console.error(error.message);
   process.exitCode = 1;

@@ -222,7 +222,6 @@ function PlaygroundComposer({ guardrail, guardrails, versions, target, selectedV
   onModelChange: (modelId: string) => void;
 }) {
   const { t } = useTranslation();
-  const latestVersion = versions[0]?.version ?? "";
   const targetValue = target.kind === "draft" ? "draft" : `version:${target.version}`;
   const targetReady = target.kind === "draft" ? draftReady : Boolean(selectedVersion);
   return (
@@ -261,14 +260,14 @@ function PlaygroundComposer({ guardrail, guardrails, versions, target, selectedV
               <SelectTrigger className="w-full field:border-0 field:bg-muted/55 field:text-xs field:shadow-none 2xl:w-64" aria-label={t("playground.selectedGuardrailTarget")}>
                 {versionsLoading || draftPreparing ? <LoaderCircle className="size-4 animate-spin text-muted-foreground" /> : target.kind === "draft" ? <FlaskConical className="size-4 text-amber-600" /> : <Tags className="size-4 text-muted-foreground" />}
                 <SelectValue placeholder={versionsLoading ? t("playground.loadingTargets") : t("playground.selectTarget")}>
-                  {target.kind === "draft" ? <><span className="font-mono font-medium">{t("playground.draftRevision", { revision: guardrail.draft_revision ?? 1 })}</span><span className="text-amber-700">· {t("playground.unpublished")}</span></> : selectedVersion ? <><span className="font-mono font-medium">{t("playground.versionNumber", { version: selectedVersion.version })}</span>{selectedVersion.version === latestVersion ? <span className="text-muted-foreground">· {t("playground.latestVersion")}</span> : selectedVersion.active ? <span className="text-muted-foreground">· {t("playground.activeVersion")}</span> : null}</> : undefined}
+                  {target.kind === "draft" ? <><span className="font-mono font-medium">{t("playground.draftRevision", { revision: guardrail.draft_revision ?? 1 })}</span><span className="text-amber-700">· {t("playground.unpublished")}</span></> : selectedVersion ? <><span className="font-mono font-medium">{t("playground.versionNumber", { version: selectedVersion.version })}</span>{selectedVersion.latest ? <span className="text-muted-foreground">· {t("playground.latestVersion")}</span> : null}</> : undefined}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {canTestDraft ? <SelectGroup><SelectLabel>{t("playground.draftTargetGroup")}</SelectLabel><SelectItem value="draft"><FlaskConical className="size-4 text-amber-600" /><span className="font-mono font-medium">{t("playground.draftRevision", { revision: guardrail.draft_revision ?? 1 })}</span><span className="text-amber-700">· {t("playground.unpublished")}</span></SelectItem></SelectGroup> : null}
                 {canTestDraft && versions.length ? <SelectSeparator /> : null}
                 {versions.length ? <SelectGroup><SelectLabel>{t("playground.publishedTargetGroup")}</SelectLabel>{versions.map((item) => {
-                    const state = item.version === latestVersion ? t("playground.latestVersion") : item.active ? t("playground.activeVersion") : "";
+                    const state = item.latest ? t("playground.latestVersion") : "";
                     return <SelectItem key={item.version} value={`version:${item.version}`}><span className="font-mono font-medium">{t("playground.versionNumber", { version: item.version })}</span>{state ? <span className="text-muted-foreground">· {state}</span> : null}</SelectItem>;
                   })}</SelectGroup> : null}
               </SelectContent>

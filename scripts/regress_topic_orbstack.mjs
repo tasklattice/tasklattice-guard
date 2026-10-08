@@ -122,7 +122,7 @@ for (const [scope, expected] of [['Product support', 'allow'], ['Cooking and rec
   const detail = await until('signed publication', async () => (await call(path)).data, d => {
     const v = d.versions.find(v => v.version === publication.version);
     assert.notEqual(v?.status, 'failed', v?.failureReason);
-    return d.activeVersion === publication.version && v?.status === 'ready';
+    return d.latestVersion === publication.version && v?.status === 'ready';
   });
   const version = detail.versions.find(v => v.version === publication.version);
   assert(version.artifact.signature);

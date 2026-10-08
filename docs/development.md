@@ -236,9 +236,10 @@ local detectors, Rule expansion and snapshot decoding live in
 
 ### Export a published Guardrail
 
-In **Guardrails → row Actions → Export**, download the current published version
-as `<guardrail-id>-<version>.artifact.json`. Unpublished draft edits are excluded;
-publish a version first if none exists. Downloads do not recompile or query Policy
+In **Guardrails → row Actions → Export…** (or **Export…** on a version page),
+choose a ready immutable version and download it as
+`<guardrail-id>-<version>.artifact.json`. The Latest version is preselected.
+Unpublished draft edits are excluded; publish a version first if none exists. Downloads do not recompile or query Policy
 Library. The signed Artifact contains the frozen Policy implementations, NeMo
 configuration, Colang, prompts, bindings, dependency versions, checksum and signature.
 

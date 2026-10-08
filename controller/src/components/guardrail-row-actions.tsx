@@ -1,14 +1,13 @@
 import { useTranslation } from "react-i18next";
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Copy, Download, LoaderCircle, MoreHorizontal, Trash2 } from 'lucide-react';
+import { Copy, Download, MoreHorizontal, Trash2 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
-import { downloadGuardrailArtifact } from '@/lib/guardrail-export';
-import { toast } from './ui/notifications';
 import { Button } from './ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from './ui/dropdown-menu';
 import { DuplicateGuardrailSheet } from './guardrail-duplicate';
 import { DeleteGuardrailSheet, type GuardrailDeletionConfirmation } from './guardrail-delete-sheet';
+import { ExportGuardrailSheet } from './guardrail-export-sheet';
 import { queryKeys } from '@/features/query-keys';
 import { deleteGuardrail, getGuardrailDeletionImpact, type Guardrail } from '@/lib/api';
 
@@ -16,26 +15,22 @@ import { deleteGuardrail, getGuardrailDeletionImpact, type Guardrail } from '@/l
 export function GuardrailRowActions({ guardrail }: { guardrail: Guardrail }) {
   const { t } = useTranslation();
   const canEdit = useAuth().user?.role === 'admin';
-  const exportMutation = useMutation({
-    mutationFn: () => downloadGuardrailArtifact(guardrail.id, guardrail.active_version!),
-    onSuccess: () => toast.success(t('guardrails.exportSucceeded')),
-    onError: (error: Error) => toast.error(`${t('guardrails.exportFailed')}: ${error.message}`),
-  });
-  const [action, setAction] = useState<'delete' | 'duplicate' | null>(null);
+  const [action, setAction] = useState<'delete' | 'duplicate' | 'export' | null>(null);
   return <>
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="size-11" disabled={exportMutation.isPending} aria-label={`${t("routing.actions")}: ${guardrail.name}`}>{exportMutation.isPending ? <LoaderCircle className="size-4 animate-spin" /> : <MoreHorizontal className="size-4" />}</Button>
+        <Button variant="ghost" size="icon" className="size-11" aria-label={`${t("routing.actions")}: ${guardrail.name}`}><MoreHorizontal className="size-4" /></Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" onCloseAutoFocus={event => { if (action) event.preventDefault(); }}>
-        <DropdownMenuItem disabled={!guardrail.active_version || exportMutation.isPending} title={t(guardrail.active_version ? 'guardrails.exportPublishedVersion' : 'guardrails.exportRequiresPublish', { version: guardrail.active_version })} onSelect={() => exportMutation.mutate()}><Download />{t('guardrails.export')}</DropdownMenuItem>
-        {!guardrail.active_version && <DropdownMenuLabel>{t('guardrails.exportRequiresPublish')}</DropdownMenuLabel>}
+        <DropdownMenuItem disabled={!guardrail.latest_version} onSelect={() => setAction('export')}><Download />{t('guardrails.exportEllipsis')}</DropdownMenuItem>
+        {!guardrail.latest_version && <DropdownMenuLabel>{t('guardrails.exportRequiresPublish')}</DropdownMenuLabel>}
         {canEdit && <DropdownMenuItem onSelect={() => setAction('duplicate')}><Copy />{t("routing.duplicate")}</DropdownMenuItem>}
         {canEdit && <DropdownMenuItem variant="destructive" onSelect={() => setAction('delete')}><Trash2 />{t("routing.delete")}</DropdownMenuItem>}
       </DropdownMenuContent>
     </DropdownMenu>
     {action === 'duplicate' && <DuplicateGuardrailSheet id={guardrail.id} name={guardrail.name} close={() => setAction(null)} />}
     {action === 'delete' && <DeleteAction guardrail={guardrail} close={() => setAction(null)} />}
+    {action === 'export' && <ExportGuardrailSheet guardrailId={guardrail.id} guardrailName={guardrail.name} onClose={() => setAction(null)} />}
   </>;
 }
 

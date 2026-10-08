@@ -7,7 +7,8 @@ import { upgradeTopicBinding } from "@/lib/topic-policy-upgrade";
 import { GuardrailValidationReadiness, useGuardrailValidationReadiness } from "@/components/guardrail-validation-readiness";
 import { useCorrectnessAvailability } from "@/components/correctness-availability";
 import { TopicControlFields, type TopicControlMode } from "@/components/topic-control-fields";
-import { deleteControllerGuardrailVersion } from "@/lib/controller-api";
+import { DeleteGuardrailVersionSheet } from "@/components/guardrail-version-delete-sheet";
+import { ExportGuardrailSheet } from "@/components/guardrail-export-sheet";
 import { MoreHorizontal as VersionActionsIcon } from "lucide-react";
 import { DropdownMenu as VersionMenu, DropdownMenuContent as VersionMenuContent, DropdownMenuItem as VersionMenuItem, DropdownMenuTrigger as VersionMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useEffect, useMemo, useRef, useState, type ReactNode, type MouseEvent } from "react";
@@ -15,7 +16,7 @@ import { boundPolicy } from "@/lib/bound-policy";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { EventPagination, useEventCursor } from '@/components/event-pagination';
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { Activity, ArrowLeft, ArrowUpRight, Ban, Check, ChevronDown, Circle, CircleAlert, FlaskConical, GitCompareArrows, History, LoaderCircle, LockKeyhole, Pencil, Plus, RefreshCw, Rocket, RotateCcw, Save, ScrollText, ShieldAlert, ShieldCheck, Trash2 } from "lucide-react";
+import { Activity, ArrowLeft, ArrowUpRight, Ban, Check, ChevronDown, Circle, CircleAlert, Download, FlaskConical, GitCompareArrows, History, LoaderCircle, LockKeyhole, Pencil, Plus, RefreshCw, Rocket, RotateCcw, Save, ScrollText, ShieldAlert, ShieldCheck, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "@/components/ui/notifications";
 
@@ -69,7 +70,7 @@ import {
   getValidationRuns,
   publishGuardrail,
   restoreGuardrailTestCase,
-  markGuardrailVersionActive,
+  markGuardrailVersionLatest,
   updateGuardrail,
   updateGuardrailLoggingSettings,
   type Guardrail,
@@ -161,8 +162,8 @@ export function GuardrailDetailPage() {
     }, 1_500);
     return () => globalThis.clearInterval(timer);
   }, [compilationPending, guardrailQuery, versionsQuery]);
-  const activeVersion = guardrailVersions.find((item) => item.active);
-  const selectedVersionNumber = selectedVersionOverride && guardrailVersions.some((item) => item.version === selectedVersionOverride) ? selectedVersionOverride : activeVersion?.version ?? guardrailVersions[0]?.version ?? "";
+  const latestVersion = guardrailVersions.find((item) => item.latest);
+  const selectedVersionNumber = selectedVersionOverride && guardrailVersions.some((item) => item.version === selectedVersionOverride) ? selectedVersionOverride : latestVersion?.version ?? guardrailVersions[0]?.version ?? "";
   const selectedVersion = guardrailVersions.find((item) => item.version === selectedVersionNumber);
   const selectedValidation = validationRunsQuery.data?.items.find((run) => run.guardrail_version === selectedVersionNumber && run.status === "passed") ?? null;
   const compareOptions = guardrailVersions.filter((item) => item.version < selectedVersionNumber);
@@ -264,8 +265,8 @@ export function GuardrailDetailPage() {
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="font-sans text-[2rem] font-normal tracking-normal">{guardrail.name}</h1>
-            {activeVersion ? <Badge className="border-emerald-200 bg-emerald-50 font-mono text-[11px] text-emerald-700 hover:bg-emerald-50">{t("guardrails.activeVersion", { version: activeVersion.version })}</Badge> : <StateBadge state={guardrail.tested_current ? "ready" : "needs_validation"} />}
-            {routers.length ? <StateBadge state="protected" /> : activeVersion ? <StateBadge state="ready" /> : null}
+            {latestVersion ? <Badge className="border-emerald-200 bg-emerald-50 font-mono text-[11px] text-emerald-700 hover:bg-emerald-50">{t("guardrails.latestVersion", { version: latestVersion.version })}</Badge> : <StateBadge state={guardrail.tested_current ? "ready" : "needs_validation"} />}
+            {routers.length ? <StateBadge state="protected" /> : latestVersion ? <StateBadge state="ready" /> : null}
             {guardrail.is_default ? <Badge variant="outline">{t("guardrails.defaultBadge")}</Badge> : guardrail.system_managed ? <Badge variant="outline">{t("guardrails.systemManaged")}</Badge> : null}
           </div>
           {guardrail.copy_origin && <p className="mt-2 text-sm text-muted-foreground">{uiText("uiCopy.copiedFrom")}{" "}{guardrail.copy_origin.sourceName} · {guardrail.copy_origin.sourceVersion ?? `draft r${guardrail.copy_origin.sourceDraftRevision}`} · {guardrail.copy_origin.sourceGuardrailId}</p>}
@@ -315,6 +316,7 @@ export function GuardrailDetailPage() {
             comparisonLoading={compareQuery.isLoading}
             compareOptions={compareOptions}
             guardrailId={guardrail.id}
+            guardrailName={guardrail.name}
             validation={selectedValidation}
             onChanged={refresh}
             onOpenDraft={() => setSection("draft")}
@@ -339,7 +341,7 @@ export function GuardrailDetailPage() {
           />
         </TabsContent>
         <TabsContent value="draft" className="pt-5">
-          <DraftReleaseView guardrail={guardrail} policies={policies} cases={testsQuery.data?.items ?? []} casesLoading={testsQuery.isLoading} activeVersion={activeVersion} versions={guardrailVersions} routers={routers} canManage={canManageDraft} validationBlockedReason={validationReadiness.reason} validationRunning={validationMutation.isPending} onRunValidation={() => setValidationConfirmOpen(true)} onOpenValidation={setSelectedValidationRun} onEdit={() => setEditOpen(true)} onAddCase={() => setTestOpen(true)} onCreateRouter={() => setRouterOpen(true)} onChanged={refresh} />
+          <DraftReleaseView guardrail={guardrail} policies={policies} cases={testsQuery.data?.items ?? []} casesLoading={testsQuery.isLoading} latestVersion={latestVersion} versions={guardrailVersions} routers={routers} canManage={canManageDraft} validationBlockedReason={validationReadiness.reason} validationRunning={validationMutation.isPending} onRunValidation={() => setValidationConfirmOpen(true)} onOpenValidation={setSelectedValidationRun} onEdit={() => setEditOpen(true)} onAddCase={() => setTestOpen(true)} onCreateRouter={() => setRouterOpen(true)} onChanged={refresh} />
         </TabsContent>
       </Tabs>
 
@@ -519,7 +521,7 @@ function CallerDistribution({ metrics, routers, versions }: { metrics: Metrics; 
   return <Card size="sm" className="gap-0 overflow-hidden py-0 shadow-none"><CardHeader className="border-b px-4 py-3"><CardTitle className="text-sm">{t("guardrails.callersTitle")}</CardTitle><CardDescription className="text-xs leading-5">{t("guardrails.callersDescription")}</CardDescription></CardHeader>{metrics.caller_distribution.length ? <Table className="text-xs"><TableHeader><TableRow className="hover:bg-transparent"><TableHead className="h-9 pl-4">{t("guardrails.caller")}</TableHead><TableHead className="h-9">{t("guardrails.trafficScope")}</TableHead><TableHead className="h-9">{t("guardrails.volumeShare")}</TableHead><TableHead className="h-9">{t("guardrails.servedVersion")}</TableHead><TableHead className="h-9">{t("guardrails.outcome")}</TableHead><TableHead className="h-9">{t("dashboard.p95Latency")}</TableHead></TableRow></TableHeader><TableBody>{metrics.caller_distribution.map((item) => { const router = routers.find((candidate) => candidate.id === item.router_id); return <TableRow key={`${item.endpoint_id}:${item.router_id}:${item.protocol}`}><TableCell className="py-2.5 pl-4 align-top"><strong className="text-sm font-medium">{item.endpoint_name}</strong><p className="mt-0.5 font-mono text-xs text-muted-foreground">{item.protocol}</p></TableCell><TableCell className="max-w-80 py-2.5 align-top"><p className="mb-1 text-xs font-medium">{item.router_name}</p>{router ? <TrafficScopeBadges router={router} /> : <span className="text-xs text-muted-foreground">{t("guardrails.unassignedTraffic")}</span>}</TableCell><TableCell className="py-2.5 align-top"><strong className="text-sm tabular-nums">{item.requests.toLocaleString(i18n.language)}</strong><div className="mt-1.5 flex items-center gap-2"><Progress className="h-1 w-16" value={item.share} /><span className="text-xs text-muted-foreground">{item.share}%</span></div></TableCell><TableCell className="py-2.5 align-top"><div className="flex flex-wrap gap-1">{item.guardrail_versions.map((version) => <Badge key={version} variant="outline" className="font-mono text-[10px]">{version}</Badge>)}</div></TableCell><TableCell className="py-2.5 align-top"><p className="text-xs">{t("guardrails.interventionSummary", { rate: item.intervention_rate })}</p><p className="mt-0.5 text-xs text-muted-foreground">{t("guardrails.errorSummary", { rate: item.error_rate })}</p></TableCell><TableCell className="py-2.5 align-top font-mono text-xs">{item.p95_latency_ms} ms</TableCell></TableRow>; })}</TableBody></Table> : <div className="px-4 pb-4"><EmptyState title={t("guardrails.noRuntimeCalls")} description={t("guardrails.noRuntimeCallsDescription")} /></div>}</Card>;
 }
 
-export function ImmutableVersionView({ detail, selectedVersion, versions, loading, comparisonDetail, comparisonActive, comparisonLoading, compareOptions, guardrailId, validation, onChanged, onOpenDraft, onOpenValidation, onSelectVersion, onStartCompare, onCompareBaseChange, onCloseCompare }: {
+export function ImmutableVersionView({ detail, selectedVersion, versions, loading, comparisonDetail, comparisonActive, comparisonLoading, compareOptions, guardrailId, guardrailName, validation, onChanged, onOpenDraft, onOpenValidation, onSelectVersion, onStartCompare, onCompareBaseChange, onCloseCompare }: {
   detail?: GuardrailVersionDetail;
   selectedVersion?: GuardrailVersion;
   versions: GuardrailVersion[];
@@ -529,6 +531,7 @@ export function ImmutableVersionView({ detail, selectedVersion, versions, loadin
   comparisonLoading: boolean;
   compareOptions: GuardrailVersion[];
   guardrailId: string;
+  guardrailName: string;
   validation: Guardrail["latest_validation_run"];
   onChanged: () => Promise<void>;
   onOpenDraft: () => void;
@@ -542,11 +545,11 @@ export function ImmutableVersionView({ detail, selectedVersion, versions, loadin
   const { t, i18n } = useTranslation();
   const auth = useAuth();
   const [deleteVersion, setDeleteVersion] = useState<string | null>(null);
-  const removeVersion = useMutation({ mutationFn: (version: string) => deleteControllerGuardrailVersion(guardrailId, version), onSuccess: async () => { setDeleteVersion(null); await onChanged(); onOpenDraft(); } });
-  const [activationVersion, setActivationVersion] = useState<string | null>(null);
-  const activation = useMutation({ mutationFn: (version: string) => markGuardrailVersionActive(guardrailId, version), onSuccess: async (_result, version) => { setActivationVersion(null); toast.success(t("guardrails.markActiveSucceeded", { version })); await onChanged(); }, onError: (error) => notifyError(error, t("guardrails.operationFailed")) });
+  const [exportVersion, setExportVersion] = useState<string | null>(null);
+  const [latestCandidate, setLatestCandidate] = useState<string | null>(null);
+  const markLatest = useMutation({ mutationFn: (version: string) => markGuardrailVersionLatest(guardrailId, version), onSuccess: async (_result, version) => { setLatestCandidate(null); toast.success(t("guardrails.markLatestSucceeded", { version })); await onChanged(); }, onError: (error) => notifyError(error, t("guardrails.operationFailed")) });
   if (loading) return <Skeleton className="h-[34rem] rounded-xl" />;
-  if (!selectedVersion || !detail) return <EmptyState title={t("guardrails.noActiveVersion")} description={t("guardrails.noActiveVersionDescription")} action={<Button onClick={onOpenDraft}>{t("guardrails.openDraftRelease")}</Button>} />;
+  if (!selectedVersion || !detail) return <EmptyState title={t("guardrails.noPublishedVersion")} description={t("guardrails.noPublishedVersionDescription")} action={<Button onClick={onOpenDraft}>{t("guardrails.openDraftRelease")}</Button>} />;
   const releaseId = detail.version;
   if (selectedVersion.compile_status && selectedVersion.compile_status !== "ready") {
     const failed = selectedVersion.compile_status === "failed";
@@ -569,15 +572,16 @@ export function ImmutableVersionView({ detail, selectedVersion, versions, loadin
                 <div className="flex flex-wrap items-center gap-2">
                   <LockKeyhole className="size-4 text-primary" />
                   <CardTitle className="font-mono">{releaseId}</CardTitle>
-                  {selectedVersion.active ? <StateBadge state="active" label={t("guardrails.activeVersionLabel")} /> : <Badge variant="outline">{t("guardrails.historicalVersion")}</Badge>}
+                  {selectedVersion.latest ? <StateBadge state="active" label={t("guardrails.latestVersionLabel")} /> : <Badge variant="outline">{t("guardrails.historicalVersion")}</Badge>}
                 </div>
                 <CardDescription className="mt-2">{t("guardrails.immutableDescription")}</CardDescription>
               </div>
               <div className="flex flex-wrap gap-2">
                 {compareOptions.length ? <Button variant="outline" className="min-h-11" onClick={onStartCompare}><GitCompareArrows />{t("guardrails.compareWithPrevious")}</Button> : null}
+                <Button variant="outline" className="min-h-11" onClick={() => setExportVersion(selectedVersion.version)}><Download />{t("guardrails.exportEllipsis")}</Button>
                 {auth.user?.role === "admin" ? <VersionMenu><VersionMenuTrigger asChild><Button variant="ghost" className="size-11" aria-label={uiText("uiCopy.versionActions")}><VersionActionsIcon /></Button></VersionMenuTrigger><VersionMenuContent align="end">
-                  <VersionMenuItem variant="edit" disabled={selectedVersion.active || activation.isPending || removeVersion.isPending} onSelect={() => setActivationVersion(selectedVersion.version)}><Check />{t("guardrails.markActive")}</VersionMenuItem>
-                  <VersionMenuItem variant="destructive" disabled={selectedVersion.active || activation.isPending || removeVersion.isPending} onSelect={() => { removeVersion.reset(); setDeleteVersion(selectedVersion.version); }}><Trash2 />{uiText("uiCopy.delete")}</VersionMenuItem>
+                  <VersionMenuItem variant="edit" disabled={selectedVersion.latest || markLatest.isPending} onSelect={() => setLatestCandidate(selectedVersion.version)}><Check />{t("guardrails.markLatest")}</VersionMenuItem>
+                  <VersionMenuItem variant="destructive" disabled={markLatest.isPending} onSelect={() => setDeleteVersion(selectedVersion.version)}><Trash2 />{uiText("uiCopy.delete")}</VersionMenuItem>
                 </VersionMenuContent></VersionMenu> : null}
               </div>
             </div>
@@ -591,24 +595,25 @@ export function ImmutableVersionView({ detail, selectedVersion, versions, loadin
       </>}
     </div>
   </div><ConfirmationSheet
-    open={activationVersion !== null}
-    onOpenChange={(open) => { if (!open && !activation.isPending) { setActivationVersion(null); activation.reset(); } }}
+    open={latestCandidate !== null}
+    onOpenChange={(open) => { if (!open && !markLatest.isPending) { setLatestCandidate(null); markLatest.reset(); } }}
     eyebrow={t("guardrails.confirmActionEyebrow")}
-    title={t("guardrails.confirmMarkActiveTitle", { version: activationVersion ?? "" })}
-    description={t("guardrails.confirmMarkActiveDescription")}
+    title={t("guardrails.confirmMarkLatestTitle", { version: latestCandidate ?? "" })}
+    description={t("guardrails.confirmMarkLatestDescription")}
     cancelLabel={t("common.cancel")}
-    confirmLabel={t("guardrails.markActive")}
+    confirmLabel={t("guardrails.markLatest")}
     pendingLabel={t("common.saving")}
-    pending={activation.isPending}
+    pending={markLatest.isPending}
     confirmIcon={<Check />}
-    onConfirm={() => { if (activationVersion !== null) activation.mutate(activationVersion); }}
+    onConfirm={() => { if (latestCandidate !== null) markLatest.mutate(latestCandidate); }}
   >
-    <div className="text-sm leading-6 text-muted-foreground">{t("guardrails.confirmMarkActiveImpact")}</div>
-    {activation.error ? <p role="alert" className="rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">{activation.error instanceof Error ? activation.error.message : t("guardrails.operationFailed")}</p> : null}
+    <div className="text-sm leading-6 text-muted-foreground">{t("guardrails.confirmMarkLatestImpact")}</div>
+    {markLatest.error ? <p role="alert" className="rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">{markLatest.error instanceof Error ? markLatest.error.message : t("guardrails.operationFailed")}</p> : null}
   </ConfirmationSheet>
-  <ConfirmationSheet open={deleteVersion !== null} onOpenChange={open => { if (!open) setDeleteVersion(null); }} eyebrow={uiText("uiCopy.guardrailVersion")} title={`Delete version ${deleteVersion ?? ""}?`} description={uiText("uiCopy.thisPermanentlyRemovesTheHistoricalVersionActiveCompilingOr")} cancelLabel={t("common.cancel")} confirmLabel={uiText("uiCopy.deleteVersion")} variant="destructive" pending={removeVersion.isPending} onConfirm={() => { if (deleteVersion) removeVersion.mutate(deleteVersion); }}>
-    {removeVersion.error && <p role="alert" className="text-sm text-destructive">{removeVersion.error.message}</p>}
-  </ConfirmationSheet></>;
+  {deleteVersion !== null && <DeleteGuardrailVersionSheet guardrailId={guardrailId} version={deleteVersion} onClose={() => setDeleteVersion(null)}
+    onDeleted={async () => { toast.success(t("guardrails.versionDeleted", { version: deleteVersion })); setDeleteVersion(null); await onChanged(); onOpenDraft(); }} />}
+  {exportVersion !== null && <ExportGuardrailSheet guardrailId={guardrailId} guardrailName={guardrailName} initialVersion={exportVersion} onClose={() => setExportVersion(null)} />}
+  </>;
 }
 
 function VersionFact({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) { return <div className="min-w-0"><dt className="text-xs text-muted-foreground">{label}</dt><dd className={`${mono ? "font-mono text-xs" : "text-sm font-medium"} mt-1.5 truncate`} title={value}>{value}</dd></div>; }
@@ -630,11 +635,11 @@ function ImmutablePosture({ detail }: { detail: GuardrailVersionDetail }) {
 
 function PinnedPolicies({ bindings }: { bindings: GuardrailVersionDetail["policy_bindings"] }) { const { t } = useTranslation(); return <section className="rounded-lg border p-4"><h3 className="text-sm font-semibold">{t("guardrails.pinnedPolicies")}</h3><div className="mt-3 divide-y">{bindings.map((binding) => <div key={`${binding.policy_id}@${binding.policy_version}`} className="py-3 first:pt-0 last:pb-0"><div className="flex flex-wrap items-center justify-between gap-2"><code className="text-xs">{binding.policy_id}@{binding.policy_version}</code><Badge variant="outline">{binding.action ?? t("guardrails.policyBehavior")}</Badge></div><p className="mt-2 text-xs text-muted-foreground">{t("guardrails.pinnedPolicyRules", { count: binding.enabled_rule_ids.length })}</p></div>)}</div></section>; }
 
-export function DraftReleaseView({ guardrail, policies, cases, casesLoading, activeVersion, versions, routers, canManage, validationBlockedReason, validationRunning = false, onRunValidation = () => undefined, onOpenValidation = () => undefined, onEdit, onAddCase, onCreateRouter, onChanged }: { guardrail: Guardrail; policies: Policy[]; cases: TestCase[]; casesLoading: boolean; activeVersion?: GuardrailVersion; versions?: GuardrailVersion[]; routers: Awaited<ReturnType<typeof getRouters>>["items"]; canManage?: boolean; validationBlockedReason?: string | null; validationRunning?: boolean; onRunValidation?: () => void; onOpenValidation?: (run: ValidationRun) => void; onEdit: () => void; onAddCase: () => void; onCreateRouter: () => void; onChanged: () => Promise<void> }) {
+export function DraftReleaseView({ guardrail, policies, cases, casesLoading, latestVersion, versions, routers, canManage, validationBlockedReason, validationRunning = false, onRunValidation = () => undefined, onOpenValidation = () => undefined, onEdit, onAddCase, onCreateRouter, onChanged }: { guardrail: Guardrail; policies: Policy[]; cases: TestCase[]; casesLoading: boolean; latestVersion?: GuardrailVersion; versions?: GuardrailVersion[]; routers: Awaited<ReturnType<typeof getRouters>>["items"]; canManage?: boolean; validationBlockedReason?: string | null; validationRunning?: boolean; onRunValidation?: () => void; onOpenValidation?: (run: ValidationRun) => void; onEdit: () => void; onAddCase: () => void; onCreateRouter: () => void; onChanged: () => Promise<void> }) {
   const { t } = useTranslation();
   const [publishOpen, setPublishOpen] = useState(false);
   const [scopeChange, setScopeChange] = useState<{ caseId: string; action: "exclude" | "restore" } | null>(null);
-  const releaseId = activeVersion?.version ?? "";
+  const releaseId = latestVersion?.version ?? "";
   const draftConfigured = Boolean(guardrail.policy_bindings.length);
   const validated = guardrail.tested_current;
   const published = guardrail.published_current;

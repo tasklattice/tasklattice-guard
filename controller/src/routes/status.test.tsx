@@ -97,7 +97,7 @@ vi.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (key: string, values?: { time?: string; version?: string; count?: number }) => key === "platformStatus.lastChecked"
       ? `Last checked ${values?.time}`
-      : key === "platformStatus.activeVersion" ? `Active · ${values?.version}`
+      : key === "platformStatus.latestVersion" ? `Active · ${values?.version}`
         : key === "platformStatus.servingRunners" ? `${values?.count} serving`
           : key === "platformStatus.models.bindingCount" ? `${values?.count} active detector binding(s)`
             : key === "platformStatus.minimum.checks" ? `${values?.count} configured`
@@ -116,7 +116,7 @@ const readyStatus: SystemStatus = {
     basicProtection: {
       status: "ready",
       guardrailStatus: "active",
-      activeVersion: "20260904-093000.000Z",
+      latestVersion: "20260904-093000.000Z",
       modelIndependent: true,
       coverage: { policyCount: 3, inputChecks: 3, outputChecks: 2, requiredModelBindings: [], hasUnknownDependencies: false },
       draft: { revision: 1, activeRevision: 1, validationStatus: "passed", validationFailureReason: null },
@@ -203,7 +203,7 @@ describe("HealthPage", () => {
           ...readyStatus.components.basicProtection,
           status: "initializing",
           guardrailStatus: "initializing",
-          activeVersion: null,
+          latestVersion: null,
         },
         runnerFleet: {
           ...readyStatus.components.runnerFleet,

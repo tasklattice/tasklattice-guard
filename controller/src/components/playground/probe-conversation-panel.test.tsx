@@ -52,7 +52,7 @@ const version = {
   compiler_version: "test",
   plan_checksum: "plan",
   created_at: "2026-08-23T08:00:00Z",
-  active: true,
+  latest: true,
   runtime_engine: "llmrails",
   config_checksum: "config",
   execution_mode: "nemo_only",

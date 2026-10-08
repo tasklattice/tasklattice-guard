@@ -1111,7 +1111,7 @@ Rendered content injection Policy was deliberately moved one position earlier,
 then the preset was applied again: exact readback preserved that manual order,
 and all 151 composition tests still passed. All three runs used real Runner
 validation, zero model invocations, zero excluded cases and no runtime failures.
-They remain drafts with `activeVersion: null`; no publication, Deployment or
+They remain drafts with `latestVersion: null`; no publication, Deployment or
 traffic change was implicitly triggered by creation or validation.
 
 The banking map visibly included credentials, payment data, contextual passport
