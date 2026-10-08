@@ -1868,6 +1868,11 @@ export class ControlPlaneService {
     }, { isolationLevel: "repeatable read" });
   }
 
+  async listRunnerHeartbeats() {
+    return this.db.select({ status: runnerInstances.status, lastHeartbeatAt: runnerInstances.lastHeartbeatAt })
+      .from(runnerInstances);
+  }
+
   async listRunnerPoolsWithCapacity() {
     const pools = await this.db.select().from(runnerPools).orderBy(desc(runnerPools.isDefault), runnerPools.name);
     const instances = await this.db.select().from(runnerInstances);

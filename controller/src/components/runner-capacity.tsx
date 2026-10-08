@@ -1,266 +1,127 @@
-import { useEffect, useState } from "react";
+import { Fragment, useId, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, Gauge, RefreshCw, Server, Trash2, WifiOff } from "lucide-react";
+import { ChevronDown, ChevronRight, RefreshCw, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "@/components/ui/notifications";
 
-import { EntitySheet } from "@/components/entity-sheet";
 import { EmptyState, ErrorNotice, StateBadge } from "@/components/product-shell";
 import { ProtectedDeleteSheet } from "@/components/protected-delete-sheet";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAuth } from "@/lib/auth";
-import {
-  listRunnerPools,
-  removeRunnerInstance,
-  updateRunnerPool,
-  type RunnerInstance,
-  type RunnerPool,
-} from "@/lib/controller-api";
-import { cn } from "@/lib/utils";
+import { listRunnerPools, removeRunnerInstance, updateRunnerPool, type RunnerInstance, type RunnerPool } from "@/lib/controller-api";
 import "./runner-capacity.scss";
 
 export const runnerPoolKey = ["resources", "runner-pools"] as const;
+type RemovalTarget = { runner: RunnerInstance; poolName: string };
 
 export function RunnerCapacitySection({ showHeader = true }: { showHeader?: boolean }) {
-  const { t: uiText } = useTranslation();
-  const { t, i18n } = useTranslation();
-  const auth = useAuth();
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const query = useQuery({ queryKey: runnerPoolKey, queryFn: listRunnerPools, refetchInterval: 10_000 });
-  const [editing, setEditing] = useState<RunnerPool | null>(null);
-  const [removing, setRemoving] = useState<{ runner: RunnerInstance; poolName: string } | null>(null);
-
+  const query = useQuery({ queryKey: runnerPoolKey, queryFn: ({ signal }) => listRunnerPools(signal), refetchInterval: 10_000, retry: false });
+  const [removing, setRemoving] = useState<RemovalTarget | null>(null);
   return (
-    <section
-      className="runner-capacity"
-      aria-labelledby={showHeader ? "runner-capacity-title" : undefined}
-      aria-label={showHeader ? undefined : t("runners.title")}
-    >
-      {showHeader ? <header className="border-b px-5 py-4">
-        <h2 id="runner-capacity-title" className="text-base font-semibold">{t("runners.title")}</h2>
-        <p className="mt-1 text-sm leading-6 text-muted-foreground">{t("runners.description")}</p>
-      </header> : null}
-      {query.isLoading ? <div className="p-5"><Skeleton className="h-80 rounded-lg" /></div> : null}
-      {query.error ? <div className="p-5"><ErrorNotice error={query.error} /></div> : null}
-      {!query.isLoading && !query.error && !query.data?.items.length ? <div className="p-5"><EmptyState title={t("runners.emptyTitle")} description={t("runners.emptyDescription")} /></div> : null}
-      <div className="divide-y">
-        {(query.data?.items ?? []).map((pool) => (
-          <article key={pool.id}>
-            <header className="runner-pool-heading">
-              <h3><Server aria-hidden="true" />{pool.name}{pool.isDefault ? <Badge>{uiText("uiCopy.baseline")}</Badge> : null}</h3>
-              <span>{t("runners.instancesCount", { count: pool.instances.length })}</span>
-            </header>
-            <div className="runner-live-metrics" aria-label={t("runners.liveMetrics")}>
-              <RunnerMetric label={t("runners.readyRunners")} value={`${pool.capacity.readyRunners} / ${pool.capacity.totalRunners}`} />
-              <RunnerMetric label={t("runners.currentThroughput")} value={pool.capacity.currentRps.toFixed(1)} unit="RPS" />
-              <RunnerMetric label={t("runners.inflightUtilization")} value={`${Math.round(pool.capacity.inflightUtilization * 100)}%`} />
-              <RunnerMetric label={t("runners.latencyP95")} value={`${Math.round(pool.capacity.latencyP95Ms)}`} unit="ms" />
-              <RunnerMetric label={t("runners.errorRate")} value={`${(pool.capacity.errorRate * 100).toFixed(2)}%`} />
-            </div>
-            <div className="runner-planning-row">
-              <section className="runner-planning" aria-label={t("runners.planningTitle")}>
-                <header><h4><Gauge aria-hidden="true" />{t("runners.planningTitle")}</h4>
-                  {auth.user?.role === "admin" ? <Button variant="ghost" onClick={() => setEditing(pool)}><Gauge />{t("runners.capacitySettings")}</Button> : null}
-                </header>
-                <dl className="runner-planning-facts">
-                  <div><dt>{t("runners.fleetSafeRps")}</dt><dd>{pool.capacity.safeRpsCapacity.toFixed(1)} <small>RPS</small></dd></div>
-                  <div><dt>{t("runners.safeRpsPerRunner")}</dt><dd>{pool.safeRpsPerRunner.toFixed(1)} <small>RPS</small></dd></div>
-                  <div><dt>{t("runners.replicaPlan")}</dt><dd>{pool.desiredReplicas} <small>/ {pool.capacity.recommendedReplicas}</small></dd></div>
-                </dl>
-                <p>{t("runners.capacityFormula", { count: pool.capacity.readyRunners, perRunner: pool.safeRpsPerRunner.toFixed(1) })}</p>
-                <p>{t("runners.planningHint")}</p>
-              </section>
-              <PoolConvergenceStatus pool={pool} />
-            </div>
-            <section className="runner-instance-section" aria-label={t("runners.instancesTitle")}>
-              <h4><Server aria-hidden="true" />{t("runners.instancesTitle")}</h4>
-            <div className="hidden overflow-x-auto lg:block">
-              <Table className="min-w-[64rem]">
-                <TableHeader><TableRow><TableHead>Runner</TableHead><TableHead>{t("runners.columns.runtimeState")}</TableHead><TableHead>{t("runners.columns.configurationSync")}</TableHead><TableHead>{t("runners.columns.inflightQueue")}</TableHead><TableHead>{uiText("uiCopy.cPUMemory")}</TableHead><TableHead>{t("runners.columns.lastHeartbeat")}</TableHead><TableHead>{t("runners.columns.actions")}</TableHead></TableRow></TableHeader>
-                <TableBody>
-                  {pool.instances.map((runner) => (
-                    <TableRow key={runner.runnerId}>
-                      <TableCell><code className="text-xs">{runner.runnerId}</code><p className="mt-1 text-xs text-muted-foreground">NeMo {runner.nemoVersion}{runner.compilerCapable ? " · compiler" : ""}</p></TableCell>
-                      <TableCell><StateBadge state={runner.status} /></TableCell>
-                      <TableCell><RunnerConvergenceStatus runner={runner} /></TableCell>
-                      <TableCell>{runner.load?.inflight ?? 0} / {runner.load?.queueDepth ?? 0}</TableCell>
-                      <TableCell>{Math.round((runner.load?.cpuUtilization ?? 0) * 100)}% / {Math.round((runner.load?.memoryUtilization ?? 0) * 100)}%</TableCell>
-                      <TableCell className="text-xs text-muted-foreground">{formatDate(runner.lastHeartbeatAt, i18n.language)}</TableCell>
-                      <TableCell className="text-right">
-                        {auth.user?.role === "admin" && (runner.status === "offline" || runner.status === "syncing") ? <Button
-                          type="button"
-                          size="icon"
-                          variant="ghost"
-                          className="size-11 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                          aria-label={t(runner.status === "syncing" ? "runners.forceRemoveAria" : "runners.removeAria", { runnerId: runner.runnerId })}
-                          title={t(runner.status === "syncing" ? "runners.forceRemove" : "runners.removeOffline")}
-                          onClick={() => setRemoving({ runner, poolName: pool.name })}
-                        ><Trash2 /></Button> : null}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-            <div className="divide-y lg:hidden">
-              {pool.instances.map((runner) => (
-                <div key={runner.runnerId} className="px-5 py-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <code className="break-all text-xs">{runner.runnerId}</code>
-                      <p className="mt-1 text-xs text-muted-foreground">NeMo {runner.nemoVersion}{runner.compilerCapable ? " · compiler" : ""}</p>
-                    </div>
-                    <StateBadge state={runner.status} />
-                  </div>
-                  <div className="mt-4"><RunnerConvergenceStatus runner={runner} /></div>
-                  <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3">
-                    <RunnerDatum label={t("runners.columns.inflightQueue")} value={`${runner.load?.inflight ?? 0} / ${runner.load?.queueDepth ?? 0}`} />
-                    <RunnerDatum label={uiText("uiCopy.cPUMemory")} value={`${Math.round((runner.load?.cpuUtilization ?? 0) * 100)}% / ${Math.round((runner.load?.memoryUtilization ?? 0) * 100)}%`} />
-                    <RunnerDatum label={t("runners.columns.lastHeartbeat")} value={formatDate(runner.lastHeartbeatAt, i18n.language)} />
-                  </dl>
-                  {auth.user?.role === "admin" && (runner.status === "offline" || runner.status === "syncing") ? <Button
-                    type="button"
-                    variant="outline"
-                    className="mt-4 min-h-11 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                    aria-label={t(runner.status === "syncing" ? "runners.forceRemoveAria" : "runners.removeAria", { runnerId: runner.runnerId })}
-                    onClick={() => setRemoving({ runner, poolName: pool.name })}
-                  ><Trash2 />{t(runner.status === "syncing" ? "runners.forceRemove" : "runners.removeOffline")}</Button> : null}
-                </div>
-              ))}
-            </div>
-            </section>
-          </article>
-        ))}
-      </div>
-      <RunnerPoolSheet
-        pool={editing}
-        onOpenChange={(open) => { if (!open) setEditing(null); }}
-        onSaved={async () => {
-          setEditing(null);
-          await queryClient.invalidateQueries({ queryKey: runnerPoolKey });
-        }}
-      />
-      <RemoveRunnerSheet
-        key={removing?.runner.runnerId ?? "closed"}
-        target={removing}
-        onOpenChange={(open) => { if (!open) setRemoving(null); }}
-        onRemoved={async () => {
-          setRemoving(null);
-          await queryClient.invalidateQueries({ queryKey: runnerPoolKey });
-        }}
-      />
+    <section className="runner-capacity" aria-labelledby={showHeader ? "runner-capacity-title" : undefined} aria-label={showHeader ? undefined : t("runners.title")}>
+      {showHeader ? <header><h2 id="runner-capacity-title" className="text-base font-semibold">{t("runners.title")}</h2><p className="mt-1 text-sm text-muted-foreground">{t("runnerView.description")}</p></header> : null}
+      {query.isLoading ? <div className="runner-pool-panel" aria-busy="true"><p role="status">{t("runnerView.loading")}</p><Skeleton className="mt-5 h-64" /></div> : null}
+      {query.isError ? <div className="runner-pool-panel"><h2 className="runner-summary-title">{t("runnerView.unavailable")}</h2><p className="mt-2 mb-4 text-sm text-muted-foreground">{t("runnerView.unavailableDetail")}</p><ErrorNotice error={query.error} /><Button variant="outline" className="mt-4 min-h-11" disabled={query.isFetching} onClick={() => void query.refetch()}><RefreshCw />{t(query.isFetching ? "runnerView.refreshing" : "common.retry")}</Button></div> : null}
+      {!query.isLoading && !query.isError && !query.data?.items.length ? <EmptyState title={t("runners.emptyTitle")} description={t("runners.emptyDescription")} /> : null}
+      {!query.isError && query.data?.items.map(pool => <RunnerPoolPanel key={pool.id} pool={pool} updatedAt={query.dataUpdatedAt} refreshing={query.isFetching} onRemove={setRemoving} />)}
+      <RemoveRunnerSheet key={removing?.runner.runnerId ?? "closed"} target={removing} onOpenChange={open => { if (!open) setRemoving(null); }} onRemoved={async () => { setRemoving(null); await queryClient.invalidateQueries({ queryKey: runnerPoolKey }); }} />
     </section>
   );
 }
 
-function RunnerMetric({ label, value, unit }: { label: string; value: string; unit?: string }) {
+function RunnerPoolPanel({ pool, updatedAt, refreshing, onRemove }: { pool: RunnerPool; updatedAt: number; refreshing: boolean; onRemove: (target: RemovalTarget) => void }) {
+  const { t, i18n } = useTranslation();
+  const { user } = useAuth();
+  const id = useId();
+  const [planning, setPlanning] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const editButton = useRef<HTMLButtonElement>(null);
+  const connected = pool.instances.filter(runner => runner.status !== "offline");
+  const pending = connected.filter(runner => runner.appliedGeneration !== runner.desiredGeneration);
+  const syncing = connected.filter(runner => runner.status === "syncing");
+  const offline = pool.instances.length - connected.length;
+  const serving = pool.capacity.readyRunners;
+  const titleKey = !pool.instances.length ? "noRegistered" : serving > 0 ? "serving" : syncing.length > 0 ? "updating" : "noneServing";
+  const summary = !pool.instances.length ? t("runnerView.waitingRegistration") : [
+    offline ? t("runnerView.offlineSummary", { count: offline }) : "",
+    pending.length ? t("runnerView.pendingSummary", { count: pending.length }) : connected.length ? t("runnerView.allApplied") : "",
+  ].filter(Boolean).join(" ");
+  const hasMetrics = pool.instances.some(runner => ["ready", "busy", "saturated"].includes(runner.status) && runner.load !== null);
+  const metric = (value: string) => hasMetrics ? value : "—";
   return (
-    <div className="runner-live-metric">
-      <p className="text-xs font-medium text-muted-foreground">{label}</p>
-      <p className="runner-live-value">{value}{unit ? <small>{unit}</small> : null}</p>
-    </div>
+    <article className="runner-pool-panel" aria-label={t("runnerView.groupLabel", { name: pool.name })}>
+      <div className="runner-pool-heading"><span>{t("runnerView.group")}</span><strong>{pool.name}</strong>{pool.isDefault ? <span>· {t("runnerView.defaultGroup")}</span> : null}</div>
+      <div className="runner-summary">
+        <div aria-live="polite"><h2 className="runner-summary-title" data-tone={!pool.instances.length ? "neutral" : serving > 0 ? "neutral" : syncing.length > 0 ? "warning" : "danger"}>{t(`runnerView.${titleKey}`, { count: titleKey === "updating" ? syncing.length : serving })}</h2><p>{summary}</p></div>
+        <div className="runner-updated"><span>{t("runnerView.lastUpdated")}</span><time dateTime={new Date(updatedAt).toISOString()}>{new Intl.DateTimeFormat(i18n.language, { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(updatedAt)}</time><span>{t("runnerView.updates")}</span></div>
+      </div>
+      <dl className="runner-live-metrics" aria-label={t("runners.liveMetrics")}>
+        <RunnerMetric label={t("runners.currentThroughput")} value={metric(`${pool.capacity.currentRps.toFixed(1)} RPS`)} />
+        <RunnerMetric label={t("runners.inflightUtilization")} value={metric(`${Math.round(pool.capacity.inflightUtilization * 100)}%`)} />
+        <RunnerMetric label={t("runnerView.highestP95")} value={metric(`${Math.round(pool.capacity.worstRunnerLatencyP95Ms ?? pool.capacity.latencyP95Ms)} ms`)} />
+        <RunnerMetric label={t("runners.errorRate")} value={metric(`${(pool.capacity.errorRate * 100).toFixed(2)}%`)} />
+      </dl>
+      <section aria-labelledby={`${id}-instances`}>
+        <header className="runner-instance-heading"><h3 id={`${id}-instances`}>{t("runners.instancesTitle")}</h3><span>{t("runnerView.registered", { count: pool.instances.length })}</span></header>
+        <Table className="runner-instance-table table-fixed" aria-labelledby={`${id}-instances`}>
+          <TableHeader><TableRow><TableHead className="w-[29%]">{t("runnerView.instance")}</TableHead><TableHead className="w-[14%]">{t("runnerView.runtime")}</TableHead><TableHead className="w-[23%]">{t("runnerView.configuration")}</TableHead><TableHead className="w-[16%]">{t("runners.columns.inflightQueue")}</TableHead><TableHead className="w-[18%]">{t("runners.columns.lastHeartbeat")}</TableHead></TableRow></TableHeader>
+          <TableBody>{pool.instances.map(runner => <RunnerRow key={runner.runnerId} runner={runner} now={updatedAt} canRemove={user?.role === "admin"} onRemove={() => onRemove({ runner, poolName: pool.name })} />)}
+            {!pool.instances.length ? <TableRow><TableCell colSpan={5} className="runner-empty-row">{t("runnerView.waitingRegistration")}</TableCell></TableRow> : null}
+          </TableBody>
+        </Table>
+      </section>
+      <div className="runner-planning-line"><p><strong>{t("runnerView.capacityTarget", { count: pool.desiredReplicas })}</strong><span> · {t("runnerView.currentlyServing", { count: serving })}</span></p><Button variant="link" className="min-h-11 shrink-0" aria-expanded={planning} aria-controls={`${id}-planning`} onClick={() => { setPlanning(!planning); if (planning) setEditing(false); }}>{t("runners.planningTitle")}<ChevronDown className={planning ? "rotate-180" : undefined} /></Button></div>
+      <section className="runner-planning" id={`${id}-planning`} hidden={!planning} aria-labelledby={`${id}-planning-title`}>
+        <h3 id={`${id}-planning-title`}>{t("runners.planningTitle")}</h3>
+        <dl className="runner-planning-facts"><RunnerDatum label={t("runnerView.servingLabel")} value={String(serving)} /><RunnerDatum label={t("runnerView.desiredLabel")} value={String(pool.desiredReplicas)} /><RunnerDatum label={t("runnerView.recommendedLabel")} value={String(pool.capacity.recommendedReplicas)} /></dl>
+        <p>{t("runnerView.plannedCapacity", { capacity: pool.capacity.safeRpsCapacity.toFixed(1), count: serving, perRunner: pool.safeRpsPerRunner.toFixed(1) })}</p>
+        <p>{t("runnerView.planningHint")}</p>
+        {user?.role === "admin" ? <Button ref={editButton} variant="link" className="mt-2 min-h-11" aria-expanded={editing} aria-controls={`${id}-editor`} onClick={() => setEditing(!editing)}>{t("runnerView.editTargets")}</Button> : null}
+        {editing ? <div id={`${id}-editor`}><RunnerCapacityEditor pool={pool} onClose={() => { setEditing(false); editButton.current?.focus(); }} /></div> : null}
+      </section>
+      <p className="runner-feedback" role="status">{t(refreshing ? "runnerView.refreshingPrevious" : "runnerView.complete")}</p>
+    </article>
   );
 }
 
+function RunnerRow({ runner, now, canRemove, onRemove }: { runner: RunnerInstance; now: number; canRemove: boolean; onRemove: () => void }) {
+  const { t, i18n } = useTranslation();
+  const [expanded, setExpanded] = useState(false);
+  const id = useId();
+  const offline = runner.status === "offline";
+  const current = runner.appliedGeneration === runner.desiredGeneration;
+  const configuration = offline ? "unavailable" : current ? "applied" : "pending";
+  const load = offline ? null : runner.load;
+  const removable = canRemove && (offline || runner.status === "syncing");
+  return <Fragment>
+    <TableRow className="runner-instance-row" data-runner-state={runner.status}>
+      <TableCell><Button variant="link" className="runner-instance-toggle" aria-expanded={expanded} aria-controls={id} onClick={() => setExpanded(!expanded)}><ChevronRight className={expanded ? "rotate-90" : undefined} /><span>{runner.runnerId}</span></Button></TableCell>
+      <TableCell><span className="runner-runtime-state" data-runner-state={runner.status}>{t(`runnerView.runtimeState.${runner.status}`)}</span></TableCell>
+      <TableCell><p className="runner-configuration-state" data-configuration={configuration}>{t(`runnerView.configurationState.${configuration}`)}</p><p className="runner-cell-detail">{t(offline ? "runnerView.lastApplied" : current ? "runnerView.appliedVersion" : "runnerView.versionDifference", { applied: runner.appliedGeneration, desired: runner.desiredGeneration })}</p></TableCell>
+      <TableCell>{load ? `${load.inflight} / ${load.queueDepth}` : "—"}</TableCell>
+      <TableCell><time dateTime={validDate(runner.lastHeartbeatAt)?.toISOString()} title={formatDate(runner.lastHeartbeatAt, i18n.language)}>{relativeHeartbeat(runner.lastHeartbeatAt, now, i18n.language)}</time></TableCell>
+    </TableRow>
+    {expanded ? <TableRow className="runner-detail-row" id={id}><TableCell colSpan={5}>
+      <div className="runner-instance-details">
+        <dl><RunnerDatum label={t("runnerView.runtimeVersion")} value={runner.runnerVersion || "—"} /><RunnerDatum label={t("runnerView.nemoVersion")} value={runner.nemoVersion || "—"} /><RunnerDatum label={t("runnerView.compiler")} value={t(runner.compilerCapable ? "runnerView.enabled" : "runnerView.disabled")} /></dl>
+        <dl><RunnerDatum label={t("uiCopy.cPUMemory")} value={load ? `${Math.round(load.cpuUtilization * 100)}% / ${Math.round(load.memoryUtilization * 100)}%` : "—"} /><RunnerDatum label={t("runners.maxConcurrencyPerRunner")} value={String(runner.maxConcurrency)} /><RunnerDatum label={t("runnerView.heartbeatReported")} value={formatDate(runner.lastHeartbeatAt, i18n.language)} /></dl>
+        <div><dl><RunnerDatum label={t(offline ? "runnerView.lastVersions" : "runnerView.appliedCurrent")} value={`${runner.appliedGeneration} / ${runner.desiredGeneration}`} /></dl><p>{t(`runnerView.configurationDetail.${configuration}`)}</p>{removable ? <Button type="button" variant="ghost" className="runner-remove-button mt-3 min-h-11" aria-label={t(offline ? "runners.removeAria" : "runners.forceRemoveAria", { runnerId: runner.runnerId })} onClick={onRemove}><Trash2 />{t(offline ? "runners.removeOffline" : "runners.forceRemove")}</Button> : null}</div>
+      </div>
+    </TableCell></TableRow> : null}
+  </Fragment>;
+}
+
+function RunnerMetric({ label, value }: { label: string; value: string }) {
+  return <div><dt>{label}</dt><dd>{value}</dd></div>;
+}
 function RunnerDatum({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <dt className="text-[11px] text-muted-foreground">{label}</dt>
-      <dd className="mt-1 text-xs font-medium tabular-nums">{value}</dd>
-    </div>
-  );
-}
-
-type ConvergenceState = "converged" | "syncing" | "unavailable";
-
-function runnerConvergenceState(runner: RunnerInstance): ConvergenceState {
-  if (runner.status === "offline") return "unavailable";
-  return runner.appliedGeneration === runner.desiredGeneration ? "converged" : "syncing";
-}
-
-function PoolConvergenceStatus({ pool }: { pool: RunnerPool }) {
-  const { t } = useTranslation();
-  const connected = pool.instances.filter((runner) => runner.status !== "offline");
-  const converged = connected.filter((runner) => runnerConvergenceState(runner) === "converged");
-  const desiredGeneration = Math.max(0, ...(
-    connected.length > 0 ? connected : pool.instances
-  ).map((runner) => runner.desiredGeneration));
-  const state: ConvergenceState = connected.length === 0
-    ? "unavailable"
-    : converged.length === connected.length
-      ? "converged"
-      : "syncing";
-  const Icon = state === "converged" ? CheckCircle2 : state === "syncing" ? RefreshCw : WifiOff;
-
-  return (
-    <div
-      role="status"
-      aria-live="polite"
-      className="runner-convergence"
-      data-state={state}
-    >
-      <p className={cn(
-        "flex items-center gap-2 text-xs font-medium",
-        state === "converged" && "text-emerald-700",
-        state === "syncing" && "text-amber-800",
-        state === "unavailable" && "text-red-700",
-      )}>
-        <Icon className={cn("size-4 shrink-0", state === "syncing" && "animate-spin motion-reduce:animate-none")} aria-hidden="true" />
-        {t(`runners.convergence.${state}`)}
-      </p>
-      <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
-        {connected.length > 0
-          ? t("runners.convergence.poolSummary", {
-            converged: converged.length,
-            connected: connected.length,
-            generation: desiredGeneration,
-          })
-          : t("runners.convergence.noConnectedSummary", { generation: desiredGeneration })}
-      </p>
-    </div>
-  );
-}
-
-function RunnerConvergenceStatus({ runner }: { runner: RunnerInstance }) {
-  const { t } = useTranslation();
-  const state = runnerConvergenceState(runner);
-  const Icon = state === "converged" ? CheckCircle2 : state === "syncing" ? RefreshCw : WifiOff;
-  const lag = Math.max(0, runner.desiredGeneration - runner.appliedGeneration);
-
-  return (
-    <div className="min-w-44" data-convergence-state={state}>
-      <p className={cn(
-        "flex items-center gap-1.5 text-xs font-medium",
-        state === "converged" && "text-emerald-700",
-        state === "syncing" && "text-amber-800",
-        state === "unavailable" && "text-red-700",
-      )}>
-        <Icon className={cn("size-3.5 shrink-0", state === "syncing" && "animate-spin motion-reduce:animate-none")} aria-hidden="true" />
-        {t(`runners.convergence.runner.${state}`)}
-      </p>
-      <p className="mt-1 font-mono text-[11px] text-muted-foreground">
-        {state === "unavailable"
-          ? t("runners.convergence.lastReported", {
-            applied: runner.appliedGeneration,
-            desired: runner.desiredGeneration,
-          })
-          : t("runners.convergence.appliedDesired", {
-            applied: runner.appliedGeneration,
-            desired: runner.desiredGeneration,
-          })}
-      </p>
-      {state === "syncing" ? <p className="mt-0.5 text-[11px] text-amber-800">
-        {lag > 0
-          ? t("runners.convergence.generationsBehind", { count: lag })
-          : t("runners.convergence.generationMismatch")}
-      </p> : null}
-    </div>
-  );
+  return <div><dt>{label}</dt><dd>{value}</dd></div>;
 }
 
 function RemoveRunnerSheet({
@@ -323,59 +184,45 @@ function RemoveRunnerSheet({
   />;
 }
 
-function RunnerPoolSheet({ pool, onOpenChange, onSaved }: { pool: RunnerPool | null; onOpenChange: (open: boolean) => void; onSaved: () => void }) {
+function RunnerCapacityEditor({ pool, onClose }: { pool: RunnerPool; onClose: () => void }) {
   const { t } = useTranslation();
-  const [desired, setDesired] = useState(1);
-  const [safeRps, setSafeRps] = useState(50);
-  const [concurrency, setConcurrency] = useState(64);
-
-  useEffect(() => {
-    if (!pool) return;
-    setDesired(pool.desiredReplicas);
-    setSafeRps(pool.safeRpsPerRunner);
-    setConcurrency(pool.maxConcurrencyPerRunner);
-  }, [pool]);
-
+  const queryClient = useQueryClient();
+  const [desired, setDesired] = useState(pool.desiredReplicas);
+  const [safeRps, setSafeRps] = useState(pool.safeRpsPerRunner);
+  const [concurrency, setConcurrency] = useState(pool.maxConcurrencyPerRunner);
+  const minimumDesired = pool.isDefault ? 2 : 1;
+  const valid = Number.isInteger(desired) && desired >= minimumDesired && Number.isFinite(safeRps) && safeRps >= 0.1 && Number.isInteger(concurrency) && concurrency >= 1;
   const mutation = useMutation({
-    mutationFn: () => updateRunnerPool(pool!.id, {
-      desiredReplicas: desired,
-      safeRpsPerRunner: safeRps,
-      maxConcurrencyPerRunner: concurrency,
-    }),
-    onSuccess: () => {
-      toast.success(t("runners.settingsSaved"));
-      onSaved();
-    },
-    onError: (error) => toast.error(error.message),
+    mutationFn: () => updateRunnerPool(pool.id, { desiredReplicas: desired, safeRpsPerRunner: safeRps, maxConcurrencyPerRunner: concurrency }),
+    onSuccess: async () => { toast.success(t("runners.settingsSaved")); onClose(); await queryClient.invalidateQueries({ queryKey: runnerPoolKey }); },
   });
-
-  if (!pool) return null;
-  const minimumDesired = pool?.isDefault ? 2 : 1;
-  const valid = Number.isInteger(desired) && desired >= minimumDesired
-    && Number.isFinite(safeRps) && safeRps > 0
-    && Number.isInteger(concurrency) && concurrency >= 1;
-  return (
-    <EntitySheet
-      open
-      onOpenChange={onOpenChange}
-      eyebrow={pool.id}
-      title={t("runners.settingsTitle")}
-      description={t("runners.settingsDescription")}
-      footer={<><Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button><Button disabled={!valid || mutation.isPending} onClick={() => mutation.mutate()}>{t("common.save")}</Button></>}
-    >
-      <div className="grid gap-5">
-        <NumberField label={t("runners.desiredReplicas")} value={desired} onChange={setDesired} min={minimumDesired} />
-        <NumberField label={t("runners.safeRpsPerRunner")} value={safeRps} onChange={setSafeRps} min={0.1} />
-        <NumberField label={t("runners.maxConcurrencyPerRunner")} value={concurrency} onChange={setConcurrency} min={1} />
-      </div>
-    </EntitySheet>
-  );
+  return <form className="runner-capacity-editor" onSubmit={event => { event.preventDefault(); if (valid && !mutation.isPending) mutation.mutate(); }}>
+    <fieldset disabled={mutation.isPending} className="runner-capacity-fields">
+      <NumberField label={t("runnerView.desiredLabel")} value={desired} onChange={setDesired} min={minimumDesired} step={1} />
+      <NumberField label={t("runners.safeRpsPerRunner")} value={safeRps} onChange={setSafeRps} min={0.1} step="any" />
+      <NumberField label={t("runners.maxConcurrencyPerRunner")} value={concurrency} onChange={setConcurrency} min={1} step={1} />
+    </fieldset>
+    {mutation.isError ? <ErrorNotice error={mutation.error} /> : null}
+    <div className="runner-capacity-actions"><Button variant="ghost" disabled={mutation.isPending} onClick={onClose}>{t("common.cancel")}</Button><Button type="submit" disabled={!valid || mutation.isPending}>{t(mutation.isPending ? "runnerView.saving" : "runnerView.saveTargets")}</Button></div>
+  </form>;
 }
 
-function NumberField({ label, value, onChange, min }: { label: string; value: number; onChange: (value: number) => void; min: number }) {
-  return <div className="grid gap-2"><Label>{label}</Label><Input type="number" min={min} value={value} onChange={(event) => onChange(Number(event.target.value))} /></div>;
+function NumberField({ label, value, onChange, min, step }: { label: string; value: number; onChange: (value: number) => void; min: number; step: number | "any" }) {
+  const id = useId();
+  return <div className="grid gap-2"><Label htmlFor={id}>{label}</Label><Input id={id} type="number" min={min} step={step} required value={Number.isNaN(value) ? "" : value} onChange={event => onChange(event.target.valueAsNumber)} /></div>;
 }
-
+function validDate(value: string | null) {
+  const date = value ? new Date(value) : null;
+  return date && Number.isFinite(date.getTime()) ? date : null;
+}
 function formatDate(value: string | null, locale: string) {
-  return value ? new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "—";
+  const date = validDate(value);
+  return date ? new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "medium" }).format(date) : "—";
+}
+function relativeHeartbeat(value: string, now: number, locale: string) {
+  const date = validDate(value);
+  if (!date) return "—";
+  const seconds = Math.max(0, Math.floor((now - date.getTime()) / 1000));
+  const [amount, unit] = seconds < 60 ? [seconds, "second"] as const : seconds < 3600 ? [Math.floor(seconds / 60), "minute"] as const : seconds < 86400 ? [Math.floor(seconds / 3600), "hour"] as const : [Math.floor(seconds / 86400), "day"] as const;
+  return new Intl.RelativeTimeFormat(locale, { numeric: "auto" }).format(-amount, unit);
 }

@@ -27,6 +27,7 @@ import { recommendationCatalog } from "../control-plane-ai/recommendation-catalo
 import { ConflictError, ControllerError, NotFoundError, ValidationError } from "../domain/errors.js";
 import { enforcementActions } from "../domain/guardrail-plan.js";
 import { deriveRunnerFleetStatus } from "../domain/platform-status.js";
+import { deriveComponentHealth } from "../domain/component-health.js";
 import type { RunnerControlServer } from "../control-channel/control-server.js";
 import type { ControlPlaneService } from "../services/control-plane.js";
 import type { ControllerMetrics } from "../metrics.js";
@@ -801,6 +802,13 @@ export function createHttpApp(input: {
     return context.body(null, 204);
   });
 
+  app.get("/api/v1/system/health", authenticated, async (context) => {
+    context.header("Cache-Control", "no-store");
+    const runners = await input.service.listRunnerHeartbeats().catch(() => null);
+    return context.json(deriveComponentHealth(runners, {
+      observedAt: new Date(), offlineAfterSeconds: input.config.offlineAfterSeconds,
+    }));
+  });
   app.get("/api/v1/system/version", authenticated, async (context) => {
     const pools = await input.service.listRunnerPoolsWithCapacity();
     context.header("Cache-Control", "no-store");

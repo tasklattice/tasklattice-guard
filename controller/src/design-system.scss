@@ -92,6 +92,49 @@
   }
 }
 
+// Health has one system conclusion, followed by the evidence for each plane.
+.health-summary {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 2rem;
+  min-height: 9.5rem;
+  padding-block: 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+.health-conclusion {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  font-size: 1.75rem;
+  line-height: 1.25;
+  font-weight: 500;
+}
+.health-component-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.health-page :is(.health-conclusion, .health-component-state) {
+  color: var(--muted-foreground);
+  &[data-health="healthy"] { color: var(--success); }
+  &[data-health="unhealthy"] { color: var(--destructive); }
+}
+.health-panel .health-table {
+  th { height: 2rem; font-size: 0.75rem; font-weight: 400; color: var(--muted-foreground); }
+  td { height: 6rem; padding-block: 1.25rem; vertical-align: top; white-space: normal; line-height: 1.5; }
+  tbody tr[data-health="unhealthy"] td { background: color-mix(in srgb, var(--notice-danger) 55%, var(--card)); }
+}
+.health-runner-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.75rem;
+  color: var(--primary);
+  &:hover { text-decoration: underline; }
+}
+.health-feedback { min-height: 2rem; padding-top: 0.75rem; }
+
 // Accessible keyboard focus stays crisp instead of a translucent halo.
 :where(
   [data-slot="dropdown-menu-item"],

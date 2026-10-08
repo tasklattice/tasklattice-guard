@@ -1,251 +1,121 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import {
-  Activity,
-  ArrowRight,
-  Bot,
-  CheckCircle2,
-  CircleAlert,
-  RefreshCw,
-  Route,
-  Server,
-  ShieldCheck,
-} from "lucide-react";
+import { ArrowRight, CircleCheck, CircleHelp, CircleX, RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import { PageHeader, StateBadge } from "@/components/product-shell";
+import { PageHeader } from "@/components/product-shell";
 import { SettingsNavigation } from "@/components/settings-navigation";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { getControllerSystemStatus, type SystemStatus } from "@/lib/controller-api";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { queryKeys } from "@/features/query-keys";
+import { getControllerSystemHealth, type SystemHealthSnapshot } from "@/lib/controller-api";
 import { cn } from "@/lib/utils";
 
-type PlatformDisplayStatus = SystemStatus["status"] | "unknown";
-type BasicDisplayStatus = SystemStatus["components"]["basicProtection"]["status"] | "unknown";
+type HealthState = SystemHealthSnapshot["status"] | "checking";
 
 export function HealthPage() {
   const { t, i18n } = useTranslation();
   const query = useQuery({
-    queryKey: queryKeys.systemStatus,
-    queryFn: getPlatformStatusSnapshot,
+    queryKey: queryKeys.systemHealth,
+    queryFn: async ({ signal }) => {
+      try {
+        const snapshot = await getControllerSystemHealth(signal);
+        return { snapshot: snapshot ?? null, attemptedAt: Date.now() };
+      } catch {
+        return { snapshot: null, attemptedAt: Date.now() };
+      }
+    },
     refetchInterval: 15_000,
     retry: false,
   });
+  const loading = query.isLoading;
   const refreshing = query.isFetching;
-  const snapshot = query.data?.status;
-  const requestUnavailable = Boolean(query.data?.error) || (!query.isLoading && !snapshot);
-  const overallState: PlatformDisplayStatus = requestUnavailable ? "unknown" : snapshot?.status ?? "unknown";
-  const basicProtection = snapshot?.components.basicProtection;
-  const coverage = basicProtection?.coverage;
-  const execution = !coverage ? "unknown" : !coverage.inputChecks && !coverage.outputChecks ? "empty"
-    : basicProtection?.modelIndependent === true ? "modelFree" : basicProtection?.modelIndependent === false ? "modelBacked" : "unknown";
-  const draft = basicProtection?.draft;
-  const unpublishedDraft = draft && draft.revision !== draft.activeRevision;
-  const basicState: BasicDisplayStatus = requestUnavailable ? "unknown" : basicProtection?.status ?? "unknown";
-  const observedAt = snapshot?.observedAt ? Date.parse(snapshot.observedAt) : query.dataUpdatedAt;
-  const lastChecked = observedAt
-    ? new Intl.DateTimeFormat(i18n.language, { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(observedAt)
-    : null;
+  const snapshot = query.data?.snapshot;
+  const state: HealthState = loading ? "checking" : snapshot?.status ?? "unknown";
+  const controlPlane = snapshot?.components.controlPlane;
+  const dataPlane = snapshot?.components.dataPlane;
+  const controlReason = controlPlane?.reason ?? "unknown";
+  const dataReason = dataPlane?.reason ?? "unknown";
+  const counts = {
+    total: dataPlane?.totalRunners ?? 0,
+    connected: dataPlane?.connectedRunners ?? 0,
+    unresponsive: dataPlane?.unresponsiveRunners ?? 0,
+    seconds: dataPlane?.heartbeatTimeoutSeconds ?? 0,
+  };
+  const descriptionKey = loading ? "loadingDescription" : state === "unknown" ? "unknownDescription"
+    : controlPlane?.status === "unhealthy" ? "controlPlaneFailure"
+      : dataPlane?.reason === "no_runners" ? "noRunners"
+        : state === "unhealthy" ? "runnersUnresponsive" : "healthyDescription";
+  const checkedAt = snapshot?.observedAt ? Date.parse(snapshot.observedAt) : query.data?.attemptedAt;
+  const checkedTime = checkedAt ? new Intl.DateTimeFormat(i18n.language, {
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+  }).format(checkedAt) : "—";
+  const Icon = state === "healthy" ? CircleCheck : state === "unhealthy" ? CircleX : state === "checking" ? RefreshCw : CircleHelp;
+  const feedback = loading ? "loadingDescription" : refreshing ? "refreshingPrevious"
+    : state === "unknown" ? "refreshFailed" : "refreshComplete";
 
   return (
-    <section className="py-6 sm:py-8">
+    <section className="health-page py-8">
       <PageHeader
-        title={t("platformStatus.title")}
-        description={t("platformStatus.description")}
+        title={t("componentHealth.title")}
+        description={t("componentHealth.description")}
         action={(
-          <Button type="button" variant="outline" className="min-h-11 self-start" disabled={refreshing} onClick={() => void query.refetch()}>
+          <Button variant="outline" className="min-h-11 min-w-28 self-start" disabled={refreshing} onClick={() => void query.refetch()}>
             <RefreshCw className={cn(refreshing && "animate-spin motion-reduce:animate-none")} />
-            {t(refreshing ? "platformStatus.refreshing" : "platformStatus.refresh")}
+            {t(`componentHealth.${refreshing ? "refreshing" : state === "unknown" ? "retry" : "refresh"}`)}
           </Button>
         )}
       />
       <SettingsNavigation />
-
-      {query.isLoading ? <StatusSkeleton /> : (
-        <div className="mt-6 space-y-5">
-          <section
-            role="status"
-            aria-live="polite"
-            className={cn(
-              "overflow-hidden rounded-xl border bg-card",
-              basicState === "ready" && "border-emerald-200",
-              basicState === "initializing" && "border-amber-200",
-              ["unavailable", "unknown"].includes(basicState) && "border-red-200",
-            )}
-          >
-            <div className={cn(
-              "flex flex-col gap-4 px-5 py-5 sm:flex-row sm:items-start sm:justify-between sm:px-6",
-              basicState === "ready" && "bg-emerald-50/60",
-              basicState === "initializing" && "bg-amber-50/70",
-              ["unavailable", "unknown"].includes(basicState) && "bg-red-50/70",
-            )}>
-              <div className="flex min-w-0 items-start gap-3">
-                <OverallIcon state={basicState} />
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("platformStatus.basic.eyebrow")}</p>
-                  <div className="mt-1 flex flex-wrap items-center gap-2">
-                    <h2 className="text-lg font-semibold">{t(`platformStatus.basic.${basicState}`)}</h2>
-                    <BasicHealthBadge state={basicState} label={t(`platformStatus.state.${basicState}`)} />
-                  </div>
-                  <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">{t(`platformStatus.basic.${basicState}Description`)}</p>
-                </div>
-              </div>
-              {lastChecked ? <p className="shrink-0 text-xs text-muted-foreground">{t("platformStatus.lastChecked", { time: lastChecked })}</p> : null}
+      <div className="health-panel mt-6 bg-card px-6 pb-3" aria-busy={refreshing}>
+        <section className="health-summary" aria-labelledby="system-health-label">
+          <div className="min-w-0 flex-1">
+            <p id="system-health-label" className="mb-2 text-xs text-muted-foreground">{t("componentHealth.systemStatus")}</p>
+            <div aria-live="polite" aria-atomic="true">
+              <h2 className="health-conclusion" data-health={state}>
+                <Icon aria-hidden="true" className={cn("size-6 shrink-0", loading && "animate-spin motion-reduce:animate-none")} />
+                {t(`componentHealth.${state}`)}
+              </h2>
+              <p className="mt-2 max-w-3xl text-sm leading-6">{t(`componentHealth.${descriptionKey}`, counts)}</p>
             </div>
-
-            <div className="grid border-t sm:grid-cols-3 sm:divide-x">
-              <Requirement icon={Activity} label={t("platformStatus.controller")} value={t(requestUnavailable ? "platformStatus.state.unknown" : "platformStatus.state.operational")} ready={!requestUnavailable} />
-              <Requirement
-                icon={ShieldCheck}
-                label={t("platformStatus.defaultGuardrail")}
-                value={basicProtection?.guardrailStatus === "active" && basicProtection.latestVersion
-                  ? t("platformStatus.latestVersion", { version: basicProtection.latestVersion })
-                  : t(`platformStatus.state.${basicProtection?.guardrailStatus ?? "unknown"}`)}
-                ready={basicProtection?.guardrailStatus === "active"}
-              />
-              <Requirement
-                icon={Server}
-                label={t("platformStatus.defaultRunner")}
-                value={snapshot ? t("platformStatus.servingRunners", { count: snapshot.components.runnerFleet.servingRunners }) : t("platformStatus.state.unknown")}
-                ready={Boolean(snapshot?.components.runnerFleet.servingRunners)}
-              />
-            </div>
-          </section>
-
-          {!requestUnavailable && snapshot ? (
-            <div className="grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(20rem,0.85fr)]">
-              <section className="rounded-xl border bg-card" aria-labelledby="minimum-protection-title">
-                <div className="border-b px-5 py-4">
-                  <h2 id="minimum-protection-title" className="font-semibold">{t("platformStatus.minimum.title")}</h2>
-                  <p className="mt-1 text-sm leading-6 text-muted-foreground">{t("platformStatus.minimum.description")}</p>
-                </div>
-                <div className="p-5">
-                  <div className={cn(
-                    "flex items-start gap-3 rounded-lg border p-4",
-                    basicState === "ready" ? "border-emerald-200 bg-emerald-50/40" : "bg-muted/20",
-                  )}>
-                    <ShieldCheck className={cn("mt-0.5 size-5 shrink-0", basicState === "ready" ? "text-emerald-700" : "text-muted-foreground")} />
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold">{t(`platformStatus.minimum.${execution}Title`)}</p>
-                      <p className="mt-1 text-sm leading-6 text-muted-foreground">{t(`platformStatus.minimum.${execution}Description`)}</p>
-                    </div>
-                  </div>
-                  <dl className="mt-4 grid gap-3 sm:grid-cols-2">
-                    <StatusDatum label={t("platformStatus.minimum.input")} value={coverage ? t("platformStatus.minimum.checks", { count: coverage.inputChecks }) : t("platformStatus.state.unknown")} />
-                    <StatusDatum label={t("platformStatus.minimum.output")} value={coverage ? t("platformStatus.minimum.checks", { count: coverage.outputChecks }) : t("platformStatus.state.unknown")} />
-                    <StatusDatum label={t("platformStatus.minimum.policies")} value={coverage ? String(coverage.policyCount) : t("platformStatus.state.unknown")} />
-                  </dl>
-                  <p className="mt-3 text-xs leading-5 text-muted-foreground">{t("platformStatus.minimum.evidence", { generation: snapshot.desiredGeneration })}</p>
-                  {unpublishedDraft ? (
-                    <div className="mt-4 rounded-lg border bg-muted/20 p-3 text-sm" role="note">
-                      <p className="font-medium">{t(draft.validationStatus === "failed"
-                        ? "platformStatus.minimum.draftFailed" : "platformStatus.minimum.draftPending", { revision: draft.revision })}</p>
-                      <p className="mt-1 text-xs leading-5 text-muted-foreground">{t("platformStatus.minimum.draftNotActive")}</p>
-                    </div>
-                  ) : null}
-                  <Button asChild variant="outline" className="mt-4 min-h-11">
-                    <Link to="/guardrails/$guardrailId" params={{ guardrailId: "guardrail-default" }}>
-                      {t("platformStatus.minimum.openDefault")}<ArrowRight />
-                    </Link>
-                  </Button>
-                </div>
-              </section>
-
-              <section className="rounded-xl border bg-card" aria-labelledby="model-coverage-title">
-                <div className="border-b px-5 py-4">
-                  <h2 id="model-coverage-title" className="font-semibold">{t("platformStatus.models.title")}</h2>
-                  <p className="mt-1 text-sm leading-6 text-muted-foreground">{t("platformStatus.models.description")}</p>
-                </div>
-                <div className="divide-y">
-                  <ModelCoverageRow icon={Bot} title={t("platformStatus.models.controlPlane")} status={snapshot.components.controlPlaneModel.status} detail={snapshot.components.controlPlaneModel.model ?? t("platformStatus.models.authoringNotConfigured")} />
-                  <ModelCoverageRow
-                    icon={Route}
-                    title={t("platformStatus.models.dataPlane")}
-                    status={snapshot.components.runtimeModels.status}
-                    detail={snapshot.components.runtimeModels.models.length ? t("platformStatus.models.bindingCount", { count: snapshot.components.runtimeModels.models.length }) : t("platformStatus.models.noBindings")}
-                  />
-                </div>
-                <p className="border-t px-5 py-4 text-xs leading-5 text-muted-foreground">{t(basicProtection?.modelIndependent === true
-                  ? "platformStatus.models.optionalForRelease" : basicProtection?.modelIndependent === false
-                    ? "platformStatus.models.requiredForRelease" : "platformStatus.models.dependenciesUnknown")}</p>
-                <div className="flex flex-wrap gap-2 border-t p-4">
-                  <Button asChild variant="outline" size="sm" className="min-h-11"><Link to="/settings/models">{t("platformStatus.models.configure")}<ArrowRight /></Link></Button>
-                  <Button asChild variant="ghost" size="sm" className="min-h-11"><Link to="/settings/guardrail-catalog">{t("platformStatus.models.assign")}<ArrowRight /></Link></Button>
-                </div>
-              </section>
-            </div>
-          ) : null}
-
-          {!requestUnavailable && snapshot && overallState !== "healthy" && snapshot.reasons[0] !== "all_required_components_ready" ? (
-            <section className="rounded-xl border bg-card px-5 py-4" aria-labelledby="attention-title">
-              <div className="flex items-start gap-3">
-                <CircleAlert className="mt-0.5 size-5 shrink-0 text-amber-700" />
-                <div>
-                  <h2 id="attention-title" className="text-sm font-semibold">{t("platformStatus.attention")}</h2>
-                  <ul className="mt-1 space-y-1 text-sm leading-6 text-muted-foreground">
-                    {snapshot.reasons.map((reason) => <li key={reason}>• {t(`platformStatus.reason.${reason}`)}</li>)}
-                  </ul>
-                </div>
-              </div>
-            </section>
-          ) : null}
-
-          {requestUnavailable ? (
-            <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-card px-5 py-4 text-sm text-red-950">
-              <CircleAlert className="mt-0.5 size-5 shrink-0 text-red-600" />
-              <div><p className="font-semibold">{t("platformStatus.statusUnavailable")}</p><p className="mt-1 leading-6 text-muted-foreground">{t("platformStatus.statusUnavailableDescription")}</p></div>
-            </div>
-          ) : null}
-        </div>
-      )}
+          </div>
+          <div className="shrink-0 text-right text-xs leading-5 text-muted-foreground">
+            <p>{t(`componentHealth.${state === "unknown" ? "lastAttempt" : "lastChecked"}`)}</p>
+            <p className="my-1 text-sm tabular-nums text-foreground"><time dateTime={checkedAt ? new Date(checkedAt).toISOString() : undefined}>{checkedTime}</time></p>
+            <p>{t("componentHealth.updates")}</p>
+          </div>
+        </section>
+        <h3 id="health-components-heading" className="py-5 text-sm font-semibold">{t("componentHealth.componentDetails")}</h3>
+        <Table className="health-table table-fixed" aria-labelledby="health-components-heading">
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-1/4">{t("componentHealth.component")}</TableHead>
+              <TableHead className="w-1/4">{t("componentHealth.status")}</TableHead>
+              <TableHead className="w-1/2">{t("componentHealth.checkResult")}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            <TableRow data-health={controlPlane?.status ?? "unknown"}>
+              <TableCell><p className="font-semibold">{t("componentHealth.controlPlane")}</p><p className="mt-1 text-muted-foreground">{t("componentHealth.controller")}</p></TableCell>
+              <TableCell><ComponentStatus state={loading ? "checking" : controlPlane?.status ?? "unknown"} label={t(loading ? "componentHealth.checking" : `componentHealth.controlStatus.${controlReason}`)} /></TableCell>
+              <TableCell>{loading ? "—" : t(`componentHealth.controlDetail.${controlReason}`)}</TableCell>
+            </TableRow>
+            <TableRow data-health={dataPlane?.status ?? "unknown"}>
+              <TableCell><p className="font-semibold">{t("componentHealth.dataPlane")}</p><p className="mt-1 text-muted-foreground">{t("componentHealth.runners")}</p></TableCell>
+              <TableCell><ComponentStatus state={loading ? "checking" : dataPlane?.status ?? "unknown"} label={t(loading ? "componentHealth.checking" : `componentHealth.dataStatus.${dataReason}`)} /></TableCell>
+              <TableCell>
+                <p>{loading ? "—" : t(`componentHealth.dataDetail.${dataReason}`, counts)}</p>
+                <Link className="health-runner-link" to="/settings/runner">{t("componentHealth.viewRunners")}<ArrowRight aria-hidden="true" className="size-4" /></Link>
+              </TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
+        <p className="health-feedback text-xs text-muted-foreground" role="status">{t(`componentHealth.${feedback}`)}</p>
+      </div>
     </section>
   );
 }
 
-async function getPlatformStatusSnapshot(): Promise<{ status: SystemStatus | null; error: unknown | null }> {
-  try {
-    return { status: await getControllerSystemStatus(), error: null };
-  } catch (error) {
-    return { status: null, error };
-  }
-}
-
-function Requirement({ icon: Icon, label, value, ready }: { icon: typeof Activity; label: string; value: string; ready: boolean }) {
-  return (
-    <div className="flex min-w-0 items-start gap-3 border-b px-5 py-4 last:border-b-0 sm:border-b-0">
-      <span className={cn("grid size-8 shrink-0 place-items-center rounded-md", ready ? "bg-emerald-100 text-emerald-700" : "bg-muted text-muted-foreground")}>{ready ? <CheckCircle2 className="size-4" /> : <Icon className="size-4" />}</span>
-      <div className="min-w-0"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-0.5 break-words text-sm font-semibold" title={value}>{value}</p></div>
-    </div>
-  );
-}
-
-function StatusDatum({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
-  return <div className="rounded-lg border bg-muted/20 px-4 py-3"><dt className="text-xs text-muted-foreground">{label}</dt><dd className={cn("mt-1 text-sm font-semibold", mono && "font-mono tabular-nums")}>{value}</dd></div>;
-}
-
-function ModelCoverageRow({ icon: Icon, title, status, detail }: { icon: typeof Bot; title: string; status: "configured" | "unconfigured"; detail: string }) {
-  const { t } = useTranslation();
-  const badgeState = status === "configured" ? "neutral" : "pending";
-  return (
-    <div className="flex items-start gap-3 px-5 py-4">
-      <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground"><Icon className="size-4" /></span>
-      <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-semibold">{title}</p><StateBadge state={badgeState} label={t(`platformStatus.state.${status}`)} /></div><p className="mt-1 break-words text-xs leading-5 text-muted-foreground">{detail}</p></div>
-    </div>
-  );
-}
-
-function BasicHealthBadge({ state, label }: { state: BasicDisplayStatus; label: string }) {
-  const badgeState = state === "initializing" ? "syncing" : state === "unavailable" ? "offline" : state;
-  return <StateBadge state={badgeState} label={label} />;
-}
-
-function OverallIcon({ state }: { state: BasicDisplayStatus }) {
-  const Icon = state === "ready" ? ShieldCheck : state === "initializing" ? RefreshCw : CircleAlert;
-  return <span className={cn("grid size-10 shrink-0 place-items-center rounded-lg", state === "ready" && "bg-emerald-100 text-emerald-700", state === "initializing" && "bg-amber-100 text-amber-800", ["unavailable", "unknown"].includes(state) && "bg-red-100 text-red-700")}><Icon className={cn("size-5", state === "initializing" && "animate-spin motion-reduce:animate-none")} /></span>;
-}
-
-function StatusSkeleton() {
-  const { t: uiText } = useTranslation();
-  return <div className="mt-6 space-y-5" aria-label={uiText("uiCopy.loadingPlatformHealth")}><Skeleton className="h-56 rounded-xl" /><div className="grid gap-5 lg:grid-cols-2"><Skeleton className="h-72 rounded-xl" /><Skeleton className="h-72 rounded-xl" /></div></div>;
+function ComponentStatus({ state, label }: { state: HealthState; label: string }) {
+  return <span className="health-component-state" data-health={state}><span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-current" />{label}</span>;
 }

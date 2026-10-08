@@ -15,7 +15,7 @@ export const apiTags = [
   ['models', 'Platform Settings', 'Registered Model definitions, connection tests and capability tests.'],
   ['model-configurations', 'Platform Settings', 'Model assignments, validation evidence and activation.'],
   ['runners', 'Platform Settings', 'Runner capacity and instance lifecycle.'],
-  ['system', 'Platform Settings', 'Public Controller readiness summary.'],
+  ['system', 'Platform Settings', 'Component health, software identities and public runtime readiness.'],
 ].map(([name, area, description]) => ({ name: name!, description: description!, 'x-product-area': area! }));
 
 export function operationContract(method: string, path: string) {
@@ -38,6 +38,7 @@ export function operationContract(method: string, path: string) {
   let mode = method === 'GET' ? 'safe-read' : method === 'DELETE' || method === 'PUT' ? 'idempotent-effect' : 'not-guaranteed';
   let retry = method === 'GET' || method === 'DELETE' ? 'Repeat the same request; the response may reflect newer state or absence.' : 'Do not automatically retry an uncertain write. Read its result or current resource first.';
   let details: Record<string, unknown> = {};
+  if (path === '/api/v1/system/health') { summary = 'Read control-plane and data-plane component health'; description += ' Checks Controller storage access and connection/heartbeat evidence for all registered Runners. Guardrail publication, model bindings, assignments, configuration generation and desired pool capacity do not affect this component-liveness result. HTTP 200 returns the completed snapshot even when a component is unhealthy; a failed Controller storage check leaves data-plane health unknown.'; }
   if (method === 'DELETE' && path === '/api/v1/runner-instances/:runnerId') { description += ' By default only offline registrations can be removed. force=true with the observed bootId also permits initializing/syncing registrations and closes the matching control connection. Serving Runners remain protected; changed state or boot identity returns 409. Does not stop the process or delete a Pod; a running Runner may register again.'; retry = 'Refresh Runner state after an uncertain response. A reconnect may create a new registration.'; }
   if (path.endsWith('/connection-tests')) { summary = 'Test connection and basic model invocation'; description += ' Stores connection evidence; it does not certify Guardrail capability or protocol correctness. Repeating can make another upstream call.'; }
   if (path.endsWith('/capability-tests')) { summary = 'Test model capability and protocol'; description += ' Stores capability evidence, separately from basic connection health. Repeating performs another probe.'; }

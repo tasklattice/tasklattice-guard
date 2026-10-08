@@ -5,6 +5,8 @@ import { accessTokensEn, accessTokensZh } from "./access-token-i18n";
 import { initReactI18next } from "react-i18next";
 import { providerRegistrationEn, providerRegistrationZh } from "./provider-registration-i18n";
 import { protectionEn, protectionZh } from "./protection-i18n";
+import { componentHealthEn, componentHealthZh } from "./component-health-i18n";
+import { runnerViewEn, runnerViewZh } from "./runner-view-i18n";
 
 export const LANGUAGE_STORAGE_KEY = "tasklattice.language";
 export type SupportedLanguage = "en" | "zh-CN";
@@ -25,6 +27,8 @@ const resources = {
       accessTokens: accessTokensEn,
       providerRegistration: providerRegistrationEn,
       protection: protectionEn,
+      componentHealth: componentHealthEn,
+      runnerView: runnerViewEn,
       securityEvents: {
         filters: "Filters", clearFilters: "Clear filters", appliedFilters: "Applied filters", removeRiskFilter: "Remove risk level filter", filtersCleared: "All risk filters cleared", selectedLevels: "Selected risk levels: ", openFilter: "Open options", closeFilter: "Close options", levelGuide: "About risk levels", openLogs: "View runtime logs", retry: "Retry", updating: "Updating…", loadingSummary: "Loading event totals…", summaryUnavailable: "Event totals unavailable",
         resultSummary: "{{matched}} matching events · {{total}} events in this time range, across {{interactions}} interactions",
@@ -2947,6 +2951,8 @@ const resources = {
       accessTokens: accessTokensZh,
       providerRegistration: providerRegistrationZh,
       protection: protectionZh,
+      componentHealth: componentHealthZh,
+      runnerView: runnerViewZh,
       securityEvents: {
         filters: "筛选", clearFilters: "清除筛选", appliedFilters: "已应用的筛选", removeRiskFilter: "移除风险级别筛选", filtersCleared: "已清除全部风险筛选", selectedLevels: "已选风险级别：", openFilter: "展开选项", closeFilter: "收起选项", levelGuide: "分级说明", openLogs: "查看运行日志", retry: "重试", updating: "正在更新…", loadingSummary: "正在加载事件总量…", summaryUnavailable: "事件总量暂不可用",
         resultSummary: "匹配 {{matched}} 条事件 · 当前时段共 {{total}} 条事件，涉及 {{interactions}} 次交互",

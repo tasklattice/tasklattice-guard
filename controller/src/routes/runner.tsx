@@ -14,10 +14,10 @@ export function RunnerPage() {
   const refreshing = useIsFetching({ queryKey: runnerPoolKey }) > 0;
 
   return (
-    <section className="py-6 sm:py-8">
+    <section className="py-8">
       <PageHeader
         title={t("runners.pageTitle")}
-        description={t("runners.description")}
+        description={t("runnerView.description")}
         action={(
           <Button
             type="button"
@@ -27,7 +27,7 @@ export function RunnerPage() {
             onClick={() => void queryClient.invalidateQueries({ queryKey: runnerPoolKey })}
           >
             <RefreshCw className={cn(refreshing && "animate-spin motion-reduce:animate-none")} />
-            {t(refreshing ? "runners.refreshing" : "runners.refresh")}
+            {t(refreshing ? "runnerView.refreshing" : "runnerView.refresh")}
           </Button>
         )}
       />

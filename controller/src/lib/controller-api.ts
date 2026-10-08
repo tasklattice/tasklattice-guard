@@ -9,6 +9,8 @@ import type {
 } from "../../shared/lifecycle";
 import type { CapabilityBindingId, ImplementedGuardrailRailType } from "../../shared/guardrail-catalog";
 import type { PlatformStatusSnapshot } from "../../shared/platform-status";
+import type { SystemHealthSnapshot } from "../../shared/component-health";
+export type { SystemHealthSnapshot } from "../../shared/component-health";
 import type { GuardrailVersionDeletionImpact } from "../../shared/guardrail-version-deletion";
 export type { GuardrailVersionDeletionImpact } from "../../shared/guardrail-version-deletion";
 
@@ -389,6 +391,18 @@ export const getControllerSystemStatus = async () => {
   if (response.status === 200 || response.status === 503) return response.json() as Promise<SystemStatus>;
   throw new Error(`System status failed with status ${response.status}.`);
 };
+export const getControllerSystemHealth = async (signal?: AbortSignal) => {
+  const timeout = AbortSignal.timeout(10_000);
+  const snapshot = await requestController<SystemHealthSnapshot>("/api/v1/system/health", {
+    signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+  });
+  if (!snapshot?.components?.controlPlane || !snapshot.components.dataPlane
+    || !["healthy", "unhealthy", "unknown"].includes(snapshot.status)
+    || !Number.isFinite(Date.parse(snapshot.observedAt))) {
+    throw new Error("Component health response is unavailable.");
+  }
+  return snapshot;
+};
 export const getModelConfiguration = async () => {
   const view = await requestController<ModelConfigurationView>("/api/v1/model-configuration");
   if (!view.draft?.assignments?.bindings) {
@@ -434,7 +448,9 @@ export const getControllerEndpointDeletionImpact = (id: string) => requestContro
 export const deleteControllerEndpoint = (id: string, input: { reason: string; confirmRecentTraffic: boolean; confirmationName?: string | undefined }) => requestController<void>(`/api/v1/endpoints/${encodeURIComponent(id)}`, json("DELETE", input));
 
 export { listTrafficRouters as listControllerRouters } from "./traffic-routing-api";
-export const listRunnerPools = () => requestController<Collection<RunnerPool>>("/api/v1/runner-pools");
+export const listRunnerPools = (signal?: AbortSignal) => requestController<Collection<RunnerPool>>("/api/v1/runner-pools", {
+  signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(10_000)]) : AbortSignal.timeout(10_000),
+});
 export const updateRunnerPool = (id: string, input: Pick<RunnerPool, "desiredReplicas" | "safeRpsPerRunner" | "maxConcurrencyPerRunner">) => requestController<RunnerPool>(`/api/v1/runner-pools/${encodeURIComponent(id)}`, json("PATCH", input));
 export const removeRunnerInstance = (runnerId: string, options?: { force: true; bootId: string }) => {
   const query = options ? `?${new URLSearchParams({ force: "true", bootId: options.bootId })}` : "";

@@ -30,9 +30,9 @@ vi.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (key: string) => ({
       "runners.pageTitle": "Runner",
-      "runners.description": "Inspect Runner capacity and convergence.",
-      "runners.refresh": "Refresh Runner",
-      "runners.refreshing": "Refreshing Runner…",
+      "runnerView.description": "Inspect Runner capacity and convergence.",
+      "runnerView.refresh": "Refresh Runner",
+      "runnerView.refreshing": "Refreshing Runner…",
     } as Record<string, string>)[key] ?? key,
   }),
 }));

@@ -1,7 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { runnerViewEn } from "@/runner-view-i18n";
 import type { RunnerPool } from "@/lib/controller-api";
 
 import { RunnerCapacitySection } from "./runner-capacity";
@@ -9,6 +10,7 @@ import { RunnerCapacitySection } from "./runner-capacity";
 const mocks = vi.hoisted(() => ({
   listRunnerPools: vi.fn(),
   removeRunnerInstance: vi.fn(),
+  updateRunnerPool: vi.fn(),
   role: "admin",
   toastSuccess: vi.fn(),
 }));
@@ -43,7 +45,7 @@ vi.mock("react-i18next", () => ({
       };
       return Object.entries(values ?? {}).reduce(
         (label, [name, value]) => label.replace(`{{${name}}}`, value),
-        labels[key] ?? key.split(".").at(-1) ?? key,
+        (key.startsWith("runnerView.") ? runnerText(key, values) : labels[key]) ?? key.split(".").at(-1) ?? key,
       );
     },
     i18n: { language: "en", exists: () => false },
@@ -59,9 +61,10 @@ vi.mock("@/lib/auth", () => ({
 }));
 
 vi.mock("@/lib/controller-api", () => ({
+  ControllerRequestError: class ControllerRequestError extends Error {},
   listRunnerPools: (...args: unknown[]) => mocks.listRunnerPools(...args),
   removeRunnerInstance: (...args: unknown[]) => mocks.removeRunnerInstance(...args),
-  updateRunnerPool: vi.fn(),
+  updateRunnerPool: (...args: unknown[]) => mocks.updateRunnerPool(...args),
 }));
 
 const runnerPool: RunnerPool = {
@@ -113,162 +116,190 @@ const runnerPool: RunnerPool = {
     queueDepth: 0,
     errorRate: 0,
     latencyP95Ms: 0,
+    worstRunnerLatencyP95Ms: 0,
     recommendedReplicas: 1,
     headroomRps: 50,
   },
 };
 
-function renderPage() {
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  });
-  return render(<QueryClientProvider client={client}><RunnerCapacitySection /></QueryClientProvider>);
+
+function runnerText(key: string, values?: Record<string, string | number>) {
+  const path = key.replace("runnerView.", "");
+  const plural = values?.count !== undefined ? `${path}_${values.count === 1 ? "one" : "other"}` : path;
+  const dictionary = runnerViewEn as unknown as Record<string, unknown>;
+  return (dictionary[plural] ?? path.split(".").reduce<unknown>((object, part) => (object as Record<string, unknown>)?.[part], dictionary)) as string;
+}
+const clients: QueryClient[] = [];
+function renderPage(showHeader = true) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+  clients.push(client);
+  render(<QueryClientProvider client={client}><RunnerCapacitySection showHeader={showHeader} /></QueryClientProvider>);
+  return client;
+}
+async function expand(id: string) {
+  fireEvent.click(await screen.findByRole("button", { name: id, exact: true }));
+}
+async function editCapacity() {
+  await screen.findByRole("button", { name: "runner-ready", exact: true });
+  fireEvent.click(screen.getByRole("button", { name: "planningTitle" }));
+  fireEvent.click(screen.getByRole("button", { name: "Edit capacity targets" }));
 }
 
-describe("Runner capacity removal", () => {
-  beforeEach(() => {
-    mocks.role = "admin";
-    mocks.listRunnerPools.mockReset().mockResolvedValue({ items: [runnerPool] });
-    mocks.removeRunnerInstance.mockReset().mockResolvedValue(undefined);
-    mocks.toastSuccess.mockReset();
+beforeEach(() => {
+  mocks.role = "admin";
+  mocks.listRunnerPools.mockReset().mockResolvedValue({ items: [runnerPool] });
+  mocks.removeRunnerInstance.mockReset().mockResolvedValue(undefined);
+  mocks.updateRunnerPool.mockReset().mockResolvedValue(runnerPool);
+  mocks.toastSuccess.mockReset();
+});
+afterEach(() => { cleanup(); clients.splice(0).forEach(client => client.clear()); });
+
+describe("Runner fleet overview and details", () => {
+  it("prioritizes serving count and instance rows, with technical details collapsed", async () => {
+    renderPage(false);
+    expect(await screen.findByRole("heading", { name: "1 Runner serving" })).toBeTruthy();
+    expect(screen.getByText("1 registered Runner is offline. All connected Runners have applied their current configuration.")).toBeTruthy();
+    expect(screen.getByText("Capacity target: 2 Runners")).toBeTruthy();
+    expect(screen.getByText(/1 currently serving/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "runner-ready" }).getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByText("NeMo version")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Runner capacity" })).toBeNull();
+    await expand("runner-ready");
+    expect(screen.getByRole("button", { name: "runner-ready" }).getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByText("0.24.0")).toBeTruthy();
+    expect(screen.getByText("Applied / current configuration version")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Remove runner-ready/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "runner-ready" }));
+    expect(screen.queryByText("NeMo version")).toBeNull();
   });
 
-  afterEach(cleanup);
-
-  it("offers removal only for an offline Runner and confirms it in the shared side Sheet", async () => {
+  it("shows pending configuration separately from an offline registration", async () => {
+    mocks.listRunnerPools.mockResolvedValue({ items: [{ ...runnerPool, capacity: { ...runnerPool.capacity, readyRunners: 0 }, instances: [runnerPool.instances[0], { ...runnerPool.instances[1], status: "syncing", appliedGeneration: 1 }] }] });
     renderPage();
+    expect(await screen.findByRole("heading", { name: "1 Runner updating configuration" })).toBeTruthy();
+    expect(screen.getByText("1 registered Runner is offline. 1 connected Runner has not applied its current configuration yet.")).toBeTruthy();
+    expect(screen.getByText("Applied 1 · Current 2")).toBeTruthy();
+    expect(screen.getByText("Not confirmed")).toBeTruthy();
+    expect(screen.getByText("Last reported version 2")).toBeTruthy();
+  });
 
-    const [removeOffline] = await screen.findAllByRole("button", { name: "Remove runner-offline" });
-    expect(screen.queryByRole("button", { name: "Remove runner-ready" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Force remove runner-ready" })).toBeNull();
+  it("does not present an offline Runner's previous load as current measurements", async () => {
+    mocks.listRunnerPools.mockResolvedValue({ items: [{ ...runnerPool, capacity: { ...runnerPool.capacity, readyRunners: 0 }, instances: [{ ...runnerPool.instances[0], load: { inflight: 42, queueDepth: 17, cpuUtilization: 0.9, memoryUtilization: 0.8 } }] }] });
+    renderPage();
+    expect(await screen.findByRole("heading", { name: "No Runners serving" })).toBeTruthy();
+    const row = screen.getByRole("row", { name: /runner-offline/ });
+    expect(within(row).queryByText("42 / 17")).toBeNull();
+    await expand("runner-offline");
+    expect(screen.queryByText("90% / 80%")).toBeNull();
+    expect(screen.getByText(/last reported version does not confirm/)).toBeTruthy();
+  });
 
-    fireEvent.click(removeOffline);
+  it("shows registration guidance when a pool has no instances", async () => {
+    mocks.listRunnerPools.mockResolvedValue({ items: [{ ...runnerPool, instances: [], capacity: { ...runnerPool.capacity, readyRunners: 0, totalRunners: 0 } }] });
+    renderPage();
+    expect(await screen.findByRole("heading", { name: "No Runners registered" })).toBeTruthy();
+    expect(screen.getAllByText("Waiting for a Runner to register with the Controller.")).toHaveLength(2);
+    expect(screen.queryByText("All connected Runners have applied their current configuration.")).toBeNull();
+  });
+
+  it("shows a retrieval failure and recovers through retry", async () => {
+    mocks.listRunnerPools.mockRejectedValueOnce(new Error("Connection unavailable"));
+    renderPage();
+    expect(await screen.findByRole("heading", { name: "Unable to load Runner status" })).toBeTruthy();
+    expect(screen.queryByText("1 Runner serving")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "retry" }));
+    expect(await screen.findByRole("heading", { name: "1 Runner serving" })).toBeTruthy();
+  });
+
+  it("replaces stale serving claims after a background refresh fails", async () => {
+    const client = renderPage();
+    await screen.findByRole("heading", { name: "1 Runner serving" });
+    mocks.listRunnerPools.mockRejectedValue(new Error("Connection unavailable"));
+    await act(async () => { await client.invalidateQueries({ queryKey: ["resources", "runner-pools"] }); });
+    expect(await screen.findByRole("heading", { name: "Unable to load Runner status" })).toBeTruthy();
+    expect(screen.queryByText("1 Runner serving")).toBeNull();
+    expect(screen.queryByRole("button", { name: "runner-offline" })).toBeNull();
+  });
+});
+
+describe("Runner capacity planning", () => {
+  it("opens planning on demand and saves the same capacity contract", async () => {
+    renderPage();
+    await editCapacity();
+    expect(screen.getByText(/Changing them does not start or stop Runners/)).toBeTruthy();
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Desired Runners" }), { target: { value: "3" } });
+    fireEvent.change(screen.getByRole("spinbutton", { name: "safeRpsPerRunner" }), { target: { value: "12.5" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save targets" }));
+    await waitFor(() => expect(mocks.updateRunnerPool).toHaveBeenCalledWith("default", { desiredReplicas: 3, safeRpsPerRunner: 12.5, maxConcurrencyPerRunner: 64 }));
+    await waitFor(() => expect(screen.queryByRole("spinbutton", { name: "Desired Runners" })).toBeNull());
+  });
+
+  it("validates the default group's minimum target and preserves inputs on save failure", async () => {
+    mocks.updateRunnerPool.mockRejectedValue(new Error("Capacity update failed"));
+    renderPage();
+    await editCapacity();
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Desired Runners" }), { target: { value: "1" } });
+    expect((screen.getByRole("button", { name: "Save targets" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Desired Runners" }), { target: { value: "3" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save targets" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("Capacity update failed");
+    expect((screen.getByRole("spinbutton", { name: "Desired Runners" }) as HTMLInputElement).value).toBe("3");
+    mocks.updateRunnerPool.mockResolvedValue(runnerPool);
+    fireEvent.click(screen.getByRole("button", { name: "Save targets" }));
+    await waitFor(() => expect(screen.queryByRole("spinbutton")).toBeNull());
+  });
+
+  it("allows non-admins to inspect planning without changing targets", async () => {
+    mocks.role = "member";
+    renderPage();
+    await screen.findByRole("button", { name: "runner-ready" });
+    fireEvent.click(screen.getByRole("button", { name: "planningTitle" }));
+    expect(screen.getByText("Recommended Runners")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Edit capacity targets" })).toBeNull();
+  });
+});
+
+describe("Runner removal permissions and recovery", () => {
+  it("offers offline removal in expanded details and preserves its confirmation", async () => {
+    renderPage();
+    expect(screen.queryByRole("button", { name: "Remove runner-offline" })).toBeNull();
+    await expand("runner-offline");
+    fireEvent.click(screen.getByRole("button", { name: "Remove runner-offline" }));
     expect(screen.getByText("Remove this offline Runner?")).toBeTruthy();
-    expect(screen.getByText(/runtime events, and audit history remain/i)).toBeTruthy();
-
+    expect(screen.getByText(/runtime events, and audit history remain/)).toBeTruthy();
+    expect(mocks.removeRunnerInstance).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Remove Runner" }));
-
     await waitFor(() => expect(mocks.removeRunnerInstance).toHaveBeenCalledWith("runner-offline"));
     await waitFor(() => expect(mocks.toastSuccess).toHaveBeenCalledWith("Offline Runner removed"));
   });
 
-  it("does not expose removal controls to a non-administrator", async () => {
-    mocks.role = "member";
+  it.each([0, 1])("preserves force removal with boot identity during syncing (applied=%s)", async appliedGeneration => {
+    mocks.listRunnerPools.mockResolvedValue({ items: [{ ...runnerPool, instances: [{ ...runnerPool.instances[1], status: "syncing", appliedGeneration }] }] });
     renderPage();
-
-    expect((await screen.findAllByText("runner-offline")).length).toBe(2);
-    expect(screen.queryByRole("button", { name: /Remove runner-/ })).toBeNull();
-  });
-
-  it("keeps the Sheet open and shows a reconnect conflict", async () => {
-    mocks.removeRunnerInstance.mockRejectedValue(new Error("Only an offline Runner registration can be removed."));
-    renderPage();
-
-    fireEvent.click((await screen.findAllByRole("button", { name: "Remove runner-offline" }))[0]);
-    fireEvent.click(screen.getByRole("button", { name: "Remove Runner" }));
-
-    expect((await screen.findByRole("alert")).textContent).toContain("Only an offline Runner registration can be removed.");
-    expect(screen.getByText("Remove this offline Runner?")).toBeTruthy();
-  });
-});
-
-describe("Runner configuration convergence", () => {
-  beforeEach(() => {
-    mocks.role = "admin";
-    mocks.listRunnerPools.mockReset().mockResolvedValue({ items: [runnerPool] });
-    mocks.removeRunnerInstance.mockReset().mockResolvedValue(undefined);
-  });
-
-  afterEach(cleanup);
-
-  it.each([0, 1])("offers force removal during initialization/sync (applied=%s)", async (appliedGeneration) => {
-    mocks.listRunnerPools.mockResolvedValue({ items: [{ ...runnerPool, instances: [{
-      ...runnerPool.instances[1]!, status: "syncing", appliedGeneration,
-    }] }] });
-    renderPage();
-
-    const buttons = await screen.findAllByRole("button", { name: "Force remove runner-ready" });
-    expect(buttons).toHaveLength(2);
-    fireEvent.click(buttons[appliedGeneration]!);
+    await expand("runner-ready");
+    fireEvent.click(screen.getByRole("button", { name: "Force remove runner-ready" }));
     expect(screen.getByText("Force remove this Runner?")).toBeTruthy();
     expect(screen.getByText(/does not stop its process or delete its Pod/)).toBeTruthy();
     expect(mocks.removeRunnerInstance).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Force remove Runner" }));
-
     await waitFor(() => expect(mocks.removeRunnerInstance).toHaveBeenCalledWith("runner-ready", { force: true, bootId: "boot-ready" }));
-    await waitFor(() => expect(screen.queryByText("Force remove this Runner?")).toBeNull());
   });
 
-  it("hides force removal from members", async () => {
+  it.each(["offline", "syncing"] as const)("does not expose %s removal to non-admins", async status => {
     mocks.role = "member";
-    mocks.listRunnerPools.mockResolvedValue({ items: [{ ...runnerPool, instances: [{
-      ...runnerPool.instances[1]!, status: "syncing", appliedGeneration: 0,
-    }] }] });
+    mocks.listRunnerPools.mockResolvedValue({ items: [{ ...runnerPool, instances: [{ ...runnerPool.instances[1], status }] }] });
     renderPage();
-    await screen.findAllByText("runner-ready");
-    expect(screen.queryByRole("button", { name: /Force remove/ })).toBeNull();
+    await expand("runner-ready");
+    expect(screen.queryByRole("button", { name: /Remove runner-|Force remove runner-/ })).toBeNull();
   });
 
-  it("keeps a failed force removal open when the Runner has recovered", async () => {
-    mocks.listRunnerPools.mockResolvedValue({ items: [{ ...runnerPool, instances: [{
-      ...runnerPool.instances[1]!, status: "syncing", appliedGeneration: 0,
-    }] }] });
-    mocks.removeRunnerInstance.mockRejectedValue(new Error("Runner state or registration changed."));
+  it("keeps the removal confirmation open when the Runner reconnects", async () => {
+    mocks.removeRunnerInstance.mockRejectedValue(new Error("Only an offline Runner registration can be removed."));
     renderPage();
-    fireEvent.click((await screen.findAllByRole("button", { name: "Force remove runner-ready" }))[0]!);
-    fireEvent.click(screen.getByRole("button", { name: "Force remove Runner" }));
-    expect((await screen.findByRole("alert")).textContent).toContain("Runner state or registration changed.");
-    expect(screen.getByText("Force remove this Runner?")).toBeTruthy();
-  });
-
-  it("summarizes convergence across connected Runners and separates an offline registration", async () => {
-    renderPage();
-
-    const summary = await screen.findByRole("status");
-    expect(summary.textContent).toContain("Configuration converged");
-    expect(summary.textContent).toContain("1/1 connected Runners · Desired generation 2");
-    expect(screen.getAllByText("Converged")).toHaveLength(2);
-    expect(screen.getAllByText("Applied 2 · Desired 2")).toHaveLength(2);
-    expect(screen.getAllByText("Not connected")).toHaveLength(2);
-    expect(screen.getAllByText("Last reported 2 · Desired 2")).toHaveLength(2);
-  });
-
-  it("can omit its internal header when the Runner page owns the page title", async () => {
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(<QueryClientProvider client={client}><RunnerCapacitySection showHeader={false} /></QueryClientProvider>);
-
-    expect(await screen.findByRole("region", { name: "Runner capacity" })).toBeTruthy();
-    expect(screen.queryByRole("heading", { name: "Runner capacity" })).toBeNull();
-    expect((await screen.findAllByText("GuardRails 0")).length).toBeGreaterThan(0);
-  });
-
-  it("shows the pool and Runner as syncing with the generation lag", async () => {
-    mocks.listRunnerPools.mockResolvedValue({
-      items: [{
-        ...runnerPool,
-        instances: runnerPool.instances.map((runner) => runner.runnerId === "runner-ready"
-          ? { ...runner, status: "syncing" as const, appliedGeneration: 1 }
-          : runner),
-      }],
-    });
-    renderPage();
-
-    const summary = await screen.findByRole("status");
-    expect(summary.textContent).toContain("Configuration syncing");
-    expect(summary.textContent).toContain("0/1 connected Runners · Desired generation 2");
-    expect(screen.getAllByText("Syncing")).toHaveLength(2);
-    expect(screen.getAllByText("Applied 1 · Desired 2")).toHaveLength(2);
-    expect(screen.getAllByText("Lag: 1 generation(s)")).toHaveLength(2);
-  });
-
-  it("shows an unavailable convergence state when the pool has no connected Runner", async () => {
-    mocks.listRunnerPools.mockResolvedValue({
-      items: [{ ...runnerPool, instances: runnerPool.instances.filter((runner) => runner.status === "offline") }],
-    });
-    renderPage();
-
-    const summary = await screen.findByRole("status");
-    expect(summary.textContent).toContain("No connected Runners");
-    expect(summary.textContent).toContain("Waiting for a Runner to apply desired generation 2.");
+    await expand("runner-offline");
+    fireEvent.click(screen.getByRole("button", { name: "Remove runner-offline" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove Runner" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("Only an offline Runner registration can be removed.");
+    expect(screen.getByText("Remove this offline Runner?")).toBeTruthy();
   });
 });
