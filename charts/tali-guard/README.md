@@ -274,6 +274,36 @@ helm upgrade --install tali-guard ./charts/tali-guard \
   --timeout 15m
 ```
 
+## Guardrail promotion (UAT → production)
+
+UAT and production are separate installations. UAT signs release packages with
+a dedicated key (keep it separate from `security.artifactSigning`):
+
+```bash
+kubectl create secret generic guard-package-signing --from-file=private-key.pem=uat-package.pem
+helm upgrade --install guard charts/tali-guard ... \
+  --set controller.promotion.export.existingSecret=guard-package-signing \
+  --set controller.promotion.export.sourceId=bank-uat \
+  --set controller.promotion.export.keyId=uat-2026
+```
+
+Production only receives released Guardrails. It disables authoring at the API
+and trusts the UAT public key through a ConfigMap (changed through your normal
+change process):
+
+```bash
+kubectl create configmap guard-package-trust --from-file=trust.json
+helm upgrade --install guard charts/tali-guard ... \
+  --set controller.promotion.authoringEnabled=false \
+  --set controller.promotion.trust.existingConfigMap=guard-package-trust
+```
+
+`trust.json` is `{"sources":[{"id":"bank-uat","name":"Bank UAT","keys":[{"id":"uat-2026","publicKeyPem":"..."}],"reservedGuardrailIds":[]}]}`.
+List `guardrail-default` in `reservedGuardrailIds` only for the source allowed to
+supply the Default Guardrail. Optionally mount a signed Default package with
+`controller.promotion.baselinePackage.existingConfigMap` (binary key
+`baseline.guardrail.zip`); it becomes the runtime baseline only if none is set.
+
 ## Scaling contract
 
 Controller remains one replica in this chart version. GuardRails 0 defaults to

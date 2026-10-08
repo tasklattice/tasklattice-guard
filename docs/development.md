@@ -205,7 +205,9 @@ ownership and extension rules.
 `CompileRequest` without starting a Runner, connecting to Controller, loading
 Policy Library, or leasing model credentials. `runner/compiler.py` is the Runner
 adapter: it captures the active target model capabilities and delegates to this
-compiler. Draft validation, preview, and release use the same compilation path.
+compiler. Draft validation and preview use the same compilation path; a passed
+test run returns its exact candidate Artifact, and publishing signs that content
+without compiling again.
 
 The input must contain all selected local Policy definitions and exact versions,
 Rule parameters, and programmable Policy source snapshots. A Policy ID alone is
@@ -234,27 +236,51 @@ model endpoints, credentials and weights remain deployment concerns. The generic
 local detectors, Rule expansion and snapshot decoding live in
 `runner/toolkit/policy_runtime/`, independently of the authoring Library.
 
-### Export a published Guardrail
+### Promote a Guardrail between environments
 
-In **Guardrails → row Actions → Export…** (or **Export…** on a version page),
-choose a ready immutable version and download it as
-`<guardrail-id>-<version>.artifact.json`. The Latest version is preselected.
-Unpublished draft edits are excluded; publish a version first if none exists. Downloads do not recompile or query Policy
-Library. The signed Artifact contains the frozen Policy implementations, NeMo
-configuration, Colang, prompts, bindings, dependency versions, checksum and signature.
+UAT authors and tests; production only receives released versions. The design
+is `docs/guardrail-self-contained-promotion-design.zh-CN.md`.
 
-The authenticated, read-scoped API also supports explicit historical versions:
-`GET /api/v1/guardrails/{id}/versions/{version}/export`. It returns the
-`tasklattice.guard.control.v1.Artifact` Protobuf JSON contract as an attachment.
-Read it directly with `google.protobuf.json_format.Parse(text, protocol.Artifact())`;
-the checksum and signature remain unchanged. Versions without complete Policy
-snapshots must be published again before export. No live model configuration,
-credentials, model weights, Router assignments or request logs are included.
+**Export (UAT).** **Guardrails → row Actions → Export…** (or **Export…** on a
+version) selects one or more published versions (Latest preselected) and
+downloads one signed `.guardrail.zip`. Each version carries its exact Artifact
+content, a frozen inspection snapshot, derived runtime requirements and the test
+evidence for that content digest. Export refuses versions that cannot prove what
+was tested or lack a complete Policy snapshot. API:
+`GET /api/v1/guardrails/{id}/package?versions=a,b`. Configure the source identity
+and a package key that is separate from the Artifact signing key:
+`CONTROLLER_PACKAGE_SOURCE_ID`, `CONTROLLER_PACKAGE_SOURCE_NAME`,
+`CONTROLLER_PACKAGE_SIGNING_KEY_PATH`, optional `CONTROLLER_PACKAGE_SIGNING_KEY_ID`.
 
-An export still requires the matching TaskLattice/NeMo runtime and model capabilities.
-It does not publish into another Controller; an import workflow and
-content-addressed incremental distribution are separate work. Trust the source
-Controller's signing public key through a separate trusted channel before loading.
+**Import (production).** `CONTROLLER_AUTHORING_ENABLED=false` disables Policy
+Library, drafts, tests, publication and draft playgrounds at the API (403
+`authoring_disabled`); the Controller then never loads the catalog.
+`CONTROLLER_PACKAGE_TRUST_PATH` names a JSON file of trusted sources:
+`{"sources":[{"id","name","keys":[{"id","publicKeyPem"}],"reservedGuardrailIds":[]}]}`.
+**Guardrails → Import** uploads a package, shows the source, each version's
+source test result, new/existing/conflict state and a Runner load check, then
+imports only what is new. Imported Guardrails are read-only. Routing an imported
+version requires a recent passing load check on every pool; a Router change is
+refused otherwise. The Default Guardrail's version is chosen explicitly as the
+runtime baseline (`PUT /api/v1/system/baseline`, or a startup package via
+`CONTROLLER_BASELINE_PACKAGE_PATH`); until then status is `degraded` with
+`baseline_not_configured`.
+
+**CLI.** `guardctl` supports `export <guardrail-id> [--versions=a,b] [--out=file]`
+and `import <file> [--versions=a,b] [--confirm]` (preview only without `--confirm`).
+
+**End-to-end check.** Two isolated local deployments and the full regression:
+
+```bash
+scripts/promotion-two-stacks.sh start      # UAT :18080/:18091, PROD :28080/:28091
+eval "$(scripts/promotion-two-stacks.sh env)"
+cd controller && node --import tsx ../scripts/regress_guardrail_promotion.mjs
+scripts/promotion-two-stacks.sh stop       # or reset to drop both databases
+```
+
+It needs a loopback PostgreSQL (`GUARD_PROMOTION_PG`, default
+`postgresql://guard:guard@127.0.0.1:55432`). Unit and PostgreSQL coverage:
+`GUARD_TEST_POSTGRES_URL=... npx vitest run server/services/guardrail-packages.postgres.test.ts`.
 
 The independence contract tests physically omit `policy_library/` in fresh
 processes, reproduce the checked-in Artifacts, and exercise health endpoints and
