@@ -171,6 +171,8 @@ export type ValidationRun = {
   guardrail_version: string;
   source_draft_version: number;
   status: "passed" | "failed" | "incomplete";
+  execution_status?: "queued" | "running" | "passed" | "failed";
+  progress?: import("../../shared/validation-progress").ValidationProgress | null;
   failure_reason?: string | null;
   metrics: ValidationMetrics;
   results: TestCaseResult[];
@@ -437,6 +439,7 @@ export type Guardrail = {
   draft_revision?: number;
   tested_current: boolean;
   published_current: boolean;
+  has_unpublished_changes?: boolean;
   latest_version?: string | null;
   published_version_count?: number;
   is_default: boolean;

@@ -115,7 +115,8 @@ function mapGuardrail(
   const latestValidation = value.latestValidationRun ? mapValidationRun(value.latestValidationRun) : null;
   const testedCurrent = Boolean(latestValidation && latestValidation.source_draft_version === value.draftRevision && latestValidation.status === "passed");
   const published = value.status === "active" && value.latestVersion !== null;
-  const publishedCurrent = published && value.latestSourceDraftRevision === value.draftRevision;
+  const hasUnpublishedChanges = value.hasUnpublishedChanges ?? !(published && value.latestSourceDraftRevision === value.draftRevision);
+  const publishedCurrent = published && !hasUnpublishedChanges;
   return {
     copy_origin: value.copyOrigin,
     id: value.id,
@@ -127,7 +128,7 @@ function mapGuardrail(
     safety_level: value.draftConfig.safetyLevel,
     output_delivery: value.draftConfig.outputDelivery,
     updated_at: value.updatedAt,
-    status: publishedCurrent ? (routerCount > 0 ? "protected" : "ready") : "needs_validation",
+    status: published ? (routerCount > 0 ? "protected" : "ready") : "needs_validation",
     latest_validation_run: latestValidation,
     router_count: routerCount,
     test_case_count: value.testCaseCount,
@@ -136,6 +137,7 @@ function mapGuardrail(
     draft_revision: value.draftRevision,
     tested_current: testedCurrent,
     published_current: publishedCurrent,
+    has_unpublished_changes: hasUnpublishedChanges,
     latest_version: value.latestVersion,
     published_version_count: publishedVersionCount,
     is_default: isDefault,
@@ -198,15 +200,16 @@ export async function createGuardrail(input: {
 
 export const updateGuardrail = (
   id: string,
-  input: Partial<Pick<Guardrail, "name" | "allowed_topics" | "restricted_topics" | "topic_control_mode" | "policy_bindings" | "safety_level" | "output_delivery">>,
+  input: Partial<Pick<Guardrail, "name" | "allowed_topics" | "restricted_topics" | "topic_control_mode" | "policy_bindings" | "safety_level" | "output_delivery">> & { expectedDraftRevision?: number },
 ) => updateGuardrailDraft(id, input);
 
 async function updateGuardrailDraft(
   id: string,
-  input: Partial<Pick<Guardrail, "name" | "allowed_topics" | "restricted_topics" | "topic_control_mode" | "policy_bindings" | "safety_level" | "output_delivery">>,
+  input: Partial<Pick<Guardrail, "name" | "allowed_topics" | "restricted_topics" | "topic_control_mode" | "policy_bindings" | "safety_level" | "output_delivery">> & { expectedDraftRevision?: number },
 ): Promise<Guardrail> {
   const current = await controllerApi.getControllerGuardrail(id);
   const updated = await controllerApi.updateControllerGuardrail(id, {
+    expectedDraftRevision: input.expectedDraftRevision ?? current.draftRevision,
     ...(input.name !== undefined ? { name: input.name } : {}),
     draftConfig: {
       allowedTopics: input.allowed_topics ?? current.draftConfig.allowedTopics,
@@ -219,6 +222,11 @@ async function updateGuardrailDraft(
   });
   return mapGuardrail(updated, 0, current.versions.length);
 }
+
+export const getGuardrailDraftChanges = (id: string) => controllerApi.requestController<import("../../shared/guardrail-draft-changes").GuardrailDraftChanges>(`/api/v1/guardrails/${encodeURIComponent(id)}/draft-changes`);
+export const discardGuardrailDraft = (id: string, expectedDraftRevision: number, expectedBaselineVersion: string) => controllerApi.requestController<controllerApi.Guardrail>(
+  `/api/v1/guardrails/${encodeURIComponent(id)}/discard-draft`, { method: "POST", body: JSON.stringify({ expectedDraftRevision, expectedBaselineVersion }) },
+).then(value => mapGuardrail(value, 0));
 
 export async function getGuardrailDeletionImpact(id: string): Promise<GuardrailDeletionImpact> {
   const [impact, guardrail] = await Promise.all([
@@ -480,7 +488,9 @@ function moduleTimeoutForStep(step: Record<string, unknown>, modules: Record<str
 export const getGuardrailLoggingSettings = (id: string) => controllerApi.requestController<CurrentLoggingSettings>(`/api/v1/guardrails/${encodeURIComponent(id)}/logging`).then(mapLogging);
 export const updateGuardrailLoggingSettings = (id: string, level: LoggingLevel, acknowledgeCost = false) => controllerApi.requestController<CurrentLoggingSettings>(`/api/v1/guardrails/${encodeURIComponent(id)}/logging`, { method: "PATCH", body: JSON.stringify({ level, acknowledgeCost }) }).then(mapLogging);
 
-export const createValidationRun = (guardrailId: string) => controllerApi.requestController<controllerApi.ValidationRun>(`/api/v1/guardrails/${encodeURIComponent(guardrailId)}/test-runs`, { method: "POST" }).then(waitForValidation);
+type ValidationObserver = { onProgress?: (run: ValidationRun) => void };
+export const createValidationRun = (guardrailId: string, observer?: ValidationObserver) => controllerApi.requestController<controllerApi.ValidationRun>(`/api/v1/guardrails/${encodeURIComponent(guardrailId)}/test-runs`, { method: "POST" }).then(run => waitForValidation(run, observer));
+export const resumeValidationRun = (runId: string, observer?: ValidationObserver) => controllerApi.requestController<controllerApi.ValidationRun>(`/api/v1/test-runs/${encodeURIComponent(runId)}`).then(run => waitForValidation(run, observer));
 export async function getValidationRuns(guardrailId?: string): Promise<Collection<ValidationRun>> {
   const suffix = guardrailId ? `?guardrailId=${encodeURIComponent(guardrailId)}` : "";
   const response = await controllerApi.requestController<{ items: controllerApi.ValidationRun[]; count: number }>(`/api/v1/test-runs${suffix}`);
@@ -563,6 +573,8 @@ function mapValidationRun(value: controllerApi.ValidationRun): ValidationRun {
     guardrail_version: value.guardrailVersion,
     source_draft_version: value.sourceDraftRevision,
     status: value.status === "passed" ? "passed" : value.status === "failed" ? "failed" : "incomplete",
+    execution_status: value.status,
+    progress: value.progress ?? null,
     failure_reason: value.failureReason,
     metrics: {
       total: value.metrics.total,
@@ -623,14 +635,17 @@ function mapValidationResult(value: Record<string, unknown>): ValidationRun["res
   };
 }
 
-async function waitForValidation(initial: controllerApi.ValidationRun): Promise<ValidationRun> {
+async function waitForValidation(initial: controllerApi.ValidationRun, observer?: ValidationObserver): Promise<ValidationRun> {
   let current = initial;
   if (!initial.id) throw new Error("Policy validation did not return a run ID.");
   const deadline = Date.now() + 5 * 60_000;
+  observer?.onProgress?.(mapValidationRun(current));
   while ((current.status === "queued" || current.status === "running") && Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 1_000));
     current = await controllerApi.requestController<controllerApi.ValidationRun>(`/api/v1/test-runs/${encodeURIComponent(initial.id)}`);
+    observer?.onProgress?.(mapValidationRun(current));
   }
+  if (current.status === "queued" || current.status === "running") throw new Error("Timed out waiting for the test report. The test may still be running.");
   return mapValidationRun(current);
 }
 

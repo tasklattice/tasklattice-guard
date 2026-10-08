@@ -153,7 +153,7 @@ describe("Testing Report acceptance evidence", () => {
     const onRun = vi.fn();
     render(<GuardrailValidationHistory runs={[validationRun]} loading={false} error={null} canManage running={false} onRun={onRun} onOpen={onOpen} onOpenTarget={vi.fn()} />);
 
-    expect(screen.getByRole("heading", { name: "Testing Reports" })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Testing Reports" })).toBeTruthy();
     expect(screen.queryByText("Guardrail", { selector: "th" })).toBeNull();
     fireEvent.click(screen.getByText("finance-001").closest("tr")!);
     expect(onOpen).toHaveBeenCalledWith(validationRun);

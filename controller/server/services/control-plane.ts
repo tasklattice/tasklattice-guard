@@ -1,4 +1,5 @@
 import { callFailureEvents, runtimeLogSource } from "./runtime-log-source.js";
+import { advancesValidationProgress, type ValidationProgress } from "../../shared/validation-progress.js";
 import { queryAuditEvents } from "./audit-events.js";
 import type { AuditQuery } from "../../shared/audit-query.js";
 import type { EventSeverity } from "../../shared/security-severity.js";
@@ -19,6 +20,8 @@ import type { ControllerConfig } from "../config.js";
 import type { ControllerDatabase } from "../db/client.js";
 import { planToWire } from "../control-channel/protocol-codec.js";
 import { guardrailArtifactExport } from "../domain/guardrail-artifact-export.js";
+import { describeDraftChanges, draftConfigContent, sameDraftContent, stableDraftValue, type DraftSnapshot } from "../domain/guardrail-draft-changes.js";
+import type { GuardrailDraftChanges } from "../../shared/guardrail-draft-changes.js";
 import {
   artifacts,
   auditEvents,
@@ -586,17 +589,21 @@ export class ControlPlaneService {
     name?: string | undefined;
     draftConfig?: GuardrailDraftConfig | undefined;
     runtimeProfile?: string | undefined;
+    expectedDraftRevision?: number | undefined;
   }) {
     const updated = await this.db.transaction(async (tx) => {
       const [existing] = await tx.select().from(guardrails).where(and(
         eq(guardrails.id, input.id), isNull(guardrails.deletedAt),
       )).for("update");
       if (!existing) throw new NotFoundError("Guardrail", input.id);
+      if (input.expectedDraftRevision !== undefined && input.expectedDraftRevision !== existing.draftRevision) {
+        throw new ConflictError("The draft changed while you were editing. Reload and review the latest changes before saving.", "guardrail_draft_conflict");
+      }
       const draftConfig = input.draftConfig ? normalizeGuardrailDraft(input.draftConfig) : normalizeGuardrailDraft(existing.draftConfig);
       await this.validateGuardrailDraft(draftConfig);
       // Runtime profile affects compilation just as a Policy edit does. A
       // validation for the old profile cannot authorize a new executable.
-      const draftChanged = input.draftConfig !== undefined
+      const draftChanged = stableDraftValue(draftConfigContent(draftConfig)) !== stableDraftValue(draftConfigContent(existing.draftConfig))
         || (input.runtimeProfile !== undefined && input.runtimeProfile !== existing.runtimeProfile);
       const nextExcluded = draftChanged ? await this.syncGeneratedTestCases(tx, input.id, draftConfig, existing.excludedTestCaseIds) : existing.excludedTestCaseIds;
       const [stored] = await tx.update(guardrails).set({
@@ -618,6 +625,59 @@ export class ControlPlaneService {
       return stored;
     });
     return this.guardrailSummary(updated);
+  }
+
+  async guardrailDraftChanges(id: string): Promise<GuardrailDraftChanges> {
+    return this.db.transaction(async tx => {
+      const [guardrail] = await tx.select().from(guardrails).where(and(eq(guardrails.id, id), isNull(guardrails.deletedAt))).for("share");
+      if (!guardrail) throw new NotFoundError("Guardrail", id);
+      const [baseline] = guardrail.latestVersion ? await tx.select().from(guardrailVersions).where(and(
+        eq(guardrailVersions.guardrailId, id), eq(guardrailVersions.version, guardrail.latestVersion),
+      )) : [];
+      const cases = await tx.select().from(testCases).where(eq(testCases.guardrailId, id));
+      const current: DraftSnapshot = { draftConfig: guardrail.draftConfig, runtimeProfile: guardrail.runtimeProfile,
+        loggingLevel: guardrail.loggingLevel, excludedTestCaseIds: guardrail.excludedTestCaseIds, testCases: cases };
+      const snapshot = baseline?.sourceSnapshot;
+      const complete = Boolean(snapshot?.testCases);
+      const hasUnpublishedChanges = snapshot && complete ? !sameDraftContent(snapshot, current)
+        : !baseline || baseline.sourceDraftRevision !== guardrail.draftRevision;
+      const compiling = await tx.select({ version: guardrailVersions.version }).from(guardrailVersions).where(and(
+        eq(guardrailVersions.guardrailId, id), eq(guardrailVersions.status, "compiling"),
+      )).limit(1);
+      return { draftRevision: guardrail.draftRevision, baselineVersion: guardrail.latestVersion,
+        baselineAvailable: !baseline || complete, hasUnpublishedChanges,
+        canDiscard: hasUnpublishedChanges && complete && baseline?.status === "ready" && compiling.length === 0,
+        changes: hasUnpublishedChanges && (!baseline || complete) ? describeDraftChanges(snapshot ?? null, current) : [],
+      };
+    });
+  }
+
+  async discardGuardrailDraft(input: { id: string; actorId: string; expectedDraftRevision: number; expectedBaselineVersion: string }) {
+    const restored = await this.db.transaction(async tx => {
+      const [guardrail] = await tx.select().from(guardrails).where(and(eq(guardrails.id, input.id), isNull(guardrails.deletedAt))).for("update");
+      if (!guardrail) throw new NotFoundError("Guardrail", input.id);
+      if (guardrail.draftRevision !== input.expectedDraftRevision || guardrail.latestVersion !== input.expectedBaselineVersion) {
+        throw new ConflictError("The draft or published baseline changed. Review the changes again before discarding.", "guardrail_draft_conflict");
+      }
+      const [baseline] = await tx.select().from(guardrailVersions).where(and(eq(guardrailVersions.guardrailId, input.id), eq(guardrailVersions.version, input.expectedBaselineVersion)));
+      const snapshot = baseline?.sourceSnapshot;
+      if (baseline?.status !== "ready" || !snapshot?.testCases) throw new ConflictError("This version has no complete source snapshot to restore.", "source_snapshot_unavailable");
+      const compiling = await tx.select({ version: guardrailVersions.version }).from(guardrailVersions).where(and(eq(guardrailVersions.guardrailId, input.id), eq(guardrailVersions.status, "compiling"))).limit(1);
+      if (compiling.length) throw new ConflictError("Wait for the pending publication to finish before discarding changes.", "guardrail_publication_pending");
+      const currentCases = await tx.select().from(testCases).where(eq(testCases.guardrailId, input.id));
+      if (sameDraftContent(snapshot, { draftConfig: guardrail.draftConfig, runtimeProfile: guardrail.runtimeProfile,
+        loggingLevel: guardrail.loggingLevel, excludedTestCaseIds: guardrail.excludedTestCaseIds, testCases: currentCases })) return guardrail;
+      await tx.delete(testCases).where(eq(testCases.guardrailId, input.id));
+      if (snapshot.testCases.length) await tx.insert(testCases).values(snapshot.testCases.map(item => ({ ...item, guardrailId: input.id, updatedAt: new Date() })));
+      const [updated] = await tx.update(guardrails).set({ draftConfig: snapshot.draftConfig, runtimeProfile: snapshot.runtimeProfile,
+        excludedTestCaseIds: snapshot.excludedTestCaseIds, draftRevision: increment(guardrails.draftRevision), updatedAt: new Date(),
+      }).where(eq(guardrails.id, input.id)).returning();
+      await tx.insert(auditEvents).values({ id: randomUUID(), kind: "guardrail.draft_discarded", actorId: input.actorId,
+        resourceType: "guardrail", resourceId: input.id, detail: { previousDraftRevision: guardrail.draftRevision, baselineVersion: baseline.version },
+      });
+      return updated!;
+    });
+    return this.guardrailSummary(restored);
   }
 
   async requestGuardrailPublish(input: {
@@ -1065,6 +1125,8 @@ export class ControlPlaneService {
 
   async deleteTestCase(input: { guardrailId: string; caseId: string; actorId: string }): Promise<void> {
     await this.db.transaction(async (tx) => {
+      const [guardrail] = await tx.select().from(guardrails).where(and(eq(guardrails.id, input.guardrailId), isNull(guardrails.deletedAt))).for("update");
+      if (!guardrail) throw new NotFoundError("Guardrail", input.guardrailId);
       const [item] = await tx.select().from(testCases).where(and(eq(testCases.guardrailId, input.guardrailId), eq(testCases.id, input.caseId))).limit(1).for("update");
       if (!item) throw new NotFoundError("Test Case", input.caseId);
       if (item.origin !== "custom") throw new ValidationError("Only custom Test Cases can be deleted. Exclude inherited Policy cases instead.");
@@ -1090,6 +1152,7 @@ export class ControlPlaneService {
       if (!item) throw new NotFoundError("Test Case", input.caseId);
       if (item.origin !== "generated") throw new ValidationError("Only inherited Policy Test Cases can be excluded.");
       const excluded = new Set(guardrail.excludedTestCaseIds);
+      if (excluded.has(input.caseId) === input.excluded) return item;
       if (input.excluded) excluded.add(input.caseId);
       else excluded.delete(input.caseId);
       await tx.update(guardrails).set({
@@ -1217,6 +1280,17 @@ export class ControlPlaneService {
     if (policyUpdate.length) return;
     await this.db.update(validationRuns).set({ status: "running" })
       .where(and(eq(validationRuns.id, runId), eq(validationRuns.status, "queued")));
+  }
+
+  async updateValidationProgress(runId: string, observation: Omit<ValidationProgress, "updatedAt">): Promise<void> {
+    await this.db.transaction(async tx => {
+      const [run] = await tx.select().from(validationRuns).where(eq(validationRuns.id, runId)).for("update");
+      // Policy tests use their own report contract; old/finished runs ignore late observations.
+      if (!run || (run.status !== "queued" && run.status !== "running")) return;
+      const progress = { ...observation, updatedAt: new Date().toISOString() };
+      if (!advancesValidationProgress(run.progress, progress, run.metrics.total)) return;
+      await tx.update(validationRuns).set({ status: "running", progress }).where(eq(validationRuns.id, runId));
+    });
   }
 
   async completeValidation(input: {
@@ -2366,10 +2440,16 @@ export class ControlPlaneService {
       .where(eq(validationRuns.guardrailId, row.id)).orderBy(desc(validationRuns.createdAt)).limit(1);
     const [caseCount] = await this.db.select({ value: count() }).from(testCases)
       .where(eq(testCases.guardrailId, row.id));
-    const [latestVersion] = row.latestVersion === null ? [] : await this.db.select({ sourceDraftRevision: guardrailVersions.sourceDraftRevision })
+    const [latestVersion] = row.latestVersion === null ? [] : await this.db.select({ sourceDraftRevision: guardrailVersions.sourceDraftRevision, sourceSnapshot: guardrailVersions.sourceSnapshot })
       .from(guardrailVersions).where(and(
         eq(guardrailVersions.guardrailId, row.id), eq(guardrailVersions.version, row.latestVersion),
       ));
+    let hasUnpublishedChanges = !latestVersion || latestVersion.sourceDraftRevision !== row.draftRevision;
+    if (hasUnpublishedChanges && latestVersion?.sourceSnapshot?.testCases) {
+      const cases = await this.db.select().from(testCases).where(eq(testCases.guardrailId, row.id));
+      hasUnpublishedChanges = !sameDraftContent(latestVersion.sourceSnapshot, { draftConfig: row.draftConfig, runtimeProfile: row.runtimeProfile,
+        loggingLevel: row.loggingLevel, excludedTestCaseIds: row.excludedTestCaseIds, testCases: cases });
+    }
     const { duplicateKey: _duplicateKey, copyOrigin, ...publicRow } = row;
     const { requestDigest: _requestDigest, ...publicOrigin } = copyOrigin ?? {};
     return {
@@ -2380,6 +2460,7 @@ export class ControlPlaneService {
       testCaseCount: caseCount?.value ?? 0,
       excludedTestCaseCount: row.excludedTestCaseIds.length,
       latestSourceDraftRevision: latestVersion?.sourceDraftRevision ?? null,
+      hasUnpublishedChanges,
     };
   }
 

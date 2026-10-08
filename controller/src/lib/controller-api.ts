@@ -146,6 +146,7 @@ export type Guardrail = {
   loggingLevel: "info" | "debug" | "trace";
   latestVersion: string | null;
   latestSourceDraftRevision: number | null;
+  hasUnpublishedChanges?: boolean;
   latestArtifactId: string | null;
   createdAt: string;
   updatedAt: string;
@@ -221,6 +222,7 @@ export type ValidationRun = {
   guardrailVersion: string;
   sourceDraftRevision: number;
   status: ValidationRunState;
+  progress?: import("../../shared/validation-progress").ValidationProgress | null;
   metrics: {
     total: number;
     passed: number;
@@ -436,7 +438,7 @@ export const listControllerGuardrails = () => requestController<Collection<Guard
 export const getControllerGuardrail = (id: string) => requestController<GuardrailDetail>(`/api/v1/guardrails/${encodeURIComponent(id)}`);
 export const createControllerGuardrail = (input: Pick<Guardrail, "name" | "draftConfig" | "runtimeProfile">) => requestController<Guardrail>("/api/v1/guardrails", json("POST", input));
 export const previewControllerGuardrailPlan = (input: Pick<Guardrail, "name" | "draftConfig" | "runtimeProfile">) => requestController<GuardrailPlanPreview>("/api/v1/authoring/plan-previews", json("POST", input));
-export const updateControllerGuardrail = (id: string, input: Partial<Pick<Guardrail, "name" | "draftConfig" | "runtimeProfile">>) => requestController<Guardrail>(`/api/v1/guardrails/${encodeURIComponent(id)}`, json("PATCH", input));
+export const updateControllerGuardrail = (id: string, input: Partial<Pick<Guardrail, "name" | "draftConfig" | "runtimeProfile">> & { expectedDraftRevision?: number }) => requestController<Guardrail>(`/api/v1/guardrails/${encodeURIComponent(id)}`, json("PATCH", input));
 export const publishControllerGuardrail = (id: string, expectedDraftRevision: number) => requestController<{ status: string; version: string }>(`/api/v1/guardrails/${encodeURIComponent(id)}/publish`, json("POST", { expectedDraftRevision }));
 export const markControllerGuardrailVersionActive = (id: string, version: string) => requestController<GuardrailVersion>(`/api/v1/guardrails/${encodeURIComponent(id)}/latest-version`, json("PUT", { version }));
 export const getControllerGuardrailDeletionImpact = (id: string) => requestController<DeletionImpact>(`/api/v1/guardrails/${encodeURIComponent(id)}/deletion-impact`);

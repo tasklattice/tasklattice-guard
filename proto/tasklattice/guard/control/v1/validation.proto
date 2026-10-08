@@ -7,6 +7,22 @@ import "enforcement_action.proto";
 import "evaluation.proto";
 import "runtime.proto";
 
+enum ValidationExecutionPhase {
+  VALIDATION_EXECUTION_PHASE_UNSPECIFIED = 0;
+  VALIDATION_EXECUTION_PHASE_PREPARING = 1;
+  VALIDATION_EXECUTION_PHASE_EXECUTING = 2;
+  VALIDATION_EXECUTION_PHASE_FINALIZING = 3;
+}
+
+// Actual execution observations. Completion is confirmed separately by ValidationResult.
+message ValidationProgress {
+  string runner_id = 1;
+  string run_id = 2;
+  ValidationExecutionPhase phase = 3;
+  int32 completed_cases = 4;
+  int32 passed_cases = 5;
+}
+
 // Reviewed Guardrail-local composition assertion; never inferred from observed output.
 message ValidationExpectedMatch {
   string policy_id = 1;

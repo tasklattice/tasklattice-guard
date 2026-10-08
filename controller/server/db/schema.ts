@@ -1,4 +1,5 @@
 import type { RouterDraft } from "../../shared/traffic-routing.js";
+import type { ValidationProgress } from "../../shared/validation-progress.js";
 import {
   bigint,
   boolean,
@@ -310,6 +311,7 @@ export const validationRuns = pgTable("guardrail_validation_run", {
   guardrailVersion: text("guardrail_version").notNull(),
   sourceDraftRevision: integer("source_draft_revision").notNull(),
   status: text("status").$type<ValidationRunState>().notNull().default("queued"),
+  progress: jsonb("progress").$type<ValidationProgress>(),
   metrics: jsonb("metrics").$type<ValidationMetrics>().notNull().default({
     total: 0,
     passed: 0,

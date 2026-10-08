@@ -63,6 +63,21 @@ const activeConfiguration = (revisionId: string, revision: number) => ({
 });
 
 describe("Runner model-configuration convergence", () => {
+  it("accepts validation progress only from the registered compiler identity", async () => {
+    const updateValidationProgress = vi.fn();
+    const service = { ...serviceMock(), updateValidationProgress };
+    const server = new RunnerControlServer(config, service as unknown as ControlPlaneService,
+      metricsMock() as unknown as ControllerMetrics, { activeConfiguration: vi.fn().mockResolvedValue(null) } as unknown as ModelConfigurationService);
+    const stream = streamMock();
+    const hello = registration("compiler");
+    hello.registration.compilerCapable = true;
+    const connection = await handle(server, stream, hello, null);
+    const progress = { runnerId: "compiler", runId: "run-1", phase: "VALIDATION_EXECUTION_PHASE_EXECUTING", completedCases: 3, passedCases: 2 };
+    await handle(server, stream, { validationProgress: progress }, connection);
+    expect(updateValidationProgress).toHaveBeenCalledWith("run-1", { phase: "executing", completedCases: 3, passedCases: 2 });
+    await expect(handle(server, stream, { validationProgress: { ...progress, runnerId: "other" } }, connection)).rejects.toThrow("identity");
+    expect(updateValidationProgress).toHaveBeenCalledOnce();
+  });
   it("force removal releases the stream, ignores late messages and preserves a reconnected boot", async () => {
     const service = serviceMock();
     const models = { activeConfiguration: vi.fn().mockResolvedValue(null), finalizeActivation: vi.fn() };

@@ -148,6 +148,13 @@
       "when": 1790780000000,
       "tag": "0020_guardrail_latest_version",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1791430000000,
+      "tag": "0021_validation_progress",
+      "breakpoints": true
     }
   ]
 }

@@ -4,6 +4,7 @@ import asyncio
 import math
 import time
 from dataclasses import asdict
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from runner.toolkit.nemo.action_registry import ActionProviders, action_providers
@@ -50,20 +51,48 @@ class DefaultRunnerValidator:
         self._providers = providers or _local_validation_providers()
 
     async def validate(
-        self, request: protocol.ValidationRequest
+        self, request: protocol.ValidationRequest,
+        on_progress: Callable[[str, int, int], Awaitable[None]] | None = None,
     ) -> tuple[str, dict[str, Any], list[dict[str, Any]]]:
         async def cleanup(prepared):
             await prepared[0].shutdown()
 
+        async def report(phase: str, completed: int = 0, passed: int = 0):
+            if on_progress is not None:
+                await on_progress(phase, completed, passed)
+
+        await report("preparing")
         registry, plan = await prepare(self._prepare, request, on_cancel=cleanup)
         runtime = NeMoRuntime(registry)
         try:
             cases = [validation_test_from_proto(item) for item in request.test_cases]
             if not cases:
                 raise ValueError("Validation requires at least one Test Case.")
+            await report("executing")
+            completed = passed = 0
+            last_report = time.monotonic()
+            slots = asyncio.Semaphore(8)
+
+            async def evaluate(case):
+                nonlocal completed, passed, last_report
+                # Match the runtime's admission capacity. Local evaluators may complete
+                # without yielding; a bounded batch lets gRPC flush progress/heartbeats
+                # instead of starving the control channel behind the entire test suite.
+                async with slots:
+                    result = await self._evaluate(runtime, plan, case)
+                    completed += 1
+                    passed += int(result["passed"])
+                    now = time.monotonic()
+                    if completed == len(cases) or now - last_report >= 0.5:
+                        last_report = now
+                        await report("executing", completed, passed)
+                    await asyncio.sleep(0)
+                    return result
+
             results = await asyncio.gather(
-                *(self._evaluate(runtime, plan, item) for item in cases)
+                *(evaluate(item) for item in cases)
             )
+            await report("finalizing", completed, passed)
         finally:
             await runtime.shutdown()
         required = [item for item in results if item["required"]]

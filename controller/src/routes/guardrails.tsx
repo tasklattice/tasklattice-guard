@@ -14,7 +14,8 @@ import { boundPolicy } from "@/lib/bound-policy";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { EventPagination, useEventCursor } from '@/components/event-pagination';
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { Activity, ArrowLeft, ArrowUpRight, Ban, Check, ChevronDown, Circle, CircleAlert, FlaskConical, History, LoaderCircle, Pencil, Plus, RefreshCw, Rocket, RotateCcw, Save, ScrollText, ShieldAlert, ShieldCheck, Trash2 } from "lucide-react";
+import { MenuButton, MenuItem, MenuItemDivider } from "@carbon/react";
+import { Activity, ArrowLeft, ArrowUpRight, Ban, ChevronDown, CircleAlert, FileText, FlaskConical, History, LoaderCircle, Pencil, Plus, RefreshCw, RotateCcw, Save, ScrollText, ShieldAlert, ShieldCheck, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "@/components/ui/notifications";
 
@@ -24,15 +25,18 @@ import { formatEventTimestamp } from "@/components/dashboard/event-time";
 import { AddTestCaseSheet } from "@/components/add-test-case-sheet";
 import { ConfirmationSheet } from "@/components/confirmation-sheet";
 import { EntitySheet } from "@/components/entity-sheet";
+import { GuardrailDraftReviewSheet, draftStateKey, hasUnpublishedDraft } from "@/components/guardrail-draft-review";
+import { GuardrailDraftChangesSheet } from "@/components/guardrail-draft-changes";
+import { isValidationRunning } from "@/components/validation-run-progress";
 import { GuardrailRegistry } from "@/components/guardrail-registry";
 import { getPolicyBindingValidation, PolicyBindingEditor } from "@/components/policy-binding-editor";
-import { ProtectionDependencies } from "@/components/protection-dependencies";
 import { DeleteGuardrailSheet, type GuardrailDeletionConfirmation } from "@/components/guardrail-delete-sheet";
 export { DeleteGuardrailSheet } from "@/components/guardrail-delete-sheet";
 import { EmptyState, ErrorNotice, InfoNotice, PageHeader, StateBadge } from "@/components/product-shell";
 import { RuntimePostureFields } from "@/components/runtime-posture-fields";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -50,6 +54,7 @@ import { policyRequiresTopicAllowlist, policyRequiresTopicModel } from "@/lib/pr
 import {
   createValidationRun,
   deleteGuardrail,
+  deleteTestCase,
   excludeGuardrailTestCase,
   getRouters,
   getGuardrail,
@@ -63,7 +68,6 @@ import {
   getPolicies,
   getTestCases,
   getValidationRuns,
-  publishGuardrail,
   restoreGuardrailTestCase,
   updateGuardrail,
   updateGuardrailLoggingSettings,
@@ -81,7 +85,7 @@ import {
   type ValidationRun,
 } from "@/lib/api";
 import { CreateGuardrailWizard } from "@/routes/create-guardrail-wizard";
-import { CreateRouterSheet, TrafficScopeBadges } from "@/routes/routers";
+import { TrafficScopeBadges } from "@/routes/routers";
 import { GuardrailValidationHistory, ValidationDetailSheet } from "@/routes/validation";
 
 export { AddTestCaseSheet };
@@ -134,28 +138,33 @@ export function GuardrailDetailPage() {
   const routersQuery = useQuery({ queryKey: queryKeys.routers, queryFn: getRouters });
   const endpointsQuery = useQuery({ queryKey: queryKeys.endpoints, queryFn: getEndpoints });
   const search = useSearch({ from: "/guardrails/$guardrailId" });
-  const section = search.tab ?? "runtime";
+  const section = search.tab === "draft" ? "runtime" : search.tab ?? "runtime";
   const setSection = (tab: string) => void navigate({ to: "/guardrails/$guardrailId", params: { guardrailId }, search: previous => ({ ...previous, tab }) });
   const window: MetricWindow = search.window ?? "24h";
   const setWindow = (window: MetricWindow) => void navigate({ to: "/guardrails/$guardrailId", params: { guardrailId }, search: previous => ({ ...previous, window }) });
-  const [editOpen, setEditOpen] = useState(false);
-  const [testOpen, setTestOpen] = useState(false);
-  const [routerOpen, setRouterOpen] = useState(false);
+  const [draftAction, setDraftAction] = useState<"edit" | "review" | "publish" | "changes" | "discard" | null>(null);
+  const [draftJustSaved, setDraftJustSaved] = useState(false);
+  const [testCasesOpen, setTestCasesOpen] = useState(false);
+  const editOpen = draftAction === "edit";
+  const setEditOpen = (open: boolean) => setDraftAction(open ? "edit" : null);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [validationConfirmOpen, setValidationConfirmOpen] = useState(false);
   const [selectedValidationRun, setSelectedValidationRun] = useState<ValidationRun | null>(null);
   const [versionDetailRequested, setVersionDetailRequested] = useState(false);
   const [selectedVersionOverride, setSelectedVersionOverride] = useState<string | null>(null);
   const [compareBaseVersionNumber, setCompareBaseVersionNumber] = useState<string | null>(null);
+  useEffect(() => {
+    if (search.tab === "draft") void navigate({ search: previous => ({ ...previous, tab: "runtime" }), replace: true });
+  }, [search.tab, navigate]);
   const guardrailVersions = [...(versionsQuery.data?.items ?? [])].sort((a, b) => b.created_at.localeCompare(a.created_at) || b.version.localeCompare(a.version));
   const compilationPending = guardrailVersions.some((item) => item.compile_status === "compiling");
+  const validationPending = isValidationRunning(guardrailQuery.data?.latest_validation_run);
   useEffect(() => {
-    if (!compilationPending) return;
+    if (!compilationPending && !validationPending) return;
     const timer = globalThis.setInterval(() => {
       void Promise.all([versionsQuery.refetch(), guardrailQuery.refetch()]);
     }, 1_500);
     return () => globalThis.clearInterval(timer);
-  }, [compilationPending, guardrailQuery, versionsQuery]);
+  }, [compilationPending, validationPending, guardrailQuery, versionsQuery]);
   const latestVersion = guardrailVersions.find((item) => item.latest);
   const selectedVersionNumber = selectedVersionOverride && guardrailVersions.some((item) => item.version === selectedVersionOverride) ? selectedVersionOverride : latestVersion?.version ?? guardrailVersions[0]?.version ?? "";
   const selectedVersion = guardrailVersions.find((item) => item.version === selectedVersionNumber);
@@ -212,7 +221,6 @@ export function GuardrailDetailPage() {
       return createValidationRun(guardrailId);
     },
     onSuccess: async (run) => {
-      setValidationConfirmOpen(false);
       await refresh();
       setSelectedValidationRun(run);
       toast[run.status === "passed" ? "success" : "error"](t(
@@ -243,7 +251,8 @@ export function GuardrailDetailPage() {
       setSection("immutable");
       return;
     }
-    setSection("draft");
+    setDraftJustSaved(false);
+    setDraftAction("review");
   }
 
   if (guardrailQuery.isLoading) return <Skeleton className="mt-8 h-[34rem] rounded-xl" />;
@@ -252,7 +261,11 @@ export function GuardrailDetailPage() {
   const policies = policiesQuery.data?.items ?? EMPTY_POLICIES;
   const routers = routersQuery.data?.items.filter((item) => item.activeSnapshot?.routes.some(route => route.enabled && route.targets.some(target => target.guardrailId === guardrail.id && target.weightBps > 0))) ?? [];
   const canManageDraft = auth.user?.role === "admin" && isGuardrailDraftManageable(guardrail);
-  const hasUnpublishedDraft = canManageDraft && !guardrail.published_current;
+  const currentRelease = guardrailVersions.find(version => version.source_draft_version === guardrail.draft_revision);
+  const hasDraft = hasUnpublishedDraft(guardrail);
+  const currentTest = guardrail.latest_validation_run?.source_draft_version === guardrail.draft_revision ? guardrail.latest_validation_run : null;
+  const testingDraft = isValidationRunning(currentTest);
+  const openDraftReview = () => { setDraftJustSaved(false); setDraftAction("review"); };
 
   return (
     <section className="py-6 sm:py-8">
@@ -266,22 +279,34 @@ export function GuardrailDetailPage() {
             {guardrail.is_default ? <Badge variant="outline">{t("guardrails.defaultBadge")}</Badge> : guardrail.system_managed ? <Badge variant="outline">{t("guardrails.systemManaged")}</Badge> : null}
           </div>
           {guardrail.copy_origin && <p className="mt-2 text-sm text-muted-foreground">{uiText("uiCopy.copiedFrom")}{" "}{guardrail.copy_origin.sourceName} · {guardrail.copy_origin.sourceVersion ?? `draft r${guardrail.copy_origin.sourceDraftRevision}`} · {guardrail.copy_origin.sourceGuardrailId}</p>}
-          {hasUnpublishedDraft ? <button type="button" className="mt-3 inline-flex min-h-9 items-center gap-2 rounded-md bg-amber-50 px-3 text-xs font-medium text-amber-800 hover:bg-amber-100 focus-visible:outline-2 focus-visible:outline-ring" onClick={() => setSection("draft")}><Circle className="size-2.5 fill-current" />{t("guardrails.unpublishedDraft")}</button> : null}
+          {hasDraft ? <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+            <p role="status"><span className="font-medium">{t(latestVersion ? "guardrails.unpublishedChanges" : "guardrails.newDraft")}</span> · {t(draftStateKey(guardrail, currentRelease))}{currentTest?.status === "failed" ? ` (${currentTest.metrics.total - currentTest.metrics.passed}/${currentTest.metrics.total})` : ""}</p>
+            <button type="button" className="min-h-11 text-primary hover:underline" onClick={() => setDraftAction("changes")}>{t("guardrails.draftChanges.view")}</button>
+            {testingDraft && currentTest?.progress ? <span className="text-xs tabular-nums text-muted-foreground">{t(`guardrails.testProgress.${currentTest.progress.phase}`)} · {t("guardrails.testProgress.completed", { completed: currentTest.progress.completedCases, total: currentTest.metrics.total })}</span> : null}
+          </div> : null}
         </div>
-        <div className="flex flex-wrap gap-2">
-          {canManageDraft ? <Button asChild className="min-h-11" variant="outline"><Link to="/playground" search={{ guardrail: guardrail.id, target: "draft", version: undefined }}><FlaskConical />{t("guardrails.testDraft")}</Link></Button> : null}
-          {canManageDraft ? <Button className="min-h-11" variant="edit" onClick={() => setEditOpen(true)}><Pencil />{t("common.edit")}</Button> : null}
-          {auth.user?.role === "admin" && !guardrail.is_default ? <Button className="min-h-11" variant="destructive" onClick={() => {
+        <div className="flex shrink-0 items-start gap-2">
+          {canManageDraft && hasDraft ? <Button className="min-h-11" variant="outline" disabled={compilationPending} onClick={openDraftReview}>{testingDraft ? <LoaderCircle className="animate-spin" /> : <FlaskConical />}{t(testingDraft ? "guardrails.viewTestProgress" : "guardrails.testDraft")}</Button> : null}
+          {canManageDraft && guardrail.tested_current && !guardrail.published_current ? <Button disabled={compilationPending} onClick={() => { setDraftJustSaved(false); setDraftAction("publish"); }}>{compilationPending ? <LoaderCircle className="animate-spin" /> : <ShieldCheck />}{t(compilationPending ? "guardrails.requestingCompilation" : "guardrails.publishVersion")}</Button> : null}
+          {auth.user?.role === "admin" ? <MenuButton label={t("routing.actions")} kind="tertiary" size="md" menuAlignment="bottom-end" className="guard-actions-menu">
+            {canManageDraft ? <MenuItem label={t("guardrails.editAction")} renderIcon={Pencil} onClick={() => setEditOpen(true)} /> : null}
+            {canManageDraft ? <MenuItem label={t("guardrails.editTestCases")} renderIcon={FlaskConical} onClick={() => setTestCasesOpen(true)} /> : null}
+            {hasDraft ? <MenuItem label={t("guardrails.draftChanges.view")} renderIcon={FileText} onClick={() => setDraftAction("changes")} /> : null}
+            {canManageDraft && hasDraft && latestVersion ? <MenuItem label={t("guardrails.draftChanges.discard")} renderIcon={RotateCcw} disabled={compilationPending} onClick={() => setDraftAction("discard")} /> : null}
+            {canManageDraft ? <MenuItem label={t("guardrails.openPlayground")} renderIcon={FlaskConical} onClick={() => { void navigate({ to: "/playground", search: { guardrail: guardrail.id, target: "draft", version: undefined } }); }} /> : null}
+            {!guardrail.is_default ? <MenuItemDivider /> : null}
+            {!guardrail.is_default ? <MenuItem label={t("guardrails.deleteAction")} renderIcon={Trash2} kind="danger" onClick={() => {
             deleteMutation.reset();
             queryClient.removeQueries({ queryKey: queryKeys.guardrailDeletionImpact(guardrailId), exact: true });
             setDeleteOpen(true);
-          }}><Trash2 />{t("guardrails.deleteAction")}</Button> : null}
+          }} /> : null}
+          </MenuButton> : null}
         </div>
       </div>
 
       {guardrail.is_default ? <div className="mt-5"><InfoNotice title={t("guardrails.defaultNoticeTitle")}>{t("guardrails.defaultNoticeDescription")}</InfoNotice></div> : null}
 
-      <div className="mt-5"><GuardrailValidationReadiness readiness={validationReadiness} onEdit={canManageDraft ? () => setEditOpen(true) : undefined} onRetry={() => { void policiesQuery.refetch(); validationReadiness.refresh(); }} /></div>
+      {hasDraft ? <div className="mt-5"><GuardrailValidationReadiness readiness={validationReadiness} onEdit={canManageDraft ? () => setEditOpen(true) : undefined} onRetry={() => { void policiesQuery.refetch(); validationReadiness.refresh(); }} /></div> : null}
 
       <Tabs value={section} onValueChange={setSection} className="mt-7">
         <div className="overflow-x-auto">
@@ -289,8 +314,7 @@ export function GuardrailDetailPage() {
             <TabsTrigger value="runtime"><Activity aria-hidden="true" />{t("guardrails.runtimeTab")}</TabsTrigger>
             <TabsTrigger value="event"><ShieldAlert aria-hidden="true" /><span className="flex items-center gap-2">{t("guardrails.eventTab")}{metricsQuery.data?.findings_summary?.total ? <Badge variant="outline" className={metricsQuery.data?.findings_summary?.critical ? "border-red-200 bg-red-50 font-mono text-[10px] text-red-700" : "font-mono text-[10px]"}>{metricsQuery.data?.findings_summary?.total}</Badge> : null}</span></TabsTrigger>
             <TabsTrigger value="immutable"><History aria-hidden="true" /><span className="flex items-center gap-2">{t("guardrails.versions")}{versionsQuery.data ? <Badge variant="outline" className="font-mono text-[10px]">{guardrailVersions.length}</Badge> : null}</span></TabsTrigger>
-            <TabsTrigger value="testing"><FlaskConical aria-hidden="true" /><span className="flex items-center gap-2">{t("guardrails.validationHistoryTab")}{validationRunsQuery.data?.items.length ? <Badge variant="outline" className="font-mono text-[10px]">{validationRunsQuery.data.items.length}</Badge> : null}</span></TabsTrigger>
-            <TabsTrigger value="draft"><Pencil aria-hidden="true" /><span className="flex items-center gap-2">{t("guardrails.draftReleaseTab")}{hasUnpublishedDraft ? <Circle className="size-2 fill-amber-500 text-amber-500" /> : null}</span></TabsTrigger>
+            <TabsTrigger value="testing"><FileText aria-hidden="true" /><span className="flex items-center gap-2">{t("guardrails.validationHistoryTab")}{validationRunsQuery.data?.items.length ? <Badge variant="outline" className="font-mono text-[10px]">{validationRunsQuery.data.items.length}</Badge> : null}</span></TabsTrigger>
           </TabsList>
         </div>
         <TabsContent value="runtime" className="space-y-5 pt-5">
@@ -326,7 +350,7 @@ export function GuardrailDetailPage() {
             guardrailName={guardrail.name}
             validation={selectedValidation}
             onChanged={refresh}
-            onOpenDraft={() => setSection("draft")}
+            onOpenDraft={canManageDraft ? () => setEditOpen(true) : () => setSection("testing")}
             onOpenValidation={setSelectedValidationRun}
             onSelectVersion={(version) => { setSelectedVersionOverride(version); setCompareBaseVersionNumber(null); }}
             onStartCompare={() => { const previous = compareOptions.find((item) => item.created_at < (selectedVersion?.created_at ?? "")) ?? compareOptions[0]; if (previous) setCompareBaseVersionNumber(previous.version); }}
@@ -335,55 +359,25 @@ export function GuardrailDetailPage() {
           />
         </TabsContent>
         <TabsContent value="testing" className="pt-5">
-          <GuardrailTestingView
-            guardrail={guardrail}
-            policies={policies}
-            cases={testsQuery.data?.items ?? []}
-            casesLoading={testsQuery.isLoading}
-            casesError={testsQuery.error}
-            onRetryCases={() => { void testsQuery.refetch(); }}
+          <GuardrailValidationHistory
+            runs={validationRunsQuery.data?.items ?? []}
+            loading={validationRunsQuery.isLoading}
+            error={validationRunsQuery.error}
             canManage={canManageDraft}
-            onAddCase={() => setTestOpen(true)}
-            onChanged={refresh}
-            reports={<GuardrailValidationHistory
-              runs={validationRunsQuery.data?.items ?? []}
-              loading={validationRunsQuery.isLoading}
-              error={validationRunsQuery.error}
-              canManage={canManageDraft}
-              blockedReason={validationReadiness.reason}
-              running={validationMutation.isPending}
-              onRun={() => setValidationConfirmOpen(true)}
-              onOpen={setSelectedValidationRun}
-              onOpenTarget={openValidationTarget}
-            />}
+            blockedReason={validationReadiness.reason}
+            running={validationMutation.isPending}
+            onRun={openDraftReview}
+            onOpen={setSelectedValidationRun}
+            onOpenTarget={openValidationTarget}
           />
-        </TabsContent>
-        <TabsContent value="draft" className="pt-5">
-          <DraftReleaseView guardrail={guardrail} policies={policies} latestVersion={latestVersion} versions={guardrailVersions} routers={routers} canManage={canManageDraft} validationBlockedReason={validationReadiness.reason} validationRunning={validationMutation.isPending} onRunValidation={() => setValidationConfirmOpen(true)} onOpenValidation={setSelectedValidationRun} onEdit={() => setEditOpen(true)} onCreateRouter={() => setRouterOpen(true)} onChanged={refresh} />
         </TabsContent>
       </Tabs>
 
-      <EditGuardrailSheet guardrail={guardrail} policies={policies} open={editOpen} onOpenChange={setEditOpen} onSaved={async () => { setEditOpen(false); await refresh(); }} />
-      <AddTestCaseSheet guardrail={guardrail} open={testOpen} onOpenChange={setTestOpen} onCreated={async () => { setTestOpen(false); await refresh(); }} />
+      {canManageDraft && editOpen ? <EditGuardrailSheet guardrail={guardrail} policies={policies} open onOpenChange={setEditOpen} onSaved={async saved => { queryClient.setQueryData(queryKeys.guardrail(guardrailId), saved); setDraftJustSaved(true); setDraftAction(hasUnpublishedDraft(saved) ? "review" : null); await refresh(); }} /> : null}
+      {draftAction === "changes" || draftAction === "discard" ? <GuardrailDraftChangesSheet guardrail={guardrail} initialDiscard={draftAction === "discard"} canManage={canManageDraft} onClose={() => setDraftAction(null)} onChanged={refresh} /> : null}
+      {draftAction === "review" || draftAction === "publish" ? <GuardrailDraftReviewSheet guardrail={guardrail} policies={policies} versions={guardrailVersions} policiesReady={policiesQuery.isSuccess} policiesError={policiesQuery.isError} onRetryPolicies={() => { void policiesQuery.refetch(); }} readOnly={!canManageDraft} justSaved={draftJustSaved} initialPublish={draftAction === "publish"} onClose={() => setDraftAction(null)} onEdit={() => setEditOpen(true)} onChanged={refresh} onPublished={version => { setDraftAction(null); setSelectedVersionOverride(version.version); setVersionDetailRequested(true); setSection("immutable"); }} /> : null}
+      {canManageDraft && testCasesOpen ? <EditGuardrailTestCasesSheet guardrail={guardrail} policies={policies} cases={testsQuery.data?.items ?? []} casesLoading={testsQuery.isLoading} casesError={testsQuery.error} onRetryCases={() => { void testsQuery.refetch(); }} onChanged={refresh} onClose={() => setTestCasesOpen(false)} /> : null}
       <ValidationDetailSheet blockedReason={validationReadiness.reason} run={selectedValidationRun} guardrail={guardrail} canManage={canManageDraft} running={validationMutation.isPending} onRunAgain={() => validationMutation.mutate()} onOpenTarget={openValidationTarget} onClose={() => setSelectedValidationRun(null)} />
-      <CreateRouterSheet open={routerOpen} onOpenChange={setRouterOpen} onCreated={async () => { setRouterOpen(false); await refresh(); }} />
-      <ConfirmationSheet
-        open={validationConfirmOpen}
-        onOpenChange={setValidationConfirmOpen}
-        eyebrow={t("guardrails.confirmActionEyebrow")}
-        title={t("guardrails.confirmValidationTitle")}
-        description={t("guardrails.confirmValidationDescription", { name: guardrail.name })}
-        cancelLabel={t("common.cancel")}
-        confirmLabel={t("guardrails.runReviewed")}
-        pendingLabel={t("guardrails.runningValidation")}
-        pending={validationMutation.isPending}
-        confirmDisabled={validationReadiness.blocked}
-        onConfirm={() => validationMutation.mutate()}
-      >
-        <GuardrailValidationReadiness readiness={validationReadiness} />
-        <div className="rounded-lg border bg-muted/35 px-4 py-3 text-sm leading-6 text-muted-foreground">{t("guardrails.confirmValidationImpact")}</div>
-        {validationMutation.error ? <p role="alert" className="rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">{validationMutation.error instanceof Error ? validationMutation.error.message : t("guardrails.operationFailed")}</p> : null}
-      </ConfirmationSheet>
       <DeleteGuardrailSheet
         guardrail={guardrail}
         open={deleteOpen}
@@ -436,7 +430,7 @@ export function GuardrailFindingsView({ guardrailId, data, summary: scopeSummary
 
   return <section className="space-y-4" aria-label={t("guardrails.securityFindingsTitle")}>
     <header className="flex items-start justify-between gap-6">
-      <div><h2 className="text-base font-semibold">{t("guardrails.securityFindingsTitle")}</h2><p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">{t("guardrails.securityFindingsDescription")}</p></div>
+      <p className="max-w-3xl text-sm leading-6 text-muted-foreground">{t("guardrails.securityFindingsDescription")}</p>
       <Link to="/logs" search={{ guardrailId: guardrailId ?? data?.items[0]?.guardrail_id ?? undefined }} className="inline-flex shrink-0 items-center gap-1.5 py-1 text-sm text-primary underline-offset-4 hover:underline">{t("securityEvents.openLogs")}<ArrowUpRight className="size-4" /></Link>
     </header>
     <div className="border bg-card">
@@ -539,178 +533,33 @@ function CallerDistribution({ metrics, routers, versions }: { metrics: Metrics; 
   return <Card size="sm" className="gap-0 overflow-hidden py-0 shadow-none"><CardHeader className="border-b px-4 py-3"><CardTitle className="text-sm">{t("guardrails.callersTitle")}</CardTitle><CardDescription className="text-xs leading-5">{t("guardrails.callersDescription")}</CardDescription></CardHeader>{metrics.caller_distribution.length ? <Table className="text-xs"><TableHeader><TableRow className="hover:bg-transparent"><TableHead className="h-9 pl-4">{t("guardrails.caller")}</TableHead><TableHead className="h-9">{t("guardrails.trafficScope")}</TableHead><TableHead className="h-9">{t("guardrails.volumeShare")}</TableHead><TableHead className="h-9">{t("guardrails.servedVersion")}</TableHead><TableHead className="h-9">{t("guardrails.outcome")}</TableHead><TableHead className="h-9">{t("dashboard.p95Latency")}</TableHead></TableRow></TableHeader><TableBody>{metrics.caller_distribution.map((item) => { const router = routers.find((candidate) => candidate.id === item.router_id); return <TableRow key={`${item.endpoint_id}:${item.router_id}:${item.protocol}`}><TableCell className="py-2.5 pl-4 align-top"><strong className="text-sm font-medium">{item.endpoint_name}</strong><p className="mt-0.5 font-mono text-xs text-muted-foreground">{item.protocol}</p></TableCell><TableCell className="max-w-80 py-2.5 align-top"><p className="mb-1 text-xs font-medium">{item.router_name}</p>{router ? <TrafficScopeBadges router={router} /> : <span className="text-xs text-muted-foreground">{t("guardrails.unassignedTraffic")}</span>}</TableCell><TableCell className="py-2.5 align-top"><strong className="text-sm tabular-nums">{item.requests.toLocaleString(i18n.language)}</strong><div className="mt-1.5 flex items-center gap-2"><Progress className="h-1 w-16" value={item.share} /><span className="text-xs text-muted-foreground">{item.share}%</span></div></TableCell><TableCell className="py-2.5 align-top"><div className="flex flex-wrap gap-1">{item.guardrail_versions.map((version) => <Badge key={version} variant="outline" className="font-mono text-[10px]">{version}</Badge>)}</div></TableCell><TableCell className="py-2.5 align-top"><p className="text-xs">{t("guardrails.interventionSummary", { rate: item.intervention_rate })}</p><p className="mt-0.5 text-xs text-muted-foreground">{t("guardrails.errorSummary", { rate: item.error_rate })}</p></TableCell><TableCell className="py-2.5 align-top font-mono text-xs">{item.p95_latency_ms} ms</TableCell></TableRow>; })}</TableBody></Table> : <div className="px-4 pb-4"><EmptyState title={t("guardrails.noRuntimeCalls")} description={t("guardrails.noRuntimeCallsDescription")} /></div>}</Card>;
 }
 
-export function DraftReleaseView({ guardrail, policies, latestVersion, versions, routers, canManage, validationBlockedReason, validationRunning = false, onRunValidation = () => undefined, onOpenValidation = () => undefined, onEdit, onCreateRouter, onChanged }: { guardrail: Guardrail; policies: Policy[]; latestVersion?: GuardrailVersion; versions?: GuardrailVersion[]; routers: Awaited<ReturnType<typeof getRouters>>["items"]; canManage?: boolean; validationBlockedReason?: string | null; validationRunning?: boolean; onRunValidation?: () => void; onOpenValidation?: (run: ValidationRun) => void; onEdit: () => void; onCreateRouter: () => void; onChanged: () => Promise<void> }) {
-  const { t } = useTranslation();
-  const [publishOpen, setPublishOpen] = useState(false);
-  const releaseId = latestVersion?.version ?? "";
-  const draftConfigured = Boolean(guardrail.policy_bindings.length);
-  const validated = guardrail.tested_current;
-  const published = guardrail.published_current;
-  const currentRelease = versions?.find((item) => item.source_draft_version === guardrail.draft_revision);
-  const compiling = currentRelease?.compile_status === "compiling";
-  const compileFailed = currentRelease?.compile_status === "failed";
-  const publish = useMutation({
-    mutationFn: () => {
-      if (guardrail.draft_revision === undefined) throw new Error("Reload the Guardrail draft before publishing.");
-      return publishGuardrail(guardrail.id, guardrail.draft_revision);
-    },
-    onSuccess: async (version) => {
-      setPublishOpen(false);
-      toast.success(t("guardrails.publishSucceeded", { version: version.version }));
-      await onChanged();
-    },
-    onError: (error) => notifyError(error, t("guardrails.publishFailed")),
-  });
-  const steps = [
-    { label: t("guardrails.releaseStepDraft"), complete: draftConfigured, current: !draftConfigured, detail: t("guardrails.policyCheckDetail", { count: guardrail.policy_bindings.length }) },
-    { label: validated ? t("guardrails.flowValidationPassed") : t("guardrails.flowValidationRequired"), complete: validated, current: draftConfigured && !validated, detail: validated && guardrail.latest_validation_run ? t("guardrails.validationEvidenceDetail", { rate: guardrail.latest_validation_run.metrics.compliance_rate }) : guardrail.latest_validation_run?.status === "failed" ? (guardrail.latest_validation_run.failure_reason || t("guardrails.lastValidationFailedDetail", { rate: guardrail.latest_validation_run.metrics.compliance_rate })) : guardrail.latest_validation_run ? t("guardrails.validationEvidenceStale") : t("guardrails.noValidationEvidence") },
-    { label: published ? t("guardrails.releaseStepPublished") : compiling ? t("guardrails.releaseStepCompiling") : compileFailed ? t("guardrails.releaseStepCompileFailed") : t("guardrails.releaseStepPublish"), complete: published, current: validated && !published, detail: published && releaseId ? t("guardrails.publishedVersionDetail", { version: releaseId }) : compiling ? t("guardrails.compilationPendingDetail") : compileFailed ? (currentRelease?.failure_reason ?? t("guardrails.compilationFailedDetail")) : t("guardrails.publishStepDetail") },
-  ];
-  const stateTitle = published ? t("guardrails.releasePublished") : compiling ? t("guardrails.releaseCompiling") : compileFailed ? t("guardrails.releaseCompileFailed") : validated ? t("guardrails.releaseReadyToPublish") : t("guardrails.releaseNeedsValidation");
-  const stateDescription = published ? t("guardrails.releasePublishedDescription") : compiling ? t("guardrails.releaseCompilingDescription") : compileFailed ? t("guardrails.releaseCompileFailedDescription") : validated ? t("guardrails.releaseReadyToPublishDescription") : t("guardrails.releaseNeedsValidationDescription");
-  const canManageDraft = canManage ?? isGuardrailDraftManageable(guardrail);
-
-  return <><div className="space-y-5">
-    <Card className="overflow-hidden shadow-none">
-      <CardHeader className="border-b bg-muted/15 py-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div><CardTitle>{t("guardrails.releaseWorkflow")}</CardTitle><CardDescription>{t("guardrails.releaseWorkflowDescription")}</CardDescription></div>
-          <Badge variant="outline" className={published ? "border-emerald-200 bg-emerald-50 text-emerald-700" : validated ? "border-amber-200 bg-amber-50 text-amber-800" : ""}>{stateTitle}</Badge>
-        </div>
-      </CardHeader>
-      <CardContent className="p-0">
-        <div className="grid lg:grid-cols-[minmax(0,1fr)_20rem]">
-          <ol className="divide-y">
-            {steps.map((step, index) => <li key={step.label} className={`grid grid-cols-[2rem_minmax(0,1fr)] gap-3 px-5 py-3.5 ${step.current ? "bg-primary/[0.025]" : ""}`}>
-              <span className={`mt-0.5 grid size-7 place-items-center rounded-full border text-xs font-semibold ${step.complete ? "border-emerald-200 bg-emerald-50 text-emerald-700" : step.current ? "border-primary bg-primary text-primary-foreground" : "bg-background text-muted-foreground"}`}>{step.complete ? <Check className="size-3.5" /> : index + 1}</span>
-              <span className="min-w-0"><span className="block text-sm font-medium">{step.label}</span><span className="mt-0.5 block break-words text-xs leading-5 text-muted-foreground">{step.detail}</span></span>
-            </li>)}
-          </ol>
-          <aside className="border-t bg-muted/20 p-5 lg:border-t-0 lg:border-l">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("guardrails.currentReleaseState")}</p>
-            <h3 className="mt-2 text-base font-semibold">{stateTitle}</h3>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">{stateDescription}</p>
-            <div className="mt-4 grid gap-2">
-              {canManageDraft && !validated ? <Button className="min-h-11" disabled={validationRunning || Boolean(validationBlockedReason)} title={validationBlockedReason ?? undefined} onClick={onRunValidation}>{validationRunning ? <LoaderCircle className="animate-spin" /> : <FlaskConical />}{t(validationRunning ? "guardrails.runningValidation" : "guardrails.runReviewed")}</Button> : null}
-              {canManageDraft && validated && !published && !compiling ? <Button className="min-h-11" disabled={publish.isPending} onClick={() => setPublishOpen(true)}>{publish.isPending ? <LoaderCircle className="animate-spin" /> : compileFailed ? <RotateCcw /> : <ShieldCheck />}{t(publish.isPending ? "guardrails.requestingCompilation" : compileFailed ? "guardrails.retryCompilation" : "guardrails.publishVersion")}</Button> : null}
-              {canManageDraft && published && !guardrail.is_default ? <Button variant="create" className="min-h-11" onClick={onCreateRouter}><Rocket />{t("guardrails.createRouter")}</Button> : null}
-              {canManageDraft ? <Button className="min-h-11" variant="edit" onClick={onEdit}><Pencil />{t("common.edit")}</Button> : null}
-              {guardrail.latest_validation_run ? <Button className="min-h-11" variant="outline" onClick={() => onOpenValidation(guardrail.latest_validation_run!)}><FlaskConical />{t("guardrails.openValidation")}</Button> : null}
-            </div>
-          </aside>
-        </div>
-      </CardContent>
-    </Card>
-
-    <section>
-      <div className="mb-3"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("guardrails.releaseInputEyebrow")}</p><h2 className="mt-1 text-base font-semibold">{t("guardrails.draftConfiguration")}</h2><p className="mt-1 text-xs text-muted-foreground">{t("guardrails.draftConfigurationDescription")}</p></div>
-      <PolicyBindings bindings={guardrail.policy_bindings} policies={policies} />
-      <div className="mt-4"><ProtectionDependencies bindings={guardrail.policy_bindings} policies={policies} /></div>
-    </section>
-    {routers.length ? <Card className="shadow-none"><CardHeader className="py-4"><CardTitle>{t("guardrails.guardrailRouters")}</CardTitle><CardDescription>{t("guardrails.guardrailRoutersDescription")}</CardDescription></CardHeader><CardContent className="space-y-2">{routers.map((router) => <div key={router.id} className="rounded-lg border px-4 py-3"><div className="flex flex-wrap items-center justify-between gap-2"><strong className="text-sm font-medium">{router.name}</strong><Badge variant="outline" className="font-mono text-[10px]">{router.activeRevision ? `r${router.activeRevision}` : "—"}</Badge></div><div className="mt-2"><TrafficScopeBadges router={router} /></div></div>)}</CardContent></Card> : null}
-  </div>
-  <ConfirmationSheet
-    open={publishOpen}
-    onOpenChange={(open) => { if (!publish.isPending) { setPublishOpen(open); if (!open) publish.reset(); } }}
-    eyebrow={t("guardrails.confirmActionEyebrow")}
-    title={t("guardrails.confirmPublishTitle")}
-    description={t("guardrails.confirmPublishDescription", { name: guardrail.name })}
-    cancelLabel={t("common.cancel")}
-    confirmLabel={t(compileFailed ? "guardrails.retryCompilation" : "guardrails.publishVersion")}
-    pendingLabel={t("guardrails.requestingCompilation")}
-    pending={publish.isPending}
-    onConfirm={() => publish.mutate()}
-  >
-    <div className="rounded-lg border bg-muted/35 px-4 py-3 text-sm leading-6 text-muted-foreground">{t("guardrails.confirmPublishImpact")}</div>
-    {publish.error ? <p role="alert" className="rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">{publish.error instanceof Error ? publish.error.message : t("guardrails.publishFailed")}</p> : null}
-  </ConfirmationSheet></>;
-}
-
-export function GuardrailTestingView({ guardrail, policies, cases, casesLoading, casesError, canManage, reports, onAddCase, onChanged, onRetryCases }: {
-  guardrail: Guardrail;
-  policies: Policy[];
-  cases: TestCase[];
-  casesLoading: boolean;
-  casesError?: unknown;
-  canManage: boolean;
-  reports: ReactNode;
-  onAddCase: () => void;
-  onChanged: () => Promise<void>;
-  onRetryCases: () => void;
+export function EditGuardrailTestCasesSheet({ guardrail, policies, cases, casesLoading, casesError, onChanged, onRetryCases, onClose }: {
+  guardrail: Guardrail; policies: Policy[]; cases: TestCase[]; casesLoading: boolean; casesError?: unknown;
+  onChanged: () => Promise<void>; onRetryCases: () => void; onClose: () => void;
 }) {
   const { t } = useTranslation();
-  const [scopeChange, setScopeChange] = useState<{ caseId: string; action: "exclude" | "restore" } | null>(null);
-  const validationScope = useMutation({
-    mutationFn: ({ caseId, action }: { caseId: string; action: "exclude" | "restore" }) => action === "exclude" ? excludeGuardrailTestCase(guardrail.id, caseId) : restoreGuardrailTestCase(guardrail.id, caseId),
-    onSuccess: async (_, variables) => {
-      setScopeChange(null);
-      toast.success(t(variables.action === "exclude" ? "guardrails.testCaseExcluded" : "guardrails.testCaseRestored"));
-      await onChanged();
+  const [adding, setAdding] = useState(false);
+  const [change, setChange] = useState<{ caseId: string; action: "exclude" | "restore" | "delete" } | null>(null);
+  const mutation = useMutation({
+    mutationFn: async ({ caseId, action }: NonNullable<typeof change>) => {
+      if (action === "delete") await deleteTestCase(guardrail.id, caseId);
+      else if (action === "exclude") await excludeGuardrailTestCase(guardrail.id, caseId);
+      else await restoreGuardrailTestCase(guardrail.id, caseId);
     },
-    onError: (error) => notifyError(error, t("guardrails.operationFailed")),
+    onSuccess: async (_, variables) => {
+      await onChanged();
+      setChange(null);
+      toast.success(t(variables.action === "delete" ? "guardrails.caseRemoved" : variables.action === "exclude" ? "guardrails.testCaseExcluded" : "guardrails.testCaseRestored"));
+    },
   });
-
-  return <>
-    <Tabs defaultValue="reports">
-      <TabsList aria-label={t("guardrails.testingViews")}>
-        <TabsTrigger value="reports">{t("guardrails.testReportsTab")}</TabsTrigger>
-        <TabsTrigger value="configuration">{t("guardrails.testConfigurationTab")}</TabsTrigger>
-      </TabsList>
-      <TabsContent value="reports" className="pt-5">{reports}</TabsContent>
-      <TabsContent value="configuration" className="space-y-4 pt-5">
-        <p className="text-sm text-muted-foreground">{t("guardrails.testConfigurationDescription")}</p>
-        {casesError ? <div className="space-y-3"><ErrorNotice error={casesError} /><Button variant="outline" onClick={onRetryCases}><RefreshCw />{t("common.retry")}</Button></div> : <TestCases
-          cases={cases}
-          bindings={guardrail.policy_bindings}
-          policies={policies}
-          loading={casesLoading}
-          onAdd={canManage ? onAddCase : undefined}
-          onExclude={canManage ? (caseId) => setScopeChange({ caseId, action: "exclude" }) : undefined}
-          onRestore={canManage ? (caseId) => setScopeChange({ caseId, action: "restore" }) : undefined}
-          busyCaseId={validationScope.isPending ? validationScope.variables?.caseId : undefined}
-        />}
-      </TabsContent>
-    </Tabs>
-    <ConfirmationSheet
-      open={Boolean(scopeChange)}
-      onOpenChange={(open) => { if (!open && !validationScope.isPending) { setScopeChange(null); validationScope.reset(); } }}
-      eyebrow={t("guardrails.confirmActionEyebrow")}
-      title={t(scopeChange?.action === "restore" ? "guardrails.confirmRestoreCaseTitle" : "guardrails.confirmExcludeCaseTitle")}
-      description={t("guardrails.confirmScopeChangeDescription")}
-      cancelLabel={t("common.cancel")}
-      confirmLabel={t(scopeChange?.action === "restore" ? "guardrails.restoreTestCase" : "guardrails.excludeTestCase")}
-      pendingLabel={t("common.saving")}
-      pending={validationScope.isPending}
-      variant={scopeChange?.action === "exclude" ? "warning" : "default"}
-      onConfirm={() => { if (scopeChange) validationScope.mutate(scopeChange); }}
-    >
-      <div className="rounded-lg border bg-muted/35 px-4 py-3 text-sm leading-6 text-muted-foreground">{t("guardrails.confirmScopeChangeImpact")}</div>
-      {validationScope.error ? <p role="alert" className="rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">{validationScope.error instanceof Error ? validationScope.error.message : t("guardrails.operationFailed")}</p> : null}
-    </ConfirmationSheet>
-  </>;
-}
-
-function PolicyBindings({ bindings, policies }: { bindings: GuardrailPolicyBinding[]; policies: Policy[] }) {
-  const { t } = useTranslation();
-  return bindings.length ? <div className="grid gap-3 lg:grid-cols-2">{bindings.map((binding) => {
-    const policy = boundPolicy(policies, binding);
-    const name = policy?.name ?? binding.policy_id;
-    const enabledRuleCount = binding.enabled_rule_ids.length || policy?.rules.length || 0;
-    return <Link
-      key={`${binding.policy_id}@${binding.policy_version}`}
-      to="/policy-library"
-      search={{ policy: binding.policy_id, version: binding.policy_version }}
-      aria-label={t("guardrails.inspectPolicyAria", { name })}
-      className="group rounded-lg border bg-card p-4 shadow-xs outline-none transition-colors hover:border-primary/35 hover:bg-primary/[0.025] focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
-    >
-      <div className="flex items-start justify-between gap-3">
-        <span className="min-w-0"><strong className="block truncate text-sm">{name}</strong><span className="mt-1 block font-mono text-xs text-muted-foreground">{binding.policy_id}@{binding.policy_version}</span></span>
-        <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-primary">{t("guardrails.inspectPolicy")}<ArrowUpRight className="size-3.5" /></span>
-      </div>
-      <p className="mt-3 line-clamp-2 text-xs leading-5 text-muted-foreground">{policy?.description}</p>
-      <div className="mt-4 flex flex-wrap items-center gap-2"><Badge variant="secondary">{t("guardrails.ruleCount", { count: enabledRuleCount })}</Badge>{binding.enabled_rails.map((rail) => <Badge key={rail} variant="outline" className="font-mono uppercase">{rail}</Badge>)}<span className="ml-auto text-xs text-muted-foreground">{binding.action ?? t("guardrails.policyBehavior")}</span></div>
-    </Link>;
-  })}</div> : <EmptyState title={t("guardrails.noPolicies")} description={t("guardrails.noPoliciesDescription")} />;
+  const confirmKey = change?.action === "delete" ? "guardrails.deleteCustomCase" : change?.action === "restore" ? "guardrails.restoreTestCase" : "guardrails.excludeTestCase";
+  // Each step replaces the drawer contents; drawers never stack.
+  if (adding) return <AddTestCaseSheet guardrail={guardrail} open onOpenChange={open => { if (!open) setAdding(false); }} onCreated={async () => { await onChanged(); setAdding(false); }} />;
+  return <EntitySheet open width="xl" density="compact" closeDisabled={mutation.isPending} onOpenChange={open => { if (!open && !mutation.isPending) onClose(); }}
+    eyebrow={guardrail.name} title={t("guardrails.editTestCases")} description={t("guardrails.editTestCasesDescription")}
+    footer={change ? <><Button variant="outline" disabled={mutation.isPending} onClick={() => { setChange(null); mutation.reset(); }}>{t("common.cancel")}</Button><Button variant={change.action === "delete" ? "destructive" : "default"} disabled={mutation.isPending} onClick={() => mutation.mutate(change)}>{mutation.isPending ? <LoaderCircle className="animate-spin" /> : null}{t(confirmKey)}</Button></> : <Button variant="outline" onClick={onClose}>{t("common.close")}</Button>}>
+    {change ? <div className="space-y-4"><h3 className="text-base font-medium">{t(confirmKey)}</h3><p className="text-sm">{cases.find(item => item.id === change.caseId)?.name}</p><p className="text-sm text-muted-foreground">{t(change.action === "delete" ? "guardrails.deleteCustomCaseImpact" : "guardrails.confirmScopeChangeImpact")}</p>{mutation.error ? <ErrorNotice error={mutation.error} /> : null}</div> : casesError ? <div className="space-y-3"><ErrorNotice error={casesError} /><Button variant="outline" onClick={onRetryCases}><RefreshCw />{t("common.retry")}</Button></div> : <TestCases cases={cases} bindings={guardrail.policy_bindings} policies={policies} loading={casesLoading} onAdd={() => setAdding(true)} onExclude={caseId => setChange({ caseId, action: "exclude" })} onRestore={caseId => setChange({ caseId, action: "restore" })} onDelete={caseId => setChange({ caseId, action: "delete" })} />}
+  </EntitySheet>;
 }
 
 type TestCaseSourceGroup = {
@@ -764,7 +613,7 @@ function groupTestCasesBySource(cases: TestCase[], bindings: GuardrailPolicyBind
   }];
 }
 
-export function TestCases({ cases, bindings, policies, loading, onAdd, onExclude, onRestore, busyCaseId }: { cases: TestCase[]; bindings: GuardrailPolicyBinding[]; policies: Policy[]; loading: boolean; onAdd?: () => void; onExclude?: (caseId: string) => void; onRestore?: (caseId: string) => void; busyCaseId?: string }) {
+export function TestCases({ cases, bindings, policies, loading, onAdd, onExclude, onRestore, onDelete, busyCaseId }: { cases: TestCase[]; bindings: GuardrailPolicyBinding[]; policies: Policy[]; loading: boolean; onAdd?: () => void; onExclude?: (caseId: string) => void; onRestore?: (caseId: string) => void; onDelete?: (caseId: string) => void; busyCaseId?: string }) {
   const { t } = useTranslation();
   if (loading) return <Skeleton className="h-64 rounded-xl" />;
   const groups = groupTestCasesBySource(cases, bindings, policies);
@@ -792,6 +641,7 @@ export function TestCases({ cases, bindings, policies, loading, onAdd, onExclude
             <StateBadge state={item.expected_decision} />
             {group.kind === "policy" && item.excluded && onRestore ? <Button type="button" size="sm" variant="outline" className="min-h-11" disabled={busyCaseId === item.id} onClick={() => onRestore(item.id)}>{busyCaseId === item.id ? <LoaderCircle className="animate-spin" /> : <RotateCcw />}{t("guardrails.restoreTestCase")}</Button> : null}
             {group.kind === "policy" && !item.excluded && onExclude ? <Button type="button" size="sm" variant="outline" className="min-h-11 text-foreground" disabled={busyCaseId === item.id} onClick={() => onExclude(item.id)}>{busyCaseId === item.id ? <LoaderCircle className="animate-spin" /> : <Ban />}{t("guardrails.excludeTestCase")}</Button> : null}
+            {item.origin === "custom" && onDelete ? <Button type="button" size="sm" variant="ghost" className="min-h-11 text-destructive" disabled={busyCaseId === item.id} onClick={() => onDelete(item.id)}><Trash2 />{t("guardrails.deleteCustomCase")}</Button> : null}
           </article>)}</div> : <div className="px-4 py-4 pl-15"><p className="text-xs leading-5 text-muted-foreground">{group.kind === "policy" ? t("guardrails.noInheritedTests") : t("guardrails.noCustomTests")}</p></div>}
           {group.kind === "guardrail" && onAdd ? <div className="px-4 py-4 pl-15"><Button className="min-h-11" size="sm" variant="create" onClick={onAdd}><Plus />{t("guardrails.addTestCase")}</Button></div> : null}
         </div>
@@ -800,7 +650,7 @@ export function TestCases({ cases, bindings, policies, loading, onAdd, onExclude
   </section>;
 }
 
-export function EditGuardrailSheet({ guardrail, policies, open, onOpenChange, onSaved }: { guardrail: Guardrail; policies: Policy[]; open: boolean; onOpenChange: (open: boolean) => void; onSaved: () => void }) {
+export function EditGuardrailSheet({ guardrail, policies, open, onOpenChange, onSaved }: { guardrail: Guardrail; policies: Policy[]; open: boolean; onOpenChange: (open: boolean) => void; onSaved: (saved: Guardrail) => void | Promise<void> }) {
   const { t } = useTranslation();
   const [name, setName] = useState(guardrail.name);
   const [allowed, setAllowed] = useState(guardrail.allowed_topics.join("\n"));
@@ -812,8 +662,13 @@ export function EditGuardrailSheet({ guardrail, policies, open, onOpenChange, on
   const correctnessBlocker = bindings.map(binding => correctnessAvailability.reason(boundPolicy(policies, binding))).find(Boolean);
   const [level, setLevel] = useState(guardrail.safety_level);
   const [delivery, setDelivery] = useState(guardrail.output_delivery);
+  const wasOpen = useRef(false);
+  const [baseline, setBaseline] = useState(guardrail);
+  const [discardRequested, setDiscardRequested] = useState(false);
   useEffect(() => {
-    if (open) {
+    if (open && !wasOpen.current) {
+      setBaseline(guardrail);
+      setDiscardRequested(false);
       setName(guardrail.name);
       setAllowed(guardrail.allowed_topics.join("\n"));
       setDenied(guardrail.restricted_topics.join("\n"));
@@ -822,12 +677,14 @@ export function EditGuardrailSheet({ guardrail, policies, open, onOpenChange, on
       setLevel(guardrail.safety_level);
       setDelivery(guardrail.output_delivery);
     }
+    wasOpen.current = open;
   }, [guardrail, open]);
   const mutation = useMutation({
     mutationFn: () => {
       if (editReadiness.blocked) throw new Error(editReadiness.reason ?? t("protection.validationReadiness.blockedTitle"));
       if (correctnessBlocker) throw new Error(correctnessBlocker);
       return updateGuardrail(guardrail.id, {
+        ...(baseline.draft_revision !== undefined ? { expectedDraftRevision: baseline.draft_revision } : {}),
         name,
         allowed_topics: lines(allowed),
         restricted_topics: lines(denied),
@@ -837,13 +694,13 @@ export function EditGuardrailSheet({ guardrail, policies, open, onOpenChange, on
         output_delivery: delivery,
       });
     },
-    onSuccess: () => { toast.success(t("guardrails.updated")); onSaved(); },
+    onSuccess: async saved => { toast.success(t("guardrails.updated")); await onSaved(saved); },
     onError: (error) => notifyError(error, t("guardrails.operationFailed")),
   });
-  const dirty = name !== guardrail.name || allowed !== guardrail.allowed_topics.join("\n")
-    || denied !== guardrail.restricted_topics.join("\n") || topicMode !== (guardrail.topic_control_mode ?? "strict")
-    || level !== guardrail.safety_level || delivery !== guardrail.output_delivery
-    || JSON.stringify(bindings) !== JSON.stringify(guardrail.policy_bindings);
+  const dirty = name !== baseline.name || allowed !== baseline.allowed_topics.join("\n")
+    || denied !== baseline.restricted_topics.join("\n") || topicMode !== (baseline.topic_control_mode ?? "strict")
+    || level !== baseline.safety_level || delivery !== baseline.output_delivery
+    || JSON.stringify(bindings) !== JSON.stringify(baseline.policy_bindings);
   const topicControlEnabled = hasTopicControlBinding(bindings, policies);
   const allowedTopicsMissing = topicControlEnabled && topicMode === "strict" && !lines(allowed).length;
   const parameterErrors = bindings.flatMap((binding) => {
@@ -854,7 +711,9 @@ export function EditGuardrailSheet({ guardrail, policies, open, onOpenChange, on
     if (missingRails) return [t("protection.selectDirection")];
     return missingRequiredParameters.length ? [t("guardrailWizard.nextBlocked.requiredFields", { name: policy.name, fields: missingRequiredParameters.map((parameter) => parameter.label).join(", ") })] : [];
   });
-  return <EntitySheet open={open} onOpenChange={onOpenChange} eyebrow={t("guardrails.editEyebrow")} title={t("guardrails.editTitle", { name: guardrail.name })} description={t("guardrails.editDescription")} width="xl" footer={<>{dirty ? <span role="status" className="mr-auto self-center text-xs text-muted-foreground">{t("protection.unsavedOrder")}</span> : null}<Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button><Button disabled={editReadiness.blocked || Boolean(correctnessBlocker) || !name.trim() || !bindings.length || allowedTopicsMissing || parameterErrors.length > 0 || mutation.isPending} onClick={() => mutation.mutate()}>{mutation.isPending ? <LoaderCircle className="animate-spin" /> : <Save />}{t(mutation.isPending ? "common.saving" : "common.save")}</Button></>}>
+  const requestClose = () => { if (mutation.isPending) return; if (dirty) setDiscardRequested(true); else onOpenChange(false); };
+  return <EntitySheet open={open} closeDisabled={mutation.isPending} onOpenChange={next => { if (!next) requestClose(); }} eyebrow={t("guardrails.editEyebrow")} title={t("guardrails.editTitle", { name: guardrail.name })} description={t("guardrails.editDescription")} width="xl" footer={discardRequested ? <><span role="status" className="mr-auto text-xs text-muted-foreground">{t("guardrails.unsavedDraft")}</span><Button variant="outline" onClick={() => setDiscardRequested(false)}>{t("guardrails.continueEditing")}</Button><Button variant="destructive" onClick={() => onOpenChange(false)}>{t("guardrails.discardChanges")}</Button></> : <>{dirty ? <span role="status" className="mr-auto self-center text-xs text-muted-foreground">{t("guardrails.unsavedDraft")}</span> : null}<Button variant="outline" disabled={mutation.isPending} onClick={requestClose}>{t("common.cancel")}</Button><Button disabled={editReadiness.blocked || Boolean(correctnessBlocker) || !name.trim() || !bindings.length || allowedTopicsMissing || parameterErrors.length > 0 || mutation.isPending} onClick={() => mutation.mutate()}>{mutation.isPending ? <LoaderCircle className="animate-spin" /> : <Save />}{t(mutation.isPending ? "common.saving" : "guardrails.saveDraft")}</Button></>}>
+    {mutation.error ? <div className="mb-4"><ErrorNotice error={mutation.error} /></div> : null}
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5">
       <GuardrailValidationReadiness readiness={editReadiness} onRemoveTopic={() => setBindings(items => items.filter(binding => !policyRequiresTopicModel(boundPolicy(policies, binding))))} />
       <Field label={t("guardrails.guardrailName")}><Input className="field:min-h-11" value={name} onChange={(event) => setName(event.target.value)} /></Field>

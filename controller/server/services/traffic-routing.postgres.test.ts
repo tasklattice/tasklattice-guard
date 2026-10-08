@@ -11,6 +11,8 @@ import * as schema from "../db/schema.js";
 import type { RouterDraft } from "../../shared/traffic-routing.js";
 import { ControlPlaneService } from "./control-plane.js";
 import { routingEventSchema, type RoutingEvent } from "./traffic-routing.js";
+import { PolicyCatalog } from "../policy-catalog/catalog.js";
+import { defaultGuardrailDraft } from "../domain/defaults.js";
 
 function stableJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
@@ -520,6 +522,44 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
     await db.update(schema.guardrails).set({ draftConfig: config, latestVersion: "1", runtimeProfile: snapshot.runtimeProfile, loggingLevel: "debug", excludedTestCaseIds: snapshot.excludedTestCaseIds }).where(eq(schema.guardrails.id, "guard-a"));
     return { db, snapshot };
   }
+  it("restores the complete published draft with a new revision and retains immutable history", async () => {
+    const { db, snapshot } = await sourceFixture();
+    await db.update(schema.guardrails).set({ draftRevision: 2, draftConfig: { ...snapshot.draftConfig, allowedTopics: ["modified"] }, excludedTestCaseIds: [], loggingLevel: "trace" }).where(eq(schema.guardrails.id, "guard-a"));
+    await pool.query("UPDATE guardrail_test_case SET content='edited' WHERE guardrail_id='guard-a'");
+    const preview = await service.guardrailDraftChanges("guard-a");
+    expect(preview).toMatchObject({ hasUnpublishedChanges: true, canDiscard: true, draftRevision: 2, baselineVersion: "1" });
+    expect(preview.changes.map(c => c.kind)).toEqual(expect.arrayContaining(["setting", "caseUpdated", "testScope"]));
+    const originalVersion = (await db.select().from(schema.guardrailVersions).where(eq(schema.guardrailVersions.guardrailId, "guard-a")))[0];
+    const restored = await service.discardGuardrailDraft({ id: "guard-a", actorId: actor, expectedDraftRevision: 2, expectedBaselineVersion: "1" });
+    expect(restored).toMatchObject({ draftRevision: 3, hasUnpublishedChanges: false, latestVersion: "1", latestArtifactId: "artifact-a", loggingLevel: "trace", excludedTestCaseIds: ["custom-case"] });
+    expect((await service.guardrailDraftChanges("guard-a")).changes).toEqual([]);
+    expect((await db.select().from(schema.testCases).where(eq(schema.testCases.guardrailId, "guard-a")))[0]?.content).toBe("frozen");
+    expect((await db.select().from(schema.guardrailVersions).where(eq(schema.guardrailVersions.guardrailId, "guard-a")))[0]).toEqual(originalVersion);
+    expect(await count("audit_event", "kind='guardrail.draft_discarded'")).toBe(1);
+    expect(await count("controller_outbox")).toBe(0);
+  });
+
+  it("rejects stale, incomplete and compiling discard targets before changing data", async () => {
+    const { db } = await sourceFixture();
+    const input = { id: "guard-a", actorId: actor, expectedDraftRevision: 1, expectedBaselineVersion: "1" };
+    await expect(service.discardGuardrailDraft({ ...input, expectedDraftRevision: 2 })).rejects.toMatchObject({ code: "guardrail_draft_conflict" });
+    await expect(service.discardGuardrailDraft({ ...input, expectedBaselineVersion: "2" })).rejects.toMatchObject({ code: "guardrail_draft_conflict" });
+    await db.insert(schema.guardrailVersions).values({ guardrailId: "guard-a", version: "compiling", generation: 9, status: "compiling", runtimeProfile: "auto", plan: {} });
+    await expect(service.discardGuardrailDraft(input)).rejects.toMatchObject({ code: "guardrail_publication_pending" });
+    await db.update(schema.guardrailVersions).set({ sourceSnapshot: null }).where(eq(schema.guardrailVersions.guardrailId, "guard-a"));
+    await expect(service.discardGuardrailDraft(input)).rejects.toMatchObject({ code: "source_snapshot_unavailable" });
+    expect(await count("audit_event", "kind='guardrail.draft_discarded'")).toBe(0);
+    expect((await db.select().from(schema.testCases))[0]?.content).toBe("frozen");
+  });
+
+  it("keeps the revision for unchanged saves and rejects an editor's stale revision", async () => {
+    const { db, snapshot } = await sourceFixture();
+    snapshot.draftConfig = defaultGuardrailDraft(PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list());
+    await db.update(schema.guardrails).set({ draftConfig: snapshot.draftConfig, runtimeProfile: "auto" }).where(eq(schema.guardrails.id, "guard-a"));
+    const saved = await service.updateGuardrail({ id: "guard-a", actorId: actor, expectedDraftRevision: 1, draftConfig: snapshot.draftConfig });
+    expect(saved).toMatchObject({ draftRevision: 1, hasUnpublishedChanges: false });
+    await expect(service.updateGuardrail({ id: "guard-a", actorId: actor, expectedDraftRevision: 2, draftConfig: snapshot.draftConfig })).rejects.toMatchObject({ code: "guardrail_draft_conflict" });
+  });
   it("duplicates the exact published source after draft changes, with independent identity and no readiness or traffic", async () => {
     const { db, snapshot } = await sourceFixture(); const router = await publish(); await service.trafficRouting.bind(router.id, ["http"], actor);
     await db.update(schema.guardrails).set({ draftRevision: 2, draftConfig: { ...snapshot.draftConfig, allowedTopics: ["changed"] }, loggingLevel: "trace" }).where(eq(schema.guardrails.id, "guard-a"));

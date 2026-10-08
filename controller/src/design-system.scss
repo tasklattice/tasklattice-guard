@@ -195,6 +195,24 @@
   align-items: center;
   justify-content: center;
 }
+.guard-actions-menu .cds--menu-button__trigger {
+  // Use the same Carbon button sizing and border as adjacent actions, with
+  // compact trailing-icon spacing instead of the default 12rem minimum width.
+  min-inline-size: auto;
+  padding-inline: 1rem 2.5rem;
+  white-space: nowrap;
+}
+.guard-actions-menu .cds--menu-button__trigger::before {
+  // Carbon MenuButton accepts a text label only; a decorative mask preserves
+  // its accessible name and follows the button's hover/open text color.
+  content: "";
+  inline-size: 1rem;
+  block-size: 1rem;
+  flex-shrink: 0;
+  margin-inline-end: 0.5rem;
+  background-color: currentColor;
+  mask: url("./assets/icons/settings-2.svg") center / contain no-repeat;
+}
 .guard-menu-item-content {
   display: flex;
   align-items: center;
@@ -429,4 +447,52 @@ svg.lucide {
 }
 .account-menu-options .guard-menu-label {
   padding: 0.75rem 1rem;
+}
+
+.validation-run-progress {
+  padding-block: 1rem;
+
+  &__steps {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1rem;
+    padding: 0;
+    margin: 1.5rem 0 0;
+    list-style: none;
+
+    li {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding-top: 0.75rem;
+      border-top: 2px solid var(--cds-border-subtle-01);
+      color: var(--cds-text-secondary);
+      font-size: 0.75rem;
+    }
+
+    li[aria-current="step"], li[data-complete] {
+      border-color: var(--cds-interactive);
+      color: var(--cds-text-primary);
+    }
+
+    li[aria-current="step"] {
+      font-weight: 600;
+    }
+  }
+
+  &__marker {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 1.25rem;
+    height: 1.25rem;
+    border: 1px solid var(--cds-border-strong-01);
+    border-radius: 50%;
+  }
+
+  [aria-current="step"] &__marker, [data-complete] &__marker {
+    border-color: var(--cds-interactive);
+    background: var(--cds-interactive);
+    color: var(--cds-text-on-color);
+  }
 }

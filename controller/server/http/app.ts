@@ -88,7 +88,7 @@ const guardrailInput = z.strictObject({
   draftConfig: guardrailDraftInput,
   runtimeProfile: z.enum(["auto", "llmrails_colang1_standard", "llmrails_colang2_programmable", "iorails_native"]).default("auto"),
 });
-const guardrailUpdateInput = guardrailInput.partial();
+const guardrailUpdateInput = guardrailInput.partial().extend({ expectedDraftRevision: z.number().int().positive().optional() });
 const intentAnalysisInput = z.object({
   purpose: z.string().trim().min(1).max(2_000),
   deniedPurpose: z.string().trim().min(1).max(2_000).optional(),
@@ -677,6 +677,13 @@ export function createHttpApp(input: {
       actorId: context.get("actor").id,
       compilerAvailable: input.runnerControl.hasDefaultCompiler(),
     }), 202);
+  });
+  app.get("/api/v1/guardrails/:id/draft-changes", authenticated, async context => {
+    return context.json(await input.service.guardrailDraftChanges(context.req.param("id")));
+  });
+  app.post("/api/v1/guardrails/:id/discard-draft", authenticated, administrator, async context => {
+    const body = z.object({ expectedDraftRevision: z.number().int().positive(), expectedBaselineVersion: guardrailVersionInput }).parse(await context.req.json());
+    return context.json(await input.service.discardGuardrailDraft({ ...body, id: context.req.param("id"), actorId: context.get("actor").id }));
   });
   app.get("/api/v1/guardrails/:id/versions/:version/deletion-impact", authenticated, administrator, async context => {
     return context.json(await input.service.guardrailVersionDeletionImpact(context.req.param("id"), guardrailVersionInput.parse(context.req.param("version"))));

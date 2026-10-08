@@ -377,11 +377,20 @@ class RunnerControlClient:
     async def _validate(self, request: protocol.ValidationRequest) -> None:
         if self._validator is None:
             return
+        async def report_progress(phase: str, completed: int, passed: int) -> None:
+            await self._send(protocol.RunnerMessage(
+                message_id=str(uuid.uuid4()), sent_at_unix_ms=_now_ms(),
+                validation_progress=protocol.ValidationProgress(
+                    runner_id=self._settings.runner_id, run_id=request.run_id,
+                    phase=protocol.ValidationExecutionPhase.Value(f"VALIDATION_EXECUTION_PHASE_{phase.upper()}"),
+                    completed_cases=completed, passed_cases=passed,
+                ),
+            ))
         self._metrics.job("validation", True)
         try:
             with diagnostic_phase("guardrail.validation", run_id=request.run_id,
                                   guardrail_id=request.guardrail_id, cases=len(request.test_cases)):
-                status, metrics, results = await self._validator.validate(request)
+                status, metrics, results = await self._validator.validate(request, on_progress=report_progress)
             result = protocol.ValidationResult(
                 runner_id=self._settings.runner_id,
                 run_id=request.run_id,

@@ -89,12 +89,9 @@ export function GuardrailValidationHistory({ runs, loading, error, canManage, ru
 }) {
   const { t, i18n } = useTranslation();
   const orderedRuns = useMemo(() => [...runs].sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at)), [runs]);
-  return <section className="overflow-hidden rounded-xl border bg-card shadow-xs">
+  return <section className="overflow-hidden rounded-xl border bg-card shadow-xs" aria-label={t("guardrails.validationHistoryTitle")}>
     <header className="flex flex-col gap-3 border-b bg-muted/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-      <div>
-        <div className="flex flex-wrap items-center gap-2"><h2 className="text-sm font-semibold">{t("guardrails.validationHistoryTitle")}</h2><Badge variant="outline" className="font-mono text-[10px]">{orderedRuns.length}</Badge></div>
-        <p className="mt-1 text-xs leading-5 text-muted-foreground">{t("guardrails.validationHistoryDescription")}</p>
-      </div>
+      <p className="text-xs leading-5 text-muted-foreground">{t("guardrails.validationHistoryDescription")}</p>
       {canManage ? <Button className="min-h-11 shrink-0" disabled={running || Boolean(blockedReason)} title={blockedReason ?? undefined} onClick={onRun}>{running ? <LoaderCircle className="animate-spin" /> : <Play />}{t(running ? "guardrails.runningValidation" : "guardrails.runReviewed")}</Button> : null}
     </header>
     {error ? <div className="p-4"><ErrorNotice error={error} /></div> : null}

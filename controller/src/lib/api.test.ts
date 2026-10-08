@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { analyzeComplianceDocuments, analyzeGuardrailIntent, createValidationRun, excludeGuardrailTestCase, getIntentAnalysisStatus, getValidationRuns, publishGuardrail, publishProgrammablePolicy, updateGuardrail } from "./api";
+import { analyzeComplianceDocuments, analyzeGuardrailIntent, createValidationRun, resumeValidationRun, excludeGuardrailTestCase, getIntentAnalysisStatus, getValidationRuns, publishGuardrail, publishProgrammablePolicy, updateGuardrail } from "./api";
 import { requestController } from "./controller-api";
 
 describe("API error responses", () => {
@@ -64,17 +64,40 @@ describe("API error responses", () => {
       const run = { id: "run-1", guardrailId: "guard-1", status: "passed", metrics: {}, results: [], excludedCaseIds: [] };
       const fetchMock = vi.fn()
         .mockResolvedValueOnce(Response.json({ ...run, status: "queued" }, { status: 202 }))
+        .mockResolvedValueOnce(Response.json({ ...run, status: "running", progress: { phase: "executing", completedCases: 3, passedCases: 2 } }))
         .mockResolvedValueOnce(Response.json(run))
         .mockResolvedValueOnce(Response.json({ items: [run], count: 1 }));
       vi.stubGlobal("fetch", fetchMock);
-      const pending = createValidationRun("guard-1");
-      await vi.advanceTimersByTimeAsync(1000);
+      const onProgress = vi.fn();
+      const pending = createValidationRun("guard-1", { onProgress });
+      await vi.advanceTimersByTimeAsync(2000);
       expect((await pending).status).toBe("passed");
+      expect(onProgress.mock.calls.map(([value]) => value.execution_status)).toEqual(["queued", "running", "passed"]);
+      expect(onProgress.mock.calls[1]?.[0].progress).toMatchObject({ completedCases: 3, passedCases: 2 });
       expect((await getValidationRuns("guard-1")).count).toBe(1);
       expect(fetchMock.mock.calls.map(([path]) => path)).toEqual([
-        "/api/v1/guardrails/guard-1/test-runs", "/api/v1/test-runs/run-1", "/api/v1/test-runs?guardrailId=guard-1",
+        "/api/v1/guardrails/guard-1/test-runs", "/api/v1/test-runs/run-1", "/api/v1/test-runs/run-1", "/api/v1/test-runs?guardrailId=guard-1",
       ]);
       expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ method: "POST" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not turn a polling timeout into a failed report and can resume without another POST", async () => {
+    vi.useFakeTimers();
+    try {
+      const run = { id: "run-slow", guardrailId: "guard-1", status: "running", metrics: { total: 10 }, results: [], excludedCaseIds: [] };
+      const fetchMock = vi.fn().mockImplementation(async () => Response.json(run));
+      vi.stubGlobal("fetch", fetchMock);
+      const onProgress = vi.fn();
+      const timedOut = expect(createValidationRun("guard-1", { onProgress })).rejects.toThrow("may still be running");
+      await vi.advanceTimersByTimeAsync(5 * 60_000);
+      await timedOut;
+      expect(onProgress.mock.lastCall?.[0].execution_status).toBe("running");
+      fetchMock.mockImplementation(async () => Response.json({ ...run, status: "passed" }));
+      expect((await resumeValidationRun("run-slow")).status).toBe("passed");
+      expect(fetchMock.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(1);
     } finally {
       vi.useRealTimers();
     }

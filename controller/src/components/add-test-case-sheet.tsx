@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { createTestCase, type Guardrail, type TestCase } from "@/lib/api";
 
-export function AddTestCaseSheet({ guardrail, open, onOpenChange, onCreated }: { guardrail: Guardrail; open: boolean; onOpenChange: (open: boolean) => void; onCreated: () => void }) {
+export function AddTestCaseSheet({ guardrail, open, onOpenChange, onCreated }: { guardrail: Guardrail; open: boolean; onOpenChange: (open: boolean) => void; onCreated: () => void | Promise<void> }) {
   const { t: uiText } = useTranslation();
   const { t } = useTranslation();
   const [name, setName] = useState("");
@@ -42,13 +42,13 @@ export function AddTestCaseSheet({ guardrail, open, onOpenChange, onCreated }: {
       grounding_sources: [],
       expected_reasoning_result: null,
     }),
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success(t("guardrails.caseCreated"));
-      onCreated();
+      await onCreated();
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : t("guardrails.operationFailed")),
   });
-  return <EntitySheet open={open} onOpenChange={onOpenChange} eyebrow={t("guardrails.addCaseEyebrow")} title={t("guardrails.addCaseTitle")} description={t("guardrails.addCaseDescription")} footer={<><Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button><Button disabled={!name.trim() || !policyId || !content.trim() || mutation.isPending} onClick={() => mutation.mutate()}>{mutation.isPending ? <LoaderCircle className="animate-spin" /> : <Plus />}{t("guardrails.addTestCase")}</Button></>}>
+  return <EntitySheet open={open} closeDisabled={mutation.isPending} onOpenChange={next => { if (!mutation.isPending) onOpenChange(next); }} eyebrow={t("guardrails.addCaseEyebrow")} title={t("guardrails.addCaseTitle")} description={t("guardrails.addCaseDescription")} footer={<><Button variant="outline" disabled={mutation.isPending} onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button><Button disabled={!name.trim() || !policyId || !content.trim() || mutation.isPending} onClick={() => mutation.mutate()}>{mutation.isPending ? <LoaderCircle className="animate-spin" /> : <Plus />}{t("guardrails.addTestCase")}</Button></>}>
     <div className="grid gap-5">
       <SheetField label={t("guardrails.caseName")}><Input autoFocus className="field:min-h-11" value={name} onChange={(event) => setName(event.target.value)} /></SheetField>
       <SheetField label={t("guardrails.policy")}><Select value={policyId} onValueChange={setPolicyId}><SelectTrigger className="field:min-h-11"><SelectValue /></SelectTrigger><SelectContent>{guardrail.policy_bindings.map((binding) => <SelectItem key={binding.policy_id} value={binding.policy_id}>{binding.policy_id}</SelectItem>)}</SelectContent></Select></SheetField>

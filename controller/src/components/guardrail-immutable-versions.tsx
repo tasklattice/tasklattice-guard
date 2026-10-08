@@ -129,8 +129,7 @@ export function ImmutableVersionView({ openRequested, onOpenRequestHandled, deta
   return <>
     <section className="min-w-0 border bg-card" aria-label={t("guardrails.versions")}>
       <header className="border-b px-5 py-4">
-        <h2 className="flex items-center gap-2 text-base font-semibold">{t("guardrails.versions")}<Badge variant="outline">{loading ? "…" : versions.length}</Badge></h2>
-        <p className="mt-1 text-sm text-muted-foreground">{t("immutableVersions.description")}</p>
+        <p className="text-sm text-muted-foreground">{t("immutableVersions.description")}</p>
       </header>
       {error ? <div className="space-y-3 p-5"><ErrorNotice error={error} /><Button variant="outline" onClick={onRetry}>{t("immutableVersions.retry")}</Button></div> : null}
       {loading ? <div className="space-y-3 p-5" aria-label={t("immutableVersions.loading")}><Skeleton className="h-12" /><Skeleton className="h-16" /><Skeleton className="h-16" /></div>

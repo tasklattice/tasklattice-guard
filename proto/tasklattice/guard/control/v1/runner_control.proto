@@ -30,6 +30,7 @@ message RunnerMessage {
     ValidationResult validation_result = 14;
     DesiredStateResult desired_state_result = 15;
     CapabilityValidationResult capability_validation_result = 16;
+    ValidationProgress validation_progress = 17;
   }
 }
 

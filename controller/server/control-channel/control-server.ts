@@ -288,6 +288,20 @@ export class RunnerControlServer {
       this.metrics.observeJob("compile", result.accepted);
       await this.handleCompileResult(result);
       await this.reconcileAll();
+    } else if (message.validationProgress) {
+      const progress = message.validationProgress;
+      if (progress.runnerId !== current.runnerId || !current.compilerCapable || current.poolId !== "default") {
+        throw new Error("Validation progress identity does not match a registered compiler stream.");
+      }
+      const phase = {
+        VALIDATION_EXECUTION_PHASE_PREPARING: "preparing",
+        VALIDATION_EXECUTION_PHASE_EXECUTING: "executing",
+        VALIDATION_EXECUTION_PHASE_FINALIZING: "finalizing",
+      } as const;
+      if (progress.phase === "VALIDATION_EXECUTION_PHASE_UNSPECIFIED") return current;
+      await this.service.updateValidationProgress(progress.runId, {
+        phase: phase[progress.phase], completedCases: progress.completedCases, passedCases: progress.passedCases,
+      });
     } else if (message.validationResult) {
       const result = message.validationResult;
       if (result.runnerId !== current.runnerId) throw new Error("Validation result identity does not match the registered stream.");
