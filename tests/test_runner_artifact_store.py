@@ -206,14 +206,8 @@ def _artifact() -> protocol.Artifact:
 
 
 def _checksum(artifact: protocol.Artifact) -> str:
-    from runner.protocol_codec import artifact_content
-    import json
-    return hashlib.sha256(json.dumps(
-        artifact_content(artifact),
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-    ).encode()).hexdigest()
+    from runner.protocol_codec import artifact_digest
+    return artifact_digest(artifact)
 
 
 def _signature(private_key: Ed25519PrivateKey, checksum: str) -> str:
@@ -221,11 +215,9 @@ def _signature(private_key: Ed25519PrivateKey, checksum: str) -> str:
     return base64.b64encode(private_key.sign(checksum.encode())).decode()
 
 
-@pytest.mark.parametrize("representation", ["before-severity", "empty-severity", "with-severity"])
-def test_signed_policy_bindings_survive_severity_schema_addition_and_restart(tmp_path, representation):
-    """Immutable published artifacts must keep working after an additive schema change."""
-    import json
-    from runner.protocol_codec import artifact_content
+@pytest.mark.parametrize("severity", [False, True])
+def test_content_digest_excludes_delivery_envelope_and_survives_restart(tmp_path, severity):
+    """The same signed content verifies under any local generation or Artifact ID."""
 
     private_key = Ed25519PrivateKey.generate()
     public_path = tmp_path / "public.pem"
@@ -234,17 +226,17 @@ def test_signed_policy_bindings_survive_severity_schema_addition_and_restart(tmp
     ))
     artifact = _artifact()
     binding = artifact.plan.policy_bindings.add(policy_id="policy-1", policy_version="1", enabled_rule_ids=["rule-1"])
-    if representation == "with-severity":
+    if severity:
         binding.rule_severities.add(key="rule-1", value="high")
-    content = artifact_content(artifact)
-    if representation == "before-severity":
-        for item in content["plan"]["policy_bindings"]:
-            del item["rule_severities"]
-    artifact.checksum = hashlib.sha256(json.dumps(
-        content, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-    ).encode()).hexdigest()
+    artifact.plan.reasoning_policies.add(id="reasoning-1", policy_id="policy-1", policy_version="1", confidence_threshold=1.0)
+    artifact.checksum = _checksum(artifact)
     artifact.signature = _signature(private_key, artifact.checksum)
-    desired = protocol.DesiredState(generation=7, artifacts=[artifact])
+    promoted = protocol.Artifact()
+    promoted.CopyFrom(artifact)
+    promoted.generation = 912
+    promoted.artifact_id = "promoted-local-artifact"
+    assert _checksum(promoted) == artifact.checksum
+    desired = protocol.DesiredState(generation=7, artifacts=[promoted])
     store = ArtifactStore(public_path, tmp_path / "state")
     store.attach_registry(Registry())
     original_wire = desired.SerializeToString()
@@ -256,15 +248,13 @@ def test_signed_policy_bindings_survive_severity_schema_addition_and_restart(tmp
     restored.attach_registry(Registry())
     assert restored.generation == 7
     assert restored.plan(artifact.guardrail_id, artifact.guardrail_version).policy_bindings[0].rule_severities == (
-        (("rule-1", "high"),) if representation == "with-severity" else ()
+        (("rule-1", "high"),) if severity else ()
     )
 
 
 @pytest.mark.parametrize("tamper", ["content", "severity", "signature"])
-def test_earlier_artifact_representation_still_rejects_tampering(tmp_path, tamper):
-    import json
+def test_signed_artifact_rejects_tampering(tmp_path, tamper):
     from cryptography.exceptions import InvalidSignature
-    from runner.protocol_codec import artifact_content
 
     key = Ed25519PrivateKey.generate()
     public_path = tmp_path / "public.pem"
@@ -273,11 +263,7 @@ def test_earlier_artifact_representation_still_rejects_tampering(tmp_path, tampe
     ))
     artifact = _artifact()
     artifact.plan.policy_bindings.add(policy_id="policy-1", policy_version="1", enabled_rule_ids=["rule-1"])
-    content = artifact_content(artifact)
-    del content["plan"]["policy_bindings"][0]["rule_severities"]
-    artifact.checksum = hashlib.sha256(json.dumps(
-        content, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-    ).encode()).hexdigest()
+    artifact.checksum = _checksum(artifact)
     artifact.signature = _signature(key, artifact.checksum)
     store = ArtifactStore(public_path, tmp_path / "state")
     store.attach_registry(Registry())

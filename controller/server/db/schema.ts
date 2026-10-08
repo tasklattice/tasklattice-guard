@@ -9,6 +9,7 @@ import {
   jsonb,
   pgTable,
   primaryKey,
+  smallint,
   text,
   timestamp,
   uniqueIndex,
@@ -346,6 +347,7 @@ export const artifacts = pgTable("guardrail_artifact", {
   dependencyManifest: jsonb("dependency_manifest").$type<unknown[]>().notNull().default([]),
   checksum: text("checksum").notNull(),
   signature: text("signature").notNull(),
+  contentDigestVersion: smallint("content_digest_version").notNull().default(2),
   createdAt,
 }, (table) => [
   uniqueIndex("guardrail_artifact_checksum_idx").on(table.checksum),

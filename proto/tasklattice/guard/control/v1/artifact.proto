@@ -58,11 +58,14 @@ message ArtifactDependency {
 
 // Immutable, signed Guardrail runtime package distributed to Runner pools.
 message Artifact {
+  // Local delivery envelope: excluded from the checksum.
   string artifact_id = 1;
   string guardrail_id = 2;
   // Immutable Guardrail version compiled into this artifact.
   string guardrail_version = 3;
-  // Desired-state generation for which Controller accepted and signed the artifact.
+  // Local delivery envelope: the desired-state generation at which this
+  // environment accepted the artifact. Excluded from the checksum, so promoted
+  // content keeps one digest in every environment.
   int64 generation = 4;
   // Compiler implementation version that produced the artifact.
   string compiler_version = 5;
@@ -79,7 +82,9 @@ message Artifact {
   repeated PromptDefinition prompts = 11;
   repeated ActionBinding action_bindings = 12;
   repeated ArtifactDependency dependency_manifest = 13;
-  // Lowercase SHA-256 hex digest of the canonical unsigned artifact payload.
+  // Lowercase SHA-256 hex digest of canonical JSON (see canonical-json.ts /
+  // protocol_codec.canonical_json) over every field except artifact_id,
+  // generation, checksum and signature.
   string checksum = 14;
   // Base64 Ed25519 signature over the UTF-8 checksum, produced by Controller.
   string signature = 15;

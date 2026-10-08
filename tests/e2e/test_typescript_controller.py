@@ -32,7 +32,7 @@ async def test_typescript_controller_distributes_signed_artifact_or_rejects_inva
     desired = protocol.DesiredState.FromString(base64.b64decode((FIXTURE / "desired-state.pb.b64").read_bytes()))
     artifact = desired.artifacts[0]
     payload = {"artifact": {"id": artifact.artifact_id, **artifact_content(artifact),
-        "checksum": artifact.checksum, "signature": artifact.signature}}
+        "generation": int(artifact.generation), "checksum": artifact.checksum, "signature": artifact.signature}}
     if invalid_action is not None:
         payload["invalidAction"] = invalid_action
     with (tmp_path / "controller.log").open("w+") as log:

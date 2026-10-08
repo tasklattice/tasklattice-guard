@@ -7,6 +7,9 @@ snake/camel-case values used by existing runtime domain objects.
 
 from __future__ import annotations
 
+import hashlib
+import json
+import math
 import re
 from collections.abc import Iterable, Mapping
 from typing import Any
@@ -65,12 +68,15 @@ def dependencies_from_proto(values: Iterable[protocol.ArtifactDependency]) -> li
 
 
 def artifact_content(message: protocol.Artifact) -> dict[str, Any]:
-    """Return the canonical signed Artifact body shared with Controller."""
+    """Return the canonical signed Artifact body shared with Controller.
+
+    ``generation`` and ``artifact_id`` are local delivery envelope fields: the
+    same content keeps one digest in every environment it is promoted to.
+    """
 
     return {
         "guardrailId": message.guardrail_id,
         "guardrailVersion": message.guardrail_version,
-        "generation": int(message.generation),
         "compilerVersion": message.compiler_version,
         "nemoVersion": message.nemo_version,
         "runtimeProfile": message.runtime_profile,
@@ -81,6 +87,59 @@ def artifact_content(message: protocol.Artifact) -> dict[str, Any]:
         "actionBindings": action_bindings_from_proto(message.action_bindings),
         "dependencyManifest": dependencies_from_proto(message.dependency_manifest),
     }
+
+
+def artifact_digest(message: protocol.Artifact) -> str:
+    """SHA-256 content digest shared with Controller ``artifactContentDigest``."""
+
+    return hashlib.sha256(canonical_json(artifact_content(message)).encode()).hexdigest()
+
+
+def canonical_json(value: Any) -> str:
+    """Canonical JSON shared with ``controller/shared/canonical-json.ts``.
+
+    Keys are printable ASCII sorted by code point; whole-number floats encode as
+    integers and fractional floats must stay in the range where Python ``repr``
+    and JavaScript ``Number#toString`` produce the same decimal digits.
+    """
+
+    return json.dumps(
+        _canonical_value(value), sort_keys=True, separators=(",", ":"),
+        ensure_ascii=False, allow_nan=False,
+    )
+
+
+_MAX_SAFE_INTEGER = 2**53 - 1
+
+
+def _canonical_value(value: Any) -> Any:
+    if value is None or isinstance(value, (bool, str)):
+        return value
+    if isinstance(value, int):
+        if abs(value) > _MAX_SAFE_INTEGER:
+            raise ValueError("Canonical JSON integers must be safe integers.")
+        return value
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError("Canonical JSON numbers must be finite.")
+        if value.is_integer():
+            return _canonical_value(int(value))
+        if abs(value) < 1e-4:
+            raise ValueError("Canonical JSON fractional numbers must be at least 1e-4 in magnitude.")
+        return value
+    if isinstance(value, Mapping):
+        result: dict[str, Any] = {}
+        for key, item in value.items():
+            if not isinstance(key, str) or not _PRINTABLE_ASCII.fullmatch(key):
+                raise ValueError(f"Canonical JSON keys must be printable ASCII: {key!r}.")
+            result[key] = _canonical_value(item)
+        return result
+    if isinstance(value, (list, tuple)):
+        return [_canonical_value(item) for item in value]
+    raise ValueError(f"Canonical JSON cannot encode {type(value).__name__}.")
+
+
+_PRINTABLE_ASCII = re.compile(r"[\x20-\x7e]*")
 
 
 def traffic_scope_to_proto(value: Mapping[str, Any]) -> protocol.TrafficScope:

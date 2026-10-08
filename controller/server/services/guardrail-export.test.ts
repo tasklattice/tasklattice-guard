@@ -1,12 +1,12 @@
 // @vitest-environment node
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
-import { createHash } from "node:crypto";
 import { loadSync } from "@grpc/proto-loader";
 import { describe, expect, it, vi } from "vitest";
 import { artifactFromWire } from "../control-channel/protocol-codec.js";
 import type { Artifact__Output } from "../generated/control-protocol/tasklattice/guard/control/v1/Artifact.js";
 import { guardrailArtifactExport } from "../domain/guardrail-artifact-export.js";
+import { artifactContentDigest, type ArtifactContent } from "../domain/artifact-content.js";
 import type { CompiledArtifactInput } from "../domain/models.js";
 import type { ControllerDatabase } from "../db/client.js";
 import type { ControllerConfig } from "../config.js";
@@ -41,10 +41,7 @@ describe("Guardrail Artifact export", () => {
     const decoded = artifactType.deserialize(artifactType.serialize(exported)) as Artifact__Output;
     const { id: _id, checksum: _checksum, signature: _signature, ...content } = artifact;
     expect(artifactFromWire(decoded)).toEqual(content);
-    const canonical = (value: unknown): unknown => Array.isArray(value) ? value.map(canonical) : value && typeof value === "object"
-      ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([key, item]) => [key, canonical(item)])) : value;
-    const checksum = createHash("sha256").update(JSON.stringify(canonical(artifactFromWire(decoded)))).digest("hex");
-    expect(checksum).toBe(artifact.checksum);
+    expect(artifactContentDigest(artifactFromWire(decoded) as unknown as ArtifactContent)).toBe(artifact.checksum);
     expect(decoded.signature).toBe(artifact.signature);
     expect(decoded.artifactId).toBe(artifact.id);
   });

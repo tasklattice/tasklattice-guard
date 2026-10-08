@@ -18,6 +18,8 @@ const config = loadConfig();
 const { db, pool } = createDatabase(config);
 await runMigrations(config, db);
 const service = new ControlPlaneService(db, config);
+const resealed = await service.resealArtifacts();
+if (resealed) process.stdout.write(`Re-sealed ${resealed} Artifact(s) under the current content digest contract.\n`);
 await service.initialize();
 const models = new ModelConfigurationService(db, config.betterAuthSecret, config.policyCatalogDir);
 await models.initialize();

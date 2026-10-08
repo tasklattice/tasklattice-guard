@@ -1,18 +1,15 @@
 """Offline Artifact compilation from a frozen plan and explicit target capabilities."""
 from __future__ import annotations
 
-import hashlib
 import importlib.metadata
-import json
 from dataclasses import asdict
-from typing import Any
 
 import yaml
 
 from .nemo_compiler import NeMoConfigCompiler
 from runner import generated as protocol
 from runner.protocol_codec import (
-    action_bindings_to_proto, artifact_content, dependencies_to_proto,
+    action_bindings_to_proto, artifact_digest, dependencies_to_proto,
     plan_from_proto, plan_to_proto, prompts_to_proto,
 )
 from runner.serialization import plan_from_dict
@@ -59,11 +56,5 @@ class ArtifactCompiler:
             action_bindings=action_bindings_to_proto(action_bindings),
             dependency_manifest=dependencies_to_proto(dependencies),
         )
-        artifact.checksum = hashlib.sha256(
-            _stable_json(artifact_content(artifact)).encode()
-        ).hexdigest()
+        artifact.checksum = artifact_digest(artifact)
         return artifact
-
-
-def _stable_json(value: Any) -> str:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)

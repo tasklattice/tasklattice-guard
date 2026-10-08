@@ -6,8 +6,10 @@ import type { EventSeverity } from "../../shared/security-severity.js";
 import { readGuardrailProfiles } from "./guardrail-profiles.js";
 import { expandProtectionPreset } from "../policy-catalog/presets.js";
 import { TrafficRoutingService } from "./traffic-routing.js";
-import { createHash, createPrivateKey, randomUUID, sign } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import { canonicalJson } from "../../shared/canonical-json.js";
+import { artifactContent, artifactContentDigest, ARTIFACT_CONTENT_DIGEST_VERSION, signArtifactDigest, type ArtifactContent } from "../domain/artifact-content.js";
+import { canonicalArtifactContent } from "../control-channel/artifact-codec.js";
 import { programmablePolicyProtection } from "../policy-studio/protection.js";
 import { queryRuntimeMetrics, type MetricScope } from "./runtime-metrics.js";
 import { boundedRead } from '../db/read-budget.js';
@@ -121,6 +123,57 @@ export class ControlPlaneService {
       await advisoryTransactionLock(tx, 'tasklattice-guard-product-defaults');
       await this.ensureDefaultGuardrail(tx);
     });
+  }
+
+  /**
+   * Re-seal Artifacts signed under an earlier digest contract. Content is
+   * normalized through the transport schema, so stored JSON, checksum and the
+   * Runner's recomputed digest agree byte for byte afterwards.
+   */
+  async resealArtifacts(): Promise<number> {
+    return this.db.transaction(async (tx) => {
+      await advisoryTransactionLock(tx, 'tasklattice-guard-product-defaults');
+      return this.resealStaleArtifacts(tx);
+    });
+  }
+
+  private async resealStaleArtifacts(tx: Transaction): Promise<number> {
+    const stale = await tx.select().from(artifacts)
+      .where(ne(artifacts.contentDigestVersion, ARTIFACT_CONTENT_DIGEST_VERSION)).for("update");
+    if (!stale.length) return 0;
+    const referenced = new Set((await tx.select({ artifactId: guardrailVersions.artifactId }).from(guardrailVersions)
+      .where(inArray(guardrailVersions.artifactId, stale.map(row => row.id)))).map(row => row.artifactId));
+    const sealed = stale.map(row => {
+      const content = canonicalArtifactContent(row as ArtifactContent, this.config.protoPath);
+      return { row, content, checksum: artifactContentDigest(content) };
+    });
+    const byChecksum = new Map<string, typeof sealed>();
+    for (const item of sealed) byChecksum.set(item.checksum, [...byChecksum.get(item.checksum) ?? [], item]);
+    for (const [checksum, group] of byChecksum) {
+      // Rows that differed only by their delivery generation now share content.
+      const kept = group.filter(item => referenced.has(item.row.id));
+      if (kept.length > 1) throw new Error(`Artifacts ${kept.map(item => item.row.id).join(", ")} share content ${checksum}; remove the duplicate version before upgrading.`);
+      const [keep = group[0]!, ...rest] = [...kept, ...group.filter(item => !referenced.has(item.row.id))];
+      if (rest.length) await tx.delete(artifacts).where(inArray(artifacts.id, rest.map(item => item.row.id)));
+      await tx.update(artifacts).set({
+        ...keep.content,
+        checksum,
+        signature: signArtifactDigest(checksum, this.config.artifactSigningKeyPath),
+        contentDigestVersion: ARTIFACT_CONTENT_DIGEST_VERSION,
+      }).where(eq(artifacts.id, keep.row.id));
+    }
+    const [state] = await tx.update(controllerState).set({
+      desiredGeneration: increment(controllerState.desiredGeneration), updatedAt: new Date(),
+    }).where(eq(controllerState.id, "singleton")).returning();
+    await tx.insert(outboxEvents).values({
+      id: randomUUID(), kind: "runner.desired_state_changed", aggregateId: "artifact-reseal",
+      payload: { generation: state?.desiredGeneration ?? 0, resealed: sealed.length },
+    });
+    await tx.insert(auditEvents).values({
+      id: randomUUID(), kind: "artifact.resealed", actorId: null, resourceType: "artifact", resourceId: "all",
+      detail: { count: sealed.length, digestVersion: ARTIFACT_CONTENT_DIGEST_VERSION },
+    });
+    return sealed.length;
   }
 
   async desiredGeneration(): Promise<number> {
@@ -275,7 +328,7 @@ export class ControlPlaneService {
       const runId = `policy-testing-report-${randomUUID()}`;
       const candidateVersion = guardrailVersionId();
       const snapshot = policySnapshot(record, String(record.draftRevision), "");
-      snapshot.checksum = createHash("sha256").update(stableJson(snapshot)).digest("hex");
+      snapshot.checksum = createHash("sha256").update(canonicalJson(snapshot)).digest("hex");
       const plan = programmablePolicyPlan(record.id, record.name, candidateVersion, snapshot);
       await tx.insert(policyValidationRuns).values({
         id: runId,
@@ -349,7 +402,7 @@ export class ControlPlaneService {
       const version = (latestVersion?.value ?? 0) + 1;
       const publishedAt = new Date();
       const snapshot = policySnapshot(record, String(version), "", publishedAt);
-      const checksum = createHash("sha256").update(stableJson(snapshot)).digest("hex");
+      const checksum = createHash("sha256").update(canonicalJson(snapshot)).digest("hex");
       snapshot.checksum = checksum;
       await tx.insert(policyVersions).values({ policyId: input.id, version, sourceDraftRevision, snapshot, checksum, publishedAt });
       await tx.insert(auditEvents).values({
@@ -509,7 +562,7 @@ export class ControlPlaneService {
       engine: "GuardRails 0 · NeMo",
       colang_version: input.runtimeProfile === "llmrails_colang1_standard" ? "1.0" : input.runtimeProfile === "llmrails_colang2_programmable" ? "2.x" : "auto",
       compiler_version: String(plan.compiler_version ?? "tasklattice-controller-plan-v3"),
-      checksum: createHash("sha256").update(stableJson({ draftConfig, runtimeProfile: input.runtimeProfile })).digest("hex"),
+      checksum: createHash("sha256").update(canonicalJson({ draftConfig, runtimeProfile: input.runtimeProfile })).digest("hex"),
       rails,
       parallel_groups: modules.map((module) => String(module.id ?? "")).filter(Boolean),
       actions,
@@ -552,7 +605,7 @@ export class ControlPlaneService {
     const id = await this.db.transaction(async tx => {
       await advisoryTransactionLock(tx, `guardrail-duplicate:${duplicateKey}`);
       const [existing] = await tx.select().from(guardrails).where(eq(guardrails.duplicateKey, duplicateKey));
-      const requestDigest = createHash("sha256").update(stableJson({ id: input.id, name: input.name, sourceVersion: input.sourceVersion, sourceDraftRevision: input.sourceDraftRevision })).digest("hex");
+      const requestDigest = createHash("sha256").update(canonicalJson({ id: input.id, name: input.name, sourceVersion: input.sourceVersion, sourceDraftRevision: input.sourceDraftRevision })).digest("hex");
       if (existing) {
         if (existing.copyOrigin?.requestDigest !== requestDigest) throw new ConflictError("Idempotency key was used for a different copy request.", "duplicate_key_conflict");
         return existing.id;
@@ -572,7 +625,7 @@ export class ControlPlaneService {
         snapshot = version.sourceSnapshot;
       }
       const copiedId = randomUUID();
-      const copyOrigin = { sourceGuardrailId: input.id, sourceName: source.name, sourceVersion: sourceVersion ?? null, sourceDraftRevision: input.sourceDraftRevision ?? null, copiedAt: new Date().toISOString(), contentDigest: createHash("sha256").update(stableJson(snapshot)).digest("hex"), requestDigest };
+      const copyOrigin = { sourceGuardrailId: input.id, sourceName: source.name, sourceVersion: sourceVersion ?? null, sourceDraftRevision: input.sourceDraftRevision ?? null, copiedAt: new Date().toISOString(), contentDigest: createHash("sha256").update(canonicalJson(snapshot)).digest("hex"), requestDigest };
       await tx.insert(guardrails).values({ id: copiedId, name: input.name, draftConfig: snapshot.draftConfig, runtimeProfile: snapshot.runtimeProfile, loggingLevel: snapshot.loggingLevel as "info" | "debug" | "trace", excludedTestCaseIds: snapshot.excludedTestCaseIds, copyOrigin, duplicateKey });
       // Case IDs are scoped by Guardrail; preserve IDs so exclusion/override references remain exact.
       if (snapshot.testCases?.length) await tx.insert(testCases).values(snapshot.testCases.map(c => ({ ...c, guardrailId: copiedId, updatedAt: new Date() })));
@@ -835,26 +888,8 @@ export class ControlPlaneService {
   }
 
   async acceptCompiledArtifact(input: Omit<CompiledArtifactInput, "checksum" | "signature" | "id"> & { compileId: string }) {
-    const canonical = stableJson({
-      guardrailId: input.guardrailId,
-      guardrailVersion: input.guardrailVersion,
-      generation: input.generation,
-      compilerVersion: input.compilerVersion,
-      nemoVersion: input.nemoVersion,
-      runtimeProfile: input.runtimeProfile,
-      plan: input.plan,
-      configYaml: input.configYaml,
-      colangContent: input.colangContent,
-      prompts: input.prompts,
-      actionBindings: input.actionBindings,
-      dependencyManifest: input.dependencyManifest,
-    });
-    const checksum = createHash("sha256").update(canonical).digest("hex");
-    const signature = sign(
-      null,
-      Buffer.from(checksum, "utf8"),
-      createPrivateKey(readFileSync(this.config.artifactSigningKeyPath)),
-    ).toString("base64");
+    const checksum = artifactContentDigest(input);
+    const signature = signArtifactDigest(checksum, this.config.artifactSigningKeyPath);
     const proposedArtifactId = randomUUID();
     const stored = await this.db.transaction(async (tx) => {
       // Serialize publication/activation and completion for this Guardrail. A
@@ -871,7 +906,7 @@ export class ControlPlaneService {
       if (!version) throw new ConflictError("Compile result does not match an outstanding version.", "stale_compile_result");
       // Compare the executable wire contract (including order and overrides),
       // ignoring domain-only metadata that protobuf deliberately omits.
-      if (stableJson(planToWire(input.plan)) !== stableJson(planToWire(version.plan))) {
+      if (canonicalJson(planToWire(input.plan)) !== canonicalJson(planToWire(version.plan))) {
         throw new ConflictError("Compile result changed the requested executable plan.", "compile_plan_mismatch");
       }
       if (version.status === "ready" && version.artifactId) {
@@ -1266,7 +1301,7 @@ export class ControlPlaneService {
     const validated = request?.payload.plan;
     if (!validated || typeof validated !== "object" || Array.isArray(validated)
       || request?.payload.runtimeProfile !== runtimeProfile
-      || stableJson(planToWire(validated as Record<string, unknown>)) !== stableJson(planToWire(plan))) {
+      || canonicalJson(planToWire(validated as Record<string, unknown>)) !== canonicalJson(planToWire(plan))) {
       throw new ConflictError(
         "The executable configuration changed since Validation. Validate the current draft again before publishing.",
         "guardrail_validation_plan_changed",
@@ -2284,7 +2319,7 @@ export class ControlPlaneService {
       eq(auditEvents.resourceId, DEFAULT_GUARDRAIL_ID),
       isNotNull(auditEvents.actorId),
     )).limit(1);
-    if (!userCustomization && stableJson(normalizeGuardrailDraft(stored.draftConfig)) !== stableJson(normalizeGuardrailDraft(desiredDraft))) {
+    if (!userCustomization && canonicalJson(normalizeGuardrailDraft(stored.draftConfig)) !== canonicalJson(normalizeGuardrailDraft(desiredDraft))) {
       const nextExcluded = await this.syncGeneratedTestCases(
         tx,
         DEFAULT_GUARDRAIL_ID,
@@ -2943,15 +2978,6 @@ function decryptRuntimeEventMetadata(value: Record<string, unknown>, key: Buffer
     httpRequest: decrypted.httpRequest ?? null,
     contentAvailable: true,
   };
-}
-
-function stableJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
-  if (value && typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>).sort(([left], [right]) => left.localeCompare(right));
-    return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${stableJson(item)}`).join(",")}}`;
-  }
-  return JSON.stringify(value);
 }
 
 function ratio(numerator: number, denominator: number): number {

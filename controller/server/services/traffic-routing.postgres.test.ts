@@ -13,12 +13,8 @@ import { ControlPlaneService } from "./control-plane.js";
 import { routingEventSchema, type RoutingEvent } from "./traffic-routing.js";
 import { PolicyCatalog } from "../policy-catalog/catalog.js";
 import { defaultGuardrailDraft } from "../domain/defaults.js";
+import { canonicalJson } from "../../shared/canonical-json.js";
 
-function stableJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
-  if (value && typeof value === "object") return `{${Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => `${JSON.stringify(key)}:${stableJson(item)}`).join(",")}}`;
-  return JSON.stringify(value);
-}
 const url = process.env.GUARD_TEST_POSTGRES_URL;
 const actor = "admin";
 const approver = "approver";
@@ -610,7 +606,7 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
     expect(copy.copyOrigin).toMatchObject({ sourceGuardrailId: "guard-a", sourceName: "Original", sourceVersion: "1", sourceDraftRevision: null });
     // JSON storage normalizes dates; digest must describe the actual frozen source payload.
     const storedSnapshot = (await db.select().from(schema.guardrailVersions).where(eq(schema.guardrailVersions.guardrailId, "guard-a")))[0]!.sourceSnapshot;
-    expect(copy.copyOrigin?.contentDigest).toBe(createHash("sha256").update(stableJson(storedSnapshot)).digest("hex"));
+    expect(copy.copyOrigin?.contentDigest).toBe(createHash("sha256").update(canonicalJson(storedSnapshot)).digest("hex"));
     const cases = await db.select().from(schema.testCases).where(eq(schema.testCases.guardrailId, copy.id));
     expect(cases).toHaveLength(1); expect(cases[0]).toMatchObject({ id: "custom-case", content: "frozen", coveredRuleIds: ["rule-1"] });
     expect(await count("guardrail", "duplicate_key IS NOT NULL")).toBe(1); expect(await count("audit_event", "kind='guardrail.duplicated'")).toBe(1);

@@ -1855,6 +1855,9 @@
           "configYaml": {
             "type": "string"
           },
+          "contentDigestVersion": {
+            "type": "number"
+          },
           "createdAt": {
             "format": "date-time",
             "type": "string"
@@ -1912,6 +1915,7 @@
           "dependencyManifest",
           "checksum",
           "signature",
+          "contentDigestVersion",
           "createdAt"
         ],
         "type": "object"

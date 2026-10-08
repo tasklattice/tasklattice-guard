@@ -10,6 +10,9 @@ import type { Long } from '@grpc/proto-loader';
  * Immutable, signed Guardrail runtime package distributed to Runner pools.
  */
 export interface Artifact {
+  /**
+   * Local delivery envelope: excluded from the checksum.
+   */
   'artifactId'?: (string);
   'guardrailId'?: (string);
   /**
@@ -17,7 +20,9 @@ export interface Artifact {
    */
   'guardrailVersion'?: (string);
   /**
-   * Desired-state generation for which Controller accepted and signed the artifact.
+   * Local delivery envelope: the desired-state generation at which this
+   * environment accepted the artifact. Excluded from the checksum, so promoted
+   * content keeps one digest in every environment.
    */
   'generation'?: (number | string | Long);
   /**
@@ -46,7 +51,9 @@ export interface Artifact {
   'actionBindings'?: (_tasklattice_guard_control_v1_ActionBinding)[];
   'dependencyManifest'?: (_tasklattice_guard_control_v1_ArtifactDependency)[];
   /**
-   * Lowercase SHA-256 hex digest of the canonical unsigned artifact payload.
+   * Lowercase SHA-256 hex digest of canonical JSON (see canonical-json.ts /
+   * protocol_codec.canonical_json) over every field except artifact_id,
+   * generation, checksum and signature.
    */
   'checksum'?: (string);
   /**
@@ -59,6 +66,9 @@ export interface Artifact {
  * Immutable, signed Guardrail runtime package distributed to Runner pools.
  */
 export interface Artifact__Output {
+  /**
+   * Local delivery envelope: excluded from the checksum.
+   */
   'artifactId': (string);
   'guardrailId': (string);
   /**
@@ -66,7 +76,9 @@ export interface Artifact__Output {
    */
   'guardrailVersion': (string);
   /**
-   * Desired-state generation for which Controller accepted and signed the artifact.
+   * Local delivery envelope: the desired-state generation at which this
+   * environment accepted the artifact. Excluded from the checksum, so promoted
+   * content keeps one digest in every environment.
    */
   'generation': (string);
   /**
@@ -95,7 +107,9 @@ export interface Artifact__Output {
   'actionBindings': (_tasklattice_guard_control_v1_ActionBinding__Output)[];
   'dependencyManifest': (_tasklattice_guard_control_v1_ArtifactDependency__Output)[];
   /**
-   * Lowercase SHA-256 hex digest of the canonical unsigned artifact payload.
+   * Lowercase SHA-256 hex digest of canonical JSON (see canonical-json.ts /
+   * protocol_codec.canonical_json) over every field except artifact_id,
+   * generation, checksum and signature.
    */
   'checksum': (string);
   /**

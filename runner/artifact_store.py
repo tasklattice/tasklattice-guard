@@ -29,6 +29,7 @@ from .artifact_config import config_snapshot_from_artifact
 from .diagnostics import diagnostic_phase
 from .protocol_codec import (
     artifact_content,
+    canonical_json,
     endpoint_verification_from_proto,
     traffic_scope_from_proto,
 )
@@ -339,22 +340,9 @@ class ArtifactStore:
 
     def _artifact_from_message(self, message: Any) -> RuntimeArtifact:
         content = artifact_content(message)
-        canonical = _stable_json(content)
-        checksum = hashlib.sha256(canonical.encode()).hexdigest()
+        checksum = hashlib.sha256(canonical_json(content).encode()).hexdigest()
         if not hmac.compare_digest(checksum, message.checksum):
-            # Protobuf repeated fields have no presence bit. The severity-field
-            # addition decodes previously signed bindings with an extra empty
-            # rule_severities list, changing their canonical JSON. Recover only
-            # that known earlier representation; never discard recorded levels.
-            bindings = content["plan"].get("policy_bindings", [])
-            if bindings and all(binding.get("rule_severities") == [] for binding in bindings):
-                content["plan"]["policy_bindings"] = [
-                    {key: value for key, value in binding.items() if key != "rule_severities"}
-                    for binding in bindings
-                ]
-                checksum = hashlib.sha256(_stable_json(content).encode()).hexdigest()
-            if not hmac.compare_digest(checksum, message.checksum):
-                raise ValueError(f"Artifact {message.artifact_id} checksum does not match its content.")
+            raise ValueError(f"Artifact {message.artifact_id} checksum does not match its content.")
         self._public_key.verify(_base64(message.signature), checksum.encode())
         if message.nemo_version != self._nemo_version:
             raise ValueError(
@@ -400,10 +388,6 @@ class ArtifactStore:
         if int(desired_state.generation) != int(payload.get("generation", -1)):
             raise ValueError("Runner last-known-good generation does not match its payload.")
         return desired_state
-
-
-def _stable_json(value: Any) -> str:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
 def _base64(value: str) -> bytes:
