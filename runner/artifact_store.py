@@ -346,11 +346,15 @@ class ArtifactStore:
 
     def admit(self, message: Any) -> None:
         """Dry-run load: verify the Artifact and build its runtime, then discard it."""
-        artifact = self._artifact_from_message(message)
+        artifact = self.verify(message)
         registry = self._registry
         if registry is None:
             raise RuntimeError("NeMo Runtime Registry is not attached.")
         registry.check_candidate(artifact.plan, artifact.config)
+
+    def verify(self, message: Any) -> RuntimeArtifact:
+        """Verify a signed Artifact exactly as distribution would, without activating it."""
+        return self._artifact_from_message(message)
 
     def _artifact_from_message(self, message: Any) -> RuntimeArtifact:
         content = artifact_content(message)

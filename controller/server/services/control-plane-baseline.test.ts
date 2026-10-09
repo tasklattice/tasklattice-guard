@@ -201,7 +201,7 @@ describe("Default baseline validation gate", () => {
 
   it.each([null, "admin-user"])("only resumes automatic publication for system validation (actor %s)", async (createdBy) => {
     const content = candidate();
-    const run = { id: "validation-1", guardrailId: "guardrail-default", guardrailVersion: content.guardrailVersion, createdBy, status: "running" };
+    const run = { id: "validation-1", guardrailId: "guardrail-default", guardrailVersion: content.guardrailVersion, createdBy, status: "running", subject: "draft" };
     const test = harness([[], [run], [{ payload: { plan: content.plan, runtimeProfile: "auto" } }]]);
     const reconcile = vi.spyOn(test.service, "initialize").mockResolvedValue();
     await test.service.completeValidation({ runId: "validation-1", status: "passed", metrics: emptyValidationMetrics(), results: [], candidateArtifact: content });
@@ -211,7 +211,7 @@ describe("Default baseline validation gate", () => {
 });
 
 describe("Validated candidate gate", () => {
-  const run = { id: "validation-1", guardrailId: "guardrail-default", guardrailVersion: "20260906-010000.001Z", createdBy: "admin", status: "running" };
+  const run = { id: "validation-1", guardrailId: "guardrail-default", guardrailVersion: "20260906-010000.001Z", createdBy: "admin", status: "running", subject: "draft" };
   const request = (plan: Record<string, unknown>, runtimeProfile = "auto") => [{ payload: { plan, runtimeProfile } }];
   const complete = (test: ReturnType<typeof harness>, candidateArtifact?: ReturnType<typeof candidate>) => test.service.completeValidation({
     runId: run.id, status: "passed", metrics: emptyValidationMetrics(), results: [], candidateArtifact,

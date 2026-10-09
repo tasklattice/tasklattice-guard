@@ -89,6 +89,20 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", () => {
     expect((await service.getGuardrail(guardrail.id)).versions[0]).toMatchObject({ testSuiteCount: run.metrics.total });
     expect((await service.getGuardrail(guardrail.id)).versions[0]).not.toHaveProperty("testSuite");
 
+    // Testing the published version again runs its own suite against its signed Artifact, as it is.
+    const versionRun = await service.requestVersionTestRun({ guardrailId: guardrail.id, version: run.guardrailVersion, actorId: "admin" });
+    expect(versionRun).toMatchObject({ subject: "version", guardrailVersion: run.guardrailVersion, status: "queued", candidateDigest: digest });
+    await expect(service.requestVersionTestRun({ guardrailId: guardrail.id, version: run.guardrailVersion, actorId: "admin" }))
+      .rejects.toMatchObject({ code: "guardrail_version_test_running" });
+    const { rows: [versionRequest] } = await database.pool.query("SELECT payload FROM controller_outbox WHERE id = $1", [versionRun.id]);
+    expect(versionRequest.payload).toMatchObject({ candidateVersion: run.guardrailVersion, testCases: version.test_suite, artifact: { checksum: digest, signature: artifact.signature } });
+    expect(versionRequest.payload).not.toHaveProperty("plan");
+    await service.completeValidation({ runId: versionRun.id, status: "passed", metrics: emptyValidationMetrics(run.metrics.total), results: [] });
+    const { rows: [tested] } = await database.pool.query("SELECT status, subject, candidate_digest, candidate_artifact FROM guardrail_validation_run WHERE id = $1", [versionRun.id]);
+    expect(tested).toEqual({ status: "passed", subject: "version", candidate_digest: digest, candidate_artifact: null });
+    // A version run says nothing about the draft.
+    expect((await service.getGuardrail(guardrail.id)).latestValidationRun).toMatchObject({ id: run.id });
+
     // Publishing the same tested revision again is idempotent.
     await expect(service.requestGuardrailPublish({ guardrailId: guardrail.id, actorId: "admin" }))
       .resolves.toMatchObject({ version: run.guardrailVersion, status: "ready" });

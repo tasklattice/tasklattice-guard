@@ -382,6 +382,9 @@ export const validationRuns = pgTable("guardrail_validation_run", {
   candidateArtifact: jsonb("candidate_artifact").$type<ArtifactContent>(),
   candidateDigest: text("candidate_digest"),
   candidateInspection: jsonb("candidate_inspection").$type<GuardrailInspection>(),
+  // "draft": a draft compiled into a candidate. "version": a published or
+  // imported version's signed Artifact, tested as it is in this environment.
+  subject: text("subject").$type<"draft" | "version">().notNull().default("draft"),
   // The exact cases this run executed, frozen; publication copies them to the version.
   testSuite: jsonb("test_suite").$type<FrozenTestCase[]>(),
   testSuiteDigest: text("test_suite_digest"),

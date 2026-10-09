@@ -74,7 +74,7 @@ class RunnerControlClient:
         self._materialization_key: str | None = None
         self._provider_observer = provider_observer
         self._validator = (
-            DefaultRunnerValidator(self._compiler, providers)
+            DefaultRunnerValidator(self._compiler, providers, self._store.verify)
             if self._compiler
             else None
         )
@@ -248,7 +248,7 @@ class RunnerControlClient:
                 self._providers = providers
                 if self._compiler is not None:
                     await prepare(self._compiler.configure_native_models, native_models or ())
-                    self._validator = DefaultRunnerValidator(self._compiler, providers)
+                    self._validator = DefaultRunnerValidator(self._compiler, providers, self._store.verify)
                 if self._provider_observer is not None:
                     try:
                         await self._provider_observer(providers)
@@ -405,8 +405,9 @@ class RunnerControlClient:
                     compiler_model_types=list(self._validator.compiler_model_types),
                 ),
             )
-            if passed:
-                # Publication reuses exactly this tested content.
+            if passed and not request.HasField("artifact"):
+                # Publication reuses exactly this tested draft candidate. A
+                # released version was tested as it is and needs no candidate.
                 result.candidate_artifact.CopyFrom(outcome.artifact)
         except Exception as error:
             logger.exception("Guardrail Validation %s failed.", request.run_id)

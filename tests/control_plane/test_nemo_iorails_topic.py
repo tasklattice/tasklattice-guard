@@ -64,6 +64,9 @@ class _ControlStore:
         self.fail = fail
         self.native_models = ()
 
+    def verify(self, message):
+        raise AssertionError("These tests never verify released Artifacts.")
+
     def apply(self, desired_state, *, providers=None, native_models=None, materialization_key=None):
         if self.fail:
             raise RuntimeError("provider prewarm failed")

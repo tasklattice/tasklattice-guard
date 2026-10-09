@@ -63,6 +63,7 @@ export const tokenRoutePermissions: ReadonlyArray<readonly [string, string, Toke
   ["GET", "/api/v1/guardrails/:id/draft-changes", "guardrails", "read"],
   ["POST", "/api/v1/guardrails/:id/discard-draft", "guardrails", "write"],
   ["GET", "/api/v1/guardrails/:id/versions/:version/test-suite", "guardrails", "read"],
+  ["POST", "/api/v1/guardrails/:id/versions/:version/test-runs", "guardrails", "write"],
   ["GET", "/api/v1/guardrails/:id/versions/:version/deletion-impact", "guardrails", "read"],
   ["DELETE", "/api/v1/guardrails/:id/versions/:version", "guardrails", "write"],
   ["GET", "/api/v1/guardrails/:id/logging", "guardrails", "read"],

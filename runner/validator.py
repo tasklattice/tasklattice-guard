@@ -50,15 +50,20 @@ class ValidationOutcome:
 
 
 class DefaultRunnerValidator:
-    """Compile a draft and run its reviewed cases through the real NeMo runtime."""
+    """Run reviewed cases through the real NeMo runtime: a draft compiled into a
+    candidate, or a released version's signed Artifact tested as it is."""
 
     def __init__(
         self,
         compiler: DefaultRunnerCompiler,
         providers: ActionProviders | None = None,
+        verify_artifact: Callable[[protocol.Artifact], Any] | None = None,
     ) -> None:
         self._compiler = compiler.snapshot()
         self._providers = providers or _local_validation_providers()
+        # Verifies a released Artifact's checksum and signature exactly as
+        # distribution would; returns its plan and NeMo configuration.
+        self._verify_artifact = verify_artifact
 
     @property
     def compiler_model_types(self) -> tuple[str, ...]:
@@ -121,18 +126,26 @@ class DefaultRunnerValidator:
         return ValidationOutcome(status, _metrics(results), results, artifact)
 
     def _prepare(self, request: protocol.ValidationRequest):
-        artifact = self._compiler.compile(
-            protocol.CompileRequest(
-                compile_id=request.run_id,
-                guardrail_id=request.guardrail_id,
-                guardrail_version=request.candidate_version,
-                generation=0,
-                plan=request.plan,
-                runtime_profile=request.runtime_profile,
-            ),
-        )
-        plan = plan_from_dict(plan_from_proto(artifact.plan))
-        config = _config_from_artifact(artifact)
+        if request.HasField("artifact"):
+            # A released version is tested as it is: never compiled again.
+            if self._verify_artifact is None:
+                raise RuntimeError("This Runner cannot verify released Artifacts.")
+            artifact = request.artifact
+            verified = self._verify_artifact(artifact)
+            plan, config = verified.plan, verified.config
+        else:
+            artifact = self._compiler.compile(
+                protocol.CompileRequest(
+                    compile_id=request.run_id,
+                    guardrail_id=request.guardrail_id,
+                    guardrail_version=request.candidate_version,
+                    generation=0,
+                    plan=request.plan,
+                    runtime_profile=request.runtime_profile,
+                ),
+            )
+            plan = plan_from_dict(plan_from_proto(artifact.plan))
+            config = _config_from_artifact(artifact)
         store = _CandidateStore(plan, config)
         registry = NeMoRuntimeRegistry(
             store,

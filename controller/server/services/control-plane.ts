@@ -543,6 +543,7 @@ export class ControlPlaneService {
     )).limit(1);
     const [validation] = guardrail ? await this.db.select().from(validationRuns).where(and(
       eq(validationRuns.guardrailId, DEFAULT_GUARDRAIL_ID),
+      eq(validationRuns.subject, "draft"),
       eq(validationRuns.sourceDraftRevision, guardrail.draftRevision),
     )).orderBy(desc(validationRuns.createdAt)).limit(1) : [];
 
@@ -881,6 +882,7 @@ export class ControlPlaneService {
       if (input.expectedDraftRevision !== undefined && input.expectedDraftRevision !== guardrail.draftRevision) throw new ConflictError("Guardrail draft changed. Review the current draft before publishing.", "guardrail_draft_conflict");
       const [latestValidation] = await tx.select().from(validationRuns).where(and(
         eq(validationRuns.guardrailId, input.guardrailId),
+        eq(validationRuns.subject, "draft"),
         eq(validationRuns.sourceDraftRevision, guardrail.draftRevision),
         eq(validationRuns.status, "passed"),
       )).orderBy(desc(validationRuns.createdAt)).limit(1);
@@ -1114,6 +1116,51 @@ export class ControlPlaneService {
     });
   }
 
+  /**
+   * Test an existing version in this environment: its own frozen suite against
+   * its signed Artifact, as it is. Nothing is compiled; the run records which
+   * content and which suite it tested, so a release can rely on it.
+   */
+  async requestVersionTestRun(input: { guardrailId: string; version: string; actorId: string }) {
+    return this.db.transaction(async tx => {
+      const [guardrail] = await tx.select().from(guardrails).where(and(eq(guardrails.id, input.guardrailId), isNull(guardrails.deletedAt)));
+      if (!guardrail) throw new NotFoundError("Guardrail", input.guardrailId);
+      const [version] = await tx.select().from(guardrailVersions).where(and(
+        eq(guardrailVersions.guardrailId, input.guardrailId), eq(guardrailVersions.version, input.version)));
+      if (!version) throw new NotFoundError("Guardrail version", `${input.guardrailId}@${input.version}`);
+      const [artifact] = version.artifactId ? await tx.select().from(artifacts).where(eq(artifacts.id, version.artifactId)) : [];
+      if (!artifact) throw new ConflictError("This version has no Artifact to test.", "guardrail_version_artifact_missing");
+      if (!version.testSuite?.length) {
+        throw new ConflictError("This version carries no test suite. Publish it again to record one.", "guardrail_version_test_suite_missing");
+      }
+      const running = await tx.select({ id: validationRuns.id }).from(validationRuns).where(and(
+        eq(validationRuns.guardrailId, input.guardrailId), eq(validationRuns.guardrailVersion, input.version),
+        eq(validationRuns.subject, "version"), inArray(validationRuns.status, ["queued", "running"]))).limit(1);
+      if (running.length) throw new ConflictError("This version is already being tested.", "guardrail_version_test_running", { runId: running[0]!.id });
+      const runId = `testing-report-${randomUUID()}`;
+      await tx.insert(validationRuns).values({
+        id: runId, guardrailId: input.guardrailId, guardrailVersion: input.version, sourceDraftRevision: version.sourceDraftRevision,
+        subject: "version", status: "queued", metrics: emptyValidationMetrics(version.testSuite.length), results: [], excludedCaseIds: [],
+        // The content and suite under test; a release checks both against the version.
+        candidateDigest: artifact.checksum, candidateInspection: version.inspection, testSuite: version.testSuite,
+        testSuiteDigest: testSuiteDigest(version.testSuite), createdBy: input.actorId,
+      });
+      await tx.insert(outboxEvents).values({
+        id: runId, kind: "guardrail.validation_requested", aggregateId: input.guardrailId,
+        payload: {
+          runId, guardrailId: input.guardrailId, candidateVersion: input.version, sourceDraftRevision: version.sourceDraftRevision,
+          runtimeProfile: version.runtimeProfile, testCases: version.testSuite, artifact,
+        },
+      });
+      await tx.insert(auditEvents).values({
+        id: randomUUID(), kind: "guardrail.version_test_requested", actorId: input.actorId,
+        resourceType: "guardrail", resourceId: input.guardrailId,
+        detail: { runId, version: input.version, contentDigest: artifact.checksum, testCaseCount: version.testSuite.length },
+      });
+      return publicValidationRun((await tx.select().from(validationRuns).where(eq(validationRuns.id, runId)))[0]!);
+    });
+  }
+
   /** Shared by user validation and the model-free baseline bootstrap. */
   private async enqueueGuardrailValidation(
     tx: Parameters<Parameters<ControllerDatabase["transaction"]>[0]>[0],
@@ -1233,10 +1280,11 @@ export class ControlPlaneService {
       const [run] = await tx.select().from(validationRuns).where(eq(validationRuns.id, input.runId)).for("update");
       if (!run) throw new NotFoundError("Validation Run", input.runId);
       if (run.status === "passed" || run.status === "failed") return;
-      const candidate = input.status === "passed"
+      // A version run tested an existing signed Artifact; there is no candidate to bind.
+      const candidate = input.status === "passed" && run.subject === "draft"
         ? await this.verifiedCandidate(tx, run, input.candidateArtifact)
         : { status: input.status, reason: input.reason ?? null };
-      resumeDefault = run.guardrailId === DEFAULT_GUARDRAIL_ID && run.createdBy === null && candidate.status === "passed";
+      resumeDefault = run.subject === "draft" && run.guardrailId === DEFAULT_GUARDRAIL_ID && run.createdBy === null && candidate.status === "passed";
       await tx.update(validationRuns).set({
         status: candidate.status,
         metrics: input.metrics,
@@ -2355,6 +2403,7 @@ export class ControlPlaneService {
     if (userCustomization) return;
     const [validation] = await tx.select().from(validationRuns).where(and(
       eq(validationRuns.guardrailId, DEFAULT_GUARDRAIL_ID),
+      eq(validationRuns.subject, "draft"),
       eq(validationRuns.sourceDraftRevision, stored.draftRevision),
     )).orderBy(desc(validationRuns.createdAt)).limit(1);
     if (!validation) {
@@ -2410,8 +2459,9 @@ export class ControlPlaneService {
   }
 
   private async guardrailSummary(row: typeof guardrails.$inferSelect) {
+    // The draft's own testing state; runs against existing versions are not about the draft.
     const [latestValidation] = await this.db.select().from(validationRuns)
-      .where(eq(validationRuns.guardrailId, row.id)).orderBy(desc(validationRuns.createdAt)).limit(1);
+      .where(and(eq(validationRuns.guardrailId, row.id), eq(validationRuns.subject, "draft"))).orderBy(desc(validationRuns.createdAt)).limit(1);
     const [caseCount] = await this.db.select({ value: count() }).from(testCases)
       .where(eq(testCases.guardrailId, row.id));
     const published = await this.lastPublishedVersion(this.db, row.id);
@@ -2894,7 +2944,8 @@ function decryptRuntimeEventMetadata(value: Record<string, unknown>, key: Buffer
 }
 
 /** Test reports carry the candidate's digest; its full content stays server-side. */
-function publicValidationRun({ candidateArtifact: _candidateArtifact, ...run }: typeof validationRuns.$inferSelect) {
+// The frozen suite is read through the version; results already echo each case.
+function publicValidationRun({ candidateArtifact: _candidateArtifact, testSuite: _testSuite, ...run }: typeof validationRuns.$inferSelect) {
   return run;
 }
 

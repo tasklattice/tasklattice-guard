@@ -526,7 +526,8 @@ export class RunnerControlServer {
           guardrailId: string(payload.guardrailId),
           candidateVersion: string(payload.candidateVersion),
           sourceDraftRevision: number(payload.sourceDraftRevision),
-          plan: planToWire(payload.plan ?? {}),
+          // A version run sends its signed Artifact to test as it is; a draft sends its plan.
+          ...(payload.artifact ? { artifact: artifactToWire(payload.artifact) } : { plan: planToWire(payload.plan ?? {}) }),
           runtimeProfile: string(payload.runtimeProfile),
           testCases: array(payload.testCases).map(validationTestToWire),
         },

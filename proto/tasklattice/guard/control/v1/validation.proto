@@ -169,6 +169,10 @@ message ValidationRequest {
   // Extensible runtime registry identifier used to compile/execute the candidate.
   string runtime_profile = 6;
   repeated ValidationTestCase test_cases = 7;
+  // A released version to test as it is: when set, the Runner verifies this
+  // signed Artifact and runs the cases against it without compiling; `plan`
+  // is not used. Absent for a draft, which is compiled into a candidate.
+  Artifact artifact = 8;
 }
 
 // Validation response. `accepted` reports whether the Runner executed the
