@@ -1,14 +1,26 @@
 ---
 id: "term-guardrail"
-title: "Guardrails：保护方案"
-summary: "组合固定版本的 Policy，验证并发布保护方案；理解 Binding、Decision 与保护状态。"
+title: "Guardrails"
+summary: "了解 Guardrail 由什么组成、版本如何测试和发布，以及 Decision 如何执行。"
 order: 2
 ---
-<strong>是什么：</strong>Guardrail 是给某个应用使用的一套保护方案。例如“客服助手保护方案”可同时检查越狱输入和回复中的敏感信息。配置上，它通过 Policy Binding 固定多个 Policy Version，并选择启用的 Rules、Rails、参数和检测后处理；还维护草稿、验证记录和可发布版本。
+<strong>是什么：</strong>Guardrail 是一个逻辑实体，由两部分组成：
 
-<strong>为什么：</strong>Policy 可以跨应用复用，Guardrail 则把能力组合成某个应用可审查、可发布且版本不可变的具体保护边界。它不是单条 Rule，也不是流量路由。
+- **静态部分：** 一组 Policy 和它的测试。测试包括从 Policy 继承的测试用例，以及在 Guardrail 上添加的自定义测试用例。**Guardrail Version** 冻结的就是静态部分。
+- **动态部分：** Guardrail 检测流量时产生的安全事件和运行指标。你可以在界面上的 Guardrail 页面查看。
 
-<strong>怎么用：</strong>在 Guardrail 草稿中选定 Policy Versions 和参数，运行 Validation Run，通过后发布不可变 Guardrail Version；再由 Router 将 Endpoint 流量指向该版本。Route 的已发布引用可让前端显示“保护中”，但发布版本不等于 Runner 已经应用。
+Policy、Endpoint 和 Router 也都是逻辑实体。Guardrail 不是一条 Rule，也不是 Router。
+
+<strong>为什么：</strong>一个 Policy 可以给多个应用使用。Guardrail 为一个应用选出需要的 Policy，并和测试一起冻结成可审查的版本。
+
+<strong>怎么用：</strong>
+
+1. 在 Guardrail 草稿中选择 Policy。
+2. 运行测试。
+3. 发布 Guardrail Version。
+4. 发布 Router，把 Endpoint 的流量指向这个版本。
+
+已发布的 Router 引用这个 Guardrail 后，界面会显示“保护中”。这并不代表 Runner 已经应用了这个版本。
 
 <a id="glossary-resource-map" />
 
@@ -16,36 +28,68 @@ order: 2
 
 <ResourceMap locale="zh-CN" />
 
-<strong>两条关系不要混淆：</strong>Guardrail 通过 Binding 引用 Policy Version；Policy 包含 Rules 和 Test Cases。Rule 映射到具体实现，测试用例验证预期行为。生产请求从 Endpoint 经 Router 命中固定的 Guardrail Version，Runner 执行后返回 Decision 和 Evidence。
+<strong>区分两条关系：</strong>
+
+- Guardrail 通过 Binding 引用 Policy Version。
+- Policy 包含 Rule 和测试用例。每条 Rule 对应一个实现，测试用例验证行为。
+
+一次生产调用从 Endpoint 经过 Router，到达一个固定的 Guardrail Version。Runner 返回 Decision 和对应的证据。
 
 <a id="glossary-term-guardrail" />
 
 ## Guardrail
 
-面向一个业务场景的保护方案：固定所需 Policy Versions、启用的 Rules、Rails 和参数，验证后发布不可变 Guardrail Version。完整关系见[产品介绍](#term-guardrail)。
+面向一个业务场景的逻辑实体。静态部分是一组 Policy 和它的测试，动态部分是安全事件和运行指标。测试通过后，把静态部分发布为不可变的 Guardrail Version。完整关系见[产品介绍](#term-guardrail)。
 
 <a id="export-a-guardrail" />
 
 ## 导出 Guardrail
 
-在 **Guardrails** 列表中，打开对应行的 **Actions（操作）** 菜单选择 **导出…**，或在查看某个不可变版本时选择 **导出…**。
-在弹出的面板中选择要下载的已发布版本；不会预先选中任何版本，包里只有你选择的版本。下载内容不包含未发布的草稿修改。若导出按钮不可用，请先发布一个版本。
+导出入口有两个：
 
-发布包是签名的 `.zip`，每个版本带上签名的 Artifact（冻结的 Policy 实现和编译配置）和它的测试集，不依赖 Policy Library，也不包含测试报告。
-在另一个 Controller 中通过 **创建 Guardrail** 右侧箭头菜单中的 **导入发布包** 导入；导入的版本是待发布，需要在那里运行自带的测试集并发布。
-运行时仍需匹配的 TaskLattice/NeMo 环境和声明的模型能力，凭据在目标环境单独配置。
+- 在 **Guardrails** 列表中，打开对应行的 **Actions（操作）** 菜单，选择 **导出…**。
+- 查看某个不可变版本时，选择 **导出…**。
+
+在弹出的面板中选择要下载的已发布版本。面板不会预先选中任何版本，包里只有你选择的版本。包里不会有未发布的草稿修改。如果导出按钮不可用，请先发布一个版本。
+
+发布包是一个签名的 `.zip`。包里每个版本带两样东西：
+
+- 签名的 Artifact，即冻结的 Policy 实现和编译后的配置。
+- 这个版本的测试。
+
+发布包不依赖 Policy Library，也不包含测试报告。
+
+在另一个 Controller 中导入：
+
+1. 打开 **创建 Guardrail** 右侧的箭头菜单。
+2. 选择 **导入发布包**。
+3. 在那个环境运行每个导入版本的测试。导入的版本初始为待发布。
+4. 测试通过后，逐个发布这些版本。
+
+目标环境要运行一个版本，需要具备：
+
+- 兼容的 TaskLattice/NeMo 运行环境。
+- 版本声明的模型能力。
+- 在该环境单独配置的凭据。
 
 <a id="term-policy-binding" />
 
 ## Policy Binding
 
-<strong>是什么：</strong>Guardrail 对一个 Policy Version 的固定引用，连同启用的 Rules、Rails、参数和动作覆盖。可以把它理解为“在这套保护方案里如何使用这项能力”。
+<strong>是什么：</strong>Guardrail 对一个 Policy Version 的引用。它同时保存这个 Guardrail 对该 Policy 的设置：启用的 Rule 和 Rail、参数值，以及动作覆盖。Policy Binding 属于 Guardrail 的静态部分。
 
-<strong>为什么：</strong>把可复用能力落实为某个场景的审查值，保证运行行为与发布时一致。
+大多数情况下，不需要在 Binding 里微调 Policy。默认值由 Policy 的作者设在每条 Rule 上。Policy 由 Rule 聚合而成，同时记录合规来源，可以在它的 **合规** 页签查看。
 
-<strong>怎么用：</strong>在 Guardrail 草稿中设置并解析必填参数，验证通过后随 Guardrail Version 固化。
+<strong>为什么：</strong>Binding 把可复用的 Policy 落实为一个场景下经过审查的行为。
 
-<strong>例子：</strong>两个客服应用都使用同一版关键词 Policy，但在各自的 Binding 中填写不同的 `blocked_words`。
+<strong>怎么用：</strong>
+
+1. 在 Guardrail 草稿中配置 Binding。
+2. 填写必填参数。
+3. 运行测试。
+4. 发布。Guardrail Version 会冻结这个 Binding。
+
+<strong>例子：</strong>两个客服应用使用同一个关键词 Policy Version，在各自的 Binding 中填写不同的 `blocked_words`。
 
 <a id="term-parameter" />
 
@@ -53,33 +97,40 @@ order: 2
 
 绑定参数 · parameter
 
-Policy 暴露、由 Guardrail 绑定时解析的审查值。
+Guardrail 固定 Policy Version 时，由人审查并填写的 Policy 参数值。
 
-参数属于配置版本，不应从不可信的生产请求临时覆盖。
+参数属于有版本的配置。不可信的运行时输入不应覆盖它。
 
-例如 `blocked_words` 可以由管理员在发布前填写为一个词表；用户请求不能临时改写这个词表。
+例如，管理员在发布前把 `blocked_words` 填成一个词表。用户请求不能在运行时改写这个词表。
 
 <a id="term-guardrail-version" />
 
 ## Guardrail Version
 
-<strong>是什么：</strong>Guardrail 草稿通过验证后发布的不可变快照，包含固定的 Policy Bindings、Rules、参数、测试集、编译 artifact、依赖和 checksum。
+<strong>是什么：</strong>Guardrail 静态部分的不可变快照。它包含固定的 Policy Binding、Rule、参数、测试、编译后的 Artifact、依赖和 checksum。
 
-<strong>为什么：</strong>它是路由、运行时基线和导出所引用的不可变单元；每处引用都写明确切版本，不存在可跟随的“最新版本”指针。
+<strong>为什么：</strong>路由、运行时基线和导出都引用 Guardrail Version。每处引用都写明确切的版本，没有“最新版本”这样的指针。
 
-<strong>怎么用：</strong>确认版本已发布（导入的版本需先在本环境测试并发布），再发布一个 Target 固定该版本的 Router Revision。要改用其他版本，请提交固定新版本的 Router 变更。
+<strong>怎么用：</strong>
 
-<strong>例子：</strong>即使已发布 Guardrail v2，仍指向 v1 的 Router 不会自动切到 v2；要改变生产流量，需检查并重新发布 Router。
+1. 确认版本已发布。导入的版本要先在本环境测试并发布。
+2. 发布一个 Router Revision，让它的 Target 固定这个版本。
+3. 确认 Runner 已应用新的状态。
+
+要改用其他版本，提交一个固定新版本的 Router 变更。
+
+<strong>例子：</strong>你发布了 Guardrail v2。固定 v1 的 Router 不会自动切到 v2。要改变生产流量，请检查 Router 并重新发布。
 
 <a id="term-validation-run" />
 
-## Validation Run
+## 测试报告
 
-验证记录
+Testing Report · 一次测试运行
 
-草稿或某个版本的 Test Cases 通过真实运行时执行后形成的不可变结果。
+草稿或某个版本的测试用例在真实运行环境中运行一次的不可变结果。
 
-草稿要当前 revision 的必需用例全部通过才能发布；待发布的版本要本环境对它的最近一次测试通过才能发布。
+- 草稿当前修订的必需用例全部通过后，才能发布。
+- 待发布的版本在本环境最近一次测试通过后，才能发布。
 
 <a id="term-checksum" />
 
@@ -89,28 +140,28 @@ Policy 暴露、由 Guardrail 绑定时解析的审查值。
 
 不可变编译配置的内容摘要。
 
-用于确认当前运行 artifact 与已发布版本完全一致。
+用于证明正在运行的 Artifact 与已发布的版本完全一致。
 
 <a id="user-decisions" />
 
 ## Decision：放行、转换与阻断
 
-最终 Decision 是业务调用方必须执行的结果，不只是一个风险标签。
+调用方必须执行最终的 Decision。Decision 不只是一个风险标签。
 
 **Allow / pass**
 
-内容可继续进入下一阶段；未触发需要执行的干预。
+内容可以进入下一阶段。
 
 **Transform**
 
-系统返回经过脱敏、重写或其他变换后的有效内容，调用方应使用返回内容。
+使用 Decision 返回的内容。TaskLattice 会对内容做脱敏、重写或其他变换。
 
 **Block / reject**
 
-停止当前阶段。输入被阻断时不应调用模型；输出被阻断时不应把原始响应交付给用户。
+停止当前阶段。输入被阻断时，不要调用模型。输出被阻断时，不要把原始响应交付给用户。
 
 
-> Playground 会展示模型前检查、模型调用和模型后检查的完整链路，适合在上线前确认调用方行为。
+> Playground 把模型前检测、模型调用和模型后检测展示为一条可查看的完整链路。
 
 [打开 Playground](/playground)
 
@@ -122,19 +173,19 @@ Policy 暴露、由 Guardrail 绑定时解析的审查值。
 
 allow · transform · block
 
-TaskLattice 对当前阶段的最终结论。
+TaskLattice 对当前阶段的最终结论：放行、转换或阻断。
 
-调用方必须执行 Decision 和 action；它不是仅供展示的风险分数。
+调用方必须执行 Decision 和它的动作。Decision 不是只用来展示的风险分数。
 
 <a id="term-enforcement-action" />
 
 ## 检测后处理
 
-Enforcement Action · 响应指令 · 不安全时
+Enforcement Action · 命中后的动作
 
-Rule 命中后要求运行时或调用方采取的具体处理，即放行、阻断或修改。Policy 为 Rule 定义默认值；Guardrail Binding 可覆盖。三种处理与优先级见[Rule 命中后如何处理](/document/overview/glossary-definition#term-rule-actions)。
+Rule 命中后要求的处理：放行、阻断或转换。Policy 在 Rule 上设定默认值，Policy Binding 可以覆盖。三种处理和它们的优先级见[Rule 命中后如何处理](/document/overview/glossary-definition#term-rule-actions)。
 
-它不是评估器 verdict，也不是 NeMo 调用的 Python Action；部分生命周期指令由集成调用方执行。
+检测后处理不是评估器的结论，也不是 NeMo 调用的 Python Action。部分生命周期动作由集成的调用方执行。
 
 <a id="term-output-delivery" />
 
@@ -142,9 +193,9 @@ Rule 命中后要求运行时或调用方采取的具体处理，即放行、阻
 
 interruptible · window buffered · full buffered
 
-模型输出在完成 Output Rail 检查前如何缓冲和交付。
+在 Output Rail 完成检测前，Runner 如何缓冲模型输出。
 
-缓冲越完整，越能避免泄露后来被阻断的内容，但会增加首字延迟。
+缓冲越完整，越能防止泄露之后被阻断的内容，但首字延迟也越高。
 
 <a id="term-failure-mode" />
 
@@ -152,17 +203,39 @@ interruptible · window buffered · full buffered
 
 fail-open · fail-closed
 
-Action 超时或错误时的安全处理方式。
+Action 超时或出错时的安全处理方式。
 
-fail-open 继续但记录错误；fail-closed 阻断。必需检查通常采用更保守的策略。
+- **fail-open** 继续执行，并记录错误。
+- **fail-closed** 阻断。
+
+必需的检测通常采用更保守的方式。
 
 <a id="concept-boundaries" />
 
 ## 认证、配置与执行的边界
 
-控制面管理 Policy、Guardrail 和 Router 版本；运行检查由 Runner 完成；应用或网关拥有模型调用，并负责执行返回的 Decision。管理 API 的个人 Access Token 与运行检查的 Endpoint 凭据用途不同，不能互换。调用方传入的 headers 或声明也不会自动成为可信身份。
+每个组件各负其责：
 
-阅读下面的角色指南时，可以按 **配置与验证 → 分配 Endpoint 凭据 → 应用接入 → 路由发布 → 观察与迭代** 理解交接顺序；侧边栏仍按日常查阅职责排列。
+- 控制面管理 Policy、Guardrail 和 Router 的版本。
+- Runner 执行检测。
+- 应用或网关调用模型，并执行返回的 Decision。
+
+有两种凭据，不能互换：
+
+- 个人 Access Token 用于调用管理 API。
+- Endpoint 凭据用于调用运行时检测。
+
+调用方传入的 headers 或声明，默认不是可信身份。
+
+阅读角色指南时，可以按下面的交接顺序理解：
+
+1. 配置与测试。
+2. 分配 Endpoint 凭据。
+3. 应用接入。
+4. 发布路由。
+5. 观察与迭代。
+
+侧边栏仍按日常查阅的职责排列。
 
 
 <a id="glossary-states" />
@@ -171,9 +244,21 @@ fail-open 继续但记录错误；fail-closed 阻断。必需检查通常采用�
 
 <StateLegend locale="zh-CN" />
 
-状态颜色表达语义，不替代文字。黄色表示工作进行或配置尚未收敛；绿色表示已通过或已生效；红色表示失败或需要处理；灰色表示草稿、历史、主动停用或尚未开始。<strong>资源生命周期、不可变版本的构建状态、Runner 健康和一次请求的 Decision 是不同轴，不能互相代替。</strong>
+颜色辅助文字表达状态：
 
-用同一个发布过程理解这些状态：Guardrail Version **已发布** 只说明这个版本在本环境测试通过、可以被引用；被已发布 Route 引用后，Guardrail 列表可以显示 **protected（保护中）**；Router **active** 才说明目标 generation 已被默认池 Runner 确认。最后还要看 Endpoint 和运行日志，才能知道是否真的有请求经过这套保护。
+- 黄色：工作进行中，或者状态还没有稳定。
+- 绿色：已通过或已生效。
+- 红色：失败，或者需要处理。
+- 灰色：草稿、历史、主动停用或尚未开始。
+
+<strong>下面四个维度相互独立：</strong>资源生命周期、不可变版本的状态、Runner 健康，以及每次请求的 Decision。
+
+用一次发布过程区分它们：
+
+1. Guardrail Version **已发布**：这个版本在本环境测试通过，其他资源可以引用它。
+2. Guardrail 列表显示 **protected（保护中）**：有已发布的 Route 引用这个 Guardrail。
+3. Router **active**：默认池的 Runner 已确认目标 generation。
+4. 查看 Endpoint 和运行日志，才能知道真实请求是否用到了这个版本。
 
 <a id="state-guardrail-readiness" />
 
@@ -181,9 +266,15 @@ fail-open 继续但记录错误；fail-closed 阻断。必需检查通常采用�
 
 <StateMachineDiagram kind="guardrail-readiness" locale="zh-CN" />
 
-<strong>保护中（<code>protected</code>）</strong>是前端状态：当前草稿已发布，且已发布 Router 快照中有启用的 Route，以正权重 Target 引用这个 Guardrail。列表目前还要求该 Router 绑定至少一个 Endpoint。只有把 Guardrail 放进 Router 草稿、未发布 Route，或权重为 0 的 Target，都不会进入保护中。移除最后一处有效引用后回到就绪；修改 Guardrail 草稿后，由于草稿不再对应上一次发布的版本，列表显示需要测试，即使旧版本仍可能处理流量。
+<strong>保护中（<code>protected</code>）</strong>是界面计算出来的状态。以下条件全部满足时，列表才显示保护中：
 
-<strong>这不是流量健康结论：</strong>保护中说明有配置引用，不证明 Router 已完成 Runner 下发、Endpoint 可用或已经收到请求。详情页还单独展示 Route 引用徽标；查看实际生效情况应同时检查 Router rollout、Endpoint 和运行日志。
+- 当前草稿已发布。
+- 已发布的 Router 快照里有一个启用的 Route，以权重大于 0 的 Target 引用这个 Guardrail。
+- 这个 Router 至少绑定了一个 Endpoint。
+
+以下情况不会显示保护中：Guardrail 只在未发布的 Router 草稿里、Route 已停用，或 Target 权重为 0。最后一处有效引用移除后，列表回到就绪。修改 Guardrail 草稿后，草稿与上次发布的版本不再一致，列表显示需要测试，即使旧版本可能仍在处理流量。
+
+<strong>保护中不代表流量健康。</strong>它只说明存在配置引用，不能证明 Runner 已完成下发、Endpoint 可用或已经收到请求。详情页会单独展示 Route 引用徽标。要确认实际生效，请同时检查 Router 的下发状态、Endpoint 和运行日志。
 
 <a id="state-guardrail" />
 
@@ -191,7 +282,9 @@ fail-open 继续但记录错误；fail-closed 阻断。必需检查通常采用�
 
 <StateMachineDiagram kind="guardrail-lifecycle" locale="zh-CN" />
 
-Guardrail 资源的持久状态是 draft → active → disabled，也允许 draft → disabled；disabled 对该资源是终态。发布并激活就绪版本使资源进入 active；停用或软删除后的状态不可按 Endpoint 的方式直接恢复。上方的 `needs_validation / ready / protected` 是<strong>派生展示状态</strong>，`protected` 正是 Route 引用时显示的“保护中”；它与这里的持久生命周期同时存在。
+Guardrail 资源保存的生命周期是 draft → active → disabled。draft 也可以直接进入 disabled。disabled 是该资源的终态。发布就绪的版本后，资源进入 active。软删除不能像停用 Endpoint 那样直接恢复。
+
+上一节的 `needs_validation / ready / protected` 是<strong>展示状态</strong>，与这里保存的生命周期同时存在。`protected` 就是有 Route 引用时显示的“保护中”。
 
 <a id="state-guardrail-version" />
 
@@ -199,22 +292,30 @@ Guardrail 资源的持久状态是 draft → active → disabled，也允许 dra
 
 <StateMachineDiagram kind="guardrail-version" locale="zh-CN" />
 
-版本只有两个状态：**待发布（pending）** 和 **已发布（ready）**。版本内容（Policies 与测试集）一经生成就不可修改，状态变化不改变版本号和内容摘要。
+版本只有两个状态：**待发布（pending）** 和 **已发布（ready）**。版本内容（Policy 和测试）生成后不会再改变。发布不会改变版本号和内容摘要。
 
-- 在本环境发布草稿得到的版本，发布时已绑定这次通过的测试报告，直接是已发布。
-- 从发布包导入的版本先是待发布。它要在本环境原样运行自带的测试集（不重新编译），通过后由管理员点 **发布**，发布会绑定这份测试报告。
-- 只有已发布的版本能被 Router 引用、设为运行时基线或导出。
-- 发布后再测试失败不会撤销发布；版本上会显示“复测失败”，由人工判断是否调整路由。
+- 在本环境由草稿发布的版本直接是已发布，并绑定发布时那次通过的测试报告。
+- 从发布包导入的版本初始为待发布。在本环境对签名的 Artifact 原样运行它的测试，不会重新编译。测试通过后，管理员点击 **发布**，测试报告会绑定到这个版本。
+- 只有已发布的版本才能被 Router 引用、设为运行时基线或导出。
+- 发布后再测试失败，不会撤销发布。版本上会显示“复测失败”，由人工判断是否调整路由。
 
-已发布只说明这个版本可以被引用；Router 还需固定这个确切版本并完成 Runner 下发。发布新版本不会改变任何已引用其他版本的地方。
+已发布只说明其他资源可以引用这个版本。Router 还要固定这个确切版本，并完成 Runner 下发。发布新版本，不会改变已经引用其他版本的地方。
 
-没有任何资源依赖的版本可以删除。**删除** 会先列出引用：运行时基线、当前生效的 Router revision、已修改的 Router 草稿、待审批变更单，或当前生效变更的预批准回退目标；并会等待版本退出路由前已开始的调用结束。固定过该版本的更早 Router revision 不会阻止删除，它们保留在历史中用于审计，但无法再恢复。编译产物和遥测数据会保留。
+没有任何资源依赖的版本可以删除。**删除** 会先列出以下引用：
+
+- 运行时基线。
+- 当前生效的 Router revision。
+- 已修改的 Router 草稿。
+- 待审批的变更单。
+- 当前生效变更的预批准回退目标。
+
+删除还会等待版本退出路由前已开始的调用结束。固定过该版本的更早的 Router revision 不会阻止删除。这些 revision 会保留在历史中用于审计，但无法再恢复。编译产物和遥测数据会保留。
 
 <a id="guardrail-build-states" />
 
 ### Guardrail Version 状态
 
-版本状态与 Router 的流量下发状态分开理解。测试中、测试失败、可发布这些提示由本环境的测试记录推导，不是独立状态。
+版本状态与 Router 的流量下发状态相互独立。测试中、测试失败、可发布这些提示来自本环境的测试记录，不是独立的状态。
 
 <StateCards>
 
@@ -222,19 +323,19 @@ Guardrail 资源的持久状态是 draft → active → disabled，也允许 dra
 
 <StateDetail label="含义">
 
-版本内容已就位，但还没有在本环境通过测试并发布。导入的版本都从这里开始。
+版本内容已就位，但还没有在本环境通过测试并发布。导入的版本都从这个状态开始。
 
 </StateDetail>
 
 <StateDetail label="状态变化">
 
-本环境对这个版本内容和测试集的最近一次测试通过后，管理员发布，进入已发布。
+本环境对这份内容和测试集的最近一次测试通过后，由管理员发布，版本进入已发布。
 
 </StateDetail>
 
 <StateDetail label="下一步">
 
-在版本菜单中选择 **运行测试**；通过后选择 **发布**。测试失败时查看报告，由人工判断原因。
+在版本菜单中选择 **运行测试**。测试通过后，选择 **发布**。测试失败时，查看测试报告，由人工判断原因。
 
 </StateDetail>
 
@@ -256,7 +357,7 @@ Guardrail 资源的持久状态是 draft → active → disabled，也允许 dra
 
 <StateDetail label="下一步">
 
-发布一个 Target 固定该版本的 Router Revision。
+发布一个 Router Revision，让它的 Target 固定这个版本。
 
 </StateDetail>
 
