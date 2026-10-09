@@ -23,7 +23,7 @@ Scrape the Controller HTTP address. When `CONTROLLER_METRICS_TOKEN` is configure
 Scrape each Runner HTTP address (default container port 8091). When `GUARD_METRICS_TOKEN` is configured, send that Bearer token. Use your deployed Runner addresses.
 
 
-> Links use this Controller’s address, without fixed localhost ports. Opening a protected Prometheus URL directly returns 401; configure the scraper’s Authorization header. Check `data_availability` when traffic or execution evidence is missing.
+> Links use this Controller’s address, without fixed localhost ports. A protected Prometheus URL returns 401 when you open it directly. Configure the Authorization header of the scraper. Check `data_availability` when traffic or execution evidence is missing.
 
 [Business metrics API contract](/api/openapi.json?operationId=getTelemetryMetrics)
 
@@ -55,11 +55,11 @@ Check routing and version first, then Rail, Action, provider, and capacity.
 
 ## Runner liveness timeouts
 
-Runner prepares runtime releases on a single background construction worker and publishes them with short, memory-only locks. Verification, NeMo initialization, and snapshot persistence happen before publication. Health checks and existing requests continue using the serving release; a failed preparation leaves that release intact. Model configuration and leased credentials are fingerprinted so unchanged assignments reuse instances, while credential rotation creates a new materialization.
+Runner prepares runtime releases on a single background construction worker and publishes them with short, memory-only locks. Verification, NeMo initialization and snapshot persistence happen before publication. Health checks and existing requests continue to use the serving release. A failed preparation does not change that release. The Runner fingerprints the model configuration and the leased credentials. Unchanged assignments reuse instances. A credential rotation creates a new materialization.
 
-Only versions referenced by enabled Routes with positive target weights are prewarmed. Other verified Artifact definitions remain available to Playground and acquire runtime instances asynchronously on first use. Recent on-demand instances are leased for 600 seconds, with a limit of 128 non-route instances per release; a full leased cache rejects additional cold loads until space is available. Old releases retain their dependencies for pinned calls and close clients after leases and in-flight work drain. Draft previews and validation use the same construction worker and clean up builds that finish after cancellation.
+Only versions referenced by enabled Routes with positive target weights are prewarmed. Other verified Artifact definitions remain available to Playground and acquire runtime instances asynchronously on first use. Recent on-demand instances are leased for 600 seconds. Each release keeps at most 128 instances that no route uses. When the leased cache is full, it rejects new cold loads until space is available. Old releases retain their dependencies for pinned calls and close clients after leases and in-flight work drain. Draft previews and validation use the same construction worker and clean up builds that finish after cancellation.
 
-`/health/live` returns a static response on the same event loop as runtime requests. A timeout can indicate a blocked event loop even when the process is still running. A readiness 503 or a startup connection refusal is a different signal; first capture the exact Kubernetes probe failure and container termination reason.
+`/health/live` returns a static response on the same event loop as runtime requests. A timeout can indicate a blocked event loop even when the process is still running. A readiness 503 or a refused connection at startup is a different signal. First capture the exact Kubernetes probe failure and the container termination reason.
 
 Runner diagnostics are enabled by default and write to the container log:
 
@@ -67,7 +67,7 @@ Runner diagnostics are enabled by default and write to the container log:
 | --- | --- |
 | `runner_event_loop_stalled` | A watchdog thread detects over 2 seconds of scheduling delay, sampled every 0.5 seconds. Includes the event-loop stack, active lifecycle phases and their thread stacks, RSS, cumulative process CPU time, and available cgroup v2 CPU/memory counters. Repeated warnings are limited to one per 30 seconds during a continuous stall. |
 | `runner_event_loop_delayed` / `runner_event_loop_recovered` | Completed scheduling delay / watchdog-observed recovery. The completed delay is recorded even if the watchdog could not run during the stall. |
-| `runner_phase_started` / `runner_phase_finished` | Artifact verification, runtime prewarm and provider replacement, snapshot persistence, compilation, validation, and startup restoration. Completion includes duration and result; an unfinished phase helps locate interrupted work. |
+| `runner_phase_started` / `runner_phase_finished` | Artifact verification, runtime prewarm and provider replacement, snapshot persistence, compilation, validation, and startup restoration. Completion includes the duration and the result. An unfinished phase helps you find interrupted work. |
 
 Phase metadata contains IDs and counts. Stack diagnostics contain file names, line numbers, and function names, without source lines, local variables, credentials, or request content. A Python watchdog cannot run while a native extension holds the GIL, or when the entire container is frozen or killed. Absence of a warning does not exclude these cases.
 
@@ -81,6 +81,6 @@ kubectl -n <namespace> logs <runner-pod> --previous --timestamps
 
 Keep Runner stdout/stderr in your centralized log collector: Kubernetes previous-container logs do not survive Pod deletion. Correlate the failure time with `runtime.prepare_release` candidate counts, `runtime.prewarm` duration, and any unexpected stacks waiting inside `readiness` or `admission_load`. Also compare changes in `cpu.stat` throttling counters and `memory.events` OOM counters, memory usage versus limits, and Kubernetes node pressure. Cumulative CPU counters need two samples to calculate a rate.
 
-Prometheus exposes `guard_runner_event_loop_lag_seconds`, `guard_runner_event_loop_delay_seconds` (histogram), and `guard_runner_event_loop_stalls_total`. For example, `increase(guard_runner_event_loop_stalls_total[5m])` finds watchdog-observed incidents; the delay histogram also captures completed stalls missed by the thread. A blocked HTTP event loop can prevent `/metrics` scrapes, so retain the diagnostic logs as well.
+Prometheus exposes `guard_runner_event_loop_lag_seconds`, `guard_runner_event_loop_delay_seconds` (histogram), and `guard_runner_event_loop_stalls_total`. For example, `increase(guard_runner_event_loop_stalls_total[5m])` finds the incidents that the watchdog observed. The delay histogram also captures completed stalls that the thread missed. A blocked HTTP event loop can prevent `/metrics` scrapes, so retain the diagnostic logs as well.
 
-For an isolated performance check, run `.venv/bin/python scripts/benchmark_runner_liveness.py --versions 1 8 32 --repeats 2` from the source checkout. It compares real NeMo prewarm with and without concurrent readiness reads and reports loop delay, CPU time, and RSS. It uses copies of a checked-in fixture and makes no external model calls or cluster changes; results are not a UAT capacity estimate. `--injected-prewarm-seconds` is only for deliberate fault simulation and is labelled separately in the output.
+For an isolated performance check, run `.venv/bin/python scripts/benchmark_runner_liveness.py --versions 1 8 32 --repeats 2` from the source checkout. It compares real NeMo prewarm with and without concurrent readiness reads and reports loop delay, CPU time, and RSS. It uses copies of a checked-in fixture. It makes no external model calls and no cluster changes. The results are not a UAT capacity estimate. `--injected-prewarm-seconds` is only for deliberate fault simulation and is labelled separately in the output.

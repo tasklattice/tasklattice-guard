@@ -7,12 +7,12 @@ order: 1
 理解一条 Policy，先问它要解决什么风险，再看它如何检查、用什么样例证明效果，最后确认应用实际绑定的是哪个版本。不要只根据名称判断保护范围。
 
 - Policy 是可复用能力，不是某个应用的部署配置。
-- Rule 是最小可执行行为；禁用一条 Rule 会改变实际编译内容。
+- Rule 是最小的可执行行为。禁用一条 Rule，会改变实际编译的内容。
 - Test Case 说明该 Rule 或业务场景应该放行、转换还是阻断。
-- Policy Version 是不可变快照；Guardrail 会固定到确切版本。
+- Policy Version 是不可变的快照。Guardrail 会固定到确切的版本。
 - 必填参数必须在绑定到 Guardrail 时解析，不能留到生产请求时临时决定。
 
-> 内建 Policy 由系统管理；拥有管理员权限的运维人员可以在 Policy Studio 中维护自定义 Policy。两者在 Guardrail 中使用相同的 Policy → Rule → Test Case 模型。
+> 内建 Policy 由系统管理。拥有管理员权限的运维人员，可以在 Policy Studio 中维护自定义 Policy。两者在 Guardrail 中使用相同的 Policy → Rule → Test Case 模型。
 
 [浏览 Policy Library](/policy-library)
 
@@ -26,7 +26,7 @@ Rail、Flow、执行模式、Action 和参数共同组成 Policy 的运行契约
 
 **Rail**
 
-NeMo 的执行阶段。Input Rail 在模型调用前检查用户输入；Output Rail 在模型响应交付前检查输出。
+NeMo 的执行阶段。Input Rail 在调用模型前检测用户输入。Output Rail 在交付模型响应前检测输出。
 
 **Flow 名称**
 
@@ -34,7 +34,7 @@ Colang 源码中声明的命名 Flow。绑定名称必须与源码完全一致�
 
 **执行模式：detect**
 
-只判断并记录安全状态，不把修改内容作为主要目的；不安全时仍按配置的 Action 执行。
+只判断并记录安全状态，主要目的不是修改内容。不安全时，仍按配置的 Action 执行。
 
 **执行模式：mutate**
 
@@ -42,7 +42,7 @@ Colang 源码中声明的命名 Flow。绑定名称必须与源码完全一致�
 
 **高级运行设置**
 
-parallel group 控制可安全并发的绑定；timeout 限制执行时间。超时及 provider error 按版本化 failure mode 处理。
+parallel group 控制可以安全并发的绑定。timeout 限制执行时间。超时和 provider error 按版本化的 failure mode 处理。
 
 **Action 依赖**
 

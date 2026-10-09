@@ -8,7 +8,11 @@ order: 6
 
 <strong>为什么：</strong>不同信任边界要隔离凭据和调用上下文，不能把外部 header 当成认证身份。
 
-<strong>怎么用：</strong>运维人员创建并发放 Endpoint 凭据；集成方使用对应协议调用检查接口，再核对接入验证和运行健康。
+<strong>怎么用：</strong>
+
+1. 运维人员创建 Endpoint 并发放凭据。
+2. 集成方按对应的协议调用检测接口。
+3. 集成方核对接入验证和运行健康。
 
 <strong>例子：</strong>客服应用和内部测试网关分别使用自己的 Endpoint 凭据，运行日志才能区分是谁发起检查。
 
@@ -20,10 +24,10 @@ order: 6
 
 | 接入类型 | 适合谁 | 如何送检 |
 | --- | --- | --- |
-| **LiteLLM 的 TaskLattice Guard**（`litellm-generic-guardrail`） | LiteLLM 网关，或实现 LiteLLM Generic Guardrail 契约的自研网关、Agent | 用 `x-api-key` 调用 Endpoint 下的 `/beta/litellm_basic_guardrail_api`。使用 `litellm_call_id` 关联输入与输出；支持 Provider 的 WebSocket 输出保护。 |
+| **LiteLLM 的 TaskLattice Guard**（`litellm-generic-guardrail`） | LiteLLM 网关，或实现 LiteLLM Generic Guardrail 契约的自研网关、Agent | 用 `x-api-key` 调用 Endpoint 下的 `/beta/litellm_basic_guardrail_api`。使用 `litellm_call_id` 关联输入与输出。支持 Provider 的 WebSocket 输出保护。 |
 | **Scan（F5 兼容）**（`f5-scan`） | Python、requests、curl、F5 Scan 测试脚本，或需要独立文本检查的应用 | 用 Bearer 凭据调用固定路径 `/backend/v1/scans`，通过 `input` 提交文本，`scanDirection` 选择 request 或 response。每次调用独立，不生成业务模型回答。 |
 
-已有 LiteLLM 网关选择 LiteLLM；独立文本扫描和数据集评测选择 Scan。客户端必须遵守对应请求和响应契约，检查 outcome 后决定如何交付内容。参见[接入说明](/document/developer/endpoint-setup)、[LiteLLM 请求示例](/document/developer/gateway-connect)和[调用方职责](/document/developer/endpoint-setup#endpoint-delivery)。
+已有 LiteLLM 网关时，选择 LiteLLM。独立的文本扫描和数据集评测，选择 Scan。客户端必须遵守对应的请求和响应契约，先判断 outcome，再决定如何交付内容。参见[接入说明](/document/developer/endpoint-setup)、[LiteLLM 请求示例](/document/developer/gateway-connect)和[调用方职责](/document/developer/endpoint-setup#endpoint-delivery)。
 
 <a id="state-endpoint" />
 
@@ -31,10 +35,15 @@ order: 6
 
 <StateMachineDiagram kind="endpoint" locale="zh-CN" />
 
-Endpoint 的持久启停状态 active ↔ disabled，可由运维人员恢复；软删除是另一个覆盖条件，不等同于 disabled。`applying / awaiting_callback / verified / disabled` 是接入设置进度，`healthy / waiting / degraded` 等运行健康来自观察，均不能替代认证凭据、Router 绑定或实际流量检查。凭据签发、轮换和撤销也独立于 Endpoint 的启停状态。
+Endpoint 保存启停状态 active ↔ disabled，运维人员可以恢复。软删除是另一个独立的条件，不等于 disabled。
+
+- `applying / awaiting_callback / verified / disabled` 是接入设置的进度。
+- `healthy / waiting / degraded` 等运行健康来自观察。
+
+两者都不能代替认证凭据、Router 绑定或对实际流量的核对。凭据的签发、轮换和撤销，也独立于 Endpoint 的启停状态。
 
 <a id="state-credentials" />
 
 ## 凭据与请求结果不是资源状态
 
-个人 Access Token 的有效、过期和撤销由有效期与撤销时间判断；Endpoint 凭据有自己的签发与撤销记录。它们都不是 Guardrail 或 Router 的生命周期。一次检查的 allow、transform、block 是该次请求的 Decision，不会自动让某个资源进入绿色或红色状态。
+个人 Access Token 是否有效、过期或撤销，由有效期和撤销时间判断。Endpoint 凭据有自己的签发和撤销记录。它们都不是 Guardrail 或 Router 的生命周期。一次检测的 allow、transform、block 是这次请求的 Decision，不会让某个资源变成绿色或红色状态。

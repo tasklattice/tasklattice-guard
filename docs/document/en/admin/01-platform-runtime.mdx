@@ -18,7 +18,12 @@ Platform management ensures that the service can execute protection. Controller 
 
 ## Where to inspect health
 
-Start with [platform health](/settings/health) for Controller, baseline protection, Runner convergence, and model capability readiness. Then use [Runner](/settings/runner) for instance synchronization and capacity. A Router is **active** only when the default pool has at least one Runner and every target Runner has acknowledged the desired generation with a fresh heartbeat. A single ready Runner does not prove Router activation.
+Start with [platform health](/settings/health) for Controller, baseline protection, Runner convergence, and model capability readiness. Then use [Runner](/settings/runner) for instance synchronization and capacity. A Router is **active** only when both conditions are true:
+
+- The default pool has at least one Runner.
+- Every target Runner acknowledged the desired generation and has a fresh heartbeat.
+
+One ready Runner does not prove that the Router is active.
 
 If a publication remains distributing or failed, compare desired and applied generations, Runner heartbeats, and rejection reasons. Then inspect protection artifacts, model dependencies, and capacity. See [runtime and publication states](/document/overview/term-router#state-router).
 
@@ -28,7 +33,14 @@ If a publication remains distributing or failed, compare desired and applied gen
 
 <StateMachineDiagram kind="runner" locale="en" />
 
-Runner status combines <strong>configuration reconciliation</strong> and <strong>capacity pressure</strong>, rather than one persisted linear state machine: it is syncing before the desired generation is applied, then ready, busy, or saturated according to load; disconnection or stale heartbeats yield offline; reconnecting requires generation convergence again. Router active requires valid acknowledgments from all default-pool Runners. One Runner being ready does not prove rollout.
+Runner status combines <strong>configuration reconciliation</strong> and <strong>capacity pressure</strong>. It is not one stored linear state machine:
+
+- Before the desired generation is applied: syncing.
+- After that, by load: ready, busy or saturated.
+- Disconnection or stale heartbeats: offline.
+- After a reconnection, the generation must converge again.
+
+Router active requires valid acknowledgments from all default-pool Runners. One ready Runner does not prove the rollout.
 
 <a id="state-models" />
 

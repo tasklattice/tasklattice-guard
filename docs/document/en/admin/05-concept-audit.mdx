@@ -4,7 +4,7 @@ title: "Audit log: trace management changes"
 summary: "Trace control-plane changes by actor, time, and resource, then verify rollout and runtime results."
 order: 4
 ---
-Audit log answers “which person or system did what to which resource, and when?” Control-plane events such as Policy validation, Guardrail publication, Router rollback, and credential changes help reconstruct the order of changes. Per-request Decisions are in [runtime logs](/document/admin/concept-logs), not in this log.
+Audit log answers “which person or system did what to which resource, and when?” Control-plane events help you reconstruct the order of changes. Examples are Policy tests, Guardrail publication, Router rollback and credential changes. Per-request Decisions are in [runtime logs](/document/admin/concept-logs), not in this log.
 
 <a id="audit-how-to-use" />
 
@@ -27,7 +27,11 @@ Search and filtering run on the server across all retained events in the selecte
 - **Filters**: expand actor type, event type, and resource type filters. Remove applied conditions individually or clear them together.
 - **Details**: select an event name or row to inspect the recorded change in a right-side drawer without leaving the query.
 
-For example, to find a Router's publications in the last 30 days, select that time range, filter to the Router resource type and its publication event, and search for the Router ID.
+For example, to find the publications of a Router in the last 30 days:
+
+1. Select that time range.
+2. Filter to the Router resource type and its publication event.
+3. Search for the Router ID.
 
 Filters, page number, and the query cutoff are stored in the URL for reloads, Back/Forward navigation, and sharing. The cutoff stays fixed while paging so newly arriving events do not shift rows. Refresh preserves the filters, advances the cutoff, and returns to the first page. The cutoff is shown above the table.
 

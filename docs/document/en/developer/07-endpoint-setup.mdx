@@ -13,19 +13,19 @@ There are two Endpoint types. **Both receive requests on a Runner and use the En
 
 | Type | Use case | Authentication | Calls and output |
 | --- | --- | --- | --- |
-| [LiteLLM](/document/developer/gateway-connect) | LiteLLM Provider, custom gateway or Agent | `x-api-key` | A shared Call ID correlates input/output and pins the version; complete text and WebSocket output |
-| [Scan (F5 compatible)](/document/developer/scan-protocol) | Python requests, curl, dataset evaluations | Bearer Token | Independent routing for every scan; complete text only, with no cross-scan correlation |
+| [LiteLLM](/document/developer/gateway-connect) | LiteLLM Provider, custom gateway or Agent | `x-api-key` | A shared Call ID correlates input and output and pins the version. Complete text and WebSocket output. |
+| [Scan (F5 compatible)](/document/developer/scan-protocol) | Python requests, curl, dataset evaluations | Bearer Token | Each scan is routed independently. Complete text only. Scans are not correlated. |
 
 Custom clients can implement the LiteLLM contract without deploying LiteLLM. HTTP is the transport, not another Endpoint type. Each protocol document owns its JSON fields, errors and result semantics.
 
 <a id="endpoint-prepare" />
 ## Prepare the runtime address and credential
 
-1. Confirm the Guardrail Version and Router are published, configuration has reached Runners and execution dependencies are ready.
+1. Confirm three things: the Guardrail Version and the Router are published, the configuration reached the Runners, and the execution dependencies are ready.
 2. Create a separate Endpoint for the client in [Endpoints](/integration/endpoints), select its type and bind a Router.
 3. Save the complete credential shown once and copy the **Runner Service runtime address** from its details. The management UI address is not the data-plane address.
 
-Use an Endpoint credential, not a Controller Personal Access Token. Credentials establish Endpoint identity; body claims and headers do not automatically establish trusted identity. Routers match fields available from the chosen Adapter. Verify identity headers through a trusted proxy; see [Endpoint and Routing](/document/operator/operator-routing).
+Use an Endpoint credential, not a Controller Personal Access Token. The credential sets the Endpoint identity. Claims in the body and headers are not trusted identity by default. Routers match the fields that the selected Adapter supplies. Verify identity headers through a trusted proxy. See [Endpoint and Routing](/document/operator/operator-routing).
 
 <a id="endpoint-litellm" />
 ## Connect LiteLLM
@@ -34,45 +34,45 @@ The **TaskLattice Guard Provider** is built into the TaskLattice LiteLLM image.
 
 1. In LiteLLM Admin, open **Guardrails → Guardrail Garden → TaskLattice Guard → Create Guardrail**.
 2. Enter the **Endpoint** address and complete **Secret**, choose inspection points and the settings below, then select **Verify & connect**. The Provider activates immediately without a restart.
-3. Send real model input and output and inspect Endpoint **Runtime activity**. `/verify` checks credentials and Adapter type only; it does not prove the inspection path works.
+3. Send real model input and output and inspect Endpoint **Runtime activity**. `/verify` checks only the credential and the Adapter type. It does not prove that the inspection path works.
 
 | Provider setting | Behavior |
 | --- | --- |
-| Inspection points | **Before model** checks input; **After model** checks output. Select one or both. |
-| Guard unavailable | Default **Block request**. **Continue without protection** applies only to network failures, timeouts and HTTP 502, 503 or 504; it never bypasses policy blocks, 4xx, 500 or invalid responses. |
-| Runtime timeout | 1–60 seconds; default 10 seconds. |
-| Apply to every request | On by default; disable only when clients explicitly select the Guardrail. |
+| Inspection points | **Before model** inspects the input. **After model** inspects the output. Select one or both. |
+| Guard unavailable | Default **Block request**. **Continue without protection** applies only to network failures, timeouts and HTTP 502, 503 or 504. It never bypasses Policy blocks, 4xx, 500 or invalid responses. |
+| Runtime timeout | 1–60 seconds. Default 10 seconds. |
+| Apply to every request | On by default. Disable it only when clients select the Guardrail explicitly. |
 
-LiteLLM owns these settings; Endpoint details do not show their live values. The Provider opens a WebSocket for streaming output while clients keep using SSE. Custom clients implement the [LiteLLM protocol](/document/developer/gateway-connect) directly.
+LiteLLM owns these settings. The Endpoint details do not show their live values. The Provider opens a WebSocket for streaming output while clients keep using SSE. Custom clients implement the [LiteLLM protocol](/document/developer/gateway-connect) directly.
 
 <a id="endpoint-scan" />
 ## Connect Scan (F5 compatible)
 
-Set the F5 script's `CALYPSOAI_URL` to the Runner Service origin and `CALYPSOAI_TOKEN` to the complete Scan Endpoint credential. The script still posts to `/backend/v1/scans`; Bearer authentication selects the Endpoint and its Router selects the Guardrail.
+Set the F5 script's `CALYPSOAI_URL` to the Runner Service origin and `CALYPSOAI_TOKEN` to the complete Scan Endpoint credential. The script still posts to `/backend/v1/scans`. Bearer authentication selects the Endpoint, and its Router selects the Guardrail.
 
-Send a real scan using the [Scan cURL and JSON examples](/document/developer/scan-protocol#scan-connection) to verify the connection; there is no `/verify`. Check the script against the documented compatibility scope. Placeholder fields for project selection, Scanner configuration and request correlation have no effect.
+To verify the connection, send a real scan with the [Scan cURL and JSON examples](/document/developer/scan-protocol#scan-connection). Scan has no `/verify`. Check the script against the documented compatibility scope. Placeholder fields for project selection, Scanner configuration and request correlation have no effect.
 
 <a id="endpoint-delivery" />
 ## Enforce checks around model calls
 
-Inspect input and enforce blocking or replacement before the application calls the model. Buffer and inspect output before delivery. Guard checks submitted content and records evidence; the client owns model calls, retries, cancellation and final delivery. LiteLLM streaming clients deliver only server `delta.text`.
+Inspect input and enforce blocking or replacement before the application calls the model. Buffer and inspect output before delivery. Guard inspects the submitted content and records evidence. The client owns model calls, retries, cancellation and final delivery. LiteLLM streaming clients deliver only server `delta.text`.
 
-HTTP `200` or Python `raise_for_status()` succeeding is not an allow decision: inspect LiteLLM `action` or Scan `result.outcome`. Unknown enums, invalid JSON and timeouts never mean a check passed. **Fail Closed** stops the application without a valid result. **Fail Open** applies only to explicitly eligible check failures, never to a normal block, replacement or `flagged` result.
+A successful HTTP `200` or Python `raise_for_status()` is not an allow decision. Read the LiteLLM `action` or the Scan `result.outcome`. Unknown enum values, invalid JSON and timeouts never mean that the inspection passed. **Fail Closed** stops the application without a valid result. **Fail Open** applies only to inspection failures that are explicitly eligible. It never applies to a normal block, replacement or `flagged` result.
 
 <a id="endpoint-verification" />
 ## Verify actual delivery
 
-Compare known test cases, [runtime logs](/logs) and content actually delivered to the application. **Published** means an executable version exists; **distributed** means Runners accepted configuration. Protection also requires the client to submit content and enforce results.
+Compare known test cases, [runtime logs](/logs) and content actually delivered to the application. **Published** means that an executable version exists. **Distributed** means that the Runners accepted the configuration. Protection also requires that the client submits content and enforces the results.
 
 | Check | LiteLLM | Scan |
 | --- | --- | --- |
 | Authentication and execution | `/verify`, then real input/output checks | Submit request/response scans directly |
-| Result handling | All three actions; replacement count and ordering | All four outcomes; both `flagOnly` and `verbose` settings |
-| Correlation | Shared Call ID pins the version; expired context fails | Each scan is independent; placeholders cannot correlate calls |
-| Output delivery | Inspect complete text first; stream only server deltas | Wait for complete JSON, then evaluate the outcome |
+| Result handling | All three actions. Replacement count and order. | All four outcomes. Both `flagOnly` and `verbose` settings. |
+| Correlation | A shared Call ID pins the version. Expired context fails. | Each scan is independent. Placeholders cannot correlate calls. |
+| Output delivery | Inspect the complete text first. Stream only server deltas. | Wait for the complete JSON, then evaluate the outcome. |
 | Failures | Bad credentials, wrong type, expired context, disconnect, malformed replacement | Bad credentials, wrong type, 413/415/422, failed checks and timeout |
 
-**Verified** requires authenticated check traffic; observing one direction does not prove the other was checked. Evaluation reports must separate content judgments from execution failures. See each protocol for exact statuses and retry boundaries.
+**Verified** requires authenticated inspection traffic. Traffic in one direction does not prove that the other direction was inspected. Evaluation reports must separate content judgments from execution failures. See each protocol for exact statuses and retry boundaries.
 
 <a id="endpoint-credentials" />
 ## Rotate or disable credentials

@@ -4,7 +4,7 @@ title: "Runtime logs: verify protection ran"
 summary: "Use interactions, checkpoints, and system events to inspect real request outcomes, versions, and evidence."
 order: 3
 ---
-Runtime logs answer “which protection handled this request, and what happened?” For example, if a support application reports that an ordinary order question was blocked, filter by Guardrail, time range, and Blocked outcome. Open the interaction to inspect the Guardrail Version, input or output checkpoint, matching Rule, and execution steps. Router publication status says whether configuration was distributed; a runtime record shows what happened to one request.
+Runtime logs answer “which protection handled this request, and what happened?” For example, if a support application reports that an ordinary order question was blocked, filter by Guardrail, time range, and Blocked outcome. Open the interaction to inspect the Guardrail Version, the input or output checkpoint, the matching Rule and the execution steps. The Router publication status tells whether the configuration was distributed. A runtime record shows what happened to one request.
 
 <a id="runtime-log-views" />
 
@@ -16,19 +16,25 @@ Runtime logs answer “which protection handled this request, and what happened?
 | **Guardrail checkpoints** | Which input or output check produced that result? |
 | **System events** | What content-free metadata did the Runner report, such as Router, decision, and latency? Request and response bodies are not shown here. |
 
-The page filters by Guardrail, time range, direction, and outcome. Entering from Router Monitoring can also supply Route, Target, and revision filters. There is no standalone Endpoint filter on this page; correlate a caller using request IDs, routing context, and the integrating client's records.
+The page filters by Guardrail, time range, direction, and outcome. Entering from Router Monitoring can also supply Route, Target, and revision filters. This page has no separate Endpoint filter. To find the calls of one caller, compare request IDs, the routing context and the records of the integrating client.
 
 <a id="term-evidence" />
 
 ## Evidence: execution evidence
 
-Evidence comprises findings, matching Policy/Rule, execution steps, and version information left by a check to explain its Decision. Start with the outcome and matching Rule, then inspect the pinned version, Runner, errors, and latency. One Blocked record does not mean the entire Guardrail is unhealthy.
+Evidence is the set of findings, matching Policy and Rule, execution steps and version information that an inspection leaves to explain its Decision. Start with the outcome and matching Rule, then inspect the pinned version, Runner, errors, and latency. One Blocked record does not mean the entire Guardrail is unhealthy.
 
 <a id="runtime-log-capture" />
 
 ## Why a request may be missing
 
-The logging level controls which checkpoints are retained: the production-default **Info** mainly records blocked or failed traffic; **Debug** also records transformations; **Trace** records every inbound and outbound checkpoint. A missing detailed record for an ordinary request does not by itself prove that protection was bypassed. Check the time range, Guardrail, and direction, then compare Router Monitoring and the client's request ID.
+The logging level controls which checkpoints are kept:
+
+- **Info**, the production default, mainly records blocked or failed traffic.
+- **Debug** also records transformations.
+- **Trace** records every inbound and outbound checkpoint.
+
+ A missing detailed record for an ordinary request does not by itself prove that protection was bypassed. Check the time range, Guardrail, and direction, then compare Router Monitoring and the client's request ID.
 
 Request and response bodies are not stored by default. When content capture is enabled, retained bodies are encrypted and only administrators can decrypt them in log details. The System events view never displays bodies.
 
@@ -39,14 +45,14 @@ Request and response bodies are not stored by default. When content capture is e
 
 ## Security events: separate risk, requested action, and execution outcome
 
-Open **Guardrail → Security Events** to inspect detected issues. Select a time range in the toolbar, then open **Filters** to select one or more risk levels: Critical, High, Medium, Low, Informational, or Unclassified. Option counts cover the selected time range; the summary separates matching events from the overall total. Remove the condition tag or choose **Clear filters** to restore all levels while keeping the time range. Filters are stored in the page URL and survive refresh or sharing. Risk is taken from the Rule version used for the check; confidence and action do not change it. [Risk definitions and examples](/document/overview/glossary-definition#term-rule-risk-severity).
+Open **Guardrail → Security Events** to inspect detected issues. Select a time range in the toolbar, then open **Filters** to select one or more risk levels: Critical, High, Medium, Low, Informational, or Unclassified. The option counts cover the selected time range. The summary shows the matching events separately from the overall total. Remove the condition tag or choose **Clear filters** to restore all levels while keeping the time range. Filters are stored in the page URL and survive refresh or sharing. The risk level comes from the Rule version that the inspection used. Confidence and action do not change it. [Risk definitions and examples](/document/overview/glossary-definition#term-rule-risk-severity).
 
 1. **Inspect risk and source:** identify the Policy, Rule, Endpoint, and evaluation phase.
 2. **Inspect the requested action:** High · Record only means a high-risk detection was deliberately observed without intervention.
-3. **Open the runtime log:** review whether the checkpoint allowed, transformed, or blocked traffic, and whether the check failed. The application or gateway must enforce `block` and `transform`; the check log does not confirm downstream completion.
+3. **Open the runtime log:** review whether the checkpoint allowed, transformed or blocked the traffic, and whether the inspection failed. The application or gateway must enforce `block` and `transform`. The log does not confirm that the downstream step completed.
 4. **Inspect versions and confidence:** events retain the Policy Version, Guardrail Version, Rule risk, and requested action used at evaluation time. Missing confidence is shown as Not provided.
 
-Multiple Rule matches in one request keep their individual levels; the Router request summary shows the highest. Safe checks do not create security events. Failed checks remain in runtime logs with a Check failed notice, independently of the final allow/block outcome. Risk is not an investigation status; there is currently no assignment, closure, or suppression workflow.
+When several Rules match in one request, each match keeps its own level. The Router request summary shows the highest level. A safe result does not create a security event. A failed inspection stays in the runtime logs with a Check failed notice, independently of the final allow or block outcome. The risk level is not an investigation status. At this time there is no workflow to assign, close or suppress events.
 
 <a id="concept-unclassified-events" />
 
@@ -58,4 +64,4 @@ Older events and Guardrail artifacts may not contain a Rule risk snapshot. The s
 
 ### How INFO / DEBUG / TRACE differ
 
-**Risk describes the event; logging level controls checkpoint detail capture.** Logging settings are under **Guardrail → Runtime**. Security-event metadata, including observation-only detections, remains visible at INFO. Missing detailed content does not mean there was no security event.
+**The risk level describes the event. The logging level controls how much checkpoint detail is kept.** The logging settings are under **Guardrail → Runtime**. Security-event metadata stays visible at INFO, also for detections in observation mode. Missing detailed content does not mean that no security event occurred.

@@ -4,7 +4,7 @@ title: "Versioned contracts and retries"
 summary: "Use the current OpenAPI contract to distinguish permissions, idempotency keys, asynchronous state, and safe retries."
 order: 1
 ---
-Before calling an API operation, check its permissions, idempotency, and retry guidance in OpenAPI. A network timeout means the client did not receive a result; it does not prove that the server did nothing.
+Before calling an API operation, check its permissions, idempotency, and retry guidance in OpenAPI. A network timeout means that the client did not receive a result. It does not prove that the server did nothing.
 
 <a id="api-contract-annotations" />
 ## Read the three OpenAPI annotations
@@ -13,12 +13,12 @@ Before calling an API operation, check its permissions, idempotency, and retry g
 - `x-idempotency` describes what happens when the same request is sent again. For example, Router publication identifies duplicate requests with the `idempotencyKey` in the request body.
 - `x-retry-policy` tells you whether to read the current state first or retry, and which request values must remain unchanged.
 
-These `x-` fields describe an OpenAPI operation; they are **not** HTTP headers to send. Follow the request definition for the operation's actual parameters.
+These `x-` fields describe an OpenAPI operation. They are **not** HTTP headers to send. Follow the request definition for the operation's actual parameters.
 
 <a id="api-contract-async" />
 ## Check the result after `202`
 
-`202 Accepted` means the request was accepted, but asynchronous work may still be running. For example, after starting a Guardrail validation run, use the returned `runId` with `GET /api/v1/test-runs/{runId}` to read its result. Do not report “validation passed” based on `202` alone.
+`202 Accepted` means the request was accepted, but asynchronous work may still be running. For example, after you start a Guardrail test run, use the returned `runId` with `GET /api/v1/test-runs/{runId}` to read its Testing Report. Do not report “tests passed” from `202` alone.
 
 <a id="api-contract-router-publish" />
 ## Change a Router by revision, then decide whether to retry
@@ -29,11 +29,11 @@ These `x-` fields describe an OpenAPI operation; they are **not** HTTP headers t
 4. Submit the change: `POST /api/v1/routers/{id}/change-requests` with the reviewed `expectedDraftRevision`, `reviewedSnapshot`, `reviewedEndpointIds`, a `reason`, and an optional change `ticket`. Nothing is published yet.
 5. Another administrator approves it: `POST /api/v1/routers/{id}/change-requests/{changeId}/approve`. Approval publishes exactly the submitted snapshot. In an emergency, `.../emergency-apply` applies it without a second approver and records the reason and manager contact.
 
-If a submission times out, read the Router: `pendingChangeRequest` shows a submission that succeeded. If an approval times out, the same approver may repeat it; check `publication.replayed` and the revision before doing anything else. Check `x-retry-policy` for every other `POST`: starting a validation run, for example, is not guaranteed to be idempotent and must not be automatically retried after an uncertain response.
+If a submission times out, read the Router: `pendingChangeRequest` shows a submission that succeeded. If an approval times out, the same approver can repeat it. Check `publication.replayed` and the revision before you do anything else. For every other `POST`, check `x-retry-policy`. For example, starting a test run is not guaranteed to be idempotent. Do not retry it automatically after an uncertain response.
 
 <a id="api-contract-resource-ids" />
 ## Find results by resource ID
 
-Address a Test Case through `/api/v1/guardrails/{guardrailId}/test-cases/{caseId}`. Query a validation run with its returned `runId`. A Test Case's `caseId` is not a validation run's `runId`.
+Address a Test Case through `/api/v1/guardrails/{guardrailId}/test-cases/{caseId}`. Query a test run with its returned `runId`. The `caseId` of a Test Case is not the `runId` of a test run.
 
 [Full OpenAPI](/api/openapi.json)

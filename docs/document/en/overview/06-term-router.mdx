@@ -20,9 +20,9 @@ Traffic scope · route condition
 
 An AND/OR route expression over trusted request facts.
 
-Selectors define Route matching; fallback is unconditional. Available fields depend on bound Endpoint protocols, and untrusted headers may be spoofed.
+Selectors define how a Route matches. The fallback Route matches without a condition. The available fields depend on the protocols of the bound Endpoints. Untrusted headers can be spoofed.
 
-For example, choose a Route by authenticated `endpoint.id` or protocol type `protocol`; if no condition matches, the final fallback Route applies.
+For example, choose a Route by the authenticated `endpoint.id` or by the protocol type `protocol`. If no condition matches, the final fallback Route applies.
 
 <a id="state-router" />
 
@@ -30,13 +30,20 @@ For example, choose a Route by authenticated `endpoint.id` or protocol type `pro
 
 <StateMachineDiagram kind="router" locale="en" />
 
-Router state is <strong>not stored in Router Revision</strong>. Controller derives it from activeRevision, desiredGeneration, default-pool Runner acknowledgments, and fresh heartbeats: no publication is unpublished; publication or rollback creates a revision and generation and enters distributing; at least one Runner and all fresh acknowledgments at or above target generation yield active; an unconverged rollout with rolloutError yields failed. Republish clears the error and distributes again. Stale heartbeats or a new Runner that has not caught up can move active back to distributing (or failed if an error remains). Historical revisions are not proof of successful deployment.
+Router state is <strong>not stored in the Router Revision</strong>. The Controller derives it from activeRevision, desiredGeneration, the acknowledgments of the default-pool Runners and fresh heartbeats:
+
+- No publication: unpublished.
+- A publication or a rollback creates a revision and a generation: distributing.
+- At least one Runner, and all fresh acknowledgments are at or above the target generation: active.
+- The rollout did not converge and has a rolloutError: failed.
+
+A new publication clears the error and distributes again. Stale heartbeats, or a new Runner that is not up to date, can move active back to distributing. If an error remains, the state becomes failed. A historical revision does not prove a successful deployment.
 
 <a id="router-rollout-states" />
 
 ### Router rollout states in detail
 
-These cards explain status meanings; they are not live system indicators. Controller derives Router status from revisions, generations, Runner acknowledgments, and heartbeats. It is not a lifecycle enum in the RouterRevision protobuf.
+These cards explain what each status means. They do not show the live system. The Controller derives the Router status from revisions, generations, Runner acknowledgments and heartbeats. The status is not a lifecycle enum in the RouterRevision protobuf.
 
 <StateCards>
 
@@ -44,7 +51,7 @@ These cards explain status meanings; they are not live system indicators. Contro
 
 <StateDetail label="Meaning">
 
-There is no active Router revision; routing configuration has not been published.
+No Router revision is active. The routing configuration is not published yet.
 
 </StateDetail>
 
@@ -88,7 +95,7 @@ Inspect Runner connectivity, prewarming, and desired/applied generations.
 
 <StateDetail label="Meaning">
 
-The default pool contains at least one Runner; every Runner has applied the desired generation or newer and has a fresh heartbeat.
+The default pool contains at least one Runner. Every Runner applied the desired generation or a newer one, and every Runner has a fresh heartbeat.
 
 </StateDetail>
 
@@ -110,7 +117,7 @@ Monitor traffic and runtime logs. In-flight calls retain the version pinned at t
 
 <StateDetail label="Meaning">
 
-The desired generation has not converged and a rollout error is recorded. This does not imply that every Runner has stopped serving.
+The desired generation did not converge, and the Controller recorded a rollout error. This does not mean that every Runner stopped serving.
 
 </StateDetail>
 
@@ -122,7 +129,7 @@ Publishing again clears the old error and retries distribution. Fresh convergenc
 
 <StateDetail label="Next step">
 
-Inspect rolloutError and Runner rejection reasons; fix dependencies or configuration, then publish again.
+Read rolloutError and the rejection reasons of the Runners. Correct the dependencies or the configuration, then publish again.
 
 </StateDetail>
 

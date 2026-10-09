@@ -1,5 +1,5 @@
 {
   "title": "集成参考",
-  "description": "从 Endpoint 接入开始，按 LiteLLM 或 Scan 协议实现；配置自动化使用控制面 API。",
+  "description": "从 Endpoint 接入开始，按 LiteLLM 或 Scan 协议实现。配置自动化使用控制面 API。",
   "order": 3
 }

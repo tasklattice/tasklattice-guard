@@ -5,31 +5,31 @@ summary: "Use Controller management APIs to bring Policy, Guardrail, and Router 
 outcome: "Outcome: an authorized, reviewed configuration workflow that tracks versions and asynchronous state."
 order: 3
 ---
-This chapter is for custom editors, approval flows and CI/CD: use Controller APIs to read configuration, save drafts, validate and publish versions. For inspecting actual model traffic, start with the [Endpoint integration guide](/document/developer/endpoint-setup). Publishing configuration does not automatically route application traffic through Guard.
+This chapter is for custom editors, approval flows and CI/CD: use Controller APIs to read configuration, save drafts, test and publish versions. For inspecting actual model traffic, start with the [Endpoint integration guide](/document/developer/endpoint-setup). Publishing configuration does not automatically route application traffic through Guard.
 
 <a id="developer-control-workflow" />
 ## Map your editing flow to Controller operations
 
 1. **Read current state**: Use `GET /api/v1/policies/{id}`, `GET /api/v1/guardrails/{id}`, and related operations to show current objects and versions. Do not rely on a disconnected local copy.
 2. **Save a candidate**: Create or update Policy and Guardrail drafts according to each resource's OpenAPI schema. Show users the difference between a draft and a published version. For Router changes, read the draft before `PUT /api/v1/routers/{id}/draft` and handle revision conflicts.
-3. **Validate and review**: Submit Test Cases, start a Validation Run, and use its returned `runId` to retrieve the result. Before Router publication, call `POST /api/v1/routers/{id}/publication-preview` and review the exact Guardrail Version and Endpoint bindings. A passing validation or preview does not publish anything.
+3. **Test and review**: Submit Test Cases, start a test run, and use its returned `runId` to read the Testing Report. Before Router publication, call `POST /api/v1/routers/{id}/publication-preview` and review the exact Guardrail Version and Endpoint bindings. Passing tests or a preview do not publish anything.
 4. **Publish and confirm**: Call the appropriate publish API only after an authorized operator approves. Router publication includes the reviewed `expectedDraftRevision` and `idempotencyKey`. After `202`, read publication and rollout status. If versions or bindings change after review, review them again rather than silently adopting a new revision.
 
-For example, CI can create a draft and run validation when a configuration change is merged, while a separate approval step controls production publication. Controller checks permissions, resource references, and version constraints. **Your system owns** its editing experience, change provenance, approval rules, conflict presentation, and final status shown to operators.
+For example, CI can create a draft and run the tests when a configuration change is merged. A separate approval step controls the production publication. Controller checks permissions, resource references, and version constraints. **Your system owns** its editing experience, change provenance, approval rules, conflict presentation, and final status shown to operators.
 
 <a id="developer-control-auth" />
 ## Control-plane identity and credentials
 
-The browser console authenticates with a session. A custom backend or automation can use a Personal Access Token created by its owning account: choose module read/write grants and expiry under Account → Access Tokens. The secret is shown once. Creating, listing, and revoking tokens requires that account's browser session; an existing token cannot mint another token. Keep personal tokens out of end-user browser code.
+The browser console authenticates with a session. A custom backend or automation can use a Personal Access Token that its owning account creates. Select the module read or write grants and the expiry under Account → Access Tokens. The secret shows only once. To create, list or revoke tokens, you need the browser session of that account. An existing token cannot create another token. Keep personal tokens out of end-user browser code.
 
-Call `GET /api/v1/account/identity` with `Authorization: Bearer <token>` first and inspect `effectivePermissions`. Grants cover resources in the selected modules; write includes read, and writes also require a current admin account. Invalid or expired credentials return `401`; insufficient permission returns `403`.
+Call `GET /api/v1/account/identity` with `Authorization: Bearer <token>` first and inspect `effectivePermissions`. Grants cover the resources in the selected modules. Write includes read. Writes also require that the account is an admin now. Invalid or expired credentials return `401`. Insufficient permission returns `403`.
 
 ```sh
 curl "{controllerOrigin}/api/v1/account/identity" \
   -H "Authorization: Bearer $GUARD_ACCESS_TOKEN"
 ```
 
-An Endpoint runtime credential (LiteLLM `x-api-key` or Scan Bearer Token) is only for [data-plane checks](/document/developer/endpoint-setup#endpoint-protocols), not Controller configuration. A Personal Access Token cannot replace an Endpoint credential for model-request checks.
+An Endpoint runtime credential (LiteLLM `x-api-key` or Scan Bearer Token) is only for [data-plane inspection](/document/developer/endpoint-setup#endpoint-protocols), not for Controller configuration. A Personal Access Token cannot replace an Endpoint credential for model-request inspection.
 
 [Manage Access Tokens](/account/access-tokens)
 
@@ -38,9 +38,9 @@ An Endpoint runtime credential (LiteLLM `x-api-key` or Scan Bearer Token) is onl
 <a id="developer-api-contract" />
 ## Follow OpenAPI and preserve retry boundaries
 
-Humans can read `/api/docs`; custom editors and tools can import `/api/openapi.json`, while `/api/llms.txt` provides a compact index. Each operation's `x-token-permission`, `x-idempotency`, and `x-retry-policy` describe its grant, duplicate-request semantics, and retry guidance. Tags group product capabilities, not permissions.
+People can read `/api/docs`. Custom editors and tools can import `/api/openapi.json`. `/api/llms.txt` gives a compact index. Each operation's `x-token-permission`, `x-idempotency`, and `x-retry-policy` describe its grant, duplicate-request semantics, and retry guidance. Tags group product capabilities, not permissions.
 
-A timeout does not prove that a write did not happen; `POST` is not universally safe to replay. For Router publication, preserve the same `idempotencyKey` and request content and inspect the returned publication identity. See [versioned contracts and retries](/document/api/api-contract-retries).
+A timeout does not prove that a write did not happen. Not every `POST` is safe to send again. For Router publication, preserve the same `idempotencyKey` and request content and inspect the returned publication identity. See [versioned contracts and retries](/document/api/api-contract-retries).
 
 [Management API reference](/api/docs)
 
