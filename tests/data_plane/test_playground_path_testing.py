@@ -26,7 +26,7 @@ def store():
 
 def test_preview_uses_the_same_runtime_assignment_and_fallback():
     s = store()
-    c = RequestContext(protocol='http', endpoint_id='endpoint', call_id='call', business_request=(('x-channel', 'partner'),))
+    c = RequestContext(protocol='litellm', endpoint_id='endpoint', call_id='call', business_request=(('x-channel', 'partner'),))
     result = s.preview_router('router', 1, c)
     target, _ = select(router(), c)
     assert result['assignment']['targetId'] == target.target_id
@@ -83,7 +83,7 @@ async def test_router_execution_runs_signed_artifact_in_real_nemo_runtime(tmp_pa
     target.guardrail_id, target.guardrail_version, target.artifact_id = artifact.guardrail_id, artifact.guardrail_version, artifact.artifact_id
     desired.router_revisions.append(r)
     desired.endpoints[0].router_id = r.router_id
-    desired.endpoints[0].adapter = 'generic-http-guard'
+    desired.endpoints[0].adapter = 'litellm-generic-guardrail'
     desired.generation += 1
     s.apply(desired)
     app = FastAPI()

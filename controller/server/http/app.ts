@@ -136,7 +136,7 @@ const playgroundDraftInteractionInput = playgroundInteractionInput.omit({ guardr
 });
 const endpointInput = z.object({
   name: z.string().trim().min(1).max(160),
-  adapter: z.string().trim().min(1).max(80),
+  adapter: z.enum(["litellm-generic-guardrail", "f5-scan"]),
 });
 const endpointEnabledInput = z.object({ enabled: z.boolean() });
 const deletionInput = z.object({
@@ -981,6 +981,7 @@ export function createHttpApp(input: {
   });
   app.post("/api/v1/playground/path-tests", authenticated, async context => {
     const body = pathTestSchema.parse(await context.req.json());
+    let endpointAdapter: string | undefined;
     let parsed, businessRequest;
     try { parsed = parseHttpRequest(body.request); businessRequest = requestSource(parsed); } catch (error) { throw new ValidationError(error instanceof Error ? error.message : "Invalid HTTP request."); }
     if (body.target === "router") {
@@ -988,7 +989,7 @@ export function createHttpApp(input: {
       if (body.configuration === "draft") {
         if (body.action !== "simulate") throw new ValidationError("Draft routing can only be simulated.");
         if (body.expectedRevision !== router.draftRevision) throw new ValidationError("Router draft changed. Reload before testing.");
-        const normalized = routingInputSchema.parse({ endpointId: body.endpointId || "simulated-endpoint", fields: { protocol: "http", ...body.fields }, business_request: businessRequest, endpoint_request: body.endpointRequest });
+        const normalized = routingInputSchema.parse({ endpointId: body.endpointId || "simulated-endpoint", fields: body.fields, business_request: businessRequest, endpoint_request: body.endpointRequest });
         const rules = previewRouter(router.draft, normalized);
         const winner = router.draft.routes.find(route => rules.some(row => row.routeId === route.id && row.received));
         return context.json({ target: body.target, source: "controller-draft", status: 200, durationMs: 0, callId: body.callId,
@@ -999,11 +1000,16 @@ export function createHttpApp(input: {
       if (!router.endpointIds.includes(body.endpointId)) throw new ValidationError("Select an Endpoint bound to this Router.");
       routingInputSchema.parse({ endpointId: body.endpointId, fields: body.fields, business_request: businessRequest, endpoint_request: body.endpointRequest });
     } else {
-      await input.service.getEndpoint(body.targetId);
+      const endpoint = await input.service.getEndpoint(body.targetId);
+      endpointAdapter = endpoint.adapter;
+      if (endpointAdapter === "f5-scan") {
+        body.credential ||= parsed.headers.authorization?.[0]?.replace(/^Bearer\s+/i, "") ?? "";
+        await input.service.verifyScanTestCredential(body.targetId, body.credential);
+      }
       if (body.configuration !== "published" || body.action !== "execute") throw new ValidationError("Endpoint tests execute the deployed configuration.");
     }
     if (!playgroundRunner) throw new ControllerError("Runner is not configured.", 503, "playground_runner_unavailable");
-    return context.json(await playgroundRunner.testPath(body));
+    return context.json(await playgroundRunner.testPath(body, endpointAdapter));
   });
   app.post("/api/v1/routers/:id/simulations", authenticated, async context => {
     await input.service.trafficRouting.get(context.req.param("id"));

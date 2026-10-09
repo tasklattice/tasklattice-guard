@@ -11,7 +11,7 @@ vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => k
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 const rawBody = '{"message":"你好","id":9007199254740993,"ok":true,"empty":{},"array":[1,null]}\n';
 const request: RuntimeHttpRequest = {
-  method: "POST", target: "/guardrails/evaluate?q=one%20two", httpVersion: "1.1",
+  method: "POST", target: "/backend/v1/scans?q=one%20two", httpVersion: "1.1",
   headers: [["content-type", "application/json"], ["x-tag", "one"], ["x-tag", "two"], ["authorization", "[REDACTED]"]],
   bodyBase64: Buffer.from(rawBody).toString("base64"), redactedHeaders: ["authorization"],
 };
@@ -41,7 +41,7 @@ describe("HTTP log body and download", () => {
     fireEvent.click(toggle);
     expect(container.querySelector("code")).toBeNull();
     const bytes = download.mock.calls[0]![0];
-    expect(new TextDecoder().decode(bytes)).toBe('POST /guardrails/evaluate?q=one%20two HTTP/1.1\r\ncontent-type: application/json\r\nx-tag: one\r\nx-tag: two\r\nauthorization: [REDACTED]\r\n\r\n' + rawBody);
+    expect(new TextDecoder().decode(bytes)).toBe('POST /backend/v1/scans?q=one%20two HTTP/1.1\r\ncontent-type: application/json\r\nx-tag: one\r\nx-tag: two\r\nauthorization: [REDACTED]\r\n\r\n' + rawBody);
   });
 
   it("preserves non-text body and Latin-1 header bytes in downloads", () => {

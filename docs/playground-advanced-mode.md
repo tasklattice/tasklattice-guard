@@ -27,7 +27,7 @@ Switching between Normal and Advanced modes preserves each mode's inputs and his
 
 Published Router requests carry an expected Revision. The Controller checks the current published revision and Endpoint bindings; the Runner then checks the loaded revision. Unsynchronized or changed revisions return an error. Execution also checks the version actually resolved by Runtime. The same Call ID follows Runtime's routing-pinning rules; generate a new Call ID in request context to test again.
 
-Endpoint mode follows protocol fields and Call ID in the request Body. Host in the HTTP editor supplies request context; the network destination is fixed to the Runner service configured in the Controller. Currently supported paths are the selected Endpoint's POST `guardrails/evaluate` and `beta/litellm_basic_guardrail_api`. External Ingress, DNS, TLS, and a complete third-party model round trip are outside this path test's scope.
+Endpoint mode follows protocol fields and Call ID in the request Body. Host in the HTTP editor supplies request context; the network destination is fixed to the Runner service configured in the Controller. Supported paths are the selected LiteLLM Endpoint's POST `beta/litellm_basic_guardrail_api` and the Scan root path `/backend/v1/scans`. Scan's Bearer key must belong to the selected Endpoint; its scans are independent and ignore client call IDs. External Ingress, DNS, TLS, and a complete third-party model round trip are outside this path test's scope.
 
 Endpoint tests use the entered API Key (also accepting X-Api-Key from HTTP), never forwarding the Controller's internal token. Sensitive request headers are masked in history; the request Body retains user input. cURL is parsed only as text: it does not execute a shell or read files.
 

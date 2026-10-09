@@ -68,6 +68,8 @@ class RunnerSettings:
     otel_trace_sample_ratio: float = 0.1
     pyroscope_server_address: str | None = None
     pyroscope_sample_rate: int = 100
+    scan_max_body_bytes: int = 1_048_576
+    scan_timeout_seconds: int = 25
 
     @classmethod
     def from_env(cls) -> "RunnerSettings":
@@ -202,6 +204,8 @@ class RunnerSettings:
                 or None
             ),
             pyroscope_sample_rate=_positive_int("GUARD_PYROSCOPE_SAMPLE_RATE", 100),
+            scan_max_body_bytes=_positive_int("GUARD_SCAN_MAX_BODY_BYTES", 1_048_576),
+            scan_timeout_seconds=_positive_int("GUARD_SCAN_TIMEOUT_SECONDS", 25),
         )
 
 

@@ -16,7 +16,7 @@ const legacyAnchors: Record<string, string> = {
   "guide-operator": "user-lifecycle",
   "guide-admin": "platform-runtime",
   "guide-user": "user-lifecycle",
-  "guide-developer": "developer-endpoint",
+  "guide-developer": "endpoint-setup",
   "glossary": "glossary-definition",
   "glossary-runtime": "term-endpoint",
   "developer-actions": "term-rule-actions",

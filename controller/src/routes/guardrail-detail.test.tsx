@@ -230,7 +230,7 @@ describe("Guardrail detail information hierarchy", () => {
       guardrail_version: "20260816-094646.000Z",
       router_id: null,
       endpoint_id: null,
-      protocol: "http",
+      protocol: "litellm",
       phase: "output" as const,
       severity: "medium" as const,
       risk: "content_safety",

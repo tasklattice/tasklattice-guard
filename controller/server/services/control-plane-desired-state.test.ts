@@ -39,7 +39,7 @@ const desiredStateResults = () => [
   [{ artifactId: "art-default" }],
   [artifact("art-1"), artifact("art-2"), artifact("art-default")],
   [], [], [],
-  [{ id: "endpoint-1", trafficRouterId: "router-1", adapter: "generic-http-guard", verification: { credentials: [] } }],
+  [{ id: "endpoint-1", trafficRouterId: "router-1", adapter: "litellm-generic-guardrail", verification: { credentials: [] } }],
 ] as unknown[][];
 
 describe("desired state per pool", () => {

@@ -202,7 +202,7 @@ With TaskLattice, your application or AI Gateway makes the actual model call and
 
 This describes only the Input and Output checkpoints currently integrated by this product. NeMo Guardrails also has Retrieval, Dialog, and Execution rails for retrieved content, conversation flow, and tools; that does not imply TaskLattice Endpoints support those stages. Compare NVIDIA's [Guardrail Types](https://docs.nvidia.com/nemo/guardrails/about-nemo-guardrails-library/rail-types) and [request sequence diagrams](https://docs.nvidia.com/nemo/guardrails/reference/guardrails-sequence-diagrams).
 
-For streaming output, decide which text has been checked before it is delivered; see this site's [streaming output checks](/document/developer/gateway-stream). NeMo's [configuration reference](https://docs.nvidia.com/nemo/guardrails/latest/configure-guardrails/configuration-reference) shows how check flows are listed separately under `rails.input.flows` and `rails.output.flows`.
+For streaming output, decide which text has been checked before it is delivered; see this site's [streaming output checks](/document/developer/gateway-connect#gateway-stream-protocol). NeMo's [configuration reference](https://docs.nvidia.com/nemo/guardrails/latest/configure-guardrails/configuration-reference) shows how check flows are listed separately under `rails.input.flows` and `rails.output.flows`.
 
 <a id="term-flow" />
 

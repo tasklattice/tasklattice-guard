@@ -21,11 +21,9 @@ type CurrentEndpoint = controllerApi.Endpoint & {
   distributionStatus?: "ready" | "syncing";
 };
 
-function endpointAdapter(adapter: string): { id: EndpointAdapterId; protocol: "litellm" | "http" | "a2a" } {
-  const normalized = adapter.toLowerCase();
-  if (normalized.includes("litellm")) return { id: "litellm-generic-guardrail", protocol: "litellm" };
-  if (normalized.includes("a2a")) return { id: "a2a-guard", protocol: "a2a" };
-  if (normalized === "http" || normalized === "generic-http-guard") return { id: "generic-http-guard", protocol: "http" };
+function endpointAdapter(adapter: string): { id: EndpointAdapterId; protocol: Endpoint["protocol"] } {
+  if (adapter === "f5-scan") return { id: "f5-scan", protocol: "scan" };
+  if (adapter === "litellm-generic-guardrail") return { id: "litellm-generic-guardrail", protocol: "litellm" };
   throw new Error(`Unknown Endpoint adapter: ${adapter}`);
 }
 

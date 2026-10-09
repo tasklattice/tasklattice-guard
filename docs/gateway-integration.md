@@ -3,7 +3,7 @@
 TALI Guard uses the LiteLLM Generic Guardrail protocol for gateway integrations.
 The integrating gateway does not need to run LiteLLM itself. It only needs to implement the HTTP request and response contract documented here.
 
-This guide is for Gateway / Platform Engineers implementing text Input Guard, complete Output Guard, and Streaming Output Guard. TALI Guard gateway integrations expose only the LiteLLM Generic Guardrail protocol documented here.
+This guide covers only the LiteLLM Endpoint (`litellm-generic-guardrail`) for text Input Guard, complete Output Guard and Streaming Output Guard. The other supported Endpoint type is Scan (`f5-scan`), with a separate [Scan request/response contract](document/en/developer/05-scan-protocol.mdx). Scan does not use this guide's `/verify`, `x-api-key`, Call ID or WebSocket rules.
 
 ## 1. Quick Start
 
@@ -286,8 +286,8 @@ model revision once. A missing or expired correlated Input context fails closed.
 
 `protocol` and `stream_id` are required. `call_id` is required for correlated
 Input/Output; omission creates a standalone output check. IDs are at most 256
-characters. `messages` retains at most 20 objects. HTTP/A2A integrations may send
-`attributes` and `output_sink`; LiteLLM uses `request_data` and `request_headers`.
+characters. `messages` retains at most 20 objects. LiteLLM uses `request_data`
+and `request_headers`. This stream protocol is available only to LiteLLM Endpoints.
 Unknown frame fields are rejected. The client cannot choose the delivery mode.
 
 Runner responds before consuming model content:

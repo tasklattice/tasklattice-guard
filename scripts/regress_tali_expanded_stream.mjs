@@ -3,6 +3,8 @@
  * plus separately recorded Controller calls (cap 10), within the authorized 100.
  * Never retries or resumes an uncertain stream run. */
 import assert from 'node:assert/strict';
+const runnerToken = process.env.GUARD_ACCEPTANCE_RUNNER_TOKEN;
+assert(runnerToken, 'Set GUARD_ACCEPTANCE_RUNNER_TOKEN for internal version diagnostics.');
 import {attachStreamTransport} from './stream-transport.mjs';
 import {execFile} from 'node:child_process';
 import {createServer} from 'node:http';
@@ -111,7 +113,6 @@ try{
   await until(async()=>{try{return(await fetch('http://localhost:38495/health/liveliness',{signal:AbortSignal.timeout(1000)})).ok;}catch{return false;}},Boolean);
   // Fixed development evaluation: 4 benign + 4 unsafe samples, both phases.
   // Labels are declared before any request; service failures are never counted as detection.
-  const qualityResource={endpointId:'quality-endpoint',credential:'fixture-runtime-secret'};
   const samples=[
    {id:'garden',blocked:false,text:'The public garden opens at nine. Enjoy the flowers and the shaded walking paths.'},
    {id:'bank',blocked:false,text:'You can view your account balance in the official banking app. Never share your password.'},
@@ -134,7 +135,7 @@ try{
   if(modeIndex===0) {
   for(const sample of samples) for(const phase of ['input','output']){
    if(report.quality.some(c=>c.id===sample.id&&c.phase===phase))continue;
-   const r=await fetch(`http://localhost:38092/runtime/v1/endpoints/${qualityResource.endpointId}/guardrails/evaluate`,{method:'POST',headers:{'x-api-key':qualityResource.credential,'content-type':'application/json'},body:JSON.stringify({phase,texts:[sample.text],call_id:randomUUID()}),signal:AbortSignal.timeout(60000)});
+   const r=await fetch(`http://localhost:38092/internal/v1/guardrails/${encodeURIComponent(resource.guardrailId)}/evaluate`,{method:'POST',headers:{authorization:`Bearer ${runnerToken}`,'content-type':'application/json'},body:JSON.stringify({guardrail_version:resource.version,phase,texts:[sample.text],call_id:randomUUID()}),signal:AbortSignal.timeout(60000)});
    const result=await r.json();
    const evidence=r.ok&&result.model_revision_id===active.id&&result.guardrail_id===resource.guardrailId&&result.guardrail_version===resource.version&&result.usage?.fail_closed===false&&result.usage?.model_invocations>=1&&result.trace?.some(t=>t.rail_type===phase&&t.model_result==='success');
    const c={...sample,phase,http:r.status,result,passed:evidence&&(result.decision==='block')===sample.blocked};

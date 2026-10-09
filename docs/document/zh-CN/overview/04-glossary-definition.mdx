@@ -200,7 +200,7 @@ Policy 没有独立的 `draft / active / disabled` 状态枚举。编辑形成 d
 
 这只介绍本产品当前接入的 Input 和 Output 两个关口。NeMo Guardrails 本身还有 Retrieval、Dialog、Execution 等阶段，分别涉及检索内容、对话流程和工具执行；不要据此推断 TaskLattice 的 Endpoint 已支持这些阶段。可对照 NVIDIA 官方的 [Guardrail Types](https://docs.nvidia.com/nemo/guardrails/about-nemo-guardrails-library/rail-types) 和 [请求顺序图](https://docs.nvidia.com/nemo/guardrails/reference/guardrails-sequence-diagrams)。
 
-如果你接入流式输出，还必须先明确哪些文本已检查、哪些可以交付；参见本站的[流式输出检查](/document/developer/gateway-stream)。NeMo 的[配置参考](https://docs.nvidia.com/nemo/guardrails/latest/configure-guardrails/configuration-reference)展示了在 `rails.input.flows` 和 `rails.output.flows` 中分别配置检查流程的方式。
+如果你接入流式输出，还必须先明确哪些文本已检查、哪些可以交付；参见本站的[流式输出检查](/document/developer/gateway-connect#gateway-stream-protocol)。NeMo 的[配置参考](https://docs.nvidia.com/nemo/guardrails/latest/configure-guardrails/configuration-reference)展示了在 `rails.input.flows` 和 `rails.output.flows` 中分别配置检查流程的方式。
 
 <a id="term-flow" />
 

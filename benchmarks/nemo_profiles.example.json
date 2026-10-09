@@ -1,16 +1,13 @@
 {
-  "description": "Replace sentinel trigger text and artifact metadata with six semantically equivalent, prewarmed release targets.",
-  "payload": {
-    "protocol": "http",
-    "path": "/benchmark/nemo-profiles"
-  },
+  "description": "Internal version evaluation: replace sentinel trigger text, Guardrail IDs, version URLs and artifact metadata with six equivalent prewarmed targets. Credentials use a Runner controller token.",
+  "payload": {},
   "targets": [
     {
       "name": "iorails-otel-off",
       "profile": "iorails_native",
       "otel_enabled": false,
-      "url": "http://127.0.0.1:8010/benchmark/v1/guardrails/generate",
-      "api_key_env": "TL_BENCH_API_KEY",
+      "url": "http://127.0.0.1:8010/internal/v1/guardrails/replace-iorails-guardrail-id/evaluate",
+      "api_key_env": "TL_BENCH_RUNNER_TOKEN",
       "guardrail_id": "replace-iorails-guardrail-id",
       "guardrail_version": "20260904-010000.001Z",
       "artifact_checksum": "replace-iorails-otel-off-checksum"
@@ -19,8 +16,8 @@
       "name": "iorails-otel-on",
       "profile": "iorails_native",
       "otel_enabled": true,
-      "url": "http://127.0.0.1:8011/benchmark/v1/guardrails/generate",
-      "api_key_env": "TL_BENCH_API_KEY",
+      "url": "http://127.0.0.1:8011/internal/v1/guardrails/replace-iorails-guardrail-id/evaluate",
+      "api_key_env": "TL_BENCH_RUNNER_TOKEN",
       "guardrail_id": "replace-iorails-guardrail-id",
       "guardrail_version": "20260904-020000.002Z",
       "artifact_checksum": "replace-iorails-otel-on-checksum"
@@ -29,8 +26,8 @@
       "name": "colang1-otel-off",
       "profile": "llmrails_colang1_standard",
       "otel_enabled": false,
-      "url": "http://127.0.0.1:8020/v1/guardrails/evaluate",
-      "api_key_env": "TL_BENCH_API_KEY",
+      "url": "http://127.0.0.1:8020/internal/v1/guardrails/replace-colang1-guardrail-id/evaluate",
+      "api_key_env": "TL_BENCH_RUNNER_TOKEN",
       "guardrail_id": "replace-colang1-guardrail-id",
       "guardrail_version": "20260904-010000.001Z",
       "artifact_checksum": "replace-colang1-otel-off-checksum"
@@ -39,8 +36,8 @@
       "name": "colang1-otel-on",
       "profile": "llmrails_colang1_standard",
       "otel_enabled": true,
-      "url": "http://127.0.0.1:8021/v1/guardrails/evaluate",
-      "api_key_env": "TL_BENCH_API_KEY",
+      "url": "http://127.0.0.1:8021/internal/v1/guardrails/replace-colang1-guardrail-id/evaluate",
+      "api_key_env": "TL_BENCH_RUNNER_TOKEN",
       "guardrail_id": "replace-colang1-guardrail-id",
       "guardrail_version": "20260904-020000.002Z",
       "artifact_checksum": "replace-colang1-otel-on-checksum"
@@ -49,8 +46,8 @@
       "name": "colang2-otel-off",
       "profile": "llmrails_colang2_programmable",
       "otel_enabled": false,
-      "url": "http://127.0.0.1:8030/v1/guardrails/evaluate",
-      "api_key_env": "TL_BENCH_API_KEY",
+      "url": "http://127.0.0.1:8030/internal/v1/guardrails/replace-colang2-guardrail-id/evaluate",
+      "api_key_env": "TL_BENCH_RUNNER_TOKEN",
       "guardrail_id": "replace-colang2-guardrail-id",
       "guardrail_version": "20260904-010000.001Z",
       "artifact_checksum": "replace-colang2-otel-off-checksum"
@@ -59,8 +56,8 @@
       "name": "colang2-otel-on-product-telemetry-only",
       "profile": "llmrails_colang2_programmable",
       "otel_enabled": true,
-      "url": "http://127.0.0.1:8031/v1/guardrails/evaluate",
-      "api_key_env": "TL_BENCH_API_KEY",
+      "url": "http://127.0.0.1:8031/internal/v1/guardrails/replace-colang2-guardrail-id/evaluate",
+      "api_key_env": "TL_BENCH_RUNNER_TOKEN",
       "guardrail_id": "replace-colang2-guardrail-id",
       "guardrail_version": "20260904-020000.002Z",
       "artifact_checksum": "replace-colang2-otel-on-checksum"

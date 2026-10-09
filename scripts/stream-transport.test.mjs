@@ -39,7 +39,7 @@ for (const outage of [false, true]) test(`WebSocket regression bridge ${outage ?
   await listen(bridge);
   try {
     const work = checkOutputStream(`http://127.0.0.1:${bridge.address().port}/endpoint`, 'synthetic-only',
-      {stream_id: 'test', protocol: 'http'}, ['中文 ', 'safe']);
+      {stream_id: 'test', protocol: 'litellm'}, ['中文 ', 'safe']);
     if (outage) await assert.rejects(work, /closed|transport/);
     else {
       const result = await work;

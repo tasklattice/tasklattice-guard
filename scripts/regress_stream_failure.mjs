@@ -108,19 +108,19 @@ async function existingFixture(id) {
 }
 const { policy, guardrail, validation, publication, release } = process.env.GUARD_REGRESSION_GUARDRAIL_ID
   ? await existingFixture(process.env.GUARD_REGRESSION_GUARDRAIL_ID) : await publishFixture();
-const endpoint = (await call(controller, "/api/v1/endpoints", { name: `Regression stream failure ${runId}`, adapter: "generic-http-guard" }, 201)).data;
+const endpoint = (await call(controller, "/api/v1/endpoints", { name: `Regression stream failure ${runId}`, adapter: "litellm-generic-guardrail" }, 201)).data;
 credential = endpoint.credential;
 const router = (await call(controller, "/api/v1/routers", { name: `Regression stream failure ${runId}`, guardrailId: guardrail.id,
   endpointId: endpoint.id, poolId: "default", enabled: true, trafficScope: { combinator: "and", conditions: [] } }, 201)).data;
 await until("endpoint convergence", async () => {
-  // /verify is the LiteLLM credential probe, not a generic HTTP probe.
-  const response = await fetch(new URL(`/runtime/v1/endpoints/${endpoint.id}/guardrails/evaluate`, runner), {
+  // Evaluate through LiteLLM to verify routing and policy readiness together.
+  const response = await fetch(new URL(`/runtime/v1/endpoints/${endpoint.id}/beta/litellm_basic_guardrail_api`, runner), {
     method: "POST", headers: { "x-api-key": credential, "content-type": "application/json" },
-    body: JSON.stringify({ phase: "output", texts: [safe], protocol: "http", call_id: randomUUID() }), signal: AbortSignal.timeout(15_000) });
+    body: JSON.stringify({ input_type: "response", texts: [safe], litellm_call_id: randomUUID() }), signal: AbortSignal.timeout(15_000) });
   assert([200, 401, 404, 503].includes(response.status), `Unexpected convergence status ${response.status}`);
   if (!response.ok) return false;
   const result = await response.json();
-  assert.equal(result.decision, "allow");
+  assert.equal(result.action, "NONE");
   return true;
 }, Boolean);
 for (const [text, expected, failure] of cases) {
@@ -133,7 +133,7 @@ for (const [text, expected, failure] of cases) {
   if (failure && dispatchFailure) assert(verdict.reason.includes("GuardRecordOwnedPolicyAction"), verdict.reason);
   const streamId = randomUUID();
   const result = await checkOutputStream(`${runner}/runtime/v1/endpoints/${endpoint.id}`, credential,
-    {stream_id: streamId, protocol: "http"}, [text]);
+    {stream_id: streamId, protocol: "litellm"}, [text]);
   assert.equal(result.ready.mode, "full_buffered");
   if (failure) {
     assert.equal(result.terminal.type, "error"); assert.equal(result.text, "");

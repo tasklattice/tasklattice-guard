@@ -88,7 +88,7 @@ const draft: RouterDraft = {
         expression: {
           combinator: "and",
           conditions: [
-            { field: "protocol", operator: "equals", value: "HTTP" },
+            { field: "protocol", operator: "equals", value: "litellm" },
           ],
         },
       },

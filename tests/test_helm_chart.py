@@ -431,6 +431,28 @@ def test_public_url_array_keeps_explicit_origin_and_ingress_overrides():
     assert [r["host"] for r in next(d for d in documents if d["kind"] == "Ingress")["spec"]["rules"]] == ["custom.test"]
 
 
+def test_scan_ingress_reaches_runtime_and_applies_request_limits():
+    documents = render("--set-json", 'controller.publicUrl=["https://primary.test","https://secondary.test"]',
+                       "--set", "ingress.enabled=true", "--set", "runner.scan.maxBodyBytes=65536",
+                       "--set", "runner.scan.timeoutSeconds=15")
+    ingress = next(item for item in documents if item["kind"] == "Ingress")
+    for rule in ingress["spec"]["rules"]:
+        path = next(path for path in rule["http"]["paths"] if path["path"] == "/backend/v1/scans")
+        assert path["pathType"] == "Exact"
+        assert path["backend"]["service"] == {"name": "contract-tali-guard-runtime", "port": {"name": "runtime"}}
+    runtime = next(item for item in documents if item["kind"] == "StatefulSet" and item["metadata"]["name"].endswith("-runner"))
+    env = {item["name"]: item.get("value") for item in runtime["spec"]["template"]["spec"]["containers"][0]["env"]}
+    assert env["GUARD_SCAN_MAX_BODY_BYTES"] == "65536"
+    assert env["GUARD_SCAN_TIMEOUT_SECONDS"] == "15"
+
+
+def test_scan_body_limit_renders_as_an_integer_at_its_default():
+    # Helm reads YAML numbers as float64; from 1e6 up, quote alone renders "1.048576e+06", which the Runner cannot parse.
+    runtime = next(item for item in render() if item["kind"] == "StatefulSet" and item["metadata"]["name"].endswith("-runner"))
+    env = {item["name"]: item.get("value") for item in runtime["spec"]["template"]["spec"]["containers"][0]["env"]}
+    assert env["GUARD_SCAN_MAX_BODY_BYTES"] == "1048576"
+
+
 def test_public_url_array_rejects_empty_and_invalid_entries():
     for value in ([], ["https://valid.test", ""], ["https://valid.test", "ftp://invalid.test"], ["https://valid.test", 42]):
         assert "publicUrl" in render_error("--set-json", "controller.publicUrl=" + json.dumps(value))

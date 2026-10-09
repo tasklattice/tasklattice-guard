@@ -31,13 +31,11 @@ class StreamStart(BaseModel):
     version: int = Field(ge=OUTPUT_STREAM_PROTOCOL_VERSION, le=OUTPUT_STREAM_PROTOCOL_VERSION)
     stream_id: str = Field(min_length=1, max_length=256)
     call_id: str | None = Field(default=None, min_length=1, max_length=256)
-    protocol: Literal["http", "a2a", "litellm"]
+    protocol: Literal["litellm"]
     messages: list[dict[str, Any]] = Field(default_factory=list, max_length=20)
     request_data: dict[str, Any] = Field(default_factory=dict)
     request_headers: dict[str, str] = Field(default_factory=dict)
-    attributes: dict[str, str] = Field(default_factory=dict)
     model: str | None = None
-    output_sink: Literal["display", "markdown", "html", "sql", "shell", "url", "json", "tool_argument"] | None = None
 
 
 class StreamFrame(BaseModel):
@@ -62,18 +60,17 @@ async def _receive(socket: WebSocket):
 
 
 def register_output_stream(api) -> None:
-    # HTTP adapters remain the authority for Endpoint/principal mapping.
+    # LiteLLM normalization owns Endpoint and principal mapping.
     from .api import (
-        EvaluateRequest, LiteLLMGuardrailRequest, LITELLM_ADAPTER_ID,
-        _http_protection_request, _litellm_protection_request,
+        LiteLLMGuardrailRequest, LITELLM_ADAPTER_ID, _litellm_protection_request,
     )
 
     @api.router.websocket("/runtime/v1/endpoints/{endpoint_id}/guardrails/output-stream")
     async def output_stream(socket: WebSocket, endpoint_id: str):
         authenticated = api._store.authenticate_endpoint(endpoint_id, socket.headers.get("x-api-key"))
         adapter = api._store.endpoint_adapter(endpoint_id)
-        protocol = {"a2a-guard": "a2a", "generic-http-guard": "http", LITELLM_ADAPTER_ID: "litellm"}.get(adapter)
-        api._metrics.observe_authentication(protocol or "http", authenticated)
+        protocol = "litellm" if adapter == LITELLM_ADAPTER_ID else None
+        api._metrics.observe_authentication(protocol or "unknown", authenticated)
         if not authenticated or protocol is None:
             await socket.close(code=1008)
             return
@@ -139,18 +136,11 @@ def register_output_stream(api) -> None:
                 if start.protocol != protocol:
                     raise StreamProtocolError("Endpoint adapter does not match the stream protocol.")
                 request = Request({**socket.scope, "type": "http", "method": "GET"})
-                if protocol == "litellm":
-                    protection = _litellm_protection_request(LiteLLMGuardrailRequest(
-                        input_type="response", texts=[""], litellm_call_id=start.call_id or start.stream_id,
-                        structured_messages=start.messages, model=start.model,
-                        request_data=start.request_data, request_headers=start.request_headers,
-                    ), endpoint_id, request)
-                else:
-                    protection = _http_protection_request(EvaluateRequest(
-                        phase="output", texts=[""], call_id=start.call_id or start.stream_id,
-                        protocol=protocol, messages=start.messages, attributes=start.attributes,
-                        model=start.model, output_sink=start.output_sink,
-                    ), request, endpoint_id)
+                protection = _litellm_protection_request(LiteLLMGuardrailRequest(
+                    input_type="response", texts=[""], litellm_call_id=start.call_id or start.stream_id,
+                    structured_messages=start.messages, model=start.model,
+                    request_data=start.request_data, request_headers=start.request_headers,
+                ), endpoint_id, request)
                 protection = replace(protection, context=replace(protection.context,
                     fields=(*protection.context.fields, ("routing.stream", "true"))))
                 effective_mode = None

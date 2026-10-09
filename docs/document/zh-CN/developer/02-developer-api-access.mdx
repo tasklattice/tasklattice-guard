@@ -1,11 +1,11 @@
 ---
 id: "developer-api-access"
-title: "控制面集成：把配置接入编辑与发布流程"
+title: "控制面 API 集成"
 summary: "用 Controller 管理 API 将 Policy、Guardrail、Router 的草稿、验证和发布接入自己的编辑器、审批流或自动化。"
 outcome: "最终产出：有权限、有审阅步骤、能追踪版本与异步状态的配置工作流。"
-order: 1
+order: 3
 ---
-假设团队已有一个内部 Policy 编辑器：业务人员在那里提交“订单助手不得泄露手机号”的规则，审批人核对测试样例，平台再发布。编辑器不必复制 Guard 的控制台；它可以调用现有 Controller API，读取对象、保存草稿、触发验证，并在审批后发布版本。**这条链路管理保护配置，不承接实际的大模型请求。**
+本章面向自建编辑器、审批流和 CI/CD：通过 Controller API 读取配置、保存草稿、验证并发布版本。实际模型流量的检查从 [Endpoint 接入指南](/document/developer/endpoint-setup)开始；发布配置不会自动让应用流量经过 Guard。
 
 <a id="developer-control-workflow" />
 ## 把自己的编辑流程映射到 Controller
@@ -29,7 +29,7 @@ curl "{controllerOrigin}/api/v1/account/identity" \
   -H "Authorization: Bearer $GUARD_ACCESS_TOKEN"
 ```
 
-Endpoint 的运行时 `x-api-key` 只供[数据面检查](/document/developer/developer-runtime)，不能修改 Controller 配置；个人 Access Token 也不能代替 Endpoint 凭据检查模型请求。
+Endpoint 的运行时凭据（LiteLLM 的 `x-api-key` 或 Scan 的 Bearer Token）只供[数据面检查](/document/developer/endpoint-setup#endpoint-protocols)，不能修改 Controller 配置；个人 Access Token 也不能代替 Endpoint 凭据检查模型请求。
 
 [管理 Access Tokens](/account/access-tokens)
 

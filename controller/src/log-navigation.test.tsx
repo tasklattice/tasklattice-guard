@@ -105,12 +105,12 @@ describe("URL-driven log inspection", () => {
   });
 
   it("keeps metadata-only and unassigned records in the same inspectable list", async () => {
-    const metadataOnly = { ...event("metadata-only"), requestId: "unassigned-request", guardrailId: null, decision: "allow", metadata: { runtimeLogCaptured: false, protocol: "http" } };
+    const metadataOnly = { ...event("metadata-only"), requestId: "unassigned-request", guardrailId: null, decision: "allow", metadata: { runtimeLogCaptured: false, protocol: "litellm" } };
     const { detail } = await setup("/logs", [event(), metadataOnly]);
-    await screen.findByRole("cell", { name: /http.*unassigned-request/ });
+    await screen.findByRole("cell", { name: /litellm.*unassigned-request/ });
     expect(screen.getAllByRole("row")).toHaveLength(3);
     detail.mockResolvedValue(metadataOnly);
-    const row = screen.getByRole("cell", { name: /http.*unassigned-request/ });
+    const row = screen.getByRole("cell", { name: /litellm.*unassigned-request/ });
     fireEvent.click(row);
     expect(await screen.findByRole("button", { name: /logs.executionTrace/ })).toBeTruthy();
     expect(detail).toHaveBeenCalledWith("metadata-only", expect.any(AbortSignal));

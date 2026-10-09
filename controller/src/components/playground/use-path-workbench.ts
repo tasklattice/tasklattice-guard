@@ -80,7 +80,7 @@ export function usePathWorkbench(active: boolean) {
   const endpointKey = endpoint?.id ?? "";
   // Keep an independent editable document per Endpoint, without synchronizing derived selections through effects.
   const template = useMemo(
-    () => endpointRequest(endpointKey, endpoint?.protocol ?? "http"),
+    () => endpointRequest(endpointKey, endpoint?.protocol ?? "litellm"),
     [endpointKey, endpoint?.protocol],
   );
   const draft =
@@ -120,14 +120,14 @@ export function usePathWorkbench(active: boolean) {
     setDraft(
       target === "router"
         ? routerRequest()
-        : endpointRequest(endpointKey, endpoint?.protocol ?? "http"),
+        : endpointRequest(endpointKey, endpoint?.protocol ?? "litellm"),
     );
   const importSource = (source: string) => {
     const imported = importRequest(source);
     if (target === "endpoint") {
       const expected = endpointRequest(
         endpointKey,
-        endpoint?.protocol ?? "http",
+        endpoint?.protocol ?? "litellm",
       ).url;
       if (imported.method !== "POST" || imported.url !== expected)
         throw new Error(

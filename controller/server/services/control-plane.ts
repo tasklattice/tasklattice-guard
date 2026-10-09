@@ -1510,6 +1510,16 @@ export class ControlPlaneService {
     return this.publicEndpoint(endpoint);
   }
 
+  async verifyScanTestCredential(id: string, credential: string) {
+    const [endpoint] = await this.db.select().from(endpoints)
+      .where(and(eq(endpoints.id, id), isNull(endpoints.deletedAt)));
+    const digest = createHash("sha256").update(credential).digest("hex");
+    if (!endpoint || endpoint.adapter !== "f5-scan" || endpoint.status !== "active" ||
+        !activeEndpointCredentials(endpoint.verification).some(item => item.sha256 === digest)) {
+      throw new ValidationError("Use an active API key belonging to the selected Scan Endpoint.");
+    }
+  }
+
   async listRuntimeEvents(limit = 100) {
     return (await this.queryRuntimeEvents({ limit })).items;
   }
@@ -1700,6 +1710,7 @@ export class ControlPlaneService {
   }
 
   async createEndpoint(input: { name: string; adapter: string; actorId: string }) {
+    if (!["litellm-generic-guardrail", "f5-scan"].includes(input.adapter)) throw new ValidationError("Unsupported Endpoint adapter.");
     const id = randomUUID();
     const issued = issueEndpointCredential();
     const verification = { credentials: [issued.stored] };
@@ -2995,16 +3006,26 @@ function ratio(numerator: number, denominator: number): number {
 }
 
 export function endpointSetup(runtimeServiceUrl: string, endpointId: string, adapter: string) {
+  if (adapter === "f5-scan") {
+    const baseUrl = new URL(runtimeServiceUrl).origin;
+    return {
+      api_base_url: baseUrl, callback_url: `${baseUrl}/backend/v1/scans`, stream_callback_url: null,
+      auth_header: "Authorization: Bearer", credential_env_var: "CALYPSOAI_TOKEN", api_base_env_var: "CALYPSOAI_URL",
+      recommended_modes: ["request", "response"], default_on: true, fail_on_error: true,
+      unreachable_fallback: "fail_closed" as const,
+      yaml_template: [
+        'curl --request POST "$CALYPSOAI_URL/backend/v1/scans" \\',
+        '  --header "Authorization: Bearer $CALYPSOAI_TOKEN" \\',
+        '  --header "Content-Type: application/json" \\',
+        '  --data \'{"input":"Hello, can you help me?","scanDirection":"request","flagOnly":true,"verbose":false}\'',
+      ].join("\n"),
+    };
+  }
   const apiBaseUrl = `${runtimeServiceUrl}/runtime/v1/endpoints/${encodeURIComponent(endpointId)}`;
-  const isLiteLLM = adapter === "litellm-generic-guardrail";
-  const callbackUrl = isLiteLLM
-    ? `${apiBaseUrl}/beta/litellm_basic_guardrail_api`
-    : `${apiBaseUrl}/guardrails/evaluate`;
-  const recommendedModes = isLiteLLM
-    ? ["pre_call", "post_call"]
-    : ["input", "output"];
-  const yamlTemplate = isLiteLLM
-    ? [
+  if (adapter !== "litellm-generic-guardrail") throw new ValidationError("Unsupported Endpoint adapter.");
+  const callbackUrl = `${apiBaseUrl}/beta/litellm_basic_guardrail_api`;
+  const recommendedModes = ["pre_call", "post_call"];
+  const yamlTemplate = [
         "# Requires the TaskLattice Guard endpoint supplied by Relay.",
         "credential_list:",
         "  - credential_name: tasklattice-guard",
@@ -3023,21 +3044,11 @@ export function endpointSetup(runtimeServiceUrl: string, endpointId: string, ada
         "      fail_on_error: true",
         "      unreachable_fallback: fail_closed",
         "",
-      ].join("\n")
-    : [
-        "tasklattice_guard:",
-        `  callback_url: "${callbackUrl}"`,
-        "  api_key: os.environ/TASKLATTICE_GUARD_API_KEY",
-        `  modes: [${recommendedModes.join(", ")}]`,
-        "  default_on: true",
-        "  fail_on_error: true",
-        "  unreachable_fallback: fail_closed",
-        "",
       ].join("\n");
   return {
     api_base_url: apiBaseUrl,
     callback_url: callbackUrl,
-    stream_callback_url: isLiteLLM ? null : `${apiBaseUrl.replace(/^http/, "ws")}/guardrails/output-stream`,
+    stream_callback_url: null,
     auth_header: "x-api-key",
     credential_env_var: "TASKLATTICE_GUARD_API_KEY",
     api_base_env_var: "TASKLATTICE_GUARD_API_BASE",

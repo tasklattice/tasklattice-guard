@@ -15,7 +15,7 @@ import pytest
 from starlette.requests import Request
 
 from runner import generated as protocol
-from runner.api import EvaluateRequest, LiteLLMGuardrailRequest, _http_protection_request, _litellm_protection_request
+from runner.api import LiteLLMGuardrailRequest, _litellm_protection_request
 from runner.artifact_store import ArtifactStore
 from runner.protocol_codec import plan_from_proto, traffic_scope_to_proto
 from runner.routing import RoutingError, validate_router
@@ -37,16 +37,12 @@ def http_request(headers=None, path='/evaluate'):
                     'headers': [(k.lower().encode(), v.encode()) for k, v in (headers or {}).items()]})
 
 
-def incoming(adapter, *, outer=None, business=None, team=None, call='call', model=None):
+def incoming(*, outer=None, business=None, team=None, call='call', model=None):
     request = http_request(outer)
-    if adapter == 'litellm':
-        return _litellm_protection_request(LiteLLMGuardrailRequest(
-            input_type='request', texts=['hello'], litellm_call_id=call, model=model,
-            request_headers=business, request_data={'user_api_key_team_id': team} if team else {}),
-            'lite-endpoint', request)
-    return _http_protection_request(EvaluateRequest(
-        phase='input', texts=['hello'], call_id=call, model=model, business_request=business),
-        request, 'http-endpoint')
+    return _litellm_protection_request(LiteLLMGuardrailRequest(
+        input_type='request', texts=['hello'], litellm_call_id=call, model=model,
+        request_headers=business, request_data={'user_api_key_team_id': team} if team else {}),
+        'lite-endpoint', request)
 
 
 class RecordingExecution(GuardrailRuntimeService):
@@ -94,30 +90,28 @@ def dispatch(tmp_path):
         ])
     validate_router(revision, store._artifacts)
     store._router_revisions = {'shared-router': revision}
-    store._endpoints = {e: {'_router_id': 'shared-router'} for e in ['lite-endpoint', 'http-endpoint']}
+    store._endpoints = {e: {'_router_id': 'shared-router'} for e in ['lite-endpoint']}
     return RecordingExecution(store), store
 
 
-@pytest.mark.parametrize('adapter,kwargs,expected', [
-    ('http', {'business': {'X-Channel': 'partner'}}, 'header'),
-    ('litellm', {'business': {'x-channel': 'partner'}}, 'header'),
-    ('litellm', {'team': 'team-red'}, 'team'),
-    ('litellm', {'business': {'x-channel': 'partner'}, 'team': 'team-red'}, 'header'),  # first match
-    ('http', {'outer': {'X-Environment': 'dev'}}, 'http'),
-    ('http', {'outer': {'X-Channel': 'partner'}}, 'fallback'),  # outer != business headers
-    ('http', {'business': {'X-Environment': 'dev'}}, 'fallback'),
-    ('http', {}, 'fallback'),  # no LiteLLM fields and no business source
-    ('litellm', {'team': 'team-blue'}, 'fallback'),
-    ('http', {'model': 'special-model'}, 'model'),
-    ('litellm', {'model': 'special-model'}, 'model'),
+@pytest.mark.parametrize('kwargs,expected', [
+    ({'business': {'x-channel': 'partner'}}, 'header'),
+    ({'team': 'team-red'}, 'team'),
+    ({'business': {'x-channel': 'partner'}, 'team': 'team-red'}, 'header'),  # first match
+    ({'outer': {'X-Environment': 'dev'}}, 'http'),
+    ({'outer': {'X-Channel': 'partner'}}, 'fallback'),  # outer != business headers
+    ({'business': {'X-Environment': 'dev'}}, 'fallback'),
+    ({}, 'fallback'),  # no LiteLLM fields and no business source
+    ({'team': 'team-blue'}, 'fallback'),
+    ({'model': 'special-model'}, 'model'),
 ])
-async def test_adapter_fields_select_the_plan_that_is_executed(dispatch, adapter, kwargs, expected):
+async def test_adapter_fields_select_the_plan_that_is_executed(dispatch, kwargs, expected):
     service, _ = dispatch
-    decision = await service.evaluate(incoming(adapter, **kwargs))
+    decision = await service.evaluate(incoming(**kwargs))
     assert decision.guardrail_id == expected
     assert decision.guardrail_version == VERSION
     assert decision.route_assignment['routeId'] == expected
-    assert decision.route_assignment['endpointId'] == ('lite-endpoint' if adapter == 'litellm' else 'http-endpoint')
+    assert decision.route_assignment['endpointId'] == 'lite-endpoint'
     assert service.executions == [(expected, VERSION, ('hello',))]
 
 
@@ -126,7 +120,7 @@ async def test_weighted_dispatch_executes_exactly_one_target_and_pins_output(dis
     counts = Counter()
     for i in range(1000):
         before = len(service.executions)
-        request = incoming('litellm', business={'x-channel': 'split'}, call=f'weighted-{i}')
+        request = incoming(business={'x-channel': 'split'}, call=f'weighted-{i}')
         decision = await service.evaluate(request)
         assert len(service.executions) == before + 1
         assert decision.route_assignment['routeId'] == 'split'
@@ -145,5 +139,5 @@ async def test_missing_selected_artifact_does_not_execute_fallback(dispatch):
     service, store = dispatch
     del store._artifacts['header']
     with pytest.raises(RoutingError, match='target_unavailable'):
-        await service.evaluate(incoming('http', business={'x-channel': 'partner'}))
+        await service.evaluate(incoming(business={'x-channel': 'partner'}))
     assert service.executions == []

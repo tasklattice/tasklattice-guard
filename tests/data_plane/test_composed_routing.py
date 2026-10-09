@@ -33,7 +33,7 @@ def router():
 
 
 def context(**kwargs):
-    return RequestContext(protocol='http', endpoint_id='endpoint', business_request=(('x-channel', 'partner'),), **kwargs)
+    return RequestContext(protocol='litellm', endpoint_id='endpoint', business_request=(('x-channel', 'partner'),), **kwargs)
 
 
 def artifacts():

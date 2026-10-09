@@ -1,0 +1,228 @@
+---
+id: "scan-protocol"
+title: "Scan Endpoint protocol"
+summary: "F5 Backend V1 Scans compatibility: Bearer authentication, four effective fields, four outcomes, ignored placeholders and error shapes."
+order: 2
+---
+This chapter defines the implemented **Scan Endpoint** (`f5-scan`) contract for existing F5 Scan scripts, Python requests and dataset evaluation. Compatibility covers text scanning through `POST /backend/v1/scans`, not F5 project management, history, Scanner configuration APIs or `/scans/raw`. LiteLLM action, Call ID and WebSocket rules do not apply to Scan.
+
+<a id="scan-connection" />
+## Address, authentication and routing
+
+```http
+POST /backend/v1/scans
+Authorization: Bearer <Endpoint credential>
+Content-Type: application/json
+```
+
+`CALYPSOAI_URL` is the Runner Service origin, for example `https://guard-runtime.example.com`, without `/runtime/v1/endpoints/{id}`. `CALYPSOAI_TOKEN` is the complete credential saved when creating a Scan Endpoint. All Scan Endpoints share this path. The Bearer credential identifies the Endpoint; its published Router selects a Guardrail Version.
+
+```bash
+export CALYPSOAI_URL='https://guard-runtime.example.com'
+export CALYPSOAI_TOKEN='<Scan Endpoint credential>'
+curl -sS --fail-with-body -X POST "${CALYPSOAI_URL%/}/backend/v1/scans" \
+  -H "Authorization: Bearer $CALYPSOAI_TOKEN" \
+  -H 'Content-Type: application/json' \
+  --data '{"input":"Text to inspect","scanDirection":"request","flagOnly":false,"verbose":false}'
+```
+
+Scan has no `/verify` or model-generation interface. Submit a real scan to verify authentication, routing and checks. Request scans do not call the business model; response scans do not fetch a model answer automatically.
+
+<a id="scan-request" />
+## Request JSON and effective fields
+
+Minimal valid request:
+
+```json
+{"input": "Text to inspect"}
+```
+
+Request scan with all effective fields explicit:
+
+```json
+{
+  "input": "Text to inspect",
+  "scanDirection": "request",
+  "flagOnly": false,
+  "verbose": false
+}
+```
+
+A response scan submits the complete, already-generated answer in the same `input` field:
+
+```json
+{
+  "input": "Here is the generated response.",
+  "scanDirection": "response",
+  "flagOnly": false,
+  "verbose": true
+}
+```
+
+| Field | Type / default | Constraint and effect |
+| --- | --- | --- |
+| `input` | Required string | The only inspection target; no array, object or `null`. The schema accepts empty strings, but an empty check proves nothing about other content |
+| `scanDirection` | `"request"` by default; or `"response"` | Select Input or Output Rail; case-sensitive |
+| `flagOnly` | Boolean, default `true` | `true` reports matches as `flagged`; `false` distinguishes `blocked` and `redacted` |
+| `verbose` | Boolean, default `false` | Include one aggregate Guardrail check detail |
+
+All four fields have strict types: `"false"`, `0` and `1` are not booleans; explicit `null` is not omission. Invalid enums or types return `422`.
+
+Each call resolves current routing independently and returns a new Scan ID. Request and response scans share neither session nor pinned version. Resubmission performs another scan, with no deduplication or idempotency guarantee. Choose [LiteLLM](/document/developer/gateway-connect) for version pinning across a model call.
+
+`flagOnly` changes result presentation, not inspection or server execution mode. Clients implement observation by recording decisions separately from delivery; `dry_run` and compatibility placeholders cannot enable a server Dry Run.
+
+<a id="scan-placeholders" />
+## Accepted but ignored compatibility fields
+
+| Field | Behavior in this system |
+| --- | --- |
+| `project` | Not applicable; cannot select a project, Endpoint or Guardrail |
+| `externalMetadata` | Ignored; neither used for routing nor guaranteed to be echoed |
+| `requestPromptId` | Ignored; does not correlate phases or reuse an existing Scan |
+| `configOverrides` | Ignored; cannot override Scanner, Policy or Router configuration |
+| `disabled`, `forceEnabled` | Ignored; cannot disable inspection or force a particular Scanner |
+
+These fields accept any legal JSON value, including strings, arrays, objects and `null`. Unknown extra fields are also ignored. All bytes still count toward the body limit. The following uses the same scan configuration as sending only `{"input":"Text to inspect"}`:
+
+```json
+{
+  "input": "Text to inspect",
+  "project": "compatibility-only",
+  "externalMetadata": {"dataset": "demo", "row": 1},
+  "requestPromptId": "ignored-reference",
+  "configOverrides": {},
+  "disabled": ["ignored-scanner"],
+  "forceEnabled": []
+}
+```
+
+Maintain your own mapping between dataset rows, expected labels and returned Scan IDs. Do not depend on ignored fields to echo that information.
+
+<a id="scan-response" />
+## Complete response JSON and outcomes
+
+Completed checks use HTTP `200`, including policy blocks. These examples use illustrative IDs; the deployed policy determines actual results.
+
+A request scan without a match:
+
+```json
+{
+  "id": "11111111-1111-4111-8111-111111111111",
+  "result": {"outcome": "cleared", "response": null, "scannerResults": []},
+  "redactedInput": "Text to inspect",
+  "scanners": null
+}
+```
+
+With `flagOnly=true`, a blocking match is represented as `flagged`; original text may remain in `redactedInput`:
+
+```json
+{
+  "id": "22222222-2222-4222-8222-222222222222",
+  "result": {"outcome": "flagged", "response": null, "scannerResults": []},
+  "redactedInput": "Text that matched a blocking policy",
+  "scanners": null
+}
+```
+
+The same kind of block with `flagOnly=false` is explicitly `blocked`:
+
+```json
+{
+  "id": "33333333-3333-4333-8333-333333333333",
+  "result": {"outcome": "blocked", "response": null, "scannerResults": []},
+  "redactedInput": "Text that matched a blocking policy",
+  "scanners": null
+}
+```
+
+A transformed response scan with `flagOnly=false` and `verbose=true`:
+
+```json
+{
+  "id": "44444444-4444-4444-8444-444444444444",
+  "result": {
+    "outcome": "redacted",
+    "response": "Email: [REDACTED]",
+    "scannerResults": [
+      {
+        "outcome": "failed",
+        "data": {"type": "custom"},
+        "startedDate": "2026-10-09T08:00:00Z",
+        "completedDate": "2026-10-09T08:00:01Z",
+        "scanDirection": "response",
+        "scannerId": "55555555-5555-4555-8555-555555555555",
+        "scannerVersionMeta": null,
+        "message": null,
+        "customConfig": false
+      }
+    ]
+  },
+  "redactedInput": "Email: [REDACTED]",
+  "scanners": null
+}
+```
+
+| `result.outcome` | Meaning and client behavior |
+| --- | --- |
+| `cleared` | Required checks completed without an intervention; continue according to the result |
+| `flagged` | An intervention was detected. Default `flagOnly=true` does not distinguish blocks from replacements; this is not an allow result |
+| `blocked` | Block with `flagOnly=false`; stop the current phase and withhold original text |
+| `redacted` | Actual replacement with `flagOnly=false`; use processed text, not the original |
+
+`flagOnly=false` does not guarantee only three outcomes: an aggregate intervention without a final block/transform decision can still produce `flagged`. Handle all four enums.
+
+| Response field | Contract |
+| --- | --- |
+| `id` | New UUID for each scan; not a correlation key or model-call ID |
+| `redactedInput` | Actually processed string; may retain original text when unchanged. **Its presence does not authorize delivery** |
+| `result.response` | Always `null` for request scans. For response scans, processed text unless blocked, otherwise `null`. A text value still requires checking outcome |
+| `result.scannerResults` | `[]` when `verbose=false`; exactly one aggregate Guardrail detail when `true`, not individual Rules or F5 Scanners |
+| Detail `outcome` | `passed` means no match; `failed` means an intervention matched, not an execution outage |
+| Detail `scannerId` | Guardrail ID when it is a valid UUID; otherwise `null`. Not a configurable F5 Scanner ID |
+| Other detail fields | `data.type="custom"`; observed start/end times and this scan's direction. `scannerVersionMeta=null`, `message=null` and `customConfig=false` are placeholders |
+| `scanners` | Always `null`; configuration is not applicable |
+
+Timeouts, missing required checks and execution failures never become `cleared`. They return non-2xx errors instead of a successful Scan result object.
+
+<a id="scan-errors" />
+## Errors, response headers and limits
+
+| HTTP status | `detail.code` | Meaning |
+| --- | --- | --- |
+| `401` | `invalid_credential` | Missing, invalid or revoked Bearer credential, or disabled Endpoint |
+| `403` | `adapter_mismatch` | Valid credential belongs to an Endpoint without Scan support |
+| `413` | `request_too_large` | Entire body exceeds the limit |
+| `415` | `unsupported_media_type` | Content type is not `application/json` |
+| `422` | None; `detail` is an array | Invalid JSON, missing field, wrong type or enum |
+| `503` | `scan_unavailable` | Route or runtime unavailable |
+| `503` | `scan_execution_failed` | Required inspection incomplete or failed |
+| `504` | `scan_timeout` | Scan deadline exceeded |
+| `500` | `invalid_scan_result` / `scan_internal_error` | Invalid internal result or another processing failure |
+
+Scan-generated errors other than `422` use this shape:
+
+```json
+{
+  "detail": {
+    "code": "scan_timeout",
+    "message": "The scan timed out.",
+    "requestId": "66666666-6666-4666-8666-666666666666"
+  }
+}
+```
+
+Example `422` for a missing `input`. Here `detail` is an array, not the object above:
+
+```json
+{
+  "detail": [
+    {"loc": ["body", "input"], "msg": "Field required", "type": "missing"}
+  ]
+}
+```
+
+Every response from the Scan handler carries `X-Request-ID` and `X-TaskLattice-Scan-Compatibility: v1`. Success `id` and error-object `requestId` match the header; use the header for `422`. A `401` also includes `WWW-Authenticate: Bearer`. Proxy-generated errors need not follow these shapes.
+
+Defaults are **1 MiB** for the request body and **25 seconds** for scan execution, configured by `GUARD_SCAN_MAX_BODY_BYTES` and `GUARD_SCAN_TIMEOUT_SECONDS`, or Helm `runner.scan.maxBodyBytes` and `runner.scan.timeoutSeconds`. Configure a separate client network timeout. Do not count execution failures as passes or policy detections; retrying creates another independent scan. See the [Endpoint integration checks](/document/developer/endpoint-setup#endpoint-verification).

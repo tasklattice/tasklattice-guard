@@ -98,7 +98,7 @@ export type TrafficRouter = {
 export type SelectorField = { id: string; label: string; group: string; customKey?: boolean; http?: boolean; cardinality: "one" | "many"; operators: readonly string[]; valueType?: "string"; availableAt?: "first_assignment"; sourceDescription?: string };
 const strings = selectorOperators;
 export const selectorFields: SelectorField[] = [
-  ...["protocol", "endpoint.id", "auth.principal", "model", "output.sink", "output.content_type", "output.schema_id", "tool.name", "target.environment", "litellm.api_key_alias", "litellm.team_id", "litellm.user_id", "a2a.version", "a2a.extensions", "a2a.operation", "a2a.context_id", "a2a.task_id"].map(id => ({ id, label: id, group: id.split(".")[0]!, cardinality: "one" as const, operators: strings })),
+  ...["protocol", "endpoint.id", "auth.principal", "model", "output.sink", "output.content_type", "output.schema_id", "tool.name", "target.environment", "litellm.api_key_alias", "litellm.team_id", "litellm.user_id"].map(id => ({ id, label: id, group: id.split(".")[0]!, cardinality: "one" as const, operators: strings })),
   ...["http.method", "http.host", "http.path"].map(id => ({ id, label: id, group: "http", http: true, cardinality: "one" as const, operators: strings })),
   { id: "http.header", label: "HTTP Header", group: "http", customKey: true, http: true, cardinality: "many", operators: strings },
   { id: "auth.jwt_claim", label: "JWT Claim", group: "auth", customKey: true, cardinality: "one", operators: strings },
@@ -160,12 +160,18 @@ export type SelectorEndpoint = { id: string; adapter: string; selectorCapabiliti
 export function endpointSelectorCapabilities(endpoint: SelectorEndpoint): SelectorCapability[] {
   if (endpoint.selectorCapabilities !== undefined) return endpoint.selectorCapabilities;
   const adapter = endpoint.adapter.toUpperCase();
+  if (["F5-SCAN", "SCAN"].includes(adapter)) return [
+    ...["protocol", "endpoint.id", "auth.principal"].map(field => ({ field, availableAt: "first_assignment" as const, cardinality: "one" as const, valueType: "string" as const })),
+    ...selectorFields.filter(field => field.http).map(field => ({ field: field.id, requestSource: "endpoint_request" as const,
+      availableAt: "first_assignment" as const, cardinality: field.cardinality, valueType: "string" as const })),
+    { field: "adapter.field", key: "scan.direction", availableAt: "first_assignment", cardinality: "one", valueType: "string" },
+  ];
+  if (!["LITELLM", "LITELLM-GENERIC-GUARDRAIL"].includes(adapter)) return [];
   return selectorFields.flatMap(field => {
-    if (field.id.startsWith("litellm.") && adapter !== "LITELLM" || field.id.startsWith("a2a.") && adapter !== "A2A") return [];
     // Dynamic keys and output descriptors need explicit first-assignment declarations.
     if (["adapter.field", "auth.jwt_claim"].includes(field.id) || field.id.startsWith("output.")) return [];
     const base = { field: field.id, availableAt: "first_assignment" as const, cardinality: field.cardinality, valueType: "string" as const };
-    return field.http ? ["endpoint_request", ...(["HTTP", "LITELLM"].includes(adapter) ? ["business_request"] : [])].map(requestSource => ({ ...base, requestSource: requestSource as RequestSource })) : [base];
+    return field.http ? ["endpoint_request", "business_request"].map(requestSource => ({ ...base, requestSource: requestSource as RequestSource })) : [base];
   });
 }
 export function selectorFieldCatalog(endpoints: SelectorEndpoint[]) {
@@ -179,7 +185,7 @@ export function selectorFieldCatalog(endpoints: SelectorEndpoint[]) {
  * Before binding, offer the common built-in adapter fields rather than unsupported options.
  */
 export function selectableSelectorFields(endpoints: SelectorEndpoint[]) {
-  const scope = endpoints.length ? endpoints : ["HTTP", "LITELLM", "A2A"].map(adapter => ({ id: adapter, adapter }));
+  const scope = endpoints.length ? endpoints : ["litellm-generic-guardrail", "f5-scan"].map(adapter => ({ id: adapter, adapter }));
   return selectorFieldCatalog(scope).filter(field => scope.every(endpoint => field.availableEndpoints.includes(endpoint.id)));
 }
 export function capabilityIssues(draft: RouterDraft, endpoints: SelectorEndpoint[]): string[] {

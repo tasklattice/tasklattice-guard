@@ -58,7 +58,7 @@ describe("Controller metrics contract", () => {
         }],
         endpoints: [{
           endpointId: "endpoint-1", endpointName: "Agent Gateway",
-          adapter: "generic-http-guard", status: "active",
+          adapter: "litellm-generic-guardrail", status: "active",
         }],
         endpointBindings: [{
           guardrailId: "guardrail-1", endpointId: "endpoint-1",
@@ -82,7 +82,7 @@ describe("Controller metrics contract", () => {
     expect(rendered).toContain('guard_controller_runner_pool_worst_runner_latency_p95_seconds{pool="default"} 0.12');
     expect(rendered).toContain('guard_controller_outbox_pending{kind="runner.desired_state_changed"} 2');
     expect(rendered).toContain('guard_controller_guardrail_info{guardrail_id="guardrail-1",guardrail_name="PII Shield",status="active"} 1');
-    expect(rendered).toContain('guard_controller_endpoint_info{endpoint_id="endpoint-1",endpoint_name="Agent Gateway",adapter="generic-http-guard",status="active"} 1');
+    expect(rendered).toContain('guard_controller_endpoint_info{endpoint_id="endpoint-1",endpoint_name="Agent Gateway",adapter="litellm-generic-guardrail",status="active"} 1');
     expect(rendered).toContain('guard_controller_guardrail_endpoint_info{guardrail_id="guardrail-1",endpoint_id="endpoint-1",endpoint_name="Agent Gateway",pool="default",status="active"} 1');
     expect(rendered).toContain('guard_controller_guardrail_router_info{guardrail_id="guardrail-1",guardrail_version="20260904-030000.003Z",router_id="router-1",router_name="Production API",pool="default",status="syncing"} 1');
     expect(rendered).toContain('guard_controller_guardrail_router_ready{guardrail_id="guardrail-1",router_id="router-1"} 0');
@@ -167,7 +167,7 @@ describe("Controller metrics contract", () => {
         }] : [],
         endpoints: present ? [{
           endpointId: "endpoint-1", endpointName: "Agent Gateway",
-          adapter: "generic-http-guard", status: "active",
+          adapter: "litellm-generic-guardrail", status: "active",
         }] : [],
         endpointBindings: present ? [{
           guardrailId: "guardrail-1", endpointId: "endpoint-1",
@@ -241,11 +241,11 @@ describe("Controller metrics contract", () => {
       .mockImplementationOnce(() => ({
         from: vi.fn().mockResolvedValue([
           {
-            id: "endpoint-active", name: "Agent Gateway", adapter: "generic-http-guard",
+            id: "endpoint-active", name: "Agent Gateway", adapter: "litellm-generic-guardrail",
             status: "active", deletedAt: null, trafficRouterId: "router-active",
           },
           {
-            id: "endpoint-disabled", name: "Disabled Gateway", adapter: "generic-http-guard",
+            id: "endpoint-disabled", name: "Disabled Gateway", adapter: "litellm-generic-guardrail",
             status: "disabled", deletedAt: null, trafficRouterId: "router-inactive",
           },
           {
@@ -253,7 +253,7 @@ describe("Controller metrics contract", () => {
             status: "active", deletedAt: null, trafficRouterId: null,
           },
           {
-            id: "endpoint-deleted", name: "Deleted Gateway", adapter: "generic-http-guard",
+            id: "endpoint-deleted", name: "Deleted Gateway", adapter: "litellm-generic-guardrail",
             status: "disabled", deletedAt: new Date(), trafficRouterId: "router-active",
           },
         ]),
@@ -269,11 +269,11 @@ describe("Controller metrics contract", () => {
     expect(snapshot.endpoints).toEqual([
       {
         endpointId: "endpoint-active", endpointName: "Agent Gateway",
-        adapter: "generic-http-guard", status: "active",
+        adapter: "litellm-generic-guardrail", status: "active",
       },
       {
         endpointId: "endpoint-disabled", endpointName: "Disabled Gateway",
-        adapter: "generic-http-guard", status: "disabled",
+        adapter: "litellm-generic-guardrail", status: "disabled",
       },
       {
         endpointId: "endpoint-zero-traffic", endpointName: "New Gateway",

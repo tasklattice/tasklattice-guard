@@ -22,7 +22,7 @@ Prepare a test application or gateway that you can change, and an available Poli
 
 1. **Compose and validate a Guardrail**: select the required Policy Versions, check enabled Rules, Rails, and parameters, and run Validation. Publish an immutable Guardrail Version only after the tests pass. See [build and publish a Guardrail](/document/operator/user-lifecycle).
 2. **Create an Endpoint**: give the test application its own identity, protocol URL, and credentials. Do not use a personal Controller Token in place of Endpoint credentials.
-3. **Integrate input and output checks**: check input before the model call and output before delivery. Enforce each returned Decision; never send a blocked input on to the model. See [data-plane integration for model calls](/document/developer/developer-runtime).
+3. **Integrate input and output checks**: check input before the model call and output before delivery. Enforce each returned Decision; never send a blocked input on to the model. See [Endpoint integration guide](/document/developer/endpoint-setup#endpoint-protocols).
 4. **Configure a Router**: attach a Router to the Endpoint, add a Route targeting the published Guardrail Version, and keep the fallback last. See [Endpoint and Routing](/document/operator/operator-routing).
 5. **Publish and confirm application**: after publishing the Router, verify that Runners applied its target generation. A Guardrail shown as protected only means a published Route references it; runtime application still needs confirmation.
 6. **Verify with real requests**: send an order question that should pass and a test input that should be blocked. Check the Decision, actual application behavior, and runtime evidence. A Validation Run alone does not replace this step.
@@ -130,4 +130,4 @@ Reuse capabilities and validate the draft, publish an immutable version, pin rou
 
 ## Continue reading
 
-Explore [Guardrail and resource relationships](/document/overview/term-guardrail) to distinguish Policies, Rules, versions, and Routers. Or follow the guide for [operations](/document/operator/user-lifecycle), [platform management](/document/admin/platform-runtime), or [integration](/document/developer/developer-endpoint).
+Explore [Guardrail and resource relationships](/document/overview/term-guardrail) to distinguish Policies, Rules, versions, and Routers. Or follow the guide for [operations](/document/operator/user-lifecycle), [platform management](/document/admin/platform-runtime), or [integration](/document/developer/endpoint-setup).

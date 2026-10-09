@@ -1,5 +1,5 @@
 {
   "title": "集成参考",
-  "description": "控制面通过 Controller API 集成编辑与发布，数据面让网关或 Agent 的模型请求经过运行时检查。",
+  "description": "从 Endpoint 接入开始，按 LiteLLM 或 Scan 协议实现；配置自动化使用控制面 API。",
   "order": 3
 }

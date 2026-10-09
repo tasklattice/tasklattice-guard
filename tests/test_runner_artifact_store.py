@@ -60,7 +60,7 @@ def test_runner_verifies_and_restores_complete_last_known_good(tmp_path):
         artifacts=[artifact],
         endpoints=[protocol.EndpointRuntime(
             endpoint_id="endpoint-1",
-            adapter="http",
+            adapter="litellm-generic-guardrail",
             verification=endpoint_verification_to_proto({"credentials": [{
                 "id": "runtime",
                 "sha256": hashlib.sha256(credential.encode()).hexdigest(),
@@ -88,9 +88,9 @@ def test_runner_verifies_and_restores_complete_last_known_good(tmp_path):
     first.apply(desired)
     assert first.generation == 7
     assert first.authenticate_endpoint("endpoint-1", credential)
-    assert first.endpoint_adapter("endpoint-1") == "http"
+    assert first.endpoint_adapter("endpoint-1") == "litellm-generic-guardrail"
     selected = first.resolve(RequestContext(
-        protocol="http",
+        protocol="litellm",
         endpoint_id="endpoint-1",
         fields=(("target.environment", "production"),),
     ))
@@ -101,8 +101,8 @@ def test_runner_verifies_and_restores_complete_last_known_good(tmp_path):
     restarted_registry = Registry()
     restarted.attach_registry(restarted_registry)  # type: ignore[arg-type]
     assert restarted.generation == 7
-    assert restarted.endpoint_adapter("endpoint-1") == "http"
-    assert restarted.resolve(RequestContext(protocol="http", endpoint_id="endpoint-1")).route_assignment["routeId"] == "fallback"
+    assert restarted.endpoint_adapter("endpoint-1") == "litellm-generic-guardrail"
+    assert restarted.resolve(RequestContext(protocol="litellm", endpoint_id="endpoint-1")).route_assignment["routeId"] == "fallback"
     assert restarted_registry.preparations == 1
 
 
@@ -122,7 +122,7 @@ def test_runner_accepts_active_multi_credentials_and_rejects_revoked_credentials
         generation=1,
         endpoints=[protocol.EndpointRuntime(
             endpoint_id="endpoint-1",
-            adapter="http",
+            adapter="litellm-generic-guardrail",
             verification=endpoint_verification_to_proto({
                 "credentials": [
                     {

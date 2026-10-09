@@ -25,7 +25,7 @@ export function setupRoutingHttp(role: string | null = "admin") {
     deleteRevision: vi.fn().mockResolvedValue(undefined), remove: vi.fn().mockResolvedValue(undefined), revisions: vi.fn().mockResolvedValue([]), distribution: vi.fn().mockResolvedValue({ total: 0, rows: [], telemetryFresh: false }) };
   const deleteGuardrailVersion = vi.fn().mockResolvedValue(undefined);
   const duplicateGuardrail = vi.fn().mockResolvedValue({ id: "copy", status: "draft" });
-  const listEndpoints = vi.fn().mockResolvedValue([{ id: "http", adapter: "HTTP" }, { id: "a2a", adapter: "A2A" }]);
+  const listEndpoints = vi.fn().mockResolvedValue([{ id: "http", adapter: "LITELLM" }, { id: "scan", adapter: "SCAN" }]);
   const distributeDesiredState = vi.fn().mockResolvedValue({ desiredGeneration: 2, distributionStatus: "pending" });
   const app = createHttpApp({ config, auth: { api: { getSession: vi.fn().mockResolvedValue(role === null ? null : { user: { id: "actor", role } }) }, handler: vi.fn() } as unknown as ControllerAuth,
     service: { trafficRouting, duplicateGuardrail, deleteGuardrailVersion, listEndpoints, packages: { checkRoutedImports: vi.fn(async () => undefined) } } as unknown as ControlPlaneService,
@@ -36,19 +36,18 @@ export function setupRoutingHttp(role: string | null = "admin") {
 
 describe("Composed Router HTTP contract", () => {
   it.each([
-    ['litellm', ['litellm.team_id', 'litellm.api_key_alias', 'litellm.user_id'], ['a2a.version']],
-    ['a2a', ['a2a.version', 'a2a.operation'], ['litellm.team_id']],
-    ['http', ['http.header'], ['litellm.team_id', 'a2a.version']],
-    ['litellm,a2a', ['protocol', 'model'], ['litellm.team_id', 'a2a.version']],
+    ['litellm', ['litellm.team_id', 'litellm.api_key_alias', 'litellm.user_id'], ['adapter.field']],
+    ['scan', ['adapter.field', 'http.header'], ['litellm.team_id']],
+    ['litellm,scan', ['protocol', 'http.header'], ['litellm.team_id', 'model', 'adapter.field']],
   ])('offers only common supported Selector fields for %s', async (ids, supported, unsupported) => {
     const { send, listEndpoints } = setupRoutingHttp();
-    listEndpoints.mockResolvedValue([{ id: 'http', adapter: 'HTTP' }, { id: 'litellm', adapter: 'LITELLM' }, { id: 'a2a', adapter: 'A2A' }]);
+    listEndpoints.mockResolvedValue([{ id: 'http', adapter: 'LITELLM' }, { id: 'litellm', adapter: 'LITELLM' }, { id: 'scan', adapter: 'SCAN' }]);
     const response = await send('GET', `/routing/selector-fields?endpointIds=${ids}`);
     expect(response.status).toBe(200);
     const body = await response.json();
     const fields = body.items.map((field: { id: string }) => field.id);
     expect(fields).toEqual(expect.arrayContaining(supported));
-    for (const field of [...unsupported, 'litellm.version', 'output.sink', 'output.content_type', 'output.schema_id', 'auth.jwt_claim', 'adapter.field']) {
+    for (const field of [...unsupported, 'litellm.version', 'output.sink', 'output.content_type', 'output.schema_id', 'auth.jwt_claim']) {
       expect(fields).not.toContain(field);
     }
     expect(body.count).toBe(fields.length);
@@ -59,8 +58,8 @@ describe("Composed Router HTTP contract", () => {
   });
   it("forwards complete drafts with actor and optimistic revision, without distributing drafts", async () => {
     const { send, trafficRouting, distributeDesiredState } = setupRoutingHttp(); const draft = fallbackDraft();
-    expect((await send("POST", "/routers", { name: " New ", endpointIds: ["http", "a2a"], draft })).status).toBe(201);
-    expect(trafficRouting.create).toHaveBeenCalledExactlyOnceWith("New", "", routerDraftSchema.parse(draft), "actor", ["http", "a2a"]);
+    expect((await send("POST", "/routers", { name: " New ", endpointIds: ["http", "scan"], draft })).status).toBe(201);
+    expect(trafficRouting.create).toHaveBeenCalledExactlyOnceWith("New", "", routerDraftSchema.parse(draft), "actor", ["http", "scan"]);
     expect((await send("PUT", "/routers/router/draft", { expectedDraftRevision: 7, draft })).status).toBe(200);
     expect(trafficRouting.save).toHaveBeenCalledExactlyOnceWith("router", 7, routerDraftSchema.parse(draft), "actor");
     expect((await send("PATCH", "/routers/router", { name: "Renamed", description: "Shared" })).status).toBe(404);
@@ -115,8 +114,8 @@ describe("Composed Router HTTP contract", () => {
   });
   it("passes endpoint binding and Duplicate identities through the admin boundary", async () => {
     const { send, trafficRouting, duplicateGuardrail, distributeDesiredState } = setupRoutingHttp();
-    expect((await send("PUT", "/routers/router/endpoints", { endpointIds: ["http", "a2a"] })).status).toBe(200);
-    expect(trafficRouting.bind).toHaveBeenCalledExactlyOnceWith("router", ["http", "a2a"], "actor");
+    expect((await send("PUT", "/routers/router/endpoints", { endpointIds: ["http", "scan"] })).status).toBe(200);
+    expect(trafficRouting.bind).toHaveBeenCalledExactlyOnceWith("router", ["http", "scan"], "actor");
     expect(distributeDesiredState).toHaveBeenCalledOnce();
     const request = { name: "Copy", sourceDraftRevision: 3, idempotencyKey: "copy-request" };
     expect((await send("POST", "/guardrails/guard/duplicate", request)).status).toBe(201);

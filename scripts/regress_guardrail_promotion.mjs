@@ -58,7 +58,7 @@ class Stack {
   async evaluate(path, body, headers) {
     const response = await fetch(new URL(path, this.runner), { method: "POST", headers: { "content-type": "application/json", ...headers },
       body: JSON.stringify(body), signal: AbortSignal.timeout(30_000) });
-    return { status: response.status, body: await response.json().catch(() => null) };
+    return { status: response.status, headers: response.headers, body: await response.json().catch(() => null) };
   }
   upload(bytes, name = "package.guardrail.zip", expected = 201) {
     const form = new FormData();
@@ -219,6 +219,7 @@ await until("PROD Runner preloads the checked versions", async () => (await fetc
 const preloaded = await prod.evaluate(`/internal/v1/guardrails/${guardrail.id}/evaluate`, { guardrail_version: v2, phase: "input", texts: ["hello"] },
   { authorization: `Bearer ${env("GUARD_PROMOTION_RUNNER_TOKEN")}` });
 assert.equal(preloaded.status, 200, `A checked imported version is preloaded before routing: ${JSON.stringify(preloaded)}`);
+assert.equal(preloaded.body.usage.model_invocations, 0);
 // Playground can talk to an imported version (503 only means no model is configured here).
 assert.equal((await prod.call("/api/v1/playground/models")).items !== undefined, true);
 const playground = await prod.call(`/api/v1/playground/guardrails/${guardrail.id}/interactions`, { body: { guardrail_version: v2, model_id: "any", message: "hello" }, expected: [200, 503] });
@@ -227,7 +228,7 @@ report("prod-preloaded-for-playground", { versions: [v1, v2], playground: playgr
 // ---------------------------------------------------------------- PROD routing through an approved change
 await prod.call("/api/auth/admin/create-user", { body: { email: `approver-${runId}@prod.local`, password: env("GUARD_PROMOTION_PASSWORD"), name: "Approver", role: "admin" } });
 const approver = await new Stack("PROD approver", env("GUARD_PROMOTION_PROD_URL"), env("GUARD_PROMOTION_PROD_RUNNER_URL")).signIn(`approver-${runId}@prod.local`, env("GUARD_PROMOTION_PASSWORD"));
-const endpoint = await prod.call("/api/v1/endpoints", { expected: 201, body: { name: `Bank gateway ${runId}`, adapter: "generic-http-guard" } });
+const endpoint = await prod.call("/api/v1/endpoints", { expected: 201, body: { name: `Bank gateway ${runId}`, adapter: "litellm-generic-guardrail" } });
 const router = await prod.call("/api/v1/routers", { expected: 201, body: { name: `Bank traffic ${runId}`, endpointIds: [endpoint.id], draft: { routes: [{
   id: "fallback", name: "Fallback", kind: "fallback", enabled: true, selector: { expression: { combinator: "and", conditions: [] } },
   targets: [{ id: "target", guardrailId: guardrail.id, guardrailVersion: v2, weightBps: 10_000 }] }] } } });
@@ -243,20 +244,22 @@ const target = (await systemStatus(prod)).desiredGeneration;
 await until("PROD Runner applies the routed release", async () => (await fetch(new URL("/health/ready", prod.runner))).json(), value => value.ready && value.applied_generation >= target);
 report("prod-routed", { routerId: router.id, changeId: change.id, endpointId: endpoint.id });
 
-const runtime = (phase, text) => prod.evaluate(`/runtime/v1/endpoints/${endpoint.id}/guardrails/evaluate`, { phase, texts: [text] }, { "x-api-key": endpoint.credential });
+const runtime = (phase, text) => prod.evaluate(`/runtime/v1/endpoints/${endpoint.id}/beta/litellm_basic_guardrail_api`,
+  { input_type: phase === "input" ? "request" : "response", texts: [text] }, { "x-api-key": endpoint.credential });
 for (const phase of phases) {
   const benign = await runtime(phase, "What are your opening hours?");
   assert.equal(benign.status, 200, JSON.stringify(benign));
-  assert.equal(benign.body.decision, "allow");
-  assert.equal(benign.body.guardrail_version, v2);
+  assert.equal(benign.body.action, "NONE");
+  const assignment = JSON.parse(benign.headers.get("x-guard-route-assignment"));
+  assert.equal(assignment.guardrailVersion, v2);
+  assert.equal(assignment.guardrailId, guardrail.id);
   const blocked = await runtime(phase, marker);
-  assert.equal(blocked.body.decision, "block", JSON.stringify(blocked.body));
+  assert.equal(blocked.body.action, "BLOCKED", JSON.stringify(blocked.body));
   const address = await runtime(phase, "Connect to 10.20.30.40 for the report");
-  assert.notEqual(address.body.decision, "allow", JSON.stringify(address.body));
-  assert.equal(blocked.body.usage?.model_invocations ?? 0, 0);
+  assert.notEqual(address.body.action, "NONE", JSON.stringify(address.body));
 }
 const later = await runtime("input", `${marker}_V2`);
-assert.equal(later.body.decision, "allow", "The newer Library Policy did not leak into the released version.");
+assert.equal(later.body.action, "NONE", "The newer Library Policy did not leak into the released version.");
 report("prod-serves-released-content", { guardrailVersion: v2 });
 
 // Without a Policy Library, the Policy view is aggregated from released versions by Policy ID.
@@ -319,7 +322,7 @@ const futureRouter = await prod.call("/api/v1/routers", { expected: 201, body: {
 // A pending version can never be routed to.
 const refused = await prod.call(`/api/v1/routers/${futureRouter.id}/publication-preview`, { body: { expectedDraftRevision: futureRouter.draftRevision }, expected: 422 });
 assert.match(refused.error.message, /has not been released in this environment/);
-assert.equal((await runtime("input", marker)).body.decision, "block", "Existing traffic is unaffected.");
+assert.equal((await runtime("input", marker)).body.action, "BLOCKED", "Existing traffic is unaffected.");
 report("prod-missing-dependency", { status: futureCheck.status, reason: futureCheck.pools[0].reason, test: futureRun.status, release: unreleased.error.code });
 
 // ---------------------------------------------------------------- runtime baseline

@@ -1,7 +1,7 @@
 ---
 id: "term-endpoint"
 title: "Endpoints: application identity and integration"
-summary: "Understand the LiteLLM, generic HTTP, and A2A Endpoint types, plus credentials, Router binding, and integration health."
+summary: "Understand the LiteLLM and Scan Endpoint types, plus credentials, Router binding, and integration health."
 order: 6
 ---
 <strong>What:</strong> An authenticated application, agent, or gateway identity with a protocol entry point; it can bind to one Router.
@@ -14,17 +14,16 @@ order: 6
 
 <a id="endpoint-integration-types" />
 
-## Three supported integration types
+## Two supported integration types
 
-The type selected when creating an Endpoint is its **data-plane integration protocol**, not a different kind of Guardrail. All three use their own Endpoint credentials and can bind to a Router; the Router then selects the Guardrail Version for a request.
+An Endpoint selects a data-plane integration protocol. The system provides only LiteLLM and Scan. Both use independent Endpoint credentials and let the bound Router select the Guardrail Version.
 
 | Type | Intended client | How it submits checks |
 | --- | --- | --- |
-| **TaskLattice Guard for LiteLLM** (`litellm-generic-guardrail`) | A LiteLLM AI Gateway, or a custom gateway or Agent willing to implement the LiteLLM Generic Guardrail HTTP contract | Configure the Endpoint URL and Secret; call `/beta/litellm_basic_guardrail_api` before a model call and before delivering its complete output. A custom client does not have to run LiteLLM internally, but must follow this request and response contract. |
-| **Generic HTTP Guard API** (`generic-http-guard`) | A custom AI Gateway, application, or Agent that wants a vendor-neutral check request | Authenticate to `/guardrails/evaluate` with the Endpoint credential, specify `protocol: "http"` and the input or output phase, then enforce the result in the client. |
-| **A2A Guard API** (`a2a-guard`) | An A2A client that needs to inspect agent-to-agent messages | Also call `/guardrails/evaluate`, but specify `protocol: "a2a"` and provide A2A operation, context ID, or task ID where relevant. |
+| **TaskLattice Guard for LiteLLM** (`litellm-generic-guardrail`) | LiteLLM gateways, or custom gateways and Agents implementing the LiteLLM Generic Guardrail contract | Send `x-api-key` to the Endpoint's `/beta/litellm_basic_guardrail_api`. Use `litellm_call_id` to correlate input and output; the Provider also supports protected WebSocket output. |
+| **Scan (F5 compatible)** (`f5-scan`) | Python, requests, curl, F5 Scan evaluation scripts, or applications needing independent text checks | Send a Bearer credential to `/backend/v1/scans`, submit text in `input`, and select request or response with `scanDirection`. Each scan is independent and does not generate a business-model answer. |
 
-<strong>Which one to choose:</strong> Use the LiteLLM type for an existing LiteLLM gateway. A custom gateway can either implement the LiteLLM Generic Guardrail contract or choose generic HTTP and map its own request and response structures. Choose A2A for agent-to-agent messages. <strong>The Endpoint type and call protocol must match</strong>: a generic HTTP Endpoint cannot be called through the LiteLLM callback path. See [data-plane responsibilities](/document/developer/developer-runtime) and [LiteLLM-contract request examples](/document/developer/gateway-connect).
+Choose LiteLLM for a LiteLLM gateway and Scan for standalone text checks or dataset evaluations. Clients must follow the selected request/response contract and enforce the returned outcome before delivering content. See [setup instructions](/document/developer/endpoint-setup), [LiteLLM request examples](/document/developer/gateway-connect), and [client responsibilities](/document/developer/endpoint-setup#endpoint-delivery).
 
 <a id="state-endpoint" />
 

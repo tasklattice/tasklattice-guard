@@ -215,7 +215,7 @@ export class RunnerPlaygroundClient {
     this.#fetch = input.fetcher ?? globalThis.fetch;
   }
 
-  async testPath(input: PathTestInput): Promise<PathTestResult> {
+  async testPath(input: PathTestInput, endpointAdapter?: string): Promise<PathTestResult> {
     const parsed = parseHttpRequest(input.request);
     const started = performance.now();
     let path: string;
@@ -225,12 +225,13 @@ export class RunnerPlaygroundClient {
       path = `/internal/v1/playground/routers/${encodeURIComponent(input.targetId)}/test`;
       headers = { authorization: `Bearer ${this.#token}`, "content-type": "application/json" };
       body = JSON.stringify({ revision: input.expectedRevision, endpoint_id: input.endpointId,
-        action: input.action, call_id: input.callId, fields: { protocol: "http", ...input.fields },
+        action: input.action, call_id: input.callId, fields: input.fields,
         business_request: requestSource(parsed), endpoint_request: input.endpointRequest,
         text: parsed.body });
     } else {
       const prefix = `/runtime/v1/endpoints/${encodeURIComponent(input.targetId)}`;
-      const allowed = [`${prefix}/guardrails/evaluate`, `${prefix}/beta/litellm_basic_guardrail_api`];
+      const scan = endpointAdapter === "f5-scan";
+      const allowed = scan ? ["/backend/v1/scans"] : endpointAdapter === "litellm-generic-guardrail" ? [`${prefix}/beta/litellm_basic_guardrail_api`] : [];
       if (parsed.method !== "POST" || !allowed.includes(parsed.path)) {
         throw new ValidationError("Use the selected Endpoint's POST evaluation path. Arbitrary URLs and query strings are not supported.");
       }
@@ -241,7 +242,8 @@ export class RunnerPlaygroundClient {
         if (values.length > 1) throw new ValidationError("Repeated Endpoint headers are not supported by this test transport.");
         headers[name] = values[0] ?? "";
       }
-      headers["x-api-key"] = input.credential || parsed.headers["x-api-key"]?.[0] || "";
+      if (scan) headers.authorization = `Bearer ${input.credential}`;
+      else headers["x-api-key"] = input.credential || parsed.headers["x-api-key"]?.[0] || "";
       headers["content-type"] ??= "application/json";
       body = parsed.body;
     }

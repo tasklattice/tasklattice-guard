@@ -1,5 +1,5 @@
 {
   "title": "Integration guides",
-  "description": "Integrate editing and publication through Controller APIs, or protect gateway and Agent model calls through runtime checks.",
+  "description": "Start with Endpoint setup, implement LiteLLM or Scan, and use Controller APIs for configuration automation.",
   "order": 3
 }

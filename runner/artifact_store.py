@@ -69,6 +69,7 @@ class ArtifactStore:
         self._artifacts: dict[str, RuntimeArtifact] = {}
         self._router_revisions: dict[str, Any] = {}
         self._endpoints: dict[str, dict[str, Any]] = {}
+        self._credential_endpoints: dict[str, str | None] = {}
         self._logging_levels: dict[str, str] = {}
         self._artifact_digests: dict[str, str] = {}
         self._materialization_key = ""
@@ -238,6 +239,14 @@ class ArtifactStore:
             adapter = endpoint.get("_adapter") if endpoint else None
         return adapter if isinstance(adapter, str) else None
 
+    def endpoint_for_credential(self, credential: str | None) -> str | None:
+        """Resolve root-path adapters without guessing a default Endpoint."""
+        if not credential:
+            return None
+        digest = hashlib.sha256(credential.encode()).hexdigest()
+        with self._lock:
+            return self._credential_endpoints.get(digest)
+
     def logging_level(self, guardrail_id: str | None) -> str:
         if guardrail_id is None:
             return "info"
@@ -300,6 +309,19 @@ class ArtifactStore:
         for item in desired_state.endpoints:
             verification = endpoint_verification_from_proto(item.verification)
             endpoints[item.endpoint_id] = {**verification, "_adapter": item.adapter, "_router_id": item.router_id}
+        credential_endpoints: dict[str, str | None] = {}
+        for endpoint_id, endpoint in endpoints.items():
+            for credential in endpoint.get("credentials", []):
+                if credential.get("revokedAt") is not None:
+                    continue
+                digest = credential.get("sha256")
+                if not isinstance(digest, str) or not digest:
+                    continue
+                if digest in credential_endpoints and credential_endpoints[digest] != endpoint_id:
+                    credential_endpoints[digest] = None
+                    logger.error("Ambiguous Endpoint credential digest in desired state; authentication denied.")
+                else:
+                    credential_endpoints[digest] = endpoint_id
         registry = self._registry
         if registry is None:
             raise RuntimeError("NeMo Runtime Registry is not attached.")
@@ -322,6 +344,7 @@ class ArtifactStore:
                 self._artifact_digests = digests
                 self._router_revisions = router_revisions
                 self._endpoints = endpoints
+                self._credential_endpoints = credential_endpoints
                 self._logging_levels = dict(desired_state.guardrail_logging_levels)
                 self._generation = generation
                 self._release_id = release_id

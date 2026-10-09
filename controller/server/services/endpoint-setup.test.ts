@@ -2,6 +2,16 @@ import { describe, expect, it } from "vitest";
 
 import { endpointSetup } from "./control-plane.js";
 
+it("provides the root Scan URL and Bearer examples without a streaming callback", () => {
+  const setup = endpointSetup("https://runtime.example.test/base/", "ep", "f5-scan");
+  expect(setup.callback_url).toBe("https://runtime.example.test/backend/v1/scans");
+  expect(setup.api_base_url).toBe("https://runtime.example.test");
+  expect(setup.auth_header).toBe("Authorization: Bearer");
+  expect(setup.stream_callback_url).toBeNull();
+  expect(setup.yaml_template).toContain('"input":"Hello, can you help me?"');
+  expect(setup.yaml_template).toContain('Bearer $CALYPSOAI_TOKEN');
+});
+
 describe("Endpoint setup", () => {
   it("uses LiteLLM's Basic Guardrail API callback for the LiteLLM adapter", () => {
     const setup = endpointSetup(
@@ -27,10 +37,7 @@ describe("Endpoint setup", () => {
     expect(setup.yaml_template).toContain("      unreachable_fallback: fail_closed\n");
   });
 
-  it("keeps the generic HTTP callback for non-LiteLLM adapters", () => {
-    const setup = endpointSetup("https://runtime.example.test", "endpoint-1", "generic-http-guard");
-
-    expect(setup.callback_url).toBe(`${setup.api_base_url}/guardrails/evaluate`);
-    expect(setup.stream_callback_url).toBe("wss://runtime.example.test/runtime/v1/endpoints/endpoint-1/guardrails/output-stream");
+  it("rejects unsupported adapters instead of producing an implicit callback", () => {
+    expect(() => endpointSetup("https://runtime.example.test", "ep", "unknown")).toThrow("Unsupported Endpoint adapter");
   });
 });

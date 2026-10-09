@@ -34,6 +34,28 @@ const endpoint = {
 };
 
 describe("Endpoint management HTTP routes", () => {
+  it.each(["litellm-generic-guardrail", "f5-scan"])("creates the supported Endpoint adapter %s", async (adapter) => {
+    const createEndpoint = vi.fn().mockResolvedValue({ ...endpoint, adapter });
+    const app = appWith({ user: { id: "admin-1", role: "admin" } }, { createEndpoint });
+    const response = await app.request("/api/v1/endpoints", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Supported endpoint", adapter }),
+    });
+    expect(response.status).toBe(201);
+    expect(createEndpoint).toHaveBeenCalledExactlyOnceWith({ name: "Supported endpoint", adapter, actorId: "admin-1" });
+  });
+
+  it.each(["generic-http-guard", "a2a-guard", "http", "a2a", "scan", "unknown"])("rejects unsupported Endpoint adapter %s before creating anything", async (adapter) => {
+    const createEndpoint = vi.fn();
+    const app = appWith({ user: { id: "admin-1", role: "admin" } }, { createEndpoint });
+    const response = await app.request("/api/v1/endpoints", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Invalid endpoint", adapter }),
+    });
+    expect(response.status).toBe(400);
+    expect(createEndpoint).not.toHaveBeenCalled();
+  });
+
   it("allows authenticated users to read detail without exposing a digest", async () => {
     const getEndpoint = vi.fn().mockResolvedValue(endpoint);
     const app = appWith({ user: { id: "member-1", role: "user" } }, { getEndpoint });

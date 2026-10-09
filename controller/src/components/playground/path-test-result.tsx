@@ -41,9 +41,9 @@ export function PathTestResult({
   const outcome =
     typeof body.decision === "string"
       ? body.decision
-      : (decision.decision ?? body.action);
+      : (decision.decision ?? body.action ?? object(body.result).outcome);
   const detail =
-    typeof body.detail === "string" ? body.detail : object(body.detail).reason;
+    typeof body.detail === "string" ? body.detail : (object(body.detail).reason ?? object(body.detail).message);
   const defaultTab =
     item.input.target === "router" && !failed ? "routing" : "evaluation";
   const stateLabel = (state: unknown) =>

@@ -3,8 +3,17 @@ import {
   capabilityIssues, evaluateCondition, evaluateSelector, previewRouter, routerDraftSchema,
   routingInputSchema, routingIssues, selectorConditionSchema, selectorExpressionSchema,
   selectorFieldCatalog, targetSchema, type RouterDraft, type RoutingInput, type SelectorCondition,
+  endpointSelectorCapabilities,
   type SelectorExpression, type TrafficRoute,
 } from "./traffic-routing.js";
+
+it("declares only real Scan extraction fields", () => {
+  const caps = endpointSelectorCapabilities({ id: "scan", adapter: "f5-scan" });
+  expect(caps).toContainEqual({ field: "adapter.field", key: "scan.direction", availableAt: "first_assignment", cardinality: "one", valueType: "string" });
+  expect(caps.some(c => c.requestSource === "business_request")).toBe(false);
+  expect(caps.some(c => ["model", "auth.jwt_claim", "tool.name"].includes(c.field))).toBe(false);
+  expect(caps.some(c => c.key === "project")).toBe(false);
+});
 
 const header = (changes: Partial<SelectorCondition> = {}): SelectorCondition => ({
   field: "http.header", key: "X-Channel", requestSource: "business_request", operator: "equals", value: "partner", ...changes,
@@ -157,16 +166,16 @@ describe("glob and boolean expressions", () => {
 describe("capabilities and exact ordered preview", () => {
   it("checks every scoped Endpoint without guessing boolean reachability", () => {
     const config = draft(route("business"));
-    const endpoints = [{ id: "http", adapter: "HTTP" }, { id: "a2a", adapter: "A2A" }];
-    expect(capabilityIssues(config, endpoints).join(";")).toMatch(/a2a.*business_request.*conditions.0/);
+    const endpoints = [{ id: "http", adapter: "LITELLM" }, { id: "scan", adapter: "SCAN" }];
+    expect(capabilityIssues(config, endpoints).join(";")).toMatch(/scan.*business_request.*conditions.0/);
   });
   it("honors explicit stage and key declarations and exposes availability to editors", () => {
     const config = draft(route("output", group({ field: "output.sink", operator: "equals", value: "chat" })));
-    const endpoint = { id: "http", adapter: "HTTP", selectorCapabilities: [{ field: "output.sink", availableAt: "output" as const, cardinality: "one" as const, valueType: "string" as const }] };
+    const endpoint = { id: "http", adapter: "LITELLM", selectorCapabilities: [{ field: "output.sink", availableAt: "output" as const, cardinality: "one" as const, valueType: "string" as const }] };
     expect(capabilityIssues(config, [endpoint])).toHaveLength(1);
     expect(selectorFieldCatalog([endpoint]).find(f => f.id === "output.sink")!.availableEndpoints).toEqual([]);
     expect(capabilityIssues(config, [{ ...endpoint, selectorCapabilities: [{ ...endpoint.selectorCapabilities[0]!, availableAt: "first_assignment" }] }])).toEqual([]);
-    expect(capabilityIssues(draft(route("a")), [{ id: "http", adapter: "HTTP", selectorCapabilities: [] }])).toHaveLength(1);
+    expect(capabilityIssues(draft(route("a")), [{ id: "http", adapter: "LITELLM", selectorCapabilities: [] }])).toHaveLength(1);
   });
   it("marks every later applicable route unexecuted regardless of independent match", () => {
     const rows = previewRouter(draft(route("winner"), route("overlap"), route("different", group(header({ value: "other" })))), input());
@@ -200,7 +209,7 @@ describe("publication target contracts", () => {
     expect(routingIssues(value, true).join(";")).toContain("exactly one Target at 100%");
     fallbackRoute.targets[0]!.weightBps = 10000; fallbackRoute.enabled = false;
     expect(routingIssues(value, true).join(";")).toContain("Fallback must be enabled, unconditional and last");
-    fallbackRoute.enabled = true; fallbackRoute.selector.expression = { combinator: "and", conditions: [{ field: "protocol", operator: "equals", value: "HTTP" }] };
+    fallbackRoute.enabled = true; fallbackRoute.selector.expression = { combinator: "and", conditions: [{ field: "protocol", operator: "equals", value: "litellm" }] };
     expect(routingIssues(value, true).join(";")).toContain("Fallback must be enabled, unconditional and last");
     fallbackRoute.selector.expression = group(); value.routes.push(route("after", group()));
     expect(routingIssues(value, true).join(";")).toContain("Fallback must be enabled, unconditional and last");

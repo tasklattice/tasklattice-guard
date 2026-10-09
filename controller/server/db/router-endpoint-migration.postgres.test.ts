@@ -22,7 +22,7 @@ describe.skipIf(!url)("Router / Endpoint database migration", () => {
     await pool.query(`
       INSERT INTO guardrail (id,name,draft_config) VALUES ('guard','Guard','{}');
       INSERT INTO runner_pool (id,name) VALUES ('pool','Pool');
-      INSERT INTO integration (id,name,adapter,verification) VALUES ('ep','Gateway','generic-http-guard','{"credentials":[{"id":"secret","sha256":"verifier"}]}');
+      INSERT INTO integration (id,name,adapter,verification) VALUES ('ep','Gateway','litellm-generic-guardrail','{"credentials":[{"id":"secret","sha256":"verifier"}]}');
       INSERT INTO guardrail_deployment (id,name,guardrail_id,pool_id,integration_id,route_order,traffic_scope) VALUES
         ('deployment-default','Default Deployment','guard','pool',NULL,0,'{}'),
         ('custom-router','Custom route','guard','pool','ep',2,'{"combinator":"and","conditions":[{"field":"integration.id","operator":"equals","value":"ep"}],"groups":[{"combinator":"or","conditions":[{"field":"http.path","operator":"equals","value":"integration.id"}]}]}');

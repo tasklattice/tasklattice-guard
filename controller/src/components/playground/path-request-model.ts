@@ -1,3 +1,4 @@
+import type { EndpointProtocol } from "@/lib/api-types";
 import { parseHttpRequest } from "../../../shared/playground-path";
 
 export type RequestHeader = {
@@ -48,22 +49,19 @@ export function importRequest(source: string): RequestDraft {
     ),
   };
 }
-export function endpointRequest(id: string, protocol: string): RequestDraft {
-  const litellm = protocol === "litellm";
+export function endpointRequest(id: string, protocol: EndpointProtocol): RequestDraft {
+  if (protocol === "scan") return {
+    method: "POST", url: "/backend/v1/scans",
+    headers: [newHeader("Content-Type", "application/json")],
+    body: JSON.stringify({ input: "Hello, can you help me?", scanDirection: "request", flagOnly: true, verbose: true }, null, 2),
+  };
+  if (protocol !== "litellm") throw new Error("Unsupported Endpoint protocol.");
   return {
     method: "POST",
-    url: `/runtime/v1/endpoints/${encodeURIComponent(id)}/${litellm ? "beta/litellm_basic_guardrail_api" : "guardrails/evaluate"}`,
+    url: `/runtime/v1/endpoints/${encodeURIComponent(id)}/beta/litellm_basic_guardrail_api`,
     headers: [newHeader("Content-Type", "application/json")],
     body: JSON.stringify(
-      litellm
-        ? { input_type: "request", texts: ["Hello, can you help me?"] }
-        : {
-            phase: "input",
-            protocol,
-            texts: ["Hello, can you help me?"],
-            call_id: `test-${crypto.randomUUID()}`,
-            business_request: { "x-channel": ["partner"] },
-          },
+      { input_type: "request", texts: ["Hello, can you help me?"] },
       null,
       2,
     ),

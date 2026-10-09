@@ -31,7 +31,7 @@ vi.mock("@/lib/traffic-routing-api", () => ({
 vi.mock("@/lib/endpoints-api", () => ({
   getEndpoints: async () => ({
     items: [
-      { id: "endpoint", name: "Support API", protocol: "http" },
+      { id: "endpoint", name: "Support API", protocol: "litellm" },
       { id: "second", name: "Second API", protocol: "litellm" },
     ],
   }),

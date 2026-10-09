@@ -1,58 +1,268 @@
 ---
 id: "gateway-connect"
-title: "Data-plane protocol: connect, input, and complete output"
-summary: "LiteLLM and custom gateways implement the same LiteLLM Generic Guardrail HTTP contract; the gateway does not need to run LiteLLM."
-order: 3
+title: "LiteLLM Endpoint protocol"
+summary: "HTTP requests and responses, Call ID correlation, WebSocket output, errors and retry constraints."
+order: 1
 ---
-The runtime exposes the **LiteLLM Generic Guardrail** protocol as its integration contract. This names the protocol; your gateway does not have to use LiteLLM internally. An Agent that calls a model directly can also implement the same HTTP contract. Operations supplies an Endpoint base URL and runtime Token for that Endpoint. These examples cover text Input and complete Output checks. The client still maps results back into its own request and response structures. Start with the [data-plane responsibilities and boundaries](/document/developer/developer-runtime).
+This chapter applies only to **LiteLLM Endpoints** (`litellm-generic-guardrail`). A LiteLLM Provider, custom gateway or Agent can implement this contract. Scan uses different paths, authentication and responses; see [Scan requests and responses](/document/developer/scan-protocol).
 
 <a id="gateway-connection" />
+## Address, authentication and verification
 
-## Prepare the connection
+`{endpoint}` is the runtime base URL including an Endpoint ID, for example `https://guard-runtime.example.com/runtime/v1/endpoints/your-endpoint-id`. All paths below target the Runner Service.
+
+| Method and path | Purpose |
+| --- | --- |
+| `POST {endpoint}/verify` | Verify credentials and Adapter type; body `{}` |
+| `POST {endpoint}/beta/litellm_basic_guardrail_api` | Input or complete-output check; JSON body |
+| `WebSocket {endpoint}/guardrails/output-stream` | [LiteLLM streaming output checks](/document/developer/gateway-connect#gateway-stream-protocol) |
+
+Send `x-api-key: <Endpoint credential>` and `Content-Type: application/json` for JSON requests. Do not put credentials in the body or substitute a Controller Personal Access Token or model-service key.
 
 ```bash
-export TALI_GUARD_ENDPOINT='https://guard-runtime.example.com/runtime/v1/endpoints/<endpoint_id>'
-export TALI_GUARD_TOKEN='<runtime-token>'
-```
-
-Send the Token in `x-api-key`. It is neither a personal management Access Token nor an upstream model key. Verify the credential and protocol first:
-
-```bash
+export TALI_GUARD_ENDPOINT='https://guard-runtime.example.com/runtime/v1/endpoints/your-endpoint-id'
+export TALI_GUARD_TOKEN='<Endpoint credential>'
 curl -sS --fail-with-body -X POST "${TALI_GUARD_ENDPOINT%/}/verify" \
   -H "x-api-key: $TALI_GUARD_TOKEN" \
   -H 'Content-Type: application/json' -d '{}'
 ```
 
-`ready: true` proves Endpoint credential and protocol compatibility only. It does not prove every Policy or model dependency is ready, or that later content will be allowed.
+Complete verification response, HTTP `200`:
+
+```json
+{
+  "ready": true,
+  "adapter_id": "litellm-generic-guardrail",
+  "protocol": "litellm"
+}
+```
+
+`ready` establishes credential and Adapter compatibility only. It does not run Policy checks or guarantee Router, pinned-version or model readiness. Follow it with actual check requests.
 
 <a id="gateway-checks" />
+## Input and complete-output requests
 
-## Check input, then output
+The following is a complete input request body. `texts` is the inspection target; `structured_messages` supplies context and cannot replace it.
 
-Generate a new non-empty `litellm_call_id` for **each model call**. Put actual content to inspect in `texts`; `structured_messages` supplies context and never replaces `texts`.
+```json
+{
+  "input_type": "request",
+  "litellm_call_id": "call-123",
+  "texts": ["Please summarize this report."],
+  "structured_messages": [
+    {"role": "user", "content": "Please summarize this report."}
+  ],
+  "model": "gateway-model-alias",
+  "request_data": {
+    "user_api_key_alias": "support-service",
+    "user_api_key_team_id": "support-team",
+    "user_api_key_user_id": "user-123"
+  },
+  "request_headers": {
+    "x-channel": "support"
+  }
+}
+```
+
+Save the body as `input.json` and send it:
 
 ```bash
 curl -sS --fail-with-body -X POST "${TALI_GUARD_ENDPOINT%/}/beta/litellm_basic_guardrail_api" \
   -H "x-api-key: $TALI_GUARD_TOKEN" -H 'Content-Type: application/json' \
-  -d '{"input_type":"request","litellm_call_id":"call-123","texts":["Please summarize this report."],"structured_messages":[{"role":"user","content":"Please summarize this report."}],"model":"gateway-model-alias"}'
+  --data-binary @input.json
 ```
 
-Call the model only after the Input check permits continuation. Buffer complete model output until it has been checked, then deliver it. Use the **same Endpoint and `litellm_call_id`**, with consistent routing metadata:
+Call the model only after input inspection permits continuation. Buffer the complete answer, then submit this output body to the same path:
 
-```bash
-curl -sS --fail-with-body -X POST "${TALI_GUARD_ENDPOINT%/}/beta/litellm_basic_guardrail_api" \
-  -H "x-api-key: $TALI_GUARD_TOKEN" -H 'Content-Type: application/json' \
-  -d '{"input_type":"response","litellm_call_id":"call-123","texts":["Here is the generated response."],"model":"gateway-model-alias"}'
+```json
+{
+  "input_type": "response",
+  "litellm_call_id": "call-123",
+  "texts": ["Here is the generated response."],
+  "model": "gateway-model-alias",
+  "request_data": {
+    "user_api_key_alias": "support-service",
+    "user_api_key_team_id": "support-team",
+    "user_api_key_user_id": "user-123"
+  },
+  "request_headers": {
+    "x-channel": "support"
+  }
+}
 ```
+
+Use the same Endpoint, nonempty `litellm_call_id` and consistent routing metadata for both phases of one model call. Generate a new ID for each new call. Correlated output requires existing input context; changing the ID cannot continue an expired call. The API model allows omitting the Call ID, but omission provides no input/output version-pinning guarantee. Streaming IDs must also satisfy the [start-frame limits](/document/developer/gateway-connect#gateway-stream-protocol).
+
+<a id="gateway-request-fields" />
+## Request field constraints
+
+Client integration requirements below are distinct from fields that the server's compatibility model permits clients to omit or set to `null`.
+
+| Field | JSON type and default | Behavior |
+| --- | --- | --- |
+| `input_type` | Required; `"request"` or `"response"` | Select input or output |
+| `texts` | String array or `null`; default `null` | **Required by integrations**: explicitly submit the actual inspection targets; an empty check proves nothing about other content |
+| `litellm_call_id` | String or `null`; default `null` | **Required for correlated integrations**: a new nonempty model-call ID. No HTTP-model length bound; streaming IDs have a 256-character limit |
+| `structured_messages` | Object array or `null`; default `null` | Policy context; call context retains at most the latest 20 messages |
+| `model` | String or `null`; default `null` | Model routing context; falls back to `request_data.model`, without initiating a model call |
+| `request_data` | Object; default `{}`; not nullable | Selected identity/routing metadata. `user_api_key_alias`, `user_api_key_team_id` and `user_api_key_user_id` supply LiteLLM Selector fields; not arbitrary execution configuration |
+| `request_headers` | Object or `null`; values are strings or string arrays | Original business-request headers, separate from Endpoint HTTP headers. Credentials, cookies and other sensitive headers are excluded from routing |
+| `litellm_trace_id`, `litellm_version` | String or `null` | Accepted compatibility metadata; currently do not drive checks or correlation and cannot replace the Call ID |
+| `images` | String array or `null` | Accepted compatibility field; not an independent inspection target |
+| `tools`, `tool_calls` | Object arrays or `null` | Accepted compatibility fields; not independent inspection targets |
+| `additional_provider_specific_params` | Object or `null` | Accepted but not used to switch execution mode or override Guardrail configuration |
+
+Other extra fields are accepted but not read by this Adapter. Fields such as `protocol`, `phase` and `dry_run` cannot change this interface's direction or execution mode. Extract protected tool output and similar content into `texts`. Original request-header sources allow at most 128 keys, 64 values per key and 2,048 characters per value. Failed routing-context extraction rejects the request instead of routing with partial input.
 
 <a id="gateway-actions" />
+## Complete successful responses and actions
 
-## Read action even after HTTP 200
+These are complete response body examples. Published policy determines the result; reasons and replacement text depend on execution. Completed check results use HTTP `200`.
 
-| Returned `action` | Input behavior | Output behavior |
+Allow:
+
+```json
+{"action": "NONE"}
+```
+
+Block:
+
+```json
+{"action": "BLOCKED", "blocked_reason": "Policy matched."}
+```
+
+Replace:
+
+```json
+{"action": "GUARDRAIL_INTERVENED", "texts": ["Replacement text"]}
+```
+
+| `action` | Input | Output |
 | --- | --- | --- |
 | `NONE` | Call the model with original input | Deliver original output |
-| `BLOCKED` | Do not call the model | Do not deliver blocked output |
-| `GUARDRAIL_INTERVENED` | Replace the corresponding input with returned `texts` | Deliver returned `texts`, not original output |
+| `BLOCKED` | Do not call the model | Withhold blocked output |
+| `GUARDRAIL_INTERVENED` | Replace input `texts` by position | Deliver returned `texts` by position |
 
-The replacement array must match the number and positions of submitted `texts`; an empty string is a valid replacement. Unknown actions, invalid JSON, and mismatched replacement counts are check failures, never an implicit `NONE`. For streamed model output use [streaming output checks](/document/developer/gateway-stream); do not forward unchecked chunks directly to the client.
+`action` is required. `blocked_reason` is optional explanatory text for a block, not a stable error code. `texts` supplies replacements. Null optional fields are omitted. This Adapter currently returns no `images` or `tools` replacements and no complete internal diagnostic object in the response body.
+
+Replacement count and ordering must match submitted `texts`; an empty replacement string is valid. Unknown actions, invalid JSON and mismatched replacement counts are invalid check responses, never an implicit `NONE`.
+
+<a id="gateway-errors" />
+## LiteLLM HTTP errors
+
+| Status / response | Meaning and action |
+| --- | --- |
+| `401` | Missing/disabled Endpoint or missing/invalid credential; check URL and `x-api-key` |
+| `409` | Endpoint Adapter does not support LiteLLM; changing body `protocol` cannot fix it |
+| `422` | JSON or field validation failed; correct `input_type`, types and other fields |
+| `503` | Routing context, call correlation or pinned version unavailable; output must not silently switch versions |
+| `500`, other non-2xx, timeout/disconnect | No valid result; server or proxy failures are not guaranteed to be JSON |
+| `200` + `BLOCKED` | Block; never invoke HTTP-error fallback to release content |
+
+Typical authentication error:
+
+```json
+{"detail": "Endpoint credential is invalid."}
+```
+
+LiteLLM HTTPException errors normally have a string `detail`; `422` has a validation-error array. Do not parse them as Scan's `detail.code` object or treat variable `blocked_reason` text as a stable error code.
+
+Keep the same Endpoint, Call ID and routing context across LiteLLM phases. Changing an ID cannot resume expired output. Retries do not guarantee deduplication; clients own retry budgets and duplicate processing. `BLOCKED` may reflect a policy match, an unmatched route or runtime failure protection: clients always block, while evaluators use runtime evidence to distinguish causes. No request parameter enables a server `dry_run: true` mode.
+
+<a id="gateway-stream-protocol" />
+## WebSocket streaming output
+
+Complete input inspection, then open one authenticated WebSocket at `{endpoint}/guardrails/output-stream`, with the Endpoint credential in the upgrade request's `x-api-key`. `{endpoint}` is the Runner base URL including the Endpoint ID; use `wss://` in production. The gateway keeps its client-facing SSE interface and the proxy must allow WebSocket upgrades.
+
+<a id="gateway-stream-request" />
+
+### Start and feed the stream
+
+```json
+{"type":"start","version":1,"protocol":"litellm","call_id":"call-123","stream_id":"stream-456","messages":[],"request_data":{},"request_headers":{}}
+```
+
+Reuse Input's call ID and routing metadata. Runner sends `ready` with the pinned
+release, model revision, requested/effective mode and eight input credits. Each
+input frame uses one credit; `ack` returns it when NeMo consumes the frame. Input
+sequence starts at zero. Process incoming events concurrently with sending.
+
+Send `start` within 10 seconds of connection. Types are strict and unknown fields are rejected:
+
+| Field | Constraint |
+| --- | --- |
+| `type`, `version`, `protocol` | Required; respectively `"start"`, integer `1` and `"litellm"` |
+| `stream_id` | Required nonempty string, at most 256 characters; identifies this stream |
+| `call_id` | For correlated input, supply the same Call ID, 1–256 characters. The API may fall back to stream ID when omitted; this does not create missing input context |
+| `messages` | Object array, default `[]`, at most 20; context is not output being inspected |
+| `request_data` | Object, default `{}`; preserve Input routing metadata |
+| `request_headers` | String-valued object, default `{}`; unlike the complete-output HTTP API, arrays are not accepted here |
+| `model` | Optional string or `null`; preserve Input model context |
+
+Each `delta` and `end` consumes one input credit, with strictly increasing integer `sequence`. `delta.text` is a string; `end` cannot contain nonempty text. Each line below is a separate JSON frame:
+
+```jsonl
+{"type":"delta","sequence":0,"text":"Hello "}
+{"type":"delta","sequence":1,"text":"world."}
+{"type":"end","sequence":2}
+```
+
+<a id="gateway-stream-delivery" />
+
+### Deliver checked output
+
+Only server `delta.text` authorizes client delivery. Validate stream identity and
+its independent output sequence. An input `ack` never authorizes delivery.
+`completed` permits normal completion after validating counts. `blocked` stops
+output; `error` reports check/protocol failure. Both require cancelling upstream.
+Disconnect or timeout terminates the stream; no reconnect or replay is supported.
+
+NeMo owns overlapping windows: 200 input fragments with 50 fragments of context,
+checked before release. Requested `interruptible` also becomes `window_buffered`.
+These are fragment counts, not character limits. Earlier text cannot be recalled.
+PII, transformations and other complete-response policies use `full_buffered`:
+check once after `end`, then release the original or replacement.
+
+<a id="gateway-stream-events" />
+
+### Server events
+
+This `full_buffered` example releases one joined output after two input fragments and a confirmed end. Release and model revision IDs are illustrative. Each line is a separate JSON frame. Input `ack.sequence` and server output sequence are independent counters.
+
+```jsonl
+{"stream_id":"stream-456","type":"ready","version":1,"input_credits":8,"mode":"full_buffered","requested_mode":"full_buffered","effective_release_id":"release-example","model_revision_id":"model-example"}
+{"stream_id":"stream-456","type":"ack","sequence":0}
+{"stream_id":"stream-456","type":"ack","sequence":1}
+{"stream_id":"stream-456","type":"ack","sequence":2}
+{"stream_id":"stream-456","type":"delta","sequence":0,"text":"Hello world."}
+{"stream_id":"stream-456","type":"completed","sequence":1,"checks":1,"released_characters":12,"transformed":false}
+```
+
+A normal block uses `type=blocked`, with the same `sequence`, `checks`, `released_characters` and `transformed` fields as `completed`, but delivery must stop. Example failure frame:
+
+```json
+{"stream_id":"stream-456","type":"error","sequence":0,"checks":0,"code":"protection_failed","message":"Protected output stream failed; unchecked text was withheld."}
+```
+
+Terminal `sequence` is the count of emitted output deltas; `released_characters` is the number of released characters. Verify these against received output. A closed connection alone is not `completed`.
+
+<a id="gateway-stream-end" />
+
+Send `end` only after verified normal model completion. Upstream failure or
+truncation must close the stream. Limits: 300 seconds, 100,000 delta frames,
+100,000 characters per delta and 1,000,000 total characters. Redis shares call
+assignments across replicas, not output buffers. The repository's `docs/gateway-integration.md` provides executable tests for LiteLLM only.
+
+<a id="gateway-stream-errors" />
+### Streaming errors and retries
+
+WebSocket is LiteLLM-only. Invalid credentials or Adapter mismatch rejects the handshake. After connection, failures use `type=error` frames, not HTTP `502`/`504` as in-stream messages:
+
+| Frame `code` | Meaning |
+| --- | --- |
+| `invalid_stream` | Invalid start/delta/end shape, sequence or credit use |
+| `routing_failed` | Correlation, route or pinned version unavailable |
+| `timeout` | Start wait, overall stream or check deadline exceeded |
+| `protection_failed` | Other check failure |
+
+A stream failure stops delivery and requires cancelling upstream. Reconnection and chunk replay cannot resume it; delivered text cannot be recalled.

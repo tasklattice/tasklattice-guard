@@ -93,6 +93,8 @@ def create_app(settings: RunnerSettings | None = None) -> FastAPI:
         configured.controller_token,
         configured.runtime_log_encryption_key,
         draft_previews,
+        scan_max_body_bytes=configured.scan_max_body_bytes,
+        scan_timeout_seconds=configured.scan_timeout_seconds,
     )
 
     @asynccontextmanager

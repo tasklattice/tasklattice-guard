@@ -17,7 +17,7 @@ const config = loadConfig({
   ),
   BETTER_AUTH_SECRET: "auth-secret-that-is-at-least-32-characters",
 });
-function setup(authenticated = true) {
+function setup(authenticated = true, scan = false) {
   const router = {
     id: "r1",
     activeRevision: 3,
@@ -48,6 +48,7 @@ function setup(authenticated = true) {
     source: "runner",
     body: { runnerId: "r1" },
   });
+  const verifyScanTestCredential = vi.fn().mockResolvedValue(undefined);
   const app = createHttpApp({
     config,
     auth: {
@@ -62,7 +63,8 @@ function setup(authenticated = true) {
     } as unknown as ControllerAuth,
     service: {
       trafficRouting: { get: vi.fn().mockResolvedValue(router) },
-      getEndpoint: vi.fn().mockResolvedValue({ id: "e1" }),
+      getEndpoint: vi.fn().mockResolvedValue({ id: "e1", adapter: scan ? "f5-scan" : "litellm-generic-guardrail" }),
+      verifyScanTestCredential,
     } as unknown as ControlPlaneService,
     runnerControl: {} as RunnerControlServer,
     metrics: {} as ControllerMetrics,
@@ -70,6 +72,7 @@ function setup(authenticated = true) {
   });
   return {
     testPath,
+    verifyScanTestCredential,
     send: (extra = {}) =>
       app.request("/api/v1/playground/path-tests", {
         method: "POST",
@@ -126,4 +129,17 @@ describe("Playground path HTTP boundary", () => {
     ).toBe(422);
     expect(testPath).not.toHaveBeenCalled();
   });
+});
+
+it("binds Scan credentials to the selected Endpoint before forwarding", async () => {
+  const { send, testPath, verifyScanTestCredential } = setup(true, true);
+  const input = { target: "endpoint", targetId: "e1", configuration: "published", action: "execute",
+    request: 'POST /backend/v1/scans HTTP/1.1\nAuthorization: Bearer selected-key\n\n{"input":"hello"}' };
+  expect((await send(input)).status).toBe(200);
+  expect(verifyScanTestCredential).toHaveBeenCalledWith("e1", "selected-key");
+  expect(testPath).toHaveBeenCalledWith(expect.objectContaining({ credential: "selected-key", targetId: "e1" }), "f5-scan");
+  testPath.mockClear();
+  verifyScanTestCredential.mockRejectedValue(new Error("wrong Endpoint key"));
+  expect((await send({ ...input, credential: "other-endpoint-key" })).status).not.toBe(200);
+  expect(testPath).not.toHaveBeenCalled();
 });

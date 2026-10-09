@@ -10,6 +10,18 @@ const base = {
   request: "POST /chat HTTP/1.1\nX-Channel: partner\n\nhello",
 };
 describe("Runner path test transport", () => {
+  it("uses the Scan root path and Bearer credential only for an approved Scan target", async () => {
+    const fetcher = vi.fn().mockResolvedValue(Response.json({ result: { outcome: "cleared" }, redactedInput: "hello" }));
+    const client = new RunnerPlaygroundClient({ baseUrl: "http://runner:8091", token: "internal", fetcher });
+    const input = pathTestSchema.parse({ ...base, target: "endpoint", credential: "scan-key",
+      request: 'POST /backend/v1/scans HTTP/1.1\nAuthorization: attacker\n\n{"input":"hello"}' });
+    await expect(client.testPath(input)).rejects.toThrow();
+    expect(fetcher).not.toHaveBeenCalled();
+    const result = await client.testPath(input, "f5-scan");
+    expect(fetcher.mock.calls[0]![0]).toBe("http://runner:8091/backend/v1/scans");
+    expect(fetcher.mock.calls[0]![1].headers).toEqual({ authorization: "Bearer scan-key", "content-type": "application/json" });
+    expect(result.body.result).toEqual({ outcome: "cleared" });
+  });
   it("runs published routing on Runner with a revision fence and no client credentials in selector inputs", async () => {
     const fetcher = vi
       .fn()
@@ -57,12 +69,12 @@ describe("Runner path test transport", () => {
         action: "execute",
         credential: "user-key",
         request:
-          'POST https://untrusted.example/runtime/v1/endpoints/endpoint-1/guardrails/evaluate HTTP/1.1\nAuthorization: attacker\n\n{"texts":["hello"]}',
-      }),
+          'POST https://untrusted.example/runtime/v1/endpoints/endpoint-1/beta/litellm_basic_guardrail_api HTTP/1.1\nAuthorization: attacker\n\n{"texts":["hello"]}',
+      }), "litellm-generic-guardrail",
     );
     const [url, init] = fetcher.mock.calls[0]!;
     expect(url).toBe(
-      "http://runner:8091/runtime/v1/endpoints/endpoint-1/guardrails/evaluate",
+      "http://runner:8091/runtime/v1/endpoints/endpoint-1/beta/litellm_basic_guardrail_api",
     );
     expect(init.headers["x-api-key"]).toBe("user-key");
     expect(init.headers).not.toHaveProperty("authorization");
@@ -71,7 +83,7 @@ describe("Runner path test transport", () => {
   });
   it.each([
     "/internal/v1/guardrails/g/evaluate",
-    "/runtime/v1/endpoints/other/guardrails/evaluate",
+    "/runtime/v1/endpoints/other/beta/litellm_basic_guardrail_api",
     "//evil.test/",
   ])("rejects paths outside the selected Endpoint: %s", async (path) => {
     const fetcher = vi.fn();

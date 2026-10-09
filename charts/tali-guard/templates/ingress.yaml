@@ -27,5 +27,11 @@ spec:
               service:
                 name: {{ include "tali-guard.controllerName" $ }}
                 port: { name: http }
+          - path: /backend/v1/scans
+            pathType: Exact
+            backend:
+              service:
+                name: {{ include "tali-guard.runtimeName" $ }}
+                port: { name: runtime }
     {{- end }}
 {{- end }}

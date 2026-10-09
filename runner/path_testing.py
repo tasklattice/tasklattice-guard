@@ -33,7 +33,7 @@ def register_path_testing(api):
         from .api import _source_pairs, _scoped_call_id
         fields = tuple((k, v) for k, raw in payload.fields.items() for v in (raw if isinstance(raw, list) else [raw]))
         call_id = _scoped_call_id(payload.endpoint_id, payload.call_id)
-        context = RequestContext(protocol=str(payload.fields.get("protocol", "http")), endpoint_id=payload.endpoint_id,
+        context = RequestContext(protocol=str(payload.fields.get("protocol", "playground")), endpoint_id=payload.endpoint_id,
                                  call_id=call_id, fields=fields, business_request=_source_pairs(payload.business_request),
                                  endpoint_request=_source_pairs(payload.endpoint_request))
         try:

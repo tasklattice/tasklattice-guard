@@ -1616,7 +1616,7 @@ gates below are unchanged.
 
 There was no independent quality-evaluation entry alongside the fixed lifecycle
 replay scripts. `scripts/evaluate_model_holdout.py` now reads an externally
-reviewed corpus and uses an existing deployed generic-HTTP Integration. It pins
+reviewed corpus and uses the internal version evaluation API with a Runner controller token (`GUARD_HOLDOUT_RUNNER_TOKEN`). It pins
 Guardrail/configuration/release/model revision evidence and requires a successful
 call trace for the expected model/capability/direction. Full Guardrail decision
 quality is reported, not isolated-model accuracy or business-generation quality.

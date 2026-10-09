@@ -15,6 +15,7 @@ import type {
   Collection,
   GuardrailFindingPage,
   Metrics,
+  MetricTrendSeries,
   MetricWindow,
   RuntimeLogInteraction,
   RuntimeHttpRequest,
@@ -163,5 +164,31 @@ export async function getMetrics(filters: {
     controllerApi.requestController<Omit<Metrics, "system_status" | "system_reasons">>(`/api/v1/telemetry/metrics?${query}`, signal ? { signal } : undefined),
     controllerApi.getControllerSystemStatus(),
   ]);
+  // A successful HTTP response can still be a collection or an incomplete
+  // snapshot. Reject it before rendering; missing telemetry is not zero traffic.
+  if (!metrics || ![
+    metrics.total_decisions, metrics.allowed, metrics.blocked, metrics.intervened,
+    metrics.errors, metrics.intervention_rate, metrics.error_rate, metrics.timeout_count,
+    metrics.runtime_p95_ms, metrics.fail_closed_count, metrics.degraded_endpoints,
+    metrics.total_guardrails, metrics.guardrails_needing_test, metrics.total_routers,
+  ].every(Number.isFinite)
+    || !metrics.comparison || ![
+      metrics.comparison.request_delta_pct, metrics.comparison.intervention_rate_delta_pp,
+      metrics.comparison.runtime_p95_delta_ms, metrics.comparison.error_rate_delta_pp,
+    ].every(value => value === null || Number.isFinite(value))
+    || !["healthy", "breached"].includes(metrics.latency_slo?.p95_status)
+    || !["1h", "24h", "7d", "15d", "30d"].includes(metrics.window)
+    || !["1m", "15m", "1h", "6h", "1d"].includes(metrics.interval)
+    || !validMetricSeries(metrics.trend_series?.none)) {
+    throw new Error("Runtime metrics are unavailable or incomplete. Check the Controller response and retry.");
+  }
   return { ...metrics, system_status: status.status === "healthy" ? "healthy" : "degraded", system_reasons: status.reasons };
+}
+
+function validMetricSeries(series: MetricTrendSeries[] | undefined): boolean {
+  return Array.isArray(series) && series.every(item => item && typeof item.name === "string"
+    && Array.isArray(item.points) && item.points.every(point => point
+      && typeof point.timestamp === "string" && Number.isFinite(Date.parse(point.timestamp))
+      && [point.total, point.allowed, point.blocked, point.transformed, point.errored,
+        point.timed_out, point.p50_latency_ms, point.p95_latency_ms, point.p99_latency_ms].every(Number.isFinite)));
 }

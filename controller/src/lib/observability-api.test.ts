@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { getRouterTraces, getGuardrailFindings, getMetrics, getValidationRun, runtimeLogInteractions } from "./api";
+import { assembleMetrics } from "../../server/services/runtime-metric-results";
+
+const emptyMetrics = () => assembleMetrics({ window: "24h" }, Date.parse("2026-10-09T07:00:00Z"), 900_000, "15m", [], [], [], [], [], []);
 
 const event = {
   id: "event-1",
@@ -77,11 +80,36 @@ describe("privacy-safe runtime observability", () => {
   it("keeps platform readiness reasons distinct from scoped Guardrail evidence", async () => {
     vi.stubGlobal("fetch", vi.fn(async (path: string) => new Response(JSON.stringify(path === "/api/v1/system/status"
       ? { status: "degraded", reasons: ["runner_capacity_below_desired", "runner_configuration_syncing"] }
-      : { total_decisions: 0, fail_closed_count: 0 }), { status: 200, headers: { "content-type": "application/json" } })));
+      : emptyMetrics()), { status: 200, headers: { "content-type": "application/json" } })));
     const metrics = await getMetrics({ guardrailId: "local-bank" });
     expect(metrics.system_status).toBe("degraded");
     expect(metrics.system_reasons).toEqual(["runner_capacity_below_desired", "runner_configuration_syncing"]);
     expect(metrics.fail_closed_count).toBe(0);
+  });
+
+  it.each([
+    ["collection response", { items: [], count: 0 }],
+    ["null response", null],
+    ["missing total", { ...emptyMetrics(), total_decisions: undefined }],
+    ["missing latency", { ...emptyMetrics(), total_decisions: 1, runtime_p95_ms: undefined }],
+    ["missing rate", { ...emptyMetrics(), total_decisions: 1, intervention_rate: undefined }],
+    ["string count", { ...emptyMetrics(), total_decisions: "0" }],
+    ["missing comparison", { ...emptyMetrics(), comparison: {} }],
+    ["missing SLO", { ...emptyMetrics(), latency_slo: null }],
+    ["missing trend", { ...emptyMetrics(), trend_series: {} }],
+    ["invalid trend point", { ...emptyMetrics(), trend_series: { none: [{ name: "All traffic", points: [null] }] } }],
+  ])("rejects %s instead of passing an invalid snapshot to the Dashboard", async (_name, payload) => {
+    vi.stubGlobal("fetch", vi.fn(async (path: string) => Response.json(path === "/api/v1/system/status"
+      ? { status: "healthy", reasons: [] } : payload)));
+    await expect(getMetrics()).rejects.toThrow("Runtime metrics are unavailable or incomplete");
+  });
+
+  it("preserves complete telemetry, including nullable comparisons and trend points", async () => {
+    const payload = assembleMetrics({ window: "24h" }, Date.parse("2026-10-09T07:00:00Z"), 900_000, "15m",
+      [{ kind: "period", key: "current", total: 100, allowed: 80, blocked: 15, intervened: 5, latency: [10, 20, 30] }], [], [], [], [], []);
+    vi.stubGlobal("fetch", vi.fn(async (path: string) => Response.json(path === "/api/v1/system/status"
+      ? { status: "healthy", reasons: [] } : payload)));
+    expect(await getMetrics()).toEqual({ ...payload, system_status: "healthy", system_reasons: [] });
   });
   it("preserves setup failure evidence in a mapped Validation Run", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ id: "run", guardrailId: "guard", sourceDraftRevision: 1,

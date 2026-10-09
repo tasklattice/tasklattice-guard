@@ -52,7 +52,7 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
       INSERT INTO guardrail (id,name,draft_config,status) VALUES ('guard-a','Original','{}','active'),('guard-b','Other','{}','active');
       INSERT INTO guardrail_version (guardrail_id,version,generation,status,runtime_profile,plan,artifact_id,released_at) VALUES
         ('guard-a','1',1,'ready','auto','{}','artifact-a',now()),('guard-b','1',2,'ready','auto','{}','artifact-b',now());
-      INSERT INTO endpoint (id,name,adapter) VALUES ('http','HTTP','HTTP'),('a2a','A2A','A2A');`);
+      INSERT INTO endpoint (id,name,adapter) VALUES ('http','LiteLLM','LITELLM'),('scan','SCAN','SCAN');`);
   });
   async function create(value = draft()) { return service.trafficRouting.create("Router", "", value, actor); }
   /** Review the current draft and submit it as the actor. */
@@ -79,9 +79,9 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
   });
   it("treats identical Endpoint sets as no-ops without another generation or audit mutation", async () => {
     const router = await create();
-    await service.trafficRouting.bind(router.id, ["http", "a2a"], actor);
+    await service.trafficRouting.bind(router.id, ["http", "scan"], actor);
     const before = await generation();
-    expect((await service.trafficRouting.bind(router.id, ["a2a", "http", "http"], actor)).changed).toBe(false);
+    expect((await service.trafficRouting.bind(router.id, ["scan", "http", "http"], actor)).changed).toBe(false);
     expect(await generation()).toBe(before);
     expect(await count("audit_event", "kind='router.source_endpoints_changed'")).toBe(1);
   });
@@ -191,7 +191,7 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
     const router = await service.trafficRouting.create("Drift", "", draft(), actor, ["http"]);
     if (drift === "revision") await apply(router.id);
     const change = await submit(router.id);
-    if (drift === "binding") await service.trafficRouting.bind(router.id, ["http", "a2a"], actor);
+    if (drift === "binding") await service.trafficRouting.bind(router.id, ["http", "scan"], actor);
     else if (drift === "readiness") await pool.query("UPDATE guardrail_version SET status='pending', released_at=NULL WHERE guardrail_id='guard-a'");
     else await pool.query("UPDATE traffic_router SET active_revision = 7 WHERE id=$1", [router.id]);
     const before = await generation(), revisions = await count("traffic_router_revision");
@@ -289,8 +289,8 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
     await expect(service.trafficRouting.assertGuardrailUnused("guard-b")).rejects.toThrow("pending Router change requests");
   });
   it("creates a draft with multiple exclusive source Endpoints atomically", async () => {
-    const router = await service.trafficRouting.create("Sources", "", draft(), actor, ["http", "a2a"]);
-    expect(router.endpointIds.sort()).toEqual(["a2a", "http"]);
+    const router = await service.trafficRouting.create("Sources", "", draft(), actor, ["http", "scan"]);
+    expect(router.endpointIds.sort()).toEqual(["scan", "http"]);
     expect(router.activeSnapshot).toBeNull();
     await expect(service.trafficRouting.create("Conflict", "", draft(), actor, ["http"])).rejects.toMatchObject({ code: "endpoint_router_conflict" });
     expect(await count("traffic_router")).toBe(1);
@@ -310,18 +310,18 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
   it("captures immutable endpoint and version names across edits and binding changes", async () => {
     const router = await service.trafficRouting.create("Context", "", draft(), actor, ["http"]);
     await apply(router.id);
-    const original = { endpoints: [{ id: "http", name: "HTTP", adapter: "HTTP" }], guardrails: [{ id: "guard-a", name: "Original", version: "1" }] };
+    const original = { endpoints: [{ id: "http", name: "HTTP", adapter: "LITELLM" }], guardrails: [{ id: "guard-a", name: "Original", version: "1" }] };
     expect((await service.trafficRouting.revisions(router.id))[0]?.context).toEqual(original);
     await pool.query("UPDATE endpoint SET name='Renamed', adapter='LITELLM' WHERE id='http'; UPDATE guardrail SET name='Renamed guard' WHERE id='guard-a'");
-    await service.trafficRouting.bind(router.id, ["a2a"], actor);
+    await service.trafficRouting.bind(router.id, ["scan"], actor);
     expect((await service.trafficRouting.revisions(router.id))[0]?.context).toEqual(original);
     expect((await service.trafficRouting.distribution(router.id, 1)).revisions[0]?.context).toEqual(original);
     const audit = (await pool.query("SELECT detail FROM audit_event WHERE kind='router.source_endpoints_changed'")).rows[0].detail;
-    expect(audit).toMatchObject({ routerRevision: 1, previousEndpoints: [{ id: "http", name: "Renamed", adapter: "LITELLM" }], endpoints: [{ id: "a2a", name: "A2A", adapter: "A2A" }] });
+    expect(audit).toMatchObject({ routerRevision: 1, previousEndpoints: [{ id: "http", name: "Renamed", adapter: "LITELLM" }], endpoints: [{ id: "scan", name: "SCAN", adapter: "SCAN" }] });
     await apply(router.id);
     const revisions = await service.trafficRouting.revisions(router.id);
     expect(revisions[1]?.context).toEqual(original);
-    expect(revisions[0]?.context).toEqual({ endpoints: [{ id: "a2a", name: "A2A", adapter: "A2A" }], guardrails: [{ id: "guard-a", name: "Renamed guard", version: "1" }] });
+    expect(revisions[0]?.context).toEqual({ endpoints: [{ id: "scan", name: "SCAN", adapter: "SCAN" }], guardrails: [{ id: "guard-a", name: "Renamed guard", version: "1" }] });
     await pool.query("UPDATE endpoint SET deleted_at=now(); UPDATE guardrail SET deleted_at=now()");
     expect((await service.trafficRouting.revisions(router.id))[1]?.context).toEqual(original);
   });
@@ -343,7 +343,7 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
     await apply(router.id);
     const revisions = await service.trafficRouting.revisions(router.id);
     expect(revisions[1]?.context).toBeNull();
-    expect(revisions[0]?.context?.endpoints).toEqual([{ id: "http", name: "HTTP", adapter: "HTTP" }]);
+    expect(revisions[0]?.context?.endpoints).toEqual([{ id: "http", name: "HTTP", adapter: "LITELLM" }]);
   });
 
   async function addVersion(version: string, generation: number, status = "ready", artifact: string | null = "artifact-new") {
@@ -386,7 +386,7 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
     duplicate.routes[0]!.targets.push({ ...draft().routes[0]!.targets[0]!, id: "duplicate", weightBps: 5000 });
     // With every target pinned, a duplicate is visible in the draft itself and never saved.
     await expect(service.trafficRouting.save(router.id, 1, duplicate, actor)).rejects.toThrow("duplicate Guardrail Version");
-    const capable = await service.trafficRouting.create("Capability", "", draft(), actor, ["a2a"]);
+    const capable = await service.trafficRouting.create("Capability", "", draft(), actor, ["scan"]);
     await service.trafficRouting.save(capable.id, 1, withHeader(), actor);
     await expect(service.trafficRouting.preview(capable.id, 2)).rejects.toThrow("does not supply");
     expect(await count("traffic_router_revision")).toBe(0); expect(await generation()).toBe(0);
@@ -443,8 +443,8 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
     const owner = (await pool.query("SELECT traffic_router_id FROM endpoint WHERE id='http'")).rows[0].traffic_router_id;
     const other = owner === a.id ? b.id : a.id;
     const before = await generation();
-    await service.trafficRouting.bind(other, ["a2a"], actor);
-    expect((await pool.query("SELECT traffic_router_id FROM endpoint WHERE id='a2a'")).rows[0].traffic_router_id).toBe(other);
+    await service.trafficRouting.bind(other, ["scan"], actor);
+    expect((await pool.query("SELECT traffic_router_id FROM endpoint WHERE id='scan'")).rows[0].traffic_router_id).toBe(other);
     expect(await generation()).toBeGreaterThan(before);
     await service.trafficRouting.bind(owner, [], actor);
     expect((await service.trafficRouting.bind(other, ["http"], actor)).endpointIds).toEqual(["http"]);
@@ -452,9 +452,9 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
 
   it("checks endpoint capability at both binding and review against the active snapshot", async () => {
     const router = await publish(withHeader());
-    await expect(service.trafficRouting.bind(router.id, ["a2a"], actor)).rejects.toMatchObject({ code: "validation_failed" });
+    await expect(service.trafficRouting.bind(router.id, ["scan"], actor)).rejects.toMatchObject({ code: "validation_failed" });
     await service.trafficRouting.bind(router.id, ["http"], actor);
-    const plain = await publish(); await service.trafficRouting.bind(plain.id, ["a2a"], actor);
+    const plain = await publish(); await service.trafficRouting.bind(plain.id, ["scan"], actor);
     await service.trafficRouting.save(plain.id, 1, withHeader(), actor);
     await expect(service.trafficRouting.preview(plain.id, 2)).rejects.toMatchObject({ code: "validation_failed" });
     expect((await service.trafficRouting.get(plain.id)).activeSnapshot).toEqual(draft());
@@ -493,13 +493,13 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
     for (const [i, outcome] of ["allow", "transform", "intervene", "block", "error"].entries()) {
       await service.trafficRouting.recordEvents([event(router.id, "multi", { id: `stage-${i}`, eventType: "completion", outcome: outcome as RoutingEvent["outcome"], durationMs: (i + 1) * 100 })]);
     }
-    await service.trafficRouting.recordEvents([event(router.id, "r2", { routerRevision: 2, endpointId: "a2a" })]);
+    await service.trafficRouting.recordEvents([event(router.id, "r2", { routerRevision: 2, endpointId: "scan" })]);
     const result = await service.trafficRouting.distribution(router.id, 24);
     expect(result).toMatchObject({ total: 2, multipleRevisions: true });
     const first = await service.trafficRouting.distribution(router.id, 24, 1, "http");
     expect(first).toMatchObject({ total: 1, multipleRevisions: false });
     expect(first.rows[0]).toMatchObject({ count: 1, completed: 1, errors: 1, blocked: 0, p95Ms: 500 });
-    expect((await service.trafficRouting.distribution(router.id, 24, 1, "a2a")).total).toBe(0);
+    expect((await service.trafficRouting.distribution(router.id, 24, 1, "scan")).total).toBe(0);
   });
 
   it("backfills late completion into decision time and replaces only inferred timeout", async () => {

@@ -33,6 +33,7 @@ vi.mock("react-i18next", () => ({
         "endpoints.name": "Endpoint name",
         "endpoints.namePlaceholder": "Corporate AI Gateway",
         "endpoints.endpointProtocol": "Adapter protocol",
+        "endpoints.adapters.f5-scan": "F5 Scan",
         "endpoints.adapters.litellm-generic-guardrail": "TaskLattice Guard for LiteLLM",
         "endpoints.adapterDescriptions.litellm-generic-guardrail": "Connect with an Endpoint and Secret.",
         "endpoints.credential": "Credential",
@@ -52,26 +53,16 @@ vi.mock("react-i18next", () => ({
         "endpoints.revealCredential": "Reveal credential",
         "endpoints.hideCredential": "Hide credential",
         "endpoints.configureAdapter": "Configure {{adapter}}",
-        "endpoints.configureAdapterDescription": "Deploy the generated configuration.",
         "endpoints.configureTaskLatticeProvider": "Connect the TaskLattice Guard Provider",
         "endpoints.configureTaskLatticeProviderDescription": "Connect Endpoint and Secret, then choose Provider settings.",
         "endpoints.protocolShort.litellm": "LiteLLM",
         "endpoints.testEndpoint": "Test Endpoint",
         "endpoints.setupGuide": "Setup guide",
-        "endpoints.connectionDetails": "Connection details & configuration",
         "endpoints.endpointUrl": "Endpoint",
         "endpoints.endpointSecretDescription": "Use the complete one-time Secret saved in step 1.",
-        "endpoints.apiBaseUrl": "TaskLattice API base URL",
         "endpoints.apiBaseEnvironmentVariable": "API base environment variable",
-        "endpoints.configurationTemplate": "Adapter configuration",
         "endpoints.copyTemplate": "Copy configuration",
         "endpoints.copyItem": "Copy {{item}}",
-        "endpoints.modes": "Recommended modes",
-        "endpoints.defaultBehavior": "Application",
-        "endpoints.defaultOn": "Default on",
-        "endpoints.failureBehavior": "Failure behavior",
-        "endpoints.failClosed": "Fail closed",
-        "endpoints.blockOnError": "block on error",
         "endpoints.verifyCallbacks": "Verify real traffic",
         "endpoints.verifyCallbacksDescription": "Send a real model request.",
         "endpoints.inputCallback": "Input callback",
@@ -195,6 +186,19 @@ describe("Endpoint onboarding", () => {
     vi.restoreAllMocks();
   });
 
+  it("offers only LiteLLM and Scan in the creation selector", async () => {
+    renderWithProviders(<CreateEndpointSheet open onOpenChange={vi.fn()} onCreated={vi.fn().mockResolvedValue(undefined)} />);
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Adapter protocol" }), { key: "ArrowDown" });
+    const options = await screen.findAllByRole("option");
+    expect(options).toHaveLength(2);
+    expect(options.map(option => option.textContent)).toEqual([
+      expect.stringContaining("TaskLattice Guard for LiteLLM"),
+      expect.stringContaining("F5 Scan"),
+    ]);
+    fireEvent.click(options[1]!);
+    expect(screen.getByRole("combobox", { name: "Adapter protocol" }).textContent).toContain("F5 Scan");
+  });
+
   it("keeps connection values in onboarding and links to the LiteLLM setup guide", () => {
     const item = endpoint({
       setup_status: "verified",
@@ -232,26 +236,7 @@ describe("Endpoint onboarding", () => {
     expect(screen.getByText("An authenticated callback has been received. This Gateway connection is verified; other checkpoints are optional.")).toBeTruthy();
   });
 
-  it.each(["http", "a2a"] as const)("keeps %s connection values available in the details disclosure", async protocol => {
-    const item = endpoint({ protocol, adapter_id: protocol === "http" ? "generic-http-guard" : "a2a-guard" });
-    item.setup.callback_url = `${item.setup.api_base_url}/guardrails/evaluate`;
-    item.setup.stream_callback_url = `${item.setup.api_base_url.replace("https:", "wss:")}/guardrails/output-stream`;
-    getEndpointsMock.mockResolvedValue({ items: [item] });
-    getEndpointMock.mockResolvedValue(item);
-    renderWithProviders(<EndpointsPage />);
 
-    fireEvent.click(await screen.findByText(item.name));
-    expect((await screen.findByRole("link", { name: "Setup guide" })).getAttribute("href")).toBe("/document/developer/endpoint-setup#endpoint-adapters");
-    const summary = screen.getByText("Connection details & configuration");
-    const details = summary.closest("details")!;
-    expect(details.open).toBe(false);
-    fireEvent.click(summary);
-    expect(details.open).toBe(true);
-    expect(screen.getByText(item.setup.callback_url)).toBeTruthy();
-    expect(screen.getByText(item.setup.stream_callback_url)).toBeTruthy();
-    expect(details.querySelector("pre")?.textContent).toBe(item.setup.yaml_template);
-    expect((screen.getByRole("button", { name: "endpoints.revoke" }) as HTMLButtonElement).disabled).toBe(true);
-  });
 
   it("hides a saved credential and supports explicit reveal and hide without clearing the saved state", async () => {
     const result = registration();

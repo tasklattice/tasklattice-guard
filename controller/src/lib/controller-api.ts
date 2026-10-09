@@ -1,3 +1,4 @@
+import type { EndpointAdapterId } from "./api-types";
 import type { AuditQuery } from "../../shared/audit-query";
 import type { EnforcementAction } from "../../shared/enforcement-action.generated";
 import type {
@@ -294,7 +295,7 @@ export type GuardrailPlanPreview = {
 export type Endpoint = {
   id: string;
   name: string;
-  adapter: string;
+  adapter: EndpointAdapterId;
   status: EndpointLifecycleState;
   createdAt: string;
   updatedAt: string;
@@ -570,7 +571,7 @@ export const getControllerGuardrailDeletionImpact = (id: string) => requestContr
 export const deleteControllerGuardrail = (id: string, input: { reason: string; confirmRecentTraffic: boolean; confirmationName?: string | undefined }) => requestController<void>(`/api/v1/guardrails/${encodeURIComponent(id)}`, json("DELETE", input));
 
 export const listControllerEndpoints = () => requestController<Collection<Endpoint>>("/api/v1/endpoints");
-export const createControllerEndpoint = (input: { name: string; adapter: string }) => requestController<Endpoint>("/api/v1/endpoints", json("POST", input));
+export const createControllerEndpoint = (input: { name: string; adapter: EndpointAdapterId }) => requestController<Endpoint>("/api/v1/endpoints", json("POST", input));
 export const getControllerEndpointDeletionImpact = (id: string) => requestController<DeletionImpact>(`/api/v1/endpoints/${encodeURIComponent(id)}/deletion-impact`);
 export const deleteControllerEndpoint = (id: string, input: { reason: string; confirmRecentTraffic: boolean; confirmationName?: string | undefined }) => requestController<void>(`/api/v1/endpoints/${encodeURIComponent(id)}`, json("DELETE", input));
 

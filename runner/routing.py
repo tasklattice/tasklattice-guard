@@ -10,7 +10,7 @@ from typing import Any
 
 from .protocol_codec import traffic_scope_from_proto
 
-SELECTOR_FIELDS = set("protocol endpoint.id auth.principal model output.sink output.content_type output.schema_id tool.name target.environment litellm.api_key_alias litellm.team_id litellm.user_id a2a.version a2a.extensions a2a.operation a2a.context_id a2a.task_id http.method http.host http.path http.header auth.jwt_claim adapter.field".split())
+SELECTOR_FIELDS = set("protocol endpoint.id auth.principal model output.sink output.content_type output.schema_id tool.name target.environment litellm.api_key_alias litellm.team_id litellm.user_id http.method http.host http.path http.header auth.jwt_claim adapter.field".split())
 CUSTOM_FIELDS = {"http.header", "auth.jwt_claim", "adapter.field"}
 SENSITIVE_HEADERS = {"authorization", "cookie", "proxy-authorization", "x-api-key"}
 

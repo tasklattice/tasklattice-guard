@@ -60,8 +60,7 @@ import { cn } from "@/lib/utils";
 
 const ADAPTERS: ReadonlyArray<{ id: EndpointAdapterId; protocol: EndpointProtocol }> = [
   { id: "litellm-generic-guardrail", protocol: "litellm" },
-  { id: "generic-http-guard", protocol: "http" },
-  { id: "a2a-guard", protocol: "a2a" },
+  { id: "f5-scan", protocol: "scan" },
 ];
 
 type EndpointDeletionConfirmation = {
@@ -422,7 +421,7 @@ function EndpointDetailContent({
           <dl className="grid grid-cols-3 gap-x-4 gap-y-5 p-4">
             <ActivityFact label={t("endpoints.inputCallback")}>{callbackTimestamp(endpoint.input_seen_at, i18n.language, t("endpoints.notReceived"))}</ActivityFact>
             <ActivityFact label={t("endpoints.outputCallback")}>{callbackTimestamp(endpoint.output_seen_at, i18n.language, t("endpoints.notReceived"))}</ActivityFact>
-            <ActivityFact label={t("endpoints.streamFinalCheck")}>{callbackTimestamp(endpoint.stream_final_check_seen_at ?? null, i18n.language, t("endpoints.notReceived"))}</ActivityFact>
+            {endpoint.protocol !== "scan" ? <ActivityFact label={t("endpoints.streamFinalCheck")}>{callbackTimestamp(endpoint.stream_final_check_seen_at ?? null, i18n.language, t("endpoints.notReceived"))}</ActivityFact> : null}
             <ActivityFact label={t("endpoints.successRate24h")}><EndpointSuccessRate endpoint={endpoint} /></ActivityFact>
             <ActivityFact label={t("endpoints.failedRequests24h")}>{endpoint.error_count.toLocaleString(i18n.language)}</ActivityFact>
             <ActivityFact label={t("endpoints.lastActivity")}>{endpoint.last_seen_at ? formatDate(endpoint.last_seen_at, i18n.language) : t("endpoints.noTraffic")}</ActivityFact>
@@ -607,8 +606,10 @@ export function CreateEndpointSheet({
       open={open}
       onOpenChange={requestOpenChange}
       eyebrow={`Endpoint / ${adapter.protocol.toUpperCase()}`}
-      title={t(registration ? "endpoints.setupTitle" : "endpoints.register")}
-      description={t(registration ? "endpoints.setupDescription" : "endpoints.registerDescription", { name: registration?.endpoint.name })}
+      title={t(registration ? adapter.protocol === "scan" ? "endpoints.scanSetupTitle" : "endpoints.setupTitle" : "endpoints.register")}
+      description={t(adapter.protocol === "scan"
+        ? registration ? "endpoints.scanSetupDescription" : "endpoints.scanRegisterDescription"
+        : registration ? "endpoints.setupDescription" : "endpoints.registerDescription", { name: registration?.endpoint.name })}
       width={registration ? "lg" : "md"}
       footer={footer}
     >
@@ -699,7 +700,7 @@ export function SetupChecklist({
           : t("endpoints.configureAdapter", { adapter: t(`endpoints.protocolShort.${endpoint.protocol}`) })}
         description={endpoint.protocol === "litellm"
           ? t("endpoints.configureTaskLatticeProviderDescription")
-          : t("endpoints.configureAdapterDescription")}
+          : t("endpoints.scanDescription")}
         complete={endpoint.setup_status !== "applying" && (endpoint.protocol === "litellm"
           ? Boolean(endpoint.input_seen_at || endpoint.output_seen_at)
           : configurationCopied)}
@@ -710,27 +711,23 @@ export function SetupChecklist({
           ) : endpoint.protocol === "litellm" ? (
             <LiteLLMProviderSetup endpoint={endpoint.setup.api_base_url} />
           ) : (
-            <>
-              <CopyField label={t("endpoints.apiBaseUrl")} value={endpoint.setup.api_base_url} />
-              <EnvironmentVariableValue label={t("endpoints.apiBaseEnvironmentVariable")} name={endpoint.setup.api_base_env_var} value={endpoint.setup.api_base_url} />
-              <CodeBlock label={t("endpoints.configurationTemplate")} value={endpoint.setup.yaml_template} onCopied={onConfigurationCopied} />
-              <SetupFacts endpoint={endpoint} />
-            </>
+            <ScanConnection endpoint={endpoint} onCopied={onConfigurationCopied} showDescription={false} />
           )}
         </div>
       </SetupStep>
       <SetupStep
         number={3}
-        title={t("endpoints.verifyCallbacks")}
-        description={t("endpoints.verifyCallbacksDescription")}
+        title={t(endpoint.protocol === "scan" ? "endpoints.verifyScans" : "endpoints.verifyCallbacks")}
+        description={t(endpoint.protocol === "scan" ? "endpoints.verifyScansDescription" : "endpoints.verifyCallbacksDescription")}
         complete={endpoint.setup_status === "verified"}
       >
         <div className="overflow-hidden rounded-lg border bg-card" aria-live="polite">
-          <CallbackStatusRow label={t("endpoints.inputCallback")} seenAt={endpoint.input_seen_at} locale={i18n.language} />
-          <CallbackStatusRow label={t("endpoints.outputCallback")} seenAt={endpoint.output_seen_at} locale={i18n.language} border />
+          <CallbackStatusRow label={t(endpoint.protocol === "scan" ? "endpoints.requestScan" : "endpoints.inputCallback")} seenAt={endpoint.input_seen_at} locale={i18n.language} />
+          <CallbackStatusRow label={t(endpoint.protocol === "scan" ? "endpoints.responseScan" : "endpoints.outputCallback")} seenAt={endpoint.output_seen_at} locale={i18n.language} border />
           <div className="flex items-start gap-2 border-t bg-muted/20 px-4 py-3 text-xs leading-5 text-muted-foreground">
             <RefreshCw className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-            {endpoint.setup_status === "verified" ? t("endpoints.callbacksVerified") : t("endpoints.waitingForCallbacks")}
+            {endpoint.setup_status === "verified" ? t("endpoints.callbacksVerified")
+              : t(endpoint.protocol === "scan" ? "endpoints.waitingForScans" : "endpoints.waitingForCallbacks")}
           </div>
         </div>
       </SetupStep>
@@ -773,7 +770,7 @@ function EndpointSetupGuide({ protocol }: { protocol: EndpointProtocol }) {
   const { t } = useTranslation();
   return (
     <Button asChild variant="ghost" size="sm">
-      <a href={`/document/developer/endpoint-setup#${protocol === "litellm" ? "endpoint-litellm" : "endpoint-adapters"}`} target="_blank" rel="noopener noreferrer">
+      <a href={`/document/developer/endpoint-setup#${protocol === "litellm" ? "endpoint-litellm" : "endpoint-scan"}`} target="_blank" rel="noopener noreferrer">
         <BookOpen />{t("endpoints.setupGuide")}
       </a>
     </Button>
@@ -782,6 +779,15 @@ function EndpointSetupGuide({ protocol }: { protocol: EndpointProtocol }) {
 
 function SetupConfiguration({ endpoint }: { endpoint: Endpoint }) {
   const { t } = useTranslation();
+  if (endpoint.protocol === "scan") return (
+    <section className="overflow-hidden rounded-lg border bg-card">
+      <div className="flex items-center justify-between gap-3 border-b bg-muted/30 px-4 py-3">
+        <h3 className="text-sm font-semibold">{t("endpoints.connection")}</h3>
+        <EndpointSetupGuide protocol="scan" />
+      </div>
+      <div className="p-4"><ScanConnection endpoint={endpoint} /></div>
+    </section>
+  );
   return (
     <section className="overflow-hidden rounded-lg border bg-card">
       <div className="flex items-center justify-between gap-3 border-b bg-muted/30 px-4 py-3">
@@ -789,38 +795,26 @@ function SetupConfiguration({ endpoint }: { endpoint: Endpoint }) {
         <EndpointSetupGuide protocol={endpoint.protocol} />
       </div>
       <div className="p-4">
-        <CopyField label={t(endpoint.protocol === "litellm" ? "endpoints.endpointUrl" : "endpoints.apiBaseUrl")} value={endpoint.setup.api_base_url} />
+        <CopyField label={t("endpoints.endpointUrl")} value={endpoint.setup.api_base_url} />
       </div>
-      {endpoint.protocol !== "litellm" ? (
-        <details className="border-t">
-          <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-primary focus-visible:outline-primary">{t("endpoints.connectionDetails")}</summary>
-          <div className="grid min-w-0 gap-4 px-4 pb-4">
-            <CopyField label={t("endpoints.callbackUrl")} value={endpoint.setup.callback_url} />
-            {endpoint.setup.stream_callback_url ? <CopyField label={t("endpoints.streamCallbackUrl")} value={endpoint.setup.stream_callback_url} /> : null}
-            <div className="grid grid-cols-2 gap-4">
-              <CopyField label={t("endpoints.authHeader")} value={endpoint.setup.auth_header} />
-              <CopyField label={t("endpoints.credentialEnvironmentVariable")} value={endpoint.setup.credential_env_var} />
-            </div>
-            <EnvironmentVariableValue label={t("endpoints.apiBaseEnvironmentVariable")} name={endpoint.setup.api_base_env_var} value={endpoint.setup.api_base_url} />
-            <CodeBlock label={t("endpoints.configurationTemplate")} value={endpoint.setup.yaml_template} />
-          </div>
-        </details>
-      ) : null}
     </section>
   );
 }
 
-function SetupFacts({ endpoint }: { endpoint: Endpoint }) {
+function ScanConnection({ endpoint, onCopied, showDescription = true }: { endpoint: Endpoint; onCopied?: () => void; showDescription?: boolean }) {
   const { t } = useTranslation();
-  const setup = endpoint.setup;
   return (
-    <div className="space-y-3"><dl className="grid gap-3 rounded-lg bg-muted/30 p-3 text-xs sm:grid-cols-3">
-      <div><dt className="text-muted-foreground">{t("endpoints.modes")}</dt><dd className="mt-1 font-medium">{setup.recommended_modes.join(" + ")}</dd></div>
-      <div><dt className="text-muted-foreground">{t("endpoints.defaultBehavior")}</dt><dd className="mt-1 font-medium">{t(setup.default_on ? "endpoints.defaultOn" : "endpoints.requestSelected")}</dd></div>
-      <div><dt className="text-muted-foreground">{t("endpoints.failureBehavior")}</dt><dd className="mt-1 font-medium">{t(setup.unreachable_fallback === "fail_closed" ? "endpoints.failClosed" : "endpoints.failOpen")} · {t(setup.fail_on_error ? "endpoints.blockOnError" : "endpoints.allowOnError")}</dd></div>
-    </dl><dl className="grid gap-3 border-t pt-3 text-xs sm:grid-cols-3">
-        {[{ label: "Input", seen: endpoint.input_seen_at }, { label: "Output", seen: endpoint.output_seen_at }, { label: "Stream", seen: endpoint.stream_final_check_seen_at }].map(({ label, seen }) => <div key={label}><dt className="text-muted-foreground">{label}</dt><dd className="mt-1"><StateBadge state={seen ? "ready" : "unknown"} label={t(seen ? (label === "Stream" ? "endpoints.streamFinalObserved" : "endpoints.railObserved") : "endpoints.railNotObserved")} /></dd></div>)}
-      </dl></div>
+    <div className="grid min-w-0 gap-4">
+      <CopyField label={t("endpoints.endpointUrl")} value={endpoint.setup.callback_url} />
+      <CopyField label={t("endpoints.authHeader")} value="Authorization: Bearer <CALYPSOAI_TOKEN>" />
+      <EnvironmentVariableValue label={t("endpoints.apiBaseEnvironmentVariable")} name={endpoint.setup.api_base_env_var} value={endpoint.setup.api_base_url} />
+      <CodeBlock label={t("endpoints.scanExample")} value={endpoint.setup.yaml_template} {...(onCopied ? { onCopied } : {})} />
+      {showDescription ? <p className="text-xs leading-5 text-muted-foreground">{t("endpoints.scanDescription")}</p> : null}
+      <details className="border-t pt-3">
+        <summary className="cursor-pointer text-sm font-medium focus-visible:outline-primary">{t("endpoints.scanCompatibility")}</summary>
+        <p className="mt-2 text-xs leading-5 text-muted-foreground">{t("endpoints.scanIgnoredFields")}</p>
+      </details>
+    </div>
   );
 }
 

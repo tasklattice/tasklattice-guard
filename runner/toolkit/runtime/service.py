@@ -6,7 +6,7 @@ from dataclasses import replace
 from datetime import UTC, datetime
 
 from .content_views import content_view, text_blocks
-from .context import CallContextStore
+from .context import CallContext, CallContextStore
 from .streaming import OutputStreamEvaluationError
 from .contracts import (
     AppliedIntervention,
@@ -160,6 +160,51 @@ class GuardrailRuntimeService:
         finally:
             await self.complete_call(resolution, request.call_id, outcome)
 
+    async def evaluate_standalone(
+        self, request: ProtectionRequest, *,
+        on_resolved: Callable[[PlanResolution], None] | None = None,
+        validate_decision: Callable[[ProtectionDecision], None] | None = None,
+        timeout_seconds: float | None = None,
+    ) -> ProtectionDecision:
+        """Evaluate one independently routed scan, without creating a call session."""
+        # The caller supplies a server-generated assignment ID in RequestContext.
+        resolution = None
+        outcome, failure = "error", None
+        try:
+            async with asyncio.timeout(timeout_seconds):
+                resolution = self._resolver.resolve(request.context)
+                if on_resolved is not None:
+                    on_resolved(resolution)
+                retain = getattr(self._resolver, "retain_release", None)
+                if retain is not None:
+                    retain(resolution.effective_release_id)
+                await self.publish_assignment(resolution, request.context.call_id)
+                stored = CallContext(messages=(), content_blocks=(), resolution=resolution, expires_at=0)
+                decision = await self._evaluate_resolved(request, resolution, stored)
+                if validate_decision is not None:
+                    validate_decision(decision)
+                outcome = "intervene" if decision.decision == "transform" else decision.decision
+                return decision
+        except BaseException as error:
+            outcome = "timeout" if isinstance(error, TimeoutError) else "error"
+            failure = "cancelled" if isinstance(error, asyncio.CancelledError) else type(error).__name__
+            assignment = getattr(error, "assignment", None)
+            if resolution is None and assignment and self.routing_event_sink:
+                await self.routing_event_sink({**assignment, "id": assignment["decisionId"] + ":assignment",
+                    "eventType": "route_assignment", "callId": request.context.call_id,
+                    "occurredAt": assignment["decisionAt"]})
+            raise
+        finally:
+            if resolution is not None and resolution.route_assignment and self.routing_event_sink:
+                assignment = resolution.route_assignment
+                now = datetime.now(UTC)
+                # Standalone calls deliberately never access the shared session store.
+                await self.routing_event_sink({**assignment, "id": assignment["decisionId"] + ":completion",
+                    "eventType": "completion", "callId": request.context.call_id,
+                    "occurredAt": now.isoformat(), "outcome": outcome,
+                    "durationMs": max(0, round((now - datetime.fromisoformat(assignment["decisionAt"])).total_seconds() * 1000)),
+                    **({"failureReason": failure} if failure else {})})
+
     async def evaluate_guardrail(
         self,
         request: ProtectionRequest,
@@ -267,6 +312,8 @@ class GuardrailRuntimeService:
                     effective_release_id=resolution.effective_release_id,
                 )
             )
+            if request.context.protocol == "scan" and decision.decision == "transform" and not decision.texts:
+                raise ValueError("Scan transform must include the final content text.")
             findings.extend(decision.findings)
             trace.extend(decision.trace)
             assessments.extend(decision.assessments)

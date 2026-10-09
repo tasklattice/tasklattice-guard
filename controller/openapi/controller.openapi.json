@@ -739,14 +739,7 @@
             "type": "array"
           },
           "stream_callback_url": {
-            "anyOf": [
-              {
-                "type": "null"
-              },
-              {
-                "type": "string"
-              }
-            ]
+            "type": "null"
           },
           "unreachable_fallback": {
             "const": "fail_closed",
@@ -12444,8 +12437,10 @@
       "postEndpointsRequest": {
         "properties": {
           "adapter": {
-            "maxLength": 80,
-            "minLength": 1,
+            "enum": [
+              "litellm-generic-guardrail",
+              "f5-scan"
+            ],
             "type": "string"
           },
           "name": {
@@ -19522,7 +19517,7 @@
         },
         "x-product-area": "Observability",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#1052",
+        "x-source": "server/http/app.ts#1058",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -34145,7 +34140,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "May repeat with the same input.",
-        "x-source": "server/http/app.ts#1008",
+        "x-source": "server/http/app.ts#1014",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -34460,7 +34455,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#1013",
+        "x-source": "server/http/app.ts#1019",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -35677,7 +35672,7 @@
         },
         "x-product-area": "Observability",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#1047",
+        "x-source": "server/http/app.ts#1053",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -35980,7 +35975,7 @@
         },
         "x-product-area": "Observability",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#1021",
+        "x-source": "server/http/app.ts#1027",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -36135,7 +36130,7 @@
         },
         "x-product-area": "Observability",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#1043",
+        "x-source": "server/http/app.ts#1049",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -36303,7 +36298,7 @@
         },
         "x-product-area": "Observability",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#1048",
+        "x-source": "server/http/app.ts#1054",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",

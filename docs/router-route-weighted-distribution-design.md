@@ -153,7 +153,7 @@ The composed routing model uses [the shared selector catalog](../controller/shar
 | Integration identity | `protocol`, `endpoint.id`, `auth.principal` | Endpoint identity comes from the integration; adapter-supplied application identity is not independent end-user authentication |
 | HTTP request | `http.method`, `http.host`, `http.path` | Explicit `endpoint_request` or `business_request` source |
 | HTTP headers | `http.header` with a custom key | Explicit source; repeated values retained as an array/pair collection |
-| Model and adapter | `model`, `litellm.api_key_alias`, `litellm.team_id`, `litellm.user_id`, `a2a.*` catalog entries | Adapter-extracted characteristics available for the initial assignment |
+| Model and adapter | `model`, `litellm.api_key_alias`, `litellm.team_id`, `litellm.user_id` catalog entries | Adapter-extracted characteristics available for the initial assignment |
 | Output descriptors | `output.sink`, `output.content_type`, `output.schema_id` | Require an explicit first-assignment capability declaration |
 | Other characteristics | `tool.name`, `target.environment`, `adapter.field` | Defined key access, not arbitrary expressions; dynamic fields need explicit capabilities |
 | Authentication claims | `auth.jwt_claim` with a custom key | Requires an explicit capability and a verified-claim source; catalog presence does not provide JWT verification |
@@ -163,7 +163,7 @@ All current selector values have type **string**. The catalog and schemas do not
 HTTP sources are distinct:
 
 - `endpoint_request`: the HTTP request arriving at Guard.
-- `business_request`: original application request metadata explicitly supplied by the adapter. Generic HTTP uses `business_request`; the LiteLLM compatibility path maps payload `request_headers` to this source.
+- `business_request`: original application request metadata explicitly supplied by the adapter. LiteLLM maps payload `request_headers` to this source. Scan does not expose business-request metadata.
 
 For normalized HTTP sources, method, path, and host use `:method`, `:path`, and `:host`. No implicit fallback or merge occurs between the two sources. User-supplied business headers can support traffic segmentation, but must not be treated as authenticated identity.
 

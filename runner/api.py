@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from opentelemetry import trace
 
-from runner.toolkit.runtime.contracts import GuardContentBlock, ProtectionDecision, ProtectionRequest, RequestContext
+from runner.toolkit.runtime.contracts import ProtectionDecision, ProtectionRequest, RequestContext
 from runner.toolkit.runtime.service import GuardrailRuntimeService
 
 from .artifact_store import ArtifactStore
@@ -39,83 +39,31 @@ _TRACER = trace.get_tracer("tasklattice.guard-runner.api")
 GUARDRAIL_VERSION_PATTERN = r"^\d{8}-\d{6}\.\d{3}Z$"
 
 
-class EvaluateRequest(BaseModel):
+class InternalEvaluationRequest(BaseModel):
+    """Controller-only Playground evaluation; never an Endpoint wire adapter."""
     model_config = ConfigDict(extra="forbid")
-
     phase: Literal["input", "output"] | None = None
     input_type: Literal["request", "response"] | None = None
-    texts: list[str] = Field(default_factory=list, max_length=64)
-    content: list["HTTPContentBlock"] = Field(default_factory=list, max_length=64)
+    texts: list[str] = Field(min_length=1, max_length=64)
     call_id: str | None = Field(default=None, min_length=1, max_length=256)
-    protocol: Literal["http", "a2a"] = "http"
+    protocol: Literal["playground"] = "playground"
     messages: list[dict[str, Any]] = Field(default_factory=list, max_length=20)
     attributes: dict[str, str] = Field(default_factory=dict)
-    # Endpoint clients cannot downgrade an enforced Router to detect-only.
     mode: Literal["enforce"] = "enforce"
-    model: str | None = None
-    method: str | None = None
-    path: str | None = None
-    host: str | None = None
-    jwt_claims: dict[str, str] = Field(default_factory=dict)
-    business_request: dict[str, str | list[str]] | None = None
-    output_sink: Literal["display", "markdown", "html", "sql", "shell", "url", "json", "tool_argument"] | None = None
-    content_type: str | None = Field(default=None, min_length=1, max_length=128)
-    schema_id: str | None = Field(default=None, min_length=1, max_length=256)
-    tool_name: str | None = Field(default=None, min_length=1, max_length=256)
-    target_environment: str | None = Field(default=None, min_length=1, max_length=128)
-    a2a_operation: str | None = None
-    a2a_context_id: str | None = None
-    a2a_task_id: str | None = None
-    output_scope: Literal["interventions", "full"] = "interventions"
 
     @model_validator(mode="after")
-    def validate_content_shape(self):
-        if bool(self.texts) == bool(self.content):
-            raise ValueError("Provide exactly one of texts or content.")
-        expected_phase = "input" if self.input_type == "request" else "output"
-        if self.phase is not None and self.input_type is not None and self.phase != expected_phase:
+    def validate_phase(self):
+        expected = "input" if self.input_type == "request" else "output"
+        if self.phase is not None and self.input_type is not None and self.phase != expected:
             raise ValueError("phase and input_type describe different protection phases.")
-        ids = [item.id or f"{self.resolved_phase}:{index}" for index, item in enumerate(self.content)]
-        if len(ids) != len(set(ids)):
-            raise ValueError("Content block identifiers must be unique.")
         return self
 
     @property
     def resolved_phase(self) -> Literal["input", "output"]:
-        if self.phase is not None:
-            return self.phase
-        return "output" if self.input_type == "response" else "input"
+        return self.phase or ("output" if self.input_type == "response" else "input")
 
 
-class HTTPContentBlock(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    id: str | None = Field(default=None, min_length=1, max_length=160)
-    text: str = Field(min_length=1, max_length=100_000)
-    role: Literal["user_input", "query", "retrieved_content", "grounding_source", "tool_output", "model_output"]
-    source: Literal["user_input", "query", "retrieved_content", "grounding_source", "tool_output", "model_output"] | None = None
-    qualifiers: list[Literal["guard_content", "query", "grounding_source"]] = Field(default_factory=list, max_length=3)
-    source_id: str | None = Field(default=None, min_length=1, max_length=256)
-    source_type: str | None = Field(default=None, min_length=1, max_length=64)
-    tool_name: str | None = Field(default=None, min_length=1, max_length=256)
-    retrieval_index: int | None = Field(default=None, ge=0, le=1_000_000)
-    provenance_id: str | None = Field(default=None, min_length=1, max_length=256)
-    mime_type: str | None = Field(default=None, min_length=1, max_length=128)
-    origin_hash: str | None = Field(default=None, min_length=16, max_length=128, pattern=r"^[A-Za-z0-9:_-]+$")
-
-    @model_validator(mode="after")
-    def validate_qualifiers(self):
-        if "query" in self.qualifiers and self.role != "query":
-            raise ValueError("The query qualifier requires the query role.")
-        if "grounding_source" in self.qualifiers and self.role not in {"retrieved_content", "grounding_source"}:
-            raise ValueError("The grounding_source qualifier requires a grounding-source role.")
-        return self
-
-
-EvaluateRequest.model_rebuild()
-
-
-class GuardrailEvaluateRequest(EvaluateRequest):
+class GuardrailEvaluateRequest(InternalEvaluationRequest):
     protocol: Literal["playground"] = "playground"
     guardrail_version: str = Field(pattern=GUARDRAIL_VERSION_PATTERN)
 
@@ -131,7 +79,7 @@ class DraftPreviewPrepareRequest(BaseModel):
     runtime_profile: str = Field(min_length=1, max_length=128)
 
 
-class DraftPreviewEvaluateRequest(EvaluateRequest):
+class DraftPreviewEvaluateRequest(InternalEvaluationRequest):
     preview_id: str = Field(min_length=1, max_length=256)
     draft_revision: int = Field(gt=0)
     candidate_version: str = Field(pattern=GUARDRAIL_VERSION_PATTERN)
@@ -179,6 +127,8 @@ class RunnerAPI:
         controller_token: str,
         runtime_log_encryption_key: bytes | None = None,
         draft_previews: DraftPreviewRuntime | None = None,
+        scan_max_body_bytes: int = 1_048_576,
+        scan_timeout_seconds: float = 25,
     ) -> None:
         self.router = APIRouter()
         self._runtime = runtime
@@ -197,6 +147,8 @@ class RunnerAPI:
         register_output_stream(self)
         from .path_testing import register_path_testing
         register_path_testing(self)
+        from .scan import register_scan
+        register_scan(self, max_body_bytes=scan_max_body_bytes, timeout_seconds=scan_timeout_seconds)
 
     def _trace_request_id(self, fallback: str) -> str:
         """Prefer the active trace id without requiring legacy metric fakes to expose one."""
@@ -217,7 +169,7 @@ class RunnerAPI:
                     "metrics": "/metrics",
                     "verify": "/runtime/v1/endpoints/{endpoint_id}/verify",
                     "litellm": "/runtime/v1/endpoints/{endpoint_id}/beta/litellm_basic_guardrail_api",
-                    "evaluate": "/runtime/v1/endpoints/{endpoint_id}/guardrails/evaluate",
+                    "scan": "/backend/v1/scans",
                     "output_stream": "/runtime/v1/endpoints/{endpoint_id}/guardrails/output-stream",
                     "controller_evaluate": "/internal/v1/guardrails/{guardrail_id}/evaluate",
                     "draft_preview": "/internal/v1/playground/draft-previews/{preview_id}",
@@ -317,85 +269,6 @@ class RunnerAPI:
                         started=started,
                         decision=decision,
                         content_before=protection_request.texts,
-                        http_request=request,
-                        observation=observation,
-                    )
-
-        @self.router.post("/runtime/v1/endpoints/{endpoint_id}/guardrails/evaluate")
-        async def evaluate(
-            endpoint_id: str,
-            payload: EvaluateRequest,
-            request: Request,
-            response: Response,
-            x_api_key: str | None = Header(default=None),
-        ):
-            expected_adapter = "a2a-guard" if payload.protocol == "a2a" else "generic-http-guard"
-            authenticated = self._store.authenticate_endpoint(endpoint_id, x_api_key)
-            self._metrics.observe_authentication(payload.protocol, authenticated)
-            adapter_matches = self._store.endpoint_adapter(endpoint_id) == expected_adapter
-            if not authenticated:
-                self._metrics.reject_request(
-                    payload.protocol, payload.resolved_phase, "authentication_rejected",
-                )
-                raise HTTPException(status_code=401, detail="Endpoint credential is invalid.")
-            if not adapter_matches:
-                self._metrics.reject_request(payload.protocol, payload.resolved_phase, "adapter_mismatch")
-                raise HTTPException(status_code=409, detail="Endpoint adapter does not match this protocol.")
-            request_id = str(uuid.uuid4())
-            started = time.perf_counter()
-            decision = None
-            try:
-                protection_request = _http_protection_request(payload, request, endpoint_id)
-            except RoutingError as error:
-                raise HTTPException(status_code=503, detail=error.reason) from error
-            with self._metrics.request(
-                "runtime", payload.protocol, payload.resolved_phase,
-                endpoint_id=endpoint_id,
-            ) as observation:
-                request_id = self._trace_request_id(request_id)
-                try:
-                    route_matched = True
-                    try:
-                        decision = await self._runtime.evaluate(
-                            protection_request, on_resolved=observation.resolve,
-                        )
-                    except LookupError:
-                        route_matched = False
-                        observation.set_identity(
-                            guardrail_id=UNMATCHED_METRIC_ID,
-                            guardrail_version=UNMATCHED_METRIC_ID,
-                            router_id=UNMATCHED_METRIC_ID,
-                        )
-                        decision = ProtectionDecision(
-                            decision="block", action="block",
-                            reason="No Router matches this request.",
-                            mode=payload.mode,
-                        )
-                    self._metrics.observe_route(
-                        payload.protocol, payload.resolved_phase, route_matched,
-                    )
-                    observation.complete(decision)
-                    self._path_response_headers(response, decision)
-                    return {**jsonable_encoder(asdict(decision)), "call_id": protection_request.call_id}
-                except RoutingError as error:
-                    observation.fail("runtime", error.reason)
-                    raise HTTPException(status_code=503, detail=str(error)) from error
-                except Exception as error:
-                    reason_class = _request_failure_reason(error)
-                    observation.fail("runtime", reason_class)
-                    self._metrics.observe_failure("runtime", reason_class)
-                    raise
-                finally:
-                    await self._emit_telemetry(
-                        request_id=request_id,
-                        call_id=protection_request.call_id,
-                        endpoint_id=endpoint_id,
-                        phase=payload.resolved_phase,
-                        protocol=payload.protocol,
-                        mode=payload.mode,
-                        started=started,
-                        decision=decision,
-                        content_before=_request_content(protection_request),
                         http_request=request,
                         observation=observation,
                     )
@@ -602,6 +475,8 @@ class RunnerAPI:
         }
         if endpoint_id is not None:
             event["endpointId"] = endpoint_id
+        if protocol == "scan" and (stream_metadata or {}).get("scanExecutionStatus") == "error":
+            event["decision"] = "error"
         if decision is not None:
             event["metadata"].update(_telemetry_metadata(decision))
             if runtime_log_captured and self._runtime_log_encryption_key:
@@ -810,119 +685,6 @@ def _runtime_log_blocks(values: tuple[str, ...], role: str) -> list[dict[str, An
     return result
 
 
-def _http_protection_request(
-    payload: EvaluateRequest,
-    request: Request,
-    endpoint_id: str,
-) -> ProtectionRequest:
-    headers = {
-        key.lower(): value
-        for key, value in request.headers.items()
-        if key.lower() not in SENSITIVE_HEADERS
-    }
-    method = (payload.method or headers.get("x-original-method") or request.method).upper()
-    path = payload.path or headers.get("x-original-uri") or request.url.path
-    host = payload.host or headers.get("x-forwarded-host") or request.url.hostname or ""
-    fields = {
-        **{str(key): str(value) for key, value in payload.attributes.items()},
-        "protocol": payload.protocol,
-        "endpoint.id": endpoint_id,
-        "auth.principal": endpoint_id,
-        "http.method": method,
-        "http.path": path,
-        "http.host": host,
-        "model": payload.model or "",
-    }
-    fields.update({
-        key: value
-        for key, value in {
-            "output.sink": payload.output_sink,
-            "output.content_type": payload.content_type,
-            "output.schema_id": payload.schema_id,
-            "tool.name": payload.tool_name,
-            "target.environment": payload.target_environment,
-        }.items()
-        if value is not None
-    })
-    if payload.jwt_claims:
-        fields["auth.claim_source"] = "endpoint_asserted"
-    if payload.protocol == "a2a":
-        fields.update({
-            "a2a.version": headers.get("a2a-version", ""),
-            "a2a.extensions": headers.get("a2a-extensions", ""),
-            "a2a.operation": payload.a2a_operation or "",
-            "a2a.context_id": payload.a2a_context_id or "",
-            "a2a.task_id": payload.a2a_task_id or "",
-        })
-    external_call_id = payload.call_id or payload.a2a_task_id or payload.a2a_context_id
-    if external_call_id is None and payload.resolved_phase == "input":
-        external_call_id = f"http-{uuid.uuid4().hex}"
-    return ProtectionRequest(
-        phase=payload.resolved_phase,
-        texts=tuple(payload.texts),
-        content_blocks=_http_content_blocks(payload),
-        context=RequestContext(
-            protocol=payload.protocol,
-            endpoint_id=endpoint_id,
-            headers=tuple(sorted(headers.items())),
-            # Unverified endpoint assertions are not authenticated JWT claims.
-            jwt_claims=(),
-            fields=tuple(sorted(fields.items())),
-            endpoint_request=_endpoint_source(request),
-            business_request=_source_pairs(payload.business_request),
-        ),
-        call_id=_scoped_call_id(endpoint_id, external_call_id),
-        messages=tuple(payload.messages),
-        mode=payload.mode,
-        evidence_scope=payload.output_scope,
-    )
-
-
-def _http_content_blocks(payload: EvaluateRequest) -> tuple[GuardContentBlock, ...]:
-    blocks: list[GuardContentBlock] = []
-    for index, item in enumerate(payload.content):
-        qualifiers = set(item.qualifiers)
-        if item.role == "query":
-            qualifiers.add("query")
-        if item.role in {"retrieved_content", "grounding_source"}:
-            qualifiers.add("grounding_source")
-        if payload.resolved_phase == "input" or item.role in {"user_input", "tool_output", "model_output"}:
-            qualifiers.add("guard_content")
-        source = item.source or item.role
-        blocks.append(GuardContentBlock(
-            id=item.id or f"{payload.resolved_phase}:{index}",
-            text=item.text,
-            role=item.role,
-            trust="untrusted",
-            source=source,
-            qualifiers=tuple(
-                qualifier
-                for qualifier in ("guard_content", "query", "grounding_source")
-                if qualifier in qualifiers
-            ),
-            metadata=tuple(
-                (key, str(value))
-                for key, value in (
-                    ("source_id", item.source_id),
-                    ("source_type", item.source_type),
-                    ("tool_name", item.tool_name),
-                    ("retrieval_index", item.retrieval_index),
-                    ("provenance_id", item.provenance_id),
-                    ("mime_type", item.mime_type),
-                    ("origin_hash", item.origin_hash),
-                )
-                if value is not None
-            ),
-        ))
-    return tuple(blocks)
-
-
-def _request_content(request: ProtectionRequest) -> tuple[str, ...]:
-    if request.content_blocks:
-        return tuple(item.text for item in request.content_blocks if item.guard_content)
-    return request.texts
-
-
 def _litellm_protection_request(
     payload: LiteLLMGuardrailRequest,
     endpoint_id: str,
@@ -975,8 +737,6 @@ def _litellm_protection_request(
         "http.method": headers.get("x-original-method", "POST").upper(),
         "http.path": headers.get("x-original-uri", ""),
         "http.host": headers.get("x-forwarded-host", headers.get("host", "")),
-        "a2a.version": headers.get("a2a-version", ""),
-        "a2a.extensions": headers.get("a2a-extensions", ""),
     })
     return ProtectionRequest(
         phase="input" if payload.input_type == "request" else "output",

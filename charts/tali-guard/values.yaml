@@ -59,6 +59,9 @@ controller:
       key: baseline.guardrail.zip
 
 runner:
+  scan:
+    maxBodyBytes: 1048576
+    timeoutSeconds: 25
   # All data-plane pools use this image. GuardRails 0 is the mandatory baseline
   # pool and is also the authoritative NeMo configuration compiler.
   # Endpoint setup instructions use a stable Runtime Service. They never

@@ -129,9 +129,8 @@ async def test_reconnection_cannot_resume_buffered_text_on_another_replica(tmp_p
             assert reply["type"] == "error" and "private" not in json.dumps(reply)
 
 
-@pytest.mark.parametrize("protocol,adapter", [("http", "generic-http-guard"), ("a2a", "a2a-guard"),
-                                             ("litellm", "litellm-generic-guardrail")])
-async def test_stream_uses_normal_adapter_identity_mapping(tmp_path, monkeypatch, protocol, adapter):
+async def test_stream_uses_normal_adapter_identity_mapping(tmp_path, monkeypatch):
+    protocol, adapter = "litellm", "litellm-generic-guardrail"
     from runner.toolkit.runtime.context import CallContextStore
     contexts = CallContextStore()
     async with runner(tmp_path, contexts=contexts) as (url, engine, _, _, store):
@@ -152,10 +151,9 @@ async def test_stream_uses_normal_adapter_identity_mapping(tmp_path, monkeypatch
         assert contexts.get("fixture-endpoint:identity") is not None
         context = seen[0].request_context
         assert context.protocol == protocol
-        if protocol == "litellm":
-            assert context.value("field", "litellm.team_id") == "team-1"
-            assert context.value("field", "http.path") == "/chat/completions"
-            assert context.value("header", "x-api-key") is None
+        assert context.value("field", "litellm.team_id") == "team-1"
+        assert context.value("field", "http.path") == "/chat/completions"
+        assert context.value("header", "x-api-key") is None
 
 
 async def test_unicode_delta_limit_counts_text_not_json_escaping(tmp_path):

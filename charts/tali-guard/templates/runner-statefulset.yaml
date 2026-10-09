@@ -59,6 +59,8 @@ spec:
             - { name: GUARD_RUNNER_POOL_ID, value: {{ $pool.name | quote }} }
             - { name: GUARD_RUNNER_COMPILER_CAPABLE, value: {{ default false $pool.compilerCapable | quote }} }
             - { name: GUARD_RUNNER_MAX_CONCURRENCY, value: {{ $pool.maxConcurrency | quote }} }
+            - { name: GUARD_SCAN_MAX_BODY_BYTES, value: {{ $root.Values.runner.scan.maxBodyBytes | int64 | quote }} }
+            - { name: GUARD_SCAN_TIMEOUT_SECONDS, value: {{ $root.Values.runner.scan.timeoutSeconds | quote }} }
             - { name: GUARD_CONTROLLER_TARGET, value: {{ printf "%s:%v" (include "tali-guard.controllerName" $root) 9090 | quote }} }
             - { name: GUARD_CONTROLLER_TELEMETRY_ENDPOINT, value: {{ printf "http://%s:%v/api/internal/v1/runtime-events" (include "tali-guard.controllerName" $root) 8080 | quote }} }
             {{- if or $root.Values.observability.performanceDebug.enabled $root.Values.observability.tracing.enabled }}

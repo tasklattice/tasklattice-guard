@@ -779,8 +779,8 @@ export type GuardrailCompilePreview = {
   estimated_critical_path_ms: number;
 };
 
-export type EndpointAdapterId = "litellm-generic-guardrail" | "generic-http-guard" | "a2a-guard";
-export type EndpointProtocol = "litellm" | "http" | "a2a";
+export type EndpointAdapterId = "litellm-generic-guardrail" | "f5-scan";
+export type EndpointProtocol = "litellm" | "scan";
 export type EndpointSetupStatus = EndpointSetupState;
 
 export type EndpointSetup = {

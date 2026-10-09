@@ -1,4 +1,5 @@
-// Actual tali Controller -> validated signed artifact -> routed main Runner.
+// Actual tali Controller -> validated signed artifact -> internal version evaluation on main Runner.
+// Endpoint routing is covered by the LiteLLM stream acceptance scripts.
 // Gateway round is closed at 67; this stage reserves at most 6 further NVIDIA
 // calls. No model reconfiguration, no Topic/Jailbreak, no retries.
 import assert from 'node:assert/strict';
@@ -6,6 +7,8 @@ import {execFileSync} from 'node:child_process';
 import {existsSync,readFileSync,writeFileSync} from 'node:fs';
 import {setTimeout as delay} from 'node:timers/promises';
 import {randomUUID} from 'node:crypto';
+const runnerToken=process.env.GUARD_ACCEPTANCE_RUNNER_TOKEN;
+assert(runnerToken,'Set GUARD_ACCEPTANCE_RUNNER_TOKEN for internal version diagnostics.');
 const file='/tmp/guard-tali-expanded-lifecycle-20260908.json';
 const resume=process.env.GUARD_RESUME_ROUTING_PREFLIGHT==='1';
 assert(resume||!existsSync(file),'Do not repeat uncertain lifecycle calls.');
@@ -42,25 +45,23 @@ try{
  const guard=await until(path,g=>g.versions.some(v=>v.version===report.publication.version&&v.status==='ready'));
  const version=guard.versions.find(v=>v.version===report.publication.version);assert(version.artifact.signature);
  assert(version.plan.steps.every(s=>s.capability==='content_safety'));report.artifact={id:version.artifactId,checksum:version.artifact.checksum};save();
- report.endpoint=await api('/api/v1/endpoints',{name:report.name,adapter:'generic-http-guard'});save();
- report.router=await api('/api/v1/routers',{name:report.name,guardrailId:guard.id,endpointId:report.endpoint.id,poolId:'default',enabled:true,trafficScope:{combinator:'and',conditions:[]}});save();
  }
- // /verify is a LiteLLM adapter endpoint, not a generic-http-guard check.
- // Require synchronized Runner state; actual evaluate calls below prove routing.
  const guard=await api('/api/v1/guardrails/'+report.guardrail.id);
- const runtime='http://localhost:38082/runtime/v1/endpoints/'+report.endpoint.id;
+ const version=guard.versions.find(v=>v.version===report.publication.version);
+ assert(version?.status==='ready');
+ const runtime='http://localhost:38082/internal/v1/guardrails/'+encodeURIComponent(guard.id)+'/evaluate';
  const ready=await(await fetch('http://localhost:38082/health/ready')).json();
  assert(ready.ready&&ready.desired_state_synchronized);
  const cases=policy.test_cases.map(c=>({id:c.id,phase:c.phase,content:c.content,expected:c.expected_decision}));
  cases.push(...['input','output'].map(phase=>({id:'safe-'+phase,phase,content:'Enjoy the flowers in a quiet public garden.',expected:'allow'})));
  for(const c of cases){
   assert(report.reservedNvidiaCalls<6);report.reservedNvidiaCalls++;save();
-  const r=await fetch(runtime+'/guardrails/evaluate',{method:'POST',headers:{'x-api-key':report.endpoint.credential,'content-type':'application/json'},body:JSON.stringify({phase:c.phase,texts:[c.content],call_id:randomUUID()}),signal:AbortSignal.timeout(60000)});
+  const r=await fetch(runtime,{method:'POST',headers:{authorization:`Bearer ${runnerToken}`,'content-type':'application/json'},body:JSON.stringify({guardrail_version:version.version,phase:c.phase,texts:[c.content],call_id:randomUUID()}),signal:AbortSignal.timeout(60000)});
   const result=await r.json();report.checks.push({id:c.id,expected:c.expected,http:r.status,result});save();
   assert(r.ok);assert.equal(result.decision,c.expected);assert.equal(result.guardrail_id,guard.id);assert.equal(result.guardrail_version,version.version);assert.equal(result.model_revision_id,before.active.id);
   assert.equal(result.usage.model_invocations,1);assert.equal(result.usage.fail_closed,false);
   assert(result.trace.some(t=>t.capability==='content_safety'&&t.rail_type===c.phase&&t.model_result==='success'));
  }
  const after=await api('/api/v1/model-configuration');assert.deepEqual(after.active,before.active);assert.deepEqual(after.draft,before.draft);
- report.passed=true;save();console.log(JSON.stringify({passed:true,nvidiaCalls:report.reservedNvidiaCalls,guardrailId:guard.id,artifact:report.artifact,mainRoutedCases:report.checks.length}));
+ report.passed=true;save();console.log(JSON.stringify({passed:true,nvidiaCalls:report.reservedNvidiaCalls,guardrailId:guard.id,artifact:report.artifact,internalVersionCases:report.checks.length}));
 }catch(e){report.passed=false;report.failure=e.message;save();console.error(report.failure);process.exitCode=1;}

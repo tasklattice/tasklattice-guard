@@ -1,60 +1,84 @@
 ---
 id: "endpoint-setup"
-title: "Endpoint 接入与凭据管理"
-summary: "连接 LiteLLM 或其他 Adapter，验证真实流量，并轮换 Endpoint 凭据。"
-order: 6
+title: "Endpoint 接入指南"
+summary: "选择 LiteLLM 或 Scan，配置 Endpoint 与凭据，验证检查结果确实影响应用交付。"
+order: 0
 ---
-在 [Endpoints](/integration/endpoints) 中打开详情，可复制连接地址、管理凭据和查看运行活动。为每个网关实例创建独立 Endpoint，并在发送受保护流量前绑定已发布的 Router。网关需要能够访问详情页显示的运行时地址。
+应用接入从这里开始：选择协议、取得运行时地址和凭据，再验证真实请求。若要自动化编辑、测试和发布配置，阅读[控制面 API 集成](/document/developer/developer-api-access)。
+
+<a id="endpoint-protocols" />
+## 选择 Endpoint 类型
+
+系统只提供两种 Endpoint。**两者都由 Runner 接收请求，经 Endpoint 绑定的已发布 Router 选择 Guardrail Version**；请求体不负责选择 Scanner 或 Guardrail。
+
+| 类型 | 适用场景 | 认证 | 调用与输出方式 |
+| --- | --- | --- | --- |
+| [LiteLLM](/document/developer/gateway-connect) | LiteLLM Provider、自研网关或 Agent | `x-api-key` | 同一 Call ID 关联输入／输出并固定版本；支持完整文本和 WebSocket 输出 |
+| [Scan（F5 兼容）](/document/developer/scan-protocol) | Python requests、curl、数据集评测 | Bearer Token | 每次独立路由；只支持完整文本，不关联两次扫描 |
+
+自研客户端也可实现 LiteLLM 契约，无需部署 LiteLLM。HTTP 是传输方式，不是另一种 Endpoint 类型。两种协议的 JSON、错误码和返回值分别以对应协议文档为准。
+
+<a id="endpoint-prepare" />
+## 准备运行时地址与凭据
+
+1. 确认目标 Guardrail Version 和 Router 已发布，配置已下发到 Runner，执行依赖就绪。
+2. 在 [Endpoints](/integration/endpoints) 为接入方创建独立 Endpoint，选择类型并绑定 Router。
+3. 保存只显示一次的完整凭据，从详情页复制 **Runner Service 运行时地址**；管理界面地址不是数据面地址。
+
+这里使用 Endpoint 凭据，不能使用 Controller 的个人 Access Token。Endpoint 身份来自凭据；请求体中的用户声明或 Header 不会自动成为可信身份。Router 只匹配对应 Adapter 提供的字段，身份 Header 应由可信代理验证，见 [Endpoint 与 Routing](/document/operator/operator-routing)。
 
 <a id="endpoint-litellm" />
-
 ## 连接 LiteLLM
 
 **TaskLattice Guard Provider** 已内置于 TaskLattice LiteLLM 镜像。
 
-1. 在 LiteLLM 管理界面打开 **Guardrails → Guardrail Garden → TaskLattice Guard → Create Guardrail**，在 Provider 流程中确认选择 **TaskLattice Guard**。
-2. 从 Endpoint 的**连接信息**复制 **Endpoint** 地址。**Secret** 使用创建时保存的完整凭据，不是密钥提示；如果已遗失，请生成新凭据。
-3. 至少选择一个检查点，确认下表中的设置，然后点击 **Verify & connect**。Provider 会在当前 LiteLLM 实例中立即保存并生效，无需重启。
-4. 通过 LiteLLM 发送真实模型请求，在 Endpoint 的**运行活动**中检查回调。
+1. 在 LiteLLM 管理界面打开 **Guardrails → Guardrail Garden → TaskLattice Guard → Create Guardrail**。
+2. 填入连接信息中的 **Endpoint** 地址和完整 **Secret**，选择检查点及下表设置，再点击 **Verify & connect**。Provider 在当前实例立即生效，无需重启。
+3. 发送真实模型输入与输出，在 Endpoint 的**运行活动**中核对回调。`/verify` 只验证凭据与 Adapter，不能证明检查链路可用。
 
-下列设置由 LiteLLM 执行；Endpoint 详情页不展示它们的实时配置值：
-
-| 设置 | 行为 |
+| Provider 设置 | 行为 |
 | --- | --- |
-| Inspection points | **Before model** 检查 Input；**After model** 检查 Output。可选择一项或两项。 |
-| Guard unavailable | 推荐默认选择 **Block request**。**Continue without protection** 仅在网络故障、超时以及 HTTP 502、503 或 504 时优先保证可用性；不会绕过策略阻止、HTTP 4xx 或 500，也不会放行无效的 Guard 响应。 |
+| Inspection points | **Before model** 检查输入；**After model** 检查输出。可选择一项或两项。 |
+| Guard unavailable | 默认 **Block request**。**Continue without protection** 仅适用于网络故障、超时及 HTTP 502、503、504；不会绕过策略阻止、4xx、500 或无效响应。 |
 | Runtime timeout | 1–60 秒，默认 10 秒。 |
-| Apply to every request | 默认开启；只有客户端会显式选择该 Guardrail 时才应关闭。 |
+| Apply to every request | 默认开启；只有客户端会显式选择该 Guardrail 时才关闭。 |
 
-对于流式 Output，Provider 会自动连接运行时 WebSocket；客户端继续使用普通 SSE。验证时应同时检查运行结果和客户端实际收到的文本。
+这些设置由 LiteLLM 执行，Endpoint 页面不展示其实时配置。流式输出由 Provider 自动连接 WebSocket，客户端继续使用 SSE。自研客户端直接按 [LiteLLM 协议](/document/developer/gateway-connect)实现。
 
-<a id="endpoint-adapters" />
+<a id="endpoint-scan" />
+## 连接 Scan（F5 兼容）
 
-## 连接 HTTP 与 A2A Adapter
+把 F5 测试脚本的 `CALYPSOAI_URL` 改为 Runner Service 根地址，`CALYPSOAI_TOKEN` 改为 Scan Endpoint 的完整凭据。脚本仍向 `/backend/v1/scans` 发送请求；Bearer 凭据识别 Endpoint，其 Router 选择 Guardrail。
 
-在 Endpoint 的**连接信息**中展开**连接详情与配置**，获取回调地址、流式地址、认证 Header、环境变量名和生成的配置。将该 Endpoint 的值复制到 Adapter 部署中，并按需重启或重新部署。
+按 [Scan 的 cURL 与 JSON 示例](/document/developer/scan-protocol#scan-connection)发送一次真实扫描即可验证连接，没有 `/verify`。核对脚本是否遵守文档中的兼容范围；项目选择、Scanner 配置及请求关联等占位字段均不生效。
 
-- 将完整凭据安全保存为 `TASKLATTICE_GUARD_API_KEY`，通过 `x-api-key` 发送。个人 Access Token 不能用于运行时检查。
-- 支持环境变量的接入方式可使用 `TASKLATTICE_GUARD_API_BASE` 指定 Endpoint 基础地址。生成配置推荐 Input 与 Output 检查、默认开启保护以及 fail-closed；Adapter 必须实际实现对应行为。
-- Input 与 Output 保持同一个 call ID，在交付前执行阻断或替换，并保留可信路由上下文。参见[运行时集成](/document/developer/developer-runtime)。
-- WebSocket Output 使用一条连接并遵守输入 credits，只交付服务端 `delta.text`，确认模型完成后再发送 `end`。遇到 block、error 或断连时取消上游；流不能恢复续传。参见[流式协议](/document/developer/gateway-stream)。
+<a id="endpoint-delivery" />
+## 在模型调用前后执行检查
+
+输入送检后执行阻断或替换，再由应用调用模型；输出先缓存并检查，再决定是否交付。Guard 检查提交的内容并记录证据，模型调用、重试、取消和最终交付由接入方负责。LiteLLM 流式客户端只交付服务端返回的 `delta.text`。
+
+HTTP `200` 或 Python `raise_for_status()` 成功不能作为放行依据：必须判断 LiteLLM 的 `action` 或 Scan 的 `result.outcome`。未知枚举、无效 JSON 和超时都不表示检查通过。**Fail Closed** 在未取得有效结果时停止业务；**Fail Open** 只处理明确允许降级的检查故障，不能把正常阻断、替换或 `flagged` 改为放行。
 
 <a id="endpoint-verification" />
+## 验证真实交付
 
-## 验证连接与实际交付
+用明确预期的样例，对照[运行日志](/logs)与应用实际收到的内容。**已发布**表示有可执行版本，**已下发**表示 Runner 接受配置；受到保护还要求客户端实际送检并执行结果。
 
-等待配置完成 Runner 下发后再连接。**Verify & connect** 检查就绪状态与认证；Endpoint 显示**已验证**还需要收到经过认证的回调。Input、Output 和流式最终检查的时间表示实际观测到的检查点；观测到一个检查点不代表其他检查点也已运行。
+| 验证项 | LiteLLM | Scan |
+| --- | --- | --- |
+| 认证与执行 | `/verify` 后发送真实输入／输出 | 直接发送 request／response 扫描 |
+| 返回处理 | 三种 action；替换数组数量与位置 | 四种 outcome；`flagOnly` 和 `verbose` 各种取值 |
+| 调用关联 | 同一 Call ID 固定版本，过期上下文失败 | 每次独立执行，占位字段不能建立关联 |
+| 输出交付 | 完整文本先检查；流式只交付服务端 delta | 等完整 JSON 返回后判断 outcome |
+| 故障处理 | 无效凭据、错误类型、过期上下文、断线、无效替换 | 无效凭据、错误类型、413／415／422、扫描失败及超时 |
 
-通过网关分别测试应放行、阻断和转换的内容，将[运行日志](/logs)与应用实际收到的结果对照。检查成功不等于调用方已经执行结果。参见[失败处理与上线检查](/document/developer/gateway-failures)。
-
-Adapter 将认证身份、HTTP、模型、LiteLLM、A2A 和配置的 SDK 字段归一化后供 Router 匹配。身份 Header 必须由可信代理验证；调用方自报字段不能建立可信身份。参见 [Endpoint 与 Routing](/document/operator/operator-routing)。
+Endpoint 显示**已验证**需要经过认证的检查流量；观测到一个方向不代表另一个方向已检查。评测应分开统计内容判定和执行故障，不能把故障当作检测成功。具体状态码及重试边界在各自协议中查阅。
 
 <a id="endpoint-credentials" />
-
 ## 轮换凭据或停用连接
 
-1. 点击**生成新凭据**，安全保存一次性完整值，并在离开前标记为已保存。
-2. 更新网关的 Secret，使用新凭据发送真实请求。
-3. 确认流量正常后撤销旧凭据。至少需要保留一个有效凭据。
+1. 点击**生成新凭据**，安全保存一次性完整值，并标记为已保存。
+2. 更新接入方：LiteLLM 使用 Secret／`x-api-key`，Scan 使用 Bearer Token；发送真实请求。
+3. 确认流量正常后撤销旧凭据，至少保留一个有效凭据。
 
-详情页只显示非敏感的密钥提示，无法找回已遗失的 Secret。关闭**接收回调**后，该 Endpoint 所有凭据认证的回调都会被拒绝。
+密钥提示不能还原 Secret。关闭**接收回调**后，该 Endpoint 所有凭据认证的检查请求都会被拒绝。

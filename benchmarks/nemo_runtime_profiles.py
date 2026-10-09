@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Compare NeMo runtime profiles through TaskLattice's public HTTP adapter.
+"""Compare NeMo runtime profiles through TaskLattice's internal version evaluation API.
 
 This is a release benchmark, not a pytest benchmark. It intentionally has no
-timing assertions: latency is reported for SLO review, while policy semantics
+Endpoint routing or timing assertions: latency is reported for SLO review, while policy semantics
 are compared exactly through privacy-safe SHA-256 digests.
 """
 
@@ -148,13 +148,12 @@ def load_manifest(path: Path) -> tuple[tuple[Target, ...], tuple[BenchmarkCase, 
             optional=True,
         )
         api_key_header = _string(
-            item.get("api_key_header", "x-api-key"),
+            item.get("api_key_header", "Authorization"),
             f"targets[{index}].api_key_header",
         )
         guardrail_version = _string(
             item.get("guardrail_version"),
             f"targets[{index}].guardrail_version",
-            optional=True,
         )
         targets.append(
             Target(
@@ -261,18 +260,14 @@ def request_payload(
     case: BenchmarkCase,
     text: str,
 ) -> dict[str, Any]:
-    payload: dict[str, Any] = {
-        "protocol": "http",
-        "input_type": case.input_type,
-        "output_scope": "full",
-    }
+    payload: dict[str, Any] = {}
     payload.update(base)
     payload.update(target.payload)
     payload.update(case.payload)
     payload.pop("content", None)
     payload["texts"] = [text]
     payload["input_type"] = case.input_type
-    payload["output_scope"] = "full"
+    payload["guardrail_version"] = target.guardrail_version
     return payload
 
 
@@ -286,7 +281,7 @@ def request_headers(target: Target) -> dict[str, str]:
                 f"Target {target.name!r} requires environment variable "
                 f"{target.api_key_env}."
             )
-        headers[target.api_key_header] = value
+        headers[target.api_key_header] = f"Bearer {value}" if target.api_key_header.casefold() == "authorization" else value
     return headers
 
 
