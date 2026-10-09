@@ -2,7 +2,3 @@
 .guard-protection-toolbar > .cds--search { flex: 1; min-inline-size: 0; max-inline-size: none; }
 .guard-protection-filters { display: flex; gap: 0.5rem; flex-shrink: 0; }
 .guard-protection-filters .guard-button { white-space: nowrap; }
-.guard-protection-toolbar .cds--search,
-.guard-protection-toolbar .cds--search-input,
-.guard-protection-toolbar .cds--search-close,
-.guard-protection-filters .guard-button { block-size: 3rem; min-block-size: 3rem; }

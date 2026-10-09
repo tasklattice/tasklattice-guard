@@ -12,14 +12,6 @@
 }
 .audit-search { display: flex; flex: 1; min-inline-size: 16rem; }
 .audit-search .cds--search { max-inline-size: none; }
-.audit-search .cds--search,
-.audit-search .cds--search-input,
-.audit-search .cds--search-close,
-.audit-time .cds--list-box,
-.audit-time .cds--list-box__field {
-  block-size: 3rem;
-  min-block-size: 3rem;
-}
 .audit-toolbar .guard-button { flex-shrink: 0; white-space: nowrap; }
 .audit-time { flex: 0 0 11rem; }
 .audit-filter-panel {

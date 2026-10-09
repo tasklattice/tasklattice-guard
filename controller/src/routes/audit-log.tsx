@@ -61,13 +61,13 @@ export function AuditLogPage() {
           <Search size="lg" labelText={t("auditLog.search")} placeholder={t("auditLog.search")} value={text}
             onChange={event => setText(event.target.value.slice(0, 300))} closeButtonLabelText={t("auditLog.clearSearch")}
             onClear={() => { setText(""); update({ q: "" }); }} />
-          <Button type="submit" variant="secondary">{t("auditLog.submitSearch")}</Button>
+          <Button type="submit" variant="secondary" size="lg">{t("auditLog.submitSearch")}</Button>
         </form>
         <div className="audit-time"><AuditFilter label={t("auditLog.windowFilter")} hideLabel value={search.window} items={["24h", "7d", "30d", "all"]} itemLabel={windowLabel} onChange={value => update({ window: value as AuditQuery["window"] })} /></div>
-        <Button variant={filtersOpen ? "secondary" : "ghost"} aria-expanded={filtersOpen} aria-controls={filterId} onClick={() => setFiltersOpen(!filtersOpen)}>
+        <Button variant={filtersOpen ? "secondary" : "ghost"} size="lg" aria-expanded={filtersOpen} aria-controls={filterId} onClick={() => setFiltersOpen(!filtersOpen)}>
           <Filter aria-hidden="true" />{t("auditLog.filters")}{extraCount ? ` (${extraCount})` : ""}
         </Button>
-        <Button variant="ghost" disabled={audit.isFetching} onClick={() => update({ before: new Date().toISOString() })}>
+        <Button variant="ghost" size="lg" disabled={audit.isFetching} onClick={() => update({ before: new Date().toISOString() })}>
           <RefreshCw aria-hidden="true" />{t("auditLog.refresh")}
         </Button>
       </div>

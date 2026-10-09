@@ -8,14 +8,6 @@
 .resource-list-toolbar > .cds--search { flex: 1; min-inline-size: 16rem; max-inline-size: none; }
 .resource-list-filter { flex: 0 0 13rem; border-inline-start: 1px solid var(--cds-border-subtle-01); }
 .resource-list-toolbar > .cds--btn { flex-shrink: 0; white-space: nowrap; }
-// Keep the rendered Carbon controls (including the search clear button) on
-// the same baseline; component size props alone do not size every inner field.
-.resource-list-toolbar > .cds--btn,
-.resource-list-toolbar > .cds--search,
-.resource-list-toolbar .cds--search-input,
-.resource-list-toolbar .cds--search-close,
-.resource-list-filter .cds--list-box,
-.resource-list-filter .cds--list-box__field { block-size: 3rem; min-block-size: 3rem; }
 .resource-list-summary { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-block-size: 3rem; padding-inline: 1rem; color: var(--cds-text-secondary); font-size: 0.75rem; }
 .resource-list .resource-table { table-layout: fixed; min-inline-size: 66rem; }
 .resource-list .resource-table th { white-space: nowrap; }

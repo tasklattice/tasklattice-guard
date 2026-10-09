@@ -112,8 +112,8 @@ export function GuardrailProtectionPicker({ policies, bindings, onChange, issueF
           <div className="guard-protection-toolbar">
             <Search id={`${prefix}-search`} size="lg" labelText={t("protection.wizard.search")} placeholder={t("protection.wizard.search")} value={query} closeButtonLabelText={t("resourceList.clearSearch")} onClear={() => setQuery("")} onChange={event => setQuery(event.target.value)} />
             <div role="group" aria-label={t("protection.wizard.search")} className="guard-protection-filters">
-              <Button variant={selectedOnly ? "outline" : "default"} aria-pressed={!selectedOnly} onClick={() => setSelectedOnly(false)}>{t("protection.wizard.all")}</Button>
-              <Button variant={selectedOnly ? "default" : "outline"} aria-pressed={selectedOnly} onClick={() => setSelectedOnly(true)}>{t("protection.wizard.selectedOnly", { count: selectedCount(section) })}</Button>
+              <Button variant={selectedOnly ? "outline" : "default"} size="lg" aria-pressed={!selectedOnly} onClick={() => setSelectedOnly(false)}>{t("protection.wizard.all")}</Button>
+              <Button variant={selectedOnly ? "default" : "outline"} size="lg" aria-pressed={selectedOnly} onClick={() => setSelectedOnly(true)}>{t("protection.wizard.selectedOnly", { count: selectedCount(section) })}</Button>
             </div>
           </div>
           <p className="text-xs leading-5 text-muted-foreground">{t("protection.wizard.sections.selectionHint")}</p>
