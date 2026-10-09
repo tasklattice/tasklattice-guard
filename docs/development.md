@@ -258,7 +258,7 @@ and a package key that is separate from the Artifact signing key:
 importing into production is a procedure (SOP), not a configuration. They differ
 only in package identity: `CONTROLLER_PACKAGE_TRUST_PATH` names a JSON file of trusted sources:
 `{"sources":[{"id","name","keys":[{"id","publicKeyPem"}],"reservedGuardrailIds":[]}]}`.
-**Guardrails → Create Guardrail → Import release package** uploads a package, shows the source, each version's
+**Guardrails → Create Guardrail ▾ (the arrow) → Import release package** uploads a package, shows the source, each version's
 test suite, new/existing/conflict state and a Runner load check, then
 imports only what is new. Imported Guardrails are read-only, and each imported
 version arrives **pending**. In the version list, **Run tests** runs the version's

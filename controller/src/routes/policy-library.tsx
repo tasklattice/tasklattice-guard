@@ -13,20 +13,19 @@ import {
   Download,
   FlaskConical,
   LoaderCircle,
-  Plus,
   Rocket,
   RotateCcw,
   Search,
   ShieldCheck,
   SlidersHorizontal,
   Trash2,
-  Upload,
   Workflow,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "@/components/ui/notifications";
 
 import { PolicyStudioSheet } from "@/components/policy-studio";
+import { CreateSplitButton } from "@/components/create-split-button";
 import { ConfirmationSheet } from "@/components/confirmation-sheet";
 import { EntitySheet } from "@/components/entity-sheet";
 import { ErrorNotice, InfoNotice, PageHeader } from "@/components/product-shell";
@@ -189,9 +188,10 @@ export function PolicyLibraryPage() {
         title={t("pages.policyLibrary.title")}
         description={t("pages.policyLibrary.description")}
         action={isAdmin ? (
-          <div className="flex shrink-0 flex-wrap gap-2">
-            <Button variant="outline" onClick={(event) => { studioOpenerRef.current = event.currentTarget; importInputRef.current?.click(); }}><Upload />{t("policyStudio.importPolicy")}</Button>
-            <Button onClick={(event) => { studioOpenerRef.current = event.currentTarget; setPolicyImport(null); setStudioPolicy(null); }}><Plus />{t("policyLibrary.newPolicy")}</Button>
+          <div className="shrink-0">
+            <CreateSplitButton label={t("policyLibrary.newPolicy")} importLabel={t("policyStudio.importPolicy")}
+              onCreate={(trigger) => { studioOpenerRef.current = trigger; setPolicyImport(null); setStudioPolicy(null); }}
+              onImport={(trigger) => { studioOpenerRef.current = trigger; importInputRef.current?.click(); }} />
             <input ref={importInputRef} hidden type="file" accept="application/json,.json" onChange={(event) => { const file = event.target.files?.[0]; if (file) void importPolicy(file); event.target.value = ""; }} />
           </div>
         ) : undefined}

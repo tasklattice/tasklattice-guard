@@ -48,7 +48,7 @@ The execution relationship for a custom Rule is **Policy Version → Rule (a Flo
 
 ## Create it in Policy Studio
 
-The current console provides **New Policy** in the [Policy Library](/policy-library), and requires administrator access. Work through these decisions:
+The current console provides **Create Policy** in the [Policy Library](/policy-library) (the arrow next to it holds **Import Policy**), and requires administrator access. Work through these decisions:
 
 1. **State its purpose and boundary**: explain what it detects, what it does not detect, choose a protection directory, and decide whether it runs on the input or output Rail.
 2. **Define a Flow and Rule**: custom Policies use Colang 2.x. The bound Flow name must match the source and produces stable Rule ID `flow/{rail}/{flow_name}`. Arbitrary Python upload is not supported.

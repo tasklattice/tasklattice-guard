@@ -34,8 +34,8 @@ included. Publish a version first if Export is disabled.
 The release package is a signed `.zip`. Each version carries its signed
 Artifact (frozen Policy implementations and compiled configuration) and its test
 suite, so it does not require Policy Library; test reports are not included.
-Import it in another Controller with **Create Guardrail → Import release
-package**. Imported versions arrive pending: run their own test suite there and
+Import it in another Controller from the arrow next to **Create Guardrail**:
+**Import release package**. Imported versions arrive pending: run their own test suite there and
 release them. Running a version still requires a compatible TaskLattice/NeMo
 runtime and the declared model capabilities, with credentials configured in the
 target environment.

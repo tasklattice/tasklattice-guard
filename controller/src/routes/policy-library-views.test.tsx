@@ -62,7 +62,7 @@ describe("One Policy list with a Usage filter", () => {
     // A released-only custom Policy can be inspected, not exported or deleted.
     const markerCard = screen.getByText("Marker").closest("article")!;
     expect(within(markerCard).queryByRole("button", { name: /policyLibrary.exportPolicyAria|policyLibrary.deletePolicyAria/ })).toBeNull();
-    for (const name of ["policyLibrary.newPolicy", "policyStudio.importPolicy"]) expect(screen.getByRole("button", { name })).toBeTruthy();
+    for (const name of ["policyLibrary.newPolicy", "common.moreCreateOptions"]) expect(screen.getByRole("button", { name })).toBeTruthy();
   });
 
   it("filters by whether a released Guardrail version uses the Policy", async () => {

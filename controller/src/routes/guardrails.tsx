@@ -16,7 +16,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { EventPagination, useEventCursor } from '@/components/event-pagination';
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { MenuButton, MenuItem, MenuItemDivider } from "@carbon/react";
-import { Activity, ArrowLeft, ArrowUpRight, Ban, ChevronDown, CircleAlert, FileText, FlaskConical, History, LoaderCircle, LockKeyhole, Pencil, Plus, RefreshCw, RotateCcw, Save, ScrollText, ShieldAlert, ShieldCheck, Trash2, Upload } from "lucide-react";
+import { CreateSplitButton } from "@/components/create-split-button";
+import { Activity, ArrowLeft, ArrowUpRight, Ban, ChevronDown, CircleAlert, FileText, FlaskConical, History, LoaderCircle, LockKeyhole, Pencil, Plus, RefreshCw, RotateCcw, Save, ScrollText, ShieldAlert, ShieldCheck, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "@/components/ui/notifications";
 
@@ -101,22 +102,14 @@ export function GuardrailsPage() {
   const query = useQuery(guardrailQueries.list());
   const [createOpen, setCreateOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
-  // Both sheets return focus to the menu button that opened them.
-  const createMenu = useRef<HTMLDivElement | null>(null);
-  const opener = useRef<HTMLButtonElement | null>(null);
-  const openFromMenu = (open: (value: boolean) => void) => {
-    opener.current = createMenu.current?.querySelector("button") ?? null;
-    open(true);
-  };
+  // Both sheets return focus to the control that opened them.
+  const opener = useRef<HTMLElement | null>(null);
   const guardrails = query.data?.items ?? [];
   const isAdmin = auth.user?.role === "admin";
-  // One entry, the same everywhere: author a Guardrail here or import a released one.
-  const actions = isAdmin ? <div ref={createMenu}>
-    <MenuButton label={t("guardrails.create")} kind="primary" size="lg" menuAlignment="bottom-end">
-      <MenuItem label={t("guardrails.createNew")} renderIcon={Plus} onClick={() => openFromMenu(setCreateOpen)} />
-      <MenuItem label={t("guardrailPackage.importPackage")} renderIcon={Upload} onClick={() => openFromMenu(setImportOpen)} />
-    </MenuButton>
-  </div> : undefined;
+  // The same entry in every environment: create here, or import a released package from the arrow.
+  const actions = isAdmin ? <CreateSplitButton label={t("guardrails.create")} importLabel={t("guardrailPackage.importPackage")}
+    onCreate={(trigger) => { opener.current = trigger; setCreateOpen(true); }}
+    onImport={(trigger) => { opener.current = trigger; setImportOpen(true); }} /> : undefined;
 
   return (
     <section className="py-8">

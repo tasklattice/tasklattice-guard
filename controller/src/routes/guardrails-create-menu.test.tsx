@@ -23,21 +23,19 @@ function mount() {
   vi.spyOn(api, "getGuardrails").mockResolvedValue({ items: [], count: 0 });
   render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><GuardrailsPage /></QueryClientProvider>);
 }
-async function choose(item: string) {
-  fireEvent.click(await screen.findByRole("button", { name: "guardrails.create" }));
-  fireEvent.click(await screen.findByRole("menuitem", { name: item }));
-}
-
 describe("Create Guardrail entry", () => {
-  it("offers a new Guardrail and an imported release package from one menu", async () => {
+  it("creates directly from the button", async () => {
     mount();
-    await choose("guardrails.createNew");
+    fireEvent.click(await screen.findByRole("button", { name: "guardrails.create" }));
     expect(await screen.findByRole("dialog", { name: "create-wizard" })).toBeTruthy();
   });
 
-  it("opens the release package import from the same menu", async () => {
+  it("keeps importing a release package behind the arrow, closed until asked", async () => {
     mount();
-    await choose("guardrailPackage.importPackage");
+    await screen.findByRole("button", { name: "guardrails.create" });
+    expect(screen.queryByRole("menuitem", { name: "guardrailPackage.importPackage" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "common.moreCreateOptions" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "guardrailPackage.importPackage" }));
     expect(await screen.findByRole("dialog", { name: "import-sheet" })).toBeTruthy();
   });
 

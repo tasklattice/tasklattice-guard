@@ -57,10 +57,12 @@ describe("Policy Library actual Studio opener", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { container } = render(<QueryClientProvider client={client}><PolicyLibraryPage /></QueryClientProvider>);
     for (const name of ["policyLibrary.newPolicy", "policyStudio.importPolicy"]) {
-      const opener = screen.getByRole("button", { name, exact: true });
+      // Import waits behind the arrow; focus returns to the control that opened it.
+      const opener = screen.getByRole("button", { name: name === "policyStudio.importPolicy" ? "common.moreCreateOptions" : name, exact: true });
       // Pointer clicks need not focus a button on macOS; do not pre-focus it.
       fireEvent.click(opener);
       if (name === "policyStudio.importPolicy") {
+        fireEvent.click(await screen.findByRole("menuitem", { name }));
         fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [{ text: async () => "{}" }] } });
       }
       const dialog = await screen.findByRole("dialog");

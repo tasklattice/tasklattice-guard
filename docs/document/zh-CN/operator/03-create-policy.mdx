@@ -48,7 +48,7 @@ npm run policies:export -- policies/custom/customer-information --output /tmp/cu
 
 ## 在 Policy Studio 创建
 
-当前控制台的“新建 Policy”入口位于 [Policy Library](/policy-library)，需要管理员权限。创建时按以下顺序核对：
+当前控制台的“创建 Policy”入口位于 [Policy Library](/policy-library)（按钮右侧箭头菜单中是“导入 Policy”），需要管理员权限。创建时按以下顺序核对：
 
 1. **说明用途与边界**：写清它检测什么、不检测什么，选择保护目录，并确定适用的输入或输出阶段（Rail）。
 2. **定义 Flow 和 Rule**：自定义 Policy 使用 Colang 2.x。Flow 名称必须与源码一致；绑定后形成稳定的 Rule ID `flow/{rail}/{flow_name}`。不支持上传任意 Python 作为执行逻辑。
