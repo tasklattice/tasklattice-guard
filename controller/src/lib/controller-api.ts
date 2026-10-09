@@ -175,6 +175,8 @@ export type GuardrailVersion = {
   origin?: "local" | "imported";
   /** Passed test run whose candidate this version publishes; absent on older versions. */
   validationRunId?: string | null;
+  /** Read-only description frozen with the version (names of its Policies and Rules). */
+  inspection?: { policies: Array<{ policyId: string; policyVersion: string; name: string }> } | null;
   environmentCheck?: EnvironmentCheck | null;
   provenance?: VersionProvenance | null;
 };
@@ -241,6 +243,20 @@ export type DeploymentCapabilities = {
 };
 
 export type SystemBaseline = { guardrailId: string; version: string | null; explicit: boolean };
+
+export type ReleasedPolicyUsage = {
+  guardrailId: string; guardrailName: string; guardrailVersion: string; origin: "local" | "imported"; sourceId: string | null;
+  latest: boolean; serving: boolean; enabledRuleIds: string[]; action: string | null; phases: string[];
+};
+export type ReleasedPolicyVersion = {
+  version: string; contentDigest: string | null; name: string; description: string;
+  rules: Array<{ id: string; name: string; action: string | null; phases: string[] }>; usage: ReleasedPolicyUsage[];
+};
+/** A Policy as released in this environment's Guardrail versions, grouped by Policy ID. */
+export type ReleasedPolicy = {
+  policyId: string; name: string; source: "built_in" | "custom"; serving: boolean;
+  versions: ReleasedPolicyVersion[]; conflictingVersions: string[];
+};
 
 export type GuardrailArtifact = {
   id: string;
@@ -512,6 +528,7 @@ export const previewControllerGuardrailPlan = (input: Pick<Guardrail, "name" | "
 export const updateControllerGuardrail = (id: string, input: Partial<Pick<Guardrail, "name" | "draftConfig" | "runtimeProfile">> & { expectedDraftRevision?: number }) => requestController<Guardrail>(`/api/v1/guardrails/${encodeURIComponent(id)}`, json("PATCH", input));
 export const publishControllerGuardrail = (id: string, expectedDraftRevision: number) => requestController<{ status: string; version: string }>(`/api/v1/guardrails/${encodeURIComponent(id)}/publish`, json("POST", { expectedDraftRevision }));
 export const markControllerGuardrailVersionActive = (id: string, version: string) => requestController<GuardrailVersion>(`/api/v1/guardrails/${encodeURIComponent(id)}/latest-version`, json("PUT", { version }));
+export const getReleasedPolicies = () => requestController<{ items: ReleasedPolicy[] }>("/api/v1/released-policies");
 export const getDeploymentCapabilities = () => requestController<DeploymentCapabilities>("/api/v1/deployment/capabilities");
 export const uploadGuardrailPackage = (file: File) => {
   const body = new FormData();

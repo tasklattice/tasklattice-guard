@@ -24,12 +24,13 @@ vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => false }));
 describe("ControlPlaneSidebar", () => {
   afterEach(() => { cleanup(); queryData.value = { items: [] }; });
 
-  it("hides authoring areas in an environment that only receives released Guardrails", () => {
+  it("hides authoring-only areas in an environment that only receives released Guardrails", () => {
     queryData.value = { items: [], authoringEnabled: false };
     render(<SidebarProvider><TooltipProvider><ControlPlaneSidebar /></TooltipProvider></SidebarProvider>);
     expect(screen.getByRole("link", { name: "Guardrails" })).toBeTruthy();
     expect(screen.queryByRole("link", { name: "Playground" })).toBeNull();
-    expect(screen.queryByRole("link", { name: "Policy Library" })).toBeNull();
+    // Policy Library stays: it lists the Policies of released versions there.
+    expect(screen.getByRole("link", { name: "Policy Library" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Routers" })).toBeTruthy();
   });
 

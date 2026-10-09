@@ -323,6 +323,7 @@ function mapVersionDetail(value: controllerApi.GuardrailVersion, guardrail: cont
       return {
         policy_id: stringValue(binding.policy_id) ?? "",
         policy_version: stringValue(binding.policy_version) ?? "",
+        policy_name: value.inspection?.policies.find((policy) => policy.policyId === binding.policy_id && policy.policyVersion === binding.policy_version)?.name ?? null,
         action: stringValue(binding.action),
         enabled_rule_ids: arrayOfStrings(binding.enabled_rule_ids),
         enabled_rails: arrayOfStrings(binding.enabled_rails).filter((rail): rail is "input" | "output" | "retrieval" | "dialog" | "execution" => ["input", "output", "retrieval", "dialog", "execution"].includes(rail)),

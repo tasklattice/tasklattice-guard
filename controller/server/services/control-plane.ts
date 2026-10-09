@@ -62,6 +62,7 @@ import { ConflictError, ControllerError, NotFoundError, ValidationError } from "
 import { buildGuardrailPlan, normalizeGuardrailDraft, type GuardrailDraftConfig } from "../domain/guardrail-plan.js";
 import type { DeletionImpact, RuntimeEventInput, ValidationCaseResult, ValidationMetrics, ValidationRuntimeFingerprint } from "../domain/models.js";
 import { guardrailInspection } from "../domain/guardrail-inspection.js";
+import { aggregateReleasedPolicies } from "../domain/released-policies.js";
 import { applyValidationOverrides, emptyValidationMetrics, generatedTestCases } from "../domain/validation.js";
 import { PolicyCatalog } from "../policy-catalog/catalog.js";
 import { customPolicyCompliance } from "../policy-catalog/compliance.js";
@@ -567,6 +568,28 @@ export class ControlPlaneService {
         validationFailureReason: validation?.failureReason ?? null,
       },
     };
+  }
+
+  /**
+   * Policies frozen in this environment's ready Guardrail versions, grouped by
+   * Policy ID. Read from version plans only, never from the Policy Library, so
+   * a receiving environment shows exactly what it can run.
+   */
+  async releasedPolicies() {
+    const rows = await this.db.select({
+      guardrailId: guardrailVersions.guardrailId, guardrailVersion: guardrailVersions.version, plan: guardrailVersions.plan,
+      origin: guardrailVersions.origin, guardrailName: guardrails.name, sourceId: guardrails.sourceId, latestVersion: guardrails.latestVersion,
+    }).from(guardrailVersions)
+      .innerJoin(guardrails, and(eq(guardrails.id, guardrailVersions.guardrailId), isNull(guardrails.deletedAt)))
+      .where(eq(guardrailVersions.status, "ready"));
+    const routers = await this.db.select({ activeSnapshot: trafficRouters.activeSnapshot }).from(trafficRouters).where(isNull(trafficRouters.deletedAt));
+    const serving = new Set(routers.flatMap(router => router.activeSnapshot?.routes.filter(route => route.enabled)
+      .flatMap(route => route.targets.filter(target => target.weightBps > 0).map(target => `${target.guardrailId}\u0000${target.guardrailVersion}`)) ?? []));
+    return { items: aggregateReleasedPolicies(rows.map(row => ({
+      guardrailId: row.guardrailId, guardrailName: row.guardrailName, guardrailVersion: row.guardrailVersion,
+      origin: row.origin, sourceId: row.sourceId, latest: row.latestVersion === row.guardrailVersion,
+      serving: serving.has(`${row.guardrailId}\u0000${row.guardrailVersion}`), plan: row.plan,
+    }))) };
   }
 
   async getGuardrail(id: string) {

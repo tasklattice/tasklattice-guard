@@ -38,6 +38,8 @@ import { PolicyCompliancePanel } from "@/components/policy-compliance";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { queryKeys } from "@/features/query-keys";
 import { useAuth } from "@/lib/auth";
+import { useDeploymentCapabilities } from "@/lib/deployment";
+import { ReleasedPoliciesPage } from "./released-policies";
 import { deleteProgrammablePolicy, getPolicies, getPolicy, type ProgrammablePolicy, type Policy, type PolicyRule, type PolicyTag } from "@/lib/api";
 import {
   parsePolicyPackage,
@@ -64,7 +66,18 @@ const JURISDICTION_FLAGS: Record<string, string> = {
   uae: "🇦🇪",
 };
 
+/**
+ * Where Policies are authored this is the editable Library. Elsewhere it shows
+ * the Policies frozen in released Guardrail versions and never calls a Library
+ * API, so it waits for the deployment capabilities before choosing.
+ */
 export function PolicyLibraryPage() {
+  const capabilities = useDeploymentCapabilities();
+  if (!capabilities.settled) return <section className="py-8"><CatalogSkeleton /></section>;
+  return capabilities.authoringEnabled ? <AuthoringPolicyLibrary /> : <ReleasedPoliciesPage />;
+}
+
+function AuthoringPolicyLibrary() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const searchParams = useSearch({ strict: false }) as { policy?: string; version?: string };

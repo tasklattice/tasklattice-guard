@@ -27,7 +27,8 @@ const navigation = [
     items: [
       { label: "nav.guardrails", to: "/guardrails", icon: ShieldCheck, count: "guardrails" },
       { label: "nav.playground", to: "/playground", icon: FlaskConical, authoring: true },
-      { label: "nav.policyLibrary", to: "/policy-library", icon: LibraryBig, authoring: true },
+      // Shows the released Policies where Guardrails are not authored.
+      { label: "nav.policyLibrary", to: "/policy-library", icon: LibraryBig },
     ],
   },
   {

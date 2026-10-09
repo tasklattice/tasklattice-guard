@@ -320,7 +320,7 @@ function PinnedPolicies({ bindings, page, onPageChange }: { bindings: GuardrailV
   return <section className="space-y-4"><p className="text-sm text-muted-foreground">{t("immutableVersions.policyDescription")}</p>
     {bindings.length ? <div className="border"><Table><TableHeader><TableRow><TableHead>{t("immutableVersions.policyVersion")}</TableHead><TableHead>{t("immutableVersions.rules")}</TableHead><TableHead>{t("immutableVersions.phases")}</TableHead><TableHead>{t("immutableVersions.behavior")}</TableHead></TableRow></TableHeader>
       <TableBody>{bindings.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).map(binding => <TableRow key={`${binding.policy_id}@${binding.policy_version}`}>
-        <TableCell className="whitespace-normal"><code className="break-all text-xs">{binding.policy_id}</code><p className="mt-1 font-mono text-xs text-muted-foreground">{binding.policy_version}</p></TableCell>
+        <TableCell className="whitespace-normal">{binding.policy_name ? <p className="text-sm font-medium">{binding.policy_name}</p> : null}<code className="break-all text-xs">{binding.policy_id}</code><p className="mt-1 font-mono text-xs text-muted-foreground">{binding.policy_version}</p></TableCell>
         <TableCell className="tabular-nums">{binding.enabled_rule_ids.length}</TableCell>
         <TableCell className="whitespace-normal text-xs">{binding.enabled_rails.join(" · ") || "—"}</TableCell>
         <TableCell className="whitespace-normal text-xs">{binding.action ?? t("guardrails.policyBehavior")}</TableCell>

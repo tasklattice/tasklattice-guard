@@ -232,6 +232,18 @@ const later = await runtime("input", `${marker}_V2`);
 assert.equal(later.body.decision, "allow", "The newer Library Policy did not leak into the released version.");
 report("prod-serves-released-content", { guardrailVersion: v2 });
 
+// Without a Policy Library, the Policy view is aggregated from released versions by Policy ID.
+const released = (await prod.call("/api/v1/released-policies")).items;
+const custom = released.find(item => item.policyId === policy.id);
+assert(custom, "The custom Policy of the imported Guardrail is listed by its Policy ID.");
+assert.equal(custom.source, "custom");
+assert.deepEqual(custom.versions.map(item => item.version), ["1"], "Production lists the version it received, not the Library's newer v2.");
+assert(custom.serving, "The routed version marks the Policy as serving.");
+assert(custom.versions[0].usage.some(item => item.guardrailId === guardrail.id && item.guardrailVersion === v2 && item.serving && item.sourceId === "bank-uat"));
+const networkPolicy = released.find(item => item.policyId === "local-network-addresses");
+assert.deepEqual(new Set(networkPolicy.versions[0].usage.filter(item => item.guardrailId === guardrail.id).map(item => item.guardrailVersion)), new Set([v1, v2]));
+report("prod-released-policies", { policies: released.length, custom: custom.policyId, versions: custom.versions.map(item => item.version) });
+
 // ---------------------------------------------------------------- negative cases
 const versionsBefore = await count(prodDb, "SELECT count(*) AS n FROM guardrail_version");
 const tampered = readZip(both, LIMITS);

@@ -564,6 +564,7 @@ export function createHttpApp(input: {
   });
 
   app.get("/api/v1/guardrails", authenticated, async (context) => context.json({ items: await input.service.listGuardrails() }));
+  app.get("/api/v1/released-policies", authenticated, async context => context.json(await input.service.releasedPolicies()));
   app.get("/api/v1/playground/models", authenticated, async (context) => {
     const playgroundModel = await currentPlaygroundModel();
     const items = playgroundModel ? [playgroundModel.descriptor] : [];

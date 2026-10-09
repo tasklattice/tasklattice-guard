@@ -62,6 +62,8 @@ export const routeCapabilities: ReadonlyArray<readonly [string, string, "core" |
   ["POST", "/api/v1/playground/guardrails/:guardrailId/interactions", "authoring"],
   // Guardrails: drafts, tests and publication are authoring; released versions are core.
   ["GET", "/api/v1/guardrails", "core"],
+  // Read-only Policies frozen in released versions; never the Library.
+  ["GET", "/api/v1/released-policies", "core"],
   ["POST", "/api/v1/guardrails", "authoring"],
   ["GET", "/api/v1/guardrails/:id", "core"],
   ["GET", "/api/v1/guardrails/:id/package", "core"],

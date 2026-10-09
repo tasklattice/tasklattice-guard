@@ -262,6 +262,7 @@ Library 表不作为导入依赖存储。多个版本可共享相同内容 blob�
 | 分发 | 默认池只额外预加载本地发布的版本；导入版本只在被 Router 引用时分发 | 与设计一致 |
 | 基线 | `controller_state.baseline_version` 显式指针；生产通过 `PUT /system/baseline` 或启动时基线包设置；UAT 未设置时跟随 Default 的 Latest | 产品随附基线包的构建流水线不在本期 |
 | 生产只读 | `CONTROLLER_AUTHORING_ENABLED=false`：路由按 core/authoring 分类，未分类路由默认拒绝；不加载 Catalog；模型覆盖改由已发布版本的 Evaluator 契约推导 | 与设计一致 |
+| 生产 Policy 库 | 关闭 authoring 时 Policy 库只读：按 Policy ID 聚合已发布 Guardrail 版本中冻结的定义；每个版本以 ID@版本 + 定义摘要区分，列出使用它的 Guardrail 版本与是否承接流量；同版本号不同内容分开展示并告警。新建、编辑、删除、测试、发布 Policy 均隐藏且 API 拒绝 | 名称只作展示，不作聚合键 |
 | 生产再导出 | 导入的版本不能从生产再导出 | 第三环境的信任链未实现 |
 | Runner 升级 | 版本与 Runner 不兼容时由加载检查和 Router 门禁阻止投入使用 | 新旧 Runner 池并行切换的升级流程未实现 |
 

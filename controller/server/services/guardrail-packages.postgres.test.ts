@@ -251,6 +251,18 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     await prod.trafficRouting.approveChange(router.id, change.id, "approver", {});
     const desired = await prod.desiredStateForPool("default");
     expect(desired.artifacts.map(item => [item.guardrailVersion, item.checksum])).toEqual([[version, expect.stringMatching(/^[0-9a-f]{64}$/)]]);
+
+    // Without a Policy Library, the Policies come from the imported versions.
+    const { items } = await prod.releasedPolicies();
+    const removed = items.find(policy => policy.versions.some(item => item.usage.some(use => use.guardrailVersion === published[0]) && !item.usage.some(use => use.guardrailVersion === version)));
+    expect(removed, "The first Policy only v1 still uses is listed, not serving.").toBeDefined();
+    expect(removed!.serving).toBe(false);
+    const serving = items.filter(policy => policy.serving);
+    expect(serving.length).toBeGreaterThan(0);
+    for (const policy of serving) {
+      expect(policy.versions[0]!.usage[0]).toMatchObject({ guardrailId, guardrailVersion: version, origin: "imported", sourceId: "bank-uat", serving: true });
+      expect(policy.versions[0]!.contentDigest).toMatch(/^[0-9a-f]{64}$/);
+    }
   });
 
   it("imports a Default only from an authorized source and switches the baseline explicitly", async () => {

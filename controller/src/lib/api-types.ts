@@ -517,6 +517,8 @@ export type GuardrailVersionDetail = GuardrailVersion & {
   policy_bindings: Array<{
     policy_id: string;
     policy_version: string;
+    /** Name frozen with the version; absent on versions published before snapshots. */
+    policy_name?: string | null;
     action: string | null;
     enabled_rule_ids: string[];
     enabled_rails: NativeRailType[];
