@@ -1,13 +1,12 @@
 #!/usr/bin/env node
 /**
- * Opt-in end-to-end Guardrail promotion regression across two isolated
- * deployments started by scripts/promotion-two-stacks.sh: UAT authors, tests,
- * publishes and exports; PROD (authoring disabled, no Policy Library) imports,
- * verifies, routes through an approved change and serves real traffic.
+ * Opt-in end-to-end Guardrail promotion regression across the two isolated
+ * Helm releases of the local promotion pair: UAT authors, tests, publishes and
+ * exports; PROD (authoring disabled, no Policy Library) imports, verifies,
+ * routes through an approved change and serves real traffic.
  *
- *   scripts/promotion-two-stacks.sh start
- *   eval "$(scripts/promotion-two-stacks.sh env)"
- *   cd controller && node --import tsx ../scripts/regress_guardrail_promotion.mjs
+ *   npm run helm:deploy:promotion   # releases tali-guard-uat and tali-guard-prod
+ *   npm run test:promotion          # sets the environment below and runs this
  *
  * Real HTTP, PostgreSQL, Runner validation, signing, import, Runner load
  * checks, Router approval and runtime evaluation. Model-free content only.
@@ -23,7 +22,7 @@ import { buildPackage, parsePackage } from "../controller/server/domain/guardrai
 import { readZip, writeZip } from "../controller/server/domain/zip.ts";
 
 const { Pool } = createRequire(new URL("../controller/package.json", import.meta.url))("pg");
-const env = key => { assert(process.env[key], `Set ${key} (eval "$(scripts/promotion-two-stacks.sh env)").`); return process.env[key]; };
+const env = key => { assert(process.env[key], `Set ${key}; run this through npm run test:promotion.`); return process.env[key]; };
 const work = env("GUARD_PROMOTION_WORKDIR");
 const runId = new Date().toISOString().replaceAll(/[:.]/g, "-");
 const report = (stage, detail = {}) => console.log(JSON.stringify({ runId, stage, ...detail }));

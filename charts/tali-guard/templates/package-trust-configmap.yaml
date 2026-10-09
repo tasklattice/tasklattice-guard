@@ -1,0 +1,14 @@
+{{- $trust := .Values.controller.promotion.trust }}
+{{- if and $trust.sources (not $trust.existingConfigMap) }}
+# Trusted release package sources, rendered from controller.promotion.trust.sources.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "tali-guard.packageTrustConfigMapName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "tali-guard.commonLabels" . | nindent 4 }}
+    app.kubernetes.io/component: controller
+data:
+  {{ $trust.key }}: {{ dict "sources" $trust.sources | toJson | quote }}
+{{- end }}

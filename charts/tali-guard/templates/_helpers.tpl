@@ -283,3 +283,13 @@ data:
   BETTER_AUTH_MIN_PASSWORD_LENGTH: {{ .Values.controller.auth.minPasswordLength | quote }}
   CONTROLLER_ALLOW_LOCAL_DEFAULT_CREDENTIALS: {{ .Values.controller.auth.allowLocalDefaultCredentials | quote }}
 {{- end }}
+
+{{/* Package trust ConfigMap: an existing one, or the chart's own from inline sources. */}}
+{{- define "tali-guard.packageTrustConfigMapName" -}}
+{{- $trust := .Values.controller.promotion.trust -}}
+{{- if $trust.existingConfigMap -}}
+{{- $trust.existingConfigMap -}}
+{{- else if $trust.sources -}}
+{{- printf "%s-package-trust" (include "tali-guard.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+{{- end -}}

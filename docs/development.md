@@ -277,17 +277,32 @@ runtime baseline (`PUT /api/v1/system/baseline`, or a startup package via
 **CLI.** `guardctl` supports `export <guardrail-id> [--versions=a,b] [--out=file]`
 and `import <file> [--versions=a,b] [--confirm]` (preview only without `--confirm`).
 
-**End-to-end check.** Two isolated local deployments and the full regression:
+**Local promotion pair (OrbStack).** Two Helm releases, each in its own
+namespace with its own database, Runner and keys:
+
+| Release | Namespace | Console | Runner | Values |
+| --- | --- | --- | --- | --- |
+| `tali-guard-uat` | `tali-uat` | http://localhost:38181 | :38182 | `values-dev.yaml` + `values-dev-uat.yaml` |
+| `tali-guard-prod` | `tali-prod` | http://127.0.0.1:38281 | :38282 | `values-dev.yaml` + `values-dev-prod.yaml` |
 
 ```bash
-scripts/promotion-two-stacks.sh start      # UAT :18080/:18091, PROD :28080/:28091
-eval "$(scripts/promotion-two-stacks.sh env)"
-cd controller && node --import tsx ../scripts/regress_guardrail_promotion.mjs
-scripts/promotion-two-stacks.sh stop       # or reset to drop both databases
+npm run helm:deploy:promotion   # build :promotion images, install or upgrade both
+npm run helm:status:promotion
+npm run test:promotion          # full end-to-end regression against the pair
+npm run helm:delete:promotion
 ```
 
-It needs a loopback PostgreSQL (`GUARD_PROMOTION_PG`, default
-`postgresql://guard:guard@127.0.0.1:55432`). Unit and PostgreSQL coverage:
+Every switch is a Helm value (`controller.promotion.*`): UAT enables authoring
+and package export; PROD disables authoring and lists its trusted sources in
+`controller.promotion.trust.sources`. Package keys are generated once into
+`.local-secrets/promotion/` (git-ignored): UAT's signing key becomes the
+`guard-package-signing` Secret, and the public keys become
+`prod-trust.values.yaml`, layered last on PROD. The images use their own tag,
+so the development release (`tali-guard` in `tali`) is unaffected. PROD uses
+`127.0.0.1` so the two consoles keep separate sign-ins in one browser; both use
+the development `admin` / `password` account.
+
+Unit and PostgreSQL coverage:
 `GUARD_TEST_POSTGRES_URL=... npx vitest run server/services/guardrail-packages.postgres.test.ts`.
 
 The independence contract tests physically omit `policy_library/` in fresh

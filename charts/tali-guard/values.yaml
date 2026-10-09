@@ -45,9 +45,12 @@ controller:
       keyId: ""
       existingSecret: ""
       privateKeyKey: private-key.pem
-    # Production: trusted package sources as JSON
-    # ({"sources":[{"id","name","keys":[{"id","publicKeyPem"}],"reservedGuardrailIds"}]}).
+    # Production: trusted package sources. List them in `sources` (public keys
+    # only; the chart renders the ConfigMap), or point existingConfigMap at a
+    # ConfigMap holding the same JSON:
+    # {"sources":[{"id","name","keys":[{"id","publicKeyPem"}],"reservedGuardrailIds"}]}.
     trust:
+      sources: []
       existingConfigMap: ""
       key: trust.json
     # Optional signed Default Guardrail package imported at startup; adopted as

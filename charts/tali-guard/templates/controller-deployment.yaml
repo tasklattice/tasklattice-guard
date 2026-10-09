@@ -17,6 +17,9 @@ spec:
     metadata:
       annotations:
         checksum/controller-config: {{ include "tali-guard.controllerConfig" . | sha256sum }}
+        {{- with .Values.controller.promotion.trust.sources }}
+        checksum/package-trust: {{ toJson . | sha256sum }}
+        {{- end }}
       {{- with .Values.rolloutRevision }}
         tasklattice.io/rollout-revision: {{ . | quote }}
       {{- end }}
@@ -95,7 +98,7 @@ spec:
             - { name: CONTROLLER_PACKAGE_SIGNING_KEY_ID, value: {{ .export.keyId | quote }} }
             {{- end }}
             {{- end }}
-            {{- if .trust.existingConfigMap }}
+            {{- if include "tali-guard.packageTrustConfigMapName" $ }}
             - { name: CONTROLLER_PACKAGE_TRUST_PATH, value: /etc/tasklattice/package-trust/trust.json }
             {{- end }}
             {{- if .baselinePackage.existingConfigMap }}
@@ -114,7 +117,7 @@ spec:
             {{- if .Values.controller.promotion.export.existingSecret }}
             - { name: package-signing, mountPath: /var/run/tasklattice/package-signing, readOnly: true }
             {{- end }}
-            {{- if .Values.controller.promotion.trust.existingConfigMap }}
+            {{- if include "tali-guard.packageTrustConfigMapName" . }}
             - { name: package-trust, mountPath: /etc/tasklattice/package-trust, readOnly: true }
             {{- end }}
             {{- if .Values.controller.promotion.baselinePackage.existingConfigMap }}
@@ -161,10 +164,10 @@ spec:
             items:
               - { key: {{ .export.privateKeyKey }}, path: private-key.pem }
         {{- end }}
-        {{- if .trust.existingConfigMap }}
+        {{- if include "tali-guard.packageTrustConfigMapName" $ }}
         - name: package-trust
           configMap:
-            name: {{ .trust.existingConfigMap }}
+            name: {{ include "tali-guard.packageTrustConfigMapName" $ }}
             items:
               - { key: {{ .trust.key }}, path: trust.json }
         {{- end }}

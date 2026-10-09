@@ -1139,6 +1139,36 @@ def test_receiving_environment_mounts_trust_and_baseline_read_only_without_autho
     assert volumes["package-trust"]["configMap"]["name"] == "guard-package-trust"
 
 
+def test_inline_trust_sources_render_the_chart_trust_config_map():
+    sources = [{"id": "bank-uat", "name": "Bank UAT", "keys": [{"id": "uat-2026", "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nkey\n-----END PUBLIC KEY-----\n"}],
+                "reservedGuardrailIds": ["guardrail-default"]}]
+    documents = render("--set", "controller.promotion.authoringEnabled=false", "--set-json", f"controller.promotion.trust.sources={json.dumps(sources)}")
+    config_map = next(doc for doc in documents if doc["kind"] == "ConfigMap" and doc["metadata"]["name"].endswith("-package-trust"))
+    assert json.loads(config_map["data"]["trust.json"]) == {"sources": sources}
+    spec = _controller(documents)
+    environment = {entry["name"]: entry.get("value") for entry in spec["containers"][0]["env"]}
+    assert environment["CONTROLLER_PACKAGE_TRUST_PATH"] == "/etc/tasklattice/package-trust/trust.json"
+    volumes = {volume["name"]: volume for volume in spec["volumes"]}
+    assert volumes["package-trust"]["configMap"]["name"] == config_map["metadata"]["name"]
+    # Changing who is trusted rolls the Controller.
+    deployment = next(doc for doc in documents if doc["kind"] == "Deployment" and doc["metadata"]["name"].endswith("controller"))
+    assert "checksum/package-trust" in deployment["spec"]["template"]["metadata"]["annotations"]
+    # Every source needs a name; the Controller refuses the file otherwise.
+    assert "name" in render_error("--set-json", 'controller.promotion.trust.sources=[{"id":"bank-uat","keys":[{"id":"k","publicKeyPem":"-----BEGIN PUBLIC KEY-----"}]}]')
+
+
+def test_local_promotion_pair_keeps_every_switch_in_its_values():
+    uat = render_dev("--values", str(CHART / "values-dev-uat.yaml"))
+    prod = render_dev("--values", str(CHART / "values-dev-prod.yaml"))
+    env = lambda documents: {entry["name"]: entry.get("value") for entry in _controller(documents)["containers"][0]["env"]}
+    assert env(uat)["CONTROLLER_AUTHORING_ENABLED"] == "true"
+    assert env(uat)["CONTROLLER_PACKAGE_SOURCE_ID"] == "bank-uat"
+    assert env(prod)["CONTROLLER_AUTHORING_ENABLED"] == "false"
+    assert "CONTROLLER_PACKAGE_SIGNING_KEY_PATH" not in env(prod)
+    ports = lambda documents: sorted(doc["spec"]["ports"][0]["port"] for doc in documents if doc["kind"] == "Service" and doc["spec"].get("type") == "LoadBalancer")
+    assert ports(uat) == [38181, 38182] and ports(prod) == [38281, 38282]
+
+
 def test_authoring_environment_signs_packages_with_a_separate_key_and_source_identity():
     spec = _controller(render(
         "--set", "controller.promotion.export.existingSecret=guard-package-signing",

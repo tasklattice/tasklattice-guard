@@ -1,0 +1,25 @@
+# Production of the local Guardrail promotion pair. Layer on values-dev.yaml:
+#   npm run helm:deploy:promotion
+# Receives released Guardrails only: authoring is off, so no Policy Library is
+# loaded and drafts, tests and publication are refused by the API. Navigation
+# and pages stay the same; they only drop authoring actions.
+#
+# Trusted package sources (controller.promotion.trust.sources) carry the UAT
+# public keys. The deploy command generates them into
+# .local-secrets/promotion/prod-trust.values.yaml and layers that file last.
+
+fullnameOverride: tali-guard-prod
+
+controller:
+  publicUrl:
+    - http://127.0.0.1:38281
+  service:
+    public:
+      port: 38281
+  promotion:
+    authoringEnabled: false
+
+runner:
+  service:
+    public:
+      port: 38282

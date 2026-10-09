@@ -1,0 +1,26 @@
+# UAT of the local Guardrail promotion pair. Layer on values-dev.yaml:
+#   npm run helm:deploy:promotion
+# Authors, tests and publishes Guardrails, and exports signed release packages.
+# The package signing key is a Secret the deploy command creates from
+# .local-secrets/promotion; it is never a Helm value.
+
+fullnameOverride: tali-guard-uat
+
+controller:
+  publicUrl:
+    - http://localhost:38181
+  service:
+    public:
+      port: 38181
+  promotion:
+    authoringEnabled: true
+    export:
+      sourceId: bank-uat
+      sourceName: Bank UAT
+      keyId: uat-2026
+      existingSecret: guard-package-signing
+
+runner:
+  service:
+    public:
+      port: 38182

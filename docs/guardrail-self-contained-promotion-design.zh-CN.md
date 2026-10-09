@@ -273,4 +273,4 @@ Library 表不作为导入依赖存储。多个版本可共享相同内容 blob�
 | 生产再导出 | 导入的版本不能从生产再导出 | 第三环境的信任链未实现 |
 | Runner 升级 | 版本与 Runner 不兼容时由加载检查和 Router 门禁阻止投入使用 | 新旧 Runner 池并行切换的升级流程未实现 |
 
-端到端验证：`scripts/promotion-two-stacks.sh start` 启动两套隔离部署（各自的数据库、签名密钥、Controller、Runner；生产无 Policy Library、关闭 authoring），`scripts/regress_guardrail_promotion.mjs` 覆盖：UAT 测试并发布候选、导出、Library 变化后重新导出逐字节一致、生产冷启动、导入与真实 Runner 加载检查、幂等重复上传、跨环境摘要一致而签名不同、通过加载检查的导入版本在路由前进入默认池且 Playground 不再被 authoring 拦截（草稿预览仍被拒绝）、第二位管理员批准变更单后承接真实流量、篡改/不可信签名/同版本不同内容/跨来源接管/保留 ID 均拒绝且不写入、缺失 Action 的版本可导入但不能路由、导入不改变基线以及显式切换基线。
+端到端验证：`npm run helm:deploy:promotion` 在 OrbStack 上部署两个 Helm release（`tali-guard-uat`、`tali-guard-prod`，各自的 namespace、数据库、签名密钥、Controller、Runner；生产关闭 authoring，信任源写在 `controller.promotion.trust.sources`），`npm run test:promotion` 运行 `scripts/regress_guardrail_promotion.mjs`，`scripts/regress_guardrail_promotion.mjs` 覆盖：UAT 测试并发布候选、导出、Library 变化后重新导出逐字节一致、生产冷启动、导入与真实 Runner 加载检查、幂等重复上传、跨环境摘要一致而签名不同、通过加载检查的导入版本在路由前进入默认池且 Playground 不再被 authoring 拦截（草稿预览仍被拒绝）、第二位管理员批准变更单后承接真实流量、篡改/不可信签名/同版本不同内容/跨来源接管/保留 ID 均拒绝且不写入、缺失 Action 的版本可导入但不能路由、导入不改变基线以及显式切换基线。

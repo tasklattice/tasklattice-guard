@@ -288,17 +288,32 @@ helm upgrade --install guard charts/tali-guard ... \
 ```
 
 Production only receives released Guardrails. It disables authoring at the API
-and trusts the UAT public key through a ConfigMap (changed through your normal
-change process):
+and lists the sources it trusts, with their public keys, in its values (changed
+through your normal change process); the chart renders them into a ConfigMap
+and rolls the Controller when they change:
 
-```bash
-kubectl create configmap guard-package-trust --from-file=trust.json
-helm upgrade --install guard charts/tali-guard ... \
-  --set controller.promotion.authoringEnabled=false \
-  --set controller.promotion.trust.existingConfigMap=guard-package-trust
+```yaml
+controller:
+  promotion:
+    authoringEnabled: false
+    trust:
+      sources:
+        - id: bank-uat
+          name: Bank UAT
+          keys:
+            - id: uat-2026
+              publicKeyPem: |
+                -----BEGIN PUBLIC KEY-----
+                ...
+                -----END PUBLIC KEY-----
+          reservedGuardrailIds: []
 ```
 
-`trust.json` is `{"sources":[{"id":"bank-uat","name":"Bank UAT","keys":[{"id":"uat-2026","publicKeyPem":"..."}],"reservedGuardrailIds":[]}]}`.
+To manage the file outside Helm instead, set
+`controller.promotion.trust.existingConfigMap` to a ConfigMap whose `trust.json`
+holds `{"sources":[...]}` in the same shape; it takes precedence over `sources`.
+`values-dev-uat.yaml` and `values-dev-prod.yaml` are a working local pair
+(`npm run helm:deploy:promotion`).
 List `guardrail-default` in `reservedGuardrailIds` only for the source allowed to
 supply the Default Guardrail. Optionally mount a signed Default package with
 `controller.promotion.baselinePackage.existingConfigMap` (binary key

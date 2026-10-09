@@ -50,6 +50,10 @@
     "helm:status": "node scripts/project-commands.mjs helm-status",
     "helm:test": "node scripts/project-commands.mjs helm-test",
     "helm:delete:dev": "node scripts/project-commands.mjs helm-delete",
+    "helm:deploy:promotion": "node scripts/project-commands.mjs promotion-deploy",
+    "helm:status:promotion": "node scripts/project-commands.mjs promotion-status",
+    "helm:delete:promotion": "node scripts/project-commands.mjs promotion-delete",
+    "test:promotion": "node scripts/project-commands.mjs promotion-test",
     "policies:regression": ".venv/bin/python scripts/policy_sources.py test --all --output output/policy-regression.json"
   },
   "devDependencies": {

@@ -1,6 +1,7 @@
 import { gitBuildInfo } from "./git-build-info.mjs";
 import { spawn } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { generateKeyPairSync } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -30,9 +31,9 @@ function litellmPinnedImage() {
 const litellmImage = () => env.LITELLM_IMAGE ?? litellmPinnedImage();
 const required = ['--set', 'database.existingSecret=guard-database', '--set', 'security.bootstrapAdmin.existingSecret=guard-bootstrap-admin', '--set', 'runner.callContextRedisUrl=redis://redis:6379/0'];
 
-function run(command, argv, quiet = false) {
+function run(command, argv, quiet = false, cwd = root) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, argv, { cwd: root, env, stdio: quiet ? ['inherit', 'ignore', 'inherit'] : 'inherit' });
+    const child = spawn(command, argv, { cwd, env, stdio: quiet ? ['inherit', 'ignore', 'inherit'] : 'inherit' });
     const forward = (signal) => child.kill(signal);
     const signals = ['SIGINT', 'SIGTERM'];
     const handlers = signals.map(signal => () => forward(signal));
@@ -68,6 +69,108 @@ async function deployGuard(debug, extra) {
     '--set-string', 'runner.image.tag=dev',
     '--set-string', `rolloutRevision=${env.HELM_ROLLOUT_REVISION ?? Date.now().toString()}`,
     '--wait', '--timeout', env.HELM_TIMEOUT ?? '5m', ...extra]);
+}
+// Local Guardrail promotion pair on OrbStack: UAT authors, tests, publishes and
+// exports; PROD only receives. Two releases in their own namespaces, each with
+// its own database and keys; every switch lives in the values overlays. Images
+// use their own tag so the development release keeps running what it runs.
+const promotion = {
+  tag: env.PROMOTION_IMAGE_TAG ?? 'promotion',
+  work: env.GUARD_PROMOTION_WORKDIR ?? `${root}.local-secrets/promotion`,
+  stacks: {
+    uat: { release: 'tali-guard-uat', namespace: 'tali-uat', values: `${chart}/values-dev-uat.yaml`, url: 'http://localhost:38181', runner: 'http://localhost:38182' },
+    // A different host keeps the two consoles' sign-in cookies apart in one browser.
+    prod: { release: 'tali-guard-prod', namespace: 'tali-prod', values: `${chart}/values-dev-prod.yaml`, url: 'http://127.0.0.1:38281', runner: 'http://127.0.0.1:38282' },
+  },
+};
+const promotionStacks = Object.values(promotion.stacks);
+function capture(command, argv) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, argv, { cwd: root, env, stdio: ['ignore', 'pipe', 'inherit'] });
+    let output = '';
+    child.stdout.on('data', chunk => { output += chunk; });
+    child.on('error', reject);
+    child.on('exit', code => code === 0 ? resolve(output) : reject(new Error(`${command} ${argv.join(' ')} exited with ${code}`)));
+  });
+}
+const secretValue = async (stack, name, key) => Buffer.from(await capture('kubectl', ['--context', context, '-n', stack.namespace, 'get', 'secret', name, '-o', `jsonpath={.data.${key.replaceAll('.', '\\.')}}`]), 'base64').toString();
+/** Package keys stay on this machine: UAT's signing key, plus the extra sources the regression signs with. */
+function promotionKeys() {
+  mkdirSync(`${promotion.work}/keys`, { recursive: true });
+  const pem = {};
+  for (const name of ['uat-package', 'other-package', 'system-package']) {
+    const path = `${promotion.work}/keys/${name}.pem`;
+    if (!existsSync(path)) {
+      const pair = generateKeyPairSync('ed25519');
+      writeFileSync(path, pair.privateKey.export({ type: 'pkcs8', format: 'pem' }), { mode: 0o600 });
+      writeFileSync(`${promotion.work}/keys/${name}.pub.pem`, pair.publicKey.export({ type: 'spki', format: 'pem' }));
+    }
+    pem[name] = readFileSync(`${promotion.work}/keys/${name}.pub.pem`, 'utf8');
+  }
+  return pem;
+}
+async function deployPromotion(extra) {
+  const pem = promotionKeys();
+  const { uat, prod } = promotion.stacks;
+  const signing = `${promotion.work}/uat-package-signing.json`;
+  writeFileSync(signing, JSON.stringify({ apiVersion: 'v1', kind: 'List', items: [
+    { apiVersion: 'v1', kind: 'Namespace', metadata: { name: uat.namespace } },
+    { apiVersion: 'v1', kind: 'Secret', type: 'Opaque', metadata: { name: 'guard-package-signing', namespace: uat.namespace },
+      stringData: { 'private-key.pem': readFileSync(`${promotion.work}/keys/uat-package.pem`, 'utf8') } },
+  ] }), { mode: 0o600 });
+  // Public keys only; JSON is valid YAML for --values.
+  const trust = `${promotion.work}/prod-trust.values.yaml`;
+  writeFileSync(trust, JSON.stringify({ controller: { promotion: { trust: { sources: [
+    { id: 'bank-uat', name: 'Bank UAT', keys: [{ id: 'uat-2026', publicKeyPem: pem['uat-package'] }] },
+    { id: 'bank-uat-b', name: 'Second UAT', keys: [{ id: 'uat-b', publicKeyPem: pem['other-package'] }] },
+    { id: 'bank-uat-system', name: 'UAT system baseline', keys: [{ id: 'system', publicKeyPem: pem['system-package'] }], reservedGuardrailIds: ['guardrail-default'] },
+  ] } } } }, null, 2));
+  const controllerImage = `${env.CONTROLLER_REPOSITORY ?? 'ghcr.io/tasklattice/tali-guard-controller'}:${promotion.tag}`;
+  const runnerImage = `${env.RUNNER_REPOSITORY ?? 'ghcr.io/tasklattice/tali-guard-runner'}:${promotion.tag}`;
+  if (env.PROMOTION_SKIP_IMAGES !== '1') {
+    env.CONTROLLER_IMAGE = controllerImage;
+    env.RUNNER_IMAGE = runnerImage;
+    await images();
+  }
+  await run('kubectl', ['--context', context, 'apply', '-f', signing]);
+  for (const [stack, values] of [[uat, [uat.values]], [prod, [prod.values, trust]]]) {
+    await run('bash', ['scripts/helm-upgrade.sh', stack.release, chart, context, stack.namespace,
+      '--values', devValues, ...values.flatMap(file => ['--values', file]),
+      '--set', `controller.image.repository=${controllerImage.slice(0, controllerImage.lastIndexOf(':'))}`, '--set-string', `controller.image.tag=${promotion.tag}`,
+      '--set', `runner.image.repository=${runnerImage.slice(0, runnerImage.lastIndexOf(':'))}`, '--set-string', `runner.image.tag=${promotion.tag}`,
+      '--set-string', `rolloutRevision=${env.HELM_ROLLOUT_REVISION ?? Date.now().toString()}`,
+      '--wait', '--timeout', env.HELM_TIMEOUT ?? '8m', ...extra]);
+  }
+  console.log(`UAT  ${uat.url}  (release ${uat.release}, namespace ${uat.namespace})`);
+  console.log(`PROD ${prod.url}  (release ${prod.release}, namespace ${prod.namespace})`);
+  console.log('Sign in to either with admin / password.');
+}
+/** End-to-end promotion regression against the deployed pair, through port-forwards to each database. */
+async function testPromotion(extra) {
+  const forwards = [];
+  try {
+    const databases = {};
+    for (const [name, stack, port] of [['UAT', promotion.stacks.uat, 55481], ['PROD', promotion.stacks.prod, 55482]]) {
+      const fullname = stack.release;
+      const password = await secretValue(stack, `${fullname}-postgresql`, 'password');
+      const forward = spawn('kubectl', ['--context', context, '-n', stack.namespace, 'port-forward', `svc/${fullname}-postgresql`, `${port}:5432`], { stdio: 'ignore' });
+      forwards.push(forward);
+      databases[name] = `postgresql://guard:${encodeURIComponent(password)}@127.0.0.1:${port}/guard`;
+    }
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    Object.assign(env, {
+      GUARD_PROMOTION_WORKDIR: promotion.work,
+      GUARD_PROMOTION_UAT_URL: promotion.stacks.uat.url, GUARD_PROMOTION_UAT_RUNNER_URL: promotion.stacks.uat.runner,
+      GUARD_PROMOTION_PROD_URL: promotion.stacks.prod.url, GUARD_PROMOTION_PROD_RUNNER_URL: promotion.stacks.prod.runner,
+      GUARD_PROMOTION_UAT_DB: databases.UAT, GUARD_PROMOTION_PROD_DB: databases.PROD,
+      GUARD_PROMOTION_UAT_EMAIL: 'admin@tasklattice.local', GUARD_PROMOTION_PROD_EMAIL: 'admin@tasklattice.local', GUARD_PROMOTION_PASSWORD: env.GUARD_PROMOTION_PASSWORD ?? 'password',
+      GUARD_PROMOTION_RUNNER_TOKEN: await secretValue(promotion.stacks.prod, `${promotion.stacks.prod.release}-control`, 'runner-token'),
+    });
+    mkdirSync(`${promotion.work}/packages`, { recursive: true });
+    await run(process.execPath, ['--import', 'tsx', '../scripts/regress_guardrail_promotion.mjs', ...extra], false, `${root}controller`);
+  } finally {
+    forwards.forEach(forward => forward.kill());
+  }
 }
 async function deployLitellm(extra) {
   const image = litellmImage();
@@ -122,6 +225,17 @@ try {
       await run('kubectl', ['--context', context, '--namespace', namespace, 'get', 'pods,deploy,statefulset,service', '--selector', 'app.kubernetes.io/part-of=tasklattice-guard']); break;
     case 'helm-test': await run('helm', ['test', release, '--kube-context', context, '--namespace', namespace, '--logs', ...args]); break;
     case 'helm-delete': await run('helm', ['uninstall', release, '--kube-context', context, '--namespace', namespace, ...args]); break;
+    case 'promotion-deploy': await deployPromotion(args); break;
+    case 'promotion-test': await testPromotion(args); break;
+    case 'promotion-status':
+      for (const stack of promotionStacks) {
+        await run('helm', ['status', stack.release, '--kube-context', context, '--namespace', stack.namespace, ...args]);
+        await run('kubectl', ['--context', context, '--namespace', stack.namespace, 'get', 'pods,service', '--selector', `app.kubernetes.io/instance=${stack.release}`]);
+      }
+      break;
+    case 'promotion-delete':
+      for (const stack of promotionStacks) await run('helm', ['uninstall', stack.release, '--kube-context', context, '--namespace', stack.namespace, ...args]);
+      break;
     case 'test-contracts':
       await run(process.execPath, ['--test', 'scripts/project-commands.test.mjs']);
       await run('.venv/bin/python', ['scripts/generate_control_protocol.py', '--check']);
