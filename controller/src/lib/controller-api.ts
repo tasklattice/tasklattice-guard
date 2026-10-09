@@ -237,7 +237,6 @@ export type PackagePreview = {
 export type PackageImportResult = { guardrailId: string; imported: string[]; existing: string[] };
 
 export type DeploymentCapabilities = {
-  authoringEnabled: boolean;
   packageExport: { available: boolean; sourceId: string | null };
   packageImport: { available: boolean };
 };

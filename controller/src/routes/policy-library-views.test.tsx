@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as api from "@/lib/api";
 import type { Policy } from "@/lib/api";
-import { getDeploymentCapabilities, getReleasedPolicies, type ReleasedPolicy } from "@/lib/controller-api";
+import { getReleasedPolicies, type ReleasedPolicy } from "@/lib/controller-api";
 import { PolicyLibraryPage } from "./policy-library";
 
 vi.mock("react-i18next", () => ({
@@ -16,7 +16,7 @@ vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => vi.fn(), useSearch: () => ({}),
 }));
 vi.mock("@/lib/auth", () => ({ useAuth: () => ({ user: { role: "admin" } }) }));
-vi.mock("@/lib/controller-api", async original => ({ ...(await original<typeof import("@/lib/controller-api")>()), getReleasedPolicies: vi.fn(), getDeploymentCapabilities: vi.fn() }));
+vi.mock("@/lib/controller-api", async original => ({ ...(await original<typeof import("@/lib/controller-api")>()), getReleasedPolicies: vi.fn() }));
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.clearAllMocks(); });
 
 function definition(id: string, version: string, name: string, extra: Partial<Policy> = {}): Policy {
@@ -39,17 +39,21 @@ const marker: ReleasedPolicy = { policyId: "policy-123", name: "Marker", source:
       test_cases: [{ id: "release/1", name: "Blocks the marker", description: "", phase: "input", content: "", expected_decision: "block", covered_rule_ids: [], group: "Policy validation", kind: "scenario", required: true, parameter_names: [] }] as Policy["test_cases"], test_count: 1 }) },
 ] };
 
-function mount(authoringEnabled: boolean) {
-  vi.mocked(getDeploymentCapabilities).mockResolvedValue({ authoringEnabled, packageExport: { available: false, sourceId: null }, packageImport: { available: true } });
+function mount(view: "library" | "released") {
   vi.mocked(getReleasedPolicies).mockResolvedValue({ items: [network, marker] });
   const library = vi.spyOn(api, "getPolicies").mockResolvedValue({ items: [], count: 0 });
   render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><PolicyLibraryPage /></QueryClientProvider>);
+  if (view === "released") {
+    const tab = screen.getByRole("tab", { name: "releasedPolicies.releasedTab" });
+    fireEvent.mouseDown(tab);
+    fireEvent.click(tab);
+  }
   return library;
 }
 
-describe("Policy Library where Policies are not authored", () => {
-  it("lists released Policies with the Library's cards and filters, without authoring actions or a Library API", async () => {
-    const library = mount(false);
+describe("Policies in released versions", () => {
+  it("lists released Policies with the Library's cards and filters, read only", async () => {
+    mount("released");
     const catalog = await screen.findByLabelText("policyLibrary.catalogLabel");
     expect(within(catalog).getAllByRole("article")).toHaveLength(2);
     expect(within(catalog).getByText("Network addresses")).toBeTruthy();
@@ -61,11 +65,10 @@ describe("Policy Library where Policies are not authored", () => {
     expect(screen.getByText("releasedPolicies.description")).toBeTruthy();
     for (const name of ["policyLibrary.newPolicy", "policyStudio.importPolicy"]) expect(screen.queryByRole("button", { name })).toBeNull();
     expect(screen.queryByRole("button", { name: /policyLibrary.exportPolicyAria|policyLibrary.deletePolicyAria/ })).toBeNull();
-    expect(library).not.toHaveBeenCalled();
   });
 
   it("opens the Library's detail, read only, with every released version and the Guardrail versions using it", async () => {
-    mount(false);
+    mount("released");
     const card = (await screen.findByText("Network addresses")).closest("article")!;
     fireEvent.click(within(card).getByRole("button", { name: /policyLibrary.inspectPolicy/ }));
     const sheet = await screen.findByRole("dialog");
@@ -82,7 +85,7 @@ describe("Policy Library where Policies are not authored", () => {
   });
 
   it("says a released custom Policy keeps test names, not inputs", async () => {
-    mount(false);
+    mount("released");
     const card = (await screen.findByText("Marker")).closest("article")!;
     fireEvent.click(within(card).getByRole("button", { name: /policyLibrary.inspectPolicy/ }));
     const sheet = await screen.findByRole("dialog");
@@ -93,9 +96,10 @@ describe("Policy Library where Policies are not authored", () => {
     expect(within(sheet).getByText("releasedPolicies.testInputNotReleased")).toBeTruthy();
   });
 
-  it("keeps the editable Library where Policies are authored", async () => {
-    const library = mount(true);
+  it("opens on the editable Library and reads released definitions only in their own view", async () => {
+    const library = mount("library");
     await vi.waitFor(() => expect(library).toHaveBeenCalled());
+    expect(screen.getByRole("tab", { name: "releasedPolicies.libraryTab" }).getAttribute("aria-selected")).toBe("true");
     expect(getReleasedPolicies).not.toHaveBeenCalled();
   });
 });

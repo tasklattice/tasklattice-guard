@@ -1,5 +1,6 @@
 export const releasedPoliciesEn = {
-  description: "Read only. Policies frozen in the Guardrail versions released to this environment, grouped by Policy ID. They are created and changed only in the authoring environment.",
+  description: "Read only. The Policy definitions frozen in this environment's released Guardrail versions, local and imported, grouped by Policy ID. A released definition can differ from the Library's current version and never changes.",
+  views: "Policy views", libraryTab: "Library", releasedTab: "In released versions",
   tab: "Releases",
   status: "Status",
   serving: "Serving traffic", released: "Released only",
@@ -7,7 +8,7 @@ export const releasedPoliciesEn = {
   conflict: "Version {{versions}} was released with different content",
   conflictDetail: "Two releases carry the same version number with different definitions. They are listed separately and never merged.",
   empty: "No released Policies yet",
-  emptyDescription: "Import a Guardrail release package; the Policies its versions use appear here.",
+  emptyDescription: "Publish or import a Guardrail version; the Policies it uses appear here.",
   readOnlyNotice: "These are frozen copies inside released Guardrail versions. Nothing here reads or changes a Policy Library.",
   testInputNotReleased: "The release keeps this test's name and expected decision, not its input.",
   versionTitle: "Version {{version}}",
@@ -21,7 +22,8 @@ export const releasedPoliciesEn = {
 };
 
 export const releasedPoliciesZh: typeof releasedPoliciesEn = {
-  description: "只读。按 Policy ID 聚合本环境已发布 Guardrail 版本中冻结的 Policy。Policy 只能在编写环境中创建和修改。",
+  description: "只读。按 Policy ID 聚合本环境已发布 Guardrail 版本（包括本地发布和导入）中冻结的 Policy 定义。它可能与 Library 中的当前版本不同，且永不改变。",
+  views: "Policy 视图", libraryTab: "Library", releasedTab: "已发布版本中的 Policy",
   tab: "发布",
   status: "状态",
   serving: "承接流量", released: "仅已发布",
@@ -29,7 +31,7 @@ export const releasedPoliciesZh: typeof releasedPoliciesEn = {
   conflict: "版本 {{versions}} 存在内容不同的发布",
   conflictDetail: "两次发布使用了相同的版本号，但定义不同。它们分开列出，绝不合并。",
   empty: "尚无已发布的 Policy",
-  emptyDescription: "导入 Guardrail 发布包后，其版本使用的 Policy 会显示在这里。",
+  emptyDescription: "发布或导入 Guardrail 版本后，其使用的 Policy 会显示在这里。",
   readOnlyNotice: "这些是已发布 Guardrail 版本中的冻结副本。这里不会读取或修改任何 Policy 库。",
   testInputNotReleased: "发布中只保留该测试的名称和预期结果，不包含测试输入。",
   versionTitle: "版本 {{version}}",

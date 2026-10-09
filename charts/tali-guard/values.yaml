@@ -33,10 +33,9 @@ controller:
     limits:
       memory: 1Gi
   # Guardrail promotion between isolated environments (UAT -> production).
+  # Every installation has the same features; these only configure the
+  # identity that signs exported packages and the sources trusted on import.
   promotion:
-    # false for an environment that only receives released Guardrails: no
-    # Policy Library, drafts, tests or publication. Enforced by the API.
-    authoringEnabled: true
     # UAT: source identity and Ed25519 key that sign exported release
     # packages. Keep this key separate from the Artifact signing key.
     export:

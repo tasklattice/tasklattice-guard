@@ -89,7 +89,6 @@ spec:
               valueFrom: { secretKeyRef: { name: {{ include "tali-guard.bootstrapAdminSecretName" . }}, key: {{ .Values.security.bootstrapAdmin.nameKey }} } }
             - { name: CONTROLLER_ARTIFACT_SIGNING_KEY_PATH, value: /var/run/tasklattice/artifact/private-key.pem }
             {{- with .Values.controller.promotion }}
-            - { name: CONTROLLER_AUTHORING_ENABLED, value: {{ ternary "true" "false" (ne .authoringEnabled false) | quote }} }
             {{- if .export.existingSecret }}
             - { name: CONTROLLER_PACKAGE_SOURCE_ID, value: {{ required "controller.promotion.export.sourceId is required with an export key" .export.sourceId | quote }} }
             - { name: CONTROLLER_PACKAGE_SOURCE_NAME, value: {{ default .export.sourceId .export.sourceName | quote }} }

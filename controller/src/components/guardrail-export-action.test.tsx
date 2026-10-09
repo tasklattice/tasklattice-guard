@@ -17,7 +17,7 @@ afterEach(() => { cleanup(); vi.clearAllMocks(); auth.user.role = "admin"; });
 const NEWEST = "20261007-010000.000Z", OLDER = "20261001-010000.000Z", LEGACY = "20260901-010000.000Z";
 const version = (id: string, extra: Record<string, unknown> = {}) => ({ version: id, status: "ready", artifactId: `artifact-${id}`, validationRunId: `run-${id}`, createdAt: "2026-10-07T01:00:00.000Z", ...extra });
 beforeEach(() => {
-  vi.mocked(getDeploymentCapabilities).mockResolvedValue({ authoringEnabled: true, packageExport: { available: true, sourceId: "bank-uat" }, packageImport: { available: false } });
+  vi.mocked(getDeploymentCapabilities).mockResolvedValue({ packageExport: { available: true, sourceId: "bank-uat" }, packageImport: { available: false } });
   vi.mocked(getControllerGuardrail).mockResolvedValue({ id: "guard-1",
     versions: [version("20261008-010000.000Z", { status: "failed", artifactId: null }), version(NEWEST), version(OLDER), version(LEGACY, { validationRunId: null })] } as never);
 });
@@ -86,7 +86,7 @@ describe("Guardrail release package export", () => {
   });
 
   it("says so when this environment cannot sign packages", async () => {
-    vi.mocked(getDeploymentCapabilities).mockResolvedValue({ authoringEnabled: true, packageExport: { available: false, sourceId: null }, packageImport: { available: false } });
+    vi.mocked(getDeploymentCapabilities).mockResolvedValue({ packageExport: { available: false, sourceId: null }, packageImport: { available: false } });
     open();
     const dialog = await sheet();
     expect(await within(dialog).findByText("guardrailPackage.exportUnavailable")).toBeTruthy();

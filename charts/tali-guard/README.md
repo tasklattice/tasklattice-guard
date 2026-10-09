@@ -287,15 +287,14 @@ helm upgrade --install guard charts/tali-guard ... \
   --set controller.promotion.export.keyId=uat-2026
 ```
 
-Production only receives released Guardrails. It disables authoring at the API
-and lists the sources it trusts, with their public keys, in its values (changed
-through your normal change process); the chart renders them into a ConfigMap
-and rolls the Controller when they change:
+Production has the same features as UAT; promotion by import is a matter of
+procedure, not configuration. It lists the sources it trusts, with their public
+keys, in its values (changed through your normal change process); the chart
+renders them into a ConfigMap and rolls the Controller when they change:
 
 ```yaml
 controller:
   promotion:
-    authoringEnabled: false
     trust:
       sources:
         - id: bank-uat

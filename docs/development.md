@@ -252,27 +252,27 @@ and a package key that is separate from the Artifact signing key:
 `CONTROLLER_PACKAGE_SOURCE_ID`, `CONTROLLER_PACKAGE_SOURCE_NAME`,
 `CONTROLLER_PACKAGE_SIGNING_KEY_PATH`, optional `CONTROLLER_PACKAGE_SIGNING_KEY_ID`.
 
-**Import (production).** `CONTROLLER_AUTHORING_ENABLED=false` disables Policy
-Library writes, drafts, tests, publication and draft playgrounds at the API (403
-`authoring_disabled`); the Controller then never loads the catalog. Navigation
-and page layouts stay the same; pages only drop their authoring actions.
-`CONTROLLER_PACKAGE_TRUST_PATH` names a JSON file of trusted sources:
+**Import (production).** UAT and production have exactly the same features;
+importing into production is a procedure (SOP), not a configuration. They differ
+only in package identity: `CONTROLLER_PACKAGE_TRUST_PATH` names a JSON file of trusted sources:
 `{"sources":[{"id","name","keys":[{"id","publicKeyPem"}],"reservedGuardrailIds":[]}]}`.
-**Guardrails → Import** uploads a package, shows the source, each version's
+**Guardrails → Create Guardrail → Import release package** uploads a package, shows the source, each version's
 source test result, new/existing/conflict state and a Runner load check, then
 imports only what is new. Imported Guardrails are read-only. Routing an imported
 version requires a recent passing load check on every pool; a Router change is
 refused otherwise. An imported version whose load check passed is also held by
 the default pool, so **Playground** can talk to it before any Router serves it.
-**Policy Library** there is read only, with the same cards, filters and detail
-drawer: it aggregates the Policies frozen in released Guardrail versions by
-Policy ID (`GET /api/v1/released-policies`); the drawer's Releases tab lists
-each version with its definition digest and the Guardrail versions using it,
-marks what serves traffic, and keeps one version number released with different
-content as separate entries. It never reads or writes a Library. The Default Guardrail's version is chosen explicitly as the
-runtime baseline (`PUT /api/v1/system/baseline`, or a startup package via
-`CONTROLLER_BASELINE_PACKAGE_PATH`); until then status is `degraded` with
-`baseline_not_configured`.
+**Policy Library → In released versions** is read only, with the same cards,
+filters and detail drawer as the Library tab: it aggregates the Policies frozen
+in released Guardrail versions, local and imported, by Policy ID
+(`GET /api/v1/released-policies`); the drawer's Releases tab lists each version
+with its definition digest and the Guardrail versions using it, marks what
+serves traffic, and keeps one version number released with different content as
+separate entries. The runtime baseline is a pinned Default version: an
+installation adopts its first published Default version, and every later switch
+is explicit (`PUT /api/v1/system/baseline`, or a startup package via
+`CONTROLLER_BASELINE_PACKAGE_PATH`). A source authorized for `guardrail-default`
+can add versions to the local Default.
 
 **CLI.** `guardctl` supports `export <guardrail-id> [--versions=a,b] [--out=file]`
 and `import <file> [--versions=a,b] [--confirm]` (preview only without `--confirm`).
@@ -292,9 +292,9 @@ npm run test:promotion          # full end-to-end regression against the pair
 npm run helm:delete:promotion
 ```
 
-Every switch is a Helm value (`controller.promotion.*`): UAT enables authoring
-and package export; PROD disables authoring and lists its trusted sources in
-`controller.promotion.trust.sources`. Package keys are generated once into
+The two releases have the same features; their values differ only in package
+identity (`controller.promotion.*`): UAT signs exports as `bank-uat`, PROD lists
+its trusted sources in `controller.promotion.trust.sources`. Package keys are generated once into
 `.local-secrets/promotion/` (git-ignored): UAT's signing key becomes the
 `guard-package-signing` Secret, and the public keys become
 `prod-trust.values.yaml`, layered last on PROD. The images use their own tag,

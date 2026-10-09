@@ -759,7 +759,7 @@ const resources = {
       pages: {
         guardrails: { eyebrow: "Governance / Guardrails", title: "Guardrails" },
         policyLibrary: { eyebrow: "Guardrail Design / Policy Library", title: "Policy Library", description: "Discover reusable business Policies by protection category, framework, and jurisdiction, then inspect their Rules and executable Test Cases." },
-        playground: { eyebrow: "Home / Playground", title: "Playground", description: "Chat with a real model through a published Guardrail Version or a temporary Draft preview, then inspect how every request and response is protected.", releasedDescription: "Chat with a real model through a released Guardrail Version, then inspect how every request and response is protected." },
+        playground: { eyebrow: "Home / Playground", title: "Playground", description: "Chat with a real model through a published Guardrail Version or a temporary Draft preview, then inspect how every request and response is protected." },
         validation: { eyebrow: "Build & test / Testing", title: "Testing", description: "Check Guardrail Rule behavior with test inputs and expected results, and review previous Testing Reports." },
         routers: {
           eyebrow: "Integration / Routers",
@@ -2683,6 +2683,7 @@ const resources = {
         flowValidationRequired: "Testing required",
         flowRouterRequired: "Router required",
         create: "Create Guardrail",
+        createNew: "New Guardrail",
         createShort: "Create Guardrail",
         createFirst: "Create first Guardrail",
         emptyTitle: "No Guardrails yet",
@@ -3738,7 +3739,7 @@ const resources = {
       pages: {
         guardrails: { eyebrow: "治理 / Guardrails", title: "Guardrails" },
         policyLibrary: { eyebrow: "Guardrail 设计 / Policy Library", title: "Policy Library", description: "按保护类别、框架与法规和适用地区发现可复用的业务 Policy，并检查其中的 Rules 与可执行 Test Case。" },
-        playground: { eyebrow: "首页 / Playground", title: "Playground", description: "通过已发布 Guardrail Version 或临时 Draft 预览与真实模型聊天，并检查每一轮请求与响应如何被保护。", releasedDescription: "通过已发布的 Guardrail Version 与真实模型聊天，并检查每一轮请求与响应如何被保护。" },
+        playground: { eyebrow: "首页 / Playground", title: "Playground", description: "通过已发布 Guardrail Version 或临时 Draft 预览与真实模型聊天，并检查每一轮请求与响应如何被保护。" },
         validation: { eyebrow: "构建与测试 / 测试", title: "测试", description: "使用测试输入和预期结果检查 Guardrail 中的 Rule 行为，并查看历史测试记录。" },
         routers: {
           eyebrow: "集成 / 路由器",
@@ -5646,6 +5647,7 @@ const resources = {
         flowValidationRequired: "需要测试",
         flowRouterRequired: "需要 Router",
         create: "创建 Guardrail",
+        createNew: "新建 Guardrail",
         createShort: "创建 Guardrail",
         createFirst: "创建首个 Guardrail",
         emptyTitle: "暂无 Guardrail",

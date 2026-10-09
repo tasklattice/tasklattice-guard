@@ -110,10 +110,6 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "authoringEnabled": {
-              "type": "boolean",
-              "description": "false for a receiving environment: authoring APIs return 403 and no Policy Library is loaded."
-            },
             "export": {
               "type": "object",
               "additionalProperties": false,

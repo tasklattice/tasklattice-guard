@@ -13,7 +13,6 @@ controller:
     public:
       port: 38181
   promotion:
-    authoringEnabled: true
     export:
       sourceId: bank-uat
       sourceName: Bank UAT

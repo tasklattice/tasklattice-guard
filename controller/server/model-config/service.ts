@@ -7,11 +7,8 @@ import { z } from "zod";
 import type { ControllerDatabase } from "../db/client.js";
 import type { CapabilityValidationRequest } from "../generated/control-protocol/tasklattice/guard/control/v1/CapabilityValidationRequest.js";
 import {
-  artifacts,
   auditEvents,
   controllerState,
-  guardrails,
-  guardrailVersions,
   modelAssignmentValidations,
   modelConfigurationRevisions,
   modelDefinitions,
@@ -87,8 +84,7 @@ export class ModelConfigurationService {
   constructor(
     private readonly db: ControllerDatabase,
     private readonly rootSecret: string,
-    /** Null where Guardrails are only received: coverage then comes from released versions. */
-    private readonly policyCatalogDirectory: string | null,
+    private readonly policyCatalogDirectory: string,
     private readonly fetcher: typeof globalThis.fetch = globalThis.fetch,
   ) {}
 
@@ -987,30 +983,7 @@ export class ModelConfigurationService {
     };
   }
 
-  /**
-   * Without a Policy Library, report what released Guardrail versions need:
-   * each ready version's signed Evaluator contracts per Rail.
-   */
-  private async releasedVersionCoverage(available: Set<string>, database: Pick<ControllerDatabase, "select">): Promise<PolicyCoverage[]> {
-    const rows = await database.select({ guardrailId: guardrailVersions.guardrailId, version: guardrailVersions.version, name: guardrails.name, actionBindings: artifacts.actionBindings })
-      .from(guardrailVersions)
-      .innerJoin(guardrails, and(eq(guardrails.id, guardrailVersions.guardrailId), sql`${guardrails.deletedAt} IS NULL`))
-      .innerJoin(artifacts, eq(artifacts.id, guardrailVersions.artifactId))
-      .where(eq(guardrailVersions.status, "ready"));
-    return rows.map((row) => policyContractCoverage(
-      `${row.guardrailId}@${row.version}`,
-      `${row.name} ${row.version}`,
-      row.actionBindings.flatMap((binding) => {
-        const value = binding as { contract_ref?: unknown; phases?: unknown };
-        const phases = Array.isArray(value.phases) ? value.phases.filter((phase): phase is "input" | "output" => phase === "input" || phase === "output") : [];
-        return typeof value.contract_ref === "string" && value.contract_ref ? phases.map((phase) => contractRailKey(value.contract_ref as string, phase)) : [];
-      }),
-      available,
-    )).sort((left, right) => left.name.localeCompare(right.name));
-  }
-
   private async policyCoverage(available: Set<string>, database: Pick<ControllerDatabase, "select"> = this.db): Promise<PolicyCoverage[]> {
-    if (this.policyCatalogDirectory === null) return this.releasedVersionCoverage(available, database);
     const catalog = PolicyCatalog.load(this.policyCatalogDirectory).list();
     const custom = await database.select().from(policyVersions).orderBy(desc(policyVersions.version));
     const latestCustom = new Map<string, typeof custom[number]>();

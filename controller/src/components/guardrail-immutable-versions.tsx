@@ -21,7 +21,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { type GuardrailVersion, type GuardrailVersionDetail, type ValidationRun } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { checkGuardrailVersionEnvironment, getSystemBaseline, setSystemBaseline } from "@/lib/controller-api";
-import { useDeploymentCapabilities } from "@/lib/deployment";
 import { queryKeys } from "@/features/query-keys";
 import { CopyableChecksum as Digest } from "./copyable-checksum";
 import { EnvironmentStatus } from "./guardrail-import-sheet";
@@ -91,7 +90,6 @@ export function ImmutableVersionView({ openRequested, onOpenRequestHandled, deta
   for (const run of [...validationRuns].sort((a, b) => b.created_at.localeCompare(a.created_at))) {
     if (!latestTests.has(run.guardrail_version)) latestTests.set(run.guardrail_version, run);
   }
-  const capabilities = useDeploymentCapabilities();
   const baseline = useQuery({ queryKey: queryKeys.systemBaseline, queryFn: getSystemBaseline, enabled: isDefault });
   const [baselineReason, setBaselineReason] = useState("");
   const switchBaseline = useMutation({
@@ -204,7 +202,7 @@ export function ImmutableVersionView({ openRequested, onOpenRequestHandled, deta
                     </TabsList>
                     <TabsContent value="overview" className="min-h-0 flex-1 overflow-y-auto overscroll-contain space-y-7 pt-6">
                       <ImmutablePosture detail={currentDetail} />
-                      {selectedVersion.origin === "imported" || !capabilities.authoringEnabled ? <ReleaseEnvironment version={selectedVersion}
+                      {selectedVersion.origin === "imported" ? <ReleaseEnvironment version={selectedVersion}
                         checking={environmentCheck.isPending} error={environmentCheck.error} canCheck={auth.user?.role === "admin"}
                         onCheck={() => environmentCheck.mutate(selectedVersion.version)} /> : null}
                       {selectedVersion.provenance ? <ReleaseEvidence version={selectedVersion} /> : <section className="space-y-3 border-t pt-6">

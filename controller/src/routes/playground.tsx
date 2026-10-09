@@ -18,7 +18,6 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { queryKeys } from "@/features/query-keys";
 import { useAuth } from "@/lib/auth";
-import { useDeploymentCapabilities } from "@/lib/deployment";
 import {
   createPlaygroundInteraction,
   getGuardrails,
@@ -36,18 +35,7 @@ import {
 type PlaygroundTargetSelection =
   { kind: "draft" } | { kind: "published"; version: string };
 
-/**
- * Released versions can be tried anywhere; drafts only where Guardrails are
- * authored. Waits for the deployment capabilities so a receiving environment
- * never requests a draft preview.
- */
 export function PlaygroundPage() {
-  const capabilities = useDeploymentCapabilities();
-  if (!capabilities.settled) return <section className="py-6 sm:py-8"><Skeleton className="h-96 rounded-xl" /></section>;
-  return <PlaygroundScreen authoring={capabilities.authoringEnabled} />;
-}
-
-function PlaygroundScreen({ authoring }: { authoring: boolean }) {
   const { t } = useTranslation();
   const auth = useAuth();
   const [advanced, setAdvanced] = useState(
@@ -62,7 +50,7 @@ function PlaygroundScreen({ authoring }: { authoring: boolean }) {
     url.searchParams.set("mode", mode);
     window.history.replaceState(window.history.state, "", url);
   };
-  const canTestDraft = authoring && auth.user?.role === "admin";
+  const canTestDraft = auth.user?.role === "admin";
   const guardrailsQuery = useQuery({
     queryKey: queryKeys.guardrails,
     queryFn: getGuardrails,
@@ -123,7 +111,7 @@ function PlaygroundScreen({ authoring }: { authoring: boolean }) {
             title={t("pages.playground.title")}
             description={advancedActive
               ? t("playground.advancedDescription")
-              : t(authoring ? "pages.playground.description" : "pages.playground.releasedDescription")}
+              : t("pages.playground.description")}
           />
         </div>
         {/* Keep the list in the Tabs children tree so Carbon can discover both

@@ -136,7 +136,7 @@ export class ControlPlaneService {
       await advisoryTransactionLock(tx, 'tasklattice-guard-product-defaults');
       // A receiving environment never builds the Default from a Library: its
       // runtime baseline arrives as a released version and is set explicitly.
-      if (this.authoringEnabled) await this.ensureDefaultGuardrail(tx);
+      await this.ensureDefaultGuardrail(tx);
     });
   }
 
@@ -171,7 +171,10 @@ export class ControlPlaneService {
    * audited change, never a side effect of importing or marking Latest.
    */
   async setSystemBaseline(input: { version: string; reason: string; actorId: string }) {
-    if (!this.authoringEnabled) await this.packages.checkVersionEnvironment(DEFAULT_GUARDRAIL_ID, input.version).catch(() => undefined);
+    // An imported version must first prove Runners here can load it.
+    const [target] = await this.db.select({ origin: guardrailVersions.origin }).from(guardrailVersions)
+      .where(and(eq(guardrailVersions.guardrailId, DEFAULT_GUARDRAIL_ID), eq(guardrailVersions.version, input.version)));
+    if (target?.origin === "imported") await this.packages.checkVersionEnvironment(DEFAULT_GUARDRAIL_ID, input.version).catch(() => undefined);
     return this.db.transaction(async tx => {
       const [version] = await tx.select().from(guardrailVersions)
         .innerJoin(guardrails, eq(guardrails.id, guardrailVersions.guardrailId))
@@ -550,12 +553,6 @@ export class ControlPlaneService {
     )).limit(1) : [];
     const [artifact] = version?.artifactId ? await this.db.select().from(artifacts)
       .where(eq(artifacts.id, version.artifactId)).limit(1) : [];
-    if (!this.authoringEnabled && !version) {
-      // A receiving environment has basic protection only once a released
-      // Default version is explicitly set as the runtime baseline.
-      return { status: "unconfigured", guardrailStatus: "unavailable", baselineVersion: null, modelIndependent: null, coverage: null,
-        draft: { revision: 0, activeRevision: null, validationStatus: null, validationFailureReason: null } };
-    }
     const guardrailActive = Boolean(guardrail && guardrail.status !== "disabled"
       && version?.status === "ready" && version.artifactId === artifact?.id
       && artifact?.guardrailId === DEFAULT_GUARDRAIL_ID && artifact.guardrailVersion === baseline
@@ -2250,15 +2247,7 @@ export class ControlPlaneService {
     if (uncovered.length) throw new ValidationError(`Every Policy Rule requires a reviewed Test Case; missing ${uncovered.join(", ")}.`);
   }
 
-  /** Whether this deployment authors Guardrails (UAT) or only receives releases. */
-  get authoringEnabled(): boolean {
-    return this.config.authoringEnabled !== false;
-  }
-
   private policyCatalog(): PolicyCatalog {
-    // Defense in depth behind the API gate: a receiving environment never
-    // resolves Policies, so nothing may silently depend on a Library there.
-    if (!this.authoringEnabled) throw new ControllerError("Guardrail authoring is disabled in this environment.", 403, "authoring_disabled");
     this.catalog ??= PolicyCatalog.load(this.config.policyCatalogDir);
     return this.catalog;
   }

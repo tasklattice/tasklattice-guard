@@ -24,13 +24,6 @@ vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => false }));
 describe("ControlPlaneSidebar", () => {
   afterEach(() => { cleanup(); queryData.value = { items: [] }; });
 
-  it("keeps every area in an environment that only receives released Guardrails", () => {
-    // Pages drop authoring actions there; the navigation itself never changes.
-    queryData.value = { items: [], authoringEnabled: false };
-    render(<SidebarProvider><TooltipProvider><ControlPlaneSidebar /></TooltipProvider></SidebarProvider>);
-    for (const name of ["Guardrails", "Playground", "Policy Library", "Routers"]) expect(screen.getByRole("link", { name })).toBeTruthy();
-  });
-
   beforeEach(async () => { await i18n.changeLanguage("en"); });
 
   it("keeps the primary workflow flat while Dashboard remains on the logo", () => {

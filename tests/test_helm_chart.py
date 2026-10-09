@@ -1113,24 +1113,23 @@ def _controller(documents):
     return deployment["spec"]["template"]["spec"]
 
 
-def test_promotion_defaults_keep_authoring_and_mount_no_promotion_material():
+def test_promotion_defaults_mount_no_promotion_material_and_switch_no_feature():
     spec = _controller(render())
     container = spec["containers"][0]
     environment = {entry["name"]: entry.get("value") for entry in container["env"]}
-    assert environment["CONTROLLER_AUTHORING_ENABLED"] == "true"
+    # Every installation has the same features; there is no authoring switch.
+    assert "CONTROLLER_AUTHORING_ENABLED" not in environment
     assert not {"CONTROLLER_PACKAGE_SIGNING_KEY_PATH", "CONTROLLER_PACKAGE_TRUST_PATH", "CONTROLLER_BASELINE_PACKAGE_PATH"} & environment.keys()
     assert not {"package-signing", "package-trust", "baseline-package"} & {volume["name"] for volume in spec["volumes"]}
 
 
-def test_receiving_environment_mounts_trust_and_baseline_read_only_without_authoring():
+def test_trust_and_baseline_are_mounted_read_only():
     spec = _controller(render(
-        "--set", "controller.promotion.authoringEnabled=false",
         "--set", "controller.promotion.trust.existingConfigMap=guard-package-trust",
         "--set", "controller.promotion.baselinePackage.existingConfigMap=guard-baseline",
     ))
     container = spec["containers"][0]
     environment = {entry["name"]: entry.get("value") for entry in container["env"]}
-    assert environment["CONTROLLER_AUTHORING_ENABLED"] == "false"
     assert environment["CONTROLLER_PACKAGE_TRUST_PATH"] == "/etc/tasklattice/package-trust/trust.json"
     assert environment["CONTROLLER_BASELINE_PACKAGE_PATH"] == "/etc/tasklattice/baseline-package/baseline.guardrail.zip"
     mounts = {mount["name"]: mount for mount in container["volumeMounts"]}
@@ -1142,7 +1141,7 @@ def test_receiving_environment_mounts_trust_and_baseline_read_only_without_autho
 def test_inline_trust_sources_render_the_chart_trust_config_map():
     sources = [{"id": "bank-uat", "name": "Bank UAT", "keys": [{"id": "uat-2026", "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nkey\n-----END PUBLIC KEY-----\n"}],
                 "reservedGuardrailIds": ["guardrail-default"]}]
-    documents = render("--set", "controller.promotion.authoringEnabled=false", "--set-json", f"controller.promotion.trust.sources={json.dumps(sources)}")
+    documents = render("--set-json", f"controller.promotion.trust.sources={json.dumps(sources)}")
     config_map = next(doc for doc in documents if doc["kind"] == "ConfigMap" and doc["metadata"]["name"].endswith("-package-trust"))
     assert json.loads(config_map["data"]["trust.json"]) == {"sources": sources}
     spec = _controller(documents)
@@ -1157,14 +1156,14 @@ def test_inline_trust_sources_render_the_chart_trust_config_map():
     assert "name" in render_error("--set-json", 'controller.promotion.trust.sources=[{"id":"bank-uat","keys":[{"id":"k","publicKeyPem":"-----BEGIN PUBLIC KEY-----"}]}]')
 
 
-def test_local_promotion_pair_keeps_every_switch_in_its_values():
+def test_local_promotion_pair_differs_only_in_identity_and_ports():
     uat = render_dev("--values", str(CHART / "values-dev-uat.yaml"))
     prod = render_dev("--values", str(CHART / "values-dev-prod.yaml"))
     env = lambda documents: {entry["name"]: entry.get("value") for entry in _controller(documents)["containers"][0]["env"]}
-    assert env(uat)["CONTROLLER_AUTHORING_ENABLED"] == "true"
     assert env(uat)["CONTROLLER_PACKAGE_SOURCE_ID"] == "bank-uat"
-    assert env(prod)["CONTROLLER_AUTHORING_ENABLED"] == "false"
     assert "CONTROLLER_PACKAGE_SIGNING_KEY_PATH" not in env(prod)
+    # No feature switch tells the two apart.
+    assert not any(name.startswith("CONTROLLER_AUTHORING") for name in {**env(uat), **env(prod)})
     ports = lambda documents: sorted(doc["spec"]["ports"][0]["port"] for doc in documents if doc["kind"] == "Service" and doc["spec"].get("type") == "LoadBalancer")
     assert ports(uat) == [38181, 38182] and ports(prod) == [38281, 38282]
 

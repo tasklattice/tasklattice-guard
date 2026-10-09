@@ -39,7 +39,6 @@ import { PolicyCompliancePanel } from "@/components/policy-compliance";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { queryKeys } from "@/features/query-keys";
 import { useAuth } from "@/lib/auth";
-import { useDeploymentCapabilities } from "@/lib/deployment";
 import { PolicyReleases, ReleaseSummary, releasedPolicyView } from "@/components/policy-releases";
 import { getReleasedPolicies, type ReleasedPolicy } from "@/lib/controller-api";
 import { deleteProgrammablePolicy, getPolicies, getPolicy, type ProgrammablePolicy, type Policy, type PolicyRule, type PolicyTag } from "@/lib/api";
@@ -68,20 +67,21 @@ const JURISDICTION_FLAGS: Record<string, string> = {
   uae: "🇦🇪",
 };
 
+type LibraryView = "library" | "released";
+
 /**
- * One Policy Library everywhere. Where Policies are authored it lists and
- * edits the Library. Elsewhere it lists, with the same views, the Policies
- * frozen in released Guardrail versions, grouped by Policy ID, without any
- * authoring action and without calling a Library API, so it waits for the
- * deployment capabilities before choosing a source.
+ * Two views with the same cards, filters and detail drawer: the editable
+ * Library, and the Policies frozen in this environment's released Guardrail
+ * versions (local and imported), grouped by Policy ID and read only. The two
+ * never mix: a released definition may differ from the Library's version.
  */
 export function PolicyLibraryPage() {
-  const capabilities = useDeploymentCapabilities();
-  if (!capabilities.settled) return <section className="py-6 sm:py-8"><CatalogSkeleton /></section>;
-  return <PolicyLibrary authoring={capabilities.authoringEnabled} />;
+  const [view, setView] = useState<LibraryView>("library");
+  return <PolicyLibrary key={view} view={view} onViewChange={setView} />;
 }
 
-function PolicyLibrary({ authoring }: { authoring: boolean }) {
+function PolicyLibrary({ view, onViewChange }: { view: LibraryView; onViewChange: (view: LibraryView) => void }) {
+  const authoring = view === "library";
   const { t } = useTranslation();
   const navigate = useNavigate();
   const searchParams = useSearch({ strict: false }) as { policy?: string; version?: string };
@@ -190,7 +190,7 @@ function PolicyLibrary({ authoring }: { authoring: boolean }) {
     <section className="py-6 sm:py-8">
       <PageHeader
         title={t("pages.policyLibrary.title")}
-        description={t(authoring ? "pages.policyLibrary.description" : "releasedPolicies.description")}
+        description={t("pages.policyLibrary.description")}
         action={canManage ? (
           <div className="flex shrink-0 flex-wrap gap-2">
             <Button variant="outline" onClick={(event) => { studioOpenerRef.current = event.currentTarget; importInputRef.current?.click(); }}><Upload />{t("policyStudio.importPolicy")}</Button>
@@ -200,7 +200,15 @@ function PolicyLibrary({ authoring }: { authoring: boolean }) {
         ) : undefined}
       />
 
-      <div className="mt-6 flex flex-col gap-3 border-y py-4 sm:flex-row sm:items-center sm:justify-between">
+      <Tabs value={view} onValueChange={(value) => onViewChange(value as LibraryView)} className="mt-6">
+        <TabsList aria-label={t("releasedPolicies.views")}>
+          <TabsTrigger value="library">{t("releasedPolicies.libraryTab")}</TabsTrigger>
+          <TabsTrigger value="released">{t("releasedPolicies.releasedTab")}</TabsTrigger>
+        </TabsList>
+      </Tabs>
+      {!authoring ? <p className="mt-4 max-w-4xl text-sm leading-6 text-muted-foreground">{t("releasedPolicies.description")}</p> : null}
+
+      <div className="mt-4 flex flex-col gap-3 border-y py-4 sm:flex-row sm:items-center sm:justify-between">
         <label className="relative block w-full sm:max-w-xl">
           <span className="sr-only">{t("policyLibrary.searchCatalog")}</span>
           <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />

@@ -1,5 +1,7 @@
 export const guardrailPackageEn = {
   import: "Import",
+  importPackage: "Import release package",
+  importUnavailable: "No trusted package sources are configured here. Add them to controller.promotion.trust.sources before importing.",
   importTitle: "Import released Guardrail",
   importDescription: "Upload a signed .guardrail.zip exported from a trusted environment. Imported versions are checked and stored; traffic changes only through an approved Router change.",
   chooseFile: "Choose package",
@@ -23,7 +25,6 @@ export const guardrailPackageEn = {
   provenanceDescription: "Test results recorded at the source for exactly this content digest. They were not re-run in this environment.",
   sourceTestPassed: "{{source}} · Passed",
   sourceTested: "Source tested",
-  receivingDescription: "Released Guardrails imported from trusted sources. They are read-only here; route traffic to them through approved Router changes.",
   defaultReleaseNotice: "Supplies basic protection on every Runner pool. Import released versions from an authorized source, then set one as the runtime baseline.",
   contentDigest: "Content digest",
   importedAt: "Imported {{time}}",
@@ -46,6 +47,8 @@ export const guardrailPackageEn = {
 
 export const guardrailPackageZh: typeof guardrailPackageEn = {
   import: "导入",
+  importPackage: "导入发布包",
+  importUnavailable: "本环境未配置受信任的发布包来源。请先在 controller.promotion.trust.sources 中配置后再导入。",
   importTitle: "导入已发布的 Guardrail",
   importDescription: "上传从受信任环境导出、带签名的 .guardrail.zip。导入的版本会经过校验后保存；只有经过审批的 Router 变更才会改变流量。",
   chooseFile: "选择发布包",
@@ -69,7 +72,6 @@ export const guardrailPackageZh: typeof guardrailPackageEn = {
   provenanceDescription: "来源环境针对这份内容摘要记录的测试结果，未在本环境重新运行。",
   sourceTestPassed: "{{source}} · 通过",
   sourceTested: "来源已测试",
-  receivingDescription: "从受信任来源导入的已发布 Guardrail。它们在这里只读；通过经过审批的 Router 变更把流量路由到它们。",
   defaultReleaseNotice: "为每个 Runner 池提供基础防护。从授权来源导入已发布版本，再将其中一个设为运行时基线。",
   contentDigest: "内容摘要",
   importedAt: "导入于 {{time}}",

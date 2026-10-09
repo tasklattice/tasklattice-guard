@@ -2,8 +2,8 @@
 /**
  * Opt-in end-to-end Guardrail promotion regression across the two isolated
  * Helm releases of the local promotion pair: UAT authors, tests, publishes and
- * exports; PROD (authoring disabled, no Policy Library) imports, verifies,
- * routes through an approved change and serves real traffic.
+ * exports; PROD, with exactly the same features, imports by procedure,
+ * verifies, routes through an approved change and serves real traffic.
  *
  *   npm run helm:deploy:promotion   # releases tali-guard-uat and tali-guard-prod
  *   npm run test:promotion          # sets the environment below and runs this
@@ -160,17 +160,12 @@ const reexported = await uat.call(`${guardrailPath}/package?versions=${v2}`, { b
 assert.deepEqual(versionFiles(reexported, v2), versionFiles(both, v2), "Re-exporting a version is byte-identical after the Library changed.");
 report("uat-export-stable-after-library-change");
 
-// ---------------------------------------------------------------- PROD receiving
-assert.deepEqual(await prod.call("/api/v1/deployment/capabilities"), { authoringEnabled: false, packageExport: { available: false, sourceId: null }, packageImport: { available: true } });
-assert.equal((await prod.call("/api/v1/policies", { expected: 403 })).error.code, "authoring_disabled");
-assert.equal((await prod.call("/api/v1/guardrails", { body: { name: "x", runtimeProfile: "auto", draftConfig: draftConfig([]) }, expected: 403 })).error.code, "authoring_disabled");
-// A rerun against the same PROD keeps the baseline an earlier run set.
-const freshProd = (await prod.call("/api/v1/system/baseline")).version === null;
+// ---------------------------------------------------------------- PROD: same features, import by procedure
+// The two deployments differ only in their package keys, never in features.
+assert.deepEqual(await prod.call("/api/v1/deployment/capabilities"), { packageExport: { available: false, sourceId: null }, packageImport: { available: true } });
+assert.deepEqual(await uat.call("/api/v1/deployment/capabilities"), { packageExport: { available: true, sourceId: "bank-uat" }, packageImport: { available: false } });
+assert((await prod.call("/api/v1/policies")).items.length > 0, "PROD has the same editable Policy Library.");
 const coldStatus = await (await fetch(new URL("/api/v1/system/status", prod.base))).json();
-if (freshProd) {
-  assert.equal(coldStatus.components.basicProtection.status, "unconfigured");
-  assert(coldStatus.reasons.includes("baseline_not_configured"));
-}
 assert.equal(await count(prodDb, "SELECT count(*) AS n FROM policy_record"), 0);
 report("prod-cold-start", { status: coldStatus.status, reasons: coldStatus.reasons });
 
@@ -190,8 +185,9 @@ const digests = async db => (await db.query("SELECT guardrail_version AS version
 const [uatArtifacts, prodArtifacts] = [await digests(uatDb), await digests(prodDb)];
 assert.deepEqual(prodArtifacts.map(row => [row.version, row.checksum]), uatArtifacts.map(row => [row.version, row.checksum]), "Content digests are identical across environments.");
 prodArtifacts.forEach((row, index) => assert.notEqual(row.signature, uatArtifacts[index].signature, "Each environment signs with its own key."));
-assert.equal(await count(prodDb, "SELECT count(*) AS n FROM guardrail_validation_run"), 0, "Production never re-tests.");
-assert.equal(await count(prodDb, "SELECT count(*) AS n FROM controller_outbox WHERE kind = 'guardrail.validation_requested'"), 0);
+// Import itself starts no test or compile work for what it brings in.
+assert.equal(await count(prodDb, `SELECT count(*) AS n FROM guardrail_validation_run WHERE guardrail_id = '${guardrail.id}'`), 0, "Import starts no test run.");
+assert.equal(await count(prodDb, `SELECT count(*) AS n FROM controller_outbox WHERE kind = 'guardrail.validation_requested' AND aggregate_id = '${guardrail.id}'`), 0);
 report("prod-digests-match", { digests: prodArtifacts.map(row => row.checksum.slice(0, 12)) });
 
 // The load check that runs right after import lets the default pool hold the
@@ -203,11 +199,9 @@ await until("PROD Runner preloads the checked versions", async () => (await fetc
 const preloaded = await prod.evaluate(`/internal/v1/guardrails/${guardrail.id}/evaluate`, { guardrail_version: v2, phase: "input", texts: ["hello"] },
   { authorization: `Bearer ${env("GUARD_PROMOTION_RUNNER_TOKEN")}` });
 assert.equal(preloaded.status, 200, `A checked imported version is preloaded before routing: ${JSON.stringify(preloaded)}`);
-// Playground talks to released versions here; only draft previews are authoring.
+// Playground can talk to an imported version (503 only means no model is configured here).
 assert.equal((await prod.call("/api/v1/playground/models")).items !== undefined, true);
-assert.equal((await prod.call(`/api/v1/playground/guardrails/${guardrail.id}/draft-previews`, { body: {}, expected: 403 })).error.code, "authoring_disabled");
 const playground = await prod.call(`/api/v1/playground/guardrails/${guardrail.id}/interactions`, { body: { guardrail_version: v2, model_id: "any", message: "hello" }, expected: [200, 503] });
-assert.notEqual(playground.error?.code, "authoring_disabled", "Released versions can be tried in Playground.");
 report("prod-preloaded-for-playground", { versions: [v1, v2], playground: playground.error?.code ?? "ok" });
 
 // ---------------------------------------------------------------- PROD routing through an approved change
@@ -318,7 +312,7 @@ const baseline = await prod.call("/api/v1/system/baseline", { method: "PUT", bod
 assert.deepEqual(baseline, { guardrailId: "guardrail-default", version: baselineVersion });
 const protectedStatus = await until("basic protection", () => systemStatus(prod),
   value => value.components.basicProtection.status === "ready");
-report("prod-baseline", { version: baseline.version, freshProd, importedNow: baselineImport.imported.length, basicProtection: protectedStatus.components.basicProtection.status, status: protectedStatus.status });
+report("prod-baseline", { version: baseline.version, previous: previousBaseline.version, importedNow: baselineImport.imported.length, basicProtection: protectedStatus.components.basicProtection.status, status: protectedStatus.status });
 
 await uatDb.end();
 await prodDb.end();

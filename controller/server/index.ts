@@ -26,7 +26,7 @@ if (config.baselinePackagePath) {
   const baseline = await service.importBaselinePackage(readFileSync(config.baselinePackagePath));
   process.stdout.write(`Baseline package: Default Guardrail ${baseline.version}${baseline.adopted ? " adopted as the runtime baseline" : " present; the existing baseline is unchanged"}.\n`);
 }
-const models = new ModelConfigurationService(db, config.betterAuthSecret, config.authoringEnabled ? config.policyCatalogDir : null);
+const models = new ModelConfigurationService(db, config.betterAuthSecret, config.policyCatalogDir);
 await models.initialize();
 
 const auth = createAuth(config, db);

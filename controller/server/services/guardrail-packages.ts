@@ -328,6 +328,9 @@ export class GuardrailPackageService {
       return { code: "guardrail_reserved_id", message: `Guardrail ${id} is a reserved system resource. Source ${source.id} is not authorized to supply it.` };
     }
     if (existing?.deletedAt) return { code: "guardrail_ownership_conflict", message: `Guardrail ${id} was deleted in this environment. Restore or purge it before importing.` };
+    // A reserved system resource exists in every installation; an authorized
+    // source adds versions to it while the resource itself stays local.
+    if (RESERVED_GUARDRAIL_IDS.has(id)) return null;
     if (existing && existing.origin !== "imported") return { code: "guardrail_ownership_conflict", message: `Guardrail ${id} was created in this environment; a package cannot take it over.` };
     if (existing && existing.sourceId !== source.id) return { code: "guardrail_ownership_conflict", message: `Guardrail ${id} belongs to source ${existing.sourceId}; source ${source.id} cannot add versions to it.` };
     return null;

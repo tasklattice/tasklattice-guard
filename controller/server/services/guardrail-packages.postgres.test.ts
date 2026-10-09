@@ -46,7 +46,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
   });
   if (!url) return;
   const uatConfig = environment(uatArtifactKey.path, { CONTROLLER_PACKAGE_SOURCE_ID: "bank-uat", CONTROLLER_PACKAGE_SOURCE_NAME: "Bank UAT", CONTROLLER_PACKAGE_SIGNING_KEY_PATH: uatPackageKey.path, CONTROLLER_PACKAGE_SIGNING_KEY_ID: "uat-2026" });
-  const prodConfig = environment(prodArtifactKey.path, { CONTROLLER_PACKAGE_TRUST_PATH: trustPath, CONTROLLER_POLICY_CATALOG_DIR: "/nonexistent-policy-library", CONTROLLER_AUTHORING_ENABLED: "false" });
+  const prodConfig = environment(prodArtifactKey.path, { CONTROLLER_PACKAGE_TRUST_PATH: trustPath });
   let uatDb: Awaited<ReturnType<typeof createTestDatabase>>;
   let prodDb: Awaited<ReturnType<typeof createTestDatabase>>;
   let uat: ControlPlaneService;
@@ -95,12 +95,12 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     rmSync(keys, { recursive: true, force: true });
   });
 
-  it("starts a receiving environment without a Policy Library, Default build or baseline", async () => {
+  it("starts production with the same features as UAT: a local Default and no baseline until one is published", async () => {
     await prod.initialize();
-    expect((await prodDb.pool.query("SELECT count(*)::int AS n FROM guardrail")).rows[0].n).toBe(0);
-    expect(await prod.defaultGuardrailReadiness()).toMatchObject({ status: "unconfigured" });
+    // Same as any installation: its own Default draft, queued for testing, and an editable Library.
+    expect((await prodDb.pool.query("SELECT origin FROM guardrail WHERE id = $1", [DEFAULT_GUARDRAIL_ID])).rows).toEqual([{ origin: "local" }]);
     expect(await prod.systemBaseline()).toEqual({ guardrailId: DEFAULT_GUARDRAIL_ID, version: null });
-    await expect(prod.listPolicies()).rejects.toMatchObject({ code: "authoring_disabled" });
+    expect((await prod.listPolicies()).length).toBeGreaterThan(0);
   });
 
   it("exports byte-identical version files and a deterministic layout", async () => {
@@ -123,7 +123,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     await uatDb.pool.query("UPDATE guardrail_validation_run r SET candidate_digest = a.checksum FROM guardrail_version v JOIN guardrail_artifact a ON a.id = v.artifact_id WHERE r.id = v.validation_run_id");
   });
 
-  it("imports into an environment with no Policy Library, preserving digests but signing locally", async () => {
+  it("imports released versions as they are, preserving digests but signing locally", async () => {
     const { bytes } = await uat.packages.exportPackage(guardrailId, published);
     const preview = await prod.packages.inspectUpload(bytes, "admin");
     expect(preview).toMatchObject({ source: { id: "bank-uat" }, keyId: "uat-2026", guardrail: { id: guardrailId, exists: false }, blockers: [] });
@@ -144,12 +144,12 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     expect(guardrail).toEqual({ origin: "imported", source_id: "bank-uat", status: "active" });
     const { rows: provenance } = await prodDb.pool.query("SELECT version, source_id, source_key_id, uat_evidence->>'status' AS status FROM guardrail_version_provenance ORDER BY version");
     expect(provenance).toEqual(published.map(version => ({ version, source_id: "bank-uat", source_key_id: "uat-2026", status: "passed" })));
-    // Import neither distributes nor routes anything; no test or compile work is created.
-    expect((await prodDb.pool.query("SELECT kind FROM controller_outbox")).rows).toEqual([]);
-    expect((await prodDb.pool.query("SELECT count(*)::int AS n FROM guardrail_validation_run")).rows[0].n).toBe(0);
+    // Import neither distributes nor routes anything, and creates no test or compile work.
+    expect((await prodDb.pool.query("SELECT kind FROM controller_outbox WHERE aggregate_id = $1", [guardrailId])).rows).toEqual([]);
+    expect((await prodDb.pool.query("SELECT count(*)::int AS n FROM guardrail_validation_run WHERE guardrail_id = $1", [guardrailId])).rows[0].n).toBe(0);
     expect((await prodDb.pool.query("SELECT count(*)::int AS n FROM policy_record")).rows[0].n).toBe(0);
     const desired = await prod.desiredStateForPool("default");
-    expect(desired.artifacts).toEqual([]);
+    expect(desired.artifacts.filter(item => item.guardrailId === guardrailId)).toEqual([]);
   });
 
   it("treats re-uploads and subsets as already present, and keeps Latest", async () => {
@@ -280,9 +280,10 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     const preview = await prod.packages.inspectUpload(bytes, "admin");
     expect(preview.blockers).toEqual([]);
     await prod.packages.importPackage(preview.packageId, { actorId: "admin" });
-    // Import alone never changes basic protection.
+    // An authorized source adds a version to the local Default; import alone never changes basic protection.
+    expect((await prodDb.pool.query("SELECT origin FROM guardrail WHERE id = $1", [DEFAULT_GUARDRAIL_ID])).rows).toEqual([{ origin: "local" }]);
+    expect((await prodDb.pool.query("SELECT origin FROM guardrail_version WHERE guardrail_id = $1 AND version = $2", [DEFAULT_GUARDRAIL_ID, published[0]])).rows).toEqual([{ origin: "imported" }]);
     expect(await prod.systemBaseline()).toMatchObject({ version: null });
-    expect(await prod.defaultGuardrailReadiness()).toMatchObject({ status: "unconfigured" });
     const before = await prod.desiredStateForPool("default");
 
     const baseline = await prod.setSystemBaseline({ version: published[0]!, reason: "CR-7 adopt UAT baseline", actorId: "admin" });
@@ -290,7 +291,6 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     const after = await prod.desiredStateForPool("default");
     expect(after.artifacts.length).toBe(before.artifacts.length + 1);
     expect(after.artifacts.some(item => item.guardrailId === DEFAULT_GUARDRAIL_ID && item.guardrailVersion === published[0])).toBe(true);
-    expect((await prod.defaultGuardrailReadiness()).status).not.toBe("unconfigured");
     const { rows: [audit] } = await prodDb.pool.query("SELECT detail FROM audit_event WHERE kind = 'system.baseline_changed'");
     expect(audit.detail).toMatchObject({ previousVersion: null, version: published[0], reason: "CR-7 adopt UAT baseline" });
   });

@@ -7,7 +7,6 @@ import { openApiDocument, apiReferenceHtml, apiAgentIndex } from "./openapi.js";
 import { allowsTokenPermission } from "../../shared/access-tokens.js";
 import type { AccessTokenService, TokenIdentity } from "../services/access-tokens.js";
 import { requiredTokenPermission } from "./token-permissions.js";
-import { routeCapability } from "./route-capabilities.js";
 import { partialModelActivationSchema } from "../../shared/model-activation.js";
 import { routerDraftSchema, previewRouter, selectorFields, selectableSelectorFields, RoutingEvaluationError, routingInputSchema } from "../../shared/traffic-routing.js";
 import { routingEventSchema } from "../services/traffic-routing.js";
@@ -194,9 +193,8 @@ export function createHttpApp(input: {
     collectDefaultMetrics: false,
   });
   const controllerVersion = readSoftwareVersion();
-  const authoringEnabled = input.config.authoringEnabled !== false;
-  // Authoring environments fail fast on a broken Library; receiving ones never load it.
-  if (authoringEnabled) PolicyCatalog.load(input.config.policyCatalogDir);
+  // Fail fast on a broken Library.
+  PolicyCatalog.load(input.config.policyCatalogDir);
   const legacyIntentAnalyzer = input.intentAnalyzer ?? null;
   const legacyPlaygroundModel = input.playgroundModel ?? null;
   const playgroundRunner = input.playgroundRunner ?? null;
@@ -240,14 +238,8 @@ export function createHttpApp(input: {
     200,
     { "content-type": input.metrics.registry.contentType },
   ));
-  app.use("/api/v1/*", async (context, next) => {
-    if (!authoringEnabled && routeCapability(context.req.method, context.req.path) !== "core") {
-      throw new ControllerError("Guardrail authoring is disabled in this environment. Import released versions instead.", 403, "authoring_disabled");
-    }
-    return next();
-  });
+  // Every deployment has the same features; release packages only need their keys configured.
   app.get("/api/v1/deployment/capabilities", context => context.json({
-    authoringEnabled,
     packageExport: { available: Boolean(input.config.packageExport), sourceId: input.config.packageExport?.sourceId ?? null },
     packageImport: { available: Boolean(input.config.packageTrustPath) },
   }));

@@ -1,6 +1,5 @@
 import { ImmutableVersionView } from "@/components/guardrail-immutable-versions";
 import { ImportGuardrailSheet } from "@/components/guardrail-import-sheet";
-import { useDeploymentCapabilities } from "@/lib/deployment";
 export { ImmutableVersionView } from "@/components/guardrail-immutable-versions";
 import { ResourceList } from "@/components/resource-list";
 import { EventFilterToolbar } from "@/components/event-filter-toolbar";
@@ -101,24 +100,27 @@ export function GuardrailsPage() {
   const auth = useAuth();
   const query = useQuery(guardrailQueries.list());
   const [createOpen, setCreateOpen] = useState(false);
-  const createOpener = useRef<HTMLButtonElement | null>(null);
-  const openCreation = (event: MouseEvent<HTMLButtonElement>) => {
-    createOpener.current = event.currentTarget;
-    setCreateOpen(true);
+  const [importOpen, setImportOpen] = useState(false);
+  // Both sheets return focus to the menu button that opened them.
+  const createMenu = useRef<HTMLDivElement | null>(null);
+  const opener = useRef<HTMLButtonElement | null>(null);
+  const openFromMenu = (open: (value: boolean) => void) => {
+    opener.current = createMenu.current?.querySelector("button") ?? null;
+    open(true);
   };
   const guardrails = query.data?.items ?? [];
-  const capabilities = useDeploymentCapabilities();
-  const [importOpen, setImportOpen] = useState(false);
-  const importOpener = useRef<HTMLButtonElement | null>(null);
   const isAdmin = auth.user?.role === "admin";
-  const actions = isAdmin ? <div className="flex items-center gap-2">
-    {capabilities.packageImport.available ? <Button variant="outline" size="lg" onClick={event => { importOpener.current = event.currentTarget; setImportOpen(true); }}><Upload />{t("guardrailPackage.import")}</Button> : null}
-    {capabilities.authoringEnabled ? <Button variant="create" size="lg" onClick={openCreation}><Plus />{t("guardrails.create")}</Button> : null}
+  // One entry, the same everywhere: author a Guardrail here or import a released one.
+  const actions = isAdmin ? <div ref={createMenu}>
+    <MenuButton label={t("guardrails.create")} kind="primary" size="lg" menuAlignment="bottom-end">
+      <MenuItem label={t("guardrails.createNew")} renderIcon={Plus} onClick={() => openFromMenu(setCreateOpen)} />
+      <MenuItem label={t("guardrailPackage.importPackage")} renderIcon={Upload} onClick={() => openFromMenu(setImportOpen)} />
+    </MenuButton>
   </div> : undefined;
 
   return (
     <section className="py-8">
-      <PageHeader title={t("pages.guardrails.title")} description={t(capabilities.authoringEnabled ? "guardrails.description" : "guardrailPackage.receivingDescription")} />
+      <PageHeader title={t("pages.guardrails.title")} description={t("guardrails.description")} />
       <ResourceList items={guardrails} label={t("pages.guardrails.title")} searchPlaceholder={t("resourceList.searchGuardrails")} searchText={item => `${item.name} ${item.id}`}
         filter={{ label: t("common.status"), options: [{ value: "", label: t("resourceList.allStatuses") }, ...[...new Set(guardrails.map(item => item.status))].sort().map(value => ({ value, label: t(`states.${value}`, { defaultValue: value.replaceAll("_", " ") }) }))], matches: (item, value) => item.status === value }}
         loading={query.isPending} refreshing={query.isFetching} error={query.error} onRefresh={() => void query.refetch()}
@@ -126,8 +128,8 @@ export function GuardrailsPage() {
         action={actions}>
         {items => <GuardrailRegistry guardrails={items} onOpen={guardrailId => navigate({ to: "/guardrails/$guardrailId", params: { guardrailId } })} />}
       </ResourceList>
-      {importOpen ? <ImportGuardrailSheet returnFocusRef={importOpener} onClose={() => setImportOpen(false)} /> : null}
-      <CreateGuardrailWizard open={createOpen} returnFocusRef={createOpener} onOpenChange={setCreateOpen} onCreated={async (id) => { setCreateOpen(false); await queryClient.invalidateQueries({ queryKey: queryKeys.guardrails }); navigate({ to: "/guardrails/$guardrailId", params: { guardrailId: id } }); }} />
+      {importOpen ? <ImportGuardrailSheet returnFocusRef={opener} onClose={() => setImportOpen(false)} /> : null}
+      <CreateGuardrailWizard open={createOpen} returnFocusRef={opener} onOpenChange={setCreateOpen} onCreated={async (id) => { setCreateOpen(false); await queryClient.invalidateQueries({ queryKey: queryKeys.guardrails }); navigate({ to: "/guardrails/$guardrailId", params: { guardrailId: id } }); }} />
     </section>
   );
 }
@@ -140,10 +142,9 @@ export function GuardrailDetailPage() {
   const auth = useAuth();
   const queryClient = useQueryClient();
   const guardrailQuery = useQuery({ queryKey: queryKeys.guardrail(guardrailId), queryFn: () => getGuardrail(guardrailId) });
-  const capabilities = useDeploymentCapabilities();
-  // Imported Guardrails and receiving environments have no draft: versions are the whole state.
-  const releaseOnly = !capabilities.authoringEnabled || guardrailQuery.data?.origin === "imported";
-  const policiesQuery = useQuery({ queryKey: queryKeys.policies, queryFn: getPolicies, enabled: capabilities.authoringEnabled });
+  // Imported Guardrails have no working draft: their versions are the whole state.
+  const releaseOnly = guardrailQuery.data?.origin === "imported";
+  const policiesQuery = useQuery({ queryKey: queryKeys.policies, queryFn: getPolicies });
   const validationReadiness = useGuardrailValidationReadiness({ bindings: guardrailQuery.data?.policy_bindings ?? [], policies: policiesQuery.data?.items ?? EMPTY_POLICIES,
     enabled: Boolean(guardrailQuery.data), policiesReady: policiesQuery.isSuccess, policiesError: policiesQuery.isError });
   const versionsQuery = useQuery({ queryKey: queryKeys.guardrailVersions(guardrailId), queryFn: () => getGuardrailVersions(guardrailId) });
