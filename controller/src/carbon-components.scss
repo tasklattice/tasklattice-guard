@@ -1,6 +1,9 @@
 @use "sass:meta";
 // One component library; Tailwind remains a layout utility, not a widget system.
 @layer components {
+  // Size tokens and the .cds--layout--size-* classes Carbon components carry.
+  // Without them every size falls back to lg: a "md" or "sm" button renders 48px.
+  @include meta.load-css("@carbon/styles/scss/layout");
   @include meta.load-css("@carbon/styles/scss/utilities/visually-hidden");
   @include meta.load-css("@carbon/react/scss/components/button");
   @include meta.load-css("@carbon/react/scss/components/text-input");
