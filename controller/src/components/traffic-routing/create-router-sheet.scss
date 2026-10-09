@@ -1,0 +1,127 @@
+.create-router-form {
+  display: grid;
+  min-inline-size: 0;
+  gap: 1.5rem;
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.create-router-section {
+  min-inline-size: 0;
+  padding: 1.5rem;
+  border: 1px solid var(--cds-border-subtle-01);
+  background: var(--cds-layer-01);
+}
+
+.create-router-section-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-block-end: 1rem;
+
+  h3 { font-size: 1rem; font-weight: 500; letter-spacing: normal; }
+}
+
+.create-router-section-number {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  inline-size: 2rem;
+  block-size: 2rem;
+  background: var(--cds-layer-accent-01);
+  color: var(--cds-text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+
+.create-router-section-hint {
+  margin-inline-start: auto;
+  color: var(--cds-text-secondary);
+  font-size: 0.75rem;
+}
+
+.create-router-help,
+.create-router-empty {
+  color: var(--cds-text-secondary);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+.create-router-help { margin-block-start: 0.75rem; }
+.create-router-empty { padding-block: 1rem; }
+
+.create-router-subheading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-block-end: 1rem;
+
+  h4 { font-size: 0.875rem; font-weight: 600; letter-spacing: normal; }
+  p { color: var(--cds-text-secondary); font-size: 0.75rem; }
+}
+
+.create-router-rules { display: grid; gap: 1rem; }
+.create-router-rule { min-inline-size: 0; border: 1px solid var(--cds-border-subtle-01); }
+.create-router-rule-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-block-size: 3rem;
+  padding: 0.5rem 0.75rem 0.5rem 1rem;
+  background: var(--cds-layer-02);
+
+  h5 { font-size: 0.875rem; font-weight: 500; }
+}
+.create-router-rule-actions { display: flex; align-items: center; gap: 0.25rem; }
+.create-router-rule-body {
+  padding: 1rem;
+  border-block-start: 1px solid var(--cds-border-subtle-01);
+
+  &[hidden] { display: none; }
+}
+.create-router-rule-part h6 {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-block-end: 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+
+  span { color: var(--cds-text-secondary); font-family: var(--font-mono); font-size: 0.75rem; font-weight: 400; }
+}
+.create-router-rule-targets {
+  margin-block-start: 1rem;
+  padding-block-start: 1rem;
+  border-block-start: 1px solid var(--cds-border-subtle-01);
+}
+.create-router-rule-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 1rem minmax(0, 1fr);
+  align-items: start;
+  gap: 0.75rem;
+  padding: 1rem;
+  border-block-start: 1px solid var(--cds-border-subtle-01);
+  color: var(--cds-text-secondary);
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+
+  svg { inline-size: 1rem; block-size: 1rem; }
+}
+.create-router-add-rule { margin-block-start: 1rem; }
+.create-router-fallback {
+  margin-block-start: 1.5rem;
+  padding-block-start: 1.5rem;
+  border-block-start: 1px solid var(--cds-border-strong-01);
+
+  .create-router-subheading { margin-block-end: 0; }
+  > .create-router-help { margin-block-end: 1rem; }
+}
+.create-router-readiness {
+  flex: 1;
+  margin-inline-end: 1rem;
+  color: var(--cds-text-secondary);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
