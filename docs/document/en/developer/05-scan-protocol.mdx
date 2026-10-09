@@ -4,7 +4,11 @@ title: "Scan Endpoint protocol"
 summary: "F5 Backend V1 Scans compatibility: Bearer authentication, four effective fields, four outcomes, ignored placeholders and error shapes."
 order: 2
 ---
-This chapter defines the implemented **Scan Endpoint** (`f5-scan`) contract for existing F5 Scan scripts, Python requests and dataset evaluation. Compatibility covers text scanning through `POST /backend/v1/scans`, not F5 project management, history, Scanner configuration APIs or `/scans/raw`. LiteLLM action, Call ID and WebSocket rules do not apply to Scan.
+This chapter defines the contract of the **Scan Endpoint** (`f5-scan`). It serves existing F5 Scan scripts, Python requests and dataset evaluation.
+
+- Compatibility covers text scans through `POST /backend/v1/scans`.
+- It does not cover F5 project management, history, Scanner configuration APIs or `/scans/raw`.
+- The LiteLLM action, Call ID and WebSocket rules do not apply to Scan.
 
 <a id="scan-connection" />
 ## Address, authentication and routing
@@ -15,7 +19,10 @@ Authorization: Bearer <Endpoint credential>
 Content-Type: application/json
 ```
 
-`CALYPSOAI_URL` is the Runner Service origin, for example `https://guard-runtime.example.com`, without `/runtime/v1/endpoints/{id}`. `CALYPSOAI_TOKEN` is the complete credential saved when creating a Scan Endpoint. All Scan Endpoints share this path. The Bearer credential identifies the Endpoint; its published Router selects a Guardrail Version.
+- `CALYPSOAI_URL` is the origin of the Runner Service, for example `https://guard-runtime.example.com`. It does not include `/runtime/v1/endpoints/{id}`.
+- `CALYPSOAI_TOKEN` is the complete credential that you saved when you created the Scan Endpoint.
+
+All Scan Endpoints share this path. The Bearer credential identifies the Endpoint. The published Router of that Endpoint selects a Guardrail Version.
 
 ```bash
 export CALYPSOAI_URL='https://guard-runtime.example.com'
@@ -26,7 +33,10 @@ curl -sS --fail-with-body -X POST "${CALYPSOAI_URL%/}/backend/v1/scans" \
   --data '{"input":"Text to inspect","scanDirection":"request","flagOnly":false,"verbose":false}'
 ```
 
-Scan has no `/verify` or model-generation interface. Submit a real scan to verify authentication, routing and checks. Request scans do not call the business model; response scans do not fetch a model answer automatically.
+Scan has no `/verify` interface and no model-generation interface. To verify authentication, routing and inspection, submit a real scan.
+
+- A request scan does not call the business model.
+- A response scan does not get a model answer automatically.
 
 <a id="scan-request" />
 ## Request JSON and effective fields
@@ -48,7 +58,7 @@ Request scan with all effective fields explicit:
 }
 ```
 
-A response scan submits the complete, already-generated answer in the same `input` field:
+A response scan sends the complete answer that the model already generated, in the same `input` field:
 
 ```json
 {
@@ -61,29 +71,33 @@ A response scan submits the complete, already-generated answer in the same `inpu
 
 | Field | Type / default | Constraint and effect |
 | --- | --- | --- |
-| `input` | Required string | The only inspection target; no array, object or `null`. The schema accepts empty strings, but an empty check proves nothing about other content |
-| `scanDirection` | `"request"` by default; or `"response"` | Select Input or Output Rail; case-sensitive |
-| `flagOnly` | Boolean, default `true` | `true` reports matches as `flagged`; `false` distinguishes `blocked` and `redacted` |
-| `verbose` | Boolean, default `false` | Include one aggregate Guardrail check detail |
+| `input` | Required string | The only content to inspect. It must be a string, not an array, an object or `null`. The schema accepts an empty string, but an empty scan proves nothing about other content. |
+| `scanDirection` | `"request"` (default) or `"response"` | Selects the Input Rail or the Output Rail. The value is case-sensitive. |
+| `flagOnly` | Boolean, default `true` | `true` reports each match as `flagged`. `false` tells `blocked` and `redacted` apart. |
+| `verbose` | Boolean, default `false` | Adds one aggregate result detail of the Guardrail. |
 
-All four fields have strict types: `"false"`, `0` and `1` are not booleans; explicit `null` is not omission. Invalid enums or types return `422`.
+All four fields have strict types:
 
-Each call resolves current routing independently and returns a new Scan ID. Request and response scans share neither session nor pinned version. Resubmission performs another scan, with no deduplication or idempotency guarantee. Choose [LiteLLM](/document/developer/gateway-connect) for version pinning across a model call.
+- `"false"`, `0` and `1` are not booleans.
+- An explicit `null` is not the same as an omitted field.
+- An invalid enum value or type returns `422`.
 
-`flagOnly` changes result presentation, not inspection or server execution mode. Clients implement observation by recording decisions separately from delivery; `dry_run` and compatibility placeholders cannot enable a server Dry Run.
+Each call resolves the current routing again and returns a new Scan ID. A request scan and a response scan do not share a session or a pinned version. A second submission does a new scan. Scan gives no deduplication or idempotency guarantee. To pin one version for a whole model call, use [LiteLLM](/document/developer/gateway-connect).
+
+`flagOnly` changes how the result shows. It does not change the inspection or the server execution mode. To observe without enforcing, the client records the decisions separately from the delivery. `dry_run` and the compatibility placeholders cannot start a server Dry Run.
 
 <a id="scan-placeholders" />
 ## Accepted but ignored compatibility fields
 
 | Field | Behavior in this system |
 | --- | --- |
-| `project` | Not applicable; cannot select a project, Endpoint or Guardrail |
-| `externalMetadata` | Ignored; neither used for routing nor guaranteed to be echoed |
-| `requestPromptId` | Ignored; does not correlate phases or reuse an existing Scan |
-| `configOverrides` | Ignored; cannot override Scanner, Policy or Router configuration |
-| `disabled`, `forceEnabled` | Ignored; cannot disable inspection or force a particular Scanner |
+| `project` | Not applicable. It cannot select a project, an Endpoint or a Guardrail. |
+| `externalMetadata` | Ignored. Routing does not use it, and the response does not necessarily return it. |
+| `requestPromptId` | Ignored. It does not link phases and does not reuse an existing Scan. |
+| `configOverrides` | Ignored. It cannot override the Scanner, Policy or Router configuration. |
+| `disabled`, `forceEnabled` | Ignored. They cannot disable the inspection or force a specific Scanner. |
 
-These fields accept any legal JSON value, including strings, arrays, objects and `null`. Unknown extra fields are also ignored. All bytes still count toward the body limit. The following uses the same scan configuration as sending only `{"input":"Text to inspect"}`:
+These fields accept any legal JSON value, including strings, arrays, objects and `null`. The Scan handler also ignores unknown extra fields. All bytes still count toward the body limit. The request below uses the same scan configuration as `{"input":"Text to inspect"}` alone:
 
 ```json
 {
@@ -97,12 +111,12 @@ These fields accept any legal JSON value, including strings, arrays, objects and
 }
 ```
 
-Maintain your own mapping between dataset rows, expected labels and returned Scan IDs. Do not depend on ignored fields to echo that information.
+Keep your own mapping between dataset rows, expected labels and the Scan IDs that you receive. Do not depend on ignored fields to return that information.
 
 <a id="scan-response" />
 ## Complete response JSON and outcomes
 
-Completed checks use HTTP `200`, including policy blocks. These examples use illustrative IDs; the deployed policy determines actual results.
+A completed scan returns HTTP `200`, also when a Policy blocks the content. The IDs in these examples are illustrative. The deployed Policies decide the actual results.
 
 A request scan without a match:
 
@@ -115,7 +129,7 @@ A request scan without a match:
 }
 ```
 
-With `flagOnly=true`, a blocking match is represented as `flagged`; original text may remain in `redactedInput`:
+With `flagOnly=true`, a blocking match shows as `flagged`. `redactedInput` can still contain the original text:
 
 ```json
 {
@@ -126,7 +140,7 @@ With `flagOnly=true`, a blocking match is represented as `flagged`; original tex
 }
 ```
 
-The same kind of block with `flagOnly=false` is explicitly `blocked`:
+The same block with `flagOnly=false` shows explicitly as `blocked`:
 
 ```json
 {
@@ -166,42 +180,42 @@ A transformed response scan with `flagOnly=false` and `verbose=true`:
 
 | `result.outcome` | Meaning and client behavior |
 | --- | --- |
-| `cleared` | Required checks completed without an intervention; continue according to the result |
-| `flagged` | An intervention was detected. Default `flagOnly=true` does not distinguish blocks from replacements; this is not an allow result |
-| `blocked` | Block with `flagOnly=false`; stop the current phase and withhold original text |
-| `redacted` | Actual replacement with `flagOnly=false`; use processed text, not the original |
+| `cleared` | The required inspections completed without an intervention. Continue according to the result. |
+| `flagged` | The scan detected an intervention. The default `flagOnly=true` does not tell a block from a replacement. This is not an allow result. |
+| `blocked` | A block, with `flagOnly=false`. Stop the current phase and hold back the original text. |
+| `redacted` | A real replacement, with `flagOnly=false`. Use the processed text, not the original. |
 
-`flagOnly=false` does not guarantee only three outcomes: an aggregate intervention without a final block/transform decision can still produce `flagged`. Handle all four enums.
+`flagOnly=false` does not guarantee only three outcomes. An aggregate intervention without a final block or transform Decision can still produce `flagged`. Handle all four values.
 
 | Response field | Contract |
 | --- | --- |
-| `id` | New UUID for each scan; not a correlation key or model-call ID |
-| `redactedInput` | Actually processed string; may retain original text when unchanged. **Its presence does not authorize delivery** |
-| `result.response` | Always `null` for request scans. For response scans, processed text unless blocked, otherwise `null`. A text value still requires checking outcome |
-| `result.scannerResults` | `[]` when `verbose=false`; exactly one aggregate Guardrail detail when `true`, not individual Rules or F5 Scanners |
-| Detail `outcome` | `passed` means no match; `failed` means an intervention matched, not an execution outage |
-| Detail `scannerId` | Guardrail ID when it is a valid UUID; otherwise `null`. Not a configurable F5 Scanner ID |
-| Other detail fields | `data.type="custom"`; observed start/end times and this scan's direction. `scannerVersionMeta=null`, `message=null` and `customConfig=false` are placeholders |
-| `scanners` | Always `null`; configuration is not applicable |
+| `id` | A new UUID for each scan. It is not a correlation key and not a model-call ID. |
+| `redactedInput` | The string that the scan processed. It can keep the original text when nothing changed. **Its presence does not permit delivery.** |
+| `result.response` | Always `null` for request scans. For response scans, the processed text, or `null` when the scan blocks. A text value still needs a check of the outcome. |
+| `result.scannerResults` | `[]` when `verbose=false`. When `verbose=true`, exactly one aggregate detail of the Guardrail. It does not list individual Rules or F5 Scanners. |
+| Detail `outcome` | `passed` means no match. `failed` means that an intervention matched. It does not mean an execution failure. |
+| Detail `scannerId` | The Guardrail ID when that ID is a valid UUID. Otherwise `null`. It is not a configurable F5 Scanner ID. |
+| Other detail fields | `data.type="custom"`, the observed start and end times, and the direction of this scan. `scannerVersionMeta=null`, `message=null` and `customConfig=false` are placeholders. |
+| `scanners` | Always `null`. Configuration does not apply. |
 
-Timeouts, missing required checks and execution failures never become `cleared`. They return non-2xx errors instead of a successful Scan result object.
+A timeout, a missing required inspection or an execution failure never becomes `cleared`. Each returns a non-2xx error instead of a successful Scan result.
 
 <a id="scan-errors" />
 ## Errors, response headers and limits
 
 | HTTP status | `detail.code` | Meaning |
 | --- | --- | --- |
-| `401` | `invalid_credential` | Missing, invalid or revoked Bearer credential, or disabled Endpoint |
-| `403` | `adapter_mismatch` | Valid credential belongs to an Endpoint without Scan support |
-| `413` | `request_too_large` | Entire body exceeds the limit |
-| `415` | `unsupported_media_type` | Content type is not `application/json` |
-| `422` | None; `detail` is an array | Invalid JSON, missing field, wrong type or enum |
-| `503` | `scan_unavailable` | Route or runtime unavailable |
-| `503` | `scan_execution_failed` | Required inspection incomplete or failed |
-| `504` | `scan_timeout` | Scan deadline exceeded |
-| `500` | `invalid_scan_result` / `scan_internal_error` | Invalid internal result or another processing failure |
+| `401` | `invalid_credential` | The Bearer credential is missing, invalid or revoked, or the Endpoint is disabled. |
+| `403` | `adapter_mismatch` | The credential is valid, but its Endpoint does not support Scan. |
+| `413` | `request_too_large` | The whole body is larger than the limit. |
+| `415` | `unsupported_media_type` | The content type is not `application/json`. |
+| `422` | None. `detail` is an array. | Invalid JSON, a missing field, or a wrong type or enum value. |
+| `503` | `scan_unavailable` | The route or the runtime is not available. |
+| `503` | `scan_execution_failed` | A required inspection did not complete or failed. |
+| `504` | `scan_timeout` | The scan exceeded its deadline. |
+| `500` | `invalid_scan_result` / `scan_internal_error` | The internal result is invalid, or a different processing failure occurred. |
 
-Scan-generated errors other than `422` use this shape:
+Scan errors other than `422` use this shape:
 
 ```json
 {
@@ -213,7 +227,7 @@ Scan-generated errors other than `422` use this shape:
 }
 ```
 
-Example `422` for a missing `input`. Here `detail` is an array, not the object above:
+This `422` example is for a missing `input`. Here `detail` is an array, not the object above:
 
 ```json
 {
@@ -223,6 +237,12 @@ Example `422` for a missing `input`. Here `detail` is an array, not the object a
 }
 ```
 
-Every response from the Scan handler carries `X-Request-ID` and `X-TaskLattice-Scan-Compatibility: v1`. Success `id` and error-object `requestId` match the header; use the header for `422`. A `401` also includes `WWW-Authenticate: Bearer`. Proxy-generated errors need not follow these shapes.
+Every response from the Scan handler has the headers `X-Request-ID` and `X-TaskLattice-Scan-Compatibility: v1`.
 
-Defaults are **1 MiB** for the request body and **25 seconds** for scan execution, configured by `GUARD_SCAN_MAX_BODY_BYTES` and `GUARD_SCAN_TIMEOUT_SECONDS`, or Helm `runner.scan.maxBodyBytes` and `runner.scan.timeoutSeconds`. Configure a separate client network timeout. Do not count execution failures as passes or policy detections; retrying creates another independent scan. See the [Endpoint integration checks](/document/developer/endpoint-setup#endpoint-verification).
+- The success `id` and the error `requestId` are equal to `X-Request-ID`. For `422`, use the header.
+- A `401` also has `WWW-Authenticate: Bearer`.
+- Errors that a proxy generates do not necessarily use these shapes.
+
+The defaults are **1 MiB** for the request body and **25 seconds** for the scan execution. Configure them with `GUARD_SCAN_MAX_BODY_BYTES` and `GUARD_SCAN_TIMEOUT_SECONDS`, or with the Helm values `runner.scan.maxBodyBytes` and `runner.scan.timeoutSeconds`.
+
+Configure a separate network timeout in the client. Do not count an execution failure as a pass or as a Policy detection. A retry creates another independent scan. See the [Endpoint integration checks](/document/developer/endpoint-setup#endpoint-verification).

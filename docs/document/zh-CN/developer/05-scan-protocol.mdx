@@ -4,7 +4,11 @@ title: "Scan Endpoint 协议"
 summary: "F5 Backend V1 Scans 兼容入口：Bearer 认证、四个有效字段、四种 outcome、兼容占位和错误格式。"
 order: 2
 ---
-本章定义 **Scan Endpoint**（`f5-scan`）在本系统中的实际契约，面向现有 F5 Scan 脚本、Python requests 和数据集评测。兼容范围是 `POST /backend/v1/scans` 的文本扫描；不包括 F5 项目管理、历史查询、Scanner 配置 API 或 `/scans/raw`。LiteLLM 的 `action`、Call ID 和 WebSocket 规则不适用于 Scan。
+本章定义 **Scan Endpoint**（`f5-scan`）在本系统中的实际契约，面向现有的 F5 Scan 脚本、Python requests 和数据集评测。
+
+- 兼容范围是通过 `POST /backend/v1/scans` 的文本扫描。
+- 不包括 F5 的项目管理、历史查询、Scanner 配置 API 和 `/scans/raw`。
+- LiteLLM 的 `action`、Call ID 和 WebSocket 规则不适用于 Scan。
 
 <a id="scan-connection" />
 ## 地址、认证与路由
@@ -15,7 +19,10 @@ Authorization: Bearer <Endpoint 凭据>
 Content-Type: application/json
 ```
 
-`CALYPSOAI_URL` 是 Runner Service 的运行时根地址，例如 `https://guard-runtime.example.com`，不附带 `/runtime/v1/endpoints/{id}`。`CALYPSOAI_TOKEN` 使用创建 Scan Endpoint 时保存的完整凭据。所有 Scan Endpoint 共用该路径，由 Bearer 凭据识别 Endpoint，再由已发布 Router 选择 Guardrail Version。
+- `CALYPSOAI_URL` 是 Runner Service 的运行时根地址，例如 `https://guard-runtime.example.com`。不要附带 `/runtime/v1/endpoints/{id}`。
+- `CALYPSOAI_TOKEN` 是创建 Scan Endpoint 时保存的完整凭据。
+
+所有 Scan Endpoint 共用这个路径。Bearer 凭据识别 Endpoint，该 Endpoint 已发布的 Router 再选择 Guardrail Version。
 
 ```bash
 export CALYPSOAI_URL='https://guard-runtime.example.com'
@@ -26,7 +33,10 @@ curl -sS --fail-with-body -X POST "${CALYPSOAI_URL%/}/backend/v1/scans" \
   --data '{"input":"Text to inspect","scanDirection":"request","flagOnly":false,"verbose":false}'
 ```
 
-Scan 没有 `/verify` 或模型调用接口。用一条真实扫描验证认证、路由和检查行为；输入扫描不会调用业务模型，输出扫描也不会自动读取模型回答。
+Scan 没有 `/verify` 接口，也没有模型调用接口。要验证认证、路由和检测，请提交一条真实的扫描。
+
+- 输入扫描不会调用业务模型。
+- 输出扫描不会自动获取模型回答。
 
 <a id="scan-request" />
 ## 请求 JSON 与有效字段
@@ -61,29 +71,33 @@ Scan 没有 `/verify` 或模型调用接口。用一条真实扫描验证认证�
 
 | 字段 | 类型／默认值 | 约束与作用 |
 | --- | --- | --- |
-| `input` | 必填字符串 | 唯一待检查文本；不接受数组、对象或 `null`。当前 schema 允许空字符串，但空检查不代表其他内容已通过 |
-| `scanDirection` | `"request"`，默认值；或 `"response"` | 选择 Input 或 Output Rail；大小写敏感 |
-| `flagOnly` | 布尔值，默认 `true` | `true` 将命中统一表达为 `flagged`；`false` 可区分 `blocked` 与 `redacted` |
-| `verbose` | 布尔值，默认 `false` | 是否返回一条 Guardrail 聚合检查详情 |
+| `input` | 必填字符串 | 唯一要检测的文本。必须是字符串，不接受数组、对象或 `null`。schema 允许空字符串，但空扫描不能证明其他内容已通过。 |
+| `scanDirection` | `"request"`（默认）或 `"response"` | 选择 Input Rail 或 Output Rail。区分大小写。 |
+| `flagOnly` | 布尔值，默认 `true` | `true` 把每次命中都表示为 `flagged`。`false` 区分 `blocked` 和 `redacted`。 |
+| `verbose` | 布尔值，默认 `false` | 是否返回一条 Guardrail 的聚合结果详情。 |
 
-这四个字段严格校验类型：`"false"`、`0`、`1` 不能代替布尔值；可选字段显式传 `null` 也不等于省略。未知枚举或错误类型返回 `422`。
+这四个字段严格校验类型：
 
-每次调用独立解析当前路由并返回新的 Scan ID。请求扫描和响应扫描不共享会话或固定版本；重复提交也会执行新扫描，没有去重或幂等保证。需要同一模型调用的版本绑定时，使用 [LiteLLM Endpoint](/document/developer/gateway-connect)。
+- `"false"`、`0`、`1` 不能代替布尔值。
+- 显式传 `null` 不等于省略字段。
+- 未知的枚举值或错误的类型返回 `422`。
 
-`flagOnly` 只影响结果表达，不关闭检测，也不是服务端 Dry Run。观察模式由客户端自行记录判定与实际交付，不能通过 `dry_run` 或兼容占位字段启用。
+每次调用都重新解析当前路由，并返回新的 Scan ID。输入扫描和输出扫描不共享会话，也不共享固定的版本。重复提交会执行新的扫描。Scan 不保证去重或幂等。需要在一次模型调用中固定版本时，请使用 [LiteLLM Endpoint](/document/developer/gateway-connect)。
+
+`flagOnly` 只影响结果的表达方式，不关闭检测，也不是服务端的 Dry Run。观察模式由客户端自己实现：分别记录判定结果和实际交付。`dry_run` 和兼容占位字段都不能开启服务端 Dry Run。
 
 <a id="scan-placeholders" />
 ## 只接收但忽略的兼容字段
 
 | 字段 | 本系统中的作用 |
 | --- | --- |
-| `project` | 不适用；不会选择项目、Endpoint 或 Guardrail |
-| `externalMetadata` | 忽略；不用于路由，也不保证在响应中回传 |
-| `requestPromptId` | 忽略；不关联输入与输出，也不复用已有 Scan |
-| `configOverrides` | 忽略；不覆盖 Scanner、Policy 或 Router 配置 |
-| `disabled`、`forceEnabled` | 忽略；不能禁用检测或强制启用某个 Scanner |
+| `project` | 不适用。不会选择项目、Endpoint 或 Guardrail。 |
+| `externalMetadata` | 忽略。不用于路由，也不保证在响应中回传。 |
+| `requestPromptId` | 忽略。不关联输入与输出，也不复用已有的 Scan。 |
+| `configOverrides` | 忽略。不覆盖 Scanner、Policy 或 Router 的配置。 |
+| `disabled`、`forceEnabled` | 忽略。不能禁用检测，也不能强制启用某个 Scanner。 |
 
-上述字段接受任意合法 JSON 值，例如字符串、数组、对象或 `null`；未知额外字段也忽略。它们仍计入整个请求体的大小。以下请求与只发送 `{"input":"Text to inspect"}` 的扫描配置相同：
+上述字段接受任意合法的 JSON 值，例如字符串、数组、对象或 `null`。未知的额外字段也会被忽略。这些字段仍计入请求体的大小。下面的请求与只发送 `{"input":"Text to inspect"}` 使用相同的扫描配置：
 
 ```json
 {
@@ -97,12 +111,12 @@ Scan 没有 `/verify` 或模型调用接口。用一条真实扫描验证认证�
 }
 ```
 
-客户端必须自行保留数据集行号、预期标签与返回 Scan ID 的对应关系；不要依赖被忽略的字段回传这些信息。
+客户端必须自己保存数据集行号、预期标签与返回的 Scan ID 之间的对应关系。不要依赖被忽略的字段回传这些信息。
 
 <a id="scan-response" />
 ## 完整响应 JSON 与 outcome
 
-检查完成后返回 HTTP `200`，包括策略阻断。以下示例使用演示 ID；实际结果取决于已发布策略。
+扫描完成后返回 HTTP `200`，被 Policy 阻断时也是如此。以下示例中的 ID 仅作演示。实际结果取决于已发布的 Policy。
 
 未命中的输入扫描：
 
@@ -115,7 +129,7 @@ Scan 没有 `/verify` 或模型调用接口。用一条真实扫描验证认证�
 }
 ```
 
-`flagOnly=true` 且内容被阻断时，命中表达为 `flagged`，原文可能仍在 `redactedInput` 中：
+`flagOnly=true` 时，阻断类的命中表示为 `flagged`。`redactedInput` 中可能仍是原文：
 
 ```json
 {
@@ -166,25 +180,25 @@ Scan 没有 `/verify` 或模型调用接口。用一条真实扫描验证认证�
 
 | `result.outcome` | 含义与调用方处理 |
 | --- | --- |
-| `cleared` | 本次所需检查完成且未发现需干预的内容；可按检查结果继续 |
-| `flagged` | 检测到需干预的内容；默认 `flagOnly=true` 下不区分阻断与替换，不能当作放行 |
-| `blocked` | `flagOnly=false` 下的阻断；停止当前阶段，不交付原文 |
-| `redacted` | `flagOnly=false` 下发生实际替换；使用处理后的文本，不交付原文 |
+| `cleared` | 所需检测已完成，没有发现需要干预的内容。可以按结果继续。 |
+| `flagged` | 检测到需要干预的内容。默认的 `flagOnly=true` 不区分阻断和替换。不能当作放行。 |
+| `blocked` | `flagOnly=false` 时的阻断。停止当前阶段，不交付原文。 |
+| `redacted` | `flagOnly=false` 时发生了实际替换。使用处理后的文本，不交付原文。 |
 
-`flagOnly=false` 并不保证只返回三种结果：存在需干预的聚合结果但最终动作不是 block／transform 时，仍可能返回 `flagged`。调用方必须处理全部四种枚举。
+`flagOnly=false` 并不保证只返回三种结果。聚合结果需要干预、但最终动作不是 block 或 transform 时，仍可能返回 `flagged`。调用方必须处理全部四种值。
 
 | 返回字段 | 约束 |
 | --- | --- |
-| `id` | 每次扫描生成的 UUID；不是请求关联键或模型调用 ID |
-| `redactedInput` | 实际处理后的字符串；未替换时可保留原文，**存在这个字段不等于允许交付** |
-| `result.response` | 输入扫描始终为 `null`；输出扫描在非阻断时为处理后文本、阻断时为 `null`。有文本仍须先判断 outcome |
-| `result.scannerResults` | `verbose=false` 时为 `[]`；`true` 时恰好一条 Guardrail 聚合详情，不是逐 Rule 或 F5 Scanner 的结果列表 |
-| 详情的 `outcome` | `passed` 表示未命中，`failed` 表示命中需干预内容；`failed` 不是服务执行故障 |
-| 详情的 `scannerId` | 当 Guardrail ID 是合法 UUID 时使用该 ID，否则为 `null`；不是可配置的 F5 Scanner ID |
-| 详情的其他字段 | `data.type="custom"`；开始／完成时间来自检查；`scanDirection` 为本次方向。`scannerVersionMeta=null`、`message=null`、`customConfig=false` 为占位值 |
-| `scanners` | 固定为 `null`，不适用的配置占位 |
+| `id` | 每次扫描新生成的 UUID。它不是请求关联键，也不是模型调用 ID。 |
+| `redactedInput` | 实际处理后的字符串。没有替换时可能保留原文。**存在这个字段不等于允许交付。** |
+| `result.response` | 输入扫描始终为 `null`。输出扫描未被阻断时为处理后的文本，被阻断时为 `null`。即使有文本，也要先判断 outcome。 |
+| `result.scannerResults` | `verbose=false` 时为 `[]`。`verbose=true` 时恰好一条 Guardrail 聚合详情，不是逐条 Rule 或 F5 Scanner 的结果列表。 |
+| 详情的 `outcome` | `passed` 表示未命中。`failed` 表示命中了需要干预的内容，不表示服务执行故障。 |
+| 详情的 `scannerId` | Guardrail ID 是合法 UUID 时使用该 ID，否则为 `null`。它不是可配置的 F5 Scanner ID。 |
+| 详情的其他字段 | `data.type="custom"`。开始和完成时间来自实际检测。`scanDirection` 是本次扫描的方向。`scannerVersionMeta=null`、`message=null`、`customConfig=false` 是占位值。 |
+| `scanners` | 固定为 `null`。配置不适用。 |
 
-服务端不会把检查超时、缺少所需检查或执行错误伪装成 `cleared`。它们返回非 `2xx`，不返回成功的 Scan 结果对象。
+检测超时、缺少所需检测或执行出错，都不会变成 `cleared`。这些情况返回非 `2xx` 错误，而不是成功的 Scan 结果。
 
 <a id="scan-errors" />
 ## 错误格式、响应头与限制
@@ -195,9 +209,9 @@ Scan 没有 `/verify` 或模型调用接口。用一条真实扫描验证认证�
 | `403` | `adapter_mismatch` | 凭据有效，但所属 Endpoint 不支持 Scan |
 | `413` | `request_too_large` | 整个请求体超过限制 |
 | `415` | `unsupported_media_type` | 请求未使用 `application/json` |
-| `422` | 无；`detail` 为数组 | 无效 JSON、字段缺失、类型或枚举错误 |
+| `422` | 无。`detail` 是数组。 | 无效的 JSON、缺少字段、类型或枚举值错误。 |
 | `503` | `scan_unavailable` | 路由或运行时不可用 |
-| `503` | `scan_execution_failed` | 所需检查未完整完成或执行失败 |
+| `503` | `scan_execution_failed` | 所需检测没有完成或执行失败。 |
 | `504` | `scan_timeout` | 扫描超时 |
 | `500` | `invalid_scan_result` / `scan_internal_error` | 无效内部结果或其他处理失败 |
 
@@ -213,7 +227,7 @@ Scan 没有 `/verify` 或模型调用接口。用一条真实扫描验证认证�
 }
 ```
 
-缺少 `input` 的 `422` 示例；`detail` 是数组，不能按上面的对象读取：
+下面是缺少 `input` 时的 `422` 示例。这里的 `detail` 是数组，不能按上面的对象读取：
 
 ```json
 {
@@ -223,6 +237,12 @@ Scan 没有 `/verify` 或模型调用接口。用一条真实扫描验证认证�
 }
 ```
 
-Scan 处理器的所有响应带 `X-Request-ID` 和 `X-TaskLattice-Scan-Compatibility: v1`。成功体的 `id`、错误对象的 `requestId` 与该请求头相同；`422` 用请求头关联。`401` 还带 `WWW-Authenticate: Bearer`。代理生成的错误不保证采用此格式。
+Scan 处理器的所有响应都带 `X-Request-ID` 和 `X-TaskLattice-Scan-Compatibility: v1` 两个响应头。
 
-默认请求体上限 **1 MiB**，扫描执行超时 **25 秒**；分别由 `GUARD_SCAN_MAX_BODY_BYTES`、`GUARD_SCAN_TIMEOUT_SECONDS` 配置，Helm 对应 `runner.scan.maxBodyBytes`、`runner.scan.timeoutSeconds`。客户端应单独设置网络超时。失败不能记为“通过”或策略命中；重试会产生新的独立扫描。接入验收见 [Endpoint 接入指南](/document/developer/endpoint-setup#endpoint-verification)。
+- 成功响应的 `id`、错误对象的 `requestId` 与 `X-Request-ID` 相同。`422` 用这个响应头关联。
+- `401` 还带 `WWW-Authenticate: Bearer`。
+- 代理生成的错误不一定采用这些格式。
+
+默认的请求体上限是 **1 MiB**，扫描执行超时是 **25 秒**。分别通过 `GUARD_SCAN_MAX_BODY_BYTES` 和 `GUARD_SCAN_TIMEOUT_SECONDS` 配置，对应的 Helm 值是 `runner.scan.maxBodyBytes` 和 `runner.scan.timeoutSeconds`。
+
+客户端应单独设置网络超时。执行失败不能记为“通过”，也不能记为 Policy 命中。重试会产生一次新的独立扫描。接入验收见 [Endpoint 接入指南](/document/developer/endpoint-setup#endpoint-verification)。
