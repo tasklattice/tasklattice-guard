@@ -4,20 +4,20 @@ title: "LiteLLM Endpoint 协议"
 summary: "HTTP 请求与响应、Call ID 关联、WebSocket 流式输出，以及错误和重试约束。"
 order: 1
 ---
-本章仅适用于 **LiteLLM Endpoint**（`litellm-generic-guardrail`）。LiteLLM Provider、自研网关和 Agent 都可实现这份契约。Scan 使用不同的路径、认证和响应，见 [Scan 请求与响应](/document/developer/scan-protocol)。
+本章只适用于 **LiteLLM Endpoint**（`litellm-generic-guardrail`）。LiteLLM Provider、自研网关和 Agent 都可以实现这份契约。Scan 使用不同的路径、认证和响应，见 [Scan 请求与响应](/document/developer/scan-protocol)。
 
 <a id="gateway-connection" />
 ## 地址、认证与连接验证
 
-`{endpoint}` 是包含 Endpoint ID 的运行时基础地址，例如 `https://guard-runtime.example.com/runtime/v1/endpoints/your-endpoint-id`。以下地址都指向 Runner Service。
+`{endpoint}` 是包含 Endpoint ID 的运行时基础地址，例如 `https://guard-runtime.example.com/runtime/v1/endpoints/your-endpoint-id`。以下路径都指向 Runner Service。
 
 | 方法与路径 | 用途 |
 | --- | --- |
-| `POST {endpoint}/verify` | 验证 Endpoint 凭据和 Adapter 类型；请求体 `{}` |
-| `POST {endpoint}/beta/litellm_basic_guardrail_api` | 输入或完整输出检查；JSON 请求体 |
-| `WebSocket {endpoint}/guardrails/output-stream` | [LiteLLM 流式输出检查](/document/developer/gateway-connect#gateway-stream-protocol) |
+| `POST {endpoint}/verify` | 验证 Endpoint 凭据和 Adapter 类型。请求体为 `{}`。 |
+| `POST {endpoint}/beta/litellm_basic_guardrail_api` | 检测输入或完整输出。请求体为 JSON。 |
+| `WebSocket {endpoint}/guardrails/output-stream` | [LiteLLM 流式输出检测](/document/developer/gateway-connect#gateway-stream-protocol) |
 
-认证头为 `x-api-key: <Endpoint 凭据>`，JSON 请求使用 `Content-Type: application/json`。凭据不放在请求体中，也不能用 Controller 个人 Access Token 或模型服务密钥替代。
+JSON 请求要带 `x-api-key: <Endpoint 凭据>` 和 `Content-Type: application/json`。凭据不能放在请求体中，也不能用 Controller 的个人 Access Token 或模型服务密钥代替。
 
 ```bash
 export TALI_GUARD_ENDPOINT='https://guard-runtime.example.com/runtime/v1/endpoints/your-endpoint-id'
@@ -37,12 +37,15 @@ HTTP `200` 的完整验证响应：
 }
 ```
 
-`ready` 只证明凭据和 Adapter 匹配，不执行 Policy，也不保证 Router、固定版本或模型依赖已就绪。还必须发送真实检查请求。
+`ready` 只证明凭据和 Adapter 匹配。它不执行 Policy 检测，也不保证 Router、固定版本或模型依赖已经就绪。之后还必须发送真实的检测请求。
 
 <a id="gateway-checks" />
 ## 输入与完整输出请求
 
-以下是可直接发送的输入检查请求体。`texts` 是检查目标，`structured_messages` 是上下文；上下文不能代替待检查文本。
+下面是一个可以直接发送的输入检测请求体。
+
+- `texts` 是要检测的内容。
+- `structured_messages` 是上下文，不能代替 `texts`。
 
 ```json
 {
@@ -64,7 +67,7 @@ HTTP `200` 的完整验证响应：
 }
 ```
 
-将请求体保存为 `input.json` 后发送：
+把请求体保存为 `input.json` 后发送：
 
 ```bash
 curl -sS --fail-with-body -X POST "${TALI_GUARD_ENDPOINT%/}/beta/litellm_basic_guardrail_api" \
@@ -72,7 +75,7 @@ curl -sS --fail-with-body -X POST "${TALI_GUARD_ENDPOINT%/}/beta/litellm_basic_g
   --data-binary @input.json
 ```
 
-输入检查允许继续后，调用方自行请求模型。缓存完整回答，再向同一路径发送输出检查请求体：
+输入检测允许继续后，调用方自己请求模型。缓存完整的回答，再向同一路径发送输出检测请求体：
 
 ```json
 {
@@ -91,33 +94,45 @@ curl -sS --fail-with-body -X POST "${TALI_GUARD_ENDPOINT%/}/beta/litellm_basic_g
 }
 ```
 
-同一次模型调用必须使用同一 Endpoint、非空 `litellm_call_id` 和一致的路由元数据。每次新的模型调用生成新 ID；关联输出必须先有输入上下文，上下文过期不能通过换 ID 假装延续原调用。API 模型允许省略 Call ID，但省略后不能依赖输入／输出版本绑定。流式调用所用 ID 还须满足 [start 帧限制](/document/developer/gateway-connect#gateway-stream-protocol)。
+同一次模型调用的两个阶段，必须使用同一个 Endpoint、同一个非空的 `litellm_call_id` 和一致的路由元数据。每次新的模型调用都生成新的 ID。
+
+- 关联的输出请求必须已经有输入上下文。上下文过期后，换一个 ID 也不能延续原来的调用。
+- API 模型允许省略 Call ID，但省略后，输入和输出不保证使用同一个版本。
+- 流式调用的 ID 还必须满足 [start 帧的限制](/document/developer/gateway-connect#gateway-stream-protocol)。
 
 <a id="gateway-request-fields" />
 ## 请求字段约束
 
-“接入必传”是客户端应遵守的约定；与服务器兼容模型允许省略、接受 `null` 的字段明确区分。
+下表区分两件事：客户端接入时必须发送的字段，以及服务端兼容模型允许省略或传 `null` 的字段。
 
 | 字段 | JSON 类型与默认值 | 行为 |
 | --- | --- | --- |
-| `input_type` | 必填；`"request"` 或 `"response"` | 选择输入或输出阶段 |
-| `texts` | 字符串数组或 `null`；默认 `null` | **接入必传**：明确列出实际待检查文本，不能用空检查代表其他内容已通过 |
-| `litellm_call_id` | 字符串或 `null`；默认 `null` | **关联接入必传**：新的非空模型调用 ID；HTTP 模型没有声明长度上限，流式 ID 最长 256 字符 |
-| `structured_messages` | 对象数组或 `null`；默认 `null` | 策略上下文；调用上下文最多保留最近 20 条 |
-| `model` | 字符串或 `null`；默认 `null` | 模型路由上下文；未提供时可从 `request_data.model` 提取，不触发模型调用 |
-| `request_data` | 对象；默认 `{}`，不接受 `null` | 选定的身份／路由元数据。`user_api_key_alias`、`user_api_key_team_id`、`user_api_key_user_id` 对应 LiteLLM Selector 字段；不是任意执行配置 |
-| `request_headers` | 对象或 `null`；值为字符串或字符串数组 | 原业务请求 Header；与实际 Endpoint HTTP 请求头分开。认证、Cookie 等敏感头不参与路由 |
-| `litellm_trace_id`、`litellm_version` | 字符串或 `null` | 接受的兼容元数据；当前不驱动检查或调用关联，不能替代 Call ID |
-| `images` | 字符串数组或 `null` | 接受的兼容字段；当前不作为独立检查目标 |
-| `tools`、`tool_calls` | 对象数组或 `null` | 接受的兼容字段；当前不作为独立检查目标 |
-| `additional_provider_specific_params` | 对象或 `null` | 接受但当前不用于切换执行模式或覆盖 Guardrail 配置 |
+| `input_type` | 必填。`"request"` 或 `"response"`。 | 选择输入阶段或输出阶段。 |
+| `texts` | 字符串数组或 `null`。默认 `null`。 | **接入必传。** 明确列出实际要检测的文本。空检测不能证明其他内容已通过。 |
+| `litellm_call_id` | 字符串或 `null`。默认 `null`。 | **关联接入必传。** 新的、非空的模型调用 ID。HTTP 模型没有声明长度上限。流式 ID 最长 256 字符。 |
+| `structured_messages` | 对象数组或 `null`。默认 `null`。 | Policy 上下文。调用上下文最多保留最近 20 条。 |
+| `model` | 字符串或 `null`。默认 `null`。 | 模型路由上下文。未提供时从 `request_data.model` 读取。不会触发模型调用。 |
+| `request_data` | 对象。默认 `{}`。不接受 `null`。 | 选定的身份与路由元数据。`user_api_key_alias`、`user_api_key_team_id`、`user_api_key_user_id` 对应 LiteLLM Selector 字段。它不是任意的执行配置。 |
+| `request_headers` | 对象或 `null`。值为字符串或字符串数组。 | 原业务请求的 Header，与 Endpoint 的 HTTP 请求头分开。认证、Cookie 等敏感头不参与路由。 |
+| `litellm_trace_id`、`litellm_version` | 字符串或 `null` | 接受的兼容元数据。当前不影响检测或调用关联，不能代替 Call ID。 |
+| `images` | 字符串数组或 `null` | 接受的兼容字段。当前不是独立的检测目标。 |
+| `tools`、`tool_calls` | 对象数组或 `null` | 接受的兼容字段。当前不是独立的检测目标。 |
+| `additional_provider_specific_params` | 对象或 `null` | 接受，但当前不能切换执行模式，也不能覆盖 Guardrail 配置。 |
 
-未列出的额外字段会被接收，但当前 Adapter 不读取它们；`protocol`、`phase`、`dry_run` 等不能改变此接口的方向或执行模式。待保护的工具输出等内容仍须明确提取到 `texts`。原业务 Header 每个来源最多 128 个键，每个键最多 64 个值，每个值最长 2,048 字符；无法完整提取路由上下文时请求失败，不以部分上下文继续匹配。
+未列出的额外字段会被接收，但当前的 Adapter 不读取它们。`protocol`、`phase`、`dry_run` 等字段不能改变这个接口的方向或执行模式。需要保护的工具输出等内容，必须明确放进 `texts`。
+
+原业务 Header 的限制：
+
+- 每个来源最多 128 个键。
+- 每个键最多 64 个值。
+- 每个值最长 2,048 字符。
+
+无法完整提取路由上下文时，请求失败。Runner 不会用不完整的上下文继续匹配。
 
 <a id="gateway-actions" />
 ## 完整成功响应与 action
 
-以下是三种完整响应体示例；触发何种结果取决于已发布策略，阻断理由和替换文本按实际执行生成。正常检查结果使用 HTTP `200`。
+下面是三种完整的响应体示例。返回哪种结果，取决于已发布的 Policy。阻断理由和替换文本按实际执行生成。正常完成的检测返回 HTTP `200`。
 
 允许：
 
@@ -139,40 +154,52 @@ curl -sS --fail-with-body -X POST "${TALI_GUARD_ENDPOINT%/}/beta/litellm_basic_g
 
 | `action` | 输入阶段 | 输出阶段 |
 | --- | --- | --- |
-| `NONE` | 使用原输入调用模型 | 交付原输出 |
-| `BLOCKED` | 不调用模型 | 不交付被阻断的输出 |
-| `GUARDRAIL_INTERVENED` | 按位置替换输入 `texts` | 按位置交付返回的 `texts` |
+| `NONE` | 用原输入调用模型。 | 交付原输出。 |
+| `BLOCKED` | 不调用模型。 | 不交付被阻断的输出。 |
+| `GUARDRAIL_INTERVENED` | 按位置替换输入的 `texts`。 | 按位置交付返回的 `texts`。 |
 
-`action` 必须存在。`blocked_reason` 是阻断时可选的说明，不是稳定错误码；`texts` 在替换时用于交付。值为 `null` 的可选字段会省略。当前 Adapter 不返回 `images`、`tools` 的替换结果，也不在响应体中返回完整内部诊断对象。
+- `action` 一定存在。
+- `blocked_reason` 是阻断时可选的说明文字，不是稳定的错误码。
+- `texts` 在替换时用于交付。
+- 值为 `null` 的可选字段会被省略。
 
-替换数组必须与提交的 `texts` 数量、顺序一致；空字符串是有效替换。未知 action、无效 JSON 或错误的替换数量都属于无效检查响应，不能当作 `NONE`。
+当前的 Adapter 不返回 `images` 或 `tools` 的替换结果，也不在响应体中返回完整的内部诊断对象。
+
+替换数组必须与提交的 `texts` 数量相同、顺序一致。空字符串是有效的替换。未知的 action、无效的 JSON 或错误的替换数量，都属于无效的检测响应，不能当作 `NONE`。
 
 <a id="gateway-errors" />
 ## LiteLLM HTTP 错误
 
 | 状态／返回 | 含义与处理 |
 | --- | --- |
-| `401` | Endpoint 不存在、停用，或凭据缺失／无效；检查 URL 和 `x-api-key` |
-| `409` | 凭据所属 Endpoint 的 Adapter 与 LiteLLM 不匹配；不要尝试改请求体的 `protocol` |
-| `422` | JSON 或字段校验失败；修正 `input_type`、字段类型等后重新提交 |
-| `503` | 路由上下文、调用关联或固定版本不可用；输出不得静默切换版本 |
-| `500`、其他非 2xx、超时／断线 | 未取得有效结果；服务端或代理的错误不保证都是 JSON |
-| `200` + `BLOCKED` | 必须阻断，不能按 HTTP 错误降级策略放行 |
+| `401` | Endpoint 不存在或已停用，或者凭据缺失或无效。请检查 URL 和 `x-api-key`。 |
+| `409` | 凭据所属 Endpoint 的 Adapter 不支持 LiteLLM。修改请求体的 `protocol` 也无法解决。 |
+| `422` | JSON 或字段校验失败。修正 `input_type`、字段类型等后重新提交。 |
+| `503` | 路由上下文、调用关联或固定版本不可用。输出不得在不通知的情况下切换版本。 |
+| `500`、其他非 2xx、超时或断线 | 没有得到有效结果。服务端或代理的错误不一定是 JSON。 |
+| `200` + `BLOCKED` | 必须阻断。不能按 HTTP 错误的降级策略放行。 |
 
-常见认证错误响应：
+常见的认证错误响应：
 
 ```json
 {"detail": "Endpoint credential is invalid."}
 ```
 
-LiteLLM 的 `HTTPException` 错误通常使用字符串 `detail`，`422` 使用校验错误数组。不要把它们解析为 Scan 的 `detail.code` 对象，也不要对可变的 `blocked_reason` 做固定错误码匹配。
+LiteLLM 的 `HTTPException` 错误通常使用字符串 `detail`。`422` 使用校验错误数组。不要把它们解析为 Scan 的 `detail.code` 对象。也不要拿可变的 `blocked_reason` 文本去匹配固定的错误码。
 
-LiteLLM 输入与输出保持同一 Endpoint、Call ID 和路由上下文，过期输出不能换 ID 继续原调用。重试不承诺去重；调用方负责重试次数和业务重复处理。`BLOCKED` 可能来自策略命中、无匹配路由或运行时失败保护：客户端一律阻断，评测结合运行证据区分原因。服务端不支持请求参数 `dry_run: true`。
+LiteLLM 的输入和输出要使用同一个 Endpoint、Call ID 和路由上下文。输出过期后，换 ID 也不能继续原来的调用。
+
+- 重试不保证去重。调用方负责重试次数，以及业务上的重复处理。
+- `BLOCKED` 可能来自 Policy 命中、没有匹配的路由，或者运行时失败保护。客户端一律阻断。评测时结合运行证据区分原因。
+- 服务端不支持请求参数 `dry_run: true`。
 
 <a id="gateway-stream-protocol" />
 ## WebSocket 流式输出
 
-先完成输入检查，再打开一条到 `{endpoint}/guardrails/output-stream` 的 WebSocket，在升级请求头中传入 `x-api-key`。`{endpoint}` 是包含 Endpoint ID 的 Runner 基础地址；生产连接使用 `wss://`。网关对客户端继续使用原有 SSE，反向代理须允许 WebSocket 升级。
+1. 完成输入检测。
+2. 打开一条到 `{endpoint}/guardrails/output-stream` 的 WebSocket，并在升级请求头中传入 `x-api-key`。
+
+`{endpoint}` 是包含 Endpoint ID 的 Runner 基础地址。生产环境使用 `wss://`。网关对客户端继续使用原有的 SSE。反向代理必须允许 WebSocket 升级。
 
 <a id="gateway-stream-request" />
 
@@ -182,21 +209,28 @@ LiteLLM 输入与输出保持同一 Endpoint、Call ID 和路由上下文，过�
 {"type":"start","version":1,"protocol":"litellm","call_id":"call-123","stream_id":"stream-456","messages":[],"request_data":{},"request_headers":{}}
 ```
 
-复用 Input 的 call ID 和路由元数据。Runner 返回 `ready`，包含固定的发布版本、模型修订、请求与实际模式，以及 8 个输入额度。每个输入帧消耗一个额度；NeMo 消费后返回 `ack` 归还额度。输入序号从 0 递增，收发需要并行执行。
+复用输入阶段的 call ID 和路由元数据。Runner 返回 `ready`，其中包含：
 
-`start` 必须在连接建立后 10 秒内发送，字段严格校验且不接受未知字段：
+- 固定的发布版本。
+- 模型修订。
+- 请求的模式和实际的模式。
+- 8 个输入额度。
+
+每个输入帧消耗一个额度。NeMo 消费这个帧后，Runner 用 `ack` 归还额度。输入序号从 0 开始递增。发送和接收需要并行进行。
+
+连接建立后 10 秒内必须发送 `start`。字段类型严格校验，不接受未知字段。
 
 | 字段 | 约束 |
 | --- | --- |
-| `type`、`version`、`protocol` | 必填且分别为 `"start"`、整数 `1`、`"litellm"` |
-| `stream_id` | 必填非空字符串，最长 256 字符；标识当前流 |
-| `call_id` | 关联输入时必须传入同一 Call ID，1–256 字符。API 允许省略并回退到 stream ID，但这不会自动建立缺失的输入上下文 |
-| `messages` | 对象数组，默认 `[]`，最多 20 条；上下文不是待检查输出 |
-| `request_data` | 对象，默认 `{}`；与输入检查保持一致的路由元数据 |
-| `request_headers` | 字符串值对象，默认 `{}`；不同于完整输出 HTTP 接口，此处不接受数组值 |
-| `model` | 可选字符串或 `null`；保持与输入的模型上下文一致 |
+| `type`、`version`、`protocol` | 必填。值分别为 `"start"`、整数 `1`、`"litellm"`。 |
+| `stream_id` | 必填。非空字符串，最长 256 字符，用来标识当前的流。 |
+| `call_id` | 关联输入时，必须传入同一个 Call ID，长度 1–256 字符。省略时 API 可以改用 stream ID，但这不会补建缺失的输入上下文。 |
+| `messages` | 对象数组，默认 `[]`，最多 20 条。这些是上下文，不是要检测的输出。 |
+| `request_data` | 对象，默认 `{}`。保持与输入检测一致的路由元数据。 |
+| `request_headers` | 值为字符串的对象，默认 `{}`。与完整输出的 HTTP 接口不同，这里不接受数组值。 |
+| `model` | 可选的字符串或 `null`。保持与输入一致的模型上下文。 |
 
-每个 `delta` 和 `end` 都占用一个输入额度，并以严格递增的整数 `sequence` 排序。`delta.text` 为字符串；`end` 不得带非空文本。下列每行是一个独立 JSON 帧：
+每个 `delta` 和 `end` 都占用一个输入额度，整数 `sequence` 必须严格递增。`delta.text` 是字符串。`end` 不能带文本。下面每行是一个独立的 JSON 帧：
 
 ```jsonl
 {"type":"delta","sequence":0,"text":"你好，"}
@@ -206,17 +240,29 @@ LiteLLM 输入与输出保持同一 Endpoint、Call ID 和路由上下文，过�
 
 <a id="gateway-stream-delivery" />
 
-### 只交付通过检查的输出
+### 只交付通过检测的输出
 
-只有服务端的 `delta.text` 允许交付给客户端。校验 stream ID 和独立的输出序号；输入 `ack` 不代表允许交付。校验计数后，`completed` 才表示正常结束。`blocked` 表示拦截，`error` 表示检查或协议失败，两者都要停止输出并取消上游。断线或超时终止本次流，不支持重连、重放或续传。
+只有服务端发来的 `delta.text` 才允许交付给客户端。请校验 stream ID 和独立的输出序号。输入的 `ack` 不代表允许交付。
 
-NeMo 负责重叠窗口：每 200 个输入片段检查一次，保留 50 个片段作为上下文，检查通过后才释放。请求的 `interruptible` 也采用 `window_buffered`。这里的单位是片段，不是字符。已交付文本无法撤回。PII、替换及其他要求完整回复的策略使用 `full_buffered`：收到 `end` 后检查一次，只交付通过的原文或替换结果。
+- `completed`：核对计数后，表示正常结束。
+- `blocked`：表示拦截，停止输出。
+- `error`：表示检测失败或协议失败。
+
+收到 `blocked` 或 `error` 后，取消上游的模型调用。断线或超时会终止本次流。不支持重连、重放或续传。
+
+NeMo 负责重叠窗口：每 200 个输入片段检测一次，并保留 50 个片段作为上下文。检测通过后才释放文本。
+
+- 请求 `interruptible` 模式时，也会采用 `window_buffered`。
+- 这里的单位是片段，不是字符。
+- 已经交付的文本无法撤回。
+
+PII、替换以及其他需要完整回复的 Policy 使用 `full_buffered`：收到 `end` 后检测一次，只交付通过检测的原文或替换结果。
 
 <a id="gateway-stream-events" />
 
 ### 服务端事件
 
-下例展示 `full_buffered` 模式中，两段输入正常结束后才交付一段合并输出。发布和模型修订 ID 为演示值，每行是独立 JSON 帧。输入 `ack.sequence` 和服务端输出序号分别计数。
+下例是 `full_buffered` 模式：两段输入正常结束后，才交付一段合并的输出。发布 ID 和模型修订 ID 是演示值。每行是一个独立的 JSON 帧。输入的 `ack.sequence` 和服务端的输出序号分别计数。
 
 ```jsonl
 {"stream_id":"stream-456","type":"ready","version":1,"input_credits":8,"mode":"full_buffered","requested_mode":"full_buffered","effective_release_id":"release-example","model_revision_id":"model-example"}
@@ -227,28 +273,37 @@ NeMo 负责重叠窗口：每 200 个输入片段检查一次，保留 50 个片
 {"stream_id":"stream-456","type":"completed","sequence":1,"checks":1,"released_characters":6,"transformed":false}
 ```
 
-正常阻断使用 `type=blocked`，与 `completed` 一样包含 `sequence`、`checks`、`released_characters`、`transformed`，但不能继续交付。故障帧示例：
+正常的阻断使用 `type=blocked`。它和 `completed` 一样包含 `sequence`、`checks`、`released_characters`、`transformed`，但不能继续交付。故障帧示例：
 
 ```json
 {"stream_id":"stream-456","type":"error","sequence":0,"checks":0,"code":"protection_failed","message":"Protected output stream failed; unchecked text was withheld."}
 ```
 
-`sequence` 在终止帧中表示已发送的输出 delta 数，`released_characters` 表示已交付字符数；调用方应与实际接收结果核对。连接关闭本身不等于 `completed`。
+在终止帧中，`sequence` 是已发送的输出 delta 数，`released_characters` 是已交付的字符数。调用方应与实际收到的结果核对。连接关闭本身不等于 `completed`。
 
 <a id="gateway-stream-end" />
 
-只有确认模型正常结束后才能发送 `end`；异常或截断必须关闭连接。限制为每连接 300 秒、100,000 个 delta、每段 100,000 字符和总计 1,000,000 字符。Redis 仅共享跨副本的调用版本绑定，不保存输出缓冲。可执行测试见仓库 `docs/gateway-integration.md`，该文件仅描述 LiteLLM。
+只有确认模型正常结束后，才能发送 `end`。上游异常或截断时，必须关闭连接。
+
+限制：
+
+- 每个连接 300 秒。
+- 100,000 个 delta。
+- 每段 delta 100,000 字符。
+- 总计 1,000,000 字符。
+
+Redis 只在副本之间共享调用的版本绑定，不保存输出缓冲。可执行的测试见仓库中的 `docs/gateway-integration.md`，这个文件只描述 LiteLLM。
 
 <a id="gateway-stream-errors" />
 ### 流式错误与重试
 
-WebSocket 仅适用于 LiteLLM。认证或 Adapter 不匹配会拒绝握手。连接建立后，故障使用 `type=error` 帧，而不是把 HTTP `502`／`504` 当作流内消息：
+只有 LiteLLM 支持 WebSocket。认证失败或 Adapter 不匹配时，握手会被拒绝。连接建立后，故障通过 `type=error` 帧返回，而不是在流中返回 HTTP `502` 或 `504`：
 
 | 帧的 `code` | 含义 |
 | --- | --- |
-| `invalid_stream` | start／delta／end 格式、序号或额度错误 |
-| `routing_failed` | 调用关联、路由或固定版本不可用 |
-| `timeout` | 等待 start、整个流或检查过程超时 |
-| `protection_failed` | 其他检查故障 |
+| `invalid_stream` | start、delta 或 end 的格式错误，或者序号、额度使用错误。 |
+| `routing_failed` | 调用关联、路由或固定版本不可用。 |
+| `timeout` | 等待 start、整个流或检测过程超时。 |
+| `protection_failed` | 其他检测故障。 |
 
-流式故障应停止交付并取消上游；断线后不支持重连续传或 chunk 重放，已交付文本无法收回。
+流式故障时，停止交付并取消上游调用。断线后不支持重连续传，也不支持 chunk 重放。已交付的文本无法撤回。
