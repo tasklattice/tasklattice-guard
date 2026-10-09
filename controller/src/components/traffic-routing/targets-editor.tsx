@@ -131,10 +131,11 @@ function TargetRow({
     enabled: Boolean(target.guardrailId),
   });
   // Newest first. Every target pins one immutable version, chosen explicitly.
-  const versions =
-    query.data?.versions.filter(
-      (version) => version.status === "ready" && version.artifactId,
-    ).sort((left, right) => right.version.localeCompare(left.version)) ?? [];
+  // Pending versions are listed but cannot be chosen until released here.
+  const listed =
+    query.data?.versions.filter((version) => version.artifactId)
+      .sort((left, right) => right.version.localeCompare(left.version)) ?? [];
+  const versions = listed.filter((version) => version.status === "ready");
   // Imported content is served only after Runners here confirm they can load it.
   const chosen = versions.find((version) => version.version === target.guardrailVersion);
   const chosenImported = chosen?.origin === "imported" ? chosen : undefined;
@@ -205,9 +206,9 @@ function TargetRow({
             <SelectValue placeholder={t("routing.selectVersion")} />
           </SelectTrigger>
           <SelectContent>
-            {versions.map((version) => (
-              <SelectItem key={version.version} value={version.version}>
-                {version.version}
+            {listed.map((version) => (
+              <SelectItem key={version.version} value={version.version} disabled={version.status !== "ready"}>
+                {version.status === "ready" ? version.version : t("routing.pendingVersionOption", { version: version.version })}
               </SelectItem>
             ))}
           </SelectContent>
@@ -220,7 +221,7 @@ function TargetRow({
       {query.error && <ErrorNotice error={query.error} />}
       {query.data && !versions.length && (
         <p className="text-xs text-muted-foreground">
-          {t("routing.publishThisGuardrailToMakeAVersionAvailable")}
+          {t(listed.length ? "routing.noReleasedVersion" : "routing.publishThisGuardrailToMakeAVersionAvailable")}
         </p>
       )}
     </div>

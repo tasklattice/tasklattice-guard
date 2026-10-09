@@ -1,7 +1,7 @@
 export const immutableVersionsEn = {
-  description: "Published snapshots, newest first. Select a version to inspect its configuration and test results.",
-  version: "Version", published: "Published", policies: "Policies", tests: "Latest test", actions: "Actions",
-  readOnly: "Read only", detailDescription: "Published {{date}} · Immutable snapshot",
+  description: "Immutable snapshots, newest first. Select a version to inspect its configuration and test results.",
+  version: "Version", published: "Added", policies: "Policies", tests: "Latest test", actions: "Actions",
+  readOnly: "Read only", detailDescription: "Published {{date}} · Immutable snapshot", importedDescription: "Imported {{date}} · Immutable snapshot",
   overview: "Overview", compiled: "Compiled details", files: "Generated files",
   views: "Version details", previous: "Previous version", next: "Next version", position: "{{current}} of {{total}}",
   view: "View version {{version}}", compare: "Compare", retry: "Try again",
@@ -42,9 +42,9 @@ export const immutableVersionsEn = {
 };
 
 export const immutableVersionsZh: typeof immutableVersionsEn = {
-  description: "已发布的快照，按发布时间倒序排列。选择版本查看配置和测试结果。",
-  version: "版本", published: "发布时间", policies: "Policies", tests: "最近测试", actions: "操作",
-  readOnly: "只读", detailDescription: "发布于 {{date}} · 不可变快照",
+  description: "不可变快照，按加入时间倒序排列。选择版本查看配置和测试结果。",
+  version: "版本", published: "加入时间", policies: "Policies", tests: "最近测试", actions: "操作",
+  readOnly: "只读", detailDescription: "发布于 {{date}} · 不可变快照", importedDescription: "导入于 {{date}} · 不可变快照",
   overview: "概览", compiled: "编译详情", files: "生成文件",
   views: "版本详情", previous: "上一个版本", next: "下一个版本", position: "第 {{current}} 个，共 {{total}} 个",
   view: "查看版本 {{version}}", compare: "比较", retry: "重试",

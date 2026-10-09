@@ -2497,9 +2497,12 @@ export class ControlPlaneService {
   }
 
   private async guardrailSummary(row: typeof guardrails.$inferSelect) {
-    // The draft's own testing state; runs against existing versions are not about the draft.
+    // The draft's own testing state; runs against existing versions are not about
+    // the draft. Imported Guardrails have no draft, so their latest report is the
+    // latest test of one of their versions here.
     const [latestValidation] = await this.db.select().from(validationRuns)
-      .where(and(eq(validationRuns.guardrailId, row.id), eq(validationRuns.subject, "draft"))).orderBy(desc(validationRuns.createdAt)).limit(1);
+      .where(and(eq(validationRuns.guardrailId, row.id), eq(validationRuns.subject, row.origin === "imported" ? "version" : "draft")))
+      .orderBy(desc(validationRuns.createdAt)).limit(1);
     const [caseCount] = await this.db.select({ value: count() }).from(testCases)
       .where(eq(testCases.guardrailId, row.id));
     const published = await this.lastPublishedVersion(this.db, row.id);

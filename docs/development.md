@@ -238,7 +238,8 @@ local detectors, Rule expansion and snapshot decoding live in
 
 ### Promote a Guardrail between environments
 
-UAT authors and tests; production only receives released versions. The design
+UAT authors and tests; production receives released versions, runs their own
+test suites unchanged and releases them. The design
 is `docs/guardrail-self-contained-promotion-design.zh-CN.md`.
 
 **Export (UAT).** **Guardrails → row Actions → Export…** (or **Export…** on a
@@ -265,7 +266,8 @@ own test suite here against its signed Artifact, unchanged; once the latest run
 passed for exactly that content and suite, **Release** makes it **ready** and
 binds that report (`POST /api/v1/guardrails/{id}/versions/{v}/test-runs`, then
 `.../release`). Only ready versions can be routed to, made the baseline or
-exported; a later failed test does not revoke a release. Routing an imported
+exported (the Router target picker lists pending versions greyed out); a later
+failed test does not revoke a release. Routing an imported
 version also requires a recent passing load check on every pool. A released
 imported version whose load check passed is held by the default pool, so
 **Playground** can talk to it before any Router serves it.

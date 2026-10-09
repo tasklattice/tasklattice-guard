@@ -188,7 +188,7 @@ export function ImmutableVersionView({ openRequested, onOpenRequestHandled, deta
       returnFocusRef={opener} width="xl" density="compact" bodyClassName="flex flex-col !overflow-hidden !py-0" footer={null}
       eyebrow={t("guardrails.versions")}
       title={<span className="flex items-center gap-3"><span className="font-mono text-xl">{selectedVersion.version}</span>{isDefault && baseline.data?.version === selectedVersion.version ? <StateBadge state="protected" label={t("guardrailPackage.baselineCurrent")} /> : null}</span>}
-      description={<span className="flex items-center gap-2"><LockKeyhole className="size-3.5" />{t("immutableVersions.readOnly")}<span aria-hidden="true">·</span>{t("immutableVersions.detailDescription", { date: new Date(selectedVersion.created_at).toLocaleString(i18n.language) })}</span>}
+      description={<span className="flex items-center gap-2"><LockKeyhole className="size-3.5" />{t("immutableVersions.readOnly")}<span aria-hidden="true">·</span>{t(selectedVersion.origin === "imported" ? "immutableVersions.importedDescription" : "immutableVersions.detailDescription", { date: new Date(selectedVersion.created_at).toLocaleString(i18n.language) })}</span>}
     >
       <div className="flex shrink-0 items-center justify-between gap-3 border-b bg-background py-2">
         <div className="flex items-center gap-1">

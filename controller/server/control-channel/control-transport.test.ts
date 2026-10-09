@@ -138,3 +138,25 @@ describe("production Controller gRPC transport budget", () => {
     }
   }, 20_000);
 });
+
+describe("Controller background work", () => {
+  it("logs a failed periodic tick and keeps running instead of crashing the process", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    const failure = new Error("Connection terminated due to connection timeout");
+    const service = { pendingOutbox: vi.fn().mockRejectedValue(failure), markStaleRunnersOffline: vi.fn().mockResolvedValue(undefined) };
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const server = new RunnerControlServer({ ...config, grpc: { host: "127.0.0.1", port: 0 } }, service as unknown as ControlPlaneService,
+      { observeControlMessage: vi.fn() } as unknown as ControllerMetrics, {} as ModelConfigurationService);
+    try {
+      await server.start();
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(logged).toHaveBeenCalledWith("Desired state dispatch failed", failure);
+      // The next tick runs again.
+      expect(service.pendingOutbox.mock.calls.length).toBeGreaterThanOrEqual(2);
+    } finally {
+      await server.stop();
+      logged.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+});

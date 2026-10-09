@@ -245,6 +245,8 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     const released = await prod.releaseGuardrailVersion({ guardrailId, version, actorId: "admin" });
     // Same version number and content; the passing report is bound for good.
     expect(released).toMatchObject({ version, status: "ready", validationRunId: passed.id, releasedBy: "admin" });
+    // With no draft, the Guardrail's latest report is the latest test of a version.
+    expect((await prod.getGuardrail(guardrailId)).latestValidationRun).toMatchObject({ id: passed.id, subject: "version", status: "passed" });
     expect((await prodDb.pool.query("SELECT status FROM guardrail WHERE id = $1", [guardrailId])).rows[0].status).toBe("active");
     const { rows: [audit] } = await prodDb.pool.query("SELECT detail FROM audit_event WHERE kind = 'guardrail.version_released'");
     expect(audit.detail).toMatchObject({ version, validationRunId: passed.id, origin: "imported" });

@@ -134,12 +134,16 @@ export class RunnerControlServer {
         else resolve();
       });
     });
+    // A failed tick (for example a database connection timeout) is logged and
+    // retried on the next one; it must never take the Controller down.
+    const every = (label: string, ms: number, task: () => Promise<unknown> | undefined) =>
+      setInterval(() => void Promise.resolve().then(task).catch(error => console.error(`${label} failed`, error)), ms);
     this.timers = [
-      setInterval(() => void this.dispatchValidationRequests(), 1_000),
-      setInterval(() => void this.dispatchDesiredStateChanges(), 1_000),
-      setInterval(() => void this.reconcileAll(), 30_000),
-      setInterval(() => void this.service.trafficRouting?.expireCalls().catch(error => console.error("Traffic expiry failed", error)), 30_000),
-      setInterval(() => void this.service.markStaleRunnersOffline(), this.config.offlineAfterSeconds * 1_000),
+      every("Validation dispatch", 1_000, () => this.dispatchValidationRequests()),
+      every("Desired state dispatch", 1_000, () => this.dispatchDesiredStateChanges()),
+      every("Runner reconciliation", 30_000, () => this.reconcileAll()),
+      every("Traffic expiry", 30_000, () => this.service.trafficRouting?.expireCalls()),
+      every("Stale Runner sweep", this.config.offlineAfterSeconds * 1_000, () => this.service.markStaleRunnersOffline()),
     ];
     for (const timer of this.timers) timer.unref();
   }

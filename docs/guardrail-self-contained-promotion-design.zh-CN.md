@@ -1,6 +1,6 @@
 # Guardrail 自包含发布包与 UAT → 生产晋级设计
 
-状态：已实现（2026-10-08）。实现与本文的差异见文末“实现记录”。
+状态：已实现（2026-10-08；版本测试集与 pending / ready 发布模型 2026-10-09）。实现与本文的差异见文末“实现记录”。
 
 本设计以“UAT 独立开发和验证，生产直接接收已经准备好的 Guardrail”为前提。它更新
 guardrail-promotion-design.zh-CN.md 中尚未实施的 Guardrail 导入和签名方案；不改变
@@ -9,8 +9,9 @@ guardrail-promotion-design.zh-CN.md 中尚未实施的 Guardrail 导入和签名
 **产品决策**
 
 UAT 使用 Policy Library 创建和编辑 Guardrail，将完整执行内容冻结为不可变版本。
-生产接收该版本及其来源证据，不查询或安装 Policy Library，不重新生成执行计划，
-不重新运行草稿测试，不重新执行 TaskLattice 构建流程。
+生产接收该版本（Policies 与测试集），不查询或安装 Policy Library，不重新生成执行计划，
+不重新执行 TaskLattice 构建流程。导入的版本为待发布，在生产对同一份 Artifact 原样运行
+它自带的测试集，通过后才能发布；测试报告各环境独立，不随包导出。
 
 生产仍需要兼容的 Runner、运行时能力和必要的模型连接。这里的“自包含”覆盖
 Guardrail 的业务规则、执行配置、提示词和静态素材；运行引擎、外部服务和凭据由
@@ -24,8 +25,8 @@ Guardrail 的业务规则、执行配置、提示词和静态素材；运行引�
 | Apigee | 可导出某个 revision 的 ZIP 包，跨组织导入；导入和部署是分别执行的操作 | 素材进入版本库与改变流量分开 |
 | Open Policy Agent | Bundle 包含策略、数据及可选 Wasm；支持配置可信公钥后验签加载 | 依赖随包冻结，接收端验证内容与来源 |
 
-以上支持的是设计方向，不代表三种产品都具备相同的包格式、跨环境签名或免测试规则。
-生产无需重复调试是本项目根据 UAT/生产职责划分作出的产品决策。
+以上支持的是设计方向，不代表三种产品都具备相同的包格式或跨环境签名规则。
+生产不编辑、不重新编译，只原样复测，是本项目根据 UAT/生产职责划分作出的产品决策。
 
 参考资料，查阅于 2026-10-08：
 
@@ -110,14 +111,15 @@ signatures.json
 
 **生产导入交互**
 
-入口放在 Guardrails 列表页的 Import，使用与系统一致的右侧抽屉。
+入口放在 Guardrails 列表页“创建 Guardrail”下拉菜单中的“导入发布包”，使用与系统一致的右侧抽屉。
 
 1. 上传包，自动解析并检查签名、文件摘要、依赖完整性、版本冲突和环境兼容性。
-2. 预览显示名称、来源、版本列表、UAT 结论、本次新增/已存在的版本和环境检查结果。
+2. 预览显示名称、来源、版本列表、每个版本的测试集规模、本次新增/已存在的版本和环境检查结果。
    不出现 Policy 映射、导入 Policy Library、编辑测试用例或重新发布步骤。
 3. 点击 Import 后事务性追加所选版本，结果显示“已导入 2 个版本，1 个版本已存在”。
-4. 返回 Guardrail 详情及 Immutable versions。直接进入版本查看；不产生 Draft，不显示
-   Test draft，也不要求再点 Publish。生产流量切换仍在 Router 内完成。
+4. 返回 Guardrail 详情及 Immutable versions。导入的版本为待发布：在版本上“运行测试”，
+   通过后“发布”；不产生 Draft，不能编辑 Policy 或测试集。生产流量切换仍在 Router 内完成，
+   Router 选择版本时待发布的版本置灰并说明原因。
 
 正常路径只需上传、确认导入。来源信任和生产模型绑定由环境管理员预先配置一次。
 进度展示实际阶段“读取文件 → 校验内容 → 检查环境 → 写入版本”；只有可计数的
@@ -128,8 +130,8 @@ signatures.json
 选用；补齐环境配置后自动重新检查。缺少在线 Runner 时显示“兼容性待确认”。
 检查失败给出具体缺项和对应设置入口，不引导用户在生产修改规则。
 
-版本详情读取包内快照。Testing Report 展示“UAT · Passed”、原测试时间与源版本；
-不伪造生产 validation_run，不将来源报告表述为生产实测。
+版本详情读取包内快照，显示来源与“本环境的发布”：状态、绑定的本环境测试报告和发布
+时间。UAT 的测试报告不随包导出，也不在生产展示；生产的报告全部来自本环境的实际运行。
 
 **身份、幂等与版本冲突**
 
@@ -252,7 +254,7 @@ Library 表不作为导入依赖存储。多个版本可共享相同内容 blob�
 - 两套隔离部署，生产 Policy Library 目录不存在、custom Policy 表为空；从冷启动到
   导入、只读查看、导出、Router 使用和实际 Endpoint 调用完整成功。
 - 包含内置规则和自定义 Colang Policy 的版本均可加载；实现与静态数据都来自包。
-  全流程断言无 Catalog/Policy 表读取，不产生编译或草稿测试任务。
+  全流程断言无 Catalog/Policy 表读取，不产生编译或草稿测试任务；只有对版本 Artifact 的原样测试。
 - Library 中加入相同 ID 但不同内容的 Policy 后，包内行为和内容摘要保持不变；导入
   不改变已有 Library 行、版本及内容。
 - 多版本首次导入、后续增量导入、重复上传、并发导入、同版本不同内容冲突与整批
@@ -277,7 +279,7 @@ Library 表不作为导入依赖存储。多个版本可共享相同内容 blob�
 | Router 门禁 | 提交与批准变更单前对导入版本重新做加载检查，要求 10 分钟内的 compatible 结果 | 本地发布的版本不受此门禁约束 |
 | 分发 | 默认池额外预加载本地发布的版本，以及加载检查为 compatible 的导入版本；其余导入版本只在被 Router 引用时分发。检查结论跨过 compatible 时推进 generation | 与设计一致 |
 | 基线 | `controller_state.baseline_version` 固定一个确切版本；通过 `PUT /system/baseline` 或启动时基线包（必须只含一个版本）设置；全新安装时第一个发布的 Default 版本成为基线，之后的切换一律显式 | 产品随附基线包的构建流水线不在本期 |
-| 版本测试集 | 测试运行冻结实际执行的用例（只含定义：输入、预期结果、预期覆盖、来源 Policy，不含编辑时间等动态字段），并按冻结内容计算测试集摘要；发布时测试集随 Artifact 写入版本，成为版本的静态内容。`GET /guardrails/{id}/versions/{version}/test-suite` 只读，版本详情新增“测试集”页签；之后修改 Guardrail 的用例不影响已发布版本 | 下一步：发布包携带测试集、导入版本在本环境运行测试后发布 |
+| 版本测试集 | 测试运行冻结实际执行的用例（只含定义：输入、预期结果、预期覆盖、来源 Policy，不含编辑时间等动态字段），并按冻结内容计算测试集摘要；发布时测试集随 Artifact 写入版本，成为版本的静态内容。`GET /guardrails/{id}/versions/{version}/test-suite` 只读，版本详情新增“测试集”页签；之后修改 Guardrail 的用例不影响已发布版本 | 发布包携带测试集（`test-suite`），导入版本在本环境运行测试后发布 |
 | 版本状态 | 只有 pending / ready：导入为 pending，`POST /guardrails/{id}/versions/{v}/test-runs` 对已签名 Artifact 原样运行版本自带的测试集，`POST .../release` 绑定最近一次通过且内容和测试集一致的报告后变为 ready（记录发布时间和发布人）。Router、基线、导出只接受 ready。compiling / failed 已删除 | 测试结果不作为状态；发布后复测失败不撤销发布 |
 | 版本引用 | 删除 Latest 指针与“标记为 Latest”：Router Target 只能固定版本（草稿与快照相同），导出必须显式选择版本，发布包不再有推荐版本；草稿“未发布更改”只与上一次发布的版本比较；基线版本受删除保护 | 原设计保留 Latest 作为元数据，现彻底移除 |
 | 环境一致 | 无功能开关：两边加载同一 Library、都会建立本地 Default，导入和导出只取决于身份配置（未配置时入口仍可见并说明原因）。Default 等保留系统资源在每个环境都存在，受授权的来源可以向本地 Default 添加导入版本，切换基线仍需显式操作 | 曾有 `CONTROLLER_AUTHORING_ENABLED` 开关，已移除 |
@@ -286,4 +288,4 @@ Library 表不作为导入依赖存储。多个版本可共享相同内容 blob�
 | 生产再导出 | 导入的版本不能从生产再导出 | 第三环境的信任链未实现 |
 | Runner 升级 | 版本与 Runner 不兼容时由加载检查和 Router 门禁阻止投入使用 | 新旧 Runner 池并行切换的升级流程未实现 |
 
-端到端验证：`npm run helm:deploy:promotion` 在 OrbStack 上部署两个 Helm release（`tali-guard-uat`、`tali-guard-prod`，各自的 namespace、数据库、签名密钥、Controller、Runner；生产关闭 authoring，信任源写在 `controller.promotion.trust.sources`），`npm run test:promotion` 运行 `scripts/regress_guardrail_promotion.mjs`，`scripts/regress_guardrail_promotion.mjs` 覆盖：UAT 测试并发布候选、导出、Library 变化后重新导出逐字节一致、生产冷启动、导入与真实 Runner 加载检查、幂等重复上传、跨环境摘要一致而签名不同、通过加载检查的导入版本在路由前进入默认池且 Playground 不再被 authoring 拦截（草稿预览仍被拒绝）、第二位管理员批准变更单后承接真实流量、篡改/不可信签名/同版本不同内容/跨来源接管/保留 ID 均拒绝且不写入、缺失 Action 的版本可导入但不能路由、导入不改变基线以及显式切换基线。
+端到端验证：`npm run helm:deploy:promotion` 在 OrbStack 上部署两个 Helm release（`tali-guard-uat`、`tali-guard-prod`，各自的 namespace、数据库、签名密钥、Controller、Runner；两边功能相同，信任源写在 `controller.promotion.trust.sources`），`npm run test:promotion` 运行 `scripts/regress_guardrail_promotion.mjs`，`scripts/regress_guardrail_promotion.mjs` 覆盖：UAT 测试并发布候选、导出、Library 变化后重新导出逐字节一致、生产冷启动、导入与真实 Runner 加载检查、幂等重复上传、跨环境摘要一致而签名不同、导入版本为待发布且测试前发布被拒、在生产原样运行版本测试集通过后发布并绑定报告、通过加载检查的导入版本在路由前进入默认池、第二位管理员批准变更单后承接真实流量、篡改/不可信签名/同版本不同内容/跨来源接管/保留 ID 均拒绝且不写入、缺失 Action 的版本可导入但测试失败、不能发布、也不能路由、导入不改变基线、Default 在生产测试并发布后显式切换基线。
