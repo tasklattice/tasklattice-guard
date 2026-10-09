@@ -245,8 +245,12 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     expect(stored.environment_check.pools[0].reason).toContain("GuardContentFilterAction");
 
     prod.setArtifactAdmission(answer(true));
+    const generation = await prod.desiredGeneration();
     const change = await submit();
-    expect(await prod.desiredStateForPool("default")).toMatchObject({ artifacts: [] });
+    // Passing the load check lets the default pool hold the version, so it can
+    // be tried in Playground before any Router serves it.
+    expect(await prod.desiredGeneration()).toBe(generation + 1);
+    expect((await prod.desiredStateForPool("default")).artifacts.map(item => item.guardrailVersion)).toEqual([version]);
     await prod.packages.checkRoutedImports(change.snapshot);
     await prod.trafficRouting.approveChange(router.id, change.id, "approver", {});
     const desired = await prod.desiredStateForPool("default");

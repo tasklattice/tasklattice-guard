@@ -56,10 +56,11 @@ export const routeCapabilities: ReadonlyArray<readonly [string, string, "core" |
   ["POST", "/api/v1/authoring/intent-analyses", "authoring"],
   ["POST", "/api/v1/authoring/document-analyses", "authoring"],
   ["POST", "/api/v1/authoring/plan-previews", "authoring"],
-  ["GET", "/api/v1/playground/models", "authoring"],
+  // Playground: trying a draft is authoring; talking to a released version is not.
+  ["GET", "/api/v1/playground/models", "core"],
   ["POST", "/api/v1/playground/guardrails/:guardrailId/draft-previews", "authoring"],
   ["POST", "/api/v1/playground/guardrails/:guardrailId/draft-interactions", "authoring"],
-  ["POST", "/api/v1/playground/guardrails/:guardrailId/interactions", "authoring"],
+  ["POST", "/api/v1/playground/guardrails/:guardrailId/interactions", "core"],
   // Guardrails: drafts, tests and publication are authoring; released versions are core.
   ["GET", "/api/v1/guardrails", "core"],
   // Read-only Policies frozen in released versions; never the Library.

@@ -253,20 +253,23 @@ and a package key that is separate from the Artifact signing key:
 `CONTROLLER_PACKAGE_SIGNING_KEY_PATH`, optional `CONTROLLER_PACKAGE_SIGNING_KEY_ID`.
 
 **Import (production).** `CONTROLLER_AUTHORING_ENABLED=false` disables Policy
-Library, drafts, tests, publication and draft playgrounds at the API (403
-`authoring_disabled`); the Controller then never loads the catalog.
+Library writes, drafts, tests, publication and draft playgrounds at the API (403
+`authoring_disabled`); the Controller then never loads the catalog. Navigation
+and page layouts stay the same; pages only drop their authoring actions.
 `CONTROLLER_PACKAGE_TRUST_PATH` names a JSON file of trusted sources:
 `{"sources":[{"id","name","keys":[{"id","publicKeyPem"}],"reservedGuardrailIds":[]}]}`.
 **Guardrails → Import** uploads a package, shows the source, each version's
 source test result, new/existing/conflict state and a Runner load check, then
 imports only what is new. Imported Guardrails are read-only. Routing an imported
 version requires a recent passing load check on every pool; a Router change is
-refused otherwise. **Policy Library** there is read only: it aggregates the
-Policies frozen in released Guardrail versions by Policy ID
-(`GET /api/v1/released-policies`), lists each version with its definition digest
-and the Guardrail versions using it, marks what serves traffic, and keeps one
-version number released with different content as separate entries. It never
-reads or writes a Library. The Default Guardrail's version is chosen explicitly as the
+refused otherwise. An imported version whose load check passed is also held by
+the default pool, so **Playground** can talk to it before any Router serves it.
+**Policy Library** there is read only, with the same cards, filters and detail
+drawer: it aggregates the Policies frozen in released Guardrail versions by
+Policy ID (`GET /api/v1/released-policies`); the drawer's Releases tab lists
+each version with its definition digest and the Guardrail versions using it,
+marks what serves traffic, and keeps one version number released with different
+content as separate entries. It never reads or writes a Library. The Default Guardrail's version is chosen explicitly as the
 runtime baseline (`PUT /api/v1/system/baseline`, or a startup package via
 `CONTROLLER_BASELINE_PACKAGE_PATH`); until then status is `degraded` with
 `baseline_not_configured`.

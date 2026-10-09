@@ -10,6 +10,7 @@ import {
   artifacts,
   auditEvents,
   controllerState,
+  outboxEvents,
   guardrailPackages,
   guardrails,
   guardrailVersionProvenance,
@@ -247,8 +248,21 @@ export class GuardrailPackageService {
     const [artifact] = row.artifactId ? await this.db.select().from(artifacts).where(eq(artifacts.id, row.artifactId)) : [];
     if (!artifact) throw new ConflictError("This version has no Artifact to check.", "guardrail_version_artifact_missing");
     const check = await this.admit({ ...artifactContent(artifact), id: artifact.id, generation: artifact.generation, checksum: artifact.checksum, signature: artifact.signature });
-    await this.db.update(guardrailVersions).set({ environmentCheck: check })
-      .where(and(eq(guardrailVersions.guardrailId, guardrailId), eq(guardrailVersions.version, version)));
+    await this.db.transaction(async tx => {
+      const [current] = await tx.select({ environmentCheck: guardrailVersions.environmentCheck }).from(guardrailVersions)
+        .where(and(eq(guardrailVersions.guardrailId, guardrailId), eq(guardrailVersions.version, version))).for("update");
+      await tx.update(guardrailVersions).set({ environmentCheck: check })
+        .where(and(eq(guardrailVersions.guardrailId, guardrailId), eq(guardrailVersions.version, version)));
+      // The default pool preloads imported versions that passed a load check,
+      // so a verdict crossing "compatible" changes what Runners should hold.
+      if (row.origin !== "imported" || (current?.environmentCheck?.status === "compatible") === (check.status === "compatible")) return;
+      const [state] = await tx.update(controllerState).set({ desiredGeneration: increment(controllerState.desiredGeneration), updatedAt: new Date() })
+        .where(eq(controllerState.id, "singleton")).returning();
+      await tx.insert(outboxEvents).values({
+        id: randomUUID(), kind: "runner.desired_state_changed", aggregateId: `${guardrailId}@${version}`,
+        payload: { generation: state?.desiredGeneration ?? 0, guardrailId, version, environment: check.status },
+      });
+    });
     return check;
   }
 

@@ -7020,17 +7020,11 @@
               }
             ]
           },
-          "description": {
-            "type": "string"
+          "definition": {
+            "$ref": "#/components/schemas/getReleasedPoliciesResponseItemsItemVersionsItemDefinition"
           },
           "name": {
             "type": "string"
-          },
-          "rules": {
-            "items": {
-              "$ref": "#/components/schemas/getReleasedPoliciesResponseItemsItemVersionsItemRulesItem"
-            },
-            "type": "array"
           },
           "usage": {
             "items": {
@@ -7046,42 +7040,135 @@
           "version",
           "contentDigest",
           "name",
-          "description",
-          "rules",
+          "definition",
           "usage"
         ],
         "type": "object"
       },
-      "getReleasedPoliciesResponseItemsItemVersionsItemRulesItem": {
+      "getReleasedPoliciesResponseItemsItemVersionsItemDefinition": {
         "properties": {
-          "action": {
-            "anyOf": [
-              {
-                "type": "null"
-              },
-              {
-                "type": "string"
-              }
-            ]
+          "description": {
+            "type": "string"
+          },
+          "detectors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "effects": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "id": {
+            "type": "string"
+          },
+          "implementation": {
+            "enum": [
+              "nemo_native",
+              "rules"
+            ],
             "type": "string"
           },
           "name": {
             "type": "string"
           },
-          "phases": {
+          "output_delivery": {
+            "type": "string"
+          },
+          "parameters": {
+            "items": {
+              "$ref": "#/components/schemas/getPoliciesResponseItemsItemRulesItemDetector_options"
+            },
+            "type": "array"
+          },
+          "rails": {
             "items": {
               "type": "string"
             },
             "type": "array"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/getPoliciesResponseItemsItemRulesItemDetector_options"
+            },
+            "type": "array"
+          },
+          "safety_level": {
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "built_in",
+              "custom"
+            ],
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "$ref": "#/components/schemas/getReleasedPoliciesResponseItemsItemVersionsItemDefinitionTagsItem"
+            },
+            "type": "array"
+          },
+          "test_cases": {
+            "items": {
+              "$ref": "#/components/schemas/getPoliciesResponseItemsItemRulesItemDetector_options"
+            },
+            "type": "array"
+          },
+          "test_count": {
+            "type": "number"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "implementation",
+          "id",
+          "name",
+          "description",
+          "source",
+          "version",
+          "tags",
+          "parameters",
+          "rails",
+          "effects",
+          "detectors",
+          "rules",
+          "test_cases",
+          "test_count",
+          "safety_level",
+          "output_delivery"
+        ],
+        "type": "object"
+      },
+      "getReleasedPoliciesResponseItemsItemVersionsItemDefinitionTagsItem": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "namespace": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
           }
         },
         "required": [
           "id",
-          "name",
-          "action",
-          "phases"
+          "namespace",
+          "value",
+          "label",
+          "source"
         ],
         "type": "object"
       },
@@ -30667,7 +30754,7 @@
     },
     "/api/v1/released-policies": {
       "get": {
-        "description": "Reads current state without creating resources or advancing a lifecycle. Groups the Policy definitions frozen in this environment's ready Guardrail versions by Policy ID. Each Policy version is ID@version plus the digest of its frozen definition, with the Guardrail versions using it and whether they serve traffic through an active Router revision. conflictingVersions lists version numbers released with different content. Reads version plans only, never the Policy Library, so it works where authoring is disabled. Requires policies:read for personal access tokens. Token access covers all resources in the selected module.",
+        "description": "Reads current state without creating resources or advancing a lifecycle. Groups the Policy definitions frozen in this environment's ready Guardrail versions by Policy ID. Each Policy version is ID@version plus the digest of its frozen definition, with that definition in the shape the Policy Library lists and the Guardrail versions using it and whether they serve traffic through an active Router revision. conflictingVersions lists version numbers released with different content. Reads version plans only, never the Policy Library, so it works where authoring is disabled. Requires policies:read for personal access tokens. Token access covers all resources in the selected module.",
         "operationId": "getReleasedPolicies",
         "responses": {
           "200": {

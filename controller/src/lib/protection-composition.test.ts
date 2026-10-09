@@ -47,4 +47,10 @@ describe("business protection composition", () => {
   it("keeps unclassified custom Policies visible for manual selection", () => {
     expect(policyDirectory({ id: "custom" } as Policy)).toBe("business_rules");
   });
+
+  it("classifies a released definition by its declared protection tag", () => {
+    const released = { id: "network", tags: [{ id: "protection:privacy", namespace: "protection", value: "privacy", label: "", source: "declared" }] } as unknown as Policy;
+    expect(policyDirectory(released)).toBe("privacy");
+    expect(policyDirectory({ ...released, tags: [{ ...released.tags[0]!, value: "unknown" }] })).toBe("business_rules");
+  });
 });

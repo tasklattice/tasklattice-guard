@@ -14,6 +14,7 @@ import {
   FlaskConical,
   LoaderCircle,
   Plus,
+  Rocket,
   RotateCcw,
   Search,
   ShieldCheck,
@@ -39,7 +40,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { queryKeys } from "@/features/query-keys";
 import { useAuth } from "@/lib/auth";
 import { useDeploymentCapabilities } from "@/lib/deployment";
-import { ReleasedPoliciesPage } from "./released-policies";
+import { PolicyReleases, ReleaseSummary, releasedPolicyView } from "@/components/policy-releases";
+import { getReleasedPolicies, type ReleasedPolicy } from "@/lib/controller-api";
 import { deleteProgrammablePolicy, getPolicies, getPolicy, type ProgrammablePolicy, type Policy, type PolicyRule, type PolicyTag } from "@/lib/api";
 import {
   parsePolicyPackage,
@@ -50,7 +52,7 @@ import {
 } from "@/lib/policy-transfer";
 import { cn } from "@/lib/utils";
 import { protectionDirectories, type ProtectionDirectoryId } from "../../shared/protection-map";
-import { policyDirectory } from "@/lib/protection-composition";
+import { declaredPolicyDirectory, policyDirectory } from "@/lib/protection-composition";
 import { boundPolicy } from "@/lib/bound-policy";
 
 const EMPTY_POLICIES: Policy[] = [];
@@ -67,25 +69,30 @@ const JURISDICTION_FLAGS: Record<string, string> = {
 };
 
 /**
- * Where Policies are authored this is the editable Library. Elsewhere it shows
- * the Policies frozen in released Guardrail versions and never calls a Library
- * API, so it waits for the deployment capabilities before choosing.
+ * One Policy Library everywhere. Where Policies are authored it lists and
+ * edits the Library. Elsewhere it lists, with the same views, the Policies
+ * frozen in released Guardrail versions, grouped by Policy ID, without any
+ * authoring action and without calling a Library API, so it waits for the
+ * deployment capabilities before choosing a source.
  */
 export function PolicyLibraryPage() {
   const capabilities = useDeploymentCapabilities();
-  if (!capabilities.settled) return <section className="py-8"><CatalogSkeleton /></section>;
-  return capabilities.authoringEnabled ? <AuthoringPolicyLibrary /> : <ReleasedPoliciesPage />;
+  if (!capabilities.settled) return <section className="py-6 sm:py-8"><CatalogSkeleton /></section>;
+  return <PolicyLibrary authoring={capabilities.authoringEnabled} />;
 }
 
-function AuthoringPolicyLibrary() {
+function PolicyLibrary({ authoring }: { authoring: boolean }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const searchParams = useSearch({ strict: false }) as { policy?: string; version?: string };
   const queryClient = useQueryClient();
   const { user } = useAuth();
-  const canManage = user?.role === "admin";
-  const query = useQuery({ queryKey: queryKeys.policies, queryFn: getPolicies });
-  const policies = query.data?.items ?? EMPTY_POLICIES;
+  const canManage = authoring && user?.role === "admin";
+  const libraryQuery = useQuery({ queryKey: queryKeys.policies, queryFn: getPolicies, enabled: authoring });
+  const releasedQuery = useQuery({ queryKey: queryKeys.releasedPolicies, queryFn: getReleasedPolicies, enabled: !authoring });
+  const query = authoring ? libraryQuery : releasedQuery;
+  const releases = useMemo(() => new Map((releasedQuery.data?.items ?? []).map((policy) => [policy.policyId, policy])), [releasedQuery.data]);
+  const policies = useMemo(() => authoring ? libraryQuery.data?.items ?? EMPTY_POLICIES : [...releases.values()].map(releasedPolicyView), [authoring, libraryQuery.data, releases]);
   const [search, setSearch] = useState("");
   const [directory, setDirectory] = useState<ProtectionDirectoryId | null>(null);
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
@@ -183,7 +190,7 @@ function AuthoringPolicyLibrary() {
     <section className="py-6 sm:py-8">
       <PageHeader
         title={t("pages.policyLibrary.title")}
-        description={t("pages.policyLibrary.description")}
+        description={t(authoring ? "pages.policyLibrary.description" : "releasedPolicies.description")}
         action={canManage ? (
           <div className="flex shrink-0 flex-wrap gap-2">
             <Button variant="outline" onClick={(event) => { studioOpenerRef.current = event.currentTarget; importInputRef.current?.click(); }}><Upload />{t("policyStudio.importPolicy")}</Button>
@@ -236,14 +243,21 @@ function AuthoringPolicyLibrary() {
               {[...facets.values()].flat().filter((tag) => selectedTags.has(tag.id)).map((tag) => <Button key={tag.id} variant="outline" size="sm" className="min-h-11 gap-2 bg-card font-normal" onClick={() => setSelectedTags(new Set([...selectedTags].filter((id) => id !== tag.id)))} aria-label={t("policyLibrary.removeFilter", { name: tag.label })}><PolicyTagLabel tag={tag} /><X className="size-3.5" /></Button>)}
             </div> : null}
 
-            {filtered.length ? (
+            {!authoring && !policies.length ? (
+              <div className="flex min-h-80 flex-col items-center justify-center rounded-xl border border-dashed bg-card px-6 text-center">
+                <Workflow className="size-8 text-muted-foreground" />
+                <h2 className="mt-3 text-sm font-semibold">{t("releasedPolicies.empty")}</h2>
+                <p className="mt-1 max-w-md text-xs leading-5 text-muted-foreground">{t("releasedPolicies.emptyDescription")}</p>
+              </div>
+            ) : filtered.length ? (
               <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3" aria-label={t("policyLibrary.catalogLabel")}>
                 {filtered.map((policy) => (
                   <PolicyCard
                     key={policy.id}
                     policy={policy}
+                    release={releases.get(policy.id)}
                     onOpen={() => openPolicy(policy)}
-                    onExport={policy.source === "custom" && policy.implementation === "nemo_native" ? () => exportPolicy(policy) : undefined}
+                    onExport={authoring && policy.source === "custom" && policy.implementation === "nemo_native" ? () => exportPolicy(policy) : undefined}
                     onDelete={canManage && policy.source === "custom" && policy.implementation === "nemo_native" ? () => requestPolicyDelete(policy) : undefined}
                   />
                 ))}
@@ -262,8 +276,9 @@ function AuthoringPolicyLibrary() {
 
       <PolicyDetail
         policy={selected}
+        release={selected ? releases.get(selected.id) : undefined}
         onClose={closePolicy}
-        onExport={!searchParams.version && selected?.source === "custom" && selected.implementation === "nemo_native" ? exportPolicy : undefined}
+        onExport={authoring && !searchParams.version && selected?.source === "custom" && selected.implementation === "nemo_native" ? exportPolicy : undefined}
         onDelete={!searchParams.version && canManage && selected?.source === "custom" && selected.implementation === "nemo_native" ? requestPolicyDelete : undefined}
         onEdit={!searchParams.version && canManage && selected?.source === "custom" && selected.implementation === "nemo_native" ? (policy, trigger) => { studioOpenerRef.current = trigger; setPolicyImport(null); setStudioPolicy(policy.implementation_detail ?? null); } : undefined}
       />
@@ -358,9 +373,10 @@ export function TagFilters({ facets, selected, onChange }: { facets: Map<string,
   </div>;
 }
 
-export function PolicyCard({ policy, onOpen, onExport, onDelete }: { policy: Policy; onOpen: () => void; onExport?: () => void; onDelete?: () => void }) {
+export function PolicyCard({ policy, release, onOpen, onExport, onDelete }: { policy: Policy; release?: ReleasedPolicy; onOpen: () => void; onExport?: () => void; onDelete?: () => void }) {
   const { t } = useTranslation();
   const custom = policy.source === "custom";
+  const directory = declaredPolicyDirectory(policy);
   return (
     <article className={cn("group flex min-h-64 min-w-0 flex-col rounded-xl border bg-card p-4 shadow-xs transition-[border-color,box-shadow] hover:border-primary/30 hover:shadow-sm", custom && "border-primary/35 bg-primary/[0.025] ring-1 ring-primary/10")}>
       <div className="flex min-w-0 items-start justify-between gap-3">
@@ -369,7 +385,7 @@ export function PolicyCard({ policy, onOpen, onExport, onDelete }: { policy: Pol
       </div>
       <p className="mt-2 line-clamp-2 min-h-10 text-xs leading-5 text-muted-foreground">{policy.description}</p>
       <div className="mt-3 flex flex-wrap gap-1.5">
-        {policy.protection ? <Badge variant="secondary">{t(`protection.directories.${policy.protection.directory}`)}</Badge> : null}
+        {directory ? <Badge variant="secondary">{t(`protection.directories.${directory}`)}</Badge> : null}
         {visiblePolicyTags(policy.tags).slice(0, 3).map((tag) => <Badge key={tag.id} variant="secondary" className="font-normal"><PolicyTagLabel tag={tag} /></Badge>)}
       </div>
       <div className="mt-auto pt-5">
@@ -378,7 +394,7 @@ export function PolicyCard({ policy, onOpen, onExport, onDelete }: { policy: Pol
           <Metric label={t("policyLibrary.testCases")} value={policy.test_count} />
         </div>
         <div className="mt-3 flex min-h-11 items-center justify-between gap-3 border-t pt-3">
-          <span className="font-mono text-xs text-muted-foreground">v{policy.version}</span>
+          <span className="flex min-w-0 items-center gap-3"><span className="font-mono text-xs text-muted-foreground">v{policy.version}</span>{release ? <ReleaseSummary policy={release} /> : null}</span>
           <div className="flex items-center gap-1">
             {onDelete ? <Button size="icon-sm" variant="destructive" className="min-h-11 min-w-11" aria-label={t("policyLibrary.deletePolicyAria", { name: policy.name })} title={t("policyLibrary.deleteAction")} onClick={onDelete}><Trash2 /></Button> : null}
             {onExport ? <Button size="sm" variant="outline" className="min-h-11" aria-label={t("policyLibrary.exportPolicyAria", { name: policy.name })} onClick={onExport}><Download />{t("policyLibrary.exportAction")}</Button> : null}
@@ -394,7 +410,7 @@ function Metric({ label, value }: { label: string; value: number }) {
   return <div><span className="block text-[10px] text-muted-foreground">{label}</span><strong className="mt-0.5 block font-mono font-medium">{value}</strong></div>;
 }
 
-export function PolicyDetail({ policy, onClose, onEdit, onExport, onDelete }: { policy: Policy | null; onClose: () => void; onEdit?: (policy: Policy, trigger: HTMLButtonElement) => void; onExport?: (policy: Policy) => void; onDelete?: (policy: Policy) => void }) {
+export function PolicyDetail({ policy, release, onClose, onEdit, onExport, onDelete }: { policy: Policy | null; release?: ReleasedPolicy; onClose: () => void; onEdit?: (policy: Policy, trigger: HTMLButtonElement) => void; onExport?: (policy: Policy) => void; onDelete?: (policy: Policy) => void }) {
   const { t } = useTranslation();
   if (!policy) return null;
   return (
@@ -411,12 +427,13 @@ export function PolicyDetail({ policy, onClose, onEdit, onExport, onDelete }: { 
         <PolicySourceBadge source={policy.source} />
         {visiblePolicyTags(policy.tags).map((tag) => <Badge key={tag.id} variant={tag.source === "derived" ? "outline" : "secondary"}><PolicyTagLabel tag={tag} /></Badge>)}
       </div>
-      <Tabs key={policy.id} defaultValue="policy" className="mt-5">
+      <Tabs key={`${policy.id}@${policy.version}`} defaultValue="policy" className="mt-5">
         <div className="overflow-x-auto">
           <TabsList aria-label={t("policyLibrary.detailViews")} className="min-w-max">
             <TabsTrigger value="policy"><ShieldCheck aria-hidden="true" /><span className="flex items-center gap-2">{t("policyLibrary.tabs.policy")}<Badge variant="outline" className="font-mono text-[10px]">{policy.rules.length}</Badge></span></TabsTrigger>
             <TabsTrigger value="validation"><FlaskConical aria-hidden="true" /><span className="flex items-center gap-2">{t("policyLibrary.tabs.testCases")}<Badge variant="outline" className="font-mono text-[10px]">{policy.test_count}</Badge></span></TabsTrigger>
             <TabsTrigger value="compliance"><BookOpen aria-hidden="true" />{t("policyLibrary.tabs.compliance")}</TabsTrigger>
+            {release ? <TabsTrigger value="releases"><Rocket aria-hidden="true" /><span className="flex items-center gap-2">{t("releasedPolicies.tab")}<Badge variant="outline" className="font-mono text-[10px]">{release.versions.length}</Badge></span></TabsTrigger> : null}
           </TabsList>
         </div>
         <TabsContent value="policy" className="space-y-5 pt-3 sm:pt-4">
@@ -430,6 +447,7 @@ export function PolicyDetail({ policy, onClose, onEdit, onExport, onDelete }: { 
         </TabsContent>
         <TabsContent value="validation" className="pt-3 sm:pt-4"><PolicyTestCases policy={policy} /></TabsContent>
         <TabsContent value="compliance" className="pt-3 sm:pt-4"><PolicyCompliancePanel policy={policy} /></TabsContent>
+        {release ? <TabsContent value="releases" className="pt-3 sm:pt-4"><PolicyReleases policy={release} /></TabsContent> : null}
       </Tabs>
     </EntitySheet>
   );
@@ -516,8 +534,10 @@ function PolicyTestCases({ policy }: { policy: Policy }) {
                     <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
                   </summary>
                   <div className="border-t bg-muted/15 px-4 py-4">
-                    <pre className="whitespace-pre-wrap rounded-md border bg-background p-3 font-mono text-xs leading-5">{testCase.content}</pre>
-                    <p className="mt-3 text-xs text-muted-foreground">{t("policyLibrary.coveredRules")}: {testCase.covered_rule_ids.map((id) => ruleNames.get(id) ?? id).join(", ")}</p>
+                    {/* A released custom Policy keeps test names and expectations, not inputs. */}
+                    {testCase.content ? <pre className="mb-3 whitespace-pre-wrap rounded-md border bg-background p-3 font-mono text-xs leading-5">{testCase.content}</pre> : null}
+                    {testCase.covered_rule_ids.length ? <p className="text-xs text-muted-foreground">{t("policyLibrary.coveredRules")}: {testCase.covered_rule_ids.map((id) => ruleNames.get(id) ?? id).join(", ")}</p> : null}
+                    {!testCase.content && !testCase.covered_rule_ids.length ? <p className="text-xs text-muted-foreground">{t("releasedPolicies.testInputNotReleased")}</p> : null}
                   </div>
                 </details>
               ))}

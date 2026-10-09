@@ -57,6 +57,10 @@ Runner 启动时必需的运行时解析、初始化和预热仍会进行，不�
 可关闭。关闭时后端同时禁用编辑、测试草稿、编译发布和 Policy Studio 写接口，UI
 隐藏相应入口。不能只通过隐藏按钮实现生产只读，也不应根据环境名称字符串判断权限。
 生产保留导入、版本检查、报告查看、导出、监控、Routing 和受权限约束的版本删除。
+关闭的是写操作，不是功能区域：导航和页面结构与 UAT 一致。Policy Library 用同一套
+卡片、筛选和详情抽屉展示已发布版本中冻结的 Policy，只去掉新建、导入、编辑、删除；
+Playground 可以与已发布版本对话，只去掉草稿目标；模型能力绑定（Guardrail Catalog）
+照常配置，因为生产需要为导入的版本绑定自己的模型。
 
 **导出交互与多版本组织**
 
@@ -186,9 +190,11 @@ UAT 证据始终注明来源环境，不承诺跨环境模型服务具有完全�
 | 环境检查 | Pending / Compatible / Missing dependencies | 本环境是否满足这个版本的运行要求 |
 | 分发与使用 | Not assigned / Loading / In use / Load failed | 是否已经被批准的 Router 或显式运行基线引用 |
 
-生产导入本身不触发默认池预加载。当前默认池会接收全部 ready 版本，需要调整为按
-已批准的 Router 引用和显式系统基线分发。上线时的运行时初始化失败保持上一可用
-配置，并显示失败原因，不能因为一个未使用的新导入包破坏已有 Runner。
+生产导入本身不直接进入默认池。导入后自动做一次 Runner 加载检查（dry-run），只有
+结果为 compatible 的导入版本才进入默认池，供 Playground 和内部检查使用；未检查或
+检查未通过的版本只在被已批准的 Router 引用时分发（Router 门禁本身也要求 compatible）。
+上线时的运行时初始化失败保持上一可用配置，并显示失败原因，不能因为一个未使用的新
+导入包破坏已有 Runner。
 
 Default Guardrail 是必须单独处理的系统资源：生产启动使用随产品交付、已签名且与
 运行时匹配的固定基线包。不能在启动时从 Library 重建、自动测试或升级它。普通导入
@@ -244,7 +250,7 @@ Library 表不作为导入依赖存储。多个版本可共享相同内容 blob�
 - UAT 与生产的不可变内容摘要一致；跨环境 generation 不改变内容；拒绝伪造来源、
   缺失依赖和被篡改的报告或文件。
 - 无模型版本直接可用；缺模型/动作/兼容 Runner 时明确未就绪，现有流量仍可用。
-- 导入不预加载、不切换 Default 基线；批准 Routing 后检查真实 Runner 加载和
+- 未通过加载检查的导入版本不预加载；导入不切换 Default 基线；批准 Routing 后检查真实 Runner 加载和
   Endpoint 行为。运行时初始化失败不替换上一可用配置。
 - 生产不显示虚构 Draft/Test draft；报告标记 UAT 来源；桌面验证导入和版本抽屉。
 
@@ -259,11 +265,12 @@ Library 表不作为导入依赖存储。多个版本可共享相同内容 blob�
 | 发布包 | `manifest.json`、`signatures.json`、每个版本 `artifact / inspection / requirements / uat-evidence`；确定性 ZIP，所有文件为规范化 JSON；Ed25519 签名覆盖 manifest 原始字节 | 当前 Artifact 的静态素材全部内联，没有 `blobs/` 目录；未声明的条目一律拒绝 |
 | 环境检查 | 每个 Runner 池选一个已连接 Runner，按真实加载路径校验签名、NeMo 版本、Action、模型与 Evaluator 绑定并构建运行时后丢弃（dry-run 加载） | 没有在 Controller 端静态比对能力清单；`requirements.json` 只作为申报证据，导入时重新推导并要求完全一致 |
 | Router 门禁 | 提交与批准变更单前对导入版本重新做加载检查，要求 10 分钟内的 compatible 结果 | 本地发布的版本不受此门禁约束 |
-| 分发 | 默认池只额外预加载本地发布的版本；导入版本只在被 Router 引用时分发 | 与设计一致 |
+| 分发 | 默认池额外预加载本地发布的版本，以及加载检查为 compatible 的导入版本；其余导入版本只在被 Router 引用时分发。检查结论跨过 compatible 时推进 generation | 与设计一致 |
 | 基线 | `controller_state.baseline_version` 显式指针；生产通过 `PUT /system/baseline` 或启动时基线包设置；UAT 未设置时跟随 Default 的 Latest | 产品随附基线包的构建流水线不在本期 |
 | 生产只读 | `CONTROLLER_AUTHORING_ENABLED=false`：路由按 core/authoring 分类，未分类路由默认拒绝；不加载 Catalog；模型覆盖改由已发布版本的 Evaluator 契约推导 | 与设计一致 |
-| 生产 Policy 库 | 关闭 authoring 时 Policy 库只读：按 Policy ID 聚合已发布 Guardrail 版本中冻结的定义；每个版本以 ID@版本 + 定义摘要区分，列出使用它的 Guardrail 版本与是否承接流量；同版本号不同内容分开展示并告警。新建、编辑、删除、测试、发布 Policy 均隐藏且 API 拒绝 | 名称只作展示，不作聚合键 |
+| 生产 Policy 库 | 关闭 authoring 时 Policy 库只读，布局与 UAT 相同（卡片、目录与标签筛选、搜索、详情抽屉）。数据按 Policy ID 聚合已发布 Guardrail 版本中冻结的定义，卡片显示承接流量的版本（否则最新）；详情抽屉多一个“发布”页签，按 ID@版本 + 定义摘要列出各版本、使用它的 Guardrail 版本与是否承接流量，同版本号不同内容分开展示并告警。新建、导入、编辑、删除、导出 Policy 均移除且 API 拒绝 | 名称只作展示，不作聚合键；自定义 Policy 的发布只带测试名称和预期结果，不带测试输入 |
+| 生产 Playground | 与已发布版本对话（`playground/models`、`interactions` 为 core）；草稿预览与草稿对话仍为 authoring | 与设计一致 |
 | 生产再导出 | 导入的版本不能从生产再导出 | 第三环境的信任链未实现 |
 | Runner 升级 | 版本与 Runner 不兼容时由加载检查和 Router 门禁阻止投入使用 | 新旧 Runner 池并行切换的升级流程未实现 |
 
-端到端验证：`scripts/promotion-two-stacks.sh start` 启动两套隔离部署（各自的数据库、签名密钥、Controller、Runner；生产无 Policy Library、关闭 authoring），`scripts/regress_guardrail_promotion.mjs` 覆盖：UAT 测试并发布候选、导出、Library 变化后重新导出逐字节一致、生产冷启动、导入与真实 Runner 加载检查、幂等重复上传、跨环境摘要一致而签名不同、未路由版本不预加载、第二位管理员批准变更单后承接真实流量、篡改/不可信签名/同版本不同内容/跨来源接管/保留 ID 均拒绝且不写入、缺失 Action 的版本可导入但不能路由、导入不改变基线以及显式切换基线。
+端到端验证：`scripts/promotion-two-stacks.sh start` 启动两套隔离部署（各自的数据库、签名密钥、Controller、Runner；生产无 Policy Library、关闭 authoring），`scripts/regress_guardrail_promotion.mjs` 覆盖：UAT 测试并发布候选、导出、Library 变化后重新导出逐字节一致、生产冷启动、导入与真实 Runner 加载检查、幂等重复上传、跨环境摘要一致而签名不同、通过加载检查的导入版本在路由前进入默认池且 Playground 不再被 authoring 拦截（草稿预览仍被拒绝）、第二位管理员批准变更单后承接真实流量、篡改/不可信签名/同版本不同内容/跨来源接管/保留 ID 均拒绝且不写入、缺失 Action 的版本可导入但不能路由、导入不改变基线以及显式切换基线。

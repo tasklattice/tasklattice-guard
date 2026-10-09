@@ -248,9 +248,10 @@ export type ReleasedPolicyUsage = {
   guardrailId: string; guardrailName: string; guardrailVersion: string; origin: "local" | "imported"; sourceId: string | null;
   latest: boolean; serving: boolean; enabledRuleIds: string[]; action: string | null; phases: string[];
 };
+/** One released version: its frozen definition, in the shape the Policy Library lists, and who uses it. */
 export type ReleasedPolicyVersion = {
-  version: string; contentDigest: string | null; name: string; description: string;
-  rules: Array<{ id: string; name: string; action: string | null; phases: string[] }>; usage: ReleasedPolicyUsage[];
+  version: string; contentDigest: string | null; name: string;
+  definition: import("./api-types").Policy; usage: ReleasedPolicyUsage[];
 };
 /** A Policy as released in this environment's Guardrail versions, grouped by Policy ID. */
 export type ReleasedPolicy = {

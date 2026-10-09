@@ -24,14 +24,11 @@ vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => false }));
 describe("ControlPlaneSidebar", () => {
   afterEach(() => { cleanup(); queryData.value = { items: [] }; });
 
-  it("hides authoring-only areas in an environment that only receives released Guardrails", () => {
+  it("keeps every area in an environment that only receives released Guardrails", () => {
+    // Pages drop authoring actions there; the navigation itself never changes.
     queryData.value = { items: [], authoringEnabled: false };
     render(<SidebarProvider><TooltipProvider><ControlPlaneSidebar /></TooltipProvider></SidebarProvider>);
-    expect(screen.getByRole("link", { name: "Guardrails" })).toBeTruthy();
-    expect(screen.queryByRole("link", { name: "Playground" })).toBeNull();
-    // Policy Library stays: it lists the Policies of released versions there.
-    expect(screen.getByRole("link", { name: "Policy Library" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Routers" })).toBeTruthy();
+    for (const name of ["Guardrails", "Playground", "Policy Library", "Routers"]) expect(screen.getByRole("link", { name })).toBeTruthy();
   });
 
   beforeEach(async () => { await i18n.changeLanguage("en"); });

@@ -119,3 +119,33 @@ export type PolicyValidationResult = {
 export function flowRuleId(rail: string, flow: string): string {
   return `flow/${rail}/${flow}`;
 }
+
+/** The Rule a Policy Library shows for one Flow of a programmable Policy version. */
+export function flowRule(bindingId: string, version: string, binding: Pick<ProgrammablePolicyDraft["rail_bindings"][number], "rail_type" | "flow_name" | "on_unsafe" | "risk_severity">) {
+  return {
+    id: flowRuleId(binding.rail_type, binding.flow_name),
+    name: binding.flow_name.replaceAll("_", " ").replaceAll("-", " ").replace(/\b\w/g, (value) => value.toUpperCase()),
+    description: `Runs ${binding.flow_name} on the ${binding.rail_type} Rail and applies ${binding.on_unsafe} when the Flow reports unsafe content.`,
+    detector: { ref: `programmable/${binding.flow_name}`, version },
+    effect: binding.on_unsafe,
+    risk_severity: binding.risk_severity ?? null,
+    rails: [binding.rail_type],
+    implementation: {
+      engine: "nemo-guardrails",
+      execution: "programmable" as const,
+      binding_id: bindingId,
+      implementation_rule_id: binding.flow_name,
+      detector: null,
+      flow_name: binding.flow_name,
+      action_name: null,
+    },
+    validators: [],
+    detector_options: {},
+    rule_expansion: null,
+    expression: null,
+    context_expression: null,
+    redaction: null,
+    severity_threshold: null,
+    identifiers: [], conditions: [], keywords: [], always_block: [], exceptions: [], phrase_patterns: [],
+  };
+}

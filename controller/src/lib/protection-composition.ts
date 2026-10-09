@@ -1,10 +1,20 @@
-import type { ProtectionDirectoryId } from "../../shared/protection-map";
+import { protectionDirectoryIds, type ProtectionDirectoryId } from "../../shared/protection-map";
 import type { GuardrailPolicyBinding, Policy } from "./api-types";
 import { boundPolicy } from "./bound-policy";
 
 /** Metadata owns classification; custom/older Policies stay discoverable. */
 export function policyDirectory(policy: Policy): ProtectionDirectoryId {
-  return policy.protection?.directory ?? "business_rules";
+  return declaredPolicyDirectory(policy) ?? "business_rules";
+}
+
+/**
+ * The directory a Policy declares. A released definition carries its
+ * protection tag but no derived protection profile, so read the tag too.
+ */
+export function declaredPolicyDirectory(policy: Policy): ProtectionDirectoryId | null {
+  if (policy.protection) return policy.protection.directory;
+  const tag = policy.tags?.find((item) => item.namespace === "protection")?.value;
+  return protectionDirectoryIds.find((id) => id === tag) ?? null;
 }
 
 /** Editing one directory must not regroup the globally ordered pipeline. */

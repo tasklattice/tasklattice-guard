@@ -74,6 +74,7 @@ import type { GuardrailVersionDeletionBlocker, GuardrailVersionDeletionImpact, G
 
 type Transaction = Parameters<Parameters<ControllerDatabase["transaction"]>[0]>[0];
 import {
+  flowRule,
   flowRuleId,
   programmablePolicyDraftSchema,
   type PolicyValidationResult,
@@ -1979,9 +1980,10 @@ export class ControlPlaneService {
     const routerRevisions = await this.trafficRouting.runtimeSnapshots(tx);
     // Every pool receives the artifacts its published Router revisions pin plus
     // the Default Guardrail baseline. The default pool additionally keeps every
-    // locally published ready version so Playground and internal checks can
-    // address it. Imported versions load only once a Router references them,
-    // so an unused package can never break an applied release.
+    // locally published ready version, and every imported one whose Runner load
+    // check passed, so Playground and internal checks can address it. An
+    // imported version that has not passed a check loads only once a Router
+    // references it, so an unchecked package can never break an applied release.
     const referencedArtifactIds = new Set(routerRevisions.flatMap((router) => router.routes.flatMap((route) => route.targets.map((target) => target.artifactId).filter(Boolean))));
     const baseline = await this.baselineVersion(tx);
     const [baselineArtifact] = baseline ? await tx.select({ artifactId: guardrailVersions.artifactId }).from(guardrailVersions)
@@ -1991,7 +1993,11 @@ export class ControlPlaneService {
     const readyArtifacts = await tx.select({ artifact: artifacts }).from(guardrailVersions)
       .innerJoin(guardrails, and(eq(guardrails.id, guardrailVersions.guardrailId), isNull(guardrails.deletedAt)))
       .innerJoin(artifacts, eq(artifacts.id, guardrailVersions.artifactId))
-      .where(and(eq(guardrailVersions.status, "ready"), or(eq(guardrailVersions.origin, "local"), inArray(artifacts.id, [...referencedArtifactIds]))));
+      .where(and(eq(guardrailVersions.status, "ready"), or(
+        eq(guardrailVersions.origin, "local"),
+        sql`${guardrailVersions.environmentCheck}->>'status' = 'compatible'`,
+        inArray(artifacts.id, [...referencedArtifactIds]),
+      )));
     const activeArtifacts = poolId === "default"
       ? readyArtifacts
       : readyArtifacts.filter((row) => referencedArtifactIds.has(row.artifact.id));
@@ -2690,32 +2696,7 @@ function programmablePolicySurface(
   // Sorting a copy avoids depending on database/result order or mutating callers.
   const latest = [...versions].sort((left, right) => right.version - left.version)[0];
   const surface = latest?.snapshot ?? record.draft;
-  const rules = surface.rail_bindings.map((binding) => ({
-    id: flowRuleId(binding.rail_type, binding.flow_name),
-    name: binding.flow_name.replaceAll("_", " ").replaceAll("-", " ").replace(/\b\w/g, (value) => value.toUpperCase()),
-    description: `Runs ${binding.flow_name} on the ${binding.rail_type} Rail and applies ${binding.on_unsafe} when the Flow reports unsafe content.`,
-    detector: { ref: `programmable/${binding.flow_name}`, version: String(latest?.version ?? 0) },
-    effect: binding.on_unsafe,
-    risk_severity: binding.risk_severity ?? null,
-    rails: [binding.rail_type],
-    implementation: {
-      engine: "nemo-guardrails",
-      execution: "programmable" as const,
-      binding_id: record.id,
-      implementation_rule_id: binding.flow_name,
-      detector: null,
-      flow_name: binding.flow_name,
-      action_name: null,
-    },
-    validators: [],
-    detector_options: {},
-    rule_expansion: null,
-    expression: null,
-    context_expression: null,
-    redaction: null,
-    severity_threshold: null,
-    identifiers: [], conditions: [], keywords: [], always_block: [], exceptions: [], phrase_patterns: [],
-  }));
+  const rules = surface.rail_bindings.map((binding) => flowRule(record.id, String(latest?.version ?? 0), binding));
   const railTypes = [...new Set(surface.rail_bindings.map((item) => item.rail_type))].sort();
   const effects = [...new Set(surface.rail_bindings.map((item) => item.on_unsafe))].sort();
   const testCases = surface.test_cases.map((item, index) => ({

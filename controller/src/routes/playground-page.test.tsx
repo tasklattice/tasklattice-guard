@@ -3,14 +3,16 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { PlaygroundPage } from "./playground";
 
-const api = vi.hoisted(() => ({ models: vi.fn(), guardrails: vi.fn() }));
-vi.mock("@/lib/auth", () => ({ useAuth: () => ({ user: { role: "operator" } }) }));
+const api = vi.hoisted(() => ({ models: vi.fn(), guardrails: vi.fn(), draftPreview: vi.fn() }));
+const session = vi.hoisted(() => ({ role: "operator", authoringEnabled: true }));
+vi.mock("@/lib/auth", () => ({ useAuth: () => ({ user: { role: session.role } }) }));
+vi.mock("@/lib/deployment", () => ({ useDeploymentCapabilities: () => ({ authoringEnabled: session.authoringEnabled, settled: true }) }));
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock("@/lib/api", () => ({
   getGuardrails: api.guardrails,
   getPlaygroundModels: api.models,
   getGuardrailVersions: async () => ({ items: [{ version: "v1" }] }),
-  preparePlaygroundDraftPreview: vi.fn(),
+  preparePlaygroundDraftPreview: api.draftPreview,
   createPlaygroundInteraction: vi.fn(),
 }));
 vi.mock("@/components/playground/probe-conversation-panel", () => ({
@@ -34,6 +36,8 @@ beforeEach(() => {
   api.models.mockResolvedValue(models);
 });
 afterEach(() => {
+  session.role = "operator";
+  session.authoringEnabled = true;
   cleanup();
   clients.splice(0).forEach(client => client.clear());
   vi.clearAllMocks();
@@ -85,4 +89,18 @@ it("opens a ready advanced deep link without selecting Simple mode first", async
   mount();
   expect(await screen.findByLabelText("Request body")).toBeTruthy();
   expect(screen.getByRole("tab", { name: "playground.advancedMode" }).getAttribute("aria-selected")).toBe("true");
+});
+
+it("lets an administrator try only released versions where Guardrails are not authored", async () => {
+  session.role = "admin";
+  session.authoringEnabled = false;
+  window.history.replaceState({}, "", "/playground?target=draft");
+  api.guardrails.mockResolvedValue({ items: [
+    { id: "guard", name: "Guard", published_current: "v1", published_version_count: 1 },
+    { id: "draft-only", name: "Draft only", published_current: null, published_version_count: 0 },
+  ] });
+  mount();
+  expect(await screen.findByText("Simple conversation")).toBeTruthy();
+  await waitFor(() => expect(window.location.search).not.toContain("target=draft"));
+  expect(api.draftPreview).not.toHaveBeenCalled();
 });

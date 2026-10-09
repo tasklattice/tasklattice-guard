@@ -45,7 +45,7 @@ class Stack {
     this.cookie = response.headers.getSetCookie().map(value => value.split(";")[0]).join("; ");
     return this;
   }
-  /** JSON (or form) request; asserts the expected status and returns the parsed body. */
+  /** JSON (or form) request; asserts the expected status (or one of several) and returns the parsed body. */
   async call(path, { method, body, form, expected = 200, binary = false } = {}) {
     const response = await fetch(new URL(path, this.base), {
       method: method ?? (body === undefined && !form ? "GET" : "POST"),
@@ -54,7 +54,7 @@ class Stack {
       signal: AbortSignal.timeout(120_000),
     });
     const payload = binary && response.ok ? Buffer.from(await response.arrayBuffer()) : await response.json().catch(() => null);
-    assert.equal(response.status, expected, `${this.name} ${path}: ${binary ? response.status : JSON.stringify(payload)}`);
+    assert([expected].flat().includes(response.status), `${this.name} ${path}: ${response.status} ${binary ? "" : JSON.stringify(payload)}`);
     return payload;
   }
   async evaluate(path, body, headers) {
@@ -192,10 +192,23 @@ assert.deepEqual(prodArtifacts.map(row => [row.version, row.checksum]), uatArtif
 prodArtifacts.forEach((row, index) => assert.notEqual(row.signature, uatArtifacts[index].signature, "Each environment signs with its own key."));
 assert.equal(await count(prodDb, "SELECT count(*) AS n FROM guardrail_validation_run"), 0, "Production never re-tests.");
 assert.equal(await count(prodDb, "SELECT count(*) AS n FROM controller_outbox WHERE kind = 'guardrail.validation_requested'"), 0);
-const notLoaded = await prod.evaluate(`/internal/v1/guardrails/${guardrail.id}/evaluate`, { guardrail_version: v2, phase: "input", texts: ["hello"] },
+report("prod-digests-match", { digests: prodArtifacts.map(row => row.checksum.slice(0, 12)) });
+
+// The load check that runs right after import lets the default pool hold the
+// versions, so they can be tried (Playground) before any Router serves them.
+await until("PROD records a compatible load check for both imported versions", async () => (await prod.call(guardrailPath)).versions,
+  versions => [v1, v2].every(version => versions.find(item => item.version === version)?.environmentCheck?.status === "compatible"));
+const preloadGeneration = (await (await fetch(new URL("/api/v1/system/status", prod.base))).json()).desiredGeneration;
+await until("PROD Runner preloads the checked versions", async () => (await fetch(new URL("/health/ready", prod.runner))).json(), value => value.applied_generation >= preloadGeneration);
+const preloaded = await prod.evaluate(`/internal/v1/guardrails/${guardrail.id}/evaluate`, { guardrail_version: v2, phase: "input", texts: ["hello"] },
   { authorization: `Bearer ${env("GUARD_PROMOTION_RUNNER_TOKEN")}` });
-assert(notLoaded.status >= 400, `An unrouted imported version is not preloaded: ${JSON.stringify(notLoaded)}`);
-report("prod-digests-match", { digests: prodArtifacts.map(row => row.checksum.slice(0, 12)), preloaded: false });
+assert.equal(preloaded.status, 200, `A checked imported version is preloaded before routing: ${JSON.stringify(preloaded)}`);
+// Playground talks to released versions here; only draft previews are authoring.
+assert.equal((await prod.call("/api/v1/playground/models")).items !== undefined, true);
+assert.equal((await prod.call(`/api/v1/playground/guardrails/${guardrail.id}/draft-previews`, { body: {}, expected: 403 })).error.code, "authoring_disabled");
+const playground = await prod.call(`/api/v1/playground/guardrails/${guardrail.id}/interactions`, { body: { guardrail_version: v2, model_id: "any", message: "hello" }, expected: [200, 503] });
+assert.notEqual(playground.error?.code, "authoring_disabled", "Released versions can be tried in Playground.");
+report("prod-preloaded-for-playground", { versions: [v1, v2], playground: playground.error?.code ?? "ok" });
 
 // ---------------------------------------------------------------- PROD routing through an approved change
 await prod.call("/api/auth/admin/create-user", { body: { email: `approver-${runId}@prod.local`, password: env("GUARD_PROMOTION_PASSWORD"), name: "Approver", role: "admin" } });
@@ -239,6 +252,8 @@ assert(custom, "The custom Policy of the imported Guardrail is listed by its Pol
 assert.equal(custom.source, "custom");
 assert.deepEqual(custom.versions.map(item => item.version), ["1"], "Production lists the version it received, not the Library's newer v2.");
 assert(custom.serving, "The routed version marks the Policy as serving.");
+assert.equal(custom.versions[0].definition.implementation, "nemo_native", "Each version carries its frozen definition for the Library views.");
+assert.deepEqual(custom.versions[0].definition.rules.map(rule => rule.id).sort(), phases.map(phase => `flow/${phase}/promotion_${phase}`).sort());
 assert(custom.versions[0].usage.some(item => item.guardrailId === guardrail.id && item.guardrailVersion === v2 && item.serving && item.sourceId === "bank-uat"));
 const networkPolicy = released.find(item => item.policyId === "local-network-addresses");
 assert.deepEqual(new Set(networkPolicy.versions[0].usage.filter(item => item.guardrailId === guardrail.id).map(item => item.guardrailVersion)), new Set([v1, v2]));
