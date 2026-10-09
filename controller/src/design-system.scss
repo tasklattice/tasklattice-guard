@@ -229,6 +229,11 @@
   background-color: currentColor;
   mask: url("./assets/icons/plus.svg") center / contain no-repeat;
 }
+// The create split button's menu spans the whole button (see CreateSplitButton).
+.cds--menu.cds--combo-button__bottom-end {
+  inline-size: var(--guard-create-button-width, auto);
+  max-inline-size: none;
+}
 .guard-menu-item-content {
   display: flex;
   align-items: center;
