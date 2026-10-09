@@ -170,6 +170,9 @@ export type ValidationRun = {
   guardrail_id: string;
   guardrail_version: string;
   source_draft_version: number;
+  subject: "draft" | "version";
+  candidate_digest: string | null;
+  test_suite_digest: string | null;
   status: "passed" | "failed" | "incomplete";
   execution_status?: "queued" | "running" | "passed" | "failed";
   progress?: import("../../shared/validation-progress").ValidationProgress | null;
@@ -482,8 +485,11 @@ export type GuardrailVersion = {
   config_checksum: string;
   execution_mode: "nemo_only";
   policy_count?: number;
-  compile_status?: "compiling" | "ready" | "failed";
-  failure_reason?: string | null;
+  /** pending until released in this environment, then ready. */
+  status: "pending" | "ready";
+  released_at: string | null;
+  /** The passed test run it was released with; null while pending. */
+  release_run_id: string | null;
   origin?: "local" | "imported";
   environment_check?: import("./controller-api").EnvironmentCheck | null;
   provenance?: import("./controller-api").VersionProvenance | null;

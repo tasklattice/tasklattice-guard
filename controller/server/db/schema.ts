@@ -279,13 +279,16 @@ export const guardrailVersions = pgTable("guardrail_version", {
   version: text("version").notNull(),
   generation: bigint("generation", { mode: "number" }).notNull(),
   sourceDraftRevision: integer("source_draft_revision").notNull().default(1),
-  status: text("status").$type<GuardrailVersionState>().notNull().default("ready"),
+  status: text("status").$type<GuardrailVersionState>().notNull(),
   runtimeProfile: text("runtime_profile").notNull(),
   plan: jsonb("plan").$type<Record<string, unknown>>().notNull(),
   artifactId: text("artifact_id"),
-  failureReason: text("failure_reason"),
-  // Passed test run whose exact candidate Artifact this version publishes.
+  // The passed test run this version was released with in this environment:
+  // the draft candidate run when published here, a run of this exact content
+  // and suite when imported. Null while pending.
   validationRunId: text("validation_run_id"),
+  releasedAt: timestamp("released_at", { withTimezone: true }),
+  releasedBy: text("released_by").references(() => user.id),
   inspection: jsonb("inspection").$type<GuardrailInspection>(),
   // Static definition, with the plan: the Test Cases that define this version's expected behaviour.
   testSuite: jsonb("test_suite").$type<FrozenTestCase[]>(),

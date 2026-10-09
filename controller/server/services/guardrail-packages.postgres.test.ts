@@ -144,7 +144,9 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
       expect(row.content_digest_version).toBe(2);
     }
     const { rows: [guardrail] } = await prodDb.pool.query("SELECT origin, source_id, status FROM guardrail WHERE id = $1", [guardrailId]);
-    expect(guardrail).toEqual({ origin: "imported", source_id: "bank-uat", status: "active" });
+    // Nothing imported is usable yet: each version waits to be tested and released here.
+    expect(guardrail).toEqual({ origin: "imported", source_id: "bank-uat", status: "draft" });
+    expect((await prodDb.pool.query("SELECT DISTINCT status FROM guardrail_version WHERE guardrail_id = $1", [guardrailId])).rows).toEqual([{ status: "pending" }]);
     const { rows: provenance } = await prodDb.pool.query("SELECT version, source_id, source_key_id FROM guardrail_version_provenance ORDER BY version");
     expect(provenance).toEqual(published.map(version => ({ version, source_id: "bank-uat", source_key_id: "uat-2026" })));
     const { rows: suites } = await prodDb.pool.query("SELECT v.test_suite AS prod, v.inspection->'testSuite'->>'total' AS total FROM guardrail_version v WHERE v.guardrail_id = $1 ORDER BY v.version", [guardrailId]);
@@ -227,6 +229,30 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     expect((await prodDb.pool.query("SELECT count(*)::int AS n FROM guardrail_version WHERE version = $1", [published.at(-1)])).rows[0].n).toBe(1);
   });
 
+  /** Run a version's own suite here and record the Runner's verdict, as the control channel would. */
+  async function testHere(id: string, version: string, status: "passed" | "failed") {
+    const run = await prod.requestVersionTestRun({ guardrailId: id, version, actorId: "admin" });
+    await prod.completeValidation({ runId: run.id, status, metrics: emptyValidationMetrics(run.metrics.total), results: [] });
+    return run;
+  }
+
+  it("releases an imported version only after its own suite passes here, against exactly that content", async () => {
+    const version = published[1]!;
+    await expect(prod.releaseGuardrailVersion({ guardrailId, version, actorId: "admin" })).rejects.toMatchObject({ code: "guardrail_version_test_required" });
+    await testHere(guardrailId, version, "failed");
+    await expect(prod.releaseGuardrailVersion({ guardrailId, version, actorId: "admin" })).rejects.toMatchObject({ code: "guardrail_version_test_required", detail: { lastRun: { status: "failed" } } });
+    const passed = await testHere(guardrailId, version, "passed");
+    const released = await prod.releaseGuardrailVersion({ guardrailId, version, actorId: "admin" });
+    // Same version number and content; the passing report is bound for good.
+    expect(released).toMatchObject({ version, status: "ready", validationRunId: passed.id, releasedBy: "admin" });
+    expect((await prodDb.pool.query("SELECT status FROM guardrail WHERE id = $1", [guardrailId])).rows[0].status).toBe("active");
+    const { rows: [audit] } = await prodDb.pool.query("SELECT detail FROM audit_event WHERE kind = 'guardrail.version_released'");
+    expect(audit.detail).toMatchObject({ version, validationRunId: passed.id, origin: "imported" });
+    // A later failure does not revoke the release.
+    await testHere(guardrailId, version, "failed");
+    expect((await prodDb.pool.query("SELECT status FROM guardrail_version WHERE guardrail_id = $1 AND version = $2", [guardrailId, version])).rows[0].status).toBe("ready");
+  });
+
   it("routes an imported version only after Runners here confirm they can load it", async () => {
     await prodDb.pool.query("INSERT INTO auth_user (id, name, email, role) VALUES ('approver', 'Approver', 'approver@example.test', 'admin')");
     const version = published[1]!;
@@ -259,8 +285,18 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     await prod.trafficRouting.approveChange(router.id, change.id, "approver", {});
     const desired = await prod.desiredStateForPool("default");
     expect(desired.artifacts.map(item => [item.guardrailVersion, item.checksum])).toEqual([[version, expect.stringMatching(/^[0-9a-f]{64}$/)]]);
+    // What a published Router pins is delivered whatever its row says: Runners
+    // reject a desired state with a missing target, which would stop all traffic.
+    const { rows: [release] } = await prodDb.pool.query("SELECT released_at, validation_run_id FROM guardrail_version WHERE guardrail_id = $1 AND version = $2", [guardrailId, version]);
+    await prodDb.pool.query("UPDATE guardrail_version SET status = 'pending', released_at = NULL WHERE guardrail_id = $1 AND version = $2", [guardrailId, version]);
+    expect((await prod.desiredStateForPool("default")).artifacts.map(item => item.guardrailVersion)).toEqual([version]);
+    await prodDb.pool.query("UPDATE guardrail_version SET status = 'ready', released_at = $3, validation_run_id = $4 WHERE guardrail_id = $1 AND version = $2", [guardrailId, version, release.released_at, release.validation_run_id]);
 
     // Without a Policy Library, the Policies come from the imported versions.
+    // Only released versions count as released Policies; release v1 too, unrouted.
+    expect((await prod.releasedPolicies()).items.every(policy => policy.versions.every(item => item.usage.every(use => use.guardrailVersion !== published[0])))).toBe(true);
+    await testHere(guardrailId, published[0]!, "passed");
+    await prod.releaseGuardrailVersion({ guardrailId, version: published[0]!, actorId: "admin" });
     const { items } = await prod.releasedPolicies();
     const removed = items.find(policy => policy.versions.some(item => item.usage.some(use => use.guardrailVersion === published[0]) && !item.usage.some(use => use.guardrailVersion === version)));
     expect(removed, "The first Policy only v1 still uses is listed, not serving.").toBeDefined();
@@ -290,6 +326,10 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     expect((await prodDb.pool.query("SELECT origin FROM guardrail_version WHERE guardrail_id = $1 AND version = $2", [DEFAULT_GUARDRAIL_ID, published[0]])).rows).toEqual([{ origin: "imported" }]);
     expect(await prod.systemBaseline()).toMatchObject({ version: null });
     const before = await prod.desiredStateForPool("default");
+    // Like any imported version, it serves only once released here.
+    await expect(prod.setSystemBaseline({ version: published[0]!, reason: "CR-7", actorId: "admin" })).rejects.toMatchObject({ code: "baseline_version_not_ready" });
+    await testHere(DEFAULT_GUARDRAIL_ID, published[0]!, "passed");
+    await prod.releaseGuardrailVersion({ guardrailId: DEFAULT_GUARDRAIL_ID, version: published[0]!, actorId: "admin" });
 
     const baseline = await prod.setSystemBaseline({ version: published[0]!, reason: "CR-7 adopt UAT baseline", actorId: "admin" });
     expect(baseline).toEqual({ guardrailId: DEFAULT_GUARDRAIL_ID, version: published[0] });

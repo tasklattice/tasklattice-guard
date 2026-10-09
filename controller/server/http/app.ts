@@ -721,6 +721,11 @@ export function createHttpApp(input: {
     const body = z.object({ expectedDraftRevision: z.number().int().positive(), expectedBaselineVersion: guardrailVersionInput }).parse(await context.req.json());
     return context.json(await input.service.discardGuardrailDraft({ ...body, id: context.req.param("id"), actorId: context.get("actor").id }));
   });
+  app.post("/api/v1/guardrails/:id/versions/:version/release", authenticated, administrator, async context => {
+    const released = await input.service.releaseGuardrailVersion({ guardrailId: context.req.param("id"), version: guardrailVersionInput.parse(context.req.param("version")), actorId: context.get("actor").id });
+    await input.runnerControl.distributeDesiredState();
+    return context.json(released);
+  });
   app.post("/api/v1/guardrails/:id/versions/:version/test-runs", authenticated, administrator, async context => {
     const run = await input.service.requestVersionTestRun({ guardrailId: context.req.param("id"), version: guardrailVersionInput.parse(context.req.param("version")), actorId: context.get("actor").id });
     return context.json(run, 202);

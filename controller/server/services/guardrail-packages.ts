@@ -188,7 +188,8 @@ export class GuardrailPackageService {
         await tx.insert(guardrailVersions).values({
           guardrailId: manifest.guardrail.id, version: item.version, generation: state.desiredGeneration,
           // An imported version has no draft here; 0 marks that.
-          sourceDraftRevision: 0, status: "ready", runtimeProfile: item.inspection.runtimeProfile,
+          // Arrives pending: it is released only after its suite passes here.
+          sourceDraftRevision: 0, status: "pending", runtimeProfile: item.inspection.runtimeProfile,
           plan: item.content.plan, artifactId: artifact.id, inspection: item.inspection, testSuite: item.testSuite, origin: "imported", createdBy: input.actorId,
         });
         await tx.insert(guardrailVersionProvenance).values({
@@ -197,10 +198,6 @@ export class GuardrailPackageService {
           packageId, importedBy: input.actorId,
         });
         imported.push({ version: item.version, artifactId: artifact.id });
-      }
-      if (imported.length) {
-        await tx.update(guardrails).set({ status: "active", updatedAt: new Date() })
-          .where(and(eq(guardrails.id, manifest.guardrail.id), eq(guardrails.status, "draft")));
       }
       await tx.update(guardrailPackages).set({ lastImportedAt: new Date() }).where(eq(guardrailPackages.id, packageId));
       const existingVersions = selected.filter(version => states.get(version) === "existing");

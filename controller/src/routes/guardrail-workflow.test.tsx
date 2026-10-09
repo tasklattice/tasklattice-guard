@@ -124,7 +124,7 @@ describe("Guardrail edit, test and publish workflow", () => {
     const page = setupPage();
     let finishRun!: (run: api.ValidationRun) => void;
     const run = vi.spyOn(api, "createValidationRun").mockImplementation(() => new Promise(resolve => { finishRun = resolve; }));
-    const version = { version: report.guardrail_version, source_draft_version: 3, compile_status: "compiling" } as api.GuardrailVersion;
+    const version = { version: report.guardrail_version, source_draft_version: 3, status: "ready" } as api.GuardrailVersion;
     const publish = vi.spyOn(api, "publishGuardrail").mockResolvedValue(version);
     render(wrap(<GuardrailDetailPage />));
     await screen.findByRole("button", { name: "routing.actions" });

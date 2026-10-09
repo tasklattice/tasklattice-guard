@@ -169,12 +169,14 @@ export type GuardrailVersion = {
   runtimeProfile: string;
   plan: Record<string, unknown>;
   artifactId: string | null;
-  failureReason: string | null;
   createdBy: string | null;
   createdAt: string;
+  /** When and by whom it was released in this environment; null while pending. */
+  releasedAt: string | null;
+  releasedBy: string | null;
   artifact?: GuardrailArtifact | null;
   origin?: "local" | "imported";
-  /** Passed test run whose candidate this version publishes; absent on older versions. */
+  /** The passed test run it was released with here; null while pending. */
   validationRunId?: string | null;
   /** Read-only description frozen with the version (names of its Policies and Rules). */
   inspection?: { policies: Array<{ policyId: string; policyVersion: string; name: string }> } | null;
@@ -306,6 +308,11 @@ export type ValidationRun = {
   guardrailId: string;
   guardrailVersion: string;
   sourceDraftRevision: number;
+  /** "draft": a draft compiled into a candidate; "version": an existing version tested as it is. */
+  subject: "draft" | "version";
+  /** Digest of the content the run tested. */
+  candidateDigest: string | null;
+  testSuiteDigest: string | null;
   status: ValidationRunState;
   progress?: import("../../shared/validation-progress").ValidationProgress | null;
   metrics: {

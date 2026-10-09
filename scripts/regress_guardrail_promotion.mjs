@@ -189,9 +189,30 @@ assert.equal(await count(prodDb, `SELECT count(*) AS n FROM guardrail_validation
 assert.equal(await count(prodDb, `SELECT count(*) AS n FROM controller_outbox WHERE kind = 'guardrail.validation_requested' AND aggregate_id = '${guardrail.id}'`), 0);
 report("prod-digests-match", { digests: prodArtifacts.map(row => row.checksum.slice(0, 12)) });
 
-// The load check that runs right after import lets the default pool hold the
-// versions, so they can be tried (Playground) before any Router serves them.
-await until("PROD records a compatible load check for both imported versions", async () => (await prod.call(guardrailPath)).versions,
+// ---------------------------------------------------------------- PROD: test here, then release
+// Imported versions wait, pending, until their own suite passes here.
+const prodVersions = async () => (await prod.call(guardrailPath)).versions;
+assert.deepEqual((await prodVersions()).map(item => item.status), ["pending", "pending"]);
+await prod.call(`${guardrailPath}/versions/${v2}/release`, { body: {}, expected: 409 });
+/** Run a version's own test suite on PROD's Runner, against its signed Artifact. */
+async function testInProd(id, version) {
+  const run = await prod.call(`/api/v1/guardrails/${id}/versions/${version}/test-runs`, { body: {}, expected: 202 });
+  assert.equal(run.subject, "version");
+  return until(`PROD test of ${id}@${version}`, () => prod.call(`/api/v1/test-runs/${run.id}`), value => ["passed", "failed"].includes(value.status));
+}
+for (const version of [v1, v2]) {
+  const run = await testInProd(guardrail.id, version);
+  assert.equal(run.status, "passed", `PROD test of ${version}: ${JSON.stringify(run.results.filter(item => !item.passed)).slice(0, 500)}`);
+  assert.equal(run.metrics.total, (await prodVersions()).find(item => item.version === version).testSuiteCount, "PROD ran the version's own suite.");
+  const released = await prod.call(`${guardrailPath}/versions/${version}/release`, { body: {} });
+  assert.deepEqual([released.status, released.validationRunId, released.version], ["ready", run.id, version], "Released with that report; the version number does not change.");
+}
+assert.equal(await count(prodDb, `SELECT count(*) AS n FROM guardrail_validation_run WHERE guardrail_id = '${guardrail.id}' AND subject <> 'version'`), 0, "PROD never compiles a draft of an imported Guardrail.");
+report("prod-tested-and-released", { versions: [v1, v2] });
+
+// Released and load-checked, the default pool holds the versions, so they can
+// be tried (Playground) before any Router serves them.
+await until("PROD records a compatible load check for both imported versions", prodVersions,
   versions => [v1, v2].every(version => versions.find(item => item.version === version)?.environmentCheck?.status === "compatible"));
 const preloadGeneration = (await (await fetch(new URL("/api/v1/system/status", prod.base))).json()).desiredGeneration;
 await until("PROD Runner preloads the checked versions", async () => (await fetch(new URL("/health/ready", prod.runner))).json(), value => value.applied_generation >= preloadGeneration);
@@ -287,15 +308,19 @@ const futureCheck = futurePreview.versions[0].environment;
 assert.equal(futureCheck.status, "missing", JSON.stringify(futureCheck));
 assert.match(futureCheck.pools[0].reason, /GuardFutureAction@9\.0\.0/, "The real Runner names the missing dependency.");
 await prod.call(`/api/v1/guardrail-packages/${futurePreview.packageId}/imports`, { body: {}, expected: 201 });
+// Its own suite fails here: this environment cannot run it, so it cannot be released.
+const futureRun = await testInProd(`${guardrail.id}-future`, v2);
+assert.equal(futureRun.status, "failed", "A version this environment cannot run fails its test here.");
+const unreleased = await prod.call(`/api/v1/guardrails/${guardrail.id}-future/versions/${v2}/release`, { body: {}, expected: 409 });
+assert.equal(unreleased.error.code, "guardrail_version_test_required");
 const futureRouter = await prod.call("/api/v1/routers", { expected: 201, body: { name: `Future traffic ${runId}`, draft: { routes: [{
   id: "fallback", name: "Fallback", kind: "fallback", enabled: true, selector: { expression: { combinator: "and", conditions: [] } },
   targets: [{ id: "target", guardrailId: `${guardrail.id}-future`, guardrailVersion: v2, weightBps: 10_000 }] }] } } });
-const futureReview = await prod.call(`/api/v1/routers/${futureRouter.id}/publication-preview`, { body: { expectedDraftRevision: futureRouter.draftRevision } });
-const refused = await prod.call(`/api/v1/routers/${futureRouter.id}/change-requests`, { expected: 409, body: {
-  expectedDraftRevision: futureRouter.draftRevision, reviewedSnapshot: futureReview.snapshot, reviewedEndpointIds: futureReview.endpointIds, reason: "CR-1003", ticket: "CR-1003" } });
-assert.equal(refused.error.code, "guardrail_version_environment_unverified");
+// A pending version can never be routed to.
+const refused = await prod.call(`/api/v1/routers/${futureRouter.id}/publication-preview`, { body: { expectedDraftRevision: futureRouter.draftRevision }, expected: 422 });
+assert.match(refused.error.message, /has not been released in this environment/);
 assert.equal((await runtime("input", marker)).body.decision, "block", "Existing traffic is unaffected.");
-report("prod-missing-dependency", { status: futureCheck.status, reason: futureCheck.pools[0].reason, routerChange: refused.error.code });
+report("prod-missing-dependency", { status: futureCheck.status, reason: futureCheck.pools[0].reason, test: futureRun.status, release: unreleased.error.code });
 
 // ---------------------------------------------------------------- runtime baseline
 const systemSource = { id: "bank-uat-system", name: "UAT system baseline" };
@@ -307,6 +332,11 @@ const baselineImport = await prod.call(`/api/v1/guardrail-packages/${baselinePre
 assert.deepEqual(await prod.call("/api/v1/system/baseline"), previousBaseline, "Importing never switches the baseline.");
 assert.equal(baselinePreview.versions.length, 1, "The baseline candidate package carries exactly one version.");
 const baselineVersion = baselinePreview.versions[0].version;
+// Like any imported version, the Default version serves only once released here.
+if ((await prod.call("/api/v1/guardrails/guardrail-default")).versions.find(item => item.version === baselineVersion).status === "pending") {
+  assert.equal((await testInProd("guardrail-default", baselineVersion)).status, "passed");
+  await prod.call(`/api/v1/guardrails/guardrail-default/versions/${baselineVersion}/release`, { body: {} });
+}
 const baseline = await prod.call("/api/v1/system/baseline", { method: "PUT", body: { version: baselineVersion, reason: "CR-1002 adopt UAT baseline" } });
 assert.deepEqual(baseline, { guardrailId: "guardrail-default", version: baselineVersion });
 const protectedStatus = await until("basic protection", () => systemStatus(prod),
@@ -315,4 +345,4 @@ report("prod-baseline", { version: baseline.version, previous: previousBaseline.
 
 await uatDb.end();
 await prodDb.end();
-report("passed", { guardrailId: guardrail.id, versions: [v1, v2], scope: "two isolated deployments: export, verify, import, Runner load check, approved routing, runtime evaluation, rejections and baseline" });
+report("passed", { guardrailId: guardrail.id, versions: [v1, v2], scope: "two isolated deployments: export, verify, import as pending, test in PROD, release, Runner load check, approved routing, runtime evaluation, rejections and baseline" });

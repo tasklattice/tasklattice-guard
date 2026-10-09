@@ -50,8 +50,8 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
       INSERT INTO controller_state (id) VALUES ('singleton');
       INSERT INTO runner_pool (id,name) VALUES ('default','Default');
       INSERT INTO guardrail (id,name,draft_config,status) VALUES ('guard-a','Original','{}','active'),('guard-b','Other','{}','active');
-      INSERT INTO guardrail_version (guardrail_id,version,generation,status,runtime_profile,plan,artifact_id) VALUES
-        ('guard-a','1',1,'ready','auto','{}','artifact-a'),('guard-b','1',2,'ready','auto','{}','artifact-b');
+      INSERT INTO guardrail_version (guardrail_id,version,generation,status,runtime_profile,plan,artifact_id,released_at) VALUES
+        ('guard-a','1',1,'ready','auto','{}','artifact-a',now()),('guard-b','1',2,'ready','auto','{}','artifact-b',now());
       INSERT INTO endpoint (id,name,adapter) VALUES ('http','HTTP','HTTP'),('a2a','A2A','A2A');`);
   });
   async function create(value = draft()) { return service.trafficRouting.create("Router", "", value, actor); }
@@ -192,7 +192,7 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
     if (drift === "revision") await apply(router.id);
     const change = await submit(router.id);
     if (drift === "binding") await service.trafficRouting.bind(router.id, ["http", "a2a"], actor);
-    else if (drift === "readiness") await pool.query("UPDATE guardrail_version SET status='compiling' WHERE guardrail_id='guard-a'");
+    else if (drift === "readiness") await pool.query("UPDATE guardrail_version SET status='pending', released_at=NULL WHERE guardrail_id='guard-a'");
     else await pool.query("UPDATE traffic_router SET active_revision = 7 WHERE id=$1", [router.id]);
     const before = await generation(), revisions = await count("traffic_router_revision");
     await expect(service.trafficRouting.approveChange(router.id, change.id, approver, {})).rejects.toMatchObject({ code: "router_change_request_stale" });
@@ -237,7 +237,7 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
   });
   const impact = (version = "0", guardrailId = "guard-b") => service.guardrailVersionDeletionImpact(guardrailId, version);
   async function oldVersion() {
-    await pool.query("INSERT INTO guardrail_version (guardrail_id,version,generation,status,runtime_profile,plan,artifact_id) VALUES ('guard-b','0',90,'ready','auto','{}','artifact-b0')");
+    await pool.query("INSERT INTO guardrail_version (guardrail_id,version,generation,status,runtime_profile,plan,artifact_id,released_at) VALUES ('guard-b','0',90,'ready','auto','{}','artifact-b0',now())");
   }
   const toOld = () => { const value = draft(); value.routes[0]!.targets[0]!.guardrailId = "guard-b"; value.routes[0]!.targets[0]!.guardrailVersion = "0"; return value; };
   it("lists every routing reference before deleting a version", async () => {
@@ -347,7 +347,7 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
   });
 
   async function addVersion(version: string, generation: number, status = "ready", artifact: string | null = "artifact-new") {
-    await pool.query("INSERT INTO guardrail_version (guardrail_id,version,generation,status,runtime_profile,plan,artifact_id) VALUES ('guard-a',$1,$2,$3,'auto','{}',$4)", [version, generation, status, artifact]);
+    await pool.query("INSERT INTO guardrail_version (guardrail_id,version,generation,status,runtime_profile,plan,artifact_id,released_at) VALUES ('guard-a',$1,$2,$3,'auto','{}',$4,CASE WHEN $3 = 'ready' THEN now() END)", [version, generation, status, artifact]);
   }
   it("routes exactly the pinned versions: the reviewed snapshot is the draft, and no strategy is accepted", async () => {
     await addVersion("z-newer", 4);
@@ -366,12 +366,12 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
   it.each(["binding", "readiness"])("requires re-review after %s drift before submission", async drift => {
     const router = await create(draft());
     const preview = await service.trafficRouting.preview(router.id, 1);
-    if (drift === "readiness") await pool.query("UPDATE guardrail_version SET status='compiling' WHERE guardrail_id='guard-a'");
+    if (drift === "readiness") await pool.query("UPDATE guardrail_version SET status='pending', released_at=NULL WHERE guardrail_id='guard-a'");
     else await service.trafficRouting.bind(router.id, ["http"], actor);
     await expect(service.trafficRouting.submitChange(router.id, { expectedDraftRevision: 1, reviewedSnapshot: preview.snapshot, reviewedEndpointIds: preview.endpointIds, reason: "Drift", ticket: "" }, actor))
       .rejects.toMatchObject({ code: "router_review_conflict" });
     expect(await count("traffic_router_change_request")).toBe(0);
-    if (drift === "readiness") await pool.query("UPDATE guardrail_version SET status='ready' WHERE guardrail_id='guard-a'");
+    if (drift === "readiness") await pool.query("UPDATE guardrail_version SET status='ready', released_at=now() WHERE guardrail_id='guard-a'");
     await apply(router.id);
     expect(await count("traffic_router_revision")).toBe(1);
   });
@@ -379,9 +379,9 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
   it("validates preview revision, capabilities, readiness and duplicate targets without writes", async () => {
     const router = await create(draft());
     await expect(service.trafficRouting.preview(router.id, 2)).rejects.toMatchObject({ code: "router_draft_conflict" });
-    await pool.query("UPDATE guardrail_version SET status='compiling' WHERE guardrail_id='guard-a'");
-    await expect(service.trafficRouting.preview(router.id, 1)).rejects.toThrow("is not a ready Guardrail Version");
-    await pool.query("UPDATE guardrail_version SET status='ready' WHERE guardrail_id='guard-a'");
+    await pool.query("UPDATE guardrail_version SET status='pending', released_at=NULL WHERE guardrail_id='guard-a'");
+    await expect(service.trafficRouting.preview(router.id, 1)).rejects.toThrow("has not been released in this environment");
+    await pool.query("UPDATE guardrail_version SET status='ready', released_at=now() WHERE guardrail_id='guard-a'");
     const duplicate = withHeader(); duplicate.routes[0]!.targets[0]!.weightBps = 5000;
     duplicate.routes[0]!.targets.push({ ...draft().routes[0]!.targets[0]!, id: "duplicate", weightBps: 5000 });
     // With every target pinned, a duplicate is visible in the draft itself and never saved.
@@ -425,7 +425,7 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
   });
 
   it("requires ready positive targets while retaining an unready zero-weight candidate", async () => {
-    await pool.query("UPDATE guardrail_version SET status='compiling' WHERE guardrail_id='guard-b'");
+    await pool.query("UPDATE guardrail_version SET status='pending', released_at=NULL WHERE guardrail_id='guard-b'");
     const value = withHeader(); value.routes[0]!.targets.push({ id: "candidate", guardrailId: "guard-b", guardrailVersion: "1", weightBps: 0 });
     const router = await publish(value);
     value.routes[0]!.targets[0]!.weightBps = 9000; value.routes[0]!.targets[1]!.weightBps = 1000;
@@ -558,13 +558,11 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
     expect(await count("controller_outbox")).toBe(0);
   });
 
-  it("rejects stale, incomplete and compiling discard targets before changing data", async () => {
+  it("rejects stale and incomplete discard targets before changing data", async () => {
     const { db } = await sourceFixture();
     const input = { id: "guard-a", actorId: actor, expectedDraftRevision: 1, expectedBaselineVersion: "1" };
     await expect(service.discardGuardrailDraft({ ...input, expectedDraftRevision: 2 })).rejects.toMatchObject({ code: "guardrail_draft_conflict" });
     await expect(service.discardGuardrailDraft({ ...input, expectedBaselineVersion: "2" })).rejects.toMatchObject({ code: "guardrail_draft_conflict" });
-    await db.insert(schema.guardrailVersions).values({ guardrailId: "guard-a", version: "compiling", generation: 9, status: "compiling", runtimeProfile: "auto", plan: {} });
-    await expect(service.discardGuardrailDraft(input)).rejects.toMatchObject({ code: "guardrail_publication_pending" });
     await db.update(schema.guardrailVersions).set({ sourceSnapshot: null }).where(eq(schema.guardrailVersions.guardrailId, "guard-a"));
     await expect(service.discardGuardrailDraft(input)).rejects.toMatchObject({ code: "source_snapshot_unavailable" });
     expect(await count("audit_event", "kind='guardrail.draft_discarded'")).toBe(0);

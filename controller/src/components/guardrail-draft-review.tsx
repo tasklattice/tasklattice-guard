@@ -11,10 +11,8 @@ import { createValidationRun, resumeValidationRun, publishGuardrail, type Guardr
 import { isValidationRunning, ValidationRunProgress } from "@/components/validation-run-progress";
 import { ValidationCaseResults } from "@/routes/validation";
 
-export function draftStateKey(guardrail: Guardrail, version?: GuardrailVersion) {
+export function draftStateKey(guardrail: Guardrail) {
   if (!hasUnpublishedDraft(guardrail)) return "guardrails.releasePublished";
-  if (version?.compile_status === "compiling") return "guardrails.releaseCompiling";
-  if (version?.compile_status === "failed") return "guardrails.releaseCompileFailed";
   if (guardrail.published_current) return "guardrails.releasePublished";
   if (guardrail.tested_current) return "guardrails.draftTested";
   if (guardrail.latest_validation_run && guardrail.latest_validation_run.source_draft_version === guardrail.draft_revision) {
@@ -42,8 +40,6 @@ export function GuardrailDraftReviewSheet({ guardrail, policies, versions, polic
   const resumedRun = useRef<string | null>(null);
   const observeRun = (value: ValidationRun) => { resumedRun.current = value.id; setObservedRun(value); };
   const readiness = useGuardrailValidationReadiness({ bindings: guardrail.policy_bindings, policies, policiesReady, policiesError });
-  const currentRelease = versions.find(version => version.source_draft_version === guardrail.draft_revision);
-  const compiling = currentRelease?.compile_status === "compiling";
   const run = useMutation({
     mutationFn: (runId?: string) => {
       if (runId) return resumeValidationRun(runId, { onProgress: observeRun });
@@ -65,7 +61,7 @@ export function GuardrailDraftReviewSheet({ guardrail, policies, versions, polic
   }, [guardrail.latest_validation_run, guardrail.draft_revision, readOnly, initialPublish, run.isPending, run.mutate]);
   const publish = useMutation({
     mutationFn: () => {
-      if (!guardrail.tested_current || publishRevision === null || publishRevision !== guardrail.draft_revision || guardrail.published_current || compiling) {
+      if (!guardrail.tested_current || publishRevision === null || publishRevision !== guardrail.draft_revision || guardrail.published_current) {
         throw new Error(t("guardrails.draftChangedBeforePublish"));
       }
       return publishGuardrail(guardrail.id, publishRevision);
@@ -80,7 +76,7 @@ export function GuardrailDraftReviewSheet({ guardrail, policies, versions, polic
   const reconnect = Boolean(run.error && isValidationRunning(observedRun));
   const result = run.data ?? guardrail.latest_validation_run;
   const currentResult = result?.source_draft_version === guardrail.draft_revision ? result : null;
-  const canPublish = !readOnly && !isValidationRunning(observedRun) && guardrail.tested_current && !guardrail.published_current && !compiling;
+  const canPublish = !readOnly && !isValidationRunning(observedRun) && guardrail.tested_current && !guardrail.published_current;
   const reviewingPublish = !readOnly && publishRevision !== null;
 
   return <EntitySheet open width="xl" density="compact" closeDisabled={pending}
@@ -90,21 +86,20 @@ export function GuardrailDraftReviewSheet({ guardrail, policies, versions, polic
     description={t(readOnly ? "guardrails.draftReviewReadOnly" : reviewingPublish ? "guardrails.confirmPublishImpact" : "guardrails.savedDraftNextStep")}
     footer={readOnly ? <Button variant="outline" onClick={onClose}>{t("common.close")}</Button> : reviewingPublish ? <>
       <Button variant="outline" disabled={pending} onClick={() => { setPublishRevision(null); publish.reset(); }}>{t("common.back")}</Button>
-      <Button disabled={pending || !canPublish || publishRevision !== guardrail.draft_revision} onClick={() => publish.mutate()}>{publish.isPending ? <LoaderCircle className="animate-spin" /> : <ShieldCheck />}{t(publish.isPending ? "guardrails.requestingCompilation" : "guardrails.publishVersion")}</Button>
+      <Button disabled={pending || !canPublish || publishRevision !== guardrail.draft_revision} onClick={() => publish.mutate()}>{publish.isPending ? <LoaderCircle className="animate-spin" /> : <ShieldCheck />}{t(publish.isPending ? "guardrails.publishingVersion" : "guardrails.publishVersion")}</Button>
     </> : <>
       <Button variant="ghost" className="mr-auto" disabled={pending} onClick={onEdit}><Pencil />{t("guardrails.continueEditing")}</Button>
       <Button variant="outline" disabled={pending} onClick={onClose}>{t(currentResult ? "common.close" : "guardrails.skipTest")}</Button>
-      <Button variant={canPublish ? "outline" : "default"} disabled={pending || (!reconnect && (readiness.blocked || compiling))} onClick={() => run.mutate(reconnect ? observedRun!.id : undefined)}>{run.isPending ? <LoaderCircle className="animate-spin" /> : <FlaskConical />}{t(run.isPending ? "guardrails.runningValidation" : reconnect ? "guardrails.testProgress.reconnect" : currentResult ? "validation.runAgain" : "guardrails.testNow")}</Button>
+      <Button variant={canPublish ? "outline" : "default"} disabled={pending || (!reconnect && readiness.blocked)} onClick={() => run.mutate(reconnect ? observedRun!.id : undefined)}>{run.isPending ? <LoaderCircle className="animate-spin" /> : <FlaskConical />}{t(run.isPending ? "guardrails.runningValidation" : reconnect ? "guardrails.testProgress.reconnect" : currentResult ? "validation.runAgain" : "guardrails.testNow")}</Button>
       {canPublish ? <Button disabled={pending} onClick={() => setPublishRevision(guardrail.draft_revision ?? null)}><ShieldCheck />{t("guardrails.publishVersion")}</Button> : null}
     </>}>
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-4 border-b pb-4" aria-live="polite">
         <div><p className="text-sm font-medium">{t("guardrails.draftRevisionLabel", { revision: guardrail.draft_revision ?? "—" })}</p><p className="mt-1 text-xs text-muted-foreground">{t("guardrails.policyCheckDetail", { count: guardrail.policy_bindings.length })}</p></div>
-        <span className="text-sm font-medium">{t(run.isPending || reconnect ? "guardrails.draftTesting" : draftStateKey(guardrail, currentRelease))}</span>
+        <span className="text-sm font-medium">{t(run.isPending || reconnect ? "guardrails.draftTesting" : draftStateKey(guardrail))}</span>
       </div>
       {run.error || publish.error ? <ErrorNotice error={run.error ?? publish.error} /> : null}
       {reviewingPublish && publishRevision !== guardrail.draft_revision ? <p role="alert" className="text-sm text-destructive">{t("guardrails.draftChangedBeforePublish")}</p> : null}
-      {currentRelease?.compile_status === "failed" ? <p role="alert" className="text-sm text-destructive">{currentRelease.failure_reason || t("guardrails.compilationFailedDetail")}</p> : null}
       {!reviewingPublish ? <GuardrailValidationReadiness readiness={readiness} onRetry={() => { onRetryPolicies?.(); readiness.refresh(); }} /> : null}
       {run.isPending || reconnect ? <ValidationRunProgress run={observedRun} startedAt={run.submittedAt} interrupted={reconnect} /> : currentResult ? <>
         <div className="flex items-center justify-between gap-4"><div><p className="text-sm font-medium">{t("guardrails.testReportsTab")}</p><p className="mt-1 font-mono text-xs text-muted-foreground">{currentResult.id}</p></div><StateBadge state={currentResult.status} /></div>

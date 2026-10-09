@@ -27,15 +27,18 @@ A protection plan for one business scenario. It pins Policy Versions, enabled Ru
 ## Export a Guardrail
 
 Open **Guardrails**, then choose **Export…** from the row's **Actions** menu, or
-choose **Export…** while viewing an immutable version. Pick the ready version to
+choose **Export…** while viewing an immutable version. Pick the released versions to
 download; nothing is preselected, so the package holds exactly what you choose. Unpublished draft edits are never
 included. Publish a version first if Export is disabled.
 
-The `.artifact.json` file includes frozen Policy implementations and compiled
-configuration, so it does not require Policy Library. Running it still requires
-a compatible TaskLattice/NeMo runtime and the declared model capabilities, with
-credentials configured in the target environment. Export does not deploy or
-import the Guardrail into another Controller.
+The release package is a signed `.zip`. Each version carries its signed
+Artifact (frozen Policy implementations and compiled configuration) and its test
+suite, so it does not require Policy Library; test reports are not included.
+Import it in another Controller with **Create Guardrail → Import release
+package**. Imported versions arrive pending: run their own test suite there and
+release them. Running a version still requires a compatible TaskLattice/NeMo
+runtime and the declared model capabilities, with credentials configured in the
+target environment.
 
 <a id="term-policy-binding" />
 
@@ -65,11 +68,11 @@ For example, an administrator can set `blocked_words` to a list before publishin
 
 ## Guardrail Version
 
-<strong>What:</strong> An immutable published Guardrail snapshot with pinned Policy Bindings, Rules, parameters, compiled artifact, dependencies, and checksum.
+<strong>What:</strong> An immutable published Guardrail snapshot with pinned Policy Bindings, Rules, parameters, test suite, compiled artifact, dependencies, and checksum.
 
 <strong>Why:</strong> It is the immutable unit that routing, the runtime baseline and export refer to. Every reference names an exact version; there is no "latest" pointer to follow.
 
-<strong>How:</strong> Wait for compilation to become ready, publish a Router Revision whose Target pins it, and check Runner convergence. To serve a different version, submit a Router change that pins it.
+<strong>How:</strong> Make sure the version is released (test and release an imported version here first), publish a Router Revision whose Target pins it, and check Runner convergence. To serve a different version, submit a Router change that pins it.
 
 <strong>Example:</strong> Publishing Guardrail v2 does not switch a Router still pinned to v1; review and republish the Router to change production traffic.
 
@@ -79,9 +82,9 @@ For example, an administrator can set `blocked_words` to a list before publishin
 
 Validation record
 
-An immutable result from executing the current draft's Test Cases through the real runtime.
+An immutable result from executing the Test Cases of a draft or of a version through the real runtime.
 
-All required cases for the current revision must pass before publication.
+A draft publishes only when all required cases for its current revision pass; a pending version is released only when the latest run of it here passed.
 
 <a id="term-checksum" />
 
@@ -175,7 +178,7 @@ Read the role guides as a handoff from **configuration and validation → Endpoi
 
 Color reinforces text: amber means work is in progress or has not converged; green means passed or active; red means failed or action is needed; gray means draft, historical, intentionally disabled, or not started. <strong>Resource lifecycle, immutable-version build state, Runner health, and per-request Decision are separate axes.</strong>
 
-Follow one release to keep them apart: Guardrail Version **ready** means the protection artifact compiled; a published Route reference can make the Guardrail list show **protected**; Router **active** means default-pool Runners acknowledged the target generation. Finally, check the Endpoint and runtime logs to see whether real requests used that protection.
+Follow one release to keep them apart: Guardrail Version **Released** means it passed its tests here and can be referenced; a published Route reference can make the Guardrail list show **protected**; Router **active** means default-pool Runners acknowledged the target generation. Finally, check the Endpoint and runtime logs to see whether real requests used that protection.
 
 <a id="state-guardrail-readiness" />
 
@@ -197,83 +200,68 @@ The persisted resource path is draft → active → disabled, with draft → dis
 
 <a id="state-guardrail-version" />
 
-### Guardrail Version build
+### Guardrail Version release
 
 <StateMachineDiagram kind="guardrail-version" locale="en" />
 
-A version compiles to ready or failed. Terminal contents are immutable. Ready means an artifact exists; a Router must still pin the exact version and Runners must apply it. Publishing a new version changes nothing that already references another one.
+A version has exactly two states: **Pending** and **Released** (`ready`). Its contents, the Policies and the test suite, never change after it is created; releasing changes neither its version number nor its content digest.
+
+- A version published from a draft in this environment is released at once, bound to the passing test run it was published from.
+- A version imported from a release package starts pending. Run its own test suite here, against the signed Artifact as it is (nothing is recompiled). Once that run passes, an administrator chooses **Release**, which binds the run to the version.
+- Only released versions can be pinned by a Router, set as the runtime baseline, or exported.
+- A test that fails after release does not revoke it. The version shows that the retest failed, and people decide whether to change routing.
+
+Released only means the version can be referenced; a Router must still pin the exact version and Runners must apply it. Publishing a new version changes nothing that already references another one.
 
 A version can be deleted once nothing depends on it. **Delete** lists the references first: the runtime baseline, an active Router revision, an edited Router draft, a pending change request, or the pre-approved rollback target of the active change. It also waits until calls that started before the version left routing have finished. Older Router revisions that pinned the version do not block deletion; they stay in history for audit but can no longer be restored. The compiled Artifact and telemetry are kept.
 
 <a id="guardrail-build-states" />
 
-### Guardrail compilation states
+### Guardrail Version states
 
-Compilation status is separate from Active / Historical version selection and from Router traffic rollout.
+Version state is separate from Router traffic rollout. Testing, test failed and ready to release are read from this environment's test runs; they are not separate states.
 
 <StateCards>
 
-<StateCard title="Compiling" code="compiling" state="distributing">
+<StateCard title="Pending" code="pending" state="distributing">
 
 <StateDetail label="Meaning">
 
-The immutable runtime artifact for a Guardrail version is being built.
+The version's contents are in place, but it has not passed its tests and been released in this environment. Imported versions always start here.
 
 </StateDetail>
 
 <StateDetail label="Transitions">
 
-Successful compilation yields ready; a compilation error yields failed.
+When the latest run of this exact content and test suite passes here, an administrator releases it and it becomes Released.
 
 </StateDetail>
 
 <StateDetail label="Next step">
 
-Wait for completion and inspect compilation errors if it fails.
+Choose **Run tests** from the version menu, then **Release** once it passes. If it fails, read the report; people decide what caused it.
 
 </StateDetail>
 
 </StateCard>
 
-<StateCard title="Ready" code="ready">
+<StateCard title="Released" code="ready">
 
 <StateDetail label="Meaning">
 
-The version artifact is ready. This does not mean Router traffic has switched to it.
+The version is bound to a passing test run from this environment and can be pinned by a Router, set as the baseline, or exported. This does not mean Router traffic has switched to it.
 
 </StateDetail>
 
 <StateDetail label="Transitions">
 
-The version can be marked Active; Router rollout determines traffic activation.
+This is final. A later failed retest is shown as a warning and never revokes the release.
 
 </StateDetail>
 
 <StateDetail label="Next step">
 
-Publish the Router again to change its pinned Guardrail Target.
-
-</StateDetail>
-
-</StateCard>
-
-<StateCard title="Compilation failed" code="failed">
-
-<StateDetail label="Meaning">
-
-The version did not produce a usable artifact.
-
-</StateDetail>
-
-<StateDetail label="Transitions">
-
-Fix the configuration and start compilation again, then inspect the new result.
-
-</StateDetail>
-
-<StateDetail label="Next step">
-
-Read the compilation error and fix the Policy, Rule, or dependency.
+Publish a Router Revision whose Target pins this version.
 
 </StateDetail>
 

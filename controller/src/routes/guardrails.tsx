@@ -172,26 +172,26 @@ export function GuardrailDetailPage() {
     if (search.tab === "draft") void navigate({ search: previous => ({ ...previous, tab: "runtime" }), replace: true });
   }, [search.tab, navigate]);
   const guardrailVersions = [...(versionsQuery.data?.items ?? [])].sort((a, b) => b.created_at.localeCompare(a.created_at) || b.version.localeCompare(a.version));
-  const compilationPending = guardrailVersions.some((item) => item.compile_status === "compiling");
   const validationPending = isValidationRunning(guardrailQuery.data?.latest_validation_run);
+  // A version being tested here: keep its state and report current until the run ends.
+  const versionTesting = (validationRunsQuery.data?.items ?? []).some((run) => run.subject === "version" && isValidationRunning(run));
   useEffect(() => {
-    if (!compilationPending && !validationPending) return;
+    if (!validationPending && !versionTesting) return;
     const timer = globalThis.setInterval(() => {
-      void Promise.all([versionsQuery.refetch(), guardrailQuery.refetch()]);
+      void Promise.all([versionsQuery.refetch(), guardrailQuery.refetch(), validationRunsQuery.refetch()]);
     }, 1_500);
     return () => globalThis.clearInterval(timer);
-  }, [compilationPending, validationPending, guardrailQuery, versionsQuery]);
-  const publishedVersions = guardrailVersions.filter((item) => !item.compile_status || item.compile_status === "ready");
+  }, [validationPending, versionTesting, guardrailQuery, versionsQuery, validationRunsQuery]);
+  const publishedVersions = guardrailVersions.filter((item) => item.status === "ready");
   // Versions arrive newest first; that is only a default selection in this view.
   const selectedVersionNumber = selectedVersionOverride && guardrailVersions.some((item) => item.version === selectedVersionOverride) ? selectedVersionOverride : guardrailVersions[0]?.version ?? "";
   const selectedVersion = guardrailVersions.find((item) => item.version === selectedVersionNumber);
   const selectedValidation = [...(validationRunsQuery.data?.items ?? [])].sort((a, b) => b.created_at.localeCompare(a.created_at)).find((run) => run.guardrail_version === selectedVersionNumber) ?? null;
-  const compareOptions = guardrailVersions.filter((item) => item.version !== selectedVersionNumber && (!item.compile_status || item.compile_status === "ready"));
+  const compareOptions = guardrailVersions.filter((item) => item.version !== selectedVersionNumber);
   const immutableQuery = useQuery({
     queryKey: queryKeys.guardrailVersion(guardrailId, selectedVersionNumber),
     queryFn: () => getGuardrailVersion(guardrailId, selectedVersionNumber),
     enabled: section === "immutable" && Boolean(selectedVersionNumber),
-    refetchInterval: selectedVersion?.compile_status === "compiling" ? 1_500 : false,
   });
   const compareQuery = useQuery({
     queryKey: queryKeys.guardrailVersion(guardrailId, compareBaseVersionNumber ?? ""),
@@ -278,7 +278,6 @@ export function GuardrailDetailPage() {
   const policies = policiesQuery.data?.items ?? EMPTY_POLICIES;
   const routers = routersQuery.data?.items.filter((item) => item.activeSnapshot?.routes.some(route => route.enabled && route.targets.some(target => target.guardrailId === guardrail.id && target.weightBps > 0))) ?? [];
   const canManageDraft = auth.user?.role === "admin" && isGuardrailDraftManageable(guardrail) && !releaseOnly;
-  const currentRelease = guardrailVersions.find(version => version.source_draft_version === guardrail.draft_revision);
   const hasDraft = hasUnpublishedDraft(guardrail);
   const currentTest = guardrail.latest_validation_run?.source_draft_version === guardrail.draft_revision ? guardrail.latest_validation_run : null;
   const testingDraft = isValidationRunning(currentTest);
@@ -298,19 +297,19 @@ export function GuardrailDetailPage() {
           {guardrail.origin === "imported" ? <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground"><LockKeyhole className="size-3.5" aria-hidden="true" />{t("guardrailPackage.importedFrom", { source: guardrail.source_id ?? "" })}</p> : null}
           {guardrail.copy_origin && <p className="mt-2 text-sm text-muted-foreground">{uiText("uiCopy.copiedFrom")}{" "}{guardrail.copy_origin.sourceName} · {guardrail.copy_origin.sourceVersion ?? `draft r${guardrail.copy_origin.sourceDraftRevision}`} · {guardrail.copy_origin.sourceGuardrailId}</p>}
           {hasDraft ? <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-            <p role="status"><span className="font-medium">{t(publishedVersions.length ? "guardrails.unpublishedChanges" : "guardrails.newDraft")}</span> · {t(draftStateKey(guardrail, currentRelease))}{currentTest?.status === "failed" ? ` (${currentTest.metrics.total - currentTest.metrics.passed}/${currentTest.metrics.total})` : ""}</p>
+            <p role="status"><span className="font-medium">{t(publishedVersions.length ? "guardrails.unpublishedChanges" : "guardrails.newDraft")}</span> · {t(draftStateKey(guardrail))}{currentTest?.status === "failed" ? ` (${currentTest.metrics.total - currentTest.metrics.passed}/${currentTest.metrics.total})` : ""}</p>
             <button type="button" className="min-h-11 text-primary hover:underline" onClick={() => setDraftAction("changes")}>{t("guardrails.draftChanges.view")}</button>
             {testingDraft && currentTest?.progress ? <span className="text-xs tabular-nums text-muted-foreground">{t(`guardrails.testProgress.${currentTest.progress.phase}`)} · {t("guardrails.testProgress.completed", { completed: currentTest.progress.completedCases, total: currentTest.metrics.total })}</span> : null}
           </div> : null}
         </div>
         <div className="flex shrink-0 items-start gap-2">
-          {canManageDraft && hasDraft ? <Button className="min-h-11" variant="outline" disabled={compilationPending} onClick={openDraftReview}>{testingDraft ? <LoaderCircle className="animate-spin" /> : <FlaskConical />}{t(testingDraft ? "guardrails.viewTestProgress" : "guardrails.testDraft")}</Button> : null}
-          {canManageDraft && guardrail.tested_current && !guardrail.published_current ? <Button disabled={compilationPending} onClick={() => { setDraftJustSaved(false); setDraftAction("publish"); }}>{compilationPending ? <LoaderCircle className="animate-spin" /> : <ShieldCheck />}{t(compilationPending ? "guardrails.requestingCompilation" : "guardrails.publishVersion")}</Button> : null}
+          {canManageDraft && hasDraft ? <Button className="min-h-11" variant="outline" onClick={openDraftReview}>{testingDraft ? <LoaderCircle className="animate-spin" /> : <FlaskConical />}{t(testingDraft ? "guardrails.viewTestProgress" : "guardrails.testDraft")}</Button> : null}
+          {canManageDraft && guardrail.tested_current && !guardrail.published_current ? <Button onClick={() => { setDraftJustSaved(false); setDraftAction("publish"); }}><ShieldCheck />{t("guardrails.publishVersion")}</Button> : null}
           {auth.user?.role === "admin" ? <MenuButton label={t("routing.actions")} kind="tertiary" size="md" menuAlignment="bottom-end" className="guard-actions-menu">
             {canManageDraft ? <MenuItem label={t("guardrails.editAction")} renderIcon={Pencil} onClick={() => setEditOpen(true)} /> : null}
             {canManageDraft ? <MenuItem label={t("guardrails.editTestCases")} renderIcon={FlaskConical} onClick={() => setTestCasesOpen(true)} /> : null}
             {hasDraft ? <MenuItem label={t("guardrails.draftChanges.view")} renderIcon={FileText} onClick={() => setDraftAction("changes")} /> : null}
-            {canManageDraft && hasDraft && publishedVersions.length ? <MenuItem label={t("guardrails.draftChanges.discard")} renderIcon={RotateCcw} disabled={compilationPending} onClick={() => setDraftAction("discard")} /> : null}
+            {canManageDraft && hasDraft && publishedVersions.length ? <MenuItem label={t("guardrails.draftChanges.discard")} renderIcon={RotateCcw} onClick={() => setDraftAction("discard")} /> : null}
             {canManageDraft ? <MenuItem label={t("guardrails.openPlayground")} renderIcon={FlaskConical} onClick={() => { void navigate({ to: "/playground", search: { guardrail: guardrail.id, target: "draft", version: undefined } }); }} /> : null}
             {!guardrail.is_default ? <MenuItemDivider /> : null}
             {!guardrail.is_default ? <MenuItem label={t("guardrails.deleteAction")} renderIcon={Trash2} kind="danger" onClick={() => {

@@ -268,8 +268,9 @@ function mapVersion(value: controllerApi.GuardrailVersion, guardrail: controller
     config_checksum: value.artifact?.checksum ?? "",
     execution_mode: "nemo_only",
     policy_count: arrayOfRecords(value.plan.policy_bindings).length,
-    compile_status: value.status,
-    failure_reason: value.failureReason,
+    status: value.status,
+    released_at: value.releasedAt,
+    release_run_id: value.validationRunId ?? null,
     origin: value.origin ?? "local",
     environment_check: value.environmentCheck ?? null,
     provenance: value.provenance ?? null,
@@ -369,17 +370,22 @@ export async function getGuardrailVersion(guardrailId: string, version: string):
   return mapVersionDetail(found, guardrail);
 }
 
+/** Publishing is synchronous: the tested candidate is signed and released at once. */
 export async function publishGuardrail(guardrailId: string, expectedDraftRevision: number): Promise<GuardrailVersion> {
   const result = await controllerApi.publishControllerGuardrail(guardrailId, expectedDraftRevision);
-  for (let attempt = 0; attempt < 120; attempt += 1) {
-    const guardrail = await controllerApi.getControllerGuardrail(guardrailId);
-    const version = guardrail.versions.find((item) => item.version === result.version);
-    if (version?.status === "ready") return mapVersion(version, guardrail);
-    if (version?.status === "failed") throw new Error(version.failureReason || `Guardrail version ${result.version} failed to compile.`);
-    await new Promise((resolve) => setTimeout(resolve, 250));
-  }
-  throw new Error(`Guardrail version ${result.version} is still compiling. Check Controller activity for progress.`);
+  const guardrail = await controllerApi.getControllerGuardrail(guardrailId);
+  const version = guardrail.versions.find((item) => item.version === result.version);
+  if (!version) throw new Error(`Guardrail version ${result.version} was not found after publishing.`);
+  return mapVersion(version, guardrail);
 }
+
+/** Run a version's own test suite against its signed Artifact in this environment. */
+export const testGuardrailVersion = (guardrailId: string, version: string) =>
+  controllerApi.requestController<controllerApi.ValidationRun>(`/api/v1/guardrails/${encodeURIComponent(guardrailId)}/versions/${encodeURIComponent(version)}/test-runs`, { method: "POST" }).then(mapValidationRun);
+
+/** Release a pending version here; requires its passed test of exactly this content. */
+export const releaseGuardrailVersion = (guardrailId: string, version: string) =>
+  controllerApi.requestController<controllerApi.GuardrailVersion>(`/api/v1/guardrails/${encodeURIComponent(guardrailId)}/versions/${encodeURIComponent(version)}/release`, { method: "POST" });
 
 
 export function previewGuardrailCandidate(input: {
@@ -572,6 +578,9 @@ function mapValidationRun(value: controllerApi.ValidationRun): ValidationRun {
     guardrail_id: value.guardrailId,
     guardrail_version: value.guardrailVersion,
     source_draft_version: value.sourceDraftRevision,
+    subject: value.subject ?? "draft",
+    candidate_digest: value.candidateDigest ?? null,
+    test_suite_digest: value.testSuiteDigest ?? null,
     status: value.status === "passed" ? "passed" : value.status === "failed" ? "failed" : "incomplete",
     execution_status: value.status,
     progress: value.progress ?? null,

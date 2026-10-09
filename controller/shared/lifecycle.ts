@@ -10,8 +10,12 @@
 export const guardrailLifecycleStates = ["draft", "active", "disabled"] as const;
 export type GuardrailLifecycleState = (typeof guardrailLifecycleStates)[number];
 
-/** Persisted lifecycle of one immutable Guardrail version. */
-export const guardrailVersionStates = ["compiling", "ready", "failed"] as const;
+/**
+ * Persisted lifecycle of one immutable Guardrail version in this environment:
+ * `pending` until released here, then `ready`. Only a ready version can be
+ * routed to, made the baseline or exported. Test results are not states.
+ */
+export const guardrailVersionStates = ["pending", "ready"] as const;
 export type GuardrailVersionState = (typeof guardrailVersionStates)[number];
 
 /** Persisted lifecycle shared by Guardrail and programmable-policy validation runs. */
@@ -61,11 +65,10 @@ export const guardrailLifecycleTransitions = {
   disabled: [],
 } as const satisfies Record<GuardrailLifecycleState, readonly GuardrailLifecycleState[]>;
 
-/** Guardrail versions are immutable once compilation reaches a terminal state. */
+/** Releasing is the only transition: it requires a passed test of that exact content here. */
 export const guardrailVersionTransitions = {
-  compiling: ["ready", "failed"],
+  pending: ["ready"],
   ready: [],
-  failed: [],
 } as const satisfies Record<GuardrailVersionState, readonly GuardrailVersionState[]>;
 
 /**

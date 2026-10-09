@@ -259,10 +259,16 @@ only in package identity: `CONTROLLER_PACKAGE_TRUST_PATH` names a JSON file of t
 `{"sources":[{"id","name","keys":[{"id","publicKeyPem"}],"reservedGuardrailIds":[]}]}`.
 **Guardrails → Create Guardrail → Import release package** uploads a package, shows the source, each version's
 test suite, new/existing/conflict state and a Runner load check, then
-imports only what is new. Imported Guardrails are read-only. Routing an imported
-version requires a recent passing load check on every pool; a Router change is
-refused otherwise. An imported version whose load check passed is also held by
-the default pool, so **Playground** can talk to it before any Router serves it.
+imports only what is new. Imported Guardrails are read-only, and each imported
+version arrives **pending**. In the version list, **Run tests** runs the version's
+own test suite here against its signed Artifact, unchanged; once the latest run
+passed for exactly that content and suite, **Release** makes it **ready** and
+binds that report (`POST /api/v1/guardrails/{id}/versions/{v}/test-runs`, then
+`.../release`). Only ready versions can be routed to, made the baseline or
+exported; a later failed test does not revoke a release. Routing an imported
+version also requires a recent passing load check on every pool. A released
+imported version whose load check passed is held by the default pool, so
+**Playground** can talk to it before any Router serves it.
 **Policy Library → In released versions** is read only, with the same cards,
 filters and detail drawer as the Library tab: it aggregates the Policies frozen
 in released Guardrail versions, local and imported, by Policy ID

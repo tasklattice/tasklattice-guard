@@ -54,7 +54,7 @@ describe.skipIf(!url)("Artifact re-sealing in PostgreSQL", () => {
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,1)`, [item.id, item.guardrailId, item.guardrailVersion, item.generation, item.compilerVersion, item.nemoVersion, item.runtimeProfile,
         JSON.stringify(item.plan), item.configYaml, item.colangContent, JSON.stringify(item.prompts), JSON.stringify(item.actionBindings), JSON.stringify(item.dependencyManifest), item.checksum, item.signature]);
     }
-    await pool.query("INSERT INTO guardrail_version (guardrail_id, version, generation, status, runtime_profile, plan, artifact_id) VALUES ($1, $2, 1, 'ready', 'auto', '{}', 'kept')", [content.guardrailId, content.guardrailVersion]);
+    await pool.query("INSERT INTO guardrail_version (guardrail_id, version, generation, status, runtime_profile, plan, artifact_id, released_at) VALUES ($1, $2, 1, 'ready', 'auto', '{}', 'kept', now())", [content.guardrailId, content.guardrailVersion]);
 
     expect(await service.resealArtifacts()).toBe(2);
 

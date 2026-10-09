@@ -17,8 +17,8 @@ vi.mock("@tanstack/react-router", () => ({ Link: ({ children }: { children: Reac
 
 function version(day: number): GuardrailVersionDetail {
   return {
-    guardrail_id: "g1", version: `2026100${day}-010000.000Z`, created_at: `2026-10-0${day}T01:00:00Z`, latest: day === 3,
-    source_draft_version: day, compiler_version: "compiler-v1", plan_checksum: "checksum", config_checksum: "checksum", execution_mode: "nemo_only", runtime_engine: "llmrails", compile_status: "ready",
+    guardrail_id: "g1", version: `2026100${day}-010000.000Z`, created_at: `2026-10-0${day}T01:00:00Z`, test_suite_count: 4,
+    source_draft_version: day, compiler_version: "compiler-v1", plan_checksum: "checksum", config_checksum: "checksum", execution_mode: "nemo_only", runtime_engine: "llmrails", status: "ready", released_at: `2026-10-0${day}T01:00:00Z`, release_run_id: null,
     policy_count: 12, safety_level: "balanced", output_delivery: "full_buffered", runtime_profile: "auto", colang_version: "auto", rails: [], actions: [], models: [], features: [], dependencies: [], estimated_critical_path_ms: 30000,
     policy_bindings: Array.from({ length: 12 }, (_, index) => ({ policy_id: `policy-${day}-${index}`, policy_version: "1.0.0", action: null, enabled_rule_ids: ["rule"], enabled_rails: ["input"] })),
     artifacts: [{ path: "config.yml", language: "yaml", content: `version: ${day}` }],
@@ -147,18 +147,45 @@ describe("Immutable version list and detail drawer", () => {
     expect(retry).toHaveBeenCalledOnce();
   });
 
-  it.each(["compiling", "failed"] as const)("keeps other versions accessible when a version is %s", status => {
-    const pending = { ...version(3), compile_status: status, failure_reason: "Compiler unavailable" };
-    mount({ versions: [pending, version(2), version(1)], selectedVersion: pending, detail: undefined }); open();
-    expect(screen.getByRole("dialog").textContent).toContain(status === "failed" ? "Compiler unavailable" : "guardrails.compilationPendingDetail");
+  const versionRun = (status: "passed" | "failed", digest = "checksum", running = false) => ({ id: `run-${status}`, guardrail_version: version(3).version, subject: "version",
+    status, execution_status: running ? "running" : status, candidate_digest: digest, created_at: "2026-10-05T00:00:00Z", metrics: { passed: 4, total: 4 } }) as unknown as ValidationRun;
+  const pending = () => ({ ...version(3), status: "pending" as const, released_at: null, release_run_id: null, origin: "imported" as const });
+
+  it("keeps a pending version out of use until a passing test of exactly its content allows releasing it", async () => {
+    const view = mount({ versions: [pending(), version(2), version(1)], selectedVersion: pending(), detail: pending() }); open();
+    expect(screen.getAllByText("immutableVersions.releaseStates.untested").length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: "uiCopy.versionActions" }));
+    // Not usable while pending: no export, and release needs a passed test.
     expect(screen.getByRole("menuitem", { name: "guardrails.exportEllipsis" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("menuitem", { name: "immutableVersions.release" }).hasAttribute("disabled")).toBe(true);
+    view.unmount();
+
+    // A pass of other content does not count; a failed run says so.
+    for (const [runs, state] of [[[versionRun("passed", "other")], "untested"], [[versionRun("failed")], "test_failed"], [[versionRun("passed", "checksum", true)], "testing"]] as const) {
+      const again = mount({ versions: [pending(), version(2)], selectedVersion: pending(), detail: pending(), validationRuns: [...runs] });
+      expect(screen.getAllByText(`immutableVersions.releaseStates.${state}`).length).toBeGreaterThan(0);
+      again.unmount();
+    }
+
+    // A version without a test suite can never be released; it says so.
+    const bare = { ...pending(), test_suite_count: 0 };
+    const unsuited = mount({ versions: [bare, version(2)], selectedVersion: bare, detail: bare }); open();
+    expect(screen.getByText("immutableVersions.noTestSuite")).toBeTruthy();
+    expect(within(screen.getByRole("dialog")).getByRole("button", { name: "immutableVersions.runTests" }).hasAttribute("disabled")).toBe(true);
+    unsuited.unmount();
+
+    mount({ versions: [pending(), version(2)], selectedVersion: pending(), detail: pending(), validationRuns: [versionRun("passed")] }); open();
+    expect(screen.getAllByText("immutableVersions.releaseStates.releasable").length).toBeGreaterThan(0);
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "immutableVersions.release" }));
+    const confirmation = await screen.findByRole("dialog", { name: /immutableVersions.releaseTitle/ });
+    // The confirmation names the report the release is bound to.
+    expect(confirmation.textContent).toContain("immutableVersions.releaseEvidence run:run-passed passed:4 total:4");
   });
 
   it("offers no pointer to move: a version is only exported, deleted or pinned elsewhere", () => {
     mount(); open(2);
     fireEvent.click(screen.getByRole("button", { name: "uiCopy.versionActions" }));
-    expect(screen.getAllByRole("menuitem").map(item => item.textContent)).toEqual(["guardrails.exportEllipsis", "uiCopy.delete"]);
+    expect(screen.getAllByRole("menuitem").map(item => item.textContent)).toEqual(["immutableVersions.runTests", "guardrails.exportEllipsis", "uiCopy.delete"]);
   });
 
   it("opens a row action without opening details and preserves deletion blockers", async () => {

@@ -537,10 +537,6 @@ export class ControlPlaneService {
       eq(guardrails.id, DEFAULT_GUARDRAIL_ID),
       isNull(guardrails.deletedAt),
     )).limit(1);
-    const [compiling] = await this.db.select({ version: guardrailVersions.version }).from(guardrailVersions).where(and(
-      eq(guardrailVersions.guardrailId, DEFAULT_GUARDRAIL_ID),
-      eq(guardrailVersions.status, "compiling"),
-    )).limit(1);
     const [validation] = guardrail ? await this.db.select().from(validationRuns).where(and(
       eq(validationRuns.guardrailId, DEFAULT_GUARDRAIL_ID),
       eq(validationRuns.subject, "draft"),
@@ -560,7 +556,7 @@ export class ControlPlaneService {
       && artifact.checksum && artifact.signature);
     const coverage = guardrailActive ? publishedProtectionCoverage(artifact?.plan) : null;
     const hasChecks = Boolean(coverage && (coverage.inputChecks > 0 || coverage.outputChecks > 0));
-    const preparing = guardrail?.status !== "disabled" && Boolean(compiling || validation?.status === "queued" || validation?.status === "running");
+    const preparing = guardrail?.status !== "disabled" && Boolean(validation?.status === "queued" || validation?.status === "running");
     const initializing = Boolean(guardrail && !guardrailActive && preparing);
 
     return {
@@ -830,12 +826,9 @@ export class ControlPlaneService {
       const complete = Boolean(snapshot?.testCases);
       const hasUnpublishedChanges = snapshot && complete ? !sameDraftContent(snapshot, current)
         : !baseline || baseline.sourceDraftRevision !== guardrail.draftRevision;
-      const compiling = await tx.select({ version: guardrailVersions.version }).from(guardrailVersions).where(and(
-        eq(guardrailVersions.guardrailId, id), eq(guardrailVersions.status, "compiling"),
-      )).limit(1);
       return { draftRevision: guardrail.draftRevision, baselineVersion: baseline?.version ?? null,
         baselineAvailable: !baseline || complete, hasUnpublishedChanges,
-        canDiscard: hasUnpublishedChanges && complete && baseline?.status === "ready" && compiling.length === 0,
+        canDiscard: hasUnpublishedChanges && complete && baseline?.status === "ready",
         changes: hasUnpublishedChanges && (!baseline || complete) ? describeDraftChanges(snapshot ?? null, current) : [],
       };
     });
@@ -851,8 +844,6 @@ export class ControlPlaneService {
       const [baseline] = await tx.select().from(guardrailVersions).where(and(eq(guardrailVersions.guardrailId, input.id), eq(guardrailVersions.version, input.expectedBaselineVersion)));
       const snapshot = baseline?.sourceSnapshot;
       if (baseline?.status !== "ready" || !snapshot?.testCases) throw new ConflictError("This version has no complete source snapshot to restore.", "source_snapshot_unavailable");
-      const compiling = await tx.select({ version: guardrailVersions.version }).from(guardrailVersions).where(and(eq(guardrailVersions.guardrailId, input.id), eq(guardrailVersions.status, "compiling"))).limit(1);
-      if (compiling.length) throw new ConflictError("Wait for the pending publication to finish before discarding changes.", "guardrail_publication_pending");
       const currentCases = await tx.select().from(testCases).where(eq(testCases.guardrailId, input.id));
       if (sameDraftContent(snapshot, { draftConfig: guardrail.draftConfig, runtimeProfile: guardrail.runtimeProfile,
         loggingLevel: guardrail.loggingLevel, excludedTestCaseIds: guardrail.excludedTestCaseIds, testCases: currentCases })) return guardrail;
@@ -898,7 +889,7 @@ export class ControlPlaneService {
         eq(guardrailVersions.guardrailId, input.guardrailId),
         eq(guardrailVersions.version, version),
       )).limit(1);
-      if (existingVersion && existingVersion.status !== "failed") {
+      if (existingVersion) {
         await tx.update(validationRuns).set({ guardrailVersion: existingVersion.version })
           .where(eq(validationRuns.id, latestValidation.id));
         // Publishing the same tested content again is a no-op: that version exists.
@@ -909,13 +900,6 @@ export class ControlPlaneService {
           generation: existingVersion.generation,
           status: existingVersion.status,
         };
-      }
-      if (existingVersion?.status === "failed") {
-        throw new ConflictError(
-          "This version failed earlier. Run tests again to create a new timestamped Guardrail Version.",
-          "guardrail_validation_required",
-          { draftRevision: guardrail.draftRevision },
-        );
       }
       await tx.update(validationRuns).set({ guardrailVersion: version })
         .where(eq(validationRuns.id, latestValidation.id));
@@ -963,7 +947,6 @@ export class ControlPlaneService {
     const baseline = guardrail.id === DEFAULT_GUARDRAIL_ID && await this.baselineVersion(tx) === record.version;
     const references: GuardrailVersionReference[] = [...(baseline ? [{ kind: "baseline" as const }] : []), ...routing.references];
     const blockers: GuardrailVersionDeletionBlocker[] = [];
-    if (record.status === "compiling") blockers.push({ code: "compiling" });
     const retention = 300_000;
     const [call] = await tx.select({ id: routeAssignments.decisionId }).from(routeAssignments).where(and(eq(routeAssignments.guardrailId, guardrail.id),
       eq(routeAssignments.guardrailVersion, record.version), isNull(routeAssignments.completedAt), gte(routeAssignments.occurredAt, new Date(Date.now() - retention)))).limit(1);
@@ -1158,6 +1141,53 @@ export class ControlPlaneService {
         detail: { runId, version: input.version, contentDigest: artifact.checksum, testCaseCount: version.testSuite.length },
       });
       return publicValidationRun((await tx.select().from(validationRuns).where(eq(validationRuns.id, runId)))[0]!);
+    });
+  }
+
+  /**
+   * Release a pending version in this environment. It must have passed its
+   * own test suite here, against exactly this content: the most recent
+   * completed test of the version passed, and tested this Artifact digest
+   * and this suite. That run is bound to the version for good. Releasing
+   * changes no Router or baseline; it only makes the version usable.
+   */
+  async releaseGuardrailVersion(input: { guardrailId: string; version: string; actorId: string }) {
+    return this.db.transaction(async tx => {
+      const [guardrail] = await tx.select().from(guardrails).where(and(eq(guardrails.id, input.guardrailId), isNull(guardrails.deletedAt))).for("update");
+      if (!guardrail) throw new NotFoundError("Guardrail", input.guardrailId);
+      const [version] = await tx.select().from(guardrailVersions).where(and(
+        eq(guardrailVersions.guardrailId, input.guardrailId), eq(guardrailVersions.version, input.version))).for("update");
+      if (!version) throw new NotFoundError("Guardrail version", `${input.guardrailId}@${input.version}`);
+      if (version.status === "ready") return version;
+      const [artifact] = version.artifactId ? await tx.select().from(artifacts).where(eq(artifacts.id, version.artifactId)) : [];
+      const [run] = await tx.select().from(validationRuns).where(and(
+        eq(validationRuns.guardrailId, input.guardrailId), eq(validationRuns.guardrailVersion, input.version),
+        eq(validationRuns.subject, "version"), inArray(validationRuns.status, ["passed", "failed"]),
+      )).orderBy(desc(validationRuns.completedAt)).limit(1);
+      const suiteDigest = version.testSuite ? testSuiteDigest(version.testSuite) : null;
+      if (!artifact || !run || run.status !== "passed" || run.candidateDigest !== artifact.checksum || run.testSuiteDigest !== suiteDigest) {
+        throw new ConflictError(
+          "Release requires a passed test of this exact version in this environment. Run its test suite and release after it passes.",
+          "guardrail_version_test_required",
+          { version: input.version, lastRun: run ? { id: run.id, status: run.status } : null },
+        );
+      }
+      const [state] = await tx.update(controllerState).set({ desiredGeneration: increment(controllerState.desiredGeneration), updatedAt: new Date() })
+        .where(eq(controllerState.id, "singleton")).returning();
+      if (!state) throw new Error("Controller state is not initialized.");
+      const [released] = await tx.update(guardrailVersions).set({ status: "ready", validationRunId: run.id, releasedAt: new Date(), releasedBy: input.actorId })
+        .where(and(eq(guardrailVersions.guardrailId, input.guardrailId), eq(guardrailVersions.version, input.version))).returning();
+      await tx.update(guardrails).set({ status: "active", updatedAt: new Date() })
+        .where(and(eq(guardrails.id, input.guardrailId), eq(guardrails.status, "draft")));
+      await tx.insert(outboxEvents).values({
+        id: randomUUID(), kind: "runner.desired_state_changed", aggregateId: input.guardrailId,
+        payload: { guardrailId: input.guardrailId, version: input.version, generation: state.desiredGeneration, released: true },
+      });
+      await tx.insert(auditEvents).values({
+        id: randomUUID(), kind: "guardrail.version_released", actorId: input.actorId, resourceType: "guardrail", resourceId: input.guardrailId,
+        detail: { version: input.version, validationRunId: run.id, contentDigest: artifact.checksum, testSuiteDigest: suiteDigest, origin: version.origin },
+      });
+      return released!;
     });
   }
 
@@ -1385,6 +1415,9 @@ export class ControlPlaneService {
       validationRunId: run.id,
       inspection: run.candidateInspection,
       testSuite: run.testSuite,
+      // Publishing here already required this passed run: the version is released at once.
+      releasedAt: new Date(),
+      releasedBy: actorId,
       createdBy: actorId,
     });
     await tx.update(guardrails).set({
@@ -1974,20 +2007,25 @@ export class ControlPlaneService {
     // check passed, so Playground and internal checks can address it. An
     // imported version that has not passed a check loads only once a Router
     // references it, so an unchecked package can never break an applied release.
+    // Whatever is referenced is always delivered, whatever its release state:
+    // Runners reject a desired state whose Router targets are missing, so a
+    // gap here would stop all traffic rather than one route.
     const referencedArtifactIds = new Set(routerRevisions.flatMap((router) => router.routes.flatMap((route) => route.targets.map((target) => target.artifactId).filter(Boolean))));
     const baseline = await this.baselineVersion(tx);
     const [baselineArtifact] = baseline ? await tx.select({ artifactId: guardrailVersions.artifactId }).from(guardrailVersions)
       .innerJoin(guardrails, and(eq(guardrails.id, guardrailVersions.guardrailId), isNull(guardrails.deletedAt)))
-      .where(and(eq(guardrailVersions.guardrailId, DEFAULT_GUARDRAIL_ID), eq(guardrailVersions.version, baseline), eq(guardrailVersions.status, "ready"))) : [];
+      .where(and(eq(guardrailVersions.guardrailId, DEFAULT_GUARDRAIL_ID), eq(guardrailVersions.version, baseline))) : [];
     if (baselineArtifact?.artifactId) referencedArtifactIds.add(baselineArtifact.artifactId);
     const readyArtifacts = await tx.select({ artifact: artifacts }).from(guardrailVersions)
       .innerJoin(guardrails, and(eq(guardrails.id, guardrailVersions.guardrailId), isNull(guardrails.deletedAt)))
       .innerJoin(artifacts, eq(artifacts.id, guardrailVersions.artifactId))
-      .where(and(eq(guardrailVersions.status, "ready"), or(
-        eq(guardrailVersions.origin, "local"),
-        sql`${guardrailVersions.environmentCheck}->>'status' = 'compatible'`,
+      .where(or(
         inArray(artifacts.id, [...referencedArtifactIds]),
-      )));
+        and(eq(guardrailVersions.status, "ready"), or(
+          eq(guardrailVersions.origin, "local"),
+          sql`${guardrailVersions.environmentCheck}->>'status' = 'compatible'`,
+        )),
+      ));
     const activeArtifacts = poolId === "default"
       ? readyArtifacts
       : readyArtifacts.filter((row) => referencedArtifactIds.has(row.artifact.id));

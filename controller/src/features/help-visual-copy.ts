@@ -81,11 +81,11 @@ export function graph(kind: StateMachineKind, zh: boolean): Graph {
       edges: [edge("M200 132 L345 132", 273, 114, "开始执行", "Start"), edge("M505 124 Q600 115 700 65", 605, 95, "通过", "Pass"), edge("M505 140 Q600 155 700 232", 605, 177, "失败", "Fail"), edge("M120 105 Q300 18 700 50", 440, 30, "队列可直接完成", "Direct completion"), edge("M120 159 Q300 270 700 232", 440, 262, "派发失败", "Dispatch failure")],
     };
     case "guardrail-version": return {
-      title: label("不可变版本的构建状态", "Immutable version build states"),
-      caption: label("ready 与 failed 都是终态；路由和基线只引用固定的 ready 版本。", "Ready and failed are terminal. Routing and the baseline reference only pinned, ready versions."),
+      title: label("不可变版本的发布状态", "Immutable version release states"),
+      caption: label("导入的版本先是 pending，在本环境测试通过后发布为 ready；路由、基线和导出只引用 ready 版本。", "Imported versions start pending and become ready once they pass their tests here and are released. Routing, the baseline and export use only ready versions."),
       height: 260,
-      nodes: [node("compiling", 85, 103, "change"), node("ready", 660, 25, "healthy"), node("failed", 660, 182, "error")],
-      edges: [edge("M245 122 Q450 120 660 52", 450, 88, "编译成功", "Compiled"), edge("M245 138 Q450 145 660 209", 450, 175, "编译失败", "Build failed")],
+      nodes: [node("pending", 85, 103, "change"), node("ready", 660, 103, "healthy")],
+      edges: [edge("M245 130 L660 130", 452, 112, "本环境测试通过并发布", "Tested here and released")],
     };
     case "router": return {
       title: label("Router 发布与下发状态机", "Router publication and rollout state machine"),

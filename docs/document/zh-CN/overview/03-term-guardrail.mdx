@@ -29,11 +29,11 @@ order: 2
 ## 导出 Guardrail
 
 在 **Guardrails** 列表中，打开对应行的 **Actions（操作）** 菜单选择 **导出…**，或在查看某个不可变版本时选择 **导出…**。
-在弹出的面板中选择要下载的就绪版本；不会预先选中任何版本，包里只有你选择的版本。下载内容不包含未发布的草稿修改。若导出按钮不可用，请先发布一个版本。
+在弹出的面板中选择要下载的已发布版本；不会预先选中任何版本，包里只有你选择的版本。下载内容不包含未发布的草稿修改。若导出按钮不可用，请先发布一个版本。
 
-`.artifact.json` 文件包含冻结的 Policy 实现和编译配置，不依赖 Policy Library。
+发布包是签名的 `.zip`，每个版本带上签名的 Artifact（冻结的 Policy 实现和编译配置）和它的测试集，不依赖 Policy Library，也不包含测试报告。
+在另一个 Controller 中通过 **创建 Guardrail → 导入发布包** 导入；导入的版本是待发布，需要在那里运行自带的测试集并发布。
 运行时仍需匹配的 TaskLattice/NeMo 环境和声明的模型能力，凭据在目标环境单独配置。
-导出操作不会将 Guardrail 部署或导入到另一个 Controller。
 
 <a id="term-policy-binding" />
 
@@ -63,11 +63,11 @@ Policy 暴露、由 Guardrail 绑定时解析的审查值。
 
 ## Guardrail Version
 
-<strong>是什么：</strong>Guardrail 草稿通过验证后发布的不可变快照，包含固定的 Policy Bindings、Rules、参数、编译 artifact、依赖和 checksum。
+<strong>是什么：</strong>Guardrail 草稿通过验证后发布的不可变快照，包含固定的 Policy Bindings、Rules、参数、测试集、编译 artifact、依赖和 checksum。
 
 <strong>为什么：</strong>它是路由、运行时基线和导出所引用的不可变单元；每处引用都写明确切版本，不存在可跟随的“最新版本”指针。
 
-<strong>怎么用：</strong>等待编译 ready，再发布一个 Target 固定该版本的 Router Revision。要改用其他版本，请提交固定新版本的 Router 变更。
+<strong>怎么用：</strong>确认版本已发布（导入的版本需先在本环境测试并发布），再发布一个 Target 固定该版本的 Router Revision。要改用其他版本，请提交固定新版本的 Router 变更。
 
 <strong>例子：</strong>即使已发布 Guardrail v2，仍指向 v1 的 Router 不会自动切到 v2；要改变生产流量，需检查并重新发布 Router。
 
@@ -77,9 +77,9 @@ Policy 暴露、由 Guardrail 绑定时解析的审查值。
 
 验证记录
 
-当前草稿的 Test Cases 通过真实运行时执行后形成的不可变结果。
+草稿或某个版本的 Test Cases 通过真实运行时执行后形成的不可变结果。
 
-只有当前 revision 的必需用例全部通过，才能发布。
+草稿要当前 revision 的必需用例全部通过才能发布；待发布的版本要本环境对它的最近一次测试通过才能发布。
 
 <a id="term-checksum" />
 
@@ -173,7 +173,7 @@ fail-open 继续但记录错误；fail-closed 阻断。必需检查通常采用�
 
 状态颜色表达语义，不替代文字。黄色表示工作进行或配置尚未收敛；绿色表示已通过或已生效；红色表示失败或需要处理；灰色表示草稿、历史、主动停用或尚未开始。<strong>资源生命周期、不可变版本的构建状态、Runner 健康和一次请求的 Decision 是不同轴，不能互相代替。</strong>
 
-用同一个发布过程理解这些状态：Guardrail Version **ready** 只说明保护内容已编译好；被已发布 Route 引用后，Guardrail 列表可以显示 **protected（保护中）**；Router **active** 才说明目标 generation 已被默认池 Runner 确认。最后还要看 Endpoint 和运行日志，才能知道是否真的有请求经过这套保护。
+用同一个发布过程理解这些状态：Guardrail Version **已发布** 只说明这个版本在本环境测试通过、可以被引用；被已发布 Route 引用后，Guardrail 列表可以显示 **protected（保护中）**；Router **active** 才说明目标 generation 已被默认池 Runner 确认。最后还要看 Endpoint 和运行日志，才能知道是否真的有请求经过这套保护。
 
 <a id="state-guardrail-readiness" />
 
@@ -195,83 +195,68 @@ Guardrail 资源的持久状态是 draft → active → disabled，也允许 dra
 
 <a id="state-guardrail-version" />
 
-### Guardrail Version 构建
+### Guardrail Version 发布
 
 <StateMachineDiagram kind="guardrail-version" locale="zh-CN" />
 
-版本从 compiling 走向 ready 或 failed，终态内容不可原地修改。ready 只表示 artifact 可用；Router 还需固定这个确切版本并完成 Runner 下发。发布新版本不会改变任何已引用其他版本的地方。
+版本只有两个状态：**待发布（pending）** 和 **已发布（ready）**。版本内容（Policies 与测试集）一经生成就不可修改，状态变化不改变版本号和内容摘要。
+
+- 在本环境发布草稿得到的版本，发布时已绑定这次通过的测试报告，直接是已发布。
+- 从发布包导入的版本先是待发布。它要在本环境原样运行自带的测试集（不重新编译），通过后由管理员点 **发布**，发布会绑定这份测试报告。
+- 只有已发布的版本能被 Router 引用、设为运行时基线或导出。
+- 发布后再测试失败不会撤销发布；版本上会显示“复测失败”，由人工判断是否调整路由。
+
+已发布只说明这个版本可以被引用；Router 还需固定这个确切版本并完成 Runner 下发。发布新版本不会改变任何已引用其他版本的地方。
 
 没有任何资源依赖的版本可以删除。**删除** 会先列出引用：运行时基线、当前生效的 Router revision、已修改的 Router 草稿、待审批变更单，或当前生效变更的预批准回退目标；并会等待版本退出路由前已开始的调用结束。固定过该版本的更早 Router revision 不会阻止删除，它们保留在历史中用于审计，但无法再恢复。编译产物和遥测数据会保留。
 
 <a id="guardrail-build-states" />
 
-### Guardrail 编译状态
+### Guardrail Version 状态
 
-编译状态与版本的 Active / Historical 选择、Router 的流量下发状态分开理解。
+版本状态与 Router 的流量下发状态分开理解。测试中、测试失败、可发布这些提示由本环境的测试记录推导，不是独立状态。
 
 <StateCards>
 
-<StateCard title="编译中" code="compiling" state="distributing">
+<StateCard title="待发布" code="pending" state="distributing">
 
 <StateDetail label="含义">
 
-正在构建 Guardrail 版本的不可变运行时产物。
+版本内容已就位，但还没有在本环境通过测试并发布。导入的版本都从这里开始。
 
 </StateDetail>
 
 <StateDetail label="状态变化">
 
-编译成功进入 ready，编译失败进入 failed。
+本环境对这个版本内容和测试集的最近一次测试通过后，管理员发布，进入已发布。
 
 </StateDetail>
 
 <StateDetail label="下一步">
 
-等待完成；失败时查看编译错误。
+在版本菜单中选择 **运行测试**；通过后选择 **发布**。测试失败时查看报告，由人工判断原因。
 
 </StateDetail>
 
 </StateCard>
 
-<StateCard title="编译就绪" code="ready">
+<StateCard title="已发布" code="ready">
 
 <StateDetail label="含义">
 
-版本产物已就绪；这不代表 Router 已把流量切到该版本。
+版本已绑定一份本环境通过的测试报告，可以被 Router 引用、设为基线或导出。这不代表 Router 流量已经切到它。
 
 </StateDetail>
 
 <StateDetail label="状态变化">
 
-版本可以被标记为 Active；流量是否生效仍由 Router 下发状态决定。
+这是终态。之后的复测失败只作提示，不会撤销发布。
 
 </StateDetail>
 
 <StateDetail label="下一步">
 
-如需变更已发布 Router 的固定 Target，重新发布 Router。
-
-</StateDetail>
-
-</StateCard>
-
-<StateCard title="编译失败" code="failed">
-
-<StateDetail label="含义">
-
-当前版本未成功生成可用产物。
-
-</StateDetail>
-
-<StateDetail label="状态变化">
-
-修复配置后重新发起编译，再检查新结果。
-
-</StateDetail>
-
-<StateDetail label="下一步">
-
-查看编译错误，修复 Policy、Rule 或依赖。
+发布一个 Target 固定该版本的 Router Revision。
 
 </StateDetail>
 

@@ -38,16 +38,15 @@ describe("Controller lifecycle contract", () => {
     expect(runnerStatuses).not.toContain("registered");
   });
 
-  it("makes Guardrail deletion and version completion terminal", () => {
+  it("makes Guardrail deletion and version release terminal", () => {
     expect(guardrailLifecycleTransitions).toEqual({
       draft: ["active", "disabled"],
       active: ["disabled"],
       disabled: [],
     });
     expect(guardrailVersionTransitions).toEqual({
-      compiling: ["ready", "failed"],
+      pending: ["ready"],
       ready: [],
-      failed: [],
     });
   });
 
