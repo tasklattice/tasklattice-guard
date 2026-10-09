@@ -21,12 +21,12 @@ const confirm = () => screen.getByRole("button", { name: "uiCopy.deleteVersion" 
 describe("Guardrail version deletion", () => {
   it("lists every reference with a link to its Router and blocks deletion", async () => {
     mount({ ...base, deletable: false, references: [
-      { kind: "latest" },
+      { kind: "baseline" },
       { kind: "router_active", routerId: "r1", routerName: "Payments", revision: 2 },
       { kind: "change_request", routerId: "r2", routerName: "Cards", changeRequestId: "c", ticket: "CHG-9" },
     ] });
     const list = await screen.findByRole("region", { name: "guardrails.versionReferences" });
-    expect(within(list).getByText("guardrails.versionReference.latest")).toBeTruthy();
+    expect(within(list).getByText("guardrails.versionReference.baseline")).toBeTruthy();
     expect(within(list).getByRole("link", { name: "Payments" }).getAttribute("href")).toBe("/integration/routers/r1");
     expect(within(list).getByText(/guardrails.versionReference.change_request CHG-9/)).toBeTruthy();
     expect(confirm().hasAttribute("disabled")).toBe(true);

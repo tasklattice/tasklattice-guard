@@ -11,9 +11,8 @@ import type { ReactNode, SelectHTMLAttributes } from 'react';
 type GuardrailDetail = {
   id: string;
   name: string;
-  latestVersion: string | null;
   draftRevision: number;
-  versions: Array<{ version: string; hasSourceSnapshot?: boolean }>;
+  versions: Array<{ version: string; status?: string; hasSourceSnapshot?: boolean }>;
   [key: string]: unknown;
 };
 
@@ -35,11 +34,12 @@ export function DuplicateGuardrailSheet({ id, name, close, onDuplicated }: { id:
     return response.json() as Promise<GuardrailDetail>;
   }, staleTime: Infinity });
   const [copyName, setCopyName] = useState(`${name} - copy`);
-  const [source, setSource] = useState('published');
+  // "draft" or "version:<id>": the source is always chosen explicitly.
+  const [source, setSource] = useState('draft');
   const [submission, setSubmission] = useState<{ name: string; source: DuplicateSource; key: string } | null>(null);
   const mutation = useMutation({
     mutationFn: async () => {
-      const frozen = submission ?? { name: copyName.trim(), source: source === 'published' ? { sourceVersion: query.data!.latestVersion! } : { sourceDraftRevision: query.data!.draftRevision }, key: crypto.randomUUID() };
+      const frozen = submission ?? { name: copyName.trim(), source: source.startsWith('version:') ? { sourceVersion: source.slice('version:'.length) } : { sourceDraftRevision: query.data!.draftRevision }, key: crypto.randomUUID() };
       setSubmission(frozen);
       const response = await fetch(`/api/v1/guardrails/${encodeURIComponent(id)}/duplicate`, {
         method: 'POST', headers: { 'content-type': 'application/json' },
@@ -58,16 +58,16 @@ export function DuplicateGuardrailSheet({ id, name, close, onDuplicated }: { id:
       // table rows and command surfaces.
     },
   });
-  const missingSnapshot = query.data?.versions.find(version => version.version === query.data?.latestVersion)?.hasSourceSnapshot === false;
-  const unavailable = source === 'published' && (!query.data?.latestVersion || missingSnapshot);
+  const published = (query.data?.versions ?? []).filter(version => !version.status || version.status === "ready");
+  const missingSnapshot = source.startsWith('version:') && published.find(version => `version:${version.version}` === source)?.hasSourceSnapshot === false;
+  const unavailable = missingSnapshot;
   return <EntitySheet open onOpenChange={open => { if (!open && !mutation.isPending) close(); }} closeDisabled={mutation.isPending} eyebrow={uiText("uiCopy.guardrail")} title={uiText("uiCopy.duplicateGuardrail")} description={uiText("uiCopy.copyConfigurationAndPinnedDependenciesIntoAnIndependentDraft")} footer={<><Button variant="outline" onClick={close} disabled={mutation.isPending}>{uiText("uiCopy.cancel")}</Button><Button variant="create" disabled={!query.data || !copyName.trim() || unavailable || mutation.isPending} onClick={() => mutation.mutate()}>{mutation.isPending ? uiText("uiCopy.duplicating") : mutation.isError ? uiText("uiCopy.retryDuplicate") : uiText("uiCopy.createCopy")}</Button></>}>
     <div className="grid gap-5">
       {query.error && <><ErrorNotice error={query.error} /><Button onClick={() => void query.refetch()}>{uiText("uiCopy.retry")}</Button></>}
       {query.isPending && <p role="status">{uiText("uiCopy.loadingSource")}</p>}
       <Field label={uiText("uiCopy.copyName")}><Input className="field:min-h-11" value={copyName} disabled={Boolean(submission)} onChange={event => setCopyName(event.target.value)} /></Field>
-      <Field label={uiText("uiCopy.copySource")}><NativeSelect value={source} disabled={Boolean(submission)} onChange={event => setSource(event.target.value)}><option value="published" disabled={missingSnapshot}>{uiText("uiCopy.currentPublishedVersion")}{" "}{query.data?.latestVersion ?? '—'}</option><option value="draft">{uiText("uiCopy.currentDraftR")}{query.data?.draftRevision ?? '—'}</option></NativeSelect></Field>
+      <Field label={uiText("uiCopy.copySource")}><NativeSelect value={source} disabled={Boolean(submission)} onChange={event => setSource(event.target.value)}><option value="draft">{uiText("uiCopy.currentDraftR")}{query.data?.draftRevision ?? '—'}</option>{published.map(version => <option key={version.version} value={`version:${version.version}`} disabled={version.hasSourceSnapshot === false}>{uiText("uiCopy.publishedVersion")}{" "}{version.version}</option>)}</NativeSelect></Field>
       {missingSnapshot && <p role="alert">{uiText("uiCopy.thePublishedVersionHasNoCompleteSourceSnapshotExplicitly")}</p>}
-      {unavailable && !missingSnapshot && <p role="alert">{uiText("uiCopy.noPublishedVersionSelectTheCurrentDraft")}</p>}
       {mutation.error && <ErrorNotice error={mutation.error} />}
       {submission && mutation.isError && <p className="text-sm">{uiText("uiCopy.theSourceAndNameAreFrozenRetryingReturnsThe")}</p>}
     </div>

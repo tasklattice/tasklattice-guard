@@ -15,19 +15,20 @@ function serviceWithSelectResults(results: unknown[][]) {
   return new ControlPlaneService({ select } as unknown as ControllerDatabase, {} as ControllerConfig);
 }
 
-const guardrail = { id: "guardrail-default", status: "active", draftRevision: 2, latestArtifactId: "artifact-1", latestVersion: "20260904-193000.000Z" };
-const version = { guardrailId: guardrail.id, version: guardrail.latestVersion, artifactId: "artifact-1", status: "ready", sourceDraftRevision: 1 };
-const artifact = { id: "artifact-1", guardrailId: guardrail.id, guardrailVersion: guardrail.latestVersion, checksum: "checksum", signature: "signature",
+const BASELINE = "20260904-193000.000Z";
+const guardrail = { id: "guardrail-default", status: "active", draftRevision: 2 };
+const version = { guardrailId: guardrail.id, version: BASELINE, artifactId: "artifact-1", status: "ready", sourceDraftRevision: 1 };
+const artifact = { id: "artifact-1", guardrailId: guardrail.id, guardrailVersion: BASELINE, checksum: "checksum", signature: "signature",
   plan: { steps: [{ contract_ref: "tali.guard.pii.exact.v1", phases: ["input", "output"], parameters: [["policy_id", "pii"]] }],
     policy_bindings: [{ policy_id: "pii" }] } };
-// Select order: guardrail, compiling version, latest validation, baseline
-// pointer, Default Latest (no explicit baseline), baseline version, artifact.
-const activeResults = () => [[guardrail], [], [], [{ baselineVersion: null }], [{ latestVersion: guardrail.latestVersion }], [version], [artifact]] as unknown[][];
+// Select order: guardrail, compiling version, latest validation, the pinned
+// baseline, baseline version, artifact.
+const activeResults = () => [[guardrail], [], [], [{ baselineVersion: BASELINE }], [version], [artifact]] as unknown[][];
 
 describe("Default Guardrail readiness", () => {
   it("requires a ready signed artifact with enabled checks", async () => {
     await expect(serviceWithSelectResults(activeResults()).defaultGuardrailReadiness()).resolves.toEqual({
-      status: "ready", guardrailStatus: "active", latestVersion: guardrail.latestVersion,
+      status: "ready", guardrailStatus: "active", baselineVersion: BASELINE,
       modelIndependent: true,
       coverage: { policyCount: 1, inputChecks: 1, outputChecks: 1, requiredModelBindings: [], hasUnknownDependencies: false },
       draft: { revision: 2, activeRevision: 1, validationStatus: null, validationFailureReason: null },
@@ -37,23 +38,23 @@ describe("Default Guardrail readiness", () => {
     ["running", "initializing"], ["failed", "unavailable"], ["queued", "initializing"],
   ])("shows first validation %s as %s without claiming published coverage", async (validation, status) => {
     const result = await serviceWithSelectResults([
-      [{ ...guardrail, latestArtifactId: null, latestVersion: null }], [], [{ status: validation, failureReason: "Test detail" }],
+      [guardrail], [], [{ status: validation, failureReason: "Test detail" }],
     ]).defaultGuardrailReadiness();
     expect(result).toMatchObject({ status, modelIndependent: null, coverage: null,
       draft: { validationStatus: validation, validationFailureReason: "Test detail" } });
   });
   it("reports first compilation as initialization", async () => {
     await expect(serviceWithSelectResults([
-      [{ ...guardrail, latestArtifactId: null, latestVersion: null }], [{ version: "next" }], [],
-    ]).defaultGuardrailReadiness()).resolves.toMatchObject({ status: "initializing", guardrailStatus: "initializing", latestVersion: null });
+      [guardrail], [{ version: "next" }], [], [{ baselineVersion: null }],
+    ]).defaultGuardrailReadiness()).resolves.toMatchObject({ status: "initializing", guardrailStatus: "initializing", baselineVersion: null });
   });
   it.each([
-    ["missing artifact", 6, []],
-    ["failed version", 5, [{ ...version, status: "failed" }]],
-    ["wrong artifact", 5, [{ ...version, artifactId: "other" }]],
-    ["wrong owner", 6, [{ ...artifact, guardrailId: "other" }]],
-    ["wrong release", 6, [{ ...artifact, guardrailVersion: "other" }]],
-    ["unsigned artifact", 6, [{ ...artifact, signature: "" }]],
+    ["missing artifact", 5, []],
+    ["failed version", 4, [{ ...version, status: "failed" }]],
+    ["wrong artifact", 4, [{ ...version, artifactId: "other" }]],
+    ["wrong owner", 5, [{ ...artifact, guardrailId: "other" }]],
+    ["wrong release", 5, [{ ...artifact, guardrailVersion: "other" }]],
+    ["unsigned artifact", 5, [{ ...artifact, signature: "" }]],
     ["disabled guardrail", 0, [{ ...guardrail, status: "disabled" }]],
   ] as Array<[string, number, unknown[]]>)("does not call %s active", async (_name, index, values) => {
     const results = activeResults(); results[index] = values;
@@ -62,7 +63,7 @@ describe("Default Guardrail readiness", () => {
     });
   });
   it("does not claim protection when the plan has no checks", async () => {
-    const emptyPlan = activeResults(); emptyPlan[6] = [{ ...artifact, plan: { steps: [], policy_bindings: [] } }];
+    const emptyPlan = activeResults(); emptyPlan[5] = [{ ...artifact, plan: { steps: [], policy_bindings: [] } }];
     await expect(serviceWithSelectResults(emptyPlan).defaultGuardrailReadiness()).resolves.toMatchObject({
       status: "unavailable", guardrailStatus: "active", modelIndependent: null,
     });
@@ -77,7 +78,7 @@ describe("Default Guardrail readiness", () => {
   });
   it("derives model requirements from the active artifact even if the draft removed models", async () => {
     const results = activeResults();
-    results[6] = [{ ...artifact, plan: { ...artifact.plan, steps: [{ contract_ref: "tali.guard.content-safety.v1", phases: ["output"] }] } }];
+    results[5] = [{ ...artifact, plan: { ...artifact.plan, steps: [{ contract_ref: "tali.guard.content-safety.v1", phases: ["output"] }] } }];
     await expect(serviceWithSelectResults(results).defaultGuardrailReadiness()).resolves.toMatchObject({
       status: "ready", modelIndependent: false, coverage: { requiredModelBindings: ["content_safety.output"] },
     });

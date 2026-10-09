@@ -91,8 +91,8 @@ Guardrail deployment:
   **Routes** and weighted **Targets**, has immutable published **Revisions**,
   and binds one or more **Endpoints**.
 - A Route selects Targets by a Traffic Selector. A Target references a specific
-  Guardrail Version (or resolves `latest` while the Router is still a draft)
-  and has a weight in basis points.
+  Guardrail Version, pinned in drafts and revisions alike, and has a weight in
+  basis points.
 - A published Router has exactly one enabled, unconditional fallback Route last;
   Target weights total 10,000 basis points.
 - An **Endpoint** is the upstream/runtime integration configuration and

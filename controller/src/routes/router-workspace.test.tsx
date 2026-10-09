@@ -168,7 +168,9 @@ async function edit() {
     await screen.findByRole("menuitem", { name: "Edit", exact: true }),
   );
   await screen.findByLabelText("Route name");
-  expect(screen.getByText("Guardrail 1 version strategy")).toBeTruthy();
+  // Every target pins a version; there is no strategy to choose.
+  expect(screen.queryByText("Guardrail 1 version strategy")).toBeNull();
+  expect(screen.getAllByLabelText(/Guardrail 1 version/).length).toBeGreaterThan(0);
   expect(screen.queryByText(/\{\{index\}\}/)).toBeNull();
   expect(screen.queryByText("Test matching")).toBeNull();
   expect(screen.queryByLabelText("Enabled", { exact: true })).toBeNull();

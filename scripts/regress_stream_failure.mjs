@@ -89,16 +89,17 @@ assert(validation.results.every(item => item.modelInvocations === 0));
 const path = `/api/v1/guardrails/${guardrail.id}`;
 const publication = (await call(controller, `${path}/publish`, {}, 202)).data;
 const detail = await until("publication", async () => (await call(controller, path)).data,
-  value => value.latestVersion === publication.version && value.versions.some(v => v.version === publication.version && v.status === "ready"));
+  value => value.versions.some(v => v.version === publication.version && v.status === "ready"));
 const release = detail.versions.find(v => v.version === publication.version);
 assert(release.artifact.signature);
 return { policy, guardrail, validation, publication, release };
 }
 async function existingFixture(id) {
   const guardrail = (await call(controller, `/api/v1/guardrails/${encodeURIComponent(id)}`)).data;
-  assert(guardrail.name.startsWith("Regression stream failure ") && guardrail.latestArtifactId,
+  // The fixture publishes exactly one version; replay that one.
+  const release = guardrail.versions.find(v => v.status === "ready");
+  assert(guardrail.name.startsWith("Regression stream failure ") && release,
     "Replay only a published stream-failure regression fixture.");
-  const release = guardrail.versions.find(v => v.version === guardrail.latestVersion && v.status === "ready");
   assert(release?.artifact.signature && release.plan.policy_versions.length === 1);
   assert(release.plan.policy_versions[0].sources[0].content.includes(failingCall));
   const policy = { id: release.plan.policy_versions[0].policy_id };

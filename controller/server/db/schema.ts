@@ -261,8 +261,6 @@ export const guardrails = pgTable("guardrail", {
   runtimeProfile: text("runtime_profile").notNull().default("auto"),
   status: text("status").$type<GuardrailLifecycleState>().notNull().default("draft"),
   desiredGeneration: bigint("desired_generation", { mode: "number" }).notNull().default(0),
-  latestVersion: text("latest_version"),
-  latestArtifactId: text("latest_artifact_id"),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
   deletedBy: text("deleted_by").references(() => user.id),
   deleteReason: text("delete_reason"),

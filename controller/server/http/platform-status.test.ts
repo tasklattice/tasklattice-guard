@@ -11,7 +11,7 @@ import type { ControlPlaneService } from "../services/control-plane.js";
 import { createHttpApp } from "./app.js";
 
 const configured: BasicProtectionSnapshot = {
-  status: "ready", guardrailStatus: "active", latestVersion: "published-v1", modelIndependent: true,
+  status: "ready", guardrailStatus: "active", baselineVersion: "published-v1", modelIndependent: true,
   coverage: { policyCount: 2, inputChecks: 2, outputChecks: 1, requiredModelBindings: [], hasUnknownDependencies: false },
   draft: { revision: 2, activeRevision: 1, validationStatus: "failed", validationFailureReason: "New draft failed" },
 };
@@ -45,7 +45,7 @@ describe("Health endpoint evidence", () => {
     expect(body.components.runtimeModels.status).toBe("unconfigured");
   });
   it("reports a receiving environment without a baseline as degraded, not down", async () => {
-    const protection: BasicProtectionSnapshot = { status: "unconfigured", guardrailStatus: "unavailable", latestVersion: null, modelIndependent: null, coverage: null,
+    const protection: BasicProtectionSnapshot = { status: "unconfigured", guardrailStatus: "unavailable", baselineVersion: null, modelIndependent: null, coverage: null,
       draft: { revision: 0, activeRevision: null, validationStatus: null, validationFailureReason: null } };
     const { code, body } = await snapshot({ protection });
     expect(code).toBe(200);

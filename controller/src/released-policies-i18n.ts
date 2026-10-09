@@ -16,7 +16,7 @@ export const releasedPoliciesEn = {
   action: "Action",
   guardrail: "Guardrail", enabledRules: "Enabled rules", origin: "Origin",
   importedFrom: "Imported from {{source}}", local: "Published here",
-  latest: "Latest", openGuardrail: "Open {{name}}",
+  openGuardrail: "Open {{name}}",
   defaultAction: "Rule default",
 };
 
@@ -38,6 +38,6 @@ export const releasedPoliciesZh: typeof releasedPoliciesEn = {
   action: "动作",
   guardrail: "Guardrail", enabledRules: "启用的规则", origin: "来源环境",
   importedFrom: "导入自 {{source}}", local: "本环境发布",
-  latest: "最新", openGuardrail: "打开 {{name}}",
+  openGuardrail: "打开 {{name}}",
   defaultAction: "规则默认",
 };

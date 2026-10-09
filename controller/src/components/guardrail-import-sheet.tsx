@@ -7,7 +7,6 @@ import { queryKeys } from "@/features/query-keys";
 import { importGuardrailPackage, uploadGuardrailPackage, type EnvironmentCheck, type PackagePreview } from "@/lib/controller-api";
 import { EntitySheet } from "./entity-sheet";
 import { ErrorNotice, InfoNotice, StateBadge } from "./product-shell";
-import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { toast } from "./ui/notifications";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
@@ -106,7 +105,7 @@ function PackageSummary({ preview, language }: { preview: PackagePreview; langua
         <TableHead>{t("guardrailPackage.state")}</TableHead><TableHead>{t("guardrailPackage.environment")}</TableHead>
       </TableRow></TableHeader>
       <TableBody>{preview.versions.map(item => <TableRow key={item.version}>
-        <TableCell><div className="flex flex-col items-start gap-1"><span className="whitespace-nowrap font-mono text-sm">{item.version}</span>{item.version === preview.recommendedVersion ? <Badge variant="outline" className="whitespace-nowrap">{t("guardrailPackage.recommended")}</Badge> : null}</div></TableCell>
+        <TableCell><div className="flex flex-col items-start gap-1"><span className="whitespace-nowrap font-mono text-sm">{item.version}</span></div></TableCell>
         <TableCell><div className="flex flex-col items-start gap-1"><StateBadge state="passed" />
           <span className="text-xs text-muted-foreground">{typeof item.evidence.metrics.total === "number" ? `${t("guardrailPackage.passedCases", { passed: item.evidence.metrics.passed ?? 0, total: item.evidence.metrics.total })} · ` : ""}{t("guardrailPackage.testedAt", { time: new Date(item.evidence.testedAt).toLocaleString(language) })}</span></div></TableCell>
         <TableCell className="whitespace-nowrap"><StateBadge state={item.state === "new" ? "ready" : item.state === "existing" ? "active" : "failed"} label={t(`guardrailPackage.state${item.state === "new" ? "New" : item.state === "existing" ? "Existing" : "Conflict"}`)} /></TableCell>

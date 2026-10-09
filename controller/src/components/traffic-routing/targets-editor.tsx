@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Field, percent } from "./form";
+import { percent } from "./form";
 import { EnvironmentStatus } from "@/components/guardrail-import-sheet";
 
 export function distributeEqually(targets: RouteTarget[]): RouteTarget[] {
@@ -31,12 +31,10 @@ export function distributeEqually(targets: RouteTarget[]): RouteTarget[] {
 export function TargetsEditor({
   value,
   onChange,
-  allowLatest = false,
   fallback = false,
 }: {
   value: RouteTarget[];
   onChange: (value: RouteTarget[]) => void;
-  allowLatest?: boolean;
   fallback?: boolean;
 }) {
   const { t } = useTranslation();
@@ -54,7 +52,6 @@ export function TargetsEditor({
           target={target}
           index={index}
           single={value.length === 1}
-          allowLatest={allowLatest}
           fallback={fallback}
           options={query.data?.items ?? []}
           onChange={(next) =>
@@ -80,9 +77,6 @@ export function TargetsEditor({
                   guardrailId: "",
                   guardrailVersion: "",
                   weightBps: 0,
-                  ...(allowLatest
-                    ? { versionStrategy: "latest" as const }
-                    : {}),
                 },
               ]),
             )
@@ -120,7 +114,6 @@ function TargetRow({
   options,
   onChange,
   onRemove,
-  allowLatest,
   fallback,
 }: {
   target: RouteTarget;
@@ -129,7 +122,6 @@ function TargetRow({
   options: Array<{ id: string; name: string }>;
   onChange: (value: RouteTarget) => void;
   onRemove: () => void;
-  allowLatest: boolean;
   fallback: boolean;
 }) {
   const { t } = useTranslation();
@@ -138,37 +130,17 @@ function TargetRow({
     queryFn: () => getControllerGuardrail(target.guardrailId),
     enabled: Boolean(target.guardrailId),
   });
-  const versionStrategyLabel = t("routing.versionStrategy", { index: index + 1 });
+  // Newest first. Every target pins one immutable version, chosen explicitly.
   const versions =
     query.data?.versions.filter(
       (version) => version.status === "ready" && version.artifactId,
-    ) ?? [];
-  // Pinning starts from the Guardrail's Latest version, the one "Use latest" would resolve to.
-  const latestVersion = versions.find((version) => version.version === query.data?.latestVersion)?.version;
-  const defaultVersion = latestVersion ?? versions[0]?.version;
+    ).sort((left, right) => right.version.localeCompare(left.version)) ?? [];
   // Imported content is served only after Runners here confirm they can load it.
-  const chosen = versions.find((version) => version.version === (target.versionStrategy === "latest" ? latestVersion : target.guardrailVersion));
+  const chosen = versions.find((version) => version.version === target.guardrailVersion);
   const chosenImported = chosen?.origin === "imported" ? chosen : undefined;
   useEffect(() => {
-    const guardrailVersion =
-      target.versionStrategy === "latest"
-        ? ""
-        : target.guardrailVersion || defaultVersion || "";
-    const weightBps = single ? 10000 : target.weightBps;
-    if (
-      guardrailVersion !== target.guardrailVersion ||
-      weightBps !== target.weightBps
-    ) {
-      onChange({ ...target, guardrailVersion, weightBps });
-    }
-  }, [
-    target.guardrailId,
-    target.guardrailVersion,
-    target.versionStrategy,
-    target.weightBps,
-    defaultVersion,
-    single,
-  ]);
+    if (single && target.weightBps !== 10000) onChange({ ...target, weightBps: 10000 });
+  }, [target.guardrailId, target.guardrailVersion, target.weightBps, single]);
   return (
     <div className="space-y-2 rounded-md border p-3">
       <div className={`grid items-center gap-2 ${single ? (fallback ? "grid-cols-1" : "grid-cols-[minmax(0,1fr)_3rem]") : "grid-cols-[minmax(0,1fr)_6rem_3rem]"}`}>
@@ -222,37 +194,7 @@ function TargetRow({
           </Button>
         )}
       </div>
-      {target.guardrailId && allowLatest && (
-        <Field label={versionStrategyLabel}>
-          <Select
-            value={target.versionStrategy ?? "pinned"}
-            onValueChange={(strategy) =>
-              onChange({
-                ...target,
-                versionStrategy: strategy as "latest" | "pinned",
-                guardrailVersion:
-                  strategy === "latest" ? "" : (defaultVersion ?? ""),
-              })
-            }
-          >
-            <SelectTrigger
-              aria-label={versionStrategyLabel}
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="latest">{t("routing.useLatest")}</SelectItem>
-              <SelectItem value="pinned">{t("routing.pinVersion")}</SelectItem>
-            </SelectContent>
-          </Select>
-        </Field>
-      )}
-      {target.guardrailId && target.versionStrategy === "latest" && query.data && (
-        <p className="text-xs text-muted-foreground">
-          {latestVersion ? t("routing.useLatestResolves", { version: latestVersion }) : t("routing.noLatestVersion")}
-        </p>
-      )}
-      {target.guardrailId && target.versionStrategy !== "latest" && (
+      {target.guardrailId && (
         <Select
           value={target.guardrailVersion}
           onValueChange={(guardrailVersion) =>
@@ -265,7 +207,7 @@ function TargetRow({
           <SelectContent>
             {versions.map((version) => (
               <SelectItem key={version.version} value={version.version}>
-                {version.version === latestVersion ? t("routing.versionIsLatest", { version: version.version }) : version.version}
+                {version.version}
               </SelectItem>
             ))}
           </SelectContent>

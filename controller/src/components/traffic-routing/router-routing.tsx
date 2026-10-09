@@ -373,9 +373,7 @@ function RuleRow(
                         ?.name ?? localize("routing.guardRailUnavailable")}
                     </p>
                     <p className="mt-1 break-all text-xs text-muted-foreground">
-                      {target.versionStrategy === "latest"
-                        ? localize("routing.useLatest")
-                        : target.guardrailVersion || localize("routing.versionNotSelected")}
+                      {target.guardrailVersion || localize("routing.versionNotSelected")}
                     </p>
                   </div>
                   <span className="text-sm font-semibold tabular-nums">

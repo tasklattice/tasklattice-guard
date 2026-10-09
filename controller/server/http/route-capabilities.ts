@@ -79,7 +79,6 @@ export const routeCapabilities: ReadonlyArray<readonly [string, string, "core" |
   ["POST", "/api/v1/guardrails/:id/discard-draft", "authoring"],
   ["GET", "/api/v1/guardrails/:id/versions/:version/deletion-impact", "core"],
   ["DELETE", "/api/v1/guardrails/:id/versions/:version", "core"],
-  ["PUT", "/api/v1/guardrails/:id/latest-version", "core"],
   ["GET", "/api/v1/guardrails/:id/logging", "core"],
   ["PATCH", "/api/v1/guardrails/:id/logging", "core"],
   ["GET", "/api/v1/guardrails/:id/deletion-impact", "core"],

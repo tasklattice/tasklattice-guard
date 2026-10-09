@@ -29,7 +29,7 @@ const evidence = (content: ArtifactContent): UatEvidence => ({
 function packageOf(content: ArtifactContent) {
   const policies = ((content.plan.policy_bindings ?? []) as Array<{ policy_id: string; policy_version: string }>).map(binding => ({ policyId: binding.policy_id, policyVersion: binding.policy_version, name: binding.policy_id, source: "built_in" as const, rules: [] }));
   return buildPackage({
-    source: { id: "uat", name: "UAT" }, guardrail: { id: content.guardrailId, name: "Fixture" }, recommendedVersion: content.guardrailVersion, exportedAt: new Date("2026-10-08T00:00:00.000Z"),
+    source: { id: "uat", name: "UAT" }, guardrail: { id: content.guardrailId, name: "Fixture" }, exportedAt: new Date("2026-10-08T00:00:00.000Z"),
     versions: [{ content, evidence: evidence(content), inspection: { name: "Fixture", runtimeProfile: "auto", draftConfig: { allowedTopics: [], restrictedTopics: [], policyBindings: [], safetyLevel: "balanced", outputDelivery: "full_buffered" }, policies, testSuite: { total: 2, digest: "a".repeat(64) } } }],
     sign: manifest => [{ keyId: "uat", algorithm: "ed25519", signature: sign(null, manifest, keys.privateKey).toString("base64") }],
   });

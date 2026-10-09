@@ -5,13 +5,11 @@ import type { ControllerDatabase } from "../db/client.js";
 import { ControlPlaneService } from "./control-plane.js";
 
 describe("Guardrail publication", () => {
-  it("reactivates the Default Guardrail's ready current-draft version without recompiling", async () => {
+  it("returns the existing version when the same tested draft is published again, changing nothing", async () => {
     const guardrail = {
       id: "guardrail-default",
       draftRevision: 2,
       status: "active",
-      latestVersion: "20260904-010000.001Z",
-      latestArtifactId: "artifact-1",
     };
     const validation = { id: "validation-2", sourceDraftRevision: 2, status: "passed", createdAt: new Date("2026-09-04T02:00:00.002Z") };
     const readyVersion = {
@@ -60,21 +58,9 @@ describe("Guardrail publication", () => {
       compilerAvailable: false,
     });
 
-    expect(result).toMatchObject({ version: "20260904-020000.002Z", generation: 23, status: "ready" });
-    expect(updatePayloads).toContainEqual(expect.objectContaining({
-      status: "active",
-      latestVersion: "20260904-020000.002Z",
-      latestArtifactId: "artifact-2",
-      desiredGeneration: 23,
-    }));
-    expect(inserted).toContainEqual(expect.objectContaining({
-      kind: "runner.desired_state_changed",
-      payload: expect.objectContaining({ version: "20260904-020000.002Z", artifactId: "artifact-2", generation: 23 }),
-    }));
-    expect(inserted).toContainEqual(expect.objectContaining({
-      kind: "guardrail.latest_version_marked",
-      actorId: "admin-1",
-      detail: { version: "20260904-020000.002Z", generation: 23, reusedArtifact: true },
-    }));
+    expect(result).toMatchObject({ version: "20260904-020000.002Z", generation: 18, status: "ready" });
+    // No pointer moves and nothing is redistributed: the version already exists.
+    expect(updatePayloads.filter((value) => "desiredGeneration" in value)).toEqual([]);
+    expect(inserted).toEqual([]);
   });
 });

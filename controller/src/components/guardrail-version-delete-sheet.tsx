@@ -80,7 +80,7 @@ export function DeleteGuardrailVersionSheet({ guardrailId, version, onDeleted, o
 
 function ReferenceLine({ reference }: { reference: Reference }) {
   const { t } = useTranslation();
-  if (reference.kind === "latest") return <span>{t("guardrails.versionReference.latest")}</span>;
+  if (reference.kind === "baseline") return <span>{t("guardrails.versionReference.baseline")}</span>;
   return (
     <span>
       <Link className="font-medium text-primary" to="/integration/routers/$routerId" params={{ routerId: reference.routerId }}>{reference.routerName}</Link>

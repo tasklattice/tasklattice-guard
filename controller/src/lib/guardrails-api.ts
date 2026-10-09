@@ -114,8 +114,8 @@ function mapGuardrail(
   const isDefault = value.id === DEFAULT_GUARDRAIL_ID;
   const latestValidation = value.latestValidationRun ? mapValidationRun(value.latestValidationRun) : null;
   const testedCurrent = Boolean(latestValidation && latestValidation.source_draft_version === value.draftRevision && latestValidation.status === "passed");
-  const published = value.status === "active" && value.latestVersion !== null;
-  const hasUnpublishedChanges = value.hasUnpublishedChanges ?? !(published && value.latestSourceDraftRevision === value.draftRevision);
+  const published = value.status === "active";
+  const hasUnpublishedChanges = value.hasUnpublishedChanges ?? !(published && value.publishedSourceDraftRevision === value.draftRevision);
   const publishedCurrent = published && !hasUnpublishedChanges;
   return {
     copy_origin: value.copyOrigin,
@@ -138,7 +138,6 @@ function mapGuardrail(
     tested_current: testedCurrent,
     published_current: publishedCurrent,
     has_unpublished_changes: hasUnpublishedChanges,
-    latest_version: value.latestVersion,
     published_version_count: publishedVersionCount,
     is_default: isDefault,
     system_managed: isDefault,
@@ -264,7 +263,6 @@ function mapVersion(value: controllerApi.GuardrailVersion, guardrail: controller
     compiler_version: compiler,
     plan_checksum: value.artifact?.checksum ?? "",
     created_at: value.createdAt,
-    latest: guardrail.latestVersion === value.version,
     runtime_engine: runtimeEngine(value.runtimeProfile),
     config_checksum: value.artifact?.checksum ?? "",
     execution_mode: "nemo_only",
@@ -382,11 +380,6 @@ export async function publishGuardrail(guardrailId: string, expectedDraftRevisio
   throw new Error(`Guardrail version ${result.version} is still compiling. Check Controller activity for progress.`);
 }
 
-export const markGuardrailVersionLatest = (guardrailId: string, version: string) =>
-  controllerApi.markControllerGuardrailVersionActive(guardrailId, version).then(async (item) => {
-    const guardrail = await controllerApi.getControllerGuardrail(guardrailId);
-    return mapVersion(item, guardrail);
-  });
 
 export function previewGuardrailCandidate(input: {
   name: string;

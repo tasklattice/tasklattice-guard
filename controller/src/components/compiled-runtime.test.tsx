@@ -19,7 +19,6 @@ const detail: GuardrailVersionDetail = {
   plan_checksum: "plan-checksum",
   config_checksum: "config-checksum",
   created_at: "2026-08-13T08:00:00Z",
-  latest: true,
   runtime_engine: "llmrails",
   execution_mode: "nemo_only",
   safety_level: "balanced",

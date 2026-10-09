@@ -11,19 +11,15 @@ import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
 import { Field } from "./form";
 import { Changes } from "./routing-changes";
-export type RoutingReview = RouterPublicationPreview & {
-  sourceDraft: RouterDraft;
-};
+export type RoutingReview = RouterPublicationPreview;
 export type ChangeSubmission = { reason: string; ticket: string };
 
-/** Exact Guardrail versions a publication applies, marking those resolved from latest. */
-export function ResolvedVersions({
+/** The pinned Guardrail versions a publication routes to. */
+export function RoutedVersions({
   snapshot,
-  sourceDraft,
   names,
 }: {
   snapshot: RouterDraft;
-  sourceDraft?: RouterDraft;
   names: Array<{ id: string; name: string }>;
 }) {
   const { t: localize } = useTranslation();
@@ -38,12 +34,6 @@ export function ResolvedVersions({
               {names.find((g) => g.id === t.guardrailId)?.name ??
                 t.guardrailId}{" "}
               ·{" "}
-              {sourceDraft?.routes
-                .find((x) => x.id === r.id)
-                ?.targets.find((x) => x.id === t.id)?.versionStrategy ===
-              "latest"
-                ? localize("routing.latestPrefix")
-                : ""}
               {t.guardrailVersion}
             </p>
           ))}
@@ -157,7 +147,7 @@ export function ReviewSubmitSheet({
       <div className="mt-6">
         <Changes before={before} after={review.snapshot} names={names} />
       </div>
-      <ResolvedVersions snapshot={review.snapshot} sourceDraft={review.sourceDraft} names={names} />
+      <RoutedVersions snapshot={review.snapshot} names={names} />
       <AttachedEndpoints ids={review.endpointIds} endpoints={endpoints} />
       {error && (
         <div className="mt-4 space-y-3">

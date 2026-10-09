@@ -168,7 +168,6 @@ describe("Guardrail detail information hierarchy", () => {
       plan_checksum: "plan-checksum",
       config_checksum: "config-checksum",
       created_at: "2026-08-13T08:00:00Z",
-      latest: true,
       runtime_engine: "llmrails",
       execution_mode: "nemo_only",
     }]} window="24h" onWindowChange={() => undefined} /></QueryClientProvider>);
@@ -277,7 +276,7 @@ describe("Guardrail detail information hierarchy", () => {
     expect(screen.queryByText("guardrails.noSecurityFindings")).toBeNull();
   });
 
-  it.each([true, false])("shows immutable configuration and marks an existing version as latest (latest=%s)", async latest => {
+  it("shows the immutable configuration of a version, read only", () => {
     const version: GuardrailVersion = {
       guardrail_id: "guardrail-observed",
       version: VERSION_ID,
@@ -285,7 +284,6 @@ describe("Guardrail detail information hierarchy", () => {
       compiler_version: "tasklattice-nemo-config-v6",
       plan_checksum: "plan-checksum",
       created_at: "2026-08-13T08:00:00Z",
-      latest,
       compile_status: "ready",
       runtime_engine: "llmrails",
       config_checksum: "config-checksum",
@@ -308,7 +306,6 @@ describe("Guardrail detail information hierarchy", () => {
     };
 
     const client = new QueryClient();
-    const markLatest = vi.spyOn(api, "markGuardrailVersionLatest").mockResolvedValue({ ...version, latest: true });
     const onChanged = vi.fn().mockResolvedValue(undefined);
     render(<QueryClientProvider client={client}><TooltipProvider><ImmutableVersionView detail={detail} selectedVersion={version} versions={[version]} loading={false} comparisonActive={false} comparisonLoading={false} compareOptions={[]} guardrailId="guardrail-observed" guardrailName="Observed" validation={null} onChanged={onChanged} onOpenDraft={() => undefined} onOpenValidation={() => undefined} onSelectVersion={() => undefined} onStartCompare={() => undefined} onCompareBaseChange={() => undefined} onCloseCompare={() => undefined} /></TooltipProvider></QueryClientProvider>);
 
@@ -326,23 +323,8 @@ describe("Guardrail detail information hierarchy", () => {
     fireEvent.mouseUp(generatedFilesTab, { button: 0, ctrlKey: false });
     fireEvent.click(generatedFilesTab);
     expect(screen.getAllByText("config.yml").length).toBeGreaterThan(0);
-    fireEvent.click(screen.getByRole("button", { name: "uiCopy.versionActions" }));
-    const action = screen.getByRole("menuitem", { name: "guardrails.markLatest" });
-    expect(action.hasAttribute("disabled")).toBe(latest);
-    if (latest) {
-      expect(screen.getAllByText("guardrails.latestVersionLabel")).toHaveLength(2);
-      expect(markLatest).not.toHaveBeenCalled();
-    } else {
-      fireEvent.click(action);
-      const confirmation = await screen.findByRole("dialog", { name: `guardrails.confirmMarkLatestTitle version:${VERSION_ID}` });
-      expect(within(confirmation).getByText("guardrails.confirmMarkLatestDescription")).toBeTruthy();
-      expect(within(confirmation).getByText("guardrails.confirmMarkLatestImpact")).toBeTruthy();
-      expect(markLatest).not.toHaveBeenCalled();
-      fireEvent.click(within(confirmation).getByRole("button", { name: "guardrails.markLatest" }));
-      await waitFor(() => expect(markLatest).toHaveBeenCalledWith("guardrail-observed", VERSION_ID));
-      await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1));
-      await waitFor(() => expect(screen.getByRole("dialog").textContent).toContain("immutableVersions.readOnly"));
-    }
+    expect(screen.getByRole("dialog").textContent).toContain("immutableVersions.readOnly");
+    expect(onChanged).not.toHaveBeenCalled();
   });
 
   it("groups inherited and Guardrail-specific Test Cases by source and keeps groups collapsed", () => {

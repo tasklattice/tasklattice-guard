@@ -82,7 +82,7 @@ const versionFiles = (bytes, version) => new Map([...readZip(bytes, LIMITS)].fil
 const signer = (keyFile, keyId) => manifest => [{ keyId, algorithm: "ed25519", signature: sign(null, manifest, createPrivateKey(readFileSync(join(work, "keys", keyFile)))).toString("base64") }];
 /** Re-issue parsed versions under another source, Guardrail or content, properly signed. */
 function reissue(parsed, { source = parsed.manifest.source, guardrail = parsed.manifest.guardrail, sign: signWith, mutate = content => content }) {
-  return buildPackage({ source, guardrail, recommendedVersion: parsed.manifest.recommendedVersion, exportedAt: new Date(), sign: signWith,
+  return buildPackage({ source, guardrail, exportedAt: new Date(), sign: signWith,
     versions: parsed.versions.map(item => {
       const content = mutate({ ...item.content, guardrailId: guardrail.id, plan: { ...item.content.plan, guardrail_id: guardrail.id } });
       return { content, inspection: item.inspection, evidence: { ...item.evidence, guardrailId: guardrail.id, source, contentDigest: artifactContentDigest(content) } };
@@ -150,7 +150,8 @@ writeFileSync(join(work, "packages", `${guardrail.id}-v2.guardrail.zip`), latest
 const exported = parsePackage(both);
 assert.deepEqual(exported.versions.map(item => item.version), [v1, v2]);
 assert.equal(exported.manifest.source.id, "bank-uat");
-report("uat-exported", { versions: [v1, v2], bytes: both.length, recommended: exported.manifest.recommendedVersion });
+assert(!("recommendedVersion" in exported.manifest), "A package names its versions; it recommends none.");
+report("uat-exported", { versions: [v1, v2], bytes: both.length });
 
 // A newer Library Policy with the same ID never changes an already released version.
 await uat.call(`/api/v1/policies/${policy.id}`, { method: "PATCH", body: { draft: policyDraft(`${marker}_V2`) } });
@@ -178,7 +179,7 @@ assert.deepEqual(preview.blockers, []);
 assert.deepEqual(preview.versions.map(item => [item.version, item.state]), [[v1, "new"], [v2, "new"]]);
 for (const item of preview.versions) assert.equal(item.environment?.status, "compatible", `PROD Runner load check: ${JSON.stringify(item.environment)}`);
 const imported = await prod.call(`/api/v1/guardrail-packages/${preview.packageId}/imports`, { body: {}, expected: 201 });
-assert.deepEqual(imported, { guardrailId: guardrail.id, imported: [v1, v2], existing: [], latestVersion: exported.manifest.recommendedVersion });
+assert.deepEqual(imported, { guardrailId: guardrail.id, imported: [v1, v2], existing: [] });
 const again = await prod.upload(both);
 assert.deepEqual(again.versions.map(item => item.state), ["existing", "existing"]);
 assert.deepEqual((await prod.call(`/api/v1/guardrail-packages/${again.packageId}/imports`, { body: {}, expected: 201 })).imported, []);
@@ -275,7 +276,10 @@ const takeover = reissue(exported, { source: { id: "bank-uat-b", name: "Second U
 const takeoverPreview = await prod.upload(takeover, "takeover.guardrail.zip");
 assert(takeoverPreview.blockers.some(item => item.code === "guardrail_ownership_conflict"));
 assert.equal((await prod.call(`/api/v1/guardrail-packages/${takeoverPreview.packageId}/imports`, { body: {}, expected: 409 })).error.code, "guardrail_ownership_conflict");
-const uatDefault = await uat.call("/api/v1/guardrails/guardrail-default/package", { binary: true });
+// Export names its version: the Default version serving as UAT's runtime baseline.
+const uatBaseline = (await uat.call("/api/v1/system/baseline")).version;
+assert(uatBaseline, "UAT adopts its first Default version as the baseline.");
+const uatDefault = await uat.call(`/api/v1/guardrails/guardrail-default/package?versions=${uatBaseline}`, { binary: true });
 const unauthorized = await prod.upload(uatDefault, "default.guardrail.zip");
 assert(unauthorized.blockers.some(item => item.code === "guardrail_reserved_id"), JSON.stringify(unauthorized.blockers));
 assert.equal((await prod.call(`/api/v1/guardrail-packages/${unauthorized.packageId}/imports`, { body: {}, expected: 409 })).error.code, "guardrail_reserved_id");
@@ -308,7 +312,8 @@ assert.deepEqual(baselinePreview.blockers, []);
 const previousBaseline = await prod.call("/api/v1/system/baseline");
 const baselineImport = await prod.call(`/api/v1/guardrail-packages/${baselinePreview.packageId}/imports`, { body: {}, expected: 201 });
 assert.deepEqual(await prod.call("/api/v1/system/baseline"), previousBaseline, "Importing never switches the baseline.");
-const baselineVersion = baselinePreview.recommendedVersion;
+assert.equal(baselinePreview.versions.length, 1, "The baseline candidate package carries exactly one version.");
+const baselineVersion = baselinePreview.versions[0].version;
 const baseline = await prod.call("/api/v1/system/baseline", { method: "PUT", body: { version: baselineVersion, reason: "CR-1002 adopt UAT baseline" } });
 assert.deepEqual(baseline, { guardrailId: "guardrail-default", version: baselineVersion, explicit: true });
 const protectedStatus = await until("basic protection", () => systemStatus(prod),

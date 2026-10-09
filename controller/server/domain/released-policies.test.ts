@@ -20,7 +20,7 @@ function plan(builtin: { version: string; name: string; rules?: string[] }, cust
   };
 }
 const row = (guardrailId: string, guardrailVersion: string, value: Record<string, unknown>, extra: Partial<ReleasedGuardrailVersion> = {}): ReleasedGuardrailVersion => ({
-  guardrailId, guardrailName: `Guardrail ${guardrailId}`, guardrailVersion, origin: "imported", sourceId: "bank-uat", latest: true, serving: false, plan: value, ...extra,
+  guardrailId, guardrailName: `Guardrail ${guardrailId}`, guardrailVersion, origin: "imported", sourceId: "bank-uat", serving: false, plan: value, ...extra,
 });
 
 describe("released Policies", () => {

@@ -69,8 +69,8 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", () => {
     expect(verifyArtifactDigest(digest, artifact.signature, publicKey)).toBe(true);
     const { rows: [version] } = await database.pool.query("SELECT * FROM guardrail_version WHERE guardrail_id = $1", [guardrail.id]);
     expect(version).toMatchObject({ status: "ready", artifact_id: artifact.id, validation_run_id: run.id, inspection: run.candidateInspection });
-    const { rows: [stored] } = await database.pool.query("SELECT status, latest_version, latest_artifact_id FROM guardrail WHERE id = $1", [guardrail.id]);
-    expect(stored).toEqual({ status: "active", latest_version: run.guardrailVersion, latest_artifact_id: artifact.id });
+    const { rows: [stored] } = await database.pool.query("SELECT status FROM guardrail WHERE id = $1", [guardrail.id]);
+    expect(stored).toEqual({ status: "active" });
     const { rows: outbox } = await database.pool.query("SELECT kind FROM controller_outbox WHERE aggregate_id = $1 AND kind <> 'guardrail.validation_requested'", [guardrail.id]);
     expect(outbox).toEqual([{ kind: "runner.desired_state_changed" }]);
 

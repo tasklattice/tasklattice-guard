@@ -19,7 +19,6 @@ export type ReleasedPolicyUsage = {
   /** "imported" versions arrived in a release package from sourceId. */
   origin: "local" | "imported";
   sourceId: string | null;
-  latest: boolean;
   /** Referenced by an enabled, weighted target of an active Router revision. */
   serving: boolean;
   /** This Guardrail's configuration of the Policy: enabled Rules and action. */
@@ -79,7 +78,6 @@ export type ReleasedGuardrailVersion = {
   guardrailVersion: string;
   origin: "local" | "imported";
   sourceId: string | null;
-  latest: boolean;
   serving: boolean;
   plan: Record<string, unknown>;
 };
@@ -193,7 +191,7 @@ export function aggregateReleasedPolicies(rows: ReleasedGuardrailVersion[]): Rel
       policy.versions.set(key, entry);
       entry.usage.push({
         guardrailId: row.guardrailId, guardrailName: row.guardrailName, guardrailVersion: row.guardrailVersion,
-        origin: row.origin, sourceId: row.sourceId, latest: row.latest, serving: row.serving,
+        origin: row.origin, sourceId: row.sourceId, serving: row.serving,
         enabledRuleIds: strings(binding.enabled_rule_ids), action: text(binding.action) || null, phases: strings(binding.enabled_rails),
       });
     }

@@ -61,7 +61,6 @@ describe("Controller metrics authentication", () => {
       defaultGuardrailReadiness: vi.fn().mockResolvedValue({
         status: "unavailable",
         guardrailStatus: "unavailable",
-        latestVersion: null,
         modelIndependent: null,
         coverage: null,
         draft: { revision: 0, activeRevision: null, validationStatus: null, validationFailureReason: null },
@@ -87,7 +86,6 @@ describe("Controller metrics authentication", () => {
         basicProtection: {
           status: "unavailable",
           guardrailStatus: "unavailable",
-          latestVersion: null,
           modelIndependent: null,
         },
         runnerFleet: { status: "unavailable", servingRunners: 0, connectedRunners: 0 },

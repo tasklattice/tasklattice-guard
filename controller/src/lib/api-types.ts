@@ -440,7 +440,6 @@ export type Guardrail = {
   tested_current: boolean;
   published_current: boolean;
   has_unpublished_changes?: boolean;
-  latest_version?: string | null;
   published_version_count?: number;
   is_default: boolean;
   system_managed: boolean;
@@ -477,7 +476,6 @@ export type GuardrailVersion = {
   compiler_version: string;
   plan_checksum: string;
   created_at: string;
-  latest: boolean;
   runtime_engine: "iorails" | "llmrails" | string;
   config_checksum: string;
   execution_mode: "nemo_only";

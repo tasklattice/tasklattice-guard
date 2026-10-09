@@ -21,7 +21,7 @@ import { artifactContent, artifactContentDigest, ARTIFACT_CONTENT_DIGEST_VERSION
 import { deriveRequirements } from "../domain/artifact-requirements.js";
 import { DEFAULT_GUARDRAIL_ID } from "../domain/defaults.js";
 import { summarizeAdmissions, type ArtifactAdmission, type EnvironmentCheck } from "../domain/environment-check.js";
-import { ConflictError, ControllerError, NotFoundError } from "../domain/errors.js";
+import { ConflictError, ControllerError, NotFoundError, ValidationError } from "../domain/errors.js";
 import {
   assertSelfContained,
   buildPackage,
@@ -56,7 +56,6 @@ export type PackagePreview = {
   keyId: string;
   exportedAt: string;
   guardrail: { id: string; name: string; exists: boolean };
-  recommendedVersion: string;
   versions: PackageVersionPreview[];
   /** Reasons the whole package cannot be imported; empty when importable. */
   blockers: Array<{ code: string; message: string }>;
@@ -76,8 +75,9 @@ export class GuardrailPackageService {
     const signer = packageSigner(this.config);
     const [guardrail] = await this.db.select().from(guardrails).where(and(eq(guardrails.id, guardrailId), isNull(guardrails.deletedAt)));
     if (!guardrail) throw new NotFoundError("Guardrail", guardrailId);
-    const selected = [...new Set(requested?.length ? requested : guardrail.latestVersion ? [guardrail.latestVersion] : [])];
-    if (!selected.length) throw new ConflictError("This Guardrail has no published version to export.", "guardrail_package_incomplete", { versions: [] });
+    // A package names its versions explicitly; there is no implied "current" one.
+    const selected = [...new Set(requested ?? [])];
+    if (!selected.length) throw new ValidationError("Choose the versions to export.");
     const rows = await this.db.select().from(guardrailVersions).where(and(eq(guardrailVersions.guardrailId, guardrailId), inArray(guardrailVersions.version, selected)));
     const artifactRows = await this.db.select().from(artifacts).where(inArray(artifacts.id, rows.map(row => row.artifactId).filter((id): id is string => Boolean(id))));
     const runRows = await this.db.select().from(validationRuns).where(inArray(validationRuns.id, rows.map(row => row.validationRunId).filter((id): id is string => Boolean(id))));
@@ -132,11 +132,9 @@ export class GuardrailPackageService {
     if (blockers.length) {
       throw new ConflictError("Some selected versions cannot be exported as self-contained releases.", "guardrail_package_incomplete", { versions: blockers });
     }
-    const recommendedVersion = guardrail.latestVersion && selected.includes(guardrail.latestVersion) ? guardrail.latestVersion : [...selected].sort().at(-1)!;
     const bytes = buildPackage({
       source: { id: signer.sourceId, name: signer.sourceName },
       guardrail: { id: guardrail.id, name: guardrail.name },
-      recommendedVersion,
       versions: included,
       exportedAt: new Date(),
       sign: signer.sign,
@@ -181,9 +179,10 @@ export class GuardrailPackageService {
       }
       const fresh = parsed.versions.filter(item => selected.includes(item.version) && states.get(item.version) === "new")
         .sort((left, right) => left.version < right.version ? -1 : 1);
-      const latestImported = fresh.at(-1);
       if (!existing) {
-        const descriptor = (parsed.versions.find(item => item.version === manifest.recommendedVersion) ?? latestImported ?? parsed.versions.at(-1)!).inspection;
+        // An imported Guardrail has no working draft; its draft fields only
+        // describe the newest version that arrived with it.
+        const descriptor = [...parsed.versions].sort((left, right) => left.version < right.version ? -1 : 1).at(-1)!.inspection;
         await tx.insert(guardrails).values({
           id: manifest.guardrail.id, name: manifest.guardrail.name, origin: "imported", sourceId: source.id,
           draftConfig: descriptor.draftConfig as GuardrailDraftConfig, runtimeProfile: descriptor.runtimeProfile, status: "draft",
@@ -216,14 +215,9 @@ export class GuardrailPackageService {
         });
         imported.push({ version: item.version, artifactId: artifact.id });
       }
-      const guardrail = existing ?? (await tx.select().from(guardrails).where(eq(guardrails.id, manifest.guardrail.id)))[0]!;
-      let latestVersion = guardrail.latestVersion;
-      if (!latestVersion && imported.length) {
-        // The first import adopts the package's recommendation; later imports never move Latest.
-        const latest = imported.find(item => item.version === manifest.recommendedVersion) ?? imported.at(-1)!;
-        latestVersion = latest.version;
-        await tx.update(guardrails).set({ status: "active", latestVersion: latest.version, latestArtifactId: latest.artifactId, updatedAt: new Date() })
-          .where(eq(guardrails.id, guardrail.id));
+      if (imported.length) {
+        await tx.update(guardrails).set({ status: "active", updatedAt: new Date() })
+          .where(and(eq(guardrails.id, manifest.guardrail.id), eq(guardrails.status, "draft")));
       }
       await tx.update(guardrailPackages).set({ lastImportedAt: new Date() }).where(eq(guardrailPackages.id, packageId));
       const existingVersions = selected.filter(version => states.get(version) === "existing");
@@ -231,7 +225,7 @@ export class GuardrailPackageService {
         id: randomUUID(), kind: "guardrail_package.imported", actorId: input.actorId, resourceType: "guardrail", resourceId: manifest.guardrail.id,
         detail: { packageId, sourceId: source.id, keyId, imported: imported.map(item => item.version), existing: existingVersions },
       });
-      return { guardrailId: manifest.guardrail.id, imported: imported.map(item => item.version), existing: existingVersions, latestVersion };
+      return { guardrailId: manifest.guardrail.id, imported: imported.map(item => item.version), existing: existingVersions };
     });
     // Record a fresh Runner load check for what just arrived, without delaying
     // the import. Routing re-checks anyway; this keeps the detail view current.
@@ -275,11 +269,9 @@ export class GuardrailPackageService {
     const targets = snapshot.routes.filter(route => route.enabled).flatMap(route => route.targets.filter(target => target.weightBps > 0));
     if (!targets.length) return;
     const ids = [...new Set(targets.map(target => target.guardrailId))];
-    const pointers = await this.db.select({ id: guardrails.id, latestVersion: guardrails.latestVersion }).from(guardrails).where(inArray(guardrails.id, ids));
     const rows = await this.db.select({ guardrailId: guardrailVersions.guardrailId, version: guardrailVersions.version, origin: guardrailVersions.origin })
       .from(guardrailVersions).where(inArray(guardrailVersions.guardrailId, ids));
-    const routed = new Set(targets.map(target => `${target.guardrailId}\u0000${target.versionStrategy === "latest"
-      ? pointers.find(item => item.id === target.guardrailId)?.latestVersion ?? "" : target.guardrailVersion}`));
+    const routed = new Set(targets.map(target => `${target.guardrailId}\u0000${target.guardrailVersion}`));
     await Promise.all(rows.filter(row => row.origin === "imported" && routed.has(`${row.guardrailId}\u0000${row.version}`))
       .map(row => this.checkVersionEnvironment(row.guardrailId, row.version)));
   }
@@ -314,7 +306,6 @@ export class GuardrailPackageService {
       keyId,
       exportedAt: manifest.exportedAt,
       guardrail: { id: manifest.guardrail.id, name: manifest.guardrail.name, exists: Boolean(existing) },
-      recommendedVersion: manifest.recommendedVersion,
       versions,
       blockers: [
         ...(ownership ? [{ code: ownership.code, message: ownership.message }] : []),

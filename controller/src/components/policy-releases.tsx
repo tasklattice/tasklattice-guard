@@ -2,7 +2,6 @@ import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { CopyableChecksum } from "@/components/copyable-checksum";
 import { InfoNotice, StateBadge } from "@/components/product-shell";
-import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { Policy } from "@/lib/api";
 import type { ReleasedPolicy, ReleasedPolicyVersion } from "@/lib/controller-api";
@@ -46,7 +45,7 @@ function ReleasedVersion({ policy, version }: { policy: ReleasedPolicy; version:
       <TableBody>{version.usage.map((usage) => <TableRow key={`${usage.guardrailId}@${usage.guardrailVersion}`}>
         <TableCell className="whitespace-normal">
           <Link to="/guardrails/$guardrailId" params={{ guardrailId: usage.guardrailId }} search={{ tab: "immutable" }} className="text-sm text-primary hover:underline" aria-label={t("releasedPolicies.openGuardrail", { name: usage.guardrailName })}>{usage.guardrailName}</Link>
-          <span className="mt-0.5 flex items-center gap-2"><code className="text-xs text-muted-foreground">{usage.guardrailVersion}</code>{usage.latest ? <Badge variant="outline">{t("releasedPolicies.latest")}</Badge> : null}</span>
+          <code className="mt-0.5 block text-xs text-muted-foreground">{usage.guardrailVersion}</code>
         </TableCell>
         <TableCell className="tabular-nums text-sm">{usage.enabledRuleIds.length || rules} / {rules}</TableCell>
         <TableCell className="text-sm">{usage.action ?? t("releasedPolicies.defaultAction")}</TableCell>

@@ -66,7 +66,7 @@ Playground 可以与已发布版本对话，只去掉草稿目标；模型能力
 
 一个发布包只属于一个 Guardrail，可以包含一个或多个已发布版本。
 
-- Guardrail Actions → Export：默认选中 Latest，可多选，显示“已选择 1 / 3 个版本”。
+- Guardrail Actions → Export：不预选任何版本，可多选，显示“已选择 1 / 3 个版本”。
 - Immutable Version 的三点菜单 → Export this version：只导出当前版本。
 - 常规 UAT → 生产晋级只需最新的一个版本；首次迁移或携带回退版本时可选择多个。
 - 导出前检查每个选中版本的 Artifact、冻结依赖与证据。缺项须明确指出，不能静默
@@ -74,9 +74,8 @@ Playground 可以与已发布版本对话，只去掉草稿目标；模型能力
 - 不导出未发布 Draft。历史版本缺少必要的冻结信息时，在 UAT 补齐验证并发布新版本。
 
 例如先导入 V1、V2、V3，后续只导入 V4，生产同一个 Guardrail 下保留四个版本。
-重新上传 V3 不生成重复版本。导入历史版本不移动已经设置的 Latest 指针，也不改变
-已冻结的 Router 引用。首次导入没有 Latest 时采用包内明确标记且已导入的推荐版本；
-后续设置 Latest 是显式元数据操作，不能改变现有流量。
+重新上传 V3 不生成重复版本。系统中没有 Latest 指针，包里也没有“推荐版本”：
+Router Target 和运行时基线都固定确切版本，导入任何版本都不改变现有引用和流量。
 
 **发布包契约**
 
@@ -203,7 +202,7 @@ Default Guardrail 是必须单独处理的系统资源：生产启动使用随�
 
 对这个保留 ID，环境管理员可预先授权指定 UAT 来源提供候选版本；不允许普通包自动
 取得系统资源所有权。该授权只允许版本入库，不授权替换当前运行基线，且仍执行
-同版本冲突检查。基线指针与可浏览版本的 Latest 元数据必须分离。
+同版本冲突检查。基线指针固定一个确切版本，发布或导入新版本都不会移动它。
 
 **源码支持与待改造范围**
 
@@ -266,7 +265,8 @@ Library 表不作为导入依赖存储。多个版本可共享相同内容 blob�
 | 环境检查 | 每个 Runner 池选一个已连接 Runner，按真实加载路径校验签名、NeMo 版本、Action、模型与 Evaluator 绑定并构建运行时后丢弃（dry-run 加载） | 没有在 Controller 端静态比对能力清单；`requirements.json` 只作为申报证据，导入时重新推导并要求完全一致 |
 | Router 门禁 | 提交与批准变更单前对导入版本重新做加载检查，要求 10 分钟内的 compatible 结果 | 本地发布的版本不受此门禁约束 |
 | 分发 | 默认池额外预加载本地发布的版本，以及加载检查为 compatible 的导入版本；其余导入版本只在被 Router 引用时分发。检查结论跨过 compatible 时推进 generation | 与设计一致 |
-| 基线 | `controller_state.baseline_version` 显式指针；生产通过 `PUT /system/baseline` 或启动时基线包设置；UAT 未设置时跟随 Default 的 Latest | 产品随附基线包的构建流水线不在本期 |
+| 基线 | `controller_state.baseline_version` 固定一个确切版本；通过 `PUT /system/baseline` 或启动时基线包（必须只含一个版本）设置；全新安装时第一个发布的 Default 版本成为基线，之后的切换一律显式 | 产品随附基线包的构建流水线不在本期 |
+| 版本引用 | 删除 Latest 指针与“标记为 Latest”：Router Target 只能固定版本（草稿与快照相同），导出必须显式选择版本，发布包不再有推荐版本；草稿“未发布更改”只与上一次发布的版本比较；基线版本受删除保护 | 原设计保留 Latest 作为元数据，现彻底移除 |
 | 生产只读 | `CONTROLLER_AUTHORING_ENABLED=false`：路由按 core/authoring 分类，未分类路由默认拒绝；不加载 Catalog；模型覆盖改由已发布版本的 Evaluator 契约推导 | 与设计一致 |
 | 生产 Policy 库 | 关闭 authoring 时 Policy 库只读，布局与 UAT 相同（卡片、目录与标签筛选、搜索、详情抽屉）。数据按 Policy ID 聚合已发布 Guardrail 版本中冻结的定义，卡片显示承接流量的版本（否则最新）；详情抽屉多一个“发布”页签，按 ID@版本 + 定义摘要列出各版本、使用它的 Guardrail 版本与是否承接流量，同版本号不同内容分开展示并告警。新建、导入、编辑、删除、导出 Policy 均移除且 API 拒绝 | 名称只作展示，不作聚合键；自定义 Policy 的发布只带测试名称和预期结果，不带测试输入 |
 | 生产 Playground | 与已发布版本对话（`playground/models`、`interactions` 为 core）；草稿预览与草稿对话仍为 authoring | 与设计一致 |

@@ -104,12 +104,7 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
   const [initialDraft] = useState(router.draft);
   const discardTarget = router.activeSnapshot ?? initialDraft;
   const hasDraftChanges = JSON.stringify(draft) !== JSON.stringify(discardTarget);
-  const [review, setReview] = useState<
-    | (api.RouterPublicationPreview & {
-        sourceDraft: api.RouterDraft;
-      })
-    | null
-  >(null);
+  const [review, setReview] = useState<api.RouterPublicationPreview | null>(null);
   const [dialog, setDialog] = useState<"discard" | "cancel" | null>(
     null,
   );
@@ -168,10 +163,7 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
         setDraft(next.draft);
         await accept(next);
       }
-      return {
-        ...(await api.previewTrafficRouter(router.id, next.draftRevision)),
-        sourceDraft: next.draft,
-      };
+      return api.previewTrafficRouter(router.id, next.draftRevision);
     },
     onSuccess: (result) => {
       setReview(result);

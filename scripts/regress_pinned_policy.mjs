@@ -116,7 +116,7 @@ const publication = (await call(controller, `${guardrailPath}/publish`, { expect
 const detail = await until("Guardrail publication", async () => (await call(controller, guardrailPath)).result, value => {
   const version = value.versions.find(item => item.version === publication.version);
   assert.notEqual(version?.status, "failed", version?.failureReason);
-  return value.latestVersion === publication.version && version?.status === "ready";
+  return version?.status === "ready";
 });
 const release = detail.versions.find(item => item.version === publication.version);
 assert.equal(release.plan.policy_bindings[0].policy_version, "1");

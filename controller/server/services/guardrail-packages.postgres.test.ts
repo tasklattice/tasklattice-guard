@@ -110,7 +110,8 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     expect(filesOf(first.bytes)).toEqual(filesOf(second.bytes));
     expect(filesOf(first.bytes).map(([path]) => path)).toEqual(published.flatMap(version => ["artifact", "inspection", "requirements", "uat-evidence"].map(file => `versions/${version}/${file}.json`)));
     const parsed = parsePackage(first.bytes);
-    expect(parsed.manifest).toMatchObject({ source: { id: "bank-uat" }, guardrail: { id: guardrailId, name: "Bank assistant" }, recommendedVersion: published[1] });
+    expect(parsed.manifest).toMatchObject({ source: { id: "bank-uat" }, guardrail: { id: guardrailId, name: "Bank assistant" } });
+    expect(parsed.manifest).not.toHaveProperty("recommendedVersion");
     expect(parsed.versions[0]!.evidence).toMatchObject({ status: "passed", source: { id: "bank-uat" }, runtime: { runnerId: "uat-runner-0" } });
   });
 
@@ -129,7 +130,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     expect(preview.versions.map(item => [item.version, item.state, item.environment?.status])).toEqual(published.map(version => [version, "new", "pending"]));
 
     const result = await prod.packages.importPackage(preview.packageId, { actorId: "admin" });
-    expect(result).toEqual({ guardrailId, imported: published, existing: [], latestVersion: published[1] });
+    expect(result).toEqual({ guardrailId, imported: published, existing: [] });
 
     const uatArtifacts = (await uatDb.pool.query("SELECT guardrail_version, checksum, signature, generation FROM guardrail_artifact ORDER BY guardrail_version")).rows;
     const prodArtifacts = (await prodDb.pool.query("SELECT guardrail_version, checksum, signature, generation, content_digest_version FROM guardrail_artifact ORDER BY guardrail_version")).rows;
@@ -139,8 +140,8 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
       expect(verifyArtifactDigest(row.checksum, row.signature, prodArtifactKey.publicKeyPem)).toBe(true);
       expect(row.content_digest_version).toBe(2);
     }
-    const { rows: [guardrail] } = await prodDb.pool.query("SELECT origin, source_id, latest_version, status FROM guardrail WHERE id = $1", [guardrailId]);
-    expect(guardrail).toEqual({ origin: "imported", source_id: "bank-uat", latest_version: published[1], status: "active" });
+    const { rows: [guardrail] } = await prodDb.pool.query("SELECT origin, source_id, status FROM guardrail WHERE id = $1", [guardrailId]);
+    expect(guardrail).toEqual({ origin: "imported", source_id: "bank-uat", status: "active" });
     const { rows: provenance } = await prodDb.pool.query("SELECT version, source_id, source_key_id, uat_evidence->>'status' AS status FROM guardrail_version_provenance ORDER BY version");
     expect(provenance).toEqual(published.map(version => ({ version, source_id: "bank-uat", source_key_id: "uat-2026", status: "passed" })));
     // Import neither distributes nor routes anything; no test or compile work is created.
@@ -158,7 +159,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     expect(await prod.packages.importPackage(again.packageId, { actorId: "admin" })).toMatchObject({ imported: [], existing: published });
     const subset = await uat.packages.exportPackage(guardrailId, [published[0]!]);
     const preview = await prod.packages.inspectUpload(subset.bytes, "admin");
-    expect(await prod.packages.importPackage(preview.packageId, { actorId: "admin" })).toMatchObject({ imported: [], existing: [published[0]], latestVersion: published[1] });
+    expect(await prod.packages.importPackage(preview.packageId, { actorId: "admin" })).toMatchObject({ imported: [], existing: [published[0]] });
   });
 
   it("rejects the whole batch when one version number carries different content", async () => {
@@ -166,7 +167,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     const parsed = parsePackage((await uat.packages.exportPackage(guardrailId, published)).bytes);
     const altered = parsed.versions.map(item => item.version === published[1] ? { ...item, content: { ...item.content, configYaml: "models: [] # changed\n" } } : item);
     const bytes = buildPackage({
-      source: parsed.manifest.source, guardrail: parsed.manifest.guardrail, recommendedVersion: parsed.manifest.recommendedVersion, exportedAt: new Date(), sign: signer.sign,
+      source: parsed.manifest.source, guardrail: parsed.manifest.guardrail, exportedAt: new Date(), sign: signer.sign,
       versions: altered.map(item => ({ content: item.content, inspection: item.inspection, evidence: { ...item.evidence, contentDigest: artifactContentDigest(item.content) } })),
     });
     const before = (await prodDb.pool.query("SELECT count(*)::int AS n FROM guardrail_version")).rows[0].n;
@@ -205,7 +206,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
       return { content, inspection: item.inspection, evidence: { ...item.evidence, guardrailId: id, contentDigest: artifactContentDigest(content) } };
     });
     const defaultPackage = buildPackage({ source: parsed.manifest.source, guardrail: { id: DEFAULT_GUARDRAIL_ID, name: "Default Guardrail" },
-      recommendedVersion: parsed.manifest.recommendedVersion, exportedAt: new Date(), sign: packageSigner(uatConfig).sign, versions: reserved(DEFAULT_GUARDRAIL_ID) });
+      exportedAt: new Date(), sign: packageSigner(uatConfig).sign, versions: reserved(DEFAULT_GUARDRAIL_ID) });
     const defaultPreview = await prod.packages.inspectUpload(defaultPackage, "admin");
     expect(defaultPreview.blockers.map(item => item.code)).toEqual(["guardrail_reserved_id"]);
     await expect(prod.packages.importPackage(defaultPreview.packageId, { actorId: "admin" })).rejects.toMatchObject({ code: "guardrail_reserved_id" });
@@ -219,8 +220,6 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     const results = await Promise.all([1, 2, 3].map(() => prod.packages.importPackage(preview.packageId, { actorId: "admin" })));
     expect(results.map(item => item.imported.length).sort()).toEqual([0, 0, 1]);
     expect((await prodDb.pool.query("SELECT count(*)::int AS n FROM guardrail_version WHERE version = $1", [published.at(-1)])).rows[0].n).toBe(1);
-    // A later import never moves Latest; that remains an explicit decision.
-    expect((await prodDb.pool.query("SELECT latest_version FROM guardrail WHERE id = $1", [guardrailId])).rows[0].latest_version).toBe(published[1]);
   });
 
   it("routes an imported version only after Runners here confirm they can load it", async () => {
@@ -277,7 +276,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     });
     const signer = packageSigner({ ...uatConfig, packageExport: { sourceId: "bank-uat-system", sourceName: "UAT system baseline", signingKeyPath: systemPackageKey.path, signingKeyId: "system" } });
     const bytes = buildPackage({ source: { id: "bank-uat-system", name: "UAT system baseline" }, guardrail: { id: DEFAULT_GUARDRAIL_ID, name: "Default Guardrail" },
-      recommendedVersion: parsed.manifest.recommendedVersion, exportedAt: new Date(), sign: signer.sign, versions });
+      exportedAt: new Date(), sign: signer.sign, versions });
     const preview = await prod.packages.inspectUpload(bytes, "admin");
     expect(preview.blockers).toEqual([]);
     await prod.packages.importPackage(preview.packageId, { actorId: "admin" });

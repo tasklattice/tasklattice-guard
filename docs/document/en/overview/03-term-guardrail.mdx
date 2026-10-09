@@ -28,7 +28,7 @@ A protection plan for one business scenario. It pins Policy Versions, enabled Ru
 
 Open **Guardrails**, then choose **Export…** from the row's **Actions** menu, or
 choose **Export…** while viewing an immutable version. Pick the ready version to
-download; the Latest version is preselected. Unpublished draft edits are never
+download; nothing is preselected, so the package holds exactly what you choose. Unpublished draft edits are never
 included. Publish a version first if Export is disabled.
 
 The `.artifact.json` file includes frozen Policy implementations and compiled
@@ -67,9 +67,9 @@ For example, an administrator can set `blocked_words` to a list before publishin
 
 <strong>What:</strong> An immutable published Guardrail snapshot with pinned Policy Bindings, Rules, parameters, compiled artifact, dependencies, and checksum.
 
-<strong>Why:</strong> It is the immutable unit selected for publication and activation. Router Targets resolve to exact versions, never a mutable draft at request time.
+<strong>Why:</strong> It is the immutable unit that routing, the runtime baseline and export refer to. Every reference names an exact version; there is no "latest" pointer to follow.
 
-<strong>How:</strong> Wait for compilation to become ready, publish a Router Revision that references it, and check Runner convergence. To move the Latest pointer, select a ready version and use **Mark as latest**. Router Targets set to **Use latest** resolve to it the next time their routing change is submitted; Targets set to **Pin version** never move. Submit a Router change whose Targets must change.
+<strong>How:</strong> Wait for compilation to become ready, publish a Router Revision whose Target pins it, and check Runner convergence. To serve a different version, submit a Router change that pins it.
 
 <strong>Example:</strong> Publishing Guardrail v2 does not switch a Router still pinned to v1; review and republish the Router to change production traffic.
 
@@ -183,7 +183,7 @@ Follow one release to keep them apart: Guardrail Version **ready** means the pro
 
 <StateMachineDiagram kind="guardrail-readiness" locale="en" />
 
-<strong>Protected (<code>protected</code>)</strong> is a UI projection: the current draft is published as the Latest version, and an enabled Route in a published Router snapshot references this Guardrail as a positive-weight Target. The list currently also requires that Router to have at least one bound Endpoint. Adding a Guardrail to an unpublished Router draft, a disabled Route, or a zero-weight Target does not yield protected. Removing the last qualifying reference returns the list state to ready. Editing the Guardrail draft makes the current draft diverge from the Latest version, so the list shows needs testing even while an older version may still serve traffic.
+<strong>Protected (<code>protected</code>)</strong> is a UI projection: the current draft is published, and an enabled Route in a published Router snapshot references this Guardrail as a positive-weight Target. The list currently also requires that Router to have at least one bound Endpoint. Adding a Guardrail to an unpublished Router draft, a disabled Route, or a zero-weight Target does not yield protected. Removing the last qualifying reference returns the list state to ready. Editing the Guardrail draft makes it diverge from the last published version, so the list shows needs testing even while an older version may still serve traffic.
 
 <strong>This is not a traffic-health verdict:</strong> protected reports a configuration reference, not completed Runner rollout, Endpoint availability, or observed requests. The detail page also shows a separate Route-reference badge. Check Router rollout, Endpoint, and runtime logs to verify actual delivery.
 
@@ -197,13 +197,13 @@ The persisted resource path is draft → active → disabled, with draft → dis
 
 <a id="state-guardrail-version" />
 
-### Guardrail Version build and Latest pointer
+### Guardrail Version build
 
 <StateMachineDiagram kind="guardrail-version" locale="en" />
 
-A version compiles to ready or failed. Terminal contents are immutable. `latest / historical` describes which ready Version the Guardrail's <strong>Latest pointer</strong> selects, <strong>not</strong> compilation state. Publishing moves the pointer to the new version; **Mark as latest** moves it to an existing version without creating a version or rewriting its Artifact. Ready means an artifact exists; a Router must still reference the exact version and Runners must apply it.
+A version compiles to ready or failed. Terminal contents are immutable. Ready means an artifact exists; a Router must still pin the exact version and Runners must apply it. Publishing a new version changes nothing that already references another one.
 
-A version can be deleted once nothing depends on it. **Delete** lists the references first: the Latest pointer, an active Router revision, an edited Router draft, a pending change request, or the pre-approved rollback target of the active change. It also waits until calls that started before the version left routing have finished. Older Router revisions that pinned the version do not block deletion; they stay in history for audit but can no longer be restored. The compiled Artifact and telemetry are kept.
+A version can be deleted once nothing depends on it. **Delete** lists the references first: the runtime baseline, an active Router revision, an edited Router draft, a pending change request, or the pre-approved rollback target of the active change. It also waits until calls that started before the version left routing have finished. Older Router revisions that pinned the version do not block deletion; they stay in history for audit but can no longer be restored. The compiled Artifact and telemetry are kept.
 
 <a id="guardrail-build-states" />
 

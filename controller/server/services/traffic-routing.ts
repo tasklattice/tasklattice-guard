@@ -103,19 +103,11 @@ export class TrafficRoutingService {
     const ids = [...new Set(draft.routes.flatMap(r => r.targets.map(t => t.guardrailId)))];
     const versions = ids.length ? await tx.select({ id: guardrailVersions.guardrailId, version: guardrailVersions.version,
       artifactId: guardrailVersions.artifactId, status: guardrailVersions.status, name: guardrails.name, deletedAt: guardrails.deletedAt,
-      latestVersion: guardrails.latestVersion, origin: guardrailVersions.origin, environmentCheck: guardrailVersions.environmentCheck })
+      origin: guardrailVersions.origin, environmentCheck: guardrailVersions.environmentCheck })
       .from(guardrailVersions).innerJoin(guardrails, eq(guardrails.id, guardrailVersions.guardrailId))
       .where(inArray(guardrailVersions.guardrailId, ids)) : [];
-    const snapshot: RouterDraft = { routes: draft.routes.map(route => ({ ...route, targets: route.targets.map(target => {
-      const { versionStrategy, ...pinned } = target;
-      if (versionStrategy === "latest") {
-        // "Use latest" follows the Guardrail's Latest pointer, resolved now and pinned in the snapshot.
-        const latest = versions.find(v => v.id === target.guardrailId && v.version === v.latestVersion && !v.deletedAt && v.status === "ready" && v.artifactId);
-        if (!latest) throw new ValidationError(`${route.name}: ${target.guardrailId} has no ready Latest Guardrail Version`);
-        pinned.guardrailVersion = latest.version;
-      }
-      return pinned;
-    }) })) };
+    // Targets already name immutable versions: the reviewed snapshot is the draft itself.
+    const snapshot: RouterDraft = structuredClone(draft);
     const errors = [...routingIssues(snapshot, true), ...capabilityIssues(snapshot, bound)];
     if (errors.length) throw new ValidationError(errors.join("; "));
     const context: RouterRevisionContext = { endpoints: endpointContext(bound), guardrails: [] };
@@ -461,7 +453,7 @@ export class TrafficRoutingService {
    */
   async versionReferences(guardrailId: string, version: string, tx: Tx | ControllerDatabase = this.db) {
     const pinned = (draft: RouterDraft | null) => Boolean(draft?.routes.some(route => route.targets.some(t =>
-      t.guardrailId === guardrailId && t.versionStrategy !== "latest" && t.guardrailVersion === version)));
+      t.guardrailId === guardrailId && t.guardrailVersion === version)));
     const routers = await tx.select().from(trafficRouters).where(isNull(trafficRouters.deletedAt)).orderBy(asc(trafficRouters.name));
     const ids = routers.map(r => r.id);
     const [history, changes] = ids.length ? await Promise.all([

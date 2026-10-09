@@ -35,7 +35,8 @@ export type ProtectionCoverage = {
 export type BasicProtectionSnapshot = {
   status: BasicProtectionStatus;
   guardrailStatus: "active" | "initializing" | "unavailable";
-  latestVersion: string | null;
+  /** The pinned runtime baseline version; null until one is set. */
+  baselineVersion: string | null;
   modelIndependent: boolean | null;
   coverage: ProtectionCoverage | null;
   draft: {

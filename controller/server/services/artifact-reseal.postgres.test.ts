@@ -48,7 +48,7 @@ describe.skipIf(!url)("Artifact re-sealing in PostgreSQL", () => {
     const row = (id: string, generation: number) => ({ ...content, plan: legacyPlan, id, generation, checksum: `legacy-${id}`, signature: "legacy" });
     const { pool } = database;
     await pool.query("INSERT INTO controller_state (id, desired_generation) VALUES ('singleton', 5)");
-    await pool.query("INSERT INTO guardrail (id, name, draft_config, status, latest_version, latest_artifact_id) VALUES ($1, 'Fixture', '{}', 'active', $2, 'kept')", [content.guardrailId, content.guardrailVersion]);
+    await pool.query("INSERT INTO guardrail (id, name, draft_config, status) VALUES ($1, 'Fixture', '{}', 'active')", [content.guardrailId]);
     for (const item of [row("kept", 1), row("duplicate", 2)]) {
       await pool.query(`INSERT INTO guardrail_artifact (id, guardrail_id, guardrail_version, generation, compiler_version, nemo_version, runtime_profile, plan, config_yaml, colang_content, prompts, action_bindings, dependency_manifest, checksum, signature, content_digest_version)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,1)`, [item.id, item.guardrailId, item.guardrailVersion, item.generation, item.compilerVersion, item.nemoVersion, item.runtimeProfile,

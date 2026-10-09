@@ -67,7 +67,7 @@ export const selectorExpressionSchema = expressionSchema(1).superRefine((express
   const count = (g: SelectorExpression): number => g.conditions.reduce((n, c) => n + ("conditions" in c ? count(c) : 1), 0);
   if (count(expression) > routingLimits.maxConditions) ctx.addIssue({ code: "custom", message: "Maximum 16 conditions" });
 });
-export const targetSchema = z.object({ id: z.string().min(1).max(128), guardrailId: z.string().min(1).max(128), guardrailVersion: z.string().max(128), versionStrategy: z.enum(["latest", "pinned"]).optional(), weightBps: z.number().int().min(0).max(10000) }).strict();
+export const targetSchema = z.object({ id: z.string().min(1).max(128), guardrailId: z.string().min(1).max(128), guardrailVersion: z.string().max(128), weightBps: z.number().int().min(0).max(10000) }).strict();
 export const routeSchema = z.object({
   id: z.string().min(1).max(128), name: z.string().trim().min(1).max(160), kind: z.enum(["normal", "fallback"]), enabled: z.boolean(),
   selector: z.object({ expression: selectorExpressionSchema }).strict(),
@@ -141,9 +141,10 @@ export function routingIssues(draft: RouterDraft, publish = false): string[] {
     const targetIds = new Set<string>(), refs = new Set<string>();
     for (const t of route.targets) {
       if (targetIds.has(t.id)) errors.push(`${prefix}: duplicate Target ID`); targetIds.add(t.id);
-      const ref = JSON.stringify([t.guardrailId, t.versionStrategy === "latest" ? "latest" : t.guardrailVersion]);
+      const ref = JSON.stringify([t.guardrailId, t.guardrailVersion]);
       if (refs.has(ref)) errors.push(`${prefix}: duplicate Guardrail Version`); refs.add(ref);
-      if (publish && t.versionStrategy !== "latest" && (!t.guardrailVersion.trim() || t.guardrailVersion.toLowerCase() === "latest")) errors.push(`${prefix}: pin a Guardrail Version`);
+      // Every target names an immutable version; there is no pointer to follow.
+      if (publish && !t.guardrailVersion.trim()) errors.push(`${prefix}: pin a Guardrail Version`);
     }
     if (publish && (!route.targets.length || route.targets.reduce((sum, t) => sum + t.weightBps, 0) !== 10000)) errors.push(`${prefix}: target percentages must total 100%`);
   }

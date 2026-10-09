@@ -140,17 +140,25 @@ export class ControlPlaneService {
   }
 
   /**
-   * The Default Guardrail version every pool serves as basic protection. An
-   * explicit pointer wins; authoring environments otherwise follow the
-   * Default's Latest version as before.
+   * The Default Guardrail version every pool serves as basic protection. It is
+   * always a pinned version, set explicitly (or by the very first Default
+   * publication); publishing another Default version never moves it.
    */
   private async baselineVersion(db: Pick<ControllerDatabase, "select"> = this.db): Promise<string | null> {
     const [state] = await db.select({ baselineVersion: controllerState.baselineVersion }).from(controllerState).where(eq(controllerState.id, "singleton")).limit(1);
-    if (state?.baselineVersion) return state.baselineVersion;
-    if (!this.authoringEnabled) return null;
-    const [guardrail] = await db.select({ latestVersion: guardrails.latestVersion }).from(guardrails)
-      .where(and(eq(guardrails.id, DEFAULT_GUARDRAIL_ID), isNull(guardrails.deletedAt))).limit(1);
-    return guardrail?.latestVersion ?? null;
+    return state?.baselineVersion ?? null;
+  }
+
+  /**
+   * The version a working draft is compared with: the one most recently
+   * published from it. It only answers "what changed since publishing"; no
+   * Router, baseline or export ever follows it.
+   */
+  private async lastPublishedVersion(db: Pick<ControllerDatabase, "select">, guardrailId: string) {
+    const [row] = await db.select().from(guardrailVersions).where(and(
+      eq(guardrailVersions.guardrailId, guardrailId), eq(guardrailVersions.status, "ready"), eq(guardrailVersions.origin, "local"),
+    )).orderBy(desc(guardrailVersions.createdAt), desc(guardrailVersions.version)).limit(1);
+    return row ?? null;
   }
 
   async systemBaseline() {
@@ -197,28 +205,31 @@ export class ControlPlaneService {
 
   /**
    * Import a deployment-supplied Default Guardrail package at startup and,
-   * when no baseline is set yet, adopt its recommended version. Idempotent.
+   * when no baseline is set yet, adopt the one version it carries. Idempotent.
    */
   async importBaselinePackage(bytes: Buffer): Promise<{ version: string; adopted: boolean }> {
     const preview = await this.packages.inspectUpload(bytes, null);
     if (preview.guardrail.id !== DEFAULT_GUARDRAIL_ID) throw new ConflictError("The baseline package must contain the Default Guardrail.", "baseline_package_invalid");
     if (preview.blockers.length) throw new ConflictError(preview.blockers.map(item => item.message).join(" "), preview.blockers[0]!.code);
+    // The baseline is a pinned version, so the package must name exactly one.
+    if (preview.versions.length !== 1) throw new ConflictError("The baseline package must contain exactly one Default Guardrail version.", "baseline_package_invalid");
+    const baseline = preview.versions[0]!.version;
     await this.packages.importPackage(preview.packageId, { actorId: null });
     return this.db.transaction(async tx => {
       const [state] = await tx.select().from(controllerState).where(eq(controllerState.id, "singleton")).for("update");
       if (state?.baselineVersion) return { version: state.baselineVersion, adopted: false };
       const [updated] = await tx.update(controllerState).set({
-        baselineVersion: preview.recommendedVersion, desiredGeneration: increment(controllerState.desiredGeneration), updatedAt: new Date(),
+        baselineVersion: baseline, desiredGeneration: increment(controllerState.desiredGeneration), updatedAt: new Date(),
       }).where(eq(controllerState.id, "singleton")).returning();
       await tx.insert(outboxEvents).values({
         id: randomUUID(), kind: "runner.desired_state_changed", aggregateId: DEFAULT_GUARDRAIL_ID,
-        payload: { guardrailId: DEFAULT_GUARDRAIL_ID, version: preview.recommendedVersion, generation: updated?.desiredGeneration ?? 0, baseline: true },
+        payload: { guardrailId: DEFAULT_GUARDRAIL_ID, version: baseline, generation: updated?.desiredGeneration ?? 0, baseline: true },
       });
       await tx.insert(auditEvents).values({
         id: randomUUID(), kind: "system.baseline_changed", actorId: null, resourceType: "guardrail", resourceId: DEFAULT_GUARDRAIL_ID,
-        detail: { previousVersion: null, version: preview.recommendedVersion, reason: "Deployment baseline package", packageId: preview.packageId },
+        detail: { previousVersion: null, version: baseline, reason: "Deployment baseline package", packageId: preview.packageId },
       });
-      return { version: preview.recommendedVersion, adopted: true };
+      return { version: baseline, adopted: true };
     });
   }
 
@@ -544,7 +555,7 @@ export class ControlPlaneService {
     if (!this.authoringEnabled && !version) {
       // A receiving environment has basic protection only once a released
       // Default version is explicitly set as the runtime baseline.
-      return { status: "unconfigured", guardrailStatus: "unavailable", latestVersion: null, modelIndependent: null, coverage: null,
+      return { status: "unconfigured", guardrailStatus: "unavailable", baselineVersion: null, modelIndependent: null, coverage: null,
         draft: { revision: 0, activeRevision: null, validationStatus: null, validationFailureReason: null } };
     }
     const guardrailActive = Boolean(guardrail && guardrail.status !== "disabled"
@@ -559,7 +570,7 @@ export class ControlPlaneService {
     return {
       status: guardrailActive && hasChecks ? "ready" : initializing ? "initializing" : "unavailable",
       guardrailStatus: guardrailActive ? "active" as const : preparing ? "initializing" as const : "unavailable" as const,
-      latestVersion: baseline,
+      baselineVersion: baseline,
       modelIndependent: isModelIndependent(coverage),
       coverage,
       draft: {
@@ -579,7 +590,7 @@ export class ControlPlaneService {
   async releasedPolicies() {
     const rows = await this.db.select({
       guardrailId: guardrailVersions.guardrailId, guardrailVersion: guardrailVersions.version, plan: guardrailVersions.plan,
-      origin: guardrailVersions.origin, guardrailName: guardrails.name, sourceId: guardrails.sourceId, latestVersion: guardrails.latestVersion,
+      origin: guardrailVersions.origin, guardrailName: guardrails.name, sourceId: guardrails.sourceId,
     }).from(guardrailVersions)
       .innerJoin(guardrails, and(eq(guardrails.id, guardrailVersions.guardrailId), isNull(guardrails.deletedAt)))
       .where(eq(guardrailVersions.status, "ready"));
@@ -588,7 +599,7 @@ export class ControlPlaneService {
       .flatMap(route => route.targets.filter(target => target.weightBps > 0).map(target => `${target.guardrailId}\u0000${target.guardrailVersion}`)) ?? []));
     return { items: aggregateReleasedPolicies(rows.map(row => ({
       guardrailId: row.guardrailId, guardrailName: row.guardrailName, guardrailVersion: row.guardrailVersion,
-      origin: row.origin, sourceId: row.sourceId, latest: row.latestVersion === row.guardrailVersion,
+      origin: row.origin, sourceId: row.sourceId,
       serving: serving.has(`${row.guardrailId}\u0000${row.guardrailVersion}`), plan: row.plan,
     }))) };
   }
@@ -738,7 +749,6 @@ export class ControlPlaneService {
         if (source.draftRevision !== input.sourceDraftRevision) throw new ConflictError("The source draft changed. Reload before copying.", "guardrail_draft_conflict");
         snapshot = { draftConfig: source.draftConfig, runtimeProfile: source.runtimeProfile, loggingLevel: source.loggingLevel, excludedTestCaseIds: source.excludedTestCaseIds, testCases: await tx.select().from(testCases).where(eq(testCases.guardrailId, input.id)) };
       } else {
-        sourceVersion ??= source.latestVersion ?? undefined;
         if (!sourceVersion) throw new ValidationError("Choose a source draft revision or a published Guardrail Version.");
         const [version] = await tx.select().from(guardrailVersions).where(and(eq(guardrailVersions.guardrailId, input.id), eq(guardrailVersions.version, sourceVersion)));
         if (!version?.sourceSnapshot) throw new ConflictError("This version has no complete source snapshot. Choose the current draft explicitly, or publish a new version before copying.", "source_snapshot_unavailable");
@@ -804,9 +814,7 @@ export class ControlPlaneService {
     return this.db.transaction(async tx => {
       const [guardrail] = await tx.select().from(guardrails).where(and(eq(guardrails.id, id), isNull(guardrails.deletedAt))).for("share");
       if (!guardrail) throw new NotFoundError("Guardrail", id);
-      const [baseline] = guardrail.latestVersion ? await tx.select().from(guardrailVersions).where(and(
-        eq(guardrailVersions.guardrailId, id), eq(guardrailVersions.version, guardrail.latestVersion),
-      )) : [];
+      const baseline = await this.lastPublishedVersion(tx, id);
       const cases = await tx.select().from(testCases).where(eq(testCases.guardrailId, id));
       const current: DraftSnapshot = { draftConfig: guardrail.draftConfig, runtimeProfile: guardrail.runtimeProfile,
         loggingLevel: guardrail.loggingLevel, excludedTestCaseIds: guardrail.excludedTestCaseIds, testCases: cases };
@@ -817,7 +825,7 @@ export class ControlPlaneService {
       const compiling = await tx.select({ version: guardrailVersions.version }).from(guardrailVersions).where(and(
         eq(guardrailVersions.guardrailId, id), eq(guardrailVersions.status, "compiling"),
       )).limit(1);
-      return { draftRevision: guardrail.draftRevision, baselineVersion: guardrail.latestVersion,
+      return { draftRevision: guardrail.draftRevision, baselineVersion: baseline?.version ?? null,
         baselineAvailable: !baseline || complete, hasUnpublishedChanges,
         canDiscard: hasUnpublishedChanges && complete && baseline?.status === "ready" && compiling.length === 0,
         changes: hasUnpublishedChanges && (!baseline || complete) ? describeDraftChanges(snapshot ?? null, current) : [],
@@ -829,7 +837,7 @@ export class ControlPlaneService {
     const restored = await this.db.transaction(async tx => {
       const [guardrail] = await tx.select().from(guardrails).where(and(eq(guardrails.id, input.id), isNull(guardrails.deletedAt))).for("update");
       if (!guardrail) throw new NotFoundError("Guardrail", input.id);
-      if (guardrail.draftRevision !== input.expectedDraftRevision || guardrail.latestVersion !== input.expectedBaselineVersion) {
+      if (guardrail.draftRevision !== input.expectedDraftRevision || (await this.lastPublishedVersion(tx, input.id))?.version !== input.expectedBaselineVersion) {
         throw new ConflictError("The draft or published baseline changed. Review the changes again before discarding.", "guardrail_draft_conflict");
       }
       const [baseline] = await tx.select().from(guardrailVersions).where(and(eq(guardrailVersions.guardrailId, input.id), eq(guardrailVersions.version, input.expectedBaselineVersion)));
@@ -884,52 +892,7 @@ export class ControlPlaneService {
       if (existingVersion && existingVersion.status !== "failed") {
         await tx.update(validationRuns).set({ guardrailVersion: existingVersion.version })
           .where(eq(validationRuns.id, latestValidation.id));
-        const needsLatest = existingVersion.status === "ready" && (
-          guardrail.status !== "active"
-          || guardrail.latestVersion !== existingVersion.version
-          || guardrail.latestArtifactId !== existingVersion.artifactId
-        );
-        if (needsLatest) {
-          if (!existingVersion.artifactId) {
-            throw new ConflictError(
-              "The ready Guardrail Version does not have a compiled Artifact.",
-              "guardrail_version_artifact_missing",
-            );
-          }
-          const [state] = await tx.update(controllerState)
-            .set({ desiredGeneration: increment(controllerState.desiredGeneration), updatedAt: new Date() })
-            .where(eq(controllerState.id, "singleton"))
-            .returning();
-          if (!state) throw new Error("Controller state is not initialized.");
-          await tx.update(guardrails).set({
-            status: "active",
-            latestVersion: existingVersion.version,
-            latestArtifactId: existingVersion.artifactId,
-            desiredGeneration: state.desiredGeneration,
-            updatedAt: new Date(),
-          }).where(eq(guardrails.id, input.guardrailId));
-          await tx.insert(outboxEvents).values({
-            id: randomUUID(), kind: "runner.desired_state_changed", aggregateId: input.guardrailId,
-            payload: {
-              guardrailId: input.guardrailId,
-              version: existingVersion.version,
-              generation: state.desiredGeneration,
-              artifactId: existingVersion.artifactId,
-            },
-          });
-          await tx.insert(auditEvents).values({
-            id: randomUUID(), kind: "guardrail.latest_version_marked", actorId: input.actorId,
-            resourceType: "guardrail", resourceId: input.guardrailId,
-            detail: { version: existingVersion.version, generation: state.desiredGeneration, reusedArtifact: true },
-          });
-          return {
-            compileId: null,
-            guardrailId: input.guardrailId,
-            version: existingVersion.version,
-            generation: state.desiredGeneration,
-            status: existingVersion.status,
-          };
-        }
+        // Publishing the same tested content again is a no-op: that version exists.
         return {
           compileId: null,
           guardrailId: input.guardrailId,
@@ -987,7 +950,9 @@ export class ControlPlaneService {
 
   private async versionDeletionImpact(tx: Transaction, guardrail: typeof guardrails.$inferSelect, record: typeof guardrailVersions.$inferSelect): Promise<GuardrailVersionDeletionImpact> {
     const routing = await this.trafficRouting.versionReferences(guardrail.id, record.version, tx);
-    const references: GuardrailVersionReference[] = [...(guardrail.latestVersion === record.version ? [{ kind: "latest" as const }] : []), ...routing.references];
+    // The runtime baseline is pinned like a Router target and protects its version the same way.
+    const baseline = guardrail.id === DEFAULT_GUARDRAIL_ID && await this.baselineVersion(tx) === record.version;
+    const references: GuardrailVersionReference[] = [...(baseline ? [{ kind: "baseline" as const }] : []), ...routing.references];
     const blockers: GuardrailVersionDeletionBlocker[] = [];
     if (record.status === "compiling") blockers.push({ code: "compiling" });
     const retention = 300_000;
@@ -1006,45 +971,6 @@ export class ControlPlaneService {
       }
     }
     return { guardrailId: guardrail.id, version: record.version, deletable: !references.length && !blockers.length, references, blockers, unrestorableRevisions: routing.historical };
-  }
-
-  async markGuardrailVersionLatest(input: { guardrailId: string; version: string; actorId: string }) {
-    return this.db.transaction(async (tx) => {
-      const [guardrail] = await tx.select().from(guardrails).where(and(
-        eq(guardrails.id, input.guardrailId), isNull(guardrails.deletedAt),
-      )).for("update");
-      if (!guardrail) throw new NotFoundError("Guardrail", input.guardrailId);
-      const [version] = await tx.select().from(guardrailVersions).where(and(
-        eq(guardrailVersions.guardrailId, input.guardrailId),
-        eq(guardrailVersions.version, input.version),
-        eq(guardrailVersions.status, "ready"),
-      ));
-      if (!version?.artifactId) throw new ConflictError("Only a ready immutable Guardrail Version can be marked latest.", "guardrail_version_not_ready");
-      if (guardrail.status === "active" && guardrail.latestVersion === input.version && guardrail.latestArtifactId === version.artifactId) {
-        return version;
-      }
-      const [state] = await tx.update(controllerState)
-        .set({ desiredGeneration: increment(controllerState.desiredGeneration), updatedAt: new Date() })
-        .where(eq(controllerState.id, "singleton")).returning();
-      if (!state) throw new Error("Controller state is not initialized.");
-      await tx.update(guardrails).set({
-        status: "active",
-        latestVersion: input.version,
-        latestArtifactId: version.artifactId,
-        desiredGeneration: state.desiredGeneration,
-        updatedAt: new Date(),
-      }).where(eq(guardrails.id, input.guardrailId));
-      await tx.insert(outboxEvents).values({
-        id: randomUUID(), kind: "runner.desired_state_changed", aggregateId: input.guardrailId,
-        payload: { guardrailId: input.guardrailId, version: input.version, generation: state.desiredGeneration },
-      });
-      await tx.insert(auditEvents).values({
-        id: randomUUID(), kind: "guardrail.latest_version_marked", actorId: input.actorId,
-        resourceType: "guardrail", resourceId: input.guardrailId,
-        detail: { version: input.version, generation: state.desiredGeneration },
-      });
-      return version;
-    });
   }
 
   async listTestCases(guardrailId: string) {
@@ -1403,14 +1329,18 @@ export class ControlPlaneService {
     });
     await tx.update(guardrails).set({
       status: "active",
-      latestVersion: run.guardrailVersion,
-      latestArtifactId: stored.id,
       desiredGeneration: state.desiredGeneration,
       updatedAt: new Date(),
     }).where(eq(guardrails.id, guardrail.id));
+    // A fresh installation has no basic protection until its first Default
+    // version exists; that version becomes the baseline. Every later switch
+    // is explicit (PUT /api/v1/system/baseline).
+    const bootstrapBaseline = guardrail.id === DEFAULT_GUARDRAIL_ID
+      && (await tx.update(controllerState).set({ baselineVersion: run.guardrailVersion })
+        .where(and(eq(controllerState.id, "singleton"), isNull(controllerState.baselineVersion))).returning()).length > 0;
     await tx.insert(outboxEvents).values({
       id: randomUUID(), kind: "runner.desired_state_changed", aggregateId: guardrail.id,
-      payload: { guardrailId: guardrail.id, version: run.guardrailVersion, generation: state.desiredGeneration, artifactId: stored.id },
+      payload: { guardrailId: guardrail.id, version: run.guardrailVersion, generation: state.desiredGeneration, artifactId: stored.id, ...(bootstrapBaseline ? { baseline: true } : {}) },
     });
     await tx.insert(auditEvents).values({
       id: randomUUID(), kind: "guardrail.published", actorId,
@@ -2077,7 +2007,6 @@ export class ControlPlaneService {
         id: guardrails.id,
         name: guardrails.name,
         status: guardrails.status,
-        latestVersion: guardrails.latestVersion,
       }).from(guardrails).where(isNull(guardrails.deletedAt)),
       this.db.select({
         id: trafficRouters.id,
@@ -2117,9 +2046,7 @@ export class ControlPlaneService {
           if (target.weightBps <= 0) continue;
           const guardrail = guardrailById.get(target.guardrailId);
           if (!guardrail) continue;
-          // Publication pins every target version; fall back to the active
-          // version only for snapshots that predate pinning.
-          const guardrailVersion = target.guardrailVersion || guardrail.latestVersion;
+          const guardrailVersion = target.guardrailVersion || null;
           targets.set(`${target.guardrailId}\u0000${guardrailVersion ?? ""}`, { guardrailId: target.guardrailId, guardrailVersion });
         }
       }
@@ -2148,7 +2075,6 @@ export class ControlPlaneService {
         guardrailId: item.id,
         guardrailName: item.name,
         status: item.status,
-        latestVersion: item.latestVersion,
       })),
       endpoints: endpointRows.filter((item) => item.deletedAt === null).map((item) => ({
         endpointId: item.id,
@@ -2348,8 +2274,9 @@ export class ControlPlaneService {
         detail: { localOnly: true, phases: ["input", "output"], policies: desiredDraft.policyBindings.map((item) => item.policyId) },
       });
     } else if (stored.deletedAt || stored.status === "disabled") {
+      const published = await this.lastPublishedVersion(tx, DEFAULT_GUARDRAIL_ID);
       const [enabled] = await tx.update(guardrails).set({
-        status: stored.latestArtifactId ? "active" : "draft",
+        status: published ? "active" : "draft",
         deletedAt: null,
         deletedBy: null,
         deleteReason: null,
@@ -2399,10 +2326,9 @@ export class ControlPlaneService {
       });
     }
 
-    const [latestVersion] = stored.latestVersion ? await tx.select({ sourceDraftRevision: guardrailVersions.sourceDraftRevision })
-      .from(guardrailVersions).where(and(eq(guardrailVersions.guardrailId, DEFAULT_GUARDRAIL_ID), eq(guardrailVersions.version, stored.latestVersion))) : [];
-    if (stored.latestArtifactId && stored.latestVersion && !baselineChanged
-      && (userCustomization || latestVersion?.sourceDraftRevision === stored.draftRevision)) {
+    const published = await this.lastPublishedVersion(tx, DEFAULT_GUARDRAIL_ID);
+    if (published?.artifactId && !baselineChanged
+      && (userCustomization || published.sourceDraftRevision === stored.draftRevision)) {
       if (restored) {
         const [state] = await tx.update(controllerState)
           .set({ desiredGeneration: increment(controllerState.desiredGeneration), updatedAt: new Date() })
@@ -2484,15 +2410,12 @@ export class ControlPlaneService {
       .where(eq(validationRuns.guardrailId, row.id)).orderBy(desc(validationRuns.createdAt)).limit(1);
     const [caseCount] = await this.db.select({ value: count() }).from(testCases)
       .where(eq(testCases.guardrailId, row.id));
-    const [latestVersion] = row.latestVersion === null ? [] : await this.db.select({ sourceDraftRevision: guardrailVersions.sourceDraftRevision, sourceSnapshot: guardrailVersions.sourceSnapshot })
-      .from(guardrailVersions).where(and(
-        eq(guardrailVersions.guardrailId, row.id), eq(guardrailVersions.version, row.latestVersion),
-      ));
+    const published = await this.lastPublishedVersion(this.db, row.id);
     // Imported Guardrails have no working draft: their versions are the whole state.
-    let hasUnpublishedChanges = row.origin !== "imported" && (!latestVersion || latestVersion.sourceDraftRevision !== row.draftRevision);
-    if (hasUnpublishedChanges && latestVersion?.sourceSnapshot?.testCases) {
+    let hasUnpublishedChanges = row.origin !== "imported" && (!published || published.sourceDraftRevision !== row.draftRevision);
+    if (hasUnpublishedChanges && published?.sourceSnapshot?.testCases) {
       const cases = await this.db.select().from(testCases).where(eq(testCases.guardrailId, row.id));
-      hasUnpublishedChanges = !sameDraftContent(latestVersion.sourceSnapshot, { draftConfig: row.draftConfig, runtimeProfile: row.runtimeProfile,
+      hasUnpublishedChanges = !sameDraftContent(published.sourceSnapshot, { draftConfig: row.draftConfig, runtimeProfile: row.runtimeProfile,
         loggingLevel: row.loggingLevel, excludedTestCaseIds: row.excludedTestCaseIds, testCases: cases });
     }
     const { duplicateKey: _duplicateKey, copyOrigin, ...publicRow } = row;
@@ -2504,7 +2427,8 @@ export class ControlPlaneService {
       latestValidationRun: latestValidation ? publicValidationRun(latestValidation) : null,
       testCaseCount: caseCount?.value ?? 0,
       excludedTestCaseCount: row.excludedTestCaseIds.length,
-      latestSourceDraftRevision: latestVersion?.sourceDraftRevision ?? null,
+      // The draft revision the last publication came from; null before any.
+      publishedSourceDraftRevision: published?.sourceDraftRevision ?? null,
       hasUnpublishedChanges,
     };
   }

@@ -36,7 +36,6 @@ const manifestSchema = z.object({
   exportedAt: z.string().datetime(),
   source: identity,
   guardrail: identity,
-  recommendedVersion: versionId,
   versions: z.array(z.object({ version: versionId, contentDigest: digest, evidenceDigest: digest }).strict()).min(1).max(64),
   files: z.array(z.object({ path: z.string().min(1).max(200), sha256: digest, size: z.number().int().nonnegative() }).strict()),
 }).strict();
@@ -112,7 +111,6 @@ export function packageError(message: string, code = "guardrail_package_invalid"
 export function buildPackage(input: {
   source: { id: string; name: string };
   guardrail: { id: string; name: string };
-  recommendedVersion: string;
   versions: Array<{ content: ArtifactContent; inspection: GuardrailInspection; evidence: UatEvidence }>;
   exportedAt: Date;
   sign: (manifest: Buffer) => PackageSignature[];
@@ -133,7 +131,6 @@ export function buildPackage(input: {
     exportedAt: input.exportedAt.toISOString(),
     source: input.source,
     guardrail: input.guardrail,
-    recommendedVersion: input.recommendedVersion,
     versions: versions.map(item => ({
       version: item.content.guardrailVersion,
       contentDigest: artifactContentDigest(item.content),
@@ -161,7 +158,6 @@ export function parsePackage(archive: Buffer): ParsedPackage {
   const signatures = parseJsonFile("signatures.json", signaturesBytes, signaturesSchema).signatures;
   const versionIds = manifest.versions.map(item => item.version);
   if (new Set(versionIds).size !== versionIds.length) throw packageError("The manifest lists a version more than once.");
-  if (!versionIds.includes(manifest.recommendedVersion)) throw packageError("The recommended version is not in the package.");
   const expected = new Set(versionIds.flatMap(version => VERSION_FILES.map(file => versionPath(version, file))));
   const declared = new Map(manifest.files.map(item => [item.path, item]));
   const present = [...files.keys()].filter(path => path !== "manifest.json" && path !== "signatures.json");

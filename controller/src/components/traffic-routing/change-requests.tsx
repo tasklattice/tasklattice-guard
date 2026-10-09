@@ -14,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Field } from "./form";
 import { Changes } from "./routing-changes";
-import { AttachedEndpoints, ResolvedVersions } from "./review-submit-sheet";
+import { AttachedEndpoints, RoutedVersions } from "./review-submit-sheet";
 import { revisionLabel } from "./router-view-model";
 
 const changeKeys = (routerId: string) => [...api.trafficRouterKeys.detail(routerId), "change-requests"] as const;
@@ -224,7 +224,7 @@ export function ChangeRequestSheet({
       <div className="mt-6">
         {change.baseRevision === null || base ? <Changes before={base?.snapshot ?? null} after={change.snapshot} names={change.context?.guardrails ?? names} /> : <p className="text-sm text-muted-foreground">{localize("routing.changeBaseUnavailable")}</p>}
       </div>
-      <ResolvedVersions snapshot={change.snapshot} names={change.context?.guardrails ?? names} />
+      <RoutedVersions snapshot={change.snapshot} names={change.context?.guardrails ?? names} />
       <AttachedEndpoints ids={change.endpointIds} endpoints={change.context?.endpoints ?? endpoints} />
     </EntitySheet>
   );
@@ -283,7 +283,7 @@ export function RestoreRevisionSheet({ router, target, revisions, names, endpoin
       {submit.error && <ErrorNotice error={submit.error} />}
     </div>
     {current && <div className="mt-6"><Changes before={current.snapshot} after={target.snapshot} names={[...names, ...(target.context?.guardrails ?? []), ...(current.context?.guardrails ?? [])]} /></div>}
-    <ResolvedVersions snapshot={target.snapshot} names={target.context?.guardrails ?? names} />
+    <RoutedVersions snapshot={target.snapshot} names={target.context?.guardrails ?? names} />
     <AttachedEndpoints ids={reviewedRouter.endpointIds} endpoints={endpoints} />
   </EntitySheet>;
 }

@@ -29,7 +29,7 @@ order: 2
 ## 导出 Guardrail
 
 在 **Guardrails** 列表中，打开对应行的 **Actions（操作）** 菜单选择 **导出…**，或在查看某个不可变版本时选择 **导出…**。
-在弹出的面板中选择要下载的就绪版本，默认选中最新版本。下载内容不包含未发布的草稿修改。若导出按钮不可用，请先发布一个版本。
+在弹出的面板中选择要下载的就绪版本；不会预先选中任何版本，包里只有你选择的版本。下载内容不包含未发布的草稿修改。若导出按钮不可用，请先发布一个版本。
 
 `.artifact.json` 文件包含冻结的 Policy 实现和编译配置，不依赖 Policy Library。
 运行时仍需匹配的 TaskLattice/NeMo 环境和声明的模型能力，凭据在目标环境单独配置。
@@ -65,9 +65,9 @@ Policy 暴露、由 Guardrail 绑定时解析的审查值。
 
 <strong>是什么：</strong>Guardrail 草稿通过验证后发布的不可变快照，包含固定的 Policy Bindings、Rules、参数、编译 artifact、依赖和 checksum。
 
-<strong>为什么：</strong>它是发布和最新版本选择的不可变单元；Router Target 必须解析到确切版本，不能靠“最新草稿”处理生产请求。
+<strong>为什么：</strong>它是路由、运行时基线和导出所引用的不可变单元；每处引用都写明确切版本，不存在可跟随的“最新版本”指针。
 
-<strong>怎么用：</strong>等待编译 ready，再发布引用它的 Router Revision；需要移动最新版本指针时，对已就绪版本执行 **设为最新版本（Mark as latest）**。Router Target 选择 **使用最新版本** 时，会在下一次提交路由变更时解析到它；选择 **固定版本** 的 Target 不会变化。需要改变 Target 时，请提交 Router 变更。
+<strong>怎么用：</strong>等待编译 ready，再发布一个 Target 固定该版本的 Router Revision。要改用其他版本，请提交固定新版本的 Router 变更。
 
 <strong>例子：</strong>即使已发布 Guardrail v2，仍指向 v1 的 Router 不会自动切到 v2；要改变生产流量，需检查并重新发布 Router。
 
@@ -181,7 +181,7 @@ fail-open 继续但记录错误；fail-closed 阻断。必需检查通常采用�
 
 <StateMachineDiagram kind="guardrail-readiness" locale="zh-CN" />
 
-<strong>保护中（<code>protected</code>）</strong>是前端状态：当前草稿已发布为最新版本，且已发布 Router 快照中有启用的 Route，以正权重 Target 引用这个 Guardrail。列表目前还要求该 Router 绑定至少一个 Endpoint。只有把 Guardrail 放进 Router 草稿、未发布 Route，或权重为 0 的 Target，都不会进入保护中。移除最后一处有效引用后回到就绪；修改 Guardrail 草稿后，由于当前草稿不再对应最新版本，列表显示需要测试，即使旧版本仍可能处理流量。
+<strong>保护中（<code>protected</code>）</strong>是前端状态：当前草稿已发布，且已发布 Router 快照中有启用的 Route，以正权重 Target 引用这个 Guardrail。列表目前还要求该 Router 绑定至少一个 Endpoint。只有把 Guardrail 放进 Router 草稿、未发布 Route，或权重为 0 的 Target，都不会进入保护中。移除最后一处有效引用后回到就绪；修改 Guardrail 草稿后，由于草稿不再对应上一次发布的版本，列表显示需要测试，即使旧版本仍可能处理流量。
 
 <strong>这不是流量健康结论：</strong>保护中说明有配置引用，不证明 Router 已完成 Runner 下发、Endpoint 可用或已经收到请求。详情页还单独展示 Route 引用徽标；查看实际生效情况应同时检查 Router rollout、Endpoint 和运行日志。
 
@@ -195,13 +195,13 @@ Guardrail 资源的持久状态是 draft → active → disabled，也允许 dra
 
 <a id="state-guardrail-version" />
 
-### Guardrail Version 构建与最新版本指针
+### Guardrail Version 构建
 
 <StateMachineDiagram kind="guardrail-version" locale="zh-CN" />
 
-版本从 compiling 走向 ready 或 failed，终态内容不可原地修改。`latest / historical` 表示 Guardrail 的<strong>最新版本指针</strong>指向哪一个 ready Version，不是版本构建状态。发布新版本会把指针移到新版本；**设为最新版本** 把指针移到已有版本，不创建新版本或重写其 artifact。ready 只表示 artifact 可用；Router 还需引用确切版本并完成 Runner 下发。
+版本从 compiling 走向 ready 或 failed，终态内容不可原地修改。ready 只表示 artifact 可用；Router 还需固定这个确切版本并完成 Runner 下发。发布新版本不会改变任何已引用其他版本的地方。
 
-没有任何资源依赖的版本可以删除。**删除** 会先列出引用：最新版本指针、当前生效的 Router revision、已修改的 Router 草稿、待审批变更单，或当前生效变更的预批准回退目标；并会等待版本退出路由前已开始的调用结束。固定过该版本的更早 Router revision 不会阻止删除，它们保留在历史中用于审计，但无法再恢复。编译产物和遥测数据会保留。
+没有任何资源依赖的版本可以删除。**删除** 会先列出引用：运行时基线、当前生效的 Router revision、已修改的 Router 草稿、待审批变更单，或当前生效变更的预批准回退目标；并会等待版本退出路由前已开始的调用结束。固定过该版本的更早 Router revision 不会阻止删除，它们保留在历史中用于审计，但无法再恢复。编译产物和遥测数据会保留。
 
 <a id="guardrail-build-states" />
 

@@ -108,7 +108,6 @@ export function RouteEditorSheet({
             </p>
           </div>
           <TargetsEditor
-            allowLatest
             fallback={fallback}
             value={route.targets}
             onChange={(targets) => setRoute({ ...route, targets })}

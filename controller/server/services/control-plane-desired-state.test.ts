@@ -30,13 +30,12 @@ function desiredStateService(results: unknown[][]) {
   return service;
 }
 
-// Select order: controller state, baseline pointer, Default Latest (no
-// explicit baseline), baseline artifact, ready artifacts, disabled
-// Guardrails, logging levels, disabled Endpoints, active Endpoints.
+// Select order: controller state, the pinned baseline, baseline artifact,
+// ready artifacts, disabled Guardrails, logging levels, disabled Endpoints,
+// active Endpoints.
 const desiredStateResults = () => [
   [{ desiredGeneration: 9 }],
-  [{ baselineVersion: null }],
-  [{ latestVersion: "v-default" }],
+  [{ baselineVersion: "v-default" }],
   [{ artifactId: "art-default" }],
   [artifact("art-1"), artifact("art-2"), artifact("art-default")],
   [], [], [],

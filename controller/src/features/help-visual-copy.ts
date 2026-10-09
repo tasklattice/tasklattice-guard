@@ -54,7 +54,7 @@ export function graph(kind: StateMachineKind, zh: boolean): Graph {
   switch (kind) {
     case "guardrail-readiness": return {
       title: label("Guardrail 展示状态：从待验证到保护中", "Guardrail display state: from testing to protection"),
-      caption: label("状态由当前草稿、最新版本和已发布路由引用重新计算；它不是数据库生命周期。", "This projection is recomputed from the current draft, Latest version, and published route references; it is not the database lifecycle."),
+      caption: label("状态由当前草稿、已发布版本和已发布路由引用重新计算；它不是数据库生命周期。", "This projection is recomputed from the current draft, published versions, and published route references; it is not the database lifecycle."),
       height: 370,
       nodes: [node("needs_validation", 370, 18, "change"), node("ready", 70, 230, "healthy"), node("protected", 670, 230, "healthy")],
       edges: [
@@ -82,7 +82,7 @@ export function graph(kind: StateMachineKind, zh: boolean): Graph {
     };
     case "guardrail-version": return {
       title: label("不可变版本的构建状态", "Immutable version build states"),
-      caption: label("ready 与 failed 都是终态；最新版本指针是独立概念。", "Ready and failed are terminal. The Latest pointer is separate."),
+      caption: label("ready 与 failed 都是终态；路由和基线只引用固定的 ready 版本。", "Ready and failed are terminal. Routing and the baseline reference only pinned, ready versions."),
       height: 260,
       nodes: [node("compiling", 85, 103, "change"), node("ready", 660, 25, "healthy"), node("failed", 660, 182, "error")],
       edges: [edge("M245 122 Q450 120 660 52", 450, 88, "编译成功", "Compiled"), edge("M245 138 Q450 145 660 209", 450, 175, "编译失败", "Build failed")],

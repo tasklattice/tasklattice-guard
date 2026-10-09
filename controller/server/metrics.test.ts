@@ -54,7 +54,7 @@ describe("Controller metrics contract", () => {
         }],
         guardrails: [{
           guardrailId: "guardrail-1", guardrailName: "PII Shield",
-          status: "active", latestVersion: "20260904-030000.003Z",
+          status: "active",
         }],
         endpoints: [{
           endpointId: "endpoint-1", endpointName: "Agent Gateway",
@@ -109,7 +109,7 @@ describe("Controller metrics contract", () => {
         watermarks: [], pendingOutbox: [],
         guardrails: [{
           guardrailId: "guardrail-1", guardrailName: "PII Shield",
-          status: "active", latestVersion: "20260904-030000.003Z",
+          status: "active",
         }],
         endpoints: [], endpointBindings: [],
         routers: [{
@@ -163,7 +163,7 @@ describe("Controller metrics contract", () => {
         watermarks: [], pendingOutbox: [],
         guardrails: present ? [{
           guardrailId: "guardrail-1", guardrailName: "PII Shield",
-          status: "active", latestVersion: "20260904-010000.001Z",
+          status: "active",
         }] : [],
         endpoints: present ? [{
           endpointId: "endpoint-1", endpointName: "Agent Gateway",
@@ -207,8 +207,8 @@ describe("Controller metrics contract", () => {
       .mockImplementationOnce(() => ({
         from: vi.fn(() => ({
           where: vi.fn().mockResolvedValue([
-            { id: "guardrail-1", name: "PII Shield", status: "active", latestVersion: "20260904-030000.003Z" },
-            { id: "guardrail-2", name: "Draft Shield", status: "draft", latestVersion: null },
+            { id: "guardrail-1", name: "PII Shield", status: "active" },
+            { id: "guardrail-2", name: "Draft Shield", status: "draft" },
           ]),
         })),
       }))
@@ -263,8 +263,8 @@ describe("Controller metrics contract", () => {
     const snapshot = await new ControlPlaneService(db, {} as ControllerConfig).observabilitySnapshot();
 
     expect(snapshot.guardrails).toEqual([
-      { guardrailId: "guardrail-1", guardrailName: "PII Shield", status: "active", latestVersion: "20260904-030000.003Z" },
-      { guardrailId: "guardrail-2", guardrailName: "Draft Shield", status: "draft", latestVersion: null },
+      { guardrailId: "guardrail-1", guardrailName: "PII Shield", status: "active" },
+      { guardrailId: "guardrail-2", guardrailName: "Draft Shield", status: "draft" },
     ]);
     expect(snapshot.endpoints).toEqual([
       {

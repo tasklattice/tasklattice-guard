@@ -131,11 +131,12 @@ try{
    else g=await api('/api/v1/guardrails',{name,runtimeProfile:'auto',draftConfig:{allowedTopics:[],restrictedTopics:[],safetyLevel:'balanced',outputDelivery:mode,policyBindings:[{policyId:policy.id,policyVersion:policy.version,action:'block',parameterValues:{},enabledRuleIds:policy.rules.map(r=>r.id),ruleActions:{},enabledRails:['input','output']}]}},[201]);
    const validation=g.latestValidationRun??await api(`/api/v1/guardrails/${encodeURIComponent(g.id)}/test-runs`,{guardrailId:g.id},[202]);
    const done=await until(()=>api('/api/v1/test-runs/'+validation.id),v=>['passed','failed'].includes(v.status));assert.equal(done.status,'passed');
-   if(!g.latestVersion)await api(`/api/v1/guardrails/${g.id}/publish`,{},[202]);
-   g=await until(()=>api('/api/v1/guardrails/'+g.id),v=>v.latestVersion&&v.versions.some(r=>r.version===v.latestVersion&&r.status==='ready'));
+   const pub=g.versions?.find(r=>r.status==='ready')??await api(`/api/v1/guardrails/${g.id}/publish`,{},[202]);
+   g=await until(()=>api('/api/v1/guardrails/'+g.id),v=>v.versions.some(r=>r.version===pub.version&&r.status==='ready'));
+   const release=g.versions.find(r=>r.version===pub.version);
    const endpoint=await api('/api/v1/endpoints',{name,adapter:'litellm-generic-guardrail'},[201]);
    assert(endpoint.credential);const router=await api('/api/v1/routers',{name,guardrailId:g.id,endpointId:endpoint.id,poolId:'default',enabled:true,trafficScope:{combinator:'and',conditions:[]}},[201]);
-   return {guardrailId:g.id,version:g.latestVersion,artifact:g.latestArtifactId,endpointId:endpoint.id,credential:endpoint.credential,routerId:router.id};
+   return {guardrailId:g.id,version:release.version,artifact:release.artifactId,endpointId:endpoint.id,credential:endpoint.credential,routerId:router.id};
   });
   // Report is mode 0600 and includes only an isolated endpoint credential, never upstream API keys.
   await until(async()=>{const r=await fetch(`http://localhost:38082/runtime/v1/endpoints/${resource.endpointId}/verify`,{method:'POST',headers:{'x-api-key':resource.credential,'content-type':'application/json'},body:'{}'});return r.ok?await r.json():{};},v=>v.ready);
@@ -228,7 +229,7 @@ finally{
    assert.deepEqual(restored.active.assignments,report.before.model.active.assignments);
    const d=await api('/api/v1/guardrails/guardrail-default');
    const before=report.before.guardrails.find(g=>g.id==='guardrail-default');
-   assert.equal(d.latestVersion,before.latestVersion);assert.deepEqual(d.draftConfig,before.draftConfig);
+   assert.equal(d.draftRevision,before.draftRevision);assert.deepEqual(d.draftConfig,before.draftConfig);
    report.restored={action,revision:restored.active.id,defaultUnchanged:true};
   }catch(e){report.restoreError=e.message;process.exitCode=1;}
  }

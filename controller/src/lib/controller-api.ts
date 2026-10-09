@@ -144,10 +144,9 @@ export type Guardrail = {
   draftRevision: number;
   excludedTestCaseIds: string[];
   loggingLevel: "info" | "debug" | "trace";
-  latestVersion: string | null;
-  latestSourceDraftRevision: number | null;
+  /** Draft revision the most recent publication came from; null before any. */
+  publishedSourceDraftRevision: number | null;
   hasUnpublishedChanges?: boolean;
-  latestArtifactId: string | null;
   createdAt: string;
   updatedAt: string;
   latestValidationRun: ValidationRun | null;
@@ -222,7 +221,6 @@ export type PackagePreview = {
   keyId: string;
   exportedAt: string;
   guardrail: { id: string; name: string; exists: boolean };
-  recommendedVersion: string;
   versions: Array<{
     version: string;
     state: "new" | "existing" | "conflict";
@@ -234,7 +232,7 @@ export type PackagePreview = {
   blockers: Array<{ code: string; message: string }>;
 };
 
-export type PackageImportResult = { guardrailId: string; imported: string[]; existing: string[]; latestVersion: string | null };
+export type PackageImportResult = { guardrailId: string; imported: string[]; existing: string[] };
 
 export type DeploymentCapabilities = {
   authoringEnabled: boolean;
@@ -246,7 +244,7 @@ export type SystemBaseline = { guardrailId: string; version: string | null; expl
 
 export type ReleasedPolicyUsage = {
   guardrailId: string; guardrailName: string; guardrailVersion: string; origin: "local" | "imported"; sourceId: string | null;
-  latest: boolean; serving: boolean; enabledRuleIds: string[]; action: string | null; phases: string[];
+  serving: boolean; enabledRuleIds: string[]; action: string | null; phases: string[];
 };
 /** One released version: its frozen definition, in the shape the Policy Library lists, and who uses it. */
 export type ReleasedPolicyVersion = {
@@ -528,7 +526,6 @@ export const createControllerGuardrail = (input: Pick<Guardrail, "name" | "draft
 export const previewControllerGuardrailPlan = (input: Pick<Guardrail, "name" | "draftConfig" | "runtimeProfile">) => requestController<GuardrailPlanPreview>("/api/v1/authoring/plan-previews", json("POST", input));
 export const updateControllerGuardrail = (id: string, input: Partial<Pick<Guardrail, "name" | "draftConfig" | "runtimeProfile">> & { expectedDraftRevision?: number }) => requestController<Guardrail>(`/api/v1/guardrails/${encodeURIComponent(id)}`, json("PATCH", input));
 export const publishControllerGuardrail = (id: string, expectedDraftRevision: number) => requestController<{ status: string; version: string }>(`/api/v1/guardrails/${encodeURIComponent(id)}/publish`, json("POST", { expectedDraftRevision }));
-export const markControllerGuardrailVersionActive = (id: string, version: string) => requestController<GuardrailVersion>(`/api/v1/guardrails/${encodeURIComponent(id)}/latest-version`, json("PUT", { version }));
 export const getReleasedPolicies = () => requestController<{ items: ReleasedPolicy[] }>("/api/v1/released-policies");
 export const getDeploymentCapabilities = () => requestController<DeploymentCapabilities>("/api/v1/deployment/capabilities");
 export const uploadGuardrailPackage = (file: File) => {

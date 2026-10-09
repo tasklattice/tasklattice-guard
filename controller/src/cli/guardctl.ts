@@ -190,11 +190,11 @@ function outputHuman(resource: string, data: any, detail = false) {
     ],
     policies: [
       { label: 'ID', value: (r) => r.id }, { label: 'NAME', value: (r) => r.name }, { label: 'STATUS', value: (r) => r.status },
-      { label: 'VERSION', value: (r) => r.latestVersion ?? r.version }, { label: 'UPDATED', value: (r) => r.updatedAt },
+      { label: 'VERSION', value: (r) => r.version }, { label: 'UPDATED', value: (r) => r.updatedAt },
     ],
     guardrails: [
       { label: 'ID', value: (r) => r.id }, { label: 'NAME', value: (r) => r.name }, { label: 'STATUS', value: (r) => r.status },
-      { label: 'ACTIVE VERSION', value: (r) => r.latestVersion }, { label: 'DRAFT', value: (r) => r.draftRevision },
+      { label: 'DRAFT', value: (r) => r.draftRevision },
       { label: 'GENERATION', value: (r) => r.desiredGeneration }, { label: 'TESTS', value: (r) => r.testCaseCount },
     ],
     endpoints: [
@@ -357,11 +357,17 @@ function apiError(response: { status: number; data?: any; error?: string }): str
 async function handleExport(args: string[]) {
   const id = args.find(arg => !arg.startsWith('--'));
   if (!id) {
-    console.log('Usage: export <guardrail-id> [--versions=a,b] [--out=<file>]');
+    console.log('Usage: export <guardrail-id> --versions=a,b [--out=<file>]');
     return;
   }
+  // A package always names its versions; nothing is exported by default.
   const versions = option(args, 'versions');
-  const response = await runApi('GET', `/api/v1/guardrails/${encodeURIComponent(id)}/package${versions ? `?versions=${encodeURIComponent(versions)}` : ''}`,
+  if (!versions) {
+    console.error('Export failed: choose the versions with --versions=a,b.');
+    process.exitCode = 1;
+    return;
+  }
+  const response = await runApi('GET', `/api/v1/guardrails/${encodeURIComponent(id)}/package?versions=${encodeURIComponent(versions)}`,
     undefined, { responseType: 'arraybuffer', timeout: 60_000 });
   if (!response.ok) {
     console.error(`Export failed: ${apiError(response)}`);
@@ -395,7 +401,7 @@ async function handleImport(args: string[]) {
   for (const item of preview.versions) {
     const metrics = item.evidence.metrics ?? {};
     const tested = typeof metrics.total === 'number' ? ` (${metrics.passed ?? 0}/${metrics.total} cases)` : '';
-    console.log(`  ${item.version}${item.version === preview.recommendedVersion ? ' (recommended)' : ''}  ${item.state.padEnd(8)} source test: ${item.evidence.status}${tested}  environment: ${item.environment?.status ?? 'not checked'}`);
+    console.log(`  ${item.version}  ${item.state.padEnd(8)} source test: ${item.evidence.status}${tested}  environment: ${item.environment?.status ?? 'not checked'}`);
     for (const pool of item.environment?.pools ?? []) if (!pool.admitted && !pool.unavailable) console.log(`      ${pool.poolId}/${pool.runnerId}: ${pool.reason}`);
   }
   for (const blocker of preview.blockers) console.log(`Blocked: ${blocker.message}`);
@@ -423,7 +429,7 @@ async function handleImport(args: string[]) {
     process.exitCode = 1;
     return;
   }
-  console.log(`Imported ${imported.data.imported.length} version(s), ${imported.data.existing.length} already present. Latest: ${imported.data.latestVersion ?? 'unset'}.`);
+  console.log(`Imported ${imported.data.imported.length} version(s), ${imported.data.existing.length} already present.`);
 }
 
 async function handleShow(args: string[]) {
@@ -642,8 +648,8 @@ async function handleCommand(line: string) {
     console.log('  disable                      Drop back to read-only credentials');
     console.log('  show <resource> ...          Read a resource; run "show" for list');
     console.log('  d | detail                   Repeat the last show with all rows');
-    console.log('  export <guardrail-id> [--versions=a,b] [--out=<file>]');
-    console.log('                               Download a signed .guardrail.zip (default: Latest)');
+    console.log('  export <guardrail-id> --versions=a,b [--out=<file>]');
+    console.log('                               Download a signed .guardrail.zip of those versions');
     console.log('  import <file> [--versions=a,b] [--confirm]');
     console.log('                               Verify and preview a package; --confirm imports it');
     console.log('  exit | quit                  Close the CLI');

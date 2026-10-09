@@ -17,7 +17,7 @@ const evidence = { status: "passed" as const, testedAt: "2026-10-07T01:00:00.000
 const requirements = { contentContract: "tasklattice.artifact-content.v2", runtime: { nemoVersion: "0.24.0", runtimeProfile: "llmrails_colang1_standard", compilerVersion: "c", planCompilerVersion: "p" }, actions: [], models: [], evaluationContracts: [] };
 const preview = (overrides: Partial<PackagePreview> = {}): PackagePreview => ({
   packageId: "a".repeat(64), source: { id: "bank-uat", name: "Bank UAT" }, keyId: "uat-2026", exportedAt: "2026-10-08T00:00:00.000Z",
-  guardrail: { id: "bank-assistant", name: "Bank assistant", exists: true }, recommendedVersion: V2, blockers: [],
+  guardrail: { id: "bank-assistant", name: "Bank assistant", exists: true }, blockers: [],
   versions: [
     { version: V1, state: "existing", contentDigest: "1".repeat(64), evidence, requirements, environment: null },
     { version: V2, state: "new", contentDigest: "2".repeat(64), evidence, requirements, environment: { status: "missing", checkedAt: "2026-10-08T00:00:00.000Z",
@@ -37,12 +37,11 @@ function mount() {
 describe("Guardrail package import", () => {
   it("previews source, evidence and environment, then imports only what is new", async () => {
     vi.mocked(uploadGuardrailPackage).mockResolvedValue(preview());
-    vi.mocked(importGuardrailPackage).mockResolvedValue({ guardrailId: "bank-assistant", imported: [V2], existing: [V1], latestVersion: V1 });
+    vi.mocked(importGuardrailPackage).mockResolvedValue({ guardrailId: "bank-assistant", imported: [V2], existing: [V1] });
     const { dialog, choose, onClose } = mount();
     expect(within(dialog).getByText("guardrailPackage.noProductionTesting")).toBeTruthy();
     choose();
     expect(await within(dialog).findByText(V2)).toBeTruthy();
-    expect(within(dialog).getByText("guardrailPackage.recommended")).toBeTruthy();
     expect(within(dialog).getByText(/GuardTopicJudgeAction/)).toBeTruthy();
     expect(within(dialog).getByText("guardrailPackage.stateExisting")).toBeTruthy();
     fireEvent.click(within(dialog).getByRole("button", { name: "guardrailPackage.importOne" }));

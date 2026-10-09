@@ -242,7 +242,7 @@ UAT authors and tests; production only receives released versions. The design
 is `docs/guardrail-self-contained-promotion-design.zh-CN.md`.
 
 **Export (UAT).** **Guardrails → row Actions → Export…** (or **Export…** on a
-version) selects one or more published versions (Latest preselected) and
+version) selects one or more published versions (none preselected) and
 downloads one signed `.guardrail.zip`. Each version carries its exact Artifact
 content, a frozen inspection snapshot, derived runtime requirements and the test
 evidence for that content digest. Export refuses versions that cannot prove what

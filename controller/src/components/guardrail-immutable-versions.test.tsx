@@ -39,7 +39,7 @@ function open(day = 3) {
   return screen.getByRole("dialog");
 }
 beforeEach(() => {
-  vi.mocked(getControllerGuardrail).mockResolvedValue({ id: "g1", latestVersion: versions[1].version, versions: versions.map(v => ({ version: v.version, createdAt: v.created_at, status: "ready", artifactId: v.version, validationRunId: `run-${v.version}` })) } as never);
+  vi.mocked(getControllerGuardrail).mockResolvedValue({ id: "g1", versions: versions.map(v => ({ version: v.version, createdAt: v.created_at, status: "ready", artifactId: v.version, validationRunId: `run-${v.version}` })) } as never);
   vi.mocked(getGuardrailVersionDeletionImpact).mockResolvedValue({ deletable: false, blockers: [{ code: "latest", until: null }], references: [], unrestorableRevisions: [] } as never);
 });
 afterEach(() => { cleanup(); vi.clearAllMocks(); auth.user.role = "admin"; });
@@ -126,7 +126,6 @@ describe("Immutable version list and detail drawer", () => {
     expect(screen.queryByRole("button", { name: "guardrails.exportEllipsis" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "uiCopy.versionActions" }));
     expect(screen.getByRole("menuitem", { name: "guardrails.exportEllipsis" })).toBeTruthy();
-    expect(screen.queryByRole("menuitem", { name: "guardrails.markLatest" })).toBeNull();
     expect(screen.queryByRole("menuitem", { name: "uiCopy.delete" })).toBeNull();
   });
 
@@ -154,19 +153,12 @@ describe("Immutable version list and detail drawer", () => {
     expect(screen.getByRole("dialog").textContent).toContain(status === "failed" ? "Compiler unavailable" : "guardrails.compilationPendingDetail");
     fireEvent.click(screen.getByRole("button", { name: "uiCopy.versionActions" }));
     expect(screen.getByRole("menuitem", { name: "guardrails.exportEllipsis" }).hasAttribute("disabled")).toBe(true);
-    expect(screen.getByRole("menuitem", { name: "guardrails.markLatest" }).hasAttribute("disabled")).toBe(true);
   });
 
-  it("returns to the selected details when marking Latest is cancelled", async () => {
+  it("offers no pointer to move: a version is only exported, deleted or pinned elsewhere", () => {
     mount(); open(2);
     fireEvent.click(screen.getByRole("button", { name: "uiCopy.versionActions" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "guardrails.markLatest" }));
-    expect(screen.getAllByRole("dialog")).toHaveLength(1);
-    await screen.findByRole("dialog", { name: /guardrails.confirmMarkLatestTitle/ });
-    expect(screen.getByRole("dialog").textContent).toContain("guardrails.confirmMarkLatestTitle");
-    fireEvent.click(screen.getByRole("button", { name: "common.cancel" }));
-    expect(screen.getByRole("dialog").textContent).toContain(version(2).version);
-    expect(screen.getByRole("dialog").textContent).toContain("immutableVersions.readOnly");
+    expect(screen.getAllByRole("menuitem").map(item => item.textContent)).toEqual(["guardrails.exportEllipsis", "uiCopy.delete"]);
   });
 
   it("opens a row action without opening details and preserves deletion blockers", async () => {

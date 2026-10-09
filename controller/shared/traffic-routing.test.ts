@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   capabilityIssues, evaluateCondition, evaluateSelector, previewRouter, routerDraftSchema,
   routingInputSchema, routingIssues, selectorConditionSchema, selectorExpressionSchema,
-  selectorFieldCatalog, type RouterDraft, type RoutingInput, type SelectorCondition,
+  selectorFieldCatalog, targetSchema, type RouterDraft, type RoutingInput, type SelectorCondition,
   type SelectorExpression, type TrafficRoute,
 } from "./traffic-routing.js";
 
@@ -131,7 +131,7 @@ describe("bounded schemas and error classes", () => {
     expect(routingIssues(config)).toEqual([]);
     expect(routingIssues(config, true).join(";")).toMatch(/Selector/);
     expect(routingIssues(config, true).join(";")).toMatch(/100%/);
-    config.routes[0]!.targets[0]!.guardrailVersion = "latest";
+    config.routes[0]!.targets[0]!.guardrailVersion = " ";
     expect(routingIssues(config, true).join(";")).toMatch(/pin a Guardrail Version/);
     const invalidFallback = fallback(); invalidFallback.selector.expression.combinator = "or";
     expect(routingIssues({ routes: [invalidFallback] }).join(";")).toMatch(/unconditional/);
@@ -185,14 +185,11 @@ describe("capabilities and exact ordered preview", () => {
 
 
 describe("publication target contracts", () => {
-  it("allows latest with empty version while undefined and explicit pinned require identities", () => {
+  it("requires every target to pin a version and accepts no version strategy", () => {
     const value = draft(); const target = value.routes[0]!.targets[0]!;
     target.guardrailVersion = "";
     expect(routingIssues(value, true).join(";")).toContain("pin a Guardrail Version");
-    target.versionStrategy = "pinned";
-    expect(routingIssues(value, true).join(";")).toContain("pin a Guardrail Version");
-    target.versionStrategy = "latest";
-    expect(routingIssues(value, true)).toEqual([]);
+    expect(targetSchema.safeParse({ ...target, guardrailVersion: "20261009-120000.000Z", versionStrategy: "latest" }).success).toBe(false);
   });
   it("requires one 100% fallback target and preserves fallback topology", () => {
     const value = draft(); const fallbackRoute = value.routes[0]!;

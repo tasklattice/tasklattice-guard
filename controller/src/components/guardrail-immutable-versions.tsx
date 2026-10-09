@@ -18,7 +18,7 @@ import { toast } from "./ui/notifications";
 import { Skeleton } from "./ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
-import { markGuardrailVersionLatest, type GuardrailVersion, type GuardrailVersionDetail, type ValidationRun } from "@/lib/api";
+import { type GuardrailVersion, type GuardrailVersionDetail, type ValidationRun } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { checkGuardrailVersionEnvironment, getSystemBaseline, setSystemBaseline } from "@/lib/controller-api";
 import { useDeploymentCapabilities } from "@/lib/deployment";
@@ -27,7 +27,7 @@ import { CopyableChecksum as Digest } from "./copyable-checksum";
 import { EnvironmentStatus } from "./guardrail-import-sheet";
 import { Input } from "./ui/input";
 
-type VersionAction = { kind: "export" | "latest" | "delete" | "baseline"; version: string };
+type VersionAction = { kind: "export" | "delete" | "baseline"; version: string };
 type Props = {
   openRequested?: boolean;
   onOpenRequestHandled?: () => void;
@@ -106,14 +106,6 @@ export function ImmutableVersionView({ openRequested, onOpenRequestHandled, deta
     mutationFn: (version: string) => checkGuardrailVersionEnvironment(guardrailId, version),
     onSuccess: () => onChanged(),
   });
-  const markLatest = useMutation({
-    mutationFn: (version: string) => markGuardrailVersionLatest(guardrailId, version),
-    onSuccess: async (_result, version) => {
-      await onChanged();
-      setAction(null);
-      toast.success(t("guardrails.markLatestSucceeded", { version }));
-    },
-  });
   const openVersion = (version: string, target: HTMLElement) => {
     opener.current = target;
     onSelectVersion(version);
@@ -130,7 +122,7 @@ export function ImmutableVersionView({ openRequested, onOpenRequestHandled, deta
     setPage(Math.floor(index / PAGE_SIZE));
     setPolicyPage(0);
   };
-  const closeAction = () => { setAction(null); markLatest.reset(); };
+  const closeAction = () => { setAction(null); switchBaseline.reset(); };
   const menu = (version: GuardrailVersion, inDrawer = false) => (
     <div onFocusCapture={event => { if (!inDrawer && event.target instanceof HTMLButtonElement && event.currentTarget.contains(event.target)) opener.current = event.target; }}><DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -138,9 +130,8 @@ export function ImmutableVersionView({ openRequested, onOpenRequestHandled, deta
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem disabled={Boolean(version.compile_status && version.compile_status !== "ready")} onSelect={() => setAction({ kind: "export", version: version.version })}><Download />{t("guardrails.exportEllipsis")}</DropdownMenuItem>
-        {auth.user?.role === "admin" ?
-          <DropdownMenuItem variant="edit" disabled={version.latest || Boolean(version.compile_status && version.compile_status !== "ready")} onSelect={() => setAction({ kind: "latest", version: version.version })}><Check />{t("guardrails.markLatest")}</DropdownMenuItem> : null}
-        {auth.user?.role === "admin" && isDefault && !capabilities.authoringEnabled ?
+        {/* The runtime baseline is pinned; switching it is always explicit. */}
+        {auth.user?.role === "admin" && isDefault ?
           <DropdownMenuItem variant="edit" disabled={baseline.data?.version === version.version || Boolean(version.compile_status && version.compile_status !== "ready")} onSelect={() => setAction({ kind: "baseline", version: version.version })}><ShieldCheck />{t("guardrailPackage.setBaseline")}</DropdownMenuItem> : null}
         {auth.user?.role === "admin" ? <DropdownMenuItem variant="destructive" onSelect={() => setAction({ kind: "delete", version: version.version })}><Trash2 />{t("uiCopy.delete")}</DropdownMenuItem>
         : null}
@@ -166,7 +157,6 @@ export function ImmutableVersionView({ openRequested, onOpenRequestHandled, deta
               <TableBody>{ordered.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE).map(version => <TableRow key={version.version} data-state={drawerOpen && selectedVersion?.version === version.version ? "selected" : undefined}>
                 <TableCell><div className="flex items-center gap-3">
                   <Button variant="ghost" className="min-h-11 px-0 font-mono text-sm text-primary hover:underline" aria-label={t("immutableVersions.view", { version: version.version })} ref={node => { if (node) versionButtons.current.set(version.version, node); else versionButtons.current.delete(version.version); }} aria-haspopup="dialog" onClick={event => openVersion(version.version, event.currentTarget)}>{version.version}</Button>
-                  {version.latest ? <StateBadge state="active" label={t("guardrails.latestVersionLabel")} /> : null}
                   {isDefault && baseline.data?.version === version.version ? <StateBadge state="protected" label={t("guardrailPackage.baselineCurrent")} /> : null}
                   {version.compile_status && version.compile_status !== "ready" ? <StateBadge state={version.compile_status === "failed" ? "failed" : "running"} label={t(`immutableVersions.${version.compile_status === "failed" ? "failed" : "compiling"}`)} /> : null}
                 </div></TableCell>
@@ -184,7 +174,7 @@ export function ImmutableVersionView({ openRequested, onOpenRequestHandled, deta
     {drawerOpen && !action && selectedVersion ? <EntitySheet open onOpenChange={open => { if (!open) { opener.current = versionButtons.current.get(selectedVersion.version) ?? opener.current; setDrawerOpen(false); onCloseCompare(); } }}
       returnFocusRef={opener} width="xl" density="compact" bodyClassName="flex flex-col !overflow-hidden !py-0" footer={null}
       eyebrow={t("guardrails.versions")}
-      title={<span className="flex items-center gap-3"><span className="font-mono text-xl">{selectedVersion.version}</span>{selectedVersion.latest ? <StateBadge state="active" label={t("guardrails.latestVersionLabel")} /> : null}</span>}
+      title={<span className="flex items-center gap-3"><span className="font-mono text-xl">{selectedVersion.version}</span>{isDefault && baseline.data?.version === selectedVersion.version ? <StateBadge state="protected" label={t("guardrailPackage.baselineCurrent")} /> : null}</span>}
       description={<span className="flex items-center gap-2"><LockKeyhole className="size-3.5" />{t("immutableVersions.readOnly")}<span aria-hidden="true">·</span>{t("immutableVersions.detailDescription", { date: new Date(selectedVersion.created_at).toLocaleString(i18n.language) })}</span>}
     >
       <div className="flex shrink-0 items-center justify-between gap-3 border-b bg-background py-2">
@@ -237,11 +227,6 @@ export function ImmutableVersionView({ openRequested, onOpenRequestHandled, deta
                   </Tabs>}
       </div>
     </EntitySheet> : null}
-    {action?.kind === "latest" ? <ConfirmationSheet open returnFocusRef={drawerOpen ? undefined : opener} onOpenChange={open => { if (!open && !markLatest.isPending) closeAction(); }}
-      eyebrow={t("guardrails.confirmActionEyebrow")} title={t("guardrails.confirmMarkLatestTitle", { version: action.version })} description={t("guardrails.confirmMarkLatestDescription")}
-      cancelLabel={t("common.cancel")} confirmLabel={t("guardrails.markLatest")} pendingLabel={t("common.saving")} pending={markLatest.isPending} confirmIcon={<Check />} onConfirm={() => markLatest.mutate(action.version)}>
-      <p className="text-sm leading-6 text-muted-foreground">{t("guardrails.confirmMarkLatestImpact")}</p>{markLatest.error ? <ErrorNotice error={markLatest.error} /> : null}
-    </ConfirmationSheet> : null}
     {action?.kind === "delete" ? <DeleteGuardrailVersionSheet returnFocusRef={drawerOpen ? undefined : opener} guardrailId={guardrailId} version={action.version} onClose={closeAction} onDeleted={async () => {
       toast.success(t("guardrails.versionDeleted", { version: action.version }));
       setDrawerOpen(false);

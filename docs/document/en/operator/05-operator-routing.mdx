@@ -17,7 +17,7 @@ order: 4
 4. **Choose a Guardrail Target**: select a published Guardrail Version and give a single Target 100% of matching traffic. Two Targets weighted 90%/10% split matching requests between two versions; **each request chooses one Target**. To run several checks on one request, combine Policies inside one Guardrail.
 5. **Keep the final fallback and preview**. Requests not matched earlier reach the unconditional fallback. Use the Route's **Test matching** preview, then choose **Review & submit**. Another administrator approves the change, which publishes it; then inspect Runner rollout.
 
-A Target set to `latest` resolves to an exact Guardrail Version when the change is submitted, and approval applies that version. Publishing a later Guardrail Version does not silently change that Router's target.
+Every Target pins one exact Guardrail Version; there is no "use latest". The change you review lists exactly the versions approval applies, and publishing a later Guardrail Version never changes a Router's targets. To move traffic to a new version, edit the Target and submit a change.
 
 <a id="operator-routing-approval" />
 
@@ -69,7 +69,7 @@ These three identifiers answer different questions: a **Guardrail Version** fixe
 
 - Confirm the current Validation Run, checksum, dependencies, and specialized models.
 - Check Settings / Health and the Router Overview rollout status and desired generation.
-- Router rollback publishes a new revision from the active change's approved base revision; older revisions are restored as a draft and submitted again. Guardrail **Mark as latest** moves the Latest pointer to an existing ready version; Targets set to **Use latest** pick it up only when their next routing change is submitted and approved.
+- Router rollback publishes a new revision from the active change's approved base revision; older revisions are restored as a draft and submitted again. Moving traffic between Guardrail Versions is always a routing change that pins the new version.
 - In-flight calls retain their pinned version. New calls use the new routing snapshot after the Runner applies the Router revision.
 - Never patch historical artifacts; create a new version for semantic changes.
 

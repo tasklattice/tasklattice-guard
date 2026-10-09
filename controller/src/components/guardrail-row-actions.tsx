@@ -18,14 +18,15 @@ export function GuardrailRowActions({ guardrail }: { guardrail: Guardrail }) {
   const canEdit = useAuth().user?.role === 'admin';
   const { authoringEnabled } = useDeploymentCapabilities();
   const [action, setAction] = useState<'delete' | 'duplicate' | 'export' | null>(null);
+  const published = guardrail.status !== "needs_validation";
   return <>
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon" className="size-11" aria-label={`${t("routing.actions")}: ${guardrail.name}`}><MoreHorizontal className="size-4" /></Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" onCloseAutoFocus={event => { if (action) event.preventDefault(); }}>
-        <DropdownMenuItem disabled={!guardrail.latest_version} onSelect={() => setAction('export')}><Download />{t('guardrails.exportEllipsis')}</DropdownMenuItem>
-        {!guardrail.latest_version && <DropdownMenuLabel>{t('guardrails.exportRequiresPublish')}</DropdownMenuLabel>}
+        <DropdownMenuItem disabled={!published} onSelect={() => setAction('export')}><Download />{t('guardrails.exportEllipsis')}</DropdownMenuItem>
+        {!published && <DropdownMenuLabel>{t('guardrails.exportRequiresPublish')}</DropdownMenuLabel>}
         {canEdit && authoringEnabled && <DropdownMenuItem onSelect={() => setAction('duplicate')}><Copy />{t("routing.duplicate")}</DropdownMenuItem>}
         {canEdit && <DropdownMenuItem variant="destructive" onSelect={() => setAction('delete')}><Trash2 />{t("routing.delete")}</DropdownMenuItem>}
       </DropdownMenuContent>

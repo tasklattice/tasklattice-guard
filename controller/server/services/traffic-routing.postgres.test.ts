@@ -49,7 +49,7 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
     await pool.query(`INSERT INTO auth_user (id,name,email,role) VALUES ('admin','Admin','admin@example.test','admin'),('approver','Approver','approver@example.test','admin');
       INSERT INTO controller_state (id) VALUES ('singleton');
       INSERT INTO runner_pool (id,name) VALUES ('default','Default');
-      INSERT INTO guardrail (id,name,draft_config,status,latest_version,latest_artifact_id) VALUES ('guard-a','Original','{}','active','1','artifact-a'),('guard-b','Other','{}','active','1','artifact-b');
+      INSERT INTO guardrail (id,name,draft_config,status) VALUES ('guard-a','Original','{}','active'),('guard-b','Other','{}','active');
       INSERT INTO guardrail_version (guardrail_id,version,generation,status,runtime_profile,plan,artifact_id) VALUES
         ('guard-a','1',1,'ready','auto','{}','artifact-a'),('guard-b','1',2,'ready','auto','{}','artifact-b');
       INSERT INTO endpoint (id,name,adapter) VALUES ('http','HTTP','HTTP'),('a2a','A2A','A2A');`);
@@ -178,11 +178,11 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
     expect((await pool.query("SELECT detail FROM audit_event WHERE kind='router.change_emergency_applied'")).rows[0].detail).toMatchObject({ emergencyReason: "Active abuse" });
   });
 
-  it("applies the version frozen at submission even when the Latest pointer moves", async () => {
-    const router = await service.trafficRouting.create("Latest", "", latestDraft(), actor, ["http"]);
+  it("applies exactly the submitted version even after a newer one is published", async () => {
+    const router = await service.trafficRouting.create("Pinned", "", draft(), actor, ["http"]);
     const change = await submit(router.id);
     expect(change.snapshot.routes[0]!.targets[0]!.guardrailVersion).toBe("1");
-    await addVersion("2", 3, "ready", "artifact-2", true);
+    await addVersion("2", 3, "ready", "artifact-2");
     const applied = await service.trafficRouting.approveChange(router.id, change.id, approver, {});
     expect(applied.activeSnapshot!.routes[0]!.targets[0]!.guardrailVersion).toBe("1");
   });
@@ -240,9 +240,10 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
     await pool.query("INSERT INTO guardrail_version (guardrail_id,version,generation,status,runtime_profile,plan,artifact_id) VALUES ('guard-b','0',90,'ready','auto','{}','artifact-b0')");
   }
   const toOld = () => { const value = draft(); value.routes[0]!.targets[0]!.guardrailId = "guard-b"; value.routes[0]!.targets[0]!.guardrailVersion = "0"; return value; };
-  it("lists every routing reference and the Latest pointer before deleting a version", async () => {
+  it("lists every routing reference before deleting a version", async () => {
     await oldVersion();
-    expect(await impact("1")).toMatchObject({ deletable: false, references: [{ kind: "latest" }] });
+    // Being the newest version is not a reference: only pinned routing is.
+    expect((await impact("1")).references).toEqual([]);
     const active = await publish(toOld());
     const pending = await create(toOld()); await submit(pending.id);
     const drafted = await publish(); await service.trafficRouting.save(drafted.id, 1, toOld(), actor);
@@ -345,44 +346,27 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
     expect(revisions[0]?.context?.endpoints).toEqual([{ id: "http", name: "HTTP", adapter: "HTTP" }]);
   });
 
-  const latestDraft = () => {
-    const value = draft();
-    value.routes[0]!.targets[0]!.versionStrategy = "latest";
-    value.routes[0]!.targets[0]!.guardrailVersion = "";
-    return value;
-  };
-  async function addVersion(version: string, generation: number, status = "ready", artifact: string | null = "artifact-new", latest = false) {
+  async function addVersion(version: string, generation: number, status = "ready", artifact: string | null = "artifact-new") {
     await pool.query("INSERT INTO guardrail_version (guardrail_id,version,generation,status,runtime_profile,plan,artifact_id) VALUES ('guard-a',$1,$2,$3,'auto','{}',$4)", [version, generation, status, artifact]);
-    if (latest) await pool.query("UPDATE guardrail SET latest_version=$1, latest_artifact_id=$2 WHERE id='guard-a'", [version, artifact]);
   }
-  it("previews Use latest through the Latest pointer, strips strategies, and preserves the editable draft on approval", async () => {
-    await addVersion("a-marked", 3, "ready", "artifact-marked", true);
+  it("routes exactly the pinned versions: the reviewed snapshot is the draft, and no strategy is accepted", async () => {
     await addVersion("z-newer", 4);
-    await addVersion("compiling", 5, "compiling");
-    const value = latestDraft();
-    const router = await service.trafficRouting.create("Latest", "", value, actor, ["http"]);
-    const before = await generation(), audits = await count("audit_event");
+    const value = draft();
+    const router = await service.trafficRouting.create("Pinned", "", value, actor, ["http"]);
     const preview = await service.trafficRouting.preview(router.id, 1);
-    expect(preview).toMatchObject({ draftRevision: 1, endpointIds: ["http"] });
-    expect(preview.snapshot.routes[0]!.targets[0]).toEqual({ ...draft().routes[0]!.targets[0], guardrailVersion: "a-marked" });
-    expect(await generation()).toBe(before); expect(await count("audit_event")).toBe(audits); expect(await count("traffic_router_revision")).toBe(0);
+    // A newer version exists, yet the reviewed snapshot still names version "1".
+    expect(preview.snapshot).toEqual(value);
     const published = await apply(router.id);
-    expect(published.draft).toEqual(value); expect(published.activeSnapshot).toEqual(preview.snapshot);
-    expect((await service.trafficRouting.revisions(router.id))[0]?.context?.guardrails).toEqual([{ id: "guard-a", name: "Original", version: "a-marked" }]);
-  });
-  it("rejects Use latest when the Latest pointer is missing or not ready", async () => {
-    await addVersion("compiling", 3, "compiling", null, true);
-    const router = await create(latestDraft());
-    await expect(service.trafficRouting.preview(router.id, 1)).rejects.toThrow("no ready Latest Guardrail Version");
-    await pool.query("UPDATE guardrail SET latest_version=NULL, latest_artifact_id=NULL WHERE id='guard-a'");
-    await expect(service.trafficRouting.preview(router.id, 1)).rejects.toThrow("no ready Latest Guardrail Version");
+    expect(published.activeSnapshot).toEqual(value);
+    const following = draft() as unknown as { routes: Array<{ targets: Array<Record<string, unknown>> }> };
+    following.routes[0]!.targets[0]!.versionStrategy = "latest";
+    await expect(service.trafficRouting.create("Following", "", following as never, actor)).rejects.toThrow();
   });
 
-  it.each(["version", "binding", "readiness"])("requires re-review after %s drift before submission", async drift => {
-    const router = await create(latestDraft());
+  it.each(["binding", "readiness"])("requires re-review after %s drift before submission", async drift => {
+    const router = await create(draft());
     const preview = await service.trafficRouting.preview(router.id, 1);
-    if (drift === "version") await addVersion("2", 3, "ready", "artifact-2", true);
-    else if (drift === "readiness") await pool.query("UPDATE guardrail_version SET status='compiling' WHERE guardrail_id='guard-a'");
+    if (drift === "readiness") await pool.query("UPDATE guardrail_version SET status='compiling' WHERE guardrail_id='guard-a'");
     else await service.trafficRouting.bind(router.id, ["http"], actor);
     await expect(service.trafficRouting.submitChange(router.id, { expectedDraftRevision: 1, reviewedSnapshot: preview.snapshot, reviewedEndpointIds: preview.endpointIds, reason: "Drift", ticket: "" }, actor))
       .rejects.toMatchObject({ code: "router_review_conflict" });
@@ -392,16 +376,16 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
     expect(await count("traffic_router_revision")).toBe(1);
   });
 
-  it("validates preview revision, capabilities, readiness and resolved duplicate targets without writes", async () => {
-    const router = await create(latestDraft());
+  it("validates preview revision, capabilities, readiness and duplicate targets without writes", async () => {
+    const router = await create(draft());
     await expect(service.trafficRouting.preview(router.id, 2)).rejects.toMatchObject({ code: "router_draft_conflict" });
     await pool.query("UPDATE guardrail_version SET status='compiling' WHERE guardrail_id='guard-a'");
-    await expect(service.trafficRouting.preview(router.id, 1)).rejects.toThrow("no ready Latest Guardrail Version");
+    await expect(service.trafficRouting.preview(router.id, 1)).rejects.toThrow("is not a ready Guardrail Version");
     await pool.query("UPDATE guardrail_version SET status='ready' WHERE guardrail_id='guard-a'");
-    const duplicate = withHeader(); duplicate.routes[0]!.targets[0]!.versionStrategy = "latest"; duplicate.routes[0]!.targets[0]!.guardrailVersion = ""; duplicate.routes[0]!.targets[0]!.weightBps = 5000;
-    duplicate.routes[0]!.targets.push({ ...draft().routes[0]!.targets[0]!, id: "duplicate", versionStrategy: "pinned", weightBps: 5000 });
-    await service.trafficRouting.save(router.id, 1, duplicate, actor);
-    await expect(service.trafficRouting.preview(router.id, 2)).rejects.toThrow("duplicate Guardrail Version");
+    const duplicate = withHeader(); duplicate.routes[0]!.targets[0]!.weightBps = 5000;
+    duplicate.routes[0]!.targets.push({ ...draft().routes[0]!.targets[0]!, id: "duplicate", weightBps: 5000 });
+    // With every target pinned, a duplicate is visible in the draft itself and never saved.
+    await expect(service.trafficRouting.save(router.id, 1, duplicate, actor)).rejects.toThrow("duplicate Guardrail Version");
     const capable = await service.trafficRouting.create("Capability", "", draft(), actor, ["a2a"]);
     await service.trafficRouting.save(capable.id, 1, withHeader(), actor);
     await expect(service.trafficRouting.preview(capable.id, 2)).rejects.toThrow("does not supply");
@@ -554,7 +538,7 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
     const cases = await db.select().from(schema.testCases).where(eq(schema.testCases.guardrailId, "guard-a"));
     const snapshot = { draftConfig: config, runtimeProfile: "llmrails_colang2_programmable", loggingLevel: "debug", excludedTestCaseIds: ["custom-case"], testCases: cases };
     await db.update(schema.guardrailVersions).set({ sourceSnapshot: snapshot }).where(eq(schema.guardrailVersions.guardrailId, "guard-a"));
-    await db.update(schema.guardrails).set({ draftConfig: config, latestVersion: "1", runtimeProfile: snapshot.runtimeProfile, loggingLevel: "debug", excludedTestCaseIds: snapshot.excludedTestCaseIds }).where(eq(schema.guardrails.id, "guard-a"));
+    await db.update(schema.guardrails).set({ draftConfig: config, runtimeProfile: snapshot.runtimeProfile, loggingLevel: "debug", excludedTestCaseIds: snapshot.excludedTestCaseIds }).where(eq(schema.guardrails.id, "guard-a"));
     return { db, snapshot };
   }
   it("restores the complete published draft with a new revision and retains immutable history", async () => {
@@ -566,7 +550,7 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
     expect(preview.changes.map(c => c.kind)).toEqual(expect.arrayContaining(["setting", "caseUpdated", "testScope"]));
     const originalVersion = (await db.select().from(schema.guardrailVersions).where(eq(schema.guardrailVersions.guardrailId, "guard-a")))[0];
     const restored = await service.discardGuardrailDraft({ id: "guard-a", actorId: actor, expectedDraftRevision: 2, expectedBaselineVersion: "1" });
-    expect(restored).toMatchObject({ draftRevision: 3, hasUnpublishedChanges: false, latestVersion: "1", latestArtifactId: "artifact-a", loggingLevel: "trace", excludedTestCaseIds: ["custom-case"] });
+    expect(restored).toMatchObject({ draftRevision: 3, hasUnpublishedChanges: false, loggingLevel: "trace", excludedTestCaseIds: ["custom-case"] });
     expect((await service.guardrailDraftChanges("guard-a")).changes).toEqual([]);
     expect((await db.select().from(schema.testCases).where(eq(schema.testCases.guardrailId, "guard-a")))[0]?.content).toBe("frozen");
     expect((await db.select().from(schema.guardrailVersions).where(eq(schema.guardrailVersions.guardrailId, "guard-a")))[0]).toEqual(originalVersion);
@@ -602,7 +586,7 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
     const request = { id: "guard-a", name: "Independent", sourceVersion: "1", idempotencyKey: "copy", actorId: actor };
     const copies = await Promise.all(Array.from({ length: 6 }, () => service.duplicateGuardrail(request)));
     const copy = copies[0]!; expect(new Set(copies.map(c => c.id)).size).toBe(1); expect(copy.id).not.toBe("guard-a");
-    expect(copy).toMatchObject({ draftConfig: snapshot.draftConfig, runtimeProfile: snapshot.runtimeProfile, loggingLevel: "debug", excludedTestCaseIds: ["custom-case"], status: "draft", latestVersion: null, latestValidationRun: null, versions: [] });
+    expect(copy).toMatchObject({ draftConfig: snapshot.draftConfig, runtimeProfile: snapshot.runtimeProfile, loggingLevel: "debug", excludedTestCaseIds: ["custom-case"], status: "draft", latestValidationRun: null, versions: [] });
     expect(copy.copyOrigin).toMatchObject({ sourceGuardrailId: "guard-a", sourceName: "Original", sourceVersion: "1", sourceDraftRevision: null });
     // JSON storage normalizes dates; digest must describe the actual frozen source payload.
     const storedSnapshot = (await db.select().from(schema.guardrailVersions).where(eq(schema.guardrailVersions.guardrailId, "guard-a")))[0]!.sourceSnapshot;

@@ -68,7 +68,7 @@ describe("Guardrail edit, test and publish workflow", () => {
   afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
   it("hides draft status and Test draft when the working copy matches a published version", async () => {
-    setupPage({ published_current: true, has_unpublished_changes: false, latest_version: "20261008-000000.000Z" });
+    setupPage({ published_current: true, has_unpublished_changes: false });
     render(wrap(<GuardrailDetailPage />));
     await screen.findByRole("heading", { name: draft.name });
     expect(screen.queryByRole("button", { name: "guardrails.testDraft" })).toBeNull();
@@ -81,7 +81,7 @@ describe("Guardrail edit, test and publish workflow", () => {
 
   it("shows an imported Guardrail read-only: no draft, editing, testing or Playground", async () => {
     routing.tab = undefined as unknown as string;
-    setupPage({ origin: "imported", source_id: "bank-uat", published_current: true, has_unpublished_changes: false, latest_version: "20261008-000000.000Z", status: "ready" });
+    setupPage({ origin: "imported", source_id: "bank-uat", published_current: true, has_unpublished_changes: false, status: "ready" });
     render(wrap(<GuardrailDetailPage />));
     await screen.findByRole("heading", { name: draft.name });
     expect(screen.getByText("guardrailPackage.importedFrom")).toBeTruthy();

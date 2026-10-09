@@ -5,7 +5,7 @@ import { Download } from "lucide-react";
 import { downloadGuardrailPackage, getControllerGuardrail, type GuardrailVersion } from "@/lib/controller-api";
 import { useDeploymentCapabilities } from "@/lib/deployment";
 import { EntitySheet } from "./entity-sheet";
-import { ErrorNotice, InfoNotice, StateBadge } from "./product-shell";
+import { ErrorNotice, InfoNotice } from "./product-shell";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
 import { Skeleton } from "./ui/skeleton";
@@ -33,9 +33,8 @@ export function ExportGuardrailSheet({ guardrailId, guardrailName, initialVersio
     .sort((left, right) => right.version.localeCompare(left.version));
   const exportable = versions.filter(version => !exportBlocker(version));
   const [chosen, setChosen] = useState<Set<string> | null>(null);
-  // Default: the requested version, otherwise Latest.
-  const fallback = versions.some(v => v.version === initialVersion) ? initialVersion : detail.data?.latestVersion ?? exportable[0]?.version;
-  const selected = chosen ?? new Set(fallback && exportable.some(v => v.version === fallback) ? [fallback] : []);
+  // Only a version opened from its own menu starts selected; otherwise choose explicitly.
+  const selected = chosen ?? new Set(initialVersion && exportable.some(v => v.version === initialVersion) ? [initialVersion] : []);
   const toggle = (version: string, on: boolean) => {
     const next = new Set(selected);
     if (on) next.add(version); else next.delete(version);
@@ -78,7 +77,6 @@ export function ExportGuardrailSheet({ guardrailId, guardrailName, initialVersio
                 <Checkbox aria-label={version.version} disabled={Boolean(blocker)} checked={selected.has(version.version)} onCheckedChange={on => toggle(version.version, on)} />
                 <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
                   <span className="font-mono text-sm">{version.version}</span>
-                  {version.version === detail.data.latestVersion && <StateBadge state="active" label={t("guardrails.latestVersionLabel")} />}
                   <span className="text-xs text-muted-foreground">{t("guardrails.publishedAt", { time: new Date(version.createdAt).toLocaleString(i18n.language) })}</span>
                   {blocker ? <span className="w-full text-xs text-muted-foreground">{t(`guardrailPackage.${blocker}`)}</span> : null}
                 </span>

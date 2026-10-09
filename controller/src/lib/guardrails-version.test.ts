@@ -28,7 +28,7 @@ describe("Immutable Guardrail version projection", () => {
 
   it("includes compiled custom Colang flows even when there are no declarative steps", async () => {
     const fixture = {
-      id: "guard-1", latestVersion: "v1", draftConfig: {},
+      id: "guard-1", draftConfig: {},
       versions: [{ guardrailId: "guard-1", version: "v1", sourceDraftRevision: 1, runtimeProfile: "llmrails-colang2",
         status: "ready", createdAt: "2026-09-05T00:00:00Z", failureReason: null,
         plan: { steps: [], output_delivery: "full_buffered" },

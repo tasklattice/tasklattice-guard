@@ -39,8 +39,8 @@ try{
  assert.equal(report.validation.status,'passed');assert.equal(report.validation.results.length,2);
  assert(report.validation.results.every(c=>c.modelInvocations===1&&!c.actualFailure));
  report.publication=await api(path+'/publish',{});save();
- const guard=await until(path,g=>g.latestVersion===report.publication.version&&g.versions.some(v=>v.version===g.latestVersion&&v.status==='ready'));
- const version=guard.versions.find(v=>v.version===guard.latestVersion);assert(version.artifact.signature);
+ const guard=await until(path,g=>g.versions.some(v=>v.version===report.publication.version&&v.status==='ready'));
+ const version=guard.versions.find(v=>v.version===report.publication.version);assert(version.artifact.signature);
  assert(version.plan.steps.every(s=>s.capability==='content_safety'));report.artifact={id:version.artifactId,checksum:version.artifact.checksum};save();
  report.endpoint=await api('/api/v1/endpoints',{name:report.name,adapter:'generic-http-guard'});save();
  report.router=await api('/api/v1/routers',{name:report.name,guardrailId:guard.id,endpointId:report.endpoint.id,poolId:'default',enabled:true,trafficScope:{combinator:'and',conditions:[]}});save();
@@ -57,7 +57,7 @@ try{
   assert(report.reservedNvidiaCalls<6);report.reservedNvidiaCalls++;save();
   const r=await fetch(runtime+'/guardrails/evaluate',{method:'POST',headers:{'x-api-key':report.endpoint.credential,'content-type':'application/json'},body:JSON.stringify({phase:c.phase,texts:[c.content],call_id:randomUUID()}),signal:AbortSignal.timeout(60000)});
   const result=await r.json();report.checks.push({id:c.id,expected:c.expected,http:r.status,result});save();
-  assert(r.ok);assert.equal(result.decision,c.expected);assert.equal(result.guardrail_id,guard.id);assert.equal(result.guardrail_version,guard.latestVersion);assert.equal(result.model_revision_id,before.active.id);
+  assert(r.ok);assert.equal(result.decision,c.expected);assert.equal(result.guardrail_id,guard.id);assert.equal(result.guardrail_version,version.version);assert.equal(result.model_revision_id,before.active.id);
   assert.equal(result.usage.model_invocations,1);assert.equal(result.usage.fail_closed,false);
   assert(result.trace.some(t=>t.capability==='content_safety'&&t.rail_type===c.phase&&t.model_result==='success'));
  }

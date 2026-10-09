@@ -13,7 +13,6 @@ function version(overrides: Partial<GuardrailVersionDetail> = {}): GuardrailVers
     plan_checksum: "plan-one",
     config_checksum: "config-one",
     created_at: "2026-08-14T07:55:44.381Z",
-    latest: false,
     runtime_engine: "llmrails",
     execution_mode: "nemo_only",
     safety_level: "balanced",

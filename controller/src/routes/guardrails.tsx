@@ -180,8 +180,9 @@ export function GuardrailDetailPage() {
     }, 1_500);
     return () => globalThis.clearInterval(timer);
   }, [compilationPending, validationPending, guardrailQuery, versionsQuery]);
-  const latestVersion = guardrailVersions.find((item) => item.latest);
-  const selectedVersionNumber = selectedVersionOverride && guardrailVersions.some((item) => item.version === selectedVersionOverride) ? selectedVersionOverride : latestVersion?.version ?? guardrailVersions[0]?.version ?? "";
+  const publishedVersions = guardrailVersions.filter((item) => !item.compile_status || item.compile_status === "ready");
+  // Versions arrive newest first; that is only a default selection in this view.
+  const selectedVersionNumber = selectedVersionOverride && guardrailVersions.some((item) => item.version === selectedVersionOverride) ? selectedVersionOverride : guardrailVersions[0]?.version ?? "";
   const selectedVersion = guardrailVersions.find((item) => item.version === selectedVersionNumber);
   const selectedValidation = [...(validationRunsQuery.data?.items ?? [])].sort((a, b) => b.created_at.localeCompare(a.created_at)).find((run) => run.guardrail_version === selectedVersionNumber) ?? null;
   const compareOptions = guardrailVersions.filter((item) => item.version !== selectedVersionNumber && (!item.compile_status || item.compile_status === "ready"));
@@ -289,14 +290,14 @@ export function GuardrailDetailPage() {
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="font-sans text-[2rem] font-normal tracking-normal">{guardrail.name}</h1>
-            {latestVersion ? <Badge className="border-emerald-200 bg-emerald-50 font-mono text-[11px] text-emerald-700 hover:bg-emerald-50">{t("guardrails.latestVersion", { version: latestVersion.version })}</Badge> : <StateBadge state={guardrail.tested_current ? "ready" : "needs_validation"} />}
-            {routers.length ? <StateBadge state="protected" /> : latestVersion ? <StateBadge state="ready" /> : null}
+            {publishedVersions.length ? <Badge variant="outline" className="font-mono text-[11px]">{t("guardrails.publishedVersionCount", { count: publishedVersions.length })}</Badge> : <StateBadge state={guardrail.tested_current ? "ready" : "needs_validation"} />}
+            {routers.length ? <StateBadge state="protected" /> : publishedVersions.length ? <StateBadge state="ready" /> : null}
             {guardrail.is_default ? <Badge variant="outline">{t("guardrails.defaultBadge")}</Badge> : guardrail.system_managed ? <Badge variant="outline">{t("guardrails.systemManaged")}</Badge> : null}
           </div>
           {guardrail.origin === "imported" ? <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground"><LockKeyhole className="size-3.5" aria-hidden="true" />{t("guardrailPackage.importedFrom", { source: guardrail.source_id ?? "" })}</p> : null}
           {guardrail.copy_origin && <p className="mt-2 text-sm text-muted-foreground">{uiText("uiCopy.copiedFrom")}{" "}{guardrail.copy_origin.sourceName} · {guardrail.copy_origin.sourceVersion ?? `draft r${guardrail.copy_origin.sourceDraftRevision}`} · {guardrail.copy_origin.sourceGuardrailId}</p>}
           {hasDraft ? <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-            <p role="status"><span className="font-medium">{t(latestVersion ? "guardrails.unpublishedChanges" : "guardrails.newDraft")}</span> · {t(draftStateKey(guardrail, currentRelease))}{currentTest?.status === "failed" ? ` (${currentTest.metrics.total - currentTest.metrics.passed}/${currentTest.metrics.total})` : ""}</p>
+            <p role="status"><span className="font-medium">{t(publishedVersions.length ? "guardrails.unpublishedChanges" : "guardrails.newDraft")}</span> · {t(draftStateKey(guardrail, currentRelease))}{currentTest?.status === "failed" ? ` (${currentTest.metrics.total - currentTest.metrics.passed}/${currentTest.metrics.total})` : ""}</p>
             <button type="button" className="min-h-11 text-primary hover:underline" onClick={() => setDraftAction("changes")}>{t("guardrails.draftChanges.view")}</button>
             {testingDraft && currentTest?.progress ? <span className="text-xs tabular-nums text-muted-foreground">{t(`guardrails.testProgress.${currentTest.progress.phase}`)} · {t("guardrails.testProgress.completed", { completed: currentTest.progress.completedCases, total: currentTest.metrics.total })}</span> : null}
           </div> : null}
@@ -308,7 +309,7 @@ export function GuardrailDetailPage() {
             {canManageDraft ? <MenuItem label={t("guardrails.editAction")} renderIcon={Pencil} onClick={() => setEditOpen(true)} /> : null}
             {canManageDraft ? <MenuItem label={t("guardrails.editTestCases")} renderIcon={FlaskConical} onClick={() => setTestCasesOpen(true)} /> : null}
             {hasDraft ? <MenuItem label={t("guardrails.draftChanges.view")} renderIcon={FileText} onClick={() => setDraftAction("changes")} /> : null}
-            {canManageDraft && hasDraft && latestVersion ? <MenuItem label={t("guardrails.draftChanges.discard")} renderIcon={RotateCcw} disabled={compilationPending} onClick={() => setDraftAction("discard")} /> : null}
+            {canManageDraft && hasDraft && publishedVersions.length ? <MenuItem label={t("guardrails.draftChanges.discard")} renderIcon={RotateCcw} disabled={compilationPending} onClick={() => setDraftAction("discard")} /> : null}
             {canManageDraft ? <MenuItem label={t("guardrails.openPlayground")} renderIcon={FlaskConical} onClick={() => { void navigate({ to: "/playground", search: { guardrail: guardrail.id, target: "draft", version: undefined } }); }} /> : null}
             {!guardrail.is_default ? <MenuItemDivider /> : null}
             {!guardrail.is_default ? <MenuItem label={t("guardrails.deleteAction")} renderIcon={Trash2} kind="danger" onClick={() => {

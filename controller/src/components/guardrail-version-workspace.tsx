@@ -1,7 +1,6 @@
 import { ArrowLeft, ArrowRight, GitCompareArrows, History } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import { StateBadge } from "@/components/product-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -49,13 +48,10 @@ export function GuardrailVersionNavigator({ versions, selectedVersion, onSelect 
                 aria-label={t("guardrails.selectVersion", { version: releaseId })}
                 onClick={() => onSelect(version.version)}
               >
-                <span className={cn("relative z-10 mt-1 size-3 shrink-0 rounded-full border-2 border-card bg-muted-foreground/40 ring-1 ring-border", version.latest && "bg-emerald-500", selected && "bg-primary ring-primary/30")} />
+                <span className={cn("relative z-10 mt-1 size-3 shrink-0 rounded-full border-2 border-card bg-muted-foreground/40 ring-1 ring-border", selected && "bg-primary ring-primary/30")} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-mono text-xs font-semibold text-foreground">{releaseId}</span>
                   <time className="mt-1 block text-[11px] text-muted-foreground" dateTime={version.created_at}>{new Date(version.created_at).toLocaleString(i18n.language)}</time>
-                  <span className="mt-1.5 flex items-center gap-2">
-                    {version.latest ? <StateBadge state="active" label={t("guardrails.latestVersionLabel")} /> : <span className="text-[11px] text-muted-foreground">{t("guardrails.historicalVersion")}</span>}
-                  </span>
                 </span>
               </button>
             </li>
