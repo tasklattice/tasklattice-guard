@@ -213,6 +213,22 @@
   background-color: currentColor;
   mask: url("./assets/icons/settings-2.svg") center / contain no-repeat;
 }
+.guard-create-button .cds--combo-button__primary-action .cds--btn {
+  // Carbon lays this button out as a block; a flex row places the icon before the text.
+  display: flex;
+  align-items: center;
+}
+.guard-create-button .cds--combo-button__primary-action .cds--btn::before {
+  // Carbon ComboButton accepts a text label only; the same decorative mask
+  // puts the create icon before it, like the other primary actions.
+  content: "";
+  inline-size: 1rem;
+  block-size: 1rem;
+  flex-shrink: 0;
+  margin-inline-end: 0.5rem;
+  background-color: currentColor;
+  mask: url("./assets/icons/plus.svg") center / contain no-repeat;
+}
 .guard-menu-item-content {
   display: flex;
   align-items: center;

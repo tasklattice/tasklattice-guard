@@ -16,7 +16,7 @@ export function CreateSplitButton({ label, importLabel, onCreate, onImport }: {
 }) {
   const { t } = useTranslation();
   const root = useRef<HTMLDivElement>(null);
-  return <ComboButton ref={root} label={label} size="lg" menuAlignment="bottom-end"
+  return <ComboButton ref={root} className="guard-create-button" label={label} size="lg" menuAlignment="bottom-end"
     onClick={(event) => onCreate(event.currentTarget)}
     translateWithId={() => t("common.moreCreateOptions")}>
     <MenuItem label={importLabel} renderIcon={Upload} onClick={() => onImport(root.current?.querySelectorAll("button")[1] ?? null)} />
