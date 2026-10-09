@@ -53,9 +53,12 @@ const mdxComponents: MDXComponents = {
   pre: DocumentCodeBlock,
   code: ({ children, ...props }) => <code {...props} className="font-mono">{typeof children === "string" ? withControllerOrigin(children) : children}</code>,
   a: DocumentLink,
-  table: props => <div className="my-4 overflow-x-auto"><table {...props} className="w-full border-collapse text-left text-sm" /></div>,
-  th: props => <th {...props} className="border bg-muted/30 px-3 py-2" />,
-  td: props => <td {...props} className="border px-3 py-2" />,
+  // Carbon data table colours: an accent header row over white rows, so the
+  // header reads apart from the data on the grey page. Code in a cell keeps
+  // its line; a wide table scrolls instead of breaking identifiers.
+  table: props => <div className="my-4 overflow-x-auto"><table {...props} className="document-table w-full border-collapse text-left text-sm" /></div>,
+  th: props => <th {...props} className="border border-[var(--cds-border-subtle-01)] bg-[var(--cds-layer-accent-01)] px-3 py-2 align-bottom font-semibold text-[var(--cds-text-primary)]" />,
+  td: props => <td {...props} className="border border-[var(--cds-border-subtle-01)] bg-[var(--cds-layer-01)] px-3 py-2 align-top [&_code]:whitespace-nowrap" />,
 };
 
 function DocumentArticle({ document }: { document: HelpDocument }) {
