@@ -44,3 +44,22 @@ describe("immutable file syntax highlighting", () => {
     if (language === "plain") expect(container.querySelector(".token")).toBeNull();
   });
 });
+
+describe("Documentation code fences", () => {
+  it.each([
+    ["bash", "curl -sS -H \"Authorization: Bearer $TOKEN\" https://example.test # send", ".function"],
+    ["sh", "export URL='https://example.test'", ".builtin"],
+    ["http", "POST /backend/v1/scans HTTP/1.1\nContent-Type: application/json", ".method"],
+    ["jsonl", "{\"input\":\"text\",\"flagOnly\":false}", ".property"],
+  ])("highlights %s", (language, content, token) => {
+    const { container, unmount } = render(<SyntaxCode content={content} language={language} label="example" />);
+    expect(container.querySelector(token)).not.toBeNull();
+    unmount();
+  });
+
+  it("keeps an unknown fence language as plain text", () => {
+    const { container } = render(<SyntaxCode content="plain words" language="text" label="example" />);
+    expect(container.querySelector(".token")).toBeNull();
+    expect(container.textContent).toBe("plain words");
+  });
+});

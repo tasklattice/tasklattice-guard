@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
+import { isValidElement, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import { Link, useLinkProps, useParams, useRouterState } from "@tanstack/react-router";
 import { ArrowRight, ChevronRight, Search, X } from "lucide-react";
 import type { MDXComponents } from "mdx/types";
@@ -6,6 +6,8 @@ import { useTranslation } from "react-i18next";
 import { helpStructuralComponents } from "@/components/help/document-blocks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SyntaxCode } from "@/components/syntax-code";
+import { cn } from "@/lib/utils";
 import { getHelpContent, searchHelpContent, type HelpContent, type HelpDocument } from "@/features/help-content";
 import { decodeDocumentAnchor, documentHref } from "@/features/help-navigation";
 
@@ -25,6 +27,21 @@ function DocumentLink({ href = "", children, ...props }: ComponentProps<"a">) {
     ? <Link {...props} to={href} className={className}>{children}<ArrowRight className="size-3.5 shrink-0" /></Link>
     : <a {...props} href={href} className={className}>{children}<ArrowRight className="size-3.5 shrink-0" /></a>;
 }
+const withControllerOrigin = (text: string) => text.replaceAll("{controllerOrigin}", typeof window === "undefined" ? "$CONTROLLER_URL" : window.location.origin);
+
+/** A fenced block: highlighted by its fence language; unknown languages stay plain. */
+function DocumentCodeBlock({ children, ...props }: ComponentProps<"pre">) {
+  const { t } = useTranslation();
+  const code = isValidElement<{ className?: string; children?: ReactNode }>(children) ? children : null;
+  const language = code?.props.className?.match(/language-([\w-]+)/)?.[1];
+  const content = typeof code?.props.children === "string" ? code.props.children : null;
+  const block = "my-4 rounded-lg border bg-muted/30 leading-6";
+  if (language && content !== null) {
+    return <SyntaxCode content={withControllerOrigin(content).replace(/\n$/, "")} language={language} label={t("common.codeExample", { language })} className={block} />;
+  }
+  return <pre {...props} className={cn(block, "overflow-x-auto p-4 font-mono text-xs")}>{children}</pre>;
+}
+
 const mdxComponents: MDXComponents = {
   ...helpStructuralComponents,
   h2: props => <h2 {...props} className="mt-8 scroll-mt-36 border-t pt-6 text-xl font-semibold first:mt-0 first:border-0 first:pt-0 2xl:scroll-mt-24" />,
@@ -33,8 +50,8 @@ const mdxComponents: MDXComponents = {
   ul: props => <ul {...props} className="mt-4 list-disc space-y-2 pl-5 text-sm leading-7" />,
   ol: props => <ol {...props} className="mt-4 list-decimal space-y-3 pl-5 text-sm leading-7" />,
   blockquote: props => <blockquote {...props} className="my-5 border-l-2 border-primary bg-primary/5 px-4 py-1 text-muted-foreground" />,
-  pre: props => <pre {...props} className="my-4 overflow-x-auto rounded-lg border bg-muted/30 p-4 font-mono text-xs leading-6" />,
-  code: ({ children, ...props }) => <code {...props} className="font-mono">{typeof children === "string" ? children.replaceAll("{controllerOrigin}", typeof window === "undefined" ? "$CONTROLLER_URL" : window.location.origin) : children}</code>,
+  pre: DocumentCodeBlock,
+  code: ({ children, ...props }) => <code {...props} className="font-mono">{typeof children === "string" ? withControllerOrigin(children) : children}</code>,
   a: DocumentLink,
   table: props => <div className="my-4 overflow-x-auto"><table {...props} className="w-full border-collapse text-left text-sm" /></div>,
   th: props => <th {...props} className="border bg-muted/30 px-3 py-2" />,

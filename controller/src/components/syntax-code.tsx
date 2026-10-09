@@ -1,5 +1,7 @@
 import { useMemo, type ReactNode } from "react";
 import { refractor, type Syntax } from "refractor/core";
+import bash from "refractor/bash";
+import http from "refractor/http";
 import json from "refractor/json";
 import yaml from "refractor/yaml";
 import { cn } from "@/lib/utils";
@@ -7,6 +9,10 @@ import "./syntax-code.css";
 
 refractor.register(json);
 refractor.register(yaml);
+refractor.register(bash);
+refractor.register(http);
+// Fence names used by the documentation; JSON Lines tokenizes as JSON.
+refractor.alias({ bash: ["sh", "shell", "zsh"], json: ["jsonl"] });
 
 // Colang's generated flow statements are not part of Prism's bundled grammars.
 // Tokenize for display only; compilation and validation belong to the Runner.

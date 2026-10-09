@@ -21,3 +21,6 @@
 .syntax-code :is(.function, .tag, .important) { color: var(--syntax-function); }
 .syntax-code :is(.punctuation, .operator) { color: var(--muted-foreground); }
 .syntax-code .comment { color: var(--muted-foreground); font-style: italic; }
+.syntax-code :is(.builtin, .class-name, .method) { color: var(--syntax-function); }
+.syntax-code :is(.parameter, .assign-left, .header-name) { color: var(--syntax-key); }
+.syntax-code :is(.url, .request-target, .header-value, .http-version) { color: var(--syntax-string); }
