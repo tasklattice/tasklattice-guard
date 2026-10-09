@@ -2124,9 +2124,6 @@
           },
           "sourceKeyId": {
             "type": "string"
-          },
-          "uatEvidence": {
-            "$ref": "#/components/schemas/getGuardrailsByIdResponseVersionsItemProvenanceUatEvidence"
           }
         },
         "required": [
@@ -2136,8 +2133,7 @@
           "packageId",
           "importedAt",
           "importedBy",
-          "requirements",
-          "uatEvidence"
+          "requirements"
         ],
         "type": "object"
       },
@@ -2249,136 +2245,6 @@
           "runtimeProfile",
           "compilerVersion",
           "planCompilerVersion"
-        ],
-        "type": "object"
-      },
-      "getGuardrailsByIdResponseVersionsItemProvenanceUatEvidence": {
-        "properties": {
-          "completedAt": {
-            "anyOf": [
-              {
-                "type": "null"
-              },
-              {
-                "type": "string"
-              }
-            ]
-          },
-          "contentDigest": {
-            "type": "string"
-          },
-          "excludedCaseIds": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "guardrailId": {
-            "type": "string"
-          },
-          "metrics": {
-            "$ref": "#/components/schemas/getPoliciesResponseItemsItemRulesItemDetector_options"
-          },
-          "publishedAt": {
-            "type": "string"
-          },
-          "resultsDigest": {
-            "type": "string"
-          },
-          "runtime": {
-            "anyOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/getGuardrailsByIdResponseVersionsItemProvenanceUatEvidenceRuntime"
-              }
-            ]
-          },
-          "source": {
-            "$ref": "#/components/schemas/getGuardrailsByIdResponseVersionsItemProvenanceUatEvidenceSource"
-          },
-          "sourceDraftRevision": {
-            "type": "number"
-          },
-          "status": {
-            "const": "passed",
-            "type": "string"
-          },
-          "testSuiteDigest": {
-            "type": "string"
-          },
-          "testedAt": {
-            "type": "string"
-          },
-          "validationRunId": {
-            "type": "string"
-          },
-          "version": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "contentDigest",
-          "guardrailId",
-          "version",
-          "source",
-          "validationRunId",
-          "status",
-          "testedAt",
-          "completedAt",
-          "publishedAt",
-          "sourceDraftRevision",
-          "metrics",
-          "testSuiteDigest",
-          "resultsDigest",
-          "excludedCaseIds",
-          "runtime"
-        ],
-        "type": "object"
-      },
-      "getGuardrailsByIdResponseVersionsItemProvenanceUatEvidenceRuntime": {
-        "properties": {
-          "compilerModelTypes": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "modelRevisionId": {
-            "type": "string"
-          },
-          "nemoVersion": {
-            "type": "string"
-          },
-          "runnerId": {
-            "type": "string"
-          },
-          "runnerVersion": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "runnerId",
-          "runnerVersion",
-          "nemoVersion",
-          "modelRevisionId",
-          "compilerModelTypes"
-        ],
-        "type": "object"
-      },
-      "getGuardrailsByIdResponseVersionsItemProvenanceUatEvidenceSource": {
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "name"
         ],
         "type": "object"
       },
@@ -12966,9 +12832,6 @@
               }
             ]
           },
-          "evidence": {
-            "$ref": "#/components/schemas/postGuardrailPackagesResponseVersionsItemEvidence"
-          },
           "requirements": {
             "$ref": "#/components/schemas/getGuardrailsByIdResponseVersionsItemProvenanceRequirements"
           },
@@ -12980,6 +12843,9 @@
             ],
             "type": "string"
           },
+          "testSuite": {
+            "$ref": "#/components/schemas/postGuardrailPackagesResponseVersionsItemTestSuite"
+          },
           "version": {
             "type": "string"
           }
@@ -12988,52 +12854,24 @@
           "version",
           "state",
           "contentDigest",
-          "evidence",
+          "testSuite",
           "requirements",
           "environment"
         ],
         "type": "object"
       },
-      "postGuardrailPackagesResponseVersionsItemEvidence": {
+      "postGuardrailPackagesResponseVersionsItemTestSuite": {
         "properties": {
-          "completedAt": {
-            "anyOf": [
-              {
-                "type": "null"
-              },
-              {
-                "type": "string"
-              }
-            ]
-          },
-          "metrics": {
-            "$ref": "#/components/schemas/getPoliciesResponseItemsItemRulesItemDetector_options"
-          },
-          "publishedAt": {
+          "digest": {
             "type": "string"
           },
-          "source": {
-            "$ref": "#/components/schemas/getGuardrailsByIdResponseVersionsItemProvenanceUatEvidenceSource"
-          },
-          "status": {
-            "const": "passed",
-            "type": "string"
-          },
-          "testedAt": {
-            "type": "string"
-          },
-          "validationRunId": {
-            "type": "string"
+          "total": {
+            "type": "number"
           }
         },
         "required": [
-          "source",
-          "validationRunId",
-          "status",
-          "testedAt",
-          "completedAt",
-          "publishedAt",
-          "metrics"
+          "total",
+          "digest"
         ],
         "type": "object"
       },

@@ -13,14 +13,14 @@ vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string, valu
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 const V1 = "20261001-010000.000Z", V2 = "20261007-010000.000Z";
-const evidence = { status: "passed" as const, testedAt: "2026-10-07T01:00:00.000Z", completedAt: null, publishedAt: "2026-10-07T01:05:00.000Z", metrics: { total: 12, passed: 12 }, source: { id: "bank-uat", name: "Bank UAT" }, validationRunId: "run" };
+const testSuite = { total: 12, digest: "f".repeat(64) };
 const requirements = { contentContract: "tasklattice.artifact-content.v2", runtime: { nemoVersion: "0.24.0", runtimeProfile: "llmrails_colang1_standard", compilerVersion: "c", planCompilerVersion: "p" }, actions: [], models: [], evaluationContracts: [] };
 const preview = (overrides: Partial<PackagePreview> = {}): PackagePreview => ({
   packageId: "a".repeat(64), source: { id: "bank-uat", name: "Bank UAT" }, keyId: "uat-2026", exportedAt: "2026-10-08T00:00:00.000Z",
   guardrail: { id: "bank-assistant", name: "Bank assistant", exists: true }, blockers: [],
   versions: [
-    { version: V1, state: "existing", contentDigest: "1".repeat(64), evidence, requirements, environment: null },
-    { version: V2, state: "new", contentDigest: "2".repeat(64), evidence, requirements, environment: { status: "missing", checkedAt: "2026-10-08T00:00:00.000Z",
+    { version: V1, state: "existing", contentDigest: "1".repeat(64), testSuite, requirements, environment: null },
+    { version: V2, state: "new", contentDigest: "2".repeat(64), testSuite, requirements, environment: { status: "missing", checkedAt: "2026-10-08T00:00:00.000Z",
       pools: [{ poolId: "default", runnerId: "runner-0", admitted: false, unavailable: false, reason: "NeMo Action providers are unavailable for: GuardTopicJudgeAction@1.0.0.", nemoVersion: "0.24.0", modelRevisionId: "" }] } },
   ],
   ...overrides,
@@ -35,7 +35,7 @@ function mount() {
 }
 
 describe("Guardrail package import", () => {
-  it("previews source, evidence and environment, then imports only what is new", async () => {
+  it("previews source, test suites and environment, then imports only what is new", async () => {
     vi.mocked(uploadGuardrailPackage).mockResolvedValue(preview());
     vi.mocked(importGuardrailPackage).mockResolvedValue({ guardrailId: "bank-assistant", imported: [V2], existing: [V1] });
     const { dialog, choose, onClose } = mount();
@@ -44,6 +44,8 @@ describe("Guardrail package import", () => {
     expect(await within(dialog).findByText(V2)).toBeTruthy();
     expect(within(dialog).getByText(/GuardTopicJudgeAction/)).toBeTruthy();
     expect(within(dialog).getByText("guardrailPackage.stateExisting")).toBeTruthy();
+    // Each version arrives with its test suite, not the source's test report.
+    expect(within(dialog).getAllByText(`guardrailPackage.testSuiteCases:${JSON.stringify({ count: 12 })}`)).toHaveLength(2);
     fireEvent.click(within(dialog).getByRole("button", { name: "guardrailPackage.importOne" }));
     await waitFor(() => expect(importGuardrailPackage).toHaveBeenCalledExactlyOnceWith("a".repeat(64)));
     await waitFor(() => expect(onClose).toHaveBeenCalled());

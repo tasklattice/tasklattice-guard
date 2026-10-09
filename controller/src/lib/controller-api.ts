@@ -196,16 +196,6 @@ export type ArtifactRequirements = {
   evaluationContracts: Array<{ contract: string; capability: string; phases: string[] }>;
 };
 
-export type SourceEvidence = {
-  status: "passed";
-  testedAt: string;
-  completedAt: string | null;
-  publishedAt: string;
-  metrics: { total?: number; passed?: number; complianceRate?: number } & Record<string, unknown>;
-  source: { id: string; name: string };
-  validationRunId: string;
-};
-
 export type VersionProvenance = {
   sourceId: string;
   sourceKeyId: string;
@@ -214,7 +204,6 @@ export type VersionProvenance = {
   importedAt: string;
   importedBy: string | null;
   requirements: ArtifactRequirements;
-  uatEvidence: SourceEvidence;
 };
 
 export type PackagePreview = {
@@ -227,7 +216,8 @@ export type PackagePreview = {
     version: string;
     state: "new" | "existing" | "conflict";
     contentDigest: string;
-    evidence: SourceEvidence;
+    /** The Test Cases the version carries, to be run in this environment. */
+    testSuite: { total: number; digest: string };
     requirements: ArtifactRequirements;
     environment: EnvironmentCheck | null;
   }>;

@@ -9,7 +9,8 @@ import { artifactFromWire } from "../control-channel/protocol-codec.js";
 import type { Artifact__Output } from "../generated/control-protocol/tasklattice/guard/control/v1/Artifact.js";
 import { artifactContent, artifactContentDigest, type ArtifactContent } from "./artifact-content.js";
 import { deriveRequirements } from "./artifact-requirements.js";
-import { assertSelfContained, buildPackage, parsePackage, verifyPackageVersion, type UatEvidence } from "./guardrail-package.js";
+import { assertSelfContained, buildPackage, parsePackage, verifyPackageVersion } from "./guardrail-package.js";
+import { freezeTestSuite, testSuiteDigest, type FrozenTestCase } from "./test-suite.js";
 import { readZip, writeZip } from "./zip.js";
 
 const protoPath = resolve("../proto/tasklattice/guard/control/v1/runner_control.proto");
@@ -21,16 +22,16 @@ function fixture(name: string): { content: ArtifactContent; checksum: string } {
   return { content: artifactContent(artifactFromWire(wire) as unknown as ArtifactContent), checksum: wire.checksum };
 }
 const keys = generateKeyPairSync("ed25519");
-const evidence = (content: ArtifactContent): UatEvidence => ({
-  contentDigest: artifactContentDigest(content), guardrailId: content.guardrailId, version: content.guardrailVersion, source: { id: "uat", name: "UAT" },
-  validationRunId: "run-1", status: "passed", testedAt: "2026-10-08T00:00:00.000Z", completedAt: "2026-10-08T00:01:00.000Z", publishedAt: "2026-10-08T00:02:00.000Z",
-  sourceDraftRevision: 1, metrics: { total: 2, passed: 2 }, testSuiteDigest: "a".repeat(64), resultsDigest: "b".repeat(64), excludedCaseIds: [], runtime: null,
-});
-function packageOf(content: ArtifactContent) {
+const suite: FrozenTestCase[] = freezeTestSuite(["a", "b"].map(id => ({
+  id, name: `Case ${id}`, origin: "generated", policyId: "pii", phase: "input", content: `content ${id}`, expectedDecision: "block",
+  trustedInstruction: "", targetSource: "user_input", query: "", groundingSources: [], expectedReasoningResult: null, caseType: "scenario",
+  required: true, expectedFailure: null, concurrencyGroup: null, sourcePolicyId: "pii", sourcePolicyVersion: "1", sourceCaseId: id, coveredRuleIds: [],
+})));
+function packageOf(content: ArtifactContent, testSuite: FrozenTestCase[] = suite) {
   const policies = ((content.plan.policy_bindings ?? []) as Array<{ policy_id: string; policy_version: string }>).map(binding => ({ policyId: binding.policy_id, policyVersion: binding.policy_version, name: binding.policy_id, source: "built_in" as const, rules: [] }));
   return buildPackage({
     source: { id: "uat", name: "UAT" }, guardrail: { id: content.guardrailId, name: "Fixture" }, exportedAt: new Date("2026-10-08T00:00:00.000Z"),
-    versions: [{ content, evidence: evidence(content), inspection: { name: "Fixture", runtimeProfile: "auto", draftConfig: { allowedTopics: [], restrictedTopics: [], policyBindings: [], safetyLevel: "balanced", outputDelivery: "full_buffered" }, policies, testSuite: { total: 2, digest: "a".repeat(64) } } }],
+    versions: [{ content, testSuite, inspection: { name: "Fixture", runtimeProfile: "auto", draftConfig: { allowedTopics: [], restrictedTopics: [], policyBindings: [], safetyLevel: "balanced", outputDelivery: "full_buffered" }, policies, testSuite: { total: suite.length, digest: testSuiteDigest(suite) } } }],
     sign: manifest => [{ keyId: "uat", algorithm: "ed25519", signature: sign(null, manifest, keys.privateKey).toString("base64") }],
   });
 }
@@ -45,12 +46,21 @@ describe("Artifact content digest", () => {
 });
 
 describe("Guardrail release package", () => {
-  it.each(["default-local-v1", "custom-symbol-ownership-v1", "topic-control-native-v1"])("round-trips %s with its requirements and evidence", name => {
+  it.each(["default-local-v1", "custom-symbol-ownership-v1", "topic-control-native-v1"])("round-trips %s with its requirements and test suite", name => {
     const { content } = fixture(name);
     const parsed = parsePackage(packageOf(content));
     expect(parsed.versions).toHaveLength(1);
     expect(verifyPackageVersion(parsed, parsed.versions[0]!, canonicalize)).toBe(artifactContentDigest(content));
     expect(parsed.versions[0]!.requirements).toEqual(deriveRequirements(content));
+    expect(parsed.versions[0]!.testSuite).toEqual(suite);
+    expect(parsed.manifest.versions[0]!.testSuiteDigest).toBe(testSuiteDigest(suite));
+  });
+
+  it("rejects a test suite other than the one the version was published with", () => {
+    const { content } = fixture("default-local-v1");
+    const edited = suite.map(item => item.id === "a" ? { ...item, expectedDecision: "allow" } : item);
+    const parsed = parsePackage(packageOf(content, edited));
+    expect(() => verifyPackageVersion(parsed, parsed.versions[0]!, canonicalize)).toThrow(/test suite does not match/);
   });
 
   it("rejects content the Runner contract cannot carry", () => {

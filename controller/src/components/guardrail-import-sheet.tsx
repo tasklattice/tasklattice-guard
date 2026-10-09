@@ -105,13 +105,12 @@ function PackageSummary({ preview, language }: { preview: PackagePreview; langua
     </div> : null}
     <Table>
       <TableHeader><TableRow>
-        <TableHead>{t("guardrailPackage.version")}</TableHead><TableHead>{t("guardrailPackage.uatResult")}</TableHead>
+        <TableHead>{t("guardrailPackage.version")}</TableHead><TableHead>{t("guardrailPackage.testSuite")}</TableHead>
         <TableHead>{t("guardrailPackage.state")}</TableHead><TableHead>{t("guardrailPackage.environment")}</TableHead>
       </TableRow></TableHeader>
       <TableBody>{preview.versions.map(item => <TableRow key={item.version}>
         <TableCell><div className="flex flex-col items-start gap-1"><span className="whitespace-nowrap font-mono text-sm">{item.version}</span></div></TableCell>
-        <TableCell><div className="flex flex-col items-start gap-1"><StateBadge state="passed" />
-          <span className="text-xs text-muted-foreground">{typeof item.evidence.metrics.total === "number" ? `${t("guardrailPackage.passedCases", { passed: item.evidence.metrics.passed ?? 0, total: item.evidence.metrics.total })} · ` : ""}{t("guardrailPackage.testedAt", { time: new Date(item.evidence.testedAt).toLocaleString(language) })}</span></div></TableCell>
+        <TableCell className="whitespace-nowrap text-sm">{t("guardrailPackage.testSuiteCases", { count: item.testSuite.total })}</TableCell>
         <TableCell className="whitespace-nowrap"><StateBadge state={item.state === "new" ? "ready" : item.state === "existing" ? "active" : "failed"} label={t(`guardrailPackage.state${item.state === "new" ? "New" : item.state === "existing" ? "Existing" : "Conflict"}`)} /></TableCell>
         <TableCell><EnvironmentStatus check={item.environment} /></TableCell>
       </TableRow>)}</TableBody>

@@ -630,7 +630,7 @@ export class ControlPlaneService {
           provenance: provenance ? {
             sourceId: provenance.sourceId, sourceKeyId: provenance.sourceKeyId, contentDigest: provenance.contentDigest,
             packageId: provenance.packageId, importedAt: provenance.importedAt, importedBy: provenance.importedBy,
-            requirements: provenance.requirements, uatEvidence: provenance.uatEvidence,
+            requirements: provenance.requirements,
           } : null,
         };
       }),

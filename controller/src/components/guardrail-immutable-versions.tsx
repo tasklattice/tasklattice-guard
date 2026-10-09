@@ -161,7 +161,7 @@ export function ImmutableVersionView({ openRequested, onOpenRequestHandled, deta
                 </div></TableCell>
                 <TableCell><time dateTime={version.created_at} className="text-muted-foreground">{new Date(version.created_at).toLocaleString(i18n.language)}</time></TableCell>
                 <TableCell className="tabular-nums">{version.policy_count ?? (detail?.version === version.version ? detail.policy_bindings.length : "—")}</TableCell>
-                <TableCell>{version.provenance ? <StateBadge state="passed" label={t("guardrailPackage.sourceTestPassed", { source: version.provenance.uatEvidence.source.name })} /> : testStatus(latestTests.get(version.version))}</TableCell>
+                <TableCell>{testStatus(latestTests.get(version.version))}</TableCell>
                 <TableCell>{menu(version)}</TableCell>
               </TableRow>)}</TableBody>
             </Table>
@@ -205,11 +205,12 @@ export function ImmutableVersionView({ openRequested, onOpenRequestHandled, deta
                       {selectedVersion.origin === "imported" ? <ReleaseEnvironment version={selectedVersion}
                         checking={environmentCheck.isPending} error={environmentCheck.error} canCheck={auth.user?.role === "admin"}
                         onCheck={() => environmentCheck.mutate(selectedVersion.version)} /> : null}
-                      {selectedVersion.provenance ? <ReleaseEvidence version={selectedVersion} /> : <section className="space-y-3 border-t pt-6">
+                      {selectedVersion.provenance ? <ReleaseSource version={selectedVersion} /> : null}
+                      <section className="space-y-3 border-t pt-6">
                         <div><h3 className="text-base font-semibold">{t("guardrails.validationEvidence")}</h3><p className="mt-1 text-sm text-muted-foreground">{t("immutableVersions.testDescription")}</p></div>
                         {validationError ? <RetryNotice error={validationError} onRetry={onRetry} /> : validationLoading ? <Skeleton className="h-20" /> : validation ? <div className="flex items-center justify-between gap-4 border p-4"><div><div className="flex items-center gap-3">{testStatus(validation)}<span className="text-sm">{t("guardrails.compliance", { rate: validation.metrics.compliance_rate })}</span></div><p className="mt-2 text-xs text-muted-foreground">{new Date(validation.created_at).toLocaleString(i18n.language)}</p></div><Button variant="outline" onClick={() => { setDrawerOpen(false); onOpenValidation(validation); }}><FlaskConical />{t("guardrails.openValidation")}</Button></div>
                           : <p className="border bg-muted/20 p-4 text-sm text-muted-foreground">{t("immutableVersions.noTestDescription")}</p>}
-                      </section>}
+                      </section>
                     </TabsContent>
                     <TabsContent value="policies" className="min-h-0 flex-1 overflow-y-auto overscroll-contain pt-5"><PinnedPolicies key={currentDetail.version} bindings={currentDetail.policy_bindings} page={policyPage} onPageChange={setPolicyPage} /></TabsContent>
                     <TabsContent value="tests" className="min-h-0 flex-1 overflow-y-auto overscroll-contain pt-5"><VersionTestSuite key={currentDetail.version} guardrailId={guardrailId} version={currentDetail.version} /></TabsContent>
@@ -247,17 +248,15 @@ export function ImmutableVersionView({ openRequested, onOpenRequestHandled, deta
   </>;
 }
 
-/** Source evidence for an imported version: recorded at the source, never re-run here. */
-function ReleaseEvidence({ version }: { version: GuardrailVersion }) {
+/** Where an imported version came from. Its test suite travels with it; test reports never do. */
+function ReleaseSource({ version }: { version: GuardrailVersion }) {
   const { t, i18n } = useTranslation();
   const provenance = version.provenance!;
-  const evidence = provenance.uatEvidence;
   return <section className="space-y-3 border-t pt-6">
     <div><h3 className="text-base font-semibold">{t("guardrailPackage.provenanceTitle")}</h3><p className="mt-1 text-sm text-muted-foreground">{t("guardrailPackage.provenanceDescription")}</p></div>
     <div className="space-y-3 border p-4">
-      <div className="flex flex-wrap items-center gap-3"><StateBadge state="passed" label={t("guardrailPackage.sourceTestPassed", { source: evidence.source.name })} />
-        {typeof evidence.metrics.total === "number" ? <span className="text-sm">{t("guardrailPackage.passedCases", { passed: evidence.metrics.passed ?? 0, total: evidence.metrics.total })}</span> : null}</div>
-      <p className="text-xs text-muted-foreground">{t("guardrailPackage.testedAt", { time: new Date(evidence.testedAt).toLocaleString(i18n.language) })} · {t("guardrailPackage.importedAt", { time: new Date(provenance.importedAt).toLocaleString(i18n.language) })} · {t("guardrailPackage.signedBy", { keyId: provenance.sourceKeyId })}</p>
+      <p className="text-sm">{t("guardrailPackage.importedFromSource", { source: provenance.sourceId })}</p>
+      <p className="text-xs text-muted-foreground">{t("guardrailPackage.importedAt", { time: new Date(provenance.importedAt).toLocaleString(i18n.language) })} · {t("guardrailPackage.signedBy", { keyId: provenance.sourceKeyId })}</p>
       <div><p className="mb-1 text-xs text-muted-foreground">{t("guardrailPackage.contentDigest")}</p><Digest value={provenance.contentDigest} /></div>
     </div>
   </section>;

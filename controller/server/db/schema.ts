@@ -41,7 +41,7 @@ import type { FrozenTestCase } from "../domain/test-suite.js";
 import type { ValidationRuntimeFingerprint } from "../domain/models.js";
 import type { ArtifactRequirements } from "../domain/artifact-requirements.js";
 import type { EnvironmentCheck } from "../domain/environment-check.js";
-import type { PackageManifest, PackageSignature, UatEvidence } from "../domain/guardrail-package.js";
+import type { PackageManifest, PackageSignature } from "../domain/guardrail-package.js";
 
 const createdAt = timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 const updatedAt = timestamp("updated_at", { withTimezone: true }).notNull().defaultNow();
@@ -325,7 +325,6 @@ export const guardrailVersionProvenance = pgTable("guardrail_version_provenance"
   contentDigest: text("content_digest").notNull(),
   fileDigests: jsonb("file_digests").$type<Record<string, string>>().notNull(),
   requirements: jsonb("requirements").$type<ArtifactRequirements>().notNull(),
-  uatEvidence: jsonb("uat_evidence").$type<UatEvidence>().notNull(),
   sourceSignature: jsonb("source_signature").$type<PackageSignature>().notNull(),
   packageId: text("package_id").notNull().references(() => guardrailPackages.id),
   importedBy: text("imported_by").references(() => user.id),

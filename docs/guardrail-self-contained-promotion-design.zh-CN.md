@@ -86,19 +86,17 @@ manifest.json
 versions/<version>/artifact.json
 versions/<version>/inspection.json
 versions/<version>/requirements.json
-versions/<version>/uat-evidence.json
-blobs/<sha256>
+versions/<version>/test-suite.json
 signatures.json
 ~~~
 
 | 内容 | 契约 |
 | --- | --- |
-| manifest | 源实例身份、Guardrail ID/名称、版本列表、推荐版本、每个文件的哈希、每个版本的内容摘要、包格式版本 |
+| manifest | 源实例身份、Guardrail ID/名称、版本列表、每个文件的哈希、每个版本的内容摘要与测试集摘要、包格式版本 |
 | artifact | 完整的已构建执行计划、NeMo 配置、Colang、Prompts、动作绑定、冻结参数与依赖；接收端直接加载 |
 | inspection | 与该版本一起冻结的 Policy/Rule 名称、定义、顺序、动作及只读展示信息；不得读取接收端 Library 补充 |
 | requirements | Runner/NeMo/执行协议兼容要求、动作和检测器能力版本、外部模型及服务契约、环境绑定槽位 |
-| uat-evidence | 精确对应此内容摘要的测试结论、报告摘要、用例集摘要、来源环境、运行时/模型指纹与时间；由可信来源签名覆盖 |
-| blobs | 被版本引用的静态词表、模板等资源；跨版本相同内容可按哈希去重，逻辑归属仍属于该版本 |
+| test-suite | 与该版本一起冻结的测试用例（输入、预期结果、预期覆盖、来源 Policy），即版本发布时实际运行的测试集；摘要须与 manifest 和 inspection 一致 |
 | signatures | 清单及文件集合的签名、算法和 key ID；接收端用预先登记的来源公钥验证 |
 
 每个 Policy/Rule 依赖必须能在包内闭合，或者明确属于 requirements 中的平台执行
@@ -158,7 +156,7 @@ signatures.json
            + plan + config + Colang + prompts + action bindings + dependencies
 contentDigest = SHA-256(规范化的不可变内容)
 
-UAT 来源证明 → contentDigest、UAT evidence digest、签发身份
+UAT 来源证明 → contentDigest、testSuiteDigest、签发身份
 生产接收记录 → contentDigest、原来源证明、接收人和接收时间
 生产分发信封 → contentDigest、本地 artifact ID、投递 generation、本地签名
 ~~~
@@ -171,14 +169,15 @@ UAT 来源证明 → contentDigest、UAT evidence digest、签发身份
 .artifact.json 导出继续可用；新包导入走独立契约。对于旧数据，必须明确验证现有签名
 及转换边界，缺失新的证据时在 UAT 重新生成合格发布包，不能在生产伪造来源证明。
 
-UAT 测试证据必须绑定实际执行内容和环境指纹。当前代码比较验证时与发布时的 plan，
-还不足以声称测试覆盖了完全相同的最终 Artifact。实现应保留测试实际加载的候选
-Artifact，发布复用该内容；或者在 UAT 对最终 Artifact 验证后签发匹配的证明。
-不增加生产测试步骤。
+测试必须绑定实际执行的内容。UAT 保留测试实际加载的候选 Artifact，发布直接复用该
+内容。测试报告属于“动态资源”，是某一次、某一环境的运行结果，不随包导出；随包导出
+的是“静态资源”——版本自带的测试集。生产对导入的版本，用同一份 Artifact 原样运行它
+自带的测试集，在本环境通过后才能发布（见下文版本状态）。
 
 requirements 区分可替换的连接地址/凭据与影响语义的模型、版本、参数、动作和检测器。
 生产按预设绑定自动检查；未满足已验证契约时阻止投入使用，不自动降级为另一模型。
-UAT 证据始终注明来源环境，不承诺跨环境模型服务具有完全相同的实际行为。
+跨环境的模型服务可能不同，生产测试结果与 UAT 不一致时测试即失败，由人工处理，平台
+不做自动闭环。
 
 **入库、环境就绪与生效分别记录**
 
@@ -260,7 +259,7 @@ Library 表不作为导入依赖存储。多个版本可共享相同内容 blob�
 | --- | --- | --- |
 | 内容摘要 | Artifact checksum 不再包含 `artifact_id` 与 `generation`；TS 与 Python 共用规范化 JSON（ASCII key 按码点排序，整数值浮点写成整数，小数只允许两种语言输出相同数字的范围），并有共享测试向量 | 原地改造，没有并行的新旧两套契约；旧 `.artifact.json` 单版本导出已删除。存量 Artifact 在启动时按新契约重新封存 |
 | UAT 证据绑定 | 测试运行把实际编译、执行的候选 Artifact 回传并保存摘要；发布直接签名这份内容，不再重新编译 | 采用“测试候选 Artifact”方案；异步 CompileRequest/CompileResult 通道已移除 |
-| 发布包 | `manifest.json`、`signatures.json`、每个版本 `artifact / inspection / requirements / uat-evidence`；确定性 ZIP，所有文件为规范化 JSON；Ed25519 签名覆盖 manifest 原始字节 | 当前 Artifact 的静态素材全部内联，没有 `blobs/` 目录；未声明的条目一律拒绝 |
+| 发布包 | `manifest.json`、`signatures.json`、每个版本 `artifact / inspection / requirements / test-suite`（格式版本 2）；确定性 ZIP，所有文件为规范化 JSON；Ed25519 签名覆盖 manifest 原始字节 | 当前 Artifact 的静态素材全部内联，没有 `blobs/` 目录；未声明的条目一律拒绝 |
 | 环境检查 | 每个 Runner 池选一个已连接 Runner，按真实加载路径校验签名、NeMo 版本、Action、模型与 Evaluator 绑定并构建运行时后丢弃（dry-run 加载） | 没有在 Controller 端静态比对能力清单；`requirements.json` 只作为申报证据，导入时重新推导并要求完全一致 |
 | Router 门禁 | 提交与批准变更单前对导入版本重新做加载检查，要求 10 分钟内的 compatible 结果 | 本地发布的版本不受此门禁约束 |
 | 分发 | 默认池额外预加载本地发布的版本，以及加载检查为 compatible 的导入版本；其余导入版本只在被 Router 引用时分发。检查结论跨过 compatible 时推进 generation | 与设计一致 |

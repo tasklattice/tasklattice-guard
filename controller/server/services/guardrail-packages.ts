@@ -29,8 +29,8 @@ import {
   parsePackage,
   verifyPackageVersion,
   type ParsedPackage,
-  type UatEvidence,
 } from "../domain/guardrail-package.js";
+import { testSuiteDigest, type FrozenTestCase } from "../domain/test-suite.js";
 import type { GuardrailDraftConfig } from "../domain/guardrail-plan.js";
 import type { RouterDraft } from "../../shared/traffic-routing.js";
 import { loadPackageTrust, packageSigner, verifyPackageSignatures, type TrustedSource } from "./package-trust.js";
@@ -45,7 +45,8 @@ export type PackageVersionPreview = {
   version: string;
   state: VersionState;
   contentDigest: string;
-  evidence: Pick<UatEvidence, "status" | "testedAt" | "completedAt" | "publishedAt" | "metrics" | "source" | "validationRunId">;
+  /** The Test Cases the version carries: run here before it is released. */
+  testSuite: { total: number; digest: string };
   requirements: ReturnType<typeof deriveRequirements>;
   environment: EnvironmentCheck | null;
 };
@@ -82,7 +83,7 @@ export class GuardrailPackageService {
     const artifactRows = await this.db.select().from(artifacts).where(inArray(artifacts.id, rows.map(row => row.artifactId).filter((id): id is string => Boolean(id))));
     const runRows = await this.db.select().from(validationRuns).where(inArray(validationRuns.id, rows.map(row => row.validationRunId).filter((id): id is string => Boolean(id))));
     const blockers: Array<{ version: string; missing: string[] }> = [];
-    const included: Array<{ content: ArtifactContent; inspection: NonNullable<typeof rows[number]["inspection"]>; evidence: UatEvidence }> = [];
+    const included: Array<{ content: ArtifactContent; inspection: NonNullable<typeof rows[number]["inspection"]>; testSuite: FrozenTestCase[] }> = [];
     for (const version of selected) {
       const row = rows.find(item => item.version === version);
       const artifact = artifactRows.find(item => item.id === row?.artifactId);
@@ -94,6 +95,8 @@ export class GuardrailPackageService {
         ...(artifact && artifact.contentDigestVersion !== ARTIFACT_CONTENT_DIGEST_VERSION ? ["content_digest_contract"] : []),
         ...(row && row.origin === "local" && (!run || run.status !== "passed" || run.candidateDigest !== artifact?.checksum) ? ["tested_candidate_evidence"] : []),
         ...(row && !row.inspection ? ["inspection_snapshot"] : []),
+        // The suite is part of the version's definition; it travels with it.
+        ...(row && (!row.testSuite || testSuiteDigest(row.testSuite) !== row.inspection?.testSuite.digest) ? ["test_suite"] : []),
       ];
       if (!missing.length && artifact) {
         try {
@@ -102,32 +105,11 @@ export class GuardrailPackageService {
           missing.push("policy_snapshot");
         }
       }
-      if (missing.length || !row || !artifact || !run || !row.inspection) {
+      if (missing.length || !row || !artifact || !row.inspection || !row.testSuite) {
         blockers.push({ version, missing });
         continue;
       }
-      const content = artifactContent(artifact);
-      included.push({
-        content,
-        inspection: row.inspection,
-        evidence: {
-          contentDigest: artifact.checksum,
-          guardrailId,
-          version,
-          source: { id: signer.sourceId, name: signer.sourceName },
-          validationRunId: run.id,
-          status: "passed",
-          testedAt: run.createdAt.toISOString(),
-          completedAt: run.completedAt?.toISOString() ?? null,
-          publishedAt: row.createdAt.toISOString(),
-          sourceDraftRevision: run.sourceDraftRevision,
-          metrics: run.metrics as unknown as Record<string, unknown>,
-          testSuiteDigest: run.testSuiteDigest ?? row.inspection.testSuite.digest,
-          resultsDigest: createHash("sha256").update(canonicalJson(run.results)).digest("hex"),
-          excludedCaseIds: run.excludedCaseIds,
-          runtime: run.runtimeFingerprint ?? null,
-        },
-      });
+      included.push({ content: artifactContent(artifact), inspection: row.inspection, testSuite: row.testSuite });
     }
     if (blockers.length) {
       throw new ConflictError("Some selected versions cannot be exported as self-contained releases.", "guardrail_package_incomplete", { versions: blockers });
@@ -205,12 +187,13 @@ export class GuardrailPackageService {
         }
         await tx.insert(guardrailVersions).values({
           guardrailId: manifest.guardrail.id, version: item.version, generation: state.desiredGeneration,
-          sourceDraftRevision: item.evidence.sourceDraftRevision, status: "ready", runtimeProfile: item.inspection.runtimeProfile,
-          plan: item.content.plan, artifactId: artifact.id, inspection: item.inspection, origin: "imported", createdBy: input.actorId,
+          // An imported version has no draft here; 0 marks that.
+          sourceDraftRevision: 0, status: "ready", runtimeProfile: item.inspection.runtimeProfile,
+          plan: item.content.plan, artifactId: artifact.id, inspection: item.inspection, testSuite: item.testSuite, origin: "imported", createdBy: input.actorId,
         });
         await tx.insert(guardrailVersionProvenance).values({
           guardrailId: manifest.guardrail.id, version: item.version, sourceId: source.id, sourceKeyId: keyId, contentDigest: checksum,
-          fileDigests: item.fileDigests, requirements: item.requirements, uatEvidence: item.evidence, sourceSignature: signature,
+          fileDigests: item.fileDigests, requirements: item.requirements, sourceSignature: signature,
           packageId, importedBy: input.actorId,
         });
         imported.push({ version: item.version, artifactId: artifact.id });
@@ -297,8 +280,7 @@ export class GuardrailPackageService {
       const environment = state === "new" && checkEnvironment && !ownership
         ? await this.admit({ ...item.content, id: `preview-${randomUUID()}`, generation: 0, checksum, signature: signArtifactDigest(checksum, this.config.artifactSigningKeyPath) })
         : stored.find(row => row.version === item.version)?.environmentCheck ?? null;
-      const { status, testedAt, completedAt, publishedAt, metrics, source: evidenceSource, validationRunId } = item.evidence;
-      return { version: item.version, state, contentDigest: checksum, evidence: { status, testedAt, completedAt, publishedAt, metrics, source: evidenceSource, validationRunId }, requirements: item.requirements, environment };
+      return { version: item.version, state, contentDigest: checksum, testSuite: item.inspection.testSuite, requirements: item.requirements, environment };
     }));
     return {
       packageId,
@@ -347,7 +329,7 @@ export class GuardrailPackageService {
       const row = rows.find(candidate => candidate.version === item.version);
       if (!row) return [item.version, "new" as const];
       const origin = provenance.find(candidate => candidate.version === item.version);
-      // Same content is not enough: the frozen display, requirements and evidence must match too.
+      // Same content is not enough: the frozen display, requirements and test suite must match too.
       const same = origin && origin.contentDigest === digests.get(item.version) && canonicalJson(origin.fileDigests) === canonicalJson(item.fileDigests);
       return [item.version, same ? "existing" as const : "conflict" as const];
     }));

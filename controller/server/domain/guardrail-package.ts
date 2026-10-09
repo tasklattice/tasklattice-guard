@@ -6,24 +6,26 @@ import { ARTIFACT_CONTENT_CONTRACT, artifactContentDigest, type ArtifactContent 
 import { deriveRequirements, type ArtifactRequirements } from "./artifact-requirements.js";
 import { ControllerError } from "./errors.js";
 import type { GuardrailInspection } from "./guardrail-inspection.js";
-import type { ValidationRuntimeFingerprint } from "./models.js";
+import { testSuiteDigest, type FrozenTestCase } from "./test-suite.js";
 import { readZip, writeZip, type ZipLimits } from "./zip.js";
 
 /**
  * A Guardrail release package carries one Guardrail's published versions
- * between isolated environments. Every file is canonical JSON, the manifest
- * pins every file by SHA-256, and signatures cover the manifest bytes. Only
- * this declared layout is accepted:
+ * between isolated environments: each version's static definition, that is
+ * its executable content and the Test Cases that define its expected
+ * behaviour. Test reports are per run and per environment; they never travel.
+ * Every file is canonical JSON, the manifest pins every file by SHA-256, and
+ * signatures cover the manifest bytes. Only this declared layout is accepted:
  *
  *   manifest.json, signatures.json,
- *   versions/<version>/{artifact,inspection,requirements,uat-evidence}.json
+ *   versions/<version>/{artifact,inspection,requirements,test-suite}.json
  */
 export const PACKAGE_FORMAT = "tasklattice.guardrail-package";
-export const PACKAGE_SCHEMA_VERSION = 1;
+export const PACKAGE_SCHEMA_VERSION = 2;
 export const PACKAGE_UPLOAD_LIMIT_BYTES = 32 * 1024 * 1024;
 export const PACKAGE_ZIP_LIMITS: ZipLimits = { maxEntries: 512, maxEntryBytes: 16 * 1024 * 1024, maxTotalBytes: 64 * 1024 * 1024 };
 export const PACKAGE_FILE_EXTENSION = ".guardrail.zip";
-const VERSION_FILES = ["artifact", "inspection", "requirements", "uat-evidence"] as const;
+const VERSION_FILES = ["artifact", "inspection", "requirements", "test-suite"] as const;
 
 const digest = z.string().regex(/^[0-9a-f]{64}$/);
 const versionId = z.string().refine(isGuardrailVersionId, "Expected a Guardrail version ID.");
@@ -36,7 +38,7 @@ const manifestSchema = z.object({
   exportedAt: z.string().datetime(),
   source: identity,
   guardrail: identity,
-  versions: z.array(z.object({ version: versionId, contentDigest: digest, evidenceDigest: digest }).strict()).min(1).max(64),
+  versions: z.array(z.object({ version: versionId, contentDigest: digest, testSuiteDigest: digest }).strict()).min(1).max(64),
   files: z.array(z.object({ path: z.string().min(1).max(200), sha256: digest, size: z.number().int().nonnegative() }).strict()),
 }).strict();
 export type PackageManifest = z.output<typeof manifestSchema>;
@@ -46,27 +48,18 @@ const signaturesSchema = z.object({
 }).strict();
 export type PackageSignature = z.output<typeof signaturesSchema>["signatures"][number];
 
-const evidenceSchema = z.object({
-  contentDigest: digest,
-  guardrailId: z.string().min(1),
-  version: versionId,
-  source: identity,
-  validationRunId: z.string().min(1),
-  status: z.literal("passed"),
-  testedAt: z.string().datetime(),
-  completedAt: z.string().datetime().nullable(),
-  publishedAt: z.string().datetime(),
-  sourceDraftRevision: z.number().int().positive(),
-  metrics: z.record(z.string(), z.unknown()),
-  testSuiteDigest: digest,
-  resultsDigest: digest,
-  excludedCaseIds: z.array(z.string()),
-  runtime: z.object({
-    runnerId: z.string(), runnerVersion: z.string(), nemoVersion: z.string(), modelRevisionId: z.string(), compilerModelTypes: z.array(z.string()),
+const nullableText = z.string().nullable();
+const testSuiteSchema = z.array(z.object({
+  id: z.string().min(1), name: z.string(), origin: z.string(), policyId: z.string(), phase: z.string(), content: z.string(),
+  expectedDecision: z.string(), trustedInstruction: z.string(), targetSource: z.string(), query: z.string(),
+  groundingSources: z.array(z.string()), expectedReasoningResult: nullableText, caseType: z.string(), required: z.boolean(),
+  expectedFailure: nullableText, concurrencyGroup: nullableText, sourcePolicyId: nullableText, sourcePolicyVersion: nullableText,
+  sourceCaseId: nullableText, coveredRuleIds: z.array(z.string()),
+  expectationOverride: z.object({
+    sourcePolicyVersion: z.string(), reason: z.string(), expectedDecision: z.enum(["allow", "block", "transform", "intervene"]),
+    expectedOutputContent: z.string().optional(), expectedMatches: z.array(z.object({ policyId: z.string(), ruleId: z.string() }).strict()),
   }).strict().nullable(),
-}).strict();
-/** UAT test evidence for exactly one content digest. */
-export type UatEvidence = z.output<typeof evidenceSchema> & { runtime: ValidationRuntimeFingerprint | null };
+}).strict()).min(1).max(5000);
 
 const artifactSchema = z.object({
   guardrailId: z.string(), guardrailVersion: z.string(), compilerVersion: z.string(), nemoVersion: z.string(), runtimeProfile: z.string(),
@@ -88,7 +81,8 @@ export type PackageVersion = {
   content: ArtifactContent;
   inspection: GuardrailInspection;
   requirements: ArtifactRequirements;
-  evidence: UatEvidence;
+  /** The Test Cases frozen with this version. */
+  testSuite: FrozenTestCase[];
   /** SHA-256 of each of the version's files, keyed by file kind. */
   fileDigests: Record<(typeof VERSION_FILES)[number], string>;
 };
@@ -111,7 +105,7 @@ export function packageError(message: string, code = "guardrail_package_invalid"
 export function buildPackage(input: {
   source: { id: string; name: string };
   guardrail: { id: string; name: string };
-  versions: Array<{ content: ArtifactContent; inspection: GuardrailInspection; evidence: UatEvidence }>;
+  versions: Array<{ content: ArtifactContent; inspection: GuardrailInspection; testSuite: FrozenTestCase[] }>;
   exportedAt: Date;
   sign: (manifest: Buffer) => PackageSignature[];
 }): Buffer {
@@ -122,7 +116,7 @@ export function buildPackage(input: {
     files.set(versionPath(version, "artifact"), jsonFile(item.content));
     files.set(versionPath(version, "inspection"), jsonFile(item.inspection));
     files.set(versionPath(version, "requirements"), jsonFile(deriveRequirements(item.content)));
-    files.set(versionPath(version, "uat-evidence"), jsonFile(item.evidence));
+    files.set(versionPath(version, "test-suite"), jsonFile(item.testSuite));
   }
   const manifest: PackageManifest = {
     format: PACKAGE_FORMAT,
@@ -134,7 +128,7 @@ export function buildPackage(input: {
     versions: versions.map(item => ({
       version: item.content.guardrailVersion,
       contentDigest: artifactContentDigest(item.content),
-      evidenceDigest: sha256(files.get(versionPath(item.content.guardrailVersion, "uat-evidence"))!),
+      testSuiteDigest: testSuiteDigest(item.testSuite),
     })),
     files: [...files].sort(([left], [right]) => left < right ? -1 : 1).map(([path, bytes]) => ({ path, sha256: sha256(bytes), size: bytes.length })),
   };
@@ -177,7 +171,7 @@ export function parsePackage(archive: Buffer): ParsedPackage {
       content: parseJsonFile(versionPath(version, "artifact"), bytes("artifact"), artifactSchema) as ArtifactContent,
       inspection: parseJsonFile(versionPath(version, "inspection"), bytes("inspection"), inspectionSchema) as unknown as GuardrailInspection,
       requirements: JSON.parse(bytes("requirements").toString("utf8")) as ArtifactRequirements,
-      evidence: parseJsonFile(versionPath(version, "uat-evidence"), bytes("uat-evidence"), evidenceSchema) as UatEvidence,
+      testSuite: parseJsonFile(versionPath(version, "test-suite"), bytes("test-suite"), testSuiteSchema) as FrozenTestCase[],
       fileDigests: Object.fromEntries(VERSION_FILES.map(file => [file, sha256(bytes(file))])) as PackageVersion["fileDigests"],
     };
   });
@@ -203,11 +197,12 @@ export function verifyPackageVersion(
   }
   if (canonicalJson(canonicalize(content)) !== canonicalJson(content)) throw fail("the Artifact contains content the Runner contract does not carry.");
   const contentDigest = artifactContentDigest(content);
-  if (contentDigest !== entry.contentDigest || item.evidence.contentDigest !== contentDigest) throw packageError(`Version ${item.version}: content digest does not match.`, "guardrail_package_digest_mismatch", { version: item.version });
-  if (item.evidence.guardrailId !== content.guardrailId || item.evidence.version !== item.version || item.evidence.source.id !== parsed.manifest.source.id) {
-    throw fail("the UAT evidence belongs to different content or source.");
+  if (contentDigest !== entry.contentDigest) throw packageError(`Version ${item.version}: content digest does not match.`, "guardrail_package_digest_mismatch", { version: item.version });
+  // The suite is the one this version was tested and published with.
+  const suiteDigest = testSuiteDigest(item.testSuite);
+  if (suiteDigest !== entry.testSuiteDigest || suiteDigest !== item.inspection.testSuite.digest || item.testSuite.length !== item.inspection.testSuite.total) {
+    throw packageError(`Version ${item.version}: the test suite does not match the one it was published with.`, "guardrail_package_digest_mismatch", { version: item.version });
   }
-  if (item.fileDigests["uat-evidence"] !== entry.evidenceDigest) throw fail("the UAT evidence digest does not match the manifest.");
   if (canonicalJson(item.requirements) !== canonicalJson(deriveRequirements(content))) throw fail("declared requirements do not match the Artifact.");
   const bindings = new Set(((content.plan.policy_bindings ?? []) as Array<Record<string, unknown>>).map(binding => `${binding.policy_id}@${binding.policy_version}`));
   const inspected = new Set(item.inspection.policies.map(policy => `${policy.policyId}@${policy.policyVersion}`));

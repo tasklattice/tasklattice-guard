@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { loadConfig } from "../config.js";
-import { artifactContentDigest, verifyArtifactDigest, type ArtifactContent } from "../domain/artifact-content.js";
+import { verifyArtifactDigest, type ArtifactContent } from "../domain/artifact-content.js";
 import { DEFAULT_GUARDRAIL_ID, defaultGuardrailDraft } from "../domain/defaults.js";
 import { buildPackage, parsePackage } from "../domain/guardrail-package.js";
 import { emptyValidationMetrics } from "../domain/validation.js";
@@ -108,11 +108,14 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     const second = await uat.packages.exportPackage(guardrailId, published);
     const filesOf = (bytes: Buffer) => [...readZip(bytes, { maxEntries: 64, maxEntryBytes: 1 << 24, maxTotalBytes: 1 << 26 })].filter(([path]) => path.startsWith("versions/"));
     expect(filesOf(first.bytes)).toEqual(filesOf(second.bytes));
-    expect(filesOf(first.bytes).map(([path]) => path)).toEqual(published.flatMap(version => ["artifact", "inspection", "requirements", "uat-evidence"].map(file => `versions/${version}/${file}.json`)));
+    expect(filesOf(first.bytes).map(([path]) => path)).toEqual(published.flatMap(version => ["artifact", "inspection", "requirements", "test-suite"].map(file => `versions/${version}/${file}.json`)));
     const parsed = parsePackage(first.bytes);
     expect(parsed.manifest).toMatchObject({ source: { id: "bank-uat" }, guardrail: { id: guardrailId, name: "Bank assistant" } });
     expect(parsed.manifest).not.toHaveProperty("recommendedVersion");
-    expect(parsed.versions[0]!.evidence).toMatchObject({ status: "passed", source: { id: "bank-uat" }, runtime: { runnerId: "uat-runner-0" } });
+    // Each version carries the suite it was published with; the UAT report stays in UAT.
+    const { rows: [stored] } = await uatDb.pool.query("SELECT test_suite FROM guardrail_version WHERE version = $1", [published[0]]);
+    expect(parsed.versions[0]!.testSuite).toEqual(stored.test_suite);
+    expect(JSON.stringify(parsed)).not.toMatch(/uat-runner-0|resultsDigest/);
   });
 
   it("refuses to export versions that cannot prove what was tested", async () => {
@@ -142,8 +145,10 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     }
     const { rows: [guardrail] } = await prodDb.pool.query("SELECT origin, source_id, status FROM guardrail WHERE id = $1", [guardrailId]);
     expect(guardrail).toEqual({ origin: "imported", source_id: "bank-uat", status: "active" });
-    const { rows: provenance } = await prodDb.pool.query("SELECT version, source_id, source_key_id, uat_evidence->>'status' AS status FROM guardrail_version_provenance ORDER BY version");
-    expect(provenance).toEqual(published.map(version => ({ version, source_id: "bank-uat", source_key_id: "uat-2026", status: "passed" })));
+    const { rows: provenance } = await prodDb.pool.query("SELECT version, source_id, source_key_id FROM guardrail_version_provenance ORDER BY version");
+    expect(provenance).toEqual(published.map(version => ({ version, source_id: "bank-uat", source_key_id: "uat-2026" })));
+    const { rows: suites } = await prodDb.pool.query("SELECT v.test_suite AS prod, v.inspection->'testSuite'->>'total' AS total FROM guardrail_version v WHERE v.guardrail_id = $1 ORDER BY v.version", [guardrailId]);
+    expect(suites.map(row => row.prod.length)).toEqual(suites.map(row => Number(row.total)));
     // Import neither distributes nor routes anything, and creates no test or compile work.
     expect((await prodDb.pool.query("SELECT kind FROM controller_outbox WHERE aggregate_id = $1", [guardrailId])).rows).toEqual([]);
     expect((await prodDb.pool.query("SELECT count(*)::int AS n FROM guardrail_validation_run WHERE guardrail_id = $1", [guardrailId])).rows[0].n).toBe(0);
@@ -168,7 +173,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     const altered = parsed.versions.map(item => item.version === published[1] ? { ...item, content: { ...item.content, configYaml: "models: [] # changed\n" } } : item);
     const bytes = buildPackage({
       source: parsed.manifest.source, guardrail: parsed.manifest.guardrail, exportedAt: new Date(), sign: signer.sign,
-      versions: altered.map(item => ({ content: item.content, inspection: item.inspection, evidence: { ...item.evidence, contentDigest: artifactContentDigest(item.content) } })),
+      versions: altered.map(item => ({ content: item.content, inspection: item.inspection, testSuite: item.testSuite })),
     });
     const before = (await prodDb.pool.query("SELECT count(*)::int AS n FROM guardrail_version")).rows[0].n;
     const preview = await prod.packages.inspectUpload(bytes, "admin");
@@ -203,7 +208,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     const reserved = (id: string) => parsed.versions.map(item => {
       const plan = { ...item.content.plan, guardrail_id: id };
       const content = { ...item.content, guardrailId: id, plan };
-      return { content, inspection: item.inspection, evidence: { ...item.evidence, guardrailId: id, contentDigest: artifactContentDigest(content) } };
+      return { content, inspection: item.inspection, testSuite: item.testSuite };
     });
     const defaultPackage = buildPackage({ source: parsed.manifest.source, guardrail: { id: DEFAULT_GUARDRAIL_ID, name: "Default Guardrail" },
       exportedAt: new Date(), sign: packageSigner(uatConfig).sign, versions: reserved(DEFAULT_GUARDRAIL_ID) });
@@ -272,7 +277,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     const parsed = parsePackage((await uat.packages.exportPackage(guardrailId, [published[0]!])).bytes);
     const versions = parsed.versions.map(item => {
       const content = { ...item.content, guardrailId: DEFAULT_GUARDRAIL_ID, plan: { ...item.content.plan, guardrail_id: DEFAULT_GUARDRAIL_ID } };
-      return { content, inspection: item.inspection, evidence: { ...item.evidence, guardrailId: DEFAULT_GUARDRAIL_ID, source: { id: "bank-uat-system", name: "UAT system baseline" }, contentDigest: artifactContentDigest(content) } };
+      return { content, inspection: item.inspection, testSuite: item.testSuite };
     });
     const signer = packageSigner({ ...uatConfig, packageExport: { sourceId: "bank-uat-system", sourceName: "UAT system baseline", signingKeyPath: systemPackageKey.path, signingKeyId: "system" } });
     const bytes = buildPackage({ source: { id: "bank-uat-system", name: "UAT system baseline" }, guardrail: { id: DEFAULT_GUARDRAIL_ID, name: "Default Guardrail" },

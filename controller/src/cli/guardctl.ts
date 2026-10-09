@@ -399,9 +399,7 @@ async function handleImport(args: string[]) {
   console.log(`Source:    ${preview.source.name} (${preview.source.id}), key ${preview.keyId}`);
   console.log(`Guardrail: ${preview.guardrail.name} (${preview.guardrail.id})${preview.guardrail.exists ? '' : ' — new in this environment'}`);
   for (const item of preview.versions) {
-    const metrics = item.evidence.metrics ?? {};
-    const tested = typeof metrics.total === 'number' ? ` (${metrics.passed ?? 0}/${metrics.total} cases)` : '';
-    console.log(`  ${item.version}  ${item.state.padEnd(8)} source test: ${item.evidence.status}${tested}  environment: ${item.environment?.status ?? 'not checked'}`);
+    console.log(`  ${item.version}  ${item.state.padEnd(8)} test suite: ${item.testSuite.total} cases  environment: ${item.environment?.status ?? 'not checked'}`);
     for (const pool of item.environment?.pools ?? []) if (!pool.admitted && !pool.unavailable) console.log(`      ${pool.poolId}/${pool.runnerId}: ${pool.reason}`);
   }
   for (const blocker of preview.blockers) console.log(`Blocked: ${blocker.message}`);

@@ -17,7 +17,6 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { artifactContentDigest } from "../controller/server/domain/artifact-content.ts";
 import { buildPackage, parsePackage } from "../controller/server/domain/guardrail-package.ts";
 import { readZip, writeZip } from "../controller/server/domain/zip.ts";
 
@@ -85,7 +84,7 @@ function reissue(parsed, { source = parsed.manifest.source, guardrail = parsed.m
   return buildPackage({ source, guardrail, exportedAt: new Date(), sign: signWith,
     versions: parsed.versions.map(item => {
       const content = mutate({ ...item.content, guardrailId: guardrail.id, plan: { ...item.content.plan, guardrail_id: guardrail.id } });
-      return { content, inspection: item.inspection, evidence: { ...item.evidence, guardrailId: guardrail.id, source, contentDigest: artifactContentDigest(content) } };
+      return { content, inspection: item.inspection, testSuite: item.testSuite };
     }) });
 }
 

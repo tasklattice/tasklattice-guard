@@ -56,8 +56,7 @@ export function GuardrailRegistry({
                     <StateBadge state={guardrail.latest_validation_run.status} />
                     <span className="font-mono text-xs text-muted-foreground">{guardrail.latest_validation_run.metrics.compliance_rate}%</span>
                   </span>
-                ) : guardrail.origin === "imported" ? <StateBadge state="passed" label={t("guardrailPackage.sourceTested")} />
-                  : <span className="text-xs text-muted-foreground">{t("guardrails.notRun")}</span>}
+                ) : <span className="text-xs text-muted-foreground">{t("guardrails.notRun")}</span>}
               </TableCell>
               <TableCell className="text-xs text-muted-foreground">
                 {new Date(guardrail.updated_at).toLocaleString(i18n.language)}

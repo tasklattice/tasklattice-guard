@@ -244,9 +244,10 @@ is `docs/guardrail-self-contained-promotion-design.zh-CN.md`.
 **Export (UAT).** **Guardrails → row Actions → Export…** (or **Export…** on a
 version) selects one or more published versions (none preselected) and
 downloads one signed `.guardrail.zip`. Each version carries its exact Artifact
-content, a frozen inspection snapshot, derived runtime requirements and the test
-evidence for that content digest. Export refuses versions that cannot prove what
-was tested or lack a complete Policy snapshot. API:
+content, a frozen inspection snapshot, derived runtime requirements and its
+frozen test suite (the cases it was published with). Test reports never travel.
+Export refuses versions that cannot prove what was tested, or that lack a
+complete Policy snapshot or test suite. API:
 `GET /api/v1/guardrails/{id}/package?versions=a,b`. Configure the source identity
 and a package key that is separate from the Artifact signing key:
 `CONTROLLER_PACKAGE_SOURCE_ID`, `CONTROLLER_PACKAGE_SOURCE_NAME`,
@@ -257,7 +258,7 @@ importing into production is a procedure (SOP), not a configuration. They differ
 only in package identity: `CONTROLLER_PACKAGE_TRUST_PATH` names a JSON file of trusted sources:
 `{"sources":[{"id","name","keys":[{"id","publicKeyPem"}],"reservedGuardrailIds":[]}]}`.
 **Guardrails → Create Guardrail → Import release package** uploads a package, shows the source, each version's
-source test result, new/existing/conflict state and a Runner load check, then
+test suite, new/existing/conflict state and a Runner load check, then
 imports only what is new. Imported Guardrails are read-only. Routing an imported
 version requires a recent passing load check on every pool; a Router change is
 refused otherwise. An imported version whose load check passed is also held by
