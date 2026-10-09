@@ -1,6 +1,5 @@
 import { immutableVersionsEn, immutableVersionsZh } from "./immutable-versions-i18n";
 import { guardrailPackageEn, guardrailPackageZh } from "./guardrail-package-i18n";
-import { releasedPoliciesEn, releasedPoliciesZh } from "./released-policies-i18n";
 import { uiCopyEn, uiCopyZh } from "./ui-copy-i18n";
 import { routingEn, routingZh } from "./routing-i18n";
 import i18n from "i18next";
@@ -34,7 +33,6 @@ const resources = {
       runnerView: runnerViewEn,
       immutableVersions: immutableVersionsEn,
       guardrailPackage: guardrailPackageEn,
-      releasedPolicies: releasedPoliciesEn,
       securityEvents: {
         filters: "Filters", clearFilters: "Clear filters", appliedFilters: "Applied filters", removeRiskFilter: "Remove risk level filter", filtersCleared: "All risk filters cleared", selectedLevels: "Selected risk levels: ", openFilter: "Open options", closeFilter: "Close options", levelGuide: "About risk levels", openLogs: "View runtime logs", retry: "Retry", updating: "Updating…", loadingSummary: "Loading event totals…", summaryUnavailable: "Event totals unavailable",
         resultSummary: "{{matched}} matching events · {{total}} events in this time range, across {{interactions}} interactions",
@@ -1015,7 +1013,8 @@ const resources = {
         clearFilters: "Clear",
         optional: "Optional",
         sourceLabels: { custom: "Custom Policy", built_in: "Built-in" },
-        usageLabels: { used: "Used by Guardrails", unused: "Not used" },
+        importedFrom: "Imported from {{source}}",
+        importedReadOnly: "Imported with a Guardrail from {{source}}. It is read only here; change it in its source environment and release a new version.",
         noCatalogResults: "No Policies match these filters",
         noCatalogResultsDescription: "Clear one or more tags, or search with a broader Policy, Rule, test, or capability.",
         resetCatalog: "Reset catalog",
@@ -1052,7 +1051,7 @@ const resources = {
         effectLabel: "Effect",
         testCasesTitle: "Test Cases",
         testCasesDescription: "Acceptance and scenario Test Cases prove the Policy's declared Rule behavior before it is released in a Guardrail Version.",
-        tagNamespaces: { guardrail_category: "Guardrail category", collection: "Collection", domain: "Industry", framework: "Frameworks & regulations", implementation: "Implementation", jurisdiction: "Jurisdiction", rail: "Rail type", source: "Source", usage: "Usage" },
+        tagNamespaces: { guardrail_category: "Guardrail category", collection: "Collection", domain: "Industry", framework: "Frameworks & regulations", implementation: "Implementation", jurisdiction: "Jurisdiction", rail: "Rail type", source: "Source" },
         jurisdictions: { au: "Australia", cn: "China mainland", eu: "European Union", sg: "Singapore", uae: "United Arab Emirates" },
         railTypes: { input: "Input rail", output: "Output rail", retrieval: "Retrieval rail", dialog: "Dialog rail", execution: "Execution rail" },
         railTiming: { input: "Before the main model", output: "After the main model", retrieval: "During retrieval", dialog: "During dialog processing", execution: "Around tool and action calls" },
@@ -2997,7 +2996,6 @@ const resources = {
       runnerView: runnerViewZh,
       immutableVersions: immutableVersionsZh,
       guardrailPackage: guardrailPackageZh,
-      releasedPolicies: releasedPoliciesZh,
       securityEvents: {
         filters: "筛选", clearFilters: "清除筛选", appliedFilters: "已应用的筛选", removeRiskFilter: "移除风险级别筛选", filtersCleared: "已清除全部风险筛选", selectedLevels: "已选风险级别：", openFilter: "展开选项", closeFilter: "收起选项", levelGuide: "分级说明", openLogs: "查看运行日志", retry: "重试", updating: "正在更新…", loadingSummary: "正在加载事件总量…", summaryUnavailable: "事件总量暂不可用",
         resultSummary: "匹配 {{matched}} 条事件 · 当前时段共 {{total}} 条事件，涉及 {{interactions}} 次交互",
@@ -3976,7 +3974,8 @@ const resources = {
         clearFilters: "清除",
         optional: "可选",
         sourceLabels: { custom: "自定义 Policy", built_in: "内建" },
-        usageLabels: { used: "被 Guardrail 使用", unused: "未被使用" },
+        importedFrom: "导入自 {{source}}",
+        importedReadOnly: "随 Guardrail 从 {{source}} 导入，在这里只读；如需修改，请在来源环境修改并发布新版本。",
         noCatalogResults: "没有符合条件的 Policy",
         noCatalogResultsDescription: "清除一个或多个标签，或使用更宽泛的 Policy、Rule、测试或能力进行搜索。",
         resetCatalog: "重置目录",
@@ -4013,7 +4012,7 @@ const resources = {
         effectLabel: "执行结果",
         testCasesTitle: "Test Cases",
         testCasesDescription: "验收和场景 Test Case 用于证明 Policy 声明的 Rule 行为，然后才能通过 Guardrail Version 发布。",
-        tagNamespaces: { guardrail_category: "Guardrail 分类", collection: "系列", domain: "行业", framework: "框架与法规", implementation: "实现", jurisdiction: "适用地区", rail: "Rail 类型", source: "来源", usage: "使用情况" },
+        tagNamespaces: { guardrail_category: "Guardrail 分类", collection: "系列", domain: "行业", framework: "框架与法规", implementation: "实现", jurisdiction: "适用地区", rail: "Rail 类型", source: "来源" },
         jurisdictions: { au: "澳大利亚", cn: "中国大陆", eu: "欧盟", sg: "新加坡", uae: "阿联酋" },
         railTypes: { input: "Input rail", output: "Output rail", retrieval: "Retrieval rail", dialog: "Dialog rail", execution: "Execution rail" },
         railTiming: { input: "主模型调用前", output: "主模型调用后", retrieval: "检索期间", dialog: "对话处理期间", execution: "工具与 Action 调用前后" },

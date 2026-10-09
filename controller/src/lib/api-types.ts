@@ -634,6 +634,9 @@ export type Policy = {
   updated_at?: string;
   implementation_detail?: ProgrammablePolicy;
   published_versions?: Policy[];
+  /** "imported": arrived with a Guardrail from source_id; read only here. */
+  origin?: "local" | "imported";
+  source_id?: string | null;
 };
 
 export type NativeRailType = "input" | "output" | "retrieval" | "dialog" | "execution";

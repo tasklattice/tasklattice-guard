@@ -32,8 +32,10 @@ export function ImportGuardrailSheet({ onClose, returnFocusRef }: { onClose: () 
         queryClient.invalidateQueries({ queryKey: queryKeys.guardrails }),
         queryClient.invalidateQueries({ queryKey: queryKeys.guardrail(result.guardrailId) }),
         queryClient.invalidateQueries({ queryKey: queryKeys.guardrailVersions(result.guardrailId) }),
+        // Policy versions arrived with it.
+        queryClient.invalidateQueries({ queryKey: queryKeys.policies }),
       ]);
-      toast.success(t("guardrailPackage.imported", { imported: result.imported.length, existing: result.existing.length }));
+      toast.success(t("guardrailPackage.imported", { imported: result.imported.length, existing: result.existing.length, policies: result.policies.imported.length }));
       onClose();
       void navigate({ to: "/guardrails/$guardrailId", params: { guardrailId: result.guardrailId }, search: { tab: "immutable" } });
     },
@@ -101,8 +103,10 @@ function PackageSummary({ preview, language }: { preview: PackagePreview; langua
     </dl>
     {preview.blockers.length ? <div role="alert" className="space-y-1 border border-destructive/40 p-4 text-sm">
       <p className="font-medium text-destructive">{t("guardrailPackage.blocked")}</p>
-      {preview.blockers.map(blocker => <p key={blocker.code} className="text-destructive/80">{blocker.message}</p>)}
+      {preview.blockers.map((blocker, index) => <p key={`${blocker.code}-${index}`} className="text-destructive/80">{blocker.message}</p>)}
     </div> : null}
+    <PolicyLeaves policies={preview.policies} />
+    <h3 className="text-sm font-semibold">{t("guardrailPackage.versionsHeading")}</h3>
     <Table>
       <TableHeader><TableRow>
         <TableHead>{t("guardrailPackage.version")}</TableHead><TableHead>{t("guardrailPackage.testSuite")}</TableHead>
@@ -116,6 +120,28 @@ function PackageSummary({ preview, language }: { preview: PackagePreview; langua
       </TableRow>)}</TableBody>
     </Table>
   </div>;
+}
+
+/** The package's leaves: Policy versions that need adding, or that conflict, listed; the rest counted. */
+function PolicyLeaves({ policies }: { policies: PackagePreview["policies"] }) {
+  const { t } = useTranslation();
+  const listed = policies.filter(item => item.state !== "existing");
+  const existing = policies.length - listed.length;
+  return <section className="space-y-2">
+    <h3 className="text-sm font-semibold">{t("guardrailPackage.policiesHeading")}</h3>
+    <p className="text-xs text-muted-foreground">{t("guardrailPackage.policiesDescription")}</p>
+    {listed.length ? <Table>
+      <TableHeader><TableRow>
+        <TableHead>{t("guardrailPackage.policy")}</TableHead><TableHead>{t("guardrailPackage.policyKind")}</TableHead><TableHead>{t("guardrailPackage.state")}</TableHead>
+      </TableRow></TableHeader>
+      <TableBody>{listed.map(item => <TableRow key={`${item.id}@${item.version}`}>
+        <TableCell className="whitespace-normal"><p className="text-sm font-medium">{item.name}</p><code className="break-all text-xs text-muted-foreground">{item.id}@{item.version}</code></TableCell>
+        <TableCell className="whitespace-nowrap text-sm">{t(`guardrailPackage.policyKinds.${item.kind}`)}</TableCell>
+        <TableCell className="whitespace-nowrap"><StateBadge state={item.state === "new" ? "ready" : "failed"} label={t(item.state === "new" ? "guardrailPackage.stateNew" : "guardrailPackage.stateConflict")} /></TableCell>
+      </TableRow>)}</TableBody>
+    </Table> : null}
+    {existing ? <p className="text-xs text-muted-foreground">{t("guardrailPackage.policiesExisting", { count: existing })}</p> : null}
+  </section>;
 }
 
 /** Runner load-check verdict with the reasons a pool rejected the content. */

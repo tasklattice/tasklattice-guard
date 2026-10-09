@@ -244,11 +244,16 @@ is `docs/guardrail-self-contained-promotion-design.zh-CN.md`.
 
 **Export (UAT).** **Guardrails → row Actions → Export…** (or **Export…** on a
 version) selects one or more published versions (none preselected) and
-downloads one signed `.guardrail.zip`. Each version carries its exact Artifact
-content, a frozen inspection snapshot, derived runtime requirements and its
-frozen test suite (the cases it was published with). Test reports never travel.
-Export refuses versions that cannot prove what was tested, or that lack a
-complete Policy snapshot or test suite. API:
+downloads one signed `.guardrail.zip`, a resource tree (format version 3):
+`policies/<id>/<version>/policy.json` leaves for every Policy version the
+selected versions use (catalog definitions frozen before per-binding phrase
+expansion, Policy Studio versions as their Library snapshots), then
+`guardrails/<id>/guardrail.json` and, per version, `version.json` (its
+configuration), `test-suite.json`, `artifact.json` and `requirements.json`. The
+manifest lists the nodes and each version's edges to its Policy versions by
+digest. Test reports never travel. Export refuses versions that cannot prove
+what was tested, or that lack their Policy nodes, a complete Policy snapshot or
+a test suite. API:
 `GET /api/v1/guardrails/{id}/package?versions=a,b`. Configure the source identity
 and a package key that is separate from the Artifact signing key:
 `CONTROLLER_PACKAGE_SOURCE_ID`, `CONTROLLER_PACKAGE_SOURCE_NAME`,
@@ -259,8 +264,13 @@ importing into production is a procedure (SOP), not a configuration. They differ
 only in package identity: `CONTROLLER_PACKAGE_TRUST_PATH` names a JSON file of trusted sources:
 `{"sources":[{"id","name","keys":[{"id","publicKeyPem"}],"reservedGuardrailIds":[]}]}`.
 **Guardrails → Create Guardrail ▾ (the arrow) → Import release package** uploads a package, shows the source, each version's
-test suite, new/existing/conflict state and a Runner load check, then
-imports only what is new. Imported Guardrails are read-only, and each imported
+Policy versions and Guardrail versions with new/existing/conflict state and a
+Runner load check, then builds what is new from the leaves up in one
+transaction: Policy versions join this Library (read only, owned by their
+source; a catalog version this installation does not ship is kept as a
+read-only version of that Policy), then the Guardrail and its versions. A
+Policy version with different content, or a Policy this environment or
+another source owns, rejects the whole package. Imported Guardrails are read-only, and each imported
 version arrives **pending**. In the version list, **Run tests** runs the version's
 own test suite here against its signed Artifact, unchanged; once the latest run
 passed for exactly that content and suite, **Release** makes it **ready** and
@@ -271,15 +281,11 @@ failed test does not revoke a release. Routing an imported
 version also requires a recent passing load check on every pool. A released
 imported version whose load check passed is held by the default pool, so
 **Playground** can talk to it before any Router serves it.
-**Policy Library** is one list: the Library plus any Policy that exists here
-only inside released Guardrail versions (read only, for example an imported
-custom Policy). The **Usage** filter shows the Policies a released Guardrail
-version uses, or those no Guardrail uses; it reads the Policies frozen in
-released versions, local and imported, by Policy ID
-(`GET /api/v1/released-policies`). The drawer's Releases tab lists each version
-with its definition digest and the Guardrail versions using it, marks what
-serves traffic, and keeps one version number released with different content as
-separate entries. The runtime baseline is a pinned Default version: an
+**Policy Library** lists this environment's Policies, including those imported
+with a Guardrail (marked with their source, read only). Which Guardrails use a
+Policy, and whether that serves traffic, belongs to the Guardrail: a version's
+Policies tab links each Policy to that exact version in the Library. A Policy
+that any Guardrail version was built from cannot be deleted. The runtime baseline is a pinned Default version: an
 installation adopts its first published Default version, and every later switch
 is explicit (`PUT /api/v1/system/baseline`, or a startup package via
 `CONTROLLER_BASELINE_PACKAGE_PATH`). A source authorized for `guardrail-default`

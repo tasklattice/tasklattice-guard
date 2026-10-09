@@ -13,7 +13,7 @@ import {
   Download,
   FlaskConical,
   LoaderCircle,
-  Rocket,
+  Upload,
   RotateCcw,
   Search,
   ShieldCheck,
@@ -38,8 +38,6 @@ import { PolicyCompliancePanel } from "@/components/policy-compliance";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { queryKeys } from "@/features/query-keys";
 import { useAuth } from "@/lib/auth";
-import { PolicyReleases, ReleaseSummary, releasedPolicyView } from "@/components/policy-releases";
-import { getReleasedPolicies, type ReleasedPolicy } from "@/lib/controller-api";
 import { deleteProgrammablePolicy, getPolicies, getPolicy, type ProgrammablePolicy, type Policy, type PolicyRule, type PolicyTag } from "@/lib/api";
 import {
   parsePolicyPackage,
@@ -56,8 +54,8 @@ import { boundPolicy } from "@/lib/bound-policy";
 const EMPTY_POLICIES: Policy[] = [];
 const HIDDEN_POLICY_TAG_NAMESPACES = new Set(["engine", "scope", "stage", "implementation", "rail", "protection", "guardrail_category", "collection", "domain"]);
 const HIDDEN_POLICY_FACET_NAMESPACES = new Set(["implementation", "rail", "protection", "guardrail_category", "collection", "domain"]);
-const POLICY_FACET_ORDER = ["usage", "source", "framework", "jurisdiction"];
-type CatalogFacetTag = Omit<PolicyTag, "namespace"> & { namespace: PolicyTag["namespace"] | "source" | "usage"; count?: number };
+const POLICY_FACET_ORDER = ["source", "framework", "jurisdiction"];
+type CatalogFacetTag = Omit<PolicyTag, "namespace"> & { namespace: PolicyTag["namespace"] | "source"; count?: number };
 const JURISDICTION_FLAGS: Record<string, string> = {
   au: "🇦🇺",
   cn: "🇨🇳",
@@ -67,10 +65,10 @@ const JURISDICTION_FLAGS: Record<string, string> = {
 };
 
 /**
- * One list: the editable Library, plus any Policy that exists here only as a
- * frozen copy inside released Guardrail versions (for example, imported ones).
- * The Usage filter tells which Policies a released Guardrail version uses; each
- * card and detail shows where. Released-only Policies are read only.
+ * This environment's Policy Library: catalog Policies, Policy Studio Policies,
+ * and Policy versions that arrived with an imported Guardrail. Imported ones
+ * belong to their source and are read only here. Which Guardrails use a
+ * Policy is a Guardrail's concern; a Guardrail version links to its Policies.
  */
 export function PolicyLibraryPage() {
   const { t } = useTranslation();
@@ -79,16 +77,9 @@ export function PolicyLibraryPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
-  const libraryQuery = useQuery({ queryKey: queryKeys.policies, queryFn: getPolicies });
-  const releasedQuery = useQuery({ queryKey: queryKeys.releasedPolicies, queryFn: getReleasedPolicies });
-  const releases = useMemo(() => new Map((releasedQuery.data?.items ?? []).map((policy) => [policy.policyId, policy])), [releasedQuery.data]);
-  const libraryIds = useMemo(() => new Set((libraryQuery.data?.items ?? EMPTY_POLICIES).map((policy) => policy.id)), [libraryQuery.data]);
-  const policies = useMemo(() => [
-    ...libraryQuery.data?.items ?? EMPTY_POLICIES,
-    ...[...releases.values()].filter((policy) => !libraryIds.has(policy.policyId)).map(releasedPolicyView),
-  ], [libraryQuery.data, releases, libraryIds]);
-  const used = useMemo(() => new Set(releases.keys()), [releases]);
-  const editable = (policy: Policy | null) => Boolean(policy && libraryIds.has(policy.id) && policy.source === "custom" && policy.implementation === "nemo_native");
+  const query = useQuery({ queryKey: queryKeys.policies, queryFn: getPolicies });
+  const policies = query.data?.items ?? EMPTY_POLICIES;
+  const editable = (policy: Policy | null) => Boolean(policy && policy.origin !== "imported" && policy.source === "custom" && policy.implementation === "nemo_native");
   const [search, setSearch] = useState("");
   const [directory, setDirectory] = useState<ProtectionDirectoryId | null>(null);
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
@@ -134,9 +125,9 @@ export function PolicyLibraryPage() {
     navigate({ to: "/policy-library", search: { policy: undefined, version: undefined }, replace: true });
   }
 
-  const facets = useMemo(() => tagFacets(policies, directory, selectedTags, search, used), [policies, directory, selectedTags, search, used]);
-  const filtered = useMemo(() => filterCatalogPolicies(policies, directory, selectedTags, search, used), [policies, directory, selectedTags, search, used]);
-  const directoryPolicies = useMemo(() => filterCatalogPolicies(policies, null, selectedTags, search, used), [policies, selectedTags, search, used]);
+  const facets = useMemo(() => tagFacets(policies, directory, selectedTags, search), [policies, directory, selectedTags, search]);
+  const filtered = useMemo(() => filterCatalogPolicies(policies, directory, selectedTags, search), [policies, directory, selectedTags, search]);
+  const directoryPolicies = useMemo(() => filterCatalogPolicies(policies, null, selectedTags, search), [policies, selectedTags, search]);
   const activeCount = selectedTags.size + Number(Boolean(directory));
   function clearFilters() { setDirectory(null); setSelectedTags(new Set()); }
   const filterPanel = <CatalogFilters policies={directoryPolicies} facets={facets} directory={directory} onDirectoryChange={setDirectory} selected={selectedTags} onChange={setSelectedTags} onClear={clearFilters} />;
@@ -213,13 +204,12 @@ export function PolicyLibraryPage() {
         </div>
       </div>
 
-      {libraryQuery.error ? <div className="mt-5"><ErrorNotice error={libraryQuery.error} /></div> : null}
-      {releasedQuery.error ? <div className="mt-5"><ErrorNotice error={releasedQuery.error} /></div> : null}
-      {searchParams.version && searchParams.policy && libraryQuery.isSuccess && !releasedQuery.isPending && !selected ? <div role="alert" className="mt-5 flex flex-wrap items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+      {query.error ? <div className="mt-5"><ErrorNotice error={query.error} /></div> : null}
+      {searchParams.version && searchParams.policy && query.isSuccess && !selected ? <div role="alert" className="mt-5 flex flex-wrap items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
         <span className="min-w-0 flex-1 break-words">{t("protection.pinnedVersionUnavailable", { name: `${searchParams.policy}@${searchParams.version}` })}</span>
         <Button className="min-h-11" variant="outline" onClick={closePolicy}>{t("common.close")}</Button>
       </div> : null}
-      {libraryQuery.isLoading || releasedQuery.isLoading ? <CatalogSkeleton /> : (
+      {query.isLoading ? <CatalogSkeleton /> : (
         <div className="mt-5 grid min-w-0 gap-5 lg:grid-cols-[17rem_minmax(0,1fr)] lg:items-start">
           <aside className="sticky top-20 hidden max-h-[calc(100dvh-6rem)] overflow-y-auto border-r pr-5 lg:block" aria-label={t("policyLibrary.filters")}>
             {filterPanel}
@@ -247,7 +237,6 @@ export function PolicyLibraryPage() {
                   <PolicyCard
                     key={policy.id}
                     policy={policy}
-                    release={releases.get(policy.id)}
                     onOpen={() => openPolicy(policy)}
                     onExport={editable(policy) ? () => exportPolicy(policy) : undefined}
                     onDelete={isAdmin && editable(policy) ? () => requestPolicyDelete(policy) : undefined}
@@ -268,8 +257,6 @@ export function PolicyLibraryPage() {
 
       <PolicyDetail
         policy={selected}
-        release={selected ? releases.get(selected.id) : undefined}
-        releasedOnly={Boolean(selected && !libraryIds.has(selected.id))}
         onClose={closePolicy}
         onExport={!searchParams.version && editable(selected) ? exportPolicy : undefined}
         onDelete={!searchParams.version && isAdmin && editable(selected) ? requestPolicyDelete : undefined}
@@ -314,10 +301,8 @@ export function CatalogFilters({ policies, facets, directory, onDirectoryChange,
       <h2 className="flex items-center gap-2 text-sm font-semibold"><SlidersHorizontal className="size-4 text-muted-foreground" />{t("policyLibrary.filters")}{count ? <span className="text-xs tabular-nums text-primary">{count}</span> : null}</h2>
       <Button size="sm" variant="ghost" className="min-h-11 px-2 text-xs text-muted-foreground" disabled={!count} onClick={onClear}>{t("policyLibrary.clearFilters")}</Button>
     </div>
-    {/* Usage first: whether a released Guardrail version uses the Policy. */}
-    <TagFilters facets={new Map([...facets].filter(([namespace]) => namespace === "usage"))} selected={selected} onChange={onChange} />
     <ProtectionDirectoryNav policies={policies} value={directory} onChange={onDirectoryChange} />
-    <TagFilters facets={new Map([...facets].filter(([namespace]) => namespace !== "usage"))} selected={selected} onChange={onChange} />
+    <TagFilters facets={facets} selected={selected} onChange={onChange} />
   </div>;
 }
 
@@ -368,7 +353,7 @@ export function TagFilters({ facets, selected, onChange }: { facets: Map<string,
   </div>;
 }
 
-export function PolicyCard({ policy, release, onOpen, onExport, onDelete }: { policy: Policy; release?: ReleasedPolicy; onOpen: () => void; onExport?: () => void; onDelete?: () => void }) {
+export function PolicyCard({ policy, onOpen, onExport, onDelete }: { policy: Policy; onOpen: () => void; onExport?: () => void; onDelete?: () => void }) {
   const { t } = useTranslation();
   const custom = policy.source === "custom";
   const directory = declaredPolicyDirectory(policy);
@@ -389,7 +374,7 @@ export function PolicyCard({ policy, release, onOpen, onExport, onDelete }: { po
           <Metric label={t("policyLibrary.testCases")} value={policy.test_count} />
         </div>
         <div className="mt-3 flex min-h-11 items-center justify-between gap-3 border-t pt-3">
-          <span className="flex min-w-0 items-center gap-3"><span className="font-mono text-xs text-muted-foreground">v{policy.version}</span>{release ? <ReleaseSummary policy={release} /> : null}</span>
+          <span className="flex min-w-0 items-center gap-3"><span className="font-mono text-xs text-muted-foreground">v{policy.version}</span>{policy.origin === "imported" ? <ImportedBadge source={policy.source_id} /> : null}</span>
           <div className="flex items-center gap-1">
             {onDelete ? <Button size="icon-sm" variant="destructive" className="min-h-11 min-w-11" aria-label={t("policyLibrary.deletePolicyAria", { name: policy.name })} title={t("policyLibrary.deleteAction")} onClick={onDelete}><Trash2 /></Button> : null}
             {onExport ? <Button size="sm" variant="outline" className="min-h-11" aria-label={t("policyLibrary.exportPolicyAria", { name: policy.name })} onClick={onExport}><Download />{t("policyLibrary.exportAction")}</Button> : null}
@@ -405,7 +390,7 @@ function Metric({ label, value }: { label: string; value: number }) {
   return <div><span className="block text-[10px] text-muted-foreground">{label}</span><strong className="mt-0.5 block font-mono font-medium">{value}</strong></div>;
 }
 
-export function PolicyDetail({ policy, release, releasedOnly = false, onClose, onEdit, onExport, onDelete }: { policy: Policy | null; release?: ReleasedPolicy; releasedOnly?: boolean; onClose: () => void; onEdit?: (policy: Policy, trigger: HTMLButtonElement) => void; onExport?: (policy: Policy) => void; onDelete?: (policy: Policy) => void }) {
+export function PolicyDetail({ policy, onClose, onEdit, onExport, onDelete }: { policy: Policy | null; onClose: () => void; onEdit?: (policy: Policy, trigger: HTMLButtonElement) => void; onExport?: (policy: Policy) => void; onDelete?: (policy: Policy) => void }) {
   const { t } = useTranslation();
   if (!policy) return null;
   return (
@@ -422,14 +407,13 @@ export function PolicyDetail({ policy, release, releasedOnly = false, onClose, o
         <PolicySourceBadge source={policy.source} />
         {visiblePolicyTags(policy.tags).map((tag) => <Badge key={tag.id} variant={tag.source === "derived" ? "outline" : "secondary"}><PolicyTagLabel tag={tag} /></Badge>)}
       </div>
-      {releasedOnly ? <div className="mt-4"><InfoNotice>{t("releasedPolicies.notInLibrary")}</InfoNotice></div> : null}
+      {policy.origin === "imported" ? <div className="mt-4"><InfoNotice>{t("policyLibrary.importedReadOnly", { source: policy.source_id ?? "" })}</InfoNotice></div> : null}
       <Tabs key={`${policy.id}@${policy.version}`} defaultValue="policy" className="mt-5">
         <div className="overflow-x-auto">
           <TabsList aria-label={t("policyLibrary.detailViews")} className="min-w-max">
             <TabsTrigger value="policy"><ShieldCheck aria-hidden="true" /><span className="flex items-center gap-2">{t("policyLibrary.tabs.policy")}<Badge variant="outline" className="font-mono text-[10px]">{policy.rules.length}</Badge></span></TabsTrigger>
             <TabsTrigger value="validation"><FlaskConical aria-hidden="true" /><span className="flex items-center gap-2">{t("policyLibrary.tabs.testCases")}<Badge variant="outline" className="font-mono text-[10px]">{policy.test_count}</Badge></span></TabsTrigger>
             <TabsTrigger value="compliance"><BookOpen aria-hidden="true" />{t("policyLibrary.tabs.compliance")}</TabsTrigger>
-            {release ? <TabsTrigger value="releases"><Rocket aria-hidden="true" /><span className="flex items-center gap-2">{t("releasedPolicies.tab")}<Badge variant="outline" className="font-mono text-[10px]">{release.versions.length}</Badge></span></TabsTrigger> : null}
           </TabsList>
         </div>
         <TabsContent value="policy" className="space-y-5 pt-3 sm:pt-4">
@@ -443,7 +427,6 @@ export function PolicyDetail({ policy, release, releasedOnly = false, onClose, o
         </TabsContent>
         <TabsContent value="validation" className="pt-3 sm:pt-4"><PolicyTestCases policy={policy} /></TabsContent>
         <TabsContent value="compliance" className="pt-3 sm:pt-4"><PolicyCompliancePanel policy={policy} /></TabsContent>
-        {release ? <TabsContent value="releases" className="pt-3 sm:pt-4"><PolicyReleases policy={release} /></TabsContent> : null}
       </Tabs>
     </EntitySheet>
   );
@@ -530,10 +513,8 @@ function PolicyTestCases({ policy }: { policy: Policy }) {
                     <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
                   </summary>
                   <div className="border-t bg-muted/15 px-4 py-4">
-                    {/* A released custom Policy keeps test names and expectations, not inputs. */}
                     {testCase.content ? <pre className="mb-3 whitespace-pre-wrap rounded-md border bg-background p-3 font-mono text-xs leading-5">{testCase.content}</pre> : null}
                     {testCase.covered_rule_ids.length ? <p className="text-xs text-muted-foreground">{t("policyLibrary.coveredRules")}: {testCase.covered_rule_ids.map((id) => ruleNames.get(id) ?? id).join(", ")}</p> : null}
-                    {!testCase.content && !testCase.covered_rule_ids.length ? <p className="text-xs text-muted-foreground">{t("releasedPolicies.testInputNotReleased")}</p> : null}
                   </div>
                 </details>
               ))}
@@ -558,8 +539,7 @@ function normalizeCatalogTag(tag: PolicyTag): PolicyTag {
     ? { ...tag, id: "jurisdiction:sg", value: "sg" } : tag;
 }
 
-/** `used` holds the IDs of Policies a released Guardrail version uses; it enables the Usage filter. */
-export function filterCatalogPolicies(policies: Policy[], directory: ProtectionDirectoryId | null, selected: Set<string>, search = "", used?: ReadonlySet<string>) {
+export function filterCatalogPolicies(policies: Policy[], directory: ProtectionDirectoryId | null, selected: Set<string>, search = "") {
   const groups = new Map<string, string[]>();
   for (const id of selected) {
     const namespace = id.split(":")[0];
@@ -569,18 +549,16 @@ export function filterCatalogPolicies(policies: Policy[], directory: ProtectionD
   return policies.filter((policy) => {
     if (directory && policyDirectory(policy) !== directory) return false;
     const ids = new Set([...policy.tags.map((tag) => normalizeCatalogTag(tag).id), `source:${policy.source}`]);
-    if (used) ids.add(usageTagId(policy, used));
     if ([...groups.values()].some((group) => !group.some((id) => ids.has(id)))) return false;
     return !words || policySearchText(policy).includes(words);
   });
 }
 
-export function tagFacets(policies: Policy[], directory: ProtectionDirectoryId | null = null, selected = new Set<string>(), search = "", used?: ReadonlySet<string>) {
+export function tagFacets(policies: Policy[], directory: ProtectionDirectoryId | null = null, selected = new Set<string>(), search = "") {
   const facets = new Map<string, Map<string, CatalogFacetTag>>();
   for (const policy of policies) {
     const sourceTag: CatalogFacetTag = { id: `source:${policy.source}`, namespace: "source", value: policy.source, label: policy.source, source: "derived" };
-    const derived = used ? [sourceTag, usageTag(usageTagId(policy, used))] : [sourceTag];
-    for (const tag of new Map([...derived, ...visiblePolicyTags(policy.tags).map(normalizeCatalogTag)].map((tag) => [tag.id, tag])).values()) {
+    for (const tag of new Map([sourceTag, ...visiblePolicyTags(policy.tags).map(normalizeCatalogTag)].map((tag) => [tag.id, tag])).values()) {
       if (HIDDEN_POLICY_FACET_NAMESPACES.has(tag.namespace)) continue;
       const values = facets.get(tag.namespace) ?? new Map<string, CatalogFacetTag>();
       values.set(tag.id, { ...tag, count: (values.get(tag.id)?.count ?? 0) + 1 });
@@ -592,28 +570,15 @@ export function tagFacets(policies: Policy[], directory: ProtectionDirectoryId |
     if (!sources.has(`source:${source}`)) sources.set(`source:${source}`, { id: `source:${source}`, namespace: "source", value: source, label: source, source: "derived", count: 0 });
   }
   facets.set("source", sources);
-  if (used) {
-    const usage = facets.get("usage");
-    facets.set("usage", new Map(["usage:used", "usage:unused"].map((id) => [id, usage?.get(id) ?? { ...usageTag(id), count: 0 }])));
-  }
   for (const [namespace, values] of facets) {
-    const candidates = filterCatalogPolicies(policies, directory, new Set([...selected].filter((id) => !id.startsWith(`${namespace}:`))), search, used);
-    for (const [id, tag] of values) values.set(id, { ...tag, count: filterCatalogPolicies(candidates, null, new Set([id]), "", used).length });
+    const candidates = filterCatalogPolicies(policies, directory, new Set([...selected].filter((id) => !id.startsWith(`${namespace}:`))), search);
+    for (const [id, tag] of values) values.set(id, { ...tag, count: filterCatalogPolicies(candidates, null, new Set([id])).length });
   }
   return new Map(
     [...facets]
       .sort(([left], [right]) => facetOrder(left) - facetOrder(right) || left.localeCompare(right))
-      .map(([namespace, values]) => [namespace, namespace === "usage" ? [...values.values()] : [...values.values()].sort((left, right) => Number(right.id === "framework:owasp-llm-2025") - Number(left.id === "framework:owasp-llm-2025") || left.label.localeCompare(right.label))]),
+      .map(([namespace, values]) => [namespace, [...values.values()].sort((left, right) => Number(right.id === "framework:owasp-llm-2025") - Number(left.id === "framework:owasp-llm-2025") || left.label.localeCompare(right.label))]),
   );
-}
-
-function usageTagId(policy: Policy, used: ReadonlySet<string>) {
-  return used.has(policy.id) ? "usage:used" : "usage:unused";
-}
-
-function usageTag(id: string): CatalogFacetTag {
-  const value = id.slice("usage:".length);
-  return { id, namespace: "usage", value, label: value, source: "derived" };
 }
 
 function visiblePolicyTags(tags: PolicyTag[]) {
@@ -625,13 +590,10 @@ function PolicyTagLabel({ tag: rawTag, truncate = false }: { tag: CatalogFacetTa
   const { t } = useTranslation();
   const jurisdiction = tag.namespace === "jurisdiction";
   const source = tag.namespace === "source";
-  const usage = tag.namespace === "usage";
   const rail = tag.namespace === "rail";
   const guardrailCategory = tag.namespace === "guardrail_category";
   const label = source
     ? t(`policyLibrary.sourceLabels.${tag.value}`, { defaultValue: tag.label })
-    : usage
-    ? t(`policyLibrary.usageLabels.${tag.value}`, { defaultValue: tag.label })
     : guardrailCategory
       ? t(`modelSettings.categories.${tag.value}.title`, { defaultValue: tag.label })
     : jurisdiction
@@ -661,6 +623,12 @@ function PolicySourceBadge({ source }: { source: Policy["source"] }) {
       {t(`policyLibrary.sourceLabels.${source}`)}
     </Badge>
   );
+}
+
+/** Where an imported Policy came from; it is read only here. */
+function ImportedBadge({ source }: { source?: string | null | undefined }) {
+  const { t } = useTranslation();
+  return <Badge variant="outline" className="font-normal text-muted-foreground"><Upload />{t("policyLibrary.importedFrom", { source: source ?? "" })}</Badge>;
 }
 
 function facetOrder(namespace: string) {

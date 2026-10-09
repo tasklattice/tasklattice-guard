@@ -36,6 +36,5 @@ export const queryKeys = {
   systemStatus: ["resources", "system-status"] as const,
   deploymentCapabilities: ["resources", "deployment-capabilities"] as const,
   systemBaseline: ["resources", "system-baseline"] as const,
-  releasedPolicies: ["resources", "released-policies"] as const,
   systemHealth: ["resources", "system-health"] as const,
 };

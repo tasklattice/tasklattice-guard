@@ -37,6 +37,7 @@ import type {
 } from "../../shared/lifecycle.js";
 import type { ArtifactContent } from "../domain/artifact-content.js";
 import type { GuardrailInspection } from "../domain/guardrail-inspection.js";
+import type { PolicyNode } from "../domain/policy-node.js";
 import type { FrozenTestCase } from "../domain/test-suite.js";
 import type { ValidationRuntimeFingerprint } from "../domain/models.js";
 import type { ArtifactRequirements } from "../domain/artifact-requirements.js";
@@ -218,6 +219,9 @@ export const policyRecords = pgTable("policy_record", {
   name: text("name").notNull(),
   description: text("description").notNull().default(""),
   source: text("source").notNull().default("custom"),
+  // "imported": arrived with a Guardrail from sourceId; read only here.
+  origin: text("origin").$type<"local" | "imported">().notNull().default("local"),
+  sourceId: text("source_id"),
   owner: text("owner").notNull(),
   draft: jsonb("draft").$type<ProgrammablePolicyDraft>().notNull(),
   draftRevision: integer("draft_revision").notNull().default(1),
@@ -237,6 +241,18 @@ export const policyVersions = pgTable("policy_version", {
   uniqueIndex("policy_version_checksum_idx").on(table.checksum),
   uniqueIndex("policy_version_source_draft_idx").on(table.policyId, table.sourceDraftRevision),
 ]);
+
+/** Built-in Policy versions a package brought that the local catalog does not ship. */
+export const policyImportedVersions = pgTable("policy_imported_version", {
+  policyId: text("policy_id").notNull(),
+  version: text("version").notNull(),
+  digest: text("digest").notNull(),
+  definition: jsonb("definition").$type<Record<string, unknown>>().notNull(),
+  sourceId: text("source_id").notNull(),
+  packageId: text("package_id").references(() => guardrailPackages.id, { onDelete: "set null" }),
+  importedBy: text("imported_by").references(() => user.id),
+  importedAt: timestamp("imported_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [primaryKey({ columns: [table.policyId, table.version] })]);
 
 export const policyValidationRuns = pgTable("policy_validation_run", {
   id: text("id").primaryKey(),
@@ -290,6 +306,8 @@ export const guardrailVersions = pgTable("guardrail_version", {
   releasedAt: timestamp("released_at", { withTimezone: true }),
   releasedBy: text("released_by").references(() => user.id),
   inspection: jsonb("inspection").$type<GuardrailInspection>(),
+  // The Policy versions this version was built from, as package nodes.
+  policies: jsonb("policies").$type<PolicyNode[]>(),
   // Static definition, with the plan: the Test Cases that define this version's expected behaviour.
   testSuite: jsonb("test_suite").$type<FrozenTestCase[]>(),
   origin: text("origin").$type<"local" | "imported">().notNull().default("local"),
@@ -385,6 +403,8 @@ export const validationRuns = pgTable("guardrail_validation_run", {
   candidateArtifact: jsonb("candidate_artifact").$type<ArtifactContent>(),
   candidateDigest: text("candidate_digest"),
   candidateInspection: jsonb("candidate_inspection").$type<GuardrailInspection>(),
+  // The Policy versions the candidate was built from; publication copies them.
+  candidatePolicies: jsonb("candidate_policies").$type<PolicyNode[]>(),
   // "draft": a draft compiled into a candidate. "version": a published or
   // imported version's signed Artifact, tested as it is in this environment.
   subject: text("subject").$type<"draft" | "version">().notNull().default("draft"),

@@ -38,6 +38,7 @@ import {
   routeAssignments,
   endpoints,
   outboxEvents,
+  policyImportedVersions,
   policyRecords,
   policyValidationRuns,
   policyVersions,
@@ -63,9 +64,9 @@ import { buildGuardrailPlan, normalizeGuardrailDraft, type GuardrailDraftConfig 
 import type { DeletionImpact, RuntimeEventInput, ValidationCaseResult, ValidationMetrics, ValidationRuntimeFingerprint } from "../domain/models.js";
 import { guardrailInspection } from "../domain/guardrail-inspection.js";
 import { freezeTestSuite, testSuiteDigest } from "../domain/test-suite.js";
-import { aggregateReleasedPolicies } from "../domain/released-policies.js";
+import { builtInPolicyView, guardrailPolicyNodes } from "../domain/policy-node.js";
 import { applyValidationOverrides, emptyValidationMetrics, generatedTestCases } from "../domain/validation.js";
-import { PolicyCatalog } from "../policy-catalog/catalog.js";
+import { PolicyCatalog, type PolicyDto } from "../policy-catalog/catalog.js";
 import { customPolicyCompliance } from "../policy-catalog/compliance.js";
 import { registeredAction } from "../action-catalog/catalog.js";
 import type { ValidationTerminalState } from "../../shared/lifecycle.js";
@@ -113,7 +114,7 @@ export class ControlPlaneService {
     private readonly config: ControllerConfig,
   ) {
     this.trafficRouting = new TrafficRoutingService(db);
-    this.packages = new GuardrailPackageService(db, config);
+    this.packages = new GuardrailPackageService(db, config, () => this.policyCatalog().list());
     this.runtimeLogEncryptionKey = decodeRuntimeLogKey(config.runtimeLogEncryptionKey);
   }
 
@@ -311,13 +312,40 @@ export class ControlPlaneService {
       versionsByPolicy.set(version.policyId, items);
     }
     return [
-      ...this.policyCatalog().list(),
+      ...await this.catalogPolicies(),
       ...custom.map((item) => programmablePolicyPayload(item, versionsByPolicy.get(item.id) ?? [])),
     ];
   }
 
+  /**
+   * The catalog, plus catalog Policy versions a release package brought that
+   * this installation does not ship: read-only versions of the same Policy,
+   * or a Policy of their own when the catalog has no such ID.
+   */
+  private async catalogPolicies(id?: string): Promise<PolicyDto[]> {
+    const rows = await this.db.select().from(policyImportedVersions)
+      .where(id ? eq(policyImportedVersions.policyId, id) : undefined);
+    const imported = new Map<string, PolicyDto[]>();
+    for (const row of rows) {
+      const view = { ...builtInPolicyView(row.definition), origin: "imported", source_id: row.sourceId } as unknown as PolicyDto;
+      imported.set(row.policyId, [...imported.get(row.policyId) ?? [], view]);
+    }
+    const newestFirst = (items: PolicyDto[]) => [...items].sort((left, right) => right.version.localeCompare(left.version, undefined, { numeric: true }));
+    const catalog = id ? [this.policyCatalog().get(id)].filter((item): item is PolicyDto => Boolean(item)) : this.policyCatalog().list();
+    const shipped = new Set(catalog.map((policy) => policy.id));
+    return [
+      ...catalog.map((policy) => imported.has(policy.id)
+        ? { ...policy, published_versions: [...policy.published_versions ?? [], ...newestFirst(imported.get(policy.id)!)] }
+        : policy),
+      ...[...imported].filter(([policyId]) => !shipped.has(policyId)).map(([, versions]) => {
+        const [head, ...rest] = newestFirst(versions);
+        return { ...head!, published_versions: rest };
+      }),
+    ];
+  }
+
   async getPolicy(id: string) {
-    const builtIn = this.policyCatalog().get(id);
+    const [builtIn] = await this.catalogPolicies(id);
     if (builtIn) return builtIn;
     const [record] = await this.db.select().from(policyRecords).where(eq(policyRecords.id, id));
     if (!record) throw new NotFoundError("Policy", id);
@@ -367,6 +395,7 @@ export class ControlPlaneService {
       const [current] = await tx.select().from(policyRecords).where(eq(policyRecords.id, input.id)).for("update");
       if (!current) throw new NotFoundError("Policy", input.id);
       if (current.source !== "custom") throw new ValidationError("Built-in Policies are system managed.");
+      assertLocalPolicy(current);
       const draft = input.draft ? programmablePolicyDraftSchema.parse(input.draft) : current.draft;
       this.validatePolicyDraft(input.id, draft, false);
       const rows = await tx.update(policyRecords).set({
@@ -394,6 +423,17 @@ export class ControlPlaneService {
       if (this.policyCatalog().get(input.id)) throw new ValidationError("Built-in Policies are system managed and cannot be deleted.");
       const [record] = await tx.select().from(policyRecords).where(eq(policyRecords.id, input.id)).for("update");
       if (!record) throw new NotFoundError("Policy", input.id);
+      assertLocalPolicy(record);
+      // A Guardrail version is built from this Policy: its Policy versions must stay viewable.
+      const versionUses = await tx.select({ name: guardrails.name, version: guardrailVersions.version }).from(guardrailVersions)
+        .innerJoin(guardrails, eq(guardrails.id, guardrailVersions.guardrailId))
+        .where(sql`${guardrailVersions.plan}->'policy_bindings' @> ${JSON.stringify([{ policy_id: input.id }])}::jsonb`).limit(5);
+      if (versionUses.length) {
+        throw new ConflictError(
+          `Policy ${record.name} is used by Guardrail versions: ${versionUses.map((item) => `${item.name} ${item.version}`).join(", ")}. Delete those versions first.`,
+          "policy_in_use",
+        );
+      }
       const activeGuardrails = await tx.select({ id: guardrails.id, name: guardrails.name, draftConfig: guardrails.draftConfig })
         .from(guardrails).where(isNull(guardrails.deletedAt));
       const referenced = activeGuardrails.filter((item) => normalizeGuardrailDraft(item.draftConfig).policyBindings.some((binding) => binding.policyId === input.id));
@@ -437,6 +477,7 @@ export class ControlPlaneService {
     return this.db.transaction(async (tx) => {
       const [record] = await tx.select().from(policyRecords).where(eq(policyRecords.id, input.id)).for("update");
       if (!record) throw new NotFoundError("Policy", input.id);
+      assertLocalPolicy(record);
       this.validatePolicyDraft(input.id, record.draft, true);
       if (!record.draft.test_cases.length) throw new ValidationError("Add at least one Test Case before creating a Validation Run.");
       const runId = `policy-testing-report-${randomUUID()}`;
@@ -492,6 +533,7 @@ export class ControlPlaneService {
     return this.db.transaction(async (tx) => {
       const [record] = await tx.select().from(policyRecords).where(eq(policyRecords.id, input.id)).for("update");
       if (!record) throw new NotFoundError("Policy", input.id);
+      assertLocalPolicy(record);
       // The locked Policy serializes both publication and draft edits. Retries
       // identify the validated draft, not whichever draft happens to be latest.
       const sourceDraftRevision = input.expectedDraftRevision ?? record.draftRevision;
@@ -572,28 +614,6 @@ export class ControlPlaneService {
         validationFailureReason: validation?.failureReason ?? null,
       },
     };
-  }
-
-  /**
-   * Policies frozen in this environment's ready Guardrail versions, grouped by
-   * Policy ID. Read from version plans only, never from the Policy Library, so
-   * a receiving environment shows exactly what it can run.
-   */
-  async releasedPolicies() {
-    const rows = await this.db.select({
-      guardrailId: guardrailVersions.guardrailId, guardrailVersion: guardrailVersions.version, plan: guardrailVersions.plan,
-      origin: guardrailVersions.origin, guardrailName: guardrails.name, sourceId: guardrails.sourceId,
-    }).from(guardrailVersions)
-      .innerJoin(guardrails, and(eq(guardrails.id, guardrailVersions.guardrailId), isNull(guardrails.deletedAt)))
-      .where(eq(guardrailVersions.status, "ready"));
-    const routers = await this.db.select({ activeSnapshot: trafficRouters.activeSnapshot }).from(trafficRouters).where(isNull(trafficRouters.deletedAt));
-    const serving = new Set(routers.flatMap(router => router.activeSnapshot?.routes.filter(route => route.enabled)
-      .flatMap(route => route.targets.filter(target => target.weightBps > 0).map(target => `${target.guardrailId}\u0000${target.guardrailVersion}`)) ?? []));
-    return { items: aggregateReleasedPolicies(rows.map(row => ({
-      guardrailId: row.guardrailId, guardrailName: row.guardrailName, guardrailVersion: row.guardrailVersion,
-      origin: row.origin, sourceId: row.sourceId,
-      serving: serving.has(`${row.guardrailId}\u0000${row.guardrailVersion}`), plan: row.plan,
-    }))) };
   }
 
   /** The Test Cases frozen into one version: part of its definition, read only. */
@@ -1125,7 +1145,7 @@ export class ControlPlaneService {
         id: runId, guardrailId: input.guardrailId, guardrailVersion: input.version, sourceDraftRevision: version.sourceDraftRevision,
         subject: "version", status: "queued", metrics: emptyValidationMetrics(version.testSuite.length), results: [], excludedCaseIds: [],
         // The content and suite under test; a release checks both against the version.
-        candidateDigest: artifact.checksum, candidateInspection: version.inspection, testSuite: version.testSuite,
+        candidateDigest: artifact.checksum, candidateInspection: version.inspection, candidatePolicies: version.policies, testSuite: version.testSuite,
         testSuiteDigest: testSuiteDigest(version.testSuite), createdBy: input.actorId,
       });
       await tx.insert(outboxEvents).values({
@@ -1218,6 +1238,9 @@ export class ControlPlaneService {
         name: guardrail.name, runtimeProfile: guardrail.runtimeProfile, draftConfig: normalizeGuardrailDraft(guardrail.draftConfig),
         catalog: this.policyCatalog().list(), programmablePolicies, testSuite,
       });
+      // The Policy versions the candidate is built from, before any per-binding
+      // expansion: the nodes a release package carries with this version.
+      const policies = guardrailPolicyNodes(normalizeGuardrailDraft(guardrail.draftConfig).policyBindings, this.policyCatalog().list(), programmablePolicies);
       await tx.insert(validationRuns).values({
         id: runId,
         guardrailId: guardrail.id,
@@ -1228,6 +1251,7 @@ export class ControlPlaneService {
         results: [],
         excludedCaseIds: [...excluded],
         candidateInspection: inspection,
+        candidatePolicies: policies,
         testSuite,
         testSuiteDigest: inspection.testSuite.digest,
         createdBy: actorId,
@@ -1376,7 +1400,7 @@ export class ControlPlaneService {
     actorId: string | null,
   ) {
     const candidate = run.candidateArtifact;
-    if (!candidate || !run.candidateDigest || !run.candidateInspection || !run.testSuite
+    if (!candidate || !run.candidateDigest || !run.candidateInspection || !run.candidatePolicies || !run.testSuite
       || testSuiteDigest(run.testSuite) !== run.candidateInspection.testSuite.digest) {
       throw new ConflictError(
         "This test run has no frozen Artifact to publish. Run tests again before publishing.",
@@ -1414,6 +1438,7 @@ export class ControlPlaneService {
       artifactId: stored.id,
       validationRunId: run.id,
       inspection: run.candidateInspection,
+      policies: run.candidatePolicies,
       testSuite: run.testSuite,
       // Publishing here already required this passed run: the version is released at once.
       releasedAt: new Date(),
@@ -2767,6 +2792,9 @@ function programmablePolicySurface(
     }, latest?.snapshot.owner ?? record.owner),
     draft_revision: record.draftRevision,
     owner: latest?.snapshot.owner ?? record.owner,
+    // Imported with a Guardrail from source_id: read only here.
+    origin: record.origin,
+    source_id: record.sourceId,
     updated_at: (latest?.publishedAt ?? record.updatedAt).toISOString(),
     tags: [
       {
@@ -2808,6 +2836,13 @@ function programmablePolicySurface(
       versions: versions.map((item) => item.snapshot),
     },
   };
+}
+
+/** A Policy imported with a Guardrail belongs to its source; change it there and release a new version. */
+function assertLocalPolicy(record: typeof policyRecords.$inferSelect): void {
+  if (record.origin === "imported") {
+    throw new ConflictError(`Policy ${record.name} was imported from ${record.sourceId}; it is read only here. Change it in its source environment.`, "policy_imported_read_only", { sourceId: record.sourceId });
+  }
 }
 
 function policySnapshot(

@@ -3,6 +3,7 @@ import type { ProgrammablePolicySnapshot } from "../policy-studio/model.js";
 import { flowRuleId } from "../policy-studio/model.js";
 import { PHRASE_PARAMETER, PHRASE_POLICY_ID, parsePhraseEntries } from "../../shared/phrase-policy.js";
 import { materializePolicyRules } from "./policy-rules.js";
+import { frozenBuiltInDefinition, planPolicyVersion } from "./policy-node.js";
 import { isSplitTopicPolicy, TOPIC_ALLOW_RULE, TOPIC_DENY_RULE, topicMissingParameters, topicPolicyValues } from "../../shared/topic-policy.js";
 import {
   enforcementActions,
@@ -299,22 +300,7 @@ export function buildGuardrailPlan(input: {
     steps,
     modules,
     reasoning_policies: reasoningPolicies,
-    policy_versions: programmable.map(({ policy }) => ({
-      policy_id: policy.policy_id,
-      version: policy.version,
-      name: policy.name,
-      source: policy.source,
-      colang_version: policy.colang_version,
-      sources: policy.sources,
-      parameter_schema: policy.parameter_schema.map((item) => [item.name, item.kind]),
-      rail_bindings: policy.rail_bindings,
-      action_references: policy.action_references,
-      evaluation_contracts: policy.evaluation_contracts,
-      prompt_dependencies: policy.prompt_dependencies,
-      execution_contract: policy.execution_contract,
-      test_cases: policy.test_cases.map((item) => [item.name, item.expected_decision]),
-      checksum: policy.checksum,
-    })),
+    policy_versions: programmable.map(({ policy }) => planPolicyVersion(policy)),
     policy_bindings: bindings.map((binding) => ({
       policy_id: binding.policyId,
       policy_version: binding.policyVersion,
@@ -361,11 +347,7 @@ function parametersFor(
       ["policy_versions_json", JSON.stringify(Object.fromEntries(declarative.map((item) => [item.binding.policyId, item.policy.version])))],
       // A published Guardrail owns its Rule definitions. Catalog changes or
       // custom package replacement must not mutate an already compiled plan.
-      ["policy_definitions_json", JSON.stringify(Object.fromEntries(declarative.map(({ policy }) => [policy.id, {
-        id: policy.id, name: policy.name, description: policy.description, source: policy.source, version: policy.version,
-        tags: policy.tags.map(({ id: _id, ...tag }) => tag), parameters: policy.parameters,
-        rules: policy.rules, test_cases: policy.test_cases, safety_level: policy.safety_level, output_delivery: policy.output_delivery,
-      }])))],
+      ["policy_definitions_json", JSON.stringify(Object.fromEntries(declarative.map(({ policy }) => [policy.id, frozenBuiltInDefinition(policy)])))],
       ["policy_ids", declarative.map((item) => item.binding.policyId).join("\n")],
       ["enabled_rules_json", JSON.stringify(Object.fromEntries(declarative.map((item) => [item.binding.policyId, item.binding.enabledRuleIds])))],
       ["rule_order_json", JSON.stringify(Object.fromEntries(declarative.map((item) => [item.binding.policyId, item.binding.ruleOrder ?? []])))],

@@ -77,14 +77,18 @@ async function until(label, read, ready, timeoutMs = 180_000) {
   }
 }
 
-const versionFiles = (bytes, version) => new Map([...readZip(bytes, LIMITS)].filter(([path]) => path.startsWith(`versions/${version}/`)));
+const versionFiles = (bytes, version) => new Map([...readZip(bytes, LIMITS)].filter(([path]) => path.includes(`/versions/${version}/`)));
+const policyFiles = bytes => new Map([...readZip(bytes, LIMITS)].filter(([path]) => path.startsWith("policies/")));
+/** The Policy nodes one parsed version uses, as buildPackage takes them. */
+const nodesOf = (parsed, item) => item.policies.map(ref => parsed.policies.find(node => node.id === ref.id && node.version === ref.version))
+  .map(({ id, version, kind, definition }) => ({ id, version, kind, definition }));
 const signer = (keyFile, keyId) => manifest => [{ keyId, algorithm: "ed25519", signature: sign(null, manifest, createPrivateKey(readFileSync(join(work, "keys", keyFile)))).toString("base64") }];
 /** Re-issue parsed versions under another source, Guardrail or content, properly signed. */
 function reissue(parsed, { source = parsed.manifest.source, guardrail = parsed.manifest.guardrail, sign: signWith, mutate = content => content }) {
   return buildPackage({ source, guardrail, exportedAt: new Date(), sign: signWith,
     versions: parsed.versions.map(item => {
       const content = mutate({ ...item.content, guardrailId: guardrail.id, plan: { ...item.content.plan, guardrail_id: guardrail.id } });
-      return { content, inspection: item.inspection, testSuite: item.testSuite };
+      return { content, config: item.config, testSuite: item.testSuite, policies: nodesOf(parsed, item) };
     }) });
 }
 
@@ -150,6 +154,11 @@ const exported = parsePackage(both);
 assert.deepEqual(exported.versions.map(item => item.version), [v1, v2]);
 assert.equal(exported.manifest.source.id, "bank-uat");
 assert(!("recommendedVersion" in exported.manifest), "A package names its versions; it recommends none.");
+// A resource tree: the custom Policy is a leaf carried as its Library version, used by both Guardrail versions.
+const policyLeaf = exported.policies.find(node => node.id === policy.id);
+assert.deepEqual([policyLeaf?.kind, policyLeaf?.version], ["programmable", "1"]);
+assert(exported.versions.every(item => item.policies.some(ref => ref.id === policy.id)));
+assert(exported.policies.some(node => node.id === "local-network-addresses" && node.kind === "catalog"));
 report("uat-exported", { versions: [v1, v2], bytes: both.length });
 
 // A newer Library Policy with the same ID never changes an already released version.
@@ -157,6 +166,8 @@ await uat.call(`/api/v1/policies/${policy.id}`, { method: "PATCH", body: { draft
 await publishPolicy("2");
 const reexported = await uat.call(`${guardrailPath}/package?versions=${v2}`, { binary: true });
 assert.deepEqual(versionFiles(reexported, v2), versionFiles(both, v2), "Re-exporting a version is byte-identical after the Library changed.");
+assert.deepEqual([...policyFiles(reexported)].filter(([path]) => path.startsWith(`policies/${policy.id}/`)), [...policyFiles(both)].filter(([path]) => path.startsWith(`policies/${policy.id}/`)),
+  "The version still carries Policy v1 as its leaf, not the Library's v2.");
 report("uat-export-stable-after-library-change");
 
 // ---------------------------------------------------------------- PROD: same features, import by procedure
@@ -173,7 +184,10 @@ assert.deepEqual(preview.blockers, []);
 assert.deepEqual(preview.versions.map(item => [item.version, item.state]), [[v1, "new"], [v2, "new"]]);
 for (const item of preview.versions) assert.equal(item.environment?.status, "compatible", `PROD Runner load check: ${JSON.stringify(item.environment)}`);
 const imported = await prod.call(`/api/v1/guardrail-packages/${preview.packageId}/imports`, { body: {}, expected: 201 });
-assert.deepEqual(imported, { guardrailId: guardrail.id, imported: [v1, v2], existing: [] });
+assert.deepEqual([imported.guardrailId, imported.imported, imported.existing], [guardrail.id, [v1, v2], []]);
+// Leaves first: the custom Policy joined PROD's Library; the catalog Policies were already here.
+assert.deepEqual(imported.policies.imported, [`${policy.id}@1`]);
+assert(imported.policies.existing.includes("local-network-addresses@2.0.0"));
 const again = await prod.upload(both);
 assert.deepEqual(again.versions.map(item => item.state), ["existing", "existing"]);
 assert.deepEqual((await prod.call(`/api/v1/guardrail-packages/${again.packageId}/imports`, { body: {}, expected: 201 })).imported, []);
@@ -262,19 +276,17 @@ const later = await runtime("input", `${marker}_V2`);
 assert.equal(later.body.action, "NONE", "The newer Library Policy did not leak into the released version.");
 report("prod-serves-released-content", { guardrailVersion: v2 });
 
-// Without a Policy Library, the Policy view is aggregated from released versions by Policy ID.
-const released = (await prod.call("/api/v1/released-policies")).items;
-const custom = released.find(item => item.policyId === policy.id);
-assert(custom, "The custom Policy of the imported Guardrail is listed by its Policy ID.");
-assert.equal(custom.source, "custom");
-assert.deepEqual(custom.versions.map(item => item.version), ["1"], "Production lists the version it received, not the Library's newer v2.");
-assert(custom.serving, "The routed version marks the Policy as serving.");
-assert.equal(custom.versions[0].definition.implementation, "nemo_native", "Each version carries its frozen definition for the Library views.");
-assert.deepEqual(custom.versions[0].definition.rules.map(rule => rule.id).sort(), phases.map(phase => `flow/${phase}/promotion_${phase}`).sort());
-assert(custom.versions[0].usage.some(item => item.guardrailId === guardrail.id && item.guardrailVersion === v2 && item.serving && item.sourceId === "bank-uat"));
-const networkPolicy = released.find(item => item.policyId === "local-network-addresses");
-assert.deepEqual(new Set(networkPolicy.versions[0].usage.filter(item => item.guardrailId === guardrail.id).map(item => item.guardrailVersion)), new Set([v1, v2]));
-report("prod-released-policies", { policies: released.length, custom: custom.policyId, versions: custom.versions.map(item => item.version) });
+// The imported Guardrail's Policies are in PROD's Policy Library: the version it received, read only.
+const library = (await prod.call("/api/v1/policies")).items;
+const custom = library.find(item => item.id === policy.id);
+assert(custom, "The custom Policy of the imported Guardrail is in the Policy Library.");
+assert.deepEqual([custom.version, custom.origin, custom.source_id], ["1", "imported", "bank-uat"], "Production holds the version it received, not UAT's newer v2.");
+assert.deepEqual(custom.rules.map(rule => rule.id).sort(), phases.map(phase => `flow/${phase}/promotion_${phase}`).sort());
+assert.equal(custom.test_cases.length, 4, "The Library version carries its full Test Cases.");
+assert.equal((await prod.call(`/api/v1/policies/${policy.id}`, { method: "PATCH", body: { name: "Edited in PROD" }, expected: 409 })).error.code, "policy_imported_read_only");
+assert.equal((await prod.call(`/api/v1/policies/${policy.id}`, { method: "DELETE", expected: 409 })).error.code, "policy_imported_read_only");
+assert(library.some(item => item.id === "local-network-addresses" && item.version === "2.0.0"), "Catalog Policies the package used are this installation's own.");
+report("prod-imported-policies", { policies: library.length, custom: custom.id, version: custom.version, source: custom.source_id });
 
 // ---------------------------------------------------------------- negative cases
 const versionsBefore = await count(prodDb, "SELECT count(*) AS n FROM guardrail_version");

@@ -215,6 +215,8 @@ export type PackagePreview = {
   keyId: string;
   exportedAt: string;
   guardrail: { id: string; name: string; exists: boolean };
+  /** The tree's leaves: Policy versions, imported into the Library before the Guardrail. */
+  policies: Array<{ id: string; version: string; kind: "catalog" | "programmable"; name: string; state: "new" | "existing" | "conflict"; digest: string }>;
   versions: Array<{
     version: string;
     state: "new" | "existing" | "conflict";
@@ -227,7 +229,7 @@ export type PackagePreview = {
   blockers: Array<{ code: string; message: string }>;
 };
 
-export type PackageImportResult = { guardrailId: string; imported: string[]; existing: string[] };
+export type PackageImportResult = { guardrailId: string; imported: string[]; existing: string[]; policies: { imported: string[]; existing: string[] } };
 
 export type DeploymentCapabilities = {
   packageExport: { available: boolean; sourceId: string | null };
@@ -243,21 +245,6 @@ export type FrozenTestCase = {
   coveredRuleIds: string[]; expectationOverride: { reason: string; expectedDecision: string; sourcePolicyVersion: string } | null;
 };
 export type VersionTestSuite = { guardrailId: string; version: string; recorded: boolean; digest: string | null; items: FrozenTestCase[]; count: number };
-
-export type ReleasedPolicyUsage = {
-  guardrailId: string; guardrailName: string; guardrailVersion: string; origin: "local" | "imported"; sourceId: string | null;
-  serving: boolean; enabledRuleIds: string[]; action: string | null; phases: string[];
-};
-/** One released version: its frozen definition, in the shape the Policy Library lists, and who uses it. */
-export type ReleasedPolicyVersion = {
-  version: string; contentDigest: string | null; name: string;
-  definition: import("./api-types").Policy; usage: ReleasedPolicyUsage[];
-};
-/** A Policy as released in this environment's Guardrail versions, grouped by Policy ID. */
-export type ReleasedPolicy = {
-  policyId: string; name: string; source: "built_in" | "custom"; serving: boolean;
-  versions: ReleasedPolicyVersion[]; conflictingVersions: string[];
-};
 
 export type GuardrailArtifact = {
   id: string;
@@ -533,7 +520,6 @@ export const createControllerGuardrail = (input: Pick<Guardrail, "name" | "draft
 export const previewControllerGuardrailPlan = (input: Pick<Guardrail, "name" | "draftConfig" | "runtimeProfile">) => requestController<GuardrailPlanPreview>("/api/v1/authoring/plan-previews", json("POST", input));
 export const updateControllerGuardrail = (id: string, input: Partial<Pick<Guardrail, "name" | "draftConfig" | "runtimeProfile">> & { expectedDraftRevision?: number }) => requestController<Guardrail>(`/api/v1/guardrails/${encodeURIComponent(id)}`, json("PATCH", input));
 export const publishControllerGuardrail = (id: string, expectedDraftRevision: number) => requestController<{ status: string; version: string }>(`/api/v1/guardrails/${encodeURIComponent(id)}/publish`, json("POST", { expectedDraftRevision }));
-export const getReleasedPolicies = () => requestController<{ items: ReleasedPolicy[] }>("/api/v1/released-policies");
 export const getDeploymentCapabilities = () => requestController<DeploymentCapabilities>("/api/v1/deployment/capabilities");
 export const uploadGuardrailPackage = (file: File) => {
   const body = new FormData();

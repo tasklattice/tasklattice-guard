@@ -398,6 +398,10 @@ async function handleImport(args: string[]) {
   const preview = uploaded.data;
   console.log(`Source:    ${preview.source.name} (${preview.source.id}), key ${preview.keyId}`);
   console.log(`Guardrail: ${preview.guardrail.name} (${preview.guardrail.id})${preview.guardrail.exists ? '' : ' — new in this environment'}`);
+  // Leaves first: Policy versions that would join this Library, then the Guardrail versions.
+  const policies = (preview.policies ?? []) as Array<{ id: string; version: string; state: string }>;
+  for (const item of policies.filter(policy => policy.state !== 'existing')) console.log(`  Policy ${item.id}@${item.version}  ${item.state}`);
+  if (policies.some(policy => policy.state === 'existing')) console.log(`  ${policies.filter(policy => policy.state === 'existing').length} Policy version(s) already here`);
   for (const item of preview.versions) {
     console.log(`  ${item.version}  ${item.state.padEnd(8)} test suite: ${item.testSuite.total} cases  environment: ${item.environment?.status ?? 'not checked'}`);
     for (const pool of item.environment?.pools ?? []) if (!pool.admitted && !pool.unavailable) console.log(`      ${pool.poolId}/${pool.runnerId}: ${pool.reason}`);
@@ -427,7 +431,7 @@ async function handleImport(args: string[]) {
     process.exitCode = 1;
     return;
   }
-  console.log(`Imported ${imported.data.imported.length} version(s), ${imported.data.existing.length} already present.`);
+  console.log(`Imported ${imported.data.imported.length} version(s), ${imported.data.existing.length} already present; ${imported.data.policies?.imported.length ?? 0} Policy version(s) added to the Policy Library.`);
 }
 
 async function handleShow(args: string[]) {

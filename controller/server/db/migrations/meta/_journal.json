@@ -218,6 +218,13 @@
       "when": 1791580000000,
       "tag": "0030_version_release",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1791590000000,
+      "tag": "0031_policy_nodes",
+      "breakpoints": true
     }
   ]
 }

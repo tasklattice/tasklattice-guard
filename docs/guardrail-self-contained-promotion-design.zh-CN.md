@@ -77,46 +77,58 @@ UAT 与生产的功能完全相同，不设部署级功能开关，也不按环�
 重新上传 V3 不生成重复版本。系统中没有 Latest 指针，包里也没有“推荐版本”：
 Router Target 和运行时基线都固定确切版本，导入任何版本都不改变现有引用和流量。
 
-**发布包契约**
+**发布包契约：资源树（schemaVersion 3）**
 
-建议扩展名为 .guardrail.zip，format 为 tasklattice.guardrail-package，schemaVersion
-为 1。这是新的发布包格式版本，与现有 Protobuf Artifact 的协议版本分别管理。
+发布包是一棵资源树：Guardrail 版本引用 Policy 版本。导出时整棵树一起带走，导入时
+从叶子往上建（Policy 版本 → Guardrail → Guardrail 版本）。扩展名 .guardrail.zip，
+format 为 tasklattice.guardrail-package，schemaVersion 为 3；不接受旧格式。
 
 ~~~text
-manifest.json
-versions/<version>/artifact.json
-versions/<version>/inspection.json
-versions/<version>/requirements.json
-versions/<version>/test-suite.json
+manifest.json                                       树的索引（被签名）
 signatures.json
+policies/<policyId>/<policyVersion>/policy.json     叶子：Policy 版本
+guardrails/<guardrailId>/guardrail.json             Guardrail 本身
+guardrails/<guardrailId>/versions/<version>/
+    version.json                                    版本配置
+    test-suite.json                                 版本自带的测试集
+    artifact.json                                   编译产物，Runner 原样执行
+    requirements.json                               运行环境要求
 ~~~
 
-| 内容 | 契约 |
+| 文件 | 契约 |
 | --- | --- |
-| manifest | 源实例身份、Guardrail ID/名称、版本列表、每个文件的哈希、每个版本的内容摘要与测试集摘要、包格式版本 |
-| artifact | 完整的已构建执行计划、NeMo 配置、Colang、Prompts、动作绑定、冻结参数与依赖；接收端直接加载 |
-| inspection | 与该版本一起冻结的 Policy/Rule 名称、定义、顺序、动作及只读展示信息；不得读取接收端 Library 补充 |
-| requirements | Runner/NeMo/执行协议兼容要求、动作和检测器能力版本、外部模型及服务契约、环境绑定槽位 |
-| test-suite | 与该版本一起冻结的测试用例（输入、预期结果、预期覆盖、来源 Policy），即版本发布时实际运行的测试集；摘要须与 manifest 和 inspection 一致 |
-| signatures | 清单及文件集合的签名、算法和 key ID；接收端用预先登记的来源公钥验证 |
+| manifest | 来源身份；节点清单：`policies[] {id, version, kind, digest}`、`guardrail {id, name}`、`versions[] {version, contentDigest, testSuiteDigest, policies[] {id, version, digest}}`（后者即树的边）；每个文件的路径、sha256 和大小 |
+| policy.json | `{id, version, kind, definition}`。`kind` 为 `catalog`（Policy 目录中的规则型 Policy，含内建与自定义目录包）或 `programmable`（Policy Studio 编写的 Colang Policy）。`definition` 是 Policy 版本的原生定义：`catalog` 为发布时从目录冻结的完整定义（规则、测试用例、标签、参数），取自按 Guardrail 绑定展开短语规则之前；`programmable` 为 Library 中不可变的版本快照（源码、Rail 绑定、完整测试用例与其 checksum）。`digest` = SHA-256(规范化 `definition`)，与被谁使用无关 |
+| guardrail.json | `{id, name}`：不随版本变化的 Guardrail 属性 |
+| version.json | `{name, runtimeProfile, draftConfig}`：发布该版本时的 Guardrail 配置 |
+| test-suite / artifact / requirements | 与之前相同：冻结测试集、编译产物、由 Artifact 推导的环境要求 |
+| signatures | Ed25519，覆盖 manifest 原始字节；manifest 覆盖每个文件的哈希 |
 
-每个 Policy/Rule 依赖必须能在包内闭合，或者明确属于 requirements 中的平台执行
-能力与外部服务。仅记录一个 Policy ID、版本号或 Library URL 不算自包含；禁止在生产
-自动下载 Policy 或静默改用同名实现。包内索引和文件集合须一致，拒绝缺失、摘要
-不匹配、重复路径、路径穿越、超限解压和未声明的执行内容。
+导出：选中的 Guardrail 版本所引用的每个 `Policy@版本` 都放进包，同一版本只放一次。
+内建 Policy 也放进去，包是完整的树，不依赖接收端镜像恰好有同一版本。节点在测试候选
+生成时与执行计划一起冻结并随版本保存，导出直接读取，不受之后 Library 或目录变化影响；
+旧版本没有这些节点时不能导出，需重新发布。
 
-模型凭据、Provider 密钥、生产 Endpoint、Router 配置、生产分流权重和运行日志不随包
-迁移。完整测试输入/输出及用于后续开发的完整源快照可以作为有签名覆盖的可选附件，
-不作为生产运行和导入成功的依赖。必需的摘要与执行素材不能被“精简导出”选项移除。
+导入时逐层校验，任一不符整包拒绝：
+- 每条边指向包内的 Policy 节点且摘要一致；Artifact 实际绑定的 Policy 集合与边完全
+  相同。
+- Artifact 里嵌入的定义由 Policy 节点生成：`catalog` 定义除短语规则按绑定展开外完全
+  相同；`programmable` 快照重新投影后与 Artifact 中的副本相等（忽略传输时省略的空字段），
+  且快照 checksum 可重算。
+- 内容摘要、测试集摘要、requirements 推导结果与 manifest 一致。
+
+模型凭据、Provider 密钥、生产 Endpoint、Router 配置、分流权重和运行日志不随包迁移。
+测试报告不随包迁移。
 
 **生产导入交互**
 
 入口是 Guardrails 列表页“创建 Guardrail”按钮右侧箭头菜单中的“导入发布包”，使用与系统一致的右侧抽屉。
 
 1. 上传包，自动解析并检查签名、文件摘要、依赖完整性、版本冲突和环境兼容性。
-2. 预览显示名称、来源、版本列表、每个版本的测试集规模、本次新增/已存在的版本和环境检查结果。
-   不出现 Policy 映射、导入 Policy Library、编辑测试用例或重新发布步骤。
-3. 点击 Import 后事务性追加所选版本，结果显示“已导入 2 个版本，1 个版本已存在”。
+2. 预览显示名称、来源、Policy 版本和 Guardrail 版本两层清单（每项为新增、已存在或冲突）、
+   每个版本的测试集规模和环境检查结果。不出现 Policy 映射或编辑步骤。
+3. 点击 Import 后在一个事务里从叶子往上写入：Policy 版本进入本环境的 Policy Library
+   （只读，标明来源），再写 Guardrail 和它的版本。结果显示新增和已存在的数量。
 4. 返回 Guardrail 详情及 Immutable versions。导入的版本为待发布：在版本上“运行测试”，
    通过后“发布”；不产生 Draft，不能编辑 Policy 或测试集。生产流量切换仍在 Router 内完成，
    Router 选择版本时待发布的版本置灰并说明原因。
@@ -143,8 +155,13 @@ signatures.json
   幂等还须核对该版本冻结文件清单一致，不能仅凭执行内容摘要就替换展示快照、环境
   要求或原始报告。ZIP 压缩时间、包的导出时间不参与版本内容身份。
   内容相同但来源不同也不能绕过来源授权。
-- Policy ID 和版本号只在包内解释；生产 Library 中同名、同 ID、不同内容的 Policy
-  既不覆盖包内实现，也不会被导入包修改。
+- Policy 版本与 Guardrail 版本用同一套规则：本环境没有就新增；`ID@版本` 已存在且摘要
+  相同视为已存在；摘要不同即冲突，整批回滚。`catalog` 节点以本环境目录中同版本的冻结
+  定义比较；目录里没有的版本作为该 Policy 的只读历史版本保存。
+- 导入的自定义 Policy 归来源所有，在任何环境都只读（与导入的 Guardrail 相同）；要修改
+  回来源环境发布新版本。本环境自建的同 ID Policy 或其他来源的同 ID Policy 不被接管。
+- 被任何 Guardrail 版本引用的 Policy 不能删除。Library 中的 Policy 是供人查看和追溯的
+  副本，运行时仍只使用 Artifact，生产运行不依赖 Library。
 - 导入成功与“已用于生产流量”是两个状态。Import API 不修改 Router、Endpoint、
   分流权重或当前运行基线，不自动生成或批准 Routing 变更单。
 
@@ -274,7 +291,7 @@ Library 表不作为导入依赖存储。多个版本可共享相同内容 blob�
 | --- | --- | --- |
 | 内容摘要 | Artifact checksum 不再包含 `artifact_id` 与 `generation`；TS 与 Python 共用规范化 JSON（ASCII key 按码点排序，整数值浮点写成整数，小数只允许两种语言输出相同数字的范围），并有共享测试向量 | 原地改造，没有并行的新旧两套契约；旧 `.artifact.json` 单版本导出已删除。存量 Artifact 在启动时按新契约重新封存 |
 | UAT 证据绑定 | 测试运行把实际编译、执行的候选 Artifact 回传并保存摘要；发布直接签名这份内容，不再重新编译 | 采用“测试候选 Artifact”方案；异步 CompileRequest/CompileResult 通道已移除 |
-| 发布包 | `manifest.json`、`signatures.json`、每个版本 `artifact / inspection / requirements / test-suite`（格式版本 2）；确定性 ZIP，所有文件为规范化 JSON；Ed25519 签名覆盖 manifest 原始字节 | 当前 Artifact 的静态素材全部内联，没有 `blobs/` 目录；未声明的条目一律拒绝 |
+| 发布包 | 资源树（格式版本 3）：`policies/<id>/<version>/policy.json`、`guardrails/<id>/guardrail.json`、每个版本 `version / test-suite / artifact / requirements`；manifest 列出节点与边；确定性 ZIP，所有文件为规范化 JSON；Ed25519 签名覆盖 manifest 原始字节；导入从叶子往上建，Policy 进入 Library | 当前 Artifact 的静态素材全部内联，没有 `blobs/` 目录；未声明的条目一律拒绝；不兼容格式版本 2 |
 | 环境检查 | 每个 Runner 池选一个已连接 Runner，按真实加载路径校验签名、NeMo 版本、Action、模型与 Evaluator 绑定并构建运行时后丢弃（dry-run 加载） | 没有在 Controller 端静态比对能力清单；`requirements.json` 只作为申报证据，导入时重新推导并要求完全一致 |
 | Router 门禁 | 提交与批准变更单前对导入版本重新做加载检查，要求 10 分钟内的 compatible 结果 | 本地发布的版本不受此门禁约束 |
 | 分发 | 默认池额外预加载本地发布的版本，以及加载检查为 compatible 的导入版本；其余导入版本只在被 Router 引用时分发。检查结论跨过 compatible 时推进 generation | 与设计一致 |
@@ -283,7 +300,7 @@ Library 表不作为导入依赖存储。多个版本可共享相同内容 blob�
 | 版本状态 | 只有 pending / ready：导入为 pending，`POST /guardrails/{id}/versions/{v}/test-runs` 对已签名 Artifact 原样运行版本自带的测试集，`POST .../release` 绑定最近一次通过且内容和测试集一致的报告后变为 ready（记录发布时间和发布人）。Router、基线、导出只接受 ready。compiling / failed 已删除 | 测试结果不作为状态；发布后复测失败不撤销发布 |
 | 版本引用 | 删除 Latest 指针与“标记为 Latest”：Router Target 只能固定版本（草稿与快照相同），导出必须显式选择版本，发布包不再有推荐版本；草稿“未发布更改”只与上一次发布的版本比较；基线版本受删除保护 | 原设计保留 Latest 作为元数据，现彻底移除 |
 | 环境一致 | 无功能开关：两边加载同一 Library、都会建立本地 Default，导入和导出只取决于身份配置（未配置时入口仍可见并说明原因）。Default 等保留系统资源在每个环境都存在，受授权的来源可以向本地 Default 添加导入版本，切换基线仍需显式操作 | 曾有 `CONTROLLER_AUTHORING_ENABLED` 开关，已移除 |
-| Policy 库 | 一个列表，不分页签：Library 中的 Policy，加上只存在于已发布 Guardrail 版本中的 Policy（只读，例如导入的自定义 Policy）。筛选面板的“使用情况”区分“被 Guardrail 使用”和“未被使用”，依据是按 Policy ID 聚合的已发布 Guardrail 版本中冻结的定义；卡片显示是否承接流量及在用版本数；详情抽屉的“发布”页签按 ID@版本 + 定义摘要列出各版本、使用它的 Guardrail 版本与是否承接流量，同版本号不同内容分开展示并告警 | 名称只作展示，不作聚合键；自定义 Policy 的发布只带测试名称和预期结果，不带测试输入 |
+| Policy 库 | 一个列表：本环境的内建与自定义 Policy，以及随发布包导入的 Policy 版本（只读，标明来源）。不显示“被谁使用”或“是否承接流量”：这些属于 Guardrail；需要时从 Guardrail 版本的 Policies 页签链接到对应的 `Policy@版本` | `/released-policies` 聚合视图、使用情况筛选和承接流量状态已移除 |
 | Playground | 可与任何已发布版本（包括通过加载检查的导入版本）对话，也可试用草稿 | 与设计一致 |
 | 生产再导出 | 导入的版本不能从生产再导出 | 第三环境的信任链未实现 |
 | Runner 升级 | 版本与 Runner 不兼容时由加载检查和 Router 门禁阻止投入使用 | 新旧 Runner 池并行切换的升级流程未实现 |

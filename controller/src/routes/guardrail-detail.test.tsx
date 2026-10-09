@@ -316,6 +316,8 @@ describe("Guardrail detail information hierarchy", () => {
     expect(screen.getByRole("dialog")).toBeTruthy();
     fireEvent.click(screen.getByRole("tab", { name: /immutableVersions.policies/ }));
     expect(screen.getByText("pii")).toBeTruthy();
+    // Each Policy opens the exact version this snapshot was built from.
+    expect(screen.getByText("pii").closest("a")?.getAttribute("href")).toBe("/policy-library?policy=pii&version=1.95.0");
     fireEvent.click(screen.getByRole("tab", { name: "immutableVersions.compiled" }));
     expect(screen.getByText("guardrails.compiledRailsActions")).toBeTruthy();
     expect(screen.getByText("guardrails.dependenciesModels")).toBeTruthy();

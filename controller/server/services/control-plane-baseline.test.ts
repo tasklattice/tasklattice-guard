@@ -150,7 +150,7 @@ describe("Default baseline validation gate", () => {
     const stored = { ...baseline(), status: "active" };
     const content = candidate();
     const validation = { id: "validation-new", status: "passed", guardrailVersion: content.guardrailVersion, sourceDraftRevision: 2,
-      candidateArtifact: content, candidateDigest: artifactContentDigest(content), candidateInspection: { testSuite: { total: 1, digest: testSuiteDigest(suite) } }, testSuite: suite };
+      candidateArtifact: content, candidateDigest: artifactContentDigest(content), candidateInspection: { testSuite: { total: 1, digest: testSuiteDigest(suite) } }, candidatePolicies: [], testSuite: suite };
     const test = harness([[stored], [], [{ sourceDraftRevision: 1, artifactId: "old-artifact" }], [validation], [], []], { artifactSigningKeyPath: keyPath });
     await test.service.initialize();
     expect(test.reads).toEqual([]);
@@ -253,7 +253,7 @@ describe("Validated candidate gate", () => {
 describe("Publishing the validated candidate", () => {
   const content = candidate();
   const validation = { id: "validation-1", status: "passed", guardrailVersion: content.guardrailVersion, sourceDraftRevision: 2,
-    candidateArtifact: content, candidateDigest: artifactContentDigest(content), candidateInspection: { testSuite: { total: 1, digest: testSuiteDigest(suite) } }, testSuite: suite };
+    candidateArtifact: content, candidateDigest: artifactContentDigest(content), candidateInspection: { testSuite: { total: 1, digest: testSuiteDigest(suite) } }, candidatePolicies: [], testSuite: suite };
 
   it("signs and publishes the tested content without rebuilding it from the draft or Library", async () => {
     const test = harness([[baseline()], [validation], [], []], { artifactSigningKeyPath: keyPath, policyCatalogDir: "/nonexistent-policy-library" });
@@ -262,7 +262,7 @@ describe("Publishing the validated candidate", () => {
     const artifact = test.inserts.find((item) => item.table === "guardrail_artifact")!.value;
     expect(artifact).toMatchObject({ ...content, checksum: validation.candidateDigest });
     expect(verify(null, Buffer.from(String(artifact.checksum)), publicKey, Buffer.from(String(artifact.signature), "base64"))).toBe(true);
-    expect(test.inserts).toContainEqual({ table: "guardrail_version", value: expect.objectContaining({ plan: content.plan, status: "ready", validationRunId: validation.id, inspection: validation.candidateInspection, testSuite: suite }) });
+    expect(test.inserts).toContainEqual({ table: "guardrail_version", value: expect.objectContaining({ plan: content.plan, status: "ready", validationRunId: validation.id, inspection: validation.candidateInspection, policies: validation.candidatePolicies, testSuite: suite }) });
     expect(test.inserts.some((item) => item.value.kind === "guardrail.compile_requested")).toBe(false);
     expect(test.reads).toEqual([]);
   });
