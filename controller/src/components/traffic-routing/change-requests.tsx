@@ -50,7 +50,7 @@ function ChangeFacts({ change }: { change: api.RouterChangeRequest }) {
   ];
   if (change.decidedAt) rows.push([localize("routing.decidedBy"), `${change.decidedByName ?? change.decidedBy ?? localize("routing.system")} · ${new Date(change.decidedAt).toLocaleString()}`]);
   if (change.decisionNote) rows.push([localize("routing.decisionNote"), change.decisionNote]);
-  if (change.emergencyReason) rows.push([localize("routing.emergencyReason"), change.emergencyReason], [localize("routing.managerContact"), change.emergencyContact ?? "—"]);
+  if (change.emergencyReason) rows.push([localize("routing.emergencyReason"), change.emergencyReason]);
   return (
     <dl className="grid grid-cols-[10rem_1fr] gap-x-4 gap-y-2 rounded-lg border p-4 text-sm">
       {rows.map(([label, value]) => (
@@ -127,7 +127,6 @@ export function ChangeRequestSheet({
   const [decision, setDecision] = useState<Decision>("view");
   const [note, setNote] = useState("");
   const [emergencyReason, setEmergencyReason] = useState("");
-  const [managerContact, setManagerContact] = useState("");
   const submitter = change.submittedBy === currentUserId;
   const awaiting = change.status === "pending";
   const base = revisions.find(r => r.revision === change.baseRevision);
@@ -142,7 +141,7 @@ export function ChangeRequestSheet({
     onSuccess: () => finish(localize("routing.changeApplied")),
   });
   const emergency = useMutation({
-    mutationFn: () => api.emergencyApplyRouterChange(router.id, change.id, { reason: emergencyReason.trim(), managerContact: managerContact.trim() }),
+    mutationFn: () => api.emergencyApplyRouterChange(router.id, change.id, { reason: emergencyReason.trim() }),
     onSuccess: () => finish(localize("routing.changeApplied")),
   });
   const reject = useMutation({
@@ -163,7 +162,7 @@ export function ChangeRequestSheet({
   ) : decision === "emergency" ? (
     <>
       <Button variant="outline" disabled={pending} onClick={() => setDecision("view")}>{localize("routing.back")}</Button>
-      <Button variant="destructive" disabled={pending || !emergencyReason.trim() || !managerContact.trim()} onClick={() => emergency.mutate()}>
+      <Button variant="destructive" disabled={pending || !emergencyReason.trim()} onClick={() => emergency.mutate()}>
         <Siren aria-hidden="true" />{emergency.isPending ? localize("routing.applying") : localize("routing.applyNow")}
       </Button>
     </>
@@ -213,9 +212,6 @@ export function ChangeRequestSheet({
             <p className="text-sm">{localize("routing.emergencyApplyWarning")}</p>
             <Field label={localize("routing.emergencyReason")}>
               <Textarea value={emergencyReason} maxLength={2000} rows={3} autoFocus onChange={(event) => setEmergencyReason(event.target.value)} />
-            </Field>
-            <Field label={localize("routing.managerContact")}>
-              <Input value={managerContact} maxLength={256} placeholder={localize("routing.managerContactPlaceholder")} onChange={(event) => setManagerContact(event.target.value)} />
             </Field>
           </div>
         )}

@@ -10,6 +10,7 @@ import { GuardrailPackageService } from "./guardrail-packages.js";
 import type { ArtifactAdmission } from "../domain/environment-check.js";
 import { createHash, randomUUID } from "node:crypto";
 import { canonicalJson } from "../../shared/canonical-json.js";
+import { scanRequestCommand } from "../../shared/scan-request-command.js";
 import { artifactContent, artifactContentDigest, ARTIFACT_CONTENT_DIGEST_VERSION, signArtifactDigest, type ArtifactContent } from "../domain/artifact-content.js";
 import { canonicalArtifactContent } from "../control-channel/artifact-codec.js";
 import { programmablePolicyProtection } from "../policy-studio/protection.js";
@@ -3048,12 +3049,7 @@ export function endpointSetup(runtimeServiceUrl: string, endpointId: string, ada
       auth_header: "Authorization: Bearer", credential_env_var: "CALYPSOAI_TOKEN", api_base_env_var: "CALYPSOAI_URL",
       recommended_modes: ["request", "response"], default_on: true, fail_on_error: true,
       unreachable_fallback: "fail_closed" as const,
-      yaml_template: [
-        'curl --request POST "$CALYPSOAI_URL/backend/v1/scans" \\',
-        '  --header "Authorization: Bearer $CALYPSOAI_TOKEN" \\',
-        '  --header "Content-Type: application/json" \\',
-        '  --data \'{"input":"Hello, can you help me?","scanDirection":"request","flagOnly":true,"verbose":false}\'',
-      ].join("\n"),
+      yaml_template: scanRequestCommand(`${baseUrl}/backend/v1/scans`),
     };
   }
   const apiBaseUrl = `${runtimeServiceUrl}/runtime/v1/endpoints/${encodeURIComponent(endpointId)}`;

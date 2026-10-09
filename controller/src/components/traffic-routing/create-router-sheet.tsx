@@ -1,12 +1,14 @@
 import i18n from "@/i18n";
 import { useTranslation } from "react-i18next";
-import { useId, useState, type ReactNode } from "react";
+import { useId, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDown, ArrowRight, ArrowUp, ChevronDown, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ChevronDown, CircleAlert, LoaderCircle, Plus, Trash2 } from "lucide-react";
 import { EntitySheet } from "@/components/entity-sheet";
-import { ErrorNotice } from "@/components/product-shell";
+import { CreationFlow, ReviewList, WizardSection } from "@/components/creation-flow";
+import { ErrorNotice, InfoNotice } from "@/components/product-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { MultiSelectCombobox } from "@/components/ui/multi-select-combobox";
 import { listControllerEndpoints, listControllerGuardrails } from "@/lib/controller-api";
 import { createTrafficRouter, getSelectorFields, listTrafficRouters, trafficRouterKeys, type TrafficRoute } from "@/lib/traffic-routing-api";
@@ -26,26 +28,19 @@ const newRoute = (kind: TrafficRoute["kind"]): TrafficRoute => ({
   targets: [],
 });
 
-function CreationSection({ number, title, hint, children }: {
-  number: string; title: string; hint?: string; children: ReactNode;
-}) {
-  const headingId = useId();
-  return (
-    <section className="create-router-section" aria-labelledby={headingId}>
-      <div className="create-router-section-heading">
-        <span className="create-router-section-number" aria-hidden="true">{number}</span>
-        <h3 id={headingId}>{title}</h3>
-        {hint && <span className="create-router-section-hint">{hint}</span>}
-      </div>
-      {children}
-    </section>
-  );
-}
-
 export function CreateRouterSheet({ open, onOpenChange, onCreated }: {
   open: boolean; onOpenChange: (open: boolean) => void; onCreated: () => void;
 }) {
   const { t } = useTranslation();
+  const nameId = useId();
+  const blockedReasonId = useId();
+  const [step, setStep] = useState(0);
+  const steps = [
+    { label: t("routing.routerName"), description: t("routing.createSections.nameHint") },
+    { label: t("routing.createSections.ingress"), description: t("routing.createSections.ingressHint") },
+    { label: t("routing.createSections.destinations"), description: t("routing.createSections.destinationsNavigationHint") },
+    { label: t("routing.createSections.review"), description: t("routing.createSections.reviewHint") },
+  ];
   const client = useQueryClient();
   const [name, setName] = useState("");
   const [endpointIds, setEndpointIds] = useState<string[]>([]);
@@ -64,6 +59,8 @@ export function CreateRouterSheet({ open, onOpenChange, onCreated }: {
   const issues = routingIssues(draft, true);
   const mutation = useMutation({
     mutationFn: () => createTrafficRouter({ name: name.trim(), endpointIds, draft }),
+    networkMode: "always",
+    retry: false,
     onSuccess: async () => {
       await client.invalidateQueries({ queryKey: trafficRouterKeys.all });
       onCreated();
@@ -85,42 +82,73 @@ export function CreateRouterSheet({ open, onOpenChange, onCreated }: {
     [next[from], next[to]] = [next[to]!, next[from]!];
     return next;
   });
-  const readiness = !name.trim()
+  const sourceIssue = !routers.data || !endpoints.data
+    ? t(endpoints.error || routers.error ? "routing.createSections.sourcesUnavailable" : "routing.createSections.sourcesLoading")
+    : !endpointIds.length ? t("routing.createSections.chooseEndpoints") : null;
+  const destinationIssue = issues.length ? t("routing.completeTheConditionsAndGuardrailsForEachRuleDistribution") : null;
+  const blockedReason = !name.trim()
     ? t("routing.createSections.enterName")
-    : !endpointIds.length
-      ? t("routing.createSections.chooseEndpoints")
-      : issues.length
-        ? t("routing.completeTheConditionsAndGuardrailsForEachRuleDistribution")
-        : t("routing.createSections.savedAsDraft");
+    : step >= 1 && sourceIssue ? sourceIssue
+      : step >= 2 ? destinationIssue : null;
+  const canCreate = Boolean(name.trim() && !sourceIssue && !destinationIssue && !mutation.isPending);
+  const changeStep = (next: number) => { if (!mutation.isPending) setStep(next); };
+  const targetSummary = (route: TrafficRoute) => route.targets.map(target => {
+    const guardrail = guardrails.data?.items.find(item => item.id === target.guardrailId);
+    return `${guardrail?.name ?? t("routing.chooseAGuardRail")} · ${target.guardrailVersion || "—"} · ${percent(target.weightBps)}`;
+  }).join(" / ") || "—";
 
   return (
-    <EntitySheet width="xl" open={open} closeDisabled={mutation.isPending} onOpenChange={onOpenChange}
+    <EntitySheet width="workflow" bodyClassName="overflow-hidden p-0 sm:p-0" open={open} closeDisabled={mutation.isPending} onOpenChange={onOpenChange}
       eyebrow={t("routing.router")} title={t("routing.createRouter")}
       description={t("routing.selectIncomingTrafficAndRouteItToGuardrails")}
-      footer={<>
-        <p className="create-router-readiness" role="status">{readiness}</p>
-        <Button variant="outline" disabled={mutation.isPending} onClick={() => onOpenChange(false)}>{t("routing.cancel")}</Button>
-        <Button variant="create" disabled={!name.trim() || !endpointIds.length || issues.length > 0 || mutation.isPending || !routers.data || !endpoints.data}
-          onClick={() => mutation.mutate()}>{mutation.isPending ? t("routing.creating") : t("routing.createRouter")}</Button>
-      </>}>
+      footer={<div className="w-full space-y-3">
+        {mutation.error && <ErrorNotice error={mutation.error} />}
+        <div className="flex w-full items-center gap-3">
+          {blockedReason && <p id={blockedReasonId} role="status" className="mr-auto flex min-w-0 flex-1 items-start gap-2 text-left text-xs leading-5 text-amber-800">
+            <CircleAlert className="mt-0.5 size-4 shrink-0" /><span>{blockedReason}</span>
+          </p>}
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            <Button variant="outline" disabled={mutation.isPending} onClick={() => step ? changeStep(step - 1) : onOpenChange(false)}>
+              {step ? <><ArrowLeft />{t("common.previous")}</> : t("common.cancel")}
+            </Button>
+            {step < steps.length - 1 ? <Button disabled={Boolean(blockedReason)}
+              aria-describedby={blockedReason ? blockedReasonId : undefined} title={blockedReason ?? undefined}
+              onClick={() => changeStep(step + 1)}>
+              {t(step === 2 ? "routing.createSections.toReview" : "common.next")}<ArrowRight />
+            </Button> : <Button disabled={!canCreate} aria-describedby={blockedReason ? blockedReasonId : undefined}
+              onClick={() => mutation.mutate()}>
+              {mutation.isPending && <LoaderCircle className="animate-spin" />}
+              {t(mutation.isPending ? "routing.creating" : "routing.createRouter")}
+            </Button>}
+          </div>
+        </div>
+      </div>}>
+      <CreationFlow orientation="sidebar" freelyNavigable contained currentStep={step} onStepChange={changeStep}
+        steps={steps} progressLabel={t("routing.initialRoutingConfiguration")}>
       <fieldset className="create-router-form" disabled={mutation.isPending}>
         <legend className="sr-only">{t("routing.initialRoutingConfiguration")}</legend>
-        <CreationSection number="01" title={t("routing.routerName")}>
-          <Input autoFocus aria-label={t("routing.routerName")} maxLength={160}
+        {step === 0 && <WizardSection title={t("routing.routerName")} description={t("routing.createSections.nameDescription")}>
+          <div className="grid gap-2">
+          <Label htmlFor={nameId}>{t("routing.routerName")} *</Label>
+          <Input id={nameId} autoFocus aria-label={t("routing.routerName")} className="field:min-h-11 field:bg-card" maxLength={160}
             placeholder={t("routing.createSections.namePlaceholder")}
             value={name} onChange={event => setName(event.target.value)} />
-        </CreationSection>
+          </div>
+        </WizardSection>}
 
-        <CreationSection number="02" title={t("routing.createSections.ingress")} hint={t("routing.createSections.ingressHint")}>
+        {step === 1 && <WizardSection title={t("routing.createSections.ingress")} description={t("routing.createSections.sourceDescription")}>
+          <p className="cds--label">{t("routing.sourceEndpoints")} *</p>
           <MultiSelectCombobox ariaLabel={t("routing.sourceEndpoints")} options={options} value={endpointIds}
             onValueChange={setEndpointIds} disabled={endpoints.isPending || routers.isPending || mutation.isPending}
             placeholder={t("routing.searchOrSelectEndpoints")} />
           <p className="create-router-help">{t("routing.selectedEndpointsShareTheseRulesEachEndpointBelongsTo")}</p>
           {endpoints.error && <ErrorNotice error={endpoints.error} />}
           {routers.error && <ErrorNotice error={routers.error} />}
-        </CreationSection>
+          {(endpoints.error || routers.error) && <Button className="mt-3" variant="outline"
+            onClick={() => { void endpoints.refetch(); void routers.refetch(); }}>{t("common.retry")}</Button>}
+        </WizardSection>}
 
-        <CreationSection number="03" title={t("routing.createSections.destinations")} hint={t("routing.createSections.destinationsHint")}>
+        {step === 2 && <WizardSection title={t("routing.createSections.destinations")} description={t("routing.createSections.destinationsDescription")}>
           <div className="create-router-subheading">
             <h4>{t("routing.createSections.conditionalRoutes")}</h4>
             <p>{t("routing.createSections.firstMatch")}</p>
@@ -192,9 +220,28 @@ export function CreateRouterSheet({ open, onOpenChange, onCreated }: {
             <p className="create-router-help">{t(routes.length ? "routing.oneGuardRailReceives100OfUnmatchedTraffic" : "routing.createSections.allTrafficFallback")}</p>
             <TargetsEditor fallback value={fallback.targets} onChange={targets => setFallback(current => ({ ...current, targets }))} />
           </section>
-        </CreationSection>
-        {mutation.error && <ErrorNotice error={mutation.error} />}
+        </WizardSection>}
+        {step === 3 && <WizardSection title={t("routing.createSections.reviewTitle")} description={t("routing.createSections.reviewDescription")}>
+          <InfoNotice>{t("routing.createSections.savedAsDraft")}</InfoNotice>
+          <div className="mt-4">
+            <ReviewList items={[
+              { label: t("routing.routerName"), value: name.trim() || "—" },
+              { label: t("routing.sourceEndpoints"), value: endpointIds.map(id => endpoints.data?.items.find(endpoint => endpoint.id === id)?.name ?? id).join(", ") || "—" },
+            ]} />
+          </div>
+          <div className="mt-4 divide-y overflow-hidden rounded-lg border bg-card">
+            {draft.routes.map((route, index) => <button type="button" key={route.id}
+              disabled={mutation.isPending} onClick={() => changeStep(2)}
+              className="block min-h-12 w-full px-4 py-3 text-left text-sm hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
+              <span className="block font-medium">{route.kind === "fallback" ? t("routing.createSections.fallback") : t("routing.createSections.ruleName", { number: index + 1 })}</span>
+              <span className="mt-1 block text-xs leading-5 text-muted-foreground">{route.kind === "fallback" ? t("routing.trafficThatMatchesNoneOfTheRulesIsForwarded") : selectorSummary(route.selector.expression)}</span>
+              <span className="mt-1 block break-words">{targetSummary(route)}</span>
+            </button>)}
+          </div>
+          <Button variant="edit" className="mt-4 min-h-11" onClick={() => changeStep(2)}>{t("routing.createSections.editDestinations")}</Button>
+        </WizardSection>}
       </fieldset>
+      </CreationFlow>
     </EntitySheet>
   );
 }

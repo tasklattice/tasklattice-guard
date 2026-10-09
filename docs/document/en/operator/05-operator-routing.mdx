@@ -27,7 +27,7 @@ Router changes are the only step that changes production traffic, so each one is
 
 1. **Submit**: **Review & submit** freezes the reviewed snapshot, its exact Guardrail Versions and the bound Endpoints, with a change description and an optional change ticket. Nothing serves traffic yet, and a Router has at most one pending change.
 2. **Approve**: Another administrator opens **Review change**, compares it with the active revision, and chooses **Approve and apply** or **Reject**. The submitter can withdraw it but cannot approve it.
-3. **Emergency**: When nobody else can approve, the submitter can choose **Emergency apply**. A reason and the approving manager's contact are required and recorded.
+3. **Emergency**: When nobody else can approve, the submitter can choose **Emergency apply**. Only a reason is required; the system records it along with the administrator applying the change.
 4. **Rollback**: Approval also approves returning to the previous revision. While that change is active, **Roll back to revision N** restores it with a reason and without another approval.
 
 If the active revision, bound Endpoints or referenced Guardrail Versions change before approval, the change becomes **Superseded** and must be submitted again. Revisions → **Change requests** keeps the full record.

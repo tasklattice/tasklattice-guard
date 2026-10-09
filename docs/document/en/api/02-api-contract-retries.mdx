@@ -27,7 +27,7 @@ These `x-` fields describe an OpenAPI operation. They are **not** HTTP headers t
 2. Save the draft with `PUT /api/v1/routers/{id}/draft`. If the response is lost, read the draft again and compare its contents. Do not substitute a newer `expectedDraftRevision` without review.
 3. Call `POST /api/v1/routers/{id}/publication-preview` and review the versions and Endpoint bindings that will be published. A repeated preview may differ if those references changed.
 4. Submit the change: `POST /api/v1/routers/{id}/change-requests` with the reviewed `expectedDraftRevision`, `reviewedSnapshot`, `reviewedEndpointIds`, a `reason`, and an optional change `ticket`. Nothing is published yet.
-5. Another administrator approves it: `POST /api/v1/routers/{id}/change-requests/{changeId}/approve`. Approval publishes exactly the submitted snapshot. In an emergency, `.../emergency-apply` applies it without a second approver and records the reason and manager contact.
+5. Another administrator approves it: `POST /api/v1/routers/{id}/change-requests/{changeId}/approve`. Approval publishes exactly the submitted snapshot. In an emergency, `.../emergency-apply` requires a reason, applies it without a second approver, and records the reason and applying administrator.
 
 If a submission times out, read the Router: `pendingChangeRequest` shows a submission that succeeded. If an approval times out, the same approver can repeat it. Check `publication.replayed` and the revision before you do anything else. For every other `POST`, check `x-retry-policy`. For example, starting a test run is not guaranteed to be idempotent. Do not retry it automatically after an uncertain response.
 

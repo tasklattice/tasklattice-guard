@@ -13,7 +13,7 @@ export const listRouterChangeRequests = (id: string) => requestController<Collec
 export const getRouterChangeRequest = (id: string, changeId: string) => requestController<RouterChangeRequest>(change(id, changeId));
 export const submitRouterChange = (id: string, input: { expectedDraftRevision: number; reviewedSnapshot: RouterDraft; reviewedEndpointIds: string[]; reason: string; ticket: string; restore?: { revision: number; expectedActiveRevision: number } | undefined }) => requestController<RouterChangeRequest>(`${path(id)}/change-requests`, json('POST', input));
 export const approveRouterChange = (id: string, changeId: string, note?: string) => requestController<TrafficRouter>(`${change(id, changeId)}/approve`, json('POST', note ? { note } : {}));
-export const emergencyApplyRouterChange = (id: string, changeId: string, input: { reason: string; managerContact: string }) => requestController<TrafficRouter>(`${change(id, changeId)}/emergency-apply`, json('POST', input));
+export const emergencyApplyRouterChange = (id: string, changeId: string, input: { reason: string }) => requestController<TrafficRouter>(`${change(id, changeId)}/emergency-apply`, json('POST', input));
 export const rejectRouterChange = (id: string, changeId: string, note: string) => requestController<RouterChangeRequest>(`${change(id, changeId)}/reject`, json('POST', { note }));
 export const withdrawRouterChange = (id: string, changeId: string) => requestController<RouterChangeRequest>(`${change(id, changeId)}/withdraw`, { method: 'POST' });
 export const revertRouterChange = (id: string, changeId: string, reason: string) => requestController<TrafficRouter>(`${change(id, changeId)}/revert`, json('POST', { reason }));

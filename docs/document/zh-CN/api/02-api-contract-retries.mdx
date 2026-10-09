@@ -27,7 +27,7 @@ order: 1
 2. 保存草稿：`PUT /api/v1/routers/{id}/draft`。如果响应丢失，先重新读取草稿并比较内容。不要未经审阅就换用更新的 `expectedDraftRevision`。
 3. 请求 `POST /api/v1/routers/{id}/publication-preview`，检查这次要发布的版本和 Endpoint 绑定。重新预览时，引用的版本或绑定可能已经变化，需再次审阅结果。
 4. 提交变更：`POST /api/v1/routers/{id}/change-requests`，请求体带上已审阅的 `expectedDraftRevision`、`reviewedSnapshot`、`reviewedEndpointIds`、变更说明 `reason` 和可选的变更单号 `ticket`。此时还不会发布。
-5. 由另一位管理员批准：`POST /api/v1/routers/{id}/change-requests/{changeId}/approve`，批准后原样发布提交时的快照。紧急情况下可调用 `.../emergency-apply` 跳过第二位审批人，系统会记录原因和经理联系方式。
+5. 由另一位管理员批准：`POST /api/v1/routers/{id}/change-requests/{changeId}/approve`，批准后原样发布提交时的快照。紧急情况下可调用 `.../emergency-apply`，填写原因后跳过第二位审批人，系统会记录原因和执行此操作的管理员。
 
 如果提交请求超时，先读取 Router：`pendingChangeRequest` 存在即表示提交已成功。如果批准请求超时，同一位审批人可以重复批准，再检查 `publication.replayed` 和 revision。其他 `POST` 能否重试，要分别查看各自的 `x-retry-policy`。例如，启动测试运行不保证幂等，结果不明时不能自动重发。
 

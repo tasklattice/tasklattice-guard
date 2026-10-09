@@ -1,0 +1,64 @@
+// Keep the Carbon field and menu; replace its count badge with selected names.
+.guard-multi-select {
+  min-inline-size: 0;
+  inline-size: 100%;
+
+  .cds--list-box,
+  .cds--list-box__field {
+    block-size: auto;
+    max-block-size: none;
+    min-block-size: 2.5rem;
+  }
+
+  .cds--list-box__field {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem 0.5rem;
+    overflow: visible;
+    padding: 0.5rem 3rem 0.5rem 1rem;
+  }
+
+  .cds--list-box__field > .cds--tag { display: none; }
+
+  .cds--text-input {
+    // Keep search usable; move it to the next line before squeezing its text.
+    flex: 1 0 18rem;
+    inline-size: auto;
+    min-inline-size: min(100%, 18rem);
+    max-inline-size: 100%;
+    block-size: 1.5rem;
+    padding: 0;
+  }
+
+  .cds--list-box__menu-icon,
+  .cds--list-box__selection {
+    inset-block-start: 0.5rem;
+  }
+
+  .cds--list-box__field:focus-within {
+    outline: 2px solid var(--cds-focus);
+    outline-offset: -2px;
+  }
+}
+
+.guard-multi-select__values { display: contents; }
+.guard-multi-select__value.cds--tag {
+  order: -1;
+  // Wrap whole tags at their natural width. Only an overlong tag wraps its text.
+  flex: 0 0 auto;
+  inline-size: max-content;
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  block-size: auto;
+  min-block-size: 1.5rem;
+  margin: 0;
+
+  > span { min-inline-size: 0; max-inline-size: 100%; }
+  .cds--interactive--tag-children { max-inline-size: 100%; }
+  .cds--tag__label {
+    max-inline-size: none;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}

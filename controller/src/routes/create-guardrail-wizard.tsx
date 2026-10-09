@@ -21,7 +21,7 @@ import { toast } from "@/components/ui/notifications";
 import { TopicControlUnavailable, useTopicControlAvailability } from "@/components/topic-control-availability";
 import { TopicControlFields, TopicModeField, type TopicControlMode } from "@/components/topic-control-fields";
 import { ComplianceDocumentImport } from "@/components/compliance-document-import";
-import { CreationFlow } from "@/components/creation-flow";
+import { CreationFlow, WizardSection } from "@/components/creation-flow";
 import { EntitySheet } from "@/components/entity-sheet";
 import { defaultPolicyBinding, getPolicyBindingValidation } from "@/components/policy-binding-editor";
 import { ProtectionOrderEditor } from "@/components/protection-workspace";
@@ -724,10 +724,6 @@ function bindingsValid(bindings: GuardrailPolicyBinding[], policies: Policy[], a
 
 function hasTopicControlBinding(bindings: GuardrailPolicyBinding[], policies: Policy[]): boolean {
   return bindings.some((binding) => policyRequiresTopicAllowlist(boundPolicy(policies, binding) ?? { id: binding.policy_id, version: binding.policy_version }));
-}
-
-function WizardSection({ title, description, children }: { title: string; description: string; children: ReactNode }) {
-  return <section><header className="mb-5"><h3 className="text-lg font-semibold">{title}</h3><p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">{description}</p></header>{children}</section>;
 }
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {

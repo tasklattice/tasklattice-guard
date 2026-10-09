@@ -61,8 +61,8 @@
 5. **批准即生效**：批准在同一事务中创建 Router revision 并推进下发 generation。
 6. **预批准回退**：批准一张变更单的同时批准"回退到它的基线 revision"。只要该变更
    仍是当前生效的变更，管理员可直接回退，无需再次审批；回退本身也记录为一张变更单。
-7. **紧急生效**：无人可审批时，管理员可对待审批变更单执行紧急生效，必须填写理由和
-   负责经理的联系方式，并在审计和变更记录中标记为紧急。
+7. **紧急生效**：无人可审批时，管理员可对待审批变更单执行紧急生效，只需填写理由，
+   系统会记录理由和执行此操作的管理员，并在审计和变更记录中标记为紧急。
 8. 变更单号（外部 CR 编号）可选，变更说明必填。
 
 ### 数据模型
@@ -79,7 +79,7 @@
 | `snapshot`、`endpoint_ids`、`context` | 冻结的快照、Endpoint 集合与名称上下文 |
 | `ticket`、`reason` | 外部变更单号、变更说明 |
 | `submitted_by/at`、`decided_by/at`、`decision_note` | 提交与审批记录 |
-| `emergency_reason`、`emergency_contact` | 紧急生效理由与经理联系方式 |
+| `emergency_reason` | 紧急生效理由；`emergency_contact` 仅保留历史数据，新变更不再采集 |
 | `applied_revision`、`reverts_change_request_id` | 生效后的 revision、回退来源 |
 
 `router_id` 上有 `status = 'pending'` 的部分唯一索引。`traffic_router_revision`
@@ -95,7 +95,7 @@
 | `POST` | `.../:changeId/approve` | 批准并生效（审批人 ≠ 提交人） |
 | `POST` | `.../:changeId/reject` | 驳回，`note` 必填 |
 | `POST` | `.../:changeId/withdraw` | 提交人撤回 |
-| `POST` | `.../:changeId/emergency-apply` | 紧急生效，`reason` 与 `managerContact` 必填 |
+| `POST` | `.../:changeId/emergency-apply` | 紧急生效，`reason` 必填 |
 | `POST` | `.../:changeId/revert` | 预批准回退到基线 revision，`reason` 必填 |
 
 原有立即生效的 `POST /routers/:id/publish` 与 `POST /routers/:id/rollback` 已移除。

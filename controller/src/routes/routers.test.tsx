@@ -44,6 +44,13 @@ async function chooseEndpoint() {
   await waitFor(() => expect(fields).toHaveBeenCalledWith(["endpoint-cn"]));
 }
 
+async function configureSource(name: string) {
+  fireEvent.change(screen.getByRole("textbox", { name: "Router name", exact: true }), { target: { value: name } });
+  fireEvent.click(screen.getByRole("button", { name: "Next" }));
+  await chooseEndpoint();
+  fireEvent.click(screen.getByRole("button", { name: "Next" }));
+}
+
 async function chooseGuardrail(container: HTMLElement) {
   const area = within(container);
   const add = area.getByRole("button", { name: "Add Guardrail", exact: true });
@@ -73,23 +80,68 @@ describe("Router creation", () => {
   });
   afterEach(cleanup);
 
-  it("keeps source selection separate from both destination types in one drawer", async () => {
-    mount();
+  it("shows one step at a time and gates progression and creation on complete configuration", async () => {
+    const { onOpenChange } = mount();
     expect(await screen.findByRole("heading", { name: "Create Router" })).toBeTruthy();
     expect(screen.getByRole("textbox", { name: "Router name", exact: true })).toBeTruthy();
-    const source = screen.getByRole("region", { name: "Traffic source" });
-    expect(within(source).getByRole("combobox", { name: "Source Endpoints" })).toBeTruthy();
+    expect(screen.queryByRole("combobox", { name: "Source Endpoints" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Traffic destinations" })).toBeNull();
+    expect(screen.queryByText("01")).toBeNull();
+    expect(screen.getByRole("button", { name: "Next" }).matches(":disabled")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Router name", exact: true }), { target: { value: "Production" } });
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.queryByRole("textbox", { name: "Router name", exact: true })).toBeNull();
+    expect(screen.getByRole("region", { name: "Traffic source" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Next" }).matches(":disabled")).toBe(true);
+    await chooseEndpoint();
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
     const destinations = screen.getByRole("region", { name: "Traffic destinations" });
     expect(within(destinations).getByRole("heading", { name: "Conditional routes" })).toBeTruthy();
     expect(destinations.contains(fallbackRegion())).toBe(true);
-    expect(source.contains(fallbackRegion())).toBe(false);
+    expect(screen.queryByRole("region", { name: "Traffic source" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Review configuration" }).matches(":disabled")).toBe(true);
+    expect(screen.queryByRole("button", { name: "Create Router", exact: true })).toBeNull();
+
+    // Guardrail-style sidebar navigation is free, but cannot bypass validation to create.
+    fireEvent.click(screen.getByRole("tab", { name: /Review & create/ }));
+    expect(screen.getByRole("region", { name: "Review your Router" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Create Router", exact: true }).matches(":disabled")).toBe(true);
+    expect(screen.getByRole("tab", { name: /Review & create/ }).getAttribute("aria-current")).toBe("step");
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("retains name, Endpoints, conditions and pinned targets through previous, next and review edits", async () => {
+    mount();
+    await configureSource("Production");
+    await configureRule(1, "litellm");
+    await chooseGuardrail(fallbackRegion());
+    fireEvent.click(screen.getByRole("button", { name: "Previous" }));
+    expect(screen.getByRole("button", { name: "Remove Gateway CN" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Previous" }));
+    expect((screen.getByRole("textbox", { name: "Router name", exact: true }) as HTMLInputElement).value).toBe("Production");
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect((screen.getByLabelText("Value") as HTMLInputElement).value).toBe("litellm");
+    const rule = within(screen.getByRole("article", { name: "Rule 1" }));
+    await waitFor(() => expect(rule.getByRole("combobox", { name: "Guardrail 1 version" }).textContent).toContain("v1"));
+    fireEvent.click(screen.getByRole("button", { name: "Review configuration" }));
+    const review = within(screen.getByRole("region", { name: "Review your Router" }));
+    expect(review.getByText("Production")).toBeTruthy();
+    expect(review.getByText("Gateway CN")).toBeTruthy();
+    expect(review.getByText(/protocol equals "litellm"/)).toBeTruthy();
+    expect(review.getAllByText("Main Guardrail · v1 · 100%")).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "Create Router", exact: true }).matches(":disabled")).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Edit traffic destinations" }));
+    expect((screen.getByLabelText("Value") as HTMLInputElement).value).toBe("litellm");
+    expect(create).not.toHaveBeenCalled();
   });
 
   it("preserves edited conditions and targets through collapse and reorder, then submits fallback last", async () => {
     const { onCreated } = mount();
-    fireEvent.change(screen.getByRole("textbox", { name: "Router name", exact: true }), { target: { value: "  Production  " } });
-    await chooseEndpoint();
+    await configureSource("  Production  ");
     await configureRule(1, "litellm");
     fireEvent.click(screen.getByRole("button", { name: "Add conditional route" }));
     const first = within(screen.getByRole("article", { name: "Rule 1" }));
@@ -105,6 +157,7 @@ describe("Router creation", () => {
     await chooseGuardrail(fallbackRegion());
     expect(within(fallbackRegion()).queryByRole("button", { name: "Add Guardrail" })).toBeNull();
     expect(within(fallbackRegion()).queryByRole("button", { name: /Remove|Move/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Review configuration" }));
     const submit = screen.getByRole("button", { name: "Create Router", exact: true });
     await waitFor(() => expect(submit.matches(":disabled")).toBe(false));
     fireEvent.click(submit);
@@ -125,18 +178,18 @@ describe("Router creation", () => {
   it("supports fallback-only routing and retains the configuration after a failed create", async () => {
     create.mockRejectedValueOnce(new Error("Could not create Router"));
     const { onCreated, onOpenChange } = mount();
-    fireEvent.change(screen.getByRole("textbox", { name: "Router name", exact: true }), { target: { value: "Fallback only" } });
-    await chooseEndpoint();
+    await configureSource("Fallback only");
     fireEvent.click(screen.getByRole("button", { name: "Remove Rule 1" }));
     expect(screen.getByText("No conditional routes. All incoming traffic will use the fallback below.")).toBeTruthy();
     await chooseGuardrail(fallbackRegion());
+    fireEvent.click(screen.getByRole("button", { name: "Review configuration" }));
     const submit = screen.getByRole("button", { name: "Create Router", exact: true });
     await waitFor(() => expect(submit.matches(":disabled")).toBe(false));
     fireEvent.click(submit);
     expect(await screen.findByText("Could not create Router")).toBeTruthy();
     expect(onCreated).not.toHaveBeenCalled();
     expect(onOpenChange).not.toHaveBeenCalled();
-    expect((screen.getByRole("textbox", { name: "Router name", exact: true }) as HTMLInputElement).value).toBe("Fallback only");
+    expect(within(screen.getByRole("region", { name: "Review your Router" })).getByText("Fallback only")).toBeTruthy();
     fireEvent.click(submit);
     await waitFor(() => expect(onCreated).toHaveBeenCalledOnce());
     const draft = create.mock.calls[1]![0].draft as RouterDraft;

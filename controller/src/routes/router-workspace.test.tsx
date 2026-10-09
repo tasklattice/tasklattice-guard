@@ -429,18 +429,21 @@ describe("Router detail workflow", () => {
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(await screen.findByRole("button", { name: "Withdraw request" })).toBeTruthy();
   });
-  it("requires a reason and manager contact before the submitter applies in an emergency", async () => {
+  it("requires only a nonblank reason before the submitter applies in an emergency", async () => {
     mount({ ...router, draftRevision: 2, pendingChangeRequest: pendingChange });
     fireEvent.click(screen.getByRole("button", { name: "Review change" }));
     const sheet = await screen.findByRole("dialog", { name: "Review pending change" });
     expect(within(sheet).queryByRole("button", { name: "Approve and apply" })).toBeNull();
     fireEvent.click(within(sheet).getByRole("button", { name: "Emergency apply" }));
     const apply = within(sheet).getByRole("button", { name: "Apply now" });
-    fireEvent.change(within(sheet).getByLabelText("Emergency reason"), { target: { value: "Active abuse" } });
     expect(apply.hasAttribute("disabled")).toBe(true);
-    fireEvent.change(within(sheet).getByLabelText("Manager contact"), { target: { value: "Duty manager 138" } });
+    expect(within(sheet).queryByLabelText("Manager contact")).toBeNull();
+    fireEvent.change(within(sheet).getByLabelText("Emergency reason"), { target: { value: "   " } });
+    expect(apply.hasAttribute("disabled")).toBe(true);
+    fireEvent.change(within(sheet).getByLabelText("Emergency reason"), { target: { value: " Active abuse " } });
+    expect(apply.hasAttribute("disabled")).toBe(false);
     fireEvent.click(apply);
-    await waitFor(() => expect(emergencyApply).toHaveBeenCalledExactlyOnceWith("router", "change", { reason: "Active abuse", managerContact: "Duty manager 138" }));
+    await waitFor(() => expect(emergencyApply).toHaveBeenCalledExactlyOnceWith("router", "change", { reason: "Active abuse" }));
     expect(approve).not.toHaveBeenCalled();
   });
   async function openRestore(value = { ...router, activeRevision: 2 }) {

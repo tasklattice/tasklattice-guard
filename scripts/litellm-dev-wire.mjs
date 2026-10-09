@@ -81,7 +81,7 @@ async function ensureRouter(endpointId, version) {
       change = (await api(`/api/v1/routers/${router.id}/change-requests`, { expectedDraftRevision: review.draftRevision, reviewedSnapshot: review.snapshot,
         reviewedEndpointIds: review.endpointIds, reason: "LiteLLM integration test stack wiring" }, 201)).result;
     }
-    const published = (await api(`/api/v1/routers/${router.id}/change-requests/${change.id}/emergency-apply`, { reason: "Automated LiteLLM dev stack wiring", managerContact: "LiteLLM dev stack (no manager)" }, 202)).result;
+    const published = (await api(`/api/v1/routers/${router.id}/change-requests/${change.id}/emergency-apply`, { reason: "Automated LiteLLM dev stack wiring" }, 202)).result;
     log("router-published", { routerId: router.id, changeRequestId: change.id, rolloutStatus: published.rolloutStatus ?? null });
   }
   return router;

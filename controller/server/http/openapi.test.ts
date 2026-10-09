@@ -99,7 +99,9 @@ describe("Generated OpenAPI contract", () => {
     expect(validate(submit, { expectedDraftRevision: 2, reviewedSnapshot: snapshot, reviewedEndpointIds: [], reason: "Restore", restore: { revision: 1, expectedActiveRevision: 2 } }).valid).toBe(true);
     expect(validate(submit, { expectedDraftRevision: 2, reviewedSnapshot: snapshot, reviewedEndpointIds: [], reason: "Restore", restore: { revision: 1 } }).valid).toBe(false);
     const emergency = contract.paths["/api/v1/routers/{id}/change-requests/{changeId}/emergency-apply"].post;
-    expect(validate(emergency.requestBody.content["application/json"].schema, { reason: "Abuse" }).valid).toBe(false);
+    expect(validate(emergency.requestBody.content["application/json"].schema, { reason: "Abuse" }).valid).toBe(true);
+    expect(validate(emergency.requestBody.content["application/json"].schema, {}).valid).toBe(false);
+    expect(validate(emergency.requestBody.content["application/json"].schema, { reason: "" }).valid).toBe(false);
     expect(emergency.responses[202].description).toContain("does not guarantee");
     const intent = contract.paths["/api/v1/authoring/intent-analyses"].post.requestBody.content["application/json"].schema;
     expect(validate(intent, { purpose: "Explain account features", deniedPurpose: "Refuse unauthorized account access", topicControlMode: "permissive" }).valid).toBe(true);

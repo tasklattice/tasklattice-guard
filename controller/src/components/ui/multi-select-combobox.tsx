@@ -1,4 +1,5 @@
-import { useId, useMemo, useState } from "react";
+import { useCallback, useId, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { ComboBox, FilterableMultiSelect, DismissibleTag } from "@carbon/react";
 import { useTranslation } from "react-i18next";
 import {
@@ -7,6 +8,7 @@ import {
   isMultiSelectOptionDisabled,
   type MultiSelectOption,
 } from "./multi-select-options";
+import "./multi-select-combobox.scss";
 export type { MultiSelectOption } from "./multi-select-options";
 export type MultiSelectComboboxProps = {
   ariaLabel: string;
@@ -22,7 +24,6 @@ export type MultiSelectComboboxProps = {
   options: readonly MultiSelectOption[];
   placeholder?: string;
   searchPlaceholder?: string;
-  showSelectedValues?: boolean;
   selectionMode?: "multiple" | "single";
   value: readonly string[];
 };
@@ -35,7 +36,7 @@ export function MultiSelectCombobox({
   onValueChange,
   options,
   placeholder,
-  showSelectedValues = true,
+  searchPlaceholder,
   selectionMode = "multiple",
   value,
   emptyMessage,
@@ -45,6 +46,12 @@ export function MultiSelectCombobox({
   const generated = useId();
   const { t, i18n } = useTranslation();
   const [query, setQuery] = useState("");
+  const [selectionHost, setSelectionHost] = useState<Element | null>(null);
+  // Carbon has no selected-item renderer for FilterableMultiSelect. Mount the
+  // native tags in its field, retaining its search, listbox and keyboard logic.
+  const attachSelectionHost = useCallback((element: HTMLDivElement | null) => {
+    setSelectionHost(element?.querySelector(".cds--list-box__field") ?? null);
+  }, []);
   const items = useMemo(
     () =>
       sortMultiSelectOptions(options, i18n.language).map((item) => ({
@@ -57,7 +64,7 @@ export function MultiSelectCombobox({
       })),
     [options, value, maxSelected, selectionMode, i18n.language],
   );
-  const selected = items.filter((item) => value.includes(item.value));
+  const selected = value.flatMap((id) => items.filter((item) => item.value === id));
   const render = (item: MultiSelectOption) => (
     <span className="guard-option">
       <span>
@@ -89,7 +96,15 @@ export function MultiSelectCombobox({
             { name: ariaLabel },
           );
   return (
-    <div className={className}>
+    <div className={className} onKeyDownCapture={(event) => {
+      if (selectionMode !== "multiple" || disabled || !(event.target instanceof HTMLInputElement)) return;
+      if (!event.target.value && (event.key === "Backspace" || event.key === "Delete")) {
+        // Carbon clears the whole selection here; named tags remove one at a time.
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.key === "Backspace" && value.length) onValueChange(value.slice(0, -1));
+      }
+    }}>
       {selectionMode === "single" ? (
         <ComboBox<MultiSelectOption>
           autoAlign
@@ -116,12 +131,15 @@ export function MultiSelectCombobox({
         />
       ) : (
         <FilterableMultiSelect<MultiSelectOption>
+          ref={attachSelectionHost}
+          className="guard-multi-select"
           autoAlign
           id={id ?? generated}
           titleText={ariaLabel}
+          clearSelectionText={t("common.multiSelect.removeLast")}
           hideLabel
           inputProps={{ "aria-label": ariaLabel }}
-          placeholder={placeholder}
+          placeholder={selected.length ? (searchPlaceholder ?? placeholder) : placeholder}
           disabled={disabled}
           items={items}
           selectedItems={selected}
@@ -140,23 +158,25 @@ export function MultiSelectCombobox({
           translateWithId={translate}
         />
       )}
-      {selectionMode === "multiple" && showSelectedValues && selected.length ? (
-        <div className="mt-2 flex flex-wrap gap-1">
+      {selectionMode === "multiple" && selectionHost && createPortal(
+        <div className="guard-multi-select__values">
           {selected.map((item) => (
             <DismissibleTag
               key={item.value}
+              className="guard-multi-select__value"
               type="gray"
               size="sm"
               disabled={disabled}
               text={item.label}
               title={t("common.multiSelect.remove", { name: item.label })}
-              onClose={() =>
-                onValueChange(value.filter((v) => v !== item.value))
-              }
+              onClose={() => {
+                onValueChange(value.filter((v) => v !== item.value));
+                selectionHost.querySelector("input")?.focus();
+              }}
             />
           ))}
-        </div>
-      ) : null}
+        </div>, selectionHost,
+      )}
     </div>
   );
 }

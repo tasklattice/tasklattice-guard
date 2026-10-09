@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 import { Check } from "lucide-react";
 
 import {
@@ -149,6 +149,11 @@ export function CreationFlow({
     </Stepper>
     </div>
   );
+}
+
+export function WizardSection({ title, description, children }: { title: string; description: string; children: ReactNode }) {
+  const headingId = useId();
+  return <section aria-labelledby={headingId}><header className="mb-5"><h3 id={headingId} className="text-lg font-semibold">{title}</h3><p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">{description}</p></header>{children}</section>;
 }
 
 export function ReviewList({

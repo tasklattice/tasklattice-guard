@@ -106,7 +106,8 @@ vi.mock("@/components/entity-sheet", () => ({
   ),
 }));
 
-vi.mock("@/components/creation-flow", () => ({
+vi.mock("@/components/creation-flow", async importOriginal => ({
+  ...(await importOriginal<typeof import("@/components/creation-flow")>()),
   CreationFlow: ({ children, steps, onStepChange }: { children: React.ReactNode; steps: Array<{ label: string }>; onStepChange: (step: number) => void }) => (
     <div><nav>{steps.map((step, index) => <button key={step.label} onClick={() => onStepChange(index)}>{step.label}</button>)}</nav>{children}</div>
   ),

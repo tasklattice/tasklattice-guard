@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { execFileSync } from "node:child_process";
 
 import { endpointSetup } from "./control-plane.js";
 
@@ -8,8 +9,14 @@ it("provides the root Scan URL and Bearer examples without a streaming callback"
   expect(setup.api_base_url).toBe("https://runtime.example.test");
   expect(setup.auth_header).toBe("Authorization: Bearer");
   expect(setup.stream_callback_url).toBeNull();
-  expect(setup.yaml_template).toContain('"input":"Hello, can you help me?"');
-  expect(setup.yaml_template).toContain('Bearer $CALYPSOAI_TOKEN');
+  // Parse the copied command in a real shell, capturing arguments without sending traffic.
+  const args = execFileSync("sh", ["-c", `curl() { printf '%s\\0' "$@"; }\n${setup.yaml_template}`], { encoding: "utf8" }).split("\0");
+  expect(args).toContain(setup.callback_url);
+  expect(args).toContain("Authorization: Bearer <CALYPSOAI_TOKEN>");
+  expect(args).toContain("Content-Type: application/json");
+  expect(JSON.parse(args[args.indexOf("--data") + 1]!)).toEqual({
+    input: "Hello, can you help me?", scanDirection: "request", flagOnly: true, verbose: false,
+  });
 });
 
 describe("Endpoint setup", () => {

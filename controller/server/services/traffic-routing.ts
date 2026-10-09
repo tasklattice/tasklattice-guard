@@ -199,8 +199,8 @@ export class TrafficRoutingService {
     });
     return this.changeRequest(id, changeId);
   }
-  /** Apply a pending change. Approval requires a second administrator; emergency application requires a reason and manager contact. */
-  async approveChange(id: string, changeId: string, actorId: string, decision: { note?: string | undefined } | { emergency: { reason: string; managerContact: string } }) {
+  /** Apply a pending change. Approval requires a second administrator; emergency application requires a reason. */
+  async approveChange(id: string, changeId: string, actorId: string, decision: { note?: string | undefined } | { emergency: { reason: string } }) {
     const emergency = "emergency" in decision ? decision.emergency : null;
     const outcome = await this.db.transaction(async tx => {
       await advisoryTransactionLock(tx, "traffic-router-bindings");
@@ -224,12 +224,12 @@ export class TrafficRoutingService {
         sourceDraftRevision: change.sourceDraftRevision!, requestDraftRevision: change.sourceDraftRevision!, rollbackRevision: null });
       await tx.update(trafficRouterChangeRequests).set({ status: "applied", decidedBy: actorId, decidedAt: new Date(), appliedRevision: applied.revision,
         decisionNote: emergency ? null : ("note" in decision ? decision.note ?? null : null),
-        emergencyReason: emergency?.reason ?? null, emergencyContact: emergency?.managerContact ?? null, updatedAt: new Date() })
+        emergencyReason: emergency?.reason ?? null, updatedAt: new Date() })
         .where(eq(trafficRouterChangeRequests.id, changeId));
       await this.audit(tx, id, actorId, emergency ? "router.change_emergency_applied" : "router.change_approved", {
         changeRequestId: changeId, ticket: change.ticket, submittedBy: change.submittedBy, revision: applied.revision,
         previous: router.activeSnapshot, snapshot: change.snapshot, endpointIds: change.endpointIds,
-        ...(emergency ? { emergencyReason: emergency.reason, emergencyContact: emergency.managerContact } : {}),
+        ...(emergency ? { emergencyReason: emergency.reason } : {}),
       });
       return { ...applied, replayed: false };
     });

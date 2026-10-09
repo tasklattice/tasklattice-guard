@@ -192,8 +192,9 @@ describe("PolicyBindingEditor", () => {
     const latest: Policy = { ...old, version: "2", name: "Published new", rules: [], parameters: [], published_versions: [old] };
     const onChange = vi.fn();
     render(<PolicyBindingEditor policies={[latest]} value={[defaultPolicyBinding(old)]} onChange={onChange} />);
-    expect(screen.getAllByText("Published old").length).toBe(1);
-    expect(screen.getByRole("button", { name: "Remove Published old" })).toBeTruthy();
+    const field = within(screen.getByRole("combobox", { name: "Select Policies" }).parentElement!);
+    expect(field.getByText("Published old", { exact: true })).toBeTruthy();
+    expect(within(screen.getByRole("list")).getByRole("button", { name: "Remove Published old" })).toBeTruthy();
     expect(screen.queryByText("Published new")).toBeNull();
     fireEvent.change(screen.getByLabelText("Old required value *"), { target: { value: "reviewed value" } });
     expect(onChange.mock.calls[0]?.[0][0]).toMatchObject({ policy_version: "1", parameter_values: { old_parameter: "reviewed value" } });
@@ -204,7 +205,8 @@ describe("PolicyBindingEditor", () => {
     const latest: Policy = { ...old, version: "2", name: "Published new", published_versions: [old] };
     const onChange = vi.fn();
     const { rerender } = render(<PolicyBindingEditor policies={[latest]} value={[defaultPolicyBinding(old)]} onChange={onChange} />);
-    fireEvent.click(screen.getByRole("button", { name: "Remove Published old" }));
+    const field = within(screen.getByRole("combobox", { name: "Select Policies" }).parentElement!);
+    fireEvent.click(field.getByRole("button", { name: "Remove Published old" }));
     expect(onChange).toHaveBeenLastCalledWith([]);
     rerender(<PolicyBindingEditor policies={[latest]} value={[]} onChange={onChange} />);
     fireEvent.keyDown(screen.getByRole("combobox", { name: "Select Policies" }), { key: "ArrowDown" });
@@ -227,7 +229,7 @@ describe("PolicyBindingEditor", () => {
     fireEvent.click(screen.getByRole("combobox", { name: "Select Policies" }));
     fireEvent.click(screen.getByRole("option", { name: /Customer data Policy/ }));
 
-    expect(await screen.findByRole("button", { name: "Remove Customer data Policy" })).toBeTruthy();
+    expect(within(await screen.findByRole("list")).getByRole("button", { name: "Remove Customer data Policy" })).toBeTruthy();
 
     const disclosure = await screen.findByRole("button", { name: /Review (Rule details|required configuration) for/ });
     expect(disclosure.getAttribute("aria-expanded")).toBe("false");

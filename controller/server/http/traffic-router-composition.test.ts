@@ -87,13 +87,19 @@ describe("Composed Router HTTP contract", () => {
   });
   it.each([
     ["approve", {}, { note: undefined }],
-    ["emergency-apply", { reason: "Abuse", managerContact: "Duty manager" }, { emergency: { reason: "Abuse", managerContact: "Duty manager" } }],
+    ["emergency-apply", { reason: " Abuse " }, { emergency: { reason: "Abuse" } }],
   ])("applies a change through %s and distributes after the revision is written", async (action, body, decision) => {
     const { send, trafficRouting, distributeDesiredState } = setupRoutingHttp();
     expect((await send("POST", `/routers/router/change-requests/change/${action}`, body)).status).toBe(202);
     expect(trafficRouting.approveChange).toHaveBeenCalledExactlyOnceWith("router", "change", "actor", decision);
     expect(distributeDesiredState).toHaveBeenCalledOnce();
     expect(trafficRouting.approveChange.mock.invocationCallOrder[0]!).toBeLessThan(distributeDesiredState.mock.invocationCallOrder[0]!);
+  });
+  it.each([{}, { reason: "" }, { reason: "   " }])("rejects an emergency application without a nonblank reason: %j", async body => {
+    const { send, trafficRouting, distributeDesiredState } = setupRoutingHttp();
+    expect((await send("POST", "/routers/router/change-requests/change/emergency-apply", body)).status).toBe(400);
+    expect(trafficRouting.approveChange).not.toHaveBeenCalled();
+    expect(distributeDesiredState).not.toHaveBeenCalled();
   });
   it("closes, lists and reverts change requests", async () => {
     const { send, trafficRouting, distributeDesiredState } = setupRoutingHttp();
@@ -130,7 +136,7 @@ describe("Composed Router HTTP contract", () => {
     ["POST", "/routers/router/change-requests", { expectedDraftRevision: 1, reviewedSnapshot: fallbackDraft(), reviewedEndpointIds: [], reason: "   " }],
     ["POST", "/routers/router/change-requests", { expectedDraftRevision: 1.5, reviewedSnapshot: fallbackDraft(), reviewedEndpointIds: [], reason: "x" }],
     ["POST", "/routers/router/change-requests/change/reject", {}],
-    ["POST", "/routers/router/change-requests/change/emergency-apply", { reason: "Abuse" }],
+    ["POST", "/routers/router/change-requests/change/emergency-apply", { reason: "x".repeat(2001) }],
     ["POST", "/routers/router/change-requests/change/revert", { reason: "" }],
     ["PUT", "/routers/router/endpoints", { endpointIds: [""] }],
     ["POST", "/guardrails/guard/duplicate", { name: "Copy", sourceVersion: "1", sourceDraftRevision: 1, idempotencyKey: "x" }],

@@ -169,13 +169,15 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
     expect((await service.trafficRouting.changeRequests(router.id)).map(c => c.status)).toEqual(["withdrawn", "rejected"]);
   });
 
-  it("lets the submitter apply an emergency change with a recorded reason and manager contact", async () => {
+  it("lets the submitter apply an emergency change with only a recorded reason", async () => {
     const router = await create();
     const change = await submit(router.id);
-    const applied = await service.trafficRouting.approveChange(router.id, change.id, actor, { emergency: { reason: "Active abuse", managerContact: "Duty manager +86 138 0000 0000" } });
+    const applied = await service.trafficRouting.approveChange(router.id, change.id, actor, { emergency: { reason: "Active abuse" } });
     expect(applied.activeRevision).toBe(1);
-    expect(await service.trafficRouting.changeRequest(router.id, change.id)).toMatchObject({ status: "applied", decidedBy: actor, emergencyReason: "Active abuse", emergencyContact: "Duty manager +86 138 0000 0000" });
-    expect((await pool.query("SELECT detail FROM audit_event WHERE kind='router.change_emergency_applied'")).rows[0].detail).toMatchObject({ emergencyReason: "Active abuse" });
+    expect(await service.trafficRouting.changeRequest(router.id, change.id)).toMatchObject({ status: "applied", decidedBy: actor, emergencyReason: "Active abuse", emergencyContact: null });
+    const audit = (await pool.query("SELECT actor_id, detail FROM audit_event WHERE kind='router.change_emergency_applied'")).rows[0];
+    expect(audit).toMatchObject({ actor_id: actor, detail: { emergencyReason: "Active abuse" } });
+    expect(audit.detail).not.toHaveProperty("emergencyContact");
   });
 
   it("applies exactly the submitted version even after a newer one is published", async () => {

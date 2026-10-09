@@ -57,6 +57,7 @@ import {
   type OneTimeEndpointCredential,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { scanRequestCommand } from "../../shared/scan-request-command";
 
 const ADAPTERS: ReadonlyArray<{ id: EndpointAdapterId; protocol: EndpointProtocol }> = [
   { id: "litellm-generic-guardrail", protocol: "litellm" },
@@ -805,10 +806,8 @@ function ScanConnection({ endpoint, onCopied, showDescription = true }: { endpoi
   const { t } = useTranslation();
   return (
     <div className="grid min-w-0 gap-4">
-      <CopyField label={t("endpoints.endpointUrl")} value={endpoint.setup.callback_url} />
-      <CopyField label={t("endpoints.authHeader")} value="Authorization: Bearer <CALYPSOAI_TOKEN>" />
-      <EnvironmentVariableValue label={t("endpoints.apiBaseEnvironmentVariable")} name={endpoint.setup.api_base_env_var} value={endpoint.setup.api_base_url} />
-      <CodeBlock label={t("endpoints.scanExample")} value={endpoint.setup.yaml_template} {...(onCopied ? { onCopied } : {})} />
+      <CodeBlock label={t("endpoints.scanCommand")} value={scanRequestCommand(endpoint.setup.callback_url)} {...(onCopied ? { onCopied } : {})} />
+      <p className="text-xs leading-5 text-muted-foreground">{t("endpoints.scanCommandHint")}</p>
       {showDescription ? <p className="text-xs leading-5 text-muted-foreground">{t("endpoints.scanDescription")}</p> : null}
       <details className="border-t pt-3">
         <summary className="cursor-pointer text-sm font-medium focus-visible:outline-primary">{t("endpoints.scanCompatibility")}</summary>
@@ -916,21 +915,6 @@ function CopyField({ label, value }: { label: string; value: string }) {
   );
 }
 
-function EnvironmentVariableValue({ label, name, value }: { label: string; name: string; value: string }) {
-  const { t } = useTranslation();
-  const copy = useCopyText();
-  const environmentVariable = `${name}=${value}`;
-  return (
-    <div>
-      <p className="mb-2 text-xs font-medium text-muted-foreground">{label}</p>
-      <div className="grid grid-cols-[minmax(0,1fr)_2.75rem] items-center overflow-hidden rounded-lg border bg-background">
-        <code className="min-w-0 break-all px-3 py-2.5 font-mono text-xs leading-5">{environmentVariable}</code>
-        <Button type="button" size="icon" variant="ghost" className="size-11 rounded-none border-l" aria-label={t("endpoints.copyItem", { item: label })} onClick={() => copy(environmentVariable, label)}><Copy /></Button>
-      </div>
-    </div>
-  );
-}
-
 function CodeBlock({ label, value, onCopied }: { label: string; value: string; onCopied?: () => void }) {
   const { t } = useTranslation();
   const copy = useCopyText();
@@ -941,9 +925,9 @@ function CodeBlock({ label, value, onCopied }: { label: string; value: string; o
     <div className="min-w-0">
       <div className="mb-2 flex items-center justify-between gap-3">
         <p className="text-xs font-medium text-muted-foreground">{label}</p>
-        <Button type="button" size="sm" variant="outline" onClick={handleCopy}><Copy />{t("endpoints.copyTemplate")}</Button>
+        <Button type="button" size="sm" variant="outline" onClick={handleCopy}><Copy />{t("endpoints.copyCommand")}</Button>
       </div>
-      <pre className="max-h-80 min-w-0 max-w-full overflow-auto rounded-lg border bg-muted/30 p-4 font-mono text-xs leading-5 text-foreground"><code>{value}</code></pre>
+      <pre className="min-w-0 max-w-full whitespace-pre-wrap break-words rounded-lg border bg-muted/30 p-4 font-mono text-xs leading-5 text-foreground"><code>{value}</code></pre>
     </div>
   );
 }

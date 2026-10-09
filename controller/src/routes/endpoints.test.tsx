@@ -61,7 +61,7 @@ vi.mock("react-i18next", () => ({
         "endpoints.endpointUrl": "Endpoint",
         "endpoints.endpointSecretDescription": "Use the complete one-time Secret saved in step 1.",
         "endpoints.apiBaseEnvironmentVariable": "API base environment variable",
-        "endpoints.copyTemplate": "Copy configuration",
+        "endpoints.copyCommand": "Copy command",
         "endpoints.copyItem": "Copy {{item}}",
         "endpoints.verifyCallbacks": "Verify real traffic",
         "endpoints.verifyCallbacksDescription": "Send a real model request.",

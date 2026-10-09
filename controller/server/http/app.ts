@@ -934,7 +934,7 @@ export function createHttpApp(input: {
     return context.json(result, 202);
   });
   app.post("/api/v1/routers/:id/change-requests/:changeId/emergency-apply", authenticated, administrator, async context => {
-    const emergency = z.object({ reason: changeReason, managerContact: z.string().trim().min(1).max(256) }).parse(await context.req.json());
+    const emergency = z.object({ reason: changeReason }).parse(await context.req.json());
     await input.service.packages.checkRoutedImports((await input.service.trafficRouting.changeRequest(context.req.param("id"), context.req.param("changeId"))).snapshot);
     const result = await input.service.trafficRouting.approveChange(context.req.param("id"), context.req.param("changeId"), context.get("actor").id, { emergency });
     if (!result.publication.replayed) await input.runnerControl.distributeDesiredState();

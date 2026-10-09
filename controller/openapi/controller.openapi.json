@@ -16440,11 +16440,6 @@
       },
       "postRoutersByIdChangeRequestsByChangeIdEmergencyApplyRequest": {
         "properties": {
-          "managerContact": {
-            "maxLength": 256,
-            "minLength": 1,
-            "type": "string"
-          },
           "reason": {
             "maxLength": 2000,
             "minLength": 1,
@@ -16452,8 +16447,7 @@
           }
         },
         "required": [
-          "reason",
-          "managerContact"
+          "reason"
         ],
         "type": "object"
       },
@@ -32060,7 +32054,7 @@
     },
     "/api/v1/routers/{id}/change-requests/{changeId}/emergency-apply": {
       "post": {
-        "description": "Creates a resource or executes the named operation. A network failure does not prove that execution failed. For emergencies only. Requires a reason and a manager contact, both recorded on the change request and in audit history. Validation and staleness rules are the same as approval. Requires routers:write for personal access tokens. Write includes read access and requires a current administrator account. This operation also requires the admin account role. Token access covers all resources in the selected module.",
+        "description": "Creates a resource or executes the named operation. A network failure does not prove that execution failed. For emergencies only. Requires a reason. The reason and applying administrator are recorded on the change request and in audit history. Validation and staleness rules are the same as approval. Requires routers:write for personal access tokens. Write includes read access and requires a current administrator account. This operation also requires the admin account role. Token access covers all resources in the selected module.",
         "operationId": "postRoutersByIdChangeRequestsByChangeIdEmergencyApply",
         "parameters": [
           {
