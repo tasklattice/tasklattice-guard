@@ -315,7 +315,7 @@ assert.deepEqual(await prod.call("/api/v1/system/baseline"), previousBaseline, "
 assert.equal(baselinePreview.versions.length, 1, "The baseline candidate package carries exactly one version.");
 const baselineVersion = baselinePreview.versions[0].version;
 const baseline = await prod.call("/api/v1/system/baseline", { method: "PUT", body: { version: baselineVersion, reason: "CR-1002 adopt UAT baseline" } });
-assert.deepEqual(baseline, { guardrailId: "guardrail-default", version: baselineVersion, explicit: true });
+assert.deepEqual(baseline, { guardrailId: "guardrail-default", version: baselineVersion });
 const protectedStatus = await until("basic protection", () => systemStatus(prod),
   value => value.components.basicProtection.status === "ready");
 report("prod-baseline", { version: baseline.version, freshProd, importedNow: baselineImport.imported.length, basicProtection: protectedStatus.components.basicProtection.status, status: protectedStatus.status });

@@ -12,7 +12,12 @@ export const immutableVersionsEn = {
   policyDescription: "Pinned Policy versions and enabled rules in this snapshot.",
   policyVersion: "Policy version", rules: "Enabled rules", phases: "Rails", behavior: "Behavior",
   noPolicies: "No Policies in this version.", rows: "{{start}}–{{end}} of {{total}}", previousPage: "Previous page", nextPage: "Next page",
-  versionActions: "Actions for version {{version}}", compiledDescription: "Runtime configuration and dependencies produced by this release.",
+  versionActions: "Actions for version {{version}}",
+  testSuite: "Test suite",
+  testSuiteDescription: "The Test Cases frozen into this version with its Policies. They define its expected behaviour, travel with it, and never change.",
+  testSuiteNotRecorded: "This version was published before Test Cases were frozen into versions. Publish again to record them.",
+  testSuiteDigest: "Suite digest", testSuiteGuardrailGroup: "Guardrail-specific",
+  testSuiteOverride: "Expectation overridden: {{reason}}", testSuiteLoading: "Loading the test suite…", compiledDescription: "Runtime configuration and dependencies produced by this release.",
 };
 
 export const immutableVersionsZh: typeof immutableVersionsEn = {
@@ -29,5 +34,10 @@ export const immutableVersionsZh: typeof immutableVersionsEn = {
   policyDescription: "此快照固定的 Policy 版本及其启用的规则。",
   policyVersion: "Policy 版本", rules: "启用规则", phases: "Rails", behavior: "行为",
   noPolicies: "此版本未包含 Policy。", rows: "第 {{start}}–{{end}} 项，共 {{total}} 项", previousPage: "上一页", nextPage: "下一页",
-  versionActions: "版本 {{version}} 的操作", compiledDescription: "此版本编译生成的运行时配置和依赖。",
+  versionActions: "版本 {{version}} 的操作",
+  testSuite: "测试集",
+  testSuiteDescription: "与 Policy 一起冻结进此版本的测试用例。它们定义了这个版本的预期行为，随版本一起流转，永不改变。",
+  testSuiteNotRecorded: "此版本发布于测试集冻结功能之前，未记录测试集。重新发布即可记录。",
+  testSuiteDigest: "测试集摘要", testSuiteGuardrailGroup: "Guardrail 自定义",
+  testSuiteOverride: "预期已覆盖：{{reason}}", testSuiteLoading: "正在加载测试集…", compiledDescription: "此版本编译生成的运行时配置和依赖。",
 };

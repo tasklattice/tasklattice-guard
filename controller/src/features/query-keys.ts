@@ -8,6 +8,7 @@ export const queryKeys = {
   guardrailFindings: (id: string, window: string) => ["resources", "guardrails", id, "findings", { window }] as const,
   guardrailVersions: (id: string) => ["resources", "guardrail-versions", id] as const,
   guardrailVersion: (id: string, version: string) => ["resources", "guardrail-versions", id, version] as const,
+  guardrailVersionTestSuite: (id: string, version: string) => ["resources", "guardrail-versions", id, version, "test-suite"] as const,
   policies: ["resources", "policies"] as const,
   guardrailProfiles: ["resources", "guardrail-profiles"] as const,
   policy: (id: string) => ["resources", "policies", id] as const,

@@ -25,6 +25,7 @@ import { useDeploymentCapabilities } from "@/lib/deployment";
 import { queryKeys } from "@/features/query-keys";
 import { CopyableChecksum as Digest } from "./copyable-checksum";
 import { EnvironmentStatus } from "./guardrail-import-sheet";
+import { VersionTestSuite } from "./version-test-suite";
 import { Input } from "./ui/input";
 
 type VersionAction = { kind: "export" | "delete" | "baseline"; version: string };
@@ -197,6 +198,7 @@ export function ImmutableVersionView({ openRequested, onOpenRequestHandled, deta
                     <TabsList className="shrink-0" aria-label={t("immutableVersions.views")}>
                       <TabsTrigger value="overview">{t("immutableVersions.overview")}</TabsTrigger>
                       <TabsTrigger value="policies">{t("immutableVersions.policies")}<Badge variant="outline">{currentDetail.policy_bindings.length}</Badge></TabsTrigger>
+                      <TabsTrigger value="tests">{t("immutableVersions.testSuite")}{currentDetail.test_suite_count != null ? <Badge variant="outline">{currentDetail.test_suite_count}</Badge> : null}</TabsTrigger>
                       <TabsTrigger value="compiled">{t("immutableVersions.compiled")}</TabsTrigger>
                       <TabsTrigger value="files">{t("immutableVersions.files")}<Badge variant="outline">{currentDetail.artifacts.length}</Badge></TabsTrigger>
                     </TabsList>
@@ -212,6 +214,7 @@ export function ImmutableVersionView({ openRequested, onOpenRequestHandled, deta
                       </section>}
                     </TabsContent>
                     <TabsContent value="policies" className="min-h-0 flex-1 overflow-y-auto overscroll-contain pt-5"><PinnedPolicies key={currentDetail.version} bindings={currentDetail.policy_bindings} page={policyPage} onPageChange={setPolicyPage} /></TabsContent>
+                    <TabsContent value="tests" className="min-h-0 flex-1 overflow-y-auto overscroll-contain pt-5"><VersionTestSuite key={currentDetail.version} guardrailId={guardrailId} version={currentDetail.version} /></TabsContent>
                     <TabsContent value="compiled" className="min-h-0 flex-1 overflow-y-auto overscroll-contain space-y-5 pt-5">
                       <p className="text-sm text-muted-foreground">{t("immutableVersions.compiledDescription")}</p>
                       <dl className="grid grid-cols-2 gap-5">

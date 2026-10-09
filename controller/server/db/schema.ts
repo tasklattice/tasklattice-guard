@@ -37,6 +37,7 @@ import type {
 } from "../../shared/lifecycle.js";
 import type { ArtifactContent } from "../domain/artifact-content.js";
 import type { GuardrailInspection } from "../domain/guardrail-inspection.js";
+import type { FrozenTestCase } from "../domain/test-suite.js";
 import type { ValidationRuntimeFingerprint } from "../domain/models.js";
 import type { ArtifactRequirements } from "../domain/artifact-requirements.js";
 import type { EnvironmentCheck } from "../domain/environment-check.js";
@@ -286,6 +287,8 @@ export const guardrailVersions = pgTable("guardrail_version", {
   // Passed test run whose exact candidate Artifact this version publishes.
   validationRunId: text("validation_run_id"),
   inspection: jsonb("inspection").$type<GuardrailInspection>(),
+  // Static definition, with the plan: the Test Cases that define this version's expected behaviour.
+  testSuite: jsonb("test_suite").$type<FrozenTestCase[]>(),
   origin: text("origin").$type<"local" | "imported">().notNull().default("local"),
   // Latest Runner load check in this environment; informational only.
   environmentCheck: jsonb("environment_check").$type<EnvironmentCheck>(),
@@ -380,6 +383,8 @@ export const validationRuns = pgTable("guardrail_validation_run", {
   candidateArtifact: jsonb("candidate_artifact").$type<ArtifactContent>(),
   candidateDigest: text("candidate_digest"),
   candidateInspection: jsonb("candidate_inspection").$type<GuardrailInspection>(),
+  // The exact cases this run executed, frozen; publication copies them to the version.
+  testSuite: jsonb("test_suite").$type<FrozenTestCase[]>(),
   testSuiteDigest: text("test_suite_digest"),
   runtimeFingerprint: jsonb("runtime_fingerprint").$type<ValidationRuntimeFingerprint>(),
   // Null identifies the audited system-baseline validation, not a human user.

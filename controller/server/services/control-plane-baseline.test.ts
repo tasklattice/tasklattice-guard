@@ -13,6 +13,7 @@ import { PolicyCatalog } from "../policy-catalog/catalog.js";
 import { ControlPlaneService } from "./control-plane.js";
 import { artifactContentDigest } from "../domain/artifact-content.js";
 import { canonicalArtifactContent } from "../control-channel/artifact-codec.js";
+import { freezeTestSuite, testSuiteDigest } from "../domain/test-suite.js";
 
 const policyCatalogDir = resolve("../runner/toolkit/policy_library/assets");
 const policies = PolicyCatalog.load(policyCatalogDir).list();
@@ -41,6 +42,9 @@ const keyPair = generateKeyPairSync("ed25519");
 const publicKey = keyPair.publicKey;
 writeFileSync(keyPath, keyPair.privateKey.export({ format: "pem", type: "pkcs8" }), { mode: 0o600 });
 afterAll(() => rmSync(keyDirectory, { recursive: true, force: true }));
+
+/** The frozen suite a passed run executed. */
+const suite = freezeTestSuite(generatedTestCases("guardrail-default", baseline().draftConfig, policies).slice(0, 1) as never);
 
 /** A compiled candidate exactly as a Runner returns it with a passed run. */
 function candidate() {
@@ -146,7 +150,7 @@ describe("Default baseline validation gate", () => {
     const stored = { ...baseline(), status: "active" };
     const content = candidate();
     const validation = { id: "validation-new", status: "passed", guardrailVersion: content.guardrailVersion, sourceDraftRevision: 2,
-      candidateArtifact: content, candidateDigest: artifactContentDigest(content), candidateInspection: { testSuite: { total: 1, digest: "d" } } };
+      candidateArtifact: content, candidateDigest: artifactContentDigest(content), candidateInspection: { testSuite: { total: 1, digest: testSuiteDigest(suite) } }, testSuite: suite };
     const test = harness([[stored], [], [{ sourceDraftRevision: 1, artifactId: "old-artifact" }], [validation], [], []], { artifactSigningKeyPath: keyPath });
     await test.service.initialize();
     expect(test.reads).toEqual([]);
@@ -249,7 +253,7 @@ describe("Validated candidate gate", () => {
 describe("Publishing the validated candidate", () => {
   const content = candidate();
   const validation = { id: "validation-1", status: "passed", guardrailVersion: content.guardrailVersion, sourceDraftRevision: 2,
-    candidateArtifact: content, candidateDigest: artifactContentDigest(content), candidateInspection: { testSuite: { total: 1, digest: "d" } } };
+    candidateArtifact: content, candidateDigest: artifactContentDigest(content), candidateInspection: { testSuite: { total: 1, digest: testSuiteDigest(suite) } }, testSuite: suite };
 
   it("signs and publishes the tested content without rebuilding it from the draft or Library", async () => {
     const test = harness([[baseline()], [validation], [], []], { artifactSigningKeyPath: keyPath, policyCatalogDir: "/nonexistent-policy-library" });
@@ -258,13 +262,23 @@ describe("Publishing the validated candidate", () => {
     const artifact = test.inserts.find((item) => item.table === "guardrail_artifact")!.value;
     expect(artifact).toMatchObject({ ...content, checksum: validation.candidateDigest });
     expect(verify(null, Buffer.from(String(artifact.checksum)), publicKey, Buffer.from(String(artifact.signature), "base64"))).toBe(true);
-    expect(test.inserts).toContainEqual({ table: "guardrail_version", value: expect.objectContaining({ plan: content.plan, status: "ready", validationRunId: validation.id, inspection: validation.candidateInspection }) });
+    expect(test.inserts).toContainEqual({ table: "guardrail_version", value: expect.objectContaining({ plan: content.plan, status: "ready", validationRunId: validation.id, inspection: validation.candidateInspection, testSuite: suite }) });
     expect(test.inserts.some((item) => item.value.kind === "guardrail.compile_requested")).toBe(false);
     expect(test.reads).toEqual([]);
   });
 
   it("requires a new test run when the passed run kept no candidate", async () => {
     const test = harness([[baseline()], [{ ...validation, candidateArtifact: null }], []]);
+    await expect(test.service.requestGuardrailPublish({ guardrailId: "guardrail-default", actorId: "admin" }))
+      .rejects.toMatchObject({ code: "guardrail_validation_required" });
+    expect(test.inserts).toEqual([]);
+  });
+
+  it.each([
+    ["kept no frozen test suite", { testSuite: null }],
+    ["froze a suite other than the one its inspection describes", { testSuite: [{ ...suite[0]!, content: "changed" }] }],
+  ])("requires a new test run when the passed run %s", async (_case, change) => {
+    const test = harness([[baseline()], [{ ...validation, ...change }], []]);
     await expect(test.service.requestGuardrailPublish({ guardrailId: "guardrail-default", actorId: "admin" }))
       .rejects.toMatchObject({ code: "guardrail_validation_required" });
     expect(test.inserts).toEqual([]);

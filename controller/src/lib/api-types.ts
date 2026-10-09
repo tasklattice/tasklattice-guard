@@ -472,6 +472,8 @@ export type DeleteConfirmation = {
 export type GuardrailVersion = {
   guardrail_id: string;
   version: string;
+  /** Frozen Test Cases in this version; null when published before suites were frozen. */
+  test_suite_count?: number | null;
   source_draft_version: number;
   compiler_version: string;
   plan_checksum: string;

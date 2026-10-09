@@ -11,6 +11,7 @@ import { defaultGuardrailDraft } from "../domain/defaults.js";
 import { emptyValidationMetrics } from "../domain/validation.js";
 import { createTestDatabase } from "../db/postgres-test-database.js";
 import { PolicyCatalog } from "../policy-catalog/catalog.js";
+import { testSuiteDigest } from "../domain/test-suite.js";
 import { ControlPlaneService } from "./control-plane.js";
 
 const url = process.env.GUARD_TEST_POSTGRES_URL;
@@ -73,6 +74,20 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", () => {
     expect(stored).toEqual({ status: "active" });
     const { rows: outbox } = await database.pool.query("SELECT kind FROM controller_outbox WHERE aggregate_id = $1 AND kind <> 'guardrail.validation_requested'", [guardrail.id]);
     expect(outbox).toEqual([{ kind: "runner.desired_state_changed" }]);
+
+    // The version carries the exact suite the run executed and sent to the Runner.
+    const { rows: [request] } = await database.pool.query("SELECT payload FROM controller_outbox WHERE id = $1", [run.id]);
+    expect(version.test_suite).toEqual(request.payload.testCases);
+    expect(version.test_suite).toHaveLength(run.metrics.total);
+    expect(version.test_suite[0]).not.toHaveProperty("updatedAt");
+    expect(testSuiteDigest(version.test_suite)).toBe(run.candidateInspection!.testSuite.digest);
+    // Editing the Guardrail's cases afterwards never changes the published suite.
+    await database.pool.query("UPDATE guardrail_test_case SET content = 'edited later' WHERE guardrail_id = $1", [guardrail.id]);
+    const frozen = await service.guardrailVersionTestSuite(guardrail.id, run.guardrailVersion);
+    expect(frozen).toMatchObject({ recorded: true, count: run.metrics.total, digest: run.candidateInspection!.testSuite.digest });
+    expect(frozen.items.some(item => item.content === "edited later")).toBe(false);
+    expect((await service.getGuardrail(guardrail.id)).versions[0]).toMatchObject({ testSuiteCount: run.metrics.total });
+    expect((await service.getGuardrail(guardrail.id)).versions[0]).not.toHaveProperty("testSuite");
 
     // Publishing the same tested revision again is idempotent.
     await expect(service.requestGuardrailPublish({ guardrailId: guardrail.id, actorId: "admin" }))

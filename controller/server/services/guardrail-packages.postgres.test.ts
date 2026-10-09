@@ -99,7 +99,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     await prod.initialize();
     expect((await prodDb.pool.query("SELECT count(*)::int AS n FROM guardrail")).rows[0].n).toBe(0);
     expect(await prod.defaultGuardrailReadiness()).toMatchObject({ status: "unconfigured" });
-    expect(await prod.systemBaseline()).toEqual({ guardrailId: DEFAULT_GUARDRAIL_ID, version: null, explicit: false });
+    expect(await prod.systemBaseline()).toEqual({ guardrailId: DEFAULT_GUARDRAIL_ID, version: null });
     await expect(prod.listPolicies()).rejects.toMatchObject({ code: "authoring_disabled" });
   });
 
@@ -286,7 +286,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     const before = await prod.desiredStateForPool("default");
 
     const baseline = await prod.setSystemBaseline({ version: published[0]!, reason: "CR-7 adopt UAT baseline", actorId: "admin" });
-    expect(baseline).toEqual({ guardrailId: DEFAULT_GUARDRAIL_ID, version: published[0], explicit: true });
+    expect(baseline).toEqual({ guardrailId: DEFAULT_GUARDRAIL_ID, version: published[0] });
     const after = await prod.desiredStateForPool("default");
     expect(after.artifacts.length).toBe(before.artifacts.length + 1);
     expect(after.artifacts.some(item => item.guardrailId === DEFAULT_GUARDRAIL_ID && item.guardrailVersion === published[0])).toBe(true);

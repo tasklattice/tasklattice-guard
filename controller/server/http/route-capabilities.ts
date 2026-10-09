@@ -77,6 +77,8 @@ export const routeCapabilities: ReadonlyArray<readonly [string, string, "core" |
   ["POST", "/api/v1/guardrails/:id/publish", "authoring"],
   ["GET", "/api/v1/guardrails/:id/draft-changes", "authoring"],
   ["POST", "/api/v1/guardrails/:id/discard-draft", "authoring"],
+  // A version's frozen Test Cases are part of its definition: readable everywhere.
+  ["GET", "/api/v1/guardrails/:id/versions/:version/test-suite", "core"],
   ["GET", "/api/v1/guardrails/:id/versions/:version/deletion-impact", "core"],
   ["DELETE", "/api/v1/guardrails/:id/versions/:version", "core"],
   ["GET", "/api/v1/guardrails/:id/logging", "core"],

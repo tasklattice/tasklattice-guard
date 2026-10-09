@@ -62,6 +62,7 @@ import { ConflictError, ControllerError, NotFoundError, ValidationError } from "
 import { buildGuardrailPlan, normalizeGuardrailDraft, type GuardrailDraftConfig } from "../domain/guardrail-plan.js";
 import type { DeletionImpact, RuntimeEventInput, ValidationCaseResult, ValidationMetrics, ValidationRuntimeFingerprint } from "../domain/models.js";
 import { guardrailInspection } from "../domain/guardrail-inspection.js";
+import { freezeTestSuite, testSuiteDigest } from "../domain/test-suite.js";
 import { aggregateReleasedPolicies } from "../domain/released-policies.js";
 import { applyValidationOverrides, emptyValidationMetrics, generatedTestCases } from "../domain/validation.js";
 import { PolicyCatalog } from "../policy-catalog/catalog.js";
@@ -162,9 +163,7 @@ export class ControlPlaneService {
   }
 
   async systemBaseline() {
-    const version = await this.baselineVersion();
-    const [state] = await this.db.select({ baselineVersion: controllerState.baselineVersion }).from(controllerState).where(eq(controllerState.id, "singleton"));
-    return { guardrailId: DEFAULT_GUARDRAIL_ID, version, explicit: Boolean(state?.baselineVersion) };
+    return { guardrailId: DEFAULT_GUARDRAIL_ID, version: await this.baselineVersion() };
   }
 
   /**
@@ -234,8 +233,7 @@ export class ControlPlaneService {
   }
 
   private async systemBaselineIn(tx: Transaction) {
-    const [state] = await tx.select({ baselineVersion: controllerState.baselineVersion }).from(controllerState).where(eq(controllerState.id, "singleton"));
-    return { guardrailId: DEFAULT_GUARDRAIL_ID, version: await this.baselineVersion(tx), explicit: Boolean(state?.baselineVersion) };
+    return { guardrailId: DEFAULT_GUARDRAIL_ID, version: await this.baselineVersion(tx) };
   }
 
   /**
@@ -604,6 +602,16 @@ export class ControlPlaneService {
     }))) };
   }
 
+  /** The Test Cases frozen into one version: part of its definition, read only. */
+  async guardrailVersionTestSuite(guardrailId: string, version: string) {
+    const [row] = await this.db.select({ testSuite: guardrailVersions.testSuite }).from(guardrailVersions)
+      .innerJoin(guardrails, and(eq(guardrails.id, guardrailVersions.guardrailId), isNull(guardrails.deletedAt)))
+      .where(and(eq(guardrailVersions.guardrailId, guardrailId), eq(guardrailVersions.version, version)));
+    if (!row) throw new NotFoundError("Guardrail version", `${guardrailId}@${version}`);
+    const items = row.testSuite ?? [];
+    return { guardrailId, version, recorded: row.testSuite !== null, digest: row.testSuite ? testSuiteDigest(row.testSuite) : null, items, count: items.length };
+  }
+
   async getGuardrail(id: string) {
     const [guardrail] = await this.db.select().from(guardrails).where(and(eq(guardrails.id, id), isNull(guardrails.deletedAt)));
     if (!guardrail) throw new NotFoundError("Guardrail", id);
@@ -614,11 +622,13 @@ export class ControlPlaneService {
     const provenanceRows = await this.db.select().from(guardrailVersionProvenance).where(eq(guardrailVersionProvenance.guardrailId, id));
     return {
       ...await this.guardrailSummary(guardrail),
-      versions: versions.map(({ sourceSnapshot, ...version }) => {
+      // The test suite can be large; it has its own read (guardrailVersionTestSuite).
+      versions: versions.map(({ sourceSnapshot, testSuite, ...version }) => {
         const provenance = provenanceRows.find(item => item.version === version.version);
         return {
           ...version,
           hasSourceSnapshot: Boolean(sourceSnapshot),
+          testSuiteCount: testSuite?.length ?? null,
           artifact: version.artifactId ? artifactsById.get(version.artifactId) ?? null : null,
           provenance: provenance ? {
             sourceId: provenance.sourceId, sourceKeyId: provenance.sourceKeyId, contentDigest: provenance.contentDigest,
@@ -1117,6 +1127,8 @@ export class ControlPlaneService {
       const excluded = new Set(guardrail.excludedTestCaseIds);
       const activeCases = applyValidationOverrides(rows, guardrail.draftConfig).filter((item) => !excluded.has(item.id));
       if (!activeCases.length) throw new ValidationError("Add at least one reviewed Test Case before running Validation.");
+      // The run executes exactly this frozen suite; publishing copies it onto the version.
+      const testSuite = freezeTestSuite(activeCases);
       const requestedAt = new Date();
       const candidateVersion = guardrailVersionId(requestedAt);
       const programmablePolicies = await this.resolveProgrammablePolicies(normalizeGuardrailDraft(guardrail.draftConfig));
@@ -1130,7 +1142,7 @@ export class ControlPlaneService {
       const runId = `testing-report-${randomUUID()}`;
       const inspection = guardrailInspection({
         name: guardrail.name, runtimeProfile: guardrail.runtimeProfile, draftConfig: normalizeGuardrailDraft(guardrail.draftConfig),
-        catalog: this.policyCatalog().list(), programmablePolicies, testCases: activeCases,
+        catalog: this.policyCatalog().list(), programmablePolicies, testSuite,
       });
       await tx.insert(validationRuns).values({
         id: runId,
@@ -1142,6 +1154,7 @@ export class ControlPlaneService {
         results: [],
         excludedCaseIds: [...excluded],
         candidateInspection: inspection,
+        testSuite,
         testSuiteDigest: inspection.testSuite.digest,
         createdBy: actorId,
         createdAt: requestedAt,
@@ -1157,7 +1170,7 @@ export class ControlPlaneService {
           sourceDraftRevision: guardrail.draftRevision,
           plan,
           runtimeProfile: guardrail.runtimeProfile,
-          testCases: activeCases,
+          testCases: testSuite,
         },
       });
       await tx.insert(auditEvents).values({
@@ -1288,7 +1301,8 @@ export class ControlPlaneService {
     actorId: string | null,
   ) {
     const candidate = run.candidateArtifact;
-    if (!candidate || !run.candidateDigest || !run.candidateInspection) {
+    if (!candidate || !run.candidateDigest || !run.candidateInspection || !run.testSuite
+      || testSuiteDigest(run.testSuite) !== run.candidateInspection.testSuite.digest) {
       throw new ConflictError(
         "This test run has no frozen Artifact to publish. Run tests again before publishing.",
         "guardrail_validation_required",
@@ -1325,6 +1339,7 @@ export class ControlPlaneService {
       artifactId: stored.id,
       validationRunId: run.id,
       inspection: run.candidateInspection,
+      testSuite: run.testSuite,
       createdBy: actorId,
     });
     await tx.update(guardrails).set({

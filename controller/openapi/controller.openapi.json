@@ -1904,6 +1904,16 @@
             ],
             "type": "string"
           },
+          "testSuiteCount": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
           "validationRunId": {
             "anyOf": [
               {
@@ -1935,6 +1945,7 @@
           "createdBy",
           "createdAt",
           "hasSourceSnapshot",
+          "testSuiteCount",
           "artifact",
           "provenance"
         ],
@@ -2516,6 +2527,52 @@
         ],
         "type": "object"
       },
+      "getGuardrailsByIdVersionsByVersionTestSuiteParamVersion": {
+        "description": "Immutable Guardrail Version ID in YYYYMMDD-HHmmss.SSSZ UTC format, for example 20260912-083000.123Z. Use a version returned by the API; numeric revisions and ISO date strings are not version IDs.",
+        "type": "string",
+        "x-runtime-validation": "Additional runtime refinements apply; JSON Schema validation alone does not guarantee acceptance."
+      },
+      "getGuardrailsByIdVersionsByVersionTestSuiteResponse": {
+        "properties": {
+          "count": {
+            "type": "number"
+          },
+          "digest": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "guardrailId": {
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/getGuardrailsResponseItemsItemLatestValidationRunTestSuiteItem"
+            },
+            "type": "array"
+          },
+          "recorded": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "guardrailId",
+          "version",
+          "recorded",
+          "digest",
+          "items",
+          "count"
+        ],
+        "type": "object"
+      },
       "getGuardrailsResponse": {
         "properties": {
           "items": {
@@ -2860,6 +2917,19 @@
             ],
             "type": "string"
           },
+          "testSuite": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "items": {
+                  "$ref": "#/components/schemas/getGuardrailsResponseItemsItemLatestValidationRunTestSuiteItem"
+                },
+                "type": "array"
+              }
+            ]
+          },
           "testSuiteDigest": {
             "anyOf": [
               {
@@ -2888,6 +2958,7 @@
           "runtimeFingerprint",
           "sourceDraftRevision",
           "status",
+          "testSuite",
           "testSuiteDigest"
         ],
         "type": "object"
@@ -3345,6 +3416,152 @@
           "nemoVersion",
           "modelRevisionId",
           "compilerModelTypes"
+        ],
+        "type": "object"
+      },
+      "getGuardrailsResponseItemsItemLatestValidationRunTestSuiteItem": {
+        "properties": {
+          "caseType": {
+            "type": "string"
+          },
+          "concurrencyGroup": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "content": {
+            "type": "string"
+          },
+          "coveredRuleIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "expectationOverride": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/getGuardrailProfilesResponseItemsItemPolicyBindingsItemTestCaseOverridesValue"
+              }
+            ]
+          },
+          "expectedDecision": {
+            "type": "string"
+          },
+          "expectedFailure": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "expectedReasoningResult": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "groundingSources": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "origin": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "policyId": {
+            "type": "string"
+          },
+          "query": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "sourceCaseId": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "sourcePolicyId": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "sourcePolicyVersion": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "targetSource": {
+            "type": "string"
+          },
+          "trustedInstruction": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "origin",
+          "policyId",
+          "phase",
+          "content",
+          "expectedDecision",
+          "trustedInstruction",
+          "targetSource",
+          "query",
+          "groundingSources",
+          "expectedReasoningResult",
+          "caseType",
+          "required",
+          "expectedFailure",
+          "concurrencyGroup",
+          "sourcePolicyId",
+          "sourcePolicyVersion",
+          "sourceCaseId",
+          "coveredRuleIds",
+          "expectationOverride"
         ],
         "type": "object"
       },
@@ -8781,9 +8998,6 @@
       },
       "getSystemBaselineResponse": {
         "properties": {
-          "explicit": {
-            "type": "boolean"
-          },
           "guardrailId": {
             "type": "string"
           },
@@ -8800,8 +9014,7 @@
         },
         "required": [
           "guardrailId",
-          "version",
-          "explicit"
+          "version"
         ],
         "type": "object"
       },
@@ -18305,9 +18518,6 @@
       },
       "putSystemBaselineResponse": {
         "properties": {
-          "explicit": {
-            "type": "boolean"
-          },
           "guardrailId": {
             "type": "string"
           },
@@ -18324,8 +18534,7 @@
         },
         "required": [
           "guardrailId",
-          "version",
-          "explicit"
+          "version"
         ],
         "type": "object"
       }
@@ -19145,7 +19354,7 @@
         },
         "x-product-area": "Observability",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#1048",
+        "x-source": "server/http/app.ts#1051",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -19958,7 +20167,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#805",
+        "x-source": "server/http/app.ts#808",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -20098,7 +20307,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#812",
+        "x-source": "server/http/app.ts#815",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -20243,7 +20452,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#848",
+        "x-source": "server/http/app.ts#851",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -20383,7 +20592,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#817",
+        "x-source": "server/http/app.ts#820",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -20533,7 +20742,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#820",
+        "x-source": "server/http/app.ts#823",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -20675,7 +20884,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#829",
+        "x-source": "server/http/app.ts#832",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -20818,7 +21027,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#836",
+        "x-source": "server/http/app.ts#839",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -20960,7 +21169,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#845",
+        "x-source": "server/http/app.ts#848",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "read",
@@ -21952,7 +22161,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#763",
+        "x-source": "server/http/app.ts#766",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -22102,7 +22311,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#768",
+        "x-source": "server/http/app.ts#771",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -22245,7 +22454,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#772",
+        "x-source": "server/http/app.ts#775",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -22387,7 +22596,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#790",
+        "x-source": "server/http/app.ts#793",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -22532,7 +22741,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#756",
+        "x-source": "server/http/app.ts#759",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -22964,7 +23173,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#753",
+        "x-source": "server/http/app.ts#756",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "read",
@@ -23559,7 +23768,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#739",
+        "x-source": "server/http/app.ts#742",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -23709,7 +23918,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#742",
+        "x-source": "server/http/app.ts#745",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -24171,7 +24380,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#776",
+        "x-source": "server/http/app.ts#779",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -24314,7 +24523,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#735",
+        "x-source": "server/http/app.ts#738",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -24324,7 +24533,7 @@
     },
     "/api/v1/guardrails/{id}/versions/{version}/deletion-impact": {
       "get": {
-        "description": "Reads current state without creating resources or advancing a lifecycle. Lists what still depends on the immutable version: the Latest pointer, active Router revisions, edited Router drafts, pending change requests and the pre-approved rollback target. Blockers report calls that may still be running after the version left routing. unrestorableRevisions lists historical Router revisions that remain for audit but can no longer be restored. Requires guardrails:read for personal access tokens. This operation also requires the admin account role. Token access covers all resources in the selected module.",
+        "description": "Reads current state without creating resources or advancing a lifecycle. Lists what still depends on the immutable version: the runtime baseline, active Router revisions, edited Router drafts, pending change requests and the pre-approved rollback target. Blockers report calls that may still be running after the version left routing. unrestorableRevisions lists historical Router revisions that remain for audit but can no longer be restored. Requires guardrails:read for personal access tokens. This operation also requires the admin account role. Token access covers all resources in the selected module.",
         "operationId": "getGuardrailsByIdVersionsByVersionDeletionImpact",
         "parameters": [
           {
@@ -24464,7 +24673,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#732",
+        "x-source": "server/http/app.ts#735",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "read",
@@ -24618,6 +24827,156 @@
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
+          "module": "guardrails"
+        }
+      }
+    },
+    "/api/v1/guardrails/{id}/versions/{version}/test-suite": {
+      "get": {
+        "description": "Reads current state without creating resources or advancing a lifecycle. A version is defined by its Policies and its Test Cases. These are the exact cases the passing test run executed, frozen when the version was published, with their expected decisions; they travel with the version and never change. recorded is false for a version published before suites were frozen. Requires guardrails:read for personal access tokens. Token access covers all resources in the selected module.",
+        "operationId": "getGuardrailsByIdVersionsByVersionTestSuite",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/getGuardrailsByIdVersionsByVersionTestSuiteParamVersion"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/getGuardrailsByIdVersionsByVersionTestSuiteResponse"
+                }
+              }
+            },
+            "description": "Successful response."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request schema validation failed."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, invalid, expired or revoked credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Insufficient token permission, account role, or session requirement."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Resource not found."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "State conflict; reload and review before retrying."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Domain validation failed."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal server error."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Required service or runtime is unavailable."
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Other Controller or upstream failure. Inspect error.code and error.message before deciding whether to retry."
+          }
+        },
+        "security": [
+          {
+            "personalAccessToken": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Read the Test Cases frozen into a Guardrail version",
+        "tags": [
+          "guardrails"
+        ],
+        "x-account-role": "user",
+        "x-idempotency": {
+          "mode": "safe-read"
+        },
+        "x-product-area": "Guardrail Design",
+        "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
+        "x-source": "server/http/app.ts#732",
+        "x-token-account-role": "user",
+        "x-token-permission": {
+          "access": "read",
           "module": "guardrails"
         }
       }
@@ -28483,7 +28842,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Simulation may repeat. Execution can incur model work; inspect the result before retrying.",
-        "x-source": "server/http/app.ts#978",
+        "x-source": "server/http/app.ts#981",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -30450,7 +30809,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#892",
+        "x-source": "server/http/app.ts#895",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -30590,7 +30949,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#897",
+        "x-source": "server/http/app.ts#900",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -30725,7 +31084,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#905",
+        "x-source": "server/http/app.ts#908",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -30865,7 +31224,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#896",
+        "x-source": "server/http/app.ts#899",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -31007,7 +31366,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#914",
+        "x-source": "server/http/app.ts#917",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -31157,7 +31516,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "After uncertainty, read GET /routers/{id}; pendingChangeRequest identifies a submission that succeeded.",
-        "x-source": "server/http/app.ts#918",
+        "x-source": "server/http/app.ts#921",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -31307,7 +31666,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#925",
+        "x-source": "server/http/app.ts#928",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -31467,7 +31826,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "The same approver may repeat the request; an applied request returns publication.replayed=true without another revision.",
-        "x-source": "server/http/app.ts#926",
+        "x-source": "server/http/app.ts#929",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -31627,7 +31986,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "The same administrator may repeat the request; an applied request returns publication.replayed=true.",
-        "x-source": "server/http/app.ts#933",
+        "x-source": "server/http/app.ts#936",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -31787,7 +32146,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#940",
+        "x-source": "server/http/app.ts#943",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -31947,7 +32306,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Do not repeat blindly: after success the change is no longer active and a repeat returns 409. Read GET /routers/{id} first.",
-        "x-source": "server/http/app.ts#945",
+        "x-source": "server/http/app.ts#948",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -32097,7 +32456,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#944",
+        "x-source": "server/http/app.ts#947",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -32249,7 +32608,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "GET the draft and compare contents after uncertainty; never substitute a newer expectedDraftRevision without review.",
-        "x-source": "server/http/app.ts#901",
+        "x-source": "server/http/app.ts#904",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -32401,7 +32760,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#955",
+        "x-source": "server/http/app.ts#958",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -32411,7 +32770,7 @@
     },
     "/api/v1/routers/{id}/publication-preview": {
       "post": {
-        "description": "Creates a resource or executes the named operation. A network failure does not prove that execution failed. Resolves targets that use latest to the Latest version of each Guardrail, plus the bound Endpoints, for the expectedDraftRevision without publishing. Send snapshot and endpointIds back as reviewedSnapshot and reviewedEndpointIds when submitting a change request. Requires routers:write for personal access tokens. Write includes read access and requires a current administrator account. This operation also requires the admin account role. Token access covers all resources in the selected module.",
+        "description": "Creates a resource or executes the named operation. A network failure does not prove that execution failed. Returns the pinned targets exactly as they will be routed, plus the bound Endpoints, for the expectedDraftRevision without publishing. Send snapshot and endpointIds back as reviewedSnapshot and reviewedEndpointIds when submitting a change request. Requires routers:write for personal access tokens. Write includes read access and requires a current administrator account. This operation also requires the admin account role. Token access covers all resources in the selected module.",
         "operationId": "postRoutersByIdPublicationPreview",
         "parameters": [
           {
@@ -32553,7 +32912,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "May repeat; referenced versions or Endpoint bindings may have changed. Review the new result.",
-        "x-source": "server/http/app.ts#910",
+        "x-source": "server/http/app.ts#913",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -32695,7 +33054,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#961",
+        "x-source": "server/http/app.ts#964",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -32838,7 +33197,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#951",
+        "x-source": "server/http/app.ts#954",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -32986,7 +33345,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#962",
+        "x-source": "server/http/app.ts#965",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -33166,7 +33525,7 @@
         },
         "x-product-area": "Observability",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#973",
+        "x-source": "server/http/app.ts#976",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -33318,7 +33677,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "May repeat with the same input.",
-        "x-source": "server/http/app.ts#1004",
+        "x-source": "server/http/app.ts#1007",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -33490,7 +33849,7 @@
         },
         "x-product-area": "Observability",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#969",
+        "x-source": "server/http/app.ts#972",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -33633,7 +33992,7 @@
         },
         "x-product-area": "Integration",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#1009",
+        "x-source": "server/http/app.ts#1012",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -33791,7 +34150,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Refresh Runner state after an uncertain response. A reconnect may create a new registration.",
-        "x-source": "server/http/app.ts#879",
+        "x-source": "server/http/app.ts#882",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -33923,7 +34282,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#874",
+        "x-source": "server/http/app.ts#877",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -34075,7 +34434,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#875",
+        "x-source": "server/http/app.ts#878",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -34085,7 +34444,7 @@
     },
     "/api/v1/system/baseline": {
       "get": {
-        "description": "Reads current state without creating resources or advancing a lifecycle. The Default Guardrail version every Runner pool serves as basic protection. explicit=false means an authoring environment following the Default Latest version. Requires guardrails:read for personal access tokens. Token access covers all resources in the selected module.",
+        "description": "Reads current state without creating resources or advancing a lifecycle. The Default Guardrail version every Runner pool serves as basic protection. Always a pinned version; null until one is set. A fresh installation adopts its first published Default version. Requires guardrails:read for personal access tokens. Token access covers all resources in the selected module.",
         "operationId": "getSystemBaseline",
         "responses": {
           "200": {
@@ -34207,7 +34566,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#798",
+        "x-source": "server/http/app.ts#801",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -34215,7 +34574,7 @@
         }
       },
       "put": {
-        "description": "Replaces the addressed configuration. Review current state before overwriting concurrent changes. Requires a ready Default Guardrail version; an imported version must first pass a Runner load check in this environment. Audited and distributed immediately. Importing or marking Latest never changes the baseline. Requires guardrails:write for personal access tokens. Write includes read access and requires a current administrator account. This operation also requires the admin account role. Token access covers all resources in the selected module.",
+        "description": "Replaces the addressed configuration. Review current state before overwriting concurrent changes. Requires a ready Default Guardrail version; an imported version must first pass a Runner load check in this environment. Audited and distributed immediately. Publishing or importing a version never changes the baseline. Requires guardrails:write for personal access tokens. Write includes read access and requires a current administrator account. This operation also requires the admin account role. Token access covers all resources in the selected module.",
         "operationId": "putSystemBaseline",
         "requestBody": {
           "content": {
@@ -34347,7 +34706,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Do not automatically retry an uncertain write. Read its result or current resource first.",
-        "x-source": "server/http/app.ts#799",
+        "x-source": "server/http/app.ts#802",
         "x-token-account-role": "admin",
         "x-token-permission": {
           "access": "write",
@@ -34479,7 +34838,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#855",
+        "x-source": "server/http/app.ts#858",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -34711,7 +35070,7 @@
         },
         "x-product-area": "Platform Settings",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#862",
+        "x-source": "server/http/app.ts#865",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -34850,7 +35209,7 @@
         },
         "x-product-area": "Observability",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#1043",
+        "x-source": "server/http/app.ts#1046",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -35153,7 +35512,7 @@
         },
         "x-product-area": "Observability",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#1017",
+        "x-source": "server/http/app.ts#1020",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -35308,7 +35667,7 @@
         },
         "x-product-area": "Observability",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#1039",
+        "x-source": "server/http/app.ts#1042",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -35476,7 +35835,7 @@
         },
         "x-product-area": "Observability",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#1044",
+        "x-source": "server/http/app.ts#1047",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -35618,7 +35977,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#783",
+        "x-source": "server/http/app.ts#786",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",
@@ -35760,7 +36119,7 @@
         },
         "x-product-area": "Guardrail Design",
         "x-retry-policy": "Repeat the same request; the response may reflect newer state or absence.",
-        "x-source": "server/http/app.ts#787",
+        "x-source": "server/http/app.ts#790",
         "x-token-account-role": "user",
         "x-token-permission": {
           "access": "read",

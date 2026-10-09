@@ -260,6 +260,7 @@ function mapVersion(value: controllerApi.GuardrailVersion, guardrail: controller
     guardrail_id: value.guardrailId,
     version: value.version,
     source_draft_version: value.sourceDraftRevision,
+    test_suite_count: value.testSuiteCount ?? null,
     compiler_version: compiler,
     plan_checksum: value.artifact?.checksum ?? "",
     created_at: value.createdAt,

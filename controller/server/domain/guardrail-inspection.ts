@@ -1,8 +1,7 @@
-import { createHash } from "node:crypto";
-import { canonicalJson } from "../../shared/canonical-json.js";
 import type { PolicyDto } from "../policy-catalog/catalog.js";
 import { flowRuleId, type ProgrammablePolicySnapshot } from "../policy-studio/model.js";
 import type { GuardrailDraftConfig } from "./guardrail-plan.js";
+import { testSuiteDigest, type FrozenTestCase } from "./test-suite.js";
 
 /**
  * Read-only description frozen with a tested candidate. It travels with the
@@ -23,17 +22,13 @@ export type GuardrailInspection = {
   testSuite: { total: number; digest: string };
 };
 
-export function testSuiteDigest(cases: unknown[]): string {
-  return createHash("sha256").update(canonicalJson(cases)).digest("hex");
-}
-
 export function guardrailInspection(input: {
   name: string;
   runtimeProfile: string;
   draftConfig: GuardrailDraftConfig;
   catalog: PolicyDto[];
   programmablePolicies: ProgrammablePolicySnapshot[];
-  testCases: unknown[];
+  testSuite: FrozenTestCase[];
 }): GuardrailInspection {
   const builtIn = new Map(input.catalog.map(policy => [`${policy.id}@${policy.version}`, policy]));
   const custom = new Map(input.programmablePolicies.map(policy => [`${policy.policy_id}@${policy.version}`, policy]));
@@ -61,6 +56,6 @@ export function guardrailInspection(input: {
         }),
       };
     }),
-    testSuite: { total: input.testCases.length, digest: testSuiteDigest(input.testCases) },
+    testSuite: { total: input.testSuite.length, digest: testSuiteDigest(input.testSuite) },
   };
 }

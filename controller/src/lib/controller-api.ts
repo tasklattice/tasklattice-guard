@@ -159,6 +159,8 @@ export type Guardrail = {
 
 export type GuardrailVersion = {
   hasSourceSnapshot?: boolean;
+  /** Frozen Test Cases in this version; null when published before suites were frozen. */
+  testSuiteCount?: number | null;
   guardrailId: string;
   version: string;
   generation: number;
@@ -240,7 +242,15 @@ export type DeploymentCapabilities = {
   packageImport: { available: boolean };
 };
 
-export type SystemBaseline = { guardrailId: string; version: string | null; explicit: boolean };
+export type SystemBaseline = { guardrailId: string; version: string | null };
+
+/** One Test Case frozen into a Guardrail version: its input and expected behaviour. */
+export type FrozenTestCase = {
+  id: string; name: string; origin: string; policyId: string; phase: string; content: string; expectedDecision: string;
+  caseType: string; required: boolean; sourcePolicyId: string | null; sourcePolicyVersion: string | null; sourceCaseId: string | null;
+  coveredRuleIds: string[]; expectationOverride: { reason: string; expectedDecision: string; sourcePolicyVersion: string } | null;
+};
+export type VersionTestSuite = { guardrailId: string; version: string; recorded: boolean; digest: string | null; items: FrozenTestCase[]; count: number };
 
 export type ReleasedPolicyUsage = {
   guardrailId: string; guardrailName: string; guardrailVersion: string; origin: "local" | "imported"; sourceId: string | null;
@@ -538,6 +548,7 @@ export const importGuardrailPackage = (packageId: string, versions?: string[]) =
 export const checkGuardrailVersionEnvironment = (id: string, version: string) => requestController<EnvironmentCheck>(
   `/api/v1/guardrails/${encodeURIComponent(id)}/versions/${encodeURIComponent(version)}/environment-check`, { method: "POST" });
 export const getSystemBaseline = () => requestController<SystemBaseline>("/api/v1/system/baseline");
+export const getGuardrailVersionTestSuite = (guardrailId: string, version: string) => requestController<VersionTestSuite>(`/api/v1/guardrails/${encodeURIComponent(guardrailId)}/versions/${encodeURIComponent(version)}/test-suite`);
 export const setSystemBaseline = (version: string, reason: string) => requestController<SystemBaseline>("/api/v1/system/baseline", { method: "PUT", body: JSON.stringify({ version, reason }) });
 
 /** Download a signed release package; JSON errors become ControllerRequestError. */
