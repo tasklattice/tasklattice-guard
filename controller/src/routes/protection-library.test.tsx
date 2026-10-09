@@ -12,6 +12,7 @@ vi.mock("@tanstack/react-router", () => ({ useNavigate: () => routing.navigate, 
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key.startsWith("protection.") ? key.slice(11).split(".").reduce((value: unknown, part) => (value as Record<string, unknown>)?.[part], protectionEn) ?? key : key }) }));
 const api = vi.hoisted(() => ({ getPolicies: vi.fn() }));
 vi.mock("@/lib/api", async (original) => ({ ...await original<typeof import("@/lib/api")>(), getPolicies: api.getPolicies }));
+vi.mock("@/lib/controller-api", async (original) => ({ ...await original<typeof import("@/lib/controller-api")>(), getReleasedPolicies: async () => ({ items: [] }) }));
 
 const current: Policy = {
   id: "passport", name: "Passport identifiers", description: "Contextual passport checks", source: "built_in", version: "2",

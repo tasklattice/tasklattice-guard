@@ -271,10 +271,12 @@ failed test does not revoke a release. Routing an imported
 version also requires a recent passing load check on every pool. A released
 imported version whose load check passed is held by the default pool, so
 **Playground** can talk to it before any Router serves it.
-**Policy Library → In released versions** is read only, with the same cards,
-filters and detail drawer as the Library tab: it aggregates the Policies frozen
-in released Guardrail versions, local and imported, by Policy ID
-(`GET /api/v1/released-policies`); the drawer's Releases tab lists each version
+**Policy Library** is one list: the Library plus any Policy that exists here
+only inside released Guardrail versions (read only, for example an imported
+custom Policy). The **Usage** filter shows the Policies a released Guardrail
+version uses, or those no Guardrail uses; it reads the Policies frozen in
+released versions, local and imported, by Policy ID
+(`GET /api/v1/released-policies`). The drawer's Releases tab lists each version
 with its definition digest and the Guardrail versions using it, marks what
 serves traffic, and keeps one version number released with different content as
 separate entries. The runtime baseline is a pinned Default version: an
