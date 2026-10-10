@@ -29,7 +29,8 @@ const rootRoute = createRootRoute({ component: ControlPlaneLayout });
 const indexRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", component: () => <Navigate to="/dashboard" replace /> });
 const dashboardRoute = createRoute({ getParentRoute: () => rootRoute, path: "/dashboard", component: DashboardPage });
 const guardrailsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/guardrails", component: GuardrailsPage });
-const guardrailDetailRoute = createRoute({ getParentRoute: () => rootRoute, path: "/guardrails/$guardrailId", validateSearch: (search: Record<string, unknown>): { tab?: string; window?: "1h" | "24h" | "7d" | "15d" | "30d"; severity?: string } => ({
+const guardrailDetailRoute = createRoute({ getParentRoute: () => rootRoute, path: "/guardrails/$guardrailId", validateSearch: (search: Record<string, unknown>): { tab?: string; version?: string; window?: "1h" | "24h" | "7d" | "15d" | "30d"; severity?: string } => ({
+  version: typeof search.version === "string" ? search.version : undefined,
   tab: ["runtime", "event", "immutable", "testing", "draft"].includes(String(search.tab)) ? String(search.tab) : undefined,
   window: ["1h", "24h", "7d", "15d", "30d"].includes(String(search.window)) ? search.window as "1h" | "24h" | "7d" | "15d" | "30d" : undefined,
   severity: selectedSeverities(search.severity).join(",") || undefined,

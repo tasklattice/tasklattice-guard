@@ -64,4 +64,4 @@ Older events and Guardrail artifacts may not contain a Rule risk snapshot. The s
 
 ### How INFO / DEBUG / TRACE differ
 
-**The risk level describes the event. The logging level controls how much checkpoint detail is kept.** The logging settings are under **Guardrail → Runtime**. Security-event metadata stays visible at INFO, also for detections in observation mode. Missing detailed content does not mean that no security event occurred.
+**The risk level describes the event. The logging level controls how much checkpoint detail is kept.** Administrators change logging under **Guardrail → Actions → Edit log level**. Select INFO, DEBUG, or TRACE, then choose **Save changes**. DEBUG and TRACE require acknowledging the capture costs before saving; Cancel keeps the current level. Security-event metadata stays visible at INFO, also for detections in observation mode. Missing detailed content does not mean that no security event occurred.

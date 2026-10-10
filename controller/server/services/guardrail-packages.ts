@@ -1,3 +1,5 @@
+import { clearGuardrailOperationalData } from "./guardrail-operational-data.js";
+import { assertGuardrailVersionCapacity, guardrailVersionLimitIssue } from "./guardrail-version-limit.js";
 import { createHash, randomUUID } from "node:crypto";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { canonicalJson } from "../../shared/canonical-json.js";
@@ -19,6 +21,7 @@ import {
   policyRecords,
   policyVersions,
   validationRuns,
+  testCases,
 } from "../db/schema.js";
 import { artifactContent, artifactContentDigest, ARTIFACT_CONTENT_DIGEST_VERSION, signArtifactDigest, type ArtifactContent } from "../domain/artifact-content.js";
 import { deriveRequirements } from "../domain/artifact-requirements.js";
@@ -76,7 +79,7 @@ export type PackagePreview = {
   source: { id: string; name: string };
   keyId: string;
   exportedAt: string;
-  guardrail: { id: string; name: string; exists: boolean };
+  guardrail: { id: string; name: string; exists: boolean; deleted: boolean };
   policies: PackagePolicyPreview[];
   versions: PackageVersionPreview[];
   /** Reasons the whole package cannot be imported; empty when importable. */
@@ -115,10 +118,10 @@ export class GuardrailPackageService {
       const run = runRows.find(item => item.id === row?.validationRunId);
       const missing = [
         ...(!row ? ["version"] : row.status !== "ready" ? ["ready_status"] : []),
-        ...(row?.origin === "imported" ? ["export_from_source_environment"] : []),
         ...(row && !artifact ? ["artifact"] : []),
         ...(artifact && artifact.contentDigestVersion !== ARTIFACT_CONTENT_DIGEST_VERSION ? ["content_digest_contract"] : []),
-        ...(row && row.origin === "local" && (!run || run.status !== "passed" || run.candidateDigest !== artifact?.checksum) ? ["tested_candidate_evidence"] : []),
+        ...(row && (!run || run.status !== "passed" || run.guardrailId !== guardrailId || run.guardrailVersion !== version
+          || run.candidateDigest !== artifact?.checksum || !row.testSuite || run.testSuiteDigest !== testSuiteDigest(row.testSuite)) ? ["tested_candidate_evidence"] : []),
         ...(row && !row.inspection ? ["inspection_snapshot"] : []),
         // The suite is part of the version's definition; it travels with it.
         ...(row && (!row.testSuite || testSuiteDigest(row.testSuite) !== row.inspection?.testSuite.digest) ? ["test_suite"] : []),
@@ -173,7 +176,7 @@ export class GuardrailPackageService {
    * Policy versions first, then the Guardrail, then its versions. All of it
    * is imported or none of it is.
    */
-  async importPackage(packageId: string, input: { versions?: string[] | undefined; actorId: string | null }) {
+  async importPackage(packageId: string, input: { versions?: string[] | undefined; restoreDeleted?: boolean | undefined; actorId: string | null }) {
     const bytes = await this.storedPackage(packageId);
     const result = await this.db.transaction(async tx => {
       await advisoryTransactionLock(tx, "guardrail-package-import");
@@ -186,6 +189,10 @@ export class GuardrailPackageService {
       const [existing] = await tx.select().from(guardrails).where(eq(guardrails.id, manifest.guardrail.id)).for("update");
       const ownership = this.ownership(manifest.guardrail.id, existing ?? null, source);
       if (ownership) throw new ConflictError(ownership.message, ownership.code, { guardrailId: manifest.guardrail.id });
+      const restored = Boolean(existing?.deletedAt);
+      if (restored && !input.restoreDeleted) {
+        throw new ConflictError("This Guardrail was deleted. Review the package and confirm Restore and import to restore it.", "guardrail_restore_required", { guardrailId: manifest.guardrail.id });
+      }
       const states = await this.versionStates(tx, parsed, digests);
       const conflicts = selected.filter(version => states.get(version) === "conflict");
       if (conflicts.length) {
@@ -193,6 +200,7 @@ export class GuardrailPackageService {
       }
       const fresh = parsed.versions.filter(item => selected.includes(item.version) && states.get(item.version) === "new")
         .sort((left, right) => left.version < right.version ? -1 : 1);
+      await assertGuardrailVersionCapacity(tx, manifest.guardrail.id, fresh.length);
 
       // Leaves: every Policy version the selected Guardrail versions use.
       const needed = new Set(parsed.versions.filter(item => selected.includes(item.version)).flatMap(item => item.policies.map(ref => `${ref.id}@${ref.version}`)));
@@ -207,12 +215,34 @@ export class GuardrailPackageService {
       for (const node of newPolicies) await this.insertPolicy(tx, node, source.id, packageId, input.actorId);
 
       if (!existing) {
-        // An imported Guardrail has no working draft; its draft fields only
-        // describe the newest version that arrived with it.
-        const descriptor = [...parsed.versions].sort((left, right) => left.version < right.version ? -1 : 1).at(-1)!.config;
+        // Seed the same editable working draft as UI creation, from the newest selected version.
+        const newest = fresh.at(-1)!;
+        const descriptor = newest.config;
         await tx.insert(guardrails).values({
           id: manifest.guardrail.id, name: manifest.guardrail.name, origin: "imported", sourceId: source.id,
           draftConfig: descriptor.draftConfig as GuardrailDraftConfig, runtimeProfile: descriptor.runtimeProfile, status: "draft",
+        });
+        const cases = draftCases(manifest.guardrail.id, newest.testSuite);
+        if (cases.length) await tx.insert(testCases).values(cases);
+      }
+      if (restored) {
+        // Also clear operational data left by installations deleted before this lifecycle was introduced.
+        // Static version content remains for identity/conflict checks; every version needs a new local release.
+        const cleared = await clearGuardrailOperationalData(tx, manifest.guardrail.id);
+        const [state] = await tx.update(controllerState).set({ desiredGeneration: increment(controllerState.desiredGeneration), updatedAt: new Date() })
+          .where(eq(controllerState.id, "singleton")).returning();
+        if (!state) throw new Error("Controller state is not initialized.");
+        await tx.update(guardrails).set({
+          deletedAt: null, deletedBy: null, deleteReason: null, status: "draft",
+          desiredGeneration: state.desiredGeneration, updatedAt: new Date(),
+        }).where(eq(guardrails.id, manifest.guardrail.id));
+        await tx.insert(auditEvents).values({
+          id: randomUUID(), kind: "guardrail.restored", actorId: input.actorId, resourceType: "guardrail", resourceId: manifest.guardrail.id,
+          detail: { packageId, sourceId: source.id, reason: "package_reimport", cleared },
+        });
+        await tx.insert(outboxEvents).values({
+          id: randomUUID(), kind: "runner.desired_state_changed", aggregateId: manifest.guardrail.id,
+          payload: { generation: state.desiredGeneration, guardrailId: manifest.guardrail.id, restored: true },
         });
       }
       const nodes = new Map(parsed.policies.map(node => [`${node.id}@${node.version}`, node]));
@@ -234,11 +264,13 @@ export class GuardrailPackageService {
         const policies = item.policies.map(ref => nodes.get(`${ref.id}@${ref.version}`)!).map(({ id, version, kind, definition }) => ({ id, version, kind, definition }));
         await tx.insert(guardrailVersions).values({
           guardrailId: manifest.guardrail.id, version: item.version, generation: state.desiredGeneration,
-          // An imported version has no draft here; 0 marks that.
+          // It was not published from a local draft revision.
           // Arrives pending: it is released only after its suite passes here.
           sourceDraftRevision: 0, status: "pending", runtimeProfile: item.config.runtimeProfile,
           plan: item.content.plan, artifactId: artifact.id, inspection: inspectionOf(item.config, policies, item.testSuite),
           policies, testSuite: item.testSuite, origin: "imported", createdBy: input.actorId,
+          sourceSnapshot: { draftConfig: item.config.draftConfig as GuardrailDraftConfig, runtimeProfile: item.config.runtimeProfile,
+            loggingLevel: "info", excludedTestCaseIds: [], testCases: draftCases(manifest.guardrail.id, item.testSuite) },
         });
         await tx.insert(guardrailVersionProvenance).values({
           guardrailId: manifest.guardrail.id, version: item.version, sourceId: source.id, sourceKeyId: keyId, contentDigest: checksum,
@@ -255,9 +287,9 @@ export class GuardrailPackageService {
       };
       await tx.insert(auditEvents).values({
         id: randomUUID(), kind: "guardrail_package.imported", actorId: input.actorId, resourceType: "guardrail", resourceId: manifest.guardrail.id,
-        detail: { packageId, sourceId: source.id, keyId, imported: imported.map(item => item.version), existing: existingVersions, policies: policySummary },
+        detail: { packageId, sourceId: source.id, keyId, restored, imported: imported.map(item => item.version), existing: existingVersions, policies: policySummary },
       });
-      return { guardrailId: manifest.guardrail.id, imported: imported.map(item => item.version), existing: existingVersions, policies: policySummary };
+      return { guardrailId: manifest.guardrail.id, restored, imported: imported.map(item => item.version), existing: existingVersions, policies: policySummary };
     });
     // Record a fresh Runner load check for what just arrived, without delaying
     // the import. Routing re-checks anyway; this keeps the detail view current.
@@ -322,12 +354,18 @@ export class GuardrailPackageService {
 
   /** Ask connected Runners to dry-run load a stored version and record the verdict. */
   async checkVersionEnvironment(guardrailId: string, version: string): Promise<EnvironmentCheck> {
+    const [installation] = await this.db.select().from(guardrails).where(and(eq(guardrails.id, guardrailId), isNull(guardrails.deletedAt)));
+    if (!installation) throw new NotFoundError("Guardrail", guardrailId);
     const [row] = await this.db.select().from(guardrailVersions).where(and(eq(guardrailVersions.guardrailId, guardrailId), eq(guardrailVersions.version, version)));
     if (!row) throw new NotFoundError("Guardrail version", `${guardrailId}@${version}`);
     const [artifact] = row.artifactId ? await this.db.select().from(artifacts).where(eq(artifacts.id, row.artifactId)) : [];
     if (!artifact) throw new ConflictError("This version has no Artifact to check.", "guardrail_version_artifact_missing");
     const check = await this.admit({ ...artifactContent(artifact), id: artifact.id, generation: artifact.generation, checksum: artifact.checksum, signature: artifact.signature });
     await this.db.transaction(async tx => {
+      const [active] = await tx.select().from(guardrails).where(eq(guardrails.id, guardrailId)).for("share");
+      if (!active || active.deletedAt || active.operationalResetAt?.getTime() !== installation.operationalResetAt?.getTime()) {
+        throw new ConflictError("This Guardrail was deleted or restored during the check. Run a new environment check.", "guardrail_lifecycle_changed");
+      }
       const [current] = await tx.select({ environmentCheck: guardrailVersions.environmentCheck }).from(guardrailVersions)
         .where(and(eq(guardrailVersions.guardrailId, guardrailId), eq(guardrailVersions.version, version))).for("update");
       await tx.update(guardrailVersions).set({ environmentCheck: check })
@@ -390,15 +428,17 @@ export class GuardrailPackageService {
       state: policyStates.get(node)!.state, digest: node.digest,
     }));
     const policyBlockers = [...policyStates.values()].filter(item => item.state === "conflict");
+    const capacityIssue = guardrailVersionLimitIssue(stored.length, versions.filter(item => item.state === "new").length);
     return {
       packageId,
       source: { id: source.id, name: source.name },
       keyId,
       exportedAt: manifest.exportedAt,
-      guardrail: { id: manifest.guardrail.id, name: manifest.guardrail.name, exists: Boolean(existing) },
+      guardrail: { id: manifest.guardrail.id, name: manifest.guardrail.name, exists: Boolean(existing), deleted: Boolean(existing?.deletedAt) },
       policies,
       versions,
       blockers: [
+        ...(capacityIssue ? [{ code: capacityIssue.code, message: capacityIssue.message }] : []),
         ...(ownership ? [{ code: ownership.code, message: ownership.message }] : []),
         ...policyBlockers.map(item => ({ code: item.code!, message: item.message! })),
         ...(conflicts.length ? [{ code: "guardrail_version_conflict", message: `Versions ${conflicts.join(", ")} already exist with different content.` }] : []),
@@ -419,7 +459,6 @@ export class GuardrailPackageService {
     if (RESERVED_GUARDRAIL_IDS.has(id) && !source.reservedGuardrailIds.includes(id)) {
       return { code: "guardrail_reserved_id", message: `Guardrail ${id} is a reserved system resource. Source ${source.id} is not authorized to supply it.` };
     }
-    if (existing?.deletedAt) return { code: "guardrail_ownership_conflict", message: `Guardrail ${id} was deleted in this environment. Restore or purge it before importing.` };
     // A reserved system resource exists in every installation; an authorized
     // source adds versions to it while the resource itself stays local.
     if (RESERVED_GUARDRAIL_IDS.has(id)) return null;
@@ -460,4 +499,9 @@ function inspectionOf(config: VersionConfig, policies: PolicyNode[], testSuite: 
     programmablePolicies: policies.filter(node => node.kind === "programmable").map(node => node.definition as unknown as ProgrammablePolicySnapshot),
     testSuite,
   });
+}
+
+/** A version freezes effective expectations; the working copy remains independently editable. */
+function draftCases(guardrailId: string, suite: FrozenTestCase[]): Array<typeof testCases.$inferInsert> {
+  return suite.map(({ expectationOverride: _override, ...item }) => ({ ...item, guardrailId }));
 }

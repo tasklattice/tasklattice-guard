@@ -20,7 +20,7 @@ Policy、Endpoint 和 Router 也都是逻辑实体。Guardrail 不是一条 Rule
 3. 发布 Guardrail Version。
 4. 发布 Router，把 Endpoint 的流量指向这个版本。
 
-已发布的 Router 引用这个 Guardrail 后，界面会显示“保护中”。这并不代表 Runner 已经应用了这个版本。
+Guardrail 的就绪状态与流量引用分开显示。同一个 Guardrail 的多个版本可以同时被不同 Router 使用，不能用一个 Policy 数量或最近一份报告概括它。
 
 <a id="glossary-resource-map" />
 
@@ -127,10 +127,10 @@ Guardrail 固定 Policy Version 时，由人审查并填写的 Policy 参数值�
 
 Testing Report · 一次测试运行
 
-草稿或某个版本的测试用例在真实运行环境中运行一次的不可变结果。
+草稿或某个版本的测试用例在真实运行环境中运行一次的记录。报告从 Queued、Running 进入 Passed 或 Failed；已完成的结果不可修改，复测生成新报告。管理员可在检查影响后删除已完成报告。
 
 - 草稿当前修订的必需用例全部通过后，才能发布。
-- 待发布的版本在本环境最近一次测试通过后，才能发布。
+- 待发布版本的最近一次已完成**版本测试**须在本环境通过，且 Artifact 与冻结测试集均匹配，才能 Release。草稿测试不能替代这个 Release 操作的版本测试。
 
 <a id="term-checksum" />
 
@@ -240,127 +240,109 @@ Action 超时或出错时的安全处理方式。
 
 <a id="glossary-states" />
 
-## Guardrail 的状态机
+## Guardrail 生命周期与就绪状态
 
 <StateLegend locale="zh-CN" />
 
-颜色辅助文字表达状态：
-
-- 黄色：工作进行中，或者状态还没有稳定。
-- 绿色：已通过或已生效。
-- 红色：失败，或者需要处理。
-- 灰色：草稿、历史、主动停用或尚未开始。
-
-<strong>下面四个维度相互独立：</strong>资源生命周期、不可变版本的状态、Runner 健康，以及每次请求的 Decision。
-
-用一次发布过程区分它们：
-
-1. Guardrail Version **已发布**：这个版本在本环境测试通过，其他资源可以引用它。
-2. Guardrail 列表显示 **protected（保护中）**：有已发布的 Route 引用这个 Guardrail。
-3. Router **active**：默认池的 Runner 已确认目标 generation。
-4. 查看 Endpoint 和运行日志，才能知道真实请求是否用到了这个版本。
+Guardrail 是稳定的资源身份，包含一个可编辑草稿和最多 **10 个不可变版本**。本地创建与导入的 Guardrail 使用相同的编辑、测试、发布和删除能力。包导入还会校验来源归属，恢复时也不例外，具体见[删除与恢复](#guardrail-deletion-restoration)。不可变的是版本的配置、Policy Binding、Artifact 和测试用例；本环境的报告、发布状态、路由引用可以变化。
 
 <a id="state-guardrail-readiness" />
 
-### Guardrail 展示状态：需要测试、就绪、保护中
+### Ready 到底表示什么
+
+**Ready（就绪）表示这个 Guardrail 至少有一个已在本环境发布的 Immutable Version，且系统内仍有一份针对该版本内容和冻结测试集的 Passed 报告。** Controller 比对 Guardrail ID、版本号、Artifact 内容摘要及测试集摘要；其他版本或其他环境的 Passed 报告不能替代。
 
 <StateMachineDiagram kind="guardrail-readiness" locale="zh-CN" />
 
-<strong>保护中（<code>protected</code>）</strong>是界面计算出来的状态。以下条件全部满足时，列表才显示保护中：
+- **Ready / ready：** 至少一个版本符合上述条件。其他版本可以 Pending，其他报告可以 Failed，当前草稿也可以有未测试的修改。
+- **Not ready / not_ready：** 没有符合条件的版本。例如刚创建、仅有已通过测试的草稿、只有尚未 Release 的导入版本，或最后一个可用版本/最后一份有效 Passed 报告已被删除。
+- Ready 不表示所有版本都已发布、当前草稿已通过、Runner 健康或业务请求已经使用它。它也不由“最新一份报告”的结果决定。
+- 仅测试通过但尚未 Release 的不可变版本仍是 Pending；先显式 Release，才成为就绪依据。
 
-- 当前草稿已发布。
-- 已发布的 Router 快照里有一个启用的 Route，以权重大于 0 的 Target 引用这个 Guardrail。
-- 这个 Router 至少绑定了一个 Endpoint。
+<a id="guardrail-registry-columns" />
 
-以下情况不会显示保护中：Guardrail 只在未发布的 Router 草稿里、Route 已停用，或 Target 权重为 0。最后一处有效引用移除后，列表回到就绪。修改 Guardrail 草稿后，草稿与上次发布的版本不再一致，列表显示需要测试，即使旧版本可能仍在处理流量。
+### 首页各列回答的问题
 
-<strong>保护中不代表流量健康。</strong>它只说明存在配置引用，不能证明 Runner 已完成下发、Endpoint 可用或已经收到请求。详情页会单独展示 Route 引用徽标。要确认实际生效，请同时检查 Router 的下发状态、Endpoint 和运行日志。
+| 列 | 含义与入口 |
+| --- | --- |
+| Guardrail | 资源名称与稳定 ID；点击进入详情。 |
+| 就绪状态 | Ready / Not ready，按仍保留的已发布版本和本环境测试依据计算。列标题可查看定义。 |
+| 不可变版本 | `2/10` 表示当前保留 2 个版本，最多 10 个；同时分别列出已发布和待发布数量。点击打开版本列表。历史数据若缺少依据，会单独提示，不能计入 Ready。 |
+| 流量引用版本 | 列出已发布且绑定 Endpoint 的 Router 所固定的确切版本，以及运行时基线版本。每个 Router 单独显示 Active、Distributing 或 Failed，点击可查看下发状态；点击版本号可检查该版本。未发布草稿、停用 Route、零权重 Target 和未绑定 Endpoint 的 Router 不计入。 |
+| 更新时间 | Guardrail 资源的更新时间，不是最近测试、最近请求或 Router 更新时间。 |
+
+**不再在资源首页展示单个 Policies 数量或 Testing Report。** Policy 数量属于一个草稿或一个不可变版本；Testing Report 属于一次本环境测试。它们在版本详情与 Testing Report 页签中分别查看。版本列表保留每个版本自己的 Policy 数量和最新测试结果。
+
+“流量引用版本”表示当前期望配置，并不证明请求到达。即使 Router 显示 Active，还应结合 Endpoint 状态和 Runtime 日志确认实际调用。切换期间，不同 Runner 或进行中的请求也可能涉及旧版本。多个版本可并行承接流量；没有资源级的单一“当前版本”。原来的 Protected 混合了引用和就绪性，现在不再作为 Guardrail 状态显示。
 
 <a id="state-guardrail" />
 
-### Guardrail 资源生命周期
+### 资源、草稿、版本与报告分别变化
 
 <StateMachineDiagram kind="guardrail-lifecycle" locale="zh-CN" />
 
-Guardrail 资源保存的生命周期是 draft → active → disabled。draft 也可以直接进入 disabled。disabled 是该资源的终态。发布就绪的版本后，资源进入 active。软删除不能像停用 Endpoint 那样直接恢复。
+图中使用数据库的生命周期值。资源字段 `draft / active / disabled` **不直接等于界面的 Ready**。发布草稿或 Release 待发布版本后记录 active；删除或退回最后一个存储状态为已发布的版本后记录 draft；软删除记录 disabled 和 deletedAt。导入资源可以通过原归属来源的包，经确认后恢复同一 ID 为 draft。这不是普通启停开关。
 
-上一节的 `needs_validation / ready / protected` 是<strong>展示状态</strong>，与这里保存的生命周期同时存在。`protected` 就是有 Route 引用时显示的“保护中”。
+| 层级 | 状态 | 判断依据 |
+| --- | --- | --- |
+| Guardrail 就绪性 | Ready / Not ready | 至少一个保留的 Released 版本，且仍有匹配的本环境 Passed 报告。 |
+| 资源生命周期 | `draft / active / disabled` | 发布、Release、删除与恢复操作，不是实时测试依据检查。 |
+| 工作草稿 | 未测试 / 测试中 / 测试失败 / 已测试 / 已发布 | 是否有未发布修改，以及当前修订的最新草稿报告；版本复测不等于测试工作草稿。 |
+| Immutable Version | Pending / Released（`pending / ready`） | 本地发布或显式 Release，以及后续测试依据删除或资源删除。 |
+| Testing Report | Queued / Running / Passed / Failed | 一次执行；Passed 与 Failed 是该报告的终态。 |
+
+| 操作 | 草稿与版本 | 报告、流量与 Ready |
+| --- | --- | --- |
+| UI 创建 | 建立可编辑草稿，尚无版本。 | Not ready；没有自动接入流量。 |
+| 测试草稿 | 报告绑定当前草稿修订及实际执行的候选内容。 | 常规用户流程中，Passed 后允许发布；测试本身不创建版本。 |
+| 发布草稿 | 复用通过测试的候选内容及其时间戳版本号，冻结 Policy、Artifact 和用例。新版本直接为 Released，无需再点 Release。 | 保留通过依据即 Ready；Router 不变。Default Guardrail 首次发布且基线为空时会自动填充基线，此后切换须显式操作。 |
+| 修改草稿 | 配置、运行时 Profile、测试用例变化后须测试新修订；仅重命名或修改日志等级不使草稿测试失效。已有版本内容不变。 | 只要仍有合格版本，Guardrail 保持 Ready；旧版本内容不变。 |
+| 导入 | 检查签名和静态内容，review 后确认写入。新导入版本为 Pending；首次导入建立可编辑草稿，后续追加不覆盖本地草稿。 | 不携带源环境报告/发布状态；在目标环境测试、Release。已有合格版本时，新增 Pending 不会让整个 Guardrail 失去 Ready。 |
+| 版本复测 | 对固定 Artifact 原样运行冻结用例，不改版本内容。 | 报告属于本环境；复测失败不撤销已有发布，但应检查原因。 |
+| Router 变更 | 固定具体版本，按变更审批和下发流程执行。 | 不改变版本内容、测试依据或资源 Ready；流量看 Router、Endpoint 和运行日志。 |
+| 导出 | 仅选中的合格 Released 版本及其依赖、冻结测试用例进入签名包。 | 报告、运行日志、路由与基线指针不随包迁移。 |
 
 <a id="state-guardrail-version" />
 
-### Guardrail Version 发布
+### Immutable Version：Pending 与 Released
 
 <StateMachineDiagram kind="guardrail-version" locale="zh-CN" />
 
-版本只有两个状态：**待发布（pending）** 和 **已发布（ready）**。版本内容（Policy 和测试）生成后不会再改变。发布不会改变版本号和内容摘要。
-
-- 在本环境由草稿发布的版本直接是已发布，并绑定发布时那次通过的测试报告。
-- 从发布包导入的版本初始为待发布。在本环境对签名的 Artifact 原样运行它的测试，不会重新编译。测试通过后，管理员点击 **发布**，测试报告会绑定到这个版本。
-- 只有已发布的版本才能被 Router 引用、设为运行时基线或导出。
-- 发布后再测试失败，不会撤销发布。版本上会显示“复测失败”，由人工判断是否调整路由。
-
-已发布只说明其他资源可以引用这个版本。Router 还要固定这个确切版本，并完成 Runner 下发。发布新版本，不会改变已经引用其他版本的地方。
-
-没有任何资源依赖的版本可以删除。**删除** 会先列出以下引用：
-
-- 运行时基线。
-- 当前生效的 Router revision。
-- 已修改的 Router 草稿。
-- 待审批的变更单。
-- 当前生效变更的预批准回退目标。
-
-删除还会等待版本退出路由前已开始的调用结束。固定过该版本的更早的 Router revision 不会阻止删除。这些 revision 会保留在历史中用于审计，但无法再恢复。编译产物和遥测数据会保留。
+图中使用两个持久化版本状态：`pending` 与 `ready`；界面中的版本 `ready` 显示为 **Released（已发布）**，资源的 `ready` 显示为 **Ready（就绪）**。发布已测试草稿直接创建 Released，新导入版本则为 Pending。系统初始化还可以自动测试并发布内置 Default Guardrail。测试中、测试失败、可发布、复测失败是附加提示，不是额外版本状态。
 
 <a id="guardrail-build-states" />
 
-### Guardrail Version 状态
-
-版本状态与 Router 的流量下发状态相互独立。测试中、测试失败、可发布这些提示来自本环境的测试记录，不是独立的状态。
-
 <StateCards>
-
 <StateCard title="待发布" code="pending" state="distributing">
-
-<StateDetail label="含义">
-
-版本内容已就位，但还没有在本环境通过测试并发布。导入的版本都从这个状态开始。
-
-</StateDetail>
-
-<StateDetail label="状态变化">
-
-本环境对这份内容和测试集的最近一次测试通过后，由管理员发布，版本进入已发布。
-
-</StateDetail>
-
-<StateDetail label="下一步">
-
-在版本菜单中选择 **运行测试**。测试通过后，选择 **发布**。测试失败时，查看测试报告，由人工判断原因。
-
-</StateDetail>
-
+<StateDetail label="含义">版本内容存在，但未在本环境发布，或最后一份有效通过报告被删除后已退回待发布。可能还未测试、正在测试、测试失败，也可能已通过等待 Release。</StateDetail>
+<StateDetail label="状态变化">针对该版本内容和冻结测试集的最近一次已完成版本测试通过后，由管理员显式 Release，进入 ready。界面会等待进行中的版本测试结束。</StateDetail>
+<StateDetail label="下一步">运行版本测试，检查报告，通过后 Release。版本内容始终保持不变。</StateDetail>
 </StateCard>
-
-<StateCard title="已发布" code="ready">
-
-<StateDetail label="含义">
-
-版本已绑定一份本环境通过的测试报告，可以被 Router 引用、设为基线或导出。这不代表 Router 流量已经切到它。
-
-</StateDetail>
-
-<StateDetail label="状态变化">
-
-这是终态。之后的复测失败只作提示，不会撤销发布。
-
-</StateDetail>
-
-<StateDetail label="下一步">
-
-发布一个 Router Revision，让它的 Target 固定这个版本。
-
-</StateDetail>
-
+<StateCard title="已发布" code="已发布" state="ready">
+<StateDetail label="含义">存储状态为 ready。正常发布和报告删除流程会保留匹配的本环境 Passed 依据。可供 Router 和导出选择；Default Guardrail 的版本还可用于基线。具体环境依赖仍须通过运行检查。历史异常数据的情况见下文。</StateDetail>
+<StateDetail label="状态变化">不是终态。复测失败本身不撤销发布；删除最后一份有效通过报告则回到 pending。另有匹配的 Passed 报告时，改用它作为依据并保留发布。</StateDetail>
+<StateDetail label="下一步">选择确切版本配置 Router，或切换 Default Guardrail 的运行时基线，检查下发和实际调用。</StateDetail>
 </StateCard>
-
 </StateCards>
+
+<a id="guardrail-deletion-restoration" />
+
+### 删除与恢复
+
+- **Testing Report：** 管理员在详情里永久删除已完成的报告及结果；Queued、Running 均不能删除。删除前 review 影响，后端事务再次检查。如果保留的 Released 版本在删除后不再有匹配的 Passed 报告，它会回到 Pending，并清空发布与加载检查状态。仍有匹配报告时保留发布，必要时改绑依据。删除失败报告、多余的通过报告、仅针对未发布草稿的报告，不会单独撤销有效发布。冻结内容、用例和审计保留。阻止版本删除的引用与流量，也会阻止删除最后一份通过依据。
+- **Immutable Version：** 删除会释放一个 `n/10` 名额。运行时基线、已发布 Router、修改中的 Router 草稿、待审批变更及预批准回退目标都会阻止删除。五分钟保留窗口内的进行中调用、最近退流量窗口，以及尚未应用退流量代次的在线 Runner 也会阻止删除。版本记录删除后，Artifact、已有报告和审计保留，但孤立报告不使 Guardrail Ready。旧 Router 历史仍保留，若引用已删版本则不能直接恢复。
+- **Guardrail：** Default Guardrail 不能删除。已发布 Router 和待审批变更仍有引用时阻止删除；须先移除这些引用，并通过五分钟调用保留窗口的检查。删除操作**不会自动移除 Router 目标**。它软删除身份，保留 ID、静态版本、Artifact、工作草稿、用例、来源凭证和审计；永久清理本环境报告、待派发测试请求、已存运行事件和路由调用记录，并将所有保留版本退回 Pending。迟到的测试结果和重置前的遥测被忽略。未发布 Router 草稿及历史引用可以保留，但不能使已删资源继续可用。
+- **重新导入恢复：** 目前支持原归属来源的包恢复已导入 Guardrail。在 review 中明确确认恢复同一 ID；复用保留的静态内容和工作草稿，包不会覆盖该草稿。报告与运行数据从零开始，必须重新在本环境测试、Release，不会自动恢复流量。本地创建的同 ID Guardrail 即使已软删除，也会被包归属检查拒绝；重新导入不是通用恢复机制。
+
+容量按当前保留的版本记录计算，包含 Pending 和 Released，合计最多 10 个。发布或导入新增版本受限；复测、Release 和删除报告不占新名额。不自动淘汰旧版本。
+
+<a id="guardrail-implementation-boundaries" />
+
+### 当前校验入口的差异
+
+以下实现差异仍然存在，不能把上面的状态定义理解为所有入口都进行了完全相同的检查：
+
+- **草稿发布：** 界面要求当前修订的最新草稿报告为 Passed；API 当前选择该修订最近一份 Passed，即使之后有 Failed 或尚在运行的测试，也仍可能发布。创建版本前仍会校验已测试内容。
+- **版本 Release：** 界面等待进行中的版本测试结束；API 检查最近一次已完成的版本测试。界面启用 Release 时检查 Artifact 摘要，API 同时检查 Artifact 和测试集摘要。对已 Released 版本重复调用 Release，目前直接返回，不重新核验测试依据。
+- **历史数据缺少依据：** 资源列表按仍保留的匹配报告计算 Ready，但版本徽标、Router 发布和基线选择当前信任已存发布状态，不重复核验报告。因此历史异常数据可能出现“版本 Released，资源 Not ready”。导出会检查发布绑定的报告，依据缺失或不匹配时拒绝。仅复测不会自动修复发布报告的绑定。
+- **部署基线包：** 启动时配置了 Default Guardrail 导入包且基线为空时，启动导入路径当前直接固定导入版本，不检查本环境测试或 Release，版本可能仍为 Pending。这与要求 Released 的显式基线切换操作不同，是实现缺口，不是另一条发布流程。

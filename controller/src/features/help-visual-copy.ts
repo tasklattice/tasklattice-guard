@@ -53,25 +53,23 @@ export function graph(kind: StateMachineKind, zh: boolean): Graph {
   const edge = (path: string, x: number, y: number, chinese: string, english: string): Edge => ({ path, x, y, label: label(chinese, english) });
   switch (kind) {
     case "guardrail-readiness": return {
-      title: label("Guardrail 展示状态：从待验证到保护中", "Guardrail display state: from testing to protection"),
-      caption: label("状态由当前草稿、已发布版本和已发布路由引用重新计算；它不是数据库生命周期。", "This projection is recomputed from the current draft, published versions, and published route references; it is not the database lifecycle."),
-      height: 370,
-      nodes: [node("needs_validation", 370, 18, "change"), node("ready", 70, 230, "healthy"), node("protected", 670, 230, "healthy")],
-      edges: [
-        edge("M405 72 Q290 150 190 230", 260, 145, "发布当前草稿", "Publish current draft"),
-        edge("M495 72 Q610 150 750 230", 648, 145, "发布且已有引用", "Publish with a route"),
-        edge("M230 257 L670 257", 450, 240, "已发布 Route 引用", "Published Route references it"),
-        edge("M670 287 Q450 354 230 287", 450, 336, "移除最后引用", "Remove last reference"),
-        edge("M115 230 Q130 100 370 45", 150, 94, "修改草稿", "Edit draft"),
-        edge("M825 230 Q820 100 530 45", 750, 94, "修改草稿", "Edit draft"),
-      ],
+      title: label("Guardrail 就绪性：独立于草稿与流量", "Guardrail readiness: separate from draft and traffic"),
+      caption: label("Ready 要求至少一个 Released 版本及仍保留的匹配 Passed 报告。修改草稿、复测失败或移除路由本身不改变就绪性。", "Ready needs at least one Released version with retained matching Passed evidence. Draft edits, failed retests or routing removal alone do not change readiness."),
+      height: 240,
+      nodes: [node("not_ready", 85, 65, "neutral"), node("ready", 660, 65, "healthy")],
+      edges: [edge("M245 92 L660 92", 452, 72, "发布且保留通过依据", "Release with passing evidence"),
+        edge("M660 119 Q450 230 245 119", 452, 195, "最后一个合格版本或依据移除", "Last qualifying version or evidence removed")],
     };
     case "guardrail-lifecycle": return {
       title: label("Guardrail 资源生命周期", "Guardrail resource lifecycle"),
-      caption: label("disabled 是该资源的终态；保护中属于上方的展示状态。", "Disabled is terminal for this resource. Protected belongs to the display-state diagram above."),
-      height: 215,
+      caption: label("图中是资源存储状态，不替代就绪性检查。导入资源可由原归属来源的包确认恢复；本地创建资源目前不支持这种恢复。", "These are stored lifecycle values, not readiness checks. An imported identity can be restored by its owning source's package; locally created identities cannot currently be restored this way."),
+      height: 290,
       nodes: [node("draft", 50, 70, "neutral"), node("active", 370, 70, "healthy"), node("disabled", 690, 70, "neutral")],
-      edges: [edge("M210 97 L370 97", 290, 78, "发布版本", "Publish version"), edge("M530 97 L690 97", 610, 78, "停用", "Disable"), edge("M130 124 Q450 212 770 124", 450, 181, "草稿可直接停用", "Draft can be disabled")],
+      edges: [edge("M210 85 L370 85", 290, 62, "发布 / Release", "Publish / Release"),
+        edge("M370 112 L210 112", 290, 145, "无已发布版本", "No releases remain"),
+        edge("M530 97 L690 97", 610, 78, "软删除", "Soft-delete"),
+        edge("M130 70 Q450 -10 770 70", 450, 18, "草稿也可软删除", "Draft can be soft-deleted"),
+        edge("M770 124 Q450 280 130 124", 450, 236, "原来源确认恢复导入资源", "Owning source restores imported identity")],
     };
     case "validation": return {
       title: label("验证任务状态机", "Validation run state machine"),
@@ -82,10 +80,10 @@ export function graph(kind: StateMachineKind, zh: boolean): Graph {
     };
     case "guardrail-version": return {
       title: label("不可变版本的发布状态", "Immutable version release states"),
-      caption: label("导入的版本先是 pending，在本环境测试通过后发布为 ready；路由、基线和导出只引用 ready 版本。", "Imported versions start pending and become ready once they pass their tests here and are released. Routing, the baseline and export use only ready versions."),
+      caption: label("图中 ready 是版本的 Released，不是资源就绪性。新导入版本为 pending；发布已测试草稿直接创建 ready。软删除资源也会把保留版本退回 pending。", "Here ready means version Released, not resource readiness. New imports start pending; publishing a tested draft creates ready directly. Resource soft deletion also resets retained versions to pending."),
       height: 260,
       nodes: [node("pending", 85, 103, "change"), node("ready", 660, 103, "healthy")],
-      edges: [edge("M245 130 L660 130", 452, 112, "本环境测试通过并发布", "Tested here and released")],
+      edges: [edge("M245 130 L660 130", 452, 112, "本环境测试通过并发布", "Tested here and released"), edge("M660 157 Q450 260 245 157", 452, 224, "最后一份通过依据删除", "Final passing evidence deleted")],
     };
     case "router": return {
       title: label("Router 发布与下发状态机", "Router publication and rollout state machine"),

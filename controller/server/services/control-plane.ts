@@ -1,3 +1,6 @@
+import type { TestingReportDeletionImpact } from "../../shared/testing-report-deletion.js";
+import { assertGuardrailVersionCapacity, guardrailVersionCapacityIssue } from "./guardrail-version-limit.js";
+import { clearGuardrailOperationalData, guardrailTelemetryFilter } from "./guardrail-operational-data.js";
 import { callFailureEvents, runtimeLogSource } from "./runtime-log-source.js";
 import { advancesValidationProgress, type ValidationProgress } from "../../shared/validation-progress.js";
 import { queryAuditEvents } from "./audit-events.js";
@@ -154,12 +157,12 @@ export class ControlPlaneService {
 
   /**
    * The version a working draft is compared with: the one most recently
-   * published from it. It only answers "what changed since publishing"; no
+   * published or released here. It only answers "what changed since publishing"; no
    * Router, baseline or export ever follows it.
    */
   private async lastPublishedVersion(db: Pick<ControllerDatabase, "select">, guardrailId: string) {
     const [row] = await db.select().from(guardrailVersions).where(and(
-      eq(guardrailVersions.guardrailId, guardrailId), eq(guardrailVersions.status, "ready"), eq(guardrailVersions.origin, "local"),
+      eq(guardrailVersions.guardrailId, guardrailId), eq(guardrailVersions.status, "ready"),
     )).orderBy(desc(guardrailVersions.createdAt), desc(guardrailVersions.version)).limit(1);
     return row ?? null;
   }
@@ -323,8 +326,8 @@ export class ControlPlaneService {
    * this installation does not ship: read-only versions of the same Policy,
    * or a Policy of their own when the catalog has no such ID.
    */
-  private async catalogPolicies(id?: string): Promise<PolicyDto[]> {
-    const rows = await this.db.select().from(policyImportedVersions)
+  private async catalogPolicies(id?: string, db: Pick<ControllerDatabase, "select"> = this.db): Promise<PolicyDto[]> {
+    const rows = await db.select().from(policyImportedVersions)
       .where(id ? eq(policyImportedVersions.policyId, id) : undefined);
     const imported = new Map<string, PolicyDto[]>();
     for (const row of rows) {
@@ -663,12 +666,13 @@ export class ControlPlaneService {
     if (!guardrail) throw new NotFoundError("Guardrail", id);
     const candidateVersion = guardrailVersionId();
     const draft = normalizeGuardrailDraft(guardrail.draftConfig);
-    const programmablePolicies = await this.resolveProgrammablePolicies(draft);
+    const catalog = await this.catalogPolicies();
+    const programmablePolicies = await this.resolveProgrammablePolicies(draft, catalog);
     const plan = buildGuardrailPlan({
       guardrailId: id,
       guardrailVersion: candidateVersion,
       draft,
-      policies: this.policyCatalog().list(),
+      policies: catalog,
       programmablePolicies,
     });
     return {
@@ -687,12 +691,12 @@ export class ControlPlaneService {
     runtimeProfile: string;
   }) {
     const draftConfig = normalizeGuardrailDraft(input.draftConfig);
-    const programmablePolicies = await this.validateGuardrailDraft(draftConfig);
+    const { catalog, programmablePolicies } = await this.validateGuardrailDraft(draftConfig);
     const plan = buildGuardrailPlan({
       guardrailId: "draft-preview",
       guardrailVersion: guardrailVersionId(),
       draft: draftConfig,
-      policies: this.policyCatalog().list(),
+      policies: catalog,
       programmablePolicies,
     });
     const steps = Array.isArray(plan.steps) ? plan.steps as Array<Record<string, unknown>> : [];
@@ -808,7 +812,7 @@ export class ControlPlaneService {
         throw new ConflictError("The draft changed while you were editing. Reload and review the latest changes before saving.", "guardrail_draft_conflict");
       }
       const draftConfig = input.draftConfig ? normalizeGuardrailDraft(input.draftConfig) : normalizeGuardrailDraft(existing.draftConfig);
-      await this.validateGuardrailDraft(draftConfig);
+      await this.validateGuardrailDraft(draftConfig, tx);
       // Runtime profile affects compilation just as a Policy edit does. A
       // validation for the old profile cannot authorize a new executable.
       const draftChanged = stableDraftValue(draftConfigContent(draftConfig)) !== stableDraftValue(draftConfigContent(existing.draftConfig))
@@ -950,6 +954,9 @@ export class ControlPlaneService {
         detail: { version: input.version, artifactId: record.artifactId, unrestorableRevisions: impact.unrestorableRevisions } });
       // Keep artifacts and telemetry: deleting a version must not purge evidence.
       await tx.delete(guardrailVersions).where(and(eq(guardrailVersions.guardrailId, input.guardrailId), eq(guardrailVersions.version, input.version)));
+      const [remaining] = await tx.select({ version: guardrailVersions.version }).from(guardrailVersions)
+        .where(and(eq(guardrailVersions.guardrailId, input.guardrailId), eq(guardrailVersions.status, "ready"))).limit(1);
+      if (!remaining) await tx.update(guardrails).set({ status: "draft", updatedAt: new Date() }).where(eq(guardrails.id, input.guardrailId));
     });
   }
 
@@ -1107,6 +1114,79 @@ export class ControlPlaneService {
     return publicValidationRun(run);
   }
 
+  async testingReportDeletionImpact(runId: string) {
+    return this.db.transaction(async tx => {
+      const [run] = await tx.select().from(validationRuns).where(eq(validationRuns.id, runId));
+      if (!run) throw new NotFoundError("Testing Report", runId);
+      return this.reportDeletionImpact(tx, run);
+    }, { isolationLevel: "repeatable read", accessMode: "read only" });
+  }
+
+  async deleteTestingReport(input: { runId: string; actorId: string; expectedPendingVersion: string | null }) {
+    return this.db.transaction(async tx => {
+      await advisoryTransactionLock(tx, "traffic-router-bindings");
+      const [found] = await tx.select().from(validationRuns).where(eq(validationRuns.id, input.runId));
+      if (!found) throw new NotFoundError("Testing Report", input.runId);
+      // Serialize with publication, release, other report deletions and Router references.
+      const [guardrail] = await tx.select().from(guardrails).where(eq(guardrails.id, found.guardrailId)).for("update");
+      if (!guardrail) throw new NotFoundError("Guardrail", found.guardrailId);
+      const [run] = await tx.select().from(validationRuns).where(eq(validationRuns.id, input.runId)).for("update");
+      if (!run) throw new NotFoundError("Testing Report", input.runId);
+      const impact = await this.reportDeletionImpact(tx, run);
+      if (!impact.deletable) throw new ConflictError(impact.running
+        ? "Wait for this test to finish before deleting its report."
+        : "This is the last Passed report for a version that is still in use. Remove its references and wait for traffic to settle first.",
+        "test_report_in_use", { impact });
+      if (impact.pendingVersion !== input.expectedPendingVersion) {
+        throw new ConflictError("The remaining test evidence changed. Review the deletion impact again.", "test_report_deletion_changed", { impact });
+      }
+      if (impact.pendingVersion) {
+        await tx.update(guardrailVersions).set({ status: "pending", validationRunId: null, releasedAt: null, releasedBy: null, environmentCheck: null })
+          .where(and(eq(guardrailVersions.guardrailId, run.guardrailId), eq(guardrailVersions.version, impact.pendingVersion)));
+        const [remaining] = await tx.select({ version: guardrailVersions.version }).from(guardrailVersions)
+          .where(and(eq(guardrailVersions.guardrailId, run.guardrailId), eq(guardrailVersions.status, "ready"))).limit(1);
+        const [state] = await tx.update(controllerState).set({ desiredGeneration: increment(controllerState.desiredGeneration), updatedAt: new Date() })
+          .where(eq(controllerState.id, "singleton")).returning();
+        if (!state) throw new Error("Controller state is not initialized.");
+        await tx.update(guardrails).set({ status: remaining ? "active" : "draft", desiredGeneration: state.desiredGeneration, updatedAt: new Date() })
+          .where(eq(guardrails.id, run.guardrailId));
+        await tx.insert(outboxEvents).values({ id: randomUUID(), kind: "runner.desired_state_changed", aggregateId: run.guardrailId,
+          payload: { guardrailId: run.guardrailId, version: run.guardrailVersion, generation: state.desiredGeneration, released: false } });
+      } else {
+        // A replacement must prove the same Artifact and frozen suite, not just have a Passed label.
+        await tx.update(guardrailVersions).set({ validationRunId: impact.replacementRunId })
+          .where(and(eq(guardrailVersions.guardrailId, run.guardrailId), eq(guardrailVersions.validationRunId, run.id)));
+      }
+      await tx.delete(outboxEvents).where(and(eq(outboxEvents.id, run.id), eq(outboxEvents.kind, "guardrail.validation_requested")));
+      await tx.delete(validationRuns).where(eq(validationRuns.id, run.id));
+      await tx.insert(auditEvents).values({ id: randomUUID(), kind: "guardrail.testing_report_deleted", actorId: input.actorId,
+        resourceType: "guardrail", resourceId: run.guardrailId,
+        detail: { runId: run.id, version: run.guardrailVersion, status: run.status, subject: run.subject,
+          contentDigest: run.candidateDigest, testSuiteDigest: run.testSuiteDigest,
+          pendingVersion: impact.pendingVersion, replacementRunId: impact.replacementRunId } });
+      return impact;
+    });
+  }
+
+  private async reportDeletionImpact(tx: Transaction, run: typeof validationRuns.$inferSelect): Promise<TestingReportDeletionImpact> {
+    const running = run.status === "queued" || run.status === "running";
+    const [version] = await tx.select().from(guardrailVersions)
+      .where(and(eq(guardrailVersions.guardrailId, run.guardrailId), eq(guardrailVersions.version, run.guardrailVersion)));
+    const [artifact] = version?.artifactId ? await tx.select().from(artifacts).where(eq(artifacts.id, version.artifactId)) : [];
+    const suiteDigest = version?.testSuite ? testSuiteDigest(version.testSuite) : null;
+    const [replacement] = artifact && suiteDigest ? await tx.select({ id: validationRuns.id }).from(validationRuns).where(and(
+      eq(validationRuns.guardrailId, run.guardrailId), eq(validationRuns.guardrailVersion, run.guardrailVersion),
+      ne(validationRuns.id, run.id), eq(validationRuns.status, "passed"),
+      eq(validationRuns.candidateDigest, artifact.checksum), eq(validationRuns.testSuiteDigest, suiteDigest),
+    )).orderBy(desc(validationRuns.completedAt), desc(validationRuns.id)).limit(1) : [];
+    const pendingVersion = version?.status === "ready" && !replacement ? version.version : null;
+    const [guardrail] = pendingVersion ? await tx.select().from(guardrails).where(eq(guardrails.id, run.guardrailId)) : [];
+    const usage = guardrail && version ? await this.versionDeletionImpact(tx, guardrail, version) : null;
+    return { runId: run.id, guardrailId: run.guardrailId, version: run.guardrailVersion, running,
+      deletable: !running && (!usage || usage.deletable), pendingVersion, replacementRunId: replacement?.id ?? null,
+      references: usage?.references ?? [], blockers: usage?.blockers ?? [] };
+  }
+
   async requestValidation(input: { guardrailId: string; actorId: string; compilerAvailable: boolean }) {
     if (!input.compilerAvailable) {
       throw new ConflictError("A healthy GuardRails 0 Runner is required to validate Guardrail configurations.", "default_runner_unavailable");
@@ -1127,7 +1207,7 @@ export class ControlPlaneService {
    */
   async requestVersionTestRun(input: { guardrailId: string; version: string; actorId: string }) {
     return this.db.transaction(async tx => {
-      const [guardrail] = await tx.select().from(guardrails).where(and(eq(guardrails.id, input.guardrailId), isNull(guardrails.deletedAt)));
+      const [guardrail] = await tx.select().from(guardrails).where(and(eq(guardrails.id, input.guardrailId), isNull(guardrails.deletedAt))).for("update");
       if (!guardrail) throw new NotFoundError("Guardrail", input.guardrailId);
       const [version] = await tx.select().from(guardrailVersions).where(and(
         eq(guardrailVersions.guardrailId, input.guardrailId), eq(guardrailVersions.version, input.version)));
@@ -1169,7 +1249,7 @@ export class ControlPlaneService {
    * Release a pending version in this environment. It must have passed its
    * own test suite here, against exactly this content: the most recent
    * completed test of the version passed, and tested this Artifact digest
-   * and this suite. That run is bound to the version for good. Releasing
+   * and this suite. A deleted report can be replaced by equivalent passed evidence. Releasing
    * changes no Router or baseline; it only makes the version usable.
    */
   async releaseGuardrailVersion(input: { guardrailId: string; version: string; actorId: string }) {
@@ -1226,22 +1306,23 @@ export class ControlPlaneService {
       const testSuite = freezeTestSuite(activeCases);
       const requestedAt = new Date();
       const candidateVersion = guardrailVersionId(requestedAt);
-      const programmablePolicies = await this.resolveProgrammablePolicies(normalizeGuardrailDraft(guardrail.draftConfig));
+      const catalog = await this.catalogPolicies(undefined, tx);
+      const programmablePolicies = await this.resolveProgrammablePolicies(normalizeGuardrailDraft(guardrail.draftConfig), catalog, tx);
       const plan = buildGuardrailPlan({
         guardrailId: guardrail.id,
         guardrailVersion: candidateVersion,
         draft: normalizeGuardrailDraft(guardrail.draftConfig),
-        policies: this.policyCatalog().list(),
+        policies: catalog,
         programmablePolicies,
       });
       const runId = `testing-report-${randomUUID()}`;
       const inspection = guardrailInspection({
         name: guardrail.name, runtimeProfile: guardrail.runtimeProfile, draftConfig: normalizeGuardrailDraft(guardrail.draftConfig),
-        catalog: this.policyCatalog().list(), programmablePolicies, testSuite,
+        catalog, programmablePolicies, testSuite,
       });
       // The Policy versions the candidate is built from, before any per-binding
       // expansion: the nodes a release package carries with this version.
-      const policies = guardrailPolicyNodes(normalizeGuardrailDraft(guardrail.draftConfig).policyBindings, this.policyCatalog().list(), programmablePolicies);
+      const policies = guardrailPolicyNodes(normalizeGuardrailDraft(guardrail.draftConfig).policyBindings, catalog, programmablePolicies);
       await tx.insert(validationRuns).values({
         id: runId,
         guardrailId: guardrail.id,
@@ -1333,7 +1414,8 @@ export class ControlPlaneService {
     let resumeDefault = false;
     await this.db.transaction(async (tx) => {
       const [run] = await tx.select().from(validationRuns).where(eq(validationRuns.id, input.runId)).for("update");
-      if (!run) throw new NotFoundError("Validation Run", input.runId);
+      // A deleted Guardrail may still have an in-flight Runner response. Acknowledge it without recreating data.
+      if (!run) return;
       if (run.status === "passed" || run.status === "failed") return;
       // A version run tested an existing signed Artifact; there is no candidate to bind.
       const candidate = input.status === "passed" && run.subject === "draft"
@@ -1400,6 +1482,7 @@ export class ControlPlaneService {
     run: typeof validationRuns.$inferSelect,
     actorId: string | null,
   ) {
+    await assertGuardrailVersionCapacity(tx, guardrail.id, 1);
     const candidate = run.candidateArtifact;
     if (!candidate || !run.candidateDigest || !run.candidateInspection || !run.candidatePolicies || !run.testSuite
       || testSuiteDigest(run.testSuite) !== run.candidateInspection.testSuite.digest) {
@@ -1482,7 +1565,8 @@ export class ControlPlaneService {
       return;
     }
     const [run] = await this.db.select().from(validationRuns).where(eq(validationRuns.id, input.runId));
-    if (!run) throw new NotFoundError("Validation Run", input.runId);
+    // A deleted Guardrail may still have an in-flight Runner response. Acknowledge it without recreating data.
+      if (!run) return;
     await this.completeValidation({
       runId: input.runId,
       status: "failed",
@@ -1874,6 +1958,9 @@ export class ControlPlaneService {
     this.assertDeletionAllowed(impact, input.confirmRecentTraffic, input.confirmationName, resource.name);
     await this.db.transaction(async (tx) => {
       await advisoryTransactionLock(tx, "traffic-router-bindings");
+      const [locked] = await tx.select({ id: guardrails.id }).from(guardrails)
+        .where(and(eq(guardrails.id, input.id), isNull(guardrails.deletedAt))).for("update");
+      if (!locked) throw new NotFoundError("Guardrail", input.id);
       await this.trafficRouting.assertGuardrailUnused(input.id, tx);
       const [state] = await tx.update(controllerState)
         .set({ desiredGeneration: increment(controllerState.desiredGeneration), updatedAt: new Date() })
@@ -1884,7 +1971,8 @@ export class ControlPlaneService {
         deleteReason: input.reason, desiredGeneration: state.desiredGeneration, updatedAt: new Date(),
       }).where(and(eq(guardrails.id, input.id), isNull(guardrails.deletedAt))).returning({ id: guardrails.id });
       if (!disabled[0]) throw new NotFoundError("Guardrail", input.id);
-      await this.recordSoftDelete(tx, "guardrail", input, impact, state.desiredGeneration);
+      const cleared = await clearGuardrailOperationalData(tx, input.id);
+      await this.recordSoftDelete(tx, "guardrail", input, impact, state.desiredGeneration, cleared);
     });
   }
 
@@ -1911,7 +1999,9 @@ export class ControlPlaneService {
   async recordRuntimeEvents(events: readonly RuntimeEventInput[]): Promise<void> {
     if (events.length === 0) return;
     await this.db.transaction(async (tx) => {
+      const accepts = await guardrailTelemetryFilter(tx, events.map(event => event.guardrailId));
       for (const event of events) {
+        if (!accepts(event.guardrailId, event.occurredAt)) continue;
         await tx.insert(runtimeEvents).values({
           id: event.id,
           occurredAt: event.occurredAt,
@@ -2498,30 +2588,33 @@ export class ControlPlaneService {
       await this.enqueueGuardrailValidation(tx, stored, null);
       return;
     }
+    // A full baseline keeps serving its current version; capacity must not prevent startup.
+    if (await guardrailVersionCapacityIssue(tx, stored.id, 1)) return;
     await this.publishValidatedCandidate(tx, stored, validation, null);
   }
 
-  private async validateGuardrailDraft(draft: GuardrailDraftConfig): Promise<ProgrammablePolicySnapshot[]> {
+  private async validateGuardrailDraft(draft: GuardrailDraftConfig, db: Pick<ControllerDatabase, "select"> = this.db) {
     try {
-      const programmablePolicies = await this.resolveProgrammablePolicies(draft);
+      const catalog = await this.catalogPolicies(undefined, db);
+      const programmablePolicies = await this.resolveProgrammablePolicies(draft, catalog, db);
       buildGuardrailPlan({
         guardrailId: "guardrail-draft-validation",
         guardrailVersion: guardrailVersionId(),
         draft,
-        policies: this.policyCatalog().list(),
+        policies: catalog,
         programmablePolicies,
       });
-      return programmablePolicies;
+      return { catalog, programmablePolicies };
     } catch (error) {
       throw new ValidationError(error instanceof Error ? error.message : "Guardrail draft is invalid.");
     }
   }
 
-  private async resolveProgrammablePolicies(draft: GuardrailDraftConfig): Promise<ProgrammablePolicySnapshot[]> {
-    const customBindings = draft.policyBindings.filter((binding) => !this.policyCatalog().get(binding.policyId));
+  private async resolveProgrammablePolicies(draft: GuardrailDraftConfig, catalog: PolicyDto[], db: Pick<ControllerDatabase, "select"> = this.db): Promise<ProgrammablePolicySnapshot[]> {
+    const customBindings = draft.policyBindings.filter((binding) => !catalog.some(policy => policy.id === binding.policyId));
     if (!customBindings.length) return [];
     const ids = [...new Set(customBindings.map((item) => item.policyId))];
-    const rows = await this.db.select().from(policyVersions).where(inArray(policyVersions.policyId, ids));
+    const rows = await db.select().from(policyVersions).where(inArray(policyVersions.policyId, ids));
     const byKey = new Map(rows.map((item) => [`${item.policyId}@${item.version}`, item.snapshot]));
     return customBindings.map((binding) => {
       if (!/^\d+$/.test(binding.policyVersion)) {
@@ -2534,17 +2627,31 @@ export class ControlPlaneService {
   }
 
   private async guardrailSummary(row: typeof guardrails.$inferSelect) {
+    // Resource readiness is derived from retained versions and local evidence,
+    // never from the mutable draft, traffic references or the cached lifecycle flag.
+    const versionRows = await this.db.select({ version: guardrailVersions.version, status: guardrailVersions.status,
+      testSuite: guardrailVersions.testSuite, checksum: artifacts.checksum }).from(guardrailVersions)
+      .leftJoin(artifacts, eq(artifacts.id, guardrailVersions.artifactId)).where(eq(guardrailVersions.guardrailId, row.id));
+    const passedReports = versionRows.length ? await this.db.select({ version: validationRuns.guardrailVersion,
+      contentDigest: validationRuns.candidateDigest, suiteDigest: validationRuns.testSuiteDigest }).from(validationRuns)
+      .where(and(eq(validationRuns.guardrailId, row.id), eq(validationRuns.status, "passed"))) : [];
+    const evidence = new Set(passedReports.map(report => JSON.stringify([report.version, report.contentDigest, report.suiteDigest])));
+    const released = versionRows.filter(version => version.status === "ready" && version.checksum && version.testSuite
+      && evidence.has(JSON.stringify([version.version, version.checksum, testSuiteDigest(version.testSuite)]))).length;
+    const pending = versionRows.filter(version => version.status === "pending").length;
+    const versionSummary = { total: versionRows.length, released, pending, missingEvidence: versionRows.length - pending - released };
+    const baselineVersion = row.id === DEFAULT_GUARDRAIL_ID ? await this.baselineVersion() : null;
     // The draft's own testing state; runs against existing versions are not about
-    // the draft. Imported Guardrails have no draft, so their latest report is the
-    // latest test of one of their versions here.
+    // the draft, regardless of where the Guardrail was created.
     const [latestValidation] = await this.db.select().from(validationRuns)
-      .where(and(eq(validationRuns.guardrailId, row.id), eq(validationRuns.subject, row.origin === "imported" ? "version" : "draft")))
+      .where(and(eq(validationRuns.guardrailId, row.id), eq(validationRuns.subject, "draft")))
       .orderBy(desc(validationRuns.createdAt)).limit(1);
+    const [latestTestingReport] = await this.db.select().from(validationRuns)
+      .where(eq(validationRuns.guardrailId, row.id)).orderBy(desc(validationRuns.createdAt), desc(validationRuns.id)).limit(1);
     const [caseCount] = await this.db.select({ value: count() }).from(testCases)
       .where(eq(testCases.guardrailId, row.id));
     const published = await this.lastPublishedVersion(this.db, row.id);
-    // Imported Guardrails have no working draft: their versions are the whole state.
-    let hasUnpublishedChanges = row.origin !== "imported" && (!published || published.sourceDraftRevision !== row.draftRevision);
+    let hasUnpublishedChanges = !published || published.sourceDraftRevision !== row.draftRevision;
     if (hasUnpublishedChanges && published?.sourceSnapshot?.testCases) {
       const cases = await this.db.select().from(testCases).where(eq(testCases.guardrailId, row.id));
       hasUnpublishedChanges = !sameDraftContent(published.sourceSnapshot, { draftConfig: row.draftConfig, runtimeProfile: row.runtimeProfile,
@@ -2554,9 +2661,13 @@ export class ControlPlaneService {
     const { requestDigest: _requestDigest, ...publicOrigin } = copyOrigin ?? {};
     return {
       ...publicRow,
+      readiness: released > 0 && row.status !== "disabled" ? "ready" as const : "not_ready" as const,
+      versionSummary,
+      baselineVersion,
       copyOrigin: copyOrigin ? publicOrigin : null,
       draftConfig: normalizeGuardrailDraft(row.draftConfig),
       latestValidationRun: latestValidation ? publicValidationRun(latestValidation) : null,
+      latestTestingReport: latestTestingReport ? publicValidationRun(latestTestingReport) : null,
       testCaseCount: caseCount?.value ?? 0,
       excludedTestCaseCount: row.excludedTestCaseIds.length,
       // The draft revision the last publication came from; null before any.
@@ -2571,8 +2682,9 @@ export class ControlPlaneService {
     draft: GuardrailDraftConfig,
     priorExcluded: readonly string[] = [],
   ): Promise<string[]> {
-    const programmablePolicies = await this.resolveProgrammablePolicies(draft);
-    const generated = generatedTestCases(guardrailId, draft, this.policyCatalog().list(), programmablePolicies);
+    const catalog = await this.catalogPolicies(undefined, tx);
+    const programmablePolicies = await this.resolveProgrammablePolicies(draft, catalog, tx);
+    const generated = generatedTestCases(guardrailId, draft, catalog, programmablePolicies);
     try {
       applyValidationOverrides(generated, draft);
     } catch (error) {
@@ -2715,11 +2827,12 @@ export class ControlPlaneService {
     input: { id: string; actorId: string; reason: string },
     impact: DeletionImpact,
     generation: number,
+    cleared?: Awaited<ReturnType<typeof clearGuardrailOperationalData>>,
   ) {
     await tx.insert(auditEvents).values({
       id: randomUUID(), kind: `${resourceType}.disabled`, actorId: input.actorId,
       resourceType, resourceId: input.id,
-      detail: { reason: input.reason, impact, generation },
+      detail: { reason: input.reason, impact, generation, ...(cleared ? { cleared } : {}) },
     });
     await tx.insert(outboxEvents).values({
       id: randomUUID(), kind: "runner.desired_state_changed", aggregateId: input.id,

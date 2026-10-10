@@ -12,8 +12,7 @@ import { Skeleton } from "./ui/skeleton";
 import { toast } from "./ui/notifications";
 
 /** Why a published version cannot travel as a self-contained release, if it cannot. */
-function exportBlocker(version: GuardrailVersion): "exportImported" | "exportNoTest" | null {
-  if (version.origin === "imported") return "exportImported";
+function exportBlocker(version: GuardrailVersion): "exportNoTest" | null {
   if (!version.validationRunId) return "exportNoTest";
   return null;
 }

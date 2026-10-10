@@ -50,6 +50,6 @@ export function ValidationRunProgress({ run, startedAt, interrupted = false }: {
       </li>)}
     </ol>
     {!interrupted && stalledFor >= 30 ? <p role="status" className="mt-5 text-sm text-muted-foreground">{t("guardrails.testProgress.waitingUpdate", { seconds: stalledFor })}</p> : null}
-    <p className="mt-5 text-xs text-muted-foreground">{t("guardrails.testingInPlace")}</p>
+    <p className="mt-5 text-xs text-muted-foreground">{t(run?.subject === "version" ? "immutableVersions.testingInPlace" : "guardrails.testingInPlace")}</p>
   </section>;
 }

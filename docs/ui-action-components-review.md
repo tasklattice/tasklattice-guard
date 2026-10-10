@@ -59,3 +59,17 @@ Further migrations cover Router creation confirmation, adding/removing Routes, S
 The detail-page header uses an explicit, equal-height, wrapping button group: Edit routing and Rename Router use yellow `edit`; View revisions uses neutral `outline`. Viewing actions do not use the creation color. Creation stays blue `create`, and deletion stays red `destructive`.
 
 List rows use an ellipsis menu for view details, edit routing, and view revisions; editing is visible only to administrators. Direct buttons on detail pages and menus in lists serve different information densities while reusing the same semantic colors. Detail-page actions are no longer hidden inside an ellipsis menu.
+
+## Router List Follow-up (2026-10-09)
+
+Router row menus expose Delete to administrators. Opening the confirmation reloads the current Router; bound Endpoints block deletion and the panel links to the Endpoint management tab. The server continues to enforce the same binding constraint, including changes made after the panel opens. Successful deletion refreshes the list and retains historical records.
+
+Destructive menu items use red text and icons in their default state, with Carbon's red background and white foreground on hover and focus. This shared rule also applies to Guardrail and Policy deletion; disabled items retain their disabled appearance.
+
+The Router list labels its publication column Published revision. An active revision uses one green UTC timestamp badge (for example, `20261009-090840.123Z`), matching the version history and Guardrail version format. The label comes from the matching published revision's creation time, never the Router's update time or internal numeric sequence. The explicit state is retained in the accessible name and tooltip. Distributing and failed revisions retain visible status text alongside the timestamp; unpublished Routers remain explicit. If revision metadata is unavailable, only the known status is shown. The detail header uses the same badge.
+
+## Guardrail Detail Actions Follow-up (2026-10-10)
+
+Administrators edit runtime logging through **Actions → Edit log level**. Runtime no longer contains an inline logging editor. The dedicated sheet loads the current INFO, DEBUG, or TRACE setting and applies changes only on Save; Cancel leaves it unchanged. Elevated levels retain the existing cost acknowledgement. Loading, retry, save errors, and pending submission use the shared sheet conventions.
+
+**Edit test cases** uses a document-and-pencil icon; **Open in Playground** retains the flask. Detail Actions includes a red **Delete** item and reuses the registry's deletion sheet, impact check, reason, and traffic confirmation. Both entry points explain that the built-in Default Guardrail cannot be deleted without requesting deletion impact or offering an ineffective retry. Carbon MenuButton danger items now use the same default red text and icons as registry overflow menus, retaining Carbon's hover, focus, and disabled states.

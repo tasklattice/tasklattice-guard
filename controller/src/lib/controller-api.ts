@@ -141,6 +141,9 @@ export type Guardrail = {
   draftConfig: GuardrailDraftConfig;
   runtimeProfile: string;
   status: GuardrailLifecycleState;
+  readiness?: "not_ready" | "ready";
+  versionSummary?: { total: number; released: number; pending: number; missingEvidence: number };
+  baselineVersion?: string | null;
   desiredGeneration: number;
   draftRevision: number;
   excludedTestCaseIds: string[];
@@ -150,10 +153,13 @@ export type Guardrail = {
   hasUnpublishedChanges?: boolean;
   createdAt: string;
   updatedAt: string;
+  /** Latest draft run: used only for draft readiness. */
   latestValidationRun: ValidationRun | null;
+  /** Latest local report across draft and immutable version tests; not resource readiness. */
+  latestTestingReport?: ValidationRun | null;
   testCaseCount: number;
   excludedTestCaseCount: number;
-  /** "imported" Guardrails have no draft; versions arrive in release packages. */
+  /** Provenance only: imported and locally created Guardrails share the same draft lifecycle. */
   origin?: "local" | "imported";
   sourceId?: string | null;
 };
@@ -214,7 +220,7 @@ export type PackagePreview = {
   source: { id: string; name: string };
   keyId: string;
   exportedAt: string;
-  guardrail: { id: string; name: string; exists: boolean };
+  guardrail: { id: string; name: string; exists: boolean; deleted: boolean };
   /** The tree's leaves: Policy versions, imported into the Library before the Guardrail. */
   policies: Array<{ id: string; version: string; kind: "catalog" | "programmable"; name: string; state: "new" | "existing" | "conflict"; digest: string }>;
   versions: Array<{
@@ -229,7 +235,7 @@ export type PackagePreview = {
   blockers: Array<{ code: string; message: string }>;
 };
 
-export type PackageImportResult = { guardrailId: string; imported: string[]; existing: string[]; policies: { imported: string[]; existing: string[] } };
+export type PackageImportResult = { guardrailId: string; restored: boolean; imported: string[]; existing: string[]; policies: { imported: string[]; existing: string[] } };
 
 export type DeploymentCapabilities = {
   packageExport: { available: boolean; sourceId: string | null };
@@ -526,8 +532,8 @@ export const uploadGuardrailPackage = (file: File) => {
   body.append("package", file);
   return requestController<PackagePreview>("/api/v1/guardrail-packages", { method: "POST", body });
 };
-export const importGuardrailPackage = (packageId: string, versions?: string[]) => requestController<PackageImportResult>(
-  `/api/v1/guardrail-packages/${encodeURIComponent(packageId)}/imports`, { method: "POST", body: JSON.stringify(versions ? { versions } : {}) });
+export const importGuardrailPackage = (packageId: string, options: { versions?: string[]; restoreDeleted?: boolean } = {}) => requestController<PackageImportResult>(
+  `/api/v1/guardrail-packages/${encodeURIComponent(packageId)}/imports`, { method: "POST", body: JSON.stringify(options) });
 export const checkGuardrailVersionEnvironment = (id: string, version: string) => requestController<EnvironmentCheck>(
   `/api/v1/guardrails/${encodeURIComponent(id)}/versions/${encodeURIComponent(version)}/environment-check`, { method: "POST" });
 export const getSystemBaseline = () => requestController<SystemBaseline>("/api/v1/system/baseline");
@@ -591,3 +597,6 @@ export type SystemVersion = {
   dataPlane: Array<{ runnerId: string; poolId: string; status: RunnerStatus; lastHeartbeatAt: string | null; software: import("../../shared/software-version").SoftwareVersion }>;
 };
 export const getSystemVersion = () => requestController<SystemVersion>("/api/v1/system/version");
+
+export const getTestingReportDeletionImpact = (runId: string) => requestController<import("../../shared/testing-report-deletion").TestingReportDeletionImpact>(`/api/v1/test-runs/${encodeURIComponent(runId)}/deletion-impact`);
+export const deleteTestingReport = (runId: string, expectedPendingVersion: string | null) => requestController<void>(`/api/v1/test-runs/${encodeURIComponent(runId)}`, json("DELETE", { expectedPendingVersion }));

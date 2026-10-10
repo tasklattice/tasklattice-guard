@@ -267,6 +267,8 @@ export const policyValidationRuns = pgTable("policy_validation_run", {
 }, (table) => [index("policy_validation_run_policy_idx").on(table.policyId, table.createdAt)]);
 
 export const guardrails = pgTable("guardrail", {
+  // Retained across restore to reject telemetry from the previous installation.
+  operationalResetAt: timestamp("operational_reset_at", { withTimezone: true }),
   copyOrigin: jsonb("copy_origin").$type<Record<string, unknown>>(),
   duplicateKey: text("duplicate_key").unique(),
   id: text("id").primaryKey(),
@@ -281,8 +283,7 @@ export const guardrails = pgTable("guardrail", {
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
   deletedBy: text("deleted_by").references(() => user.id),
   deleteReason: text("delete_reason"),
-  // "imported" Guardrails are owned by one trusted source and have no
-  // working draft; their versions arrive only through release packages.
+  // Creation provenance; imported and local Guardrails share one draft lifecycle.
   origin: text("origin").$type<"local" | "imported">().notNull().default("local"),
   sourceId: text("source_id"),
   createdAt,
@@ -488,7 +489,7 @@ export const routeAssignments = pgTable("route_assignment", {
   endpointId: text("endpoint_id").notNull(), occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
   completionInferred: boolean("completion_inferred").notNull().default(false),
   completedAt: timestamp("completed_at", { withTimezone: true }), outcome: text("outcome"), durationMs: integer("duration_ms"),
-}, t => [index("route_assignment_router_time_idx").on(t.routerId, t.occurredAt)]);
+}, t => [index("route_assignment_router_time_idx").on(t.routerId, t.occurredAt), index("route_assignment_guardrail_idx").on(t.guardrailId)]);
 
 export const endpoints = pgTable("endpoint", {
   trafficRouterId: text("traffic_router_id").references(() => trafficRouters.id),

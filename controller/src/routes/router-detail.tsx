@@ -13,7 +13,8 @@ import { getEndpoints } from "@/lib/endpoints-api";
 import { listControllerGuardrails } from "@/lib/controller-api";
 import { queryKeys } from "@/features/query-keys";
 import * as api from "@/lib/traffic-routing-api";
-import { PageHeader, ErrorNotice, StateBadge } from "@/components/product-shell";
+import { PageHeader, ErrorNotice } from "@/components/product-shell";
+import { RouterRolloutBadge } from "@/components/traffic-routing/router-rollout-badge";
 import { EntitySheet } from "@/components/entity-sheet";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,7 +30,6 @@ import {
   RouterRevisions,
   Changes,
 } from "@/components/traffic-routing/router-revisions";
-import { revisionLabel } from "@/components/traffic-routing/router-view-model";
 import "@/components/traffic-routing/router-workspace.scss";
 export {
   DeleteRouterSheet,
@@ -240,8 +240,7 @@ export function RouterWorkspace({ router }: { router: api.TrafficRouter }) {
         </div>}
       />
       <div className="router-workspace-status">
-        <StateBadge state={router.rolloutStatus} label={router.rolloutStatus === "active" ? localize("routing.active") : router.rolloutStatus === "failed" ? localize("routing.rolloutFailed") : router.rolloutStatus === "distributing" ? localize("routing.distributing") : localize("routing.unpublished")} />
-        {router.activeRevision !== null && <code className="text-xs text-muted-foreground">{revisionLabel(revisions.data?.items.find(r => r.revision === router.activeRevision))}</code>}
+        <RouterRolloutBadge router={router} revision={revisions.data?.items.find(revision => revision.revision === router.activeRevision)} />
         <p className="text-muted-foreground">
           {localize("routing.summary", {
             endpoints: router.endpointIds.length,

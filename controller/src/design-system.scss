@@ -445,6 +445,13 @@ svg.lucide {
   }
 }
 
+// Destructive actions stay red before hover, matching registry overflow menus.
+.cds--menu-item--danger:not(.cds--menu-item--disabled) {
+  color: var(--cds-text-error);
+  &:hover, &:focus { color: var(--cds-text-on-color); }
+  svg { fill: none; }
+}
+
 // Menu rows must share the panel's hit area and keyboard focus geometry.
 .guard-menu-options {
   max-inline-size: calc(100vw - 2rem);
@@ -457,6 +464,13 @@ svg.lucide {
     inline-size: 100%;
     max-inline-size: none;
     min-block-size: 2.75rem;
+  }
+  // Destructive actions are red before hover, as required by the action spec.
+  .cds--overflow-menu-options__option--danger:not(.cds--overflow-menu-options__option--disabled) .cds--overflow-menu-options__btn {
+    color: var(--cds-text-error);
+    &:hover, &:focus { color: var(--cds-text-on-color); }
+    // Lucide icons use strokes; Carbon's default danger fill hides their detail.
+    svg { fill: none; }
   }
   .guard-menu-label, .guard-menu-separator { inline-size: 100%; }
   .guard-menu-separator { margin-block: 0.25rem; }

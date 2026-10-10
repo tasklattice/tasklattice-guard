@@ -15,6 +15,7 @@ import { createTestDatabase } from "../db/postgres-test-database.js";
 import { PolicyCatalog } from "../policy-catalog/catalog.js";
 import { programmablePolicyDraftSchema } from "../policy-studio/model.js";
 import { ControlPlaneService } from "./control-plane.js";
+import { routingEventSchema } from "./traffic-routing.js";
 import { packageSigner } from "./package-trust.js";
 
 const url = process.env.GUARD_TEST_POSTGRES_URL;
@@ -156,6 +157,12 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
       code: "guardrail_package_incomplete", detail: { versions: [{ version: published[0], missing: ["tested_candidate_evidence"] }] },
     });
     await uatDb.pool.query("UPDATE guardrail_validation_run r SET candidate_digest = a.checksum FROM guardrail_version v JOIN guardrail_artifact a ON a.id = v.artifact_id WHERE r.id = v.validation_run_id");
+    const { rows: [run] } = await uatDb.pool.query("SELECT id, test_suite_digest FROM guardrail_validation_run WHERE guardrail_version=$1", [published[0]]);
+    await uatDb.pool.query("UPDATE guardrail_validation_run SET test_suite_digest='different-suite' WHERE id=$1", [run.id]);
+    await expect(uat.packages.exportPackage(guardrailId, published)).rejects.toMatchObject({
+      code: "guardrail_package_incomplete", detail: { versions: [{ version: published[0], missing: ["tested_candidate_evidence"] }] },
+    });
+    await uatDb.pool.query("UPDATE guardrail_validation_run SET test_suite_digest=$2 WHERE id=$1", [run.id, run.test_suite_digest]);
   });
 
   it("imports released versions as they are, preserving digests but signing locally", async () => {
@@ -288,8 +295,10 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     const released = await prod.releaseGuardrailVersion({ guardrailId, version, actorId: "admin" });
     // Same version number and content; the passing report is bound for good.
     expect(released).toMatchObject({ version, status: "ready", validationRunId: passed.id, releasedBy: "admin" });
-    // With no draft, the Guardrail's latest report is the latest test of a version.
-    expect((await prod.getGuardrail(guardrailId)).latestValidationRun).toMatchObject({ id: passed.id, subject: "version", status: "passed" });
+    // Testing a frozen version does not mark its independent working draft as tested.
+    expect((await prod.getGuardrail(guardrailId)).latestValidationRun).toBeNull();
+    expect((await prod.getGuardrail(guardrailId)).latestTestingReport).toMatchObject({ id: passed.id, status: "passed" });
+    expect((await prod.getGuardrail(guardrailId)).hasUnpublishedChanges).toBe(false);
     expect((await prodDb.pool.query("SELECT status FROM guardrail WHERE id = $1", [guardrailId])).rows[0].status).toBe("active");
     const { rows: [audit] } = await prodDb.pool.query("SELECT detail FROM audit_event WHERE kind = 'guardrail.version_released'");
     expect(audit.detail).toMatchObject({ version, validationRunId: passed.id, origin: "imported" });
@@ -423,4 +432,336 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
   it("never deletes a Policy that a Guardrail version was built from", async () => {
     await expect(uat.deletePolicy({ id: STUDIO, actorId: "admin" })).rejects.toMatchObject({ code: "policy_in_use" });
   });
+
+  it("imports an editable draft from the selected version, then edits, tests, publishes, copies and exports normally", async () => {
+    const next = await installationWith("authoring", policy => { policy.version = "2.1.0"; });
+    const { database, service } = next;
+    try {
+      const bytes = (await uat.packages.exportPackage(guardrailId, published.slice(0, 2))).bytes;
+      const parsed = parsePackage(bytes);
+      const chosen = parsed.versions.find(item => item.version === published[0])!;
+      const preview = await service.packages.inspectUpload(bytes, "admin");
+      await service.packages.importPackage(preview.packageId, { versions: [chosen.version], actorId: "admin" });
+      const original = await service.getGuardrail(guardrailId);
+      expect(original).toMatchObject({ origin: "imported", draftRevision: 1, draftConfig: chosen.config.draftConfig, testCaseCount: chosen.testSuite.length });
+      expect(original.versions[0]!.hasSourceSnapshot).toBe(true);
+      const frozen = (await database.pool.query("SELECT plan, test_suite, inspection FROM guardrail_version WHERE guardrail_id=$1", [guardrailId])).rows;
+      // The imported 2.0.0 catalog node is usable even though this installation ships 2.1.0.
+      const candidate = await service.playgroundDraftCandidate(guardrailId);
+      expect(candidate.plan).toBeTruthy();
+      await service.previewGuardrailPlan({ draftConfig: original.draftConfig, runtimeProfile: original.runtimeProfile });
+      const run = await service.requestVersionTestRun({ guardrailId, version: chosen.version, actorId: "admin" });
+      await service.completeValidation({ runId: run.id, status: "passed", metrics: emptyValidationMetrics(run.metrics.total), results: [] });
+      await service.releaseGuardrailVersion({ guardrailId, version: chosen.version, actorId: "admin" });
+      expect((await service.getGuardrail(guardrailId)).hasUnpublishedChanges).toBe(false);
+      const copiedVersion = await service.duplicateGuardrail({ id: guardrailId, name: "Copy imported version", sourceVersion: chosen.version, idempotencyKey: "imported-version", actorId: "admin" });
+      expect(copiedVersion.testCaseCount).toBe(chosen.testSuite.length);
+
+      // Editing bindings regenerates draft cases using the pinned imported Policy, not the shipped one.
+      const bindings = original.draftConfig.policyBindings;
+      const edited = await service.updateGuardrail({ id: guardrailId, expectedDraftRevision: 1, actorId: "admin",
+        draftConfig: { ...original.draftConfig, policyBindings: [bindings[1]!, bindings[0]!, ...bindings.slice(2)] } });
+      expect(edited).toMatchObject({ draftRevision: 2, hasUnpublishedChanges: true });
+      const restored = await service.discardGuardrailDraft({ id: guardrailId, expectedDraftRevision: 2, expectedBaselineVersion: chosen.version, actorId: "admin" });
+      expect(restored).toMatchObject({ draftRevision: 3, hasUnpublishedChanges: false, draftConfig: original.draftConfig });
+      const custom = await service.createTestCase({ guardrailId, actorId: "admin", name: "Local case", policyId: bindings[0]!.policyId,
+        phase: "input", content: "ordinary", expectedDecision: "allow", trustedInstruction: "", targetSource: "user_input", query: "", groundingSources: [], expectedReasoningResult: null });
+      const editedDraft = await service.getGuardrail(guardrailId);
+      expect(editedDraft.testCaseCount).toBe(chosen.testSuite.length + 1);
+      // Later package imports append versions; they cannot replace local work.
+      await service.packages.importPackage(preview.packageId, { actorId: "admin" });
+      expect(await service.getGuardrail(guardrailId)).toMatchObject({ draftRevision: editedDraft.draftRevision, draftConfig: editedDraft.draftConfig, testCaseCount: editedDraft.testCaseCount });
+      expect((await database.pool.query("SELECT id FROM guardrail_test_case WHERE guardrail_id=$1 AND id=$2", [guardrailId, custom.id])).rows).toHaveLength(1);
+      const copiedDraft = await service.duplicateGuardrail({ id: guardrailId, name: "Copy imported draft", sourceDraftRevision: editedDraft.draftRevision, idempotencyKey: "imported-draft", actorId: "admin" });
+      expect(copiedDraft.testCaseCount).toBe(editedDraft.testCaseCount);
+      const draftRun = await service.requestValidation({ guardrailId, actorId: "admin", compilerAvailable: true });
+      const { rows: [request] } = await database.pool.query("SELECT payload FROM controller_outbox WHERE id=$1", [draftRun.id]);
+      await service.completeValidation({ runId: draftRun.id, status: "passed", metrics: emptyValidationMetrics(draftRun.metrics.total), results: [],
+        candidateArtifact: { ...chosen.content, guardrailVersion: draftRun.guardrailVersion, plan: request.payload.plan },
+        runtime: { runnerId: "prod-runner", runnerVersion: "1.0.0", nemoVersion: "0.24.0", modelRevisionId: "", compilerModelTypes: [] } });
+      const publishedHere = await service.requestGuardrailPublish({ guardrailId, expectedDraftRevision: editedDraft.draftRevision, actorId: "admin" });
+      expect(publishedHere).toMatchObject({ status: "ready" });
+      expect((await database.pool.query("SELECT origin FROM guardrail_version WHERE guardrail_id=$1 AND version=$2", [guardrailId, publishedHere.version])).rows).toEqual([{ origin: "local" }]);
+      expect(await service.getGuardrail(guardrailId)).toMatchObject({ origin: "imported", sourceId: "bank-uat", hasUnpublishedChanges: false, latestValidationRun: { id: draftRun.id, subject: "draft" } });
+      expect((await database.pool.query("SELECT plan, test_suite, inspection FROM guardrail_version WHERE guardrail_id=$1 AND version=$2", [guardrailId, chosen.version])).rows).toEqual(frozen);
+      const exporter = new ControlPlaneService(database.db, { ...prodConfig, packageExport: { ...uatConfig.packageExport!, sourceId: "bank-prod", sourceName: "Bank Production" } });
+      const exported = parsePackage((await exporter.packages.exportPackage(guardrailId, [chosen.version, publishedHere.version])).bytes);
+      expect(exported.versions).toHaveLength(2);
+      expect(exported.versions.find(item => item.version === chosen.version)!.testSuite).toEqual(chosen.testSuite);
+    } finally { await next.cleanup(); }
+  });
+
+  it("backfills legacy imported drafts without changing versions, reports, or a user's working draft", async () => {
+    const next = await installationWith("draft_migration", () => {});
+    const { database, service } = next;
+    try {
+      const bytes = (await uat.packages.exportPackage(guardrailId, published.slice(0, 2))).bytes;
+      const preview = await service.packages.inspectUpload(bytes, "admin");
+      await service.packages.importPackage(preview.packageId, { actorId: "admin" });
+      const original = await service.getGuardrail(guardrailId);
+      const before = (await database.pool.query("SELECT version, plan, test_suite, inspection FROM guardrail_version WHERE guardrail_id=$1 ORDER BY version", [guardrailId])).rows;
+      await database.pool.query("DELETE FROM guardrail_test_case WHERE guardrail_id=$1", [guardrailId]);
+      await database.pool.query("UPDATE guardrail_version SET source_snapshot=NULL WHERE guardrail_id=$1", [guardrailId]);
+      const migration = readFileSync(resolve("server/db/migrations/0033_imported_guardrail_drafts.sql"), "utf8");
+      await database.pool.query(migration);
+      expect(await service.getGuardrail(guardrailId)).toMatchObject({ draftConfig: original.draftConfig, draftRevision: 1, testCaseCount: original.testCaseCount });
+      expect((await service.getGuardrail(guardrailId)).versions.every(item => item.hasSourceSnapshot)).toBe(true);
+      expect((await database.pool.query("SELECT version, plan, test_suite, inspection FROM guardrail_version WHERE guardrail_id=$1 ORDER BY version", [guardrailId])).rows).toEqual(before);
+      const edited = await service.updateGuardrail({ id: guardrailId, expectedDraftRevision: 1, actorId: "admin", runtimeProfile: "llmrails_colang1_standard" });
+      await database.pool.query("DELETE FROM guardrail_test_case WHERE guardrail_id=$1", [guardrailId]);
+      await database.pool.query(migration);
+      expect(await service.getGuardrail(guardrailId)).toMatchObject({ runtimeProfile: edited.runtimeProfile, draftRevision: edited.draftRevision, testCaseCount: 0 });
+    } finally { await next.cleanup(); }
+  });
+
+  it("applies the same report deletion and pending lifecycle to an imported version", async () => {
+    const next = await installationWith("report_delete", () => {});
+    try {
+      const { bytes } = await uat.packages.exportPackage(guardrailId, [published[0]!]);
+      const preview = await next.service.packages.inspectUpload(bytes, "admin");
+      await next.service.packages.importPackage(preview.packageId, { actorId: "admin" });
+      const run = await next.service.requestVersionTestRun({ guardrailId, version: published[0]!, actorId: "admin" });
+      await next.service.completeValidation({ runId: run.id, status: "passed", metrics: emptyValidationMetrics(run.metrics.total), results: [] });
+      await next.service.releaseGuardrailVersion({ guardrailId, version: published[0]!, actorId: "admin" });
+      expect(await next.service.getGuardrail(guardrailId)).toMatchObject({ latestTestingReport: { id: run.id }, latestValidationRun: null });
+      await next.service.deleteTestingReport({ runId: run.id, actorId: "admin", expectedPendingVersion: published[0]! });
+      expect((await next.service.getGuardrail(guardrailId)).versions[0]).toMatchObject({ status: "pending", origin: "imported", validationRunId: null });
+      expect((await next.service.packages.previewPackage(preview.packageId)).versions[0]).toMatchObject({ state: "existing" });
+      expect((await next.database.pool.query("SELECT count(*)::int AS n FROM guardrail_version_provenance WHERE guardrail_id=$1", [guardrailId])).rows[0].n).toBe(1);
+    } finally { await next.cleanup(); }
+  });
+
+  async function deletedInstallation(released = false, beforeDelete?: (database: Awaited<ReturnType<typeof createTestDatabase>>, service: ControlPlaneService) => Promise<void>) {
+    const database = await createTestDatabase(url!, "guard_pkg_restore");
+    await seed(database);
+    const service = new ControlPlaneService(database.db, prodConfig);
+    const { bytes } = await uat.packages.exportPackage(guardrailId, [published[0]!]);
+    const preview = await service.packages.inspectUpload(bytes, "admin");
+    await service.packages.importPackage(preview.packageId, { actorId: "admin" });
+    if (released) {
+      const run = await service.requestVersionTestRun({ guardrailId, version: published[0]!, actorId: "admin" });
+      await service.completeValidation({ runId: run.id, status: "passed", metrics: emptyValidationMetrics(run.metrics.total), results: [] });
+      await service.releaseGuardrailVersion({ guardrailId, version: published[0]!, actorId: "admin" });
+    }
+    await beforeDelete?.(database, service);
+    await service.softDeleteGuardrail({ id: guardrailId, actorId: "admin", reason: "Re-import regression", confirmRecentTraffic: false });
+    return { database, service, bytes, packageId: preview.packageId };
+  }
+
+  it.each([false, true])("restores definitions with fresh test/release state without restoring routing (released: %s)", async released => {
+    const { database, service, bytes, packageId } = await deletedInstallation(released);
+    try {
+      const versions = (await database.pool.query("SELECT * FROM guardrail_version ORDER BY version")).rows;
+      const preview = await service.packages.inspectUpload(bytes, "admin");
+      expect(preview.guardrail).toMatchObject({ exists: true, deleted: true });
+      expect(preview.blockers).toEqual([]);
+      expect(preview.versions.map(item => item.state)).toEqual(["existing"]);
+      expect((await service.listGuardrails()).some(item => item.id === guardrailId)).toBe(false);
+      await expect(service.packages.importPackage(packageId, { actorId: "admin" })).rejects.toMatchObject({ code: "guardrail_restore_required" });
+      const generation = await service.desiredGeneration();
+      const results = await Promise.all([1, 2].map(() => service.packages.importPackage(packageId, { actorId: "admin", restoreDeleted: true })));
+      expect(results.filter(result => result.restored)).toHaveLength(1);
+      expect(results.every(result => result.imported.length === 0 && result.existing[0] === published[0])).toBe(true);
+      expect((await database.pool.query("SELECT * FROM guardrail_version ORDER BY version")).rows).toEqual(versions);
+      expect((await database.pool.query("SELECT deleted_at, deleted_by, delete_reason, status FROM guardrail WHERE id = $1", [guardrailId])).rows[0])
+        .toEqual({ deleted_at: null, deleted_by: null, delete_reason: null, status: "draft" });
+      expect((await service.listGuardrails()).some(item => item.id === guardrailId)).toBe(true);
+      expect(versions.every(row => row.status === "pending" && row.validation_run_id === null && row.released_at === null && row.released_by === null)).toBe(true);
+      expect(await service.listValidationRuns(guardrailId)).toEqual([]);
+      await expect(service.releaseGuardrailVersion({ guardrailId, version: published[0]!, actorId: "admin" }))
+        .rejects.toMatchObject({ code: "guardrail_version_test_required" });
+      expect(await service.desiredGeneration()).toBe(generation + 1);
+      expect((await database.pool.query("SELECT * FROM audit_event WHERE kind = 'guardrail.restored'")).rows).toHaveLength(1);
+      expect((await database.pool.query("SELECT payload FROM controller_outbox WHERE payload->>'restored' = 'true'")).rows).toHaveLength(1);
+      expect((await service.trafficRouting.list()).length).toBe(0);
+      expect(await service.systemBaseline()).toEqual({ guardrailId: DEFAULT_GUARDRAIL_ID, version: null });
+    } finally { await database.drop(); }
+  });
+
+  it("restores and imports new versions atomically while keeping existing versions", async () => {
+    const { database, service } = await deletedInstallation();
+    try {
+      const { bytes } = await uat.packages.exportPackage(guardrailId, published.slice(0, 2));
+      const preview = await service.packages.inspectUpload(bytes, "admin");
+      expect(preview.versions.map(item => item.state)).toEqual(["existing", "new"]);
+      const result = await service.packages.importPackage(preview.packageId, { actorId: "admin", restoreDeleted: true });
+      expect(result).toMatchObject({ restored: true, imported: [published[1]], existing: [published[0]] });
+      expect((await database.pool.query("SELECT status FROM guardrail_version")).rows.every(row => row.status === "pending")).toBe(true);
+    } finally { await database.drop(); }
+  });
+
+  it("purges operational data, retains audit/definitions, and rejects late results after restoration", async () => {
+    const oldTime = new Date(Date.now() - 2 * 86400000);
+    const runtime = (id: string, target = guardrailId, occurredAt = oldTime) => ({
+      id, guardrailId: target, guardrailVersion: published[0]!, occurredAt, requestId: id, runnerId: "test-runner",
+      direction: "incoming" as const, decision: "block", durationMs: 5,
+      metadata: { capturedContent: { input: "sensitive runtime input" }, findings: [{ verdict: "matched" }] },
+    });
+    const call = (id: string, target = guardrailId, decisionAt = oldTime) => routingEventSchema.parse({
+      id, decisionId: id, callId: id, runnerId: "test-runner", eventType: "completion", assignmentStatus: "assigned",
+      endpointId: "endpoint", routerId: "router", routerRevision: 1, routeId: "route", targetId: "target",
+      guardrailId: target, guardrailVersion: published[0]!, occurredAt: new Date(), decisionAt, outcome: "error", durationMs: 5,
+    });
+    let runningId = "";
+    const preserved: Record<string, unknown[]> = {};
+    const { database, service, packageId } = await deletedInstallation(true, async (database, service) => {
+      await database.pool.query("INSERT INTO guardrail (id,name,draft_config) VALUES ('other','Other','{}')");
+      await database.pool.query("INSERT INTO guardrail_validation_run (id,guardrail_id,guardrail_version,source_draft_revision,status) VALUES ('other-report','other','v1',1,'passed')");
+      await database.pool.query("INSERT INTO controller_outbox (id,kind,aggregate_id,payload) VALUES ('other-request','guardrail.validation_requested','other','{}')");
+      const run = await service.requestVersionTestRun({ guardrailId, version: published[0]!, actorId: "admin" });
+      runningId = run.id;
+      await service.markValidationRunning(run.id);
+      await service.recordRuntimeEvents([runtime("old-runtime"), runtime("other-runtime", "other")]);
+      await service.trafficRouting.recordEvents([call("old-call"), call("other-call", "other")]);
+      for (const table of ["guardrail_artifact", "guardrail_version_provenance", "guardrail_package", "policy_record", "policy_version", "policy_imported_version", "policy_validation_run", "guardrail_test_case"]) {
+        preserved[table] = (await database.pool.query(`SELECT * FROM ${table}`)).rows;
+      }
+    });
+    try {
+      for (const table of ["guardrail_validation_run", "runtime_event", "route_assignment"]) {
+        expect((await database.pool.query(`SELECT * FROM ${table} WHERE guardrail_id=$1`, [guardrailId])).rows).toEqual([]);
+        expect((await database.pool.query(`SELECT * FROM ${table} WHERE guardrail_id='other'`)).rows).toHaveLength(1);
+      }
+      expect((await database.pool.query("SELECT * FROM controller_outbox WHERE aggregate_id=$1 AND kind='guardrail.validation_requested'", [guardrailId])).rows).toEqual([]);
+      expect((await database.pool.query("SELECT * FROM controller_outbox WHERE id='other-request'")).rows).toHaveLength(1);
+      expect((await database.pool.query("SELECT detail FROM audit_event WHERE kind='guardrail.disabled'")).rows[0].detail.cleared)
+        .toMatchObject({ testingReports: 2, testRequests: 2, runtimeEvents: 1, routeAssignments: 1 });
+      expect((await database.pool.query("SELECT * FROM audit_event WHERE kind='guardrail.version_released'")).rows).toHaveLength(1);
+      for (const [table, rows] of Object.entries(preserved)) expect((await database.pool.query(`SELECT * FROM ${table}`)).rows).toEqual(rows);
+      await service.recordRuntimeEvents([runtime("late-runtime", guardrailId, new Date())]);
+      await service.trafficRouting.recordEvents([call("late-call", guardrailId, new Date())]);
+      await expect(service.requestVersionTestRun({ guardrailId, version: published[0]!, actorId: "admin" })).rejects.toMatchObject({ status: 404 });
+      await service.packages.importPackage(packageId, { actorId: "admin", restoreDeleted: true });
+      await service.completeValidation({ runId: runningId, status: "passed", metrics: emptyValidationMetrics(1), results: [] });
+      await service.updateValidationProgress(runningId, { phase: "executing", completedCases: 1, passedCases: 1 });
+      await service.markValidationRunning(runningId);
+      await service.recordRuntimeEvents([runtime("old-runtime")]);
+      // Completion arrives now but belongs to a call assigned before restoration.
+      await service.trafficRouting.recordEvents([call("old-call")]);
+      expect(await service.listValidationRuns(guardrailId)).toEqual([]);
+      for (const table of ["runtime_event", "route_assignment"]) expect((await database.pool.query(`SELECT * FROM ${table} WHERE guardrail_id=$1`, [guardrailId])).rows).toEqual([]);
+      await expect(service.releaseGuardrailVersion({ guardrailId, version: published[0]!, actorId: "admin" })).rejects.toMatchObject({ code: "guardrail_version_test_required" });
+      const fresh = await service.requestVersionTestRun({ guardrailId, version: published[0]!, actorId: "admin" });
+      expect(fresh.id).not.toBe(runningId);
+      await service.completeValidation({ runId: fresh.id, status: "passed", metrics: emptyValidationMetrics(fresh.metrics.total), results: [] });
+      const released = await service.releaseGuardrailVersion({ guardrailId, version: published[0]!, actorId: "admin" });
+      expect(released.validationRunId).toBe(fresh.id);
+      await service.recordRuntimeEvents([runtime("fresh-runtime", guardrailId, new Date())]);
+      await service.trafficRouting.recordEvents([call("fresh-call", guardrailId, new Date())]);
+      expect((await database.pool.query("SELECT id FROM runtime_event WHERE guardrail_id=$1", [guardrailId])).rows).toEqual([{ id: "fresh-runtime" }]);
+      expect((await database.pool.query("SELECT decision_id FROM route_assignment WHERE guardrail_id=$1", [guardrailId])).rows).toEqual([{ decision_id: "fresh-call" }]);
+    } finally { await database.drop(); }
+  });
+
+  it("does not let a concurrent test request survive deletion", async () => {
+    const { database, service, packageId } = await deletedInstallation();
+    try {
+      await service.packages.importPackage(packageId, { actorId: "admin", restoreDeleted: true });
+      const [deletion, request] = await Promise.allSettled([
+        service.softDeleteGuardrail({ id: guardrailId, actorId: "admin", reason: "Concurrent delete", confirmRecentTraffic: false }),
+        service.requestVersionTestRun({ guardrailId, version: published[0]!, actorId: "admin" }),
+      ]);
+      expect(deletion.status).toBe("fulfilled");
+      if (request.status === "rejected") expect(request.reason).toMatchObject({ status: 404 });
+      expect(await service.listValidationRuns(guardrailId)).toEqual([]);
+      expect((await database.pool.query("SELECT * FROM controller_outbox WHERE kind='guardrail.validation_requested' AND aggregate_id=$1", [guardrailId])).rows).toEqual([]);
+    } finally { await database.drop(); }
+  });
+
+  it("discards an environment check that completes after deletion and restoration", async () => {
+    const { database, service, packageId } = await deletedInstallation();
+    try {
+      await service.packages.importPackage(packageId, { actorId: "admin", restoreDeleted: true });
+      const started = Promise.withResolvers<void>();
+      const finished = Promise.withResolvers<[]>();
+      service.setArtifactAdmission(async () => { started.resolve(); return finished.promise; });
+      const check = service.packages.checkVersionEnvironment(guardrailId, published[0]!).catch(error => error);
+      await started.promise;
+      await service.softDeleteGuardrail({ id: guardrailId, actorId: "admin", reason: "Delete during check", confirmRecentTraffic: false });
+      await service.packages.importPackage(packageId, { actorId: "admin", restoreDeleted: true });
+      finished.resolve([]);
+      expect(await check).toMatchObject({ code: "guardrail_lifecycle_changed" });
+      expect((await database.pool.query("SELECT environment_check FROM guardrail_version WHERE guardrail_id=$1", [guardrailId])).rows)
+        .toEqual([{ environment_check: null }]);
+    } finally { await database.drop(); }
+  });
+
+  it("clears operational data retained by the old soft-delete implementation on explicit restore", async () => {
+    const { database, service, packageId } = await deletedInstallation();
+    try {
+      await database.pool.query("UPDATE guardrail SET operational_reset_at=NULL WHERE id=$1", [guardrailId]);
+      await database.pool.query("INSERT INTO guardrail_validation_run (id,guardrail_id,guardrail_version,source_draft_revision,status) VALUES ('legacy-report',$1,$2,0,'passed')", [guardrailId, published[0]]);
+      await database.pool.query("UPDATE guardrail_version SET status='ready', validation_run_id='legacy-report', released_at=now(), released_by='admin' WHERE guardrail_id=$1", [guardrailId]);
+      await service.packages.importPackage(packageId, { actorId: "admin", restoreDeleted: true });
+      expect(await service.listValidationRuns(guardrailId)).toEqual([]);
+      expect((await database.pool.query("SELECT status, validation_run_id, released_at FROM guardrail_version WHERE guardrail_id=$1", [guardrailId])).rows)
+        .toEqual([{ status: "pending", validation_run_id: null, released_at: null }]);
+      expect((await database.pool.query("SELECT detail FROM audit_event WHERE kind='guardrail.restored'")).rows[0].detail.cleared.testingReports).toBe(1);
+    } finally { await database.drop(); }
+  });
+
+  it("keeps a deleted resource deleted when source ownership or version content conflicts", async () => {
+    const { database, service, bytes, packageId } = await deletedInstallation();
+    try {
+      for (const ownership of [{ origin: "local", source: null }, { origin: "imported", source: "bank-uat-b" }]) {
+        await database.pool.query("UPDATE guardrail SET origin=$2, source_id=$3 WHERE id=$1", [guardrailId, ownership.origin, ownership.source]);
+        expect((await service.packages.previewPackage(packageId)).blockers.map(item => item.code)).toContain("guardrail_ownership_conflict");
+        await expect(service.packages.importPackage(packageId, { actorId: "admin", restoreDeleted: true })).rejects.toMatchObject({ code: "guardrail_ownership_conflict" });
+      }
+      await database.pool.query("UPDATE guardrail SET origin='imported', source_id='bank-uat' WHERE id=$1", [guardrailId]);
+      const parsed = parsePackage(bytes);
+      const altered = buildPackage({ source: parsed.manifest.source, guardrail: parsed.manifest.guardrail, exportedAt: new Date(), sign: packageSigner(uatConfig).sign,
+        versions: parsed.versions.map(item => rebuilt(parsed, item, { ...item.content, configYaml: "models: [] # changed\n" })) });
+      const conflict = await service.packages.inspectUpload(altered, "admin");
+      await expect(service.packages.importPackage(conflict.packageId, { actorId: "admin", restoreDeleted: true })).rejects.toMatchObject({ code: "guardrail_version_conflict" });
+      expect((await database.pool.query("SELECT deleted_at FROM guardrail WHERE id=$1", [guardrailId])).rows[0].deleted_at).not.toBeNull();
+      expect((await database.pool.query("SELECT * FROM audit_event WHERE kind='guardrail.restored'")).rows).toHaveLength(0);
+    } finally { await database.drop(); }
+  });
+  it("enforces import capacity in preview and transaction, including concurrent imports and existing releases", async () => {
+    const database = await createTestDatabase(url!, "guard_pkg_quota");
+    try {
+      await seed(database);
+      const service = new ControlPlaneService(database.db, prodConfig);
+      const { bytes } = await uat.packages.exportPackage(guardrailId, published.slice(0, 2));
+      const preview = await service.packages.inspectUpload(bytes, "admin");
+      await service.packages.importPackage(preview.packageId, { versions: [published[0]!], actorId: "admin" });
+      await database.pool.query(`INSERT INTO guardrail_version (guardrail_id, version, generation, status, runtime_profile, plan)
+        SELECT $1, 'retained-' || n, -n, 'pending', 'auto', '{}'::jsonb FROM generate_series(1, 8) n`, [guardrailId]);
+      expect((await service.packages.previewPackage(preview.packageId)).blockers).toEqual([]);
+      // Two different valid packages each want the one remaining slot.
+      const parsed = parsePackage(bytes);
+      const item = parsed.versions[1]!;
+      const thirdVersion = "20261009-235959.999Z";
+      const third = buildPackage({ source: parsed.manifest.source, guardrail: parsed.manifest.guardrail, exportedAt: new Date(), sign: packageSigner(uatConfig).sign,
+        versions: [rebuilt(parsed, item, { ...item.content, guardrailVersion: thirdVersion, plan: { ...item.content.plan, guardrail_version: thirdVersion } })] });
+      const other = await service.packages.inspectUpload(third, "admin");
+      expect(other.blockers).toEqual([]);
+      const combined = buildPackage({ source: parsed.manifest.source, guardrail: parsed.manifest.guardrail, exportedAt: new Date(), sign: packageSigner(uatConfig).sign,
+        versions: [rebuilt(parsed, item), rebuilt(parsed, item, { ...item.content, guardrailVersion: thirdVersion, plan: { ...item.content.plan, guardrail_version: thirdVersion } })] });
+      const batch = await service.packages.inspectUpload(combined, "admin");
+      expect(batch.blockers).toContainEqual(expect.objectContaining({ code: "guardrail_version_limit" }));
+      await expect(service.packages.importPackage(batch.packageId, { actorId: "admin" })).rejects.toMatchObject({ code: "guardrail_version_limit", detail: { current: 9, incoming: 2 } });
+      expect((await database.pool.query("SELECT count(*)::int AS n FROM guardrail_version WHERE guardrail_id=$1", [guardrailId])).rows[0].n).toBe(9);
+      const attempts = await Promise.allSettled([
+        service.packages.importPackage(preview.packageId, { actorId: "admin" }),
+        service.packages.importPackage(other.packageId, { actorId: "admin" }),
+      ]);
+      expect(attempts.filter(item => item.status === "fulfilled")).toHaveLength(1);
+      expect(attempts.find(item => item.status === "rejected")).toMatchObject({ reason: { code: "guardrail_version_limit", detail: { current: 10, incoming: 1, limit: 10 } } });
+      expect((await database.pool.query("SELECT count(*)::int AS n FROM guardrail_version WHERE guardrail_id=$1", [guardrailId])).rows[0].n).toBe(10);
+      const blockedId = attempts[0].status === "rejected" ? preview.packageId : other.packageId;
+      expect((await service.packages.previewPackage(blockedId)).blockers).toContainEqual(expect.objectContaining({ code: "guardrail_version_limit" }));
+      // Existing content is idempotent even at capacity, and can still be tested/released.
+      await expect(service.packages.importPackage(preview.packageId, { versions: [published[0]!], actorId: "admin" })).resolves.toBeTruthy();
+      const run = await service.requestVersionTestRun({ guardrailId, version: published[0]!, actorId: "admin" });
+      await service.completeValidation({ runId: run.id, status: "passed", metrics: emptyValidationMetrics(run.metrics.total), results: [] });
+      await expect(service.releaseGuardrailVersion({ guardrailId, version: published[0]!, actorId: "admin" })).resolves.toBeTruthy();
+      await service.deleteGuardrailVersion({ guardrailId, version: "retained-1", actorId: "admin" });
+      expect((await service.packages.previewPackage(blockedId)).blockers).toEqual([]);
+      await expect(service.packages.importPackage(blockedId, { actorId: "admin" })).resolves.toBeTruthy();
+      expect((await database.pool.query("SELECT count(*)::int AS n FROM guardrail_version WHERE guardrail_id=$1", [guardrailId])).rows[0].n).toBe(10);
+    } finally { await database.drop(); }
+  });
+
 });

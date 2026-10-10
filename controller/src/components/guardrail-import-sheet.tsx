@@ -26,16 +26,27 @@ export function ImportGuardrailSheet({ onClose, returnFocusRef }: { onClose: () 
   const preview = upload.data;
   const fresh = preview?.versions.filter(item => item.state === "new") ?? [];
   const importing = useMutation({
-    mutationFn: (value: PackagePreview) => importGuardrailPackage(value.packageId),
+    mutationFn: (value: PackagePreview) => importGuardrailPackage(value.packageId, { restoreDeleted: value.guardrail.deleted }),
     onSuccess: async result => {
+      if (result.restored) {
+        // A restoration starts a new operational lifetime, even though the ID is unchanged.
+        await queryClient.cancelQueries({ queryKey: queryKeys.validationRuns(result.guardrailId) });
+        queryClient.removeQueries({ queryKey: queryKeys.validationRuns(result.guardrailId) });
+      }
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.guardrails }),
         queryClient.invalidateQueries({ queryKey: queryKeys.guardrail(result.guardrailId) }),
         queryClient.invalidateQueries({ queryKey: queryKeys.guardrailVersions(result.guardrailId) }),
         // Policy versions arrived with it.
         queryClient.invalidateQueries({ queryKey: queryKeys.policies }),
+        ...(result.restored ? [
+          queryClient.invalidateQueries({ queryKey: queryKeys.allValidationRuns }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.runtimeEvents }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.metrics }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.auditEvents }),
+        ] : []),
       ]);
-      toast.success(t("guardrailPackage.imported", { imported: result.imported.length, existing: result.existing.length, policies: result.policies.imported.length }));
+      toast.success(t(result.restored ? "guardrailPackage.restored" : "guardrailPackage.imported", { imported: result.imported.length, existing: result.existing.length, policies: result.policies.imported.length }));
       onClose();
       void navigate({ to: "/guardrails/$guardrailId", params: { guardrailId: result.guardrailId }, search: { tab: "immutable" } });
     },
@@ -59,9 +70,10 @@ export function ImportGuardrailSheet({ onClose, returnFocusRef }: { onClose: () 
       closeDisabled={importing.isPending} onOpenChange={open => { if (!open && !importing.isPending) onClose(); }}
       footer={<>
         <Button variant="outline" disabled={importing.isPending} onClick={onClose}>{t("common.cancel")}</Button>
-        <Button disabled={!preview || busy || preview.blockers.length > 0 || fresh.length === 0} onClick={() => { if (preview) importing.mutate(preview); }}>
+        <Button disabled={!preview || busy || preview.blockers.length > 0 || (fresh.length === 0 && !preview.guardrail.deleted)} onClick={() => { if (preview) importing.mutate(preview); }}>
           {importing.isPending ? <LoaderCircle className="animate-spin" /> : <Upload />}
-          {importing.isPending ? t("guardrailPackage.importing") : !preview || fresh.length === 0 ? t("guardrailPackage.nothingToImport")
+          {importing.isPending ? t("guardrailPackage.importing") : !preview || preview.blockers.length > 0 ? t("guardrailPackage.import")
+            : preview.guardrail.deleted ? t("guardrailPackage.restoreAndImport") : fresh.length === 0 ? t("guardrailPackage.nothingToImport")
             : fresh.length === 1 ? t("guardrailPackage.importOne") : t("guardrailPackage.importAction", { count: fresh.length })}
         </Button>
       </>}>
@@ -99,8 +111,9 @@ function PackageSummary({ preview, language }: { preview: PackagePreview; langua
       <div><dt className="text-xs text-muted-foreground">{t("guardrailPackage.source")}</dt><dd className="mt-1 font-medium">{preview.source.name} <span className="font-mono text-xs text-muted-foreground">({preview.source.id})</span></dd>
         <dd className="mt-1 text-xs text-muted-foreground">{t("guardrailPackage.signedBy", { keyId: preview.keyId })} · {t("guardrailPackage.exportedAt", { time: new Date(preview.exportedAt).toLocaleString(language) })}</dd></div>
       <div><dt className="text-xs text-muted-foreground">{t("guardrailPackage.guardrail")}</dt><dd className="mt-1 font-medium">{preview.guardrail.name} <span className="font-mono text-xs text-muted-foreground">({preview.guardrail.id})</span></dd>
-        <dd className="mt-1 text-xs text-muted-foreground">{t(preview.guardrail.exists ? "guardrailPackage.existingGuardrail" : "guardrailPackage.newGuardrail")}</dd></div>
+        <dd className="mt-1 text-xs text-muted-foreground">{t(preview.guardrail.deleted ? "guardrailPackage.deletedGuardrail" : preview.guardrail.exists ? "guardrailPackage.existingGuardrail" : "guardrailPackage.newGuardrail")}</dd></div>
     </dl>
+    {preview.guardrail.deleted && !preview.blockers.length ? <InfoNotice>{t("guardrailPackage.restoreNotice")}</InfoNotice> : null}
     {preview.blockers.length ? <div role="alert" className="space-y-1 border border-destructive/40 p-4 text-sm">
       <p className="font-medium text-destructive">{t("guardrailPackage.blocked")}</p>
       {preview.blockers.map((blocker, index) => <p key={`${blocker.code}-${index}`} className="text-destructive/80">{blocker.message}</p>)}
@@ -115,7 +128,7 @@ function PackageSummary({ preview, language }: { preview: PackagePreview; langua
       <TableBody>{preview.versions.map(item => <TableRow key={item.version}>
         <TableCell><div className="flex flex-col items-start gap-1"><span className="whitespace-nowrap font-mono text-sm">{item.version}</span></div></TableCell>
         <TableCell className="whitespace-nowrap text-sm">{t("guardrailPackage.testSuiteCases", { count: item.testSuite.total })}</TableCell>
-        <TableCell className="whitespace-nowrap"><StateBadge state={item.state === "new" ? "ready" : item.state === "existing" ? "active" : "failed"} label={t(`guardrailPackage.state${item.state === "new" ? "New" : item.state === "existing" ? "Existing" : "Conflict"}`)} /></TableCell>
+        <TableCell className="whitespace-nowrap"><StateBadge state={item.state === "new" ? "ready" : item.state === "existing" ? preview.guardrail.deleted ? "unpublished" : "active" : "failed"} label={t(`guardrailPackage.state${item.state === "new" ? "New" : item.state === "existing" ? preview.guardrail.deleted ? "Retained" : "Existing" : "Conflict"}`)} /></TableCell>
         <TableCell><EnvironmentStatus check={item.environment} /></TableCell>
       </TableRow>)}</TableBody>
     </Table>

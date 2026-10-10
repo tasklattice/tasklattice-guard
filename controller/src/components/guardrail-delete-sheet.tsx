@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ProtectedDeleteSheet } from "./protected-delete-sheet";
+import { EntitySheet } from "./entity-sheet";
+import { Button } from "./ui/button";
+import { Trash2 } from "lucide-react";
 import type { Guardrail, GuardrailDeletionImpact, deleteGuardrail } from "@/lib/api";
 
 export type GuardrailDeletionConfirmation = Parameters<typeof deleteGuardrail>[1];
@@ -24,6 +27,15 @@ export function DeleteGuardrailSheet({ guardrail, open, impact, loading, deletin
   useEffect(() => {
     if (!open) setReason("");
   }, [open]);
+
+  if (guardrail.is_default) return <EntitySheet open={open} onOpenChange={onOpenChange}
+    eyebrow={t("guardrails.deleteEyebrow")} title={t("guardrails.deleteDialogTitle")} description={guardrail.name}
+    width="md" density="compact" footer={<>
+      <Button variant="outline" onClick={() => onOpenChange(false)}>{t("common.close")}</Button>
+      <Button variant="destructive" disabled><Trash2 />{t("guardrails.deleteConfirm")}</Button>
+    </>}>
+    <p className="text-sm leading-6">{t("guardrails.defaultDeleteBlocked")}</p>
+  </EntitySheet>;
 
   return <ProtectedDeleteSheet
     open={open}
@@ -69,4 +81,3 @@ export function DeleteGuardrailSheet({ guardrail, open, impact, loading, deletin
     })}
   />;
 }
-

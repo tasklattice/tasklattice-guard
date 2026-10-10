@@ -20,7 +20,7 @@ Policy, Endpoint and Router are also logical entities. A Guardrail is not a Rule
 3. Publish a Guardrail Version.
 4. Publish a Router that sends Endpoint traffic to that version.
 
-The UI can show a Guardrail as protected when a published Router refers to it. This does not mean that the Runners already apply the version.
+Readiness and traffic references are shown separately. Different Routers can use different versions of the same Guardrail at once; one Policy count or latest report cannot describe them all.
 
 <a id="glossary-resource-map" />
 
@@ -127,10 +127,10 @@ To serve a different version, submit a Router change that pins it.
 
 Testing Report · one test run
 
-The immutable result of one run of the Test Cases of a draft or of a version, through the real runtime.
+The record of one run of the Test Cases of a draft or of a version, through the real runtime. It progresses through Queued and Running to Passed or Failed. A completed result is immutable; retesting creates another report. Administrators can delete completed reports after impact review.
 
 - A draft can publish only when all required cases of its current revision pass.
-- A pending version can be released only when its latest run in this environment passed.
+- Releasing a pending version requires its latest completed **version test** in this environment to have passed, matching both its Artifact and frozen test suite. A draft test is not a substitute for this Release action.
 
 <a id="term-checksum" />
 
@@ -240,127 +240,109 @@ The sidebar keeps the order of daily responsibilities.
 
 <a id="glossary-states" />
 
-## Guardrail state machines
+## Guardrail lifecycle and readiness
 
 <StateLegend locale="en" />
 
-Color supports the text:
-
-- Amber: work is in progress, or the state is not stable yet.
-- Green: passed or active.
-- Red: failed, or an action is necessary.
-- Gray: draft, historical, disabled on purpose, or not started.
-
-<strong>Four axes are separate:</strong> the resource lifecycle, the immutable version state, Runner health, and the Decision of each request.
-
-Follow one release to keep them apart:
-
-1. Guardrail Version **Released**: the version passed its tests here, and other resources can refer to it.
-2. **Protected** in the Guardrail list: a published Route refers to the Guardrail.
-3. Router **active**: the Runners of the default pool confirmed the target generation.
-4. The Endpoint and the runtime logs show whether real requests used the version.
+A Guardrail is a stable identity with an editable draft and at most **10 immutable versions**. Imported and locally created Guardrails have the same editing, testing, publishing and deletion capabilities. Package imports also enforce source ownership, including during restoration; see [Deletion and restoration](#guardrail-deletion-restoration). Version configuration, Policy bindings, Artifacts and Test Cases are immutable; local reports, release status and routing references can change.
 
 <a id="state-guardrail-readiness" />
 
-### Guardrail display state: needs testing, ready, protected
+### What Ready means
+
+**Ready means at least one immutable version is Released in this environment and still has a matching Passed report in this system.** Controller matches the Guardrail ID, version, Artifact content digest and frozen test-suite digest. Evidence for another version or another environment does not qualify.
 
 <StateMachineDiagram kind="guardrail-readiness" locale="en" />
 
-<strong>Protected (<code>protected</code>)</strong> is a state that the UI calculates. The list shows it when all of these conditions are true:
+- **Ready / ready:** at least one version qualifies. Other versions may be Pending, other reports may have failed, and the working draft may contain untested changes.
+- **Not ready / not_ready:** no version qualifies. Examples include a new draft, a passed draft with no publication, imported versions awaiting Release, or removal of the last usable version or its final matching Passed report.
+- Ready does not mean every version is released, the current draft passed, Runners are healthy, or requests use it. The most recent report alone does not determine readiness.
+- A version that passed but has not been explicitly Released is still Pending and does not make the resource Ready.
 
-- The current draft is published.
-- An enabled Route in a published Router snapshot refers to this Guardrail as a Target with a weight above zero.
-- That Router has at least one bound Endpoint.
+<a id="guardrail-registry-columns" />
 
-These cases do not give protected: the Guardrail is in an unpublished Router draft, the Route is disabled, or the Target weight is zero. When the last of these references goes away, the list state returns to ready. When you edit the Guardrail draft, the draft becomes different from the last published version. The list then shows needs testing, although an earlier version can still serve traffic.
+### What each registry column answers
 
-<strong>Protected does not report traffic health.</strong> It reports a configuration reference only. It does not report that the Runners completed the rollout, that the Endpoint is available, or that requests arrived. The detail page shows a separate badge for the Route reference. To confirm real delivery, check the Router rollout, the Endpoint and the runtime logs.
+| Column | Meaning and navigation |
+| --- | --- |
+| Guardrail | Name and stable ID; opens the detail page. |
+| Readiness | Ready / Not ready, derived from retained released versions and local passing evidence. The heading explains the definition. |
+| Versions | `2/10` means two retained versions out of ten available slots, with separate Released and Pending counts. Opens the version list. Missing evidence in historical data is shown separately and never counted as Ready. |
+| Traffic versions | Exact versions pinned by published Routers with bound Endpoints, plus the runtime baseline. Each Router shows its own Active, Distributing or Failed rollout status and links to its detail page. Version links open that exact version. Unpublished drafts, disabled Routes, zero-weight Targets and Routers without Endpoints are excluded. |
+| Updated | The Guardrail resource update time, not the latest test, request or Router update. |
+
+The resource registry does not show a single **Policies** count or **Testing Report** result. Policy counts describe a specific draft or version; reports describe individual local test runs. Inspect them in version details and the Testing Report tab. The version list retains per-version Policy counts and latest test results.
+
+Traffic versions describe desired routing configuration, not observed requests. Even with an Active Router, check Endpoint state and Runtime logs to verify use. Runners or in-flight requests can use older versions during a transition. Multiple versions can serve concurrently; there is no single resource-wide current version. The old Protected label mixed references with readiness and is no longer a Guardrail display state.
 
 <a id="state-guardrail" />
 
-### Guardrail resource lifecycle
+### Resource, draft, version and report are separate
 
 <StateMachineDiagram kind="guardrail-lifecycle" locale="en" />
 
-The stored lifecycle is draft → active → disabled. A draft can also go directly to disabled. Disabled is the final state of that resource. When you publish a ready version, the resource becomes active. Soft deletion is not a toggle that you can reverse, unlike disabling an Endpoint.
+The diagram uses stored lifecycle values. The resource field `draft / active / disabled` is **not itself UI readiness**. Publishing a draft or releasing a pending version records active; removing or returning the last stored released version to Pending records draft; soft deletion records disabled and deletedAt. A confirmed re-import from the owning source can restore an imported identity to draft. This is not a regular enable/disable switch.
 
-The <strong>display states</strong> `needs_validation / ready / protected` in the previous section exist next to this stored lifecycle. Protected is the display state for a Route reference.
+| Scope | States | What determines them |
+| --- | --- | --- |
+| Guardrail readiness | Ready / Not ready | At least one retained Released version with matching local Passed evidence. |
+| Resource lifecycle | `draft / active / disabled` | Publication, Release, deletion and restoration operations; not a live evidence check. |
+| Working draft | Untested / Testing / Test failed / Tested / Published | Unpublished changes and the latest draft report for the current revision. A version retest does not test the working draft. |
+| Immutable Version | Pending / Released (`pending / ready`) | Local publication or explicit Release, and later evidence deletion or resource deletion. |
+| Testing Report | Queued / Running / Passed / Failed | One execution; Passed and Failed are terminal for that report. |
+
+| Operation | Draft and version | Reports, traffic and readiness |
+| --- | --- | --- |
+| Create in UI | Editable draft, no immutable version. | Not ready; no automatic routing. |
+| Test draft | Report binds the draft revision and executed candidate content. | In the normal user workflow, passing permits publication but does not itself create a version. |
+| Publish draft | Reuses the tested candidate and freezes Policies, Artifact and cases under its timestamp version. A new version starts Released without a separate Release step. | Ready with retained evidence; Routers stay pinned. The first Default Guardrail publication fills an empty runtime baseline; later baseline switches are explicit. |
+| Edit draft | Configuration, runtime profile and Test Case changes require testing the new revision. Renaming the Guardrail or changing its log level does not invalidate draft tests. Existing versions stay unchanged. | Ready remains while a qualifying version exists. Earlier version content is unaffected. |
+| Import | Verify signatures and static content, review, then confirm writes. Newly imported versions are Pending. First import seeds an editable draft; incremental imports do not overwrite it. | Reports and source release status do not travel. Test and Release here. Adding Pending versions does not invalidate existing qualifying releases. |
+| Retest version | Execute the signed Artifact and frozen cases unchanged. | Generates local evidence. Failure alone does not revoke an existing release. |
+| Change Router | Pin an exact version through the change approval and rollout workflow. | Does not change version content, test evidence or resource readiness. Check Router, Endpoint and Runtime logs for delivery. |
+| Export | Only selected qualifying Released versions, dependencies and frozen cases enter the signed package. | Reports, runtime logs, routing and baseline pointers do not travel. |
 
 <a id="state-guardrail-version" />
 
-### Guardrail Version release
+### Immutable Version: Pending and Released
 
 <StateMachineDiagram kind="guardrail-version" locale="en" />
 
-A version has exactly two states: **Pending** and **Released** (`ready`). Its contents, the Policies and the tests, never change after you create it. A release changes neither its version number nor its content digest.
-
-- A version that you publish from a draft in this environment is released at once. It is bound to the passing test run that you published it from.
-- A version that you import from a release package starts as pending. Run its tests here against its signed Artifact, without any change. The Runner does not compile it again. After that run passes, an administrator chooses **Release**, which binds the run to the version.
-- A Router can pin only a released version. Only a released version can become the runtime baseline or be exported.
-- A failed test after a release does not cancel the release. The version shows that the retest failed, and people decide whether to change the routing.
-
-Released means only that other resources can refer to the version. A Router must still pin the exact version, and the Runners must apply it. When you publish a new version, references to other versions do not change.
-
-You can delete a version when nothing depends on it. **Delete** first lists these references:
-
-- The runtime baseline.
-- An active Router revision.
-- An edited Router draft.
-- A pending change request.
-- The pre-approved rollback target of the active change.
-
-Delete also waits until the calls that started before the version left routing are complete. Earlier Router revisions that pinned the version do not block the deletion. They stay in history for audit, but you cannot restore them. The compiled Artifact and the telemetry stay.
+The diagram uses the two persisted states: `pending` and `ready`. The UI calls version `ready` **Released**, while resource `ready` is **Ready**. Publishing a tested draft creates a new Released version directly; importing a new version creates Pending. System initialization can also test and publish the built-in Default Guardrail automatically. Testing, test failed, ready to release and retest failed are additional indications, not extra version states.
 
 <a id="guardrail-build-states" />
 
-### Guardrail Version states
-
-The version state is separate from the Router traffic rollout. Testing, test failed and ready to release come from the test runs in this environment. They are not separate states.
-
 <StateCards>
-
 <StateCard title="Pending" code="pending" state="distributing">
-
-<StateDetail label="Meaning">
-
-The contents of the version are in place. The version has not passed its tests and has not been released in this environment. Imported versions always start here.
-
-</StateDetail>
-
-<StateDetail label="Transitions">
-
-The latest run of this exact content and test suite passes here. Then an administrator releases the version, and it becomes Released.
-
-</StateDetail>
-
-<StateDetail label="Next step">
-
-Choose **Run tests** in the version menu. When the tests pass, choose **Release**. If the tests fail, read the Testing Report. People decide the cause.
-
-</StateDetail>
-
+<StateDetail label="Meaning">Static content exists but has not been released here, or its final matching Passed report was deleted. Testing may be absent, running, failed, or passed and awaiting Release.</StateDetail>
+<StateDetail label="Transitions">The most recent completed version test for this exact content and frozen suite passes here; an administrator explicitly releases it to ready. The UI waits for an ongoing version test to finish.</StateDetail>
+<StateDetail label="Next step">Run version tests, inspect the report and Release after passing. The version content remains unchanged.</StateDetail>
 </StateCard>
-
-<StateCard title="Released" code="ready">
-
-<StateDetail label="Meaning">
-
-The version is bound to a passing test run in this environment. A Router can pin it, and it can become the baseline or be exported. This does not mean that Router traffic already uses it.
-
-</StateDetail>
-
-<StateDetail label="Transitions">
-
-This is the final state. A later failed retest shows as a warning and never cancels the release.
-
-</StateDetail>
-
-<StateDetail label="Next step">
-
-Publish a Router Revision whose Target pins this version.
-
-</StateDetail>
-
+<StateCard title="Released" code="Released" state="ready">
+<StateDetail label="Meaning">Stored as ready. Normal publication and evidence-deletion flows preserve matching local Passed evidence. The version is eligible for Router and export selection, or baseline selection for the Default Guardrail; runtime dependency checks still apply. Historical inconsistent records are described below.</StateDetail>
+<StateDetail label="Transitions">Not terminal. Failed retests do not cancel release, but deleting its final matching Passed report returns it to Pending. If another matching report exists, it replaces the release evidence.</StateDetail>
+<StateDetail label="Next step">Pin the exact version in a Router, or switch the Default Guardrail runtime baseline, then verify rollout and actual requests.</StateDetail>
 </StateCard>
-
 </StateCards>
+
+<a id="guardrail-deletion-restoration" />
+
+### Deletion and restoration
+
+- **Testing Report:** administrators permanently delete a completed report and its results from the detail sheet. Queued and Running reports cannot be deleted. Review the impact first; the transaction checks again. If a retained Released version would have no matching Passed report left, it returns to Pending and its release/load-check metadata is cleared. Another matching Passed report preserves release and replaces the deleted release binding when needed. Deleting a failed report, a redundant pass or a draft-only report does not by itself revoke a valid release. Frozen content, cases and audit remain. References and traffic that prevent version deletion also prevent deleting its final proof.
+- **Immutable Version:** deleting a version frees a `n/10` slot. Baseline, published Router, edited Router draft, pending change and pre-approved rollback references block deletion. Calls in the five-minute retention window, recent retirement, and online Runners that have not applied the retiring generation also block deletion. Deleting the version record keeps Artifacts, reports and audit, but orphan reports cannot make a Guardrail Ready. Earlier Router history remains; references to deleted versions cannot be restored directly.
+- **Guardrail:** the Default Guardrail cannot be deleted. Published Router references and pending Router changes block deletion; remove these references first and wait for the five-minute call-retention checks to pass. Deletion does **not** remove Router targets automatically. It soft-deletes the identity, preserving ID, static versions, Artifacts, draft, cases, provenance and audit. It permanently clears local reports, queued test requests, stored runtime events and routing-call records, and returns every retained version to Pending. Late test results and telemetry from before the reset are ignored. Unpublished Router drafts and historical references can remain; they do not make the deleted resource usable.
+- **Restore by re-import:** currently supported for an imported Guardrail from its original owning source. Explicitly confirm restoration of the same ID in import review. Preserved static content and the working draft are reused; the package does not overwrite that draft. Reports and operational data start afresh, so test and Release again here. Traffic is not automatically restored. A locally created Guardrail with the same ID is rejected by package ownership checks even after soft deletion; re-import is not a universal restore mechanism.
+
+The ten-version limit counts retained Pending and Released records together. Publishing or importing a new version uses a slot; retesting, Release and report deletion do not. Old versions are never removed automatically.
+
+<a id="guardrail-implementation-boundaries" />
+
+### Current differences between checks
+
+The following implementation differences remain; the state definitions above do not mean every entry point uses an identical check:
+
+- **Draft publication:** the UI requires the latest draft report to pass for the current revision. The API currently selects the most recent Passed report for that revision, even if a later run failed or is still running. It still verifies the tested content before creating the version.
+- **Version Release:** the UI waits for an ongoing version test; the API checks the latest completed version test. The UI checks the Artifact digest when enabling Release; the API checks both the Artifact and test-suite digests. A repeated Release of an already Released version currently returns it without rechecking evidence.
+- **Historical missing evidence:** the resource list recomputes readiness from retained matching reports, but the version badge, Router publication and baseline selection currently trust stored release status without repeating that evidence check. Thus historical inconsistent data can show Released on a version while the Guardrail is Not ready. Export checks the report bound to the release and rejects missing or mismatched evidence. A retest alone does not automatically repair the stored release binding.
+- **Deployment baseline package:** when startup is configured to import a Default Guardrail package and the baseline is empty, that startup path currently pins the imported version without checking local tests or Release. The imported version can still be Pending. This differs from the explicit baseline-switch action, which requires Released; it is an implementation gap, not an alternative release workflow.

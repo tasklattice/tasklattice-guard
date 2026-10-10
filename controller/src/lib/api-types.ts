@@ -434,7 +434,10 @@ export type Guardrail = {
   output_delivery: OutputDelivery;
   updated_at: string;
   status: GuardrailReadinessState;
+  version_summary?: { total: number; released: number; pending: number; missingEvidence: number };
+  traffic_versions?: Array<{ version: string; baseline: boolean; routers: Array<{ id: string; name: string; status: string }> }>;
   latest_validation_run: ValidationRun | null;
+  latest_testing_report?: ValidationRun | null;
   router_count: number;
   test_case_count: number;
   excluded_test_case_count: number;
@@ -448,7 +451,7 @@ export type Guardrail = {
   system_managed: boolean;
   local_only: boolean;
   coverage: PolicyCoverage[];
-  /** Imported from a trusted source: read-only, no draft. */
+  /** Creation provenance only; every Guardrail has an editable working draft. */
   origin?: "local" | "imported";
   source_id?: string | null;
 };

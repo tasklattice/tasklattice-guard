@@ -6,13 +6,14 @@
  * for Controller persistence, HTTP DTOs, and UI projections.
  */
 
-/** Persisted lifecycle of a Guardrail resource. `disabled` is terminal after soft deletion. */
+/** Persisted Guardrail lifecycle. Confirmed package re-import can restore a soft-deleted identity to draft. */
 export const guardrailLifecycleStates = ["draft", "active", "disabled"] as const;
 export type GuardrailLifecycleState = (typeof guardrailLifecycleStates)[number];
 
 /**
  * Persisted lifecycle of one immutable Guardrail version in this environment:
- * `pending` until released here, then `ready`. Only a ready version can be
+ * `pending` until released here, then `ready`; losing the last matching Passed
+ * report returns it to pending. Only a ready version can be
  * routed to, made the baseline or exported. Test results are not states.
  */
 export const guardrailVersionStates = ["pending", "ready"] as const;
@@ -36,10 +37,10 @@ export type EndpointSetupState = (typeof endpointSetupStates)[number];
 
 /**
  * Derived Guardrail readiness shown in the UI. This is deliberately not a
- * resource lifecycle: it is recomputed from the current draft, active version,
- * and enabled router count.
+ * resource lifecycle: it requires a released immutable version with matching
+ * Passed evidence still retained here. Draft and routing state are separate.
  */
-export const guardrailReadinessStates = ["needs_validation", "ready", "protected"] as const;
+export const guardrailReadinessStates = ["not_ready", "ready"] as const;
 export type GuardrailReadinessState = (typeof guardrailReadinessStates)[number];
 
 /** Runner reconciliation/connectivity axis before it is folded into `RunnerStatus`. */
@@ -61,14 +62,14 @@ export type RunnerStatus = (typeof runnerStatuses)[number];
 /** Allowed persisted transitions; omitted self-transitions do not change state. */
 export const guardrailLifecycleTransitions = {
   draft: ["active", "disabled"],
-  active: ["disabled"],
-  disabled: [],
+  active: ["draft", "disabled"],
+  disabled: ["draft"],
 } as const satisfies Record<GuardrailLifecycleState, readonly GuardrailLifecycleState[]>;
 
-/** Releasing is the only transition: it requires a passed test of that exact content here. */
+/** Release needs exact-content Passed evidence; losing its last proof returns a version to pending. */
 export const guardrailVersionTransitions = {
   pending: ["ready"],
-  ready: [],
+  ready: ["pending"],
 } as const satisfies Record<GuardrailVersionState, readonly GuardrailVersionState[]>;
 
 /**

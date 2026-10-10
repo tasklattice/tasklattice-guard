@@ -148,6 +148,15 @@ describe("Testing Report acceptance evidence", () => {
     expect(filterValidationRuns([validationRun, otherRun], names, "finance", "all", "passed")).toEqual([validationRun]);
   });
 
+  it("shows version test progress without draft wording or duplicate reruns", () => {
+    const run = { ...validationRun, subject: "version", execution_status: "queued", status: "incomplete" } as ValidationRun;
+    render(<QueryClientProvider client={new QueryClient()}><TooltipProvider><ValidationDetailSheet run={run} canManage={false} running={false} onRunAgain={vi.fn()} onRunVersionAgain={vi.fn()} onClose={vi.fn()} /></TooltipProvider></QueryClientProvider>);
+    expect(screen.getByRole("region", { name: "guardrails.testProgress.title" })).toBeTruthy();
+    expect(screen.getByText("immutableVersions.testingInPlace")).toBeTruthy();
+    expect(screen.queryByText("guardrails.testingInPlace")).toBeNull();
+    expect(screen.getByRole("button", { name: "validation.runAgain" }).hasAttribute("disabled")).toBe(true);
+  });
+
   it("keeps Testing Reports inside one Guardrail and opens records from the compact table", () => {
     const onOpen = vi.fn();
     const onRun = vi.fn();

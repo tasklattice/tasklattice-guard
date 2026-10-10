@@ -219,9 +219,9 @@ export function ImmutableVersionView({ openRequested, onOpenRequestHandled, deta
                         onTest={() => testVersion.mutate(selectedVersion.version)} onRelease={() => setAction({ kind: "release", version: selectedVersion.version })}
                         onOpenRun={onOpenValidation} />
                       <ImmutablePosture detail={currentDetail} />
-                      {selectedVersion.origin === "imported" ? <ReleaseEnvironment version={selectedVersion}
+                      <ReleaseEnvironment version={selectedVersion}
                         checking={environmentCheck.isPending} error={environmentCheck.error} canCheck={auth.user?.role === "admin"}
-                        onCheck={() => environmentCheck.mutate(selectedVersion.version)} /> : null}
+                        onCheck={() => environmentCheck.mutate(selectedVersion.version)} />
                       {selectedVersion.provenance ? <ReleaseSource version={selectedVersion} /> : null}
                       <section className="space-y-3 border-t pt-6">
                         <div><h3 className="text-base font-semibold">{t("guardrails.validationEvidence")}</h3><p className="mt-1 text-sm text-muted-foreground">{t("immutableVersions.testDescription")}</p></div>

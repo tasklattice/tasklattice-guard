@@ -1,3 +1,4 @@
+import { MAX_GUARDRAIL_VERSIONS } from "../../shared/guardrail-version-limit";
 import { useEffect, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { FlaskConical, LoaderCircle, Pencil, ShieldCheck } from "lucide-react";
@@ -59,8 +60,10 @@ export function GuardrailDraftReviewSheet({ guardrail, policies, versions, polic
       run.mutate(latest.id);
     }
   }, [guardrail.latest_validation_run, guardrail.draft_revision, readOnly, initialPublish, run.isPending, run.mutate]);
+  const versionLimitReached = versions.length >= MAX_GUARDRAIL_VERSIONS;
   const publish = useMutation({
     mutationFn: () => {
+      if (versionLimitReached) throw new Error(t("immutableVersions.capacityReached", { limit: MAX_GUARDRAIL_VERSIONS }));
       if (!guardrail.tested_current || publishRevision === null || publishRevision !== guardrail.draft_revision || guardrail.published_current) {
         throw new Error(t("guardrails.draftChangedBeforePublish"));
       }
@@ -86,7 +89,7 @@ export function GuardrailDraftReviewSheet({ guardrail, policies, versions, polic
     description={t(readOnly ? "guardrails.draftReviewReadOnly" : reviewingPublish ? "guardrails.confirmPublishImpact" : "guardrails.savedDraftNextStep")}
     footer={readOnly ? <Button variant="outline" onClick={onClose}>{t("common.close")}</Button> : reviewingPublish ? <>
       <Button variant="outline" disabled={pending} onClick={() => { setPublishRevision(null); publish.reset(); }}>{t("common.back")}</Button>
-      <Button disabled={pending || !canPublish || publishRevision !== guardrail.draft_revision} onClick={() => publish.mutate()}>{publish.isPending ? <LoaderCircle className="animate-spin" /> : <ShieldCheck />}{t(publish.isPending ? "guardrails.publishingVersion" : "guardrails.publishVersion")}</Button>
+      <Button disabled={pending || versionLimitReached || !canPublish || publishRevision !== guardrail.draft_revision} onClick={() => publish.mutate()}>{publish.isPending ? <LoaderCircle className="animate-spin" /> : <ShieldCheck />}{t(publish.isPending ? "guardrails.publishingVersion" : "guardrails.publishVersion")}</Button>
     </> : <>
       <Button variant="ghost" className="mr-auto" disabled={pending} onClick={onEdit}><Pencil />{t("guardrails.continueEditing")}</Button>
       <Button variant="outline" disabled={pending} onClick={onClose}>{t(currentResult ? "common.close" : "guardrails.skipTest")}</Button>
@@ -98,6 +101,7 @@ export function GuardrailDraftReviewSheet({ guardrail, policies, versions, polic
         <div><p className="text-sm font-medium">{t("guardrails.draftRevisionLabel", { revision: guardrail.draft_revision ?? "—" })}</p><p className="mt-1 text-xs text-muted-foreground">{t("guardrails.policyCheckDetail", { count: guardrail.policy_bindings.length })}</p></div>
         <span className="text-sm font-medium">{t(run.isPending || reconnect ? "guardrails.draftTesting" : draftStateKey(guardrail))}</span>
       </div>
+      {versionLimitReached ? <p role="status" className="text-sm text-muted-foreground">{t("immutableVersions.capacityReached", { limit: MAX_GUARDRAIL_VERSIONS })}</p> : null}
       {run.error || publish.error ? <ErrorNotice error={run.error ?? publish.error} /> : null}
       {reviewingPublish && publishRevision !== guardrail.draft_revision ? <p role="alert" className="text-sm text-destructive">{t("guardrails.draftChangedBeforePublish")}</p> : null}
       {!reviewingPublish ? <GuardrailValidationReadiness readiness={readiness} onRetry={() => { onRetryPolicies?.(); readiness.refresh(); }} /> : null}

@@ -54,7 +54,7 @@ type Variables = { actor: Actor };
 const packageVersionsQuery = z.string().max(4_000).optional()
   .transform(value => value?.split(",").map(item => item.trim()).filter(Boolean) ?? [])
   .pipe(z.array(z.string().refine(isGuardrailVersionId, "Guardrail Version must be a canonical UTC timestamp.")).max(64));
-const packageImportInput = z.object({ versions: z.array(z.string().refine(isGuardrailVersionId, "Guardrail Version must be a canonical UTC timestamp.")).max(64).optional() });
+const packageImportInput = z.object({ versions: z.array(z.string().refine(isGuardrailVersionId, "Guardrail Version must be a canonical UTC timestamp.")).max(64).optional(), restoreDeleted: z.boolean().optional() });
 // Multipart framing adds a little to the archive itself.
 const packageUploadLimit = bodyLimit({ maxSize: PACKAGE_UPLOAD_LIMIT_BYTES + 64 * 1024, onError: () => {
   throw new ControllerError("The package exceeds the 32 MiB upload limit.", 413, "guardrail_package_too_large");
@@ -689,7 +689,7 @@ export function createHttpApp(input: {
   });
   app.post("/api/v1/guardrail-packages/:packageId/imports", authenticated, administrator, async context => {
     const body = packageImportInput.parse(await context.req.json());
-    return context.json(await input.service.packages.importPackage(context.req.param("packageId"), { versions: body.versions, actorId: context.get("actor").id }), 201);
+    return context.json(await input.service.packages.importPackage(context.req.param("packageId"), { ...body, actorId: context.get("actor").id }), 201);
   });
   app.post("/api/v1/guardrails/:id/versions/:version/environment-check", authenticated, administrator, async context => {
     return context.json(await input.service.packages.checkVersionEnvironment(context.req.param("id"), guardrailVersionInput.parse(context.req.param("version"))));
@@ -789,6 +789,15 @@ export function createHttpApp(input: {
   });
   app.get("/api/v1/test-runs/:runId", authenticated, async (context) => {
     return context.json(await input.service.getValidationRun(context.req.param("runId")));
+  });
+  app.get("/api/v1/test-runs/:runId/deletion-impact", authenticated, async context => {
+    return context.json(await input.service.testingReportDeletionImpact(context.req.param("runId")));
+  });
+  app.delete("/api/v1/test-runs/:runId", authenticated, administrator, async context => {
+    const body = z.object({ expectedPendingVersion: z.string().nullable() }).parse(await context.req.json());
+    await input.service.deleteTestingReport({ runId: context.req.param("runId"), actorId: context.get("actor").id, ...body });
+    await input.runnerControl.distributeDesiredState();
+    return context.body(null, 204);
   });
   app.post("/api/v1/guardrails/:guardrailId/test-runs", authenticated, administrator, async (context) => {
     return context.json(await input.service.requestValidation({

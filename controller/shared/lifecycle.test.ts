@@ -38,15 +38,15 @@ describe("Controller lifecycle contract", () => {
     expect(runnerStatuses).not.toContain("registered");
   });
 
-  it("makes Guardrail deletion and version release terminal", () => {
+  it("models evidence loss and confirmed restoration without changing version contents", () => {
     expect(guardrailLifecycleTransitions).toEqual({
       draft: ["active", "disabled"],
-      active: ["disabled"],
-      disabled: [],
+      active: ["draft", "disabled"],
+      disabled: ["draft"],
     });
     expect(guardrailVersionTransitions).toEqual({
       pending: ["ready"],
-      ready: [],
+      ready: ["pending"],
     });
   });
 

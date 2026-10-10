@@ -225,6 +225,20 @@
       "when": 1791590000000,
       "tag": "0031_policy_nodes",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1791600000000,
+      "tag": "0032_guardrail_operational_reset",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1791600000001,
+      "tag": "0033_imported_guardrail_drafts",
+      "breakpoints": true
     }
   ]
 }

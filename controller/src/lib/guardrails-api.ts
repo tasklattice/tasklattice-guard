@@ -108,13 +108,14 @@ function fromCurrentBinding(binding: CurrentPolicyBinding): GuardrailPolicyBindi
 
 function mapGuardrail(
   value: controllerApi.Guardrail,
-  routerCount: number,
+  routers: TrafficRouter[],
   publishedVersionCount?: number,
 ): Guardrail {
   const isDefault = value.id === DEFAULT_GUARDRAIL_ID;
   const latestValidation = value.latestValidationRun ? mapValidationRun(value.latestValidationRun) : null;
   const testedCurrent = Boolean(latestValidation && latestValidation.source_draft_version === value.draftRevision && latestValidation.status === "passed");
-  const published = value.status === "active";
+  const published = value.readiness === "ready";
+  const trafficVersions = guardrailTrafficVersions(value.id, value.baselineVersion ?? null, routers);
   const hasUnpublishedChanges = value.hasUnpublishedChanges ?? !(published && value.publishedSourceDraftRevision === value.draftRevision);
   const publishedCurrent = published && !hasUnpublishedChanges;
   return {
@@ -128,9 +129,12 @@ function mapGuardrail(
     safety_level: value.draftConfig.safetyLevel,
     output_delivery: value.draftConfig.outputDelivery,
     updated_at: value.updatedAt,
-    status: published ? (routerCount > 0 ? "protected" : "ready") : "needs_validation",
+    status: published ? "ready" : "not_ready",
+    version_summary: value.versionSummary,
+    traffic_versions: trafficVersions,
     latest_validation_run: latestValidation,
-    router_count: routerCount,
+    latest_testing_report: value.latestTestingReport ? mapValidationRun(value.latestTestingReport) : null,
+    router_count: new Set(trafficVersions.flatMap(version => version.routers.map(router => router.id))).size,
     test_case_count: value.testCaseCount,
     excluded_test_case_count: value.excludedTestCaseCount,
     excluded_test_case_ids: value.excludedTestCaseIds,
@@ -138,7 +142,7 @@ function mapGuardrail(
     tested_current: testedCurrent,
     published_current: publishedCurrent,
     has_unpublished_changes: hasUnpublishedChanges,
-    published_version_count: publishedVersionCount,
+    published_version_count: value.versionSummary?.total ?? publishedVersionCount,
     is_default: isDefault,
     system_managed: isDefault,
     local_only: isDefault,
@@ -148,12 +152,19 @@ function mapGuardrail(
   };
 }
 
-function routerCounts(values: TrafficRouter[]): Map<string, number> {
-  const result = new Map<string, number>();
-  for (const router of values) {
-    for (const id of new Set(router.endpointIds.length ? router.activeSnapshot?.routes.filter(route => route.enabled).flatMap(route => route.targets.filter(target => target.weightBps > 0).map(target => target.guardrailId)) : [])) result.set(id, (result.get(id) ?? 0) + 1);
+export function guardrailTrafficVersions(id: string, baseline: string | null, routers: TrafficRouter[]): NonNullable<Guardrail["traffic_versions"]> {
+  const versions = new Map<string, NonNullable<Guardrail["traffic_versions"]>[number]>();
+  if (baseline) versions.set(baseline, { version: baseline, baseline: true, routers: [] });
+  for (const router of routers) {
+    if (router.activeRevision === null || !router.endpointIds.length || !router.activeSnapshot) continue;
+    for (const version of new Set(router.activeSnapshot.routes.filter(route => route.enabled)
+      .flatMap(route => route.targets.filter(target => target.guardrailId === id && target.weightBps > 0).map(target => target.guardrailVersion)))) {
+      const entry = versions.get(version) ?? { version, baseline: false, routers: [] };
+      entry.routers.push({ id: router.id, name: router.name, status: router.rolloutStatus });
+      versions.set(version, entry);
+    }
   }
-  return result;
+  return [...versions.values()].sort((a, b) => b.version.localeCompare(a.version));
 }
 
 export async function getGuardrails(): Promise<Collection<Guardrail>> {
@@ -161,8 +172,7 @@ export async function getGuardrails(): Promise<Collection<Guardrail>> {
     controllerApi.listControllerGuardrails(),
     controllerApi.listControllerRouters(),
   ]);
-  const counts = routerCounts(routers.items);
-  const items = guardrails.items.map((item) => mapGuardrail(item, counts.get(item.id) ?? 0));
+  const items = guardrails.items.map((item) => mapGuardrail(item, routers.items));
   return { items, count: items.length };
 }
 
@@ -171,8 +181,7 @@ export async function getGuardrail(id: string): Promise<Guardrail> {
     controllerApi.getControllerGuardrail(id),
     controllerApi.listControllerRouters(),
   ]);
-  const count = routerCounts(routers.items).get(id) ?? 0;
-  return mapGuardrail(guardrail, count, guardrail.versions.length);
+  return mapGuardrail(guardrail, routers.items, guardrail.versions.length);
 }
 
 export async function createGuardrail(input: {
@@ -196,7 +205,7 @@ export async function createGuardrail(input: {
     },
     runtimeProfile: "auto",
   });
-  return mapGuardrail(created, 0, 0);
+  return mapGuardrail(created, [], 0);
 }
 
 export const updateGuardrail = (
@@ -221,13 +230,13 @@ async function updateGuardrailDraft(
       outputDelivery: input.output_delivery ?? current.draftConfig.outputDelivery,
     },
   });
-  return mapGuardrail(updated, 0, current.versions.length);
+  return mapGuardrail(updated, [], current.versions.length);
 }
 
 export const getGuardrailDraftChanges = (id: string) => controllerApi.requestController<import("../../shared/guardrail-draft-changes").GuardrailDraftChanges>(`/api/v1/guardrails/${encodeURIComponent(id)}/draft-changes`);
 export const discardGuardrailDraft = (id: string, expectedDraftRevision: number, expectedBaselineVersion: string) => controllerApi.requestController<controllerApi.Guardrail>(
   `/api/v1/guardrails/${encodeURIComponent(id)}/discard-draft`, { method: "POST", body: JSON.stringify({ expectedDraftRevision, expectedBaselineVersion }) },
-).then(value => mapGuardrail(value, 0));
+).then(value => mapGuardrail(value, []));
 
 export async function getGuardrailDeletionImpact(id: string): Promise<GuardrailDeletionImpact> {
   const [impact, guardrail] = await Promise.all([

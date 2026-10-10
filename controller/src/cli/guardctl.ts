@@ -384,7 +384,7 @@ async function handleExport(args: string[]) {
 async function handleImport(args: string[]) {
   const file = args.find(arg => !arg.startsWith('--'));
   if (!file || !existsSync(file)) {
-    console.log('Usage: import <file> [--versions=a,b] [--confirm]');
+    console.log('Usage: import <file> [--versions=a,b] [--restore-deleted] [--confirm]');
     return;
   }
   const form = new FormData();
@@ -397,7 +397,7 @@ async function handleImport(args: string[]) {
   }
   const preview = uploaded.data;
   console.log(`Source:    ${preview.source.name} (${preview.source.id}), key ${preview.keyId}`);
-  console.log(`Guardrail: ${preview.guardrail.name} (${preview.guardrail.id})${preview.guardrail.exists ? '' : ' — new in this environment'}`);
+  console.log(`Guardrail: ${preview.guardrail.name} (${preview.guardrail.id})${preview.guardrail.deleted ? ' — deleted; restoration required' : preview.guardrail.exists ? '' : ' — new in this environment'}`);
   // Leaves first: Policy versions that would join this Library, then the Guardrail versions.
   const policies = (preview.policies ?? []) as Array<{ id: string; version: string; state: string }>;
   for (const item of policies.filter(policy => policy.state !== 'existing')) console.log(`  Policy ${item.id}@${item.version}  ${item.state}`);
@@ -409,14 +409,22 @@ async function handleImport(args: string[]) {
   for (const blocker of preview.blockers) console.log(`Blocked: ${blocker.message}`);
   const requested = option(args, 'versions')?.split(',').filter(Boolean);
   const fresh = preview.versions.filter((item: any) => item.state === 'new' && (!requested || requested.includes(item.version)));
-  if (preview.blockers.length || !fresh.length) {
+  if (preview.blockers.length || (!fresh.length && !preview.guardrail.deleted)) {
     console.log(preview.blockers.length ? 'Nothing was imported.' : 'Nothing new to import.');
     if (preview.blockers.length) process.exitCode = 1;
     return;
   }
+  if (preview.guardrail.deleted) {
+    console.log('Restore clears previous Testing Reports and runtime data. Identity, version definitions, Test Cases and audit history are retained; every version requires new local tests and release.');
+  }
+  if (preview.guardrail.deleted && !args.includes('--restore-deleted')) {
+    console.log('This Guardrail was deleted. Re-run with --restore-deleted --confirm to restore its retained versions and import new ones. Router bindings and traffic are not restored.');
+    if (args.includes('--confirm')) process.exitCode = 1;
+    return;
+  }
   let confirmed = args.includes('--confirm');
   if (!confirmed && process.stdin.isTTY) {
-    confirmed = (await prompt(`Import ${fresh.length} version(s)? [y/N] `))?.trim().toLowerCase() === 'y';
+    confirmed = (await prompt(`${preview.guardrail.deleted ? 'Restore this Guardrail and import' : 'Import'} ${fresh.length} new version(s)? [y/N] `))?.trim().toLowerCase() === 'y';
   } else if (!confirmed) {
     console.log('Preview only. Re-run with --confirm to import.');
     return;
@@ -425,12 +433,13 @@ async function handleImport(args: string[]) {
     console.log('Nothing was imported.');
     return;
   }
-  const imported = await runApi('POST', `/api/v1/guardrail-packages/${preview.packageId}/imports`, requested ? { versions: requested } : {});
+  const imported = await runApi('POST', `/api/v1/guardrail-packages/${preview.packageId}/imports`, { ...(requested ? { versions: requested } : {}), restoreDeleted: Boolean(preview.guardrail.deleted) });
   if (!imported.ok) {
     console.error(`Import failed: ${apiError(imported)}`);
     process.exitCode = 1;
     return;
   }
+  if (imported.data.restored) console.log('Guardrail restored.');
   console.log(`Imported ${imported.data.imported.length} version(s), ${imported.data.existing.length} already present; ${imported.data.policies?.imported.length ?? 0} Policy version(s) added to the Policy Library.`);
 }
 
@@ -652,7 +661,7 @@ async function handleCommand(line: string) {
     console.log('  d | detail                   Repeat the last show with all rows');
     console.log('  export <guardrail-id> --versions=a,b [--out=<file>]');
     console.log('                               Download a signed .guardrail.zip of those versions');
-    console.log('  import <file> [--versions=a,b] [--confirm]');
+    console.log('  import <file> [--versions=a,b] [--restore-deleted] [--confirm]');
     console.log('                               Verify and preview a package; --confirm imports it');
     console.log('  exit | quit                  Close the CLI');
     return;

@@ -233,6 +233,7 @@ describe("Router detail workflow", () => {
       "Change Requests",
     ]);
     await screen.findByRole("heading", { name: "Traffic Flow" });
+    expect((await screen.findByRole("img", { name: "20261001-080000.000Z · Active" })).textContent).toBe("20261001-080000.000Z");
     expect(screen.queryByText("Published routing rules")).toBeNull();
     expect(screen.queryByText("Pinned in the published revision")).toBeNull();
     expect(screen.queryByRole("button", { name: "Save rules" })).toBeNull();

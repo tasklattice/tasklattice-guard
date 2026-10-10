@@ -12,7 +12,8 @@ import * as api from "@/lib/api";
 import * as controllerApi from "@/lib/controller-api";
 import { defaultPolicyBinding } from "@/components/policy-binding-editor";
 
-import { DeleteGuardrailSheet, EditGuardrailTestCasesSheet, EditGuardrailSheet, GuardrailFindingsView, GuardrailLoggingCard, GuardrailRuntimeView, ImmutableVersionView, TestCases } from "./guardrails";
+import { DeleteGuardrailSheet, EditGuardrailTestCasesSheet, EditGuardrailSheet, GuardrailFindingsView, GuardrailRuntimeView, ImmutableVersionView, TestCases } from "./guardrails";
+import { EditGuardrailLoggingSheet } from "@/components/edit-guardrail-logging-sheet";
 
 const VERSION_ID = "20260813-080000.000Z";
 
@@ -69,7 +70,7 @@ const deletableGuardrail = {
   safety_level: "balanced",
   output_delivery: "window_buffered",
   updated_at: "2026-08-14T08:00:00Z",
-  status: "protected",
+  status: "ready",
   latest_validation_run: null,
   router_count: 2,
   test_case_count: 0,
@@ -92,12 +93,48 @@ describe("Guardrail detail information hierarchy", () => {
       .mockResolvedValue({ guardrail_id: "guardrail-default", level: "info", updated_at: "2026-09-22T00:00:00Z",
         updated_by: null, retention_days: 30, content_capture_enabled: true });
     const save = vi.spyOn(api, "updateGuardrailLoggingSettings");
-    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><GuardrailLoggingCard guardrailId="guardrail-default" /></QueryClientProvider>);
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><EditGuardrailLoggingSheet guardrailId="guardrail-default" guardrailName="Default Guardrail" onClose={vi.fn()} /></QueryClientProvider>);
     await screen.findByText("Logging temporarily unavailable");
     fireEvent.click(screen.getByRole("button", { name: "common.retry" }));
-    await screen.findByRole("heading", { name: "guardrails.loggingTitle" });
-    expect(screen.getByRole("combobox", { name: "guardrails.loggingLevel" }).querySelector(".cds--list-box__label")?.textContent).toBe("INFO");
+    const select = await screen.findByRole("combobox", { name: "guardrails.loggingLevel" });
+    expect(select.querySelector(".cds--list-box__label")?.textContent).toBe("INFO");
     expect(load).toHaveBeenCalledWith("guardrail-default");
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it("requires explicit Save and acknowledgement for elevated logging, and preserves the selection after a failed save", async () => {
+    const settings = { guardrail_id: "g1", level: "info" as const, updated_at: "2026-10-10T00:00:00Z", updated_by: null, retention_days: 30, content_capture_enabled: true };
+    vi.spyOn(api, "getGuardrailLoggingSettings").mockResolvedValue(settings);
+    const save = vi.spyOn(api, "updateGuardrailLoggingSettings").mockRejectedValueOnce(new Error("Save temporarily unavailable")).mockResolvedValue({ ...settings, level: "debug" });
+    const close = vi.fn();
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })}><EditGuardrailLoggingSheet guardrailId="g1" guardrailName="Guardrail" onClose={close} /></QueryClientProvider>);
+    const select = await screen.findByRole("combobox", { name: "guardrails.loggingLevel" });
+    const submit = screen.getByRole("button", { name: "common.save" });
+    expect(submit.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(select);
+    fireEvent.click(screen.getByRole("option", { name: "DEBUG" }));
+    expect(save).not.toHaveBeenCalled();
+    expect(submit.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(submit);
+    await screen.findByText("Save temporarily unavailable");
+    expect(save).toHaveBeenCalledWith("g1", "debug", true);
+    expect(close).not.toHaveBeenCalled();
+    expect(select.textContent).toContain("DEBUG");
+    fireEvent.click(submit);
+    await waitFor(() => expect(close).toHaveBeenCalledOnce());
+  });
+
+  it("cancels a logging selection without updating runtime settings", async () => {
+    vi.spyOn(api, "getGuardrailLoggingSettings").mockResolvedValue({ guardrail_id: "g1", level: "trace", updated_at: "2026-10-10T00:00:00Z", updated_by: null, retention_days: 30, content_capture_enabled: true });
+    const save = vi.spyOn(api, "updateGuardrailLoggingSettings");
+    const close = vi.fn();
+    render(<QueryClientProvider client={new QueryClient()}><EditGuardrailLoggingSheet guardrailId="g1" guardrailName="Guardrail" onClose={close} /></QueryClientProvider>);
+    fireEvent.click(await screen.findByRole("combobox", { name: "guardrails.loggingLevel" }));
+    fireEvent.click(screen.getByRole("option", { name: "INFO" }));
+    expect(screen.getByRole("button", { name: "common.save" }).hasAttribute("disabled")).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "common.cancel" }));
+    expect(close).toHaveBeenCalledOnce();
     expect(save).not.toHaveBeenCalled();
   });
 

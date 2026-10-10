@@ -270,14 +270,22 @@ transaction: Policy versions join this Library (read only, owned by their
 source; a catalog version this installation does not ship is kept as a
 read-only version of that Policy), then the Guardrail and its versions. A
 Policy version with different content, or a Policy this environment or
-another source owns, rejects the whole package. Imported Guardrails are read-only, and each imported
-version arrives **pending**. In the version list, **Run tests** runs the version's
+another source owns, rejects the whole package. Imported Guardrails have the same
+editable working draft and actions as locally created Guardrails; only their
+provenance differs. Each imported version arrives **pending**. In the version list, **Run tests** runs the version's
 own test suite here against its signed Artifact, unchanged; once the latest run
 passed for exactly that content and suite, **Release** makes it **ready** and
 binds that report (`POST /api/v1/guardrails/{id}/versions/{v}/test-runs`, then
 `.../release`). Only ready versions can be routed to, made the baseline or
 exported (the Router target picker lists pending versions greyed out); a later
-failed test does not revoke a release. Routing an imported
+failed test does not revoke a release while matching Passed evidence remains.
+Administrators can permanently delete completed Testing Reports after reviewing
+the impact. The release switches to another Passed report for the same Artifact
+and frozen test suite, or returns to **pending** when none remains. Deleting the
+last proof is blocked while a Router or runtime baseline references the version
+or traffic is still settling. Frozen definitions and test cases remain intact,
+and deletion is audited. The registry shows the latest local report across draft
+and version tests; draft readiness continues to use draft tests only. Routing an imported
 version also requires a recent passing load check on every pool. A released
 imported version whose load check passed is held by the default pool, so
 **Playground** can talk to it before any Router serves it.

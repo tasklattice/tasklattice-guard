@@ -1,3 +1,4 @@
+import { guardrailTelemetryFilter } from "./guardrail-operational-data.js";
 import { routerRolloutState } from "../../shared/router-lifecycle.js";
 import { z } from "zod";
 import { isDeepStrictEqual } from "node:util";
@@ -419,7 +420,9 @@ export class TrafficRoutingService {
       this.lastRetentionAt = Date.now();
     }
     await this.db.transaction(async tx => {
+      const accepts = await guardrailTelemetryFilter(tx, events.map(event => event.guardrailId));
       for (const event of events) {
+        if (!accepts(event.guardrailId, event.decisionAt)) continue;
         if (event.decisionAt.getTime() < Date.now() - 30 * 86400000) continue;
         const complete = event.eventType === "completion";
         await tx.insert(routeAssignments).values({ decisionId: event.decisionId, callId: event.callId, routerId: event.routerId, routerRevision: event.routerRevision,

@@ -23,7 +23,7 @@ beforeEach(() => {
 });
 
 function open(published = true) {
-  const guardrail = { id: "guard-1", name: "Support", status: published ? "ready" : "needs_validation", published_current: false } as Guardrail;
+  const guardrail = { id: "guard-1", name: "Support", status: published ? "ready" : "not_ready", published_current: false } as Guardrail;
   const navigate = vi.fn();
   render(<QueryClientProvider client={new QueryClient()}><div onClick={navigate}><div onClick={event => event.stopPropagation()}><GuardrailRowActions guardrail={guardrail} /></div></div></QueryClientProvider>);
   fireEvent.click(screen.getByRole("button", { name: "routing.actions: Support" }));
@@ -52,6 +52,17 @@ describe("Guardrail release package export", () => {
     await waitFor(() => expect(downloadGuardrailPackage).toHaveBeenCalledExactlyOnceWith("guard-1", [NEWEST]));
     await waitFor(() => expect(toast.success).toHaveBeenCalled());
     expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it("exports released imported versions with the same local test evidence requirement", async () => {
+    vi.mocked(getControllerGuardrail).mockResolvedValue({ id: "guard-1", versions: [version(NEWEST, { origin: "imported" }), version(LEGACY, { origin: "imported", validationRunId: null })] } as never);
+    vi.mocked(downloadGuardrailPackage).mockResolvedValue("guard-1.guardrail.zip");
+    open();
+    const dialog = await sheet();
+    expect((within(dialog).getByRole("checkbox", { name: LEGACY }) as HTMLInputElement).disabled).toBe(true);
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: NEWEST }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "guardrailPackage.exportDownload" }));
+    await waitFor(() => expect(downloadGuardrailPackage).toHaveBeenCalledExactlyOnceWith("guard-1", [NEWEST]));
   });
 
   it("includes several versions in one package, for a first migration or a rollback target", async () => {

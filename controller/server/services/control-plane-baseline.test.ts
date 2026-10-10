@@ -55,7 +55,7 @@ function candidate() {
     configYaml: "", colangContent: "", prompts: [] as unknown[], actionBindings: [] as unknown[], dependencyManifest: [] as unknown[] };
 }
 
-function harness(reads: unknown[][], config: Partial<ControllerConfig> = {}, updateRows: Record<string, unknown[]> = {}) {
+function harness(reads: unknown[][], config: Partial<ControllerConfig> = {}, updateRows: Record<string, unknown[]> = {}, versionCount = 0) {
   const inserts: Array<{ table: string; value: Record<string, unknown> }> = [];
   const updates: Array<{ table: string; value: Record<string, unknown> }> = [];
   const builder = (rows: () => unknown[]) => {
@@ -65,11 +65,18 @@ function harness(reads: unknown[][], config: Partial<ControllerConfig> = {}, upd
     return query;
   };
   const tx = {
-    select: vi.fn(() => builder(() => {
-      const next = reads.shift();
-      if (!next) throw new Error("Unexpected database read in baseline reconciliation.");
-      return next;
-    })),
+    select: vi.fn((fields?: Record<string, unknown>) => {
+      let tableName = "";
+      const query = builder(() => {
+        if (tableName === "policy_imported_version") return [];
+        if (fields && Object.keys(fields).length === 1 && "count" in fields) return [{ count: versionCount }];
+        const next = reads.shift();
+        if (!next) throw new Error("Unexpected database read in baseline reconciliation.");
+        return next;
+      });
+      query.from = (table: Parameters<typeof getTableName>[0]) => { tableName = getTableName(table); return query; };
+      return query;
+    }),
     insert: vi.fn((table) => {
       let stored: Record<string, unknown>;
       const query = builder(() => getTableName(table) === "guardrail_artifact" ? [stored] : []);
@@ -144,6 +151,14 @@ describe("Default baseline validation gate", () => {
     expect(test.reads).toEqual([]);
     expect(test.updates).toEqual([]);
     expect(test.inserts.map((item) => item.table)).toEqual(["controller_state", "runner_pool"]);
+  });
+
+  it("keeps startup available when automatic baseline publication has no version slots", async () => {
+    const test = harness([[baseline()], [], [], [{ status: "passed", guardrailVersion: candidate().guardrailVersion, candidateArtifact: candidate() }], []], {}, {}, 10);
+    await expect(test.service.initialize()).resolves.toBeUndefined();
+    expect(test.reads).toEqual([]);
+    expect(test.inserts.some(item => item.table === "guardrail_version")).toBe(false);
+    expect(test.updates.some(item => item.table === "controller_state")).toBe(false);
   });
 
   it("publishes precisely the validated candidate for the system-owned Default", async () => {

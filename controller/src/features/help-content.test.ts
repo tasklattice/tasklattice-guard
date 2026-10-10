@@ -114,7 +114,7 @@ describe("repository documentation", () => {
       const states = ["term-guardrail", "term-router", "term-endpoint", "platform-runtime"].map(id => renderToStaticMarkup(createElement(article(locale, id).Content, { components: helpStructuralComponents }))).join(" ");
       expect(states).toContain("<svg");
       expect(states).toContain("marker-end=");
-      expect(states).toContain("protected");
+      expect(states).toContain("not_ready");
       for (const tone of ["bg-amber-50", "bg-emerald-50", "bg-red-50"]) expect(states).toContain(tone);
     }
   });

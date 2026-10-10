@@ -8,12 +8,14 @@ import type { ControllerMetrics } from "../metrics.js";
 import type { ControlPlaneService } from "../services/control-plane.js";
 import { createHttpApp } from "./app.js";
 
-function setup() {
+function setup(role = "admin") {
   const run = { id: "run-1", status: "queued" };
   const service = {
     requestValidation: vi.fn().mockResolvedValue(run),
     listValidationRuns: vi.fn().mockResolvedValue([run]),
     getValidationRun: vi.fn().mockResolvedValue(run),
+    testingReportDeletionImpact: vi.fn().mockResolvedValue({ runId: "run-1", pendingVersion: "version-1", deletable: true }),
+    deleteTestingReport: vi.fn().mockResolvedValue(undefined),
     setTestCaseExcluded: vi.fn().mockResolvedValue({ excludedTestCaseIds: ["policy/case-1"] }),
     requestPolicyValidation: vi.fn().mockResolvedValue(run),
     latestPolicyValidation: vi.fn().mockResolvedValue(run),
@@ -23,9 +25,9 @@ function setup() {
     CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters", CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/test-key.pem",
     CONTROLLER_POLICY_CATALOG_DIR: resolve("../runner/toolkit/policy_library/assets"), BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters" });
   const app = createHttpApp({ config,
-    auth: { api: { getSession: vi.fn().mockResolvedValue({ user: { id: "admin-1", role: "admin" } }) } } as unknown as ControllerAuth,
+    auth: { api: { getSession: vi.fn().mockResolvedValue({ user: { id: "admin-1", role } }) } } as unknown as ControllerAuth,
     service: service as unknown as ControlPlaneService,
-    runnerControl: { hasDefaultCompiler: () => true } as RunnerControlServer, metrics: {} as ControllerMetrics,
+    runnerControl: { hasDefaultCompiler: () => true, distributeDesiredState: vi.fn().mockResolvedValue(undefined) } as RunnerControlServer, metrics: {} as ControllerMetrics,
   });
   return { app, service, run };
 }
@@ -45,6 +47,21 @@ describe("Testing HTTP paths", () => {
     expect(detail.status).toBe(200);
     expect(await detail.json()).toEqual(run);
     expect(service.getValidationRun).toHaveBeenCalledWith("run-1");
+  });
+
+  it("reviews report deletion and requires the confirmed impact", async () => {
+    const { app, service } = setup();
+    expect((await app.request("/api/v1/test-runs/run-1/deletion-impact")).status).toBe(200);
+    const options = { method: "DELETE", headers: { "content-type": "application/json" } };
+    expect((await app.request("/api/v1/test-runs/run-1", { ...options, body: "{}" })).status).toBe(400);
+    expect(service.deleteTestingReport).not.toHaveBeenCalled();
+    expect((await app.request("/api/v1/test-runs/run-1", { ...options, body: JSON.stringify({ expectedPendingVersion: "version-1" }) })).status).toBe(204);
+    expect(service.deleteTestingReport).toHaveBeenCalledWith({ runId: "run-1", actorId: "admin-1", expectedPendingVersion: "version-1" });
+  });
+  it("does not let viewers delete reports", async () => {
+    const { app, service } = setup("viewer");
+    expect((await app.request("/api/v1/test-runs/run-1", { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedPendingVersion: null }) })).status).toBe(403);
+    expect(service.deleteTestingReport).not.toHaveBeenCalled();
   });
 
   it("updates the test scope without changing exclusion behavior", async () => {

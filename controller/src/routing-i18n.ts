@@ -1,5 +1,9 @@
 // Shared Router and path-workbench interface copy.
 export const routingEn = {
+  "publishedRevision": "Published revision",
+  "checkingRouterBindings": "Checking Endpoint bindings…",
+  "deleteRouterUnbindFirst": "This Router has {{count}} bound Endpoints. Unbind them before deleting it.",
+  "manageRouterEndpoints": "Manage Endpoints",
   "requestPages": "Change request pages",
   "viewChangeRequest": "View change request",
   "viewPublishedRevision": "View published revision",
@@ -528,6 +532,10 @@ export const routingEn = {
   "submitted": "Submitted"
 };
 export const routingZh = {
+  "publishedRevision": "发布版本",
+  "checkingRouterBindings": "正在检查 Endpoint 绑定…",
+  "deleteRouterUnbindFirst": "此 Router 仍绑定 {{count}} 个 Endpoint，请先解绑后再删除。",
+  "manageRouterEndpoints": "管理 Endpoint",
   "requestPages": "变更申请分页",
   "viewChangeRequest": "查看变更申请",
   "viewPublishedRevision": "查看已发布版本",

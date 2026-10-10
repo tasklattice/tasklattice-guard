@@ -308,24 +308,24 @@ Router deployment projections. Values on the gRPC wire are defined in Proto.
 
 | State axis | Meaning |
 | --- | --- |
-| Guardrail resource | `draft` or `active`; `disabled` is terminal after soft deletion |
-| Guardrail version | `compiling` -> `ready` or `failed`; compilation does not interrupt an already active version |
+| Guardrail resource | `draft` / `active`; soft deletion records `disabled`; confirmed package re-import restores the identity to `draft` |
+| Guardrail version | `pending` -> `ready` after local tests and Release; deletion of the final matching Passed report returns it to `pending` |
 | Validation run | `queued` -> `running` -> `passed` or `failed`; a fast result may complete directly from `queued` |
 | Endpoint | Reversible `active` / `disabled` until terminal soft deletion |
 | Runner | `syncing` / `offline` reflect convergence/connectivity; synchronized Runners report `ready`, `busy`, or `saturated` pressure |
 | Router rollout | `unpublished`, `distributing`, `active`, or `failed`, derived from publication, generation, fresh Runner ACKs, and errors |
 
-UI readiness (`needs_validation`, `ready`, `protected`), empty validation history
+UI readiness (`not_ready`, `ready`), empty validation history
 (`not_run`), and Endpoint setup progress are derived views, not writable resource
-lifecycles. Router rollout can return from `active` to `distributing` when Runner
+lifecycles. Guardrail Ready requires a retained released immutable version with a local Passed report for the same content and frozen suite; draft edits and Router references do not determine it. The registry shows version counts and exact traffic references instead of resource-wide Policy counts or the latest report. Router rollout can return from `active` to `distributing` when Runner
 heartbeats expire or replicas fall behind.
 
 Guardrail and Endpoint soft deletion checks recent traffic and telemetry
 freshness. Recent traffic requires explicit second confirmation and the exact
 resource name; the API records a reason and preserves versions, artifacts, and
-audit/runtime evidence. Historical version deletion is a separate operation
+audit evidence. Guardrail deletion permanently clears local test reports/tasks and runtime data, resetting retained versions to pending. Historical version deletion is a separate operation
 with reference, convergence, and in-flight retention checks. Router rollback
-publishes a new Revision; Guardrail rollback activates an existing ready version.
+publishes a new Revision; switching Guardrail versions means explicitly changing a Router target or the pinned runtime baseline.
 See [revision lifecycles](revision-lifecycle.md) for the exact constraints.
 
 ## Identity, secrets, and retained data

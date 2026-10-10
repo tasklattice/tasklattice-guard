@@ -32,7 +32,7 @@ const policy = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/asse
 const draft: api.Guardrail = {
   id: "guardrail-workflow", name: "Workflow Guardrail", draft_revision: 2, allowed_topics: [], restricted_topics: [],
   policy_bindings: [defaultPolicyBinding(policy)], safety_level: "balanced", output_delivery: "full_buffered",
-  updated_at: "2026-10-08T00:00:00Z", status: "needs_validation", latest_validation_run: null,
+  updated_at: "2026-10-08T00:00:00Z", status: "not_ready", latest_validation_run: null,
   router_count: 0, test_case_count: 1, excluded_test_case_count: 0, excluded_test_case_ids: [],
   tested_current: false, published_current: false, is_default: false, system_managed: false, local_only: true, coverage: [],
 };
@@ -79,21 +79,94 @@ describe("Guardrail edit, test and publish workflow", () => {
     expect(screen.queryByRole("menuitem", { name: "guardrails.draftChanges.discard" })).toBeNull();
   });
 
-  it("shows an imported Guardrail read-only: no draft, editing, testing or Playground", async () => {
+  it.each(["local", "imported"] as const)("uses the same working draft Actions and default tab for %s Guardrails", async (origin) => {
     routing.tab = undefined as unknown as string;
-    setupPage({ origin: "imported", source_id: "bank-uat", published_current: true, has_unpublished_changes: false, status: "ready" });
+    setupPage({ origin, source_id: origin === "imported" ? "bank-uat" : undefined, published_current: true, has_unpublished_changes: false, status: "ready" });
     render(wrap(<GuardrailDetailPage />));
     await screen.findByRole("heading", { name: draft.name });
-    expect(screen.getByText("guardrailPackage.importedFrom")).toBeTruthy();
+    expect(Boolean(screen.queryByText("guardrailPackage.importedFrom"))).toBe(origin === "imported");
     expect(screen.queryByRole("button", { name: "guardrails.testDraft" })).toBeNull();
     expect(screen.queryByRole("button", { name: "guardrails.publishVersion" })).toBeNull();
-    expect(screen.queryByRole("tab", { name: /guardrails.validationHistoryTab/ })).toBeNull();
-    expect(screen.getByRole("tab", { name: /guardrails.versions/ }).getAttribute("data-state")).toBe("active");
+    expect(screen.getByRole("tab", { name: /guardrails.validationHistoryTab/ })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: /guardrails.runtimeTab/ }).getAttribute("data-state")).toBe("active");
     fireEvent.click(screen.getByRole("button", { name: "routing.actions" }));
-    expect(screen.queryByRole("menuitem", { name: "guardrails.editAction" })).toBeNull();
-    expect(screen.queryByRole("menuitem", { name: "guardrails.editTestCases" })).toBeNull();
-    expect(screen.queryByRole("menuitem", { name: "guardrails.openPlayground" })).toBeNull();
-    expect(api.getTestCases).not.toHaveBeenCalled();
+    expect(screen.getByRole("menuitem", { name: "guardrails.editAction" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "guardrails.editTestCases" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "guardrails.editLogLevel" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "guardrails.deleteAction" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "guardrails.openPlayground" })).toBeTruthy();
+    expect(api.getTestCases).toHaveBeenCalledWith(draft.id);
+    expect(api.getGuardrailLoggingSettings).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("menuitem", { name: "guardrails.editLogLevel" }));
+    await screen.findByRole("dialog", { name: "guardrails.editLogLevel" });
+    expect(api.getGuardrailLoggingSettings).toHaveBeenCalledWith(draft.id);
+  });
+
+  it.each([false, true])("opens the shared Delete flow from Actions (default=%s)", async isDefault => {
+    setupPage({ is_default: isDefault, has_unpublished_changes: false });
+    const impact = vi.spyOn(api, "getGuardrailDeletionImpact").mockResolvedValue({ telemetry_fresh: true, requires_second_confirmation: false, incoming_request_count: 0, active_router_count: 0, window_minutes: 30 } as api.GuardrailDeletionImpact);
+    const remove = vi.spyOn(api, "deleteGuardrail");
+    render(wrap(<GuardrailDetailPage />));
+    await screen.findByRole("heading", { name: draft.name });
+    fireEvent.click(screen.getByRole("button", { name: "routing.actions" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "guardrails.deleteAction" }));
+    await screen.findByRole("dialog", { name: "guardrails.deleteDialogTitle" });
+    if (isDefault) {
+      expect(screen.getByText("guardrails.defaultDeleteBlocked")).toBeTruthy();
+      expect(impact).not.toHaveBeenCalled();
+    } else {
+      await screen.findByText("guardrails.noRecentTraffic");
+      expect(impact).toHaveBeenCalledWith(draft.id);
+      expect(screen.getByLabelText("guardrails.deleteReason")).toBeTruthy();
+    }
+    expect(screen.getByRole("button", { name: "guardrails.deleteConfirm" }).hasAttribute("disabled")).toBe(true);
+    expect(remove).not.toHaveBeenCalled();
+  });
+
+  it("runs the selected imported version from a direct Testing Report link and reruns that same version", async () => {
+    setupPage({ origin: "imported", source_id: "bank-uat", published_current: true, has_unpublished_changes: false, status: "ready" });
+    const versions = ["20261009-090837.640Z", "20261009-090835.526Z"].map(version => ({
+      guardrail_id: draft.id, version, created_at: "2026-10-09T09:09:10Z", status: "ready", origin: "imported", test_suite_count: 12,
+    } as api.GuardrailVersion));
+    vi.mocked(api.getGuardrailVersions).mockResolvedValue({ items: versions, count: 2 });
+    const localReport = { ...report, subject: "version" as const, guardrail_version: versions[1].version };
+    const run = vi.spyOn(api, "testGuardrailVersion").mockResolvedValue(localReport);
+    const draftRun = vi.spyOn(api, "createValidationRun");
+    render(wrap(<GuardrailDetailPage />));
+    await screen.findByRole("heading", { name: draft.name });
+    expect(screen.getByRole("tab", { name: /guardrails.validationHistoryTab/ }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByText("immutableVersions.testingDescription")).toBeTruthy();
+    expect(screen.getByText("immutableVersions.localTestingEmpty")).toBeTruthy();
+    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(screen.getByRole("tab", { name: /guardrails.versions/ }).textContent).toContain("2/10");
+    fireEvent.click(screen.getByRole("button", { name: "guardrails.runReviewed" }));
+    expect(screen.queryByRole("combobox")).toBeNull();
+    fireEvent.click(screen.getAllByRole("button", { name: "immutableVersions.runVersionTests" })[1]);
+    await waitFor(() => expect(run).toHaveBeenCalledWith(draft.id, versions[1].version));
+    await screen.findByText("immutableVersions.localTestReportDescription");
+    await waitFor(() => expect(screen.getAllByRole("dialog")).toHaveLength(1));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("immutableVersions.localTestReportDescription")).toBeTruthy();
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "validation.runAgain" }).hasAttribute("disabled")).toBe(false));
+    fireEvent.click(within(dialog).getByRole("button", { name: "validation.runAgain" }));
+    await waitFor(() => expect(run).toHaveBeenCalledTimes(2));
+    expect(run).toHaveBeenLastCalledWith(draft.id, versions[1].version);
+    expect(draftRun).not.toHaveBeenCalled();
+    expect(api.getTestCases).toHaveBeenCalledWith(draft.id);
+  });
+
+  it("lets viewers read imported reports without running tests or editing the frozen suite", async () => {
+    routing.role = "viewer";
+    setupPage({ origin: "imported", has_unpublished_changes: false });
+    vi.mocked(api.getValidationRuns).mockResolvedValue({ items: [{ ...report, subject: "version" }], count: 1 });
+    render(wrap(<GuardrailDetailPage />));
+    await screen.findByRole("heading", { name: draft.name });
+    expect(screen.getByRole("tab", { name: /guardrails.validationHistoryTab/ }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.queryByRole("combobox", { name: "immutableVersions.testVersion" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "immutableVersions.runTests" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "validation.openValidationRun" }));
+    await screen.findByRole("dialog");
+    expect(screen.queryByRole("button", { name: "validation.runAgain" })).toBeNull();
   });
 
   it("reviews changes before confirming discard and uses exactly the reviewed revision", async () => {
@@ -221,6 +294,16 @@ describe("Guardrail edit, test and publish workflow", () => {
     view.rerender(<QueryClientProvider client={client}><GuardrailDraftReviewSheet {...props} guardrail={{ ...props.guardrail, draft_revision: 4, tested_current: false }} /></QueryClientProvider>);
     expect(screen.getByRole("button", { name: "guardrails.publishVersion" }).hasAttribute("disabled")).toBe(true);
     expect(screen.getByText("guardrails.draftChangedBeforePublish")).toBeTruthy();
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it("blocks new publication at ten immutable versions, including pending versions", () => {
+    const publish = vi.spyOn(api, "publishGuardrail");
+    const versions = Array.from({ length: 10 }, (_, index) => ({ version: String(index), status: index % 2 ? "ready" : "pending" } as api.GuardrailVersion));
+    render(wrap(<GuardrailDraftReviewSheet guardrail={{ ...draft, draft_revision: 3, tested_current: true, latest_validation_run: report }} policies={[policy]} versions={versions} initialPublish onClose={vi.fn()} onEdit={vi.fn()} onChanged={vi.fn(async () => {})} onPublished={vi.fn()} />));
+    expect(screen.getByText("immutableVersions.capacityReached")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "guardrails.publishVersion" }));
+    expect(screen.getByRole("button", { name: "guardrails.publishVersion" }).hasAttribute("disabled")).toBe(true);
     expect(publish).not.toHaveBeenCalled();
   });
 

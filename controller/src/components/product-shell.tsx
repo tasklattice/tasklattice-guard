@@ -1,5 +1,5 @@
 import { AlertCircle, Inbox, Info } from "lucide-react";
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -37,7 +37,7 @@ export function PageHeader({
   );
 }
 
-export function StateBadge({ state, label }: { state: string; label?: string }) {
+export function StateBadge({ state, label, ...props }: { state: string; label?: string } & Omit<ComponentProps<"span">, "children" | "className">) {
   const { t, i18n } = useTranslation();
   const normalized = state.toLowerCase();
   const positive = ["active", "passed", "ready", "healthy", "allow", "pass", "not_matched", "enabled", "configured", "protected", "local", "success"].includes(normalized);
@@ -46,6 +46,7 @@ export function StateBadge({ state, label }: { state: string; label?: string }) 
 
   return (
     <Badge
+      {...props}
       variant={negative ? "destructive" : "outline"}
       className={cn(
         "h-5 rounded-sm px-2 text-[11px] font-medium capitalize",

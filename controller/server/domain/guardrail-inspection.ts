@@ -30,7 +30,7 @@ export function guardrailInspection(input: {
   programmablePolicies: ProgrammablePolicySnapshot[];
   testSuite: FrozenTestCase[];
 }): GuardrailInspection {
-  const builtIn = new Map(input.catalog.map(policy => [`${policy.id}@${policy.version}`, policy]));
+  const builtIn = new Map(input.catalog.flatMap(policy => [policy, ...(policy.published_versions ?? [])]).map(policy => [`${policy.id}@${policy.version}`, policy]));
   const custom = new Map(input.programmablePolicies.map(policy => [`${policy.policy_id}@${policy.version}`, policy]));
   return {
     name: input.name,

@@ -16,7 +16,7 @@ export function GuardrailRowActions({ guardrail }: { guardrail: Guardrail }) {
   const { t } = useTranslation();
   const canEdit = useAuth().user?.role === 'admin';
   const [action, setAction] = useState<'delete' | 'duplicate' | 'export' | null>(null);
-  const published = guardrail.status !== "needs_validation";
+  const published = guardrail.status === "ready";
   return <>
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -37,12 +37,15 @@ export function GuardrailRowActions({ guardrail }: { guardrail: Guardrail }) {
 
 function DeleteAction({ guardrail, close }: { guardrail: Guardrail; close: () => void }) {
   const client = useQueryClient();
-  const impact = useQuery({ queryKey: queryKeys.guardrailDeletionImpact(guardrail.id), queryFn: () => getGuardrailDeletionImpact(guardrail.id), staleTime: 0 });
+  const impact = useQuery({ queryKey: queryKeys.guardrailDeletionImpact(guardrail.id), queryFn: () => getGuardrailDeletionImpact(guardrail.id), enabled: !guardrail.is_default, staleTime: 0 });
   const mutation = useMutation({
     mutationFn: (confirmation: GuardrailDeletionConfirmation) => deleteGuardrail(guardrail.id, confirmation),
     onSuccess: async () => {
       await Promise.all([
         client.invalidateQueries({ queryKey: queryKeys.guardrails }),
+        client.invalidateQueries({ queryKey: queryKeys.guardrailVersions(guardrail.id) }),
+        client.invalidateQueries({ queryKey: queryKeys.allValidationRuns }),
+        client.invalidateQueries({ queryKey: queryKeys.runtimeEvents }),
         client.invalidateQueries({ queryKey: ['routing-guardrails'] }),
         client.invalidateQueries({ queryKey: ['traffic-routers'] }),
         client.invalidateQueries({ queryKey: queryKeys.routers }),
