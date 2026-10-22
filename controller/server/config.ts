@@ -132,6 +132,7 @@ const environmentSchema = z.object({
   BETTER_AUTH_SECRET: z.string().min(32),
   BETTER_AUTH_TRUSTED_ORIGINS: z.string().default("http://localhost:8080,http://localhost:8092"),
   BETTER_AUTH_MIN_PASSWORD_LENGTH: z.coerce.number().int().min(5).max(128).default(12),
+  CONTROLLER_MOCK_SSO_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
   CONTROLLER_BOOTSTRAP_ADMIN_EMAIL: z.string().email().optional(),
   CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD: z.string().min(1).optional(),
   CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD_HASH: z.string().regex(bootstrapPasswordHashPattern, "Expected a Better Auth scrypt password hash.").optional(),
@@ -164,6 +165,8 @@ const environmentSchema = z.object({
   if (value.CONTROLLER_GRPC_TRANSPORT === "plaintext" && tlsPaths.some(Boolean)) {
     context.addIssue({ code: "custom", message: "Plaintext gRPC cannot be combined with TLS certificate paths." });
   }
+  const publicHostname = new URL(value.CONTROLLER_PUBLIC_URL).hostname;
+  const isLoopback = ["localhost", "127.0.0.1", "[::1]"].includes(publicHostname);
   if (value.NODE_ENV === "production" && !value.CONTROLLER_METRICS_TOKEN) {
     context.addIssue({
       code: "custom",
@@ -172,6 +175,14 @@ const environmentSchema = z.object({
     });
   }
 
+  const localBind = ["localhost", "127.0.0.1", "::1"].includes(value.CONTROLLER_HTTP_HOST);
+  if (value.CONTROLLER_MOCK_SSO_ENABLED && (value.NODE_ENV === "production" || !isLoopback || !localBind)) {
+    context.addIssue({
+      code: "custom",
+      path: ["CONTROLLER_MOCK_SSO_ENABLED"],
+      message: "Mock SSO is available only outside production with a loopback Controller URL and HTTP bind address.",
+    });
+  }
   if (Boolean(value.CONTROLLER_BOOTSTRAP_ADMIN_EMAIL) !== Boolean(value.CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD || value.CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD_HASH)) {
     context.addIssue({
       code: "custom",
@@ -278,6 +289,7 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env) {
     betterAuthSecret: parsed.BETTER_AUTH_SECRET,
     trustedOrigins: parsed.BETTER_AUTH_TRUSTED_ORIGINS.split(",").map((item) => item.trim()).filter(Boolean),
     minPasswordLength: parsed.BETTER_AUTH_MIN_PASSWORD_LENGTH,
+    mockSsoEnabled: parsed.CONTROLLER_MOCK_SSO_ENABLED,
     bootstrapAdmin: parsed.CONTROLLER_BOOTSTRAP_ADMIN_EMAIL && (parsed.CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD || parsed.CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD_HASH)
       ? {
           email: parsed.CONTROLLER_BOOTSTRAP_ADMIN_EMAIL,

@@ -1,6 +1,7 @@
 import { and, asc, count, desc, eq, gte, isNotNull, isNull, lte, sql, type SQL } from "drizzle-orm";
 import { auditQuerySchema, type AuditQuery } from "../../shared/audit-query.js";
 import type { ControllerDatabase } from "../db/client.js";
+import { currentTenantId } from "./tenant-context.js";
 import { boundedRead } from "../db/read-budget.js";
 import { auditEvents } from "../db/schema.js";
 
@@ -8,6 +9,8 @@ export async function queryAuditEvents(db: ControllerDatabase, input: Partial<Au
   const query = auditQuerySchema.parse(input);
   const before = query.before ?? new Date().toISOString();
   const conditions: SQL[] = [lte(auditEvents.occurredAt, new Date(before))];
+  const tenantId = currentTenantId();
+  if (tenantId) conditions.push(eq(auditEvents.tenantId, tenantId));
   if (query.window !== "all") {
     const duration = { "24h": 86_400_000, "7d": 604_800_000, "30d": 2_592_000_000 }[query.window];
     conditions.push(gte(auditEvents.occurredAt, new Date(Date.parse(before) - duration)));

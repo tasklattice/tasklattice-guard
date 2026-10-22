@@ -4,6 +4,8 @@ import { Pool } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { sql } from 'drizzle-orm';
 import { queryRuntimeMetrics } from './runtime-metrics.js';
+import { loadConfig } from '../config.js';
+import type { ControllerDatabase } from '../db/client.js';
 import { ControlPlaneService } from './control-plane.js';
 import { boundedRead } from '../db/read-budget.js';
 
@@ -11,7 +13,11 @@ import { boundedRead } from '../db/read-budget.js';
 describe.skipIf(!process.env.TEST_DATABASE_URL)('bounded runtime observability (PostgreSQL)', () => {
   const pool = new Pool({ connectionString: process.env.TEST_DATABASE_URL, max: 1 });
   const db = drizzle(pool);
-  const service = Object.assign(Object.create(ControlPlaneService.prototype), { db, runtimeLogEncryptionKey: null }) as ControlPlaneService;
+  const config = loadConfig({ NODE_ENV: 'test', CONTROLLER_DATABASE_URL: process.env.TEST_DATABASE_URL ?? 'postgresql://unused:unused@localhost/unused',
+    CONTROLLER_RUNNER_TOKEN: 'runner-token-that-is-at-least-32-characters', CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: '/tmp/unused-signing-key.pem',
+    BETTER_AUTH_SECRET: 'better-auth-secret-that-is-at-least-32-characters' });
+  const makeService = () => new ControlPlaneService(db as ControllerDatabase, config);
+  const service = makeService();
   beforeAll(async () => {
     for (const name of ['runtime_event','guardrail','traffic_router','endpoint','guardrail_validation_run','route_assignment']) {
       await db.execute(sql.raw(`CREATE TEMP TABLE ${name} (LIKE public.${name} INCLUDING DEFAULTS)`));
@@ -164,7 +170,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('bounded runtime observability (
       ('quality-4',now(),'allowed-request','runner','quality','incoming','allow',30,'{}'),
       ('quality-old',now()-interval '2 days','old-failure','runner','quality','incoming','error',9999,'{}'),
       ('idle-old',now()-interval '8 days','idle-old','runner','idle','incoming','allow',99,'{}')`);
-    const freshService = Object.assign(Object.create(ControlPlaneService.prototype), { db }) as ControlPlaneService;
+    const freshService = makeService();
     const result = await freshService.runtimeEndpointActivity();
     expect(result.items.find(item => item.id === 'quality')).toMatchObject({ request_count: 3, error_count: 1, detection_p95_ms: 90 });
     expect(result.items.find(item => item.id === 'idle')).toMatchObject({ request_count: 0, error_count: 0, detection_p95_ms: null });

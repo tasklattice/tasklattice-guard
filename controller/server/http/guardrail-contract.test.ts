@@ -83,7 +83,7 @@ describe("Guardrail HTTP contract", () => {
 
 function appWith(createGuardrail: ReturnType<typeof vi.fn>) {
   const auth = {
-    api: { getSession: vi.fn().mockResolvedValue({ user: { id: "admin-1", role: "user" } }) },
+    api: { getSession: vi.fn().mockResolvedValue({ user: { id: "admin-1", role: "user", tenantId: "tenantA" } }) },
     handler: vi.fn(),
   } as unknown as ControllerAuth;
   return createHttpApp({
@@ -98,14 +98,14 @@ function appWith(createGuardrail: ReturnType<typeof vi.fn>) {
 it("authorizes and validates mode changes before the independent Runner dispatch", async () => {
   const update = vi.fn().mockResolvedValue({ mode: "monitor", appliedMode: "enforce", generation: 5 });
   const distributeProtectionModes = vi.fn();
-  const auth = { api: { getSession: vi.fn().mockResolvedValue({ user: { id: "admin-1", role: "viewer" } }) }, handler: vi.fn() };
+  const auth = { api: { getSession: vi.fn().mockResolvedValue({ user: { id: "admin-1", role: "viewer", tenantId: "tenantA" } }) }, handler: vi.fn() };
   const app = createHttpApp({ config, auth: auth as unknown as ControllerAuth,
     service: { protectionModes: { update } } as unknown as ControlPlaneService,
     runnerControl: { distributeProtectionModes } as unknown as RunnerControlServer, metrics: {} as ControllerMetrics });
   const request = (body: unknown) => app.request("/api/v1/guardrails/guard-1/protection-mode", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   expect((await request({ mode: "bypass", expectedGeneration: 4 })).status).toBe(403);
   expect(update).not.toHaveBeenCalled();
-  auth.api.getSession.mockResolvedValue({ user: { id: "admin-1", role: "user" } });
+  auth.api.getSession.mockResolvedValue({ user: { id: "admin-1", role: "user", tenantId: "tenantA" } });
   for (const body of [{ mode: "ready", expectedGeneration: 4 }, { mode: "bypass" }, { mode: "bypass", expectedGeneration: -1 }, { mode: "monitor", expectedGeneration: 4, reason: "x".repeat(501) }]) {
     expect((await request(body)).status).toBe(400);
   }

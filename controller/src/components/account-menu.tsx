@@ -66,7 +66,7 @@ export function AccountMenu({
             <>
               <span className="min-w-0 flex-1 text-left">
                 <strong className="block truncate text-xs font-semibold text-sidebar-foreground">{displayName}</strong>
-                <span className="mt-0.5 block truncate text-[10px] text-sidebar-foreground/50">{t("account.localAccount")}</span>
+                <span className="mt-0.5 block truncate text-[10px] text-sidebar-foreground/50">{user?.tenant_id ? t("account.tenantLabel", { tenant: user.tenant_id }) : t("sidebar.platformIdentity")}</span>
               </span>
               <ChevronDown className="size-3.5 text-sidebar-foreground/45 transition-transform group-data-[state=open]:rotate-180" />
             </>
@@ -82,6 +82,7 @@ export function AccountMenu({
           <span className="min-w-0">
             <strong className="block truncate text-sm font-semibold text-foreground">{displayName}</strong>
             <span className="mt-0.5 block truncate text-xs text-muted-foreground">{user?.email}</span>
+            <span className="mt-0.5 block truncate text-xs text-muted-foreground">{user?.tenant_id ? t("account.tenantLabel", { tenant: user.tenant_id }) : t("sidebar.platformIdentity")}</span>
           </span>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />

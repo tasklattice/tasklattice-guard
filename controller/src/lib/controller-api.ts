@@ -49,6 +49,7 @@ export type DiscoveredProviderModels = {
 };
 
 export type ModelDefinition = {
+  tenantId?: string | null;
   protocolEditable?: boolean;
   connectionStatus?: "pending" | "validated" | "failed";
   connectionMessage?: string | null;
@@ -136,6 +137,7 @@ export type GuardrailDraftConfig = {
 };
 
 export type Guardrail = {
+  tenantId?: string;
   monthlyCost?: import("../../shared/model-pricing").GuardrailMonthlyCost;
   protection?: import("../../shared/protection-mode").ProtectionModeSettings;
   copyOrigin?: { sourceGuardrailId: string; sourceName: string; sourceVersion: string | null; sourceDraftRevision: number | null; copiedAt: string; contentDigest: string } | null;
@@ -290,6 +292,7 @@ export type GuardrailPlanPreview = {
 };
 
 export type Endpoint = {
+  tenantId?: string;
   id: string;
   name: string;
   adapter: EndpointAdapterId;

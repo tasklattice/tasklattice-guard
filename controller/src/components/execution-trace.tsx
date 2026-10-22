@@ -69,4 +69,3 @@ function TraceBranch({ node }: { node: TraceNode }) {
     {children.length && expanded ? <ol className="ml-3 border-l border-border pl-2 sm:ml-5 sm:pl-3 [&>li]:before:absolute [&>li]:before:top-6 [&>li]:before:-left-2 [&>li]:before:w-2 [&>li]:before:border-t [&>li]:before:border-border sm:[&>li]:before:-left-3 sm:[&>li]:before:w-3">{children.map((child, index) => <TraceBranch key={`${child.step.id}:${index}`} node={child} />)}</ol> : null}
   </li>;
 }
-

@@ -12,8 +12,10 @@ import { RunnerControlServer } from "./control-channel/control-server.js";
 import { ControlPlaneService } from "./services/control-plane.js";
 import { ControllerMetrics } from "./metrics.js";
 import { ensureBootstrapAdmin, ensureBootstrapUser } from "./bootstrap.js";
+import { ensureMockSsoUsers } from "./mock-sso.js";
 import { OpenAICompatiblePlaygroundModel, RunnerPlaygroundClient } from "./playground/service.js";
 import { ModelConfigurationService } from "./model-config/service.js";
+import { TenantShareService } from "./services/tenant-shares.js";
 
 const config = loadConfig();
 const { db, pool } = createDatabase(config);
@@ -37,6 +39,10 @@ if (config.bootstrapUser) {
   const status = await ensureBootstrapUser({ auth, db, ...config.bootstrapUser });
   if (status === "created") process.stdout.write(`Created Better Auth bootstrap user ${config.bootstrapUser.email}.\n`);
 }
+if (config.mockSsoEnabled) {
+  const identities = await ensureMockSsoUsers({ auth, db, config });
+  process.stdout.write(`Mock SSO ready for ${identities.map((identity) => identity.tenantId).join(", ")}.\n`);
+}
 const metrics = new ControllerMetrics();
 const runnerControl = new RunnerControlServer(config, service, metrics, models);
 await runnerControl.start();
@@ -55,6 +61,7 @@ const app = createHttpApp({
   config,
   auth,
   accessTokens: new AccessTokenService(db),
+  tenantShares: new TenantShareService(db),
   service,
   runnerControl,
   metrics,

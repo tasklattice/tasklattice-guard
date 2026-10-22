@@ -111,6 +111,14 @@ import {
   publicEndpointCredentials,
   revokeEndpointCredential,
 } from "./endpoint-credentials.js";
+import {
+  assertResourceReadAccess,
+  assertResourceWriteAccess,
+  currentTenantId,
+  resourceReadPredicate,
+  resourceWritePredicate,
+  tenantOwnerForCreate,
+} from "./tenant-context.js";
 
 type RunnerRegistration = {
   runnerId: string;
@@ -244,8 +252,12 @@ export class ControlPlaneService {
   }
 
   async listPolicies() {
-    const custom = await this.db.select().from(policyRecords).orderBy(asc(policyRecords.name), asc(policyRecords.id));
-    const versions = await this.db.select().from(policyVersions).orderBy(desc(policyVersions.version));
+    const custom = await this.db.select().from(policyRecords)
+      .where(resourceReadPredicate("policy", policyRecords.id, policyRecords.tenantId))
+      .orderBy(asc(policyRecords.name), asc(policyRecords.id));
+    const versions = custom.length ? await this.db.select().from(policyVersions)
+      .where(inArray(policyVersions.policyId, custom.map((item) => item.id)))
+      .orderBy(desc(policyVersions.version)) : [];
     const versionsByPolicy = new Map<string, typeof versions>();
     for (const version of versions) {
       const items = versionsByPolicy.get(version.policyId) ?? [];
@@ -265,7 +277,7 @@ export class ControlPlaneService {
    */
   private async catalogPolicies(id?: string, db: Pick<ControllerDatabase, "select"> = this.db): Promise<PolicyDto[]> {
     const rows = await db.select().from(policyImportedVersions)
-      .where(id ? eq(policyImportedVersions.policyId, id) : undefined);
+      .where(and(id ? eq(policyImportedVersions.policyId, id) : undefined, resourceReadPredicate("policy", policyImportedVersions.policyId, policyImportedVersions.tenantId)));
     const imported = new Map<string, PolicyDto[]>();
     for (const row of rows) {
       const compiled = row.definition.definition
@@ -293,7 +305,9 @@ export class ControlPlaneService {
   async getPolicy(id: string) {
     const [builtIn] = await this.catalogPolicies(id);
     if (builtIn) return builtIn;
-    const [record] = await this.db.select().from(policyRecords).where(eq(policyRecords.id, id));
+    const [record] = await this.db.select().from(policyRecords).where(and(
+      eq(policyRecords.id, id), resourceReadPredicate("policy", policyRecords.id, policyRecords.tenantId),
+    ));
     if (!record) throw new NotFoundError("Policy", id);
     const versions = await this.db.select().from(policyVersions)
       .where(eq(policyVersions.policyId, id)).orderBy(desc(policyVersions.version));
@@ -313,6 +327,7 @@ export class ControlPlaneService {
     const [created] = await this.db.transaction(async (tx) => {
       const rows = await tx.insert(policyRecords).values({
         id,
+        tenantId: tenantOwnerForCreate(),
         name: input.name,
         description: input.description,
         source: "custom",
@@ -337,8 +352,11 @@ export class ControlPlaneService {
     draft?: ProgrammablePolicyDraft | undefined;
     actorId: string;
   }) {
+    await assertResourceWriteAccess(this.db, "policy", input.id);
     const [updated] = await this.db.transaction(async (tx) => {
-      const [current] = await tx.select().from(policyRecords).where(eq(policyRecords.id, input.id)).for("update");
+      const [current] = await tx.select().from(policyRecords).where(and(
+        eq(policyRecords.id, input.id), resourceWritePredicate(policyRecords.tenantId),
+      )).for("update");
       if (!current) throw new NotFoundError("Policy", input.id);
       const draft = input.draft ? programmablePolicyDraftSchema.parse(input.draft) : current.draft;
       this.validatePolicyDraft(input.id, draft, false);
@@ -363,6 +381,7 @@ export class ControlPlaneService {
   }
 
   async deletePolicy(input: { id: string; actorId: string }): Promise<void> {
+    await assertResourceWriteAccess(this.db, "policy", input.id);
     await this.db.transaction(async (tx) => {
       if (this.policyCatalog().get(input.id)) throw new ValidationError("Built-in Policies are system managed and cannot be deleted.");
       await advisoryTransactionLock(tx, `policy-resource:${input.id}`);
@@ -377,7 +396,9 @@ export class ControlPlaneService {
         .where(sql`${guardrailVersions.plan}->'policy_bindings' @> ${JSON.stringify([{ policy_id: input.id }])}::jsonb`).limit(5);
       if (versionUses.length) {
         throw new ConflictError(
-          `Policy ${name} is used by Guardrail versions: ${versionUses.map((item) => `${item.name} ${item.version}`).join(", ")}. Delete those versions first.`,
+          currentTenantId()
+            ? `Policy ${name} is used by Guardrail versions. Delete those versions first.`
+            : `Policy ${name} is used by Guardrail versions: ${versionUses.map((item) => `${item.name} ${item.version}`).join(", ")}. Delete those versions first.`,
           "policy_in_use",
         );
       }
@@ -386,7 +407,7 @@ export class ControlPlaneService {
       const referenced = activeGuardrails.filter((item) => normalizeGuardrailDraft(item.draftConfig).policyBindings.some((binding) => binding.policyId === input.id));
       if (referenced.length) {
         throw new ConflictError(
-          `Policy ${name} is still referenced by Guardrail drafts: ${referenced.map((item) => item.name).join(", ")}.`,
+          `Policy ${name} is still referenced by Guardrail drafts.`,
           "policy_in_use",
         );
       }
@@ -394,7 +415,10 @@ export class ControlPlaneService {
       const profileUses = profiles.filter(profile => profile.definition.policies.some(binding => binding.policyId === input.id)
         || profile.definition.optionalPolicyIds.includes(input.id));
       if (profileUses.length) throw new ConflictError(
-        `Policy ${name} is still referenced by Profiles: ${profileUses.map(profile => profile.definition.name).join(", ")}.`, "policy_in_use",
+        currentTenantId()
+          ? `Policy ${name} is still referenced by Profiles.`
+          : `Policy ${name} is still referenced by Profiles: ${profileUses.map(profile => profile.definition.name).join(", ")}.`,
+        "policy_in_use",
       );
       const [activeRun] = await tx.select({ id: policyResourceValidations.id }).from(policyResourceValidations)
         .where(and(eq(policyResourceValidations.policyId, input.id), inArray(policyResourceValidations.status, ["queued", "running"]))).limit(1);
@@ -432,6 +456,7 @@ export class ControlPlaneService {
   }
 
   async requestPolicyValidation(input: { id: string; actorId: string; compilerAvailable: boolean }) {
+    await assertResourceWriteAccess(this.db, "policy", input.id);
     if (!input.compilerAvailable) {
       throw new ConflictError("A healthy GuardRails 0 Runner is required to validate Policy drafts.", "default_runner_unavailable");
     }
@@ -477,6 +502,7 @@ export class ControlPlaneService {
   }
 
   async getPolicyValidation(id: string, runId: string) {
+    await assertResourceReadAccess(this.db, "policy", id);
     const [run] = await this.db.select().from(policyValidationRuns).where(and(eq(policyValidationRuns.policyId, id), eq(policyValidationRuns.id, runId)));
     if (!run) throw new NotFoundError("Policy validation run", runId);
     return policyValidationPayload(run);
@@ -490,6 +516,7 @@ export class ControlPlaneService {
   }
 
   async publishPolicy(input: { id: string; actorId: string; expectedDraftRevision?: number }) {
+    await assertResourceWriteAccess(this.db, "policy", input.id);
     return this.db.transaction(async (tx) => {
       const [record] = await tx.select().from(policyRecords).where(eq(policyRecords.id, input.id)).for("update");
       if (!record) throw new NotFoundError("Policy", input.id);
@@ -529,7 +556,9 @@ export class ControlPlaneService {
   }
 
   async listGuardrails() {
-    const rows = await this.db.select().from(guardrails).where(isNull(guardrails.deletedAt)).orderBy(desc(guardrails.updatedAt));
+    const rows = await this.db.select().from(guardrails).where(and(
+      isNull(guardrails.deletedAt), resourceReadPredicate("guardrail", guardrails.id, guardrails.tenantId),
+    )).orderBy(desc(guardrails.updatedAt));
     const monthly = await this.pricing.monthlyCosts(rows.map(row => row.id));
     return Promise.all(rows.map(async row => ({ ...await this.guardrailSummary(row), monthlyCost: monthly.get(row.id)! })));
   }
@@ -538,14 +567,16 @@ export class ControlPlaneService {
   async guardrailVersionTestSuite(guardrailId: string, version: string) {
     const [row] = await this.db.select({ testSuite: guardrailVersions.testSuite }).from(guardrailVersions)
       .innerJoin(guardrails, and(eq(guardrails.id, guardrailVersions.guardrailId), isNull(guardrails.deletedAt)))
-      .where(and(eq(guardrailVersions.guardrailId, guardrailId), eq(guardrailVersions.version, version)));
+      .where(and(eq(guardrailVersions.guardrailId, guardrailId), eq(guardrailVersions.version, version), resourceReadPredicate("guardrail", guardrails.id, guardrails.tenantId)));
     if (!row) throw new NotFoundError("Guardrail version", `${guardrailId}@${version}`);
     const items = row.testSuite ?? [];
     return { guardrailId, version, recorded: row.testSuite !== null, digest: row.testSuite ? testSuiteDigest(row.testSuite) : null, items, count: items.length };
   }
 
   async getGuardrail(id: string) {
-    const [guardrail] = await this.db.select().from(guardrails).where(and(eq(guardrails.id, id), isNull(guardrails.deletedAt)));
+    const [guardrail] = await this.db.select().from(guardrails).where(and(
+      eq(guardrails.id, id), isNull(guardrails.deletedAt), resourceReadPredicate("guardrail", guardrails.id, guardrails.tenantId),
+    ));
     if (!guardrail) throw new NotFoundError("Guardrail", id);
     const versions = await this.db.select().from(guardrailVersions)
       .where(eq(guardrailVersions.guardrailId, id)).orderBy(desc(guardrailVersions.version));
@@ -576,6 +607,7 @@ export class ControlPlaneService {
     const [guardrail] = await this.db.select().from(guardrails).where(and(
       eq(guardrails.id, id),
       isNull(guardrails.deletedAt),
+      resourceReadPredicate("guardrail", guardrails.id, guardrails.tenantId),
     ));
     if (!guardrail) throw new NotFoundError("Guardrail", id);
     const candidateVersion = guardrailVersionId();
@@ -658,6 +690,7 @@ export class ControlPlaneService {
     const [created] = await this.db.transaction(async (tx) => {
       const rows = await tx.insert(guardrails).values({
         id,
+        tenantId: tenantOwnerForCreate(),
         name: input.name,
         draftConfig,
         runtimeProfile: input.runtimeProfile,
@@ -684,7 +717,10 @@ export class ControlPlaneService {
         if (existing.copyOrigin?.requestDigest !== requestDigest) throw new ConflictError("Idempotency key was used for a different copy request.", "duplicate_key_conflict");
         return existing.id;
       }
-      const [source] = await tx.select().from(guardrails).where(and(eq(guardrails.id, input.id), isNull(guardrails.deletedAt))).for("share");
+      const [source] = await tx.select().from(guardrails).where(and(
+        eq(guardrails.id, input.id), isNull(guardrails.deletedAt),
+        resourceReadPredicate("guardrail", guardrails.id, guardrails.tenantId),
+      )).for("share");
       if (!source) throw new NotFoundError("Guardrail", input.id);
       let snapshot: NonNullable<typeof guardrailVersions.$inferSelect.sourceSnapshot>;
       let sourceVersion = input.sourceVersion;
@@ -699,7 +735,7 @@ export class ControlPlaneService {
       }
       const copiedId = randomUUID();
       const copyOrigin = { sourceGuardrailId: input.id, sourceName: source.name, sourceVersion: sourceVersion ?? null, sourceDraftRevision: input.sourceDraftRevision ?? null, copiedAt: new Date().toISOString(), contentDigest: createHash("sha256").update(canonicalJson(snapshot)).digest("hex"), requestDigest };
-      await tx.insert(guardrails).values({ id: copiedId, name: input.name, draftConfig: snapshot.draftConfig, runtimeProfile: snapshot.runtimeProfile, loggingLevel: snapshot.loggingLevel as "info" | "debug" | "trace", excludedTestCaseIds: snapshot.excludedTestCaseIds, copyOrigin, duplicateKey });
+      await tx.insert(guardrails).values({ id: copiedId, tenantId: tenantOwnerForCreate(), name: input.name, draftConfig: snapshot.draftConfig, runtimeProfile: snapshot.runtimeProfile, loggingLevel: snapshot.loggingLevel as "info" | "debug" | "trace", excludedTestCaseIds: snapshot.excludedTestCaseIds, copyOrigin, duplicateKey });
       // Case IDs are scoped by Guardrail; preserve IDs so exclusion/override references remain exact.
       if (snapshot.testCases?.length) await tx.insert(testCases).values(snapshot.testCases.map(c => ({ ...c, guardrailId: copiedId, updatedAt: new Date() })));
       else await this.syncGeneratedTestCases(tx, copiedId, snapshot.draftConfig);
@@ -717,6 +753,7 @@ export class ControlPlaneService {
     runtimeProfile?: string | undefined;
     expectedDraftRevision?: number | undefined;
   }) {
+    await assertResourceWriteAccess(this.db, "guardrail", input.id);
     const updated = await this.db.transaction(async (tx) => {
       const [existing] = await tx.select().from(guardrails).where(and(
         eq(guardrails.id, input.id), isNull(guardrails.deletedAt),
@@ -755,7 +792,7 @@ export class ControlPlaneService {
 
   async guardrailDraftChanges(id: string): Promise<GuardrailDraftChanges> {
     return this.db.transaction(async tx => {
-      const [guardrail] = await tx.select().from(guardrails).where(and(eq(guardrails.id, id), isNull(guardrails.deletedAt))).for("share");
+      const [guardrail] = await tx.select().from(guardrails).where(and(eq(guardrails.id, id), isNull(guardrails.deletedAt), resourceReadPredicate("guardrail", guardrails.id, guardrails.tenantId))).for("share");
       if (!guardrail) throw new NotFoundError("Guardrail", id);
       const baseline = await this.lastPublishedVersion(tx, id);
       const cases = await tx.select().from(testCases).where(eq(testCases.guardrailId, id));
@@ -775,7 +812,7 @@ export class ControlPlaneService {
 
   async discardGuardrailDraft(input: { id: string; actorId: string; expectedDraftRevision: number; expectedBaselineVersion: string }) {
     const restored = await this.db.transaction(async tx => {
-      const [guardrail] = await tx.select().from(guardrails).where(and(eq(guardrails.id, input.id), isNull(guardrails.deletedAt))).for("update");
+      const [guardrail] = await tx.select().from(guardrails).where(and(eq(guardrails.id, input.id), isNull(guardrails.deletedAt), resourceWritePredicate(guardrails.tenantId))).for("update");
       if (!guardrail) throw new NotFoundError("Guardrail", input.id);
       if (guardrail.draftRevision !== input.expectedDraftRevision || (await this.lastPublishedVersion(tx, input.id))?.version !== input.expectedBaselineVersion) {
         throw new ConflictError("The draft or published baseline changed. Review the changes again before discarding.", "guardrail_draft_conflict");
@@ -804,12 +841,18 @@ export class ControlPlaneService {
     actorId: string;
     expectedDraftRevision?: number;
   }) {
+    await assertResourceWriteAccess(this.db, "guardrail", input.guardrailId);
     return this.db.transaction(async (tx) => {
+      // Share revocation checks published Policy references under the same lock.
+      await advisoryTransactionLock(tx, "traffic-router-bindings");
       const [guardrail] = await tx.select().from(guardrails).where(and(
         eq(guardrails.id, input.guardrailId), isNull(guardrails.deletedAt),
       )).for("update");
       if (!guardrail) throw new NotFoundError("Guardrail", input.guardrailId);
       if (input.expectedDraftRevision !== undefined && input.expectedDraftRevision !== guardrail.draftRevision) throw new ConflictError("Guardrail draft changed. Review the current draft before publishing.", "guardrail_draft_conflict");
+      // A passing candidate does not retain a revoked Policy grant. Publication
+      // rechecks live references under the same lock used by share revocation.
+      if (currentTenantId()) await this.validateGuardrailDraft(normalizeGuardrailDraft(guardrail.draftConfig), tx);
       const [latestValidation] = await tx.select().from(validationRuns).where(and(
         eq(validationRuns.guardrailId, input.guardrailId),
         eq(validationRuns.subject, "draft"),
@@ -855,6 +898,7 @@ export class ControlPlaneService {
 
   /** A version can be deleted once no routing references remain and Runners have stopped serving it. */
   async deleteGuardrailVersion(input: { guardrailId: string; version: string; actorId: string }) {
+    await assertResourceWriteAccess(this.db, "guardrail", input.guardrailId);
     await this.db.transaction(async tx => {
       // Same lock ordering as composed Router publication: bindings, then resource.
       await advisoryTransactionLock(tx, "traffic-router-bindings");
@@ -882,7 +926,7 @@ export class ControlPlaneService {
   }
 
   private async loadGuardrailVersion(tx: Transaction, guardrailId: string, version: string, lock = false) {
-    const query = tx.select().from(guardrails).where(and(eq(guardrails.id, guardrailId), isNull(guardrails.deletedAt)));
+    const query = tx.select().from(guardrails).where(and(eq(guardrails.id, guardrailId), isNull(guardrails.deletedAt), lock ? resourceWritePredicate(guardrails.tenantId) : resourceReadPredicate("guardrail", guardrails.id, guardrails.tenantId)));
     const [guardrail] = lock ? await query.for("update") : await query;
     if (!guardrail) throw new NotFoundError("Guardrail", guardrailId);
     const [record] = await tx.select().from(guardrailVersions).where(and(eq(guardrailVersions.guardrailId, guardrailId), eq(guardrailVersions.version, version)));
@@ -914,7 +958,10 @@ export class ControlPlaneService {
 
   async listTestCases(guardrailId: string) {
     const [guardrail] = await this.db.select({ excludedTestCaseIds: guardrails.excludedTestCaseIds, draftConfig: guardrails.draftConfig })
-      .from(guardrails).where(and(eq(guardrails.id, guardrailId), isNull(guardrails.deletedAt)));
+      .from(guardrails).where(and(
+        eq(guardrails.id, guardrailId), isNull(guardrails.deletedAt),
+        resourceReadPredicate("guardrail", guardrails.id, guardrails.tenantId),
+      ));
     if (!guardrail) throw new NotFoundError("Guardrail", guardrailId);
     const excluded = new Set(guardrail.excludedTestCaseIds);
     const rows = await this.db.select().from(testCases).where(eq(testCases.guardrailId, guardrailId))
@@ -936,6 +983,7 @@ export class ControlPlaneService {
     groundingSources: string[];
     expectedReasoningResult: string | null;
   }) {
+    await assertResourceWriteAccess(this.db, "guardrail", input.guardrailId);
     const id = `custom-${randomUUID()}`;
     const created = await this.db.transaction(async (tx) => {
       const [guardrail] = await tx.select().from(guardrails).where(and(
@@ -973,8 +1021,9 @@ export class ControlPlaneService {
   }
 
   async deleteTestCase(input: { guardrailId: string; caseId: string; actorId: string }): Promise<void> {
+    await assertResourceWriteAccess(this.db, "guardrail", input.guardrailId);
     await this.db.transaction(async (tx) => {
-      const [guardrail] = await tx.select().from(guardrails).where(and(eq(guardrails.id, input.guardrailId), isNull(guardrails.deletedAt))).for("update");
+      const [guardrail] = await tx.select().from(guardrails).where(and(eq(guardrails.id, input.guardrailId), isNull(guardrails.deletedAt), resourceWritePredicate(guardrails.tenantId))).for("update");
       if (!guardrail) throw new NotFoundError("Guardrail", input.guardrailId);
       const [item] = await tx.select().from(testCases).where(and(eq(testCases.guardrailId, input.guardrailId), eq(testCases.id, input.caseId))).limit(1).for("update");
       if (!item) throw new NotFoundError("Test Case", input.caseId);
@@ -990,6 +1039,7 @@ export class ControlPlaneService {
   }
 
   async setTestCaseExcluded(input: { guardrailId: string; caseId: string; excluded: boolean; actorId: string }) {
+    await assertResourceWriteAccess(this.db, "guardrail", input.guardrailId);
     const stored = await this.db.transaction(async (tx) => {
       const [guardrail] = await tx.select().from(guardrails).where(and(
         eq(guardrails.id, input.guardrailId), isNull(guardrails.deletedAt),
@@ -1020,6 +1070,7 @@ export class ControlPlaneService {
   }
 
   async queryValidationRuns(query: z.input<typeof testingReportsQuery>) {
+    if (query.guardrailId) await assertResourceReadAccess(this.db, "guardrail", query.guardrailId);
     return queryTestingReports(this.db, query);
   }
 
@@ -1034,6 +1085,7 @@ export class ControlPlaneService {
     const [run] = await this.db.select(summaryOnly ? validationSummaryColumns : validationDetailColumns)
       .from(validationRuns).where(eq(validationRuns.id, id));
     if (!run) throw new NotFoundError("Validation Run", id);
+    await assertResourceReadAccess(this.db, "guardrail", run.guardrailId);
     return run;
   }
 
@@ -1041,6 +1093,7 @@ export class ControlPlaneService {
     return this.db.transaction(async tx => {
       const [run] = await tx.select().from(validationRuns).where(eq(validationRuns.id, runId));
       if (!run) throw new NotFoundError("Testing Report", runId);
+      await assertResourceReadAccess(this.db, "guardrail", run.guardrailId);
       return this.reportDeletionImpact(tx, run);
     }, { isolationLevel: "repeatable read", accessMode: "read only" });
   }
@@ -1051,7 +1104,7 @@ export class ControlPlaneService {
       const [found] = await tx.select().from(validationRuns).where(eq(validationRuns.id, input.runId));
       if (!found) throw new NotFoundError("Testing Report", input.runId);
       // Serialize with publication, release, other report deletions and Router references.
-      const [guardrail] = await tx.select().from(guardrails).where(eq(guardrails.id, found.guardrailId)).for("update");
+      const [guardrail] = await tx.select().from(guardrails).where(and(eq(guardrails.id, found.guardrailId), resourceWritePredicate(guardrails.tenantId))).for("update");
       if (!guardrail) throw new NotFoundError("Guardrail", found.guardrailId);
       const [run] = await tx.select().from(validationRuns).where(eq(validationRuns.id, input.runId)).for("update");
       if (!run) throw new NotFoundError("Testing Report", input.runId);
@@ -1115,6 +1168,7 @@ export class ControlPlaneService {
   }
 
   async requestValidation(input: { guardrailId: string; actorId: string; compilerAvailable: boolean; testModelRules?: boolean }) {
+    await assertResourceWriteAccess(this.db, "guardrail", input.guardrailId);
     if (!input.compilerAvailable) {
       throw new ConflictError("A healthy GuardRails 0 Runner is required to validate Guardrail configurations.", "default_runner_unavailable");
     }
@@ -1134,7 +1188,7 @@ export class ControlPlaneService {
    */
   async requestVersionTestRun(input: { guardrailId: string; version: string; actorId: string; testModelRules?: boolean }) {
     return this.db.transaction(async tx => {
-      const [guardrail] = await tx.select().from(guardrails).where(and(eq(guardrails.id, input.guardrailId), isNull(guardrails.deletedAt))).for("update");
+      const [guardrail] = await tx.select().from(guardrails).where(and(eq(guardrails.id, input.guardrailId), isNull(guardrails.deletedAt), resourceWritePredicate(guardrails.tenantId))).for("update");
       if (!guardrail) throw new NotFoundError("Guardrail", input.guardrailId);
       const [version] = await tx.select().from(guardrailVersions).where(and(
         eq(guardrailVersions.guardrailId, input.guardrailId), eq(guardrailVersions.version, input.version)));
@@ -1181,7 +1235,7 @@ export class ControlPlaneService {
    */
   async releaseGuardrailVersion(input: { guardrailId: string; version: string; actorId: string }) {
     return this.db.transaction(async tx => {
-      const [guardrail] = await tx.select().from(guardrails).where(and(eq(guardrails.id, input.guardrailId), isNull(guardrails.deletedAt))).for("update");
+      const [guardrail] = await tx.select().from(guardrails).where(and(eq(guardrails.id, input.guardrailId), isNull(guardrails.deletedAt), resourceWritePredicate(guardrails.tenantId))).for("update");
       if (!guardrail) throw new NotFoundError("Guardrail", input.guardrailId);
       const [version] = await tx.select().from(guardrailVersions).where(and(
         eq(guardrailVersions.guardrailId, input.guardrailId), eq(guardrailVersions.version, input.version))).for("update");
@@ -1350,7 +1404,7 @@ export class ControlPlaneService {
       const [found] = await tx.select({ guardrailId: validationRuns.guardrailId }).from(validationRuns).where(eq(validationRuns.id, input.runId));
       if (!found) return;
       // Same lock order as publication, report deletion and retention; completions serialize per Guardrail.
-      const [guardrail] = await tx.select({ id: guardrails.id }).from(guardrails).where(eq(guardrails.id, found.guardrailId)).for("update");
+      const [guardrail] = await tx.select({ id: guardrails.id }).from(guardrails).where(and(eq(guardrails.id, found.guardrailId), resourceWritePredicate(guardrails.tenantId))).for("update");
       if (!guardrail) return;
       const [run] = await tx.select().from(validationRuns).where(eq(validationRuns.id, input.runId)).for("update");
       // A deleted Guardrail may still have an in-flight Runner response. Acknowledge it without recreating data.
@@ -1514,12 +1568,16 @@ export class ControlPlaneService {
 
   async guardrailLogging(id: string) {
     const [guardrail] = await this.db.select({ id: guardrails.id, level: guardrails.loggingLevel, updatedAt: guardrails.updatedAt })
-      .from(guardrails).where(and(eq(guardrails.id, id), isNull(guardrails.deletedAt)));
+      .from(guardrails).where(and(
+        eq(guardrails.id, id), isNull(guardrails.deletedAt),
+        resourceReadPredicate("guardrail", guardrails.id, guardrails.tenantId),
+      ));
     if (!guardrail) throw new NotFoundError("Guardrail", id);
     return { ...guardrail, contentCaptureEnabled: this.runtimeLogEncryptionKey !== null, retentionDays: 30 };
   }
 
   async updateGuardrailLogging(input: { id: string; level: "info" | "debug" | "trace"; actorId: string }) {
+    await assertResourceWriteAccess(this.db, "guardrail", input.id);
     const [updated] = await this.db.transaction(async (tx) => {
       const rows = await tx.update(guardrails).set({ loggingLevel: input.level, updatedAt: new Date() })
         .where(and(eq(guardrails.id, input.id), isNull(guardrails.deletedAt))).returning({ id: guardrails.id, level: guardrails.loggingLevel });
@@ -1545,13 +1603,14 @@ export class ControlPlaneService {
 
   async listEndpoints() {
     const rows = await this.db.select().from(endpoints)
-      .where(isNull(endpoints.deletedAt)).orderBy(desc(endpoints.updatedAt));
+      .where(and(isNull(endpoints.deletedAt), resourceReadPredicate("endpoint", endpoints.id, endpoints.tenantId)))
+      .orderBy(desc(endpoints.updatedAt));
     return rows.map((endpoint) => this.publicEndpoint(endpoint));
   }
 
   async getEndpoint(id: string) {
     const [endpoint] = await this.db.select().from(endpoints)
-      .where(and(eq(endpoints.id, id), isNull(endpoints.deletedAt)));
+      .where(and(eq(endpoints.id, id), isNull(endpoints.deletedAt), resourceReadPredicate("endpoint", endpoints.id, endpoints.tenantId)));
     if (!endpoint) throw new NotFoundError("Endpoint", id);
     return this.publicEndpoint(endpoint);
   }
@@ -1577,7 +1636,9 @@ export class ControlPlaneService {
   private metricCache = new Map<string, { until: number; value: Awaited<ReturnType<typeof queryRuntimeMetrics>> }>();
   private metricJobs = new Map<string, ReturnType<typeof queryRuntimeMetrics>>();
   async runtimeMetrics(scope: MetricScope) {
-    const key = JSON.stringify([scope.window, scope.guardrailId ?? null, scope.routerId ?? null]);
+    // Grants may be revoked between reads; tenant resource visibility stays live.
+    if (currentTenantId()) return queryRuntimeMetrics(this.db, scope);
+    const key = JSON.stringify([currentTenantId(), scope.window, scope.guardrailId ?? null, scope.routerId ?? null]);
     const cached = this.metricCache.get(key);
     if (cached && cached.until > Date.now()) return cached.value;
     const pending = this.metricJobs.get(key);
@@ -1606,20 +1667,31 @@ export class ControlPlaneService {
       OR ${runtimeEvents.metadata}->'contentBefore' IS NOT NULL AND ${runtimeEvents.metadata}->'contentBefore' <> 'null'::jsonb
       OR ${runtimeEvents.metadata}->'httpRequest' IS NOT NULL AND ${runtimeEvents.metadata}->'httpRequest' <> 'null'::jsonb
       OR ${runtimeEvents.metadata}->'contentAfter' IS NOT NULL AND ${runtimeEvents.metadata}->'contentAfter' <> 'null'::jsonb)`;
-    const [item] = await boundedRead(this.db, tx => tx.select({ ...getTableColumns(runtimeEvents), metadata }).from(runtimeEvents).where(eq(runtimeEvents.id, id)).limit(1));
+    const [item] = await boundedRead(this.db, tx => tx.select({ ...getTableColumns(runtimeEvents), metadata }).from(runtimeEvents).where(and(eq(runtimeEvents.id, id), resourceWritePredicate(runtimeEvents.tenantId))).limit(1));
     if (!item) throw new NotFoundError("Runtime event", id);
     const { contentCiphertext: _ciphertext, contentBefore: _before, contentAfter: _after, httpRequest: _httpRequest, ...safe } = item.metadata;
     return { ...item, metadata: includeContent ? decryptRuntimeEventMetadata(item.metadata, this.runtimeLogEncryptionKey) : safe };
   }
 
-  private endpointActivityCache?: { until: number; value: { items: Record<string, unknown>[] } };
-  private endpointActivityJob: Promise<{ items: Record<string, unknown>[] }> | undefined;
+  private endpointActivityCache = new Map<string, { until: number; value: { items: Record<string, unknown>[] } }>();
+  private endpointActivityJobs = new Map<string, Promise<{ items: Record<string, unknown>[] }>>();
   async runtimeEndpointActivity() {
-    if (this.endpointActivityCache && this.endpointActivityCache.until > Date.now()) return this.endpointActivityCache.value;
-    if (this.endpointActivityJob) return this.endpointActivityJob;
+    // Shared Endpoints can disappear as soon as a grant is revoked. Keep the
+    // system cache, but re-evaluate tenant reads against the live grant table.
+    const cacheable = currentTenantId() === null;
+    const key = "system";
+    if (cacheable) {
+      const cached = this.endpointActivityCache.get(key);
+      if (cached && cached.until > Date.now()) return cached.value;
+      const pending = this.endpointActivityJobs.get(key);
+      if (pending) return pending;
+    }
     const job = boundedRead(this.db, async tx => {
       // Lifetime timestamps are index probes; only recent counters scan a time window.
-      const scope = eq(runtimeEvents.endpointId, endpoints.id);
+      const scope = and(
+        eq(runtimeEvents.endpointId, endpoints.id),
+        currentTenantId() ? eq(runtimeEvents.tenantId, currentTenantId()!) : undefined,
+      );
       const errors = inArray(lowerText(runtimeEvents.decision), ['error','failed','failure','timeout','timed_out']);
       const timestamp = (name: string, filter?: SQL, oldest = false) => tx
         .select({ at: runtimeEvents.occurredAt }).from(runtimeEvents)
@@ -1652,15 +1724,15 @@ export class ControlPlaneService {
         .leftJoinLateral(incoming, join).leftJoinLateral(outgoing, join)
         .leftJoinLateral(finalCheck, join).leftJoinLateral(lastError, join)
         .innerJoinLateral(recent, join).innerJoinLateral(recentErrors, join)
-        .where(isNull(endpoints.deletedAt));
+        .where(and(isNull(endpoints.deletedAt), resourceReadPredicate("endpoint", endpoints.id, endpoints.tenantId)));
       return { items };
     });
-    this.endpointActivityJob = job;
+    if (cacheable) this.endpointActivityJobs.set(key, job);
     try {
       const value = await job;
-      this.endpointActivityCache = { until: Date.now() + 10_000, value };
+      if (cacheable) this.endpointActivityCache.set(key, { until: Date.now() + 10_000, value });
       return value;
-    } finally { this.endpointActivityJob = undefined; }
+    } finally { if (cacheable) this.endpointActivityJobs.delete(key); }
   }
 
   async queryRuntimeEvents(input: {
@@ -1706,6 +1778,7 @@ export class ControlPlaneService {
     );
     const severities = input.severity ? (Array.isArray(input.severity) ? input.severity : [input.severity]) : [];
     const conditions = [
+      currentTenantId() ? eq(runtimeEvents.tenantId, currentTenantId()!) : undefined,
       severities.length ? exists(this.db.select({ severity: findingSeverity(findings.item) }).from(findings.source).where(and(securityFinding(findings.item), inArray(findingSeverity(findings.item), severities)))) : undefined,
       cursor ? lt(rowValue(runtimeEvents.occurredAt, runtimeEvents.id), rowValue(timestampValue(cursor.at), literal(cursor.id))) : undefined,
       input.requestId ? eq(runtimeEvents.requestId, input.requestId) : undefined,
@@ -1767,7 +1840,7 @@ export class ControlPlaneService {
     const verification = { credentials: [issued.stored] };
     const [created] = await this.db.transaction(async (tx) => {
       const rows = await tx.insert(endpoints).values({
-        id, name: input.name, adapter: input.adapter, verification, scanFlagOnlyDefault: input.scanFlagOnlyDefault ?? true,
+        id, tenantId: tenantOwnerForCreate(), name: input.name, adapter: input.adapter, verification, scanFlagOnlyDefault: input.scanFlagOnlyDefault ?? true,
       }).returning();
       await this.advanceEndpointDesiredState(tx, {
         endpointId: id,
@@ -1790,6 +1863,7 @@ export class ControlPlaneService {
   }
 
   async updateEndpoint(input: { id: string; enabled?: boolean | undefined; scanFlagOnlyDefault?: boolean | undefined; actorId: string }) {
+    await assertResourceWriteAccess(this.db, "endpoint", input.id);
     return this.db.transaction(async (tx) => {
       const [endpoint] = await tx.select().from(endpoints)
         .where(and(eq(endpoints.id, input.id), isNull(endpoints.deletedAt))).for("update");
@@ -1816,6 +1890,7 @@ export class ControlPlaneService {
   }
 
   async rotateEndpointCredential(input: { id: string; actorId: string }) {
+    await assertResourceWriteAccess(this.db, "endpoint", input.id);
     const issued = issueEndpointCredential();
     const updated = await this.db.transaction(async (tx) => {
       const [endpoint] = await tx.select().from(endpoints)
@@ -1843,6 +1918,7 @@ export class ControlPlaneService {
   }
 
   async revokeEndpointCredential(input: { id: string; credentialId: string; actorId: string }): Promise<void> {
+    await assertResourceWriteAccess(this.db, "endpoint", input.id);
     await this.db.transaction(async (tx) => {
       const [endpoint] = await tx.select().from(endpoints)
         .where(and(eq(endpoints.id, input.id), isNull(endpoints.deletedAt))).for("update");
@@ -1872,6 +1948,7 @@ export class ControlPlaneService {
   }
 
   async guardrailDeletionImpact(id: string): Promise<DeletionImpact> {
+    await assertResourceWriteAccess(this.db, "guardrail", id);
     const [resource] = await this.db.select().from(guardrails).where(and(eq(guardrails.id, id), isNull(guardrails.deletedAt)));
     if (!resource) throw new NotFoundError("Guardrail", id);
     // Published Router revisions are the only live references; composed
@@ -1883,6 +1960,7 @@ export class ControlPlaneService {
   }
 
   async endpointDeletionImpact(id: string): Promise<DeletionImpact> {
+    await assertResourceWriteAccess(this.db, "endpoint", id);
     const [resource] = await this.db.select().from(endpoints).where(and(eq(endpoints.id, id), isNull(endpoints.deletedAt)));
     if (!resource) throw new NotFoundError("Endpoint", id);
     const [bound] = resource.trafficRouterId ? await this.db.select({ id: trafficRouters.id }).from(trafficRouters)
@@ -1891,7 +1969,8 @@ export class ControlPlaneService {
   }
 
   async softDeleteGuardrail(input: { id: string; actorId: string; reason: string; confirmRecentTraffic: boolean; confirmationName?: string | undefined }) {
-    const [resource] = await this.db.select({ name: guardrails.name }).from(guardrails)
+    await assertResourceWriteAccess(this.db, "guardrail", input.id);
+    const [resource] = await this.db.select({ name: guardrails.name, tenantId: guardrails.tenantId }).from(guardrails)
       .where(and(eq(guardrails.id, input.id), isNull(guardrails.deletedAt)));
     if (!resource) throw new NotFoundError("Guardrail", input.id);
     const impact = await this.guardrailDeletionImpact(input.id);
@@ -1899,7 +1978,7 @@ export class ControlPlaneService {
     await this.db.transaction(async (tx) => {
       await advisoryTransactionLock(tx, "traffic-router-bindings");
       const [locked] = await tx.select({ id: guardrails.id }).from(guardrails)
-        .where(and(eq(guardrails.id, input.id), isNull(guardrails.deletedAt))).for("update");
+        .where(and(eq(guardrails.id, input.id), isNull(guardrails.deletedAt), resourceWritePredicate(guardrails.tenantId))).for("update");
       if (!locked) throw new NotFoundError("Guardrail", input.id);
       await this.trafficRouting.assertGuardrailUnused(input.id, tx);
       const [state] = await tx.update(controllerState)
@@ -1917,12 +1996,18 @@ export class ControlPlaneService {
   }
 
   async softDeleteEndpoint(input: { id: string; actorId: string; reason: string; confirmRecentTraffic: boolean; confirmationName?: string | undefined }) {
-    const [resource] = await this.db.select({ name: endpoints.name }).from(endpoints)
+    await assertResourceWriteAccess(this.db, "endpoint", input.id);
+    const [resource] = await this.db.select({ name: endpoints.name, tenantId: endpoints.tenantId }).from(endpoints)
       .where(and(eq(endpoints.id, input.id), isNull(endpoints.deletedAt)));
     if (!resource) throw new NotFoundError("Endpoint", input.id);
     const impact = await this.endpointDeletionImpact(input.id);
     this.assertDeletionAllowed(impact, input.confirmRecentTraffic, input.confirmationName, resource.name);
     await this.db.transaction(async (tx) => {
+      const [foreignRouter] = await tx.select({ id: trafficRouters.id }).from(trafficRouters)
+        .innerJoin(endpoints, eq(endpoints.trafficRouterId, trafficRouters.id)).where(and(
+          eq(endpoints.id, input.id), ne(trafficRouters.tenantId, resource.tenantId), isNull(trafficRouters.deletedAt),
+        )).limit(1);
+      if (foreignRouter) throw new ConflictError("Endpoint is still referenced by another tenant's Router.", "endpoint_in_use");
       const [state] = await tx.update(controllerState)
         .set({ desiredGeneration: increment(controllerState.desiredGeneration), updatedAt: new Date() })
         .where(eq(controllerState.id, "singleton")).returning();
@@ -2361,7 +2446,9 @@ export class ControlPlaneService {
   }
 
   private async policyRecord(id: string) {
-    const [record] = await this.db.select().from(policyRecords).where(eq(policyRecords.id, id));
+    const [record] = await this.db.select().from(policyRecords).where(and(
+      eq(policyRecords.id, id), resourceReadPredicate("policy", policyRecords.id, policyRecords.tenantId),
+    ));
     if (!record) throw new NotFoundError("Policy", id);
     return record;
   }
@@ -2497,7 +2584,9 @@ export class ControlPlaneService {
     const customBindings = draft.policyBindings.filter((binding) => !catalog.some(policy => policy.id === binding.policyId));
     if (!customBindings.length) return [];
     const ids = [...new Set(customBindings.map((item) => item.policyId))];
-    const rows = await db.select().from(policyVersions).where(inArray(policyVersions.policyId, ids));
+    const rows = await db.select({ policyId: policyVersions.policyId, version: policyVersions.version, snapshot: policyVersions.snapshot })
+      .from(policyVersions).innerJoin(policyRecords, eq(policyRecords.id, policyVersions.policyId))
+      .where(and(inArray(policyVersions.policyId, ids), resourceReadPredicate("policy", policyRecords.id, policyRecords.tenantId)));
     const byKey = new Map(rows.map((item) => [`${item.policyId}@${item.version}`, item.snapshot]));
     return customBindings.map((binding) => {
       if (!/^\d+$/.test(binding.policyVersion)) {
@@ -2589,6 +2678,7 @@ export class ControlPlaneService {
   private publicEndpoint(endpoint: typeof endpoints.$inferSelect) {
     return {
       id: endpoint.id,
+      tenantId: endpoint.tenantId,
       trafficRouterId: endpoint.trafficRouterId,
       name: endpoint.name,
       adapter: endpoint.adapter,
@@ -2786,6 +2876,7 @@ function programmablePolicySurface(
   const outputDelivery = Object.fromEntries(surface.execution_contract).output_delivery;
   return {
     implementation: "nemo_native" as const,
+    tenant_id: record.tenantId,
     id: record.id,
     name: latest?.snapshot.name ?? record.name,
     description: latest?.snapshot.description ?? record.description,

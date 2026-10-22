@@ -2,7 +2,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createTestDatabase } from "../db/postgres-test-database.js";
 import { ControlPlaneService } from "./control-plane.js";
-import type { ControllerConfig } from "../config.js";
+import { loadConfig } from "../config.js";
 
 const url = process.env.GUARD_TEST_POSTGRES_URL;
 describe.skipIf(!url)("Endpoint Scan defaults in PostgreSQL", () => {
@@ -12,7 +12,14 @@ describe.skipIf(!url)("Endpoint Scan defaults in PostgreSQL", () => {
     database = await createTestDatabase(url!, "scan_defaults");
     await database.pool.query("INSERT INTO auth_user(id,name,email,role) VALUES ('admin','Admin','scan@test.local','admin')");
     await database.pool.query("INSERT INTO controller_state(id,desired_generation) VALUES ('singleton',0)");
-    service = new ControlPlaneService(database.db, { runtimePublicUrl: "http://runtime.test" } as ControllerConfig);
+    const config = loadConfig({
+      NODE_ENV: "test", CONTROLLER_DATABASE_URL: url,
+      CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters",
+      CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/unused-signing-key.pem",
+      BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters",
+      CONTROLLER_RUNTIME_PUBLIC_URL: "http://runtime.test",
+    });
+    service = new ControlPlaneService(database.db, config);
   });
   afterAll(async () => { await database?.drop(); });
 

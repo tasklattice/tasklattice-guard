@@ -15,7 +15,7 @@ const config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: "postgres
 function setup(role: string | null) {
   const requestValidation = vi.fn().mockResolvedValue({ id: "run" });
   const requestVersionTestRun = vi.fn().mockResolvedValue({ id: "version-run" });
-  const auth = { api: { getSession: vi.fn().mockResolvedValue(role ? { user: { id: "actor", role } } : null) } };
+  const auth = { api: { getSession: vi.fn().mockResolvedValue(role ? { user: { id: "actor", role, tenantId: "tenantA" } } : null) } };
   const app = createHttpApp({ config, auth: auth as unknown as ControllerAuth,
     service: { requestValidation, requestVersionTestRun } as unknown as ControlPlaneService,
     runnerControl: { hasDefaultCompiler: () => true } as unknown as RunnerControlServer, metrics: {} as ControllerMetrics });

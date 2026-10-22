@@ -1,3 +1,4 @@
+import { runtimeEventTenantId } from "./tenant-context.js";
 import { and, eq, sql } from "drizzle-orm";
 import type { ControllerDatabase } from "../db/client.js";
 import { runtimeEvents } from "../db/schema.js";
@@ -9,7 +10,9 @@ type Writer = Pick<ControllerDatabase, "insert">;
  * never replace its evidence, identity, timestamp, or already captured content. */
 export async function writeRuntimeEvent(db: Writer, event: RuntimeEventInput) {
   const insert = db.insert(runtimeEvents).values({
-    id: event.id, occurredAt: event.occurredAt, requestId: event.requestId,
+    id: event.id,
+    tenantId: runtimeEventTenantId(event),
+    occurredAt: event.occurredAt, requestId: event.requestId,
     runnerId: event.runnerId, guardrailId: event.guardrailId ?? null,
     guardrailVersion: event.guardrailVersion ?? null, endpointId: event.endpointId ?? null,
     routerId: event.routerId ?? null, direction: event.direction,

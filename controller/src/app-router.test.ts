@@ -76,6 +76,10 @@ describe("Integration navigation", () => {
     ["/integration/endpoints", "/integration/endpoints", {}],
     ["/document/overview/quickstart-protection", "/document/$categoryId/$articleId", { categoryId: "overview", articleId: "quickstart-protection" }],
     ["/document/operator/operator-create-policy#operator-policy-declarative", "/document/$categoryId/$articleId", { categoryId: "operator", articleId: "operator-create-policy" }],
+    ["/access", "/access", {}],
+    ["/models", "/models", {}],
+    ["/sharing", "/sharing", {}],
+    ["/mock-sso", "/mock-sso", {}],
   ])("resolves %s", async (path, routeId, params) => {
     const router = createRouter({ routeTree, history: createMemoryHistory({ initialEntries: [path] }) });
     await router.load();

@@ -74,7 +74,7 @@ describe("Guardrail Playground HTTP capability", () => {
     const app = createHttpApp({
       config,
       auth: {
-        api: { getSession: vi.fn().mockResolvedValue({ user: { id: "admin-1", role: "user" } }) },
+        api: { getSession: vi.fn().mockResolvedValue({ user: { id: "admin-1", role: "user", tenantId: "tenantA" } }) },
         handler: vi.fn(),
       } as unknown as ControllerAuth,
       service,
@@ -115,7 +115,7 @@ describe("Guardrail Playground HTTP capability", () => {
     const app = createHttpApp({
       config,
       auth: {
-        api: { getSession: vi.fn().mockResolvedValue({ user: { id: "member-1", role: "unknown" } }) },
+        api: { getSession: vi.fn().mockResolvedValue({ user: { id: "member-1", role: "unknown", tenantId: "tenantA" } }) },
         handler: vi.fn(),
       } as unknown as ControllerAuth,
       service: { playgroundDraftCandidate: prepare } as unknown as ControlPlaneService,
@@ -152,7 +152,7 @@ describe("Guardrail Playground HTTP capability", () => {
     const app = createHttpApp({
       config,
       auth: {
-        api: { getSession: vi.fn().mockResolvedValue({ user: { id: "member-1", role: "user" } }) },
+        api: { getSession: vi.fn().mockResolvedValue({ user: { id: "member-1", role: "user", tenantId: "tenantA" } }) },
         handler: vi.fn(),
       } as unknown as ControllerAuth,
       service: {
@@ -236,7 +236,7 @@ describe("Guardrail Playground HTTP capability", () => {
     });
     const playgroundRunner = new RunnerPlaygroundClient({ baseUrl: "https://runtime.test", token: config.runnerToken, fetcher: runnerFetch });
     const auth = {
-      api: { getSession: vi.fn().mockResolvedValue({ user: { id: "member-1", role: "user" } }) }, handler: vi.fn(),
+      api: { getSession: vi.fn().mockResolvedValue({ user: { id: "member-1", role: "user", tenantId: "tenantA" } }) }, handler: vi.fn(),
     } as unknown as ControllerAuth;
     const app = createHttpApp({
       config, auth,

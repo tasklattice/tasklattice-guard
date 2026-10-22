@@ -4,6 +4,7 @@ import type { ControllerDatabase } from "../db/client.js";
 import { modelAssignmentValidations, controllerState, outboxEvents, modelConfigurationRevisions, modelDefinitions, modelProviders, policyVersions } from "../db/schema.js";
 import { emptyModelAssignments } from "./domain.js";
 import { ModelConfigurationService } from "./service.js";
+import { runWithTenantContext } from "../services/tenant-context.js";
 import { jailbreakDetectAttackInput, jailbreakDetectProfile, jailbreakDetectSafeInput } from "./jailbreak-detect.js";
 
 const id = "7471c0eb-a533-449a-8814-98c3bc23aa98";
@@ -18,8 +19,8 @@ function setup(state = "draft", assigned = false, failProbe = false) {
     : empty;
   const rows = new Map<unknown, Array<Record<string, unknown>>>([
     [modelProviders, [{ id: "provider-1", name: "Mock", kind: "custom-openai-compatible", baseUrl: "https://provider.test/v1", credentialCiphertext: null }]],
-    [modelDefinitions, [{ id, providerId: "provider-1", name: "Guard alias", model: "guard-alias", ...input, status: "pending", validatedAt: null }]],
-    [modelConfigurationRevisions, [{ id: "revision-1", revision: 1, state, assignments, rowVersion: "synthetic-tx-1" }]],
+    [modelDefinitions, [{ id, tenantId: null, providerId: "provider-1", name: "Guard alias", model: "guard-alias", ...input, status: "pending", validatedAt: null }]],
+    [modelConfigurationRevisions, [{ id: "revision-1", tenantId: "tenantA", revision: 1, state, assignments, rowVersion: "synthetic-tx-1" }]],
   ]);
   const query = (table: unknown) => {
     const result = rows.get(table) ?? [];
@@ -45,6 +46,29 @@ function setup(state = "draft", assigned = false, failProbe = false) {
 }
 
 describe("Capability configuration after registration", () => {
+  it.each(["tenantA", "tenantB"])("prevents tenant %s users from changing global bindings or resolving credentials", async (tenantId) => {
+    const { service, tx, fetcher, railValidator } = setup("validated");
+    const operations = [
+      () => service.updateDraft(emptyModelAssignments(), "group_b"),
+      () => service.previewAssignment("content_safety.input", id, "group_b"),
+      () => service.getAssignmentValidation("content_safety.input", "receipt", "group_b"),
+      () => service.updateAssignment("content_safety.input", id, "group_b"),
+      () => service.validateAssignment("content_safety.input", "group_b"),
+      () => service.validateDraft("group_b"),
+      () => service.applyConfiguration("group_b", {} as never),
+      () => service.finalizeActivation("revision-1"),
+      () => service.failActivation("revision-1", "Tenant supplied failure"),
+      () => service.resolveCredentials(["provider-1"]),
+    ];
+    for (const operation of operations) {
+      await expect(runWithTenantContext({ tenantId, actorId: "group_b", role: "user" }, operation))
+        .rejects.toMatchObject({ code: "forbidden" });
+    }
+    expect(tx.update).not.toHaveBeenCalled();
+    expect(tx.insert).not.toHaveBeenCalled();
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(railValidator).not.toHaveBeenCalled();
+  });
   it("discovers TypeSafe's native model catalog and calls System One for connection evidence", async () => {
     const { service, rows, fetcher } = setup();
     rows.get(modelProviders)![0]!.kind = "typesafe";

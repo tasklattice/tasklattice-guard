@@ -12,6 +12,7 @@ vi.mock("@tanstack/react-router", () => ({ Link: ({ children }: { children: Reac
 vi.mock("./guardrail-row-actions", () => ({ GuardrailRowActions: () => null }));
 vi.mock("./ui/notifications", () => ({ toast: { success: vi.fn() } }));
 vi.mock("@/lib/controller-api", () => ({ deleteTestingReport: vi.fn(), getTestingReportDeletionImpact: vi.fn() }));
+vi.mock("@/lib/auth", () => ({ useAuth: () => ({ user: { role: "admin", tenant_id: "tenantA" } }) }));
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key, i18n: { language: "en", exists: () => false } }) }));
 const run = { id: "report-1", guardrail_id: "guard-1", guardrail_version: "20261010-001500.000Z", status: "passed", subject: "version", metrics: { compliance_rate: 100 } } as ValidationRun;
 const impact: TestingReportDeletionImpact = { runId: run.id, guardrailId: run.guardrail_id, version: run.guardrail_version,

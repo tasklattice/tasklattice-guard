@@ -1,3 +1,4 @@
+import { resourceWritePredicate } from "./tenant-context.js";
 import { and, eq, getTableColumns, inArray, isNotNull, sql } from "drizzle-orm";
 import { unionAll } from "drizzle-orm/pg-core";
 import type { ControllerDatabase } from "../db/client.js";
@@ -14,6 +15,7 @@ const callFailure = and(
 export function callFailureEvents(db: ControllerDatabase) {
   return db.select({
     id: sql<string>`'call:' || ${routeAssignments.decisionId}`.as("id"),
+    tenantId: routeAssignments.tenantId,
     // Monitoring scopes calls by assignment time, including late completions.
     occurredAt: routeAssignments.occurredAt,
     receivedAt: sql<Date>`${routeAssignments.occurredAt}`.mapWith(routeAssignments.occurredAt).as("received_at"),
@@ -34,9 +36,9 @@ export function callFailureEvents(db: ControllerDatabase) {
       'targetId', ${routeAssignments.targetId}, 'routerRevision', ${routeAssignments.routerRevision},
       'timedOut', ${routeAssignments.outcome} = 'timeout', 'contentAvailable', false
     )`.as("metadata"),
-  }).from(routeAssignments).where(callFailure);
+  }).from(routeAssignments).where(and(callFailure, resourceWritePredicate(routeAssignments.tenantId)));
 }
 
 export function runtimeLogSource(db: ControllerDatabase) {
-  return unionAll(db.select(getTableColumns(runtimeEvents)).from(runtimeEvents), callFailureEvents(db)).as("runtime_logs");
+  return unionAll(db.select(getTableColumns(runtimeEvents)).from(runtimeEvents).where(resourceWritePredicate(runtimeEvents.tenantId)), callFailureEvents(db)).as("runtime_logs");
 }

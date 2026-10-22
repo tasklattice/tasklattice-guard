@@ -6,6 +6,7 @@ import { parseLiteLLMPrices } from "./model-pricing-domain.js";
 import { ControlPlaneService } from "./control-plane.js";
 import type { ControllerConfig } from "../config.js";
 import type { RuntimeEventInput } from "../domain/models.js";
+import { runWithTenantContext } from "./tenant-context.js";
 const url = process.env.GUARD_TEST_POSTGRES_URL;
 const catalog = (input = 2e-7) => Object.fromEntries(Array.from({ length: 12 }, (_, index) => [index === 0 ? "groq/llama-guard-3-8b" : `model-${index}`, { mode: "chat", input_cost_per_token: input, output_cost_per_token: 6e-7 }]));
 describe.skipIf(!url)("global model prices and immutable Guardrail costs", () => {
@@ -94,6 +95,57 @@ describe.skipIf(!url)("global model prices and immutable Guardrail costs", () =>
       expect((await bundled.catalog("groq/llama-guard-3-8b")).items[0]?.rates).toMatchObject({ currency: "USD", input: 0.2, output: 0.2 });
       expect(network).not.toHaveBeenCalled();
     } finally { network.mockRestore(); }
+  });
+
+  it("keeps global pricing controls platform-only and scopes tenant Model prices", async () => {
+    await database.pool.query("INSERT INTO model_definition(id,tenant_id,provider_id,name,model,profile) VALUES ('model-b','tenantB','provider-1','B Safety','llama-guard-3-8b','generic-chat')");
+    await database.pool.query("UPDATE model_definition SET tenant_id='tenantA' WHERE id='model-2'");
+    await database.pool.query("INSERT INTO resource_share(id,owner_tenant_id,recipient_tenant_id,resource_type,resource_id) VALUES ('share-model-2','tenantA','tenantB','model','model-2')");
+    const view = await runWithTenantContext({ tenantId: 'tenantB', role: 'user' }, () => pricing.view());
+    expect(new Set(view.models.map(model => model.modelId))).toEqual(new Set(['model-b', 'model-2']));
+    for (const tenantId of ['tenantA', 'tenantB']) {
+      await expect(runWithTenantContext({ tenantId, role: 'user' }, () => pricing.configure('model-b',
+        { mode: 'manual', rates: { unit: 'free', currency: 'USD' } }, 'user'))).rejects.toMatchObject({ code: 'forbidden' });
+      expect(() => runWithTenantContext({ tenantId, role: 'user' }, () => pricing.synchronize())).toThrow('Platform administrator');
+    }
+    await expect(runWithTenantContext({ tenantId: 'tenantB', role: 'admin' }, () => pricing.configure('model-b',
+      { mode: 'manual', rates: { unit: 'free', currency: 'USD' } }, 'admin'))).rejects.toMatchObject({ code: 'not_found' });
+    await runWithTenantContext({ tenantId: 'tenantB', role: 'admin' }, () => pricing.configure('model-1',
+      { mode: 'manual', rates: { unit: 'request', currency: 'USD', request: 1 } }, 'admin'));
+    expect((await pricing.view()).models.map(model => model.modelId)).toEqual(['model-1']);
+    expect((await pricing.view()).models.every(model => model.source === 'manual' && model.rates?.unit === 'request')).toBe(true);
+  });
+
+  it("redacts private Model identifiers and names from shared Guardrail cost details", async () => {
+    await database.pool.query("UPDATE model_definition SET tenant_id='tenantA' WHERE id='model-1'");
+    await database.pool.query("INSERT INTO resource_share(id,owner_tenant_id,recipient_tenant_id,resource_type,resource_id) VALUES ('share-guard-1','tenantA','tenantB','guardrail','guard-1')");
+    const original = await pricing.guardrailUsage('guard-1', { window: 'month', source: 'all' });
+    const empty = await runWithTenantContext({ tenantId: 'tenantB', role: 'user' }, () => pricing.guardrailUsage('guard-1', { window: 'month', source: 'all' }));
+    expect(empty).toMatchObject({ calls: 0, models: [], totals: [], trend: [] });
+    expect((await runWithTenantContext({ tenantId: 'tenantB', role: 'user' }, () => pricing.monthlyCosts(['guard-1']))).get('guard-1'))
+      .toMatchObject({ calls: 0, cost: 0 });
+    await database.pool.query("INSERT INTO endpoint(id,tenant_id,name,adapter) VALUES ('endpoint-b','tenantB','B Gateway','http')");
+    await service.recordRuntimeEvents([event('tenant-b-shared', { endpointId: 'endpoint-b' })]);
+    expect((await database.pool.query("SELECT tenant_id FROM model_usage_cost WHERE event_id='tenant-b-shared'")).rows[0])
+      .toMatchObject({ tenant_id: 'tenantB' });
+    const shared = await runWithTenantContext({ tenantId: 'tenantB', role: 'user' }, () => pricing.guardrailUsage('guard-1', { window: 'month', source: 'all' }));
+    expect(shared).toMatchObject({ calls: 1, totals: [{ currency: 'USD', cost: 0.001 }] });
+    expect((await runWithTenantContext({ tenantId: 'tenantB', role: 'user' }, () => pricing.monthlyCosts(['guard-1']))).get('guard-1'))
+      .toMatchObject({ calls: 1, cost: 0.001 });
+    expect((await runWithTenantContext({ tenantId: 'tenantA', role: 'user' }, () => pricing.guardrailUsage('guard-1', { window: 'month', source: 'all' }))).calls)
+      .toBe(original.calls);
+    expect(shared.models.every(model => model.modelId === null && model.model === 'Configured detector')).toBe(true);
+    expect(JSON.stringify(shared)).not.toContain('model-1');
+    expect(JSON.stringify(shared)).not.toContain('llama-guard-3-8b');
+    await expect(runWithTenantContext({ tenantId: 'tenantC', role: 'user' }, () => pricing.guardrailUsage('guard-1',
+      { window: 'month', source: 'all' }))).rejects.toMatchObject({ code: 'not_found' });
+
+    await database.pool.query("INSERT INTO resource_share(id,owner_tenant_id,recipient_tenant_id,resource_type,resource_id) VALUES ('share-model-1','tenantA','tenantB','model','model-1')");
+    const readable = await runWithTenantContext({ tenantId: 'tenantB', role: 'user' }, () => pricing.guardrailUsage('guard-1', { window: 'month', source: 'all' }));
+    expect(readable.models.some(model => model.modelId === 'model-1' && model.model === 'llama-guard-3-8b')).toBe(true);
+    await database.pool.query("DELETE FROM resource_share WHERE id='share-model-1'");
+    const revoked = await runWithTenantContext({ tenantId: 'tenantB', role: 'user' }, () => pricing.guardrailUsage('guard-1', { window: 'month', source: 'all' }));
+    expect(revoked.models.every(model => model.modelId === null && model.model === 'Configured detector')).toBe(true);
   });
 
 });

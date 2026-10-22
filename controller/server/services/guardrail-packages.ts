@@ -1,3 +1,4 @@
+import { assertResourceReadAccess, currentTenantId, resourceWritePredicate, tenantOwnerForCreate } from "./tenant-context.js";
 import { resetProtectionMode } from "../../shared/protection-mode.js";
 import { clearGuardrailOperationalData } from "./guardrail-operational-data.js";
 import { assertGuardrailVersionCapacity, guardrailVersionLimitIssue } from "./guardrail-version-limit.js";
@@ -20,6 +21,7 @@ import {
   guardrailVersions,
   policyImportedVersions,
   policyRecords,
+  policyResources,
   policyVersions,
   policyResourceVersions,
   testCases,
@@ -99,6 +101,7 @@ export class GuardrailPackageService {
 
   /** Export immutable content without deployment-specific signing or test prerequisites. */
   async exportPackage(guardrailId: string, requested: string[] | undefined): Promise<{ filename: string; bytes: Buffer; versions: string[] }> {
+    await assertResourceReadAccess(this.db, "guardrail", guardrailId);
     const [guardrail] = await this.db.select().from(guardrails).where(and(eq(guardrails.id, guardrailId), isNull(guardrails.deletedAt)));
     if (!guardrail) throw new NotFoundError("Guardrail", guardrailId);
     // A package names its versions explicitly; there is no implied "current" one.
@@ -151,9 +154,9 @@ export class GuardrailPackageService {
   /** Verify an upload, keep its exact bytes, and preview what an import would do. */
   async inspectUpload(bytes: Buffer, actorId: string | null): Promise<PackagePreview> {
     const verified = this.verify(bytes);
-    const id = createHash("sha256").update(bytes).digest("hex");
+    const id = createHash("sha256").update(tenantOwnerForCreate()).update("\0").update(bytes).digest("hex");
     await this.db.insert(guardrailPackages).values({
-      id, content: bytes, sizeBytes: bytes.length, sourceId: verified.source.id, keyId: verified.keyId,
+      id, tenantId: tenantOwnerForCreate(), content: bytes, sizeBytes: bytes.length, sourceId: verified.source.id, keyId: verified.keyId,
       guardrailId: verified.parsed.manifest.guardrail.id, manifest: verified.parsed.manifest, uploadedBy: actorId,
     }).onConflictDoNothing();
     return this.preview(id, verified);
@@ -179,6 +182,7 @@ export class GuardrailPackageService {
       const unknown = selected.filter(version => !manifest.versions.some(item => item.version === version));
       if (unknown.length) throw new ControllerError("The selected versions are not in this package.", 422, "guardrail_package_invalid", { versions: unknown });
       const [existing] = await tx.select().from(guardrails).where(eq(guardrails.id, manifest.guardrail.id)).for("update");
+      if (currentTenantId() && existing && existing.tenantId !== currentTenantId()) throw new NotFoundError("Guardrail", manifest.guardrail.id);
       const restored = Boolean(existing?.deletedAt);
       if (restored && !input.restoreDeleted) {
         throw new ConflictError("This Guardrail was deleted. Review the package and confirm Restore and import to restore it.", "guardrail_restore_required", { guardrailId: manifest.guardrail.id });
@@ -209,7 +213,7 @@ export class GuardrailPackageService {
         const newest = fresh.at(-1)!;
         const descriptor = newest.config;
         await tx.insert(guardrails).values({
-          id: manifest.guardrail.id, name: manifest.guardrail.name, origin: "imported", sourceId: source.id,
+          id: manifest.guardrail.id, tenantId: tenantOwnerForCreate(), name: manifest.guardrail.name, origin: "imported", sourceId: source.id,
           draftConfig: descriptor.draftConfig as GuardrailDraftConfig, runtimeProfile: descriptor.runtimeProfile, status: "draft",
         });
         const cases = draftCases(manifest.guardrail.id, newest.testSuite);
@@ -295,10 +299,14 @@ export class GuardrailPackageService {
     for (const item of maintained) catalog.set(`${item.policyId}@${item.version}`, item.view);
     const imported = ids.length ? await db.select().from(policyImportedVersions).where(inArray(policyImportedVersions.policyId, ids)) : [];
     const versions = ids.length ? await db.select({ policyId: policyVersions.policyId, version: policyVersions.version, checksum: policyVersions.checksum }).from(policyVersions).where(inArray(policyVersions.policyId, ids)) : [];
+    const roots = ids.length ? await db.select({ id: policyRecords.id, tenantId: policyRecords.tenantId }).from(policyRecords).where(inArray(policyRecords.id, ids)) : [];
+    const declarative = ids.length ? await db.select({ id: policyResources.id, tenantId: policyResources.tenantId }).from(policyResources).where(inArray(policyResources.id, ids)) : [];
+    const owners = new Map([...roots, ...declarative, ...imported.map(row => ({ id: row.policyId, tenantId: row.tenantId }))].map(row => [row.id, row.tenantId]));
     const changed = (node: PackagePolicy): PolicyState => ({ state: "conflict", code: "policy_version_conflict",
       message: `Policy ${node.id} version ${node.version} already exists here with different content. Nothing was imported.` });
     return new Map(leaves.map((node): [PackagePolicy, PolicyState] => {
       const key = `${node.id}@${node.version}`;
+      if (currentTenantId() && owners.has(node.id) && owners.get(node.id) !== currentTenantId()) return [node, { state: "conflict", code: "policy_ownership_conflict", message: "A package cannot change a Policy owned by another tenant." }];
       if (node.kind === "catalog") {
         // Compared with what this installation's catalog would freeze for the same version.
         const shipped = catalog.get(key);
@@ -318,7 +326,7 @@ export class GuardrailPackageService {
   /** Add one Policy version to this environment's Library, owned by its source and read only. */
   private async insertPolicy(tx: Transaction, node: PackagePolicy, sourceId: string, packageId: string, actorId: string | null): Promise<void> {
     if (node.kind === "catalog") {
-      await tx.insert(policyImportedVersions).values({ policyId: node.id, version: node.version, digest: node.digest, definition: node.definition, sourceId, packageId, importedBy: actorId });
+      await tx.insert(policyImportedVersions).values({ policyId: node.id, tenantId: tenantOwnerForCreate(), version: node.version, digest: node.digest, definition: node.definition, sourceId, packageId, importedBy: actorId });
       return;
     }
     const snapshot = node.definition as unknown as ProgrammablePolicySnapshot;
@@ -326,7 +334,7 @@ export class GuardrailPackageService {
     const { policy_id: _id, version: _version, name, description, source: _source, owner, checksum, published_at: publishedAt, ...draft } = snapshot;
     const [record] = await tx.select().from(policyRecords).where(eq(policyRecords.id, node.id)).for("update");
     if (!record) {
-      await tx.insert(policyRecords).values({ id: node.id, name, description, source: "custom", origin: "imported", sourceId, owner, draft: draft as unknown as typeof policyRecords.$inferInsert["draft"] });
+      await tx.insert(policyRecords).values({ id: node.id, tenantId: tenantOwnerForCreate(), name, description, source: "custom", origin: "imported", sourceId, owner, draft: draft as unknown as typeof policyRecords.$inferInsert["draft"] });
     } else if (record.origin === "imported" && Number(node.version) > Math.max(0, ...(await tx.select({ version: policyVersions.version }).from(policyVersions).where(eq(policyVersions.policyId, node.id))).map(row => row.version))) {
       // The record describes its newest version; it is never edited here.
       await tx.update(policyRecords).set({ name, description, owner, draft: draft as unknown as typeof policyRecords.$inferInsert["draft"], updatedAt: new Date() }).where(eq(policyRecords.id, node.id));
@@ -336,6 +344,13 @@ export class GuardrailPackageService {
 
   /** Ask connected Runners to dry-run load a stored version and record the verdict. */
   async checkVersionEnvironment(guardrailId: string, version: string): Promise<EnvironmentCheck> {
+    return this.refreshVersionEnvironment(guardrailId, version, false);
+  }
+
+  private async refreshVersionEnvironment(guardrailId: string, version: string, forRouting: boolean): Promise<EnvironmentCheck> {
+    if (forRouting) await assertResourceReadAccess(this.db, "guardrail", guardrailId);
+    const [owned] = await this.db.select({ id: guardrails.id }).from(guardrails).where(and(eq(guardrails.id, guardrailId), (forRouting ? undefined : resourceWritePredicate(guardrails.tenantId))));
+    if (!owned) throw new NotFoundError("Guardrail", guardrailId);
     const [installation] = await this.db.select().from(guardrails).where(and(eq(guardrails.id, guardrailId), isNull(guardrails.deletedAt)));
     if (!installation) throw new NotFoundError("Guardrail", guardrailId);
     const [row] = await this.db.select().from(guardrailVersions).where(and(eq(guardrailVersions.guardrailId, guardrailId), eq(guardrailVersions.version, version)));
@@ -378,7 +393,7 @@ export class GuardrailPackageService {
       .from(guardrailVersions).where(inArray(guardrailVersions.guardrailId, ids));
     const routed = new Set(targets.map(target => `${target.guardrailId}\u0000${target.guardrailVersion}`));
     await Promise.all(rows.filter(row => row.origin === "imported" && routed.has(`${row.guardrailId}\u0000${row.version}`))
-      .map(row => this.checkVersionEnvironment(row.guardrailId, row.version)));
+      .map(row => this.refreshVersionEnvironment(row.guardrailId, row.version, true)));
   }
 
   private async admit(artifact: Parameters<ArtifactAdmission>[0]): Promise<EnvironmentCheck> {
@@ -390,6 +405,7 @@ export class GuardrailPackageService {
     const { parsed, source, keyId, digests } = verified;
     const manifest = parsed.manifest;
     const [existing] = await this.db.select().from(guardrails).where(eq(guardrails.id, manifest.guardrail.id));
+    if (currentTenantId() && existing && existing.tenantId !== currentTenantId()) throw new NotFoundError("Guardrail", manifest.guardrail.id);
     const states = await this.versionStates(this.db, parsed, digests);
     const stored = await this.db.select({ version: guardrailVersions.version }).from(guardrailVersions)
       .where(eq(guardrailVersions.guardrailId, manifest.guardrail.id));
@@ -454,7 +470,7 @@ export class GuardrailPackageService {
   }
 
   private async storedPackage(packageId: string): Promise<Buffer> {
-    const [row] = await this.db.select({ content: guardrailPackages.content }).from(guardrailPackages).where(eq(guardrailPackages.id, packageId));
+    const [row] = await this.db.select({ content: guardrailPackages.content }).from(guardrailPackages).where(and(eq(guardrailPackages.id, packageId), resourceWritePredicate(guardrailPackages.tenantId)));
     if (!row) throw new NotFoundError("Guardrail package", packageId);
     return row.content;
   }

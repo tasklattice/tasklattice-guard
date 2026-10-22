@@ -36,7 +36,7 @@ describe.skipIf(!url)("Personal access tokens in PostgreSQL", () => {
     expect(JSON.stringify(await service.list("owner"))).not.toContain(first.secret);
     expect(await service.list("other")).toEqual([]);
     expect(JSON.stringify((await pool.query("SELECT * FROM audit_event")).rows)).not.toContain(first.secret);
-    expect(await service.authenticate(first.secret)).toMatchObject({ id: "owner", role: "admin", tokenId: first.token.id, permissions: input.permissions });
+    expect(await service.authenticate(first.secret)).toMatchObject({ id: "owner", role: "admin", tenantId: "tenantA", tokenId: first.token.id, permissions: input.permissions });
     expect((await service.list("owner")).find(t => t.id === first.token.id)?.lastUsedAt).not.toBeNull();
   });
   it("rejects tampered, expired and revoked tokens immediately, with owner-only idempotent revocation", async () => {
@@ -52,8 +52,8 @@ describe.skipIf(!url)("Personal access tokens in PostgreSQL", () => {
   });
   it("reads current owner status and role on every authentication", async () => {
     const issued = await service.create("owner", input);
-    await pool.query("UPDATE auth_user SET role='user' WHERE id='owner'");
-    expect(await service.authenticate(issued.secret)).toMatchObject({ role: "user" });
+    await pool.query("UPDATE auth_user SET role='user', tenant_id='tenantB' WHERE id='owner'");
+    expect(await service.authenticate(issued.secret)).toMatchObject({ role: "user", tenantId: "tenantB" });
     await pool.query("UPDATE auth_user SET banned=true WHERE id='owner'");
     expect(await service.authenticate(issued.secret)).toBeNull();
     await expect(service.create("owner", input)).rejects.toMatchObject({ status: 403 });
@@ -62,10 +62,16 @@ describe.skipIf(!url)("Personal access tokens in PostgreSQL", () => {
     expect(await service.authenticate(issued.secret)).toBeNull();
     expect(await service.list("owner")).toEqual([]);
   });
+  it("fails closed when the persisted owner has an unsupported role", async () => {
+    const issued = await service.create("owner", input);
+    await pool.query("UPDATE auth_user SET role='viewer' WHERE id='owner'");
+    expect(await service.authenticate(issued.secret)).toBeNull();
+    await expect(service.create("owner", input)).rejects.toMatchObject({ status: 403 });
+  });
   it("allows user workflow grants and rejects platform grants", async () => {
     const workflowInput = { ...input, permissions: { guardrails: "write", routers: "read" } };
     expect((await service.create("other", workflowInput)).token.permissions).toEqual(workflowInput.permissions);
-    await expect(service.create("other", { ...input, permissions: { models: "read" } })).rejects.toMatchObject({ status: 403 });
+    await expect(service.create("other", { ...input, permissions: { settings: "read" } })).rejects.toMatchObject({ status: 403 });
     const issued = await service.create("other", { ...input, permissions: { routers: "read" } });
     expect(await service.authenticate(issued.secret)).toMatchObject({ id: "other", role: "user", permissions: { routers: "read" } });
   });

@@ -2,7 +2,7 @@ import { formalValidationSchema, type FormalValidation } from "../../shared/form
 import { createHash, randomUUID } from "node:crypto";
 import { modelBindingChanges, partialModelActivationSchema, type PartialModelActivation } from "../../shared/model-activation.js";
 
-import { and, asc, desc, eq, getTableColumns, inArray, max, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, getTableColumns, inArray, isNull, max, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import type { ControllerDatabase } from "../db/client.js";
@@ -15,9 +15,18 @@ import {
   modelDefinitions,
   modelProviders,
   outboxEvents,
+  policyRecords,
   policyVersions,
 } from "../db/schema.js";
 import { ConflictError, NotFoundError, ValidationError } from "../domain/errors.js";
+import {
+  assertPlatformAuthority,
+  currentTenantId,
+  LEGACY_TENANT_ID,
+  resourceReadPredicate,
+  tenantOwnerForCreate,
+} from "../services/tenant-context.js";
+import { modelReadiness, type ModelReadinessRevision } from "../../shared/model-readiness.js";
 import { PolicyCatalog, type PolicyDto } from "../policy-catalog/catalog.js";
 import {
   capabilityBindingDefinitions,
@@ -72,6 +81,7 @@ const editableRevisionColumns = {
 };
 function unchangedRevision(draft: { id: string; rowVersion: string }) {
   return and(eq(modelConfigurationRevisions.id, draft.id),
+    eq(modelConfigurationRevisions.tenantId, tenantOwnerForCreate()),
     sql`${modelConfigurationRevisions}.xmin::text = ${draft.rowVersion}`,
     inArray(modelConfigurationRevisions.state, ["draft", "validated"]));
 }
@@ -123,9 +133,14 @@ export class ModelConfigurationService {
 
   async view() {
     const [providers, storedModels, revisions] = await Promise.all([
-      this.db.select().from(modelProviders).orderBy(asc(modelProviders.name)),
-      this.db.select().from(modelDefinitions).orderBy(asc(modelDefinitions.name)),
-      this.db.select().from(modelConfigurationRevisions).where(ne(modelConfigurationRevisions.state, "superseded")).orderBy(desc(modelConfigurationRevisions.revision)),
+      this.db.select().from(modelProviders)
+        .orderBy(asc(modelProviders.name)),
+      this.db.select().from(modelDefinitions)
+        .where(modelReadPredicate())
+        .orderBy(asc(modelDefinitions.name)),
+      currentTenantId() ? Promise.resolve([]) : this.db.select().from(modelConfigurationRevisions)
+        .where(and(eq(modelConfigurationRevisions.tenantId, tenantOwnerForCreate()), ne(modelConfigurationRevisions.state, "superseded")))
+        .orderBy(desc(modelConfigurationRevisions.revision)),
     ]);
     // A read must not mutate persisted revisions, but retired Models must not
     // be offered for new UI configuration.
@@ -135,10 +150,10 @@ export class ModelConfigurationService {
     const activating = revisions.find((item) => item.state === "activating") ?? null;
     const failed = revisions.find((item) => item.state === "failed") ?? null;
     return {
-      providers: providers.map(publicProvider),
+      providers: providers.map((provider) => currentTenantId() ? publicProviderMetadata(provider) : publicProvider(provider)),
       models: models.map((model) => ({
         ...publicModel(model, providers.find((provider) => provider.id === model.providerId)),
-        protocolEditable: !revisions.some((revision) => assignedModelIds(normalizeModelAssignments(revision.assignments)).includes(model.id)),
+        protocolEditable: model.tenantId === currentTenantId() && !revisions.some((revision) => assignedModelIds(normalizeModelAssignments(revision.assignments)).includes(model.id)),
       })),
       draft: draft ? publicRevision(draft) : null,
       active: active ? publicRevision(active) : null,
@@ -147,7 +162,48 @@ export class ModelConfigurationService {
     };
   }
 
+  async listProviders() {
+    const providers = await this.db.select().from(modelProviders).orderBy(asc(modelProviders.name));
+    return providers.map((provider) => currentTenantId() ? publicProviderMetadata(provider) : publicProvider(provider));
+  }
+
+  /** Global detector evidence is available to business workflows independently of tenant inventories. */
+  async readinessView() {
+    const revisions = await this.db.select().from(modelConfigurationRevisions)
+      .where(and(eq(modelConfigurationRevisions.tenantId, LEGACY_TENANT_ID), ne(modelConfigurationRevisions.state, "superseded")))
+      .orderBy(desc(modelConfigurationRevisions.revision));
+    const draft = revisions.find((revision) => revision.state === "draft" || revision.state === "validated") ?? null;
+    const active = revisions.find((revision) => revision.state === "active") ?? null;
+    const activating = revisions.find((revision) => revision.state === "activating") ?? null;
+    const ids = [...new Set([draft, active, activating].flatMap((revision) => revision
+      ? Object.values(normalizeModelAssignments(revision.assignments).bindings).filter((id): id is string => Boolean(id)) : []))];
+    const models = ids.length ? await this.db.select({ id: modelDefinitions.id, name: modelDefinitions.name }).from(modelDefinitions)
+      .where(inArray(modelDefinitions.id, ids)) : [];
+    const readable = currentTenantId() && ids.length ? await this.db.select({ id: modelDefinitions.id }).from(modelDefinitions)
+      .where(and(inArray(modelDefinitions.id, ids), resourceReadPredicate("model", modelDefinitions.id, modelDefinitions.tenantId))) : models;
+    const readableIds = new Set(readable.map((model) => model.id));
+    // Readiness communicates available detector capabilities, never another tenant's inventory.
+    const aliases = new Map(models.map((model, index) => [model.id,
+      readableIds.has(model.id) ? model.id : `platform-detector-${index + 1}`]));
+    const revision = (value: typeof draft): ModelReadinessRevision | null => {
+      if (!value) return null;
+      const bindings = normalizeModelAssignments(value.assignments).bindings;
+      const checks = new Map<string, string>(Object.entries(bindings).flatMap(([binding, modelId]) => modelId
+        ? [[`probe:${binding}:${modelId}`, `probe:${binding}:${aliases.get(modelId) ?? "unavailable"}`] as const] : []));
+      return { assignments: { bindings: Object.fromEntries(Object.entries(bindings).map(([binding, modelId]) =>
+        [binding, modelId ? aliases.get(modelId) ?? null : null])) },
+      validationReport: value.validationReport && { checkedAt: value.validationReport.checkedAt,
+        checks: value.validationReport.checks.filter((check) => checks.has(check.id)).map((check) => ({
+          id: checks.get(check.id)!, status: check.status, ...(check.evidenceKind ? { evidenceKind: check.evidenceKind } : {}),
+        })) } };
+    };
+    return modelReadiness({ models: models.map((model) => ({ id: aliases.get(model.id)!,
+      name: readableIds.has(model.id) ? model.name : "Configured detector" })),
+    draft: revision(draft), active: revision(active), activating: revision(activating) });
+  }
+
   async createProvider(raw: unknown, actorId: string) {
+    assertPlatformAuthority();
     const input = providerInputSchema.parse(raw);
     const id = randomUUID();
     const validation = await this.probeProviderFromCatalog(input.baseUrl, input.apiKey, input.skipTlsVerify, input.kind);
@@ -175,6 +231,7 @@ export class ModelConfigurationService {
   }
 
   async updateProvider(id: string, raw: unknown, actorId: string) {
+    assertPlatformAuthority();
     const input = providerUpdateSchema.parse(raw);
     const [current] = await this.db.select().from(modelProviders).where(eq(modelProviders.id, id));
     if (!current) throw new NotFoundError("Model Provider", id);
@@ -183,7 +240,8 @@ export class ModelConfigurationService {
       const incompatible = (await this.db.select().from(modelDefinitions).where(eq(modelDefinitions.providerId, id)))
         .find((model) => !providerAcceptsProfile(targetKind, model.profile));
       if (incompatible) {
-        throw new ValidationError(`Remove or reconfigure ${incompatible.name} before changing this Provider protocol.`);
+        const modelName = incompatible.tenantId === currentTenantId() ? incompatible.name : "a dependent Model";
+        throw new ValidationError(`Remove or reconfigure ${modelName} before changing this Provider protocol.`);
       }
     }
     const apiKey = input.apiKey === undefined
@@ -244,6 +302,7 @@ export class ModelConfigurationService {
   }
 
   async revalidateProvider(id: string, actorId: string) {
+    assertPlatformAuthority();
     const current = await this.provider(id);
     const apiKey = decryptModelCredential(current.credentialCiphertext, this.rootSecret);
     const target = await this.providerValidationModel(id);
@@ -268,6 +327,7 @@ export class ModelConfigurationService {
   }
 
   async discoverProviderModels(id: string) {
+    assertPlatformAuthority();
     const provider = await this.provider(id);
     const apiKey = decryptModelCredential(provider.credentialCiphertext, this.rootSecret);
     try {
@@ -285,6 +345,7 @@ export class ModelConfigurationService {
   // Discovery is read-only. Credentials and selected models are saved only
   // after confirmation; registration checks calls, not capability semantics.
   async discoverProviderDraft(raw: unknown) {
+    assertPlatformAuthority();
     const input = providerInputSchema.parse(raw);
     try {
       return { providerName: input.name, models: await this.providerCatalog(input.baseUrl, input.apiKey, input.skipTlsVerify, input.kind) };
@@ -294,6 +355,7 @@ export class ModelConfigurationService {
   }
 
   async registerProviderModels(raw: unknown, actorId: string) {
+    assertPlatformAuthority();
     const input = providerRegistrationSchema.parse(raw);
     const invalid = input.models.find((model) => !providerAcceptsProfile(input.connection.kind, model.profile));
     if (invalid) {
@@ -312,7 +374,7 @@ export class ModelConfigurationService {
     const successfulProbe = probes.find(({ result }) => result.passed) ?? probes[0]!;
     const connectionCheck = providerCredentialEvidence(successfulProbe.model, successfulProbe.result);
     const registered = probes.map(({ model, result }) => ({
-      id: randomUUID(), ...model, providerId: id, status: "pending" as const,
+      id: randomUUID(), tenantId: currentTenantId(), ...model, providerId: id, status: "pending" as const,
       validationMessage: "Registered. Assign and validate this Model in Guardrail Catalog.",
       validationLatencyMs: null, validatedAt: null, createdBy: actorId,
       ...connectionEvidence(result),
@@ -336,22 +398,24 @@ export class ModelConfigurationService {
   }
 
   async deleteProvider(id: string, actorId: string): Promise<void> {
-    const dependencies = await this.db.select({ id: modelDefinitions.id }).from(modelDefinitions)
+    assertPlatformAuthority();
+    const dependencies = await this.db.select({ id: modelDefinitions.id, tenantId: modelDefinitions.tenantId }).from(modelDefinitions)
       .where(eq(modelDefinitions.providerId, id));
     if (dependencies.length) {
       throw new ConflictError("Remove this Provider's Models before deleting it.", "model_provider_in_use", {
-        modelIds: dependencies.map((item) => item.id),
+        modelIds: dependencies.filter((item) => item.tenantId === null).map((item) => item.id),
       });
     }
-    const deleted = await this.db.delete(modelProviders).where(eq(modelProviders.id, id)).returning({ id: modelProviders.id });
+    const deleted = await this.db.delete(modelProviders)
+      .where(eq(modelProviders.id, id))
+      .returning({ id: modelProviders.id });
     if (!deleted[0]) throw new NotFoundError("Model Provider", id);
     await this.audit(actorId, "model_provider.deleted", "model_provider", id, {});
   }
 
   async createModel(raw: unknown, actorId: string) {
     const input = modelInputSchema.parse(raw);
-    const [provider] = await this.db.select().from(modelProviders).where(eq(modelProviders.id, input.providerId));
-    if (!provider) throw new NotFoundError("Model Provider", input.providerId);
+    const provider = await this.provider(input.providerId);
     if (!providerAcceptsProfile(provider.kind, input.profile)) {
       throw new ValidationError(`${provider.name} does not support the ${input.profile} protocol.`);
     }
@@ -359,6 +423,7 @@ export class ModelConfigurationService {
     const connection = connectionEvidence(await this.probeModel(provider, input, "connection"));
     const [created] = await this.db.insert(modelDefinitions).values({
       id,
+      tenantId: currentTenantId(),
       ...input,
       ...connection,
       status: "pending",
@@ -377,17 +442,19 @@ export class ModelConfigurationService {
   }
 
   async testModelConnection(id: string, actorId: string) {
+    await this.assertModelOwner(id);
     const model = await this.model(id);
     const provider = await this.provider(model.providerId);
     const connection = connectionEvidence(await this.probeModel(provider, model, "connection"));
     const [updated] = await this.db.update(modelDefinitions).set({ ...connection, updatedAt: new Date() })
-      .where(eq(modelDefinitions.id, id)).returning();
+      .where(and(eq(modelDefinitions.id, id), modelOwnerPredicate())).returning();
     if (!updated) throw new NotFoundError("Model", id);
     await this.audit(actorId, "model_definition.connection_tested", "model_definition", id, { status: connection.connectionStatus });
     return publicModel(updated, provider);
   }
 
   async revalidateModel(id: string, actorId: string) {
+    await this.assertModelOwner(id);
     const model = await this.model(id);
     const provider = await this.provider(model.providerId);
     const validation = await this.probeModel(provider, model);
@@ -397,7 +464,7 @@ export class ModelConfigurationService {
       validationLatencyMs: validation.latencyMs,
       validatedAt: new Date(),
       updatedAt: new Date(),
-    }).where(eq(modelDefinitions.id, id)).returning();
+    }).where(and(eq(modelDefinitions.id, id), modelOwnerPredicate())).returning();
     if (!updated) throw new NotFoundError("Model", id);
     await this.audit(actorId, "model_definition.validated", "model_definition", id, { status: updated.status });
     this.activeCache = null;
@@ -405,6 +472,7 @@ export class ModelConfigurationService {
   }
 
   async configureModel(id: string, raw: unknown, actorId: string) {
+    await this.assertModelOwner(id);
     const input = modelConfigurationInputSchema.parse(raw);
     const current = await this.model(id);
     const provider = await this.provider(current.providerId);
@@ -423,10 +491,10 @@ export class ModelConfigurationService {
         ...input, status: "pending", validationMessage: "Protocol configured. Validate it in the Guardrail Catalog.",
         validatedAt: null, validationLatencyMs: null, updatedAt: new Date(),
         connectionStatus: "pending", connectionMessage: "Protocol changed. Test the model call again.", connectionCheckedAt: null, connectionLatencyMs: null,
-      }).where(eq(modelDefinitions.id, id)).returning();
+      }).where(and(eq(modelDefinitions.id, id), modelOwnerPredicate())).returning();
       if (!model) throw new NotFoundError("Model", id);
       await tx.insert(auditEvents).values({
-        id: randomUUID(), actorId, kind: "model_definition.configured", resourceType: "model_definition", resourceId: id,
+        id: randomUUID(), tenantId: tenantOwnerForCreate(), actorId, kind: "model_definition.configured", resourceType: "model_definition", resourceId: id,
         detail: { profile: input.profile, previousProfile: current.profile },
       });
       return model;
@@ -435,24 +503,29 @@ export class ModelConfigurationService {
   }
 
   async deleteModel(id: string, actorId: string): Promise<void> {
+    await this.assertModelOwner(id);
     const revisions = await this.db.select().from(modelConfigurationRevisions)
       .where(inArray(modelConfigurationRevisions.state, ["draft", "validated", "activating", "active"]));
     const usedBy = revisions.filter((revision) => assignedModelIds(normalizeModelAssignments(revision.assignments)).includes(id));
     if (usedBy.length) {
       throw new ConflictError("Remove this Model from every active or draft assignment before deleting it.", "model_definition_in_use", {
-        revisionIds: usedBy.map((item) => item.id),
+        revisionIds: usedBy.filter((item) => !currentTenantId() || item.tenantId === currentTenantId()).map((item) => item.id),
       });
     }
-    const deleted = await this.db.delete(modelDefinitions).where(eq(modelDefinitions.id, id)).returning({ id: modelDefinitions.id });
+    const deleted = await this.db.delete(modelDefinitions)
+      .where(and(eq(modelDefinitions.id, id), modelOwnerPredicate()))
+      .returning({ id: modelDefinitions.id });
     if (!deleted[0]) throw new NotFoundError("Model", id);
     await this.audit(actorId, "model_definition.deleted", "model_definition", id, {});
   }
 
   async updateDraft(raw: unknown, actorId: string) {
+    assertPlatformAuthority();
     const assignments = assignmentInputSchema.parse(raw);
     const ids = [...new Set(assignedModelIds(assignments))];
     const models = ids.length
-      ? await this.db.select().from(modelDefinitions).where(inArray(modelDefinitions.id, ids))
+      ? await this.db.select().from(modelDefinitions).where(and(inArray(modelDefinitions.id, ids),
+        modelReadPredicate()))
       : [];
     const byId = new Map(models.map((item) => [item.id, item]));
     const providerIds = [...new Set(models.map((item) => item.providerId))];
@@ -495,6 +568,7 @@ export class ModelConfigurationService {
   }
 
   async previewAssignment(target: ModelAssignmentTarget, modelId: string, actorId: string, formalValidation?: FormalValidation) {
+    assertPlatformAuthority();
     const draft = await this.ensureDraft(actorId);
     const model = await this.model(modelId);
     const provider = await this.provider(model.providerId);
@@ -520,19 +594,23 @@ export class ModelConfigurationService {
   }
 
   async getAssignmentValidation(target: ModelAssignmentTarget, validationId: string, actorId: string) {
+    assertPlatformAuthority();
     const [record] = await this.db.select().from(modelAssignmentValidations).where(and(eq(modelAssignmentValidations.id, validationId), eq(modelAssignmentValidations.actorId, actorId), eq(modelAssignmentValidations.target, target)));
     if (!record) throw new NotFoundError("Model assignment validation", validationId);
     return { id: record.id, target: record.target, modelId: record.modelId, evidence: record.evidence, expiresAt: record.expiresAt.toISOString(), expired: record.expiresAt.getTime() <= Date.now() };
   }
 
   async updateAssignment(target: ModelAssignmentTarget, modelId: string | null, actorId: string, validationId?: string) {
+    assertPlatformAuthority();
     const existing = await this.ensureDraft(actorId);
     const previous = normalizeModelAssignments(existing.assignments);
     if ((target === "control_plane" ? previous.controlPlane : previous.bindings[target]) === modelId && !validationId) return publicRevision(existing);
     let evidence: ModelValidationCheck | undefined;
     if (modelId) {
-      const [model] = await this.db.select().from(modelDefinitions).where(eq(modelDefinitions.id, modelId));
-      if (!model) throw new ValidationError(`Assigned Model was not found: ${modelId}.`);
+      const model = await this.model(modelId).catch((error: unknown) => {
+        if (error instanceof NotFoundError) throw new ValidationError(`Assigned Model was not found: ${modelId}.`);
+        throw error;
+      });
       const provider = await this.provider(model.providerId);
       if (!assignmentTargetAcceptsModel(target, model.profile, provider.kind)) {
         throw new ValidationError(`${model.name} (${model.profile}) cannot be assigned to ${target}.`);
@@ -575,6 +653,7 @@ export class ModelConfigurationService {
   }
 
   async validateAssignment(target: ModelAssignmentTarget, actorId: string) {
+    assertPlatformAuthority();
     const draft = await this.ensureEditableDraft(actorId);
     const assignments = normalizeModelAssignments(draft.assignments);
     const modelId = target === "control_plane" ? assignments.controlPlane : assignments.bindings[target];
@@ -582,7 +661,8 @@ export class ModelConfigurationService {
     if (!modelId) {
       checks.push({ id: `assignment:${target}`, scope: "configuration", status: "skipped", message: `${target} is not assigned.` });
     } else {
-      const [model] = await this.db.select().from(modelDefinitions).where(eq(modelDefinitions.id, modelId));
+      const [model] = await this.db.select().from(modelDefinitions).where(and(eq(modelDefinitions.id, modelId),
+        modelReadPredicate()));
       const [provider] = model
         ? await this.db.select().from(modelProviders).where(eq(modelProviders.id, model.providerId))
         : [];
@@ -593,13 +673,16 @@ export class ModelConfigurationService {
       } else {
         checks.push({ id: `assignment:${target}`, scope: "configuration", status: "passed", message: `${model.name} is assigned to ${target}.` });
         const result = await this.probeAssignment(target, provider, model);
-        await this.db.update(modelDefinitions).set({
-          status: result.passed ? "validated" : "failed",
-          validationMessage: result.message,
-          validationLatencyMs: result.latencyMs,
-          validatedAt: new Date(),
-          updatedAt: new Date(),
-        }).where(eq(modelDefinitions.id, model.id));
+        if (model.tenantId === currentTenantId()) {
+          await this.db.update(modelDefinitions).set({
+            status: result.passed ? "validated" : "failed",
+            validationMessage: result.message,
+            validationLatencyMs: result.latencyMs,
+            validatedAt: new Date(),
+            updatedAt: new Date(),
+          }).where(and(eq(modelDefinitions.id, model.id),
+            modelOwnerPredicate()));
+        }
         checks.push({
           id: `probe:${target}:${model.id}`,
           scope: target === "control_plane" ? "model" : "capability",
@@ -624,6 +707,7 @@ export class ModelConfigurationService {
   }
 
   async validateDraft(actorId: string) {
+    assertPlatformAuthority();
     const draft = await this.ensureEditableDraft(actorId);
     const report = await this.validationReport(draft.assignments);
     const [updated] = await this.db.update(modelConfigurationRevisions).set({
@@ -642,18 +726,19 @@ export class ModelConfigurationService {
   }
 
   async applyConfiguration(actorId: string, raw: PartialModelActivation) {
+    assertPlatformAuthority();
     const selection = partialModelActivationSchema.parse(raw);
     const activated = await this.db.transaction(async tx => {
       // Match activation/finalization lock order. Never merge against an in-flight revision.
       const [state] = await tx.select().from(controllerState).where(eq(controllerState.id, "singleton")).for("update");
       if (!state) throw new Error("Controller desired state is unavailable.");
-      const [pending] = await tx.select().from(modelConfigurationRevisions).where(eq(modelConfigurationRevisions.state, "activating")).limit(1);
+      const [pending] = await tx.select().from(modelConfigurationRevisions).where(and(eq(modelConfigurationRevisions.tenantId, tenantOwnerForCreate()), eq(modelConfigurationRevisions.state, "activating"))).limit(1);
       if (pending) throw new ConflictError("Wait for the current activation to finish before applying more changes.", "model_configuration_activation_pending");
       const [draft] = await tx.select().from(modelConfigurationRevisions)
-        .where(inArray(modelConfigurationRevisions.state, ["draft", "validated"]))
+        .where(and(eq(modelConfigurationRevisions.tenantId, tenantOwnerForCreate()), inArray(modelConfigurationRevisions.state, ["draft", "validated"])))
         .orderBy(desc(modelConfigurationRevisions.revision)).limit(1).for("update");
       if (!draft) throw new ConflictError("No saved configuration is available to apply.", "model_configuration_changed");
-      const [active] = await tx.select().from(modelConfigurationRevisions).where(eq(modelConfigurationRevisions.state, "active")).limit(1);
+      const [active] = await tx.select().from(modelConfigurationRevisions).where(and(eq(modelConfigurationRevisions.tenantId, tenantOwnerForCreate()), eq(modelConfigurationRevisions.state, "active"))).limit(1);
       if (revisionReviewToken(draft) !== selection.expectedDraftToken || (active?.id ?? null) !== selection.expectedActiveId) {
         throw new ConflictError("The reviewed configuration changed. Review the latest changes again.", "model_configuration_changed");
       }
@@ -681,15 +766,16 @@ export class ModelConfigurationService {
         }
       }
       // Discard obsolete attempts/history, retaining only the current config and latest edits.
-      const [maximum] = await tx.select({ value: max(modelConfigurationRevisions.revision) }).from(modelConfigurationRevisions);
+      const [maximum] = await tx.select({ value: max(modelConfigurationRevisions.revision) }).from(modelConfigurationRevisions).where(eq(modelConfigurationRevisions.tenantId, tenantOwnerForCreate()));
       await tx.delete(modelConfigurationRevisions).where(and(
+        eq(modelConfigurationRevisions.tenantId, tenantOwnerForCreate()),
         ne(modelConfigurationRevisions.id, draft.id),
         ne(modelConfigurationRevisions.id, active?.id ?? ""),
       ));
       const generation = state.desiredGeneration + 1;
       const id = randomUUID();
       const [snapshot] = await tx.insert(modelConfigurationRevisions).values({
-        id, revision: (maximum?.value ?? 0) + 1, state: "activating", assignments,
+        id, tenantId: tenantOwnerForCreate(), revision: (maximum?.value ?? 0) + 1, state: "activating", assignments,
         validationReport: report, validatedAt: new Date(report.checkedAt), generation, createdBy: actorId,
       }).returning();
       await tx.update(controllerState).set({ desiredGeneration: generation, updatedAt: new Date() }).where(eq(controllerState.id, "singleton"));
@@ -707,22 +793,24 @@ export class ModelConfigurationService {
   }
 
   async finalizeActivation(revisionId: string): Promise<void> {
+    assertPlatformAuthority();
     await this.db.transaction(async (tx) => {
       // A unique synchronization ID prevents delayed ACKs from replacing a newer config.
       const [state] = await tx.select({ id: controllerState.id }).from(controllerState)
         .where(eq(controllerState.id, "singleton")).for("update");
       if (!state) throw new Error("Controller desired state is unavailable.");
       const [revision] = await tx.select().from(modelConfigurationRevisions)
-        .where(eq(modelConfigurationRevisions.id, revisionId)).for("update");
+        .where(and(eq(modelConfigurationRevisions.id, revisionId),
+          eq(modelConfigurationRevisions.tenantId, LEGACY_TENANT_ID))).for("update");
       if (!revision || revision.state !== "activating") return;
       // Replace the current configuration; do not retain restorable historical versions.
       await tx.delete(modelConfigurationRevisions)
-        .where(and(inArray(modelConfigurationRevisions.state, ["active", "superseded", "failed"]), ne(modelConfigurationRevisions.id, revisionId)));
+        .where(and(eq(modelConfigurationRevisions.tenantId, LEGACY_TENANT_ID), inArray(modelConfigurationRevisions.state, ["active", "superseded", "failed"]), ne(modelConfigurationRevisions.id, revisionId)));
       await tx.update(modelConfigurationRevisions).set({
         state: "active",
         activatedAt: new Date(),
         updatedAt: new Date(),
-      }).where(eq(modelConfigurationRevisions.id, revisionId));
+      }).where(and(eq(modelConfigurationRevisions.id, revisionId), eq(modelConfigurationRevisions.tenantId, LEGACY_TENANT_ID)));
       await tx.insert(auditEvents).values({ id: randomUUID(), kind: "model_configuration.applied", actorId: revision.createdBy,
         resourceType: "model_configuration", resourceId: revisionId, detail: { generation: revision.generation } });
     });
@@ -730,18 +818,22 @@ export class ModelConfigurationService {
   }
 
   async failActivation(revisionId: string, reason: string): Promise<void> {
+    assertPlatformAuthority();
     await this.db.update(modelConfigurationRevisions).set({
       state: "failed",
       failureReason: reason.slice(0, 2_000),
       updatedAt: new Date(),
-    }).where(and(eq(modelConfigurationRevisions.id, revisionId), eq(modelConfigurationRevisions.state, "activating")));
+    }).where(and(eq(modelConfigurationRevisions.id, revisionId),
+      eq(modelConfigurationRevisions.tenantId, LEGACY_TENANT_ID),
+      eq(modelConfigurationRevisions.state, "activating")));
     this.activeCache = null;
   }
 
   async activeConfiguration(includeActivating = false): Promise<ActiveModelConfiguration | null> {
     const states = includeActivating ? ["activating", "active"] as const : ["active"] as const;
     const rows = await this.db.select().from(modelConfigurationRevisions)
-      .where(inArray(modelConfigurationRevisions.state, [...states]))
+      .where(and(eq(modelConfigurationRevisions.tenantId, LEGACY_TENANT_ID),
+        inArray(modelConfigurationRevisions.state, [...states])))
       .orderBy(desc(modelConfigurationRevisions.generation), desc(modelConfigurationRevisions.revision));
     const revision = rows.find((item) => includeActivating && item.state === "activating") ?? rows[0];
     if (!revision) return null;
@@ -749,7 +841,7 @@ export class ModelConfigurationService {
     const normalizedAssignments = normalizeModelAssignments(revision.assignments);
     const ids = [...new Set(assignedModelIds(normalizedAssignments))];
     const models = ids.length
-      ? await this.db.select().from(modelDefinitions).where(inArray(modelDefinitions.id, ids))
+      ? await this.db.select().from(modelDefinitions).where(and(inArray(modelDefinitions.id, ids), isNull(modelDefinitions.tenantId)))
       : [];
     const providerIds = [...new Set(models.map((model) => model.providerId))];
     const providers = providerIds.length
@@ -793,12 +885,14 @@ export class ModelConfigurationService {
   async controlPlaneModel(_role: "policy_authoring" | "playground_chat") {
     // Chat applies on save independently of Runner synchronization attempts.
     const [revision] = await this.db.select().from(modelConfigurationRevisions)
-      .where(inArray(modelConfigurationRevisions.state, ["draft", "validated"]))
+      .where(and(eq(modelConfigurationRevisions.tenantId, LEGACY_TENANT_ID), inArray(modelConfigurationRevisions.state, ["draft", "validated"])))
       .orderBy(desc(modelConfigurationRevisions.revision)).limit(1);
     if (!revision) return null;
     const modelId = normalizeModelAssignments(revision.assignments).controlPlane;
-    if (!modelId) return null;
-    const model = await this.model(modelId);
+    if (!modelId || !revision.validationReport?.checks.some((check) =>
+      check.id === `probe:control_plane:${modelId}` && check.status === "passed")) return null;
+    const [model] = await this.db.select().from(modelDefinitions).where(and(eq(modelDefinitions.id, modelId), isNull(modelDefinitions.tenantId)));
+    if (!model) return null;
     const provider = await this.provider(model.providerId);
     if (!assignmentTargetAcceptsModel("control_plane", model.profile, provider.kind)) return null;
     return {
@@ -812,6 +906,7 @@ export class ModelConfigurationService {
   }
 
   async resolveCredentials(refs: string[], leaseId?: string): Promise<Record<string, string>> {
+    assertPlatformAuthority();
     if (leaseId) {
       const lease = this.validationLeases.get(leaseId);
       if (!lease || lease.expiresAt <= Date.now() || refs.some((ref) => ref !== lease.provider.id)) return {};
@@ -866,13 +961,13 @@ export class ModelConfigurationService {
     const runtimeModels = capabilityBindingDefinitions.flatMap((binding) => {
       const modelId = active?.assignments.bindings[binding.id];
       const model = modelId ? byId.get(modelId) : undefined;
-      return model ? [{ id: binding.id, capability: binding.capabilityRef, railType: binding.railType, model: model.model }] : [];
+      return model ? [{ id: binding.id, capability: binding.capabilityRef, railType: binding.railType, model: currentTenantId() ? "Configured detector" : model.model }] : [];
     });
     return {
       controlPlane: {
         status: control ? "configured" as const : "unconfigured" as const,
         provider: control?.provider ?? null,
-        model: control?.model ?? null,
+        model: control ? currentTenantId() ? "Configured control-plane model" : control.model : null,
       },
       dataPlane: {
         status: runtimeModels.length > 0 ? "configured" as const : "unconfigured" as const,
@@ -887,7 +982,8 @@ export class ModelConfigurationService {
     const checks: ModelValidationCheck[] = [];
     const ids = [...new Set(assignedModelIds(assignments))];
     const models = ids.length
-      ? await this.db.select().from(modelDefinitions).where(inArray(modelDefinitions.id, ids))
+      ? await this.db.select().from(modelDefinitions).where(and(inArray(modelDefinitions.id, ids),
+        modelReadPredicate()))
       : [];
     const providerIds = [...new Set(models.map((model) => model.providerId))];
     const providers = providerIds.length
@@ -931,11 +1027,14 @@ export class ModelConfigurationService {
       if (!result) {
         result = await this.probeAssignment(target.id, provider, model);
         probes.set(probeKey, result);
-        await this.db.update(modelDefinitions).set({
-          status: result.passed ? "validated" : "failed",
-          validationMessage: result.message, validationLatencyMs: result.latencyMs,
-          validatedAt: new Date(), updatedAt: new Date(),
-        }).where(eq(modelDefinitions.id, model.id));
+        if (model.tenantId === currentTenantId()) {
+          await this.db.update(modelDefinitions).set({
+            status: result.passed ? "validated" : "failed",
+            validationMessage: result.message, validationLatencyMs: result.latencyMs,
+            validatedAt: new Date(), updatedAt: new Date(),
+          }).where(and(eq(modelDefinitions.id, model.id),
+            modelOwnerPredicate()));
+        }
       }
       checks.push({
         id: `probe:${target.id}:${model.id}`,
@@ -975,7 +1074,8 @@ export class ModelConfigurationService {
     assignments = normalizeModelAssignments(assignments);
     const ids = [...new Set(assignedModelIds(assignments))];
     const models = ids.length
-      ? await database.select().from(modelDefinitions).where(inArray(modelDefinitions.id, ids))
+      ? await database.select().from(modelDefinitions).where(and(inArray(modelDefinitions.id, ids),
+        modelReadPredicate()))
       : [];
     const modelById = new Map(models.map((model) => [model.id, model]));
     const providerIds = [...new Set(models.map((model) => model.providerId))];
@@ -1022,7 +1122,14 @@ export class ModelConfigurationService {
 
   private async policyCoverage(available: Set<string>, database: Pick<ControllerDatabase, "select"> = this.db): Promise<PolicyCoverage[]> {
     const catalog = PolicyCatalog.load(this.policyCatalogDirectory).list();
-    const custom = await database.select().from(policyVersions).orderBy(desc(policyVersions.version));
+    const allCustom = await database.select().from(policyVersions).orderBy(desc(policyVersions.version));
+    const visiblePolicyIds = currentTenantId()
+      ? new Set((await database.select({ id: policyRecords.id }).from(policyRecords)
+        .where(resourceReadPredicate("policy", policyRecords.id, policyRecords.tenantId))).map((row) => row.id))
+      : null;
+    const custom = visiblePolicyIds
+      ? allCustom.filter((version) => visiblePolicyIds.has(version.policyId))
+      : allCustom;
     const latestCustom = new Map<string, typeof custom[number]>();
     for (const version of custom) if (!latestCustom.has(version.policyId)) latestCustom.set(version.policyId, version);
     return [
@@ -1229,22 +1336,27 @@ export class ModelConfigurationService {
   }
 
   private async ensureDraft(actorId: string | null) {
+    assertPlatformAuthority();
     const [draft] = await this.db.select(editableRevisionColumns).from(modelConfigurationRevisions)
-      .where(inArray(modelConfigurationRevisions.state, ["draft", "validated"]))
+      .where(and(eq(modelConfigurationRevisions.tenantId, tenantOwnerForCreate()),
+        inArray(modelConfigurationRevisions.state, ["draft", "validated"])))
       .orderBy(desc(modelConfigurationRevisions.revision))
       .limit(1);
     if (draft) return draft;
     const [latest] = await this.db.select().from(modelConfigurationRevisions)
+      .where(eq(modelConfigurationRevisions.tenantId, tenantOwnerForCreate()))
       .orderBy(desc(modelConfigurationRevisions.revision)).limit(1);
     return this.createDraftFrom(normalizeModelAssignments(latest?.assignments), actorId, latest?.validationReport);
   }
 
   private async createDraftFrom(assignments: ModelAssignments, actorId: string | null, validationReport: ModelValidationReport | null = null) {
     const rows = await this.db.select({ value: max(modelConfigurationRevisions.revision) })
-      .from(modelConfigurationRevisions);
+      .from(modelConfigurationRevisions)
+      .where(eq(modelConfigurationRevisions.tenantId, tenantOwnerForCreate()));
     const value = rows[0]?.value ?? 0;
     const [created] = await this.db.insert(modelConfigurationRevisions).values({
       id: randomUUID(),
+      tenantId: tenantOwnerForCreate(),
       revision: value + 1,
       state: "draft",
       assignments: normalizeModelAssignments(assignments),
@@ -1255,8 +1367,15 @@ export class ModelConfigurationService {
     return created;
   }
 
+  private async assertModelOwner(id: string): Promise<void> {
+    const [owned] = await this.db.select({ id: modelDefinitions.id }).from(modelDefinitions)
+      .where(and(eq(modelDefinitions.id, id), modelOwnerPredicate()));
+    if (!owned) throw new NotFoundError("Model", id);
+  }
+
   private async model(id: string): Promise<ModelRow> {
-    const [model] = await this.db.select().from(modelDefinitions).where(eq(modelDefinitions.id, id));
+    const [model] = await this.db.select().from(modelDefinitions).where(and(eq(modelDefinitions.id, id),
+      modelReadPredicate()));
     if (!model) throw new NotFoundError("Model", id);
     return model;
   }
@@ -1268,7 +1387,7 @@ export class ModelConfigurationService {
   }
 
   private async providerValidationModel(providerId: string): Promise<ModelRow | null> {
-    const models = await this.db.select().from(modelDefinitions).where(eq(modelDefinitions.providerId, providerId));
+    const models = await this.db.select().from(modelDefinitions).where(and(eq(modelDefinitions.providerId, providerId), isNull(modelDefinitions.tenantId)));
     return models
       .filter((model) => !isRetiredModel(model.model))
       .sort((left, right) => Number(right.connectionStatus === "validated") - Number(left.connectionStatus === "validated")
@@ -1285,13 +1404,29 @@ export class ModelConfigurationService {
   }
 
   private async audit(actorId: string, kind: string, resourceType: string, resourceId: string, detail: Record<string, unknown>) {
-    await this.db.insert(auditEvents).values({ id: randomUUID(), kind, actorId, resourceType, resourceId, detail });
+    await this.db.insert(auditEvents).values({ id: randomUUID(), tenantId: tenantOwnerForCreate(), kind, actorId, resourceType, resourceId, detail });
   }
+}
+
+function modelOwnerPredicate() {
+  const tenantId = currentTenantId();
+  return tenantId ? eq(modelDefinitions.tenantId, tenantId) : isNull(modelDefinitions.tenantId);
+}
+
+function modelReadPredicate() {
+  return currentTenantId()
+    ? resourceReadPredicate("model", modelDefinitions.id, modelDefinitions.tenantId)
+    : isNull(modelDefinitions.tenantId);
 }
 
 function publicProvider(provider: ProviderRow) {
   const { credentialCiphertext: _credentialCiphertext, ...safe } = provider;
   return { ...safe, credentialConfigured: Boolean(provider.credentialCiphertext) };
+}
+
+function publicProviderMetadata(provider: ProviderRow) {
+  return { id: provider.id, name: provider.name, kind: provider.kind, baseUrl: provider.baseUrl,
+    status: provider.status, createdAt: provider.createdAt, updatedAt: provider.updatedAt };
 }
 
 function publicModel(model: ModelRow, provider?: ProviderRow) {

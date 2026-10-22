@@ -15,8 +15,16 @@ describe("Controller config", () => {
   it("keeps the production password minimum at 12 by default", () => {
     expect(loadConfig(requiredEnvironment)).toMatchObject({
       minPasswordLength: 12,
+      mockSsoEnabled: false,
       metricsToken: null,
     });
+  });
+
+  it("enables mock SSO only by explicit local, non-production configuration", () => {
+    expect(loadConfig({ ...requiredEnvironment, CONTROLLER_HTTP_HOST: "127.0.0.1", CONTROLLER_MOCK_SSO_ENABLED: "true" }).mockSsoEnabled).toBe(true);
+    expect(() => loadConfig({ ...requiredEnvironment, CONTROLLER_MOCK_SSO_ENABLED: "true" })).toThrow(/CONTROLLER_MOCK_SSO_ENABLED|Mock SSO/);
+    expect(() => loadConfig({ ...requiredEnvironment, CONTROLLER_HTTP_HOST: "127.0.0.1", NODE_ENV: "production", CONTROLLER_MOCK_SSO_ENABLED: "true", CONTROLLER_METRICS_TOKEN: "metrics-token-that-is-at-least-32-characters" })).toThrow(/CONTROLLER_MOCK_SSO_ENABLED|Mock SSO/);
+    expect(() => loadConfig({ ...requiredEnvironment, CONTROLLER_HTTP_HOST: "127.0.0.1", CONTROLLER_PUBLIC_URL: "https://guard.example.test", CONTROLLER_MOCK_SSO_ENABLED: "true" })).toThrow(/CONTROLLER_MOCK_SSO_ENABLED|Mock SSO/);
   });
 
   it("accepts only a non-trivial optional metrics token", () => {

@@ -56,10 +56,13 @@ import {
   runPlaygroundInteraction,
 } from "../playground/service.js";
 import { isGuardrailVersionId } from "../../shared/guardrail-version.js";
+import { signInMockSsoIdentity } from "../mock-sso.js";
+import { TenantShareService } from "../services/tenant-shares.js";
+import { LEGACY_TENANT_ID, runWithTenantContext } from "../services/tenant-context.js";
 import type { PlatformStatusSnapshot } from "../../shared/platform-status.js";
 import { protectionDirectories } from "../../shared/protection-map.js";
 
-type Actor = { id: string; role: string; tokenId?: string; permissions?: TokenIdentity["permissions"] };
+type Actor = { id: string; role: string; tenantId: string; tokenId?: string; permissions?: TokenIdentity["permissions"] };
 type Variables = { actor: Actor };
 const packageVersionsQuery = z.string().max(4_000).optional()
   .transform(value => value?.split(",").map(item => item.trim()).filter(Boolean) ?? [])
@@ -188,11 +191,17 @@ const runtimeEventBatchInput = z.object({
   }
 });
 const modelCredentialRefsInput = z.object({ refs: z.array(z.string().uuid()).max(64), leaseId: z.string().uuid().optional() });
+const shareInput = z.object({
+  resourceType: z.enum(["guardrail", "router", "endpoint", "policy", "model"]),
+  resourceId: z.string().trim().min(1).max(256),
+  recipientTenantId: z.string().trim().min(1).max(128),
+});
 
 export function createHttpApp(input: {
   config: ControllerConfig;
   auth: ControllerAuth;
   accessTokens?: AccessTokenService;
+  tenantShares?: TenantShareService;
   service: ControlPlaneService;
   runnerControl: RunnerControlServer;
   metrics: ControllerMetrics;
@@ -309,17 +318,50 @@ export function createHttpApp(input: {
     return context.json(snapshot, ["healthy", "degraded"].includes(snapshot.status) ? 200 : 503);
   });
 
+  // Global account administration is reserved for a current platform session.
+  // Never authorize it from client headers, token scopes, or cached cookie roles.
+  app.all("/api/auth/admin/*", async context => {
+    if (context.req.header("authorization"))
+      return context.json({ error: { code: "session_required", message: "Use a platform administrator browser session." } }, 403);
+    const session = await input.auth.api.getSession({ headers: context.req.raw.headers, query: { disableCookieCache: true } });
+    if (!session || !hasPermission(session.user.role, "users", "write"))
+      return context.json({ error: { code: "forbidden", message: "Platform user administration requires an administrator session." } }, 403);
+    return input.auth.handler(context.req.raw);
+  });
   app.on(["GET", "POST"], "/api/auth/*", (context) => input.auth.handler(context.req.raw));
 
-  const authenticated = authentication(input.auth, input.accessTokens);
-  const accountSession: MiddlewareHandler<{ Variables: Variables }> = async (context, next) => {
+  app.get("/api/mock-sso/config", context => context.json({ enabled: input.config.mockSsoEnabled }));
+  app.post("/api/mock-sso/sign-in", async context => {
     context.header("Cache-Control", "no-store");
-    if (context.get("actor").tokenId) throw new ControllerError("Use your browser session to manage access tokens.", 403, "session_required");
+    if (!input.config.mockSsoEnabled) return context.json({ error: { code: "not_found", message: "Mock SSO is disabled." } }, 404);
+    const origin = context.req.header("origin");
+    if (context.req.header("sec-fetch-site") === "cross-site" || (origin && !input.config.trustedOrigins.includes(origin)))
+      return context.json({ error: { code: "forbidden", message: "Untrusted request origin." } }, 403);
+    if (!context.req.header("content-type")?.toLowerCase().startsWith("application/json"))
+      return context.json({ error: { code: "unsupported_content_type", message: "JSON content type is required." } }, 415);
+    const { identity } = z.strictObject({ identity: z.enum(["tenantA", "tenantB", "tenantC"]) }).parse(await context.req.json());
+    return signInMockSsoIdentity(input.auth, input.config, identity);
+  });
+
+  const authenticated = authentication(input.auth, input.accessTokens);
+  const tenantUser: MiddlewareHandler<{ Variables: Variables }> = async (context, next) => {
+    if (context.get("actor").role !== "user")
+      return context.json({ error: { code: "forbidden", message: "A tenant business user is required." } }, 403);
+    await next();
+  };
+  const browserSession: MiddlewareHandler<{ Variables: Variables }> = async (context, next) => {
+    context.header("Cache-Control", "no-store");
+    if (context.get("actor").tokenId) throw new ControllerError("Use your browser session for account management.", 403, "session_required");
     const origin = context.req.header("origin");
     if (context.req.header("sec-fetch-site") === "cross-site" || (origin && !input.config.trustedOrigins.includes(origin)))
       throw new ControllerError("Untrusted request origin.", 403, "forbidden");
-    if (!input.accessTokens) throw new ControllerError("Access tokens are unavailable.", 503, "access_tokens_unavailable");
     await next();
+  };
+  const accountSession: MiddlewareHandler<{ Variables: Variables }> = async (context, next) => {
+    return browserSession(context, async () => {
+      if (!input.accessTokens) throw new ControllerError("Access tokens are unavailable.", 503, "access_tokens_unavailable");
+      await next();
+    });
   };
   app.get("/api/v1/account/access-tokens", authenticated, accountSession, async context =>
     context.json({ items: await input.accessTokens!.list(context.get("actor").id) }));
@@ -335,9 +377,28 @@ export function createHttpApp(input: {
   app.get("/api/v1/account/identity", authenticated, context => {
     context.header("Cache-Control", "no-store");
     const actor = context.get("actor");
-    return context.json({ userId: actor.id, role: actor.role, authentication: actor.tokenId ? "access_token" : "session",
+    return context.json({ userId: actor.id, tenantId: actor.role === "admin" ? null : actor.tenantId, role: actor.role, authentication: actor.tokenId ? "access_token" : "session",
       tokenId: actor.tokenId ?? null, permissions: actor.permissions ?? null,
       effectivePermissions: actor.permissions ? effectiveTokenPermissions(actor.permissions, actor.role) : null });
+  });
+
+  const shareService = () => {
+    if (!input.tenantShares) throw new ControllerError("Tenant sharing is unavailable.", 503, "sharing_unavailable");
+    return input.tenantShares;
+  };
+  app.get("/api/v1/account/tenants", authenticated, tenantUser, browserSession, async context =>
+    context.json({ items: await shareService().listTenants() }));
+  app.get("/api/v1/account/shareable-resources", authenticated, tenantUser, browserSession, async context =>
+    context.json({ items: await shareService().listOwnedResources() }));
+  app.get("/api/v1/account/shares", authenticated, tenantUser, browserSession, async context =>
+    context.json({ items: await shareService().listShares() }));
+  app.post("/api/v1/account/shares", authenticated, tenantUser, browserSession, async context => {
+    const body = shareInput.parse(await context.req.json());
+    return context.json({ share: await shareService().createShare(body, context.get("actor").id) }, 201);
+  });
+  app.delete("/api/v1/account/shares/:id", authenticated, tenantUser, browserSession, async context => {
+    await shareService().revokeShare(context.req.param("id"), context.get("actor").id);
+    return context.body(null, 204);
   });
 
 
@@ -390,8 +451,7 @@ export function createHttpApp(input: {
   });
   app.get("/api/v1/model-providers", authenticated, async (context) => {
     if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
-    const view = await input.models.view();
-    return context.json(view.providers);
+    return context.json(await input.models.listProviders());
   });
   app.get("/api/v1/models", authenticated, async (context) => {
     if (!input.models) throw new ControllerError("Model configuration is unavailable.", 503, "model_configuration_unavailable");
@@ -464,7 +524,7 @@ export function createHttpApp(input: {
 
   app.get("/api/v1/guardrail-capabilities", authenticated, async context => {
     if (!input.models) throw new ControllerError("Model readiness is unavailable.", 503, "model_configuration_unavailable");
-    return context.json(modelReadiness(await input.models.view()));
+    return context.json(modelReadiness(await input.models.readinessView()));
   });
 
   app.get("/api/v1/policy-catalog/detectors", authenticated, context => context.json({ items: input.service.policyResources.compiler.detectors }));
@@ -590,6 +650,7 @@ export function createHttpApp(input: {
     return context.json({ items, count: items.length });
   });
   app.post("/api/v1/playground/guardrails/:guardrailId/draft-previews", authenticated, async (context) => {
+    if (input.tenantShares) await input.tenantShares.assertOwner("guardrail", context.req.param("guardrailId"));
     const playgroundModel = await currentPlaygroundModel();
     if (!playgroundModel || !playgroundRunner) {
       throw new ControllerError("Guardrail Playground has no model connection configured.", 503, "playground_unavailable");
@@ -623,6 +684,7 @@ export function createHttpApp(input: {
     }
   });
   app.post("/api/v1/playground/guardrails/:guardrailId/draft-interactions", authenticated, async (context) => {
+    if (input.tenantShares) await input.tenantShares.assertOwner("guardrail", context.req.param("guardrailId"));
     const playgroundModel = await currentPlaygroundModel();
     if (!playgroundModel || !playgroundRunner) {
       throw new ControllerError("Guardrail Playground has no model connection configured.", 503, "playground_unavailable");
@@ -1045,6 +1107,10 @@ export function createHttpApp(input: {
             note: "Draft matching only. Target weights are candidates; no runtime assignment or GuardRail execution." } });
       }
       if (!router.activeRevision || router.activeRevision !== body.expectedRevision) throw new ValidationError("Published Router revision changed. Reload before testing.");
+      if (input.tenantShares) {
+        await input.tenantShares.assertOwner("router", body.targetId);
+        await input.tenantShares.assertOwner("endpoint", body.endpointId);
+      }
       if (!router.endpointIds.includes(body.endpointId)) throw new ValidationError("Select an Endpoint bound to this Router.");
       routingInputSchema.parse({ endpointId: body.endpointId, fields: body.fields, business_request: businessRequest, endpoint_request: body.endpointRequest });
     } else {
@@ -1055,6 +1121,7 @@ export function createHttpApp(input: {
         await input.service.verifyScanTestCredential(body.targetId, body.credential);
       }
       if (body.configuration !== "published" || body.action !== "execute") throw new ValidationError("Endpoint tests execute the deployed configuration.");
+      if (input.tenantShares) await input.tenantShares.assertOwner("endpoint", body.targetId);
     }
     if (!playgroundRunner) throw new ControllerError("Runner is not configured.", 503, "playground_runner_unavailable");
     return context.json(await playgroundRunner.testPath(body, endpointAdapter));
@@ -1211,6 +1278,9 @@ function authentication(auth: ControllerAuth, tokens?: AccessTokenService): Midd
         context.header("WWW-Authenticate", "Bearer");
         return context.json({ error: { code: "unauthenticated", message: "Access token is invalid, expired, or revoked." } }, 401);
       }
+      if (!isAccountRole(actor.role)) return context.json({ error: { code: "forbidden", message: "A user or admin account is required." } }, 403);
+      if (actor.role === "user" && !validTenantId(actor.tenantId))
+        return context.json({ error: { code: "unauthenticated", message: "Account has no tenant." } }, 401);
       const permission = requiredTokenPermission(context.req.method, context.req.path);
       if (context.req.path !== "/api/v1/account/identity" || context.req.method !== "GET") {
         const accountPermission = requiredAccountPermission(context.req.method, context.req.path);
@@ -1218,29 +1288,32 @@ function authentication(auth: ControllerAuth, tokens?: AccessTokenService): Midd
           || !allowsTokenPermission(actor.permissions, permission[2], permission[3], actor.role))
           return context.json({ error: { code: "insufficient_token_permission", message: "This token does not allow the requested operation." } }, 403);
       }
-      if (!isAccountRole(actor.role)) return context.json({ error: { code: "forbidden", message: "A user or admin account is required." } }, 403);
-      context.set("actor", actor);
-      await next();
+      const tenantId = actor.role === "admin" ? LEGACY_TENANT_ID : actor.tenantId;
+      context.set("actor", { ...actor, tenantId });
+      await runWithTenantContext({ tenantId, actorId: actor.id, role: actor.role }, () => next());
       if (!["GET", "HEAD"].includes(context.req.method))
         await tokens!.recordRequest(actor, context.req.method, permission![1], context.res.status);
       return;
     }
-    // Cookie-cached identity is suitable for rendering the shell, not for API
-    // authority: revocation, expiry and role changes must use current DB state.
-    const session = await auth.api.getSession({
-      headers: context.req.raw.headers,
-      query: { disableCookieCache: true },
-    });
+    // API authority always uses the current database session and account role.
+    const session = await auth.api.getSession({ headers: context.req.raw.headers, query: { disableCookieCache: true } });
     if (!session) return context.json({ error: { code: "unauthenticated", message: "Authentication is required." } }, 401);
-    const role = session.user.role ?? "user";
+    const role = session.user.role;
     if (!isAccountRole(role)) return context.json({ error: { code: "forbidden", message: "A user or admin account is required." } }, 403);
+    if (role === "user" && !validTenantId(session.user.tenantId))
+      return context.json({ error: { code: "unauthenticated", message: "Account has no tenant." } }, 401);
     const permission = requiredAccountPermission(context.req.method, context.req.path);
-    const accountRoute = context.req.path === "/api/v1/account/identity" || context.req.path === "/api/v1/account/access-tokens" || context.req.path.startsWith("/api/v1/account/access-tokens/");
+    const accountRoute = /^\/api\/v1\/account\/(?:identity|access-tokens(?:\/[^/]+)?|tenants|shareable-resources|shares(?:\/[^/]+)?)$/.test(context.req.path);
     if ((!permission && !accountRoute) || (permission && !hasPermission(role, permission.resource, permission.action)))
       return context.json({ error: { code: "forbidden", message: "Your account role does not allow this operation." } }, 403);
-    context.set("actor", { id: session.user.id, role });
-    await next();
+    const tenantId = role === "admin" ? LEGACY_TENANT_ID : session.user.tenantId!;
+    context.set("actor", { id: session.user.id, role, tenantId });
+    await runWithTenantContext({ tenantId, actorId: session.user.id, role }, () => next());
   };
+}
+
+function validTenantId(tenantId: string | null | undefined): tenantId is string {
+  return typeof tenantId === "string" && tenantId.trim().length > 0 && tenantId === tenantId.trim();
 }
 
 function runnerAuthentication(token: string): MiddlewareHandler {

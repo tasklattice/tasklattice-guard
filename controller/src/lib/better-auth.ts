@@ -9,6 +9,7 @@ export const authClient = createAuthClient({
     inferAdditionalFields({
       user: {
         preferredLanguage: { type: "string", required: false },
+        tenantId: { type: "string", required: false },
       },
     }),
   ],

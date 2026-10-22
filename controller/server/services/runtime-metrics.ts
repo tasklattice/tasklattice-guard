@@ -51,6 +51,7 @@ import {
   metricWindows,
   type MetricScope,
 } from "./runtime-metric-results.js";
+import { currentTenantId, resourceReadPredicate, resourceWritePredicate } from "./tenant-context.js";
 
 export {
   assembleMetrics,
@@ -76,6 +77,7 @@ export async function queryRuntimeMetrics(
     "1d": 86_400_000,
   }[interval];
   const predicate = and(
+    currentTenantId() ? eq(event.tenantId, currentTenantId()!) : undefined,
     gte(event.occurredAt, new Date(now - duration * 2)),
     // Allow small clock skew between the app process and PostgreSQL.
     lte(event.occurredAt, new Date(now + 60_000)),
@@ -477,7 +479,7 @@ export async function queryRuntimeMetrics(
         })
         .from(guardrails)
         .leftJoinLateral(validation, eq(guardrails.id, guardrails.id))
-        .where(isNull(guardrails.deletedAt)),
+        .where(and(isNull(guardrails.deletedAt), resourceReadPredicate("guardrail", guardrails.id, guardrails.tenantId))),
     );
     // One row per published Router target so Guardrail scoping keeps working;
     // consumers de-duplicate by Router id when counting.
@@ -490,7 +492,7 @@ export async function queryRuntimeMetrics(
           active_snapshot: trafficRouters.activeSnapshot,
         })
         .from(trafficRouters)
-        .where(isNull(trafficRouters.deletedAt)),
+        .where(and(isNull(trafficRouters.deletedAt), resourceWritePredicate(trafficRouters.tenantId))),
     )).flatMap((router) => {
       const guardrailIds = [...new Set((router.active_snapshot?.routes ?? []).flatMap((route) => route.targets.map((target) => target.guardrailId)))];
       return (guardrailIds.length ? guardrailIds : [null]).map((guardrail_id) => ({
@@ -504,7 +506,7 @@ export async function queryRuntimeMetrics(
       tx
         .select({ id: endpoints.id, name: endpoints.name })
         .from(endpoints)
-        .where(isNull(endpoints.deletedAt)),
+        .where(and(isNull(endpoints.deletedAt), resourceReadPredicate("endpoint", endpoints.id, endpoints.tenantId))),
     );
     return {
       ...assembleMetrics(

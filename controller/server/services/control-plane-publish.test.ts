@@ -47,7 +47,7 @@ describe("Guardrail publication", () => {
         inserted.push(value);
       }),
     }));
-    const tx = { select, update, insert };
+    const tx = { select, update, insert, execute: vi.fn(async () => []) };
     const db = {
       transaction: vi.fn(async (callback: (transaction: typeof tx) => Promise<unknown>) => callback(tx)),
     } as unknown as ControllerDatabase;

@@ -9,6 +9,13 @@ import { auditEvents, controllerState, endpoints, guardrails, guardrailVersions,
 import { ConflictError, ControllerError, NotFoundError, ValidationError } from "../domain/errors.js";
 import { capabilityIssues, routingIssues, type RouterChangeRequest, type RouterDraft } from "../../shared/traffic-routing.js";
 import { advisoryTransactionLock } from "../db/postgres-locks.js";
+import {
+  assertResourceWriteAccess,
+  currentTenantId,
+  resourceReadPredicate,
+  resourceWritePredicate,
+  tenantOwnerForCreate,
+} from "./tenant-context.js";
 
 /** How long a Runner load check of an imported version counts as current. */
 export const IMPORTED_VERSION_CHECK_TTL_MS = 10 * 60_000;
@@ -39,7 +46,9 @@ export class TrafficRoutingService {
   constructor(private db: ControllerDatabase) {}
   async list() {
     const [rows, bindings, runners, changes] = await Promise.all([
-      this.db.select().from(trafficRouters).where(isNull(trafficRouters.deletedAt)).orderBy(asc(trafficRouters.name)),
+      this.db.select().from(trafficRouters).where(and(
+        isNull(trafficRouters.deletedAt), resourceReadPredicate("router", trafficRouters.id, trafficRouters.tenantId),
+      )).orderBy(asc(trafficRouters.name)),
       this.db.select({ id: endpoints.id, routerId: endpoints.trafficRouterId }).from(endpoints).where(isNull(endpoints.deletedAt)),
       this.db.select().from(runnerInstances).where(eq(runnerInstances.poolId, "default")),
       this.db.select({ change: trafficRouterChangeRequests }).from(trafficRouterChangeRequests)
@@ -68,8 +77,11 @@ export class TrafficRoutingService {
     const id = randomUUID();
     await this.db.transaction(async tx => {
       await advisoryTransactionLock(tx, "traffic-router-bindings");
+      await this.assertDraftGuardrailsVisible(tx, draft);
       const requested = [...new Set(endpointIds)];
-      const available = await tx.select().from(endpoints).where(isNull(endpoints.deletedAt));
+      const available = await tx.select().from(endpoints).where(and(
+        isNull(endpoints.deletedAt), resourceWritePredicate(endpoints.tenantId),
+      ));
       const selected = available.filter(endpoint => requested.includes(endpoint.id));
       if (selected.length !== requested.length) throw new ValidationError("Endpoint was not found.");
       for (const endpoint of selected) {
@@ -77,7 +89,7 @@ export class TrafficRoutingService {
       }
       const issues = capabilityIssues(draft, selected);
       if (selected.length && issues.length) throw new ValidationError(issues.join("; "));
-      await tx.insert(trafficRouters).values({ id, name, description, draft });
+      await tx.insert(trafficRouters).values({ id, tenantId: tenantOwnerForCreate(), name, description, draft });
       for (const endpoint of selected) {
         await tx.update(endpoints).set({ trafficRouterId: id, updatedAt: new Date() }).where(eq(endpoints.id, endpoint.id));
       }
@@ -86,12 +98,14 @@ export class TrafficRoutingService {
     return this.get(id);
   }
   async save(id: string, expectedDraftRevision: number, draft: RouterDraft, actorId: string) {
+    await assertResourceWriteAccess(this.db, "router", id);
     const errors = routingIssues(draft);
     if (errors.length) throw new ValidationError(errors.join("; "));
     await this.db.transaction(async tx => {
       await advisoryTransactionLock(tx, "traffic-router-bindings");
+      await this.assertDraftGuardrailsVisible(tx, draft);
       const rows = await tx.update(trafficRouters).set({ draft, draftRevision: expectedDraftRevision + 1, updatedAt: new Date() })
-        .where(and(eq(trafficRouters.id, id), eq(trafficRouters.draftRevision, expectedDraftRevision), isNull(trafficRouters.deletedAt))).returning();
+        .where(and(eq(trafficRouters.id, id), eq(trafficRouters.draftRevision, expectedDraftRevision), isNull(trafficRouters.deletedAt), resourceWritePredicate(trafficRouters.tenantId))).returning();
       if (!rows.length) throw new ConflictError("Router draft changed. Reload and compare your changes.", "router_draft_conflict");
       await this.audit(tx, id, actorId, "router.draft_saved", { previousDraftRevision: expectedDraftRevision, draft });
     });
@@ -100,13 +114,15 @@ export class TrafficRoutingService {
   private async resolvePublication(tx: Tx, id: string, draft: RouterDraft, options: { verifyImports?: boolean } = {}) {
     const initialErrors = routingIssues(draft, true);
     if (initialErrors.length) throw new ValidationError(initialErrors.join("; "));
-    const bound = await tx.select().from(endpoints).where(and(eq(endpoints.trafficRouterId, id), isNull(endpoints.deletedAt)));
+    const bound = await tx.select().from(endpoints).where(and(
+      eq(endpoints.trafficRouterId, id), isNull(endpoints.deletedAt), resourceWritePredicate(endpoints.tenantId),
+    ));
     const ids = [...new Set(draft.routes.flatMap(r => r.targets.map(t => t.guardrailId)))];
     const versions = ids.length ? await tx.select({ id: guardrailVersions.guardrailId, version: guardrailVersions.version,
       artifactId: guardrailVersions.artifactId, status: guardrailVersions.status, name: guardrails.name, deletedAt: guardrails.deletedAt,
       origin: guardrailVersions.origin, environmentCheck: guardrailVersions.environmentCheck })
       .from(guardrailVersions).innerJoin(guardrails, eq(guardrails.id, guardrailVersions.guardrailId))
-      .where(inArray(guardrailVersions.guardrailId, ids)) : [];
+      .where(and(inArray(guardrailVersions.guardrailId, ids), resourceReadPredicate("guardrail", guardrails.id, guardrails.tenantId))) : [];
     // Targets already name immutable versions: the reviewed snapshot is the draft itself.
     const snapshot: RouterDraft = structuredClone(draft);
     const errors = [...routingIssues(snapshot, true), ...capabilityIssues(snapshot, bound)];
@@ -146,6 +162,7 @@ export class TrafficRoutingService {
     return { snapshot, context, endpointIds: context.endpoints.map(e => e.id) };
   }
   async preview(id: string, expectedDraftRevision: number) {
+    await assertResourceWriteAccess(this.db, "router", id);
     return this.db.transaction(async tx => {
       const [router] = await tx.select().from(trafficRouters).where(and(eq(trafficRouters.id, id), isNull(trafficRouters.deletedAt)));
       if (!router) throw new NotFoundError("Router", id);
@@ -166,6 +183,7 @@ export class TrafficRoutingService {
   }
   /** Freeze the reviewed draft as a pending change. Nothing is published until approval. */
   async submitChange(id: string, input: { expectedDraftRevision: number; reviewedSnapshot: RouterDraft; reviewedEndpointIds: string[]; reason: string; ticket: string; restore?: { revision: number; expectedActiveRevision: number } | undefined }, actorId: string) {
+    await assertResourceWriteAccess(this.db, "router", id);
     const changeId = randomUUID();
     await this.db.transaction(async tx => {
       await advisoryTransactionLock(tx, "traffic-router-bindings");
@@ -312,7 +330,7 @@ export class TrafficRoutingService {
     return { ...await this.get(id), publication: { ...publication, revisionUrl: `/api/v1/routers/${encodeURIComponent(id)}/revisions/${publication.revision}`, statusUrl: `/api/v1/routers/${encodeURIComponent(id)}` } };
   }
   private async lockRouter(tx: Tx, id: string) {
-    const [router] = await tx.select().from(trafficRouters).where(eq(trafficRouters.id, id)).for("update");
+    const [router] = await tx.select().from(trafficRouters).where(and(eq(trafficRouters.id, id), resourceWritePredicate(trafficRouters.tenantId))).for("update");
     if (!router || router.deletedAt) throw new NotFoundError("Router", id);
     return router;
   }
@@ -333,6 +351,7 @@ export class TrafficRoutingService {
     return this.db.select().from(trafficRouterRevisions).where(eq(trafficRouterRevisions.routerId, id)).orderBy(desc(trafficRouterRevisions.revision));
   }
   async deleteRevision(id: string, revision: number, actorId: string) {
+    await assertResourceWriteAccess(this.db, "router", id);
     await this.db.transaction(async tx => {
       await advisoryTransactionLock(tx, "traffic-router-bindings");
       const [router] = await tx.select().from(trafficRouters).where(eq(trafficRouters.id, id)).for("update");
@@ -353,11 +372,15 @@ export class TrafficRoutingService {
     });
   }
   async bind(id: string, endpointIds: string[], actorId: string) {
+    await assertResourceWriteAccess(this.db, "router", id);
     const changed = await this.db.transaction(async tx => {
       await advisoryTransactionLock(tx, "traffic-router-bindings");
       const [router] = await tx.select().from(trafficRouters).where(eq(trafficRouters.id, id)).for("update");
       if (!router || router.deletedAt) throw new NotFoundError("Router", id);
-      const all = await tx.select().from(endpoints).where(isNull(endpoints.deletedAt));
+      await this.assertDraftGuardrailsVisible(tx, router.activeSnapshot ?? router.draft);
+      const all = await tx.select().from(endpoints).where(and(
+        isNull(endpoints.deletedAt), resourceWritePredicate(endpoints.tenantId),
+      ));
       const requested = [...new Set(endpointIds)];
       const selected = all.filter(e => requested.includes(e.id));
       if (selected.length !== requested.length) throw new ValidationError("Endpoint was not found.");
@@ -393,7 +416,7 @@ export class TrafficRoutingService {
       transformed: sql<number>`count(*) filter (where ${routeAssignments.outcome} = 'transform')::int`, intervened: sql<number>`count(*) filter (where ${routeAssignments.outcome} = 'intervene')::int`,
       allowed: sql<number>`count(*) filter (where ${routeAssignments.outcome} = 'allow')::int`,
       p95Ms: sql<number | null>`percentile_cont(0.95) within group (order by ${routeAssignments.durationMs})`,
-    }).from(routeAssignments).where(and(eq(routeAssignments.routerId, id), gte(routeAssignments.occurredAt, since), lte(routeAssignments.occurredAt, until), revision ? eq(routeAssignments.routerRevision, revision) : undefined, endpointId ? eq(routeAssignments.endpointId, endpointId) : undefined))
+    }).from(routeAssignments).where(and(eq(routeAssignments.routerId, id), currentTenantId() ? eq(routeAssignments.tenantId, currentTenantId()!) : undefined, gte(routeAssignments.occurredAt, since), lte(routeAssignments.occurredAt, until), revision ? eq(routeAssignments.routerRevision, revision) : undefined, endpointId ? eq(routeAssignments.endpointId, endpointId) : undefined))
       .groupBy(routeAssignments.routeId, routeAssignments.targetId, routeAssignments.routerRevision, routeAssignments.guardrailId, routeAssignments.guardrailVersion, routeAssignments.assignmentStatus);
     const watermarks = await this.db.select({ at: telemetryWatermarks.lastReceivedAt, heartbeat: runnerInstances.lastHeartbeatAt }).from(runnerInstances)
       .leftJoin(telemetryWatermarks, eq(telemetryWatermarks.runnerId, runnerInstances.runnerId)).where(eq(runnerInstances.poolId, "default"));
@@ -402,7 +425,7 @@ export class TrafficRoutingService {
     const total = rows.reduce((n, r) => n + r.count, 0), unassigned = rows.filter(r => r.assignmentStatus === "unassigned").reduce((n, r) => n + r.count, 0);
     const revisions = await this.revisions(id);
     const trend = await this.db.select({ at: sql<string>`date_bin(interval '15 minutes', ${routeAssignments.occurredAt}, timestamptz '2000-01-01')::text`, routeId: routeAssignments.routeId, count: sql<number>`count(*)::int` }).from(routeAssignments)
-      .where(and(eq(routeAssignments.routerId, id), gte(routeAssignments.occurredAt, since), lte(routeAssignments.occurredAt, until), revision ? eq(routeAssignments.routerRevision, revision) : undefined, endpointId ? eq(routeAssignments.endpointId, endpointId) : undefined))
+      .where(and(eq(routeAssignments.routerId, id), currentTenantId() ? eq(routeAssignments.tenantId, currentTenantId()!) : undefined, gte(routeAssignments.occurredAt, since), lte(routeAssignments.occurredAt, until), revision ? eq(routeAssignments.routerRevision, revision) : undefined, endpointId ? eq(routeAssignments.endpointId, endpointId) : undefined))
       .groupBy(sql`date_bin(interval '15 minutes', ${routeAssignments.occurredAt}, timestamptz '2000-01-01')`, routeAssignments.routeId);
     return { since: since.toISOString(), until: until.toISOString(), rows, total, assigned: total - unassigned, unassigned, trend,
       revisions: revisions.map(r => ({ revision: r.revision, snapshot: r.snapshot, context: r.context })),
@@ -420,12 +443,18 @@ export class TrafficRoutingService {
       this.lastRetentionAt = Date.now();
     }
     await this.db.transaction(async tx => {
+      const endpointIds = [...new Set(events.map(event => event.endpointId))];
+      const routerIds = [...new Set(events.map(event => event.routerId).filter(Boolean))];
+      const endpointOwners = new Map((endpointIds.length ? await tx.select({ id: endpoints.id, tenantId: endpoints.tenantId })
+        .from(endpoints).where(inArray(endpoints.id, endpointIds)) : []).map(row => [row.id, row.tenantId]));
+      const routerOwners = new Map((routerIds.length ? await tx.select({ id: trafficRouters.id, tenantId: trafficRouters.tenantId })
+        .from(trafficRouters).where(inArray(trafficRouters.id, routerIds)) : []).map(row => [row.id, row.tenantId]));
       const accepts = await guardrailTelemetryFilter(tx, events.map(event => event.guardrailId));
       for (const event of events) {
         if (!accepts(event.guardrailId, event.decisionAt)) continue;
         if (event.decisionAt.getTime() < Date.now() - 30 * 86400000) continue;
         const complete = event.eventType === "completion";
-        await tx.insert(routeAssignments).values({ decisionId: event.decisionId, callId: event.callId, routerId: event.routerId, routerRevision: event.routerRevision,
+        await tx.insert(routeAssignments).values({ decisionId: event.decisionId, tenantId: endpointOwners.get(event.endpointId) ?? routerOwners.get(event.routerId) ?? tenantOwnerForCreate(), callId: event.callId, routerId: event.routerId, routerRevision: event.routerRevision,
           routeId: event.routeId, targetId: event.targetId, guardrailId: event.guardrailId, guardrailVersion: event.guardrailVersion, endpointId: event.endpointId,
           assignmentStatus: event.assignmentStatus, failureReason: event.failureReason ?? null, occurredAt: event.decisionAt,
           completedAt: complete ? event.occurredAt : null, outcome: complete ? event.outcome! : null, durationMs: complete ? event.durationMs ?? null : null,
@@ -464,6 +493,7 @@ export class TrafficRoutingService {
       t.guardrailId === guardrailId && t.guardrailVersion === version)));
     const routers = await tx.select().from(trafficRouters).where(isNull(trafficRouters.deletedAt)).orderBy(asc(trafficRouters.name));
     const ids = routers.map(r => r.id);
+    const readableIds = await this.readableRouterIds(tx, ids);
     const [history, changes] = ids.length ? await Promise.all([
       tx.select().from(trafficRouterRevisions).where(inArray(trafficRouterRevisions.routerId, ids)).orderBy(asc(trafficRouterRevisions.routerId), asc(trafficRouterRevisions.revision)),
       tx.select().from(trafficRouterChangeRequests).where(and(inArray(trafficRouterChangeRequests.routerId, ids),
@@ -473,10 +503,12 @@ export class TrafficRoutingService {
     const historical: Array<{ routerId: string; routerName: string; revision: number; createdAt: string }> = [];
     let retired: { at: Date; generation: number | null } | null = null;
     for (const router of routers) {
-      const at = { routerId: router.id, routerName: router.name };
-      if (pinned(router.activeSnapshot)) references.push({ kind: "router_active", ...at, revision: router.activeRevision! });
+      const readable = readableIds.has(router.id);
+      const at = readable ? { routerId: router.id, routerName: router.name }
+        : { routerId: "", routerName: "Another tenant’s Router" };
+      if (pinned(router.activeSnapshot)) references.push({ kind: "router_active", ...at, ...(readable ? { revision: router.activeRevision! } : {}) });
       const pending = changes.find(c => c.routerId === router.id && c.status === "pending");
-      if (pending && pinned(pending.snapshot)) references.push({ kind: "change_request", ...at, changeRequestId: pending.id, ticket: pending.ticket });
+      if (pending && pinned(pending.snapshot)) references.push({ kind: "change_request", ...at, ...(readable ? { changeRequestId: pending.id, ticket: pending.ticket } : {}) });
       // A draft unchanged since the active or pending snapshot is already reported through it.
       const draftEdited = router.draftRevision !== router.activeDraftRevision && router.draftRevision !== pending?.sourceDraftRevision;
       if (draftEdited && pinned(router.draft)) references.push({ kind: "router_draft", ...at });
@@ -484,8 +516,8 @@ export class TrafficRoutingService {
       const revisions = history.filter(r => r.routerId === router.id);
       revisions.forEach((revision, index) => {
         if (!pinned(revision.snapshot)) return;
-        if (revision.revision === active?.baseRevision) references.push({ kind: "rollback_target", ...at, revision: revision.revision, changeRequestId: active.id });
-        else if (revision.revision !== router.activeRevision) historical.push({ ...at, revision: revision.revision, createdAt: revision.createdAt.toISOString() });
+        if (revision.revision === active?.baseRevision) references.push({ kind: "rollback_target", ...at, ...(readable ? { revision: revision.revision, changeRequestId: active.id } : {}) });
+        else if (readable && revision.revision !== router.activeRevision) historical.push({ ...at, revision: revision.revision, createdAt: revision.createdAt.toISOString() });
         const successor = revisions[index + 1];
         if (successor && !pinned(successor.snapshot) && (!retired || successor.createdAt > retired.at)) retired = { at: successor.createdAt, generation: successor.generation };
       });
@@ -494,6 +526,8 @@ export class TrafficRoutingService {
   }
   async assertGuardrailUnused(id: string, tx: Tx | ControllerDatabase = this.db) {
     const rows = await tx.select().from(trafficRouters).where(isNull(trafficRouters.deletedAt));
+    const readableIds = await this.readableRouterIds(tx, rows.map(row => row.id));
+    const names = (routers: typeof rows) => routers.map(router => readableIds.has(router.id) ? router.name : "Another tenant’s Router").join(", ");
     const recentRevisions = await tx.select().from(trafficRouterRevisions).where(gte(trafficRouterRevisions.createdAt, new Date(Date.now() - 300000)));
     const recentlyChanged = new Set(recentRevisions.map(r => r.routerId));
     if (recentlyChanged.size) {
@@ -503,15 +537,23 @@ export class TrafficRoutingService {
     const refs = rows.filter(r => r.activeSnapshot?.routes.some(route => route.targets.some(t => t.guardrailId === id)));
     const [pending] = await tx.select({ count: sql<number>`count(*)::int` }).from(routeAssignments).where(and(eq(routeAssignments.guardrailId, id), isNull(routeAssignments.completedAt), gte(routeAssignments.occurredAt, new Date(Date.now() - 300000))));
     if (pending?.count) throw new ConflictError("Guardrail still has in-flight calls.", "guardrail_in_use");
-    if (refs.length) throw new ConflictError(`Guardrail is referenced by published Routers: ${refs.map(r => r.name).join(", ")}`, "guardrail_in_use");
+    if (refs.length) throw new ConflictError(`Guardrail is referenced by published Routers: ${names(refs)}`, "guardrail_in_use");
     const pendingChanges = await tx.select({ routerId: trafficRouterChangeRequests.routerId, snapshot: trafficRouterChangeRequests.snapshot }).from(trafficRouterChangeRequests).where(eq(trafficRouterChangeRequests.status, "pending"));
     const awaiting = rows.filter(r => pendingChanges.some(c => c.routerId === r.id && c.snapshot.routes.some(route => route.targets.some(t => t.guardrailId === id))));
-    if (awaiting.length) throw new ConflictError(`Guardrail is referenced by pending Router change requests: ${awaiting.map(r => r.name).join(", ")}`, "guardrail_in_use");
+    if (awaiting.length) throw new ConflictError(`Guardrail is referenced by pending Router change requests: ${names(awaiting)}`, "guardrail_in_use");
+  }
+  private async readableRouterIds(tx: Tx | ControllerDatabase, ids: string[]): Promise<Set<string>> {
+    if (!currentTenantId() || !ids.length) return new Set(ids);
+    const rows = await tx.select({ id: trafficRouters.id }).from(trafficRouters).where(and(
+      inArray(trafficRouters.id, ids), resourceReadPredicate("router", trafficRouters.id, trafficRouters.tenantId),
+    ));
+    return new Set(rows.map(row => row.id));
   }
   async reportRolloutFailure(generation: number, runnerId: string, reason: string) {
     await this.db.update(trafficRouters).set({ rolloutError: `${runnerId}: ${reason}` }).where(and(isNull(trafficRouters.deletedAt), lte(trafficRouters.desiredGeneration, generation), sql`${trafficRouters.activeRevision} IS NOT NULL`));
   }
   async remove(id: string, actorId: string) {
+    await assertResourceWriteAccess(this.db, "router", id);
     await this.db.transaction(async tx => {
       await advisoryTransactionLock(tx, "traffic-router-bindings");
       const [router] = await tx.select().from(trafficRouters).where(and(eq(trafficRouters.id, id), isNull(trafficRouters.deletedAt))).for("update");
@@ -527,6 +569,15 @@ export class TrafficRoutingService {
     const [row] = await tx.update(controllerState).set({ desiredGeneration: sql`${controllerState.desiredGeneration} + 1`, updatedAt: new Date() }).where(eq(controllerState.id, "singleton")).returning();
     if (!row) throw new Error("Controller state is not initialized");
     return row.desiredGeneration;
+  }
+  private async assertDraftGuardrailsVisible(tx: Tx, draft: RouterDraft): Promise<void> {
+    const ids = [...new Set(draft.routes.flatMap(route => route.targets.map(target => target.guardrailId)))];
+    if (!ids.length) return;
+    const rows = await tx.select({ id: guardrails.id }).from(guardrails).where(and(
+      inArray(guardrails.id, ids), isNull(guardrails.deletedAt),
+      resourceReadPredicate("guardrail", guardrails.id, guardrails.tenantId),
+    ));
+    if (rows.length !== ids.length) throw new ValidationError("Router references a Guardrail that is unavailable to this tenant.");
   }
   private async audit(tx: Tx, id: string, actorId: string, kind: string, detail: Record<string, unknown>) {
     await tx.insert(auditEvents).values({ id: randomUUID(), resourceType: "router", resourceId: id, actorId, kind, detail });

@@ -14,7 +14,7 @@ export const rolePermissions: Readonly<Record<AccountRole, Readonly<Partial<Reco
   },
   user: {
     guardrails: "write", policies: "write", playground: "write", routers: "write", endpoints: "write",
-    runtime: "read", runners: "write",
+    models: "write", runtime: "read", runners: "write",
   },
 };
 
@@ -52,6 +52,7 @@ export function pagePermission(pathname: string): { resource: PermissionResource
     ["/guardrails", "guardrails", "write"], ["/policy-library", "policies", "write"],
     ["/playground", "playground", "write"], ["/integration/routers", "routers", "write"],
     ["/integration/endpoints", "endpoints", "write"],
+    ["/models", "models", "write"], ["/sharing", "guardrails", "write"],
   ];
   const route = routes.find(([path]) => pathname === path || pathname.startsWith(`${path}/`));
   return route ? { resource: route[1], action: route[2] } : null;

@@ -71,7 +71,7 @@ describe("runtime content opt-in", () => {
   ])("%s reading %s only decrypts when explicitly authorized", async (role, query, includeContent) => {
     const getRuntimeEvent = vi.fn().mockResolvedValue({ id: "event", metadata: {} });
     const app = createHttpApp({ config,
-      auth: { api: { getSession: vi.fn().mockResolvedValue({ user: { id: "reader", role } }) } } as unknown as ControllerAuth,
+      auth: { api: { getSession: vi.fn().mockResolvedValue({ user: { id: "reader", role, tenantId: "tenantA" } }) } } as unknown as ControllerAuth,
       service: { getRuntimeEvent } as unknown as ControlPlaneService,
       runnerControl: {} as RunnerControlServer, metrics: {} as ControllerMetrics,
     });
@@ -86,7 +86,7 @@ describe("Security Event multi-select filter", () => {
   it.each([["critical,high", 200], ["unclassified,informational", 200], ["high,invalid", 400], ["", 400]])("validates the complete filter %s", async (severity, status) => {
     const queryRuntimeEvents = vi.fn().mockResolvedValue({ items: [], count: 0 });
     const app = createHttpApp({ config,
-      auth: { api: { getSession: vi.fn().mockResolvedValue({ user: { id: "reader", role: "user" } }) } } as unknown as ControllerAuth,
+      auth: { api: { getSession: vi.fn().mockResolvedValue({ user: { id: "reader", role: "user", tenantId: "tenantA" } }) } } as unknown as ControllerAuth,
       service: { queryRuntimeEvents } as unknown as ControlPlaneService,
       runnerControl: {} as RunnerControlServer, metrics: {} as ControllerMetrics,
     });
@@ -101,7 +101,7 @@ describe("Security Event item pagination API", () => {
   function setup(role = "user") {
     const querySecurityEvents = vi.fn().mockResolvedValue({ items: [], count: 0, nextCursor: null });
     const app = createHttpApp({ config,
-      auth: { api: { getSession: vi.fn().mockResolvedValue({ user: { id: "reader", role } }) } } as unknown as ControllerAuth,
+      auth: { api: { getSession: vi.fn().mockResolvedValue({ user: { id: "reader", role, tenantId: "tenantA" } }) } } as unknown as ControllerAuth,
       service: { querySecurityEvents } as unknown as ControlPlaneService,
       runnerControl: {} as RunnerControlServer, metrics: {} as ControllerMetrics,
     });
@@ -133,7 +133,7 @@ describe("runtime log outcome filter", () => {
   it.each([["allow", 200], ["block", 200], ["transform", 200], ["error", 200], ["timeout", 400]])("accepts enforcement outcomes and the error log filter: %s", async (outcome, status) => {
     const queryRuntimeEvents = vi.fn().mockResolvedValue({ items: [], count: 0 });
     const app = createHttpApp({ config,
-      auth: { api: { getSession: vi.fn().mockResolvedValue({ user: { id: "reader", role: "user" } }) } } as unknown as ControllerAuth,
+      auth: { api: { getSession: vi.fn().mockResolvedValue({ user: { id: "reader", role: "user", tenantId: "tenantA" } }) } } as unknown as ControllerAuth,
       service: { queryRuntimeEvents } as unknown as ControlPlaneService,
       runnerControl: {} as RunnerControlServer, metrics: {} as ControllerMetrics,
     });

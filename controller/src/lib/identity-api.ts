@@ -1,5 +1,6 @@
 import { isAccountRole } from "../../shared/rbac";
 import { authClient } from "@/lib/better-auth";
+import type { MockSsoIdentity } from "../../shared/mock-sso";
 
 export type IdentityRole = import("../../shared/rbac").AccountRole;
 export type IdentityUser = {
@@ -7,6 +8,7 @@ export type IdentityUser = {
   display_name: string;
   email: string;
   role: IdentityRole;
+  tenant_id: string | null;
   enabled: boolean;
   preferred_language: "en" | "zh-CN";
   last_login_at: string | null;
@@ -30,6 +32,28 @@ export const login = async (input: { email: string; password: string }) => {
   if (result.error) throw new Error(result.error.message || "Sign in failed.");
   if (!result.data?.user) throw new Error("Better Auth did not return the signed-in user.");
   return { user: identityUser(result.data.user) };
+};
+
+export const getMockSsoConfig = async (): Promise<{ enabled: boolean }> => {
+  const response = await fetch("/api/mock-sso/config", { credentials: "same-origin" });
+  if (!response.ok) throw new Error("Mock SSO status is unavailable.");
+  return response.json() as Promise<{ enabled: boolean }>;
+};
+
+export const loginMockSso = async (identity: MockSsoIdentity) => {
+  const response = await fetch("/api/mock-sso/sign-in", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ identity }),
+  });
+  if (!response.ok) {
+    const result = await response.json().catch(() => null) as { error?: { message?: string } } | null;
+    throw new Error(result?.error?.message || "Mock SSO sign in failed.");
+  }
+  const status = await getAuthStatus();
+  if (!status.user) throw new Error("Mock SSO did not establish a session.");
+  return { user: status.user };
 };
 
 export const logout = async () => {
@@ -113,17 +137,22 @@ export const updateUser = async (id: string, input: { display_name?: string; rol
 function identityUser(value: unknown): IdentityUser {
   const user = value as {
     id: string; name: string; email: string; role?: string | null; banned?: boolean | null;
+    tenantId?: string | null;
     preferredLanguage?: string | null; createdAt: Date | string; updatedAt?: Date | string;
     lastLoginAt?: Date | string | null;
   };
   const role = user.role ?? "user";
   if (!isAccountRole(role)) throw new Error("This account has an unsupported role. Contact an administrator.");
+  if (role === "user" && (typeof user.tenantId !== "string" || !user.tenantId.trim())) {
+    throw new Error("This account has no tenant assignment. Contact an administrator.");
+  }
   const createdAt = new Date(user.createdAt).toISOString();
   return {
     id: user.id,
     display_name: user.name,
     email: user.email,
     role,
+    tenant_id: role === "user" ? user.tenantId! : null,
     enabled: !user.banned,
     preferred_language: user.preferredLanguage === "zh-CN" ? "zh-CN" : "en",
     last_login_at: user.lastLoginAt ? new Date(user.lastLoginAt).toISOString() : null,

@@ -25,7 +25,7 @@ function setup(role = "user") {
     CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters", CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/test-key.pem",
     CONTROLLER_POLICY_CATALOG_DIR: resolve("../runner/toolkit/policy_library/assets"), BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters" });
   const app = createHttpApp({ config,
-    auth: { api: { getSession: vi.fn().mockResolvedValue({ user: { id: "admin-1", role } }) } } as unknown as ControllerAuth,
+    auth: { api: { getSession: vi.fn().mockResolvedValue({ user: { id: "admin-1", role, tenantId: "tenantA" } }) } } as unknown as ControllerAuth,
     service: service as unknown as ControlPlaneService,
     runnerControl: { hasDefaultCompiler: () => true, distributeDesiredState: vi.fn().mockResolvedValue(undefined) } as RunnerControlServer, metrics: {} as ControllerMetrics,
   });

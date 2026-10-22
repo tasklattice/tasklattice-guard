@@ -1,24 +1,23 @@
 // @vitest-environment node
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { Pool } from "pg";
-import { drizzle } from "drizzle-orm/node-postgres";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
+import type { ControllerDatabase } from "../db/client.js";
+import { createTestDatabase } from "../db/postgres-test-database.js";
 import { runtimeEvents } from "../db/schema.js";
 import type { RuntimeEventInput } from "../domain/models.js";
 import { writeRuntimeEvent } from "./runtime-event-write.js";
 
-describe.skipIf(!process.env.TEST_DATABASE_URL)("correlated runtime body enrichment (PostgreSQL)", () => {
-  const pool = new Pool({ connectionString: process.env.TEST_DATABASE_URL, max: 1 });
-  const db = drizzle(pool);
+const url = process.env.TEST_DATABASE_URL;
+describe.skipIf(!url)("correlated runtime body enrichment (PostgreSQL)", () => {
+  let database: Awaited<ReturnType<typeof createTestDatabase>>;
+  let db: ControllerDatabase;
   beforeAll(async () => {
-    if (!["localhost", "127.0.0.1", "[::1]"].includes(new URL(process.env.TEST_DATABASE_URL!).hostname)) throw new Error("Loopback database required");
-    await db.execute(sql`CREATE TEMP TABLE runtime_event (
-      id text PRIMARY KEY, occurred_at timestamptz NOT NULL, received_at timestamptz DEFAULT now(),
-      request_id text NOT NULL, runner_id text NOT NULL, guardrail_id text, guardrail_version text,
-      endpoint_id text, router_id text, direction text, decision text, duration_ms integer,
-      metadata jsonb NOT NULL DEFAULT '{}')`);
-  });
-  afterAll(async () => { await pool.end(); });
+    database = await createTestDatabase(url!, "runtime_enrichment");
+    db = database.db;
+    await database.pool.query("INSERT INTO guardrail (id,tenant_id,name,draft_config) VALUES ('guard','tenantA','Shared definition','{}')");
+    await database.pool.query("INSERT INTO endpoint (id,tenant_id,name,adapter) VALUES ('endpoint','tenantB','Caller Endpoint','litellm-generic-guardrail')");
+  }, 30_000);
+  afterAll(async () => { await database?.drop(); });
   function event(id: string): RuntimeEventInput {
     return { id, occurredAt: new Date("2026-10-14T01:00:00Z"), requestId: "call", runnerId: "input-runner",
       guardrailId: "guard", endpointId: "endpoint", direction: "incoming", decision: "allow", durationMs: 4,
@@ -32,7 +31,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("correlated runtime body enrichm
     for (const input of enrichmentFirst ? [enriched, base, enriched, base] : [base, enriched, enriched, base]) await writeRuntimeEvent(db, input);
     const rows = await db.select().from(runtimeEvents).where(eq(runtimeEvents.id, base.id));
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ requestId: "call", runnerId: "input-runner", occurredAt: base.occurredAt, durationMs: 4, metadata: enriched.metadata });
+    expect(rows[0]).toMatchObject({ tenantId: "tenantB", requestId: "call", runnerId: "input-runner", occurredAt: base.occurredAt, durationMs: 4, metadata: enriched.metadata });
   });
 
   it("enriches only content fields and never overwrites captured originals", async () => {

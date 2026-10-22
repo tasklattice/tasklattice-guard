@@ -63,7 +63,7 @@ describe("ControlPlaneLayout", () => {
     expect(screen.queryByText("Page content")).toBeNull();
   });
 
-  it.each(["/guardrails", "/guardrails/id", "/playground", "/policy-library", "/integration/routers", "/integration/endpoints", "/logs", "/billing"])("prevents administrators from mounting %s", path => {
+  it.each(["/guardrails", "/guardrails/id", "/playground", "/policy-library", "/integration/routers", "/integration/endpoints", "/logs", "/billing", "/sharing"])("prevents administrators from mounting %s", path => {
     pathname = path; render(<ControlPlaneLayout />);
     expect(screen.queryByText("Page content")).toBeNull();
     expect(screen.getByRole("link", { name: "Platform" }).getAttribute("href")).toBe("/settings/providers");
@@ -90,7 +90,7 @@ describe("ControlPlaneLayout", () => {
     expect(screen.queryByText("Page content")).toBeNull();
     expect(screen.getByRole("link", { name: "Guardrails" }).getAttribute("href")).toBe("/guardrails");
   });
-  it.each(["/guardrails", "/playground", "/policy-library", "/integration/routers", "/integration/endpoints", "/logs", "/billing", "/account", "/settings", "/settings/health", "/settings/runner", "/settings/version"])("allows a user to mount %s", path => {
+  it.each(["/guardrails", "/playground", "/policy-library", "/integration/routers", "/integration/endpoints", "/logs", "/billing", "/models", "/sharing", "/account", "/settings", "/settings/health", "/settings/runner", "/settings/version"])("allows a user to mount %s", path => {
     role = "user"; pathname = path; render(<ControlPlaneLayout />);
     expect(screen.getByText("Page content")).toBeTruthy();
   });

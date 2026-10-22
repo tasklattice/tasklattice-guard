@@ -36,7 +36,7 @@ const endpoint = {
 describe("Endpoint management HTTP routes", () => {
   it.each(["f5-scan", "litellm-generic-guardrail"])("uses the incoming origin across all %s setup responses", async (adapter) => {
     const resource = { ...endpoint, adapter, credential: "tg_one_time" };
-    const app = appWith({ user: { id: "admin-1", role: "user" } }, {
+    const app = appWith({ user: { id: "admin-1", role: "user", tenantId: "tenantA" } }, {
       listEndpoints: vi.fn().mockResolvedValue([resource]),
       getEndpoint: vi.fn().mockResolvedValue(resource),
       createEndpoint: vi.fn().mockResolvedValue(resource),
@@ -65,7 +65,7 @@ describe("Endpoint management HTTP routes", () => {
   });
 
   it("uses the proxy's external origin and preserves an explicit runtime override", async () => {
-    const session = { user: { id: "member-1", role: "user" } };
+    const session = { user: { id: "member-1", role: "user", tenantId: "tenantA" } };
     const service = { getEndpoint: vi.fn().mockResolvedValue(endpoint) };
     const headers = { "x-forwarded-host": "guard.example.test:9443", "x-forwarded-proto": "https" };
     for (const runtimePublicUrl of [null, "https://runtime.example.test:8443/guard"]) {
@@ -79,7 +79,7 @@ describe("Endpoint management HTTP routes", () => {
   it("retains an explicit false default during creation and updates", async () => {
     const createEndpoint = vi.fn().mockResolvedValue({ ...endpoint, adapter: "f5-scan", scanFlagOnlyDefault: false });
     const updateEndpoint = vi.fn().mockResolvedValue({ ...endpoint, adapter: "f5-scan", scanFlagOnlyDefault: false });
-    const app = appWith({ user: { id: "admin-1", role: "user" } }, { createEndpoint, updateEndpoint });
+    const app = appWith({ user: { id: "admin-1", role: "user", tenantId: "tenantA" } }, { createEndpoint, updateEndpoint });
     const created = await app.request("/api/v1/endpoints", {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ name: "Scan", adapter: "f5-scan", scanFlagOnlyDefault: false }),
@@ -95,7 +95,7 @@ describe("Endpoint management HTTP routes", () => {
 
   it.each([{}, { scanFlagOnlyDefault: "false" }, { scanFlagOnlyDefault: null }, { scanFlagOnlyDefault: 0 }])("rejects invalid Scan default updates %j", async body => {
     const updateEndpoint = vi.fn();
-    const app = appWith({ user: { id: "admin-1", role: "user" } }, { updateEndpoint });
+    const app = appWith({ user: { id: "admin-1", role: "user", tenantId: "tenantA" } }, { updateEndpoint });
     expect((await app.request("/api/v1/endpoints/endpoint-1", {
       method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
     })).status).toBe(400);
@@ -103,7 +103,7 @@ describe("Endpoint management HTTP routes", () => {
   });
   it.each(["litellm-generic-guardrail", "f5-scan"])("creates the supported Endpoint adapter %s", async (adapter) => {
     const createEndpoint = vi.fn().mockResolvedValue({ ...endpoint, adapter });
-    const app = appWith({ user: { id: "admin-1", role: "user" } }, { createEndpoint });
+    const app = appWith({ user: { id: "admin-1", role: "user", tenantId: "tenantA" } }, { createEndpoint });
     const response = await app.request("/api/v1/endpoints", {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ name: "Supported endpoint", adapter }),
@@ -114,7 +114,7 @@ describe("Endpoint management HTTP routes", () => {
 
   it.each(["generic-http-guard", "a2a-guard", "http", "a2a", "scan", "unknown"])("rejects unsupported Endpoint adapter %s before creating anything", async (adapter) => {
     const createEndpoint = vi.fn();
-    const app = appWith({ user: { id: "admin-1", role: "user" } }, { createEndpoint });
+    const app = appWith({ user: { id: "admin-1", role: "user", tenantId: "tenantA" } }, { createEndpoint });
     const response = await app.request("/api/v1/endpoints", {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ name: "Invalid endpoint", adapter }),
@@ -125,7 +125,7 @@ describe("Endpoint management HTTP routes", () => {
 
   it("allows authenticated users to read detail without exposing a digest", async () => {
     const getEndpoint = vi.fn().mockResolvedValue(endpoint);
-    const app = appWith({ user: { id: "member-1", role: "user" } }, { getEndpoint });
+    const app = appWith({ user: { id: "member-1", role: "user", tenantId: "tenantA" } }, { getEndpoint });
 
     const response = await app.request("/api/v1/endpoints/endpoint-1");
     expect(response.status).toBe(200);
@@ -139,7 +139,7 @@ describe("Endpoint management HTTP routes", () => {
   });
 
   it("rejects unknown roles before status and credential mutations", async () => {
-    const app = appWith({ user: { id: "member-1", role: "unknown" } }, {});
+    const app = appWith({ user: { id: "member-1", role: "unknown", tenantId: "tenantA" } }, {});
 
     expect((await app.request("/api/v1/endpoints/endpoint-1", {
       method: "PATCH",
@@ -162,7 +162,7 @@ describe("Endpoint management HTTP routes", () => {
     const rotateEndpointCredential = vi.fn().mockResolvedValue({ ...endpoint, credential: "tg_one_time" });
     const revokeEndpointCredential = vi.fn().mockResolvedValue(undefined);
     const app = appWith(
-      { user: { id: "admin-1", role } },
+      { user: { id: "admin-1", role, tenantId: "tenantA" } },
       { updateEndpoint, rotateEndpointCredential, revokeEndpointCredential },
     );
 
@@ -188,7 +188,7 @@ describe("Endpoint management HTTP routes", () => {
 });
 
 function appWith(
-  session: { user: { id: string; role: string } } | null,
+  session: { user: { id: string; role: string; tenantId?: string } } | null,
   service: Partial<ControlPlaneService>,
   appConfig = config,
 ) {

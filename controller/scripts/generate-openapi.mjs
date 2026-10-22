@@ -47,7 +47,7 @@ try {
     const specifier = n.moduleSpecifier.text;
     return n.getText().replace(n.moduleSpecifier.getText(), JSON.stringify(specifier.startsWith('.') ? resolve(dirname(source.fileName),specifier) : specifier));
   });
-  const declarations = source.statements.filter(n => n.end < createApp.pos && !ast.isImportDeclaration(n)).map(n=>n.getText());
+  const declarations = source.statements.filter(n => n.end <= createApp.pos && !ast.isImportDeclaration(n)).map(n=>n.getText());
   const distribution = allNodes.find(n => ast.isVariableDeclaration(n) && n.name.getText() === 'distributionQuery');
   if (distribution) declarations.push(`const distributionQuery = ${distribution.initializer.getText()};`);
   const parsers = [];
@@ -134,14 +134,15 @@ try {
   for (const route of entries) {
     const {id,method,path,middleware} = route; const template = path.replace(/:([^/]+)/g,'{$1}');
     const permission = tokenRoutePermissions.find(([m,p])=>m===method && p===path);
-    const sessionOnly = middleware.includes('accountSession'); const authenticated = middleware.includes('authenticated');
+    const sessionOnly = middleware.includes('accountSession') || middleware.includes('browserSession'); const authenticated = middleware.includes('authenticated');
+    const sharingRoute = path.startsWith('/api/v1/account/shares') || path === '/api/v1/account/shareable-resources' || path === '/api/v1/account/tenants';
     assert(!authenticated || permission || sessionOnly || path === '/api/v1/account/identity', `Missing token policy: ${method} ${path}`);
     const platformDefault = method === 'POST' && /^\/api\/v1\/guardrails\/:(?:id|guardrailId)\/(?:test-runs|publish|versions\/:version\/(?:test-runs|release|environment-check))$/.test(path);
     const accountPermission = requiredAccountPermission(method, path);
-    const allowedRoles = platformDefault ? ['admin', 'user'] : accountPermission ? accountRoles.filter(role => hasPermission(role, accountPermission.resource, accountPermission.action)) : [...accountRoles];
+    const allowedRoles = sharingRoute ? ['user'] : platformDefault ? ['admin', 'user'] : accountPermission ? accountRoles.filter(role => hasPermission(role, accountPermission.resource, accountPermission.action)) : [...accountRoles];
     const role = allowedRoles.length === 1 ? allowedRoles[0] : 'user';
     const operation = { operationId:id, summary: `${method} ${template}`, tags:[sessionOnly || path==='/api/v1/account/identity' ? 'Account' : permission?.[2] ?? 'System'],
-      description: permission ? `${platformDefault ? 'For Default, requires the admin role and runners:write instead. For tenant Guardrails, requires the user role. ' : ''}Requires ${permission[2]}:${permission[3]} for personal access tokens. ${permission[3]==='write' ? 'Write includes read access; account role restrictions still apply. ' : ''}Allowed account roles: ${allowedRoles.join(', ')}. Token access covers all resources in the selected module.` : sessionOnly ? 'Browser session only. Personal access tokens cannot manage credentials. Ownership is taken from the authenticated session.' : path==='/api/v1/account/identity' ? 'Returns the authenticated identity and token permissions. Effective permissions are capped by the current account role.' : 'Public system health information; no credential is required.',
+      description: permission ? `${platformDefault ? 'For Default, requires the admin role and runners:write instead. For tenant Guardrails, requires the user role. ' : ''}Requires ${permission[2]}:${permission[3]} for personal access tokens. ${permission[3]==='write' ? 'Write includes read access; account role restrictions still apply. ' : ''}Allowed account roles: ${allowedRoles.join(', ')}. Token access is capped by the authenticated account role and tenant ownership or explicit sharing.` : sessionOnly ? sharingRoute ? 'Tenant user browser session only. Read-only sharing grants are scoped to the authenticated tenant; personal access tokens cannot manage shares.' : 'Browser session only. Personal access tokens cannot manage credentials. Ownership is taken from the authenticated session.' : path==='/api/v1/account/identity' ? 'Returns the authenticated identity, tenant and token permissions. Effective permissions are capped by the current account role.' : 'Public system health information; no credential is required.',
       security: authenticated ? sessionOnly ? [{sessionCookie:[]}] : [{personalAccessToken:[]},{sessionCookie:[]}] : [],
       ...(permission ? {'x-token-permission':{module:permission[2],access:permission[3]}} : {}),
       'x-account-role':role, 'x-account-roles':allowedRoles, ...(permission ? {'x-token-account-role':role} : {}), 'x-source':`server/http/app.ts#${source.getLineAndCharacterOfPosition(route.handler.pos).line+1}`,

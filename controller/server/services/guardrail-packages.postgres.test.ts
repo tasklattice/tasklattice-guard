@@ -16,6 +16,7 @@ import { readZip, writeZip } from "../domain/zip.js";
 import { createTestDatabase } from "../db/postgres-test-database.js";
 import { PolicyCatalog } from "../policy-catalog/catalog.js";
 import { programmablePolicyDraftSchema } from "../policy-studio/model.js";
+import { runWithTenantContext } from "./tenant-context.js";
 import { ControlPlaneService } from "./control-plane.js";
 import { routingEventSchema } from "./traffic-routing.js";
 import { emptyPolicyDefinition } from "../../shared/policy-definition.js";
@@ -387,6 +388,20 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     await prodDb.pool.query("UPDATE guardrail_version SET status = 'pending', released_at = NULL WHERE guardrail_id = $1 AND version = $2", [guardrailId, version]);
     expect((await prod.desiredStateForPool("default")).artifacts.filter(item => item.guardrailId === guardrailId).map(item => item.guardrailVersion)).toEqual([version]);
     await prodDb.pool.query("UPDATE guardrail_version SET status = 'ready', released_at = $3, validation_run_id = $4 WHERE guardrail_id = $1 AND version = $2", [guardrailId, version, release.released_at, release.validation_run_id]);
+    // Sharing permits composition with imported content, while explicit checks
+    // remain owner-only; automatic admission is a runtime infrastructure step.
+    await prodDb.pool.query("INSERT INTO auth_user(id,name,email,role,tenant_id) VALUES ('tenant-b-operator','B','b@example.test','user','tenantB'),('tenant-b-approver','B approver','b-approver@example.test','user','tenantB')");
+    await prodDb.pool.query("INSERT INTO resource_share(id,owner_tenant_id,recipient_tenant_id,resource_type,resource_id) VALUES ('imported-guardrail-share','tenantA','tenantB','guardrail',$1)", [guardrailId]);
+    const asB = <T>(callback: () => T) => runWithTenantContext({ tenantId: "tenantB", actorId: "tenant-b-operator", role: "user" }, callback);
+    await expect(asB(() => prod.packages.checkVersionEnvironment(guardrailId, version))).rejects.toMatchObject({ code: "not_found" });
+    const sharedRouter = await asB(() => prod.trafficRouting.create("B imported target", "", { routes: [{ id: "fallback", name: "Fallback", kind: "fallback", enabled: true,
+      selector: { expression: { combinator: "and", conditions: [] } }, targets: [{ id: "target", guardrailId, guardrailVersion: version, weightBps: 10000 }] }] }, "tenant-b-operator"));
+    const review = await asB(() => prod.trafficRouting.preview(sharedRouter.id, 1));
+    await asB(() => prod.packages.checkRoutedImports(review.snapshot));
+    const sharedChange = await asB(() => prod.trafficRouting.submitChange(sharedRouter.id, { expectedDraftRevision: 1, reviewedSnapshot: review.snapshot, reviewedEndpointIds: review.endpointIds, reason: "Shared import", ticket: "B-1" }, "tenant-b-operator"));
+    await runWithTenantContext({ tenantId: "tenantB", actorId: "tenant-b-approver", role: "user" }, () => prod.trafficRouting.approveChange(sharedRouter.id, sharedChange.id, "tenant-b-approver", {}));
+    await prodDb.pool.query("UPDATE traffic_router SET deleted_at=now() WHERE id=$1", [sharedRouter.id]);
+
 
   });
 

@@ -19,6 +19,7 @@ import { AccountPage } from "@/routes/account";
 import { HelpPage, DocumentNotFound } from "@/routes/help";
 import { getHelpContent } from "@/features/help-content";
 import { documentPath, resolveLegacyDocument } from "@/features/help-navigation";
+import { SharingPage } from "@/routes/sharing";
 import { AuditLogPage } from "@/routes/audit-log";
 import { VersionPage } from "@/routes/version";
 import { HealthPage } from "@/routes/status";
@@ -30,6 +31,8 @@ import { isGuardrailVersionId } from "../shared/guardrail-version";
 const rootRoute = createRootRoute({ component: ControlPlaneLayout });
 const indexRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", component: () => <Navigate to="/dashboard" replace /> });
 const dashboardRoute = createRoute({ getParentRoute: () => rootRoute, path: "/dashboard", component: DashboardPage });
+const mockSsoRoute = createRoute({ getParentRoute: () => rootRoute, path: "/mock-sso", component: () => null });
+const sharingRoute = createRoute({ getParentRoute: () => rootRoute, path: "/sharing", component: SharingPage });
 const guardrailsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/guardrails", component: GuardrailsPage });
 const guardrailDetailRoute = createRoute({ getParentRoute: () => rootRoute, path: "/guardrails/$guardrailId", validateSearch: (search: Record<string, unknown>): { tab?: string; version?: string; window?: "1h" | "24h" | "7d" | "15d" | "30d"; severity?: string; pageSize?: 25 | 50; metric?: RuntimeMetricKey } => ({
   version: typeof search.version === "string" ? search.version : undefined,
@@ -99,6 +102,7 @@ const versionRoute = createRoute({ getParentRoute: () => rootRoute, path: "/sett
 const healthRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/health", component: HealthPage });
 const runnerRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/runner", component: RunnerPage });
 const providersRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/providers", component: ProvidersPage });
+const tenantModelsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/models", component: ModelsPage });
 const modelsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/models", validateSearch: (search: Record<string, unknown>) => ({ tab: search.tab === "pricing" ? "pricing" : undefined }), component: ModelsPage });
 const guardrailCatalogRoute = createRoute({ getParentRoute: () => rootRoute, path: "/settings/guardrail-catalog", component: GuardrailCatalogPage });
 const documentRoute = createRoute({ getParentRoute: () => rootRoute, path: "/document", notFoundComponent: DocumentNotFound });
@@ -128,6 +132,8 @@ const helpRoute = createRoute({ getParentRoute: () => rootRoute, path: "/help", 
 export const routeTree = rootRoute.addChildren([
   indexRoute,
   dashboardRoute,
+  mockSsoRoute,
+  sharingRoute,
   guardrailsRoute,
   guardrailDetailRoute,
   policyLibraryRoute,
@@ -146,6 +152,7 @@ export const routeTree = rootRoute.addChildren([
   runnerRoute,
   providersRoute,
   modelsRoute,
+  tenantModelsRoute,
   guardrailCatalogRoute,
   documentRoute.addChildren([documentIndexRoute, documentArticleRoute]),
   helpRoute,

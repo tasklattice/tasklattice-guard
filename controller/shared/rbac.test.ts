@@ -4,11 +4,11 @@ import { allowsTokenPermission, effectiveTokenPermissions, tokenModules } from "
 
 describe("Account RBAC", () => {
   it("defines exactly admin and user", () => expect(accountRoles).toEqual(["admin", "user"]));
-  it.each(["guardrails", "policies", "playground", "routers", "endpoints"] as const)("lets users read and write %s", resource => {
+  it.each(["guardrails", "policies", "playground", "routers", "endpoints", "models", "runners"] as const)("lets users read and write %s", resource => {
     expect(hasPermission("user", resource, "read")).toBe(true);
     expect(hasPermission("user", resource, "write")).toBe(true);
   });
-  it.each(["models", "audit", "settings", "users"] as const)("reserves %s for administrators", resource => {
+  it.each(["audit", "settings", "users"] as const)("reserves %s for administrators", resource => {
     expect(hasPermission("user", resource)).toBe(false);
     expect(hasPermission("user", resource, "write")).toBe(false);
     expect(hasPermission("admin", resource)).toBe(true);
@@ -47,8 +47,8 @@ describe("Account RBAC", () => {
   });
   it("intersects token grants with the current role, including reads after demotion", () => {
     const grants = { models: "write", routers: "write", audit: "read", runtime: "read" } as const;
-    expect(effectiveTokenPermissions(grants, "user")).toEqual({ routers: "write", runtime: "read" });
-    expect(allowsTokenPermission(grants, "models", "read", "user")).toBe(false);
+    expect(effectiveTokenPermissions(grants, "user")).toEqual({ models: "write", routers: "write", runtime: "read" });
+    expect(allowsTokenPermission(grants, "models", "read", "user")).toBe(true);
     expect(allowsTokenPermission(grants, "routers", "write", "user")).toBe(true);
     expect(effectiveTokenPermissions(grants, "admin")).toEqual({ models: "write", routers: "read", audit: "read" });
     expect(allowsTokenPermission(grants, "routers", "write", "admin")).toBe(false);

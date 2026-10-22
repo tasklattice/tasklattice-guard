@@ -28,7 +28,7 @@ function setup() {
   const config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: "postgresql://test:test@localhost/test",
     CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters", CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/test-key.pem",
     CONTROLLER_POLICY_CATALOG_DIR: resolve("../runner/toolkit/policy_library/assets"), BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters" });
-  return createHttpApp({ config, auth: { api: { getSession: vi.fn().mockResolvedValue({ user: { id: "reader", role: "user" } }) } } as unknown as ControllerAuth,
+  return createHttpApp({ config, auth: { api: { getSession: vi.fn().mockResolvedValue({ user: { id: "reader", role: "user", tenantId: "tenantA" } }) } } as unknown as ControllerAuth,
     service: { trafficRouting: { list: async () => [] } } as unknown as ControlPlaneService,
     runnerControl: {} as RunnerControlServer, metrics: { registry: new Registry() } as ControllerMetrics });
 }
@@ -62,7 +62,9 @@ describe("Generated OpenAPI contract", () => {
   });
   it("documents the separate user and administrator configuration authority", () => {
     expect(contract.paths["/api/v1/guardrails"].post["x-account-roles"]).toEqual(["user"]);
-    expect(contract.paths["/api/v1/models"].post["x-account-roles"]).toEqual(["admin"]);
+    expect(contract.paths["/api/v1/models"].post["x-account-roles"]).toEqual(["admin", "user"]);
+    expect(contract.paths["/api/v1/model-providers"].post["x-account-roles"]).toEqual(["admin"]);
+    expect(contract.paths["/api/v1/model-providers"].post["x-token-permission"]).toEqual({ module: "settings", access: "write" });
     expect(contract.paths["/api/v1/guardrails"].get["x-account-roles"]).toEqual(["admin", "user"]);
     expect(contract.paths["/api/v1/telemetry/events"].get["x-account-roles"]).toEqual(["user"]);
     expect(contract.paths["/api/v1/telemetry/events/{id}"].get["x-account-roles"]).toEqual(["user"]);

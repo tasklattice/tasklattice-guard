@@ -23,11 +23,14 @@ import { Toaster } from "@/components/ui/notifications";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/lib/auth";
 import { LoginPage } from "@/routes/login";
+import { MockSsoPage } from "@/routes/mock-sso";
 import { HelpLayout } from "@/routes/help-layout";
 
 const names: Record<string, { group?: string; page: string }> = {
   "/": { page: "nav.dashboard" },
   "/dashboard": { page: "nav.dashboard" },
+  "/models": { group: "nav.modelServices", page: "nav.models" },
+  "/sharing": { group: "nav.system", page: "nav.sharing" },
   "/guardrails": { group: "nav.guardrailDesign", page: "nav.guardrails" },
   "/policy-library": { group: "nav.guardrailDesign", page: "nav.policyLibrary" },
   "/playground": { group: "nav.guardrailDesign", page: "nav.playground" },
@@ -57,6 +60,7 @@ export function ControlPlaneLayout() {
     ?? (pathname.startsWith("/guardrails/") ? names["/guardrails"] : undefined)
     ?? (pathname.startsWith("/integration/routers/") ? names["/integration/routers"] : undefined)
     ?? { page: "nav.dashboard" };
+  if (pathname === "/mock-sso") return <MockSsoPage />;
   if (auth.isLoading) {
     return <div className="flex min-h-dvh items-center justify-center bg-background"><div className="flex items-center gap-3 text-sm text-muted-foreground"><ShieldCheck className="size-5 animate-pulse text-primary" />{t("auth.sessionLoading")}</div></div>;
   }
@@ -71,7 +75,7 @@ export function ControlPlaneLayout() {
 
   return (
     <TooltipProvider>
-      <SidebarProvider style={{ "--sidebar-width": "15.75rem" } as CSSProperties}>
+      <SidebarProvider key={`${auth.user.id}:${auth.user.role}:${auth.user.tenant_id ?? "platform"}`} style={{ "--sidebar-width": "15.75rem" } as CSSProperties}>
         <ControlPlaneSidebar />
         <SidebarInset className="min-w-0 bg-background">
           <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b bg-card/90 px-4 backdrop-blur-md sm:px-6">

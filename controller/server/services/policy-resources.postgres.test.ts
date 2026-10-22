@@ -20,6 +20,7 @@ describe.skipIf(!url)("declarative Policy transactions", () => {
     admin = new Pool({ connectionString: url, max: 1 }); await admin.query(`CREATE SCHEMA "${namespace}"`);
     pool = new Pool({ connectionString: url, max: 6, options: `-c search_path=${namespace}` });
     await pool.query(readFileSync(new URL("../db/migrations/0037_policy_resources.sql", import.meta.url), "utf8"));
+    await pool.query("ALTER TABLE policy_resource ADD COLUMN tenant_id text NOT NULL DEFAULT 'tenantA'");
     for (const table of ["audit_event", "controller_outbox", "policy_record", "policy_imported_version"]) await pool.query(`CREATE TABLE "${table}" (LIKE public."${table}" INCLUDING ALL)`);
     service = new PolicyResourceService(drizzle(pool, { schema }), resolve("../runner/toolkit/policy_library/assets"), () => []);
   });

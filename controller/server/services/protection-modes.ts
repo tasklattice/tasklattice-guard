@@ -1,4 +1,5 @@
 import { matchesPlatformRelease } from "../../shared/platform-release.js";
+import { resourceReadPredicate, resourceWritePredicate } from "./tenant-context.js";
 import { randomUUID } from "node:crypto";
 import { and, eq, gt, isNull, lte, ne } from "drizzle-orm";
 import type { ControllerDatabase } from "../db/client.js";
@@ -62,14 +63,14 @@ export class ProtectionModeService {
   }
 
   async get(id: string) {
-    const [row] = await this.db.select().from(guardrails).where(and(eq(guardrails.id, id), isNull(guardrails.deletedAt)));
+    const [row] = await this.db.select().from(guardrails).where(and(eq(guardrails.id, id), isNull(guardrails.deletedAt), resourceReadPredicate("guardrail", guardrails.id, guardrails.tenantId)));
     if (!row) throw new NotFoundError("Guardrail", id);
     return this.summary(row, row.status !== "disabled" && await hasReleasedGuardrail(this.db, id));
   }
 
   async update(input: { id: string; mode: ProtectionMode; expectedGeneration: number; reason: string; actorId: string }) {
     await this.db.transaction(async tx => {
-      const [row] = await tx.select().from(guardrails).where(and(eq(guardrails.id, input.id), isNull(guardrails.deletedAt))).for("update");
+      const [row] = await tx.select().from(guardrails).where(and(eq(guardrails.id, input.id), isNull(guardrails.deletedAt), resourceWritePredicate(guardrails.tenantId))).for("update");
       if (!row) throw new NotFoundError("Guardrail", input.id);
       if (row.protectionModeGeneration !== input.expectedGeneration) {
         throw new ConflictError("The protection mode changed. Reload before applying another change.", "protection_mode_conflict");

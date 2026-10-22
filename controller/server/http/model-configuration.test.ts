@@ -54,12 +54,12 @@ describe("Model configuration HTTP routes", () => {
     expect(models.finalizeActivation).not.toHaveBeenCalled();
     expect(runner.distributionStatus).not.toHaveBeenCalled();
   });
-  it("only lets administrators configure a registered model protocol", async () => {
+  it("lets tenant users configure their own Models through the service boundary", async () => {
     const input = { profile: "tali.qwen3guard.v1", timeoutSeconds: 20, maxTokens: 512 };
     const models = { configureModel: vi.fn().mockResolvedValue({ id: "model-1", status: "pending", ...input }) };
     const options = { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(input) };
-    expect((await appWith("user", models).request("/api/v1/models/model-1/protocol", options)).status).toBe(403);
-    expect(models.configureModel).not.toHaveBeenCalled();
+    expect((await appWith("user", models).request("/api/v1/models/model-1/protocol", options)).status).toBe(200);
+    expect(models.configureModel).toHaveBeenCalledWith("model-1", input, "user-1");
     expect((await appWith("admin", models).request("/api/v1/models/model-1/protocol", options)).status).toBe(200);
     expect(models.configureModel).toHaveBeenCalledWith("model-1", input, "admin-1");
   });
@@ -86,16 +86,19 @@ describe("Model configuration HTTP routes", () => {
     expect(result.status).toBe(201);
     expect(models.registerProviderModels).toHaveBeenCalledWith({ connection: { ...connection, skipTlsVerify: false }, models: [selection] }, "admin-1");
   });
-  it("denies users the platform configuration projection", async () => {
-    const models = { view: vi.fn().mockResolvedValue(view) };
+  it("lets users read the sanitized tenant Model configuration projection", async () => {
+    const tenantView = { ...view, draft: null };
+    const models = { view: vi.fn().mockResolvedValue(tenantView) };
     const app = appWith("user", models);
     const response = await app.request("/api/v1/model-configuration");
-    expect(response.status).toBe(403);
-    expect(models.view).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ draft: null, active: null });
+    expect(models.view).toHaveBeenCalledTimes(1);
   });
 
   it("lists provider and model projections for administrators", async () => {
     const models = {
+      listProviders: vi.fn().mockResolvedValue([{ id: "provider-1", name: "Private gateway" }]),
       view: vi.fn().mockResolvedValue({
         ...view,
         providers: [{ id: "provider-1", name: "Private gateway" }],
@@ -111,11 +114,12 @@ describe("Model configuration HTTP routes", () => {
     expect(await providers.json()).toEqual([{ id: "provider-1", name: "Private gateway" }]);
     expect(listedModels.status).toBe(200);
     expect(await listedModels.json()).toEqual([{ id: "model-1", name: "Safety model" }]);
-    expect(models.view).toHaveBeenCalledTimes(2);
+    expect(models.view).toHaveBeenCalledTimes(1);
+    expect(models.listProviders).toHaveBeenCalledTimes(1);
   });
 
   it("provides users only the model evidence needed by Guardrail workflows", async () => {
-    const models = { view: vi.fn().mockResolvedValue({ ...view,
+    const models = { readinessView: vi.fn().mockResolvedValue({ ...view,
       providers: [{ id: "provider", baseUrl: "https://private.test", credentialHint: "secret-hint" }],
       models: [{ id: "model", name: "Safety model", providerId: "provider", timeoutSeconds: 60 }],
       draft: { ...revision, reviewToken: "private-review", assignments: { controlPlane: "private-model", bindings: { "content_safety.input": "model" } }, validationReport: { checkedAt: now.toISOString(), checks: [{ id: "probe:content_safety.input:model", status: "passed", evidenceKind: "nemo-rail-v1", message: "private-evidence", cases: [{ inputContent: "private-prompt" }] }] } },
@@ -157,8 +161,9 @@ describe("Model configuration HTTP routes", () => {
     expect(response.status).toBe(200);
     expect(models.testModelConnection).toHaveBeenCalledWith("model-1", "admin-1");
     expect(models.revalidateModel).not.toHaveBeenCalled();
-    expect((await appWith("user", models).request("/api/v1/models/model-1/connection-tests", { method: "POST" })).status).toBe(403);
-    expect(models.testModelConnection).toHaveBeenCalledOnce();
+    expect((await appWith("user", models).request("/api/v1/models/model-1/connection-tests", { method: "POST" })).status).toBe(200);
+    expect(models.testModelConnection).toHaveBeenLastCalledWith("model-1", "user-1");
+    expect(models.testModelConnection).toHaveBeenCalledTimes(2);
   });
 
   it("discovers Models from stored Provider credentials", async () => {
@@ -296,7 +301,7 @@ function appWith(
   runnerControl: Partial<RunnerControlServer> = {},
 ) {
   const auth = {
-    api: { getSession: vi.fn().mockResolvedValue({ user: { id: `${role}-1`, role } }) },
+    api: { getSession: vi.fn().mockResolvedValue({ user: { id: `${role}-1`, role, tenantId: "tenantA" } }) },
     handler: vi.fn(),
   } as unknown as ControllerAuth;
   return createHttpApp({

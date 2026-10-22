@@ -1,3 +1,4 @@
+import { TenantResourceBadge } from "@/components/tenant-resource-badge";
 import { hasPermission } from "../../shared/rbac";
 import { SecuritySeverityBadge } from "@/components/security-severity";
 import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
@@ -83,6 +84,7 @@ export function PolicyLibraryPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const canManage = hasPermission(user?.role, "policies", "write");
+  const canManagePolicy = (policy: Policy) => canManage && (!policy.tenant_id || policy.tenant_id === user?.tenant_id);
   const query = useQuery({ queryKey: queryKeys.policies, queryFn: getPolicies });
   const profilesQuery = useQuery({ queryKey: queryKeys.guardrailProfiles, queryFn: getGuardrailProfiles, retry: false });
   const policies = query.data?.items ?? EMPTY_POLICIES;
@@ -272,9 +274,10 @@ export function PolicyLibraryPage() {
                   <PolicyCard
                     key={`policy:${item.id}`}
                     policy={item}
+                    tenantId={user?.tenant_id}
                     onOpen={trigger => { catalogOpenerRef.current = trigger; openPolicy(item); }}
                     onExport={legacyEditable(item) ? () => exportPolicy(item) : undefined}
-                    onDelete={canManage && item.deletable ? () => requestPolicyDelete(item) : undefined}
+                    onDelete={canManagePolicy(item) && item.deletable ? () => requestPolicyDelete(item) : undefined}
                   />
                 ))}
               </div>
@@ -300,8 +303,8 @@ export function PolicyLibraryPage() {
         policy={selected}
         onClose={closePolicy}
         onExport={!searchParams.version && legacyEditable(selected) ? exportPolicy : undefined}
-        onDelete={!searchParams.version && canManage && selected?.deletable ? requestPolicyDelete : undefined}
-        onEdit={!searchParams.version && canManage && editable(selected) ? (policy, trigger) => { studioOpenerRef.current = policy.implementation === "rules" ? catalogOpenerRef.current : trigger; setPolicyImport(null); if (policy.implementation === "rules") { setImportedDefinition(undefined); setDeclarativeId(policy.id); closePolicy(); } else setStudioPolicy(policy.implementation_detail ?? null); } : undefined}
+        onDelete={!searchParams.version && selected && canManagePolicy(selected) && selected.deletable ? requestPolicyDelete : undefined}
+        onEdit={!searchParams.version && selected && canManagePolicy(selected) && editable(selected) ? (policy, trigger) => { studioOpenerRef.current = policy.implementation === "rules" ? catalogOpenerRef.current : trigger; setPolicyImport(null); if (policy.implementation === "rules") { setImportedDefinition(undefined); setDeclarativeId(policy.id); closePolicy(); } else setStudioPolicy(policy.implementation_detail ?? null); } : undefined}
       />
       <DeletePolicyDialog
         policy={pendingDelete}
@@ -410,7 +413,7 @@ export function TagFilters({ facets, selected, onChange }: { facets: Map<string,
   </div>;
 }
 
-export function PolicyCard({ policy, onOpen, onExport, onDelete, notice }: { policy: Policy; onOpen: (trigger: HTMLElement) => void; onExport?: () => void; onDelete?: () => void; notice?: ReactNode }) {
+export function PolicyCard({ policy, tenantId, onOpen, onExport, onDelete, notice }: { policy: Policy; tenantId?: string | null; onOpen: (trigger: HTMLElement) => void; onExport?: () => void; onDelete?: () => void; notice?: ReactNode }) {
   const { t } = useTranslation();
   const directory = declaredPolicyDirectory(policy);
   return (
@@ -418,6 +421,7 @@ export function PolicyCard({ policy, onOpen, onExport, onDelete, notice }: { pol
       <div className="flex min-w-0 items-start justify-between gap-3">
         <h3 className="line-clamp-2 min-w-0 flex-1 text-sm leading-5 font-semibold">{policy.name}</h3>
         {policy.version === "0" ? <Badge variant="outline">Draft</Badge> : null}
+        <TenantResourceBadge ownerTenantId={policy.tenant_id} activeTenantId={tenantId} />
       </div>
       <p className="mt-2 line-clamp-2 min-h-10 text-xs leading-5 text-muted-foreground">{policy.description}</p>
       <div className="mt-3 flex flex-wrap gap-1.5">

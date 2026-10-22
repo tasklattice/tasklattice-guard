@@ -5,6 +5,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Endpoint, EndpointRegistration } from "@/lib/api";
+import { queryKeys } from "@/features/query-keys";
 
 import { CreateEndpointSheet, DeleteEndpointSheet, EndpointsPage, SetupChecklist } from "./endpoints";
 
@@ -107,7 +108,7 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
-vi.mock("@/lib/auth", () => ({ useAuth: () => ({ user: { role: "user" } }) }));
+vi.mock("@/lib/auth", () => ({ useAuth: () => ({ user: { role: "user", tenant_id: "tenantB" } }) }));
 
 vi.mock("@/lib/api", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/lib/api")>();
@@ -174,7 +175,7 @@ function registration(overrides: Partial<Endpoint> = {}): EndpointRegistration {
 function renderWithProviders(node: React.ReactNode) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   const router = createRouter({ routeTree: createRootRoute(), history: createMemoryHistory({ initialEntries: ["/integration/endpoints"] }) });
-  return render(<QueryClientProvider client={client}><RouterContextProvider router={router}>{node}</RouterContextProvider></QueryClientProvider>);
+  return { ...render(<QueryClientProvider client={client}><RouterContextProvider router={router}>{node}</RouterContextProvider></QueryClientProvider>), client };
 }
 
 describe("Endpoint onboarding", () => {
@@ -239,6 +240,21 @@ describe("Endpoint onboarding", () => {
     fireEvent.click(await screen.findByRole("option", { name: /false ·/ }));
     await waitFor(() => expect(screen.getByRole("combobox", { name: "Default flagOnly" }).textContent).toContain("false"));
     expect(scanDefaultMock).toHaveBeenLastCalledWith(item.id, false);
+  });
+
+  it("keeps shared Endpoint settings and credentials read-only", async () => {
+    const item = endpoint({ tenant_id: "tenantA", adapter_id: "f5-scan", protocol: "scan", scan_flag_only_default: true });
+    getEndpointsMock.mockResolvedValue({ items: [item], count: 1 });
+    getEndpointMock.mockResolvedValue(item);
+    renderWithProviders(<EndpointsPage />);
+    fireEvent.click(await screen.findByText(item.name));
+    expect((await screen.findByRole("combobox", { name: "Default flagOnly" })).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("switch", { name: "endpoints.acceptCallbacks" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.queryByRole("button", { name: "endpoints.generateCredential" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "endpoints.deleteAction" })).toBeNull();
+    expect(scanDefaultMock).not.toHaveBeenCalled();
+    expect(deleteEndpointMock).not.toHaveBeenCalled();
+    expect(screen.getByRole("link", { name: "Test Endpoint" })).toBeTruthy();
   });
 
   it("keeps connection values in onboarding and links to the LiteLLM setup guide", () => {
@@ -470,7 +486,9 @@ describe("Endpoint onboarding", () => {
     });
     deleteEndpointMock.mockResolvedValue(undefined);
 
-    renderWithProviders(<EndpointsPage />);
+    const { client } = renderWithProviders(<EndpointsPage />);
+    const sidebarKey = [...queryKeys.endpoints, "tenant", "tenantB"];
+    client.setQueryData(sidebarKey, { items: [item] });
 
     fireEvent.click(await screen.findByText(item.name));
     fireEvent.click(await screen.findByRole("button", { name: "endpoints.deleteAction" }));
@@ -484,6 +502,7 @@ describe("Endpoint onboarding", () => {
       reason: "Gateway contract ended",
       confirm_recent_traffic: false,
     }));
+    await waitFor(() => expect(client.getQueryState(sidebarKey)?.isInvalidated).toBe(true));
   });
 });
 

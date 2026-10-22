@@ -344,6 +344,13 @@
       "when": 1792540800001,
       "tag": "0048_remove_runtime_baseline",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1792540800002,
+      "tag": "0049_multi_tenant_resources",
+      "breakpoints": true
     }
   ]
 }

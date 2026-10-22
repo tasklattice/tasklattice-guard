@@ -118,6 +118,7 @@ function mapGuardrail(
   const publishedCurrent = published && !hasUnpublishedChanges;
   return {
     copy_origin: value.copyOrigin,
+    tenant_id: value.tenantId,
     id: value.id,
     name: value.name,
     allowed_topics: value.draftConfig.allowedTopics,

@@ -1,7 +1,8 @@
+import { TenantResourceBadge } from "@/components/tenant-resource-badge";
 import { hasPermission } from "../../shared/rbac";
 import { EndpointRouterLink } from "@/components/endpoint-router-link";
 import { EndpointSetupBadge } from "@/components/endpoint-setup-badge";
-import { endpointsQueryOptions } from "@/features/endpoints-query";
+import { endpointListQueryFilters, endpointsQueryOptions } from "@/features/endpoints-query";
 import { ResourceList } from "@/components/resource-list";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -116,7 +117,7 @@ export function EndpointsPage({ endpointId, onEndpointChange }: {
       }
       setDeleteTarget(null);
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.endpoints, exact: true }),
+        queryClient.invalidateQueries(endpointListQueryFilters),
         queryClient.invalidateQueries({ queryKey: queryKeys.routers }),
         queryClient.invalidateQueries({ queryKey: queryKeys.metrics }),
         queryClient.invalidateQueries({ queryKey: queryKeys.auditEvents }),
@@ -128,7 +129,7 @@ export function EndpointsPage({ endpointId, onEndpointChange }: {
 
   async function refreshEndpoints() {
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: queryKeys.endpoints, exact: true }),
+      queryClient.invalidateQueries(endpointListQueryFilters),
       queryClient.invalidateQueries({ queryKey: queryKeys.systemStatus }),
     ]);
   }
@@ -172,7 +173,7 @@ export function EndpointsPage({ endpointId, onEndpointChange }: {
         endpoint={selected}
         onOpenChange={(open) => !open && setSelected(null)}
         onUpdated={refreshEndpoints}
-        onDelete={hasPermission(auth.user?.role, "endpoints", "write") ? (endpoint) => {
+        onDelete={hasPermission(auth.user?.role, "endpoints", "write") && (!selected?.tenant_id || selected.tenant_id === auth.user?.tenant_id) ? (endpoint) => {
           setSelected(null);
           deleteMutation.reset();
           queryClient.removeQueries({ queryKey: queryKeys.endpointDeletionImpact(endpoint.id), exact: true });
@@ -202,10 +203,11 @@ export function EndpointsPage({ endpointId, onEndpointChange }: {
 
 function EndpointRow({ endpoint, onOpen }: { endpoint: Endpoint; onOpen: () => void }) {
   const { t, i18n } = useTranslation();
+  const user = useAuth().user;
   return <TableRow className="resource-row" onClick={onOpen}>
     <TableCell>
       <button type="button" className="resource-name" onClick={event => { event.stopPropagation(); onOpen(); }} aria-label={t("endpoints.openEndpoint", { name: endpoint.name })}>
-        <EndpointProtocolIcon protocol={endpoint.protocol} size="sm" /><span>{endpoint.name}</span>
+        <EndpointProtocolIcon protocol={endpoint.protocol} size="sm" /><span>{endpoint.name}</span><TenantResourceBadge ownerTenantId={endpoint.tenant_id} activeTenantId={user?.tenant_id} />
       </button>
       <span className="resource-secondary" title={`${t(`endpoints.adapters.${endpoint.adapter_id}`)} · ${endpoint.id}`}>{t(`endpoints.protocolShort.${endpoint.protocol}`)} · {shortId(endpoint.id)}</span>
     </TableCell>
@@ -266,7 +268,7 @@ function EndpointDetailContent({
 }) {
   const { t, i18n } = useTranslation();
   const auth = useAuth();
-  const canManage = hasPermission(auth.user?.role, "endpoints", "write");
+  const canManage = hasPermission(auth.user?.role, "endpoints", "write") && (!initialEndpoint.tenant_id || initialEndpoint.tenant_id === auth.user?.tenant_id);
   const queryClient = useQueryClient();
   const copy = useCopyText();
   const query = useQuery({
@@ -377,6 +379,7 @@ function EndpointDetailContent({
                 <p className="mt-1 text-xs text-muted-foreground">{t("endpoints.createdAt", { date: formatDate(endpoint.created_at, i18n.language) })}</p>
               </div>
               <EndpointSetupBadge status={endpoint.setup_status} />
+              <TenantResourceBadge ownerTenantId={endpoint.tenant_id} activeTenantId={auth.user?.tenant_id} />
             </div>
             <Button asChild variant="testing"><Link to="/playground" search={{ mode: "advanced", endpoint: endpoint.id }}><FlaskConical />{t("endpoints.testEndpoint")}</Link></Button>
           </div>
@@ -582,7 +585,7 @@ export function CreateEndpointSheet({
       ...(adapterId === "f5-scan" ? { scan_flag_only_default: scanFlagOnlyDefault } : {}) }),
     onSuccess: (result) => {
       setRegistration(result);
-      void queryClient.invalidateQueries({ queryKey: queryKeys.endpoints, exact: true });
+      void queryClient.invalidateQueries(endpointListQueryFilters);
       toast.success(t("endpoints.registered"));
     },
     onError: showMutationError(t("endpoints.registrationFailed")),

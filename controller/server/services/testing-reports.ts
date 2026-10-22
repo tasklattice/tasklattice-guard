@@ -1,3 +1,4 @@
+import { resourceReadPredicate } from "./tenant-context.js";
 import { reportCompletionTime } from "./testing-report-retention.js";
 import { and, count, desc, eq, getTableColumns, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -22,6 +23,7 @@ export const testingReportsQuery = z.object({
 export async function queryTestingReports(db: ControllerDatabase, input: z.input<typeof testingReportsQuery>) {
   const query = testingReportsQuery.parse(input);
   const filters = and(
+    resourceReadPredicate("guardrail", guardrails.id, guardrails.tenantId),
     query.guardrailId ? eq(validationRuns.guardrailId, query.guardrailId) : undefined,
     query.status === "all" ? undefined : query.status === "incomplete"
       ? inArray(validationRuns.status, ["queued", "running"]) : eq(validationRuns.status, query.status),
