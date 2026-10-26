@@ -45,28 +45,30 @@ export function GuardrailValidationReadiness({ readiness, onEdit, onRetry, onRem
   return <Alert variant={error ? "destructive" : readiness.checking ? "default" : "warning"} role={error ? "alert" : "status"}>
     {error ? <CircleAlert /> : readiness.checking ? <LoaderCircle className="animate-spin motion-reduce:animate-none" /> : <TriangleAlert />}
     <AlertTitle className="leading-6">{t(`protection.validationReadiness.${error ? "blockedTitle" : readiness.checking ? "checking" : "warningTitle"}`)}</AlertTitle>
-    <AlertDescription className="min-w-0 space-y-3 text-current">
-      {readiness.blockers.length ? <ul className="space-y-2">{readiness.blockers.map(item => {
-        const [capability, rail] = item.id.split(".");
-        return <li key={item.id} className="break-words"><strong>{t(`protection.dependencies.capabilities.${capability}`)} · {t(`protection.${rail}`)}</strong>
-          <span> — {t(`protection.validationReadiness.states.${item.state}`)}</span>
-          <span className="block text-xs leading-5">{t("protection.validationReadiness.policies", { names: item.policyNames.join(" · ") })}</span>
-        </li>;
-      })}</ul> : null}
-      {!error && readiness.warnings.length ? <ul className="space-y-2">{readiness.warnings.map(item => {
-        const [capability, rail] = item.id.split(".");
-        return <li key={item.id}><strong>{t(`protection.dependencies.capabilities.${capability}`)} · {t(`protection.${rail}`)}</strong>
-          <span> — {t(`protection.dependencies.validation.${item.validation}`)}</span></li>;
-      })}</ul> : null}
-      {!readiness.checking && readiness.reason ? <p>{readiness.reason}</p> : null}
-      {!readiness.checking && !readiness.unavailable && readiness.unknownPolicies.length ? <p>{t("protection.dependencies.unknownPolicy", { policies: readiness.unknownPolicies.join(", ") })}</p> : null}
-      {!readiness.checking ? <div className="flex flex-wrap gap-2">
-        {error && administrator ? <a className="inline-flex min-h-11 items-center text-sm text-primary underline-offset-4 hover:underline" href="/settings/guardrail-catalog" target="_blank" rel="noopener noreferrer">{t("protection.dependencies.configure")}</a> : null}
+    <AlertDescription>
+      <div className="grid min-w-0 gap-3 pt-3 text-current leading-6">
+        {readiness.blockers.length ? <ul className="space-y-2">{readiness.blockers.map(item => {
+          const [capability, rail] = item.id.split(".");
+          return <li key={item.id} className="break-words"><strong>{t(`protection.dependencies.capabilities.${capability}`)} · {t(`protection.${rail}`)}</strong>
+            <span> — {t(`protection.validationReadiness.states.${item.state}`)}</span>
+            <span className="block text-xs leading-5">{t("protection.validationReadiness.policies", { names: item.policyNames.join(" · ") })}</span>
+          </li>;
+        })}</ul> : null}
+        {!error && readiness.warnings.length ? <ul className="space-y-2">{readiness.warnings.map(item => {
+          const [capability, rail] = item.id.split(".");
+          return <li key={item.id}><strong>{t(`protection.dependencies.capabilities.${capability}`)} · {t(`protection.${rail}`)}</strong>
+            <span> — {t(`protection.dependencies.validation.${item.validation}`)}</span></li>;
+        })}</ul> : null}
+        {!readiness.checking && readiness.reason ? <p>{readiness.reason}</p> : null}
+        {!readiness.checking && !readiness.unavailable && readiness.unknownPolicies.length ? <p>{t("protection.dependencies.unknownPolicy", { policies: readiness.unknownPolicies.join(", ") })}</p> : null}
         {error && !administrator ? <p>{t("auth.platformSetupRequired")}</p> : null}
-        {error && onEdit ? <Button variant="outline" className="min-h-11 h-auto whitespace-normal" onClick={onEdit}>{t(readiness.hasTopicBlocker ? "protection.validationReadiness.editTopic" : "protection.validationReadiness.edit")}</Button> : null}
-        {readiness.hasTopicBlocker && onRemoveTopic ? <Button variant="outline" className="min-h-11 h-auto whitespace-normal" onClick={onRemoveTopic}>{t("protection.validationReadiness.removeTopic")}</Button> : null}
-        {readiness.blocked ? <Button variant="outline" className="min-h-11" disabled={readiness.refreshing} onClick={onRetry ?? readiness.refresh}>{t("protection.validationReadiness.retry")}</Button> : null}
-      </div> : null}
+        {!readiness.checking && readiness.blocked ? <div className="flex flex-wrap gap-2">
+          {error && administrator ? <a className="inline-flex min-h-11 items-center text-sm text-primary underline-offset-4 hover:underline" href="/settings/guardrail-catalog" target="_blank" rel="noopener noreferrer">{t("protection.dependencies.configure")}</a> : null}
+          {error && onEdit ? <Button variant="outline" className="min-h-11 h-auto whitespace-normal" onClick={onEdit}>{t(readiness.hasTopicBlocker ? "protection.validationReadiness.editTopic" : "protection.validationReadiness.edit")}</Button> : null}
+          {readiness.hasTopicBlocker && onRemoveTopic ? <Button variant="outline" className="min-h-11 h-auto whitespace-normal" onClick={onRemoveTopic}>{t("protection.validationReadiness.removeTopic")}</Button> : null}
+          {readiness.blocked ? <Button variant="outline" className="min-h-11" disabled={readiness.refreshing} onClick={onRetry ?? readiness.refresh}>{t("protection.validationReadiness.retry")}</Button> : null}
+        </div> : null}
+      </div>
     </AlertDescription>
   </Alert>;
 }
