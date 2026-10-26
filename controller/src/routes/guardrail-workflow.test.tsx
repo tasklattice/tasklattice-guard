@@ -304,7 +304,7 @@ describe("Guardrail edit, test and publish workflow", () => {
     fireEvent.click(screen.getByRole("button", { name: "guardrails.testNow" }));
     await waitFor(() => expect(run).toHaveBeenCalledWith(draft.id, { onProgress: expect.any(Function) }, true));
     expect(screen.getByText("guardrails.testingInPlace")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "guardrails.continueEditing" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "guardrails.continueEditing" }).hasAttribute("disabled")).toBe(false);
     page.completeTest(); finishRun(report);
     await screen.findByRole("button", { name: "guardrails.publishVersion" });
     expect(screen.getAllByRole("dialog")).toHaveLength(1);
@@ -329,7 +329,7 @@ describe("Guardrail edit, test and publish workflow", () => {
     await screen.findByText("Runner is unavailable");
     expect(run).toHaveBeenCalledTimes(2);
     expect(changed).toHaveBeenCalledTimes(2);
-    expect(screen.queryByRole("button", { name: "guardrails.publishVersion" })).toBeNull();
+    expect(screen.getByRole("button", { name: "guardrails.publishVersion" }).hasAttribute("disabled")).toBe(false);
     expect(screen.getByRole("button", { name: "validation.runAgain" })).toBeTruthy();
     expect(publish).not.toHaveBeenCalled();
   });

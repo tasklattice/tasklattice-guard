@@ -45,7 +45,7 @@ export const protectionEn = {
     advanced: "Advanced settings · output delivery & execution order", orderHint: "Policies keep their Profile or selection order unless you reorder them below.",
     toReview: "Review draft", editProtections: "Edit protections",
     presetHint: "Choose an industry or use case to load its default Profile. Review the enabled protections below, then adjust them in the next step.",
-    switchHint: "You already have selected Policies. Add missing Policies and Rules for the same Policy version, keeping your settings and order, or replace the selection with this Profile. Adding preserves your settings; replacing copies the Profile’s topic boundaries and output settings. Validate the result before publishing.",
+    switchHint: "You already have selected Policies. Add missing Policies and Rules for the same Policy version, keeping your settings and order, or replace the selection with this Profile. Adding preserves your settings; replacing copies the Profile’s topic boundaries and output settings. Review the result before publishing; tests are optional.",
     addPreset: "Add missing Policies & Rules", replacePreset: "Replace selection", undoPreset: "Undo Profile change", undone: "Previous selection restored.", resolvePreset: "Choose how to apply this Profile",
   },
 
@@ -112,7 +112,7 @@ export const protectionEn = {
   incrementalHint: "Checked chunks may be released incrementally. Already released text cannot be recalled; clients must stop consuming when the Runner terminates a stream.",
   noOutput: "No response protection selected. Responses are not checked by this Guardrail.",
   noInput: "No request protection selected. Requests are not checked by this Guardrail.",
-  input: "Requests", output: "Responses", selectedNotValidated: "Selected is not validated. Save this draft, run its generated tests, then publish and deploy a version.",
+  input: "Requests", output: "Responses", selectedNotValidated: "Save this draft and publish a version when ready. Testing is optional; model dependencies are checked separately.",
   missingName: "Add a name on the first step before creating the draft.",
   retryPreview: "Retry plan preview", reviewBlocked: "Configuration to complete",
   directories: {
@@ -231,7 +231,7 @@ export const protectionZh = {
   bufferReason: "以下回答保护需要完整内容：{{policies}}。仍可接收流式请求，但这些检查结束前不会释放回答文本。",
   incrementalHint: "检查后的片段可以逐步释放。已经释放的文本无法撤回；Runner 终止流时，客户端必须停止消费。",
   noOutput: "未选择回答保护。此 Guardrail 不会检查回答。", noInput: "未选择请求保护。此 Guardrail 不会检查请求。",
-  input: "请求", output: "回答", selectedNotValidated: "已选择不等于验证通过。保存草稿后，需要运行生成的测试，再发布和部署版本。",
+  input: "请求", output: "回答", selectedNotValidated: "保存草稿后即可发布版本。测试可独立执行，模型依赖另行检查。",
   missingName: "创建草稿前，请在第一步填写名称。", retryPreview: "重试执行计划预览", reviewBlocked: "需要补齐的配置",
   directories: {
     content_safety: "内容安全", privacy: "隐私与敏感信息", business_topics: "业务话题范围", content_filters: "指定词语与内容过滤",

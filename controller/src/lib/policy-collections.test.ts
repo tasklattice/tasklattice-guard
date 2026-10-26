@@ -19,7 +19,7 @@ const profiles = defaultGuardrailProfiles.map(profile => ({ ...profile,
 describe("Policy set discovery", () => {
   it("resolves every enabled Profile to its exact canonical Rules, retaining all 5 regions and reviewed frameworks", () => {
     const sets = policyCollections(profiles, policies);
-    expect(sets).toHaveLength(15);
+    expect(sets).toHaveLength(defaultGuardrailProfiles.length);
     expect(sets.flatMap(set => set.unavailable)).toEqual([]);
     expect([...new Set(sets.flatMap(set => set.tags.filter(tag => tag.namespace === "jurisdiction").map(tag => tag.value)))].sort()).toEqual(["au", "cn", "eu", "sg", "uae"]);
     for (const set of sets) {

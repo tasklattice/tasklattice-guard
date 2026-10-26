@@ -45,15 +45,15 @@ Router 和导出都引用确切版本。发布 v2 不会让固定 v1 的 Router 
 SHA-256 checksum 标识编译配置。核对测试或部署使用的 Artifact 时，可以比较该值。checksum 本身不能证明测试通过。
 
 <a id="term-validation-run" />
-## 测试报告与发布依据
+## 测试报告与发布
 
 Testing Report 记录草稿或版本的一次测试执行，从 Queued、Running 进入 Passed 或 Failed。已完成结果不再修改，复测创建新报告。
 
-草稿测试绑定草稿修订与已测候选内容。发布固定这份候选内容，单独测试不会创建不可变版本。
+草稿测试绑定草稿修订与候选内容。发布可复用相同修订的编译内容，也可独立编译；单独测试不会创建不可变版本。
 
-导入版本初始为 Pending。应在目标环境测试其冻结内容。显式 Release 要求最近一次已完成的版本测试通过，且 Artifact 与测试集摘要都匹配。
+导入版本初始为 Pending，可直接发布，也可按需测试冻结内容。发布不调用模型、不执行测试，也不会更改测试结果。编译或结构错误会保留旧版本，修正后可重试。
 
-系统通常为每个不可变版本保留两份 Passed 报告和一份 Failed 报告。未形成版本的历史使用独立保留组。受保护的平台依据可能不受这一数量限制。
+系统通常为每个不可变版本保留两份 Passed 报告和一份 Failed 报告。未形成版本的历史使用独立保留组。所有来源使用相同的报告保留规则。
 
 自动清理可保留精简的最近测试或发布依据，不保留详细结果与正文。完整报告不可查看，不等于发布失效。手动删除报告会另行检查影响。
 
@@ -67,9 +67,9 @@ Testing Report 记录草稿或版本的一次测试执行，从 Queued、Running
 <a id="state-guardrail-readiness" />
 ### 保护状态与运行模式
 
-界面显示 **Not ready、Enforce、Monitor 或 Bypass**。就绪要求保留至少一个 Released 版本，且发布依据与内容匹配。
+界面显示 **Not ready、Enforce、Monitor 或 Bypass**。就绪要求保留至少一个 Released 版本及其可执行 Artifact。
 
-业务 Guardrail 的依据可以是匹配的本环境 Passed 报告，或保留的精简发布依据。首次预配置的 Default 版本具有匹配的随包发布凭证。
+Default、人工创建和 Profile 创建的 Guardrail 使用同一套发布规则。历史平台发布凭证与测试豁免仅作为审计来源保留。
 
 已测但未发布的草稿不构成就绪，新导入的 Pending 版本也不构成就绪。
 
@@ -121,7 +121,7 @@ Policy 数量与测试结果要针对具体草稿或版本查看。路由引用�
 | 不可变版本 | Pending / Released（`pending / ready`） | 表示本环境是否已 Release 该版本，内容保持不可变。 |
 | 测试报告 | Queued / Running / Passed / Failed | 描述一次执行，完成后的结果为终态。 |
 
-创建 Guardrail 只产生草稿，不自动路由。发布已测草稿直接创建 Released 版本。修改配置或 Test Case 后，需要测试新修订。
+创建 Guardrail 只产生草稿，不自动路由。发布会冻结并编译草稿，创建 Released 版本。修改配置或 Test Case 后可按需测试；未测试、测试进行中和失败都不阻止发布。
 
 导入会验证签名内容并创建 Pending 版本。首次导入建立可编辑草稿，增量导入保留该草稿。来源环境的报告与发布状态不会迁移。
 
@@ -134,20 +134,20 @@ Policy 数量与测试结果要针对具体草稿或版本查看。路由引用�
 
 存储状态为 `pending` 和 `ready`。版本的 `ready` 在界面显示为 **Released**，与资源的 Enforce、Monitor、Bypass 不同。
 
-正常安装直接配置随包的 Default 发布版本，不执行本地测试。平台发布凭证是其发布依据。
+部署通过固定版本的 Local baseline Profile 创建一次名为 Default 的普通 Guardrail，使用普通资源 ID 与发布流程。改名、编辑、删除后重启都不会覆盖或重新创建。
 
 <a id="guardrail-build-states" />
 #### 版本状态详解
 
 <StateCards>
 <StateCard title="待发布" code="pending" state="distributing">
-<StateDetail label="含义">本环境尚未 Release 这些内容，或最后的有效发布依据已被移除。</StateDetail>
-<StateDetail label="状态变化">匹配的版本测试通过后，有权限的用户显式 Release。</StateDetail>
-<StateDetail label="下一步">执行冻结的测试，检查结果，通过后 Release。</StateDetail>
+<StateDetail label="含义">本环境尚未发布这些内容，或资源删除重置了发布状态。</StateDetail>
+<StateDetail label="状态变化">有权限的用户显式发布，测试结果独立保留。</StateDetail>
+<StateDetail label="下一步">审阅配置并发布，按需运行测试。</StateDetail>
 </StateCard>
 <StateCard title="已发布" code="Released" state="ready">
 <StateDetail label="含义">保存的发布状态允许选择该版本，仍须验证环境依赖。</StateDetail>
-<StateDetail label="状态变化">复测失败保留发布；移除最后的有效依据时，可能退回 Pending。</StateDetail>
+<StateDetail label="状态变化">复测失败和删除报告均保留发布状态。</StateDetail>
 <StateDetail label="下一步">在 Router 中固定确切版本，确认下发与实际请求。</StateDetail>
 </StateCard>
 </StateCards>
@@ -155,9 +155,9 @@ Policy 数量与测试结果要针对具体草稿或版本查看。路由引用�
 <a id="guardrail-deletion-restoration" />
 ### 删除与恢复
 
-**测试报告。** 删除已完成报告前，先审阅影响。Queued、Running 和受保护的平台来源报告不能删除。
+**测试报告。** 删除已完成报告前，先审阅影响。Queued 和 Running 报告不能删除。
 
-替代依据必须匹配同一 Artifact 与冻结测试集。匹配的归档发布依据或平台发布凭证也可保留发布。没有其他合格依据时，删除最后依据会让版本退回 Pending。引用或近期流量可能阻止删除。
+删除报告会清理报告引用，保留已发布版本、路由和运行模式。历史发布原因仍可审计。
 
 **不可变版本。** 删除释放一个版本名额。已发布 Router、修改中的 Router 草稿、待审批变更和已批准的回退目标都可能阻止删除。近期调用、退流量窗口和未完成的 Runner 应用也会阻止删除。
 
@@ -167,17 +167,16 @@ Policy 数量与测试结果要针对具体草稿或版本查看。路由引用�
 
 软删除保留身份、静态版本、Artifact、草稿、用例、来源和审计。它清理本环境报告、待执行测试、已存运行事件与路由调用记录，并将保留版本退回 Pending。重置前的迟到结果会被忽略。
 
-**重新导入恢复。** 只支持来自原归属来源的已导入身份。在导入审阅中确认同一 ID 后，保留的静态内容与草稿继续使用。必须在本环境重新测试并 Release，流量不会自动恢复。
+**重新导入恢复。** 只支持来自原归属来源的已导入身份。在导入审阅中确认同一 ID 后，保留的静态内容与草稿继续使用。必须在本环境显式发布，测试可选，流量不会自动恢复。
 
 重新导入不能恢复无关的本地创建身份，不是通用恢复机制。
 
 <a id="guardrail-implementation-boundaries" />
-### 当前校验入口的差异
+### 一致的发布交互
 
-以下实现差异仍然存在：
-
-- **草稿发布：** 界面要求当前修订的最新报告通过。API 选择该修订最近一份 Passed，之后的失败或运行中测试未必阻止 API 发布。API 仍校验已测内容。
-- **版本 Release：** 界面等待运行中的测试结束。API 检查最近一次已完成版本测试，也接受保留的精简依据，并检查 Artifact 与测试集摘要。已 Released 版本重复 Release 时，当前直接返回，不重新检查依据。
+界面、API 和 CLI 使用同一套发布规则。编译错误会保留已有版本，修正后可重试。
+发布不调用模型、不执行测试、不修改测试结果，也不切换流量。模型依赖、Runner
+可运行性和 Router 下发状态独立检查。
 
 <a id="user-decisions" />
 ## 执行检测结果

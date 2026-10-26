@@ -144,7 +144,8 @@ export function GuardrailDetailPage() {
   const policiesQuery = useQuery({ queryKey: queryKeys.policies, queryFn: getPolicies });
   const validationReadiness = useGuardrailValidationReadiness({ bindings: guardrailQuery.data?.policy_bindings ?? [], policies: policiesQuery.data?.items ?? EMPTY_POLICIES,
     enabled: Boolean(guardrailQuery.data), policiesReady: policiesQuery.isSuccess, policiesError: policiesQuery.isError });
-  const versionsQuery = useQuery({ queryKey: queryKeys.guardrailVersions(guardrailId), queryFn: () => getGuardrailVersions(guardrailId) });
+  const versionsQuery = useQuery({ queryKey: queryKeys.guardrailVersions(guardrailId), queryFn: () => getGuardrailVersions(guardrailId),
+    refetchInterval: query => query.state.data?.items.some(version => version.status === "ready" && version.environment_check?.status !== "compatible") ? 5000 : false });
   const reportPagination = useEventCursor(guardrailId);
   const validationRunsQuery = useQuery({ queryKey: [...queryKeys.validationRuns(guardrailId), reportPagination.cursor], queryFn: () => getValidationRuns(guardrailId, { cursor: reportPagination.cursor }) });
   const versionReports = validationRunsQuery.data?.versionReports ?? validationRunsQuery.data?.items ?? [];
@@ -338,7 +339,7 @@ export function GuardrailDetailPage() {
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {canTestDraft && hasDraft ? <Button variant="testing" onClick={openDraftReview}>{testingDraft ? <LoaderCircle className="animate-spin" /> : <FlaskConical />}{t(testingDraft ? "guardrails.viewTestProgress" : "guardrails.testDraft")}</Button> : null}
-          {canTestDraft && guardrail.tested_current && !guardrail.published_current ? <Button onClick={() => { setDraftJustSaved(false); setDraftAction("publish"); }}><ShieldCheck />{t("guardrails.publishVersion")}</Button> : null}
+          {canTestDraft && !guardrail.published_current ? <Button onClick={() => { setDraftJustSaved(false); setDraftAction("publish"); }}><ShieldCheck />{t("guardrails.publishVersion")}</Button> : null}
           {hasPermission(auth.user?.role, "guardrails", "write") ? <MenuButton ref={protectionActions.menuRef} label={t("routing.actions")} kind="tertiary" size="md" menuAlignment="bottom-end" className="guard-actions-menu">
             {protectionActions.menuItems}
             {canManageDraft ? <MenuItem label={t("guardrails.editAction")} renderIcon={Pencil} onClick={() => setEditOpen(true)} /> : null}

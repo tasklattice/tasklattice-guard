@@ -168,6 +168,7 @@ export type Guardrail = {
 };
 
 export type GuardrailVersion = {
+  publication?: import("../../shared/guardrail-publication").GuardrailPublication | null;
   testWaiver?: import("../../shared/default-release").DefaultTestWaiver | null;
   sourceValidationRunId?: string | null;
   testingEvidence?: import("../../shared/testing-report-retention").VersionTestingEvidence | null;

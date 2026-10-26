@@ -54,10 +54,10 @@ export function graph(kind: StateMachineKind, zh: boolean): Graph {
   switch (kind) {
     case "guardrail-readiness": return {
       title: label("Guardrail 防护状态", "Guardrail protection states"),
-      caption: label("后三种模式均要求就绪，可相互切换。失去最后的合格发布版本或依据后回到 Not ready，再次就绪时默认 Enforce。Default 可使用平台发布凭证，普通业务版本需要本环境测试依据。", "All three modes require readiness. Losing the last qualifying release or its evidence returns the resource to Not ready. The next release defaults to Enforce. Default can use platform-release provenance. Business versions need local test evidence."),
+      caption: label("三种模式均要求已有发布版本。测试和报告删除不改变就绪；删除最后的版本后回到 Not ready。所有 Guardrail 使用相同规则。", "All modes require a published version. Tests and report deletion do not change readiness. Deleting the last version returns to Not ready. All Guardrails follow the same rules."),
       height: 360,
       nodes: [node("Not ready", 40, 45, "neutral"), node("Enforce", 380, 45, "healthy"), node("Monitor", 220, 235, "change"), node("Bypass", 700, 235, "change")],
-      edges: [edge("M200 72 L380 72", 290, 52, "发布 + 匹配依据", "Release + matching evidence"),
+      edges: [edge("M200 72 L380 72", 290, 52, "发布可执行版本", "Publish executable version"),
         edge("M415 99 L330 235", 325, 165, "观察", "Monitor"), edge("M365 235 L450 99", 450, 175, "恢复防护", "Restore"),
         edge("M510 99 L750 235", 660, 146, "应急放行", "Bypass"), edge("M700 235 L480 99", 570, 190, "恢复防护", "Restore"),
         edge("M380 251 L700 251", 540, 237, "应急放行", "Bypass"), edge("M700 274 L380 274", 540, 302, "观察", "Monitor")],
@@ -82,10 +82,10 @@ export function graph(kind: StateMachineKind, zh: boolean): Graph {
     };
     case "guardrail-version": return {
       title: label("不可变版本的发布状态", "Immutable version release states"),
-      caption: label("ready 表示版本 Released，不等于资源就绪。导入版本初始为 pending，发布已测草稿直接创建 ready。随包 Default 使用平台发布凭证。软删除资源会将保留版本退回 pending。", "Here ready means version Released. Check resource readiness separately. Imports start pending. Publishing a tested draft creates ready directly. Bundled Default uses platform-release provenance. Resource deletion resets retained versions to pending."),
+      caption: label("导入版本初始为 pending，发布草稿直接创建 ready。测试结果和环境可运行性独立展示。删除资源会将保留版本退回 pending。", "Imports start pending; publishing a draft creates ready. Tests and environment readiness are separate. Resource deletion resets retained versions to pending."),
       height: 260,
       nodes: [node("pending", 85, 103, "change"), node("ready", 660, 103, "healthy")],
-      edges: [edge("M245 130 L660 130", 452, 112, "本环境测试通过并发布", "Tested here and released"), edge("M660 157 Q450 260 245 157", 452, 224, "失去最后的发布依据", "Final release evidence removed")],
+      edges: [edge("M245 130 L660 130", 452, 112, "显式发布", "Explicit publication"), edge("M660 157 Q450 260 245 157", 452, 224, "删除资源重置状态", "Resource deletion resets state")],
     };
     case "router": return {
       title: label("Router 发布与下发状态机", "Router publication and rollout state machine"),

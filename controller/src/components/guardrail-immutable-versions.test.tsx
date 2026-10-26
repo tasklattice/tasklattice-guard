@@ -51,9 +51,9 @@ describe("Immutable version list and detail drawer", () => {
       sourceTestStatus: "failed" as const, sourceTestMetrics: { total: 611, passed: 265 }, contentDigest: "checksum", testSuiteDigest: "suite", latestVersionRunId: null, latestVersionTestStatus: null } };
     mount({ versions: [waived], selectedVersion: waived, detail: waived });
     const dialog = open();
-    expect(within(dialog).getByText("immutableVersions.releaseStates.released_waiver")).toBeTruthy();
+    expect(within(dialog).getByText("immutableVersions.releaseStates.released")).toBeTruthy();
     expect(within(dialog).getByText("immutableVersions.waiverReason reason:Provider quota")).toBeTruthy();
-    expect(within(dialog).queryByText("immutableVersions.releaseStates.released")).toBeNull();
+    expect(within(dialog).queryByText("immutableVersions.releaseStates.released_waiver")).toBeNull();
   });
 
   it("does not grant administrators special Default authoring permissions", () => {
@@ -192,13 +192,13 @@ describe("Immutable version list and detail drawer", () => {
     status, execution_status: running ? "running" : status, candidate_digest: digest, created_at: "2026-10-05T00:00:00Z", metrics: { passed: 4, total: 4 } }) as unknown as ValidationRun;
   const pending = () => ({ ...version(3), status: "pending" as const, released_at: null, release_run_id: null, origin: "imported" as const });
 
-  it("keeps a pending version out of use until a passing test of exactly its content allows releasing it", async () => {
+  it("allows publication of pending versions independently of their test results", async () => {
     const view = mount({ versions: [pending(), version(2), version(1)], selectedVersion: pending(), detail: pending() }); open();
     expect(screen.getAllByText("immutableVersions.releaseStates.untested").length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: "uiCopy.versionActions" }));
     // File export is independent of release; serving still needs a passed test.
     expect(screen.getByRole("menuitem", { name: "guardrails.exportEllipsis" }).hasAttribute("disabled")).toBe(false);
-    expect(screen.getByRole("menuitem", { name: "immutableVersions.release" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("menuitem", { name: "immutableVersions.release" }).hasAttribute("disabled")).toBe(false);
     view.unmount();
 
     // A pass of other content does not count; a failed run says so.
@@ -208,11 +208,12 @@ describe("Immutable version list and detail drawer", () => {
       again.unmount();
     }
 
-    // A version without a test suite can never be released; it says so.
+    // An empty suite disables tests, while publication remains available.
     const bare = { ...pending(), test_suite_count: 0 };
     const unsuited = mount({ versions: [bare, version(2)], selectedVersion: bare, detail: bare }); open();
     expect(screen.getByText("immutableVersions.noTestSuite")).toBeTruthy();
     expect(within(screen.getByRole("dialog")).getByRole("button", { name: "immutableVersions.runTests" }).hasAttribute("disabled")).toBe(true);
+    expect(within(screen.getByRole("dialog")).getByRole("button", { name: "immutableVersions.release" }).hasAttribute("disabled")).toBe(false);
     unsuited.unmount();
 
     mount({ versions: [pending(), version(2)], selectedVersion: pending(), detail: pending(), validationRuns: [versionRun("passed")] }); open();

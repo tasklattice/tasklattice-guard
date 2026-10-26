@@ -484,6 +484,7 @@ export type DeleteConfirmation = {
 };
 
 export type GuardrailVersion = {
+  publication?: import("../../shared/guardrail-publication").GuardrailPublication | null;
   test_waiver?: import("../../shared/default-release").DefaultTestWaiver | null;
   source_validation_run_id?: string | null;
   testing_evidence?: import("../../shared/testing-report-retention").VersionTestingEvidence | null;

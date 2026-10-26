@@ -54,7 +54,7 @@ export function GuardrailDraftReviewSheet({ guardrail, policies, versions, polic
   const publish = useMutation({
     mutationFn: () => {
       if (versionLimitReached) throw new Error(t("immutableVersions.capacityReached", { limit: MAX_GUARDRAIL_VERSIONS }));
-      if (!guardrail.tested_current || publishRevision === null || publishRevision !== guardrail.draft_revision || guardrail.published_current) {
+      if (publishRevision === null || publishRevision !== guardrail.draft_revision || guardrail.published_current) {
         throw new Error(t("guardrails.draftChangedBeforePublish"));
       }
       return publishGuardrail(guardrail.id, publishRevision);
@@ -65,17 +65,17 @@ export function GuardrailDraftReviewSheet({ guardrail, policies, versions, polic
       onPublished(version);
     },
   });
-  const pending = run.isPending || publish.isPending;
+  const pending = publish.isPending;
   const reconnect = Boolean(run.error && isValidationRunning(observedRun));
   const result = run.data ?? guardrail.latest_validation_run;
   const currentResult = result?.source_draft_version === guardrail.draft_revision ? result : null;
-  const canPublish = !readOnly && !isValidationRunning(observedRun) && guardrail.tested_current && !guardrail.published_current;
+  const canPublish = !readOnly && !guardrail.published_current;
   const reviewingPublish = !readOnly && publishRevision !== null;
 
   return <EntitySheet open width="xl" density="compact" closeDisabled={pending}
     onOpenChange={open => { if (!open && !pending) onClose(); }}
     eyebrow={guardrail.name}
-    title={readOnly ? t("guardrails.draftRevisionLabel", { revision: guardrail.draft_revision ?? "—" }) : t(reviewingPublish ? "guardrails.confirmPublishTitle" : justSaved ? "guardrails.draftSaved" : "guardrails.testDraft")}
+    title={readOnly ? t("guardrails.draftRevisionLabel", { revision: guardrail.draft_revision ?? "—" }) : t(reviewingPublish ? "guardrails.confirmPublishTitle" : justSaved ? "guardrails.draftSaved" : "guardrails.reviewDraft")}
     description={t(readOnly ? "guardrails.draftReviewReadOnly" : reviewingPublish ? "guardrails.confirmPublishImpact" : "guardrails.savedDraftNextStep")}
     footer={readOnly ? <Button variant="outline" onClick={onClose}>{t("common.close")}</Button> : reviewingPublish ? <>
       <Button variant="outline" disabled={pending} onClick={() => { setPublishRevision(null); publish.reset(); }}>{t("common.back")}</Button>
@@ -83,7 +83,7 @@ export function GuardrailDraftReviewSheet({ guardrail, policies, versions, polic
     </> : <>
       {onEdit ? <Button variant="ghost" className="mr-auto" disabled={pending} onClick={onEdit}><Pencil />{t("guardrails.continueEditing")}</Button> : null}
       <Button variant="outline" disabled={pending} onClick={onClose}>{t(currentResult ? "common.close" : "guardrails.skipTest")}</Button>
-      <Button variant="testing" disabled={pending || (!reconnect && readiness.blocked)} onClick={() => run.mutate(reconnect ? observedRun!.id : undefined)}>{run.isPending ? <LoaderCircle className="animate-spin" /> : <FlaskConical />}{t(run.isPending ? "guardrails.runningValidation" : reconnect ? "guardrails.testProgress.reconnect" : currentResult ? "validation.runAgain" : "guardrails.testNow")}</Button>
+      <Button variant="testing" disabled={pending || run.isPending || (!reconnect && readiness.blocked)} onClick={() => run.mutate(reconnect ? observedRun!.id : undefined)}>{run.isPending ? <LoaderCircle className="animate-spin" /> : <FlaskConical />}{t(run.isPending ? "guardrails.runningValidation" : reconnect ? "guardrails.testProgress.reconnect" : currentResult ? "validation.runAgain" : "guardrails.testNow")}</Button>
       {canPublish ? <Button disabled={pending} onClick={() => setPublishRevision(guardrail.draft_revision ?? null)}><ShieldCheck />{t("guardrails.publishVersion")}</Button> : null}
     </>}>
     <div className="space-y-5">

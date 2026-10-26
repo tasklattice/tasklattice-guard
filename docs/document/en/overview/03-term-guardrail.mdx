@@ -45,15 +45,15 @@ Routers and exports reference exact versions. Publishing v2 does not move a Rout
 The SHA-256 checksum identifies the compiled configuration. Compare it when checking which Artifact a test or deployment used. The checksum alone does not prove tests passed.
 
 <a id="term-validation-run" />
-## Testing Reports and release evidence
+## Testing Reports and publication
 
 A Testing Report records one execution of a draft's or version's tests. It progresses through Queued and Running to Passed or Failed. A completed result stays unchanged. Retesting creates another report.
 
-Draft tests bind a draft revision and tested candidate. Publication freezes that candidate. Testing alone does not create an immutable version.
+Draft tests bind a revision and compiled candidate. Publication may reuse the same content regardless of test outcome or compile independently. Testing alone does not create a version.
 
-Imported versions start Pending. Test their frozen content in the destination environment. Explicit Release requires the latest completed version test to pass with matching Artifact and test-suite digests.
+Imported versions start Pending and can be published directly. Testing their frozen content is optional. Publication never changes test results.
 
-The system normally retains two Passed reports and one Failed report per immutable version. Unversioned history shares a separate retention group. Protected platform evidence can remain outside those limits.
+The system normally retains two Passed reports and one Failed report per immutable version. Unversioned history shares a separate retention group. All creation origins use the same retention rules.
 
 Automatic cleanup can retain compact latest-test or release evidence without detailed results or bodies. The absence of a full report does not automatically invalidate a release. Manual report deletion performs a separate impact check.
 
@@ -67,9 +67,9 @@ A Guardrail retains at most **10 immutable versions**, counting Pending and Rele
 <a id="state-guardrail-readiness" />
 ### Protection state and operating mode
 
-The UI shows **Not ready, Enforce, Monitor, or Bypass**. Readiness requires a retained Released version with matching release evidence.
+The UI shows **Not ready, Enforce, Monitor, or Bypass**. Readiness requires a retained Released version with executable Artifact content.
 
-For business Guardrails, that evidence can be a matching local Passed report or retained compact release evidence. The initially preconfigured Default version has matching bundled release provenance.
+Default, user-created and Profile-created Guardrails follow the same publication rules. Historical platform releases and test waivers are audit provenance only.
 
 A tested but unpublished draft does not establish readiness. Neither does a newly imported Pending version.
 
@@ -121,7 +121,7 @@ Readiness does not establish healthy Runners or actual traffic. Check the Endpoi
 | Immutable Version | Pending / Released (`pending / ready`) | Indicates whether the environment released that version. Content remains immutable. |
 | Testing Report | Queued / Running / Passed / Failed | Describes one execution. Completed outcomes are terminal. |
 
-Creating a Guardrail creates a draft, without automatic routing. Publishing a tested draft creates a Released version directly. Editing its configuration or Test Cases requires testing the new revision.
+Creating a Guardrail creates a draft, without automatic routing. Publishing freezes and compiles the draft and creates a Released version. Tests are optional, including after editing configuration or Test Cases. Untested, running and failed tests do not prevent publication.
 
 Import verifies signed content and creates Pending versions. Initial import seeds an editable draft. Incremental import preserves that draft. Source reports and release status do not transfer.
 
@@ -134,20 +134,20 @@ Retesting preserves version content. Failure alone does not revoke an existing r
 
 The persisted states are `pending` and `ready`. The UI calls version `ready` **Released**. This differs from the resource's Enforce, Monitor or Bypass display.
 
-Normal installation provisions the bundled Default release without running a local test. Its platform-release provenance provides the release basis.
+Deployment creates Default once from the pinned Local baseline Profile using ordinary creation and publication. It uses a normal resource ID. Rename, editing, deletion and restarts never overwrite it or provision it again.
 
 <a id="guardrail-build-states" />
 #### Version state details
 
 <StateCards>
 <StateCard title="Pending" code="pending" state="distributing">
-<StateDetail label="Meaning">The environment did not release this content, or it lost its last qualifying release evidence.</StateDetail>
-<StateDetail label="Transitions">A matching version test passes. An authorized user explicitly releases the version.</StateDetail>
-<StateDetail label="Next step">Run the frozen tests. Inspect the results. Release after passing.</StateDetail>
+<StateDetail label="Meaning">The environment has not published this content, or resource deletion reset its publication.</StateDetail>
+<StateDetail label="Transitions">An authorized user explicitly publishes the version, independently of tests.</StateDetail>
+<StateDetail label="Next step">Review the content and publish. Run tests whenever needed.</StateDetail>
 </StateCard>
 <StateCard title="Released" code="Released" state="ready">
 <StateDetail label="Meaning">The stored release permits version selection. Environment dependencies still require verification.</StateDetail>
-<StateDetail label="Transitions">A failed retest preserves release. Removing the final qualifying evidence can return it to Pending.</StateDetail>
+<StateDetail label="Transitions">Test failures and report deletion preserve publication.</StateDetail>
 <StateDetail label="Next step">Pin the exact version in a Router. Confirm rollout and actual requests.</StateDetail>
 </StateCard>
 </StateCards>
@@ -155,9 +155,9 @@ Normal installation provisions the bundled Default release without running a loc
 <a id="guardrail-deletion-restoration" />
 ### Deletion and restoration
 
-**Testing Report.** Review the deletion impact before removing a completed report. Queued, Running and protected platform-source reports cannot be deleted.
+**Testing Report.** Review the deletion impact before removing a completed report. Queued and Running reports cannot be deleted.
 
-A replacement must match the same Artifact and frozen suite. Matching archived release evidence or platform-release provenance can also preserve release. Without another qualifying basis, deleting the final proof returns the version to Pending. References or recent traffic can block that deletion.
+Report deletion clears report references and preserves published versions, routing and protection modes. Historical provenance remains available for audit.
 
 **Immutable Version.** Deletion frees one version slot. Published Router, edited Router draft, pending change and approved rollback references can block it. Recent calls, retirement windows and incomplete Runner application also block deletion.
 
@@ -167,17 +167,17 @@ After version deletion, Artifacts, reports and audit history remain. Orphan repo
 
 Soft deletion preserves identity, static versions, Artifacts, draft, cases, provenance and audit. It clears local reports, queued tests, stored runtime events and routing-call records. Retained versions return to Pending. The system ignores late results from before the reset.
 
-**Restore by re-import.** Restoration applies to an imported identity from its original owning source. Confirm the same ID during import review. Preserved static content and the draft remain. Test and Release again in this environment. Routing does not recover automatically.
+**Restore by re-import.** Restoration applies to an imported identity from its original owning source. Confirm the same ID during import review. Preserved static content and the draft remain. Explicitly publish again in this environment; tests are optional. Routing does not recover automatically.
 
 Re-import cannot restore an unrelated locally created identity. It is not a general recovery mechanism.
 
 <a id="guardrail-implementation-boundaries" />
-### Current differences between verification paths
+### Consistent publication
 
-These differences remain in the implementation:
-
-- **Draft publication:** the UI requires the latest report for the current revision to pass. The API selects the most recent Passed report for that revision. A later failure or running test does not necessarily prevent API publication. The API still verifies tested content.
-- **Version Release:** the UI waits for running tests. The API checks the latest completed version test, including retained compact evidence. The API checks Artifact and suite digests. Repeating Release on an already Released version currently returns it without another evidence check.
+UI, API and CLI use the same Publish action. Compilation errors preserve earlier
+versions and can be retried. Publication does not call models, run tests, change
+test outcomes or switch traffic. Check environment dependencies and Router
+rollout separately.
 
 <a id="user-decisions" />
 ## Apply inspection results

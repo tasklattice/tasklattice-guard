@@ -7,12 +7,12 @@ const run = (id: string, status: "passed" | "failed", created_at: string, extra:
   ({ id, guardrail_version: "v1", subject: "version", status, execution_status: status, candidate_digest: "digest", created_at, ...extra }) as ValidationRun;
 
 describe("a version's release state", () => {
-  it("labels an administrator waiver separately from real failed test outcomes", () => {
+  it("keeps historical waivers as metadata with the ordinary release state", () => {
     const failure = run("source", "failed", "2026-10-09T09:00:00Z", { subject: "draft" });
     const waived = version({ release_run_id: null, test_waiver: { sourceRunId: "source" } as GuardrailVersion["test_waiver"] });
-    expect(versionReleaseState(waived, [failure])).toMatchObject({ state: "released_waiver", run: { id: "source", status: "failed" } });
+    expect(versionReleaseState(waived, [failure])).toMatchObject({ state: "released", run: null });
     expect(latestVersionTestStatus(waived, [failure])).toEqual({ status: "failed" });
-    expect(versionReleaseState(waived, []).state).toBe("released_waiver");
+    expect(versionReleaseState(waived, []).state).toBe("released");
   });
   it("names the report a released version was released with", () => {
     expect(versionReleaseState(version(), [run("release-run", "passed", "2026-10-09T09:00:00Z")])).toMatchObject({ state: "released", run: { id: "release-run" } });

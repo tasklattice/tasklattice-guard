@@ -129,7 +129,7 @@ export function ImmutableVersionView({ openRequested, onOpenRequestHandled, deta
       <DropdownMenuContent align="end">
         {/* Testing a version runs its own suite against its signed Artifact, here. */}
         {canManage ? <DropdownMenuItem disabled={!version.test_suite_count || releaseOf(version).state === "testing" || testVersion.isPending} onSelect={() => { setTestModelRules(true); setAction({ kind: "test", version: version.version }); }}><FlaskConical />{t("immutableVersions.runTests")}</DropdownMenuItem> : null}
-        {canManage && version.status === "pending" ? <DropdownMenuItem variant="edit" disabled={releaseOf(version).state !== "releasable"} onSelect={() => setAction({ kind: "release", version: version.version })}><Rocket />{t("immutableVersions.release")}</DropdownMenuItem> : null}
+        {canManage && version.status === "pending" ? <DropdownMenuItem variant="edit"  onSelect={() => setAction({ kind: "release", version: version.version })}><Rocket />{t("immutableVersions.release")}</DropdownMenuItem> : null}
         <DropdownMenuItem onSelect={() => setAction({ kind: "export", version: version.version })}><Download />{t("guardrails.exportEllipsis")}</DropdownMenuItem>
         {canManage ? <DropdownMenuItem variant="destructive" onSelect={() => setAction({ kind: "delete", version: version.version })}><Trash2 />{t("uiCopy.delete")}</DropdownMenuItem>
         : null}
@@ -248,7 +248,7 @@ export function ImmutableVersionView({ openRequested, onOpenRequestHandled, deta
       return <ConfirmationSheet open returnFocusRef={drawerOpen ? undefined : opener} onOpenChange={open => { if (!open && !release.isPending) closeAction(); }}
         eyebrow={t("guardrails.confirmActionEyebrow")} title={t("immutableVersions.releaseTitle", { version: action.version })} description={t("immutableVersions.releaseDescription")}
         cancelLabel={t("common.cancel")} confirmLabel={t("immutableVersions.release")} pendingLabel={t("common.saving")} pending={release.isPending}
-        confirmDisabled={evidence?.state !== "releasable"} confirmIcon={<Rocket />} onConfirm={() => release.mutate(action.version)}>
+         confirmIcon={<Rocket />} onConfirm={() => release.mutate(action.version)}>
         {evidence?.run ? <p className="text-sm leading-6">{t("immutableVersions.releaseEvidence", { run: evidence.run.id, passed: evidence.run.metrics.passed, total: evidence.run.metrics.total,
           time: new Date(evidence.run.created_at).toLocaleString(i18n.language) })}</p> : null}
         {evidence?.run ? <ValidationScopeNotice run={evidence.run} /> : target?.testing_evidence?.latest?.testModelRules === false ? <p className="text-sm">{t("validationScope.badge")}</p> : null}
@@ -298,7 +298,7 @@ function ReleasePanel({ version, release, canManage, canRelease, testing, onTest
       {canManage ? <div className="flex shrink-0 gap-2">
         <Button variant="testing" disabled={!version.test_suite_count || testing || release.state === "testing"} onClick={onTest}>
           {testing || release.state === "testing" ? <LoaderCircle className="animate-spin" /> : <FlaskConical />}{t("immutableVersions.runTests")}</Button>
-        {canRelease && version.status === "pending" ? <Button className="min-h-11" disabled={release.state !== "releasable"} onClick={onRelease}><Rocket />{t("immutableVersions.release")}</Button> : null}
+        {canRelease && version.status === "pending" ? <Button className="min-h-11"  onClick={onRelease}><Rocket />{t("immutableVersions.release")}</Button> : null}
       </div> : null}
     </div>
   </section>;

@@ -286,6 +286,7 @@ function mapVersion(value: controllerApi.GuardrailVersion, guardrail: controller
     release_run_id: value.validationRunId ?? null,
     testing_evidence: value.testingEvidence ?? null,
     test_waiver: value.testWaiver ?? null,
+    publication: value.publication ?? null,
     source_validation_run_id: value.sourceValidationRunId ?? null,
     origin: value.origin ?? "local",
     environment_check: value.environmentCheck ?? null,
