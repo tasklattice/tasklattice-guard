@@ -1,4 +1,4 @@
-/** A platform release decision, never evidence that the tests passed. */
+/** Legacy audit provenance; never publication eligibility or proof of a pass. */
 export type DefaultTestWaiver = {
   id: string;
   reason: string;

@@ -290,6 +290,8 @@ export const policyValidationRuns = pgTable("policy_validation_run", {
 }, (table) => [index("policy_validation_run_policy_idx").on(table.policyId, table.createdAt)]);
 
 export const guardrails = pgTable("guardrail", {
+  creationKey: text("creation_key").unique(),
+  creationDigest: text("creation_digest"),
   protectionMode: text("protection_mode").$type<import("../../shared/protection-mode.js").ProtectionMode>().notNull().default("enforce"),
   protectionModeApplied: text("protection_mode_applied").$type<import("../../shared/protection-mode.js").ProtectionMode>().notNull().default("enforce"),
   protectionModeGeneration: bigint("protection_mode_generation", { mode: "number" }).notNull().default(0),
@@ -319,7 +321,17 @@ export const guardrails = pgTable("guardrail", {
   updatedAt,
 }, (table) => [index("guardrail_status_idx").on(table.status)]);
 
+/** One record per provisioned preset in this tenant's Controller database. */
+export const deploymentPresets = pgTable("deployment_preset", {
+  key: text("key").primaryKey(),
+  guardrailId: text("guardrail_id").notNull(),
+  profileId: text("profile_id").notNull(),
+  profileVersion: text("profile_version").notNull(),
+  createdAt,
+});
+
 export const guardrailVersions = pgTable("guardrail_version", {
+  publication: jsonb("publication").$type<import("../../shared/guardrail-publication.js").GuardrailPublication>(),
   sourceSnapshot: jsonb("source_snapshot").$type<{ draftConfig: GuardrailDraftConfig; runtimeProfile: string; loggingLevel: string; excludedTestCaseIds: string[]; testCases?: Array<typeof testCases.$inferInsert> }>(),
   guardrailId: text("guardrail_id").notNull().references(() => guardrails.id),
   version: text("version").notNull(),
@@ -329,13 +341,11 @@ export const guardrailVersions = pgTable("guardrail_version", {
   runtimeProfile: text("runtime_profile").notNull(),
   plan: jsonb("plan").$type<Record<string, unknown>>().notNull(),
   artifactId: text("artifact_id"),
-  // The passed test run this version was released with in this environment:
-  // the draft candidate run when published here, a run of this exact content
-  // and suite when imported. Null for pending or bundled platform releases.
+  // Optional source test report; publication never requires a passing result.
   validationRunId: text("validation_run_id"),
   platformRelease: jsonb("platform_release").$type<import("../../shared/platform-release.js").PlatformRelease>(),
   testingEvidence: jsonb("testing_evidence").$type<VersionTestingEvidence>(),
-  // Retain the real source report separately from passed release evidence.
+  // Legacy audit provenance, never publication eligibility.
   sourceValidationRunId: text("source_validation_run_id"),
   testWaiver: jsonb("test_waiver").$type<import("../../shared/default-release.js").DefaultTestWaiver>(),
   releasedAt: timestamp("released_at", { withTimezone: true }),
@@ -686,6 +696,7 @@ export const schema = {
   modelConfigurationRevisions,
   runnerPools,
   guardrails,
+  deploymentPresets,
   guardrailVersions,
   testCases,
   validationRuns,

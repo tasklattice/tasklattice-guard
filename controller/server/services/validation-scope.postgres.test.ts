@@ -15,8 +15,8 @@ import { ControlPlaneService } from "./control-plane.js";
 import type { ValidationCaseResult } from "../domain/models.js";
 
 const url = process.env.GUARD_TEST_POSTGRES_URL;
-describe.skipIf(!url)("Historical model-enabled Default publication uses the standard gate", () => {
-  it("freezes scope, rejects a local failure, publishes full model protection for ordinary users", async () => {
+describe.skipIf(!url)("Historical model-enabled Default publication uses the ordinary publication rules", () => {
+  it("freezes scope, preserves a local failure, publishes full model protection for ordinary users", async () => {
     const database = await createTestDatabase(url!, "scope");
     const directory = mkdtempSync(join(tmpdir(), "guard-scope-"));
     const key = join(directory, "signing.pem");
@@ -59,10 +59,10 @@ describe.skipIf(!url)("Historical model-enabled Default publication uses the sta
           testScope: { testModelRules: false, skippedRules: model.coveredRuleIds.map(ruleId => ({ policyId: model.policyId, ruleId, reason: "model" })), modelInvocations: 0, executionDigest: "a".repeat(64), fullArtifactLoaded: true },
           candidateArtifact: { guardrailId: DEFAULT_GUARDRAIL_ID, guardrailVersion: run.guardrailVersion, compilerVersion: "test", nemoVersion: "0.24.0", runtimeProfile: "llmrails_colang1_standard",
             plan, configYaml: "", colangContent: "", prompts: [], actionBindings: [], dependencyManifest: [] } });
-        if (!passes) await expect(service.requestGuardrailPublish({ guardrailId: DEFAULT_GUARDRAIL_ID, actorId: "user" })).rejects.toMatchObject({ code: "guardrail_validation_required" });
-        else {
+        {
           const published = await service.requestGuardrailPublish({ guardrailId: DEFAULT_GUARDRAIL_ID, actorId: "user" });
           expect(published.status).toBe("ready");
+          expect(await service.getValidationRun(run.id)).toMatchObject({ status: passes ? "passed" : "failed" });
           const detail = await service.getGuardrail(DEFAULT_GUARDRAIL_ID);
           expect(JSON.stringify(detail.versions[0]!.plan)).toContain("tali.guard.jailbreak.v1");
           expect(detail.versions[0]!.testWaiver).toBeNull();

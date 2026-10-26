@@ -1,30 +1,19 @@
-import { matchesPlatformRelease } from "../../shared/platform-release.js";
 import { randomUUID } from "node:crypto";
 import { and, eq, gt, isNull, lte, ne } from "drizzle-orm";
 import type { ControllerDatabase } from "../db/client.js";
-import { artifacts, auditEvents, controllerState, guardrails, guardrailVersions, outboxEvents, runnerInstances, runnerPools, validationRuns, user } from "../db/schema.js";
+import { artifacts, auditEvents, controllerState, guardrails, guardrailVersions, outboxEvents, runnerInstances, runnerPools, user } from "../db/schema.js";
 import { increment } from "../db/postgres-expressions.js";
 import { ConflictError, NotFoundError } from "../domain/errors.js";
-import { testSuiteDigest } from "../domain/test-suite.js";
-import { matchesTestEvidence } from "../../shared/testing-report-retention.js";
 import { PROTECTION_MODE_CAPABILITY, type ProtectionMode, type ProtectionModeSettings } from "../../shared/protection-mode.js";
 
 type Guardrail = typeof guardrails.$inferSelect;
 type Runner = typeof runnerInstances.$inferSelect;
 
 export async function hasReleasedGuardrail(db: Pick<ControllerDatabase, "select">, id: string): Promise<boolean> {
-  const versions = await db.select({ checksum: artifacts.checksum, suite: guardrailVersions.testSuite,
-    platformRelease: guardrailVersions.platformRelease, version: guardrailVersions.version, runId: guardrailVersions.validationRunId, evidence: guardrailVersions.testingEvidence })
-    .from(guardrailVersions).innerJoin(artifacts, eq(artifacts.id, guardrailVersions.artifactId))
-    .where(and(eq(guardrailVersions.guardrailId, id), eq(guardrailVersions.status, "ready")));
-  const reports = versions.length ? await db.select({ version: validationRuns.guardrailVersion,
-    checksum: validationRuns.candidateDigest, suite: validationRuns.testSuiteDigest }).from(validationRuns)
-    .where(and(eq(validationRuns.guardrailId, id), eq(validationRuns.status, "passed"))) : [];
-  return versions.some(v => v.suite && (
-    matchesPlatformRelease(v.platformRelease, v.checksum, testSuiteDigest(v.suite)) ||
-    (v.evidence?.release?.id === v.runId && matchesTestEvidence(v.evidence?.release, v.checksum, testSuiteDigest(v.suite)))
-    || reports.some(r => r.version === v.version && r.checksum === v.checksum && r.suite === testSuiteDigest(v.suite!))
-  ));
+  const versions = await db.select({ id: guardrailVersions.artifactId }).from(guardrailVersions)
+    .innerJoin(artifacts, and(eq(artifacts.id, guardrailVersions.artifactId), eq(artifacts.guardrailId, guardrailVersions.guardrailId), eq(artifacts.guardrailVersion, guardrailVersions.version)))
+    .where(and(eq(guardrailVersions.guardrailId, id), eq(guardrailVersions.status, "ready"))).limit(1);
+  return versions.length > 0;
 }
 
 /** Keep last fully applied mode visible while explicitly exposing mixed replicas. */
@@ -75,7 +64,7 @@ export class ProtectionModeService {
         throw new ConflictError("The protection mode changed. Reload before applying another change.", "protection_mode_conflict");
       }
       if (row.status === "disabled" || !await hasReleasedGuardrail(tx, row.id)) {
-        throw new ConflictError("Publish a tested Guardrail version before changing its protection mode.", "guardrail_not_ready");
+        throw new ConflictError("Publish a Guardrail version before changing its protection mode.", "guardrail_not_ready");
       }
       const now = new Date();
       const [state] = await tx.update(controllerState).set({ desiredGeneration: increment(controllerState.desiredGeneration), updatedAt: now })

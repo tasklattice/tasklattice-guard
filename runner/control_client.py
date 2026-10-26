@@ -242,6 +242,14 @@ class RunnerControlClient:
             await self._apply_desired_state(message.desired_state)
         elif body == "validation_request":
             await self._validate(message.validation_request)
+        elif body == "artifact_compilation_request":
+            request = message.artifact_compilation_request
+            if len(self._capability_tasks) >= 4:
+                await self._send_compilation_result(request.compile_id, error="Compiler capacity reached. Retry shortly.")
+            else:
+                task = asyncio.create_task(self._compile_artifact(request))
+                self._capability_tasks.add(task)
+                task.add_done_callback(self._capability_tasks.discard)
         elif body == "capability_validation_request":
             if len(self._capability_tasks) >= 4:
                 await self._send_capability_result(protocol.CapabilityValidationResult(
@@ -382,6 +390,21 @@ class RunnerControlClient:
                 "Controller did not resolve Model credentials: " + ", ".join(missing)
             )
         return {ref: str(credentials[ref]) for ref in refs}
+
+    async def _compile_artifact(self, request: protocol.CompileRequest) -> None:
+        try:
+            if self._compiler is None:
+                raise ValueError("This Runner is not compiler-capable.")
+            artifact = await prepare(self._compiler.compile_offline, request)
+        except Exception as error:
+            await self._send_compilation_result(request.compile_id, error=str(error) or type(error).__name__)
+            return
+        await self._send_compilation_result(request.compile_id, artifact=artifact)
+
+    async def _send_compilation_result(self, compile_id: str, *, artifact=None, error: str = "") -> None:
+        await self._send(protocol.RunnerMessage(message_id=str(uuid.uuid4()), sent_at_unix_ms=_now_ms(),
+            artifact_compilation_result=protocol.ArtifactCompilationResult(
+                compile_id=compile_id, runner_id=self._settings.runner_id, artifact=artifact, error=error)))
 
     async def _validate_capability(self, request: protocol.CapabilityValidationRequest) -> None:
         try:
@@ -563,7 +586,8 @@ class RunnerControlClient:
                 boot_id=self._boot_id,
                 pool_id=self._settings.pool_id,
                 runner_version=SOFTWARE_VERSION["version"],
-                labels={"tasklattice.build": json.dumps(SOFTWARE_VERSION), "tasklattice.protection-modes": "1"},
+                labels={"tasklattice.build": json.dumps(SOFTWARE_VERSION), "tasklattice.protection-modes": "1",
+                        "tasklattice.offline-compilation": "1"},
                 nemo_version=importlib.metadata.version("nemoguardrails"),
                 max_concurrency=self._settings.max_concurrency,
                 compiler_capable=self._settings.compiler_capable,

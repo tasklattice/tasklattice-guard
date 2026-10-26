@@ -2367,6 +2367,16 @@
               }
             ]
           },
+          "publication": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/getGuardrailsByIdResponseVersionsItemPublication"
+              }
+            ]
+          },
           "releasedAt": {
             "anyOf": [
               {
@@ -2456,6 +2466,7 @@
           }
         },
         "required": [
+          "publication",
           "guardrailId",
           "version",
           "generation",
@@ -2941,6 +2952,40 @@
           "runtimeProfile",
           "compilerVersion",
           "planCompilerVersion"
+        ],
+        "type": "object"
+      },
+      "getGuardrailsByIdResponseVersionsItemPublication": {
+        "properties": {
+          "actorId": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "legacy": {
+            "$ref": "#/components/schemas/getPoliciesByIdDefinitionResponseDefinitionRulesItemDetectorParameters"
+          },
+          "source": {
+            "enum": [
+              "deployment",
+              "legacy",
+              "user"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "actorId",
+          "createdAt"
         ],
         "type": "object"
       },
@@ -14606,8 +14651,15 @@
       },
       "postGuardrailsByIdPublishResponse": {
         "properties": {
-          "compileId": {
-            "type": "null"
+          "artifactId": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
           },
           "generation": {
             "type": "number"
@@ -14620,34 +14672,6 @@
               "pending",
               "ready"
             ],
-            "type": "string"
-          },
-          "version": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "compileId",
-          "guardrailId",
-          "version",
-          "generation",
-          "status"
-        ],
-        "type": "object"
-      },
-      "postGuardrailsByIdPublishResponse2": {
-        "properties": {
-          "artifactId": {
-            "type": "string"
-          },
-          "generation": {
-            "type": "number"
-          },
-          "guardrailId": {
-            "type": "string"
-          },
-          "status": {
-            "const": "ready",
             "type": "string"
           },
           "version": {
@@ -14758,6 +14782,16 @@
               }
             ]
           },
+          "publication": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/getGuardrailsByIdResponseVersionsItemPublication"
+              }
+            ]
+          },
           "releasedAt": {
             "anyOf": [
               {
@@ -14860,6 +14894,7 @@
           }
         },
         "required": [
+          "publication",
           "sourceSnapshot",
           "guardrailId",
           "version",
@@ -15924,6 +15959,11 @@
               "policyBindings"
             ],
             "type": "object"
+          },
+          "idempotencyKey": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
           },
           "name": {
             "maxLength": 160,
@@ -26173,7 +26213,7 @@
     },
     "/api/v1/guardrail-packages/{packageId}/imports": {
       "post": {
-        "description": "Creates a resource or executes the named operation. A network failure does not prove that execution failed. Appends the selected versions (default: all) in one transaction after re-verifying the stored bytes. Identical versions already present are reported as existing; any version with the same number but different content returns 409 guardrail_version_conflict and nothing is written. A deleted Guardrail requires restoreDeleted=true (otherwise 409 guardrail_restore_required). Restoration preserves identity, version definitions and frozen Test Cases, clears previous Testing Reports and runtime data, resets every version to pending for new local testing and release, is audited, and is returned as restored=true. Does not change Routers, Endpoints, traffic. Requires guardrails:write for personal access tokens. Write includes read access; account role restrictions still apply. Allowed account roles: user. Token access covers all resources in the selected module.",
+        "description": "Creates a resource or executes the named operation. A network failure does not prove that execution failed. Appends the selected versions (default: all) in one transaction after re-verifying the stored bytes. Identical versions already present are reported as existing; any version with the same number but different content returns 409 guardrail_version_conflict and nothing is written. A deleted Guardrail requires restoreDeleted=true (otherwise 409 guardrail_restore_required). Restoration preserves identity, version definitions and frozen Test Cases, clears previous Testing Reports and runtime data, resets every version to pending for explicit local publication, is audited, and is returned as restored=true. Does not change Routers, Endpoints, traffic. Requires guardrails:write for personal access tokens. Write includes read access; account role restrictions still apply. Allowed account roles: user. Token access covers all resources in the selected module.",
         "operationId": "postGuardrailPackagesByPackageIdImports",
         "parameters": [
           {
@@ -27344,7 +27384,7 @@
     },
     "/api/v1/guardrails/{id}": {
       "delete": {
-        "description": "Removes only the resource identified by this path. An already absent resource may return 404. Retains the identity tombstone, immutable version definitions, Test Cases and audit records. Permanently removes Testing Reports, test requests, runtime events and routing call records for this Guardrail. Resets version release and environment checks. Restoration requires new local tests and release; it never restores traffic. Existing traffic and reference checks still apply. Requires guardrails:write for personal access tokens. Write includes read access; account role restrictions still apply. Allowed account roles: user. Token access covers all resources in the selected module.",
+        "description": "Removes only the resource identified by this path. An already absent resource may return 404. Retains the identity tombstone, immutable version definitions, Test Cases and audit records. Permanently removes Testing Reports, test requests, runtime events and routing call records for this Guardrail. Resets version release and environment checks. Restoration requires explicit local publication; it never restores traffic. Existing traffic and reference checks still apply. Requires guardrails:write for personal access tokens. Write includes read access; account role restrictions still apply. Allowed account roles: user. Token access covers all resources in the selected module.",
         "operationId": "deleteGuardrailsById",
         "parameters": [
           {
@@ -28852,7 +28892,7 @@
     },
     "/api/v1/guardrails/{id}/protection-mode": {
       "get": {
-        "description": "Reads current state without creating resources or advancing a lifecycle. Resource-local enforce (default), monitor (detect but allow original content), or bypass (skip detection and allow). Requires a retained Released version with matching local Passed evidence. PATCH requires the expectedGeneration from GET, with an optional reason, and returns 202 after saving and dispatching independently of model/Artifact preparation. Poll GET for every Runner confirmation; appliedMode remains the last fully confirmed mode during partial rollout. Unsupported, offline and rejected Runners are reported explicitly. Reapplying the same requested mode retries with a new generation. Conflicts return 409. Publication, immutable content, real version/draft tests and explicit Playground evaluation are unchanged. Online authentication and routing remain enforced. Modes do not travel in release packages. Requires guardrails:read for personal access tokens. Allowed account roles: admin, user. Token access covers all resources in the selected module.",
+        "description": "Reads current state without creating resources or advancing a lifecycle. Resource-local enforce (default), monitor (detect but allow original content), or bypass (skip detection and allow). Requires a retained Released version with executable Artifact content. PATCH requires the expectedGeneration from GET, with an optional reason, and returns 202 after saving and dispatching independently of model/Artifact preparation. Poll GET for every Runner confirmation; appliedMode remains the last fully confirmed mode during partial rollout. Unsupported, offline and rejected Runners are reported explicitly. Reapplying the same requested mode retries with a new generation. Conflicts return 409. Publication, immutable content, real version/draft tests and explicit Playground evaluation are unchanged. Online authentication and routing remain enforced. Modes do not travel in release packages. Requires guardrails:read for personal access tokens. Allowed account roles: admin, user. Token access covers all resources in the selected module.",
         "operationId": "getGuardrailsByIdProtectionMode",
         "parameters": [
           {
@@ -28996,7 +29036,7 @@
         }
       },
       "patch": {
-        "description": "Updates the supplied fields; omitted fields are retained. Validation or draft state may be invalidated. Resource-local enforce (default), monitor (detect but allow original content), or bypass (skip detection and allow). Requires a retained Released version with matching local Passed evidence. PATCH requires the expectedGeneration from GET, with an optional reason, and returns 202 after saving and dispatching independently of model/Artifact preparation. Poll GET for every Runner confirmation; appliedMode remains the last fully confirmed mode during partial rollout. Unsupported, offline and rejected Runners are reported explicitly. Reapplying the same requested mode retries with a new generation. Conflicts return 409. Publication, immutable content, real version/draft tests and explicit Playground evaluation are unchanged. Online authentication and routing remain enforced. Modes do not travel in release packages. Requires guardrails:write for personal access tokens. Write includes read access; account role restrictions still apply. Allowed account roles: user. Token access covers all resources in the selected module.",
+        "description": "Updates the supplied fields; omitted fields are retained. Validation or draft state may be invalidated. Resource-local enforce (default), monitor (detect but allow original content), or bypass (skip detection and allow). Requires a retained Released version with executable Artifact content. PATCH requires the expectedGeneration from GET, with an optional reason, and returns 202 after saving and dispatching independently of model/Artifact preparation. Poll GET for every Runner confirmation; appliedMode remains the last fully confirmed mode during partial rollout. Unsupported, offline and rejected Runners are reported explicitly. Reapplying the same requested mode retries with a new generation. Conflicts return 409. Publication, immutable content, real version/draft tests and explicit Playground evaluation are unchanged. Online authentication and routing remain enforced. Modes do not travel in release packages. Requires guardrails:write for personal access tokens. Write includes read access; account role restrictions still apply. Allowed account roles: user. Token access covers all resources in the selected module.",
         "operationId": "patchGuardrailsByIdProtectionMode",
         "parameters": [
           {
@@ -29151,7 +29191,7 @@
     },
     "/api/v1/guardrails/{id}/publish": {
       "post": {
-        "description": "Creates a resource or executes the named operation. A network failure does not prove that execution failed. expectedDraftRevision is required. Publishes exactly the Artifact that the latest passed test run of that revision compiled and executed, signed by this environment; nothing is recompiled. Publishing the same tested revision again returns the existing version. For Default, requires the admin role and runners:write instead. For tenant Guardrails, requires the user role. Requires guardrails:write for personal access tokens. Write includes read access; account role restrictions still apply. Allowed account roles: admin, user. Token access covers all resources in the selected module.",
+        "description": "Creates a resource or executes the named operation. A network failure does not prove that execution failed. expectedDraftRevision is required. Freezes and compiles the draft without model calls or test execution, then signs the Artifact locally. A matching compiled candidate may be reused regardless of test outcome. Untested, running and failed tests do not block publication. Compilation failure preserves existing releases. Repeating the same revision returns its existing version. For Default, requires the admin role and runners:write instead. For tenant Guardrails, requires the user role. Requires guardrails:write for personal access tokens. Write includes read access; account role restrictions still apply. Allowed account roles: admin, user. Token access covers all resources in the selected module.",
         "operationId": "postGuardrailsByIdPublish",
         "parameters": [
           {
@@ -29178,14 +29218,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "anyOf": [
-                    {
-                      "$ref": "#/components/schemas/postGuardrailsByIdPublishResponse"
-                    },
-                    {
-                      "$ref": "#/components/schemas/postGuardrailsByIdPublishResponse2"
-                    }
-                  ]
+                  "$ref": "#/components/schemas/postGuardrailsByIdPublishResponse"
                 }
               }
             },
@@ -29290,7 +29323,7 @@
             "sessionCookie": []
           }
         ],
-        "summary": "Publish the tested Guardrail candidate",
+        "summary": "Publish the Guardrail draft",
         "tags": [
           "guardrails"
         ],
@@ -30097,7 +30130,7 @@
     },
     "/api/v1/guardrails/{id}/versions/{version}/release": {
       "post": {
-        "description": "Creates a resource or executes the named operation. A network failure does not prove that execution failed. A version is pending until released here, then ready; only a ready version can be routed to. Requires that the most recent completed test of this version in this environment passed and tested exactly this Artifact digest and test suite; that run is bound to the version. Changes no Router. 409 guardrail_version_test_required otherwise. Releasing a ready version returns it unchanged. For Default, requires the admin role and runners:write instead. For tenant Guardrails, requires the user role. Requires guardrails:write for personal access tokens. Write includes read access; account role restrictions still apply. Allowed account roles: admin, user. Token access covers all resources in the selected module.",
+        "description": "Creates a resource or executes the named operation. A network failure does not prove that execution failed. A version is pending until released here, then ready; only a ready version can be routed to. Requires executable Artifact content. Test results and environment checks are independent and do not block publication. Changes no Router and never changes test outcomes. Releasing a ready version returns it unchanged. For Default, requires the admin role and runners:write instead. For tenant Guardrails, requires the user role. Requires guardrails:write for personal access tokens. Write includes read access; account role restrictions still apply. Allowed account roles: admin, user. Token access covers all resources in the selected module.",
         "operationId": "postGuardrailsByIdVersionsByVersionRelease",
         "parameters": [
           {
@@ -30251,7 +30284,7 @@
     },
     "/api/v1/guardrails/{id}/versions/{version}/test-runs": {
       "post": {
-        "description": "Creates a resource or executes the named operation. A network failure does not prove that execution failed. Creates a new Runner task on each request. Track the returned run ID rather than latest, which can change when another task is created. Runs the version's own frozen test suite against its signed Artifact as it is, on this environment's Runners; nothing is compiled. Returns 202 with the queued run; poll /test-runs/{runId}. A passed run is what releasing a pending version requires. 409 while the version is already being tested. Optional testModelRules (default true). False executes only registered local Rules and records model-dependent cases as Skipped. The report persists this scope, skipped Rules and actual model calls. Passing requires executed required cases to pass and the full Artifact to load. Publication retains all enabled model protection. All Guardrails, including the preconfigured Default, use the ordinary Guardrail authoring permissions. For Default, requires the admin role and runners:write instead. For tenant Guardrails, requires the user role. Requires guardrails:write for personal access tokens. Write includes read access; account role restrictions still apply. Allowed account roles: admin, user. Token access covers all resources in the selected module.",
+        "description": "Creates a resource or executes the named operation. A network failure does not prove that execution failed. Creates a new Runner task on each request. Track the returned run ID rather than latest, which can change when another task is created. Runs the version's own frozen test suite against its signed Artifact as it is, on this environment's Runners; nothing is compiled. Returns 202 with the queued run; poll /test-runs/{runId}. Tests are optional and never change publication state. 409 while the version is already being tested. Optional testModelRules (default true). False executes only registered local Rules and records model-dependent cases as Skipped. The report persists this scope, skipped Rules and actual model calls. Passing requires executed required cases to pass and the full Artifact to load. Publication retains all enabled model protection. All Guardrails, including the preconfigured Default, use the ordinary Guardrail authoring permissions. For Default, requires the admin role and runners:write instead. For tenant Guardrails, requires the user role. Requires guardrails:write for personal access tokens. Write includes read access; account role restrictions still apply. Allowed account roles: admin, user. Token access covers all resources in the selected module.",
         "operationId": "postGuardrailsByIdVersionsByVersionTestRuns",
         "parameters": [
           {
@@ -30415,7 +30448,7 @@
     },
     "/api/v1/guardrails/{id}/versions/{version}/test-suite": {
       "get": {
-        "description": "Reads current state without creating resources or advancing a lifecycle. A version is defined by its Policies and its Test Cases. These are the exact cases the passing test run executed, frozen when the version was published, with their expected decisions; they travel with the version and never change. recorded is false for a version published before suites were frozen. Requires guardrails:read for personal access tokens. Allowed account roles: admin, user. Token access covers all resources in the selected module.",
+        "description": "Reads current state without creating resources or advancing a lifecycle. A version is defined by its Policies and its Test Cases. These cases are frozen when the version is published, with their expected decisions, whether or not tests ran; they travel with the version and never change. recorded is false for a version published before suites were frozen. Requires guardrails:read for personal access tokens. Allowed account roles: admin, user. Token access covers all resources in the selected module.",
         "operationId": "getGuardrailsByIdVersionsByVersionTestSuite",
         "parameters": [
           {
@@ -43135,7 +43168,7 @@
     },
     "/api/v1/test-runs/{runId}": {
       "delete": {
-        "description": "Removes only the resource identified by this path. An already absent resource may return 404. Requires expectedPendingVersion (version string or null) from deletion-impact. Rechecks evidence and references under locks. A released version retains ready while a matching Passed report or preserved local release evidence exists; otherwise it returns to pending and must be tested and released again. Artifact, immutable definition and audit identity are retained. Returns 409 if the reviewed impact changed or the last passing evidence is still in use. Requires guardrails:write for personal access tokens. Write includes read access; account role restrictions still apply. Allowed account roles: user. Token access covers all resources in the selected module.",
+        "description": "Removes only the resource identified by this path. An already absent resource may return 404. Requires expectedPendingVersion=null from deletion-impact. Rejects queued/running reports. Clears report references and preserves publication, Artifact, immutable definition, routing and protection mode. Audit identity is retained. Requires guardrails:write for personal access tokens. Write includes read access; account role restrictions still apply. Allowed account roles: user. Token access covers all resources in the selected module.",
         "operationId": "deleteTestRunsByRunId",
         "parameters": [
           {
@@ -43435,7 +43468,7 @@
     },
     "/api/v1/test-runs/{runId}/deletion-impact": {
       "get": {
-        "description": "Reads current state without creating resources or advancing a lifecycle. Reports whether deleting this completed report will return its immutable version to pending or bind another Passed report for the same Artifact and test suite. Running tests and referenced versions losing their final passing report block deletion. Requires guardrails:read for personal access tokens. Allowed account roles: admin, user. Token access covers all resources in the selected module.",
+        "description": "Reads current state without creating resources or advancing a lifecycle. Reports whether the test is still running. Completed report deletion never changes publication, routing, or protection mode. pendingVersion and replacementRunId are always null. Requires guardrails:read for personal access tokens. Allowed account roles: admin, user. Token access covers all resources in the selected module.",
         "operationId": "getTestRunsByRunIdDeletionImpact",
         "parameters": [
           {

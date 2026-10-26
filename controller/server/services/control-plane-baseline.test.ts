@@ -163,7 +163,7 @@ describe("Publishing the validated candidate", () => {
     candidateArtifact: content, candidateDigest: artifactContentDigest(content), candidateInspection: { testSuite: { total: 1, digest: testSuiteDigest(suite) } }, candidatePolicies: [], testSuite: suite };
 
   it("signs and publishes the tested content without rebuilding it from the draft or Library", async () => {
-    const test = harness([[stored], [validation], [], []], { artifactSigningKeyPath: keyPath, policyCatalogDir: "/nonexistent-policy-library" });
+    const test = harness([[stored], [], [validation], [stored], [], []], { artifactSigningKeyPath: keyPath, policyCatalogDir: "/nonexistent-policy-library" });
     await expect(test.service.requestGuardrailPublish({ guardrailId: stored.id, actorId: "user" }))
       .resolves.toMatchObject({ status: "ready", version: content.guardrailVersion });
     const artifact = test.inserts.find((item) => item.table === "guardrail_artifact")!.value;
@@ -174,25 +174,25 @@ describe("Publishing the validated candidate", () => {
     expect(test.reads).toEqual([]);
   });
 
-  it("requires a new test run when the passed run kept no candidate", async () => {
-    const test = harness([[stored], [{ ...validation, candidateArtifact: null }], []]);
-    await expect(test.service.requestGuardrailPublish({ guardrailId: stored.id, actorId: "user" }))
-      .rejects.toMatchObject({ code: "guardrail_validation_required" });
-    expect(test.inserts).toEqual([]);
+  it.each(["passed", "failed"])("compiles independently when a %s run has no candidate", async status => {
+    const test = harness([[stored], [], [{ ...validation, status, candidateArtifact: null }], generatedTestCases(stored.id, stored.draftConfig, policies), [stored], [], []], { artifactSigningKeyPath: keyPath });
+    const compiler = vi.fn(async input => ({ ...content, guardrailVersion: input.guardrailVersion, plan: input.plan }));
+    test.service.setArtifactCompiler(compiler);
+    await expect(test.service.requestGuardrailPublish({ guardrailId: stored.id, actorId: "user" })).resolves.toMatchObject({ status: "ready" });
+    expect(compiler).toHaveBeenCalledOnce();
+    expect(test.inserts.find(item => item.table === "guardrail_version")!.value.validationRunId).toBeNull();
+    expect(test.inserts.some(item => item.table === "guardrail_validation_run")).toBe(false);
   });
 
-  it.each([
-    ["kept no frozen test suite", { testSuite: null }],
-    ["froze a suite other than the one its inspection describes", { testSuite: [{ ...suite[0]!, content: "changed" }] }],
-  ])("requires a new test run when the passed run %s", async (_case, change) => {
-    const test = harness([[stored], [{ ...validation, ...change }], []]);
+  it("rejects a candidate whose frozen suite no longer matches its inspection", async () => {
+    const test = harness([[stored], [], [{ ...validation, testSuite: [{ ...suite[0]!, content: "changed" }] }], [stored], []]);
     await expect(test.service.requestGuardrailPublish({ guardrailId: stored.id, actorId: "user" }))
-      .rejects.toMatchObject({ code: "guardrail_validation_required" });
+      .rejects.toMatchObject({ code: "guardrail_compilation_failed" });
     expect(test.inserts).toEqual([]);
   });
 
   it("refuses a stored candidate that no longer matches its digest", async () => {
-    const test = harness([[stored], [{ ...validation, candidateDigest: "0".repeat(64) }], []], { artifactSigningKeyPath: keyPath });
+    const test = harness([[stored], [], [{ ...validation, candidateDigest: "0".repeat(64) }], [stored], []], { artifactSigningKeyPath: keyPath });
     await expect(test.service.requestGuardrailPublish({ guardrailId: stored.id, actorId: "user" }))
       .rejects.toMatchObject({ code: "guardrail_candidate_corrupt" });
     expect(test.inserts).toEqual([]);

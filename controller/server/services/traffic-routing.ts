@@ -117,7 +117,7 @@ export class TrafficRoutingService {
       const version = versions.find(v => v.id === target.guardrailId && v.version === target.guardrailVersion);
       if (route.enabled && target.weightBps > 0 && version?.status === "pending") {
         // Same validation as "not ready", so a change that drifts here is superseded rather than applied.
-        throw new ValidationError(`${route.name}: ${target.guardrailId} ${target.guardrailVersion} has not been released in this environment. Run its test suite and release it first`,
+        throw new ValidationError(`${route.name}: ${target.guardrailId} ${target.guardrailVersion} has not been released in this environment. Publish it first`,
           { guardrailId: target.guardrailId, version: target.guardrailVersion, reason: "not_released" });
       }
       if (route.enabled && target.weightBps > 0 && (!version?.artifactId || version.status !== "ready" || version.deletedAt)) {

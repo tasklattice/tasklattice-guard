@@ -2,6 +2,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { expect, it } from "vitest";
+import { localBaseline } from "../../shared/local-baseline.js";
 import { defaultGuardrailProfiles } from "../../shared/guardrail-profiles.js";
 import { PolicyCatalog } from "../policy-catalog/catalog.js";
 import { expandProtectionPreset } from "../policy-catalog/presets.js";
@@ -13,6 +14,8 @@ it("ships database Profile seeds that match current capability selections and un
   const baselineSql = readFileSync(new URL("../db/migrations/0049_full_feature_baseline.sql", import.meta.url), "utf8");
   const seeds = [...JSON.parse(sql.split("$profiles$")[1]!), ...JSON.parse(baselineSql.split("$profiles$")[1]!)].filter((seed: { id: string }) => seed.id !== "restricted-general-topics")
     .map((seed: Record<string, unknown>, sortOrder: number) => ({ ...seed, sortOrder }));
+  const localSql = readFileSync(new URL("../db/migrations/0051_local_baseline_profile.sql", import.meta.url), "utf8");
+  seeds.push({ id: localBaseline.id, category: localBaseline.category, categoryName: localBaseline.categoryName, isDefault: true, sortOrder: seeds.length, definition: JSON.parse(localSql.split("$profile$")[1]!) });
   const expected = defaultGuardrailProfiles.map(({ id, category, categoryName, isDefault, ...definition }, sortOrder) =>
     ({ id, category, categoryName, isDefault, sortOrder, definition }));
   expect(seeds).toEqual(expected);

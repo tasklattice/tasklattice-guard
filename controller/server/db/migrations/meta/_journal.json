@@ -351,6 +351,20 @@
       "when": 1792800000000,
       "tag": "0049_full_feature_baseline",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1793000000000,
+      "tag": "0050_unified_guardrail_publication",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1793000000001,
+      "tag": "0051_local_baseline_profile",
+      "breakpoints": true
     }
   ]
 }

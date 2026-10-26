@@ -1,4 +1,5 @@
 import { PROTECTION_MODE_CAPABILITY } from "../../shared/protection-mode.js";
+import { OFFLINE_COMPILATION_CAPABILITY, type ArtifactCompilation } from "../domain/artifact-compilation.js";
 import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { dirname } from "node:path";
@@ -52,6 +53,7 @@ type Connection = {
   bootId: string;
   poolId: string;
   compilerCapable: boolean;
+  offlineCompilation?: boolean;
   appliedGeneration: number;
   appliedModelRevisionId: string;
   lastReconcileGeneration: number;
@@ -68,6 +70,7 @@ export class RunnerControlServer {
   private readonly activeValidations = new Map<string, Connection>();
   private readonly railValidations = new Map<string, { runnerId: string; bootId: string; finish: (result: RailValidationEvidence) => void }>();
   private readonly admissions = new Map<string, { runnerId: string; bootId: string; finish: (result: PoolAdmission) => void }>();
+  private readonly compilations = new Map<string, { runnerId: string; bootId: string; finish: (artifact?: ArtifactContent, error?: string) => void }>();
 
   constructor(
     private readonly config: ControllerConfig,
@@ -90,6 +93,26 @@ export class RunnerControlServer {
     this.grpc.addService(descriptor.tasklattice.guard.control.v1.RunnerControl.service, handlers);
     this.models.setRailValidator?.((request) => this.validateRail(request));
     this.service.setArtifactAdmission?.((artifact) => this.checkArtifactAdmission(artifact));
+    this.service.setArtifactCompiler?.((request) => this.compileArtifact(request));
+  }
+
+  async compileArtifact(input: ArtifactCompilation): Promise<ArtifactContent> {
+    const runner = [...this.connections.values()].find(item => item.poolId === "default" && item.compilerCapable && item.offlineCompilation);
+    if (!runner) throw new ConflictError("Connect an upgraded compiler Runner to publish this draft. Tests are optional.", "guardrail_compiler_unavailable");
+    return new Promise((resolve, reject) => {
+      const compileId = randomUUID();
+      const timer = setTimeout(() => finish(undefined, "Compilation timed out. Retry publication."), 60_000);
+      timer.unref();
+      const finish = (artifact?: ArtifactContent, error?: string) => {
+        clearTimeout(timer);
+        this.compilations.delete(compileId);
+        if (artifact && !error) resolve(artifact);
+        else reject(new ConflictError(error || "Compilation returned no Artifact.", "guardrail_compilation_failed"));
+      };
+      this.compilations.set(compileId, { runnerId: runner.runnerId, bootId: runner.bootId, finish });
+      try { this.write(runner.stream, { artifactCompilationRequest: { compileId, ...input, generation: "0", plan: planToWire(input.plan) } }); }
+      catch { finish(undefined, "Runner disconnected before compilation. Retry publication."); }
+    });
   }
 
   /**
@@ -148,6 +171,7 @@ export class RunnerControlServer {
     this.timers = [
       every("Validation dispatch", 1_000, () => this.dispatchValidationRequests()),
       every("Desired state dispatch", 1_000, () => this.dispatchDesiredStateChanges()),
+      every("Artifact environment checks", 5_000, () => this.connections.size ? this.service.packages?.checkPendingEnvironments?.() : undefined),
       every("Runner reconciliation", 30_000, () => this.reconcileAll()),
       every("Traffic expiry", 30_000, () => this.service.trafficRouting?.expireCalls()),
       every("Stale Runner sweep", this.config.offlineAfterSeconds * 1_000, () => this.service.markStaleRunnersOffline()),
@@ -156,6 +180,7 @@ export class RunnerControlServer {
   }
 
   async stop(): Promise<void> {
+    for (const compilation of this.compilations.values()) compilation.finish(undefined, "Controller stopped during compilation. Retry publication.");
     for (const validation of this.railValidations.values()) validation.finish({ passed: false, message: "Controller stopped during Rail validation.", latencyMs: 0 });
     for (const [requestId, admission] of this.admissions) admission.finish({ poolId: "", runnerId: admission.runnerId, admitted: false, unavailable: true, reason: `Controller stopped during load check ${requestId}.`, nemoVersion: "", modelRevisionId: "" });
     for (const timer of this.timers) clearInterval(timer);
@@ -177,6 +202,10 @@ export class RunnerControlServer {
 
   private releaseConnection(connection: Connection): void {
     this.connections.delete(connection.runnerId);
+    for (const compilation of this.compilations.values()) {
+      if (compilation.runnerId === connection.runnerId && compilation.bootId === connection.bootId)
+        compilation.finish(undefined, "Runner disconnected during compilation. Retry publication.");
+    }
     for (const [runId, owner] of this.activeValidations) {
       if (owner === connection) this.activeValidations.delete(runId);
     }
@@ -301,6 +330,7 @@ export class RunnerControlServer {
         poolId: registration.poolId,
         compilerCapable: registration.compilerCapable,
         appliedGeneration: number(registration.appliedGeneration),
+        offlineCompilation: registration.labels?.[OFFLINE_COMPILATION_CAPABILITY] === "1",
         appliedModelRevisionId: "",
         lastReconcileGeneration: -1,
         protectionCapable: registration.labels?.[PROTECTION_MODE_CAPABILITY] === "1",
@@ -380,6 +410,12 @@ export class RunnerControlServer {
       if (owner && owner !== current) throw new Error("Validation result belongs to another Runner stream.");
       await this.handleValidationResult(result);
       this.activeValidations.delete(result.runId);
+    } else if (message.artifactCompilationResult) {
+      const result = message.artifactCompilationResult;
+      const pending = this.compilations.get(result.compileId);
+      if (pending && result.runnerId === current.runnerId && pending.runnerId === current.runnerId && pending.bootId === current.bootId) {
+        pending.finish(result.artifact ? artifactFromWire(result.artifact) as ArtifactContent : undefined, result.error);
+      }
     } else if (message.artifactAdmissionResult) {
       const result = message.artifactAdmissionResult;
       const pending = this.admissions.get(result.requestId);

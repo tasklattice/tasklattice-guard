@@ -2,7 +2,7 @@ import { resetProtectionMode } from "../../shared/protection-mode.js";
 import { clearGuardrailOperationalData } from "./guardrail-operational-data.js";
 import { assertGuardrailVersionCapacity, guardrailVersionLimitIssue } from "./guardrail-version-limit.js";
 import { createHash, randomUUID } from "node:crypto";
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { canonicalJson } from "../../shared/canonical-json.js";
 import type { ControllerConfig } from "../config.js";
 import { canonicalArtifactContent } from "../control-channel/artifact-codec.js";
@@ -352,9 +352,9 @@ export class GuardrailPackageService {
         .where(and(eq(guardrailVersions.guardrailId, guardrailId), eq(guardrailVersions.version, version))).for("update");
       await tx.update(guardrailVersions).set({ environmentCheck: check })
         .where(and(eq(guardrailVersions.guardrailId, guardrailId), eq(guardrailVersions.version, version)));
-      // The default pool preloads imported versions that passed a load check,
+      // The default pool preloads published versions that passed a load check,
       // so a verdict crossing "compatible" changes what Runners should hold.
-      if (row.origin !== "imported" || (current?.environmentCheck?.status === "compatible") === (check.status === "compatible")) return;
+      if ((current?.environmentCheck?.status === "compatible") === (check.status === "compatible")) return;
       const [state] = await tx.update(controllerState).set({ desiredGeneration: increment(controllerState.desiredGeneration), updatedAt: new Date() })
         .where(eq(controllerState.id, "singleton")).returning();
       await tx.insert(outboxEvents).values({
@@ -363,6 +363,22 @@ export class GuardrailPackageService {
       });
     });
     return check;
+  }
+
+  private checkingEnvironments = false;
+
+  /** Published content is checked asynchronously; missing dependencies never undo publication. */
+  async checkPendingEnvironments(): Promise<void> {
+    if (!this.admission || this.checkingEnvironments) return;
+    this.checkingEnvironments = true;
+    try {
+      const rows = await this.db.select({ id: guardrailVersions.guardrailId, version: guardrailVersions.version })
+        .from(guardrailVersions).innerJoin(guardrails, and(eq(guardrails.id, guardrailVersions.guardrailId), isNull(guardrails.deletedAt)))
+        .where(and(eq(guardrailVersions.status, "ready"), or(isNull(guardrailVersions.environmentCheck),
+          sql`(${guardrailVersions.environmentCheck}->>'status' <> 'compatible' AND (${guardrailVersions.environmentCheck}->>'checkedAt')::timestamptz < now() - interval '30 seconds')`)))
+        .orderBy(sql`${guardrailVersions.environmentCheck}->>'checkedAt' ASC NULLS FIRST`, asc(guardrailVersions.createdAt)).limit(2);
+      await Promise.all(rows.map(row => this.checkVersionEnvironment(row.id, row.version)));
+    } finally { this.checkingEnvironments = false; }
   }
 
   /**

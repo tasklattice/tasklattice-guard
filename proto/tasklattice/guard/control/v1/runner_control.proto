@@ -20,7 +20,7 @@ service RunnerControl {
 message RunnerMessage {
   reserved 20;
   reserved "candidate_compile_result";
-  // Former compile_result: publication now reuses the validated candidate.
+  // Retired compile result wire slot; never reuse its field number.
   reserved 13;
   reserved "compile_result";
   // Sender-generated correlation/deduplication identifier for this envelope.
@@ -37,6 +37,7 @@ message RunnerMessage {
     ValidationProgress validation_progress = 17;
     ArtifactAdmissionResult artifact_admission_result = 18;
     GuardrailProtectionResult protection_result = 19;
+    ArtifactCompilationResult artifact_compilation_result = 21;
   }
 }
 
@@ -44,7 +45,7 @@ message RunnerMessage {
 message ControllerMessage {
   reserved 18;
   reserved "candidate_compile_request";
-  // Former compile_request: publication now reuses the validated candidate.
+  // Retired compile request wire slot; never reuse its field number.
   reserved 12;
   reserved "compile_request";
   // Sender-generated correlation/deduplication identifier for this envelope.
@@ -59,7 +60,20 @@ message ControllerMessage {
     CapabilityValidationRequest capability_validation_request = 15;
     ArtifactAdmissionRequest artifact_admission_request = 16;
     GuardrailProtectionState protection_state = 17;
+    CompileRequest artifact_compilation_request = 19;
   }
+}
+
+// Offline compilation only. No model calls, runtime loading or test execution.
+message ArtifactCompilationResult {
+  // Correlates this reply with the requesting Controller command.
+  string compile_id = 1;
+  // Must match the registered stream and its process boot.
+  string runner_id = 2;
+  // Unsigned compiled content on success; absent on failure.
+  Artifact artifact = 3;
+  // Nonempty compilation failure; never a test verdict.
+  string error = 4;
 }
 
 // Process identity and capabilities announced once when opening a stream.

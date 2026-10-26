@@ -7,7 +7,7 @@ export type TestingReportDeletionImpact = {
   deletable: boolean;
   running: boolean;
   retainedByPlatformVersion?: boolean;
-  /** A released version losing its final matching Passed report. */
+  /** Compatibility field; always null because reports do not control publication. */
   pendingVersion: string | null;
   replacementRunId: string | null;
   references: GuardrailVersionReference[];

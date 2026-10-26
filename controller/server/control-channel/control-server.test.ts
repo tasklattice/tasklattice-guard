@@ -375,3 +375,33 @@ it("sends protection modes before a failing model rollout and rejects foreign ac
     await expect(handle(server, stream, { protectionResult: { ...result, accepted: true } }, connection)).rejects.toThrow("does not match");
   }
 });
+
+it("compiles independently of tests, correlates the Runner boot, and recovers from disconnect", async () => {
+  const service = { ...serviceMock(), setArtifactCompiler: vi.fn() };
+  const server = new RunnerControlServer(config, service as unknown as ControlPlaneService,
+    metricsMock() as unknown as ControllerMetrics, { activeConfiguration: vi.fn().mockResolvedValue(null) } as unknown as ModelConfigurationService);
+  expect(service.setArtifactCompiler).toHaveBeenCalledOnce();
+  const request = { guardrailId: "guard", guardrailVersion: "20261026-010000.000Z", runtimeProfile: "auto", plan: { guardrail_id: "guard", guardrail_version: "20261026-010000.000Z", safety_level: "strict", output_delivery: "full_buffered" } };
+  await expect(server.compileArtifact(request)).rejects.toMatchObject({ code: "guardrail_compiler_unavailable" });
+  const stream = streamMock(), hello = registration("offline");
+  hello.registration.compilerCapable = true;
+  const oldConnection = await handle(server, stream, hello, null);
+  await expect(server.compileArtifact(request)).rejects.toMatchObject({ code: "guardrail_compiler_unavailable" });
+  server.removeRunnerConnection("offline", "boot-offline");
+  hello.registration.bootId = "upgraded";
+  hello.registration.labels = { "tasklattice.offline-compilation": "1" };
+  const connection = await handle(server, stream, hello, null);
+  const pending = server.compileArtifact(request);
+  const command = stream.write.mock.calls.at(-1)![0].artifactCompilationRequest;
+  expect(command).toMatchObject({ guardrailId: "guard", guardrailVersion: "20261026-010000.000Z" });
+  const failure = { artifactCompilationResult: { compileId: command.compileId, runnerId: "offline", error: "Invalid plan" } };
+  await handle(server, stream, failure, oldConnection);
+  await handle(server, stream, { artifactCompilationResult: { ...failure.artifactCompilationResult, runnerId: "foreign" } }, connection);
+  const rejected = expect(pending).rejects.toMatchObject({ code: "guardrail_compilation_failed", message: "Invalid plan" });
+  await handle(server, stream, failure, connection);
+  await rejected;
+  const interrupted = expect(server.compileArtifact(request)).rejects.toMatchObject({ code: "guardrail_compilation_failed" });
+  server.removeRunnerConnection("offline", "upgraded");
+  await interrupted;
+  expect((server as any).compilations.size).toBe(0);
+});

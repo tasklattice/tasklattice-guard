@@ -1,5 +1,6 @@
 import { protectionPresets } from "./protection-presets.js";
 import type { GuardrailProfile } from "./protection-map.js";
+import { localBaseline } from "./local-baseline.js";
 import { fullFeatureBaseline } from "./full-feature-baseline.js";
 
 const useCaseCategories: Record<string, [string, string]> = {
@@ -21,4 +22,4 @@ export const defaultGuardrailProfiles: readonly GuardrailProfile[] = [...protect
     : ({ au: "Australia", eu: "European Union", uae: "UAE" }[region ?? ""] ?? ({ general: "General", banking: "Banking", securities: "Securities", internet: "Internet support" }[profile.industry]));
   const useCase = useCaseCategories[profile.id];
   return { ...profile, category: useCase?.[0] ?? category, categoryName: useCase?.[1] ?? categoryName, isDefault: true };
-}), fullFeatureBaseline];
+}), fullFeatureBaseline, localBaseline];

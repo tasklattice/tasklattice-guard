@@ -20,7 +20,7 @@ describe("Guardrail publication", () => {
       status: "ready",
       artifactId: "artifact-2",
     };
-    const selectResults = [[guardrail], [validation], [readyVersion]];
+    const selectResults = [[guardrail], [readyVersion]];
     const select = vi.fn(() => {
       const builder = {} as Record<string, unknown>;
       builder.from = vi.fn(() => builder);

@@ -9,6 +9,7 @@ import type { CapabilityValidationResult as _tasklattice_guard_control_v1_Capabi
 import type { ValidationProgress as _tasklattice_guard_control_v1_ValidationProgress, ValidationProgress__Output as _tasklattice_guard_control_v1_ValidationProgress__Output } from '../../../../tasklattice/guard/control/v1/ValidationProgress.js';
 import type { ArtifactAdmissionResult as _tasklattice_guard_control_v1_ArtifactAdmissionResult, ArtifactAdmissionResult__Output as _tasklattice_guard_control_v1_ArtifactAdmissionResult__Output } from '../../../../tasklattice/guard/control/v1/ArtifactAdmissionResult.js';
 import type { GuardrailProtectionResult as _tasklattice_guard_control_v1_GuardrailProtectionResult, GuardrailProtectionResult__Output as _tasklattice_guard_control_v1_GuardrailProtectionResult__Output } from '../../../../tasklattice/guard/control/v1/GuardrailProtectionResult.js';
+import type { ArtifactCompilationResult as _tasklattice_guard_control_v1_ArtifactCompilationResult, ArtifactCompilationResult__Output as _tasklattice_guard_control_v1_ArtifactCompilationResult__Output } from '../../../../tasklattice/guard/control/v1/ArtifactCompilationResult.js';
 import type { Long } from '@grpc/proto-loader';
 
 /**
@@ -33,7 +34,8 @@ export interface RunnerMessage {
   'validationProgress'?: (_tasklattice_guard_control_v1_ValidationProgress | null);
   'artifactAdmissionResult'?: (_tasklattice_guard_control_v1_ArtifactAdmissionResult | null);
   'protectionResult'?: (_tasklattice_guard_control_v1_GuardrailProtectionResult | null);
-  'body'?: "registration"|"heartbeat"|"artifactResult"|"validationResult"|"desiredStateResult"|"capabilityValidationResult"|"validationProgress"|"artifactAdmissionResult"|"protectionResult";
+  'artifactCompilationResult'?: (_tasklattice_guard_control_v1_ArtifactCompilationResult | null);
+  'body'?: "registration"|"heartbeat"|"artifactResult"|"validationResult"|"desiredStateResult"|"capabilityValidationResult"|"validationProgress"|"artifactAdmissionResult"|"protectionResult"|"artifactCompilationResult";
 }
 
 /**
@@ -58,5 +60,6 @@ export interface RunnerMessage__Output {
   'validationProgress'?: (_tasklattice_guard_control_v1_ValidationProgress__Output | null);
   'artifactAdmissionResult'?: (_tasklattice_guard_control_v1_ArtifactAdmissionResult__Output | null);
   'protectionResult'?: (_tasklattice_guard_control_v1_GuardrailProtectionResult__Output | null);
-  'body'?: "registration"|"heartbeat"|"artifactResult"|"validationResult"|"desiredStateResult"|"capabilityValidationResult"|"validationProgress"|"artifactAdmissionResult"|"protectionResult";
+  'artifactCompilationResult'?: (_tasklattice_guard_control_v1_ArtifactCompilationResult__Output | null);
+  'body'?: "registration"|"heartbeat"|"artifactResult"|"validationResult"|"desiredStateResult"|"capabilityValidationResult"|"validationProgress"|"artifactAdmissionResult"|"protectionResult"|"artifactCompilationResult";
 }

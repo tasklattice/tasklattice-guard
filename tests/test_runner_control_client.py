@@ -52,6 +52,9 @@ class Store:
         self.materialization_key = materialization_key
         self.generation = desired_state.generation
 
+    def verify(self, _artifact):
+        return None
+
     def observability_counts(self):
         return 0, 0, 0
 
@@ -295,3 +298,50 @@ async def test_modes_overtake_model_preparation_and_report_nacks(tmp_path):
         assert store.protection_mode("g") == "bypass"
         finish.set()
     await asyncio.wait_for(client._receive_messages(incoming()), 3)
+
+
+@pytest.mark.asyncio
+async def test_offline_compilation_returns_content_without_loading_or_leasing_models():
+    import asyncio
+    from runner.compiler import DefaultRunnerCompiler
+    from tests.control_plane.test_artifact_compiler_boundary import request
+
+    settings = _settings()
+    settings.compiler_capable = True
+    store = Store()
+    client = RunnerControlClient(settings, store, Metrics(), compiler=DefaultRunnerCompiler())
+    client._model_credentials = AsyncMock(side_effect=AssertionError("No credentials during compilation"))
+    build = request()
+    build.compile_id = "offline-1"
+    await client._handle(protocol.ControllerMessage(artifact_compilation_request=build))
+    reply = await asyncio.wait_for(client._outgoing.get(), timeout=10)
+    assert reply.WhichOneof("body") == "artifact_compilation_result"
+    assert reply.artifact_compilation_result.compile_id == "offline-1"
+    assert reply.artifact_compilation_result.runner_id == "runner-0"
+    assert reply.artifact_compilation_result.artifact.plan == build.plan
+    assert reply.artifact_compilation_result.error == ""
+    assert store.generation == 0
+    client._model_credentials.assert_not_called()
+    await asyncio.gather(*client._capability_tasks)
+
+
+@pytest.mark.asyncio
+async def test_offline_compilation_reports_failures_and_capacity_without_state_changes():
+    from unittest.mock import Mock
+
+    settings = _settings()
+    settings.compiler_capable = True
+    compiler = Mock()
+    compiler.compile_offline.side_effect = ValueError("Invalid plan")
+    client = RunnerControlClient(settings, Store(), Metrics(), compiler=compiler)
+    request = protocol.CompileRequest(compile_id="bad-plan")
+    await client._compile_artifact(request)
+    reply = await client._outgoing.get()
+    assert reply.artifact_compilation_result.error == "Invalid plan"
+    assert not reply.artifact_compilation_result.HasField("artifact")
+    client._capability_tasks = set(range(4))
+    await client._handle(protocol.ControllerMessage(artifact_compilation_request=request))
+    reply = await client._outgoing.get()
+    assert "capacity" in reply.artifact_compilation_result.error
+    assert compiler.compile_offline.call_count == 1
+    client._capability_tasks.clear()

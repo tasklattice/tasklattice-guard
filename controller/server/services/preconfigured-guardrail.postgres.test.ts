@@ -22,7 +22,7 @@ describe.skipIf(!url)("Preconfigured Guardrail lifecycle", () => {
     CONTROLLER_PROTO_PATH: resolve("../proto/tasklattice/guard/control/v1/runner_control.proto"),
     BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters" });
   let database: Awaited<ReturnType<typeof createTestDatabase>>;
-  const id = "guardrail-default";
+  let id: string;
   beforeAll(async () => {
     database = await createTestDatabase(url, "preconfigured");
     await database.pool.query("INSERT INTO auth_user (id,name,email,role) VALUES ('user','User','user@example.test','user')");
@@ -32,6 +32,8 @@ describe.skipIf(!url)("Preconfigured Guardrail lifecycle", () => {
   it("seeds once, preserves edits and mode across restarts, and never restores deletion", async () => {
     let service = new ControlPlaneService(database.db, config);
     await service.initialize();
+    id = (await database.pool.query("SELECT guardrail_id FROM deployment_preset")).rows[0].guardrail_id;
+    expect(id).not.toBe("guardrail-default");
     const initial = await service.getGuardrail(id);
     expect(initial.draftConfig.policyBindings).toHaveLength(12);
     expect(initial.versions).toHaveLength(1);
@@ -50,7 +52,7 @@ describe.skipIf(!url)("Preconfigured Guardrail lifecycle", () => {
     await service.protectionModes.update({ id, actorId: "user", mode: "monitor", expectedGeneration: 0, reason: "Review local protection" });
     const saved = await service.getGuardrail(id);
     await expect(service.requestGuardrailPublish({ guardrailId: id, actorId: "user", expectedDraftRevision: saved.draftRevision }))
-      .rejects.toMatchObject({ code: "guardrail_validation_required" });
+      .rejects.toMatchObject({ code: "guardrail_compiler_unavailable" });
     service = new ControlPlaneService(database.db, config);
     await service.initialize();
     const restarted = await service.getGuardrail(id);
@@ -84,6 +86,7 @@ describe.skipIf(!url)("Preconfigured Guardrail lifecycle", () => {
     try {
       const service = new ControlPlaneService(upgrade.db, config);
       await service.initialize();
+      const id = (await upgrade.pool.query("SELECT guardrail_id FROM deployment_preset")).rows[0].guardrail_id;
       const guardrail = await service.getGuardrail(id);
       const version = guardrail.versions[0]!.version;
       const routes = { routes: [{ id: "fallback", name: "Fallback", kind: "fallback", enabled: true,
@@ -102,6 +105,23 @@ describe.skipIf(!url)("Preconfigured Guardrail lifecycle", () => {
       expect((await upgrade.pool.query("SELECT active_snapshot FROM traffic_router WHERE id='router'")).rows[0].active_snapshot).toEqual(routes);
       expect((await service.getGuardrail(id)).versions).toEqual(guardrail.versions);
     } finally { await upgrade.drop(); }
+  });
+
+  it.each([false, true])("preserves legacy IDs and release provenance through migration (deleted: %s)", async deleted => {
+    const legacy = await createTestDatabase(url, "legacy_preset", async (tag, pool) => {
+      if (tag !== "0050_unified_guardrail_publication") return;
+      await pool.query("INSERT INTO guardrail (id,name,draft_config,status,deleted_at) VALUES ('guardrail-default','Renamed legacy','{}','disabled',$1)", [deleted ? new Date() : null]);
+      await pool.query(`INSERT INTO guardrail_version (guardrail_id,version,generation,status,runtime_profile,plan,released_at,platform_release,source_validation_run_id,test_waiver)
+        VALUES ('guardrail-default','legacy',1,'ready','auto','{}',now(),'{"source":"bundled"}','original-failure','{"reason":"Historical quota exception","sourceTestStatus":"failed"}')`);
+    });
+    try {
+      const service = new ControlPlaneService(legacy.db, config);
+      await Promise.all([service.initialize(), service.initialize()]);
+      expect((await legacy.pool.query("SELECT id,name,deleted_at FROM guardrail")).rows).toEqual([{ id: "guardrail-default", name: "Renamed legacy", deleted_at: deleted ? expect.any(Date) : null }]);
+      expect((await legacy.pool.query("SELECT guardrail_id FROM deployment_preset")).rows).toEqual([{ guardrail_id: "guardrail-default" }]);
+      const version = (await legacy.pool.query("SELECT status,publication,test_waiver,platform_release FROM guardrail_version")).rows[0];
+      expect(version).toMatchObject({ status: "ready", publication: { source: "legacy", legacy: { sourceValidationRunId: "original-failure", testWaiver: { reason: "Historical quota exception", sourceTestStatus: "failed" } } }, platform_release: { source: "bundled" }, test_waiver: { reason: "Historical quota exception" } });
+    } finally { await legacy.drop(); }
   });
 
 });

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, gt, inArray, notExists, or, sql } from "drizzle-orm";
-import { latestTestEvidence, matchesTestEvidence, TESTING_REPORT_RETENTION, type VersionTestEvidence } from "../../shared/testing-report-retention.js";
+import { and, desc, eq, gt, inArray, sql } from "drizzle-orm";
+import { latestTestEvidence, TESTING_REPORT_RETENTION, type VersionTestEvidence } from "../../shared/testing-report-retention.js";
 import type { ControllerDatabase } from "../db/client.js";
 import { artifacts, auditEvents, guardrails, guardrailVersions, outboxEvents, validationRuns } from "../db/schema.js";
 import { testSuiteDigest } from "../domain/test-suite.js";
@@ -29,11 +29,7 @@ export async function pruneTestingReports(tx: Transaction, guardrailId: string):
         rank: sql<number>`row_number() over (partition by ${guardrailVersions.version} order by ${reportCompletionTime} desc, ${validationRuns.id} desc)`.as("retention_rank"),
       }).from(validationRuns).leftJoin(guardrailVersions, and(
         eq(guardrailVersions.guardrailId, validationRuns.guardrailId), eq(guardrailVersions.version, validationRuns.guardrailVersion),
-      )).where(and(eq(validationRuns.guardrailId, guardrailId), eq(validationRuns.status, status),
-        notExists(tx.select({ id: guardrailVersions.version }).from(guardrailVersions).where(and(
-          eq(guardrailVersions.guardrailId, guardrailId), or(eq(guardrailVersions.sourceValidationRunId, validationRuns.id),
-            sql`${guardrailVersions.testWaiver}->>'latestVersionRunId' = ${validationRuns.id}`),
-        ))))).as("ranked_reports");
+      )).where(and(eq(validationRuns.guardrailId, guardrailId), eq(validationRuns.status, status))).as("ranked_reports");
       const expired = await tx.select({ testModelRules: ranked.testModelRules, testScope: ranked.testScope, id: ranked.id, status: ranked.status, candidateDigest: ranked.candidateDigest,
         testSuiteDigest: ranked.testSuiteDigest, createdAt: ranked.createdAt, completedAt: ranked.completedAt,
         version: ranked.version, subject: ranked.subject,
@@ -50,7 +46,8 @@ export async function pruneTestingReports(tx: Transaction, guardrailId: string):
           const compact = toTestEvidence(run)!;
           if (run.subject === "version") evidence.latest = latestTestEvidence(evidence.latest, compact)!;
           if (version.status === "ready" && run.id === version.runId
-            && matchesTestEvidence(compact, version.checksum, version.suite ? testSuiteDigest(version.suite) : null)) {
+            && compact.candidateDigest === version.checksum && version.suite
+            && compact.testSuiteDigest === testSuiteDigest(version.suite)) {
             evidence.release = compact;
           }
         }

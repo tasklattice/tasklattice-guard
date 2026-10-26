@@ -693,7 +693,7 @@ export function createHttpApp(input: {
     return context.json(await input.service.previewGuardrailPlan(body));
   });
   app.post("/api/v1/guardrails", authenticated, async (context) => {
-    const body = guardrailInput.parse(await context.req.json());
+    const body = guardrailInput.extend({ idempotencyKey: z.string().min(1).max(128).optional() }).parse(await context.req.json());
     return context.json(await input.service.createGuardrail({ ...body, actorId: context.get("actor").id }), 201);
   });
   app.get("/api/v1/guardrails/:id", authenticated, async (context) => {

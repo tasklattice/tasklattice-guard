@@ -50,3 +50,18 @@ def test_offline_cli_writes_the_same_unsigned_artifact(tmp_path):
     assert result.returncode == 0, result.stderr
     expected = ArtifactCompiler(builtin_prompts_yaml=prompt_catalog_yaml()).compile(build)
     assert protocol.Artifact.FromString(target.read_bytes()) == expected
+
+
+def test_runner_offline_compiler_ignores_live_model_assignments(monkeypatch):
+    from runner.compiler import DefaultRunnerCompiler
+    from unittest.mock import Mock
+
+    compiler = DefaultRunnerCompiler()
+    compiler._compiler = Mock()
+    compiler._compiler.compile.side_effect = AssertionError("Live compiler used")
+    build = request()
+    result = compiler.compile_offline(build)
+    assert result.plan == build.plan
+    assert result.guardrail_id == build.guardrail_id
+    assert compiler.native_models == ()
+    compiler._compiler.compile.assert_not_called()
