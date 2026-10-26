@@ -371,6 +371,43 @@ describe("Guardrail edit, test and publish workflow", () => {
     expect(create).not.toHaveBeenCalled();
   });
 
+  it.each(["completed", "reopened"])("loads failed case details for a %s draft test", async mode => {
+    const summary = { ...report, source_draft_version: 2, status: "failed" as const, details_loaded: false };
+    const failedCase: api.TestCaseResult = { case_id: "model-case", name: "Unsafe model sample", policy_id: policy.id,
+      passed: false, expected_decision: "block", actual_decision: "allow", phase: "input",
+      latency_ms: 1, reason: "Expected block, received allow", trace: [], findings: [],
+      covered_rule_ids: [], matched_rule_ids: [], preempting_matches: [], evaluator_ids: [],
+      input_content: "", output_content: "", action: "allow", trusted_instruction: "", target_source: "user",
+      query: "", grounding_sources: [], expected_reasoning_result: null, actual_reasoning_result: null,
+      case_type: "rule_acceptance", required: true, expected_failure: null, actual_failure: null,
+      concurrency_group: null, source_policy_id: null, source_policy_version: null, source_case_id: null,
+      evaluation_contracts: [], escalated: false, model_invocations: 1 };
+    let complete!: (value: api.ValidationRun) => void;
+    const detail = vi.spyOn(api, "getValidationRun").mockImplementation(() => new Promise(resolve => { complete = resolve; }));
+    vi.spyOn(api, "createValidationRun").mockResolvedValue(summary);
+    render(wrap(<GuardrailDraftReviewSheet guardrail={{ ...draft, latest_validation_run: mode === "reopened" ? summary : null }} policies={[policy]} versions={[]} onClose={vi.fn()} onChanged={vi.fn(async () => {})} onPublished={vi.fn()} />));
+    if (mode === "completed") fireEvent.click(screen.getByRole("button", { name: "guardrails.testNow" }));
+    await waitFor(() => expect(detail).toHaveBeenCalledWith(summary.id));
+    expect(screen.queryByRole("heading", { name: "validation.caseResults" })).toBeNull();
+    complete({ ...summary, details_loaded: true, results: [failedCase] });
+    await screen.findByText(failedCase.name);
+    expect(screen.getByRole("button", { name: "validation.runAgain" }).hasAttribute("disabled")).toBe(false);
+    expect(screen.getByRole("button", { name: "guardrails.publishVersion" }).hasAttribute("disabled")).toBe(false);
+  });
+
+  it("retries failed detail loading without rerunning the draft test", async () => {
+    const summary = { ...report, source_draft_version: 2, details_loaded: false };
+    const detail = vi.spyOn(api, "getValidationRun").mockRejectedValueOnce(new Error("Report detail unavailable"))
+      .mockResolvedValue({ ...summary, details_loaded: true });
+    const create = vi.spyOn(api, "createValidationRun");
+    render(wrap(<GuardrailDraftReviewSheet guardrail={{ ...draft, latest_validation_run: summary }} policies={[policy]} versions={[]} onClose={vi.fn()} onChanged={vi.fn(async () => {})} onPublished={vi.fn()} />));
+    await screen.findByText("Report detail unavailable");
+    fireEvent.click(screen.getByRole("button", { name: "common.retry" }));
+    await waitFor(() => expect(screen.queryByText("Report detail unavailable")).toBeNull());
+    expect(detail).toHaveBeenCalledTimes(2);
+    expect(create).not.toHaveBeenCalled();
+  });
+
   it("invalidates an open publication confirmation when the draft changes", async () => {
     const publish = vi.spyOn(api, "publishGuardrail");
     const props = { guardrail: { ...draft, draft_revision: 3, tested_current: true, latest_validation_run: report }, policies: [policy], versions: [], initialPublish: true, onClose: vi.fn(), onEdit: vi.fn(), onChanged: vi.fn(async () => {}), onPublished: vi.fn() };
