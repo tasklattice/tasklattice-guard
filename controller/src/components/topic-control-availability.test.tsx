@@ -25,7 +25,7 @@ describe("Topic Control runtime availability", () => {
     ["missing", view],
     ["validated", { ...view, draft: revision() }],
     ["activating", { ...view, activating: revision() }],
-    ["failed", { ...view, active: revision("failed") }],
+    ["failed", { ...view, draft: revision("failed") }],
     ["unverified", { ...view, active: revision(), models: [] }],
   ])("does not enable configuration for %s assignments", async (state, config) => {
     getModels.mockResolvedValue(config);
@@ -45,6 +45,11 @@ describe("Topic Control runtime availability", () => {
 
   it("uses the active model even when a newer draft fails", async () => {
     getModels.mockResolvedValue({ ...view, active: revision(), draft: revision("failed") });
+    show();
+    expect(await screen.findByRole("button", { name: "Configure Topic Control" })).toBeTruthy();
+  });
+  it.each(["failed", "skipped"])("allows configuring and retesting an active model with %s evidence", async status => {
+    getModels.mockResolvedValue({ ...view, active: revision(status) });
     show();
     expect(await screen.findByRole("button", { name: "Configure Topic Control" })).toBeTruthy();
   });

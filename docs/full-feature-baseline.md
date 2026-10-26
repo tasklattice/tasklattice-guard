@@ -38,10 +38,20 @@ protections. This template does not inherit the benchmark's execution evidence.
 
 ## Configure models once
 
-A platform administrator configures, validates and activates these assignments:
+A platform administrator assigns compatible models and applies these bindings:
 
 - `jailbreak.input`: a compatible Jailbreak detection model.
 - `content_safety.input`: a compatible Content Safety model.
+
+These are independent input bindings. Configuring only output Content Safety
+does not satisfy this Profile. A model that supports both capabilities may be
+assigned to both bindings, but registering or testing it does not create or
+activate either assignment. Apply the saved changes in Model settings.
+
+An active model with failed or missing capability-test evidence can still run
+Guardrail tests; its test warning remains visible. Tests wait for a compiler
+Runner to acknowledge the current model configuration. During synchronization,
+environment checks remain pending instead of reporting a missing dependency.
 
 Every Guardrail created from this Profile reuses those platform assignments.
 The Profile stores no provider credentials, URLs or installation-specific model

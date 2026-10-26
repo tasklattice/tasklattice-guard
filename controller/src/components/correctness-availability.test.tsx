@@ -26,7 +26,7 @@ function show() {
 }
 describe.each(["contextual_grounding", "automated_reasoning"])("%s availability", capability => {
   it.each(["missing", "unverified", "failed", "validated", "activating"])("blocks configuration when %s", async state => {
-    const config = state === "missing" ? view : { ...view, [state === "validated" ? "draft" : state === "activating" ? "activating" : "active"]:
+    const config = state === "missing" ? view : { ...view, [state === "activating" ? "activating" : "draft"]:
       revision(capability, state === "failed" ? "failed" : "passed", state === "unverified" ? "connection-only" : "nemo-rail-v1") };
     getModels.mockResolvedValue(config);
     show();
@@ -34,6 +34,13 @@ describe.each(["contextual_grounding", "automated_reasoning"])("%s availability"
     await screen.findByText(protectionEn.correctness.availability[state as keyof typeof protectionEn.correctness.availability].replace("{{capability}}", label));
     expect(screen.getByLabelText("Correctness availability").textContent).toBe("unavailable");
     expect(screen.getByRole("button", { name: capability, exact: true }).hasAttribute("disabled")).toBe(true);
+  });
+  it.each(["failed", "skipped"])("keeps an active assignment available with %s evidence", async status => {
+    getModels.mockResolvedValue({ ...view, active: revision(capability, status) });
+    show();
+    const other = capability === "contextual_grounding" ? "automated_reasoning" : "contextual_grounding";
+    await screen.findByText(protectionEn.correctness.availability.missing.replace("{{capability}}", protectionEn.correctness[other]));
+    expect(screen.getByRole("button", { name: capability, exact: true }).hasAttribute("disabled")).toBe(false);
   });
   it("enables only its own verified active assignment, even with a failed draft", async () => {
     getModels.mockResolvedValue({ ...view, active: revision(capability), draft: revision(capability, "failed") });
