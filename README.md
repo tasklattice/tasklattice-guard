@@ -18,7 +18,7 @@ without embedding policy logic in every gateway.
   harmful content, and application-specific restrictions using configurable
   local rules and model-backed checks.
 - **Build and test your own protection.** Compose versioned Policies into a
-  Guardrail, tune rules and actions, and validate changes before publishing.
+  Guardrail, tune rules and actions, and test or publish independently.
   The directory-based [Policy packages](policies/README.md) bootstrap
   the built-in catalog and support directory/ZIP import and export for custom local checks.
 - **Route traffic to the right Guardrail.** Match request characteristics such
@@ -30,8 +30,10 @@ without embedding policy logic in every gateway.
 - **Understand what happened.** Inspect runtime decisions, routing distribution,
   validation results, and publication history in the console.
 
-The included Default Guardrail provides local checks without a detection-model
-setup. Model-backed protection can be configured separately. Coverage depends
+Each deployment provisions an ordinary Guardrail named Default from the pinned
+Local baseline Profile. It provides local checks without a detection model.
+Rename, edit, publish or delete it through the same workflow as any Guardrail;
+restarts never recreate a deleted preset. Model-backed protection can be configured separately. Coverage depends
 on the policies you enable and the content you submit; streamed output may
 need to be buffered when a policy requires the complete response.
 
@@ -42,6 +44,12 @@ need. Jailbreak and content-safety checks reuse platform model assignments,
 so each Guardrail does not need its own model setup. See the
 [Profile guide](docs/full-feature-baseline.md) for versions, dependencies and
 what happens to tests after a deletion.
+
+Publishing freezes and compiles the selected configuration without calling models
+or running tests. Untested, running or failed tests do not prevent publication,
+and deleting a report does not revoke a version. Compilation errors leave earlier
+versions intact. Model availability, Runner readiness and Router rollout remain
+separate from publication; publishing does not switch traffic.
 
 ## How it fits into your application
 

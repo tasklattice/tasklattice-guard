@@ -19,7 +19,7 @@ The sole Router status derivation entry point is `controller/shared/router-lifec
 
 `activeRevision` is the revision the Controller currently wants active; it does not mean every Runner has applied it. The current revision in the revision list shows Active (green), Deploying (yellow), or Failed (red); other revisions show Previous (neutral badge). Previous indicates only a historical revision and does not imply it ever deployed successfully.
 
-Guardrail versions use `pending → ready` (Pending → Released). Release requires a local Passed report matching the Artifact and frozen test suite. Deleting its last matching proof returns the version to pending; another matching proof preserves release. Content stays immutable. Multiple versions can be referenced simultaneously, so there is no Guardrail-wide Active / Historical version pointer. The UI shows Not ready or Enforce / Monitor / Bypass. A mode requires at least one retained qualifying release; mode changes apply to all online versions without changing publication or tests. Runner confirmation is shown separately. See the [Guardrail lifecycle guide](document/en/overview/03-term-guardrail.mdx).
+Guardrail versions use `pending → ready` (Pending → Released). Publication requires compiled executable content. Tests are optional, including while queued, running or failed. Deleting reports never revokes publication. Content stays immutable. Multiple versions can be referenced simultaneously, so there is no Guardrail-wide Active / Historical version pointer. The UI shows Not ready or Enforce / Monitor / Bypass. A mode requires at least one retained qualifying release; mode changes apply to all online versions without changing publication or tests. Runner confirmation is shown separately. See the [Guardrail lifecycle guide](document/en/overview/03-term-guardrail.mdx).
 
 ## Rollback
 
@@ -36,7 +36,7 @@ Version actions use ellipsis menus; Delete is red and opens a confirmation sheet
 - Deletion uses the same transaction-lock order as Router publication, draft saves, and Endpoint binding. Deletion and Guardrail publication/release are serialized through the Guardrail row lock.
 - Deletion removes only the version record, not compiled artifacts, runtime logs, distribution records, or audit evidence. Router deletion audits preserve the snapshot and original publication idempotency key. Replaying publication of a deleted revision returns a conflict to prevent accidental republication.
 - Older historical Router Revisions do not block GuardRail version deletion. They stay for audit, are listed as unrestorable in the deletion impact and audit event, and fail validation if restored.
-- Deleted versions cannot be restored through the version list. Re-import of identical signed static content can recreate a removed package version as Pending; Release requires a matching local version-test report. Reports retained after deleting only a version may still supply that evidence; deleting the whole Guardrail clears them and requires a new test. The retention window reflects the current five-minute call-retention assumption, not a guarantee for external requests of unlimited duration.
+- Deleted versions cannot be restored through the version list. Re-import of identical signed static content can recreate a removed package version as Pending; Publication is explicit and independent of tests. Deleting the whole Guardrail clears reports and resets publication. The retention window reflects the current five-minute call-retention assumption, not a guarantee for external requests of unlimited duration.
 
 APIs: `DELETE /api/v1/routers/:id/revisions/:revision`, `DELETE /api/v1/guardrails/:id/versions/:version`. Success returns 204; still in use returns 409; not found returns 404; insufficient permissions returns 403.
 
@@ -44,20 +44,26 @@ APIs: `DELETE /api/v1/routers/:id/revisions/:revision`, `DELETE /api/v1/guardrai
 
 Deleting a Guardrail version preserves its reports, but reports without a retained version do not qualify the resource as Ready. Removing the last released version returns the resource lifecycle to draft.
 
-A completed Testing Report can be permanently deleted after impact review. Equivalent Passed evidence replaces the release binding, or the version returns to Pending. References protecting a version also protect its final passing evidence. Audit events retain deletion identity and impact; version definitions and cases remain.
+A completed Testing Report can be permanently deleted after impact review. It clears report references without changing publication, routing or protection mode. Only queued or running reports cannot be deleted. Audit events retain deletion identity and impact; version definitions and cases remain.
 
 Soft-deleting the whole Guardrail preserves static identity, versions, the working draft, cases, Artifacts and provenance, clears reports/tasks and runtime data, and resets retained versions to Pending. It does not automatically remove Router targets: published references and pending changes must be removed first, and call-retention checks must pass. The preconfigured Default uses the same deletion checks and is not recreated at startup. Confirmed re-import from the owning source can restore an imported identity, preserving its working draft without restoring local evidence. Package ownership checks reject an ordinary locally created identity even after deletion, so this is not a universal restore operation.
 
-## Implementation audit — 2026-10-10
+## Unified Guardrail lifecycle — 2026-10-26
 
-Scope: the English and Chinese `overview/term-guardrail` articles, Controller state transitions, and their UI projections. The core resource Ready rule and ten-version limit match the code. The articles now distinguish persisted resource lifecycle, derived readiness, draft test state, version release state and individual reports. They also document one-time Default provisioning and the fact that rename/log-level changes do not invalidate draft tests.
+Default, user-created and Profile-created Guardrails share creation, editing,
+publication, tests, protection modes and deletion rules. Deployment provisions
+Local baseline 1.0.0 once using an ordinary resource ID; a separate provisioning
+record prevents recreation after rename or deletion. Existing IDs stay unchanged.
 
-The following implementation differences remain unresolved; this audit changes documentation, not runtime behavior:
+UI, API and CLI use one publication flow. Compilation freezes the reviewed draft
+without runtime loading, credentials or model calls. It may reuse a matching
+compiled test candidate regardless of test outcome. Concurrent retries publish
+one version per draft revision; editing during compilation rejects the stale
+attempt without changing existing releases. A connected upgraded compiler Runner
+is needed when no compiled candidate is available.
 
-| Finding | Current implementation and consequence | Source |
-| --- | --- | --- |
-| Draft publication uses different reports in UI and API | UI requires the latest current-revision draft run to pass. The API searches for the most recent Passed run of that revision, so a later Failed or running test does not prevent direct API publication. Candidate content checks still apply. | `src/lib/guardrails-api.ts` (`mapGuardrail`), `src/components/guardrail-draft-review.tsx`, `server/services/control-plane.ts` (`requestGuardrailPublish`) |
-| Release eligibility is not identical in UI and API | UI and API select the latest-completed version evidence, including compact evidence retained after report cleanup. UI also waits for any ongoing version test and checks the Artifact digest. API requires Passed plus Artifact and suite digests, but does not separately reject an ongoing run. Releasing an already ready version returns early without rechecking evidence. | `src/lib/version-release.ts`, `server/services/control-plane.ts` (`releaseGuardrailVersion`) |
-| Released can disagree with resource Ready for inconsistent historical data | `guardrailSummary` requires a retained matching Passed report or compact release evidence bound to the version. Version badges and Router publication trust stored ready status without rechecking that evidence; export transfers immutable definitions independently of local test evidence. An orphaned release binding is not automatically repaired by a retest or an idempotent Release. Normal report deletion maintains/replaces that binding and downgrades a release with no remaining proof. | `server/services/control-plane.ts` (`guardrailSummary`, `deleteTestingReport`), `server/services/traffic-routing.ts` (`resolvePublication`), `server/services/guardrail-packages.ts` (`exportPackage`), `src/lib/version-release.ts` |
-
-These findings describe reachable code paths, not proof that the running environments currently contain missing-evidence records. The source paths above are relative to `controller/`. For evidence rules, the existing publication/package PostgreSQL suites cover matching digests, retained proof deletion, imported Pending versions, restoration and immutable content conflicts; frontend suites cover the displayed projections.
+Publication, test outcomes and environment readiness are separate axes. A failed
+test stays failed after publication. Historical platform releases and waivers
+remain audit provenance. Report retention or deletion never downgrades a release.
+The executable Artifact and stored publication determine resource readiness;
+Runner checks and Router rollout describe deployment readiness separately.

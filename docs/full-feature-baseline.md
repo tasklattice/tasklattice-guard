@@ -46,8 +46,11 @@ A platform administrator configures, validates and activates these assignments:
 Every Guardrail created from this Profile reuses those platform assignments.
 The Profile stores no provider credentials, URLs or installation-specific model
 IDs. Selected dependencies and their current readiness are shown in creation.
-Missing assignments allow draft creation and editing; run the applicable model
-tests after setup and complete validation before publishing.
+Missing assignments allow creation, editing and publication. Publication compiles
+without model calls; untested, running and failed tests do not block it. Runner
+compatibility is checked separately. Set up the assignments before testing model
+behavior or routing traffic to these protections. Deleting a test report never
+revokes publication.
 
 ## Pins and updates
 
