@@ -63,6 +63,69 @@ const activeConfiguration = (revisionId: string, revision: number) => ({
 });
 
 describe("Runner model-configuration convergence", () => {
+  it.each(["guardrail.validation_requested", "policy.validation_requested"])("waits for applied model assignments before dispatching %s", async kind => {
+    const event = { id: "model-job", createdAt: new Date(), payload: { runId: "model-run", testCases: [],
+      plan: { guardrail_version: "20261026-030000.000Z", safety_level: "strict", output_delivery: "full_buffered" } } };
+    const service = { ...serviceMock(), pendingOutbox: vi.fn(async (type: string) => type === kind ? [event] : []),
+      markValidationRunning: vi.fn(), deferOutbox: vi.fn() };
+    const models = { activeConfiguration: vi.fn().mockResolvedValue(activeConfiguration("revision-9", 9)), finalizeActivation: vi.fn() };
+    const server = new RunnerControlServer(config, service as unknown as ControlPlaneService,
+      metricsMock() as unknown as ControllerMetrics, models as unknown as ModelConfigurationService);
+    const stream = streamMock(), hello = registration("compiler");
+    hello.registration.compilerCapable = true;
+    const connection = await handle(server, stream, hello, null);
+    const dispatch = () => (server as unknown as { dispatchValidationRequests(): Promise<void> }).dispatchValidationRequests();
+    stream.write.mockClear();
+    await dispatch();
+    expect(service.markValidationRunning).not.toHaveBeenCalled();
+    expect(stream.write).not.toHaveBeenCalled();
+    await handle(server, stream, desiredResult("compiler", true), connection);
+    // A delayed acknowledgement cannot roll back the dependency identity.
+    await handle(server, stream, { desiredStateResult: { runnerId: "compiler", accepted: true, generation: "8", modelRevisionId: "revision-8" } }, connection);
+    await dispatch();
+    expect(service.markValidationRunning).toHaveBeenCalledExactlyOnceWith("model-job");
+    expect(stream.write).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ validationRequest: expect.objectContaining({ runId: "model-run" }) }));
+  });
+
+  it("chooses a synchronized compiler while an earlier connection still has old models", async () => {
+    const event = { id: "job", createdAt: new Date(), payload: { runId: "run", testCases: [], plan: { guardrail_version: "20261026-030000.000Z", safety_level: "strict", output_delivery: "full_buffered" } } };
+    const service = { ...serviceMock(), pendingOutbox: vi.fn(async (kind: string) => kind === "guardrail.validation_requested" ? [event] : []),
+      markValidationRunning: vi.fn(), deferOutbox: vi.fn() };
+    const models = { activeConfiguration: vi.fn().mockResolvedValue(activeConfiguration("revision-9", 9)), finalizeActivation: vi.fn() };
+    const server = new RunnerControlServer(config, service as unknown as ControlPlaneService,
+      metricsMock() as unknown as ControllerMetrics, models as unknown as ModelConfigurationService);
+    const streams = [streamMock(), streamMock()];
+    for (const [index, stream] of streams.entries()) {
+      const hello = registration(`compiler-${index}`); hello.registration.compilerCapable = true;
+      const connection = await handle(server, stream, hello, null);
+      if (index === 1) await handle(server, stream, desiredResult("compiler-1", true), connection);
+      stream.write.mockClear();
+    }
+    await (server as unknown as { dispatchValidationRequests(): Promise<void> }).dispatchValidationRequests();
+    expect(streams[0]!.write).not.toHaveBeenCalled();
+    expect(streams[1]!.write).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ validationRequest: expect.objectContaining({ runId: "run" }) }));
+  });
+
+  it("reports synchronization as pending and retries environment admission after the model ACK", async () => {
+    const models = { activeConfiguration: vi.fn().mockResolvedValue(activeConfiguration("revision-9", 9)), finalizeActivation: vi.fn() };
+    const server = new RunnerControlServer(config, serviceMock() as unknown as ControlPlaneService,
+      metricsMock() as unknown as ControllerMetrics, models as unknown as ModelConfigurationService);
+    const stream = streamMock();
+    const connection = await handle(server, stream, registration("runner"), null);
+    const artifact = { id: "artifact", generation: 1, checksum: "digest", signature: "signature", guardrailId: "guard", guardrailVersion: "20261026-030000.000Z",
+      compilerVersion: "test", nemoVersion: "test", runtimeProfile: "auto", plan: { guardrail_version: "20261026-030000.000Z", safety_level: "strict", output_delivery: "full_buffered" }, configYaml: "", colangContent: "", prompts: [], actionBindings: [], dependencyManifest: [] };
+    stream.write.mockClear();
+    expect(await server.checkArtifactAdmission(artifact)).toEqual([expect.objectContaining({ unavailable: true, admitted: false, reason: expect.stringContaining("still applying") })]);
+    expect(stream.write).not.toHaveBeenCalled();
+    await handle(server, stream, desiredResult("runner", true), connection);
+    const checking = server.checkArtifactAdmission(artifact);
+    await vi.waitFor(() => expect(stream.write).toHaveBeenCalledOnce());
+    const { requestId } = stream.write.mock.calls[0]![0].artifactAdmissionRequest;
+    await handle(server, stream, { artifactAdmissionResult: { requestId, runnerId: "runner", admitted: true, reason: "", nemoVersion: "test", modelRevisionId: "revision-9" } }, connection);
+    expect(await checking).toEqual([expect.objectContaining({ unavailable: false, admitted: true, modelRevisionId: "revision-9" })]);
+    await server.stop();
+  });
+
   it("keeps a long test assigned across retry ticks, serializes dispatch and retries after disconnect", async () => {
     const event = { id: "job-1", createdAt: new Date(), payload: { runId: "run-1", testCases: [], plan: { guardrail_version: "20261012-030000.000Z", safety_level: "strict", output_delivery: "full_buffered" } } };
     const service = { ...serviceMock(), pendingOutbox: vi.fn(async (kind: string) => kind === "guardrail.validation_requested" ? [event] : []),

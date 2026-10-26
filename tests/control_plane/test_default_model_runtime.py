@@ -127,8 +127,10 @@ async def test_opt_in_models_cannot_prepare_without_each_required_binding(model_
     runtime, identity = runtime_and_identity(model_default_plan,
         lambda _: pytest.fail("No inference before all model bindings are ready"), omit=missing)
     try:
-        with pytest.raises(PlanCompilationError, match="Evaluator Binding"):
+        with pytest.raises(PlanCompilationError, match="Evaluator Binding") as error:
             await runtime.prepare(**identity)
+        assert f"Required platform assignments: {missing}." in str(error.value)
+        assert "apply the assignments to the Runner" in str(error.value)
     finally:
         await runtime.shutdown()
 

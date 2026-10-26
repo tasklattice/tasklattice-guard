@@ -802,8 +802,21 @@ class _RuntimeBuilder:
                 f"{item.capability} -> {item.contract_ref} ({', '.join(item.phases)})"
                 for item in unmapped_contracts
             )
+            assignments = sorted({
+                f"{'pii_semantic' if item.capability == 'pii' else item.capability}.{phase}"
+                for item in unmapped_contracts
+                if item.contract_ref in MODEL_SAFETY_CAPABILITY_BY_CONTRACT
+                for phase in item.phases
+                if (item.capability, item.contract_ref, phase) not in route_rail_keys
+            })
+            guidance = (
+                " Required platform assignments: " + ", ".join(assignments)
+                + ". Assign compatible models in Model settings and apply the assignments to the Runner. "
+                "Each capability and direction needs its own binding; registering or testing a model alone is not enough."
+                if assignments else ""
+            )
             raise PlanCompilationError(
-                "No Evaluator Binding is available for: " + details + "."
+                "No Evaluator Binding is available for: " + details + "." + guidance
             )
 
     def _providers_for(self, config: NeMoConfigSnapshot) -> ActionProviders:

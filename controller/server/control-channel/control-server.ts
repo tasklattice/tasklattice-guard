@@ -118,7 +118,7 @@ export class RunnerControlServer {
   /**
    * Dry-run load one signed Artifact on one connected Runner in every pool.
    * Runner pools receive every Router-referenced Artifact, so each pool must
-   * be able to serve it. Prefer Runners that applied the current models.
+   * be able to serve it. Check only Runners that applied the current models.
    */
   async checkArtifactAdmission(artifact: SignedArtifact): Promise<PoolAdmission[]> {
     const expectedModelRevisionId = (await this.models.activeConfiguration(true))?.revisionId ?? "";
@@ -133,6 +133,10 @@ export class RunnerControlServer {
     return Promise.all([...byPool.values()].map((runner) => new Promise<PoolAdmission>((resolve) => {
       const requestId = randomUUID();
       const unavailable = (reason: string) => ({ poolId: runner.poolId, runnerId: runner.runnerId, admitted: false, unavailable: true, reason, nemoVersion: "", modelRevisionId: "" });
+      if (runner.appliedModelRevisionId !== expectedModelRevisionId) {
+        resolve(unavailable("The Runner is still applying the current model assignments. The environment check will retry after synchronization."));
+        return;
+      }
       const timer = setTimeout(() => finish(unavailable("The Runner did not answer the load check in time.")), 60_000);
       timer.unref();
       const finish = (result: PoolAdmission) => { clearTimeout(timer); this.admissions.delete(requestId); resolve(result); };
@@ -447,6 +451,7 @@ export class RunnerControlServer {
       }
       const generation = number(result.generation);
       if (result.accepted) {
+        if (generation < current.appliedGeneration) return null;
         current.appliedGeneration = Math.max(current.appliedGeneration, generation);
         current.appliedModelRevisionId = result.modelRevisionId;
         if (result.modelRevisionId) {
@@ -606,8 +611,12 @@ export class RunnerControlServer {
     if (this.dispatchingValidation) return;
     this.dispatchingValidation = true;
     try {
+      const expectedModelRevisionId = (await this.models.activeConfiguration(true))?.revisionId ?? "";
       const busy = new Set(this.activeValidations.values());
-      const compiler = [...this.connections.values()].find(item => item.poolId === "default" && item.compilerCapable && !busy.has(item));
+      // Capability probes use an explicit candidate configuration. Guardrail
+      // tests use the Runner's live providers and must wait for their ACK.
+      const compiler = [...this.connections.values()].find(item => item.poolId === "default" && item.compilerCapable
+        && item.appliedModelRevisionId === expectedModelRevisionId && !busy.has(item));
       if (!compiler) return;
       const excludedRunIds = [...this.activeValidations.keys()];
       const events = [
