@@ -30,7 +30,7 @@ export const configurationHelp = `Non-interactive configuration (existing Contro
   guardctl platform bind --binding content_safety.input --model-id ID --state FILE
     [--validation-id ID | --revalidate] [--wait-seconds 300]
   guardctl tenant provision --name NAME --patch FILE --state FILE
-    --emergency-reason TEXT [--source guardrail-default] [--adapter litellm-generic-guardrail]
+    --emergency-reason TEXT [--profile local-baseline | --source GUARDRAIL_ID] [--adapter litellm-generic-guardrail]
     [--endpoint-id ID] [--router-id ID] [--replace-change-id ID] [--wait-seconds 300]
 
 Common: --url URL, --env-file FILE. Credentials come from environment only:
@@ -188,20 +188,27 @@ export async function bindModel(api: Api, flags: Flags, journal: Journal): Promi
 
 export async function provisionTenant(api: Api, flags: Flags, patch: any, journal: Journal): Promise<any> {
   const name = required(flags, 'name'), reason = required(flags, 'emergency-reason');
-  const sourceId = flags.source ?? 'guardrail-default', adapter = flags.adapter ?? 'litellm-generic-guardrail';
+  const sourceId = flags.source ?? journal.data.request?.sourceId, profileId = sourceId ? undefined : flags.profile ?? 'local-baseline', adapter = flags.adapter ?? 'litellm-generic-guardrail';
+  assert.ok(!(flags.source && flags.profile), 'Choose --profile or --source');
   assert.ok(['litellm-generic-guardrail', 'f5-scan'].includes(adapter), 'Unsupported Endpoint adapter');
   assert.ok(patch && typeof patch === 'object' && !Array.isArray(patch), 'Patch must be a JSON object');
   assert.ok(Object.keys(patch).every(k => ['draftConfig', 'runtimeProfile'].includes(k)), 'Patch may contain draftConfig and runtimeProfile only');
   assert.ok(!patch.draftConfig || (typeof patch.draftConfig === 'object' && !Array.isArray(patch.draftConfig)), 'draftConfig must be an object');
   const seconds = integer(flags, 'wait-seconds', 300), s = journal.data;
-  const request = JSON.parse(JSON.stringify({ name, sourceId, adapter, patch, endpointId: flags['endpoint-id'], routerId: flags['router-id'] }));
+  const request = JSON.parse(JSON.stringify({ name, sourceId, profileId, adapter, patch, endpointId: flags['endpoint-id'], routerId: flags['router-id'] }));
   if (s.request) assert.deepEqual(s.request, request, 'State belongs to a different provision request');
   if (!s.request) {
-    const source = await api(`/api/v1/guardrails/${id(sourceId)}`);
+    const profile = profileId ? (await api('/api/v1/guardrail-profiles')).items.find((item: any) => item.id === profileId) : null;
+    if (profileId) assert.ok(profile?.availability?.available, profile?.availability?.reason ?? 'Profile is unavailable');
+    const source = sourceId ? await api(`/api/v1/guardrails/${id(sourceId)}`) : {
+      id: null, draftRevision: 1, runtimeProfile: 'auto',
+      draftConfig: { ...profile.draftSettings, policyBindings: profile.policyBindings, profileOrigin: { id: profile.id, version: profile.version } },
+    };
     Object.assign(s, { request, source: { id: source.id, revision: source.draftRevision, draftConfig: source.draftConfig, runtimeProfile: source.runtimeProfile }, duplicateKey: randomUUID() }); await journal.save();
   }
   if (!s.guardId) {
-    const copy = await api(`/api/v1/guardrails/${id(sourceId)}/duplicate`, 'POST', { name, sourceDraftRevision: s.source.revision, idempotencyKey: s.duplicateKey });
+    const copy = sourceId ? await api(`/api/v1/guardrails/${id(sourceId)}/duplicate`, 'POST', { name, sourceDraftRevision: s.source.revision, idempotencyKey: s.duplicateKey })
+      : await api('/api/v1/guardrails', 'POST', { name, draftConfig: s.source.draftConfig, runtimeProfile: s.source.runtimeProfile, idempotencyKey: s.duplicateKey });
     assert.notEqual(copy.id, sourceId);
     s.guardId = copy.id; await journal.save();
   }
@@ -216,11 +223,8 @@ export async function provisionTenant(api: Api, flags: Flags, patch: any, journa
   }
   assert.equal(guard.draftRevision, s.patched.revision, 'Copied Guardrail has changed');
   assert.equal(digest(guard.draftConfig), s.patched.digest);
-  if (!s.validationId) { s.validationId = (await api(`${gp}/test-runs`, 'POST', { testModelRules: true })).id; await journal.save(); }
-  const validation = await until(() => api(`/api/v1/test-runs/${id(s.validationId)}`), value => ['passed', 'failed', 'cancelled'].includes(value.status), seconds, 'Guardrail validation');
-  assert.equal(validation.status, 'passed', `Guardrail validation failed: ${s.validationId}; no routing was applied`);
   if (!s.version) {
-    const existing = guard.versions?.find((v: any) => v.sourceDraftRevision === guard.draftRevision && v.status !== 'failed');
+    const existing = guard.versions?.find((v: any) => v.sourceDraftRevision === guard.draftRevision && v.status === 'ready');
     s.version = existing?.version ?? (await api(`${gp}/publish`, 'POST', { expectedDraftRevision: guard.draftRevision })).version; await journal.save();
   }
   await until(() => api(gp), value => {
@@ -272,7 +276,7 @@ export async function provisionTenant(api: Api, flags: Flags, patch: any, journa
   const sourceAfter = await api(`/api/v1/guardrails/${id(sourceId)}`);
   assert.equal(digest(sourceAfter.draftConfig), digest(s.source.draftConfig), 'Source changed during provisioning');
   s.completedAt = new Date().toISOString(); s.routerRevision = router.activeRevision; await journal.save();
-  return { guardrailId: s.guardId, sourceGuardrailId: sourceId, version: s.version, validationId: s.validationId, endpointId: s.endpoint.id, adapter, routerId: s.routerId, routerRevision: s.routerRevision, changeId: s.changeId, rollout: router.rolloutStatus, credentialSaved: Boolean(s.endpoint.credential) };
+  return { guardrailId: s.guardId, sourceGuardrailId: sourceId ?? null, profileId: profileId ?? null, version: s.version, endpointId: s.endpoint.id, adapter, routerId: s.routerId, routerRevision: s.routerRevision, changeId: s.changeId, rollout: router.rolloutStatus, credentialSaved: Boolean(s.endpoint.credential) };
 }
 
 export async function runConfiguration(plane: 'platform' | 'tenant', args: string[], defaultUrl: string): Promise<void> {

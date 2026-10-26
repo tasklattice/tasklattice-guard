@@ -15,7 +15,7 @@ const context = env.HELM_CONTEXT ?? "orbstack";
 const guardRelease = env.GUARD_DEV_RELEASE_NAME ?? "tali-guard";
 const secretName = env.LITELLM_GUARD_SECRET ?? "tali-litellm-dev-guard";
 const resourceName = env.LITELLM_GUARD_RESOURCE_NAME ?? "litellm-dev";
-const guardrailId = env.LITELLM_GUARD_GUARDRAIL_ID ?? "guardrail-default";
+let guardrailId = env.LITELLM_GUARD_GUARDRAIL_ID;
 let cookie = "";
 const log = (stage, value = {}) => console.error(JSON.stringify({ stage, ...value }));
 
@@ -111,6 +111,11 @@ async function writeSecret(apiBase, apiKey) {
 
 try {
   await signIn();
+  if (!guardrailId) {
+    const candidates = (await api("/api/v1/guardrails")).result.items.filter(item => item.name === "Default");
+    if (candidates.length !== 1) throw new Error("Set LITELLM_GUARD_GUARDRAIL_ID to an existing Guardrail ID.");
+    guardrailId = candidates[0].id;
+  }
   const guardrail = (await api(`/api/v1/guardrails/${guardrailId}`)).result;
   // Pin the requested version, or the newest released version, in this Router.
   const version = env.LITELLM_GUARD_GUARDRAIL_VERSION

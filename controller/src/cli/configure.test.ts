@@ -72,19 +72,19 @@ describe('guardctl configuration', () => {
     expect(await bindModel(api, { binding: 'content_safety.input', 'model-id': 'jev' }, journal())).toMatchObject({ activeRevision: 'first', previousModelId: null });
   });
 
-  it('duplicates Default and patches only the copy; failed tests prevent routing', async () => {
+  it('duplicates an explicit source and preserves the copy after a compilation failure', async () => {
     const source = { id: 'guardrail-default', draftRevision: 1, draftConfig: { policyBindings: ['local'], outputDelivery: 'full_buffered' }, runtimeProfile: 'auto' };
     const calls: any[] = [];
     const api: Api = async (path, method = 'GET', body) => {
       calls.push({ path, method, body });
       if (path.endsWith('/duplicate')) return { ...source, id: 'copy' };
-      if (path.endsWith('/test-runs')) return { id: 'validation' };
+      if (path.endsWith('/publish')) throw Error('Compilation failed');
       if (path.includes('/test-runs/')) return { status: 'failed' };
       if (method === 'PATCH') return { ...source, ...body, id: 'copy', draftRevision: 2 };
       return path.endsWith('/copy') ? { ...source, id: 'copy' } : source;
     };
     const j = journal();
-    await expect(provisionTenant(api, { name: 'Test', 'emergency-reason': 'Authorized test' }, { draftConfig: { policyBindings: ['model'] } }, j)).rejects.toThrow('Guardrail validation failed');
+    await expect(provisionTenant(api, { name: 'Test', source: 'guardrail-default', 'emergency-reason': 'Authorized test' }, { draftConfig: { policyBindings: ['model'] } }, j)).rejects.toThrow('Compilation failed');
     expect(calls.find(c => c.path.endsWith('/duplicate')).body).toMatchObject({ sourceDraftRevision: 1 });
     expect(calls.find(c => c.method === 'PATCH')).toMatchObject({ path: '/api/v1/guardrails/copy', body: { draftConfig: { policyBindings: ['model'], outputDelivery: 'full_buffered' }, expectedDraftRevision: 1 } });
     expect(calls.some(c => c.path.includes('routers') || c.path.includes('emergency-apply'))).toBe(false);
@@ -114,13 +114,36 @@ describe('guardctl configuration', () => {
       if (path.endsWith('/router')) return structuredClone(router);
       throw Error(`Unexpected API: ${method} ${path}`);
     };
-    const flags = { name: 'Copy', 'emergency-reason': 'Authorized local regression' }, j = journal();
+    const flags = { name: 'Copy', source: 'guardrail-default', 'emergency-reason': 'Authorized local regression' }, j = journal();
     const result = await provisionTenant(api, flags, {}, j);
     expect(result).toMatchObject({ sourceGuardrailId: 'guardrail-default', guardrailId: 'copy', rollout: 'active', credentialSaved: true });
     expect(JSON.stringify(result)).not.toContain('private-endpoint-key');
+    expect(calls.some(c => c.path.includes('test-runs'))).toBe(false);
     const mutations = calls.filter(c => c.method !== 'GET').length;
     await provisionTenant(api, flags, {}, j);
     expect(calls.filter(c => c.method !== 'GET')).toHaveLength(mutations);
     expect(calls.filter(c => c.path.endsWith('/emergency-apply'))).toHaveLength(1);
   });
+  it('creates from the pinned Profile and resumes compilation without another creation or test', async () => {
+    const profile = { id: 'local-baseline', version: '1.0.0', runtimeProfile: 'auto', availability: { available: true },
+      draftSettings: { outputDelivery: 'full_buffered' }, policyBindings: ['local'] };
+    let guard: any;
+    const calls: any[] = [];
+    const api: Api = async (path, method = 'GET', body) => {
+      calls.push({ path, method, body });
+      if (path === '/api/v1/guardrail-profiles') return { items: [profile] };
+      if (path === '/api/v1/guardrails' && method === 'POST') { guard = { ...body, id: 'profile-copy', draftRevision: 1, versions: [] }; return structuredClone(guard); }
+      if (path.endsWith('/profile-copy')) { if (method === 'PATCH') guard = { ...guard, ...body, draftRevision: 2 }; return structuredClone(guard); }
+      if (path.endsWith('/publish')) throw Error('Compiler temporarily unavailable');
+      throw Error(`Unexpected API: ${method} ${path}`);
+    };
+    const flags = { name: 'From Profile', 'emergency-reason': 'Local regression' }, state = journal();
+    for (let retry = 0; retry < 2; retry++) await expect(provisionTenant(api, flags, {}, state)).rejects.toThrow('Compiler temporarily unavailable');
+    const creates = calls.filter(call => call.method === 'POST' && call.path === '/api/v1/guardrails');
+    expect(creates).toHaveLength(1);
+    expect(creates[0].body).toMatchObject({ idempotencyKey: expect.any(String), draftConfig: { profileOrigin: { id: 'local-baseline', version: '1.0.0' } } });
+    expect(calls.filter(call => call.path.endsWith('/publish'))).toHaveLength(2);
+    expect(calls.some(call => call.path.includes('test-runs') || call.path.includes('guardrail-default'))).toBe(false);
+  });
+
 });

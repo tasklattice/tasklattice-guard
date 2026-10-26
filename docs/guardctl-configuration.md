@@ -78,12 +78,12 @@ includes `previousModelId`. After comparison, bind that ID with a **new** state
 file (for example `restore-nvidia.json`); this validates and restores only the
 selected binding. Do not run tests during activation.
 
-## Tenant: duplicate Default and publish a test Endpoint
+## Tenant: create from a Profile and publish a test Endpoint
 
 ```sh
 bin/guardctl tenant provision \
   --url http://localhost:38081 --env-file .local-secrets/guardctl.env \
-  --name 'HarmBench Content Safety' --source guardrail-default \
+  --name 'HarmBench Content Safety' --profile local-baseline \
   --patch docs/examples/content-safety-input.json \
   --state .local-secrets/harmbench-endpoint.json \
   --adapter litellm-generic-guardrail \
@@ -93,9 +93,11 @@ bin/guardctl tenant provision \
 The example patch keeps only model-backed input Content Safety in the copy.
 This isolates model behavior from earlier local or jailbreak checks. For a
 different deployment, provide a JSON patch with `draftConfig` and optional
-`runtimeProfile`; top-level `draftConfig` fields are merged with the copied
-Default, while arrays such as `policyBindings` are replaced in full. Default
-itself is not edited. Validation must pass before publication and routing.
+`runtimeProfile`; top-level `draftConfig` fields are merged with the pinned
+Profile, while arrays such as `policyBindings` are replaced in full. Use
+`--source GUARDRAIL_ID` instead to duplicate an existing draft. Publication
+compiles without running tests; compilation errors are retryable using the same
+state file. Tests never gate publication. Runtime dependencies still apply.
 
 Use `--adapter f5-scan` for an F5 Endpoint. The result returns the Endpoint,
 Guardrail version, Router revision, and rollout status. Connect Veritas to:
@@ -116,8 +118,8 @@ audit trail; it does not impersonate another approver or skip validation.
 
 ## Resume and failure behavior
 
-Repeat the same command and state file to resume after interruption. Source
-revision, duplicate idempotency key, validation, publication, and change-request
+Repeat the same command and state file to resume after interruption. Profile or source
+revision, creation idempotency key, publication, and change-request
 identities are retained. A completed operation verifies live state and does not
 create another copy. The CLI stops on stale or conflicting changes and returns
 a nonzero exit code. It never silently applies a pending request with a different
