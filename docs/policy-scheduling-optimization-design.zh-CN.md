@@ -12,6 +12,10 @@
 
 测试失败仍可发布。报告如实记录失败，发布独立检查产物是否能够编译；签名、固定版本和执行环境有效性检查继续有效。
 
+### 1.1 收益与成本现状
+
+调度只节省"决策前的检查数"，不承诺本地墙钟时间：`scripts/benchmark_scheduling.py` 用真实 Controller 编译、真实 Runner 离线执行，报告每种场景在 `block-first` 与作者序下的检查执行数与 p50/p95。当前本地实测：命中 Block 的最坏场景由 2 个检查降到 1 个；纯只读计划不变（1 = 1）；`full` 模式把阻塞请求从 1 个检查升到 3 个。**模型级延迟、token 成本与并行收益仍未测量**，需要 provider 实测后才能对外声明。详见 [`policy-scheduling-benchmark.md`](./policy-scheduling-benchmark.md)。
+
 ## 2. 原实现的缺口与修复
 
 | 缺口 | 修复 |
@@ -33,7 +37,8 @@ Controller 在调度前为每个 step 写入：
 [["precedence", "0"], ["evaluation_view", "original"]]
 ```
 
-- `precedence` 是作者顺序，调度不能改写它。NeMo 编译入口要求每个 step 恰好声明一次，使用非负整数的规范十进制字符串，且全计划唯一；缺失、重复键、负数、小数、非数字、前导零和重复值均拒绝。它可以与执行顺序不同，不要求连续。
+- `precedence` 是作者顺序，调度不能改写它；它可以与执行顺序不同，不要求连续。
+- 两个参数的校验规则只在一个地方实现，本文件不复制其枚举：`NeMoConfigCompiler.compile()`（编译期）与 `NeMoActionBridge._declared_view()`（执行期），负向用例见 `tests/control_plane/test_ordered_execution.py`。
 - 每个 step 必须声明且只能声明一个 `evaluation_view`，值为 `original` 或 `previous_output`；缺失、重复或未知值直接报错。自定义 Flow 的绑定由编译器明确写为 `previous_output`。
 - 只读 Block / Allow 检查看本阶段输入 `original`。
 - Transform 和继承 Transform 前置依赖的步骤看 `previous_output`。
