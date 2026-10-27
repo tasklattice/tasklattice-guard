@@ -6,6 +6,8 @@ import { createTestDatabase } from "../db/postgres-test-database.js";
 import { ControlPlaneService } from "./control-plane.js";
 import { profileDraft } from "../policy-catalog/presets.js";
 import { fullFeatureBaseline } from "../../shared/full-feature-baseline.js";
+import { publishedProtectionCoverage } from "../domain/protection-readiness.js";
+import { buildGuardrailPlan } from "../domain/guardrail-plan.js";
 
 const url = process.env.GUARD_TEST_POSTGRES_URL;
 describe.skipIf(!url)("Full-feature Profile creation and deletion", () => {
@@ -32,6 +34,8 @@ describe.skipIf(!url)("Full-feature Profile creation and deletion", () => {
     const created = await service.createGuardrail({ name: "Full feature", draftConfig: config, runtimeProfile: "auto", actorId: "admin" });
     const stored = await service.getGuardrail(created.id);
     expect(stored.draftConfig).toEqual(config);
+    expect(stored.draftConfig.profileOrigin?.version).toBe("2.0.0");
+    expect(stored.draftConfig.policyBindings).toHaveLength(14);
     expect((await service.listTestCases(created.id)).length).toBeGreaterThan(500);
     const reduced = structuredClone(stored.draftConfig);
     reduced.policyBindings = reduced.policyBindings.filter(binding => binding.policyId !== "local-government-identifiers");
@@ -42,6 +46,21 @@ describe.skipIf(!url)("Full-feature Profile creation and deletion", () => {
     const tests = await service.listTestCases(created.id);
     expect(tests.some(test => test.sourcePolicyId === "local-government-identifiers")).toBe(false);
     expect(tests.some(test => test.sourcePolicyId === "local-contact-data")).toBe(true);
+  });
+  it("removes model Policies and cross-policy references before creation without losing boundary tests", async () => {
+    const config = await draft();
+    const removed = ["builtin-pii", "builtin-topic-safety", "builtin-content-safety", "builtin-jailbreak-strict", "local-government-identifiers"];
+    config.policyBindings = config.policyBindings.filter(binding => !removed.includes(binding.policyId));
+    await service.previewGuardrailPlan({ draftConfig: config, runtimeProfile: "auto" });
+    const created = await service.createGuardrail({ name: "Local subset", draftConfig: config, runtimeProfile: "auto", actorId: "admin" });
+    const saved = await service.getGuardrail(created.id);
+    const plan = buildGuardrailPlan({ guardrailId: created.id, guardrailVersion: "test", draft: saved.draftConfig, policies: await service.listPolicies() });
+    expect(publishedProtectionCoverage(plan)?.requiredModelBindings).toEqual([]);
+    const tests = await service.listTestCases(created.id);
+    expect(tests.some(test => removed.includes(test.sourcePolicyId!))).toBe(false);
+    expect(tests.some(test => test.sourcePolicyId === "builtin-memory-poisoning" && test.targetSource === "tool_output")).toBe(true);
+    expect(tests.some(test => test.sourcePolicyId === "builtin-indirect-prompt-injection" && test.targetSource === "retrieved_content")).toBe(true);
+    expect(Object.keys(saved.draftConfig.policyBindings.find(binding => binding.policyId === "local-contact-data")!.testCaseOverrides!)).toHaveLength(25);
   });
   it("reconciles deletion before first save and isolates an unavailable Profile", async () => {
     const config = await draft();

@@ -7,6 +7,9 @@ import { DeclarativeCompiler } from "../policy-studio/declarative.js";
 import { profileDraft, previewProtectionProfile } from "./presets.js";
 import { buildGuardrailPlan, normalizeGuardrailDraft } from "../domain/guardrail-plan.js";
 import { applyValidationOverrides, generatedTestCases, reconcileValidationOverrides } from "../domain/validation.js";
+import { publishedProtectionCoverage } from "../domain/protection-readiness.js";
+import { selectedModelDependencies } from "../../src/lib/protection-dependencies.js";
+import type { GuardrailPolicyBinding, Policy } from "../../src/lib/api-types.js";
 const directory = resolve("../runner/toolkit/policy_library/assets");
 const compiler = new DeclarativeCompiler(directory);
 const catalog = PolicyCatalog.load(directory).list().map(policy => {
@@ -20,21 +23,21 @@ const reconcile = (draft: ReturnType<typeof fresh>, reference = fresh()) => {
   return applyValidationOverrides(cases(draft), draft);
 };
 
-it("pins the benchmark configuration and executable model parameters without instance resources", () => {
+it("pins the expanded benchmark-family configuration without instance resources", () => {
   const draft = fresh();
-  expect(draft.profileOrigin).toEqual({ id: "full-feature-baseline", version: "1.0.0" });
+  expect(draft.profileOrigin).toEqual({ id: "full-feature-baseline", version: "2.0.0" });
   expect(normalizeGuardrailDraft(draft)).toEqual(draft);
   expect(draft.outputDelivery).toBe("full_buffered");
-  expect(draft.topicControlMode).toBe("strict");
-  expect(draft.policyBindings).toHaveLength(8);
-  expect(draft.policyBindings.flatMap(binding => binding.enabledRuleIds)).toHaveLength(77);
+  expect(draft.topicControlMode).toBe("permissive");
+  expect(draft.policyBindings).toHaveLength(14);
+  expect(draft.policyBindings.flatMap(binding => binding.enabledRuleIds)).toHaveLength(127);
   expect(draft.policyBindings.flatMap(binding => Object.keys(binding.testCaseOverrides ?? {}))).toHaveLength(106);
   const plan = buildGuardrailPlan({ guardrailId: "baseline", guardrailVersion: "1", draft, policies: catalog });
   const steps = plan.steps as Array<{ contract_ref: string; parameters: Array<[string, string]>; phases: string[] }>;
   const jailbreak = steps.find(step => step.contract_ref === "tali.guard.jailbreak.v1")!;
   expect(jailbreak.parameters).toContainEqual(["on_unknown", "block"]);
   expect(jailbreak.phases).toEqual(["input"]);
-  expect(steps.filter(step => step.contract_ref === "tali.guard.content-safety.v1")).toHaveLength(1);
+  expect(steps.filter(step => step.contract_ref === "tali.guard.content-safety.v1").flatMap(step => step.phases)).toEqual(["input", "output"]);
   expect(() => applyValidationOverrides(cases(draft), draft)).not.toThrow();
   expect(catalog.find(policy => policy.id === "builtin-jailbreak-strict")!.protection.modelCapabilities).toEqual(["jailbreak"]);
 });
@@ -74,12 +77,64 @@ it("cleans inherited overlays when any covered Rule or Rail is deselected", () =
       binding.ruleOrder = binding.ruleOrder!.filter(id => id !== rule);
       expect(() => reconcile(draft), `${binding.policyId}/${rule}`).not.toThrow();
     }
-    if (original.enabledRails.length > 1) {
+    for (const rail of original.enabledRails.length > 1 ? original.enabledRails : []) {
       const draft = fresh();
-      draft.policyBindings.find(item => item.policyId === original.policyId)!.enabledRails = ["output"];
+      draft.policyBindings.find(item => item.policyId === original.policyId)!.enabledRails = [rail];
       expect(() => reconcile(draft)).not.toThrow();
     }
   }
+});
+
+const dependencies = (draft: ReturnType<typeof fresh>) => {
+  const plan = buildGuardrailPlan({ guardrailId: "baseline", guardrailVersion: "1", draft, policies: catalog });
+  const bindings = draft.policyBindings.map(binding => ({ policy_id: binding.policyId, policy_version: binding.policyVersion,
+    enabled_rule_ids: binding.enabledRuleIds, enabled_rails: binding.enabledRails })) as GuardrailPolicyBinding[];
+  const ui = selectedModelDependencies(bindings, catalog as unknown as Policy[]);
+  expect(ui.unknownPolicies).toEqual([]);
+  expect(publishedProtectionCoverage(plan)?.hasUnknownDependencies).toBe(false);
+  const backend = publishedProtectionCoverage(plan)!.requiredModelBindings.sort();
+  expect(ui.required.map(item => item.id).sort()).toEqual(backend);
+  return backend;
+};
+
+it("resolves six directional model assignments and drops only removed dependencies", () => {
+  const draft = fresh();
+  expect(dependencies(draft)).toEqual([
+    "content_safety.input", "content_safety.output", "jailbreak.input",
+    "pii_semantic.input", "pii_semantic.output", "topic_control.input",
+  ]);
+  draft.policyBindings.find(binding => binding.policyId === "builtin-content-safety")!.enabledRails = ["input"];
+  draft.policyBindings.find(binding => binding.policyId === "builtin-pii")!.enabledRails = ["output"];
+  draft.policyBindings = draft.policyBindings.filter(binding => binding.policyId !== "builtin-topic-safety");
+  expect(dependencies(draft)).toEqual(["content_safety.input", "jailbreak.input", "pii_semantic.output"]);
+  const reduced = reconcile(draft);
+  expect(reduced.some(test => test.sourcePolicyId === "builtin-content-safety" && test.phase === "output")).toBe(false);
+  expect(reduced.some(test => test.sourcePolicyId === "builtin-pii" && test.phase === "input")).toBe(false);
+  expect(reduced.some(test => test.sourcePolicyId === "builtin-topic-safety")).toBe(false);
+  draft.policyBindings = draft.policyBindings.filter(binding => !["builtin-content-safety", "builtin-pii", "builtin-jailbreak-strict"].includes(binding.policyId));
+  expect(dependencies(draft)).toEqual([]);
+  expect(() => reconcile(draft)).not.toThrow();
+});
+
+it("enables injection and memory boundaries with real source contexts and a filled denylist", () => {
+  const draft = fresh();
+  const tests = reconcile(draft);
+  for (const id of ["local-injection-protection", "builtin-indirect-prompt-injection", "builtin-memory-poisoning", "local-data-use-boundaries"]) {
+    expect(draft.policyBindings.some(binding => binding.policyId === id)).toBe(true);
+    expect(tests.some(test => test.sourcePolicyId === id)).toBe(true);
+  }
+  for (const id of ["builtin-indirect-prompt-injection", "builtin-memory-poisoning"]) {
+    const boundaries = tests.filter(test => test.sourcePolicyId === id);
+    expect(boundaries.some(test => test.targetSource === "retrieved_content")).toBe(true);
+    expect(boundaries.some(test => test.targetSource === "tool_output")).toBe(true);
+  }
+  expect(tests.some(test => test.sourcePolicyId === "builtin-content-safety" && test.phase === "output")).toBe(true);
+  const topic = draft.policyBindings.find(binding => binding.policyId === "builtin-topic-safety")!;
+  expect(topic.enabledRuleIds).toEqual(["topic/denylist"]);
+  expect(topic.parameterValues.allowed_topics).toBe("");
+  expect(topic.parameterValues.denied_topics.split("\n")).toHaveLength(6);
+  expect(tests.filter(test => test.sourcePolicyId === topic.policyId)).toHaveLength(6);
+  expect(tests.filter(test => test.sourcePolicyId === topic.policyId).every(test => !test.content.includes("{{"))).toBe(true);
 });
 
 it("rejects edited, unavailable and stale overrides instead of dropping assertions", () => {

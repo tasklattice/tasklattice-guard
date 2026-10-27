@@ -31,6 +31,7 @@ describe.skipIf(!url)("Database-backed Guardrail Profiles", () => {
     await pool.query(readFileSync(new URL("../db/migrations/0049_full_feature_baseline.sql", import.meta.url), "utf8"));
     await pool.query(readFileSync(new URL("../db/migrations/0051_local_baseline_profile.sql", import.meta.url), "utf8"));
     await pool.query(readFileSync(new URL("../db/migrations/0052_curated_guardrail_profiles.sql", import.meta.url), "utf8"));
+    await pool.query(readFileSync(new URL("../db/migrations/0053_full_feature_baseline_v2.sql", import.meta.url), "utf8"));
   });
   afterAll(async () => {
     await pool?.end();
@@ -60,6 +61,26 @@ describe.skipIf(!url)("Database-backed Guardrail Profiles", () => {
     const row = (await pool.query("SELECT enabled, definition FROM guardrail_profile WHERE id='full-feature-baseline'")).rows[0];
     expect(row.enabled).toBe(false);
     expect(row.definition.name).toBe("Edited baseline");
+  });
+  it("upgrades only the untouched v1 baseline and never re-enables or overwrites custom definitions", async () => {
+    const previous = JSON.parse(readFileSync(new URL("../db/migrations/0049_full_feature_baseline.sql", import.meta.url), "utf8").split("$profiles$")[1]!)[0].definition;
+    const migration = readFileSync(new URL("../db/migrations/0053_full_feature_baseline_v2.sql", import.meta.url), "utf8");
+    await pool.query("BEGIN");
+    try {
+      await pool.query("UPDATE guardrail_profile SET definition=$1, enabled=false WHERE id='full-feature-baseline'", [JSON.stringify(previous)]);
+      await pool.query(migration);
+      const upgraded = (await pool.query("SELECT * FROM guardrail_profile WHERE id='full-feature-baseline'")).rows[0];
+      expect(upgraded).toMatchObject({ enabled: false, definition: { version: "2.0.0" } });
+      await pool.query(migration);
+      expect((await pool.query("SELECT * FROM guardrail_profile WHERE id='full-feature-baseline'")).rows[0]).toEqual(upgraded);
+      const customized = structuredClone(previous);
+      customized.policies.pop();
+      for (const [isDefault, definition] of [[true, customized], [false, previous]] as const) {
+        await pool.query("UPDATE guardrail_profile SET definition=$1, is_default=$2 WHERE id='full-feature-baseline'", [JSON.stringify(definition), isDefault]);
+        await pool.query(migration);
+        expect((await pool.query("SELECT definition FROM guardrail_profile WHERE id='full-feature-baseline'")).rows[0].definition).toEqual(definition);
+      }
+    } finally { await pool.query("ROLLBACK"); }
   });
   it("retires only built-ins and preserves disabled choices, custom rows and replayed state", async () => {
     await pool.query("UPDATE guardrail_profile SET enabled=true WHERE id='claims-assistant'");

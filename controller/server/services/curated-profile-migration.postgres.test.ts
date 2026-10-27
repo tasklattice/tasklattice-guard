@@ -16,7 +16,10 @@ import { readGuardrailProfiles } from "./guardrail-profiles.js";
 import { defaultGuardrailProfiles } from "../../shared/guardrail-profiles.js";
 
 const url = process.env.GUARD_TEST_POSTGRES_URL;
-describe.skipIf(!url)("Retiring built-in Profiles on an existing installation", () => {
+describe.skipIf(!url).each([
+  ["0052_curated_guardrail_profiles", "claims-assistant", 16],
+  ["0053_full_feature_baseline_v2", "full-feature-baseline", 5],
+] as const)("Profile migration %s preserves existing %s Guardrails", (migration, sourceId, profileCount) => {
   let database: Awaited<ReturnType<typeof createTestDatabase>>;
   let service: ControlPlaneService;
   let guardrailId: string;
@@ -51,7 +54,7 @@ describe.skipIf(!url)("Retiring built-in Profiles on an existing installation", 
     keys = mkdtempSync(join(tmpdir(), "guard-profile-upgrade-"));
     writeFileSync(join(keys, "private.pem"), generateKeyPairSync("ed25519").privateKey.export({ type: "pkcs8", format: "pem" }));
     database = await createTestDatabase(url!, "profile_upgrade", async (tag, pool) => {
-      if (tag !== "0052_curated_guardrail_profiles") return;
+      if (tag !== migration) return;
       const db = drizzle(pool, { schema });
       service = new ControlPlaneService(db, loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: url!,
         CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: join(keys, "private.pem"),
@@ -61,9 +64,9 @@ describe.skipIf(!url)("Retiring built-in Profiles on an existing installation", 
       await pool.query("INSERT INTO auth_user (id,name,email,role) VALUES ('admin','Admin','admin@example.test','admin')");
       await service.initialize();
       const oldProfiles = await readGuardrailProfiles(db);
-      expect(oldProfiles).toHaveLength(16);
-      const retired = oldProfiles.find(profile => profile.id === "claims-assistant")!;
-      const created = await service.createGuardrail({ name: "Existing claims Guardrail", runtimeProfile: "auto", actorId: "admin",
+      expect(oldProfiles).toHaveLength(profileCount);
+      const retired = oldProfiles.find(profile => profile.id === sourceId)!;
+      const created = await service.createGuardrail({ name: "Existing Profile Guardrail", runtimeProfile: "auto", actorId: "admin",
         draftConfig: profileDraft(retired, await service.listPolicies()) });
       guardrailId = created.id;
       publishedVersion = await failTestsAndPublish(pool);
@@ -82,7 +85,7 @@ describe.skipIf(!url)("Retiring built-in Profiles on an existing installation", 
     expect(await snapshots(database.pool)).toEqual(before);
 
     const stored = await service.getGuardrail(guardrailId);
-    expect(stored.draftConfig.profileOrigin).toEqual({ id: "claims-assistant", version: "1.0.0" });
+    expect(stored.draftConfig.profileOrigin).toEqual({ id: sourceId, version: "1.0.0" });
     const run = await service.requestVersionTestRun({ guardrailId, version: publishedVersion, actorId: "admin" });
     expect(run).toMatchObject({ subject: "version", status: "queued", guardrailVersion: publishedVersion });
     await service.completeValidation({ runId: run.id, status: "failed", metrics: emptyValidationMetrics(run.metrics.total), results: [] });
