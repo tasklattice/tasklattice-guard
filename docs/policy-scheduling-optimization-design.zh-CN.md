@@ -23,6 +23,7 @@
 | 精确/语义步骤共享参数数组，追加元数据相互污染 | 每个 step 分配独立参数数组，precedence 唯一且不重复 |
 | 缺少 evaluation_view 时静默使用线程化文本 | 编译和执行要求明确且唯一的视图；Controller 与 Runner 采用统一契约，不做新旧能力协商 |
 | 不变性测试只跑两个顺序，且有 `or True` 无效断言 | 三种不同合法顺序，严格比较决策、输出、证据和测试结论；无恒真断言 |
+| full 中无关检查失败，否定已经明确命中的目标 Block | 分开 Rule 验收与组合可用性；保留执行错误，在通过的 Rule 用例上显示告警 |
 
 ## 3. 计划、调度与视图
 
@@ -99,6 +100,16 @@ Controller 在调度前为每个 step 写入：
 
 override 不会使已删除、禁用、版本不符的目标变得有效。也不能根据实际结果自动生成期望值。
 
+### 5.2 Rule 验收与组合可用性
+
+对支持完整证据的计划，已有终态 `matched + block` 时，最终 Block 的原因是 Policy 命中，`usage.fail_closed=false`。其他检查的错误、超时仍保留在 trace 和 assessments，不再反写为该 Block 的原因。只有 unknown、未完成的 exact/semantic 链或 Runtime 本身失败时，不能使用这个规则。
+
+`rule_acceptance` 用例在全部固定目标均有效、使用 `original` 视图、目标终态匹配且依赖未失败时，可以通过 Rule 验收，即使独立检查失败。错误发生在目标之前或之后，结论相同；同一 Policy 的其他独立 Rule 也适用。用例仍携带 `actualFailure`，`evidenceDetail` 说明组合可用性未经认证，Dashboard 显示“Rule 验收通过，组合执行未完整成功”及执行告警数量。它不会显示成无错误的完整执行。
+
+目标自身、依赖步骤或 Runtime 错误，目标缺失、未匹配或版本不符，仍不能通过。`previous_output` 目标、`scenario`、未声明类型的自定义用例和 expectation override 继续采用严格的组合执行断言；显式 `expectedFailure` 按指定故障类型验收。原有决策、完整输出和 reasoning 断言仍然生效，不能靠执行告警绕过。组合场景可以同时记录 `ruleContractSatisfied=true` 和 `passed=false`，表示检测命中但组合执行失败。
+
+Scan 继续检查整个扫描的执行完整性；即便 Block 来自真实命中、`fail_closed=false`，其他检查错误仍返回执行错误。上述 Rule 验收范围不会改变 Scan 的 HTTP 契约，也不改变测试失败仍可发布的规则。
+
 ## 6. 统一契约与产物标识
 
 Controller 与 Runner 按同一套契约部署，不支持混合旧版本。编译、测试、加载和 desired-state 分发不再协商显式视图能力标签；Runtime 不根据计划版本选择另一套执行语义。**加载前仍必须检查产物契约**：这是明确拒绝不支持的输入，不是新旧能力协商或语义兜底。完整证据支持范围仅由执行类型决定：完整缓冲且没有任意自定义流。
@@ -154,6 +165,7 @@ Default、full-feature-baseline 和普通用户创建的 Guardrail 使用同一�
 - 升级加载：冻结提交 `1df5c899` 中真实的旧签名 Artifact（`tests/fixtures/unsupported-artifacts/pre-v16-local-secrets`），验证签名和 checksum 有效且缺少视图，再验证环境检查、apply/admit/verify、NACK、旧缓存重启和已发布版本复测均拒绝。夹具不经过当前编译器重建。另测当前标识下的视图缺失、重复、无效值，以及原有效 release 不被失败更新替换。
 - 升级恢复：PostgreSQL 覆盖过期 `compatible` 缓存、被 Router 引用的旧产物保留至分发 gate、未修改草稿重新发布生成新版本、原 Artifact/失败报告不被改写，以及新版本重复发布的幂等性。
 - Scan 执行范围：`test_scan_evidence_scope.py` 用真实 Controller 混合动作计划和 NeMo 执行，比较 `interventions` 命中 Block 后只执行一个 Action、HTTP Scan 继续执行 Block/Transform/Allow 三个 Action。覆盖 request/response、`flagOnly`/`verbose` 组合、未知范围字段不能覆盖契约、完整命中证据保留、Block 不交付回答，以及后续 Action 失败返回 `503`。这是确定性执行回归，不是实际模型延迟或费用测量。
+- 独立故障：`test_full_evidence_failures.py` 用真实 Controller / NeMo，在同一 Policy 和跨 Policy、input/output、目标前后分别注入异常、超时和 error verdict。明确 Block 不变成 fail-closed；目标 Rule 通过并保留执行告警，自身故障、缺失、依赖失败、未命中、组合场景和审阅约定仍失败；`expectedFailure` 必须匹配实际故障。
 - 前端：真实桌面页面展开报告，部分命中显示 Rule 不匹配；满足组合约定的决策失败不会再误报 Rule 不匹配。
 
 本次清理后的本机验证记录（2026-10-27）：
@@ -175,11 +187,14 @@ Controller 初次运行有三个套件因临时 PostgreSQL 缺少 public schema 
 
 这些测试不是模型准确率评估。生产 p95、取消率、调用费用和随机模型的重复稳定性尚未测量。
 
+独立故障修复的补充验证（2026-10-27）：198 项定向 Python 回归通过（含新增边界及协议往返复测），数据面与端到端 1088 passed / 12 skipped，Controller 定向 61 passed，类型检查通过。真实桌面报告验证了通过筛选、执行告警和错误追踪；目标自身失败及组合场景仍显示失败。上一轮 CI 的两个 desired-state 测试夹具已补充当前编译契约字段，并通过定向回归。
+
 ### 8.3 复现命令
 
 ```sh
 .venv/bin/python -m pytest -q \
   tests/control_plane/test_schedule_invariance.py \
+  tests/control_plane/test_full_evidence_failures.py \
   tests/control_plane/test_validation_expectations.py \
   tests/control_plane/test_parallel_checks.py
 

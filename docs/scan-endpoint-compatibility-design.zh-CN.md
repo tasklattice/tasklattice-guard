@@ -359,6 +359,8 @@ HTTP 响应增加 `X-TaskLattice-Scan-Compatibility: v1` 和 `X-Request-ID: <sca
 
 本 Scan 兼容层选择严格的评测语义：即使底层允许 fail-open，只要必需检查失败、结果未知或覆盖不足，本次也报告执行错误。底层因基础设施错误而 fail-closed 的 block 同样属于执行错误，不包装成“检测命中”的 `blocked`。有明确策略短路证据的正常内容阻断不算执行失败，未到达的后续规则不得伪造为 passed。
 
+full 模式中，真实终态 Block 可以使 Runtime 的 `usage.fail_closed=false`，同时保留其他检查的错误。Scan 仍检查 assessments / trace 的执行状态，不能只凭该标志或最终 Block 返回成功。Validation 的单 Rule 验收可以把独立错误显示为告警；Scan 不采用这个验收范围。
+
 | HTTP 状态 | 条件 |
 | --- | --- |
 | `401` | 缺失、无效、撤销、Endpoint 已停用并从 Runner 配置移除，或与路径中 Endpoint 不匹配的 Bearer 凭据；返回 `WWW-Authenticate: Bearer` |
