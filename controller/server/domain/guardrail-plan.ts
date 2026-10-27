@@ -1,4 +1,5 @@
 import { activePolicyParameters, policyBindingParameterIssues, resolveModelRuleParameters } from "../../shared/policy-parameters.js";
+import { PLAN_COMPILER_VERSION } from "./artifact-execution-contract.js";
 import type { PolicyDto } from "../policy-catalog/catalog.js";
 import type { ProgrammablePolicySnapshot } from "../policy-studio/model.js";
 import { flowRuleId } from "../policy-studio/model.js";
@@ -384,7 +385,7 @@ export function buildGuardrailPlan(input: {
   return {
     guardrail_id: input.guardrailId,
     guardrail_version: input.guardrailVersion,
-    compiler_version: "tasklattice-controller-plan-v16-explicit-views",
+    compiler_version: PLAN_COMPILER_VERSION,
     topic_control_mode: draft.topicControlMode ?? "strict",
     safety_level: draft.safetyLevel,
     output_delivery: draft.outputDelivery,

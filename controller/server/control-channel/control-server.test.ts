@@ -8,6 +8,7 @@ import type { ControllerMetrics } from "../metrics.js";
 import type { ModelConfigurationService } from "../model-config/service.js";
 import type { ControlPlaneService } from "../services/control-plane.js";
 import { RunnerControlServer } from "./control-server.js";
+import { PLAN_COMPILER_VERSION, NEMO_COMPILER_VERSION } from "../domain/artifact-execution-contract.js";
 
 const config = loadConfig({
   NODE_ENV: "test",
@@ -113,7 +114,7 @@ describe("Runner model-configuration convergence", () => {
     const stream = streamMock();
     const connection = await handle(server, stream, registration("runner"), null);
     const artifact = { id: "artifact", generation: 1, checksum: "digest", signature: "signature", guardrailId: "guard", guardrailVersion: "20261026-030000.000Z",
-      compilerVersion: "test", nemoVersion: "test", runtimeProfile: "auto", plan: { guardrail_version: "20261026-030000.000Z", safety_level: "strict", output_delivery: "full_buffered" }, configYaml: "", colangContent: "", prompts: [], actionBindings: [], dependencyManifest: [] };
+      compilerVersion: NEMO_COMPILER_VERSION, nemoVersion: "test", runtimeProfile: "auto", plan: { compiler_version: PLAN_COMPILER_VERSION, guardrail_version: "20261026-030000.000Z", safety_level: "strict", output_delivery: "full_buffered" }, configYaml: "", colangContent: "", prompts: [], actionBindings: [], dependencyManifest: [] };
     stream.write.mockClear();
     expect(await server.checkArtifactAdmission(artifact)).toEqual([expect.objectContaining({ unavailable: true, admitted: false, reason: expect.stringContaining("still applying") })]);
     expect(stream.write).not.toHaveBeenCalled();
@@ -469,11 +470,31 @@ it("compiles independently of tests, correlates the Runner boot, and recovers fr
   expect((server as any).compilations.size).toBe(0);
 });
 
+it("rejects old artifacts before load checks and desired-state dispatch without capability negotiation", async () => {
+  const artifact = { id: "old-artifact", generation: 10, checksum: "digest", signature: "signature", guardrailId: "guard", guardrailVersion: "20261026-010000.000Z",
+    compilerVersion: "tasklattice-nemo-config-v27-staged-checks", nemoVersion: "test", runtimeProfile: "auto",
+    plan: { compiler_version: "tasklattice-controller-plan-v15" }, configYaml: "", colangContent: "", prompts: [], actionBindings: [], dependencyManifest: [] };
+  const service = { ...serviceMock(), desiredStateForPool: vi.fn().mockResolvedValue({ generation: 10, artifacts: [artifact],
+    disabledGuardrailIds: [], disabledEndpointIds: [], endpoints: [], guardrailLoggingLevels: {} }),
+    trafficRouting: { reportRolloutFailure: vi.fn() } };
+  const server = new RunnerControlServer(config, service as unknown as ControlPlaneService, metricsMock() as unknown as ControllerMetrics,
+    { activeConfiguration: vi.fn().mockResolvedValue(null) } as unknown as ModelConfigurationService);
+  const stream = streamMock();
+  await handle(server, stream, registration("runner"), null);
+  expect(stream.write.mock.calls.some(([message]) => message.desiredState)).toBe(false);
+  expect(service.trafficRouting.reportRolloutFailure).toHaveBeenCalledWith(10, "runner", expect.stringContaining("artifact_recompile_required"));
+  stream.write.mockClear();
+  expect(await server.checkArtifactAdmission(artifact)).toEqual([expect.objectContaining({ admitted: false, unavailable: false,
+    reason: expect.stringContaining("Recompile and publish a new Guardrail version") })]);
+  expect(stream.write).not.toHaveBeenCalled();
+  await server.stop();
+});
+
 it("dispatches compilation, tests, load checks and rollout without view capability negotiation", async () => {
   const plan = { guardrail_version: "20261026-010000.000Z", compiler_version: "tasklattice-controller-plan-v16-explicit-views",
     safety_level: "strict", output_delivery: "full_buffered" };
   const artifact = { id: "new-artifact", generation: 10, checksum: "digest", signature: "signature", guardrailId: "guard", guardrailVersion: plan.guardrail_version,
-    compilerVersion: "test", nemoVersion: "test", runtimeProfile: "auto", plan, configYaml: "", colangContent: "", prompts: [], actionBindings: [], dependencyManifest: [] };
+    compilerVersion: NEMO_COMPILER_VERSION, nemoVersion: "test", runtimeProfile: "auto", plan, configYaml: "", colangContent: "", prompts: [], actionBindings: [], dependencyManifest: [] };
   const event = { id: "new-test", createdAt: new Date(), payload: { runId: "new-run", testCases: [], plan } };
   const desired = { generation: 10, artifacts: [artifact], disabledGuardrailIds: [], disabledEndpointIds: [], routers: [], endpoints: [], guardrailLoggingLevels: {} };
   const service = { ...serviceMock(), desiredStateForPool: vi.fn().mockResolvedValue(desired),

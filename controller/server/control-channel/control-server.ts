@@ -1,4 +1,5 @@
 import { PROTECTION_MODE_CAPABILITY } from "../../shared/protection-mode.js";
+import { artifactExecutionContractIssue } from "../domain/artifact-execution-contract.js";
 import { OFFLINE_COMPILATION_CAPABILITY, type ArtifactCompilation } from "../domain/artifact-compilation.js";
 import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
@@ -121,6 +122,7 @@ export class RunnerControlServer {
    * be able to serve it. Check only Runners that applied the current models.
    */
   async checkArtifactAdmission(artifact: SignedArtifact): Promise<PoolAdmission[]> {
+    const contractIssue = artifactExecutionContractIssue(artifact);
     const expectedModelRevisionId = (await this.models.activeConfiguration(true))?.revisionId ?? "";
     const byPool = new Map<string, Connection>();
     for (const connection of this.connections.values()) {
@@ -129,10 +131,14 @@ export class RunnerControlServer {
         byPool.set(connection.poolId, connection);
       }
     }
-    const wire = artifactToWire(artifact);
     return Promise.all([...byPool.values()].map((runner) => new Promise<PoolAdmission>((resolve) => {
       const requestId = randomUUID();
       const unavailable = (reason: string) => ({ poolId: runner.poolId, runnerId: runner.runnerId, admitted: false, unavailable: true, reason, nemoVersion: "", modelRevisionId: "" });
+      if (contractIssue) {
+        resolve({ ...unavailable(contractIssue), unavailable: false });
+        return;
+      }
+      const wire = artifactToWire(artifact);
       if (runner.appliedModelRevisionId !== expectedModelRevisionId) {
         resolve(unavailable("The Runner is still applying the current model assignments. The environment check will retry after synchronization."));
         return;
@@ -530,6 +536,14 @@ export class RunnerControlServer {
       };
       if (connection.lastReconcileGeneration === desired.generation) {
         this.metrics.observeReconcile(connection.poolId, "noop", (performance.now() - started) / 1_000);
+        return;
+      }
+      const unsupported = desired.artifacts.map(artifact => ({ id: artifact.id, reason: artifactExecutionContractIssue(artifact) }))
+        .find(item => item.reason);
+      if (unsupported) {
+        await this.service.trafficRouting?.reportRolloutFailure?.(desired.generation, connection.runnerId,
+          `Artifact ${unsupported.id}: ${unsupported.reason}`);
+        this.metrics.observeReconcile(connection.poolId, "unsupported", (performance.now() - started) / 1_000);
         return;
       }
       const dataBindings = modelConfiguration ? capabilityBindingDefinitions.flatMap((binding) => {

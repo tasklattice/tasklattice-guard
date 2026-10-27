@@ -41,7 +41,7 @@ describe.skipIf(!url).each([
     await service.completeValidation({ runId: run.id, status: "failed", metrics: emptyValidationMetrics(run.metrics.total), results: [],
       failureReason: "Profile migration test fixture", candidateArtifact: {
         guardrailId, guardrailVersion: request.payload.candidateVersion, plan: request.payload.plan,
-        compilerVersion: "profile-migration-test", nemoVersion: "0.24.0", runtimeProfile: "llmrails_colang1_standard",
+        compilerVersion: "tasklattice-nemo-config-v29-single-contract", nemoVersion: "0.24.0", runtimeProfile: "llmrails_colang1_standard",
         configYaml: "models: []\n", colangContent: "", prompts: [], actionBindings: [], dependencyManifest: [],
       } });
     const published = await service.requestGuardrailPublish({ guardrailId, actorId: "admin" });

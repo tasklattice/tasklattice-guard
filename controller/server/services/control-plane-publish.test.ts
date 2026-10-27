@@ -20,10 +20,14 @@ describe("Guardrail publication", () => {
       status: "ready",
       artifactId: "artifact-2",
     };
-    const selectResults = [[guardrail], [readyVersion]];
+    const selectResults = [[guardrail], [{ version: readyVersion, artifact: {
+      plan: { compiler_version: "tasklattice-controller-plan-v16-explicit-views" },
+      compilerVersion: "tasklattice-nemo-config-v29-single-contract", actionBindings: [],
+    } }]];
     const select = vi.fn(() => {
       const builder = {} as Record<string, unknown>;
       builder.from = vi.fn(() => builder);
+      builder.innerJoin = vi.fn(() => builder);
       builder.where = vi.fn(() => builder);
       builder.orderBy = vi.fn(() => builder);
       builder.limit = vi.fn(async () => selectResults.shift() ?? []);

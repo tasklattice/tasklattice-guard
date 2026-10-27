@@ -18,6 +18,7 @@ import { fullFeatureBaseline } from "../../shared/full-feature-baseline.js";
 import { profileDraft } from "../policy-catalog/presets.js";
 import type { ArtifactCompilation } from "../domain/artifact-compilation.js";
 import { parsePackage } from "../domain/guardrail-package.js";
+import { NEMO_COMPILER_VERSION } from "../domain/artifact-execution-contract.js";
 
 const url = process.env.GUARD_TEST_POSTGRES_URL;
 const catalogDir = resolve("../runner/toolkit/policy_library/assets");
@@ -48,7 +49,7 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", () => {
   async function runnerCandidate(runId: string): Promise<ArtifactContent> {
     const { rows: [request] } = await database.pool.query("SELECT payload FROM controller_outbox WHERE id = $1", [runId]);
     return {
-      guardrailId: request.payload.guardrailId, guardrailVersion: request.payload.candidateVersion, compilerVersion: "tasklattice-nemo-config-test",
+      guardrailId: request.payload.guardrailId, guardrailVersion: request.payload.candidateVersion, compilerVersion: "tasklattice-nemo-config-v29-single-contract",
       nemoVersion: "0.24.0", runtimeProfile: "llmrails_colang1_standard", plan: request.payload.plan,
       configYaml: "models: []\n", colangContent: "", prompts: [], actionBindings: [], dependencyManifest: [["action", "local", "1"]],
     };
@@ -439,7 +440,7 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", () => {
   });
 
   function compile(input: ArtifactCompilation): ArtifactContent {
-    return { ...input, compilerVersion: "offline-test", nemoVersion: "0.24.0",
+    return { ...input, compilerVersion: NEMO_COMPILER_VERSION, nemoVersion: "0.24.0",
       runtimeProfile: "llmrails_colang1_standard", configYaml: "models: []\n", colangContent: "",
       prompts: [], actionBindings: [], dependencyManifest: [] };
   }
@@ -530,6 +531,39 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", () => {
     await service.packages.checkVersionEnvironment(guardrail.id, version.version);
     expect((await service.desiredStateForPool("default")).artifacts.some(a => a.guardrailId === guardrail.id)).toBe(true);
     expect((await service.getGuardrail(guardrail.id)).versions[0]).toMatchObject({ status: "ready", environmentCheck: { status: "compatible" } });
+  });
+
+  it("recompiles an unchanged draft after upgrade without reusing old artifacts or test candidates", async () => {
+    const { guardrail, version, run } = await releasedFixture();
+    // Simulate stored metadata from before upgrade, including a stale load result.
+    await database.pool.query("UPDATE guardrail_artifact SET compiler_version='tasklattice-nemo-config-v27-staged-checks' WHERE id=$1", [version.artifactId]);
+    await database.pool.query("UPDATE guardrail_validation_run SET status='failed', candidate_artifact=jsonb_set(candidate_artifact, '{compilerVersion}', '\"tasklattice-nemo-config-v27-staged-checks\"') WHERE id=$1", [run.id]);
+    await database.pool.query("UPDATE guardrail_version SET environment_check='{\"status\":\"compatible\"}' WHERE artifact_id=$1", [version.artifactId]);
+    const original = (await database.pool.query("SELECT * FROM guardrail_artifact WHERE id=$1", [version.artifactId])).rows[0];
+    expect((await service.desiredStateForPool("default")).artifacts.some(a => a.id === version.artifactId)).toBe(false);
+    // Never silently drop a routed protection: the dispatch gate must reject it.
+    const snapshots = vi.spyOn(service.trafficRouting, "runtimeSnapshots").mockResolvedValue([
+      { routes: [{ targets: [{ artifactId: version.artifactId }] }] } as never,
+    ]);
+    expect((await service.desiredStateForPool("default")).artifacts.some(a => a.id === version.artifactId)).toBe(true);
+    snapshots.mockRestore();
+    const compiler = vi.fn(async (input: ArtifactCompilation) => compile(input));
+    service.setArtifactCompiler(compiler);
+    const published = await service.requestGuardrailPublish({ guardrailId: guardrail.id, actorId: "admin", expectedDraftRevision: 1 });
+    expect(compiler).toHaveBeenCalledOnce();
+    expect(published).toMatchObject({ status: "ready" });
+    expect(published.artifactId).not.toBe(version.artifactId);
+    expect((await database.pool.query("SELECT * FROM guardrail_artifact WHERE id=$1", [version.artifactId])).rows[0]).toEqual(original);
+    expect(await service.getValidationRun(run.id)).toMatchObject({ status: "failed" });
+    expect(await service.requestGuardrailPublish({ guardrailId: guardrail.id, actorId: "admin" })).toEqual(published);
+    expect(compiler).toHaveBeenCalledOnce();
+  });
+
+  it("rejects an unsupported compiler result before signing a new publication", async () => {
+    const guardrail = await service.createGuardrail({ name: "Old compiler", draftConfig: defaultGuardrailDraft(PolicyCatalog.load(catalogDir).list()), runtimeProfile: "auto", actorId: "admin" });
+    service.setArtifactCompiler(async input => ({ ...compile(input), compilerVersion: "tasklattice-nemo-config-v27-staged-checks" }));
+    await expect(service.requestGuardrailPublish({ guardrailId: guardrail.id, actorId: "admin" })).rejects.toMatchObject({ code: "artifact_recompile_required" });
+    expect((await service.getGuardrail(guardrail.id)).versions).toEqual([]);
   });
 
 });

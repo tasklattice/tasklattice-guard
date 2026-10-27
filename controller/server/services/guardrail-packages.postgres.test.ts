@@ -75,7 +75,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     const run = await uat.requestValidation({ guardrailId: id, actorId: "admin", compilerAvailable: true });
     const { rows: [request] } = await uatDb.pool.query("SELECT payload FROM controller_outbox WHERE id = $1", [run.id]);
     const candidate: ArtifactContent = {
-      guardrailId: id, guardrailVersion: run.guardrailVersion, compilerVersion: "tasklattice-nemo-config-test", nemoVersion: "0.24.0",
+      guardrailId: id, guardrailVersion: run.guardrailVersion, compilerVersion: "tasklattice-nemo-config-v29-single-contract", nemoVersion: "0.24.0",
       runtimeProfile: "llmrails_colang1_standard", plan: request.payload.plan, configYaml: "models: []\n", colangContent: "",
       prompts: [], actionBindings: [], dependencyManifest: [["action", "GuardContentFilterAction", "1.0.0"]],
     };

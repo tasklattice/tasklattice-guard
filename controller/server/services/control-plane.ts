@@ -1,4 +1,5 @@
 import type { ArtifactCompiler } from "../domain/artifact-compilation.js";
+import { artifactExecutionContractIssue } from "../domain/artifact-execution-contract.js";
 import { writeRuntimeEvent } from "./runtime-event-write.js";
 import { localBaseline } from "../../shared/local-baseline.js";
 import bundledDefault from "../domain/default-baseline.json" with { type: "json" };
@@ -819,11 +820,12 @@ export class ControlPlaneService {
       if (!guardrail) throw new NotFoundError("Guardrail", input.guardrailId);
       if (input.expectedDraftRevision !== undefined && input.expectedDraftRevision !== guardrail.draftRevision)
         throw new ConflictError("Guardrail draft changed. Review the current draft before publishing.", "guardrail_draft_conflict");
-      const [existing] = await tx.select().from(guardrailVersions).where(and(
+      const [existing] = await tx.select({ version: guardrailVersions, artifact: artifacts }).from(guardrailVersions)
+        .innerJoin(artifacts, eq(artifacts.id, guardrailVersions.artifactId)).where(and(
         eq(guardrailVersions.guardrailId, guardrail.id), eq(guardrailVersions.sourceDraftRevision, guardrail.draftRevision),
         eq(guardrailVersions.status, "ready"), eq(guardrailVersions.origin, "local"), isNotNull(guardrailVersions.artifactId),
       )).orderBy(desc(guardrailVersions.createdAt)).limit(1);
-      if (existing) return { existing };
+      if (existing && !artifactExecutionContractIssue(existing.artifact)) return { existing: existing.version };
       await assertGuardrailVersionCapacity(tx, guardrail.id, 1);
       // Reuse frozen executable content when available, including failed tests.
       const [candidate] = await tx.select().from(validationRuns).where(and(
@@ -831,7 +833,8 @@ export class ControlPlaneService {
         eq(validationRuns.sourceDraftRevision, guardrail.draftRevision),
         inArray(validationRuns.status, ["passed", "failed"]), isNotNull(validationRuns.candidateArtifact),
       )).orderBy(desc(validationRuns.createdAt)).limit(1);
-      if (candidate?.candidateArtifact && candidate.candidateInspection && candidate.candidatePolicies && candidate.testSuite)
+      if (candidate?.candidateArtifact && !artifactExecutionContractIssue(candidate.candidateArtifact)
+        && candidate.candidateInspection && candidate.candidatePolicies && candidate.testSuite)
         return { guardrail, candidate };
       const draft = normalizeGuardrailDraft(guardrail.draftConfig);
       const catalog = await this.catalogPolicies(undefined, tx);
@@ -863,12 +866,14 @@ export class ControlPlaneService {
       const [guardrail] = await tx.select().from(guardrails).where(and(eq(guardrails.id, input.guardrailId), isNull(guardrails.deletedAt))).for("update");
       if (!guardrail || guardrail.draftRevision !== candidate.sourceDraftRevision)
         throw new ConflictError("Guardrail draft changed during compilation. Review and publish the current draft.", "guardrail_draft_conflict");
-      // Concurrent/retried publication of one revision produces one version.
-      const [existing] = await tx.select().from(guardrailVersions).where(and(
+      // Concurrent/retried publication reuses only a current executable version.
+      const [existing] = await tx.select({ version: guardrailVersions, artifact: artifacts }).from(guardrailVersions)
+        .innerJoin(artifacts, eq(artifacts.id, guardrailVersions.artifactId)).where(and(
         eq(guardrailVersions.guardrailId, guardrail.id), eq(guardrailVersions.sourceDraftRevision, guardrail.draftRevision),
         eq(guardrailVersions.status, "ready"), eq(guardrailVersions.origin, "local"), isNotNull(guardrailVersions.artifactId),
       )).orderBy(desc(guardrailVersions.createdAt)).limit(1);
-      if (existing) return { guardrailId: guardrail.id, version: existing.version, generation: existing.generation, status: existing.status, artifactId: existing.artifactId };
+      if (existing && !artifactExecutionContractIssue(existing.artifact)) return { guardrailId: guardrail.id,
+        version: existing.version.version, generation: existing.version.generation, status: existing.version.status, artifactId: existing.version.artifactId };
       return this.publishCandidate(tx, guardrail, candidate, input.actorId);
     });
   }
@@ -1409,6 +1414,8 @@ export class ControlPlaneService {
       );
     }
     const content = artifactContent(candidate);
+    const contractIssue = artifactExecutionContractIssue(content);
+    if (contractIssue) throw new ConflictError(contractIssue, "artifact_recompile_required");
     const checksum = artifactContentDigest(content);
     if (checksum !== run.candidateDigest) throw new ConflictError("The compiled Artifact no longer matches its digest.", "guardrail_candidate_corrupt");
     const [state] = await tx.update(controllerState)
@@ -2038,6 +2045,8 @@ export class ControlPlaneService {
     // Routed Artifacts are always included. Unrouted published versions are
     // preloaded only after a separate Runner load check, independent of origin
     // and tests, so missing model dependencies cannot stall unrelated rollout.
+    // An old cached load result cannot authorize unsupported preloads. Routed
+    // artifacts stay in the batch so dispatch rejects it without losing checks.
     const referencedArtifactIds = new Set(routerRevisions.flatMap((router) => router.routes.flatMap((route) => route.targets.map((target) => target.artifactId).filter(Boolean))));
     const readyArtifacts = await tx.select({ artifact: artifacts }).from(guardrailVersions)
       .innerJoin(guardrails, and(eq(guardrails.id, guardrailVersions.guardrailId), isNull(guardrails.deletedAt)))
@@ -2047,7 +2056,7 @@ export class ControlPlaneService {
         and(eq(guardrailVersions.status, "ready"), sql`${guardrailVersions.environmentCheck}->>'status' = 'compatible'`),
       ));
     const activeArtifacts = poolId === "default"
-      ? readyArtifacts
+      ? readyArtifacts.filter(row => referencedArtifactIds.has(row.artifact.id) || !artifactExecutionContractIssue(row.artifact))
       : readyArtifacts.filter((row) => referencedArtifactIds.has(row.artifact.id));
     const disabledGuardrails = await tx.select({ id: guardrails.id }).from(guardrails).where(eq(guardrails.status, "disabled"));
     const loggingLevels = await tx.select({ id: guardrails.id, level: guardrails.loggingLevel })
