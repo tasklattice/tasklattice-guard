@@ -120,9 +120,11 @@ action group; unlisted Rules retain template order. `enabledRuleIds` controls
 membership independently. Each Step and Action declares its evaluation view:
 independent read-only checks use the original stage input and can run concurrently;
 Transforms and their dependent checks use `previous_output`. Transforms run
-serially in author order. In production's `interventions` mode, Block can stop
-later execution and cancel pending siblings. Supported full-buffered validation
-plans collect reachable evidence even after Block. Allow never exempts a request
+serially in author order. In LiteLLM's default `interventions` mode, Block can
+stop later execution and cancel pending siblings. Validation and the Scan API
+use `full`: supported full-buffered plans collect reachable evidence even after
+Block. Blocked scans can therefore incur further model calls, latency or errors;
+`flagOnly` and `verbose` do not enable early exit. Allow never exempts a request
 from another required check.
 
 Trigger prerequisites remain ordered, and arbitrary authored Colang flows form

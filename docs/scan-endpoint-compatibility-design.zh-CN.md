@@ -240,7 +240,11 @@ HTTP 响应增加 `X-TaskLattice-Scan-Compatibility: v1` 和 `X-Request-ID: <sca
 
 `flagOnly` 仅改变上表中的汇总标签，**不等于内部 `mode=detect`，不关闭阻断规则，也不修改替换文本**。Scan 只报告检查结果；如何处理 `flagged` 由调用方决定。要据此执行实际业务放行/阻断，建议显式传 `flagOnly=false`。
 
-适配器需要取得最终 findings / assessments / rail verdict 以及最终动作。若现有 `evidence_scope=interventions` 会丢失“命中但允许”的证据，应使用 `full` 或补充等价的内部汇总字段；不能因 `verbose=false` 而漏判。
+适配器明确使用 `evidence_scope=full`，取得最终 findings / assessments / rail verdict 以及最终动作，保留“命中但允许”的证据。它不是单纯的报告详细度开关：对于 `full_buffered` 且没有自定义 Flow 的计划，Block 后仍会运行全部可达检查，并保留并行兄弟检查的结果；trigger 为假的步骤仍不会执行，自定义 Flow 和流式计划保留各自的短路行为。最终 Block 始终优先，收集证据不会放行被拦截的内容。
+
+因此，被阻断的 Scan 也可能执行后续 Transform、Allow 或模型检查，增加调用次数、延迟和费用。串行检查的耗时累积，独立检查可能并行，不能简单假设总延迟总是线性增长。后续检查失败或超时仍按执行错误处理（例如 `503 scan_execution_failed`、`504 scan_timeout`），不能用先前的 Block 掩盖失败或返回 `cleared`。
+
+`verbose=false` 只减少响应详情，`flagOnly=true` 只改变总体标签，两者都不启用早退。当前 Scan 请求和 Endpoint 配置没有 `evidence_scope` 开关；未知请求字段按既有协议忽略，不能用于切换范围。接入评估应单独测量 Scan 的调用量、p95 延迟及超时率，不能沿用 LiteLLM `interventions` 的早退成本预期。
 
 ### 5.3 文本字段：检测对象与可交付回答分开
 

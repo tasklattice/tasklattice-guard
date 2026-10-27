@@ -48,14 +48,16 @@ Controller 在调度前为每个 step 写入：
 
 | 请求范围 | 执行行为 | 可承诺内容 |
 | --- | --- | --- |
-| `interventions`（线上默认） | Block 后允许早退；并行组可取消未完成成员 | 安全决策；不保证完整 findings、调用次数或执行集 |
-| `full`（Validator 使用） | 支持的计划不因 Block 早退或取消兄弟检查；仍遵循 trigger | 对可达步骤收集结果，最后决策；未达到或不确定的目标不能当作未命中 |
+| `interventions`（LiteLLM 线上默认） | Block 后允许早退；并行组可取消未完成成员 | 安全决策；不保证完整 findings、调用次数或执行集 |
+| `full`（Validator 和 Scan 使用） | 支持的计划不因 Block 早退或取消兄弟检查；仍遵循 trigger | 对可达步骤收集结果，最后决策；未达到或不确定的目标不能当作未命中 |
 
 流程把单步实际的 `blocked` 和控制流的 `stop` 分开。full 模式中 `stop=false` 不代表放行：Runtime 保留 Block，所有可达检查完成后，最终 resolver 返回 Block，不交付被拦截文本。
 
 条件为假的步骤不会被强行执行。错误、超时也不能伪造为 matched。任意自定义流和流式计划仍保留自己的短路行为，即使请求 full，也不会强行收集不可达步骤。这是执行类型的限制，不是按版本保留旧行为。它们的报告可能因此出现 `not_reached` / `preempted_by`，而不是虚构验收成功。
 
-完整证据模式可能增加模型调用、延迟和成本。这是测试证据的成本，不是线上快速路径的性能回归指标。
+`evidence_scope` 不再只是报告详细度：对支持的计划，它同时决定 Block 后是否继续执行。Scan API 明确使用 `full`，保留命中但配置为 Allow 的观察以及完整可达证据；`flagOnly` 只改变结果标签，`verbose` 只改变响应详情，两者都不降低执行范围。当前 Scan 请求和 Endpoint 配置不提供证据范围开关，不能通过未知字段改变它。
+
+完整证据模式可能增加 **Validation 和 Scan** 的模型调用、延迟和成本。被拦截的 Scan 仍可能调用后续模型，或因后续错误/超时返回执行错误；最终 Block 不会因继续收集证据而变成放行。串行检查的延迟会累积，独立检查可并行，因此总延迟不一定与检查数严格线性。这是 Scan 的显式执行约定，不能把它的成本变化排除在线上 API 评估之外；LiteLLM 的 `interventions` 快速路径仍允许早退。
 
 ## 5. Rule 证据判定
 
@@ -151,6 +153,7 @@ Default、full-feature-baseline 和普通用户创建的 Guardrail 使用同一�
 - 发布：实际 PostgreSQL 写入失败证据后发布，测试与版本状态独立。
 - 升级加载：冻结提交 `1df5c899` 中真实的旧签名 Artifact（`tests/fixtures/unsupported-artifacts/pre-v16-local-secrets`），验证签名和 checksum 有效且缺少视图，再验证环境检查、apply/admit/verify、NACK、旧缓存重启和已发布版本复测均拒绝。夹具不经过当前编译器重建。另测当前标识下的视图缺失、重复、无效值，以及原有效 release 不被失败更新替换。
 - 升级恢复：PostgreSQL 覆盖过期 `compatible` 缓存、被 Router 引用的旧产物保留至分发 gate、未修改草稿重新发布生成新版本、原 Artifact/失败报告不被改写，以及新版本重复发布的幂等性。
+- Scan 执行范围：`test_scan_evidence_scope.py` 用真实 Controller 混合动作计划和 NeMo 执行，比较 `interventions` 命中 Block 后只执行一个 Action、HTTP Scan 继续执行 Block/Transform/Allow 三个 Action。覆盖 request/response、`flagOnly`/`verbose` 组合、未知范围字段不能覆盖契约、完整命中证据保留、Block 不交付回答，以及后续 Action 失败返回 `503`。这是确定性执行回归，不是实际模型延迟或费用测量。
 - 前端：真实桌面页面展开报告，部分命中显示 Rule 不匹配；满足组合约定的决策失败不会再误报 Rule 不匹配。
 
 本次清理后的本机验证记录（2026-10-27）：
