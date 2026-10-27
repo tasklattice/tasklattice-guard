@@ -105,3 +105,79 @@ def test_invalid_parallel_contract_is_rejected_before_runtime(invalid):
     if invalid == 'streaming': plan['output_delivery'] = 'window_buffered'
     with pytest.raises(PlanCompilationError, match='Parallel'):
         NeMoConfigCompiler().compile(plan_from_dict(plan))
+
+
+@pytest.mark.parametrize("phase", ["input", "output"])
+@pytest.mark.parametrize("programmable", [False, True])
+@pytest.mark.parametrize("scope", ["full", "interventions"])
+@pytest.mark.parametrize("legacy", [False, True])
+async def test_full_evidence_continues_after_block_only_for_new_compiler_plans(phase, programmable, scope, legacy):
+    from runner.toolkit.compiler.semantics import PLAN_VERSION
+    plan = chain_plan([("block", "alpha", "unused", "block"),
+                       ("mask", "alpha", "[A]", "transform"),
+                       ("observe", "alpha", "unused", "allow")], phase, programmable)
+    if not legacy:
+        plan["compiler_version"] = PLAN_VERSION
+        for index, step in enumerate(plan["steps"]):
+            step["parameters"] += [["precedence", str(index)],
+                                   ["evaluation_view", "previous_output" if step["on_unsafe"] == "transform" else "original"]]
+    provider = RecordingSecrets()
+    runtime = DraftPreviewRuntime(DefaultRunnerCompiler(), action_providers(provider))
+    try:
+        result = await runtime.evaluate(ProtectionRequest(phase=phase, texts=("alpha beta",), evidence_scope=scope,
+            context=RequestContext(protocol="validation")), preview_id="scope", guardrail_id="ordered", draft_revision=1,
+            candidate_version=plan["guardrail_version"], plan=plan, runtime_profile="auto")
+        assert result.decision == "block"
+        assert result.texts == ()
+        assert not result.usage.fail_closed, result.reason
+        expected = ["block", "mask", "observe"] if scope == "full" and not legacy else ["block"]
+        assert [identity for identity, text in provider.calls] == expected
+        if len(expected) == 3:
+            assert provider.calls == [("block", "alpha beta"), ("mask", "alpha beta"), ("observe", "alpha beta")]
+    finally:
+        await runtime.shutdown()
+
+
+@pytest.mark.parametrize("failure", [None, "timeout", "provider_failure"])
+async def test_full_evidence_retains_real_model_results_and_failures_across_parallel_and_serial_schedules(failure):
+    import httpx
+    from copy import deepcopy
+    from tests.model_policy_fixture import model_enabled_guardrail
+    from tests.control_plane.test_default_model_runtime import runtime_and_identity, safety_reply
+    plan = model_enabled_guardrail()["plan"]
+    results = []
+    for parallel in (True, False):
+        candidate = deepcopy(plan)
+        if not parallel:
+            for step in candidate["steps"]:
+                step["parameters"] = [[key, value] for key, value in step["parameters"] if not key.startswith("parallel_")]
+        calls, finished = [], []
+        async def respond(request):
+            host = request.url.host
+            calls.append(host)
+            if host == "jailbreak.test":
+                finished.append(host)
+                return httpx.Response(200, json={"jailbreak": True, "score": .99})
+            await asyncio.sleep(.02)
+            finished.append(host)
+            if failure == "timeout": raise httpx.ReadTimeout("Synthetic timeout", request=request)
+            if failure == "provider_failure": return httpx.Response(503, json={"error": "Synthetic unavailable"})
+            return safety_reply(unsafe=True)
+        runtime, identity = runtime_and_identity(candidate, respond)
+        try:
+            result = await runtime.evaluate(ProtectionRequest(phase="input", texts=("Synthetic model contract test.",),
+                evidence_scope="full", context=RequestContext(protocol="validation")), **identity)
+            assert result.decision == "block"
+            assert set(calls) == set(finished) == {"jailbreak.test", "safety.test"}
+            assert result.usage.model_invocations == 2
+            assert not any(step.status == "cancelled" for step in result.trace)
+            if failure:
+                assert any(step.kind == "action" and step.status == "error" for step in result.trace)
+                assert any(step.timed_out for step in result.trace) is (failure == "timeout")
+            results.append((result.decision, result.texts,
+                            sorted((f.policy_id, f.rule_id, f.verdict) for f in result.findings),
+                            sorted((t.id, t.status, t.verdict, t.timed_out) for t in result.trace if t.kind == "action"),
+                            sorted(call.result for call in result.usage.model_calls)))
+        finally:
+            await runtime.shutdown()
+    assert results[0] == results[1]

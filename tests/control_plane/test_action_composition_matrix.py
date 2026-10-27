@@ -100,11 +100,14 @@ async def test_action_composition_matrix(composition_plans, actions, hits, layou
     expected_calls, expected_findings = [], []
     expected_decision = "allow"
     # Stable action partitions: all Block checks, then serial Transform, then Allow.
+    # Read-only checks declare the phase input as their view, so scheduling them
+    # ahead of a Transform step for latency cannot change what they inspect.
+    # Only a Transform step consumes the text produced by the preceding one.
     for action in ACTIONS:
         for index, configured in enumerate(actions):
             if configured != action:
                 continue
-            expected_calls.append((f"r{index}", current))
+            expected_calls.append((f"r{index}", current if action == "transform" else original))
             if not hits[index]:
                 continue
             expected_findings.append((f"r{index}", action))

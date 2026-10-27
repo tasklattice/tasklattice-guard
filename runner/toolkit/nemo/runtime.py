@@ -27,6 +27,7 @@ from opentelemetry import context as otel_context, trace
 from opentelemetry.trace import Status, StatusCode
 
 from ..runtime.content_views import current_context_messages, request_view, with_active_text
+from ..compiler.semantics import complete_evidence_supported
 from ..runtime.streaming import OutputStreamContract, OutputStreamEvaluationError, OutputStreamResult
 from ..runtime.contracts import (
     AppliedIntervention,
@@ -204,14 +205,11 @@ class NeMoActionBridge:
 
             rails.register_action(checked, name=name)
 
+        register_action(self.resolve, name=ACTION_RESOLVE)
         if self._config.runtime_profile == "llmrails_colang2_programmable":
             register_action(
                 self.record_native,
                 name=ACTION_RECORD_NATIVE,
-            )
-            register_action(
-                self.resolve,
-                name=ACTION_RESOLVE,
             )
             register_action(
                 self.customer_identifier,
@@ -309,7 +307,7 @@ class NeMoActionBridge:
                 done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
                 for task in done:
                     completed[tasks[task].id] = task.result()
-                if any(p["blocked"] for p in completed.values()):
+                if not self._full_evidence() and any(p["blocked"] for p in completed.values()):
                     break
         finally:
             for task in tasks:
@@ -340,7 +338,8 @@ class NeMoActionBridge:
                     item.result = replace(item.result, trace=(*item.result.trace, *cancellation_trace))
         by_id = {b.id: {"verdict": "skipped"} for b in members}
         by_id.update({p["step_id"]: p for p in results})
-        return {"parallel_results": results, "parallel_by_id": by_id, "blocked": winner["blocked"], "modified": False,
+        return {"parallel_results": results, "parallel_by_id": by_id, "blocked": winner["blocked"],
+                "stop": winner["blocked"] and not self._full_evidence(), "modified": False,
                 "content": text, "reason": winner["reason"], "verdict": winner["verdict"]}
 
     async def execute_action(
@@ -376,6 +375,7 @@ class NeMoActionBridge:
         provider_latency_ms = 0
         request = self._request()
         module = self._module(binding)
+        evaluation_text = self._evaluation_text(text, binding)
         endpoint_id = (
             request.request_context.endpoint_id
             if request.request_context is not None
@@ -411,7 +411,7 @@ class NeMoActionBridge:
                     raise LookupError("provider does not support the pinned Policy")
                 if supported_rails and request.phase not in supported_rails:
                     raise LookupError("provider does not support the active Rail")
-                action_request = self._action_request(text, binding)
+                action_request = self._action_request(evaluation_text, binding)
                 async with asyncio.timeout(binding.timeout_ms / 1_000):
                     action_result = await provider.execute(action_request)
                 result = (
@@ -469,7 +469,7 @@ class NeMoActionBridge:
                 result,
                 latency,
                 provider_latency_ms=provider_latency_ms,
-                input_text=text,
+                input_text=evaluation_text,
             )
 
     async def detect_sensitive_data(
@@ -515,6 +515,7 @@ class NeMoActionBridge:
             "action": action if enforce else "allow",
             "proposed_action": action,
             "blocked": blocked,
+            "stop": blocked and not self._full_evidence(),
             "modified": modified,
             "content": resolved if enforce else request.text,
             "reason": reason,
@@ -752,7 +753,7 @@ class NeMoActionBridge:
         binding: NeMoActionBinding | None = None,
     ) -> EngineRequest:
         request = self._request()
-        content = text
+        content = self._evaluation_text(text, binding)
         view = with_active_text(request_view(request), content, kind="previous_output")
         return EngineRequest(
             phase=request.phase,
@@ -767,6 +768,30 @@ class NeMoActionBridge:
             active_block_id=request.active_block_id,
             request_context=request.request_context,
         )
+
+    @staticmethod
+    def _declared_view(binding: NeMoActionBinding | None) -> str:
+        if binding is None:
+            return "previous_output"
+        return binding.parameter("evaluation_view") or "previous_output"
+
+    def _full_evidence(self) -> bool:
+        return self._request().evidence_scope == "full" and complete_evidence_supported(self._plan)
+
+    def _evaluation_text(self, text: str, binding: NeMoActionBinding | None) -> str:
+        """Materialize the view this step declares; the schedule never selects it.
+
+        A read-only check inspects the phase input so that moving it ahead of a
+        Transform step for latency cannot change its detection verdict. Mutating
+        steps and their trigger chains inspect the preceding Transform output.
+        A windowed output stream has no complete phase input yet: its rail must
+        keep checking exactly the pending window it was handed.
+        """
+        if self._declared_view(binding) != "original":
+            return text
+        if self._native_output_streaming and self._request().phase == "output":
+            return text
+        return self._request().text
 
     def _action_request(
         self,
@@ -922,6 +947,7 @@ class NeMoActionBridge:
             "action": proposed_action if enforce else "allow",
             "proposed_action": proposed_action,
             "blocked": blocked,
+            "stop": blocked and not self._full_evidence(),
             "modified": modified,
             "findings": [asdict(item) for item in result.findings],
             "trace": [asdict(item) for item in result.trace],

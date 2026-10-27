@@ -28,6 +28,7 @@ from ..nemo.artifacts import config_checksum
 from ..nemo.actions.names import ACTION_RECORD_OWNED_POLICY
 from ..nemo.actions.topic import topic_judge_prompt
 from ..nemo.native_models import TOPIC_CONTROL_MODEL_TYPE, TOPIC_CONTROL_PROFILE
+from .semantics import complete_evidence_supported
 from ..runtime.contracts import (
     GuardrailPhase,
     GuardrailPlanSnapshot,
@@ -43,7 +44,7 @@ from .domain import PolicyDraft, PlanCompilationError, RailBinding
 from .policy_sources import FLOW_ID_EVENTS, expand_policy_parameters, link_policy_source, literal_flow_target, parse_source_tree, symbol_name
 
 
-NEMO_COMPILER_VERSION = "tasklattice-nemo-config-v27-staged-checks"
+NEMO_COMPILER_VERSION = "tasklattice-nemo-config-v28-explicit-views"
 
 _COLANG1_STANDARD_ACTIONS = {
     ACTION_EVALUATE,
@@ -217,7 +218,8 @@ class NeMoConfigCompiler:
             sort_keys=False,
         )
         colang_content = (
-            _colang_v1_standard(builtin_bindings, native_streaming=native_streaming)
+            _colang_v1_standard(builtin_bindings, native_streaming=native_streaming,
+                                complete_evidence=complete_evidence_supported(plan))
             if runtime_profile == "llmrails_colang1_standard"
             else ""
             if runtime_profile == "iorails_native"
@@ -610,7 +612,7 @@ def _colang_v1_flow_lists(
 
 def _colang_v1_standard(
     bindings: tuple[NeMoActionBinding, ...],
-    *, native_streaming: bool = False,
+    *, native_streaming: bool = False, complete_evidence: bool = False,
 ) -> str:
     lines = [
         "define bot tasklattice refuse",
@@ -630,6 +632,11 @@ def _colang_v1_standard(
             lines.append(f"define subflow tasklattice ordered {phase} rails")
             lines.extend(f"  do {_colang_v1_flow_name(binding, phase)}" for binding in phase_bindings
                          if binding.parameter(f"parallel_leader_{phase}") != "false")
+            if complete_evidence:
+                message_var = "$user_message" if phase == "input" else "$bot_message"
+                lines.extend((f"  $tl_final_decision = execute {ACTION_RESOLVE}(text={message_var})",
+                              '  if $tl_final_decision["blocked"]',
+                              "    bot tasklattice refuse", "    stop"))
             lines.append("")
     for binding in bindings:
         if not binding.action_name or not binding.result_var:
@@ -647,7 +654,7 @@ def _colang_v1_standard(
                         f'text={message_var}, binding_id="{binding.id}")'
                     ),
                     (f'  if ${binding.result_var}.is_blocked'
-                     if native_outcome else f'  if ${binding.result_var}["blocked"]'),
+                     if native_outcome else f'  if ${binding.result_var}["{"stop" if complete_evidence else "blocked"}"]'),
                     "    bot tasklattice refuse",
                     "    stop",
                     *(() if native_outcome else (
@@ -882,7 +889,7 @@ def _colang_v2(
                 (
                     f"    $decision = await {ACTION_RESOLVE}(text=$text)",
                     '    $text = $decision["content"]',
-                    '    $blocked = $decision["blocked"]',
+                    f'    $blocked = $decision["{"stop" if complete_evidence_supported(plan) else "blocked"}"]',
                     f"    {message_var} = $text",
                 )
             )

@@ -85,10 +85,12 @@ async def test_catalog_rule_action_reaches_real_nemo_and_preserves_later_policie
         assert result.usage.model_invocations == 0
         pii_findings = [finding for finding in result.findings if finding.policy_id == "builtin-pii"]
         if action == "continue":
-            # The compiler now schedules Transform before Allow. The contact
-            # rule consumes the email, but the later PII observer must still run.
-            assert pii_findings == []
+            # The contact Rule consumes the email and the later PII observer still
+            # runs. A read-only observer declares the phase input as its view, so
+            # another Policy's redaction cannot silently erase its evidence.
             assert result.decision == "transform"
+            assert [finding for finding in pii_findings if finding.recommended_action == "allow"]
+            assert all(finding.verdict == "matched" for finding in pii_findings)
             assert result.texts == ("Contact [email_REDACTED]",)
             assert any(f.policy_id == "local-contact-data" and f.rule_id == "pattern/email" for f in result.findings)
             action_policies = [step.policy_id for step in result.trace if step.kind == "action"]

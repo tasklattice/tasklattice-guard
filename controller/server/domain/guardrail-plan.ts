@@ -5,6 +5,7 @@ import { flowRuleId } from "../policy-studio/model.js";
 import { PHRASE_PARAMETER, PHRASE_POLICY_ID, parsePhraseEntries } from "../../shared/phrase-policy.js";
 import { materializePolicyRules } from "./policy-rules.js";
 import { scheduleChecks } from "./execution-plan.js";
+import { EXPLICIT_VIEWS_PLAN_VERSION } from "./plan-semantics.js";
 import { frozenBuiltInDefinition, planPolicyVersion } from "./policy-node.js";
 import { isSplitTopicPolicy, TOPIC_ALLOW_RULE, TOPIC_DENY_RULE, topicMissingParameters, topicPolicyValues } from "../../shared/topic-policy.js";
 import {
@@ -352,6 +353,28 @@ export function buildGuardrailPlan(input: {
       previousModule[phase] = id;
     }
   }
+  // Compilation may reorder execution for latency, but it must not change what a
+  // check inspects. Record the authored precedence (reporting and evidence
+  // arbitration never infer "earlier" from execution order) and the declared
+  // evaluation view of each step: a read-only check inspects the phase input,
+  // while a mutating step and every step of its trigger chain inspect the text
+  // produced by the preceding Transform steps.
+  const stepById = new Map(steps.map((step) => [step.id, step]));
+  const authoredIndex = new Map(steps.map((step, index) => [step.id, index]));
+  const inheritsMutation = (step: PlanStep, seen = new Set<string>()): boolean => {
+    if (step.on_unsafe === "transform") return true;
+    const prerequisite = step.trigger.type === "on_result" ? step.trigger.step_ref : undefined;
+    if (prerequisite === undefined || seen.has(prerequisite)) return false;
+    seen.add(prerequisite);
+    const source = stepById.get(prerequisite);
+    return source !== undefined && inheritsMutation(source, seen);
+  };
+  for (const step of steps) {
+    step.parameters = [...step.parameters,
+      ["precedence", String(authoredIndex.get(step.id)!)],
+      ["evaluation_view", hasCustomFlows || inheritsMutation(step) ? "previous_output" : "original"],
+    ];
+  }
   scheduleChecks(steps, modules, hasCustomFlows, draft.outputDelivery === "full_buffered");
   const reasoningPolicies = bindings.flatMap((binding) => binding.reasoningPolicy ? [{
     id: `automated-reasoning:${binding.reasoningPolicy.policyId}:${binding.reasoningPolicy.policyVersion}`,
@@ -362,7 +385,7 @@ export function buildGuardrailPlan(input: {
   return {
     guardrail_id: input.guardrailId,
     guardrail_version: input.guardrailVersion,
-    compiler_version: "tasklattice-controller-plan-v15-staged-checks",
+    compiler_version: EXPLICIT_VIEWS_PLAN_VERSION,
     topic_control_mode: draft.topicControlMode ?? "strict",
     safety_level: draft.safetyLevel,
     output_delivery: draft.outputDelivery,

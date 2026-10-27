@@ -162,6 +162,13 @@ def _settings():
     )
 
 
+def test_registration_advertises_explicit_views_support():
+    settings = _settings()
+    settings.max_concurrency = 4
+    client = RunnerControlClient(settings, Store(), Metrics())
+    assert client._registration().registration.labels["tasklattice.explicit-views"] == "1"
+
+
 def _model_desired_state(*, generation: int) -> protocol.DesiredState:
     return protocol.DesiredState(
         generation=generation,
@@ -298,31 +305,6 @@ async def test_modes_overtake_model_preparation_and_report_nacks(tmp_path):
         assert store.protection_mode("g") == "bypass"
         finish.set()
     await asyncio.wait_for(client._receive_messages(incoming()), 3)
-
-
-@pytest.mark.asyncio
-async def test_offline_compilation_returns_content_without_loading_or_leasing_models():
-    import asyncio
-    from runner.compiler import DefaultRunnerCompiler
-    from tests.control_plane.test_artifact_compiler_boundary import request
-
-    settings = _settings()
-    settings.compiler_capable = True
-    store = Store()
-    client = RunnerControlClient(settings, store, Metrics(), compiler=DefaultRunnerCompiler())
-    client._model_credentials = AsyncMock(side_effect=AssertionError("No credentials during compilation"))
-    build = request()
-    build.compile_id = "offline-1"
-    await client._handle(protocol.ControllerMessage(artifact_compilation_request=build))
-    reply = await asyncio.wait_for(client._outgoing.get(), timeout=10)
-    assert reply.WhichOneof("body") == "artifact_compilation_result"
-    assert reply.artifact_compilation_result.compile_id == "offline-1"
-    assert reply.artifact_compilation_result.runner_id == "runner-0"
-    assert reply.artifact_compilation_result.artifact.plan == build.plan
-    assert reply.artifact_compilation_result.error == ""
-    assert store.generation == 0
-    client._model_credentials.assert_not_called()
-    await asyncio.gather(*client._capability_tasks)
 
 
 @pytest.mark.asyncio

@@ -25,6 +25,7 @@ from .software_version import SOFTWARE_VERSION
 from .artifact_store import ArtifactStore
 from .compiler import DefaultRunnerCompiler
 from .capability_validation import validate_capability
+from .toolkit.compiler.semantics import RUNNER_CAPABILITY
 from .config import RunnerSettings
 from .diagnostics import diagnostic_phase
 from .preparation import prepare
@@ -587,7 +588,7 @@ class RunnerControlClient:
                 pool_id=self._settings.pool_id,
                 runner_version=SOFTWARE_VERSION["version"],
                 labels={"tasklattice.build": json.dumps(SOFTWARE_VERSION), "tasklattice.protection-modes": "1",
-                        "tasklattice.offline-compilation": "1"},
+                        "tasklattice.offline-compilation": "1", RUNNER_CAPABILITY: "1"},
                 nemo_version=importlib.metadata.version("nemoguardrails"),
                 max_concurrency=self._settings.max_concurrency,
                 compiler_capable=self._settings.compiler_capable,

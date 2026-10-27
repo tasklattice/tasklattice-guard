@@ -65,3 +65,30 @@ def test_runner_offline_compiler_ignores_live_model_assignments(monkeypatch):
     assert result.guardrail_id == build.guardrail_id
     assert compiler.native_models == ()
     compiler._compiler.compile.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_offline_compilation_returns_content_without_loading_or_leasing_models():
+    import asyncio
+    from runner.compiler import DefaultRunnerCompiler
+    from tests.test_runner_control_client import _settings, Store, Metrics
+    from runner.control_client import RunnerControlClient
+    from unittest.mock import AsyncMock
+
+    settings = _settings()
+    settings.compiler_capable = True
+    store = Store()
+    client = RunnerControlClient(settings, store, Metrics(), compiler=DefaultRunnerCompiler())
+    client._model_credentials = AsyncMock(side_effect=AssertionError("No credentials during compilation"))
+    build = request()
+    build.compile_id = "offline-1"
+    await client._handle(protocol.ControllerMessage(artifact_compilation_request=build))
+    reply = await asyncio.wait_for(client._outgoing.get(), timeout=10)
+    assert reply.WhichOneof("body") == "artifact_compilation_result"
+    assert reply.artifact_compilation_result.compile_id == "offline-1"
+    assert reply.artifact_compilation_result.runner_id == "runner-0"
+    assert reply.artifact_compilation_result.artifact.plan == build.plan
+    assert reply.artifact_compilation_result.error == ""
+    assert store.generation == 0
+    client._model_credentials.assert_not_called()
+    await asyncio.gather(*client._capability_tasks)

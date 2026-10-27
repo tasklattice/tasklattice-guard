@@ -1,13 +1,13 @@
 {
   "guardrailId": "guardrail-default",
   "guardrailVersion": "20261023-000000.001Z",
-  "compilerVersion": "tasklattice-nemo-config-v27-staged-checks",
+  "compilerVersion": "tasklattice-nemo-config-v28-explicit-views",
   "nemoVersion": "0.24.0",
   "runtimeProfile": "llmrails_colang2_programmable",
   "plan": {
     "guardrail_id": "guardrail-default",
     "guardrail_version": "20261023-000000.001Z",
-    "compiler_version": "tasklattice-controller-plan-v15-staged-checks",
+    "compiler_version": "tasklattice-controller-plan-v16-explicit-views",
     "safety_level": "balanced",
     "output_delivery": "full_buffered",
     "steps": [
@@ -31,6 +31,14 @@
           [
             "policy_version",
             "1.0.1"
+          ],
+          [
+            "precedence",
+            "0"
+          ],
+          [
+            "evaluation_view",
+            "original"
           ],
           [
             "execution_schedule",
@@ -58,6 +66,14 @@
           [
             "policy_version",
             "1.0.1"
+          ],
+          [
+            "precedence",
+            "1"
+          ],
+          [
+            "evaluation_view",
+            "original"
           ],
           [
             "execution_schedule",
@@ -116,6 +132,14 @@
             "{}"
           ],
           [
+            "precedence",
+            "3"
+          ],
+          [
+            "evaluation_view",
+            "original"
+          ],
+          [
             "execution_schedule",
             "block-first-v1"
           ]
@@ -170,6 +194,14 @@
           [
             "policy_parameters_json",
             "{}"
+          ],
+          [
+            "precedence",
+            "4"
+          ],
+          [
+            "evaluation_view",
+            "original"
           ],
           [
             "execution_schedule",
@@ -228,6 +260,14 @@
             "{}"
           ],
           [
+            "precedence",
+            "5"
+          ],
+          [
+            "evaluation_view",
+            "original"
+          ],
+          [
             "execution_schedule",
             "block-first-v1"
           ]
@@ -282,6 +322,14 @@
           [
             "policy_parameters_json",
             "{}"
+          ],
+          [
+            "precedence",
+            "6"
+          ],
+          [
+            "evaluation_view",
+            "previous_output"
           ],
           [
             "execution_schedule",
@@ -340,6 +388,14 @@
             "{}"
           ],
           [
+            "precedence",
+            "7"
+          ],
+          [
+            "evaluation_view",
+            "previous_output"
+          ],
+          [
             "execution_schedule",
             "block-first-v1"
           ]
@@ -394,6 +450,14 @@
           [
             "policy_parameters_json",
             "{}"
+          ],
+          [
+            "precedence",
+            "8"
+          ],
+          [
+            "evaluation_view",
+            "previous_output"
           ],
           [
             "execution_schedule",
@@ -452,6 +516,14 @@
             "{}"
           ],
           [
+            "precedence",
+            "9"
+          ],
+          [
+            "evaluation_view",
+            "previous_output"
+          ],
+          [
             "execution_schedule",
             "block-first-v1"
           ]
@@ -506,6 +578,14 @@
           [
             "policy_parameters_json",
             "{}"
+          ],
+          [
+            "precedence",
+            "10"
+          ],
+          [
+            "evaluation_view",
+            "previous_output"
           ],
           [
             "execution_schedule",
@@ -564,6 +644,14 @@
             "{}"
           ],
           [
+            "precedence",
+            "11"
+          ],
+          [
+            "evaluation_view",
+            "previous_output"
+          ],
+          [
             "execution_schedule",
             "block-first-v1"
           ]
@@ -620,6 +708,14 @@
             "{}"
           ],
           [
+            "precedence",
+            "12"
+          ],
+          [
+            "evaluation_view",
+            "previous_output"
+          ],
+          [
             "execution_schedule",
             "block-first-v1"
           ]
@@ -674,6 +770,14 @@
           [
             "policy_parameters_json",
             "{}"
+          ],
+          [
+            "precedence",
+            "2"
+          ],
+          [
+            "evaluation_view",
+            "original"
           ],
           [
             "execution_schedule",
@@ -1973,7 +2077,7 @@
     ]
   },
   "configYaml": "colang_version: 2.x\nenable_rails_exceptions: false\nrails: {}\ntracing:\n  enabled: false\n  enable_content_capture: false\nmetrics:\n  enabled: false\n",
-  "colangContent": "import core\n\nflow main\n  user said something as $message\n  global $tasklattice_phase\n  if $tasklattice_phase == \"output\"\n    await tasklattice output rails $message.transcript\n  else\n    await tasklattice input rails $message.transcript\n\nflow tasklattice input rails $text\n  global $user_message\n  $user_message = $text\n  $blocked = False\n  $tl_result_5688451a = {\"verdict\": \"skipped\"}\n  $tl_result_1abcdab2 = {\"verdict\": \"skipped\"}\n  $tl_result_d2819925 = {\"verdict\": \"skipped\"}\n  $tl_result_f05d14c8 = {\"verdict\": \"skipped\"}\n  $tl_result_8a68dd52 = {\"verdict\": \"skipped\"}\n  $tl_result_a156bdc5 = {\"verdict\": \"skipped\"}\n  $tl_result_6ed9ecfd = {\"verdict\": \"skipped\"}\n  $tl_result_829631a5 = {\"verdict\": \"skipped\"}\n  $tl_result_f9ab3404 = {\"verdict\": \"skipped\"}\n  $tl_result_3227137e = {\"verdict\": \"skipped\"}\n  $tl_result_375abed1 = {\"verdict\": \"skipped\"}\n  $tl_result_c7d176f4 = {\"verdict\": \"skipped\"}\n  $tl_result_a6de19c4 = {\"verdict\": \"skipped\"}\n  if not $blocked\n    $tl_result_5688451a = await GuardIndirectPromptAction(text=$text, binding_id=\"indirect_prompt_injection:builtin-indirect-prompt-injection:exact\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"blocked\"]\n    $user_message = $text\n  if not $blocked\n    $tl_result_1abcdab2 = await GuardMemoryPoisoningAction(text=$text, binding_id=\"memory_poisoning:builtin-memory-poisoning:exact\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"blocked\"]\n    $user_message = $text\n  if not $blocked\n    $tl_result_d2819925 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-content-safety:block:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"blocked\"]\n    $user_message = $text\n  if not $blocked\n    $tl_result_f05d14c8 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-injection-protection:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"blocked\"]\n    $user_message = $text\n  if not $blocked\n    $tl_result_8a68dd52 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-credentials:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"blocked\"]\n    $user_message = $text\n  if not $blocked\n    $tl_result_a156bdc5 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-payment-data:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"blocked\"]\n    $user_message = $text\n  if not $blocked\n    $tl_result_6ed9ecfd = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-government-identifiers:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"blocked\"]\n    $user_message = $text\n  if not $blocked\n    $tl_result_829631a5 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-passports:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"blocked\"]\n    $user_message = $text\n  if not $blocked\n    $tl_result_f9ab3404 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-contact-data:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"blocked\"]\n    $user_message = $text\n  if not $blocked\n    $tl_result_3227137e = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-network-addresses:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"blocked\"]\n    $user_message = $text\n  if not $blocked\n    $tl_result_375abed1 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-sensitive-attribute-terms:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"blocked\"]\n    $user_message = $text\n  if not $blocked\n    $tl_result_c7d176f4 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-risk-content-terms:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"blocked\"]\n    $user_message = $text\n  if not $blocked\n    $tl_result_a6de19c4 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-content-safety:allow:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"blocked\"]\n    $user_message = $text\n  $decision = await GuardResolveAction(text=$text)\n\nflow tasklattice output rails $text\n  global $bot_message\n  $bot_message = $text\n  $blocked = False\n  $tl_result_d2819925 = {\"verdict\": \"skipped\"}\n  $tl_result_f05d14c8 = {\"verdict\": \"skipped\"}\n  $tl_result_8a68dd52 = {\"verdict\": \"skipped\"}\n  $tl_result_a156bdc5 = {\"verdict\": \"skipped\"}\n  $tl_result_6ed9ecfd = {\"verdict\": \"skipped\"}\n  $tl_result_829631a5 = {\"verdict\": \"skipped\"}\n  $tl_result_f9ab3404 = {\"verdict\": \"skipped\"}\n  $tl_result_3227137e = {\"verdict\": \"skipped\"}\n  $tl_result_375abed1 = {\"verdict\": \"skipped\"}\n  $tl_result_c7d176f4 = {\"verdict\": \"skipped\"}\n  $tl_result_a6de19c4 = {\"verdict\": \"skipped\"}\n  if not $blocked\n    $tl_result_d2819925 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-content-safety:block:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"blocked\"]\n    $bot_message = $text\n  if not $blocked\n    $tl_result_f05d14c8 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-injection-protection:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"blocked\"]\n    $bot_message = $text\n  if not $blocked\n    $tl_result_8a68dd52 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-credentials:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"blocked\"]\n    $bot_message = $text\n  if not $blocked\n    $tl_result_a156bdc5 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-payment-data:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"blocked\"]\n    $bot_message = $text\n  if not $blocked\n    $tl_result_6ed9ecfd = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-government-identifiers:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"blocked\"]\n    $bot_message = $text\n  if not $blocked\n    $tl_result_829631a5 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-passports:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"blocked\"]\n    $bot_message = $text\n  if not $blocked\n    $tl_result_f9ab3404 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-contact-data:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"blocked\"]\n    $bot_message = $text\n  if not $blocked\n    $tl_result_3227137e = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-network-addresses:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"blocked\"]\n    $bot_message = $text\n  if not $blocked\n    $tl_result_375abed1 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-sensitive-attribute-terms:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"blocked\"]\n    $bot_message = $text\n  if not $blocked\n    $tl_result_c7d176f4 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-risk-content-terms:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"blocked\"]\n    $bot_message = $text\n  if not $blocked\n    $tl_result_a6de19c4 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-content-safety:allow:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"blocked\"]\n    $bot_message = $text\n  $decision = await GuardResolveAction(text=$text)\n",
+  "colangContent": "import core\n\nflow main\n  user said something as $message\n  global $tasklattice_phase\n  if $tasklattice_phase == \"output\"\n    await tasklattice output rails $message.transcript\n  else\n    await tasklattice input rails $message.transcript\n\nflow tasklattice input rails $text\n  global $user_message\n  $user_message = $text\n  $blocked = False\n  $tl_result_5688451a = {\"verdict\": \"skipped\"}\n  $tl_result_1abcdab2 = {\"verdict\": \"skipped\"}\n  $tl_result_d2819925 = {\"verdict\": \"skipped\"}\n  $tl_result_f05d14c8 = {\"verdict\": \"skipped\"}\n  $tl_result_8a68dd52 = {\"verdict\": \"skipped\"}\n  $tl_result_a156bdc5 = {\"verdict\": \"skipped\"}\n  $tl_result_6ed9ecfd = {\"verdict\": \"skipped\"}\n  $tl_result_829631a5 = {\"verdict\": \"skipped\"}\n  $tl_result_f9ab3404 = {\"verdict\": \"skipped\"}\n  $tl_result_3227137e = {\"verdict\": \"skipped\"}\n  $tl_result_375abed1 = {\"verdict\": \"skipped\"}\n  $tl_result_c7d176f4 = {\"verdict\": \"skipped\"}\n  $tl_result_a6de19c4 = {\"verdict\": \"skipped\"}\n  if not $blocked\n    $tl_result_5688451a = await GuardIndirectPromptAction(text=$text, binding_id=\"indirect_prompt_injection:builtin-indirect-prompt-injection:exact\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $user_message = $text\n  if not $blocked\n    $tl_result_1abcdab2 = await GuardMemoryPoisoningAction(text=$text, binding_id=\"memory_poisoning:builtin-memory-poisoning:exact\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $user_message = $text\n  if not $blocked\n    $tl_result_d2819925 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-content-safety:block:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $user_message = $text\n  if not $blocked\n    $tl_result_f05d14c8 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-injection-protection:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $user_message = $text\n  if not $blocked\n    $tl_result_8a68dd52 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-credentials:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $user_message = $text\n  if not $blocked\n    $tl_result_a156bdc5 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-payment-data:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $user_message = $text\n  if not $blocked\n    $tl_result_6ed9ecfd = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-government-identifiers:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $user_message = $text\n  if not $blocked\n    $tl_result_829631a5 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-passports:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $user_message = $text\n  if not $blocked\n    $tl_result_f9ab3404 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-contact-data:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $user_message = $text\n  if not $blocked\n    $tl_result_3227137e = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-network-addresses:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $user_message = $text\n  if not $blocked\n    $tl_result_375abed1 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-sensitive-attribute-terms:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $user_message = $text\n  if not $blocked\n    $tl_result_c7d176f4 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-risk-content-terms:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $user_message = $text\n  if not $blocked\n    $tl_result_a6de19c4 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-content-safety:allow:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $user_message = $text\n  $decision = await GuardResolveAction(text=$text)\n\nflow tasklattice output rails $text\n  global $bot_message\n  $bot_message = $text\n  $blocked = False\n  $tl_result_d2819925 = {\"verdict\": \"skipped\"}\n  $tl_result_f05d14c8 = {\"verdict\": \"skipped\"}\n  $tl_result_8a68dd52 = {\"verdict\": \"skipped\"}\n  $tl_result_a156bdc5 = {\"verdict\": \"skipped\"}\n  $tl_result_6ed9ecfd = {\"verdict\": \"skipped\"}\n  $tl_result_829631a5 = {\"verdict\": \"skipped\"}\n  $tl_result_f9ab3404 = {\"verdict\": \"skipped\"}\n  $tl_result_3227137e = {\"verdict\": \"skipped\"}\n  $tl_result_375abed1 = {\"verdict\": \"skipped\"}\n  $tl_result_c7d176f4 = {\"verdict\": \"skipped\"}\n  $tl_result_a6de19c4 = {\"verdict\": \"skipped\"}\n  if not $blocked\n    $tl_result_d2819925 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-content-safety:block:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $bot_message = $text\n  if not $blocked\n    $tl_result_f05d14c8 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-injection-protection:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $bot_message = $text\n  if not $blocked\n    $tl_result_8a68dd52 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-credentials:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $bot_message = $text\n  if not $blocked\n    $tl_result_a156bdc5 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-payment-data:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $bot_message = $text\n  if not $blocked\n    $tl_result_6ed9ecfd = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-government-identifiers:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $bot_message = $text\n  if not $blocked\n    $tl_result_829631a5 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-passports:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $bot_message = $text\n  if not $blocked\n    $tl_result_f9ab3404 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-contact-data:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $bot_message = $text\n  if not $blocked\n    $tl_result_3227137e = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-network-addresses:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $bot_message = $text\n  if not $blocked\n    $tl_result_375abed1 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-sensitive-attribute-terms:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $bot_message = $text\n  if not $blocked\n    $tl_result_c7d176f4 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-risk-content-terms:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $bot_message = $text\n  if not $blocked\n    $tl_result_a6de19c4 = await GuardContentFilterAction(text=$text, binding_id=\"builtin_content_filter:local-content-safety:allow:rules\")\n    $decision = await GuardResolveAction(text=$text)\n    $text = $decision[\"content\"]\n    $blocked = $decision[\"stop\"]\n    $bot_message = $text\n  $decision = await GuardResolveAction(text=$text)\n",
   "prompts": [],
   "actionBindings": [
     {
@@ -1997,6 +2101,14 @@
         [
           "policy_version",
           "1.0.1"
+        ],
+        [
+          "precedence",
+          "0"
+        ],
+        [
+          "evaluation_view",
+          "original"
         ],
         [
           "execution_schedule",
@@ -2032,6 +2144,14 @@
         [
           "policy_version",
           "1.0.1"
+        ],
+        [
+          "precedence",
+          "1"
+        ],
+        [
+          "evaluation_view",
+          "original"
         ],
         [
           "execution_schedule",
@@ -2098,6 +2218,14 @@
           "{}"
         ],
         [
+          "precedence",
+          "3"
+        ],
+        [
+          "evaluation_view",
+          "original"
+        ],
+        [
           "execution_schedule",
           "block-first-v1"
         ]
@@ -2160,6 +2288,14 @@
         [
           "policy_parameters_json",
           "{}"
+        ],
+        [
+          "precedence",
+          "4"
+        ],
+        [
+          "evaluation_view",
+          "original"
         ],
         [
           "execution_schedule",
@@ -2226,6 +2362,14 @@
           "{}"
         ],
         [
+          "precedence",
+          "5"
+        ],
+        [
+          "evaluation_view",
+          "original"
+        ],
+        [
           "execution_schedule",
           "block-first-v1"
         ]
@@ -2288,6 +2432,14 @@
         [
           "policy_parameters_json",
           "{}"
+        ],
+        [
+          "precedence",
+          "6"
+        ],
+        [
+          "evaluation_view",
+          "previous_output"
         ],
         [
           "execution_schedule",
@@ -2354,6 +2506,14 @@
           "{}"
         ],
         [
+          "precedence",
+          "7"
+        ],
+        [
+          "evaluation_view",
+          "previous_output"
+        ],
+        [
           "execution_schedule",
           "block-first-v1"
         ]
@@ -2416,6 +2576,14 @@
         [
           "policy_parameters_json",
           "{}"
+        ],
+        [
+          "precedence",
+          "8"
+        ],
+        [
+          "evaluation_view",
+          "previous_output"
         ],
         [
           "execution_schedule",
@@ -2482,6 +2650,14 @@
           "{}"
         ],
         [
+          "precedence",
+          "9"
+        ],
+        [
+          "evaluation_view",
+          "previous_output"
+        ],
+        [
           "execution_schedule",
           "block-first-v1"
         ]
@@ -2544,6 +2720,14 @@
         [
           "policy_parameters_json",
           "{}"
+        ],
+        [
+          "precedence",
+          "10"
+        ],
+        [
+          "evaluation_view",
+          "previous_output"
         ],
         [
           "execution_schedule",
@@ -2610,6 +2794,14 @@
           "{}"
         ],
         [
+          "precedence",
+          "11"
+        ],
+        [
+          "evaluation_view",
+          "previous_output"
+        ],
+        [
           "execution_schedule",
           "block-first-v1"
         ]
@@ -2674,6 +2866,14 @@
           "{}"
         ],
         [
+          "precedence",
+          "12"
+        ],
+        [
+          "evaluation_view",
+          "previous_output"
+        ],
+        [
           "execution_schedule",
           "block-first-v1"
         ]
@@ -2736,6 +2936,14 @@
         [
           "policy_parameters_json",
           "{}"
+        ],
+        [
+          "precedence",
+          "2"
+        ],
+        [
+          "evaluation_view",
+          "original"
         ],
         [
           "execution_schedule",

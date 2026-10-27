@@ -15,6 +15,7 @@ from ...runtime.contracts import (
     RiskFinding,
     RuntimeTraceStep,
 )
+from ...compiler.semantics import complete_evidence_supported
 from ...safety.taxonomy import taxonomy_for_evaluator
 from .contracts import ActionRequest, ActionResult, action_result
 from .names import ACTION_CONTENT_FILTER
@@ -60,6 +61,7 @@ class BuiltinContentFilter:
         policy_rule_actions: Mapping[str, Mapping[str, str]] | None = None,
         custom_rules: Iterable[Mapping[str, Any]] = (),
         definitions: Mapping[str, PolicySpec] | None = None,
+        stop_on_block: bool = True,
     ) -> _ContentFilterResult:
         shared_parameters = parameters or {}
         configured_by_policy = policy_parameters or {}
@@ -93,16 +95,17 @@ class BuiltinContentFilter:
                     flat_actions,
                     actions_by_policy.get(name, {}),
                     tuple((rule_order or {}).get(name, ())),
+                    stop_on_block,
                 )
                 detections.extend(matched)
-                if any(item.action == "block" for item in matched):
+                if stop_on_block and any(item.action == "block" for item in matched):
                     break
             else:
                 for rule in custom_rules:
                     matched = self._apply_custom_rules((rule,), content, phase)
                     detections.extend(matched)
                     content = self._apply_effect(content, matched)
-                    if any(item.action == "block" for item in matched):
+                    if stop_on_block and any(item.action == "block" for item in matched):
                         break
         except (re.error, ValueError) as error:
             return _ContentFilterResult(
@@ -165,6 +168,7 @@ class BuiltinContentFilter:
         flat_actions: Mapping[str, str],
         policy_actions: Mapping[str, str],
         rule_order: tuple[str, ...] = (),
+        stop_on_block: bool = True,
     ) -> tuple[str, list[_Detection]]:
         detections: list[_Detection] = []
         by_id = {rule.id: rule for rule in definition.rules}
@@ -189,7 +193,7 @@ class BuiltinContentFilter:
                     definition.id, concrete, text, phase, parameters, concrete_action,
                 )
                 detections.extend(matched)
-                if any(item.action == "block" for item in matched):
+                if stop_on_block and any(item.action == "block" for item in matched):
                     return text, detections
         return text, detections
 
@@ -276,48 +280,12 @@ class ContentFilterActionProvider:
         self._content_filter = content_filter or BuiltinContentFilter()
 
     async def execute(self, request: ActionRequest) -> ActionResult:
-        parameters = dict(request.parameters)
-        legacy_parameters = {
-            key.removeprefix("parameter."): value
-            for key, value in request.parameters
-            if key.startswith("parameter.")
-        }
-        decoded_actions = _json_mapping(
-            parameters.get("rule_actions_json", "{}")
-        )
-        policy_actions = {
-            key: value
-            for key, value in decoded_actions.items()
-            if isinstance(value, dict)
-        }
-        flat_actions = {
-            key: str(value)
-            for key, value in decoded_actions.items()
-            if isinstance(value, str)
-        }
-        definitions = definitions_from_parameters(parameters)
-        result = self._content_filter.evaluate(
+        result = evaluate_parameters(
+            self._content_filter,
             text=request.content,
             phase=request.rail_type,
-            policies=tuple(
-                item.strip()
-                for item in parameters.get("policy_ids", "").splitlines()
-                if item.strip()
-            ),
-            parameters=legacy_parameters,
-            policy_parameters=_json_nested_mapping(
-                parameters.get("policy_parameters_json", "{}")
-            ),
-            enabled_rules=_json_mapping(
-                parameters.get("enabled_rules_json", "{}")
-            ),
-            rule_actions=flat_actions,
-            rule_order=_json_mapping(parameters.get("rule_order_json", "{}")),
-            policy_rule_actions=policy_actions,
-            custom_rules=_json_rules(
-                parameters.get("custom_rules_json", "[]")
-            ),
-            definitions=definitions,
+            parameters=request.parameters,
+            stop_on_block=not (request.evidence_scope == "full" and complete_evidence_supported(request.plan)),
         )
         return action_result(
             request,
@@ -327,6 +295,55 @@ class ContentFilterActionProvider:
             reason=result.reason,
             trace=result.trace,
         )
+
+
+def evaluate_parameters(
+    content_filter: BuiltinContentFilter,
+    *,
+    text: str,
+    phase: GuardrailPhase,
+    parameters: Iterable[tuple[str, str]] | Mapping[str, str],
+    stop_on_block: bool = True,
+) -> _ContentFilterResult:
+    """Evaluate one compiled content-filter step without a NeMo Action wrapper.
+
+    The same immutable step parameters drive production execution and offline
+    Rule-evidence re-evaluation, so an acceptance case cannot pass on a detector
+    contract that the deployed step does not actually implement.
+    """
+    resolved = dict(parameters)
+    legacy_parameters = {
+        key.removeprefix("parameter."): value
+        for key, value in resolved.items()
+        if key.startswith("parameter.")
+    }
+    decoded_actions = _json_mapping(resolved.get("rule_actions_json", "{}"))
+    policy_actions = {
+        key: value for key, value in decoded_actions.items() if isinstance(value, dict)
+    }
+    flat_actions = {
+        key: str(value) for key, value in decoded_actions.items() if isinstance(value, str)
+    }
+    return content_filter.evaluate(
+        text=text,
+        phase=phase,
+        policies=tuple(
+            item.strip()
+            for item in resolved.get("policy_ids", "").splitlines()
+            if item.strip()
+        ),
+        parameters=legacy_parameters,
+        policy_parameters=_json_nested_mapping(
+            resolved.get("policy_parameters_json", "{}")
+        ),
+        enabled_rules=_json_mapping(resolved.get("enabled_rules_json", "{}")),
+        rule_actions=flat_actions,
+        rule_order=_json_mapping(resolved.get("rule_order_json", "{}")),
+        policy_rule_actions=policy_actions,
+        custom_rules=_json_rules(resolved.get("custom_rules_json", "[]")),
+        definitions=definitions_from_parameters(resolved),
+        stop_on_block=stop_on_block,
+    )
 
 
 def _taxonomy_ids(policy_id: str, rule_id: str, definitions: Mapping[str, PolicySpec] | None = None) -> tuple[str, ...]:

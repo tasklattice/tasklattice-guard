@@ -181,7 +181,7 @@ describe("Controller Guardrail plan", () => {
     expect(plan).toMatchObject({
       guardrail_id: "guardrail-1",
       guardrail_version: "20260904-030000.003Z",
-      compiler_version: "tasklattice-controller-plan-v15-staged-checks",
+      compiler_version: "tasklattice-controller-plan-v16-explicit-views",
       safety_level: "strict",
     });
     expect(plan.steps).toEqual(expect.arrayContaining([
@@ -210,6 +210,10 @@ describe("Controller Guardrail plan", () => {
         trigger: { type: "always" },
       }),
     ]));
+    // Exact and semantic checks share source parameters, not mutable metadata.
+    expect(balanced.steps.map(step => Object.fromEntries(step.parameters).precedence)).toEqual(["0", "1"]);
+    expect(balanced.steps.every(step => step.parameters.filter(([key]) => key === "precedence").length === 1)).toBe(true);
+    expect(balanced.steps[0]!.parameters).not.toBe(balanced.steps[1]!.parameters);
   });
 
   it("preserves the exact catalog version, enabled Rules, parameters, and action overrides", () => {
@@ -395,6 +399,7 @@ describe("Controller Guardrail plan", () => {
     expect(JSON.parse(params.enabled_rules_json!)[contact.id]).toEqual(order);
     expect(JSON.parse(params.rule_order_json!)[contact.id]).toEqual(order);
     expect(params.execution_schedule).toBeUndefined();
+    expect(params.evaluation_view).toBe("previous_output");
   });
 
   it("honors native Policy Rule overrides independently for input and output", () => {
@@ -455,6 +460,40 @@ describe("Controller Guardrail plan", () => {
     draft.allowedTopics = [];
     expect(() => buildGuardrailPlan({ guardrailId: "topic-allowlist", guardrailVersion: "20260905-010000.001Z", draft }))
       .toThrow(/requires at least one allowed topic/i);
+  });
+});
+
+describe("Compiled evaluation views", () => {
+  it("declares the authored precedence and a schedule-independent view per step", () => {
+    const compiler = new DeclarativeCompiler(resolve("../runner/toolkit/policy_library/assets"));
+    const template = compiler.shipped("keyword-blocking")!;
+    const definition = structuredClone(template);
+    definition.metadata.id = "views";
+    definition.metadata.version = "1.0.0";
+    definition.parameters = [];
+    delete definition.testing;
+    definition.tests = [];
+    definition.rules = [
+      { ...structuredClone(template.rules[0]!), id: "mask", name: "Mask", stages: ["input", "output"],
+        detector: { ref: "text/keyword", version: "1.0.0", parameters: { keywords: [["alpha", "low"]] } },
+        on_match: { action: "transform", replacement: "[MASK]" }, runtime_adapter: undefined },
+      { ...structuredClone(template.rules[0]!), id: "block", name: "Block", stages: ["input", "output"],
+        detector: { ref: "text/keyword", version: "1.0.0", parameters: { keywords: [["alpha", "low"]] } },
+        on_match: { action: "block" }, runtime_adapter: undefined },
+    ];
+    const policy = compiler.compile(definition);
+    const plan = buildGuardrailPlan({ guardrailId: "views", guardrailVersion: "20261023-000000.001Z", policies: [policy],
+      draft: { allowedTopics: [], restrictedTopics: [], safetyLevel: "balanced", outputDelivery: "full_buffered",
+        policyBindings: [{ policyId: policy.id, policyVersion: policy.version, action: null, parameterValues: {},
+          enabledRuleIds: ["mask", "block"], ruleOrder: ["mask", "block"], ruleActions: {}, enabledRails: ["input", "output"],
+          reasoningPolicy: null }] } });
+    const parameters = Object.fromEntries(plan.steps.map((step) => [step.id.split(":")[2]!, Object.fromEntries(step.parameters)]));
+    // Block is scheduled first for latency, yet its authored precedence stays last.
+    expect(plan.steps.map((step) => step.on_unsafe)).toEqual(["block", "transform"]);
+    expect(parameters.mask).toMatchObject({ precedence: "0", evaluation_view: "previous_output" });
+    expect(parameters.block).toMatchObject({ precedence: "1", evaluation_view: "original" });
+    expect(parameters.mask!.execution_schedule).toBe("block-first-v1");
+    expect(parameters.block!.execution_schedule).toBe("block-first-v1");
   });
 });
 
