@@ -2,6 +2,12 @@
 
 A published Guardrail is an immutable execution plan. New plans use the effective Rule action (Rule override, Policy override, then Rule default) to schedule compiler-owned checks. Existing published artifacts keep their original execution order until a new version is compiled and published.
 
+The compilation step is an optimisation over that plan, not a second definition
+of it. Every step therefore declares two things the schedule is not allowed to
+change: its **authored precedence** and the **view** it inspects.
+
+The following is the default `interventions` execution path:
+
 ```text
 Input / buffered output
   -> local Block checks (stable order, stop on Block)
@@ -13,12 +19,28 @@ Input / buffered output
   -> final response
 ```
 
+## Execution contract
+
+The Controller writes two step parameters that the Runner must honour:
+
+| Step parameter | Meaning |
+| --- | --- |
+| `precedence` | The authored step order, fixed before scheduling. This metadata is not a separate decision resolver; the Runtime still gives Block precedence. |
+| `evaluation_view` | `original` for read-only checks; `previous_output` for a Transform step and every step of its trigger chain. |
+
+Consequences:
+
+- **Within the verified deterministic, full-buffered cases, decision is order-independent under legal schedules.** A Block wins wherever it is scheduled, because read-only checks inspect the phase input rather than whatever an earlier step happened to write. Scheduling Block first enables earlier rejection in `interventions` scope.
+- **Read-only detection input is schedule-independent.** Moving an independent check ahead of a Transform step does not change its declared input. Full evidence mode also preserves execution after a Block; the default fast path does not promise identical findings.
+- **Output is order-dependent by contract.** Only Transform steps compose text, they keep their authored order, and each one sees the output of the Transform steps it declares as its view.
+- A windowed output stream has no complete phase input yet, so its rails keep checking exactly the pending window they were handed.
+
 ## Dependencies and concurrency
 
 - Trigger prerequisites override action priority. A conditional exact/semantic chain stays together. A Transform prerequisite is not moved behind its dependent check.
 - Transform order is stable and Transform checks never share a parallel group.
 - Independent, unconditional, single-step model checks can share a group. The Runner starts at most four checks per request. This limit is separate from Veritas request concurrency.
-- A Block cancels pending group work and prevents later stages. Cancellation is recorded as `cancelled` or `skipped`; it is not a successful check. An upstream service may have already processed or billed a cancelled call, so missing provider usage is not zero cost.
+- In the default `interventions` scope, a Block cancels pending group work and prevents later stages. Cancellation is recorded as `cancelled` or `skipped`; it is not a successful check. An upstream service may have already processed or billed a cancelled call, so missing provider usage is not zero cost.
 - Timeouts and transport errors retain the configured failure policy; an Allow result cannot override another required check's Block or failure.
 - Arbitrary authored Colang flows retain their declared execution order as a conservative dependency barrier. Streaming output checks remain serial. Full-buffered input/output checks support parallel groups.
 - NeMo owns flow execution and each existing Action/evaluator still owns its model request, deadline, verdict and evidence. No second evaluation framework is introduced.
@@ -27,13 +49,26 @@ Input / buffered output
 
 Block takes precedence over Transform. If PII would redact a request but the content-safety or jailbreak check blocks it, the final decision is Block and no redacted request is released. A content-safety Privacy classification is not silently removed because a narrower PII detector exists. An uncertain jailbreak verdict retains its configured handling and remains distinguishable from an explicit detection.
 
-If all required Block checks pass, PII transformations run sequentially. Later checks consume the current transformed text, while unrelated conversation history and external-content boundaries remain intact. Allow means that a particular check does not object; it is not a global exemption.
+If all required Block checks pass, PII transformations run sequentially. Each Transform step and its declared chain consume the current transformed text, while unrelated conversation history and external-content boundaries remain intact. A read-only Block or Allow check inspects the phase input, so another Policy's redaction can neither blind a Block check nor erase an Allow observation. Allow means that a particular check does not object; it is not a global exemption.
 
 Model checks before PII redaction can receive the original text. A deployment requiring redaction before external model processing must express that dependency explicitly or use a local model; action priority alone does not establish a data-egress policy.
 
 ## Validation and reporting
 
-Single-Policy acceptance tests and combined final decisions answer different questions. A PII-only test expecting Transform can legitimately produce Block in a composition, but this must remain a visible conflict, not an automatic pass or a relabelled benchmark.
+> 设计约定、已验证范围、迁移规则与后续工作，见
+> [`policy-scheduling-optimization-design.zh-CN.md`](./policy-scheduling-optimization-design.zh-CN.md)。
+
+Single-Policy acceptance and combined final decisions answer different questions. Another Rule's Block or Transform cannot prove the target Rule passed. A target must have the pinned source version, enabled phase and Rules, executable steps, and actual evidence. Rule acceptance requires every target; scenario coverage may list alternative detectors and requires an actual match within that pinned coverage. A scenario match does not certify its unmatched Rules.
+
+- `observed` requires actual target matches. `absent` requires conclusive execution without those matches. `missing`, `not_reached`, `not_matched` and `unverifiable` cannot pass target acceptance.
+- `preempted_by` and `shadowed_by` explain why target evidence is unavailable; they do not satisfy acceptance. A local pinned-definition recheck on original text is diagnostic only, never an actual match on a transformed view.
+- A reviewed expectation override can explicitly require a different Rule and exact output. It remains version-bound and cannot repair an omitted or disabled target by assumption.
+- New compiler-owned, full-buffered plans honor `evidence_scope=full`: all reachable checks collect evidence despite a Block, including parallel members. The final Block still prevents content delivery. Online `interventions` retains short-circuiting and cancellation.
+- Reports carry structured evidence and `rule-evidence-v1`. Historical reports stay unchanged. Retesting an old artifact uses stricter evidence assertions without changing its old execution order or short-circuit behavior.
+- Plan v16 and NeMo compiler v28 require the `tasklattice.explicit-views=1` Runner capability. The Controller checks it for compilation, testing, load admission and distribution. Ignoring view parameters is not semantic compatibility.
+- Three legal schedules of each tested action composition must have identical decisions, outputs, normalized evidence and assertions. These deterministic tests do not prove equivalence for arbitrary custom flows, windowed streaming, model randomness or stateful checks.
+
+**Testing does not gate Guardrail publication.** Untested and failed drafts can publish through independent compilation. A failed report remains failed, including when published as release evidence. Artifact validity and runtime compatibility remain necessary checks.
 
 The existing local-only validation option verifies local Rules without model calls, explicitly lists skipped model tests, and publishes the complete model-enabled artifact. It does not certify combined model behavior. Real-target Veritas runs are separate evidence, with unchanged source labels and frozen samples. Report strict scorer Accuracy alongside binary intervention Precision/Recall/F1, new failures, fixes, repeat instability, execution errors and latency. For PII, an arbitrary Block or incomplete redaction must not count as successful full removal when the scorer requires a transformed output.
 
@@ -52,6 +87,7 @@ virtual environment installed, run:
 
 .venv/bin/python -m pytest -q \
   tests/control_plane/test_action_composition_matrix.py \
+  tests/control_plane/test_schedule_invariance.py \
   tests/control_plane/test_ordered_execution.py \
   tests/control_plane/test_parallel_checks.py \
   tests/control_plane/test_catalog_rule_overrides.py \

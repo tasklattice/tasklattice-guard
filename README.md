@@ -111,7 +111,7 @@ use the [production deployment guide](charts/tali-guard/README.md#production-ins
 | I want to… | Guide |
 | --- | --- |
 | Integrate an application or gateway | [Runtime API, streaming, dry run, and verification](docs/gateway-integration.md) |
-| Configure protection and validation | [Policies and validation](docs/guardrail-policies.md), [execution order and PII conflicts](docs/policy-composition.md) |
+| Configure protection and validation | [Policies and validation](docs/guardrail-policies.md), [execution order and PII conflicts](docs/policy-composition.md), [scheduling optimisation design](docs/policy-scheduling-optimization-design.zh-CN.md) |
 | Connect models for protection checks | [Providers, Models, and Guardrail Catalog](docs/model-configuration.md) |
 | Route traffic across Guardrails | [Routes, selectors, and weighted distribution](docs/router-route-weighted-distribution-design.md) |
 | Test a Router or Endpoint | [Playground advanced path testing](docs/playground-advanced-mode.md) |

@@ -172,13 +172,17 @@ message ValidationCaseResult {
   repeated ValidationExpectedMatch preempting_matches = 38;
   bool skipped = 39;
   string skip_reason = 40;
+  // Actual target Rule evidence; absent for reports predating this contract.
   optional ValidationEvidenceStatus evidence_status = 41;
+  // Related interventions explain missing evidence, never automatic acceptance.
   repeated ValidationExpectedMatch superseded_by = 42;
   // Only actually observed matches on the declared view, never counterfactuals.
   repeated string verified_rule_ids = 43;
+  // Human-readable explanation of the recorded evidence status.
   string evidence_detail = 44;
   // Effective Rule assertion, including an explicitly reviewed override.
   optional bool rule_contract_satisfied = 45;
+  // Evidence interpretation version; empty for legacy reports.
   string evidence_contract = 46;
 }
 

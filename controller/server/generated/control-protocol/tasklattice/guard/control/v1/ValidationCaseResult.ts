@@ -102,17 +102,29 @@ export interface ValidationCaseResult {
   'preemptingMatches'?: (_tasklattice_guard_control_v1_ValidationExpectedMatch)[];
   'skipped'?: (boolean);
   'skipReason'?: (string);
+  /**
+   * Actual target Rule evidence; absent for reports predating this contract.
+   */
   'evidenceStatus'?: (_tasklattice_guard_control_v1_ValidationEvidenceStatus);
+  /**
+   * Related interventions explain missing evidence, never automatic acceptance.
+   */
   'supersededBy'?: (_tasklattice_guard_control_v1_ValidationExpectedMatch)[];
   /**
    * Only actually observed matches on the declared view, never counterfactuals.
    */
   'verifiedRuleIds'?: (string)[];
+  /**
+   * Human-readable explanation of the recorded evidence status.
+   */
   'evidenceDetail'?: (string);
   /**
    * Effective Rule assertion, including an explicitly reviewed override.
    */
   'ruleContractSatisfied'?: (boolean);
+  /**
+   * Evidence interpretation version; empty for legacy reports.
+   */
   'evidenceContract'?: (string);
   '_expectedReasoningResult'?: "expectedReasoningResult";
   '_actualReasoningResult'?: "actualReasoningResult";
@@ -218,17 +230,29 @@ export interface ValidationCaseResult__Output {
   'preemptingMatches': (_tasklattice_guard_control_v1_ValidationExpectedMatch__Output)[];
   'skipped': (boolean);
   'skipReason': (string);
+  /**
+   * Actual target Rule evidence; absent for reports predating this contract.
+   */
   'evidenceStatus'?: (_tasklattice_guard_control_v1_ValidationEvidenceStatus__Output);
+  /**
+   * Related interventions explain missing evidence, never automatic acceptance.
+   */
   'supersededBy': (_tasklattice_guard_control_v1_ValidationExpectedMatch__Output)[];
   /**
    * Only actually observed matches on the declared view, never counterfactuals.
    */
   'verifiedRuleIds': (string)[];
+  /**
+   * Human-readable explanation of the recorded evidence status.
+   */
   'evidenceDetail': (string);
   /**
    * Effective Rule assertion, including an explicitly reviewed override.
    */
   'ruleContractSatisfied'?: (boolean);
+  /**
+   * Evidence interpretation version; empty for legacy reports.
+   */
   'evidenceContract': (string);
   '_expectedReasoningResult'?: "expectedReasoningResult";
   '_actualReasoningResult'?: "actualReasoningResult";
