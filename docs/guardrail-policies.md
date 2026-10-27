@@ -117,14 +117,37 @@ Policies are split into execution groups without changing their resource identit
 
 A binding's optional `ruleOrder` remains the stable tie-breaker within each
 action group; unlisted Rules retain template order. `enabledRuleIds` controls
-membership independently. Independent read-only model checks share the same
-input and can run concurrently. Any Block stops later execution and cancels
-pending siblings. Allow never exempts a request from another required check.
-Transform checks run serially, each consuming the preceding output.
+membership independently. Each Step and Action declares its evaluation view:
+independent read-only checks use the original stage input and can run concurrently;
+Transforms and their dependent checks use `previous_output`. Transforms run
+serially in author order. In production's `interventions` mode, Block can stop
+later execution and cancel pending siblings. Supported full-buffered validation
+plans collect reachable evidence even after Block. Allow never exempts a request
+from another required check.
 
 Trigger prerequisites remain ordered, and arbitrary authored Colang flows form
-a conservative barrier. Existing published artifacts retain their original
-execution order until a new version is published. See
+a conservative barrier. Published artifacts retain their frozen execution order
+only while their execution contract is supported. **Pre-v16 Controller plans
+must be recompiled before use with the current Runner.** Admission requires
+`tasklattice-controller-plan-v16-explicit-views` together with
+`tasklattice-nemo-config-v29-single-contract`, and exactly one valid
+`evaluation_view` on every Step and Action. A valid signature does not imply a
+supported execution contract.
+
+Unsupported artifacts fail admission with `artifact_recompile_required` before
+runtime activation or test execution. A rejected update preserves the current
+valid release; a cold Runner with only an old persisted release stays unready
+and logs the reason. Old artifacts with cached successful environment checks
+are excluded from optional preloading; a Router referencing one causes explicit
+rollout rejection instead of silently omitting that protection.
+
+Deploy matching Controller and Runner versions, then publish the Guardrail draft
+again. Publication recompiles when its existing version or test candidate uses
+an unsupported contract, even if the draft did not change. Check the new version's
+environment and switch the Router to it. Keep the existing serving deployment
+until its replacement is ready when uninterrupted service is required. Old signed
+artifacts and reports are immutable; tests remain optional and failed tests do
+not prevent publication. See
 [composition semantics, PII conflicts and validation limits](policy-composition.md).
 
 ## Validation and composition expectations

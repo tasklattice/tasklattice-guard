@@ -99,16 +99,23 @@ override 不会使已删除、禁用、版本不符的目标变得有效。也�
 
 ## 6. 统一契约与产物标识
 
-Controller 与 Runner 按同一套契约部署，不支持混合旧版本。编译、测试、加载和 desired-state 分发不再检查显式视图能力标签；Runtime 不再根据计划版本选择另一套执行语义。完整证据支持范围仅由执行类型决定：完整缓冲且没有任意自定义流。
+Controller 与 Runner 按同一套契约部署，不支持混合旧版本。编译、测试、加载和 desired-state 分发不再协商显式视图能力标签；Runtime 不根据计划版本选择另一套执行语义。**加载前仍必须检查产物契约**：这是明确拒绝不支持的输入，不是新旧能力协商或语义兜底。完整证据支持范围仅由执行类型决定：完整缓冲且没有任意自定义流。
 
 | 对象 | 当前标识 |
 | --- | --- |
 | Controller plan | `tasklattice-controller-plan-v16-explicit-views` |
 | NeMo 编译器 | `tasklattice-nemo-config-v29-single-contract` |
 
-这些版本只用于识别和复现产物，不用于切换旧行为。Policy 的固定版本仍用于核对真实目标；checksum、签名、依赖、模型配置同步和执行环境检查继续有效。
+只有上表两个当前标识组合可以加载；每个 Step 和 Action 还必须声明且仅声明一个合法 `evaluation_view`。即便标识改成当前值，缺失、重复或无效的视图仍会被拒绝。版本不用于切换旧行为。Policy 的固定版本仍用于核对真实目标；checksum、签名、依赖、模型配置同步和执行环境检查继续有效。签名正确只能证明产物完整、来源可信，不能证明升级后的 Runner 支持其执行契约。
 
-不为旧计划和旧报告提供兼容分支或语义兜底。需要使用的 Guardrail 应重新编译，生成符合当前契约的产物；要取得当前证据则重新测试，测试并非发布前置条件。不会原地修改已签名的 artifact 或把原失败结果改成通过。
+v16 之前的 Controller plan，以及不符合当前 NeMo 编译器契约的产物，都需要重新编译。拒绝理由统一带 `artifact_recompile_required`，明确要求使用当前 Controller / Runner 重新编译并发布新版本：
+
+- Controller 环境检查和 desired-state 分发先检查契约。历史 `compatible` 缓存不能授权旧产物预加载；未被 Router 引用的旧产物不阻塞其他发布，被引用的旧产物则使 rollout 明确失败，不能直接丢掉保护配置。
+- Runner 在 checksum、签名和 NeMo 版本验证后，进入 Registry 或激活前校验契约。批次中存在不支持的产物时发送 NACK，当前有效 release 和持久化状态保持不变，不会先加载后对每条请求 fail-closed。
+- 冷启动读取旧的 last-known-good 缓存时同样拒绝恢复，保留原文件用于排查，记录重编译原因并保持未就绪。这个 gate 不承诺旧产物在新 Runner 上继续服务。
+- 已发布版本的复测使用同一加载 gate；拒绝后不执行用例，也不偷偷重编译或改变被测内容。
+
+升级时部署配套 Controller / Runner，再对需要使用的 Guardrail 草稿重新请求发布。即使草稿没有改动，旧契约的已发布版本和测试候选也不会复用，会编译成新版本；通过环境检查后再切换 Router。若要求服务不中断，应在替换部署就绪前保留原服务部署，而不能直接用新 Runner 启动旧缓存。要取得当前证据则重新测试，但测试并非发布前置条件。旧签名 artifact 和旧报告保持不变，不会把原失败结果改成通过。
 
 ## 7. 测试和发布独立
 
@@ -142,6 +149,8 @@ Default、full-feature-baseline 和普通用户创建的 Guardrail 使用同一�
 - 并行回归：C1/C2、input/output、full/快速范围；快速模式仍取消，full 模式保留兄弟结果；模型 HTTP 成功、超时和 503 的确定性响应下，串行与并行的执行结果一致。
 - 协议和控制面：结构化字段真实 wire 往返、明确的 true/false Rule 判定、无需视图能力标签即可编译/测试/加载/分发，以及视图缺失或歧义时拒绝执行。
 - 发布：实际 PostgreSQL 写入失败证据后发布，测试与版本状态独立。
+- 升级加载：冻结提交 `1df5c899` 中真实的旧签名 Artifact（`tests/fixtures/unsupported-artifacts/pre-v16-local-secrets`），验证签名和 checksum 有效且缺少视图，再验证环境检查、apply/admit/verify、NACK、旧缓存重启和已发布版本复测均拒绝。夹具不经过当前编译器重建。另测当前标识下的视图缺失、重复、无效值，以及原有效 release 不被失败更新替换。
+- 升级恢复：PostgreSQL 覆盖过期 `compatible` 缓存、被 Router 引用的旧产物保留至分发 gate、未修改草稿重新发布生成新版本、原 Artifact/失败报告不被改写，以及新版本重复发布的幂等性。
 - 前端：真实桌面页面展开报告，部分命中显示 Rule 不匹配；满足组合约定的决策失败不会再误报 Rule 不匹配。
 
 本次清理后的本机验证记录（2026-10-27）：
