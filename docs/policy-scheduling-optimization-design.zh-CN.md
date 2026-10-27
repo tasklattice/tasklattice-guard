@@ -207,7 +207,9 @@ Controller 初次运行有三个套件因临时 PostgreSQL 缺少 public schema 
   tests/control_plane/test_schedule_invariance.py \
   tests/control_plane/test_full_evidence_failures.py \
   tests/control_plane/test_validation_expectations.py \
-  tests/control_plane/test_parallel_checks.py
+  tests/control_plane/test_parallel_checks.py \
+  tests/control_plane/test_evidence_capability_matrix.py \
+  tests/control_plane/test_schedule_replay_diff.py
 
 (cd controller && node node_modules/vitest/vitest.mjs run --environment jsdom \
   server/domain/guardrail-plan.test.ts \
@@ -227,6 +229,61 @@ npm run proto:check
 
 ## 9. 后续阶段与收益边界
 
-后续可以增加声明式 reads/mutates/cost 属性、纯函数仲裁器、稳定的阻断解释、影子差分运行和流式证据契约。应先补相应依赖与证据测试，再扩大允许重排的范围。
+后续可以增加声明式 reads/mutates/cost 属性、纯函数仲裁器、稳定的阻断解释和流式证据契约。应先补相应依赖与证据测试，再扩大允许重排的范围。
 
 本阶段的确定收益是消除缺失证据导致的假通过、避免测试结论随合法调度变化、消除新旧契约分支，并保留失败后发布的顺畅流程。**不承诺生产延迟改善比例，也不宣称所有场景的语义保持已经完成。**
+
+### 9.1 编译期 DAG 自检（已实现）
+
+`validate_step_contract()` 在编译入口和**产物加载入口**都执行，拒绝"声明的元数据与可执行图矛盾"的计划：
+
+- 依赖到 Transform 的步骤必须声明 `previous_output`，否则它可能被排到它本应检查的文本之前；
+- `precedence` 必须大于它 trigger 的步骤，保证报告与未来仲裁读到的作者顺序是真实的；
+- 反向（声明更保守的 `previous_output`）仍允许——自定义 Colang 让整个计划保守线程化，这不是错误。
+
+负向用例见 `tests/control_plane/test_ordered_execution.py`。
+
+## 10. 影子/双跑（T5）：暂缓，附触发条件
+
+结论：**当前不做流量级双跑**。它原本要防的头号风险"同一个签名 artifact 被不同 Runner 重新解释"已由显式视图 + 加载期契约 gate 消除；计划形状由 Controller 生成、可枚举、已被多调度差分测试覆盖；坏调度会在发布前的真实产物 Validation 暴露。双跑还会引入假分歧（provider 非确定性）、2 倍成本、有状态检查器被双算，以及半个 fast path 的延迟优势。
+
+### 10.1 A 类（调度/仲裁回归）不需要留存原文
+
+显式视图契约的直接推论：每个 step 的输入视图与调度无关，因此**每个 step 的观测本身就是调度不变量**。`full` 证据模式又会执行所有可达步骤，于是"调度回归"可以从证据离线重算，不需要入站明文。
+
+`tests/control_plane/test_schedule_replay_diff.py` 固定了这个记录格式（也是将来 `captureMode=evidence` 的落库形状）：
+
+```jsonc
+{ "caseId", "phase", "inputDigest", "planDigest", "scheduleDigest",
+  "decision", "outputDigest",
+  "steps":    [{ "id", "status", "verdict" }],        // 按 id 排序，与执行顺序无关
+  "findings": [{ "policyId", "ruleId", "verdict", "action", "taxonomy" }] }
+```
+
+它验证三件事：同一计划的两种合法调度产生相同记录（仅 `scheduleDigest` 不同）；记录可以预测 fast path 的决策；计划语义变化时记录会变（不是同义反复）。**记录里没有任何请求或输出文本**。
+
+### 10.2 B 类（检测器/模型回归）才需要内容留存
+
+换分类器、调阈值、换模型时才需要原文，那是独立的"数据留存"决策，不应由调度优化驱动。若要做，按下面七条设计，**"整段加密"是必要条件而非充分条件**：
+
+1. 默认 `evidence`（无明文）；`content` 需逐 Guardrail 显式开启 + 审批记录；
+2. 当前只有一个全局 `MODEL_GUARDRAILS_RUNTIME_LOG_ENCRYPTION_KEY`，做语料要改为 per-tenant DEK + KMS 包裹、可轮换，密钥不与密文同库；
+3. TTL 上限与按 Guardrail 的配额（现有诊断候选 300s 不能直接当语料留存）；
+4. 租户隔离，导入/导出必脱敏；
+5. 每次解密写审计；
+6. 删除/导出通道（GDPR/PIPL：加密不等于匿名，留存与删除义务照样适用）；
+7. **重放不得再出站**：只能回放录制响应（现有 `scripts/model_response_gateway.py::ReplayFixtures`）或离线模型，否则重放本身成为绕过 Guardrail 的 PII 出站通道。
+
+现有可复用件：`guardrails.loggingLevel`（info/debug/trace）、`runner/runtime_log_capture.py`（短 TTL 候选）、`runtime-log-crypto.ts`（AES-256-GCM + 读取侧脱敏）、`runtime_events.source`（可加 `replay` 隔离指标）。
+
+### 10.3 触发条件（满足任一条再立项）
+
+| 触发条件 | 为什么那时必须做 |
+| --- | --- |
+| 引入运行时自适应调度（按请求成本/延迟动态选序或选检查集） | 语义不再是编译期纯函数，离线无法枚举 |
+| 放开同一 artifact 跨 Runner 的语义差异（版本协商或视图兜底） | 等于重新打开"artifact 被重新解释" |
+| 大规模启用自定义 Colang，且其计划无法离线复现 | 编译器不再掌控执行形状 |
+| 合规要求用生产证据证明优化无行为漂移 | 离线证据不被接受 |
+| 出现测试无法复现的线上行为差异工单 | 需要流量级观测 |
+
+延迟/成本类问题不要用双跑验证：用加权 Router（`weightBps`）canary 一个新版本更真实、更便宜。

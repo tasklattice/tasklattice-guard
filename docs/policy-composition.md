@@ -123,7 +123,9 @@ virtual environment installed, run:
   tests/control_plane/test_parallel_checks.py \
   tests/control_plane/test_catalog_rule_overrides.py \
   tests/control_plane/test_validation_expectations.py \
-  tests/control_plane/test_released_version_validation.py
+  tests/control_plane/test_released_version_validation.py \
+  tests/control_plane/test_evidence_capability_matrix.py \
+  tests/control_plane/test_schedule_replay_diff.py
 ```
 
 These are ordinary test-suite commands, not a deployment or CI workflow. They do
