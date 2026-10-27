@@ -241,14 +241,25 @@ class DefaultRunnerValidator:
             (decision.usage is not None and decision.usage.fail_closed)
             or any(item.get("kind") == "runtime" and item.get("status") == "error" for item in trace)
         )
+        target_block_match = (
+            expected_failure is None and decision.decision == "block"
+            and not runtime_failed and complete_evidence_supported(plan)
+            and _terminal_target_block(plan, case, phase, findings, trace)
+        )
         if runtime_failed and actual_failure is None:
             assertion_failures.append("Runtime failed closed without a classified infrastructure failure; this is not a Policy match.")
         # Require actual observations on declared views. Missing execution is not
         # a negative detection, and another Rule's match is not target evidence.
         evidence = _case_evidence(
             plan, case, phase, expected, decision, findings, matched, content,
-            trusted=not runtime_failed and actual_failure is None and expected_failure is None, trace=trace,
+            trusted=not runtime_failed and (actual_failure is None or target_block_match)
+                and expected_failure is None, trace=trace,
         )
+        execution_warning = bool(actual_failure and target_block_match and evidence["satisfied"]
+                                 and case.get("caseType") == "rule_acceptance" and not override)
+        if execution_warning:
+            evidence["reason"] = (evidence.get("reason", "") +
+                f" Other checks reported {actual_failure}; target Rule acceptance is satisfied, but composition availability is not certified.")
         rule_contract = expected_failure is not None or evidence["satisfied"]
         if override:
             actual_matches = {
@@ -293,7 +304,7 @@ class DefaultRunnerValidator:
             assertion_failures.append("Expected Policy/Rule evidence was not observed.")
         if decision.decision != expected and not (expected == "intervene" and decision.decision != "allow"):
             assertion_failures.append(f"Expected {expected}; received {decision.decision}.")
-        if actual_failure != expected_failure:
+        if actual_failure != expected_failure and not execution_warning:
             assertion_failures.append(f"Expected infrastructure failure {expected_failure}; received {actual_failure}.")
         actual_reasoning = _reasoning_result(findings)
         expected_reasoning = _optional_string(case.get("expectedReasoningResult"))
@@ -371,6 +382,53 @@ class DefaultRunnerValidator:
                 decision.usage.model_invocations if decision.usage is not None else 0
             ),
         }
+
+
+def _terminal_target_block(plan, case, phase, findings, trace):
+    """Prove the target and its dependencies, independently of other checks."""
+    policy_id = _optional_string(case.get("sourcePolicyId"))
+    covered = {_string(rule) for rule in _list(case.get("coveredRuleIds")) if _string(rule)}
+    if not policy_id or not covered:
+        return False
+    actions = {item.get("id"): item for item in trace if item.get("kind") == "action"}
+    steps = {step.id: step for step in plan.steps if phase in step.phases}
+    dependencies = set()
+    for rule in covered:
+        target = _rule_target(plan, policy_id, rule, phase)
+        if not target or not target.get("steps") or any(
+            dict(step.parameters).get("evaluation_view") != "original" for step in target["steps"]
+        ):
+            return False
+        executed = []
+        for step in target["steps"]:
+            dependencies.add(step.id)
+            result = actions.get(f"nemo:action:{step.id}")
+            prerequisite = actions.get(f"nemo:action:{step.trigger.step_ref}", {})
+            required = step.trigger.type == "always" or prerequisite.get("verdict") in step.trigger.verdicts
+            if required and result is None:
+                return False
+            if result:
+                executed.append(result)
+        if not executed or executed[-1].get("verdict") != "matched":
+            return False
+    pending = list(dependencies)
+    while pending:
+        step = steps.get(pending.pop())
+        if step and step.trigger.type == "on_result" and step.trigger.step_ref not in dependencies:
+            dependencies.add(step.trigger.step_ref)
+            pending.append(step.trigger.step_ref)
+    for item in trace:
+        if item.get("status") != "error" and not item.get("timed_out"):
+            continue
+        if item.get("kind") == "runtime":
+            return False
+        if item.get("kind") == "action":
+            step_id = _string(item.get("id")).removeprefix("nemo:action:")
+            if step_id not in steps or step_id in dependencies:
+                return False
+    return any(item.get("policy_id") == policy_id and item.get("rule_id") in covered
+               and item.get("verdict") == "matched" and item.get("recommended_action") == "block"
+               for item in findings)
 
 
 def _case_evidence(

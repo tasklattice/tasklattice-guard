@@ -1902,6 +1902,11 @@ def _decision(
         required_modules_completed=completed_modules,
         required_modules_total=len(modules),
     )
+    block_match = (_terminal_block_match(runtime_results)
+                   if decision == "block" and request.evidence_scope == "full"
+                   and complete_evidence_supported(request.plan) else None)
+    if block_match is not None:
+        reason = block_match.result.reason or "A terminal Policy match blocked the interaction."
     return ProtectionDecision(
         decision=decision,  # type: ignore[arg-type]
         action=action,  # type: ignore[arg-type]
@@ -1938,7 +1943,10 @@ def _decision(
             runtime_engine=config.runtime_engine,
             runtime_profile=config.runtime_profile,
             config_checksum=config_checksum(config),
-            fail_closed=any(
+            # A conclusive Policy Block already determines delivery. Errors in
+            # other full-evidence checks remain in trace/assessments, but are not
+            # the cause of that decision. Unknown verdicts never qualify here.
+            fail_closed=block_match is None and any(
                 item.result.verdict == "error"
                 and _binding_fails_closed(request, item.binding)
                 for item in _terminal_runtime_results(runtime_results)
@@ -2971,6 +2979,17 @@ def _terminal_runtime_results(results):
     for item in results:
         terminal[_result_group_key(item)] = item
     return tuple(terminal.values())
+
+
+def _terminal_block_match(results):
+    terminal = {}
+    for item in results:
+        # Split local Rules are separate checks, even within one Policy. Native
+        # exact/semantic chains still take their terminal result as a unit.
+        key = ("action", item.binding.id) if item.binding.capability == "builtin_content_filter" else _result_group_key(item)
+        terminal[key] = item
+    return next((item for item in terminal.values()
+                 if item.result.verdict == "matched" and _runtime_action(item) == "block"), None)
 
 
 def _native_model_trace_steps(
