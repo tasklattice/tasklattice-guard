@@ -37,3 +37,22 @@ def complete_evidence_supported(plan: GuardrailPlanSnapshot) -> bool:
         plan.output_delivery == "full_buffered"
         and all(version.source == "built-in" for version in plan.policy_versions)
     )
+
+
+def collects_complete_evidence(evidence_scope: str, plan: GuardrailPlanSnapshot) -> bool:
+    """Single source of truth for "does this request suppress short-circuiting".
+
+    ``evidence_scope`` answers two different questions at once, which is why the
+    mapping lives here instead of in each execution path:
+
+    * reporting: report every conclusive result, not only interventions;
+    * control flow: keep evaluating after a Block and stop cancelling siblings.
+
+    Only a supported execution type can honour the second one. An unsupported
+    plan (custom Colang, windowed streaming) keeps its early exit even when the
+    caller asks for ``full``; its report then says ``not_reached`` rather than
+    pretending the check never ran. Splitting the two meanings into separate
+    request fields is the follow-up; until then every execution path must ask
+    this function so the two answers can never diverge.
+    """
+    return evidence_scope == "full" and complete_evidence_supported(plan)

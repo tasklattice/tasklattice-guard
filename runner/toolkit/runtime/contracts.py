@@ -63,6 +63,10 @@ FailureMode = Literal["fail_open", "fail_closed"]
 FragmentStatus = Literal["pass", "intervene", "needs_context", "uncovered", "error"]
 CoverageStatus = Literal["complete", "partial", "none"]
 EnforcementMode = Literal["enforce", "detect"]
+# Two questions in one field: how much to report, and whether a request may stop
+# at the first Block. Only supported plans can honour the second
+# (`compiler.semantics.collects_complete_evidence`). Splitting the field is a
+# follow-up so existing callers keep their meaning.
 EvidenceScope = Literal["interventions", "full"]
 SafetyLevel = Literal["balanced", "strict"]
 OutputDeliveryMode = Literal["interruptible", "window_buffered", "full_buffered"]

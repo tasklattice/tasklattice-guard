@@ -15,7 +15,7 @@ from ...runtime.contracts import (
     RiskFinding,
     RuntimeTraceStep,
 )
-from ...compiler.semantics import complete_evidence_supported
+from ...compiler.semantics import collects_complete_evidence
 from ...safety.taxonomy import taxonomy_for_evaluator
 from .contracts import ActionRequest, ActionResult, action_result
 from .names import ACTION_CONTENT_FILTER
@@ -285,7 +285,7 @@ class ContentFilterActionProvider:
             text=request.content,
             phase=request.rail_type,
             parameters=request.parameters,
-            stop_on_block=not (request.evidence_scope == "full" and complete_evidence_supported(request.plan)),
+            stop_on_block=not collects_complete_evidence(request.evidence_scope, request.plan),
         )
         return action_result(
             request,

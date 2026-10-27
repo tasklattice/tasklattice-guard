@@ -27,7 +27,7 @@ from opentelemetry import context as otel_context, trace
 from opentelemetry.trace import Status, StatusCode
 
 from ..runtime.content_views import current_context_messages, request_view, with_active_text
-from ..compiler.semantics import complete_evidence_supported
+from ..compiler.semantics import collects_complete_evidence, complete_evidence_supported
 from ..runtime.streaming import OutputStreamContract, OutputStreamEvaluationError, OutputStreamResult
 from ..runtime.contracts import (
     AppliedIntervention,
@@ -779,7 +779,8 @@ class NeMoActionBridge:
         return views[0]
 
     def _full_evidence(self) -> bool:
-        return self._request().evidence_scope == "full" and complete_evidence_supported(self._plan)
+        request = self._request()
+        return collects_complete_evidence(request.evidence_scope, self._plan)
 
     def _evaluation_text(self, text: str, binding: NeMoActionBinding | None) -> str:
         """Materialize the view this step declares; the schedule never selects it.
