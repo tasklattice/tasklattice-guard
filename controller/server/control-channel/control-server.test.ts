@@ -469,9 +469,8 @@ it("compiles independently of tests, correlates the Runner boot, and recovers fr
   expect((server as any).compilations.size).toBe(0);
 });
 
-it("gates new plan compilation, tests, load checks and rollout by Runner capability", async () => {
-  const { EXPLICIT_VIEWS_CAPABILITY, EXPLICIT_VIEWS_PLAN_VERSION } = await import("../domain/plan-semantics.js");
-  const plan = { guardrail_version: "20261026-010000.000Z", compiler_version: EXPLICIT_VIEWS_PLAN_VERSION,
+it("dispatches compilation, tests, load checks and rollout without view capability negotiation", async () => {
+  const plan = { guardrail_version: "20261026-010000.000Z", compiler_version: "tasklattice-controller-plan-v16-explicit-views",
     safety_level: "strict", output_delivery: "full_buffered" };
   const artifact = { id: "new-artifact", generation: 10, checksum: "digest", signature: "signature", guardrailId: "guard", guardrailVersion: plan.guardrail_version,
     compilerVersion: "test", nemoVersion: "test", runtimeProfile: "auto", plan, configYaml: "", colangContent: "", prompts: [], actionBindings: [], dependencyManifest: [] };
@@ -483,38 +482,24 @@ it("gates new plan compilation, tests, load checks and rollout by Runner capabil
     markValidationRunning: vi.fn(), deferOutbox: vi.fn() };
   const server = new RunnerControlServer(config, service as unknown as ControlPlaneService,
     metricsMock() as unknown as ControllerMetrics, { activeConfiguration: vi.fn().mockResolvedValue(null) } as unknown as ModelConfigurationService);
-  const old = streamMock(), modern = streamMock();
-  const hello = registration("old"); hello.registration.compilerCapable = true;
+  const stream = streamMock();
+  const hello = registration("runner"); hello.registration.compilerCapable = true;
   hello.registration.labels = { "tasklattice.offline-compilation": "1" };
-  await handle(server, old, hello, null);
-  expect(old.write.mock.calls.some(([message]) => message.desiredState)).toBe(false);
-  expect(service.trafficRouting.reportRolloutFailure).toHaveBeenCalledWith(10, "old", expect.stringContaining("Upgrade"));
-  old.write.mockClear();
-  await expect(server.compileArtifact({ guardrailId: "guard", guardrailVersion: plan.guardrail_version, runtimeProfile: "auto", plan }))
-    .rejects.toMatchObject({ code: "guardrail_compiler_unavailable" });
-  expect(await server.checkArtifactAdmission(artifact)).toEqual([expect.objectContaining({ admitted: false, unavailable: true, reason: expect.stringContaining("Upgrade") })]);
+  const connection = await handle(server, stream, hello, null);
+  expect(stream.write.mock.calls.some(([message]) => message.desiredState?.artifacts[0]?.artifactId === "new-artifact")).toBe(true);
+  stream.write.mockClear();
   const dispatch = () => (server as unknown as { dispatchValidationRequests(): Promise<void> }).dispatchValidationRequests();
   await dispatch();
-  expect(service.markValidationRunning).not.toHaveBeenCalled();
-  expect(old.write).not.toHaveBeenCalled();
-
-  const upgraded = registration("modern"); upgraded.registration.compilerCapable = true;
-  upgraded.registration.labels = { "tasklattice.offline-compilation": "1", [EXPLICIT_VIEWS_CAPABILITY]: "1" };
-  const connection = await handle(server, modern, upgraded, null);
-  expect(modern.write.mock.calls.some(([message]) => message.desiredState?.artifacts[0]?.artifactId === "new-artifact")).toBe(true);
-  modern.write.mockClear();
-  await dispatch();
-  expect(modern.write.mock.calls.some(([message]) => message.validationRequest?.runId === "new-run")).toBe(true);
+  expect(stream.write.mock.calls.some(([message]) => message.validationRequest?.runId === "new-run")).toBe(true);
   const pending = server.compileArtifact({ guardrailId: "guard", guardrailVersion: plan.guardrail_version, runtimeProfile: "auto", plan });
-  const compile = modern.write.mock.calls.at(-1)![0].artifactCompilationRequest;
+  const compile = stream.write.mock.calls.at(-1)![0].artifactCompilationRequest;
   const failed = expect(pending).rejects.toMatchObject({ code: "guardrail_compilation_failed" });
-  await handle(server, modern, { artifactCompilationResult: { compileId: compile.compileId, runnerId: "modern", error: "Synthetic compile rejection" } }, connection);
+  await handle(server, stream, { artifactCompilationResult: { compileId: compile.compileId, runnerId: "runner", error: "Synthetic compile rejection" } }, connection);
   await failed;
   const checking = server.checkArtifactAdmission(artifact);
-  await vi.waitFor(() => expect(modern.write.mock.calls.at(-1)![0].artifactAdmissionRequest).toBeDefined());
-  const load = modern.write.mock.calls.at(-1)![0].artifactAdmissionRequest;
-  await handle(server, modern, { artifactAdmissionResult: { requestId: load.requestId, runnerId: "modern", admitted: true, reason: "", nemoVersion: "test", modelRevisionId: "" } }, connection);
-  expect(await checking).toEqual([expect.objectContaining({ admitted: true, runnerId: "modern" })]);
-  expect(old.write).not.toHaveBeenCalled();
+  await vi.waitFor(() => expect(stream.write.mock.calls.at(-1)![0].artifactAdmissionRequest).toBeDefined());
+  const load = stream.write.mock.calls.at(-1)![0].artifactAdmissionRequest;
+  await handle(server, stream, { artifactAdmissionResult: { requestId: load.requestId, runnerId: "runner", admitted: true, reason: "", nemoVersion: "test", modelRevisionId: "" } }, connection);
+  expect(await checking).toEqual([expect.objectContaining({ admitted: true, runnerId: "runner" })]);
   await server.stop();
 });

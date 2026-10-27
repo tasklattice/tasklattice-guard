@@ -773,7 +773,10 @@ class NeMoActionBridge:
     def _declared_view(binding: NeMoActionBinding | None) -> str:
         if binding is None:
             return "previous_output"
-        return binding.parameter("evaluation_view") or "previous_output"
+        views = [value for key, value in binding.parameters if key == "evaluation_view"]
+        if len(views) != 1 or views[0] not in {"original", "previous_output"}:
+            raise ValueError(f"Action {binding.id!r} must declare exactly one valid evaluation_view.")
+        return views[0]
 
     def _full_evidence(self) -> bool:
         return self._request().evidence_scope == "full" and complete_evidence_supported(self._plan)

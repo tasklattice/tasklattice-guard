@@ -1,8 +1,8 @@
 {
   "adapter": "litellm-generic-guardrail",
   "artifact_id": "fixture-artifact-local-secrets-v1",
-  "checksum": "766f66192f7c95969162bb692771388a14e03cb5db31641ec9e0889c0e8efeef",
-  "compiler_version": "tasklattice-nemo-config-v28-explicit-views",
+  "checksum": "458e91dd2ba5feb60551878dd1d78a8b376a157a60b6ac59f162e577ca10e1e3",
+  "compiler_version": "tasklattice-nemo-config-v29-single-contract",
   "endpoint_id": "fixture-endpoint",
   "expected": {
     "safe_input": "NONE",

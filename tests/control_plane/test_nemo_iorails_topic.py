@@ -120,6 +120,7 @@ def _semantic_input(
         on_unsafe="block",
         trigger=trigger,
         parameters=(
+            ("evaluation_view", "original"),
             ("topic_mode", "allowlist"),
             ("allowed_topics", "Product support"),
         ),
@@ -155,6 +156,7 @@ def test_pure_dedicated_topic_input_compiles_to_valid_iorails_manifest() -> None
 
 def test_mixed_topic_plan_uses_official_input_action_and_custom_output_action() -> None:
     rules = GuardrailPlanStep(
+        parameters=(("evaluation_view", "original"),),
         id="topic:rules:input",
         capability="topic_control",
         contract_ref="tali.guard.topic-control.rules.v1",
@@ -169,6 +171,7 @@ def test_mixed_topic_plan_uses_official_input_action_and_custom_output_action() 
         )
     )
     output = GuardrailPlanStep(
+        parameters=(("evaluation_view", "original"),),
         id="topic:semantic:output",
         capability="topic_control",
         contract_ref="tali.guard.topic-control.semantic.v1",
@@ -194,6 +197,7 @@ def test_mixed_topic_plan_uses_official_input_action_and_custom_output_action() 
 
 def test_content_safety_remains_on_the_evidence_preserving_custom_evaluator() -> None:
     content = GuardrailPlanStep(
+        parameters=(("evaluation_view", "original"),),
         id="content:input",
         capability="content_safety",
         contract_ref="tali.guard.content-safety.v1",
@@ -572,7 +576,7 @@ def _topic_model_desired_state(*, generation: int) -> protocol.DesiredState:
 @pytest.mark.parametrize("mode", ["strict", "permissive"])
 def test_topic_modes_compile_identical_boundaries_into_native_and_action_paths(mode: str) -> None:
     from runner.toolkit.nemo.actions.topic import topic_judge_prompt
-    step = replace(_semantic_input(), parameters=(("topic_mode", mode), ("allowed_topics", "Order support"), ("restricted_topics", "Fabricating refund evidence")))
+    step = replace(_semantic_input(), parameters=(("evaluation_view", "original"), ("topic_mode", mode), ("allowed_topics", "Order support"), ("restricted_topics", "Fabricating refund evidence")))
     snapshot = _compiler().compile(_plan(step))
     config = yaml.safe_load(snapshot.config_yaml)
     prompt = next(item for item in config["prompts"] if item["task"].startswith("topic_safety_check_input"))
@@ -586,11 +590,13 @@ def test_split_topic_rules_use_isolated_action_prompts_and_preserve_deny_first()
     from runner.toolkit.nemo.actions.topic import topic_judge_prompt
 
     deny = replace(_semantic_input(), id="topic:deny", parameters=(
+        ("evaluation_view", "original"),
         ("policy_id", "builtin-topic-safety"), ("policy_version", "2.0.0"),
         ("rule_id", "topic/denylist"), ("topic_mode", "permissive"),
         ("allowed_topics", ""), ("restricted_topics", "Refund fraud"),
     ))
     allow = replace(deny, id="topic:allow", on_unsafe="block", parameters=(
+        ("evaluation_view", "original"),
         ("policy_id", "builtin-topic-safety"), ("policy_version", "2.0.0"),
         ("rule_id", "topic/allowlist"), ("topic_mode", "strict"),
         ("allowed_topics", "Order support"), ("restricted_topics", ""),

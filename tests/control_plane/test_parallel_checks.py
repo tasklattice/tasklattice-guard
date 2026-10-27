@@ -110,17 +110,13 @@ def test_invalid_parallel_contract_is_rejected_before_runtime(invalid):
 @pytest.mark.parametrize("phase", ["input", "output"])
 @pytest.mark.parametrize("programmable", [False, True])
 @pytest.mark.parametrize("scope", ["full", "interventions"])
-@pytest.mark.parametrize("legacy", [False, True])
-async def test_full_evidence_continues_after_block_only_for_new_compiler_plans(phase, programmable, scope, legacy):
-    from runner.toolkit.compiler.semantics import PLAN_VERSION
+async def test_evidence_scope_controls_continuation_after_block(phase, programmable, scope):
     plan = chain_plan([("block", "alpha", "unused", "block"),
                        ("mask", "alpha", "[A]", "transform"),
                        ("observe", "alpha", "unused", "allow")], phase, programmable)
-    if not legacy:
-        plan["compiler_version"] = PLAN_VERSION
-        for index, step in enumerate(plan["steps"]):
-            step["parameters"] += [["precedence", str(index)],
-                                   ["evaluation_view", "previous_output" if step["on_unsafe"] == "transform" else "original"]]
+    for step in plan["steps"]:
+        step["parameters"] = [[key, value] for key, value in step["parameters"] if key != "evaluation_view"]
+        step["parameters"].append(["evaluation_view", "previous_output" if step["on_unsafe"] == "transform" else "original"])
     provider = RecordingSecrets()
     runtime = DraftPreviewRuntime(DefaultRunnerCompiler(), action_providers(provider))
     try:
@@ -130,7 +126,7 @@ async def test_full_evidence_continues_after_block_only_for_new_compiler_plans(p
         assert result.decision == "block"
         assert result.texts == ()
         assert not result.usage.fail_closed, result.reason
-        expected = ["block", "mask", "observe"] if scope == "full" and not legacy else ["block"]
+        expected = ["block", "mask", "observe"] if scope == "full" else ["block"]
         assert [identity for identity, text in provider.calls] == expected
         if len(expected) == 3:
             assert provider.calls == [("block", "alpha beta"), ("mask", "alpha beta"), ("observe", "alpha beta")]

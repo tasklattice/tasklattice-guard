@@ -1,5 +1,4 @@
 import { PROTECTION_MODE_CAPABILITY } from "../../shared/protection-mode.js";
-import { EXPLICIT_VIEWS_CAPABILITY, requiresExplicitViews } from "../domain/plan-semantics.js";
 import { OFFLINE_COMPILATION_CAPABILITY, type ArtifactCompilation } from "../domain/artifact-compilation.js";
 import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
@@ -55,7 +54,6 @@ type Connection = {
   poolId: string;
   compilerCapable: boolean;
   offlineCompilation?: boolean;
-  explicitViews?: boolean;
   appliedGeneration: number;
   appliedModelRevisionId: string;
   lastReconcileGeneration: number;
@@ -99,8 +97,7 @@ export class RunnerControlServer {
   }
 
   async compileArtifact(input: ArtifactCompilation): Promise<ArtifactContent> {
-    const runner = [...this.connections.values()].find(item => item.poolId === "default" && item.compilerCapable && item.offlineCompilation
-      && supportsPlan(item, input.plan));
+    const runner = [...this.connections.values()].find(item => item.poolId === "default" && item.compilerCapable && item.offlineCompilation);
     if (!runner) throw new ConflictError("Connect an upgraded compiler Runner to publish this draft. Tests are optional.", "guardrail_compiler_unavailable");
     return new Promise((resolve, reject) => {
       const compileId = randomUUID();
@@ -128,8 +125,7 @@ export class RunnerControlServer {
     const byPool = new Map<string, Connection>();
     for (const connection of this.connections.values()) {
       const current = byPool.get(connection.poolId);
-      const ready = (item: Connection) => supportsPlan(item, artifact.plan) && item.appliedModelRevisionId === expectedModelRevisionId;
-      if (!current || (!ready(current) && ready(connection))) {
+      if (!current || (current.appliedModelRevisionId !== expectedModelRevisionId && connection.appliedModelRevisionId === expectedModelRevisionId)) {
         byPool.set(connection.poolId, connection);
       }
     }
@@ -137,10 +133,6 @@ export class RunnerControlServer {
     return Promise.all([...byPool.values()].map((runner) => new Promise<PoolAdmission>((resolve) => {
       const requestId = randomUUID();
       const unavailable = (reason: string) => ({ poolId: runner.poolId, runnerId: runner.runnerId, admitted: false, unavailable: true, reason, nemoVersion: "", modelRevisionId: "" });
-      if (!supportsPlan(runner, artifact.plan)) {
-        resolve(unavailable("Upgrade the Runner to support explicit evaluation views before activating this version."));
-        return;
-      }
       if (runner.appliedModelRevisionId !== expectedModelRevisionId) {
         resolve(unavailable("The Runner is still applying the current model assignments. The environment check will retry after synchronization."));
         return;
@@ -343,7 +335,6 @@ export class RunnerControlServer {
         compilerCapable: registration.compilerCapable,
         appliedGeneration: number(registration.appliedGeneration),
         offlineCompilation: registration.labels?.[OFFLINE_COMPILATION_CAPABILITY] === "1",
-        explicitViews: registration.labels?.[EXPLICIT_VIEWS_CAPABILITY] === "1",
         appliedModelRevisionId: "",
         lastReconcileGeneration: -1,
         protectionCapable: registration.labels?.[PROTECTION_MODE_CAPABILITY] === "1",
@@ -541,12 +532,6 @@ export class RunnerControlServer {
         this.metrics.observeReconcile(connection.poolId, "noop", (performance.now() - started) / 1_000);
         return;
       }
-      if (desired.artifacts.some(artifact => !supportsPlan(connection, artifact.plan))) {
-        await this.service.trafficRouting?.reportRolloutFailure?.(desired.generation, connection.runnerId,
-          "Upgrade the Runner to support explicit evaluation views; the new desired state was not dispatched.");
-        this.metrics.observeReconcile(connection.poolId, "unsupported", (performance.now() - started) / 1_000);
-        return;
-      }
       const dataBindings = modelConfiguration ? capabilityBindingDefinitions.flatMap((binding) => {
         const modelRef = modelConfiguration.assignments.bindings[binding.id];
         if (!modelRef) return [];
@@ -630,20 +615,17 @@ export class RunnerControlServer {
       const busy = new Set(this.activeValidations.values());
       // Capability probes use an explicit candidate configuration. Guardrail
       // tests use the Runner's live providers and must wait for their ACK.
-      const available = [...this.connections.values()].filter(item => item.poolId === "default" && item.compilerCapable
+      const compiler = [...this.connections.values()].find(item => item.poolId === "default" && item.compilerCapable
         && item.appliedModelRevisionId === expectedModelRevisionId && !busy.has(item));
-      if (!available.length) return;
+      if (!compiler) return;
       const excludedRunIds = [...this.activeValidations.keys()];
       const events = [
         ...await this.service.pendingOutbox("guardrail.validation_requested", 1, excludedRunIds),
         ...await this.service.pendingOutbox("policy.validation_requested", 1, excludedRunIds),
       ].sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime());
-      const eventPlan = (payload: Record<string, unknown>) => record(payload.artifact ? record(payload.artifact).plan : payload.plan ?? {});
-      const event = events.find(item => !this.activeValidations.has(string(item.payload.runId))
-        && available.some(runner => supportsPlan(runner, eventPlan(item.payload))));
+      const event = events.find(item => !this.activeValidations.has(string(item.payload.runId)));
       if (!event) return;
       const payload = event.payload;
-      const compiler = available.find(runner => supportsPlan(runner, eventPlan(payload)))!;
       const runId = string(payload.runId);
       this.activeValidations.set(runId, compiler);
       try {
@@ -740,8 +722,5 @@ function string(value: unknown): string {
 function record(value: unknown): Record<string, unknown> {
   if (!value || Array.isArray(value) || typeof value !== "object") throw new Error("Expected an object.");
   return value as Record<string, unknown>;
-}
-function supportsPlan(connection: Connection, plan: Record<string, unknown>): boolean {
-  return !requiresExplicitViews(plan) || connection.explicitViews === true;
 }
 function array(value: unknown): unknown[] { return Array.isArray(value) ? value : []; }

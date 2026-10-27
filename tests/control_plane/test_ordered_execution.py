@@ -52,7 +52,8 @@ def chain_plan(steps, phase, programmable=False):
             "id": identity, "capability": "secrets",
             "contract_ref": "tali.guard.secrets.exact.v1", "phases": [phase],
             "on_unsafe": action,
-            "parameters": [["policy_id", identity], ["needle", needle], ["replacement", replacement]],
+            "parameters": [["policy_id", identity], ["needle", needle], ["replacement", replacement],
+                           ["evaluation_view", "previous_output"]],
             "trigger": {"type": "on_result", "step_ref": steps[index - 1][0], "verdicts": ["not_matched", "matched"]}
             if programmable and index else {"type": "always"},
         })
@@ -337,7 +338,7 @@ async def test_split_topic_rules_short_circuit_and_trace_their_own_identity(enab
     plan = chain_plan([(rule, "", "", "block") for rule in enabled], "input")
     for step in plan["steps"]:
         step.update(capability="topic_control", contract_ref="tali.guard.topic-control.semantic.v1",
-            parameters=[["policy_id", "builtin-topic-safety"], ["policy_version", "2.0.0"], ["rule_id", step["id"]]])
+            parameters=[["evaluation_view", "original"], ["policy_id", "builtin-topic-safety"], ["policy_version", "2.0.0"], ["rule_id", step["id"]]])
     plan["policy_bindings"] = [{"policy_id": "builtin-topic-safety", "policy_version": "2.0.0",
         "enabled_rule_ids": enabled, "enabled_rails": ["input"], "parameter_values": [], "rule_actions": []}]
     provider = RecordingTopic()
@@ -373,3 +374,22 @@ async def test_transform_missing_result_fails_closed_in_real_nemo(programmable):
         assert any(step.status == "error" for step in outcome.trace)
     finally:
         await previews.shutdown()
+
+
+@pytest.mark.parametrize("views", [[], [["evaluation_view", "unknown"]],
+                                  [["evaluation_view", "original"], ["evaluation_view", "previous_output"]]])
+def test_compilation_and_execution_reject_missing_or_ambiguous_views(views):
+    from runner.serialization import plan_from_dict
+    from runner.toolkit.compiler.nemo_compiler import NeMoConfigCompiler
+    from runner.toolkit.compiler.domain import PlanCompilationError
+    from runner.toolkit.nemo.runtime import NeMoActionBridge
+    from runner.toolkit.runtime.contracts import NeMoActionBinding
+
+    plan = chain_plan([("target", "alpha", "unused", "block")], "input")
+    plan["steps"][0]["parameters"] = views
+    with pytest.raises(PlanCompilationError, match="exactly one valid evaluation_view"):
+        NeMoConfigCompiler().compile(plan_from_dict(plan))
+    binding = NeMoActionBinding(id="target", capability="secrets", contract_ref="test",
+                                phases=("input",), on_unsafe="block", parameters=tuple(map(tuple, views)))
+    with pytest.raises(ValueError, match="exactly one valid evaluation_view"):
+        NeMoActionBridge._declared_view(binding)

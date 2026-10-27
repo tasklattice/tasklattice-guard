@@ -1,7 +1,7 @@
 {
   "guardrailId": "guardrail-default",
   "guardrailVersion": "20261023-000000.001Z",
-  "compilerVersion": "tasklattice-nemo-config-v28-explicit-views",
+  "compilerVersion": "tasklattice-nemo-config-v29-single-contract",
   "nemoVersion": "0.24.0",
   "runtimeProfile": "llmrails_colang2_programmable",
   "plan": {

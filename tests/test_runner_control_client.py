@@ -166,7 +166,6 @@ def test_registration_advertises_explicit_views_support():
     settings = _settings()
     settings.max_concurrency = 4
     client = RunnerControlClient(settings, Store(), Metrics())
-    assert client._registration().registration.labels["tasklattice.explicit-views"] == "1"
 
 
 def _model_desired_state(*, generation: int) -> protocol.DesiredState:

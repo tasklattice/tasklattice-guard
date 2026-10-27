@@ -44,7 +44,7 @@ from .domain import PolicyDraft, PlanCompilationError, RailBinding
 from .policy_sources import FLOW_ID_EVENTS, expand_policy_parameters, link_policy_source, literal_flow_target, parse_source_tree, symbol_name
 
 
-NEMO_COMPILER_VERSION = "tasklattice-nemo-config-v28-explicit-views"
+NEMO_COMPILER_VERSION = "tasklattice-nemo-config-v29-single-contract"
 
 _COLANG1_STANDARD_ACTIONS = {
     ACTION_EVALUATE,
@@ -99,6 +99,9 @@ class NeMoConfigCompiler:
     def compile(self, plan: GuardrailPlanSnapshot) -> NeMoConfigSnapshot:
         _validate_execution_order(plan)
         for step in plan.steps:
+            views = [value for key, value in step.parameters if key == "evaluation_view"]
+            if len(views) != 1 or views[0] not in {"original", "previous_output"}:
+                raise PlanCompilationError(f"Step {step.id!r} must declare exactly one valid evaluation_view.")
             if step.capability == "builtin_content_filter":
                 definitions_from_parameters(dict(step.parameters))
         selected = {(item.policy_id, item.policy_version): item for item in plan.policy_bindings}
@@ -1031,7 +1034,8 @@ def _custom_action_bindings(
                         or rail.on_unsafe
                     ),
                     timeout_ms=rail.timeout_ms,
-                    parameters=selected.parameter_values,
+                    parameters=tuple((key, value) for key, value in selected.parameter_values
+                                     if key != "evaluation_view") + (("evaluation_view", "previous_output"),),
                     policy_id=version.policy_id,
                     policy_version=version.version,
                     flow_name=rail.flow_name,

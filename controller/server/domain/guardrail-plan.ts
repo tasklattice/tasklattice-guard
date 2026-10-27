@@ -5,7 +5,6 @@ import { flowRuleId } from "../policy-studio/model.js";
 import { PHRASE_PARAMETER, PHRASE_POLICY_ID, parsePhraseEntries } from "../../shared/phrase-policy.js";
 import { materializePolicyRules } from "./policy-rules.js";
 import { scheduleChecks } from "./execution-plan.js";
-import { EXPLICIT_VIEWS_PLAN_VERSION } from "./plan-semantics.js";
 import { frozenBuiltInDefinition, planPolicyVersion } from "./policy-node.js";
 import { isSplitTopicPolicy, TOPIC_ALLOW_RULE, TOPIC_DENY_RULE, topicMissingParameters, topicPolicyValues } from "../../shared/topic-policy.js";
 import {
@@ -385,7 +384,7 @@ export function buildGuardrailPlan(input: {
   return {
     guardrail_id: input.guardrailId,
     guardrail_version: input.guardrailVersion,
-    compiler_version: EXPLICIT_VIEWS_PLAN_VERSION,
+    compiler_version: "tasklattice-controller-plan-v16-explicit-views",
     topic_control_mode: draft.topicControlMode ?? "strict",
     safety_level: draft.safetyLevel,
     output_delivery: draft.outputDelivery,

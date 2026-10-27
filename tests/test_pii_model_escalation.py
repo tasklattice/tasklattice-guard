@@ -145,7 +145,7 @@ def _plan(*, safety_level: str = "balanced") -> dict[str, object]:
                 "phases": ["input"],
                 "on_unsafe": "transform",
                 "trigger": {"type": "always"},
-                "parameters": [],
+                "parameters": [["evaluation_view", "previous_output"]],
             },
             {
                 "id": "pii:semantic",
@@ -162,7 +162,7 @@ def _plan(*, safety_level: str = "balanced") -> dict[str, object]:
                         else ["unknown"]
                     ),
                 },
-                "parameters": [],
+                "parameters": [["evaluation_view", "previous_output"]],
             },
         ],
         "modules": [{
