@@ -425,3 +425,82 @@ def test_precedence_is_unique_but_not_derived_from_execution_order():
     plan["steps"][1]["parameters"][-1][1] = "7"
     with pytest.raises(PlanCompilationError, match="precedence values must be unique"):
         NeMoConfigCompiler().compile(plan_from_dict(plan))
+
+
+def chained_plan():
+    """A Transform followed by a read-only step that triggers on it."""
+    plan = chain_plan([("mask", "alpha", "[A]", "transform"), ("check", "beta", "unused", "block")], "input", True)
+    return plan
+
+
+@pytest.mark.parametrize("declared,allowed", [("previous_output", True), ("original", False)])
+def test_a_step_that_depends_on_a_transform_must_inspect_the_derived_text(declared, allowed):
+    from runner.serialization import plan_from_dict
+    from runner.toolkit.compiler.domain import PlanCompilationError
+    from runner.toolkit.compiler.nemo_compiler import NeMoConfigCompiler
+
+    plan = chained_plan()
+    # The second step already triggers on the Transform, so the only safe view is
+    # the derived one: scheduling it ahead would inspect text it did not authorise.
+    assert plan["steps"][1]["trigger"] == {"type": "on_result", "step_ref": "mask", "verdicts": ["not_matched", "matched"]}
+    plan["steps"][1]["parameters"] = [
+        [key, declared if key == "evaluation_view" else value] for key, value in plan["steps"][1]["parameters"]]
+    if allowed:
+        assert NeMoConfigCompiler().compile(plan_from_dict(plan)) is not None
+    else:
+        with pytest.raises(PlanCompilationError, match="depends on a Transform step"):
+            NeMoConfigCompiler().compile(plan_from_dict(plan))
+
+
+def test_a_more_conservative_view_is_accepted_for_the_custom_flow_barrier():
+    """Custom Flows keep the whole plan threaded; declaring that is not an error."""
+    from runner.serialization import plan_from_dict
+    from runner.toolkit.compiler.nemo_compiler import NeMoConfigCompiler
+    from runner.toolkit.compiler.semantics import derived_evaluation_view
+
+    plan = chain_plan([("first", "alpha", "unused", "block"), ("second", "beta", "unused", "allow")], "input")
+    for step in plan["steps"]:
+        step["parameters"] = [
+            [key, "previous_output" if key == "evaluation_view" else value] for key, value in step["parameters"]]
+    snapshot = plan_from_dict(plan)
+    assert [derived_evaluation_view(snapshot, step) for step in snapshot.steps] == ["original", "original"]
+    assert NeMoConfigCompiler().compile(snapshot) is not None
+
+
+def test_authored_precedence_must_follow_the_trigger_graph():
+    from runner.serialization import plan_from_dict
+    from runner.toolkit.compiler.domain import PlanCompilationError
+    from runner.toolkit.compiler.nemo_compiler import NeMoConfigCompiler
+
+    plan = chain_plan([("mask", "alpha", "[A]", "transform"), ("check", "beta", "unused", "block")], "input", True)
+    positions = {step["id"]: str(index) for index, step in enumerate(plan["steps"])}
+    # Report the dependent step as if it were authored first. The execution list
+    # still follows the trigger, so only the metadata is a lie - and it is caught.
+    for step in plan["steps"]:
+        target = "1" if step["id"] == "mask" else "0"
+        step["parameters"] = [
+            [key, target if key == "precedence" else value] for key, value in step["parameters"]]
+    assert positions == {"mask": "0", "check": "1"}
+    with pytest.raises(PlanCompilationError, match="precedence .* must follow its trigger"):
+        NeMoConfigCompiler().compile(plan_from_dict(plan))
+
+
+def test_the_load_gate_rejects_a_signed_plan_whose_metadata_contradicts_its_graph():
+    from runner.serialization import plan_from_dict
+    from runner.toolkit.compiler.semantics import (
+        PLAN_COMPILER_VERSION, NEMO_COMPILER_VERSION, validate_artifact_execution_contract,
+    )
+    from runner.toolkit.runtime.contracts import NeMoConfigSnapshot
+
+    plan = chained_plan()
+    plan["compiler_version"] = PLAN_COMPILER_VERSION
+    plan["steps"][1]["parameters"] = [
+        [key, "original" if key == "evaluation_view" else value] for key, value in plan["steps"][1]["parameters"]]
+    snapshot = plan_from_dict(plan)
+    config = NeMoConfigSnapshot(
+        guardrail_id=snapshot.guardrail_id, guardrail_version=snapshot.guardrail_version,
+        compiler_version=NEMO_COMPILER_VERSION, output_delivery=snapshot.output_delivery,
+        config_yaml="", colang_content="", action_bindings=snapshot.steps,
+    )
+    with pytest.raises(ValueError, match="artifact_recompile_required.*depends on a Transform step"):
+        validate_artifact_execution_contract(snapshot, config)

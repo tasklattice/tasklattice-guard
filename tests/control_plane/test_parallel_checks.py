@@ -114,9 +114,14 @@ async def test_evidence_scope_controls_continuation_after_block(phase, programma
     plan = chain_plan([("block", "alpha", "unused", "block"),
                        ("mask", "alpha", "[A]", "transform"),
                        ("observe", "alpha", "unused", "allow")], phase, programmable)
+    views = {}
     for step in plan["steps"]:
+        upstream = step["trigger"].get("step_ref") if step["trigger"]["type"] == "on_result" else None
+        views[step["id"]] = ("previous_output"
+                             if step["on_unsafe"] == "transform" or views.get(upstream) == "previous_output"
+                             else "original")
         step["parameters"] = [[key, value] for key, value in step["parameters"] if key != "evaluation_view"]
-        step["parameters"].append(["evaluation_view", "previous_output" if step["on_unsafe"] == "transform" else "original"])
+        step["parameters"].append(["evaluation_view", views[step["id"]]])
     provider = RecordingSecrets()
     runtime = DraftPreviewRuntime(DefaultRunnerCompiler(), action_providers(provider))
     try:
@@ -129,7 +134,11 @@ async def test_evidence_scope_controls_continuation_after_block(phase, programma
         expected = ["block", "mask", "observe"] if scope == "full" else ["block"]
         assert [identity for identity, text in provider.calls] == expected
         if len(expected) == 3:
-            assert provider.calls == [("block", "alpha beta"), ("mask", "alpha beta"), ("observe", "alpha beta")]
+            # An `always` chain reaches the observer with the phase input; a chain
+            # triggered by the Transform reaches it with the redacted text, which
+            # is what its derived view promises.
+            observer_text = "[A] beta" if programmable else "alpha beta"
+            assert provider.calls == [("block", "alpha beta"), ("mask", "alpha beta"), ("observe", observer_text)]
     finally:
         await runtime.shutdown()
 

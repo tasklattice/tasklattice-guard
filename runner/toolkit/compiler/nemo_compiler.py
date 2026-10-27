@@ -28,7 +28,7 @@ from ..nemo.artifacts import config_checksum
 from ..nemo.actions.names import ACTION_RECORD_OWNED_POLICY
 from ..nemo.actions.topic import topic_judge_prompt
 from ..nemo.native_models import TOPIC_CONTROL_MODEL_TYPE, TOPIC_CONTROL_PROFILE
-from .semantics import NEMO_COMPILER_VERSION, complete_evidence_supported
+from .semantics import NEMO_COMPILER_VERSION, complete_evidence_supported, validate_step_contract
 from ..runtime.contracts import (
     GuardrailPhase,
     GuardrailPlanSnapshot,
@@ -109,6 +109,10 @@ class NeMoConfigCompiler:
             precedence.add(positions[0])
             if step.capability == "builtin_content_filter":
                 definitions_from_parameters(dict(step.parameters))
+        try:
+            validate_step_contract(plan)
+        except ValueError as error:
+            raise PlanCompilationError(str(error)) from error
         selected = {(item.policy_id, item.policy_version): item for item in plan.policy_bindings}
         for version in plan.policy_versions:
             binding = selected.get((version.policy_id, version.version))

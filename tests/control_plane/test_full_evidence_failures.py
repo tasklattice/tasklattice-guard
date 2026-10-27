@@ -100,6 +100,13 @@ async def test_unproven_targets_and_composition_assertions_still_fail(plans, cha
     elif change == "dependent":
         first, second = plan["steps"][:2]
         first["trigger"] = {"type": "on_result", "step_ref": second["id"], "verdicts": ["matched"]}
+        # The authored order must follow the new dependency, so swap the declared
+        # precedence instead of leaving metadata that contradicts the graph.
+        def reposition(step, position):
+            return [[key, str(position) if key == "precedence" else value] for key, value in step["parameters"]]
+        first_rank = int(dict(first["parameters"])["precedence"])
+        second_rank = int(dict(second["parameters"])["precedence"])
+        first["parameters"], second["parameters"] = reposition(first, second_rank), reposition(second, first_rank)
         plan = reschedule(plan, [second["id"], first["id"], plan["steps"][2]["id"]])
     elif change == "transformed-view":
         plan["steps"][0]["parameters"] = [[key, "previous_output" if key == "evaluation_view" else value]

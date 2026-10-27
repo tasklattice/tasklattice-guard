@@ -114,7 +114,9 @@ def test_compiler_emits_direct_outcome_rails_with_checked_delivery(action):
 def test_incompatible_policies_do_not_advertise_native_streaming(change):
     candidate = plan()
     if change == "full": candidate = replace(candidate, output_delivery="full_buffered")
-    if change == "transform": candidate = replace(candidate, steps=(replace(candidate.steps[0], on_unsafe="transform"),))
+    if change == "transform":
+        candidate = replace(candidate, steps=(replace(candidate.steps[0], on_unsafe="transform",
+            parameters=(("evaluation_view", "previous_output"), ("precedence", "0"))),))
     if change == "pii": candidate = replace(candidate, steps=(replace(candidate.steps[0], capability="pii", contract_ref="tali.guard.pii.exact.v1"),))
     if change == "conditional":
         candidate = plan(count=2)
