@@ -251,6 +251,25 @@ describe("Testing Report acceptance evidence", () => {
     expect(container.querySelector("details")?.hasAttribute("open")).toBe(true);
   });
 
+  it("keeps successful Rule acceptance visible with a separate execution warning", () => {
+    const warning = { ...result, passed: true, case_type: "rule_acceptance", actual_failure: "provider_failure", rule_contract_satisfied: true };
+    const { container } = render(<ValidationCaseResults results={[warning]} defaultFilter="passed" />);
+    expect(container.querySelector("details")?.hasAttribute("open")).toBe(true);
+    expect(screen.getByText("validation.executionWarningTitle")).toBeTruthy();
+    expect(screen.getByText("validation.executionWarningBadge")).toBeTruthy();
+    expect(screen.getByText("validation.executionWarningCount")).toBeTruthy();
+    expect(screen.queryByText("Why this Case failed")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Failed/ }));
+    expect(screen.queryByText(warning.name)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Passed/ }));
+    expect(screen.getByText(warning.name)).toBeTruthy();
+  });
+
+  it("does not label an explicitly expected infrastructure failure as an unrelated warning", () => {
+    render(<TestCaseResultRow result={{ ...result, passed: true, expected_failure: "timeout", actual_failure: "timeout" }} />);
+    expect(screen.queryByText("validation.executionWarningTitle")).toBeNull();
+  });
+
   it("defaults a failed run to failed Cases and can reveal every result", () => {
     const passed = { ...result, case_id: "validation-case-2", name: "Passing case", passed: true };
     render(<ValidationCaseResults results={[result, passed]} defaultFilter="failed" />);

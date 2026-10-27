@@ -206,6 +206,7 @@ export function ValidationCaseResults({ results, defaultFilter = "all", excluded
   const skipped = results.filter(result => result.skipped).length;
   const failed = results.filter((result) => !result.passed && !result.skipped).length;
   const passed = results.length - failed - skipped;
+  const executionWarnings = results.filter(hasExecutionWarning).length;
   const visible = results.filter((result) => filter === "all" || (filter === "skipped" ? result.skipped : !result.skipped && (filter === "failed" ? !result.passed : result.passed)));
   const filters: Array<{ value: CaseResultFilter; label: string; count: number }> = [
     { value: "all", label: t("validation.caseFilters.all"), count: results.length },
@@ -213,18 +214,20 @@ export function ValidationCaseResults({ results, defaultFilter = "all", excluded
     { value: "passed", label: t("validation.caseFilters.passed"), count: passed },
     { value: "skipped", label: t("validationScope.skipped"), count: skipped },
   ];
-  return <section className="overflow-hidden rounded-sm border"><header className="border-b bg-muted/25 px-3 py-2.5"><h3 className="text-sm font-semibold">{t("validation.caseResults")}</h3><div className="mt-2 flex flex-wrap gap-1" role="group" aria-label={t("validation.filterCaseResults")}>{filters.map((item) => <Button key={item.value} type="button" size="sm" variant={filter === item.value ? "secondary" : "ghost"} className="min-h-11 px-3" aria-pressed={filter === item.value} onClick={() => setFilter(item.value)}>{item.label}<span className={cn("font-mono text-xs", filter === item.value ? "text-current" : item.value === "failed" && item.count > 0 ? "text-destructive" : "text-muted-foreground")}>{item.count}</span></Button>)}</div></header><div className="divide-y">{!visible.length ? <p role="status" className="px-4 py-6 text-sm text-muted-foreground">{t(filter === "skipped" ? "validationScope.empty" : `validation.emptyCaseResults.${filter}`)}</p> : null}{visible.map((result) => <TestCaseResultRow key={result.case_id} result={result} excluded={excludedCaseIds.includes(result.case_id)} busy={busyCaseId === result.case_id} onValidationScopeChange={onValidationScopeChange} />)}</div></section>;
+  return <section className="overflow-hidden rounded-sm border"><header className="border-b bg-muted/25 px-3 py-2.5"><h3 className="text-sm font-semibold">{t("validation.caseResults")}</h3>{executionWarnings ? <p className="mt-1 text-xs text-muted-foreground">{t("validation.executionWarningCount", { count: executionWarnings })}</p> : null}<div className="mt-2 flex flex-wrap gap-1" role="group" aria-label={t("validation.filterCaseResults")}>{filters.map((item) => <Button key={item.value} type="button" size="sm" variant={filter === item.value ? "secondary" : "ghost"} className="min-h-11 px-3" aria-pressed={filter === item.value} onClick={() => setFilter(item.value)}>{item.label}<span className={cn("font-mono text-xs", filter === item.value ? "text-current" : item.value === "failed" && item.count > 0 ? "text-destructive" : "text-muted-foreground")}>{item.count}</span></Button>)}</div></header><div className="divide-y">{!visible.length ? <p role="status" className="px-4 py-6 text-sm text-muted-foreground">{t(filter === "skipped" ? "validationScope.empty" : `validation.emptyCaseResults.${filter}`)}</p> : null}{visible.map((result) => <TestCaseResultRow key={result.case_id} result={result} excluded={excludedCaseIds.includes(result.case_id)} busy={busyCaseId === result.case_id} onValidationScopeChange={onValidationScopeChange} />)}</div></section>;
 }
 
 export function TestCaseResultRow({ result, excluded = false, busy = false, onValidationScopeChange }: { result: TestCaseResult; excluded?: boolean; busy?: boolean; onValidationScopeChange?: (caseId: string, action: "exclude" | "restore") => void }) {
   const { t } = useTranslation();
   const hasExecutionError = isExecutionError(result);
+  const executionWarning = hasExecutionWarning(result);
   return <details open={hasExecutionError} className={cn("group/case", !result.passed && !result.skipped && "border-l-2 border-l-destructive bg-destructive/[0.035]")}>
     <summary className="grid min-h-14 cursor-pointer list-none grid-cols-[minmax(0,1fr)_100px_72px_20px] items-center gap-3 px-3 py-2.5 focus-visible:outline-2 focus-visible:outline-ring [&::-webkit-details-marker]:hidden">
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <strong className={cn("min-w-0 break-words text-sm font-medium [overflow-wrap:anywhere]", !result.passed && !result.skipped && "font-semibold text-destructive")}>{result.name}</strong>
           {!result.passed && !result.skipped ? <StateBadge state="failed" /> : null}
+          {executionWarning ? <Badge variant="outline">{t("validation.executionWarningBadge")}</Badge> : null}
           {excluded ? <Badge variant="secondary">{t("guardrails.excludedFromValidation")}</Badge> : null}
           <Badge variant="outline" className="shrink-0 font-normal">{testCaseTypeLabel(result.case_type, t)}</Badge>
         </div>
@@ -236,6 +239,10 @@ export function TestCaseResultRow({ result, excluded = false, busy = false, onVa
     </summary>
     <div className="space-y-4 border-t bg-card p-4">
       {!result.passed && !result.skipped ? <FailureDiagnosis result={result} /> : null}
+      {executionWarning ? <Alert variant="warning">
+        <AlertTitle>{t("validation.executionWarningTitle")}</AlertTitle>
+        <AlertDescription>{t("validation.executionWarningDescription", { failure: humanize(result.actual_failure!) })}</AlertDescription>
+      </Alert> : null}
       <dl className="grid grid-cols-2 gap-4">
         <div><dt className="text-xs text-muted-foreground">{t("guardrails.expectedDecision")}</dt><dd className="mt-1.5"><StateBadge state={result.expected_decision} /></dd></div>
         <div><dt className="text-xs text-muted-foreground">{t("guardrails.actualDecision")}</dt><dd className="mt-1.5">{result.skipped ? <Badge variant="secondary">{t("validationScope.skipped")}</Badge> : <StateBadge state={result.actual_decision} />}</dd></div>
@@ -279,6 +286,7 @@ export function targetLabel(run: ValidationRun, t: ReturnType<typeof useTranslat
   return t("validation.versionTarget", { version: run.guardrail_version });
 }
 function isExecutionError(result: TestCaseResult) { return !result.skipped && (Boolean(result.actual_failure) || result.actual_decision.toLowerCase() === "error"); }
+function hasExecutionWarning(result: TestCaseResult) { return result.passed && !result.skipped && Boolean(result.actual_failure) && !result.expected_failure; }
 function decisionMatches(expected: string, actual: string) { return expected === "intervene" ? actual !== "allow" : expected === actual; }
 function resultPriority(result: TestCaseResult) { return result.skipped ? 3 : isExecutionError(result) ? 0 : result.passed ? 2 : 1; }
 function reportNumber(id: string) { return id.replace(/^(?:policy-)?(?:validation|testing-report)-/, ""); }
