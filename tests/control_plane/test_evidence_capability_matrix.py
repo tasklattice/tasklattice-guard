@@ -8,6 +8,7 @@ pretends its unreached checks did not match.
 from __future__ import annotations
 
 from copy import deepcopy
+from typing import get_args
 
 import pytest
 
@@ -19,8 +20,10 @@ from runner.serialization import plan_from_dict
 from runner.toolkit.compiler.semantics import collects_complete_evidence, complete_evidence_supported
 from runner.toolkit.nemo.action_registry import action_providers
 from runner.toolkit.nemo.actions.content_filter import ContentFilterActionProvider
-from runner.toolkit.runtime.contracts import ProtectionRequest, RequestContext
+from runner.toolkit.runtime.contracts import OutputDeliveryMode, ProtectionRequest, RequestContext
 from runner.validator import DefaultRunnerValidator
+# The plan shape is generated once, by the module that also proves schedule
+# invariance, so both suites exercise the real Controller output.
 from tests.control_plane.test_schedule_invariance import _controller_plans
 
 
@@ -47,20 +50,33 @@ def variant(plan: dict, *, delivery: str = "full_buffered", custom: bool = False
     return changed
 
 
+# One row per behaviour that can differ. `interruptible` and `window_buffered`
+# share a code path, so the behavioural matrix needs only one of them; their
+# both-must-be-decided guarantee comes from the exhaustive enum test below.
+# (delivery, custom flow, scope, suppresses short-circuit, Rules that ran)
 CASES = [("full_buffered", False, "full", True, {"r-first", "r-second"}),
-         ("full_buffered", False, "interventions", True, {"r-first"}),
+         ("full_buffered", False, "interventions", False, {"r-first"}),
          ("window_buffered", False, "full", False, {"r-first"}),
-         ("full_buffered", True, "full", False, {"r-first"}),
-         ("interruptible", False, "interventions", False, {"r-first"})]
+         ("full_buffered", True, "full", False, {"r-first"})]
 
 
-@pytest.mark.parametrize(("delivery", "custom", "scope", "supported", "matched"), CASES)
+def test_every_delivery_mode_has_a_decided_evidence_capability(grouped_plan) -> None:
+    """Exhaustive over the closed literal, so a new mode cannot default silently."""
+    decided = {"full_buffered": True, "window_buffered": False, "interruptible": False}
+    assert set(get_args(OutputDeliveryMode)) == set(decided)
+    for delivery, supported in decided.items():
+        plan = plan_from_dict(variant(grouped_plan, delivery=delivery))
+        assert complete_evidence_supported(plan) is supported, delivery
+        assert collects_complete_evidence("full", plan) is supported, delivery
+        assert collects_complete_evidence("interventions", plan) is False, delivery
+
+
+@pytest.mark.parametrize(("delivery", "custom", "scope", "suppresses", "matched"), CASES)
 async def test_only_supported_execution_types_suppress_short_circuiting(
-    grouped_plan, delivery, custom, scope, supported, matched,
+    grouped_plan, delivery, custom, scope, suppresses, matched,
 ) -> None:
     plan = variant(grouped_plan, delivery=delivery, custom=custom)
-    assert complete_evidence_supported(plan_from_dict(plan)) is supported
-    assert collects_complete_evidence(scope, plan_from_dict(plan)) is (supported and scope == "full")
+    assert collects_complete_evidence(scope, plan_from_dict(plan)) is suppresses
     runtime = DraftPreviewRuntime(DefaultRunnerCompiler(), action_providers(ContentFilterActionProvider()))
     try:
         decision = await runtime.evaluate(
