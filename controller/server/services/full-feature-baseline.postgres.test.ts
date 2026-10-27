@@ -52,6 +52,6 @@ describe.skipIf(!url)("Full-feature Profile creation and deletion", () => {
     await database.pool.query("UPDATE guardrail_profile SET definition=jsonb_set(definition, '{policies,0,policyVersion}', '\"unavailable\"') WHERE id='full-feature-baseline'");
     const profiles = await service.listGuardrailProfiles();
     expect(profiles.find(profile => profile.id === fullFeatureBaseline.id)?.availability.available).toBe(false);
-    expect(profiles.find(profile => profile.id === "common-baseline")?.availability.available).toBe(true);
+    expect(profiles.find(profile => profile.id === "local-baseline")?.availability.available).toBe(true);
   });
 });

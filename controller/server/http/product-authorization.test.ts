@@ -197,10 +197,10 @@ describe("Session freshness and read-only access", () => {
     const response = await app.request("/api/v1/policy-catalog/protection-presets");
     expect(response.status).toBe(200);
     const body = await response.json();
-    expect(body.items.map((item: { id: string }) => item.id)).toEqual(expect.arrayContaining([
-      "common-baseline", "banking-assistant", "securities-assistant", "internet-customer-support",
-      "china-mainland-runtime", "china-banking-assistant",
-    ]));
+    expect(body.items.map((item: { id: string }) => item.id)).toEqual([
+      "local-baseline", "full-feature-baseline", "banking-assistant",
+      "securities-assistant", "internet-customer-support",
+    ]);
     expect(unexpected).not.toHaveBeenCalled();
     expect((await setup(null).app.request("/api/v1/policy-catalog/protection-presets")).status).toBe(401);
   });

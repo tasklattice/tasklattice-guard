@@ -3,23 +3,18 @@ import type { GuardrailProfile } from "./protection-map.js";
 import { localBaseline } from "./local-baseline.js";
 import { fullFeatureBaseline } from "./full-feature-baseline.js";
 
-const useCaseCategories: Record<string, [string, string]> = {
-  "multilingual-content-safety": ["multilingual_content", "Multilingual content"],
-  "claims-assistant": ["claims", "Claims support"],
-  "eu-high-risk-practices": ["eu_high_risk", "EU high-risk practices"],
-};
+function industryProfile(id: string, name: string, category: string, categoryName: string): GuardrailProfile {
+  const profile = protectionPresets.find(item => item.id === id);
+  if (!profile) throw new Error(`Missing built-in Profile ${id}`);
+  return { ...profile, name, category, categoryName, isDefault: true };
+}
 
-// Seed data only. Runtime requests read guardrail_profile, never this array.
-export const defaultGuardrailProfiles: readonly GuardrailProfile[] = [...protectionPresets.map(profile => {
-  const singapore = profile.jurisdictions.includes("singapore");
-  const region = profile.jurisdictions[0];
-  const china = profile.jurisdictions.includes("cn");
-  const category = singapore ? (profile.industry === "banking" ? "singapore_finance" : "singapore") : china
-    ? profile.industry === "banking" ? "china_banking" : "china_mainland"
-    : region ?? profile.industry;
-  const categoryName = singapore ? (profile.industry === "banking" ? "Singapore finance" : "Singapore") : china
-    ? profile.industry === "banking" ? "China mainland banking" : "China mainland"
-    : ({ au: "Australia", eu: "European Union", uae: "UAE" }[region ?? ""] ?? ({ general: "General", banking: "Banking", securities: "Securities", internet: "Internet support" }[profile.industry]));
-  const useCase = useCaseCategories[profile.id];
-  return { ...profile, category: useCase?.[0] ?? category, categoryName: useCase?.[1] ?? categoryName, isDefault: true };
-}), fullFeatureBaseline, localBaseline];
+// The curated seed catalog. Runtime requests read enabled database rows.
+// Historical compositions remain available to artifact fixtures, not discovery.
+export const defaultGuardrailProfiles: readonly GuardrailProfile[] = [
+  localBaseline,
+  fullFeatureBaseline,
+  industryProfile("banking-assistant", "Bank", "banking", "Bank"),
+  industryProfile("securities-assistant", "Securities & brokerage", "securities", "Securities"),
+  industryProfile("internet-customer-support", "Internet platform support", "internet", "Internet support"),
+];

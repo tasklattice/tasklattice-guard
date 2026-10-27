@@ -89,7 +89,7 @@ describe("Policy catalog HTTP compatibility", () => {
     expect(response.status).toBe(200);
     const data = await response.json() as { directories: unknown[]; items: Array<{ id: string; policies: unknown[]; policyBindings: Array<{ policyId: string; policyVersion: string }> }> };
     expect(data.directories).toHaveLength(8);
-    expect(data.items).toHaveLength(16);
+    expect(data.items.map(profile => profile.id)).toEqual(defaultGuardrailProfiles.map(profile => profile.id));
     expect(data.items.some(preset => preset.id === "restricted-general-topics")).toBe(false);
     for (const preset of data.items) {
       expect(preset.policyBindings).toHaveLength(preset.policies.length);

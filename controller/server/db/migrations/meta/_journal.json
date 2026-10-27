@@ -365,6 +365,13 @@
       "when": 1793000000001,
       "tag": "0051_local_baseline_profile",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1793077800000,
+      "tag": "0052_curated_guardrail_profiles",
+      "breakpoints": true
     }
   ]
 }

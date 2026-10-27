@@ -162,7 +162,7 @@ export function CreateGuardrailWizard({
     if (!open || !catalogReady || !presetsQuery.isSuccess || initialProfileApplied.current) return;
     initialProfileApplied.current = true;
     const profile = initialProfileId ? presetsQuery.data.items.find(item => item.id === initialProfileId)
-      : presetsQuery.data.items.find(item => item.category === "general" && item.isDefault);
+      : presetsQuery.data.items.find(item => item.id === "local-baseline" && item.isDefault);
     if (profile && profile.availability?.available !== false && !bindings.length && selectedPreset === "blank" && step === 0) {
       setSelectedPreset(profile.id);
       setBindings(structuredClone(profile.bindings));

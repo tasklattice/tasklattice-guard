@@ -4,10 +4,10 @@ import type { GuardrailProfile } from "./protection-map.js";
 export const localBaseline = {
   "id": "local-baseline",
   "version": "1.0.0",
-  "name": "Local baseline",
+  "name": "Default",
   "description": "The local protections used for the initial deployment. Create an ordinary Guardrail and customize it.",
   "category": "local_baseline",
-  "categoryName": "Local baseline",
+  "categoryName": "Default",
   "isDefault": true,
   "industry": "general",
   "jurisdictions": [],

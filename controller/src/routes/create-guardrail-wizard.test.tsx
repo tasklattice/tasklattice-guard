@@ -307,9 +307,9 @@ describe("Create Guardrail wizard", () => {
     await waitFor(() => expect(apiMocks.preview).toHaveBeenCalledWith(expect.objectContaining({ policy_bindings: [binding] })));
   });
 
-  it("uses the library's selected Profile with its exact Rules instead of the General default", async () => {
+  it("uses the library's selected Profile with its exact Rules instead of Default", async () => {
     apiMocks.getPresets.mockResolvedValue({ items: [
-      { id: "general", name: "General Profile", category: "general", categoryName: "General", isDefault: true, bindings: [binding], limitations: [] },
+      { id: "local-baseline", name: "Default", category: "local_baseline", categoryName: "Default", isDefault: true, bindings: [binding], limitations: [] },
       { id: "chosen-set", name: "Chosen regional set", category: "banking", categoryName: "Banking", isDefault: true, bindings: [configuredRequiredBinding], limitations: [] },
     ] });
     renderWizard("chosen-set");
@@ -355,15 +355,15 @@ describe("Create Guardrail wizard", () => {
     expect((await screen.findByRole("option", { name: /Missing Profile/ })).getAttribute("aria-disabled")).toBe("true");
   });
 
-  it("loads the General default Profile and lists all Profiles with tags in one dropdown", async () => {
+  it("loads the Default Profile and lists all Profiles with tags in one dropdown", async () => {
     apiMocks.getPresets.mockResolvedValue({ items: [
-      { id: "general", name: "General Profile", category: "general", categoryName: "General", isDefault: true, bindings: [binding], limitations: [] },
+      { id: "local-baseline", name: "Default", category: "local_baseline", categoryName: "Default", isDefault: true, bindings: [binding], limitations: [] },
       { id: "bank-alternate", name: "Alternate banking", category: "banking", categoryName: "Banking", isDefault: false, bindings: [binding], limitations: [] },
       { id: "bank-default", name: "Default banking", category: "banking", categoryName: "Banking", isDefault: true, bindings: [configuredRequiredBinding], limitations: [] },
     ] });
     renderWizard();
     expect(await screen.findByText("Profile applied · 1 Policies selected")).toBeTruthy();
-    expect(screen.getByRole("combobox").querySelector(".cds--list-box__label")?.textContent).toContain("General Profile");
+    expect(screen.getByRole("combobox").querySelector(".cds--list-box__label")?.textContent).toContain("Default");
     expect(screen.queryByRole("group", { name: "Industry or use case" })).toBeNull();
     fireEvent.keyDown(screen.getByRole("combobox", { name: "Profile", exact: true }), { key: "ArrowDown" });
     expect(await screen.findByRole("option", { name: /Alternate banking.*Banking/ })).toBeTruthy();
@@ -372,7 +372,7 @@ describe("Create Guardrail wizard", () => {
     fireEvent.click(screen.getByRole("button", { name: protectionEn.wizard.addPreset }));
     expect(screen.getByText("Profile applied · 2 Policies selected")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: protectionEn.wizard.undoPreset }));
-    expect(screen.getByRole("combobox").querySelector(".cds--list-box__label")?.textContent).toContain("General Profile");
+    expect(screen.getByRole("combobox").querySelector(".cds--list-box__label")?.textContent).toContain("Default");
     fireEvent.keyDown(screen.getByRole("combobox"), { key: "ArrowDown" });
     fireEvent.click(await screen.findByRole("option", { name: "Start blank" }));
     fireEvent.click(screen.getByRole("button", { name: protectionEn.wizard.replacePreset }));
@@ -459,7 +459,7 @@ describe("Create Guardrail wizard", () => {
     const correctness: Policy = { ...policy, id: "builtin-contextual-grounding", name: "Contextual Grounding",
       protection: { ...policy.protection!, directory: "answer_reliability", execution: "model", modelCapabilities: ["contextual_grounding"] } };
     apiMocks.getPolicies.mockResolvedValue({ items: [policy, topic, correctness], count: 3 });
-    apiMocks.getPresets.mockResolvedValue({ items: [{ id: "baseline", name: "Common baseline", category: "general", isDefault: true, bindings: [binding], limitations: [] }] });
+    apiMocks.getPresets.mockResolvedValue({ items: [{ id: "local-baseline", name: "Default", category: "local_baseline", isDefault: true, bindings: [binding], limitations: [] }] });
     renderWizard();
     expect(await screen.findByText("Profile applied · 1 Policies selected")).toBeTruthy();
     fireEvent.change(screen.getByPlaceholderText("Customer data protection"), { target: { value: "Discover protections" } });
