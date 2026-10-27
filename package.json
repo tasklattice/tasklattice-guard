@@ -51,7 +51,8 @@
     "helm:test": "node scripts/project-commands.mjs helm-test",
     "helm:delete:dev": "node scripts/project-commands.mjs helm-delete",
     "test:promotion": "node scripts/project-commands.mjs promotion-test",
-    "policies:regression": ".venv/bin/python scripts/policy_sources.py test --all --output output/policy-regression.json"
+    "policies:regression": ".venv/bin/python scripts/policy_sources.py test --all --output output/policy-regression.json",
+    "bench:scheduling": ".venv/bin/python scripts/benchmark_scheduling.py"
   },
   "devDependencies": {
     "ws": "^8.22.0"

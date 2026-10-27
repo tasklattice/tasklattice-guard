@@ -21,6 +21,13 @@ Input / buffered output
 
 ## Execution contract
 
+This section describes observable behaviour. The parameter validation rules and
+the evidence statuses are implemented once, in the Runner
+(`NeMoConfigCompiler.compile()`, `NeMoActionBridge._declared_view()`,
+`validator._case_evidence()`), and negative cases live in
+`tests/control_plane/test_ordered_execution.py` and
+`tests/control_plane/test_evidence_capability_matrix.py`.
+
 The Controller writes two step parameters that the Runner must honour:
 
 | Step parameter | Meaning |
@@ -52,6 +59,28 @@ Block takes precedence over Transform. If PII would redact a request but the con
 In `interventions` scope, PII transformations run only after required Block checks pass; supported `full` scope also runs them after a Block to collect evidence. Transforms run sequentially: each step and its declared chain consume the current transformed text, while unrelated conversation history and external-content boundaries remain intact. A read-only Block or Allow check inspects the phase input, so another Policy's redaction can neither blind a Block check nor erase an Allow observation. Allow means that a particular check does not object; it is not a global exemption.
 
 Model checks before PII redaction can receive the original text. A deployment requiring redaction before external model processing must express that dependency explicitly or use a local model; action priority alone does not establish a data-egress policy.
+
+## Evidence capability
+
+`full` evidence means "evaluate every reachable check, then decide". Only some
+execution types can honour it, and the report never pretends otherwise:
+
+| Execution type | `interventions` (default) | `full` (Validator, Scan API) |
+| --- | --- | --- |
+| `full_buffered`, no custom Colang | early exit at the first Block; report only interventions | every reachable check runs, Action-internal Rule short-circuiting is off; `observed` evidence for each Rule |
+| `window_buffered` / `interruptible` | early exit; report only interventions | early exit is kept; unreached Rules report `not_reached` / `preempted_by`, never a fabricated non-match |
+| any custom Colang Flow | authored order and flow-owned short-circuiting; report only interventions | same execution, same early exit; unreached Rules report `not_reached` / `preempted_by` |
+
+Two consequences worth knowing before writing Test Cases:
+
+- A `rule_acceptance` case can only be certified for a Rule that actually ran.
+  When the execution type keeps its early exit, the second Rule of an overlapping
+  pair is reported as unreached; review it with an expectation override, or test
+  it in a Policy-level suite instead of the composed Guardrail.
+- `full` increases cost. A blocked request evaluates every reachable check, so
+  Validation and Scan runs can issue more model calls than production does. See
+  [`policy-scheduling-benchmark.md`](./policy-scheduling-benchmark.md) for the
+  measured check counts.
 
 ## Validation and reporting
 
