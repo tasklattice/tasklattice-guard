@@ -190,6 +190,8 @@ def test_openapi_documents_ignored_fields_and_bearer():
     app, _, _ = app_for()
     spec = app.openapi()
     op = spec["paths"][SCAN_PATH]["post"]
+    assert "full evidence" in op["description"]
+    assert "model calls and latency" in op["description"]
     assert spec["components"]["securitySchemes"]["ScanBearer"]["scheme"] == "bearer"
     assert op["security"] == [{"ScanBearer": []}]
     assert "/backend/v1/scans" not in spec["paths"]

@@ -135,6 +135,13 @@ def register_scan(api, *, max_body_bytes: int, timeout_seconds: float) -> None:
         openapi_extra={"requestBody": {"required": True, "content": {"application/json": {"schema": ScanRequest.model_json_schema()}}},
                        "responses": {"422": {"description": "Invalid Scan request"}}})
     async def scan(endpoint_id: str, request: Request):
+        """Scan with full evidence, including observations whose action is Allow.
+
+        Full-buffered plans without custom flows continue reachable checks after
+        Block. This can increase model calls and latency; a later error or timeout
+        fails the scan. Neither flagOnly nor verbose changes this execution scope.
+        Custom flows and streaming plans retain their own short-circuit behavior.
+        """
         scan_id = str(uuid4())
         response_headers = {"X-Request-ID": scan_id, "X-TaskLattice-Scan-Compatibility": "v1"}
         try:
@@ -173,6 +180,9 @@ def register_scan(api, *, max_body_bytes: int, timeout_seconds: float) -> None:
                 payload = payload.model_copy(update={"flagOnly": api._store.endpoint_scan_flag_only_default(endpoint_id)})
             phase = "input" if payload.scanDirection == "request" else "output"
             source = "user_input" if phase == "input" else "model_output"
+            # Scan deliberately collects full evidence, even with verbose=False
+            # or flagOnly=True. On supported plans this also disables Block early
+            # exit, so later checks can add model cost, latency or execution errors.
             protection_request = ProtectionRequest(
                 phase=phase, texts=(payload.input,), mode="enforce", evidence_scope="full",
                 content_blocks=(GuardContentBlock(id=f"{phase}:0", text=payload.input, role=source, source=source, trust="untrusted"),),
