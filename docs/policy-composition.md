@@ -1,6 +1,6 @@
 # Policy composition and execution
 
-A published Guardrail is an immutable execution plan. New plans use the effective Rule action (Rule override, Policy override, then Rule default) to schedule compiler-owned checks. Existing published artifacts keep their original execution order until a new version is compiled and published.
+A published Guardrail is an immutable execution plan. Plans use the effective Rule action (Rule override, Policy override, then Rule default) to schedule compiler-owned checks. Changes require a newly compiled version.
 
 The compilation step is an optimisation over that plan, not a second definition
 of it. Every step therefore declares two things the schedule is not allowed to
@@ -55,7 +55,7 @@ Model checks before PII redaction can receive the original text. A deployment re
 
 ## Validation and reporting
 
-> 设计约定、已验证范围、迁移规则与后续工作，见
+> 设计约定、已验证范围、统一契约与后续工作，见
 > [`policy-scheduling-optimization-design.zh-CN.md`](./policy-scheduling-optimization-design.zh-CN.md)。
 
 Single-Policy acceptance and combined final decisions answer different questions. Another Rule's Block or Transform cannot prove the target Rule passed. A target must have the pinned source version, enabled phase and Rules, executable steps, and actual evidence. Rule acceptance requires every target; scenario coverage may list alternative detectors and requires an actual match within that pinned coverage. A scenario match does not certify its unmatched Rules.
@@ -63,12 +63,12 @@ Single-Policy acceptance and combined final decisions answer different questions
 - `observed` requires actual target matches. `absent` requires conclusive execution without those matches. `missing`, `not_reached`, `not_matched` and `unverifiable` cannot pass target acceptance.
 - `preempted_by` and `shadowed_by` explain why target evidence is unavailable; they do not satisfy acceptance. A local pinned-definition recheck on original text is diagnostic only, never an actual match on a transformed view.
 - A reviewed expectation override can explicitly require a different Rule and exact output. It remains version-bound and cannot repair an omitted or disabled target by assumption.
-- New compiler-owned, full-buffered plans honor `evidence_scope=full`: all reachable checks collect evidence despite a Block, including parallel members. The final Block still prevents content delivery. Online `interventions` retains short-circuiting and cancellation.
-- Reports carry structured evidence and `rule-evidence-v1`. Historical reports stay unchanged. Retesting an old artifact uses stricter evidence assertions without changing its old execution order or short-circuit behavior.
-- Plan v16 and NeMo compiler v28 require the `tasklattice.explicit-views=1` Runner capability. The Controller checks it for compilation, testing, load admission and distribution. Ignoring view parameters is not semantic compatibility.
+- Compiler-owned, full-buffered plans honor `evidence_scope=full`: all reachable checks collect evidence despite a Block, including parallel members. The final Block still prevents content delivery. Online `interventions` retains short-circuiting and cancellation.
+- Reports carry explicit structured evidence and a required `ruleContractSatisfied` result. The console uses that result directly. There is no historical-report fallback, `preemptingMatches` field or evidence-contract version field. Skipped model cases explicitly record `not_reached` and an unsatisfied Rule assertion, and remain excluded from executed-case metrics.
+- Controller and Runner use one execution contract. There is no view capability negotiation or version-dependent stop behavior. Every step must declare exactly one valid `evaluation_view`; missing, duplicate and unknown views are rejected. Custom Flow bindings explicitly use `previous_output`. Compiler version identifiers remain artifact provenance, not behavior switches.
 - Three legal schedules of each tested action composition must have identical decisions, outputs, normalized evidence and assertions. These deterministic tests do not prove equivalence for arbitrary custom flows, windowed streaming, model randomness or stateful checks.
 
-**Testing does not gate Guardrail publication.** Untested and failed drafts can publish through independent compilation. A failed report remains failed, including when published as release evidence. Artifact validity and runtime compatibility remain necessary checks.
+**Testing does not gate Guardrail publication.** Untested and failed drafts can publish through independent compilation. A failed report remains failed, including when published as release evidence. Artifact validity, pinned Policy identity and execution dependencies remain necessary checks. Create a new compiled artifact to adopt the current contract, and rerun tests when current evidence is needed. Retesting is not a prerequisite for publication.
 
 The existing local-only validation option verifies local Rules without model calls, explicitly lists skipped model tests, and publishes the complete model-enabled artifact. It does not certify combined model behavior. Real-target Veritas runs are separate evidence, with unchanged source labels and frozen samples. Report strict scorer Accuracy alongside binary intervention Precision/Recall/F1, new failures, fixes, repeat instability, execution errors and latency. For PII, an arbitrary Block or incomplete redaction must not count as successful full removal when the scorer requires a transformed output.
 

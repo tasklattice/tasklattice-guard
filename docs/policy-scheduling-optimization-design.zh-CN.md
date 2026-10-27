@@ -6,11 +6,11 @@
 
 方向可行：把检查的输入视图、Transform 顺序、测试证据要求固定下来，再优化独立检查的执行顺序。收益首先是可解释、可回归的组合行为；本地 Block 前置和模型检查并行的延迟收益需要另行测量。
 
-第一阶段现在实现了显式视图、完整证据测试、严格 Rule 证据判定、语义版本与 Runner 能力协商，并增加了多调度差分测试。**这不等于证明任意 Policy、任意模型和任意调度都语义等价。**
+第一阶段现在实现了显式视图、完整证据测试、严格 Rule 证据判定、统一执行契约，并增加了多调度差分测试。**这不等于证明任意 Policy、任意模型和任意调度都语义等价。**
 
-当前验证范围是：新版本编译器生成的内置 Policy、完整缓冲的 input/output、固定检测器响应，以及保持 Transform 顺序和 trigger 依赖的合法调度。自定义 Colang、窗口流式、模型随机性、有状态检测器和完整的故障时序空间不在这个保证范围内。
+当前验证范围是：当前编译器生成的内置 Policy、完整缓冲的 input/output、固定检测器响应，以及保持 Transform 顺序和 trigger 依赖的合法调度。自定义 Colang、窗口流式、模型随机性、有状态检测器和完整的故障时序空间不在这个保证范围内。
 
-测试失败仍可发布。报告如实记录失败，发布独立检查产物是否能够编译；签名、版本、执行环境和兼容性检查继续有效。
+测试失败仍可发布。报告如实记录失败，发布独立检查产物是否能够编译；签名、固定版本和执行环境有效性检查继续有效。
 
 ## 2. 原实现的缺口与修复
 
@@ -18,10 +18,10 @@
 | --- | --- |
 | 任意其他 Block 或 Transform 命中，就把目标 Rule 验收算通过 | 目标必须在计划中存在、启用、版本和阶段正确，并有自己的实际证据；取代关系只解释失败 |
 | 在原文上重跑目标 Rule，混同于它在实际变换视图上执行 | 本地复算仅用于诊断 `shadowed_by`，不进入 verified Rule，也不能使测试通过 |
-| Validator 请求 `full`，Runtime 仍因 Block 短路或取消并行成员 | 新计划在 full 模式收集所有可达步骤；多 Rule content-filter Action 内部也不因 Block 丢弃后续 Rule，最后统一返回 Block；快速模式继续短路 |
+| Validator 请求 `full`，Runtime 仍因 Block 短路或取消并行成员 | 支持的计划在 full 模式收集所有可达步骤；多 Rule content-filter Action 内部也不因 Block 丢弃后续 Rule，最后统一返回 Block；快速模式继续短路 |
 | 同一审阅约定要求 mask + block，作者序通过而 Block 前置失败 | 完整证据模式下两条 Rule 都真实运行，三种合法调度比对实际 findings 和断言 |
 | 精确/语义步骤共享参数数组，追加元数据相互污染 | 每个 step 分配独立参数数组，precedence 唯一且不重复 |
-| 旧 Runner 忽略 evaluation_view 被误称为兼容 | 新 plan/NeMo 语义版本与 Runner 能力标签，编译、测试、加载和分发均检查支持情况 |
+| 缺少 evaluation_view 时静默使用线程化文本 | 编译和执行要求明确且唯一的视图；Controller 与 Runner 采用统一契约，不做新旧能力协商 |
 | 不变性测试只跑两个顺序，且有 `or True` 无效断言 | 三种不同合法顺序，严格比较决策、输出、证据和测试结论；无恒真断言 |
 
 ## 3. 计划、调度与视图
@@ -33,6 +33,7 @@ Controller 在调度前为每个 step 写入：
 ```
 
 - `precedence` 是作者顺序，调度不能改写它。
+- 每个 step 必须声明且只能声明一个 `evaluation_view`，值为 `original` 或 `previous_output`；缺失、重复或未知值直接报错。自定义 Flow 的绑定由编译器明确写为 `previous_output`。
 - 只读 Block / Allow 检查看本阶段输入 `original`。
 - Transform 和继承 Transform 前置依赖的步骤看 `previous_output`。
 - Transform 保持作者顺序，串行累积输出；trigger 的前置条件必须先完成。
@@ -41,18 +42,18 @@ Controller 在调度前为每个 step 写入：
 
 显式视图由 `NeMoActionBridge._evaluation_text()` 在 Action、Evaluator、PII 和并行成员的入口统一兑现。`precedence` 当前不是独立仲裁器；最终决策仍由 Runtime 累积，Block 优先于 Transform，Allow 不覆盖其他步骤。
 
-只读检查看原文是一项版本化的行为约定。若某个检查必须先看到归一化或脱敏文本，需要明确表达依赖；不能靠偶然的作者位置推断。外部模型是否能收到原文，也不能靠 action 优先级充当数据出站约定。
+只读检查看原文是一项明确的行为约定。若某个检查必须先看到归一化或脱敏文本，需要明确表达依赖；不能靠偶然的作者位置推断。外部模型是否能收到原文，也不能靠 action 优先级充当数据出站约定。
 
 ## 4. 两种证据范围
 
 | 请求范围 | 执行行为 | 可承诺内容 |
 | --- | --- | --- |
 | `interventions`（线上默认） | Block 后允许早退；并行组可取消未完成成员 | 安全决策；不保证完整 findings、调用次数或执行集 |
-| `full`（Validator 使用） | 支持的新计划不因 Block 早退或取消兄弟检查；仍遵循 trigger | 对可达步骤收集结果，最后决策；未达到或不确定的目标不能当作未命中 |
+| `full`（Validator 使用） | 支持的计划不因 Block 早退或取消兄弟检查；仍遵循 trigger | 对可达步骤收集结果，最后决策；未达到或不确定的目标不能当作未命中 |
 
-新流程把单步实际的 `blocked` 和控制流的 `stop` 分开。full 模式中 `stop=false` 不代表放行：Runtime 保留 Block，所有可达检查完成后，最终 resolver 返回 Block，不交付被拦截文本。
+流程把单步实际的 `blocked` 和控制流的 `stop` 分开。full 模式中 `stop=false` 不代表放行：Runtime 保留 Block，所有可达检查完成后，最终 resolver 返回 Block，不交付被拦截文本。
 
-条件为假的步骤不会被强行执行。错误、超时也不能伪造为 matched。任意自定义流、旧计划和流式计划保留原短路行为，即使请求 full，也不会被本次改动擅自改写。它们的报告可能因此出现 `not_reached` / `preempted_by`，而不是虚构验收成功。
+条件为假的步骤不会被强行执行。错误、超时也不能伪造为 matched。任意自定义流和流式计划仍保留自己的短路行为，即使请求 full，也不会强行收集不可达步骤。这是执行类型的限制，不是按版本保留旧行为。它们的报告可能因此出现 `not_reached` / `preempted_by`，而不是虚构验收成功。
 
 完整证据模式可能增加模型调用、延迟和成本。这是测试证据的成本，不是线上快速路径的性能回归指标。
 
@@ -81,9 +82,8 @@ Controller 在调度前为每个 step 写入：
 - `verified_rule_ids`：字段 43，仅实际匹配。
 - `evidence_detail`：字段 44，具体解释。
 - `rule_contract_satisfied`：字段 45，包括有效审阅约定的最终 Rule 断言结果。
-- `evidence_contract`：字段 46，新报告为 `rule-evidence-v1`。
 
-旧 `preempting_matches` 保留用于读取历史报告；新报告不会用它绕过目标验收。控制台优先使用后端记录的 Rule 断言结果，避免从部分命中或取代关系重新推断通过。
+`preempting_matches` 和 `evidence_contract` 已删除，Proto 字段编号 38、46 保留为 reserved，防止未来误复用。报告统一携带证据状态和 Rule 断言结果；控制台直接显示后端判定，不从部分命中或取代关系重新推断通过。本地测试中跳过的模型用例明确记录 `not_reached`、`ruleContractSatisfied=false` 和跳过原因，不计入已执行用例。
 
 ### 5.1 显式审阅组合期望
 
@@ -97,20 +97,18 @@ Controller 在调度前为每个 step 写入：
 
 override 不会使已删除、禁用、版本不符的目标变得有效。也不能根据实际结果自动生成期望值。
 
-## 6. 版本与迁移
+## 6. 统一契约与产物标识
 
-| 对象 | 本次版本/能力 |
+Controller 与 Runner 按同一套契约部署，不支持混合旧版本。编译、测试、加载和 desired-state 分发不再检查显式视图能力标签；Runtime 不再根据计划版本选择另一套执行语义。完整证据支持范围仅由执行类型决定：完整缓冲且没有任意自定义流。
+
+| 对象 | 当前标识 |
 | --- | --- |
 | Controller plan | `tasklattice-controller-plan-v16-explicit-views` |
-| NeMo 编译器 | `tasklattice-nemo-config-v28-explicit-views` |
-| Runner registration label | `tasklattice.explicit-views=1` |
-| 新测试报告 | `rule-evidence-v1` |
+| NeMo 编译器 | `tasklattice-nemo-config-v29-single-contract` |
 
-升级后的 Controller 只把新计划的编译、测试、加载检查和 desired-state 分发给支持该语义的 Runner。不支持的 Runner 保留已有状态，新的 rollout 会报告需要升级。旧计划仍可以由旧 Runner 执行。
+这些版本只用于识别和复现产物，不用于切换旧行为。Policy 的固定版本仍用于核对真实目标；checksum、签名、依赖、模型配置同步和执行环境检查继续有效。
 
-已发布 artifact 不重新编译，不改写历史报告。旧计划缺少视图参数时沿用线程化文本；旧 Colang 流保留早退。用新 Validator 复测旧版本会创建采用新证据契约的**新报告**，可能揭示此前被当作通过的缺失证据；这不改变旧报告或旧产物本身。
-
-推荐先升级 Runner，再升级 Controller 并发布新版本。回滚时可继续使用原有旧 artifact。新计划不能降级交给不理解视图约定的 Runner。
+不为旧计划和旧报告提供兼容分支或语义兜底。需要使用的 Guardrail 应重新编译，生成符合当前契约的产物；要取得当前证据则重新测试，测试并非发布前置条件。不会原地修改已签名的 artifact 或把原失败结果改成通过。
 
 ## 7. 测试和发布独立
 
@@ -118,7 +116,7 @@ override 不会使已删除、禁用、版本不符的目标变得有效。也�
 - 已有可用候选产物时直接固定该产物；否则使用离线编译，不需要先通过测试。
 - 失败报告及其结构化证据保留，发布不会把 failed 改成 passed。
 - 缺失模型配置可以影响环境就绪或执行，但不是用测试通过率阻止创建发布版本。
-- 编译失败、产物损坏、签名错误、Runner 不支持语义仍是执行有效性问题，需要修复；它们与测试不通过是不同的判定。
+- 编译失败、产物损坏、签名错误、视图或执行依赖无效仍是执行有效性问题，需要修复；它们与测试不通过是不同的判定。
 
 Default、full-feature-baseline 和普通用户创建的 Guardrail 使用同一流程。PostgreSQL 回归把 `preempted_by + ruleContractSatisfied=false` 报告写入后，验证 full-feature Profile 仍能发布，原报告继续 failed。
 
@@ -136,26 +134,32 @@ Default、full-feature-baseline 和普通用户创建的 Guardrail 使用同一�
 - 目标从计划中省略，或冻结检测条件变得不匹配，不能被其他 Transform 掩盖。
 - 原文复算匹配不等于实际变换视图匹配。
 - 正常文本的 Allow 断言必须有明确执行证据。
-- 同一个旧格式多 Rule Action 内部，full 收集全部命中；快速模式仍在第一个 Block 停止。
+- 同一个多 Rule Action 内部，full 收集全部命中；快速模式仍在第一个 Block 停止。
 
 ### 8.2 其他边界
 
 - 证据单测：缺失 Policy、过期版本、错误阶段、禁用/部分覆盖、未执行、实际未命中、未知/error verdict、失效 override 和完整输出断言；原生 Rule 的 exact/semantic 升级链使用已完成的终端结果，不能把中间 unknown 当作完成。
-- 并行回归：C1/C2、input/output、新旧计划、full/快速范围；快速模式仍取消，full 模式保留兄弟结果；模型 HTTP 成功、超时和 503 的确定性响应下，串行与并行的执行结果一致。
-- 协议和控制面：结构化字段真实 wire 往返、旧报告 optional 字段缺省、新旧 Runner 的编译/测试/加载/分发能力门槛。
+- 并行回归：C1/C2、input/output、full/快速范围；快速模式仍取消，full 模式保留兄弟结果；模型 HTTP 成功、超时和 503 的确定性响应下，串行与并行的执行结果一致。
+- 协议和控制面：结构化字段真实 wire 往返、明确的 true/false Rule 判定、无需视图能力标签即可编译/测试/加载/分发，以及视图缺失或歧义时拒绝执行。
 - 发布：实际 PostgreSQL 写入失败证据后发布，测试与版本状态独立。
 - 前端：真实桌面页面展开报告，部分命中显示 Rule 不匹配；满足组合约定的决策失败不会再误报 Rule 不匹配。
 
-本次本机验证记录（2026-10-27）：
+本次清理后的本机验证记录（2026-10-27）：
 
 | 验证 | 结果 |
 | --- | --- |
-| 证据判定 + 三调度差分 | 101 passed |
+| 动作组合矩阵 | 1008 passed |
 | Default、历史用例、Profile 组合与本地测试范围 | 33 passed |
-| 其余 Python 回归（control_plane/data_plane/e2e/contract） | 4457 项通过，15 skipped；其中协议注释检查修复后定向复测，协议套件 8/8 通过 |
-| Controller 全量（含本机临时 PostgreSQL） | 2432 passed，27 skipped |
-| 类型检查、Controller/CLI 构建、CLI 回归 | 通过 |
+| 其余 Python 回归 | 3451 项通过，15 skipped，含修复后定向复测 |
+| Controller 全量，含本机临时 PostgreSQL | 2432 项通过，27 skipped，含数据库环境补齐后的复测 |
+| CLI 回归 | 23 passed |
+| 类型检查、Controller/CLI 构建 | 通过 |
 | Protobuf、OpenAPI、artifact/default baseline 生成一致性 | 通过 |
+| 真实桌面报告展开与失败诊断 | 通过 |
+
+Python 按组执行，避免重复运行已通过的动作矩阵。其余套件首次完成时为 3316 passed、135 failed、15 skipped；失败全部来自三个模型集成夹具在替换参数时丢弃 `evaluation_view`，修复后这三个文件的 161 项测试全部通过。上述 3451 不重复计算复测中的重叠用例。模型能力探测计划也已显式声明视图，其 24 项回归通过。
+
+Controller 初次运行有三个套件因临时 PostgreSQL 缺少 public schema 未执行；建立所需 schema 后，32 项定向复测通过。失败报告仍可发布的 PostgreSQL 测试通过。
 
 这些测试不是模型准确率评估。生产 p95、取消率、调用费用和随机模型的重复稳定性尚未测量。
 
@@ -167,7 +171,7 @@ Default、full-feature-baseline 和普通用户创建的 Guardrail 使用同一�
   tests/control_plane/test_validation_expectations.py \
   tests/control_plane/test_parallel_checks.py
 
-(cd controller && node node_modules/vitest/vitest.mjs run \
+(cd controller && node node_modules/vitest/vitest.mjs run --environment jsdom \
   server/domain/guardrail-plan.test.ts \
   server/control-channel/control-server.test.ts \
   server/control-channel/protocol-codec.test.ts \
@@ -187,4 +191,4 @@ npm run proto:check
 
 后续可以增加声明式 reads/mutates/cost 属性、纯函数仲裁器、稳定的阻断解释、影子差分运行和流式证据契约。应先补相应依赖与证据测试，再扩大允许重排的范围。
 
-本阶段的确定收益是消除缺失证据导致的假通过、避免测试结论随合法调度变化、让升级行为可控，并保留失败后发布的顺畅流程。**不承诺生产延迟改善比例，也不宣称所有场景的语义保持已经完成。**
+本阶段的确定收益是消除缺失证据导致的假通过、避免测试结论随合法调度变化、消除新旧契约分支，并保留失败后发布的顺畅流程。**不承诺生产延迟改善比例，也不宣称所有场景的语义保持已经完成。**

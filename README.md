@@ -106,6 +106,11 @@ Prefer to run the services from source? Follow the
 [development guide](docs/development.md). For a shared or production environment,
 use the [production deployment guide](charts/tali-guard/README.md#production-installation).
 
+Deploy Controller and Runner from the same release. They use one execution
+contract, without compatibility branches for older plans or testing reports.
+See the [scheduling contract](docs/policy-scheduling-optimization-design.zh-CN.md)
+for explicit views, Rule evidence, and execution limits.
+
 ## Documentation
 
 | I want to… | Guide |
