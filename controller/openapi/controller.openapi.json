@@ -15500,9 +15500,6 @@
             },
             "type": "array"
           },
-          "evidenceContract": {
-            "type": "string"
-          },
           "evidenceDetail": {
             "type": "string"
           },
@@ -15581,12 +15578,6 @@
           "policyId": {
             "type": "string"
           },
-          "preemptingMatches": {
-            "items": {
-              "$ref": "#/components/schemas/postGuardrailsByIdVersionsByVersionTestRunsResponseResultsItemPreemptingMatchesItem"
-            },
-            "type": "array"
-          },
           "query": {
             "type": "string"
           },
@@ -15597,10 +15588,6 @@
             "type": "boolean"
           },
           "ruleContractSatisfied": {
-            "enum": [
-              false,
-              true
-            ],
             "type": "boolean"
           },
           "skipReason": {
@@ -15672,6 +15659,11 @@
           }
         },
         "required": [
+          "evidenceStatus",
+          "evidenceDetail",
+          "verifiedRuleIds",
+          "supersededBy",
+          "ruleContractSatisfied",
           "caseId",
           "name",
           "policyId",
@@ -15703,25 +15695,9 @@
           "sourceCaseId",
           "coveredRuleIds",
           "matchedRuleIds",
-          "preemptingMatches",
           "evaluationContracts",
           "escalated",
           "modelInvocations"
-        ],
-        "type": "object"
-      },
-      "postGuardrailsByIdVersionsByVersionTestRunsResponseResultsItemPreemptingMatchesItem": {
-        "properties": {
-          "policyId": {
-            "type": "string"
-          },
-          "ruleId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "policyId",
-          "ruleId"
         ],
         "type": "object"
       },

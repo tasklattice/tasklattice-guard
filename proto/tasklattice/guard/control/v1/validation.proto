@@ -167,13 +167,11 @@ message ValidationCaseResult {
   // Original unmodified source expectation, present when a local override was applied.
   optional ValidationDecision template_expected_decision = 36;
   repeated string assertion_failures = 37;
-  // Legacy ordered-composition evidence, retained for historical reports.
-  // New evidence contracts use superseded_by without implying acceptance.
-  repeated ValidationExpectedMatch preempting_matches = 38;
+  reserved 38, 46;
   bool skipped = 39;
   string skip_reason = 40;
-  // Actual target Rule evidence; absent for reports predating this contract.
-  optional ValidationEvidenceStatus evidence_status = 41;
+  // Actual target Rule evidence, independent of the final decision.
+  ValidationEvidenceStatus evidence_status = 41;
   // Related interventions explain missing evidence, never automatic acceptance.
   repeated ValidationExpectedMatch superseded_by = 42;
   // Only actually observed matches on the declared view, never counterfactuals.
@@ -181,9 +179,7 @@ message ValidationCaseResult {
   // Human-readable explanation of the recorded evidence status.
   string evidence_detail = 44;
   // Effective Rule assertion, including an explicitly reviewed override.
-  optional bool rule_contract_satisfied = 45;
-  // Evidence interpretation version; empty for legacy reports.
-  string evidence_contract = 46;
+  bool rule_contract_satisfied = 45;
 }
 
 // Command to execute an immutable candidate plan against its test cases.

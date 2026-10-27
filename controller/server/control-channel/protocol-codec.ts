@@ -292,12 +292,11 @@ export function validationMetricsFromWire(value: ValidationMetrics__Output): Val
 
 export function validationCaseFromWire(value: ValidationCaseResult__Output): ValidationCaseResult {
   return {
-    ...(value.evidenceStatus ? { evidenceStatus: domainEnum("VALIDATION_EVIDENCE_STATUS", value.evidenceStatus) } : {}),
+    evidenceStatus: domainEnum("VALIDATION_EVIDENCE_STATUS", value.evidenceStatus),
     evidenceDetail: value.evidenceDetail,
     verifiedRuleIds: [...value.verifiedRuleIds],
     supersededBy: value.supersededBy.map(item => ({ policyId: item.policyId, ruleId: item.ruleId })),
-    ...(value.ruleContractSatisfied !== undefined ? { ruleContractSatisfied: value.ruleContractSatisfied } : {}),
-    evidenceContract: value.evidenceContract,
+    ruleContractSatisfied: value.ruleContractSatisfied,
     skipped: value.skipped,
     skipReason: value.skipReason,
     caseId: value.caseId,
@@ -333,7 +332,6 @@ export function validationCaseFromWire(value: ValidationCaseResult__Output): Val
     sourceCaseId: value.sourceCaseId ?? null,
     coveredRuleIds: [...value.coveredRuleIds],
     matchedRuleIds: [...value.matchedRuleIds],
-    preemptingMatches: value.preemptingMatches.map(item => ({ policyId: item.policyId, ruleId: item.ruleId })),
     evaluationContracts: [...value.evaluationContracts],
     escalated: value.escalated,
     modelInvocations: value.modelInvocations,

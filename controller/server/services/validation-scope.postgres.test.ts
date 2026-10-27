@@ -52,7 +52,8 @@ describe.skipIf(!url)("Historical model-enabled Default publication uses the ord
           passed: !skipped && passes, skipped, skipReason: skipped ? "Model-dependent tests skipped" : "", evaluatorIds: [], latencyMs: 1, reason: "", phase: c.phase, inputContent: c.content,
           action: "", outputContent: "", findings: [], trace: [], trustedInstruction: "", targetSource: c.targetSource, query: "", groundingSources: [], expectedReasoningResult: null, actualReasoningResult: null,
           caseType: c.caseType, required: true, expectedFailure: null, actualFailure: null, concurrencyGroup: null, sourcePolicyId: c.sourcePolicyId, sourcePolicyVersion: c.sourcePolicyVersion, sourceCaseId: c.sourceCaseId,
-          coveredRuleIds: c.coveredRuleIds, matchedRuleIds: [], preemptingMatches: [], evaluationContracts: [], escalated: false, modelInvocations: 0 });
+          evidenceStatus: skipped ? "not_reached" : "not_required", evidenceDetail: "", verifiedRuleIds: [], supersededBy: [], ruleContractSatisfied: !skipped,
+          coveredRuleIds: c.coveredRuleIds, matchedRuleIds: [], evaluationContracts: [], escalated: false, modelInvocations: 0 });
         await service.completeValidation({ runId: run.id, status: passes ? "passed" : "failed",
           metrics: { total: 2, executed: 1, skipped: 1, passed: Number(passes), complianceRate: passes ? 100 : 0, falsePositiveRate: 0, falseNegativeRate: 0, escalationRate: 0, p95LatencyMs: 1 },
           results: [result(local, false), result(model, true)],

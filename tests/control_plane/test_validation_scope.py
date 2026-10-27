@@ -51,7 +51,10 @@ async def test_opt_in_models_local_test_scope_preserves_publication_models():
     assert {"tali.guard.jailbreak.v1", "tali.guard.content-safety.v1"} <= {s.contract_ref for s in outcome.artifact.plan.steps}
     skipped = [r for r in outcome.results if r.get("skipped")]
     assert all(not r["passed"] and not r["trace"] and r["skipReason"] for r in skipped)
-    assert all(validation_case_result_to_proto(r).skipped for r in skipped)
+    assert all(r["evidenceStatus"] == "not_reached" and not r["ruleContractSatisfied"]
+               and not r["verifiedRuleIds"] and r["evidenceDetail"] for r in skipped)
+    assert all(validation_case_result_to_proto(r).skipped
+               and not validation_case_result_to_proto(r).rule_contract_satisfied for r in skipped)
     # No all-skipped report can manufacture a pass rate.
     assert _metrics(skipped)["complianceRate"] == _metrics(skipped)["passed"] == 0
 

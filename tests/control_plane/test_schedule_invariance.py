@@ -159,7 +159,7 @@ def requests(plan: dict, cases: list[dict]) -> list[dict]:
 def semantic_result(result):
     # Timing, execution ordering and first-veto prose are intentionally excluded.
     fields = ("expectedDecision", "actualDecision", "outputContent", "passed",
-              "assertionFailures", "evidenceStatus", "ruleContractSatisfied", "evidenceContract")
+              "assertionFailures", "evidenceStatus", "ruleContractSatisfied")
     return {**{key: result[key] for key in fields},
             "matched": sorted(result["matchedRuleIds"]),
             "verified": sorted(result["verifiedRuleIds"]),

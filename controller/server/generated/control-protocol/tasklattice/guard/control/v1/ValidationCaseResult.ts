@@ -9,8 +9,8 @@ import type { TargetSource as _tasklattice_guard_control_v1_TargetSource, Target
 import type { AutomatedReasoningResult as _tasklattice_guard_control_v1_AutomatedReasoningResult, AutomatedReasoningResult__Output as _tasklattice_guard_control_v1_AutomatedReasoningResult__Output } from '../../../../tasklattice/guard/control/v1/AutomatedReasoningResult.js';
 import type { ValidationFailure as _tasklattice_guard_control_v1_ValidationFailure, ValidationFailure__Output as _tasklattice_guard_control_v1_ValidationFailure__Output } from '../../../../tasklattice/guard/control/v1/ValidationFailure.js';
 import type { ValidationExpectationOverride as _tasklattice_guard_control_v1_ValidationExpectationOverride, ValidationExpectationOverride__Output as _tasklattice_guard_control_v1_ValidationExpectationOverride__Output } from '../../../../tasklattice/guard/control/v1/ValidationExpectationOverride.js';
-import type { ValidationExpectedMatch as _tasklattice_guard_control_v1_ValidationExpectedMatch, ValidationExpectedMatch__Output as _tasklattice_guard_control_v1_ValidationExpectedMatch__Output } from '../../../../tasklattice/guard/control/v1/ValidationExpectedMatch.js';
 import type { ValidationEvidenceStatus as _tasklattice_guard_control_v1_ValidationEvidenceStatus, ValidationEvidenceStatus__Output as _tasklattice_guard_control_v1_ValidationEvidenceStatus__Output } from '../../../../tasklattice/guard/control/v1/ValidationEvidenceStatus.js';
+import type { ValidationExpectedMatch as _tasklattice_guard_control_v1_ValidationExpectedMatch, ValidationExpectedMatch__Output as _tasklattice_guard_control_v1_ValidationExpectedMatch__Output } from '../../../../tasklattice/guard/control/v1/ValidationExpectedMatch.js';
 
 /**
  * Observed decision, evidence, and trace for one validation case.
@@ -95,15 +95,10 @@ export interface ValidationCaseResult {
    */
   'templateExpectedDecision'?: (_tasklattice_guard_control_v1_ValidationDecision);
   'assertionFailures'?: (string)[];
-  /**
-   * Legacy ordered-composition evidence, retained for historical reports.
-   * New evidence contracts use superseded_by without implying acceptance.
-   */
-  'preemptingMatches'?: (_tasklattice_guard_control_v1_ValidationExpectedMatch)[];
   'skipped'?: (boolean);
   'skipReason'?: (string);
   /**
-   * Actual target Rule evidence; absent for reports predating this contract.
+   * Actual target Rule evidence, independent of the final decision.
    */
   'evidenceStatus'?: (_tasklattice_guard_control_v1_ValidationEvidenceStatus);
   /**
@@ -122,10 +117,6 @@ export interface ValidationCaseResult {
    * Effective Rule assertion, including an explicitly reviewed override.
    */
   'ruleContractSatisfied'?: (boolean);
-  /**
-   * Evidence interpretation version; empty for legacy reports.
-   */
-  'evidenceContract'?: (string);
   '_expectedReasoningResult'?: "expectedReasoningResult";
   '_actualReasoningResult'?: "actualReasoningResult";
   '_expectedFailure'?: "expectedFailure";
@@ -136,8 +127,6 @@ export interface ValidationCaseResult {
   '_sourceCaseId'?: "sourceCaseId";
   '_expectationOverride'?: "expectationOverride";
   '_templateExpectedDecision'?: "templateExpectedDecision";
-  '_evidenceStatus'?: "evidenceStatus";
-  '_ruleContractSatisfied'?: "ruleContractSatisfied";
 }
 
 /**
@@ -223,17 +212,12 @@ export interface ValidationCaseResult__Output {
    */
   'templateExpectedDecision'?: (_tasklattice_guard_control_v1_ValidationDecision__Output);
   'assertionFailures': (string)[];
-  /**
-   * Legacy ordered-composition evidence, retained for historical reports.
-   * New evidence contracts use superseded_by without implying acceptance.
-   */
-  'preemptingMatches': (_tasklattice_guard_control_v1_ValidationExpectedMatch__Output)[];
   'skipped': (boolean);
   'skipReason': (string);
   /**
-   * Actual target Rule evidence; absent for reports predating this contract.
+   * Actual target Rule evidence, independent of the final decision.
    */
-  'evidenceStatus'?: (_tasklattice_guard_control_v1_ValidationEvidenceStatus__Output);
+  'evidenceStatus': (_tasklattice_guard_control_v1_ValidationEvidenceStatus__Output);
   /**
    * Related interventions explain missing evidence, never automatic acceptance.
    */
@@ -249,11 +233,7 @@ export interface ValidationCaseResult__Output {
   /**
    * Effective Rule assertion, including an explicitly reviewed override.
    */
-  'ruleContractSatisfied'?: (boolean);
-  /**
-   * Evidence interpretation version; empty for legacy reports.
-   */
-  'evidenceContract': (string);
+  'ruleContractSatisfied': (boolean);
   '_expectedReasoningResult'?: "expectedReasoningResult";
   '_actualReasoningResult'?: "actualReasoningResult";
   '_expectedFailure'?: "expectedFailure";
@@ -264,6 +244,4 @@ export interface ValidationCaseResult__Output {
   '_sourceCaseId'?: "sourceCaseId";
   '_expectationOverride'?: "expectationOverride";
   '_templateExpectedDecision'?: "templateExpectedDecision";
-  '_evidenceStatus'?: "evidenceStatus";
-  '_ruleContractSatisfied'?: "ruleContractSatisfied";
 }

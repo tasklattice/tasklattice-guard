@@ -233,7 +233,7 @@ describe("Controller/Runner control protocol", () => {
   });
 });
 
-it("round-trips structured evidence and preserves absence on legacy reports", () => {
+it("round-trips explicit successful and failed Rule evidence", () => {
   const protoPath = resolve("../proto/tasklattice/guard/control/v1/runner_control.proto");
   const definition = loadSync(protoPath, { includeDirs: [dirname(protoPath)], longs: String, enums: String, defaults: true, oneofs: true });
   const descriptor = loadPackageDefinition(definition) as unknown as ProtoGrpcType;
@@ -243,12 +243,10 @@ it("round-trips structured evidence and preserves absence on legacy reports", ()
     phase: "GUARDRAIL_PHASE_INPUT" as const, passed: false };
   const wire = connect.requestDeserialize(connect.requestSerialize({ validationResult: { results: [
     { ...base, evidenceStatus: "VALIDATION_EVIDENCE_STATUS_SHADOWED_BY", evidenceDetail: "Target did not match its transformed view.",
-      supersededBy: [{ policyId: "mask", ruleId: "first" }], verifiedRuleIds: [], ruleContractSatisfied: false, evidenceContract: "rule-evidence-v1" },
-    base,
+      supersededBy: [{ policyId: "mask", ruleId: "first" }], verifiedRuleIds: [], ruleContractSatisfied: false },
+    { ...base, evidenceStatus: "VALIDATION_EVIDENCE_STATUS_OBSERVED", ruleContractSatisfied: true },
   ] } })).validationResult!.results;
   expect(validationCaseFromWire(wire[0]!)).toMatchObject({ evidenceStatus: "shadowed_by", verifiedRuleIds: [],
-    supersededBy: [{ policyId: "mask", ruleId: "first" }], ruleContractSatisfied: false, evidenceContract: "rule-evidence-v1" });
-  const legacy = validationCaseFromWire(wire[1]!);
-  expect(legacy.evidenceStatus).toBeUndefined();
-  expect(legacy.ruleContractSatisfied).toBeUndefined();
+    supersededBy: [{ policyId: "mask", ruleId: "first" }], ruleContractSatisfied: false });
+  expect(validationCaseFromWire(wire[1]!)).toMatchObject({ evidenceStatus: "observed", ruleContractSatisfied: true });
 });

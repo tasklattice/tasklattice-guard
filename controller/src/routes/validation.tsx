@@ -241,10 +241,10 @@ export function TestCaseResultRow({ result, excluded = false, busy = false, onVa
         <div><dt className="text-xs text-muted-foreground">{t("guardrails.actualDecision")}</dt><dd className="mt-1.5">{result.skipped ? <Badge variant="secondary">{t("validationScope.skipped")}</Badge> : <StateBadge state={result.actual_decision} />}</dd></div>
       </dl>
       {result.reason ? <p className="break-words text-sm leading-5 [overflow-wrap:anywhere]">{result.reason}</p> : null}
-      {result.preempting_matches?.length ? <section className="border-t pt-3">
-        <h4 className="text-xs font-semibold">{t("validation.preemptedTitle")}</h4>
-        <p className="mt-1 text-xs leading-5 text-muted-foreground">{t("validation.preemptedDescription")}</p>
-        <ul className="mt-2 space-y-1">{result.preempting_matches.map(match => <li key={`${match.policyId}/${match.ruleId}`} className="break-all font-mono text-xs">{match.policyId} / {match.ruleId}</li>)}</ul>
+      {result.superseded_by?.length ? <section className="border-t pt-3">
+        <h4 className="text-xs font-semibold">{t("validation.supersededTitle")}</h4>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">{result.evidence_detail}</p>
+        <ul className="mt-2 space-y-1">{result.superseded_by.map(match => <li key={`${match.policyId}/${match.ruleId}`} className="break-all font-mono text-xs">{match.policyId} / {match.ruleId}</li>)}</ul>
       </section> : null}
       {result.source_policy_id ? <details className="border-t">
         <summary className="min-h-11 cursor-pointer content-center text-xs font-medium focus-visible:outline-2 focus-visible:outline-ring">{t("validation.acceptanceProvenance")}</summary>
@@ -252,7 +252,7 @@ export function TestCaseResultRow({ result, excluded = false, busy = false, onVa
           <div className="min-w-0"><dt className="text-muted-foreground">{t("validation.sourcePolicy")}</dt><dd className="mt-1 break-all font-mono">{result.source_policy_id}@{result.source_policy_version}</dd></div>
           <div className="min-w-0"><dt className="text-muted-foreground">{t("validation.sourceTestCase")}</dt><dd className="mt-1 break-all font-mono">{result.source_case_id}</dd></div>
           <div className="min-w-0"><dt className="text-muted-foreground">{t("validation.coveredRules")}</dt><dd className="mt-1 space-y-1">{result.covered_rule_ids.length ? result.covered_rule_ids.map(id => <code key={id} className="block break-all">{id}</code>) : t("validation.noCoveredRule")}</dd></div>
-          <div className="min-w-0"><dt className="text-muted-foreground">{t("validation.matchedRules")}</dt><dd className="mt-1 space-y-1">{result.matched_rule_ids.length ? result.matched_rule_ids.map(id => <code key={id} className="block break-all">{id}</code>) : <span>{t(result.preempting_matches?.length ? "validation.targetPreempted" : "validation.noRulesMatched")}</span>}</dd></div>
+          <div className="min-w-0"><dt className="text-muted-foreground">{t("validation.matchedRules")}</dt><dd className="mt-1 space-y-1">{result.matched_rule_ids.length ? result.matched_rule_ids.map(id => <code key={id} className="block break-all">{id}</code>) : <span>{t("validation.noRulesMatched")}</span>}</dd></div>
         </dl>
       </details> : null}
       {result.trace.length ? <ExecutionTrace steps={playgroundTraceSteps(result.trace)} /> : null}
@@ -268,7 +268,7 @@ function FailureDiagnosis({ result }: { result: TestCaseResult }) {
   const { t } = useTranslation();
   const reasons: string[] = [];
   if (!decisionMatches(result.expected_decision, result.actual_decision)) reasons.push(t("validation.decisionMismatch", { expected: humanize(result.expected_decision), actual: humanize(result.actual_decision) }));
-  if (!ruleContractMatches(result)) reasons.push(t("validation.ruleMismatch", { expected: result.covered_rule_ids.join(", ") || t("validation.noCoveredRule"), actual: result.matched_rule_ids.join(", ") || t("validation.noRulesMatched") }));
+  if (!result.rule_contract_satisfied) reasons.push(t("validation.ruleMismatch", { expected: result.covered_rule_ids.join(", ") || t("validation.noCoveredRule"), actual: result.matched_rule_ids.join(", ") || t("validation.noRulesMatched") }));
   if (result.actual_failure) reasons.push(t("validation.executionFailure", { failure: humanize(result.actual_failure) }));
   if (result.expected_reasoning_result && result.expected_reasoning_result !== result.actual_reasoning_result) reasons.push(t("validation.reasoningMismatch", { expected: humanize(result.expected_reasoning_result), actual: result.actual_reasoning_result ? humanize(result.actual_reasoning_result) : t("validation.noReasoningResult") }));
   if (!reasons.length) reasons.push(t("validation.validationContractMismatch"));
@@ -280,13 +280,6 @@ export function targetLabel(run: ValidationRun, t: ReturnType<typeof useTranslat
 }
 function isExecutionError(result: TestCaseResult) { return !result.skipped && (Boolean(result.actual_failure) || result.actual_decision.toLowerCase() === "error"); }
 function decisionMatches(expected: string, actual: string) { return expected === "intervene" ? actual !== "allow" : expected === actual; }
-function ruleContractMatches(result: TestCaseResult) {
-  if (typeof result.rule_contract_satisfied === "boolean") return result.rule_contract_satisfied;
-  if (result.preempting_matches?.length || result.expected_failure || !result.covered_rule_ids.length) return true;
-  const matched = new Set(result.matched_rule_ids);
-  const targetMatched = result.covered_rule_ids.some((id) => matched.has(id));
-  return result.expected_decision === "allow" ? !targetMatched : targetMatched;
-}
 function resultPriority(result: TestCaseResult) { return result.skipped ? 3 : isExecutionError(result) ? 0 : result.passed ? 2 : 1; }
 function reportNumber(id: string) { return id.replace(/^(?:policy-)?(?:validation|testing-report)-/, ""); }
 function shortId(id: string) { return reportNumber(id).slice(0, 8).toUpperCase(); }

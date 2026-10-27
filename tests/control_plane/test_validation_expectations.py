@@ -163,7 +163,6 @@ async def test_schedule_independent_case_evidence(scenario):
         case["expectationOverride"] = {"sourcePolicyVersion": "1", "reason": "Require target evidence", "expectedDecision": "block", "expectedMatches": [{"policyId": source, "ruleId": "covered"}]}
     result = await DefaultRunnerValidator(DefaultRunnerCompiler())._evaluate(runtime, plan, case)
     assert result["passed"] is False
-    assert result["preemptingMatches"] == []
     assert result["verifiedRuleIds"] == []
     assert "covered" not in result["matchedRuleIds"]
     if scenario == "target_already_ran":
@@ -174,8 +173,6 @@ async def test_schedule_independent_case_evidence(scenario):
         assert result["supersededBy"] == [{"policyId": blocker, "ruleId": "blocker"}]
     wire = validation_case_result_to_proto(result)
     assert not wire.rule_contract_satisfied
-    assert wire.evidence_contract == "rule-evidence-v1"
-    assert len(wire.preempting_matches) == 0
 
 
 @pytest.mark.parametrize("reverse", [False, True])
@@ -269,13 +266,13 @@ async def test_every_covered_rule_needs_a_pinned_executable_target_and_conclusiv
     assert result["evidenceStatus"] == ("preempted_by" if change == "partial" else status)
 
 
-def test_grouped_legacy_action_match_does_not_prove_every_rule_executed():
+def test_grouped_streaming_action_match_does_not_prove_every_rule_executed():
     from dataclasses import replace
     from runner.validator import _case_evidence
     plan = declared_plan({"target": ["first", "second"]})
     grouped = replace(plan.steps[0], parameters=(("policy_id", "target"),
                       ("enabled_rules_json", '{"target":["first","second"]}')))
-    plan = replace(plan, steps=(grouped,))
+    plan = replace(plan, steps=(grouped,), output_delivery="window_buffered")
     evidence = _case_evidence(plan, {"sourcePolicyId": "target", "sourcePolicyVersion": "1", "coveredRuleIds": ["second"]},
         "input", "block", SimpleNamespace(decision="block"),
         [{"policy_id": "target", "rule_id": "first", "verdict": "matched", "recommended_action": "block"}],

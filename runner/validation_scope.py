@@ -87,6 +87,8 @@ def skipped_case(case: dict[str, Any], skipped_rules: list[dict[str, str]]) -> d
         **case, "caseId": case["id"], "inputContent": case.get("content", ""),
         "expectedDecision": override.get("expectedDecision", case.get("expectedDecision")),
         "passed": False, "skipped": True,
+        "evidenceStatus": "not_reached", "evidenceDetail": "The target Rule is outside this test scope.",
+        "verifiedRuleIds": [], "supersededBy": [], "ruleContractSatisfied": False,
         "skipReason": "Model-dependent tests skipped: this case requires an excluded Rule.",
         "reason": "Model-dependent tests skipped: this case requires an excluded Rule.",
         "actualDecision": "", "action": "", "outputContent": "",

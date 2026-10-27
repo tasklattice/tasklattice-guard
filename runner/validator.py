@@ -360,13 +360,11 @@ class DefaultRunnerValidator:
             "sourceCaseId": _optional_string(case.get("sourceCaseId")),
             "coveredRuleIds": sorted(covered),
             "matchedRuleIds": matched,
-            "preemptingMatches": [],  # Legacy reports used this as a passing substitute.
             "evidenceStatus": evidence["status"],
             "evidenceDetail": evidence.get("reason", ""),
             "verifiedRuleIds": evidence["verifiedRules"],
             "supersededBy": _superseded_by(evidence),
             "ruleContractSatisfied": bool(rule_contract),
-            "evidenceContract": "rule-evidence-v1",
             "evaluationContracts": evaluation_contracts,
             "escalated": escalated,
             "modelInvocations": (
@@ -425,7 +423,7 @@ def _case_evidence(
 
     def reached(rule):
         target = targets[rule]
-        # Legacy/custom content-filter steps can contain several Rules and stop
+        # Custom/streaming content-filter steps can contain several Rules and stop
         # inside the Action on their first Block. A matched Action trace cannot
         # prove that a different Rule in that same step was reached.
         if not complete_evidence_supported(plan) and target.get("canShortCircuitRules") and any(

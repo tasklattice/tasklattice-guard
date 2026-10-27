@@ -86,7 +86,9 @@ const result: TestCaseResult = {
   source_case_id: "competitor-comparison-002",
   covered_rule_ids: ["competitor-comparison-intent"],
   matched_rule_ids: ["competitor-comparison-intent"],
-  preempting_matches: [],
+  superseded_by: [],
+  evidence_status: "observed", evidence_detail: "Observed target Rule",
+  verified_rule_ids: [], rule_contract_satisfied: true,
 };
 
 const validationRun = {
@@ -205,14 +207,15 @@ describe("Testing Report acceptance evidence", () => {
     expect(onOpen).not.toHaveBeenCalled();
   });
 
-  it("explains ordered preemption without claiming the target Rule matched", () => {
-    render(<TestCaseResultRow result={{ ...result, passed: true, expected_decision: "block", actual_decision: "block", matched_rule_ids: [],
-      preempting_matches: [{ policyId: "earlier-toxic-policy", ruleId: "toxic-rule" }] }} />);
+  it("explains superseding interventions without treating them as Rule acceptance", () => {
+    render(<TestCaseResultRow result={{ ...result, passed: false, expected_decision: "block", actual_decision: "block", matched_rule_ids: [],
+      evidence_status: "preempted_by", evidence_detail: "Target Rule was not reached", rule_contract_satisfied: false,
+      superseded_by: [{ policyId: "earlier-toxic-policy", ruleId: "toxic-rule" }] }} />);
     fireEvent.click(document.querySelector("summary")!);
-    expect(screen.getByText("validation.preemptedTitle")).toBeTruthy();
+    expect(screen.getByText("validation.supersededTitle")).toBeTruthy();
     expect(screen.getByText("earlier-toxic-policy / toxic-rule")).toBeTruthy();
-    expect(screen.getByText("validation.targetPreempted")).toBeTruthy();
-    expect(screen.queryByText("Rule contract mismatch")).toBeNull();
+    expect(screen.getByText("Target Rule was not reached")).toBeTruthy();
+    expect(screen.getByText("Rule contract mismatch")).toBeTruthy();
   });
 
   it("uses the recorded evidence contract instead of inferring success from partial matches", () => {
@@ -287,7 +290,7 @@ describe("Testing Report acceptance evidence", () => {
   });
 
   it("marks a failed Case and explains decision and Rule-contract mismatches", () => {
-    render(<TestCaseResultRow result={{ ...result, expected_decision: "block", actual_decision: "transform", covered_rule_ids: ["credentials/aws_access_key"], matched_rule_ids: ["contact/br_phone_landline"] }} />);
+    render(<TestCaseResultRow result={{ ...result, expected_decision: "block", actual_decision: "transform", covered_rule_ids: ["credentials/aws_access_key"], matched_rule_ids: ["contact/br_phone_landline"], rule_contract_satisfied: false }} />);
 
     expect(screen.getByText("Competitor comparison").className).toContain("text-destructive");
     expect(screen.getByText("Why this Case failed")).toBeTruthy();

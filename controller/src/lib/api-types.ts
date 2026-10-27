@@ -127,12 +127,11 @@ export type RuntimeTraceStep = {
 };
 
 export type TestCaseResult = {
-  evidence_status?: string;
-  evidence_detail?: string;
-  verified_rule_ids?: string[];
-  superseded_by?: Array<{ policyId: string; ruleId: string }>;
-  rule_contract_satisfied?: boolean;
-  evidence_contract?: string;
+  evidence_status: string;
+  evidence_detail: string;
+  verified_rule_ids: string[];
+  superseded_by: Array<{ policyId: string; ruleId: string }>;
+  rule_contract_satisfied: boolean;
   skipped?: boolean;
   skip_reason?: string;
   expectation_override?: Record<string, unknown>;
@@ -169,7 +168,6 @@ export type TestCaseResult = {
   source_case_id: string | null;
   covered_rule_ids: string[];
   matched_rule_ids: string[];
-  preempting_matches: Array<{ policyId: string; ruleId: string }>;
   evaluation_contracts: string[];
   escalated: boolean;
   model_invocations: number;
@@ -426,7 +424,7 @@ export type RouterRuntimeTrace = {
   detail: string;
   findings: RouterTraceFinding[];
   steps: RouterTraceStep[];
-  evidence_status?: "collected" | "not_collected";
+  evidence_status: "collected" | "not_collected";
 };
 
 export type PolicyIntentDetails = {

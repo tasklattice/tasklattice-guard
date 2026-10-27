@@ -455,7 +455,7 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", () => {
         expectedDecision: "block", actualDecision: "block", passed: false, action: "block", reason: "Another Rule cannot prove target acceptance.",
         evaluatorIds: [], findings: [], trace: [], latencyMs: 1, coveredRuleIds: ["target-rule"], matchedRuleIds: [],
         evidenceStatus: "preempted_by", evidenceDetail: "Target not reached", verifiedRuleIds: [],
-        supersededBy: [{ policyId: "blocker", ruleId: "blocker-rule" }], ruleContractSatisfied: false, evidenceContract: "rule-evidence-v1" }],
+        supersededBy: [{ policyId: "blocker", ruleId: "blocker-rule" }], ruleContractSatisfied: false }],
       candidateArtifact: await runnerCandidate(run.id) });
     const published = await service.requestGuardrailPublish({ guardrailId: guardrail.id, actorId: "admin", expectedDraftRevision: 1 });
     expect(published.status).toBe("ready");
