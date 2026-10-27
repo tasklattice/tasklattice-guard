@@ -25,6 +25,12 @@ def validate_artifact_execution_contract(plan: GuardrailPlanSnapshot, config: Ne
 
 
 def complete_evidence_supported(plan: GuardrailPlanSnapshot) -> bool:
+    """Whether execution can attempt every reachable check, not certify it.
+
+    Provider availability, determinism and actual target evidence are runtime
+    observations. This structural predicate cannot promise complete findings
+    or equal results across schedules when provider responses vary.
+    """
     # Custom flows control their own execution; windowed streaming needs a
     # separate evidence contract. Neither depends on a compiler version.
     return (

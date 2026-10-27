@@ -33,7 +33,7 @@ Controller 在调度前为每个 step 写入：
 [["precedence", "0"], ["evaluation_view", "original"]]
 ```
 
-- `precedence` 是作者顺序，调度不能改写它。
+- `precedence` 是作者顺序，调度不能改写它。NeMo 编译入口要求每个 step 恰好声明一次，使用非负整数的规范十进制字符串，且全计划唯一；缺失、重复键、负数、小数、非数字、前导零和重复值均拒绝。它可以与执行顺序不同，不要求连续。
 - 每个 step 必须声明且只能声明一个 `evaluation_view`，值为 `original` 或 `previous_output`；缺失、重复或未知值直接报错。自定义 Flow 的绑定由编译器明确写为 `previous_output`。
 - 只读 Block / Allow 检查看本阶段输入 `original`。
 - Transform 和继承 Transform 前置依赖的步骤看 `previous_output`。
@@ -53,6 +53,10 @@ Controller 在调度前为每个 step 写入：
 | `full`（Validator 和 Scan 使用） | 支持的计划不因 Block 早退或取消兄弟检查；仍遵循 trigger | 对可达步骤收集结果，最后决策；未达到或不确定的目标不能当作未命中 |
 
 流程把单步实际的 `blocked` 和控制流的 `stop` 分开。full 模式中 `stop=false` 不代表放行：Runtime 保留 Block，所有可达检查完成后，最终 resolver 返回 Block，不交付被拦截文本。
+
+`complete_evidence_supported()` 只判断执行结构是否支持尝试收集全部可达证据，不证明 provider 可用、稳定或确定，也不保证本次收集完整。错误、超时、未知结果和目标证据由实际执行另行判定（见 §5.2）。调度不变性测试依赖固定 provider 响应；不能把这个结构判断当作真实模型在任意故障时序下等价的保证。
+
+同一 Policy 内拆分的 content-filter 和 Topic Rules 分别保留终态结果。后续 Allow、Transform 或错误不能覆盖之前独立 Block 的 `interventions.fragment_id`；telemetry / 审计保留具体 Action 归因。原生 exact/semantic 检测链按 Rule 身份保留终态归并，不能把中间 unknown 当作最终干预。
 
 条件为假的步骤不会被强行执行。错误、超时也不能伪造为 matched。任意自定义流和流式计划仍保留自己的短路行为，即使请求 full，也不会强行收集不可达步骤。这是执行类型的限制，不是按版本保留旧行为。它们的报告可能因此出现 `not_reached` / `preempted_by`，而不是虚构验收成功。
 
@@ -155,6 +159,8 @@ Default、full-feature-baseline 和普通用户创建的 Guardrail 使用同一�
 - 原文复算匹配不等于实际变换视图匹配。
 - 正常文本的 Allow 断言必须有明确执行证据。
 - 同一个多 Rule Action 内部，full 收集全部命中；快速模式仍在第一个 Block 停止。
+- Scan 的混合动作回归同时比对快速模式和 full 模式的具体 Block intervention；后续 Transform、Allow 或失败不会把 Rule 归因降级为通用 `nemo:reject`。
+- 编译器拒绝缺失、重复键、非法或全计划重复的 precedence；反向但唯一、非连续的作者顺序保持原值，不根据实际调度重写。
 
 ### 8.2 其他边界
 
@@ -185,7 +191,7 @@ Python 按组执行，避免重复运行已通过的动作矩阵。其余套件�
 
 Controller 初次运行有三个套件因临时 PostgreSQL 缺少 public schema 未执行；建立所需 schema 后，32 项定向复测通过。失败报告仍可发布的 PostgreSQL 测试通过。
 
-这些测试不是模型准确率评估。生产 p95、取消率、调用费用和随机模型的重复稳定性尚未测量。
+这些测试不是模型准确率评估。生产 p95、取消率、调用费用和随机模型的重复稳定性尚未测量，**Scan 同样在这一待测范围内**；不能用 Validation 或 LiteLLM 的测量代替 Scan。
 
 独立故障修复的补充验证（2026-10-27）：198 项定向 Python 回归通过（含新增边界及协议往返复测），数据面与端到端 1088 passed / 12 skipped，Controller 定向 61 passed，类型检查通过。真实桌面报告验证了通过筛选、执行告警和错误追踪；目标自身失败及组合场景仍显示失败。上一轮 CI 的两个 desired-state 测试夹具已补充当前编译契约字段，并通过定向回归。
 
