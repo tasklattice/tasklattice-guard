@@ -22,6 +22,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from runner import generated as protocol
 from runner.toolkit.compiler.artifact import ArtifactCompiler
+from runner.toolkit.compiler.semantics import PLAN_COMPILER_VERSION
 from runner.toolkit.nemo.builtin_policies import prompt_catalog_yaml
 from runner.protocol_codec import (
     endpoint_verification_to_proto,
@@ -68,7 +69,7 @@ def _plan() -> dict[str, object]:
     return {
         "guardrail_id": "fixture-secrets",
         "guardrail_version": "20260904-010000.001Z",
-        "compiler_version": "tasklattice-controller-plan-v3",
+        "compiler_version": PLAN_COMPILER_VERSION,
         "safety_level": "balanced",
         "output_delivery": "full_buffered",
         "steps": [{
@@ -122,7 +123,6 @@ def _ordered_plan() -> dict[str, object]:
         next(r for r in credentials.rules if r.id == "pattern/generic_api_key"),
     ))
     plan = _plan()
-    plan["compiler_version"] = "tasklattice-controller-plan-v4-ordered"
     redactions = {
         "id": "local:redactions", "capability": "builtin_content_filter",
         "contract_ref": "tali.guard.content-filter.rules.v1",

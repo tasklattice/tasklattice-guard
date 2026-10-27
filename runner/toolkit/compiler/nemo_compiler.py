@@ -28,7 +28,7 @@ from ..nemo.artifacts import config_checksum
 from ..nemo.actions.names import ACTION_RECORD_OWNED_POLICY
 from ..nemo.actions.topic import topic_judge_prompt
 from ..nemo.native_models import TOPIC_CONTROL_MODEL_TYPE, TOPIC_CONTROL_PROFILE
-from .semantics import complete_evidence_supported
+from .semantics import NEMO_COMPILER_VERSION, complete_evidence_supported
 from ..runtime.contracts import (
     GuardrailPhase,
     GuardrailPlanSnapshot,
@@ -43,8 +43,6 @@ from ..policy_runtime.snapshots import definitions_from_parameters
 from .domain import PolicyDraft, PlanCompilationError, RailBinding
 from .policy_sources import FLOW_ID_EVENTS, expand_policy_parameters, link_policy_source, literal_flow_target, parse_source_tree, symbol_name
 
-
-NEMO_COMPILER_VERSION = "tasklattice-nemo-config-v29-single-contract"
 
 _COLANG1_STANDARD_ACTIONS = {
     ACTION_EVALUATE,

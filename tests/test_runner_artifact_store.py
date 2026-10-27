@@ -19,6 +19,85 @@ from runner.protocol_codec import (
 
 
 FIXTURE = Path(__file__).parent / "fixtures" / "artifacts" / "local-secrets-v1"
+LEGACY_FIXTURE = Path(__file__).parent / "fixtures" / "unsupported-artifacts" / "pre-v16-local-secrets"
+
+
+def legacy_state():
+    state = protocol.DesiredState()
+    state.ParseFromString(base64.b64decode((LEGACY_FIXTURE / "desired-state.pb.b64").read_text()))
+    return state
+
+
+@pytest.mark.parametrize("operation", ["verify", "admit", "apply"])
+def test_real_old_signed_artifact_is_rejected_before_runtime_preparation(tmp_path, operation):
+    from runner.protocol_codec import artifact_digest
+    state = legacy_state()
+    artifact = state.artifacts[0]
+    assert artifact_digest(artifact) == artifact.checksum == "0e3ba069d8507b667523dae40c42a4dd272232cea98389e10fe813cc4fe6c2b2"
+    key = serialization.load_pem_public_key((LEGACY_FIXTURE / "public-key.pem").read_bytes())
+    key.verify(base64.b64decode(artifact.signature), artifact.checksum.encode())
+    assert not artifact.action_bindings[0].parameters
+    before = state.SerializeToString()
+    store = ArtifactStore(LEGACY_FIXTURE / "public-key.pem", tmp_path)
+    registry = Registry()
+    store.attach_registry(registry)
+    with pytest.raises(ValueError, match="artifact_recompile_required.*Recompile"):
+        getattr(store, operation)(state if operation == "apply" else artifact)
+    assert state.SerializeToString() == before
+    assert registry.preparations == store.generation == 0
+    assert not (tmp_path / "last-known-good.json").exists()
+
+
+def test_old_generation_cannot_replace_current_last_known_good_or_restore_after_upgrade(tmp_path, caplog):
+    import json
+    current = protocol.DesiredState()
+    current.ParseFromString(base64.b64decode((FIXTURE / "desired-state.pb.b64").read_text()))
+    assert (FIXTURE / "public-key.pem").read_bytes() == (LEGACY_FIXTURE / "public-key.pem").read_bytes()
+    store = ArtifactStore(FIXTURE / "public-key.pem", tmp_path)
+    registry = Registry()
+    store.attach_registry(registry)
+    store.apply(current)
+    saved = (tmp_path / "last-known-good.json").read_bytes()
+    old = legacy_state()
+    old.generation = current.generation + 1
+    with pytest.raises(ValueError, match="artifact_recompile_required"):
+        store.apply(old)
+    assert store.generation == current.generation
+    assert registry.preparations == 1
+    assert (tmp_path / "last-known-good.json").read_bytes() == saved
+    # A cold upgrade has no accepted current runtime to retain. Old cache stays
+    # available for diagnosis, but cannot make the new Runner ready.
+    (tmp_path / "last-known-good.json").write_text(json.dumps({
+        "generation": old.generation,
+        "desired_state_b64": base64.b64encode(old.SerializeToString()).decode(),
+    }))
+    rejected_cache = (tmp_path / "last-known-good.json").read_bytes()
+    restarted = ArtifactStore(LEGACY_FIXTURE / "public-key.pem", tmp_path)
+    cold_registry = Registry()
+    restarted.attach_registry(cold_registry)
+    assert restarted.generation == cold_registry.preparations == 0
+    assert "artifact_recompile_required" in caplog.text
+    assert (tmp_path / "last-known-good.json").read_bytes() == rejected_cache
+
+
+@pytest.mark.parametrize("target,views", [("step", []), ("action", []), ("action", ["original", "previous_output"]), ("action", ["implicit"])])
+def test_current_version_labels_do_not_hide_invalid_views(tmp_path, target, views):
+    from runner.protocol_codec import artifact_digest
+    key = Ed25519PrivateKey.generate()
+    public = tmp_path / "public.pem"
+    public.write_bytes(key.public_key().public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo))
+    artifact = _artifact()
+    item = artifact.plan.steps[0] if target == "step" else artifact.action_bindings[0]
+    others = [entry for entry in item.parameters if entry.key != "evaluation_view"]
+    del item.parameters[:]
+    item.parameters.extend(others)
+    for view in views:
+        item.parameters.add(key="evaluation_view", value=view)
+    artifact.checksum = artifact_digest(artifact)
+    artifact.signature = _signature(key, artifact.checksum)
+    store = ArtifactStore(public, tmp_path / "state")
+    with pytest.raises(ValueError, match="artifact_recompile_required.*evaluation_view"):
+        store.verify(artifact)
 
 
 class Registry:

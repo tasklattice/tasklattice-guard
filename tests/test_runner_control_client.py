@@ -59,6 +59,24 @@ class Store:
         return 0, 0, 0
 
 
+async def test_runner_nacks_real_old_signed_artifact_without_becoming_ready(tmp_path):
+    from runner.artifact_store import ArtifactStore
+    from tests.test_runner_artifact_store import LEGACY_FIXTURE, Registry, legacy_state
+    store = ArtifactStore(LEGACY_FIXTURE / "public-key.pem", tmp_path)
+    registry = Registry()
+    store.attach_registry(registry)
+    client = RunnerControlClient(_settings(), store, Metrics())
+    await client._apply_desired_state(legacy_state())
+    rejected = await client._outgoing.get()
+    assert not rejected.artifact_result.accepted
+    assert "artifact_recompile_required" in rejected.artifact_result.reason
+    rejected_state = await client._outgoing.get()
+    assert not rejected_state.desired_state_result.accepted
+    assert "artifact_recompile_required" in rejected_state.desired_state_result.reason
+    assert not client.synchronized
+    assert store.generation == registry.preparations == 0
+
+
 class Metrics:
     def observe_control_message(self, *_args):
         pass

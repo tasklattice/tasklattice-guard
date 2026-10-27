@@ -34,6 +34,7 @@ from .protocol_codec import (
     traffic_scope_from_proto,
 )
 from .serialization import plan_from_dict
+from .toolkit.compiler.semantics import validate_artifact_execution_contract
 from .routing import RoutingError, select, validate_router, selector_matches, condition_matches
 
 
@@ -408,16 +409,15 @@ class ArtifactStore:
                 f"{message.nemo_version!r}; this Runner requires "
                 f"{self._nemo_version!r}. Recompile the Guardrail before router."
             )
-        plan_payload = content["plan"]
+        plan = plan_from_dict(content["plan"])
+        config = config_snapshot_from_artifact(message, verified_content=content)
+        validate_artifact_execution_contract(plan, config)
         return RuntimeArtifact(
             artifact_id=message.artifact_id,
             generation=int(message.generation),
             checksum=checksum,
-            plan=plan_from_dict(plan_payload),
-            config=config_snapshot_from_artifact(
-                message,
-                verified_content=content,
-            ),
+            plan=plan,
+            config=config,
         )
 
     def _persist_snapshot(self, desired_state: Any) -> None:
