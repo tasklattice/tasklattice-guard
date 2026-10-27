@@ -42,7 +42,7 @@ The built-in Profile list contains five starting points:
 | Profile | Intended use |
 | --- | --- |
 | Default | The local protection configuration used at deployment |
-| Full-feature baseline | The benchmark configuration, including model checks |
+| Full-feature baseline | Benchmark-family protections, including input/output model checks |
 | Bank | Local checks plus identity-check evasion and misleading guarantees |
 | Securities & brokerage | Local checks plus insider trading and market manipulation |
 | Internet platform support | Local checks plus phishing, session theft and injection |
@@ -52,10 +52,13 @@ keep their copied configuration, tests and published versions; they can still
 be edited, tested and published. Custom Profile records are preserved.
 
 For the benchmark configuration, select **Full-feature baseline** when creating
-a Guardrail. It copies eight pinned Policies, 77 Rules, parameters and reviewed
-test expectations into an editable draft. Remove any protections you do not
-need. Jailbreak and content-safety checks reuse platform model assignments,
-so each Guardrail does not need its own model setup. See the
+a Guardrail. Version 2.0.0 copies 14 pinned Policies and 127 Rules into an
+editable draft: credentials/PII, input/output content safety, jailbreak,
+direct/indirect injection, memory poisoning, data-use boundaries and a filled
+harmful-task denylist. Remove any protections you do not need. Model checks
+reuse six platform capability/direction assignments, so each Guardrail does
+not need its own model setup. Existing Guardrails retain their snapshots.
+See the
 [Profile guide](docs/full-feature-baseline.md) for versions, dependencies and
 what happens to tests after a deletion.
 

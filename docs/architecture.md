@@ -513,8 +513,15 @@ explicit append/replace/cancel/undo behavior.
 Choosing blank is respected. Runtime model availability gates still apply to
 all selected bindings, including those inherited from a Profile.
 
-Migration 0049 adds `full-feature-baseline@1.0.0`, the reviewed benchmark
-configuration with eight Policies and 77 Rules. It uses a bundled declarative
+Migration 0049 introduced the original eight-Policy benchmark Profile.
+Migration 0053 upgrades its untouched built-in definition to
+`full-feature-baseline@2.0.0`: 14 Policies and 127 Rules, including output
+content safety, semantic PII, direct/indirect injection, memory poisoning,
+data-use boundaries and a prefilled Topic denylist. Disabled state and custom
+definitions are preserved; existing Guardrail snapshots and test outcomes are
+unchanged. The six directional model requirements derive from the selected
+Rules and Rails and shrink when protections are removed.
+The Profile uses a bundled declarative
 `builtin-jailbreak-strict@1.0.0` instead of an installation-specific Policy.
 `profileOrigin` records the template ID and version in the editable draft;
 it does not introduce runtime inheritance or embed model credentials.
