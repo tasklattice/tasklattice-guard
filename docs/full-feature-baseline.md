@@ -6,6 +6,21 @@ Continue to review and create, or remove unwanted Policies and Rules first.
 You can also remove protections after creation and save the revised draft.
 The source `full-feature-baseline@1.0.0` remains visible on the Guardrail.
 
+## Built-in choices and upgrades
+
+The creation list contains Default, Full-feature baseline, Bank,
+Securities & brokerage and Internet platform support. Default is the local
+configuration used during deployment; Full-feature baseline adds the reviewed
+benchmark's model checks. Bank and the two other industry templates offer
+smaller local selections for their use cases.
+
+Migration 0052 retires the other built-in choices by disabling their discovery
+records. Existing Guardrails own their copied bindings, tests and published
+snapshots: retirement neither rewrites them nor prevents editing, testing or
+publication. Retired definitions remain stored for provenance. User-owned
+Profile records are preserved, so installations with custom Profiles may show
+additional choices. Display renames preserve Profile IDs and versions.
+
 ## Included configuration
 
 The Profile freezes the reviewed `pii-context-20261023` benchmark configuration:

@@ -31,11 +31,25 @@ without embedding policy logic in every gateway.
   validation results, and publication history in the console.
 
 Each deployment provisions an ordinary Guardrail named Default from the pinned
-Local baseline Profile. It provides local checks without a detection model.
+Default Profile (`local-baseline@1.0.0`). It provides local checks without a detection model.
 Rename, edit, publish or delete it through the same workflow as any Guardrail;
 restarts never recreate a deleted preset. Model-backed protection can be configured separately. Coverage depends
 on the policies you enable and the content you submit; streamed output may
 need to be buffered when a policy requires the complete response.
+
+The built-in Profile list contains five starting points:
+
+| Profile | Intended use |
+| --- | --- |
+| Default | The local protection configuration used at deployment |
+| Full-feature baseline | The benchmark configuration, including model checks |
+| Bank | Local checks plus identity-check evasion and misleading guarantees |
+| Securities & brokerage | Local checks plus insider trading and market manipulation |
+| Internet platform support | Local checks plus phishing, session theft and injection |
+
+Upgrades retire the other built-in choices from discovery. Existing Guardrails
+keep their copied configuration, tests and published versions; they can still
+be edited, tested and published. Custom Profile records are preserved.
 
 For the benchmark configuration, select **Full-feature baseline** when creating
 a Guardrail. It copies eight pinned Policies, 77 Rules, parameters and reviewed

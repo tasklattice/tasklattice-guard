@@ -488,9 +488,15 @@ A Profile is a preconfigured starting template, distinct from a Guardrail draft
 and from an evaluator/model profile. `guardrail_profile` stores its category,
 default flag, enabled state, display order, and versioned definition, including
 ordered Policy/version references, Rails, parameter values, handling actions,
-reviewed test overlays, Rule order and optional complete draft settings. Migration 0013
-seeds defaults for General, Banking, Securities, Internet support and Singapore
-finance. Its partial unique index allows one enabled default per category.
+reviewed test overlays, Rule order and optional complete draft settings.
+Migration 0052 narrows built-in discovery to Default, Full-feature baseline,
+Bank, Securities & brokerage and Internet platform support, in that order.
+Default retains `local-baseline@1.0.0`; Bank retains `banking-assistant@2.0.0`.
+The migration disables only the 11 retired built-in records and changes display
+metadata for retained choices. It leaves Policy pins, Guardrail drafts, test
+cases, source snapshots, signed Artifacts and the provisioning marker untouched.
+User-owned records and disabled state are preserved. The partial unique index
+allows one enabled default per category.
 Seeds run once through the migration journal; runtime startup never replaces
 operator changes. Add new defaults through a migration, not a request-time seed.
 
@@ -501,7 +507,7 @@ Both require authenticated Policies read access. Profile application copies
 bindings and draft settings into the draft; later Profile changes do not rewrite existing Guardrails.
 Each Profile response has an `availability` result. A missing pinned version
 disables only that Profile, and never substitutes another version.
-The UI initially loads the General default and lists all Profiles in one dropdown,
+The UI initially selects Default (`local-baseline`) and lists enabled Profiles in one dropdown,
 with the name followed by industry/use-case and default tags. It preserves
 explicit append/replace/cancel/undo behavior.
 Choosing blank is respected. Runtime model availability gates still apply to
@@ -515,7 +521,8 @@ it does not introduce runtime inheritance or embed model credentials.
 Replacing a Profile applies all settings; appending preserves existing settings.
 Undo restores settings, bindings and provenance together. Model readiness is
 shown immediately; missing jailbreak/content-safety assignments do not prevent
-draft creation or editing, but still gate model testing and publication.
+draft creation, editing or publication. Testing model behavior requires the
+corresponding platform assignments; failed tests do not block publication.
 
 Before saving or previewing a selection, unchanged inherited expectation
 overlays are reconciled against the exact source Profile (creation) or previous

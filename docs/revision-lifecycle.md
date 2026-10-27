@@ -52,8 +52,9 @@ Soft-deleting the whole Guardrail preserves static identity, versions, the worki
 
 Default, user-created and Profile-created Guardrails share creation, editing,
 publication, tests, protection modes and deletion rules. Deployment provisions
-Local baseline 1.0.0 once using an ordinary resource ID; a separate provisioning
-record prevents recreation after rename or deletion. Existing IDs stay unchanged.
+an ordinary Guardrail named Default from `local-baseline@1.0.0` once; a separate
+provisioning record prevents recreation after rename or deletion. Existing IDs
+stay unchanged.
 
 UI, API and CLI use one publication flow. Compilation freezes the reviewed draft
 without runtime loading, credentials or model calls. It may reuse a matching
