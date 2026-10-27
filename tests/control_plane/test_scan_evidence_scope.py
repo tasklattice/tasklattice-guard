@@ -83,5 +83,10 @@ async def test_scan_continues_after_block_without_changing_delivery_or_hiding_er
             assert {finding.rule_id for finding in decisions[-1].findings if finding.verdict == "matched"} == {
                 "r-block", "r-mask", "r-observe",
             }
+        # Full collection must retain the same concrete Block attribution as
+        # the fast path, even after a sibling transform, observation or error.
+        expected_block = "nemo:builtin_content_filter:mix:r-block:rules:block"
+        assert [item.fragment_id for item in fast.interventions if item.kind == "block"] == [expected_block]
+        assert [item.fragment_id for item in decisions[-1].interventions if item.kind == "block"] == [expected_block]
     finally:
         await previews.shutdown()

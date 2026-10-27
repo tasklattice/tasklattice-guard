@@ -2977,18 +2977,16 @@ def _redaction_patches(text, results):
 def _terminal_runtime_results(results):
     terminal = {}
     for item in results:
-        terminal[_result_group_key(item)] = item
+        # Split Rules remain independent, including native Topic Rules. Steps
+        # of one native exact/semantic Rule still share a terminal result.
+        key = (("action", item.binding.id) if item.binding.capability == "builtin_content_filter"
+               else (*_result_group_key(item), item.binding.parameter("rule_id") or ""))
+        terminal[key] = item
     return tuple(terminal.values())
 
 
 def _terminal_block_match(results):
-    terminal = {}
-    for item in results:
-        # Split local Rules are separate checks, even within one Policy. Native
-        # exact/semantic chains still take their terminal result as a unit.
-        key = ("action", item.binding.id) if item.binding.capability == "builtin_content_filter" else _result_group_key(item)
-        terminal[key] = item
-    return next((item for item in terminal.values()
+    return next((item for item in _terminal_runtime_results(results)
                  if item.result.verdict == "matched" and _runtime_action(item) == "block"), None)
 
 

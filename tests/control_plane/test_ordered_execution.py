@@ -315,7 +315,8 @@ flow a_second $text
     (["topic/allowlist"], True, "allow", ["topic/allowlist"]),
     (["topic/denylist"], False, "allow", ["topic/denylist"]),
 ])
-async def test_split_topic_rules_short_circuit_and_trace_their_own_identity(enabled, denied, expected, calls):
+@pytest.mark.parametrize("scope", ["interventions", "full"])
+async def test_split_topic_rules_short_circuit_and_trace_their_own_identity(enabled, denied, expected, calls, scope):
     from runner.toolkit.nemo.actions.names import ACTION_TOPIC_JUDGE
 
     class RecordingTopic:
@@ -345,15 +346,17 @@ async def test_split_topic_rules_short_circuit_and_trace_their_own_identity(enab
     previews = DraftPreviewRuntime(DefaultRunnerCompiler(), action_providers(provider))
     try:
         result = await previews.evaluate(
-            ProtectionRequest(phase="input", texts=("Order support and fraud",), context=RequestContext(protocol="playground")),
+            ProtectionRequest(phase="input", texts=("Order support and fraud",), evidence_scope=scope, context=RequestContext(protocol="playground")),
             preview_id="split", guardrail_id="ordered", draft_revision=1, candidate_version="20260904-010000.001Z",
             plan=plan, runtime_profile="auto")
         assert not result.usage.fail_closed, result.reason
         assert result.decision == expected
-        assert provider.calls == calls
-        assert [step.id.removeprefix("nemo:action:") for step in result.trace if step.kind == "action"] == calls
+        executed = enabled if scope == "full" else calls
+        assert provider.calls == executed
+        assert [step.id.removeprefix("nemo:action:") for step in result.trace if step.kind == "action"] == executed
         if denied and "topic/denylist" in enabled:
             assert any(finding.rule_id == "topic/denylist" for finding in result.findings)
+            assert [item.fragment_id for item in result.interventions if item.kind == "block"] == ["nemo:topic/denylist:block"]
     finally:
         await previews.shutdown()
 
