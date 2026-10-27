@@ -118,7 +118,8 @@ export function CreateGuardrailWizard({
   const topicStatusRef = useRef<HTMLDivElement>(null);
   const topicAvailability = useTopicControlAvailability(open);
   const correctnessAvailability = useCorrectnessAvailability(open);
-  const unavailableReason = (policy: Policy | undefined) => policyRequiresTopicModel(policy) && !topicAvailability.ready ? topicAvailability.reason : correctnessAvailability.reason(policy);
+  // Topic model readiness gates execution and AI authoring, not draft editing.
+  const unavailableReason = (policy: Policy | undefined) => correctnessAvailability.reason(policy);
   const dependencyBlockedReason = bindings.map(binding => unavailableReason(boundPolicy(policies, binding))).find(Boolean) ?? null;
   const documentApplyBlocker = (analysis: ComplianceDocumentAnalysis) => analysis.recommended_policy_ids.map(id => unavailableReason(policies.find(policy => policy.id === id))).find(Boolean) ?? (!topicAvailability.ready
     && (analysis.allowed_topics.length > 0 || analysis.restricted_topics.length > 0
@@ -445,7 +446,7 @@ export function CreateGuardrailWizard({
                 ) : null}
               </section>
                   </details> : null}
-                  {topicAvailability.ready && !splitTopicCatalog ? (hasTopicControlBinding(bindings, policies) || showBoundaries || boundarySource || allowed.trim() || denied.trim() ? (
+                  {!splitTopicCatalog ? (hasTopicControlBinding(bindings, policies) || showBoundaries || boundarySource || allowed.trim() || denied.trim() ? (
                   <TopicBoundaryEditor fieldRef={topicField} allowed={allowed} source={boundarySource} onAllowedChange={setAllowed} denied={denied} mode={topicMode} onDeniedChange={setDenied} onModeChange={setTopicMode} />
                 ) : <Button variant="outline" onClick={() => setShowBoundaries(true)}>{t("guardrailWizard.addBoundaries")}</Button>) : null}
                 </div>} />}

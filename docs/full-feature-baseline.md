@@ -107,6 +107,10 @@ compatibility is checked separately. Set up the assignments before testing model
 behavior or routing traffic to these protections. Deleting a test report never
 revokes publication.
 
+Topic model readiness does not disable manual selection, configuration or saving
+of the Profile's prefilled denylist. Model-backed intent and document analysis
+still require the relevant model setup before they can run.
+
 ## Pins and updates
 
 The Profile and each Policy reference are versioned. A later catalog head does

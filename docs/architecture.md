@@ -510,8 +510,9 @@ disables only that Profile, and never substitutes another version.
 The UI initially selects Default (`local-baseline`) and lists enabled Profiles in one dropdown,
 with the name followed by industry/use-case and default tags. It preserves
 explicit append/replace/cancel/undo behavior.
-Choosing blank is respected. Runtime model availability gates still apply to
-all selected bindings, including those inherited from a Profile.
+Choosing blank is respected. Model readiness is checked for execution, including
+bindings inherited from a Profile. Topic model setup does not block manual
+draft creation or editing; AI-assisted authoring still requires it.
 
 Migration 0049 introduced the original eight-Policy benchmark Profile.
 Migration 0053 upgrades its untouched built-in definition to

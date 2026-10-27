@@ -9,6 +9,11 @@ import { queryKeys } from "@/features/query-keys";
 import { CreateGuardrailWizard } from "./create-guardrail-wizard";
 import { protectionEn } from "../protection-i18n";
 import configurablePolicies from "../../../runner/toolkit/policy_library/assets/configurable_policies.json";
+import { resolve } from "node:path";
+import { PolicyCatalog } from "../../server/policy-catalog/catalog";
+import { DeclarativeCompiler } from "../../server/policy-studio/declarative";
+import { profileDraft } from "../../server/policy-catalog/presets";
+import { fullFeatureBaseline } from "../../shared/full-feature-baseline";
 
 const apiMocks = vi.hoisted(() => ({
   analyzeIntent: vi.fn(),
@@ -230,7 +235,7 @@ describe("Create Guardrail wizard", () => {
 
   afterEach(() => { cleanup(); onlineManager.setOnline(true); });
 
-  it("hides both authoring paths when Topic Control is unavailable and keeps local filters usable", async () => {
+  it("gates AI authoring on Topic readiness while allowing manual draft configuration", async () => {
     apiMocks.getModels.mockResolvedValue({ models: [], active: null, draft: null, activating: null });
     const topic = { ...policy, id: "builtin-topic-safety", name: "Model Topic Control", protection: { ...policy.protection!, execution: "model", modelCapabilities: ["topic_control"], requiredContext: ["allowed_topics"] } };
     apiMocks.getPolicies.mockResolvedValue({ items: [policy, topic], count: 2 });
@@ -240,9 +245,9 @@ describe("Create Guardrail wizard", () => {
     await selectSection("Business rules");
     await selectSection("Topic Control");
     const checkbox = await screen.findByRole("checkbox", { name: "Model Topic Control" });
-    await waitFor(() => expect(checkbox.hasAttribute("disabled")).toBe(true));
+    await waitFor(() => expect(checkbox.hasAttribute("disabled")).toBe(false));
     expect(screen.getAllByText("topicControl.availability.missing").length).toBeGreaterThan(0);
-    expect(screen.queryByRole("button", { name: "Add topic allowlist" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Add topic allowlist" })).toBeTruthy();
     expect(screen.queryByText(protectionEn.wizard.businessAssistant)).toBeNull();
     expect(screen.queryByRole("button", { name: /Generate from intent/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /Generate from documents/ })).toBeNull();
@@ -251,7 +256,7 @@ describe("Create Guardrail wizard", () => {
     expect(screen.getByRole("button", { name: "Review draft" }).hasAttribute("disabled")).toBe(false);
   });
 
-  it("keeps a preset's unavailable Topic Policy removable and prevents preview until removed", async () => {
+  it("previews and creates a Topic preset before model setup and keeps its Policy removable", async () => {
     apiMocks.getModels.mockResolvedValue({ models: [], active: null, draft: null, activating: null });
     const topic = { ...policy, id: "builtin-topic-safety", name: "Model Topic Control", protection: { ...policy.protection!, modelCapabilities: ["topic_control"], requiredContext: ["allowed_topics"] } };
     const topicBinding = { ...binding, policy_id: topic.id };
@@ -262,11 +267,14 @@ describe("Create Guardrail wizard", () => {
     fireEvent.keyDown(await screen.findByRole("combobox"), { key: "ArrowDown" });
     fireEvent.click(await screen.findByRole("option", { name: "Topic preset" }));
     fireEvent.click(screen.getByRole("button", { name: "Configure protections" }));
-    await selectSection("Business rules");
+    await selectSection("Topic Control");
     await waitFor(() => expect(screen.getAllByText("topicControl.availability.missing").length).toBeGreaterThan(0));
-    expect(screen.getByRole("button", { name: "Review draft" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "Review draft" }).hasAttribute("disabled")).toBe(false);
     fireEvent.click(screen.getByRole("button", { name: "Review & create" }));
-    expect(apiMocks.preview).not.toHaveBeenCalled();
+    await waitFor(() => expect(apiMocks.preview).toHaveBeenCalledWith(expect.objectContaining({ policy_bindings: [binding, topicBinding] })));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Create draft" }).hasAttribute("disabled")).toBe(false));
+    fireEvent.click(screen.getByRole("button", { name: "Create draft" }));
+    await waitFor(() => expect(apiMocks.createGuardrail).toHaveBeenCalledWith(expect.objectContaining({ policy_bindings: [binding, topicBinding] })));
     fireEvent.click(screen.getByRole("button", { name: "Configure protections" }));
     await selectSection("Business rules");
     await selectSection("Topic Control");
@@ -319,6 +327,34 @@ describe("Create Guardrail wizard", () => {
     fireEvent.click(screen.getByRole("button", { name: "Review & create" }));
     await waitFor(() => expect(apiMocks.preview).toHaveBeenCalledWith(expect.objectContaining({ policy_bindings: [configuredRequiredBinding] })));
     expect(apiMocks.createGuardrail).not.toHaveBeenCalled();
+  });
+
+  it("creates the actual full-feature v2 selection with all six model assignments missing", async () => {
+    const directory = resolve("../runner/toolkit/policy_library/assets");
+    const compiler = new DeclarativeCompiler(directory);
+    const catalog = PolicyCatalog.load(directory).list().map(policy => {
+      const definition = policy.protection.execution === "custom" ? compiler.shipped(policy.id) : null;
+      return definition ? { ...compiler.compile(definition), published_versions: policy.published_versions } : policy;
+    });
+    const draft = profileDraft(fullFeatureBaseline, catalog);
+    const bindings = draft.policyBindings.map(binding => ({ policy_id: binding.policyId, policy_version: binding.policyVersion,
+      action: binding.action, parameter_values: binding.parameterValues, enabled_rule_ids: binding.enabledRuleIds,
+      rule_actions: binding.ruleActions, rule_order: binding.ruleOrder, test_case_overrides: binding.testCaseOverrides,
+      enabled_rails: binding.enabledRails, reasoning_policy: binding.reasoningPolicy }));
+    apiMocks.getPolicies.mockResolvedValue({ items: catalog });
+    apiMocks.getModels.mockResolvedValue({ models: [], active: null, draft: null, activating: null });
+    apiMocks.getPresets.mockResolvedValue({ items: [{ ...fullFeatureBaseline, bindings }] });
+    renderWizard(fullFeatureBaseline.id);
+    await screen.findByText("Profile applied · 14 Policies selected");
+    expect(await screen.findAllByText(protectionEn.dependencies.states.missing)).toHaveLength(6);
+    fireEvent.change(screen.getByPlaceholderText("Customer data protection"), { target: { value: "Full v2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Review & create" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Create draft" }).hasAttribute("disabled")).toBe(false));
+    fireEvent.click(screen.getByRole("button", { name: "Create draft" }));
+    await waitFor(() => expect(apiMocks.createGuardrail).toHaveBeenCalledWith(expect.objectContaining({
+      policy_bindings: bindings, profile_origin: { id: fullFeatureBaseline.id, version: "2.0.0" },
+      topic_control_mode: "permissive", output_delivery: "full_buffered",
+    })));
   });
 
   it("copies full Profile settings, preserves them through undo, and saves with missing models", async () => {

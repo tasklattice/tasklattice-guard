@@ -146,7 +146,7 @@ describe("Guardrail detail information hierarchy", () => {
     render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })}><TooltipProvider><EditGuardrailSheet guardrail={guardrail} policies={policies} open onOpenChange={vi.fn()} onSaved={vi.fn()} /></TooltipProvider></QueryClientProvider>);
     const remove = await screen.findByRole("button", { name: "protection.validationReadiness.removeTopic" });
     expect(screen.getByRole("heading", { name: "guardrails.topicAllowlist" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "guardrails.saveDraft" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "guardrails.saveDraft" }).hasAttribute("disabled")).toBe(false);
     fireEvent.click(removal === "shortcut" ? remove : screen.getByRole("button", { name: `protection.remove name:${policies[1]!.name}` }));
     expect(screen.queryByRole("heading", { name: "guardrails.topicAllowlist" })).toBeNull();
     expect(screen.queryByRole("combobox", { name: "topicControl.mode" })).toBeNull();
@@ -157,12 +157,16 @@ describe("Guardrail detail information hierarchy", () => {
     await waitFor(() => expect(update).toHaveBeenCalledWith(guardrail.id, expect.objectContaining({ policy_bindings: [bindings[0]] })));
   });
 
-  it("allows trimming a draft before its remaining safety model is configured", async () => {
+  it.each(["builtin-content-safety", "builtin-topic-safety"])("allows trimming a draft before its remaining %s model is configured", async modelId => {
     vi.spyOn(controllerApi, "getModelReadiness").mockResolvedValue({ models: [], active: null, draft: null, activating: null });
     const catalog = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
-    const policies = ["local-government-identifiers", "builtin-content-safety"].map(id => catalog.find(policy => policy.id === id)!);
+    const policies = ["local-government-identifiers", modelId].map(id => catalog.find(policy => policy.id === id)!);
     const bindings = policies.map(defaultPolicyBinding);
-    const guardrail = { ...deletableGuardrail, profile_origin: { id: "full-feature-baseline", version: "1.0.0" }, policy_bindings: bindings };
+    if (modelId === "builtin-topic-safety") {
+      bindings[1]!.enabled_rule_ids = ["topic/denylist"];
+      bindings[1]!.parameter_values = { denied_topics: "Credential theft", topic_mode: "permissive", allowed_topics: "" };
+    }
+    const guardrail = { ...deletableGuardrail, topic_control_mode: "permissive" as const, profile_origin: { id: "full-feature-baseline", version: "2.0.0" }, policy_bindings: bindings };
     const update = vi.spyOn(api, "updateGuardrail").mockResolvedValue(guardrail);
     render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TooltipProvider><EditGuardrailSheet guardrail={guardrail} policies={policies} open onOpenChange={vi.fn()} onSaved={vi.fn()} /></TooltipProvider></QueryClientProvider>);
     await screen.findByText("protection.validationReadiness.blockedTitle");
