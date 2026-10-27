@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ControllerConfig } from "../config.js";
 import type { ControllerDatabase } from "../db/client.js";
+import { NEMO_COMPILER_VERSION, PLAN_COMPILER_VERSION } from "../domain/artifact-execution-contract.js";
 import { ControlPlaneService } from "./control-plane.js";
 
 // Every query in these paths ends in an awaited builder, so one thenable
@@ -15,7 +16,11 @@ function scriptedSelect(results: unknown[][]) {
 }
 
 const config = { runnerToken: "runner-token-0123456789abcdef0123456789", deletionTrafficWindowMinutes: 5, offlineAfterSeconds: 60, telemetryStaleAfterSeconds: 120 } as unknown as ControllerConfig;
-const artifact = (id: string) => ({ artifact: { id, guardrailId: `guardrail-${id}`, guardrailVersion: "v1" } });
+const artifact = (id: string) => ({ artifact: {
+  id, guardrailId: `guardrail-${id}`, guardrailVersion: "v1",
+  compilerVersion: NEMO_COMPILER_VERSION,
+  plan: { compiler_version: PLAN_COMPILER_VERSION, steps: [] }, actionBindings: [],
+} });
 const revision = {
   routerId: "router-1", revision: 2, endpointIds: ["endpoint-1"],
   routes: [{ id: "all", name: "All", kind: "fallback", enabled: true, selector: { expression: { combinator: "and", conditions: [] } },
