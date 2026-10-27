@@ -232,3 +232,23 @@ describe("Controller/Runner control protocol", () => {
     }] });
   });
 });
+
+it("round-trips structured evidence and preserves absence on legacy reports", () => {
+  const protoPath = resolve("../proto/tasklattice/guard/control/v1/runner_control.proto");
+  const definition = loadSync(protoPath, { includeDirs: [dirname(protoPath)], longs: String, enums: String, defaults: true, oneofs: true });
+  const descriptor = loadPackageDefinition(definition) as unknown as ProtoGrpcType;
+  const connect = descriptor.tasklattice.guard.control.v1.RunnerControl.service.Connect;
+  const base = { caseId: "target", expectedDecision: "VALIDATION_DECISION_TRANSFORM" as const,
+    actualDecision: "VALIDATION_DECISION_TRANSFORM" as const, action: "ENFORCEMENT_ACTION_TRANSFORM" as const,
+    phase: "GUARDRAIL_PHASE_INPUT" as const, passed: false };
+  const wire = connect.requestDeserialize(connect.requestSerialize({ validationResult: { results: [
+    { ...base, evidenceStatus: "VALIDATION_EVIDENCE_STATUS_SHADOWED_BY", evidenceDetail: "Target did not match its transformed view.",
+      supersededBy: [{ policyId: "mask", ruleId: "first" }], verifiedRuleIds: [], ruleContractSatisfied: false, evidenceContract: "rule-evidence-v1" },
+    base,
+  ] } })).validationResult!.results;
+  expect(validationCaseFromWire(wire[0]!)).toMatchObject({ evidenceStatus: "shadowed_by", verifiedRuleIds: [],
+    supersededBy: [{ policyId: "mask", ruleId: "first" }], ruleContractSatisfied: false, evidenceContract: "rule-evidence-v1" });
+  const legacy = validationCaseFromWire(wire[1]!);
+  expect(legacy.evidenceStatus).toBeUndefined();
+  expect(legacy.ruleContractSatisfied).toBeUndefined();
+});

@@ -100,6 +100,20 @@ message ValidationMetrics {
   int32 executed = 9;
 }
 
+// Rule evidence is independent of the final composed decision.
+enum ValidationEvidenceStatus {
+  VALIDATION_EVIDENCE_STATUS_UNSPECIFIED = 0;
+  VALIDATION_EVIDENCE_STATUS_NOT_REQUIRED = 1;
+  VALIDATION_EVIDENCE_STATUS_OBSERVED = 2;
+  VALIDATION_EVIDENCE_STATUS_ABSENT = 3;
+  VALIDATION_EVIDENCE_STATUS_NOT_MATCHED = 4;
+  VALIDATION_EVIDENCE_STATUS_NOT_REACHED = 5;
+  VALIDATION_EVIDENCE_STATUS_PREEMPTED_BY = 6;
+  VALIDATION_EVIDENCE_STATUS_SHADOWED_BY = 7;
+  VALIDATION_EVIDENCE_STATUS_MISSING = 8;
+  VALIDATION_EVIDENCE_STATUS_UNVERIFIABLE = 9;
+}
+
 // Observed decision, evidence, and trace for one validation case.
 message ValidationCaseResult {
   string case_id = 1;
@@ -153,11 +167,19 @@ message ValidationCaseResult {
   // Original unmodified source expectation, present when a local override was applied.
   optional ValidationDecision template_expected_decision = 36;
   repeated string assertion_failures = 37;
-  // Terminal Rule evidence preceding the source target in Policy/Rule execution order.
-  // The target is not claimed as matched; this satisfies only the ordered composition contract.
+  // Legacy ordered-composition evidence, retained for historical reports.
+  // New evidence contracts use superseded_by without implying acceptance.
   repeated ValidationExpectedMatch preempting_matches = 38;
   bool skipped = 39;
   string skip_reason = 40;
+  optional ValidationEvidenceStatus evidence_status = 41;
+  repeated ValidationExpectedMatch superseded_by = 42;
+  // Only actually observed matches on the declared view, never counterfactuals.
+  repeated string verified_rule_ids = 43;
+  string evidence_detail = 44;
+  // Effective Rule assertion, including an explicitly reviewed override.
+  optional bool rule_contract_satisfied = 45;
+  string evidence_contract = 46;
 }
 
 // Command to execute an immutable candidate plan against its test cases.

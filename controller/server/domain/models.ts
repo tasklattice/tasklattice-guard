@@ -64,6 +64,12 @@ export type ValidationMetrics = {
 };
 
 export type ValidationCaseResult = {
+  evidenceStatus?: string;
+  evidenceDetail?: string;
+  verifiedRuleIds?: string[];
+  supersededBy?: Array<{ policyId: string; ruleId: string }>;
+  ruleContractSatisfied?: boolean;
+  evidenceContract?: string;
   skipped?: boolean;
   skipReason?: string;
   expectationOverride?: import("./guardrail-plan.js").ValidationExpectationOverride;

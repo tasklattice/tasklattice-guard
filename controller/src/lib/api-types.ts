@@ -127,6 +127,12 @@ export type RuntimeTraceStep = {
 };
 
 export type TestCaseResult = {
+  evidence_status?: string;
+  evidence_detail?: string;
+  verified_rule_ids?: string[];
+  superseded_by?: Array<{ policyId: string; ruleId: string }>;
+  rule_contract_satisfied?: boolean;
+  evidence_contract?: string;
   skipped?: boolean;
   skip_reason?: string;
   expectation_override?: Record<string, unknown>;

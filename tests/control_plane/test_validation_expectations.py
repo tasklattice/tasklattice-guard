@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -10,6 +11,20 @@ from runner.protocol_codec import validation_test_from_proto, validation_test_to
 from runner.serialization import plan_from_dict
 from runner.toolkit.runtime.contracts import ProtectionDecision, RiskFinding, RuntimeUsage
 from runner.validator import DefaultRunnerValidator
+
+
+def declared_plan(policies, *, bindings=None, phase="input"):
+    """Give mocked findings real, pinned, executable Rule identities."""
+    return plan_from_dict({
+        "guardrail_id": "test", "guardrail_version": "20260904-010000.001Z",
+        "policy_bindings": bindings if bindings is not None else [
+            {"policy_id": policy, "policy_version": "1", "enabled_rule_ids": rules,
+             "enabled_rails": [phase]} for policy, rules in policies.items()],
+        "steps": [{"id": f"{policy}:{rule}", "capability": "builtin_content_filter",
+                   "contract_ref": "test", "phases": [phase], "on_unsafe": "block",
+                   "parameters": [["policy_id", policy], ["rule_id", rule]]}
+                  for policy, rules in policies.items() for rule in rules],
+    })
 
 
 @pytest.mark.parametrize("change", ["none", "missing_finding", "reject_binding", "changed_output", "wrong_rule", "stale", "unknown"])
@@ -31,9 +46,8 @@ async def test_observation_only_override_preserves_detection_and_pass_action(cha
     runtime = AsyncMock()
     runtime.evaluate.return_value = ProtectionDecision(decision="allow", action="allow", findings=findings,
         texts=("changed",) if change == "changed_output" else ())
-    plan = plan_from_dict({"guardrail_id": "test", "guardrail_version": "20260904-010000.001Z",
-        "policy_bindings": [{"policy_id": "insults", "policy_version": "1", "enabled_rule_ids": ["insults-rule"],
-            "rule_actions": [["insults-rule", "block" if change == "reject_binding" else "allow"]], "enabled_rails": ["input"]}]})
+    plan = declared_plan({"insults": ["insults-rule"]}, bindings=[{"policy_id": "insults", "policy_version": "1", "enabled_rule_ids": ["insults-rule"],
+            "rule_actions": [["insults-rule", "block" if change == "reject_binding" else "allow"]], "enabled_rails": ["input"]}])
     result = await DefaultRunnerValidator(DefaultRunnerCompiler())._evaluate(runtime, plan, case)
     assert result["passed"] is (change == "none"), result
 
@@ -87,11 +101,7 @@ async def test_composition_assertions_require_reviewed_evidence_and_complete_out
             policy_id="earlier", rule_id=rule,
         ),),
     )
-    plan = plan_from_dict({
-        "guardrail_id": "test", "guardrail_version": "20260904-010000.001Z", "compiler_version": "test",
-        "safety_level": "balanced", "output_delivery": "full_buffered",
-        "steps": [], "modules": [],
-    })
+    plan = declared_plan({"pattern": ["later-id"], "earlier": ["complete-id"]})
     decoded = validation_test_from_proto(validation_test_to_proto(case))
     result = await DefaultRunnerValidator(DefaultRunnerCompiler())._evaluate(runtime, plan, decoded)
     assert result["passed"] is (change == "none")
@@ -102,14 +112,14 @@ async def test_composition_assertions_require_reviewed_evidence_and_complete_out
         assert any("complete-output" in failure for failure in result["assertionFailures"])
 
 
-@pytest.mark.parametrize("scenario,passed", [
-    ("earlier_policy", True), ("earlier_rule", True), ("later_policy", False),
-    ("later_rule", False), ("disabled_rule", False), ("wrong_phase", False),
-    ("stale_target", False), ("unknown_policy", False), ("no_evidence", False), ("unknown_verdict", False),
-    ("fail_closed", False), ("redaction", False), ("expected_allow", False),
-    ("target_already_ran", False), ("reviewed_override", False),
+# Another Rule may explain the final decision but cannot prove target acceptance.
+@pytest.mark.parametrize("scenario", [
+    "earlier_policy", "earlier_rule", "later_policy", "later_rule",
+    "disabled_rule", "wrong_phase", "stale_target", "unknown_policy",
+    "no_evidence", "unknown_verdict", "fail_closed", "redaction", "expected_allow",
+    "target_already_ran", "reviewed_override",
 ])
-async def test_ordered_terminal_preemption(scenario, passed):
+async def test_schedule_independent_case_evidence(scenario):
     from runner.toolkit.runtime.contracts import RuntimeTraceStep
     from runner.protocol_codec import validation_case_result_to_proto
 
@@ -143,39 +153,56 @@ async def test_ordered_terminal_preemption(scenario, passed):
     runtime.evaluate.return_value = ProtectionDecision(
         decision="transform" if scenario == "redaction" else "block", action=action,
         findings=findings, usage=RuntimeUsage(fail_closed=scenario == "fail_closed"),
-        trace=(RuntimeTraceStep(id="target-action", kind="action", name="target", detail="Target ran", policy_id=source, status="not_matched"),) if scenario == "target_already_ran" else (),
+        trace=(RuntimeTraceStep(id="nemo:action:target:covered", kind="action", name="target", detail="Target ran", policy_id=source, status="passed", verdict="not_matched"),) if scenario == "target_already_ran" else (),
     )
-    plan = plan_from_dict({"guardrail_id": "ordered", "guardrail_version": "20260904-010000.001Z", "policy_bindings": bindings})
+    plan = declared_plan({"earlier": ["blocker"], "target": ["covered", "blocker"]}, bindings=bindings)
     case = {"id": "source-case", "expectedDecision": "allow" if scenario == "expected_allow" else "transform" if scenario == "redaction" else "block",
         "phase": "input", "content": "overlapping detection", "sourcePolicyId": source,
         "sourcePolicyVersion": "1", "coveredRuleIds": ["covered"], "caseType": "rule_acceptance"}
     if scenario == "reviewed_override":
         case["expectationOverride"] = {"sourcePolicyVersion": "1", "reason": "Require target evidence", "expectedDecision": "block", "expectedMatches": [{"policyId": source, "ruleId": "covered"}]}
     result = await DefaultRunnerValidator(DefaultRunnerCompiler())._evaluate(runtime, plan, case)
-    assert result["passed"] is passed
-    assert bool(result["preemptingMatches"]) is passed
+    assert result["passed"] is False
+    assert result["preemptingMatches"] == []
+    assert result["verifiedRuleIds"] == []
     assert "covered" not in result["matchedRuleIds"]
+    if scenario == "target_already_ran":
+        assert result["evidenceStatus"] == "not_matched"
+        assert "ran but did not match" in result["reason"]
+    elif scenario in {"earlier_policy", "earlier_rule", "later_policy", "later_rule"}:
+        assert result["evidenceStatus"] == "preempted_by"
+        assert result["supersededBy"] == [{"policyId": blocker, "ruleId": "blocker"}]
     wire = validation_case_result_to_proto(result)
-    assert len(wire.preempting_matches) == (1 if passed else 0)
+    assert not wire.rule_contract_satisfied
+    assert wire.evidence_contract == "rule-evidence-v1"
+    assert len(wire.preempting_matches) == 0
 
 
 @pytest.mark.parametrize("reverse", [False, True])
-def test_custom_policy_preemption_uses_pinned_flow_order(reverse):
+def test_programmable_rule_evidence_is_independent_of_flow_order(reverse):
+    """A custom Colang Policy resolves its covered Rule by identity, not position."""
     from dataclasses import replace
     from runner.toolkit.runtime.contracts import PolicyVersionSnapshot, PolicyRailBindingSnapshot
-    from runner.validator import _ordered_preemption
+    from runner.validator import _case_evidence, _rule_target
 
     binding = {"policy_id": "custom", "policy_version": "7", "enabled_rule_ids": ["flow/input/target", "flow/input/first"], "enabled_rails": ["input"],
                "rule_order": ["flow/input/target"] if reverse else []}
     plan = plan_from_dict({"guardrail_id": "ordered", "guardrail_version": "20260904-010000.001Z", "policy_bindings": [binding]})
-    version = PolicyVersionSnapshot(policy_id="custom", version="7", name="Custom", source="custom", colang_version="2.x",
-        sources=(), parameter_schema=(), rail_bindings=tuple(PolicyRailBindingSnapshot(rail_type="input", flow_name=name,
-            execution_mode="detect", on_unsafe="block") for name in ["first", "target"]),
-        action_references=(), evaluation_contracts=(), prompt_dependencies=(), execution_contract=(), test_cases=(), checksum="pinned")
-    plan = replace(plan, policy_versions=(version,))
-    result = _ordered_preemption(plan, {"sourcePolicyId": "custom", "sourcePolicyVersion": "7", "coveredRuleIds": ["flow/input/target"]}, "input",
-        [{"policy_id": "custom", "rule_id": "flow/input/first", "verdict": "matched", "recommended_action": "block"}], [])
-    assert bool(result) is (not reverse)
+    rails = [PolicyRailBindingSnapshot(rail_type="input", flow_name=name, execution_mode="detect", on_unsafe="block")
+             for name in (["target", "first"] if reverse else ["first", "target"])]
+    plan = replace(plan, policy_versions=(PolicyVersionSnapshot(policy_id="custom", version="7", name="Custom", source="custom",
+        colang_version="2.x", sources=(), parameter_schema=(), rail_bindings=tuple(rails), action_references=(),
+        evaluation_contracts=(), prompt_dependencies=(), execution_contract=(), test_cases=(), checksum="pinned"),))
+    resolved = _rule_target(plan, "custom", "flow/input/target", "input")
+    assert resolved is not None and resolved["bindingId"] == "tl.custom.v7.target"
+    evidence = _case_evidence(
+        plan,
+        {"sourcePolicyId": "custom", "sourcePolicyVersion": "7", "coveredRuleIds": ["flow/input/target"]},
+        "input", "block", SimpleNamespace(decision="block"),
+        [{"policy_id": "custom", "rule_id": "flow/input/first", "verdict": "matched", "recommended_action": "block"}],
+        [], "overlapping detection",
+    )
+    assert evidence["status"] == "preempted_by" and evidence["satisfied"] is False
 
 
 @pytest.mark.parametrize("verdict", ["matched", "unknown", "error"])
@@ -186,7 +213,7 @@ async def test_inconclusive_result_is_not_detection_evidence(verdict, override):
         RiskFinding(risk="contextual_grounding", taxonomy_id="test", verdict=verdict,
             confidence=0, evidence="Synthetic detector result", recommended_action="block",
             policy_id="grounding", rule_id="judge"),))
-    plan = plan_from_dict({"guardrail_id": "test", "guardrail_version": "20260904-010000.001Z"})
+    plan = declared_plan({"grounding": ["judge"]}, phase="output")
     case = {"id": "unsupported", "content": "A response", "phase": "output", "expectedDecision": "block",
         "caseType": "rule_acceptance", "sourcePolicyId": "grounding", "sourcePolicyVersion": "1",
         "coveredRuleIds": ["judge"]}
@@ -205,8 +232,119 @@ async def test_missing_context_can_be_tested_as_a_boundary_without_claiming_a_ma
     runtime.evaluate.return_value = ProtectionDecision(decision="block", action="block", findings=(
         RiskFinding(risk="contextual_grounding", taxonomy_id="test", verdict="unknown", confidence=0,
             evidence="Missing query", recommended_action="block", policy_id="grounding", rule_id="judge"),))
-    plan = plan_from_dict({"guardrail_id": "test", "guardrail_version": "20260904-010000.001Z"})
+    plan = declared_plan({"grounding": ["judge"]}, phase="output")
     result = await DefaultRunnerValidator(DefaultRunnerCompiler())._evaluate(runtime, plan,
         {"id": "missing-query", "content": "A response", "phase": "output", "expectedDecision": "block", "caseType": "scenario"})
     assert result["passed"]
     assert result["matchedRuleIds"] == []
+
+
+@pytest.mark.parametrize("change,status", [
+    ("missing_policy", "missing"), ("stale", "missing"), ("phase", "missing"),
+    ("disabled", "missing"), ("omitted", "missing"), ("unidentified", "unverifiable"),
+    ("partial", "not_reached"), ("not_run", "not_reached"), ("ran", "absent"),
+])
+async def test_every_covered_rule_needs_a_pinned_executable_target_and_conclusive_result(change, status):
+    from runner.toolkit.runtime.contracts import RuntimeTraceStep
+    plan = declared_plan({"target": ["a", "b"]})
+    from dataclasses import replace
+    if change == "missing_policy": plan = replace(plan, policy_bindings=())
+    elif change == "stale": plan = replace(plan, policy_bindings=(replace(plan.policy_bindings[0], policy_version="2"),))
+    elif change == "phase": plan = replace(plan, policy_bindings=(replace(plan.policy_bindings[0], enabled_rails=("output",)),))
+    elif change == "disabled": plan = replace(plan, policy_bindings=(replace(plan.policy_bindings[0], enabled_rule_ids=("a",)),))
+    elif change == "omitted": plan = replace(plan, steps=plan.steps[:1])
+    negative = change in {"ran", "not_run"}
+    case = {"id": "both", "content": "sample", "phase": "input", "expectedDecision": "allow" if negative else "block",
+            "sourcePolicyId": "target", "sourcePolicyVersion": "1", "coveredRuleIds": ["a", "b"]}
+    if change == "unidentified": del case["sourcePolicyId"]
+    findings = () if negative else tuple(RiskFinding(risk="test", taxonomy_id="test", verdict="matched", confidence=1,
+        evidence="Observed", recommended_action="block", policy_id="target", rule_id=rule)
+        for rule in (["a"] if change == "partial" else ["a", "b"]))
+    runtime = AsyncMock()
+    runtime.evaluate.return_value = ProtectionDecision(decision=case["expectedDecision"], action=case["expectedDecision"], findings=findings,
+        trace=tuple(RuntimeTraceStep(id=f"nemo:action:target:{rule}", kind="action", name=rule, detail="Ran", verdict="not_matched", status="passed")
+                    for rule in ("a", "b")) if change == "ran" else ())
+    result = await DefaultRunnerValidator(DefaultRunnerCompiler())._evaluate(runtime, plan, case)
+    assert result["passed"] is (change == "ran")
+    assert result["evidenceStatus"] == ("preempted_by" if change == "partial" else status)
+
+
+def test_grouped_legacy_action_match_does_not_prove_every_rule_executed():
+    from dataclasses import replace
+    from runner.validator import _case_evidence
+    plan = declared_plan({"target": ["first", "second"]})
+    grouped = replace(plan.steps[0], parameters=(("policy_id", "target"),
+                      ("enabled_rules_json", '{"target":["first","second"]}')))
+    plan = replace(plan, steps=(grouped,))
+    evidence = _case_evidence(plan, {"sourcePolicyId": "target", "sourcePolicyVersion": "1", "coveredRuleIds": ["second"]},
+        "input", "block", SimpleNamespace(decision="block"),
+        [{"policy_id": "target", "rule_id": "first", "verdict": "matched", "recommended_action": "block"}],
+        [], "content", trace=[{"id": "nemo:action:target:first", "verdict": "matched"}])
+    assert evidence["status"] == "preempted_by"
+    assert not evidence["satisfied"]
+
+
+@pytest.mark.parametrize("omit_step", [False, True])
+def test_catalog_native_sole_rule_uses_the_runtime_identity_contract(omit_step):
+    from dataclasses import replace
+    from runner.validator import _case_evidence
+    plan = declared_plan({"native": ["boundary/rule"]})
+    step = replace(plan.steps[0], capability="indirect_prompt_injection", contract_ref="tali.guard.indirect-prompt-injection.v1",
+                   parameters=(("policy_id", "native"), ("policy_version", "1")))
+    plan = replace(plan, steps=() if omit_step else (step,))
+    evidence = _case_evidence(plan, {"sourcePolicyId": "native", "sourcePolicyVersion": "1", "coveredRuleIds": ["boundary/rule"]},
+        "input", "block", SimpleNamespace(decision="block"),
+        [{"policy_id": "native", "rule_id": "boundary/rule", "verdict": "matched", "recommended_action": "block"}],
+        ["boundary/rule"], "content")
+    assert evidence["satisfied"] is not omit_step
+    assert evidence["status"] == ("missing" if omit_step else "observed")
+
+
+async def test_reviewed_negative_expectation_cannot_turn_unexecuted_rules_into_absence():
+    runtime = AsyncMock()
+    runtime.evaluate.return_value = ProtectionDecision(decision="allow", action="allow")
+    plan = declared_plan({"target": ["rule"]})
+    result = await DefaultRunnerValidator(DefaultRunnerCompiler())._evaluate(runtime, plan, {
+        "id": "negative", "content": "ordinary", "phase": "input", "expectedDecision": "allow",
+        "sourcePolicyId": "target", "sourcePolicyVersion": "1", "coveredRuleIds": ["rule"],
+        "expectationOverride": {"reason": "Reviewed negative case", "sourcePolicyVersion": "1", "expectedDecision": "allow", "expectedMatches": []},
+    })
+    assert not result["passed"]
+    assert result["evidenceStatus"] == "not_reached"
+    assert not result["ruleContractSatisfied"]
+
+
+@pytest.mark.parametrize("kind,matched_policy,passed", [("scenario", "target", True), ("rule_acceptance", "target", False), ("scenario", "other", False)])
+async def test_scenario_alternatives_need_actual_source_evidence_but_do_not_certify_every_rule(kind, matched_policy, passed):
+    plan = declared_plan({"target": ["bearer", "private-key"], "other": ["bearer"]})
+    runtime = AsyncMock()
+    runtime.evaluate.return_value = ProtectionDecision(decision="block", action="block", findings=(RiskFinding(
+        risk="test", taxonomy_id="test", verdict="matched", confidence=1, evidence="Actual bearer token match",
+        recommended_action="block", policy_id=matched_policy, rule_id="bearer"),))
+    result = await DefaultRunnerValidator(DefaultRunnerCompiler())._evaluate(runtime, plan, {
+        "id": "credential-kinds", "content": "token", "phase": "input", "expectedDecision": "block", "caseType": kind,
+        "sourcePolicyId": "target", "sourcePolicyVersion": "1", "coveredRuleIds": ["bearer", "private-key"],
+    })
+    assert result["passed"] is passed
+    assert result["verifiedRuleIds"] == (["bearer"] if matched_policy == "target" else [])
+
+
+@pytest.mark.parametrize("final_verdict,executed,passed", [("not_matched", True, True), ("unknown", True, False), ("not_matched", False, False)])
+async def test_native_rule_negative_evidence_uses_its_completed_escalation(final_verdict, executed, passed):
+    from dataclasses import replace
+    from runner.toolkit.runtime.contracts import RuntimeTraceStep, EvaluationTrigger
+    plan = declared_plan({"native": ["rule"]})
+    exact = replace(plan.steps[0], id="exact", capability="pii", parameters=(("policy_id", "native"), ("policy_version", "1")))
+    semantic = replace(exact, id="semantic", trigger=EvaluationTrigger(type="on_result", step_ref="exact", verdicts=("unknown",)))
+    plan = replace(plan, steps=(exact, semantic))
+    trace = [RuntimeTraceStep(id="nemo:action:exact", kind="action", name="Exact", detail="Escalate", status="needs_context", verdict="unknown")]
+    if executed:
+        trace.append(RuntimeTraceStep(id="nemo:action:semantic", kind="action", name="Semantic", detail="Completed", status="passed", verdict=final_verdict))
+    runtime = AsyncMock()
+    runtime.evaluate.return_value = ProtectionDecision(decision="allow", action="allow", trace=tuple(trace))
+    result = await DefaultRunnerValidator(DefaultRunnerCompiler())._evaluate(runtime, plan, {
+        "id": "native-negative", "phase": "input", "content": "ordinary", "expectedDecision": "allow",
+        "sourcePolicyId": "native", "sourcePolicyVersion": "1", "coveredRuleIds": ["rule"],
+    })
+    assert result["passed"] is passed
+    assert result["evidenceStatus"] == ("absent" if passed else "not_reached")

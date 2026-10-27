@@ -158,6 +158,7 @@ export interface ProtoGrpcType {
           TrafficScope: MessageTypeDefinition<_tasklattice_guard_control_v1_TrafficScope, _tasklattice_guard_control_v1_TrafficScope__Output>
           ValidationCaseResult: MessageTypeDefinition<_tasklattice_guard_control_v1_ValidationCaseResult, _tasklattice_guard_control_v1_ValidationCaseResult__Output>
           ValidationDecision: EnumTypeDefinition
+          ValidationEvidenceStatus: EnumTypeDefinition
           ValidationExecutionPhase: EnumTypeDefinition
           ValidationExpectationOverride: MessageTypeDefinition<_tasklattice_guard_control_v1_ValidationExpectationOverride, _tasklattice_guard_control_v1_ValidationExpectationOverride__Output>
           ValidationExpectedMatch: MessageTypeDefinition<_tasklattice_guard_control_v1_ValidationExpectedMatch, _tasklattice_guard_control_v1_ValidationExpectedMatch__Output>

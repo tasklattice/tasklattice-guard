@@ -281,6 +281,7 @@ export function targetLabel(run: ValidationRun, t: ReturnType<typeof useTranslat
 function isExecutionError(result: TestCaseResult) { return !result.skipped && (Boolean(result.actual_failure) || result.actual_decision.toLowerCase() === "error"); }
 function decisionMatches(expected: string, actual: string) { return expected === "intervene" ? actual !== "allow" : expected === actual; }
 function ruleContractMatches(result: TestCaseResult) {
+  if (typeof result.rule_contract_satisfied === "boolean") return result.rule_contract_satisfied;
   if (result.preempting_matches?.length || result.expected_failure || !result.covered_rule_ids.length) return true;
   const matched = new Set(result.matched_rule_ids);
   const targetMatched = result.covered_rule_ids.some((id) => matched.has(id));

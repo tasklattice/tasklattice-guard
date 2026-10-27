@@ -450,7 +450,13 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", () => {
     const compiler = vi.fn(async (input: ArtifactCompilation) => compile(input));
     service.setArtifactCompiler(compiler);
     const run = status === "untested" ? null : await service.requestValidation({ guardrailId: guardrail.id, actorId: "admin", compilerAvailable: true });
-    if (run && status === "failed") await service.completeValidation({ runId: run.id, status: "failed", metrics: emptyValidationMetrics(run.metrics.total), results: [], candidateArtifact: await runnerCandidate(run.id) });
+    if (run && status === "failed") await service.completeValidation({ runId: run.id, status: "failed", metrics: emptyValidationMetrics(run.metrics.total),
+      results: [{ caseId: "strict-evidence", name: "Target Rule did not execute", policyId: "target", phase: "input",
+        expectedDecision: "block", actualDecision: "block", passed: false, action: "block", reason: "Another Rule cannot prove target acceptance.",
+        evaluatorIds: [], findings: [], trace: [], latencyMs: 1, coveredRuleIds: ["target-rule"], matchedRuleIds: [],
+        evidenceStatus: "preempted_by", evidenceDetail: "Target not reached", verifiedRuleIds: [],
+        supersededBy: [{ policyId: "blocker", ruleId: "blocker-rule" }], ruleContractSatisfied: false, evidenceContract: "rule-evidence-v1" }],
+      candidateArtifact: await runnerCandidate(run.id) });
     const published = await service.requestGuardrailPublish({ guardrailId: guardrail.id, actorId: "admin", expectedDraftRevision: 1 });
     expect(published.status).toBe("ready");
     expect(compiler).toHaveBeenCalledTimes(status === "failed" ? 0 : 1);
@@ -458,6 +464,7 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", () => {
     if (run) {
       expect(await service.getValidationRun(run.id)).toMatchObject({ status });
       if (status === "failed") {
+        expect((await service.getValidationRun(run.id)).results[0]).toMatchObject({ passed: false, evidenceStatus: "preempted_by", ruleContractSatisfied: false });
         await versionReport(guardrail.id, published.version, "failed");
         const archived = (await service.getGuardrail(guardrail.id)).versions[0]!;
         expect(archived).toMatchObject({ status: "ready", testingEvidence: { release: { id: run.id, status: "failed" } } });

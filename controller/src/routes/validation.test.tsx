@@ -215,6 +215,22 @@ describe("Testing Report acceptance evidence", () => {
     expect(screen.queryByText("Rule contract mismatch")).toBeNull();
   });
 
+  it("uses the recorded evidence contract instead of inferring success from partial matches", () => {
+    render(<TestCaseResultRow result={{ ...result, passed: false,
+      covered_rule_ids: [...result.covered_rule_ids, "missing-rule"],
+      evidence_status: "missing", rule_contract_satisfied: false }} />);
+    fireEvent.click(document.querySelector("summary")!);
+    expect(screen.getByText("Rule contract mismatch")).toBeTruthy();
+  });
+
+  it("does not report a Rule mismatch when a reviewed composition contract was satisfied", () => {
+    render(<TestCaseResultRow result={{ ...result, passed: false, expected_decision: "transform", actual_decision: "block",
+      matched_rule_ids: [], evidence_status: "shadowed_by", rule_contract_satisfied: true }} />);
+    fireEvent.click(document.querySelector("summary")!);
+    expect(screen.getByText("Decision mismatch")).toBeTruthy();
+    expect(screen.queryByText("Rule contract mismatch")).toBeNull();
+  });
+
   it("shows the pinned contract and actual Rule match", () => {
     const { container } = render(<TestCaseResultRow result={result} />);
 

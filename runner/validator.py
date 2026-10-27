@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import math
 import time
 from dataclasses import asdict, dataclass
@@ -13,13 +14,17 @@ from runner.toolkit.nemo.actions import (
     EvaluationRoute,
     local_action_providers,
 )
+from runner.toolkit.nemo.actions.content_filter import (
+    BuiltinContentFilter,
+    evaluate_parameters,
+)
 from runner.toolkit.nemo.evaluators.pii import PiiEvaluator
 from runner.toolkit.evaluation.contracts import CONTRACT_PII_EXACT
-from runner.toolkit.policy_runtime.snapshots import definitions_from_parameters
 from runner.toolkit.nemo.registry import NeMoRuntimeRegistry
 from runner.toolkit.nemo.runtime import NeMoRuntime
 from runner.toolkit.runtime.content_views import content_view
 from runner.toolkit.runtime.contracts import (
+    flow_rule_id,
     ContentViewSnapshot,
     EngineRequest,
     GuardContentBlock,
@@ -37,6 +42,7 @@ from .protocol_codec import (
     validation_test_from_proto,
 )
 from .serialization import plan_from_dict
+from .toolkit.compiler.semantics import complete_evidence_supported
 from .validation_scope import local_test_plan, skipped_case
 from .protocol_codec import plan_to_proto
 
@@ -229,12 +235,6 @@ class DefaultRunnerValidator:
         timed_out = any(bool(item.get("timed_out")) for item in trace)
         provider_failed = any(item.get("kind") == "action" and item.get("status") == "error" and not item.get("timed_out") for item in trace)
         actual_failure = "timeout" if timed_out else "provider_failure" if provider_failed else None
-        rule_contract = (
-            expected_failure is not None
-            or not covered
-            or (expected == "allow" and covered.isdisjoint(matched))
-            or (expected != "allow" and not covered.isdisjoint(matched))
-        )
         output_content = decision.texts[0] if decision.texts else "" if decision.decision == "block" else content
         assertion_failures = []
         runtime_failed = (
@@ -243,12 +243,13 @@ class DefaultRunnerValidator:
         )
         if runtime_failed and actual_failure is None:
             assertion_failures.append("Runtime failed closed without a classified infrastructure failure; this is not a Policy match.")
-        preempting_matches = []
-        if (not override and not rule_contract and expected in {"block", "intervene"}
-                and decision.decision == "block" and decision.action == "block"
-                and not runtime_failed and actual_failure is None and expected_failure is None):
-            preempting_matches = _ordered_preemption(plan, case, phase, findings, trace)
-            rule_contract = bool(preempting_matches)
+        # Require actual observations on declared views. Missing execution is not
+        # a negative detection, and another Rule's match is not target evidence.
+        evidence = _case_evidence(
+            plan, case, phase, expected, decision, findings, matched, content,
+            trusted=not runtime_failed and actual_failure is None and expected_failure is None, trace=trace,
+        )
+        rule_contract = expected_failure is not None or evidence["satisfied"]
         if override:
             actual_matches = {
                 (item.get("policy_id"), item.get("rule_id")) for item in findings
@@ -271,14 +272,18 @@ class DefaultRunnerValidator:
                 )
                 and all(item.get("recommended_action") == "allow" for item in findings)
             )
+            declared_override = all(_declared_rule(plan, policy_id, rule_id, phase)
+                                    for policy_id, rule_id in expected_matches)
             valid_override = (
-                bool(_string(override.get("reason")).strip())
+                declared_override and evidence["status"] not in {"missing", "unverifiable"}
+                and bool(_string(override.get("reason")).strip())
                 and override.get("sourcePolicyVersion") == case.get("sourcePolicyVersion")
                 and (bool(expected_matches) if expected != "allow" else template_expected == "allow" or records_only)
                 and (expected != "transform" or "expectedOutputContent" in override)
             )
             rule_contract = valid_override and (
-                expected_matches.issubset(actual_matches) if expected != "allow" or records_only else not actual_matches
+                expected_matches.issubset(actual_matches) if expected != "allow" or records_only
+                else evidence["satisfied"] and not actual_matches
             )
             if not valid_override:
                 assertion_failures.append("The reviewed expectation is invalid or stale.")
@@ -328,7 +333,7 @@ class DefaultRunnerValidator:
             "reason": "; ".join([
                 decision.reason or "",
                 *([f"Reviewed composition expectation: {_string(override.get('reason'))}"] if override else []),
-                *(["Execution order satisfied: an earlier Rule blocked the request before the target Rule could run."] if preempting_matches else []),
+                *_evidence_reason(evidence),
                 *assertion_failures,
             ]).strip("; "),
             "phase": phase,
@@ -355,7 +360,13 @@ class DefaultRunnerValidator:
             "sourceCaseId": _optional_string(case.get("sourceCaseId")),
             "coveredRuleIds": sorted(covered),
             "matchedRuleIds": matched,
-            "preemptingMatches": preempting_matches,
+            "preemptingMatches": [],  # Legacy reports used this as a passing substitute.
+            "evidenceStatus": evidence["status"],
+            "evidenceDetail": evidence.get("reason", ""),
+            "verifiedRuleIds": evidence["verifiedRules"],
+            "supersededBy": _superseded_by(evidence),
+            "ruleContractSatisfied": bool(rule_contract),
+            "evidenceContract": "rule-evidence-v1",
             "evaluationContracts": evaluation_contracts,
             "escalated": escalated,
             "modelInvocations": (
@@ -364,65 +375,225 @@ class DefaultRunnerValidator:
         }
 
 
-def _ordered_preemption(
-    plan: GuardrailPlanSnapshot, case: dict[str, Any], phase: str,
-    findings: list[dict[str, Any]], trace: list[dict[str, Any]],
-) -> list[dict[str, str]]:
-    """Prove a terminal match precedes every covered target in the authored order.
+def _case_evidence(
+    plan: GuardrailPlanSnapshot, case: dict[str, Any], phase: str, expected: str,
+    decision: Any, findings: list[dict[str, Any]], matched: list[str], content: str,
+    *, trusted: bool = True, trace: list[dict[str, Any]] | tuple = (),
+) -> dict[str, Any]:
+    """Classify target evidence without treating another Rule as its proof.
 
-    A matching final decision alone is insufficient: fail-closed responses and
-    unrelated/later detections cannot stand in for a target Rule. Transformations
-    continue execution and retain their exact-output assertions.
+    Counterfactual local rechecks explain redaction shadowing only. They never
+    satisfy acceptance, and never claim a model ran or observed a match.
     """
-    bindings = list(plan.policy_bindings)
-    target_index = next((i for i, b in enumerate(bindings)
-                         if b.policy_id == case.get("sourcePolicyId")), None)
-    if target_index is None:
-        return []
-    target = bindings[target_index]
-    covered = set(_list(case.get("coveredRuleIds")))
-    if (target.policy_version != case.get("sourcePolicyVersion")
-            or phase not in target.enabled_rails or not covered
-            or not covered.issubset(target.enabled_rule_ids)):
-        return []
+    covered = sorted({_string(value) for value in _list(case.get("coveredRuleIds")) if _string(value)})
+    evidence: dict[str, Any] = {
+        "status": "not_required", "satisfied": not covered, "coveredRuleIds": covered,
+        "supersededBy": [], "verifiedRules": [],
+    }
+    if not covered:
+        return evidence
+    policy_id = _optional_string(case.get("sourcePolicyId"))
+    if policy_id is None:
+        evidence.update(status="unverifiable", reason="Covered Rules need a pinned source Policy identity.")
+        return evidence
+    binding = _policy_binding(plan, policy_id)
+    if binding is None or binding.policy_version != _string(case.get("sourcePolicyVersion")):
+        evidence.update(status="missing", reason="The Test Case does not match the compiled Policy version.")
+        return evidence
+    if phase not in binding.enabled_rails:
+        evidence.update(status="missing", reason="The compiled Policy does not inspect this phase.")
+        return evidence
+    if not set(covered).issubset(binding.enabled_rule_ids):
+        evidence.update(status="missing", reason="One or more covered Rules are not enabled in this Guardrail.")
+        return evidence
+    targets = {rule: _rule_target(plan, policy_id, rule, phase) for rule in covered}
+    if any(resolved is None for resolved in targets.values()):
+        evidence.update(status="missing", reason="The compiled plan does not contain every covered Rule.")
+        return evidence
 
-    def rule_ids(binding):
-        # Match the compiler/runtime: explicit order, then the pinned source order.
-        version = next((v for v in plan.policy_versions
-                        if v.policy_id == binding.policy_id and v.version == binding.policy_version), None)
-        if version:
-            defaults = [f"flow/{rail.rail_type}/{rail.flow_name}" for rail in version.rail_bindings
-                        if rail.rail_type == phase]
-        else:
-            definition = next((definitions_from_parameters(dict(step.parameters)).get(binding.policy_id)
-                               for step in plan.steps if step.capability == "builtin_content_filter"
-                               and binding.policy_id in dict(step.parameters).get("policy_ids", "").splitlines()), None)
-            defaults = [r.id for r in definition.rules if phase in r.rails] if definition and definition.version == binding.policy_version else []
-        return list(dict.fromkeys([*binding.rule_order, *defaults]))
+    observed = sorted(set(covered).intersection(matched))
+    evidence["verifiedRules"] = observed
+    # Scenario coverage lists alternatives (for example any credential kind),
+    # while Rule acceptance requires each named target. Both need real matches
+    # within the pinned source, never an unrelated Policy's intervention.
+    scenario = case.get("caseType") == "scenario"
+    if observed and (expected == "allow" or scenario or set(covered).issubset(observed)):
+        evidence.update(status="observed", satisfied=trusted and expected != "allow",
+                        reason=("The scenario observed a match within its declared coverage; other covered Rules are not certified."
+                                if scenario else "The covered Rules produced matched findings on their declared views."))
+        return evidence
 
-    target_order = rule_ids(target)
-    target_executed = any(t.get("kind") == "action" and t.get("policy_id") == target.policy_id
-                          and t.get("status") != "skipped" for t in trace)
-    for finding in findings:
-        if finding.get("verdict") != "matched" or finding.get("recommended_action") != "block":
+    def reached(rule):
+        target = targets[rule]
+        # Legacy/custom content-filter steps can contain several Rules and stop
+        # inside the Action on their first Block. A matched Action trace cannot
+        # prove that a different Rule in that same step was reached.
+        if not complete_evidence_supported(plan) and target.get("canShortCircuitRules") and any(
+            item.get("policy_id") == policy_id and item.get("verdict") == "matched"
+            and item.get("recommended_action") == "block" for item in findings
+        ):
+            return False
+        steps = target.get("steps", ())
+        if steps:
+            executed = {item.get("id"): item for item in trace
+                        if item.get("kind") == "action" and item.get("status") not in {"skipped", "cancelled"}}
+            for step in steps:
+                prerequisite = executed.get(f"nemo:action:{step.trigger.step_ref}", {})
+                required = step.trigger.type == "always" or prerequisite.get("verdict") in step.trigger.verdicts
+                if required and f"nemo:action:{step.id}" not in executed:
+                    return False
+            # A native Rule can span an exact/semantic chain. Its completed
+            # terminal evaluator decides absence; an intermediate unknown does
+            # not invalidate a conclusive escalation, or certify one by itself.
+            terminal = next((executed[f"nemo:action:{step.id}"] for step in reversed(steps)
+                             if f"nemo:action:{step.id}" in executed), {})
+            return terminal.get("verdict") in {"matched", "not_matched"}
+        return any(item.get("id") == f"nemo:action:{target['bindingId']}"
+                   and item.get("verdict") in {"matched", "not_matched"}
+                   for item in trace)
+
+    pending = [rule for rule in covered if rule not in observed]
+    if all(reached(rule) for rule in pending):
+        evidence.update(status="absent" if expected == "allow" else "not_matched",
+                        satisfied=trusted and expected == "allow",
+                        reason="The covered Rules ran but did not match on their declared views.")
+        # Only an original-input match plus an actual transform can explain
+        # consumption. This is diagnostic evidence, never a passing substitute.
+        mutating = [item for item in findings if item.get("verdict") == "matched"
+                    and item.get("recommended_action") == "transform"
+                    and _declared_rule(plan, item.get("policy_id"), item.get("rule_id"), phase)]
+        consumed = [rule for rule in pending if targets[rule]["view"] == "previous_output"
+                    and targets[rule].get("capability") == "builtin_content_filter"
+                    and _rule_matches_content(targets[rule]["parameters"], rule, phase, content)]
+        if expected != "allow" and mutating and len(consumed) == len(pending):
+            evidence.update(status="shadowed_by", supersededBy=_merge_matches(mutating),
+                            reason="The covered Rules match the original input only, not their declared transformed views; this does not prove Rule acceptance.")
+        return evidence
+
+    terminal = [item for item in findings if item.get("verdict") == "matched"
+                and item.get("recommended_action") == "block"
+                and _declared_rule(plan, item.get("policy_id"), item.get("rule_id"), phase)]
+    evidence.update(status="preempted_by" if terminal and decision.decision == "block" else "not_reached",
+                    supersededBy=_merge_matches(terminal),
+                    reason="The run did not observe a conclusive result for every covered Rule; another Rule cannot satisfy its acceptance test.")
+    return evidence
+
+
+def _policy_binding(plan: GuardrailPlanSnapshot, policy_id: str | None):
+    if policy_id is None:
+        return None
+    return next((item for item in plan.policy_bindings if item.policy_id == policy_id), None)
+
+
+def _declared_rule(
+    plan: GuardrailPlanSnapshot, policy_id: str | None, rule_id: str | None, phase: str,
+) -> bool:
+    """Only an enabled Rule of a compiled Policy can supersede a covered Rule."""
+    binding = _policy_binding(plan, policy_id)
+    return bool(
+        rule_id
+        and binding is not None
+        and phase in binding.enabled_rails
+        and rule_id in binding.enabled_rule_ids
+        and _rule_target(plan, policy_id, rule_id, phase) is not None
+    )
+
+
+def _rule_target(
+    plan: GuardrailPlanSnapshot, policy_id: str | None, rule_id: str, phase: str,
+) -> dict[str, Any] | None:
+    """Resolve one covered Rule to the compiled step or NeMo Flow that owns it."""
+    if policy_id is None:
+        return None
+    resolved_steps = []
+    for step in plan.steps:
+        if phase not in step.phases:
             continue
-        index = next((i for i, b in enumerate(bindings) if b.policy_id == finding.get("policy_id")), None)
-        if index is None or index > target_index:
+        parameters = dict(step.parameters)
+        if parameters.get("policy_id") != policy_id:
             continue
-        binding = bindings[index]
-        rule_id = finding.get("rule_id")
-        if phase not in binding.enabled_rails or rule_id not in binding.enabled_rule_ids:
+        selected = _policy_binding(plan, policy_id)
+        # Catalog-native Actions own the binding's sole detector Rule. Match the
+        # Runtime's identity mapping without inventing a missing executable step.
+        native_single_rule = (step.capability != "builtin_content_filter"
+                              and not parameters.get("rule_id") and selected is not None
+                              and selected.enabled_rule_ids == (rule_id,)
+                              and parameters.get("policy_version") == selected.policy_version)
+        if parameters.get("rule_id") == rule_id or rule_id in _compiled_rules(parameters) or native_single_rule:
+            resolved_steps.append(step)
+    if resolved_steps:
+        step = resolved_steps[0]
+        parameters = dict(step.parameters)
+        return {
+            "bindingId": step.id,
+            "steps": resolved_steps,
+            "capability": step.capability,
+            "canShortCircuitRules": step.capability == "builtin_content_filter" and len(_compiled_rules(parameters)) > 1,
+            "view": parameters.get("evaluation_view", ""),
+            "parameters": step.parameters,
+        }
+    for version in plan.policy_versions:
+        if version.policy_id != policy_id:
             continue
-        if index < target_index:
-            if target_executed:
-                continue
-        else:
-            if rule_id not in target_order or not covered.issubset(target_order):
-                continue
-            if target_order.index(rule_id) >= min(target_order.index(r) for r in covered):
-                continue
-        return [{"policyId": binding.policy_id, "ruleId": rule_id}]
-    return []
+        for rail in version.rail_bindings:
+            if rail.rail_type == phase and flow_rule_id(phase, rail.flow_name) == rule_id:
+                return {
+                    "bindingId": f"tl.{policy_id}.v{version.version}.{rail.flow_name}",
+                    "view": "previous_output" if rail.execution_mode == "mutate" else "",
+                    "parameters": (),
+                }
+    return None
+
+
+def _compiled_rules(parameters: dict[str, Any]) -> list[str]:
+    try:
+        decoded = json.loads(parameters.get("enabled_rules_json", "{}"))
+    except ValueError:
+        return []
+    if not isinstance(decoded, dict):
+        return []
+    rules = decoded.get(parameters.get("policy_id"))
+    return [item for item in rules if isinstance(item, str)] if isinstance(rules, list) else []
+
+
+def _rule_matches_content(parameters: tuple[tuple[str, str], ...], rule_id: str, phase: str, content: str) -> bool:
+    try:
+        result = evaluate_parameters(
+            BuiltinContentFilter(), text=content, phase=phase, parameters=parameters,
+        )
+    except (ValueError, KeyError, TypeError):
+        return False
+    return any(
+        finding.rule_id == rule_id and finding.verdict == "matched"
+        for finding in result.findings
+    )
+
+
+def _evidence_reason(evidence: dict[str, Any]) -> list[str]:
+    if evidence["status"] in {"observed", "not_required", "absent"}:
+        return []
+    superseding = ", ".join(f"{item['policyId']}/{item['ruleId']}" for item in _superseded_by(evidence))
+    return [f"Rule evidence [{evidence['status']}]: {evidence.get('reason', 'No conclusive target evidence.')}"
+            + (f" Other matching Rules: {superseding}." if superseding else "")]
+
+
+def _superseded_by(evidence: dict[str, Any]) -> list[dict[str, str]]:
+    return [
+        {"policyId": _string(item.get("policyId")), "ruleId": _string(item.get("ruleId"))}
+        for item in _list(evidence.get("supersededBy"))
+    ]
+
+
+def _merge_matches(findings: list[dict[str, Any]]) -> list[dict[str, str]]:
+    seen: list[dict[str, str]] = []
+    for item in findings:
+        entry = {
+            "policyId": _string(item.get("policy_id")),
+            "ruleId": _string(item.get("rule_id")),
+        }
+        if entry["ruleId"] and entry not in seen:
+            seen.append(entry)
+    return seen
 
 
 def _local_validation_providers() -> ActionProviders:

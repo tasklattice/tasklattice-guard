@@ -15500,6 +15500,15 @@
             },
             "type": "array"
           },
+          "evidenceContract": {
+            "type": "string"
+          },
+          "evidenceDetail": {
+            "type": "string"
+          },
+          "evidenceStatus": {
+            "type": "string"
+          },
           "expectationOverride": {
             "$ref": "#/components/schemas/getGuardrailProfilesResponseItemsItemPolicyBindingsItemTestCaseOverridesValue"
           },
@@ -15587,6 +15596,13 @@
           "required": {
             "type": "boolean"
           },
+          "ruleContractSatisfied": {
+            "enum": [
+              false,
+              true
+            ],
+            "type": "boolean"
+          },
           "skipReason": {
             "type": "string"
           },
@@ -15627,6 +15643,12 @@
               }
             ]
           },
+          "supersededBy": {
+            "items": {
+              "$ref": "#/components/schemas/postGuardrailsByIdVersionsByVersionTestRunsResponseResultsItemSupersededByItem"
+            },
+            "type": "array"
+          },
           "targetSource": {
             "type": "string"
           },
@@ -15641,6 +15663,12 @@
           },
           "trustedInstruction": {
             "type": "string"
+          },
+          "verifiedRuleIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           }
         },
         "required": [
@@ -15683,6 +15711,21 @@
         "type": "object"
       },
       "postGuardrailsByIdVersionsByVersionTestRunsResponseResultsItemPreemptingMatchesItem": {
+        "properties": {
+          "policyId": {
+            "type": "string"
+          },
+          "ruleId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "policyId",
+          "ruleId"
+        ],
+        "type": "object"
+      },
+      "postGuardrailsByIdVersionsByVersionTestRunsResponseResultsItemSupersededByItem": {
         "properties": {
           "policyId": {
             "type": "string"
