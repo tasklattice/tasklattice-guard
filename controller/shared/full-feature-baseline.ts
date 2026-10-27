@@ -1,12 +1,12 @@
 import type { GuardrailProfile } from "./protection-map.js";
 
-// Frozen from output/pii-context-20261023/combined.patch.json.
-// The instance-specific jailbreak policy is replaced by its bundled equivalent.
+// Version 2 adds the benchmark-family protections to the frozen PII baseline.
+// Policy versions, Rule selections and Topic defaults are explicit snapshots.
 export const fullFeatureBaseline: GuardrailProfile = {
   "id": "full-feature-baseline",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "name": "Full-feature baseline",
-  "description": "Start with the reviewed benchmark configuration: credentials, payment data, government identifiers, passports, contact data, network addresses, strict jailbreak and content safety. Remove protections you do not need.",
+  "description": "Start with credentials, personal data, semantic PII, input and output content safety, jailbreak, direct and indirect injection, memory poisoning, data-use boundaries and a harmful-task denylist. Remove protections you do not need.",
   "industry": "general",
   "jurisdictions": [],
   "policies": [
@@ -1572,6 +1572,210 @@ export const fullFeatureBaseline: GuardrailProfile = {
       "testCaseOverrides": {},
       "ruleActions": {},
       "enabledRails": [
+        "input",
+        "output"
+      ],
+      "reasoningPolicy": null
+    },
+    {
+      "policyId": "local-injection-protection",
+      "policyVersion": "4.0.0",
+      "action": null,
+      "parameterValues": {},
+      "enabledRuleIds": [
+        "prompt-injection-blocker/blocked-word-1",
+        "prompt-injection-blocker/blocked-word-2",
+        "prompt-injection-blocker/blocked-word-3",
+        "prompt-injection-blocker/blocked-word-4",
+        "prompt-injection-blocker/blocked-word-5",
+        "prompt-injection-blocker/blocked-word-6",
+        "prompt-injection-blocker/blocked-word-7",
+        "prompt-injection-blocker/blocked-word-8",
+        "prompt-injection-blocker/blocked-word-9",
+        "prompt-injection-blocker/blocked-word-10",
+        "prompt-injection-blocker/blocked-word-11",
+        "prompt-injection-blocker/blocked-word-12",
+        "prompt-injection-blocker/blocked-word-13",
+        "prompt-injection-blocker/blocked-word-14",
+        "sql-injection-blocker/blocked-word-1",
+        "sql-injection-blocker/blocked-word-2",
+        "sql-injection-blocker/blocked-word-3",
+        "sql-injection-blocker/blocked-word-4",
+        "sql-injection-blocker/blocked-word-5",
+        "sql-injection-blocker/blocked-word-6",
+        "sql-injection-blocker/blocked-word-7",
+        "sql-injection-blocker/blocked-word-8",
+        "code-injection-blocker/blocked-word-3",
+        "code-injection-blocker/blocked-word-4",
+        "code-injection-blocker/blocked-word-5",
+        "code-injection-blocker/blocked-word-6",
+        "code-injection-blocker/blocked-word-7",
+        "application/active-html",
+        "application/template-traversal",
+        "category/prompt_injection_jailbreak",
+        "category/prompt_injection_data_exfiltration",
+        "category/prompt_injection_sql",
+        "category/prompt_injection_malicious_code",
+        "category/prompt_injection_system_prompt",
+        "cn-prompt-security/instruction-override",
+        "cn-prompt-security/prompt-extraction",
+        "cn-prompt-security/unrestricted-mode",
+        "claims-system-override-filter/claims_system_override",
+        "code-injection-blocker/blocked-word-1",
+        "code-injection-blocker/blocked-word-2"
+      ],
+      "ruleOrder": [
+        "prompt-injection-blocker/blocked-word-1",
+        "prompt-injection-blocker/blocked-word-2",
+        "prompt-injection-blocker/blocked-word-3",
+        "prompt-injection-blocker/blocked-word-4",
+        "prompt-injection-blocker/blocked-word-5",
+        "prompt-injection-blocker/blocked-word-6",
+        "prompt-injection-blocker/blocked-word-7",
+        "prompt-injection-blocker/blocked-word-8",
+        "prompt-injection-blocker/blocked-word-9",
+        "prompt-injection-blocker/blocked-word-10",
+        "prompt-injection-blocker/blocked-word-11",
+        "prompt-injection-blocker/blocked-word-12",
+        "prompt-injection-blocker/blocked-word-13",
+        "prompt-injection-blocker/blocked-word-14",
+        "sql-injection-blocker/blocked-word-1",
+        "sql-injection-blocker/blocked-word-2",
+        "sql-injection-blocker/blocked-word-3",
+        "sql-injection-blocker/blocked-word-4",
+        "sql-injection-blocker/blocked-word-5",
+        "sql-injection-blocker/blocked-word-6",
+        "sql-injection-blocker/blocked-word-7",
+        "sql-injection-blocker/blocked-word-8",
+        "code-injection-blocker/blocked-word-3",
+        "code-injection-blocker/blocked-word-4",
+        "code-injection-blocker/blocked-word-5",
+        "code-injection-blocker/blocked-word-6",
+        "code-injection-blocker/blocked-word-7",
+        "application/active-html",
+        "application/template-traversal",
+        "category/prompt_injection_jailbreak",
+        "category/prompt_injection_data_exfiltration",
+        "category/prompt_injection_sql",
+        "category/prompt_injection_malicious_code",
+        "category/prompt_injection_system_prompt",
+        "cn-prompt-security/instruction-override",
+        "cn-prompt-security/prompt-extraction",
+        "cn-prompt-security/unrestricted-mode",
+        "claims-system-override-filter/claims_system_override",
+        "code-injection-blocker/blocked-word-1",
+        "code-injection-blocker/blocked-word-2"
+      ],
+      "testCaseOverrides": {},
+      "ruleActions": {},
+      "enabledRails": [
+        "input",
+        "output"
+      ],
+      "reasoningPolicy": null
+    },
+    {
+      "policyId": "builtin-indirect-prompt-injection",
+      "policyVersion": "1.0.1",
+      "action": null,
+      "parameterValues": {},
+      "enabledRuleIds": [
+        "boundary/indirect-injection"
+      ],
+      "ruleOrder": [
+        "boundary/indirect-injection"
+      ],
+      "testCaseOverrides": {},
+      "ruleActions": {},
+      "enabledRails": [
+        "input"
+      ],
+      "reasoningPolicy": null
+    },
+    {
+      "policyId": "builtin-memory-poisoning",
+      "policyVersion": "1.0.1",
+      "action": null,
+      "parameterValues": {},
+      "enabledRuleIds": [
+        "boundary/memory-poisoning"
+      ],
+      "ruleOrder": [
+        "boundary/memory-poisoning"
+      ],
+      "testCaseOverrides": {},
+      "ruleActions": {},
+      "enabledRails": [
+        "input"
+      ],
+      "reasoningPolicy": null
+    },
+    {
+      "policyId": "builtin-pii",
+      "policyVersion": "1.1.0",
+      "action": null,
+      "parameterValues": {},
+      "enabledRuleIds": [
+        "model/pii"
+      ],
+      "ruleOrder": [
+        "model/pii"
+      ],
+      "testCaseOverrides": {},
+      "ruleActions": {},
+      "enabledRails": [
+        "input",
+        "output"
+      ],
+      "reasoningPolicy": null
+    },
+    {
+      "policyId": "local-data-use-boundaries",
+      "policyVersion": "4.0.0",
+      "action": null,
+      "parameterValues": {},
+      "enabledRuleIds": [
+        "claims-phi-disclosure-filter/claims_phi_disclosure",
+        "sg-pdpa-personal-identifiers/sg_pdpa_personal_identifiers",
+        "sg-pdpa-sensitive-data/sg_pdpa_sensitive_data",
+        "sg-pdpa-do-not-call/sg_pdpa_do_not_call",
+        "sg-pdpa-data-transfer/sg_pdpa_data_transfer",
+        "sg-pdpa-profiling-automated-decisions/sg_pdpa_profiling_automated_decisions"
+      ],
+      "ruleOrder": [
+        "claims-phi-disclosure-filter/claims_phi_disclosure",
+        "sg-pdpa-personal-identifiers/sg_pdpa_personal_identifiers",
+        "sg-pdpa-sensitive-data/sg_pdpa_sensitive_data",
+        "sg-pdpa-do-not-call/sg_pdpa_do_not_call",
+        "sg-pdpa-data-transfer/sg_pdpa_data_transfer",
+        "sg-pdpa-profiling-automated-decisions/sg_pdpa_profiling_automated_decisions"
+      ],
+      "testCaseOverrides": {},
+      "ruleActions": {},
+      "enabledRails": [
+        "input",
+        "output"
+      ],
+      "reasoningPolicy": null
+    },
+    {
+      "policyId": "builtin-topic-safety",
+      "policyVersion": "2.0.0",
+      "action": null,
+      "parameterValues": {
+        "allowed_topics": "",
+        "denied_topics": "Instructions to commit violent crime\nInstructions to build or obtain illegal weapons\nFacilitating fraud, credential theft, or unauthorized data exfiltration\nDeploying malware or exploiting systems without authorization\nSexual exploitation or abuse of children\nEncouragement or instructions for suicide or self-harm",
+        "topic_mode": "permissive"
+      },
+      "enabledRuleIds": [
+        "topic/denylist"
+      ],
+      "ruleOrder": [
+        "topic/denylist"
+      ],
+      "testCaseOverrides": {},
+      "ruleActions": {},
+      "enabledRails": [
         "input"
       ],
       "reasoningPolicy": null
@@ -1580,16 +1784,18 @@ export const fullFeatureBaseline: GuardrailProfile = {
   "draftSettings": {
     "allowedTopics": [],
     "restrictedTopics": [],
-    "topicControlMode": "strict",
+    "topicControlMode": "permissive",
     "safetyLevel": "balanced",
     "outputDelivery": "full_buffered"
   },
   "suggestedTopics": [],
   "optionalPolicyIds": [],
   "limitations": [
-    "Requires platform model assignments for jailbreak detection and content safety. Configure and validate these once in Model settings; credentials are never stored in a Profile.",
-    "Full-feature refers to the benchmark scope, not every available protection or complete sensitive-data detection. Review and validate the resulting selection before publishing.",
-    "Removing Policies, Rules or Rails restores inherited test assertions where benchmark expectations depended on the removed selection. Run validation again after editing."
+    "Model checks reuse platform assignments: jailbreak.input, content_safety.input/output, pii_semantic.input/output and topic_control.input. Missing assignments do not prevent creation or publication; apply compatible models before running model checks.",
+    "Indirect injection and memory poisoning require callers to provide retrieved_content or tool_output provenance, plus memory source-query evidence when applicable. Enabling these Policies does not establish an Agent integration or multi-turn benchmark coverage.",
+    "Topic Control enables only a prefilled harmful-task denylist. Ordinary topics remain open; adjust these topics for your application.",
+    "The original benchmark Policy pins and 106 expectation overlays are retained. Additional protections can change decisions, so rerun tests; this Profile does not inherit benchmark scores or prove complete PII, PHI or attack detection.",
+    "Removing Policies, Rules or Rails restores inherited test assertions where expectations depended on removed selections. User-authored invalid references still require review. Failed tests remain publishable."
   ],
   "category": "full_feature",
   "categoryName": "Full-feature baseline",
