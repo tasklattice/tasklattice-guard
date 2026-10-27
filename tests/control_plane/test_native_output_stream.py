@@ -58,7 +58,7 @@ def plan(*, action="block", delivery="window_buffered", count=1):
         guardrail_id="native-stream", guardrail_version="1", compiler_version="test",
         safety_level="balanced", output_delivery=delivery,
         steps=tuple(GuardrailPlanStep(
-            parameters=(("evaluation_view", "original"),),
+            parameters=(("evaluation_view", "original"), ("precedence", str(i))),
             id=f"safety-{i}", capability="content_safety", contract_ref="tali.guard.content-safety.v1",
             phases=("input", "output"), on_unsafe=action,
         ) for i in range(count)),

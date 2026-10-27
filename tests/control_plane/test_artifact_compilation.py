@@ -137,7 +137,7 @@ def test_model_capability_compiles_to_a_provider_agnostic_action_binding() -> No
             "phases": ["input"],
             "on_unsafe": "block",
             "trigger": {"type": "always", "verdicts": []},
-            "parameters": [["evaluation_view", "previous_output"]],
+            "parameters": [["evaluation_view", "previous_output"], ["precedence", "0"]],
         }],
         "modules": [{
             "id": "interaction_safety:input",
@@ -190,7 +190,7 @@ def _compile(
             "phases": phases,
             "on_unsafe": on_unsafe,
             "trigger": {"type": "always", "verdicts": []},
-            "parameters": [["evaluation_view", "previous_output"]],
+            "parameters": [["evaluation_view", "previous_output"], ["precedence", "0"]],
         }],
         "modules": [
             {

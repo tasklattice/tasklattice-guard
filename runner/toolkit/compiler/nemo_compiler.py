@@ -96,10 +96,17 @@ class NeMoConfigCompiler:
 
     def compile(self, plan: GuardrailPlanSnapshot) -> NeMoConfigSnapshot:
         _validate_execution_order(plan)
+        precedence = set()
         for step in plan.steps:
             views = [value for key, value in step.parameters if key == "evaluation_view"]
             if len(views) != 1 or views[0] not in {"original", "previous_output"}:
                 raise PlanCompilationError(f"Step {step.id!r} must declare exactly one valid evaluation_view.")
+            positions = [value for key, value in step.parameters if key == "precedence"]
+            if len(positions) != 1 or not re.fullmatch(r"0|[1-9][0-9]*", positions[0]):
+                raise PlanCompilationError(f"Step {step.id!r} must declare exactly one non-negative integer precedence.")
+            if positions[0] in precedence:
+                raise PlanCompilationError("Step precedence values must be unique across the plan.")
+            precedence.add(positions[0])
             if step.capability == "builtin_content_filter":
                 definitions_from_parameters(dict(step.parameters))
         selected = {(item.policy_id, item.policy_version): item for item in plan.policy_bindings}

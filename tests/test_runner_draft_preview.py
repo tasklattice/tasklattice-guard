@@ -22,7 +22,7 @@ PLAN = {
         "phases": ["input", "output"],
         "on_unsafe": "block",
         "trigger": {"type": "always", "verdicts": []},
-        "parameters": [["evaluation_view", "original"]],
+        "parameters": [["evaluation_view", "original"], ["precedence", "0"]],
     }],
     "modules": [{
         "id": "data_protection:input",

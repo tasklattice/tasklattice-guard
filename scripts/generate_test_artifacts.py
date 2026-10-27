@@ -79,7 +79,7 @@ def _plan() -> dict[str, object]:
             "phases": ["input", "output"],
             "on_unsafe": "block",
             "trigger": {"type": "always", "verdicts": []},
-            "parameters": [["evaluation_view", "original"]],
+            "parameters": [["evaluation_view", "original"], ["precedence", "0"]],
         }],
         "modules": [
             {
@@ -130,6 +130,7 @@ def _ordered_plan() -> dict[str, object]:
         "trigger": {"type": "always", "verdicts": []},
         "parameters": [
             ["evaluation_view", "previous_output"],
+            ["precedence", "0"],
             ["policy_id", "fixture-redactions"], ["policy_version", "1.95.0"],
             ["policy_ids", "fixture-redactions"],
             ["policy_versions_json", json.dumps({definition.id: definition.version})],
@@ -138,7 +139,7 @@ def _ordered_plan() -> dict[str, object]:
             ["rule_actions_json", json.dumps({"fixture-redactions": {"pattern/email": "transform", "pattern/generic_api_key": "transform"}})],
         ],
     }
-    plan["steps"][0]["parameters"] = [["evaluation_view", "previous_output"]]
+    plan["steps"][0]["parameters"] = [["evaluation_view", "previous_output"], ["precedence", "1"]]
     plan["steps"] = [redactions, *plan["steps"]]
     plan["modules"] = [
         {**module, "id": f"local-redactions:{module['phase']}", "step_ids": ["local:redactions"], "input_view": "previous_output"}
@@ -168,7 +169,7 @@ def _topic_plan() -> dict[str, object]:
     plan = _jailbreak_plan()
     plan['steps'][0].update(id='topic:semantic:input', capability='topic_control',
         contract_ref='tali.guard.topic-control.semantic.v1',
-        parameters=[['evaluation_view', 'original'], ['topic_mode', 'allowlist'], ['allowed_topics', 'Product support']])
+        parameters=[['evaluation_view', 'original'], ['precedence', '0'], ['topic_mode', 'allowlist'], ['allowed_topics', 'Product support']])
     plan['modules'][0].update(step_ids=['topic:semantic:input'])
     return plan
 

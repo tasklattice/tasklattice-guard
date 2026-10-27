@@ -87,6 +87,8 @@ class _ControlMetrics:
 
 
 def _plan(*steps: GuardrailPlanStep) -> GuardrailPlanSnapshot:
+    steps = tuple(replace(step, parameters=(*step.parameters, ("precedence", str(index))))
+                  for index, step in enumerate(steps))
     phases = tuple(dict.fromkeys(phase for step in steps for phase in step.phases))
     return GuardrailPlanSnapshot(
         guardrail_id="topic-guard",

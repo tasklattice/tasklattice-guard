@@ -86,7 +86,7 @@ async def validate_capability(
             capability = "pii" if binding.capability_ref == "pii_semantic" else binding.capability_ref
             step = GuardrailPlanStep(id="candidate", capability=capability, contract_ref=contract,
                                      phases=(phase,), on_unsafe="block",
-                                     parameters=(("evaluation_view", "original"),) + (
+                                     parameters=(("evaluation_view", "original"), ("precedence", "0")) + (
                                          (("policy_snapshot_id", "candidate-proof"),) if formal else
                                          (("allowed_topics", "Product support and password reset"), ("topic_mode", "strict"))
                                          if binding.capability_ref == "topic_control" else ()))

@@ -53,7 +53,7 @@ def chain_plan(steps, phase, programmable=False):
             "contract_ref": "tali.guard.secrets.exact.v1", "phases": [phase],
             "on_unsafe": action,
             "parameters": [["policy_id", identity], ["needle", needle], ["replacement", replacement],
-                           ["evaluation_view", "previous_output"]],
+                           ["evaluation_view", "previous_output"], ["precedence", str(index)]],
             "trigger": {"type": "on_result", "step_ref": steps[index - 1][0], "verdicts": ["not_matched", "matched"]}
             if programmable and index else {"type": "always"},
         })
@@ -337,9 +337,9 @@ async def test_split_topic_rules_short_circuit_and_trace_their_own_identity(enab
                     verdict="matched", confidence=1.0, evidence="Synthetic topic test", recommended_action="block"),) if unsafe else ())
 
     plan = chain_plan([(rule, "", "", "block") for rule in enabled], "input")
-    for step in plan["steps"]:
+    for index, step in enumerate(plan["steps"]):
         step.update(capability="topic_control", contract_ref="tali.guard.topic-control.semantic.v1",
-            parameters=[["evaluation_view", "original"], ["policy_id", "builtin-topic-safety"], ["policy_version", "2.0.0"], ["rule_id", step["id"]]])
+            parameters=[["evaluation_view", "original"], ["precedence", str(index)], ["policy_id", "builtin-topic-safety"], ["policy_version", "2.0.0"], ["rule_id", step["id"]]])
     plan["policy_bindings"] = [{"policy_id": "builtin-topic-safety", "policy_version": "2.0.0",
         "enabled_rule_ids": enabled, "enabled_rails": ["input"], "parameter_values": [], "rule_actions": []}]
     provider = RecordingTopic()
@@ -396,3 +396,32 @@ def test_compilation_and_execution_reject_missing_or_ambiguous_views(views):
                                 phases=("input",), on_unsafe="block", parameters=tuple(map(tuple, views)))
     with pytest.raises(ValueError, match="exactly one valid evaluation_view"):
         NeMoActionBridge._declared_view(binding)
+
+
+@pytest.mark.parametrize("positions", [[], ["-1"], ["1.5"], ["NaN"], [""], [" 1"], ["+1"], ["01"], ["１"], ["0", "1"]])
+def test_compiler_rejects_missing_or_invalid_precedence(positions):
+    from runner.serialization import plan_from_dict
+    from runner.toolkit.compiler.nemo_compiler import NeMoConfigCompiler
+    from runner.toolkit.compiler.domain import PlanCompilationError
+
+    plan = chain_plan([("target", "alpha", "unused", "block")], "input")
+    parameters = plan["steps"][0]["parameters"]
+    plan["steps"][0]["parameters"] = [entry for entry in parameters if entry[0] != "precedence"] + [
+        ["precedence", value] for value in positions]
+    with pytest.raises(PlanCompilationError, match="exactly one non-negative integer precedence"):
+        NeMoConfigCompiler().compile(plan_from_dict(plan))
+
+
+def test_precedence_is_unique_but_not_derived_from_execution_order():
+    from runner.serialization import plan_from_dict
+    from runner.toolkit.compiler.nemo_compiler import NeMoConfigCompiler
+    from runner.toolkit.compiler.domain import PlanCompilationError
+
+    plan = chain_plan([("first", "alpha", "unused", "block"), ("second", "beta", "unused", "allow")], "input")
+    for step, position in zip(plan["steps"], ["7", "3"]):
+        step["parameters"] = [entry for entry in step["parameters"] if entry[0] != "precedence"] + [["precedence", position]]
+    snapshot = NeMoConfigCompiler().compile(plan_from_dict(plan))
+    assert [dict(item.parameters)["precedence"] for item in snapshot.action_bindings] == ["7", "3"]
+    plan["steps"][1]["parameters"][-1][1] = "7"
+    with pytest.raises(PlanCompilationError, match="precedence values must be unique"):
+        NeMoConfigCompiler().compile(plan_from_dict(plan))
