@@ -40,7 +40,7 @@ async def test_observation_respects_action_without_relabeling_model_verdict(acti
     providers = action_providers(*dynamic_runtime_action_providers(
         config, {'provider-1': 'synthetic'}, transport=httpx.MockTransport(respond)))
     step = replace(_semantic_input(), id='jailbreak', capability='jailbreak',
-                   contract_ref='tali.guard.jailbreak.v1', on_unsafe=action, parameters=() if on_unknown == "default" else (("on_unknown", on_unknown),))
+                   contract_ref='tali.guard.jailbreak.v1', on_unsafe=action, parameters=(("evaluation_view", "original"),) + (() if on_unknown == "default" else (("on_unknown", on_unknown),)))
     if profile == 'programmable':
         prerequisite = replace(step, id='prerequisite', on_unsafe='allow')
         step = replace(step, trigger=EvaluationTrigger(type='on_result', step_ref='prerequisite',
