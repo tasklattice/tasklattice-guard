@@ -145,6 +145,7 @@ enum ValidationStatus {
   VALIDATION_STATUS_UNSPECIFIED = 0;
   VALIDATION_STATUS_PASSED = 1;
   VALIDATION_STATUS_FAILED = 2;
+  VALIDATION_STATUS_CANCELLED = 3;
 }
 
 // Expected or observed content decision for one validation case.

@@ -360,8 +360,9 @@ function expectationToWire(value: unknown): import("../generated/control-protoco
   };
 }
 
-export function validationStatusFromWire(value: unknown): "passed" | "failed" {
-  return domainEnum("VALIDATION_STATUS", value) === "passed" ? "passed" : "failed";
+export function validationStatusFromWire(value: unknown): "passed" | "failed" | "cancelled" {
+  const status = domainEnum("VALIDATION_STATUS", value);
+  return status === "passed" || status === "cancelled" ? status : "failed";
 }
 
 function promptToWire(prompt: Record<string, unknown>): PromptDefinition {

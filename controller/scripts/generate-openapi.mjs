@@ -1,8 +1,8 @@
 // Generate from the actual Hono handlers, their Zod parsers and TypeScript response types.
-// This runs at build time only; it never starts the app or connects to a database.
+// This runs before development, tests and builds; it never starts the app or connects to a database.
 import { API, TypeFlags as F, SymbolFlags } from 'typescript/unstable/sync';
 import * as ast from 'typescript/unstable/ast';
-import { readFile, writeFile, mkdir, rm } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, rename, rm } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { z } from 'zod';
@@ -17,6 +17,7 @@ import { MAX_DOCUMENTS, MAX_DOCUMENT_BYTES, MAX_TOTAL_BYTES } from '../server/co
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const output = resolve(root, 'openapi/controller.openapi.json');
+const pendingOutput = resolve(root, `openapi/.controller.openapi-${process.pid}.tmp`);
 const api = new API({ cwd: root });
 const temp = resolve(root, `scripts/.openapi-inputs-${process.pid}.ts`);
 const nodes = root => { const result = []; function visit(node) { result.push(node); node.forEachChild(visit); } visit(root); return result; };
@@ -214,7 +215,14 @@ try {
   const document={openapi:'3.1.0',info:{title:'TaskLattice Guard Controller API',version:pkg.version,description:'Generated from Hono handlers, runtime Zod schemas, TypeScript JSON response types, and the token permission allowlist. Personal tokens use Authorization: Bearer <token>. Never put tokens in URLs. A supplied invalid credential does not fall back to a browser cookie. Runner data-plane and internal control APIs, metrics, and Better Auth endpoints are separate contracts.'},servers:[{url:'/',description:'The Controller serving this document.'}],tags:apiTags,paths,components:{securitySchemes:{personalAccessToken:{type:'http',scheme:'bearer',bearerFormat:'tlg_pat_<opaque-secret>',description:'Personal access token; module permissions and current account role both apply.'},sessionCookie:{type:'apiKey',in:'cookie',name:`${GUARD_AUTH_COOKIE_PREFIX}.session_token`,description:'Better Auth browser session. Production deployments may use the __Secure- cookie prefix.'}},schemas:components}};
   await SwaggerParser.validate(structuredClone(document));
   const text=JSON.stringify(stable(document),null,2)+'\n';
-  if(process.argv.includes('--check'))assert(await readFile(output,'utf8')===text,'OpenAPI document is stale. Run npm run openapi:generate and commit the generated artifact.');
-  else {await mkdir(dirname(output),{recursive:true});await writeFile(output,text);}
-  console.log(`${process.argv.includes('--check')?'Checked':'Generated'} ${entries.length} operations and ${Object.keys(components).length} schemas: openapi/controller.openapi.json`);
-} finally { api.close(); await rm(temp,{force:true}); }
+  const previous = await readFile(output, 'utf8').catch(error => {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  });
+  if (previous !== text) {
+    await mkdir(dirname(output), { recursive: true });
+    await writeFile(pendingOutput, text);
+    await rename(pendingOutput, output);
+  }
+  console.log(`Generated ${entries.length} operations and ${Object.keys(components).length} schemas: openapi/controller.openapi.json`);
+} finally { api.close(); await rm(temp,{force:true}); await rm(pendingOutput,{force:true}); }

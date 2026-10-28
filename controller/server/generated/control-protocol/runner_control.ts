@@ -56,11 +56,14 @@ import type { RuntimeTraceStep as _tasklattice_guard_control_v1_RuntimeTraceStep
 import type { StringPair as _tasklattice_guard_control_v1_StringPair, StringPair__Output as _tasklattice_guard_control_v1_StringPair__Output } from './tasklattice/guard/control/v1/StringPair.js';
 import type { TrafficCondition as _tasklattice_guard_control_v1_TrafficCondition, TrafficCondition__Output as _tasklattice_guard_control_v1_TrafficCondition__Output } from './tasklattice/guard/control/v1/TrafficCondition.js';
 import type { TrafficScope as _tasklattice_guard_control_v1_TrafficScope, TrafficScope__Output as _tasklattice_guard_control_v1_TrafficScope__Output } from './tasklattice/guard/control/v1/TrafficScope.js';
+import type { ValidationCancelRequest as _tasklattice_guard_control_v1_ValidationCancelRequest, ValidationCancelRequest__Output as _tasklattice_guard_control_v1_ValidationCancelRequest__Output } from './tasklattice/guard/control/v1/ValidationCancelRequest.js';
 import type { ValidationCaseResult as _tasklattice_guard_control_v1_ValidationCaseResult, ValidationCaseResult__Output as _tasklattice_guard_control_v1_ValidationCaseResult__Output } from './tasklattice/guard/control/v1/ValidationCaseResult.js';
 import type { ValidationExpectationOverride as _tasklattice_guard_control_v1_ValidationExpectationOverride, ValidationExpectationOverride__Output as _tasklattice_guard_control_v1_ValidationExpectationOverride__Output } from './tasklattice/guard/control/v1/ValidationExpectationOverride.js';
 import type { ValidationExpectedMatch as _tasklattice_guard_control_v1_ValidationExpectedMatch, ValidationExpectedMatch__Output as _tasklattice_guard_control_v1_ValidationExpectedMatch__Output } from './tasklattice/guard/control/v1/ValidationExpectedMatch.js';
 import type { ValidationMetrics as _tasklattice_guard_control_v1_ValidationMetrics, ValidationMetrics__Output as _tasklattice_guard_control_v1_ValidationMetrics__Output } from './tasklattice/guard/control/v1/ValidationMetrics.js';
 import type { ValidationProgress as _tasklattice_guard_control_v1_ValidationProgress, ValidationProgress__Output as _tasklattice_guard_control_v1_ValidationProgress__Output } from './tasklattice/guard/control/v1/ValidationProgress.js';
+import type { ValidationReport as _tasklattice_guard_control_v1_ValidationReport, ValidationReport__Output as _tasklattice_guard_control_v1_ValidationReport__Output } from './tasklattice/guard/control/v1/ValidationReport.js';
+import type { ValidationReportAck as _tasklattice_guard_control_v1_ValidationReportAck, ValidationReportAck__Output as _tasklattice_guard_control_v1_ValidationReportAck__Output } from './tasklattice/guard/control/v1/ValidationReportAck.js';
 import type { ValidationRequest as _tasklattice_guard_control_v1_ValidationRequest, ValidationRequest__Output as _tasklattice_guard_control_v1_ValidationRequest__Output } from './tasklattice/guard/control/v1/ValidationRequest.js';
 import type { ValidationResult as _tasklattice_guard_control_v1_ValidationResult, ValidationResult__Output as _tasklattice_guard_control_v1_ValidationResult__Output } from './tasklattice/guard/control/v1/ValidationResult.js';
 import type { ValidationRuntime as _tasklattice_guard_control_v1_ValidationRuntime, ValidationRuntime__Output as _tasklattice_guard_control_v1_ValidationRuntime__Output } from './tasklattice/guard/control/v1/ValidationRuntime.js';
@@ -156,6 +159,7 @@ export interface ProtoGrpcType {
           TrafficCondition: MessageTypeDefinition<_tasklattice_guard_control_v1_TrafficCondition, _tasklattice_guard_control_v1_TrafficCondition__Output>
           TrafficOperator: EnumTypeDefinition
           TrafficScope: MessageTypeDefinition<_tasklattice_guard_control_v1_TrafficScope, _tasklattice_guard_control_v1_TrafficScope__Output>
+          ValidationCancelRequest: MessageTypeDefinition<_tasklattice_guard_control_v1_ValidationCancelRequest, _tasklattice_guard_control_v1_ValidationCancelRequest__Output>
           ValidationCaseResult: MessageTypeDefinition<_tasklattice_guard_control_v1_ValidationCaseResult, _tasklattice_guard_control_v1_ValidationCaseResult__Output>
           ValidationDecision: EnumTypeDefinition
           ValidationEvidenceStatus: EnumTypeDefinition
@@ -165,6 +169,8 @@ export interface ProtoGrpcType {
           ValidationFailure: EnumTypeDefinition
           ValidationMetrics: MessageTypeDefinition<_tasklattice_guard_control_v1_ValidationMetrics, _tasklattice_guard_control_v1_ValidationMetrics__Output>
           ValidationProgress: MessageTypeDefinition<_tasklattice_guard_control_v1_ValidationProgress, _tasklattice_guard_control_v1_ValidationProgress__Output>
+          ValidationReport: MessageTypeDefinition<_tasklattice_guard_control_v1_ValidationReport, _tasklattice_guard_control_v1_ValidationReport__Output>
+          ValidationReportAck: MessageTypeDefinition<_tasklattice_guard_control_v1_ValidationReportAck, _tasklattice_guard_control_v1_ValidationReportAck__Output>
           ValidationRequest: MessageTypeDefinition<_tasklattice_guard_control_v1_ValidationRequest, _tasklattice_guard_control_v1_ValidationRequest__Output>
           ValidationResult: MessageTypeDefinition<_tasklattice_guard_control_v1_ValidationResult, _tasklattice_guard_control_v1_ValidationResult__Output>
           ValidationRuntime: MessageTypeDefinition<_tasklattice_guard_control_v1_ValidationRuntime, _tasklattice_guard_control_v1_ValidationRuntime__Output>

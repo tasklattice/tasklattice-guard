@@ -38,6 +38,7 @@ message RunnerMessage {
     ArtifactAdmissionResult artifact_admission_result = 18;
     GuardrailProtectionResult protection_result = 19;
     ArtifactCompilationResult artifact_compilation_result = 21;
+    ValidationReport validation_report = 22;
   }
 }
 
@@ -61,7 +62,32 @@ message ControllerMessage {
     ArtifactAdmissionRequest artifact_admission_request = 16;
     GuardrailProtectionState protection_state = 17;
     CompileRequest artifact_compilation_request = 19;
+    ValidationCancelRequest validation_cancel_request = 20;
+    ValidationReportAck validation_report_ack = 21;
   }
+}
+
+// Large reports retain the typed ValidationResult contract: gzip-compressed
+// protobuf bytes, never JSON. Sizes and digest are checked before persistence.
+message ValidationReport {
+  string runner_id = 1;
+  string run_id = 2;
+  // A complete ValidationResult encoded as protobuf, then gzip-compressed.
+  bytes gzip_result = 3;
+  // Exact decoded protobuf length; Controller rejects values above 128 MiB.
+  uint64 raw_size_bytes = 4;
+  // Lowercase hexadecimal SHA-256 of the uncompressed protobuf bytes.
+  string sha256 = 5;
+}
+
+// Sent only after the report transaction commits (or an idempotent replay).
+message ValidationReportAck {
+  string run_id = 1;
+}
+
+// Idempotent stop by immutable test run ID; handled outside the ordinary command queue.
+message ValidationCancelRequest {
+  string run_id = 1;
 }
 
 // Offline compilation only. No model calls, runtime loading or test execution.
@@ -103,6 +129,8 @@ message RegistrationAccepted {
   int64 desired_generation = 1;
   // Maximum interval in seconds between Runner heartbeats.
   int32 heartbeat_interval_seconds = 2;
+  // Allows large reports without increasing the global gRPC message budget.
+  bool validation_report_gzip = 3;
 }
 
 // Monotonic liveness, convergence, and load observation for one Runner boot.

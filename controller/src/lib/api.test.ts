@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { analyzeComplianceDocuments, analyzeGuardrailIntent, createValidationRun, resumeValidationRun, excludeGuardrailTestCase, getIntentAnalysisStatus, getValidationRuns, publishGuardrail, publishProgrammablePolicy, updateGuardrail } from "./api";
+import { analyzeComplianceDocuments, analyzeGuardrailIntent, createValidationRun, resumeValidationRun, getValidationRun, excludeGuardrailTestCase, getIntentAnalysisStatus, getValidationRuns, publishGuardrail, publishProgrammablePolicy, updateGuardrail } from "./api";
 import { requestController } from "./controller-api";
 
 describe("API error responses", () => {
@@ -92,23 +92,38 @@ describe("API error responses", () => {
     }
   });
 
-  it("does not turn a polling timeout into a failed report and can resume without another POST", async () => {
+  it("keeps polling the same run beyond five minutes until its report is saved", async () => {
     vi.useFakeTimers();
     try {
       const run = { id: "run-slow", guardrailId: "guard-1", status: "running", metrics: { total: 10 }, results: [], excludedCaseIds: [] };
       const fetchMock = vi.fn().mockImplementation(async () => Response.json(run));
       vi.stubGlobal("fetch", fetchMock);
       const onProgress = vi.fn();
-      const timedOut = expect(createValidationRun("guard-1", { onProgress })).rejects.toThrow("may still be running");
-      await vi.advanceTimersByTimeAsync(5 * 60_000);
-      await timedOut;
+      const pending = createValidationRun("guard-1", { onProgress });
+      await vi.advanceTimersByTimeAsync(6 * 60_000);
       expect(onProgress.mock.lastCall?.[0].execution_status).toBe("running");
       fetchMock.mockImplementation(async () => Response.json({ ...run, status: "passed" }));
-      expect((await resumeValidationRun("run-slow")).status).toBe("passed");
+      await vi.advanceTimersByTimeAsync(1000);
+      expect((await pending).status).toBe("passed");
       expect(fetchMock.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(1);
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("preserves an interrupted report response as an error rather than an empty success", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{"));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(getValidationRun("large-report")).rejects.toBeInstanceOf(SyntaxError);
+    expect(fetchMock.mock.calls[0]?.[1]).not.toHaveProperty("timeoutMs");
+  });
+
+  it("treats cancellation as a terminal state instead of polling or displaying failure", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({ id: "cancelled-run", guardrailId: "guard-1",
+      status: "cancelled", metrics: {}, results: [], excludedCaseIds: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await resumeValidationRun("cancelled-run")).toMatchObject({ status: "cancelled", execution_status: "cancelled" });
+    expect(fetchMock).toHaveBeenCalledOnce();
   });
 
   it("sends slash-containing Test Case IDs in the test-scope body", async () => {

@@ -31,8 +31,11 @@ const rootRoute = createRootRoute({ component: ControlPlaneLayout });
 const indexRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", component: () => <Navigate to="/dashboard" replace /> });
 const dashboardRoute = createRoute({ getParentRoute: () => rootRoute, path: "/dashboard", component: DashboardPage });
 const guardrailsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/guardrails", component: GuardrailsPage });
-const guardrailDetailRoute = createRoute({ getParentRoute: () => rootRoute, path: "/guardrails/$guardrailId", validateSearch: (search: Record<string, unknown>): { tab?: string; version?: string; window?: "1h" | "24h" | "7d" | "15d" | "30d"; severity?: string; pageSize?: 25 | 50; metric?: RuntimeMetricKey } => ({
-  version: typeof search.version === "string" ? search.version : undefined,
+const guardrailDetailRoute = createRoute({ getParentRoute: () => rootRoute, path: "/guardrails/$guardrailId", validateSearch: (search: Record<string, unknown>): { tab?: string; report?: string; version?: string; compare?: string; window?: "1h" | "24h" | "7d" | "15d" | "30d"; severity?: string; pageSize?: 25 | 50; metric?: RuntimeMetricKey } => ({
+  version: typeof search.version === "string" && search.version ? search.version : undefined,
+  compare: typeof search.compare === "string" && search.compare ? search.compare : undefined,
+  // The open Testing Report is addressable: refresh, deep link and Back all work.
+  report: typeof search.report === "string" && search.report ? search.report : undefined,
   tab: ["runtime", "event", "immutable", "testing", "draft", "usage"].includes(String(search.tab)) ? String(search.tab) : undefined,
   window: ["1h", "24h", "7d", "15d", "30d"].includes(String(search.window)) ? search.window as "1h" | "24h" | "7d" | "15d" | "30d" : undefined,
   metric: runtimeMetricKeys.includes(search.metric as RuntimeMetricKey) ? search.metric as RuntimeMetricKey : undefined,

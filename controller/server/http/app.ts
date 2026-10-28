@@ -20,12 +20,14 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { serveStatic } from "@hono/node-server/serve-static";
+import { getConnInfo } from "@hono/node-server/conninfo";
 import { prometheus } from "@hono/prometheus";
 import { securityEventsQuery } from "../../shared/security-events.js";
 import { Hono, type Context, type MiddlewareHandler } from "hono";
 import { logger } from "hono/logger";
 import { secureHeaders } from "hono/secure-headers";
 import { bodyLimit } from "hono/body-limit";
+import { compress } from "hono/compress";
 import { z } from "zod";
 import { policyDefinitionSchema } from "../../shared/policy-definition.js";
 import { publicPolicy } from "../policy-catalog/public-policy.js";
@@ -310,7 +312,7 @@ export function createHttpApp(input: {
     return context.json(snapshot, ["healthy", "degraded"].includes(snapshot.status) ? 200 : 503);
   });
 
-  app.on(["GET", "POST"], "/api/auth/*", (context) => input.auth.handler(context.req.raw));
+  app.on(["GET", "POST"], "/api/auth/*", (context) => input.auth.handler(authHandlerRequest(context, input.config.trustedProxyCidrs)));
 
   const authenticated = authentication(input.auth, input.accessTokens);
   const accountSession: MiddlewareHandler<{ Variables: Variables }> = async (context, next) => {
@@ -827,8 +829,11 @@ export function createHttpApp(input: {
   app.get("/api/v1/test-runs", authenticated, async (context) => {
     return context.json(await input.service.queryValidationRuns(testingReportsQuery.parse(context.req.query())));
   });
-  app.get("/api/v1/test-runs/:runId", authenticated, async (context) => {
+  app.get("/api/v1/test-runs/:runId", authenticated, compress(), async (context) => {
     return context.json(await input.service.getValidationRun(context.req.param("runId"), context.req.query("view") === "summary"));
+  });
+  app.post("/api/v1/test-runs/:runId/cancel", authenticated, async context => {
+    return context.json(await input.service.cancelValidation({ runId: context.req.param("runId"), actorId: context.get("actor").id }), 202);
   });
   app.get("/api/v1/test-runs/:runId/deletion-impact", authenticated, async context => {
     return context.json(await input.service.testingReportDeletionImpact(context.req.param("runId")));
@@ -1198,6 +1203,33 @@ export function createHttpApp(input: {
     }, serveStatic({ root: uiRoot, path: "index.html" }));
   }
   return app;
+}
+
+/**
+ * Better Auth throttles sign-in by the client address it can resolve, and keys
+ * every request by `address|path`. With no trusted proxy it must ignore a
+ * client-supplied chain, otherwise the whole installation collapses into one
+ * shared bucket that a single operator (or attacker) can exhaust. When proxies
+ * are configured, Better Auth itself walks and validates the chain.
+ */
+function authHandlerRequest(context: Context, trustedProxyCidrs: readonly string[]): Request {
+  if (trustedProxyCidrs.length) return context.req.raw;
+  const address = peerAddress(context);
+  if (!address) return context.req.raw;
+  const headers = new Headers(context.req.raw.headers);
+  headers.set("x-forwarded-for", address);
+  return new Request(context.req.raw, { headers });
+}
+
+function peerAddress(context: Context): string | null {
+  try {
+    const address = getConnInfo(context).remote.address;
+    // Node reports IPv4 peers of dual-stack listeners in mapped form.
+    return address ? address.replace(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i, "$1") : null;
+  } catch {
+    // Non-Node runtimes (tests, app.request) keep the headers they were given.
+    return null;
+  }
 }
 
 function authentication(auth: ControllerAuth, tokens?: AccessTokenService): MiddlewareHandler<{ Variables: Variables }> {

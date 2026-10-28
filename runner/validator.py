@@ -4,6 +4,7 @@ import asyncio
 import json
 import math
 import time
+import logging
 from dataclasses import asdict, dataclass
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -42,6 +43,7 @@ from .protocol_codec import (
     validation_test_from_proto,
 )
 from .serialization import plan_from_dict
+from .validation_logging import validation_event
 from .toolkit.compiler.semantics import complete_evidence_supported
 from .validation_scope import local_test_plan, skipped_case
 from .protocol_codec import plan_to_proto
@@ -56,6 +58,9 @@ class ValidationOutcome:
     results: list[dict[str, Any]]
     artifact: protocol.Artifact
     test_scope: dict[str, Any] | None = None
+    # Delivery may proceed before successful-run teardown. Cancellation/failure
+    # still joins all case tasks before releasing resources.
+    cleanup_task: asyncio.Task[None] | None = None
 
 
 class DefaultRunnerValidator:
@@ -92,6 +97,7 @@ class DefaultRunnerValidator:
     async def run(
         self, request: protocol.ValidationRequest,
         on_progress: Callable[[str, int, int], Awaitable[None]] | None = None,
+        *, defer_cleanup: bool = False,
     ) -> ValidationOutcome:
         async def cleanup(prepared):
             await prepared[0].shutdown()
@@ -133,7 +139,30 @@ class DefaultRunnerValidator:
                 # without yielding; a bounded batch lets gRPC flush progress/heartbeats
                 # instead of starving the control channel behind the entire test suite.
                 async with slots:
-                    result = (skipped_case(case, skipped_rules) if skipped_rules else None) or await self._evaluate(runtime, plan, case)
+                    fields = {"run_id": request.run_id, "guardrail_id": request.guardrail_id,
+                              "case_id": case.get("id"), "policy_id": case.get("sourcePolicyId") or case.get("policyId")}
+                    validation_event("validation.case_started", **fields)
+                    try:
+                        result = (skipped_case(case, skipped_rules) if skipped_rules else None) or await self._evaluate(runtime, plan, case)
+                    except asyncio.CancelledError:
+                        validation_event("validation.case_cancelled", **fields)
+                        raise
+                    except Exception as error:
+                        validation_event("validation.case_error", level=logging.ERROR, **fields,
+                                         error_type=type(error).__name__)
+                        raise
+                    validation_event("validation.case_completed", level=logging.INFO if result["passed"] or result.get("skipped") else logging.WARNING,
+                                     **fields, passed=result["passed"], skipped=result.get("skipped", False),
+                                     actual_decision=result.get("actualDecision"), actual_failure=result.get("actualFailure"),
+                                     evidence_status=result.get("evidenceStatus"), latency_ms=result.get("latencyMs"),
+                                     evaluator_ids=result.get("evaluatorIds", []), model_invocations=result.get("modelInvocations", 0))
+                    for step in result.get("trace", []):
+                        if step.get("status") == "error" or step.get("timed_out"):
+                            validation_event("validation.action_error", level=logging.WARNING, **fields,
+                                             action_name=step.get("action_name"), trace_policy_id=step.get("policy_id"),
+                                             provider=step.get("provider_name"), model=step.get("model_name"),
+                                             error_type=step.get("error_type"), timed_out=step.get("timed_out", False),
+                                             duration_ms=step.get("duration_ms"), route=step.get("route"))
                     completed += 1
                     passed += int(result["passed"])
                     now = time.monotonic()
@@ -143,21 +172,34 @@ class DefaultRunnerValidator:
                     await asyncio.sleep(0)
                     return result
 
-            results = await asyncio.gather(
-                *(evaluate(item) for item in cases)
-            )
+            tasks = [asyncio.create_task(evaluate(item), name=f"validation-case:{request.run_id}:{item.get('id')}") for item in cases]
+            try:
+                results = await asyncio.gather(*tasks)
+            finally:
+                # An exception or operator stop must not leave sibling model
+                # calls running after the runtime/slot has been released.
+                for task in tasks:
+                    if not task.done():
+                        task.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
             await report("finalizing", completed, passed)
+            required = [item for item in results if item["required"] and not item.get("skipped")]
+            status = "passed" if required and all(item["passed"] for item in required) else "failed"
+            calls = sum(item.get("modelInvocations", 0) for item in results)
+            if not test_models and calls:
+                raise RuntimeError("Local-only validation unexpectedly invoked a model.")
+            metrics = _metrics(results)
+            cleanup_task = None
+            if defer_cleanup:
+                cleanup_task = asyncio.create_task(runtime.shutdown(), name=f"validation-cleanup:{request.run_id}")
+                runtime = None
+            return ValidationOutcome(status, metrics, results, artifact, {
+                "testModelRules": test_models, "skippedRules": skipped_rules,
+                "modelInvocations": calls, "executionDigest": execution_digest, "fullArtifactLoaded": True,
+            }, cleanup_task)
         finally:
-            await runtime.shutdown()
-        required = [item for item in results if item["required"] and not item.get("skipped")]
-        status = "passed" if required and all(item["passed"] for item in required) else "failed"
-        calls = sum(item.get("modelInvocations", 0) for item in results)
-        if not test_models and calls:
-            raise RuntimeError("Local-only validation unexpectedly invoked a model.")
-        return ValidationOutcome(status, _metrics(results), results, artifact, {
-            "testModelRules": test_models, "skippedRules": skipped_rules,
-            "modelInvocations": calls, "executionDigest": execution_digest, "fullArtifactLoaded": True,
-        })
+            if runtime is not None:
+                await runtime.shutdown()
 
     def _prepare(self, request: protocol.ValidationRequest):
         if request.HasField("artifact"):

@@ -84,6 +84,16 @@ function parseLegacyConfiguration<T>(value: string, name: string, schema: z.ZodT
   }
 }
 
+function isCidr(value: string): boolean {
+  const [address, prefix, ...rest] = value.split("/");
+  if (!address || !prefix || rest.length) return false;
+  const bits = Number(prefix);
+  if (!Number.isInteger(bits)) return false;
+  if (z.ipv4().safeParse(address).success) return bits >= 0 && bits <= 32;
+  if (z.ipv6().safeParse(address).success) return bits >= 0 && bits <= 128;
+  return false;
+}
+
 function httpUrl(value: string | undefined): string | null {
   if (!value) return null;
   try {
@@ -131,6 +141,12 @@ const environmentSchema = z.object({
   CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: z.string().min(1),
   BETTER_AUTH_SECRET: z.string().min(32),
   BETTER_AUTH_TRUSTED_ORIGINS: z.string().default("http://localhost:8080,http://localhost:8092"),
+  // CIDRs of proxies allowed to supply X-Forwarded-For. Empty means the socket
+  // peer is authoritative and any supplied chain is ignored (not trusted).
+  CONTROLLER_TRUSTED_PROXY_CIDRS: z.string().default("").refine(
+    (value) => value.split(",").map((item) => item.trim()).filter(Boolean).every(isCidr),
+    "Expected comma-separated IPv4/IPv6 CIDRs, for example 10.0.0.0/8,fd00::/8.",
+  ),
   BETTER_AUTH_MIN_PASSWORD_LENGTH: z.coerce.number().int().min(8).max(128).default(8),
   CONTROLLER_BOOTSTRAP_ADMIN_USERNAME: usernameSchema.optional(),
   CONTROLLER_BOOTSTRAP_ADMIN_REVISION: z.string().optional(),
@@ -260,6 +276,7 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env) {
     artifactSigningKeyPath: parsed.CONTROLLER_ARTIFACT_SIGNING_KEY_PATH,
     betterAuthSecret: parsed.BETTER_AUTH_SECRET,
     trustedOrigins: parsed.BETTER_AUTH_TRUSTED_ORIGINS.split(",").map((item) => item.trim()).filter(Boolean),
+    trustedProxyCidrs: parsed.CONTROLLER_TRUSTED_PROXY_CIDRS.split(",").map((item) => item.trim()).filter(Boolean),
     minPasswordLength: parsed.BETTER_AUTH_MIN_PASSWORD_LENGTH,
     bootstrapAdmin: parsed.CONTROLLER_BOOTSTRAP_ADMIN_USERNAME && parsed.CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD
       ? { username: parsed.CONTROLLER_BOOTSTRAP_ADMIN_USERNAME, password: parsed.CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD, name: parsed.CONTROLLER_BOOTSTRAP_ADMIN_NAME, ...(parsed.CONTROLLER_BOOTSTRAP_ADMIN_REVISION ? { revision: parsed.CONTROLLER_BOOTSTRAP_ADMIN_REVISION } : {}) }

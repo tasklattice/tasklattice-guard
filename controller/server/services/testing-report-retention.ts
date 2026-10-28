@@ -20,7 +20,7 @@ export function toTestEvidence(run: { testModelRules?: boolean; testScope?: Vers
 /** Caller holds the Guardrail row lock, including during completion and startup cleanup. */
 export async function pruneTestingReports(tx: Transaction, guardrailId: string): Promise<number> {
   let removed = 0;
-  for (const status of ["passed", "failed"] as const) {
+  for (const status of ["passed", "failed", "cancelled"] as const) {
     for (;;) {
       // The persisted immutable version defines the bucket, including its original draft publication report.
       // Draft candidates and deleted versions share the null bucket so creating version IDs cannot grow history forever.
@@ -33,7 +33,7 @@ export async function pruneTestingReports(tx: Transaction, guardrailId: string):
       const expired = await tx.select({ testModelRules: ranked.testModelRules, testScope: ranked.testScope, id: ranked.id, status: ranked.status, candidateDigest: ranked.candidateDigest,
         testSuiteDigest: ranked.testSuiteDigest, createdAt: ranked.createdAt, completedAt: ranked.completedAt,
         version: ranked.version, subject: ranked.subject,
-      }).from(ranked).where(gt(ranked.rank, TESTING_REPORT_RETENTION[status])).orderBy(desc(ranked.rank), ranked.id).limit(200);
+      }).from(ranked).where(gt(ranked.rank, status === "cancelled" ? 1 : TESTING_REPORT_RETENTION[status])).orderBy(desc(ranked.rank), ranked.id).limit(200);
       if (!expired.length) break;
       const versions = await tx.select({ version: guardrailVersions.version, status: guardrailVersions.status,
         runId: guardrailVersions.validationRunId, evidence: guardrailVersions.testingEvidence,
@@ -43,7 +43,8 @@ export async function pruneTestingReports(tx: Transaction, guardrailId: string):
       for (const version of versions) {
         const evidence = { ...version.evidence };
         for (const run of expired.filter(run => run.version === version.version)) {
-          const compact = toTestEvidence(run)!;
+          const compact = toTestEvidence(run);
+          if (!compact) continue; // Cancellation is not evidence of execution.
           if (run.subject === "version") evidence.latest = latestTestEvidence(evidence.latest, compact)!;
           if (version.status === "ready" && run.id === version.runId
             && compact.candidateDigest === version.checksum && version.suite

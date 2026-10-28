@@ -528,7 +528,8 @@ export async function getValidationRuns(guardrailId?: string, options: { cursor?
   return { items: response.items.map(mapValidationRun), count: response.count,
     nextCursor: response.nextCursor, versionReports: response.versionReports?.map(mapValidationRun) };
 }
-export const getValidationRun = (runId: string) => controllerApi.requestController<controllerApi.ValidationRun>(`/api/v1/test-runs/${encodeURIComponent(runId)}`).then(mapValidationRun);
+export const cancelValidationRun = (runId: string) => controllerApi.requestController<controllerApi.ValidationRun>(`/api/v1/test-runs/${encodeURIComponent(runId)}/cancel`, { method: "POST" }).then(mapValidationRun);
+export const getValidationRun = (runId: string) => controllerApi.requestController<controllerApi.ValidationRun>(`/api/v1/test-runs/${encodeURIComponent(runId)}`, { timeoutMs: 120_000 }).then(mapValidationRun);
 export const getPlaygroundModels = () => controllerApi.requestController<Collection<PlaygroundModel>>("/api/v1/playground/models");
 export const preparePlaygroundDraftPreview = (guardrailId: string) =>
   controllerApi.requestController<PlaygroundDraftPreview>(`/api/v1/playground/guardrails/${encodeURIComponent(guardrailId)}/draft-previews`, {
@@ -609,7 +610,7 @@ function mapValidationRun(value: controllerApi.ValidationRun): ValidationRun {
     subject: value.subject ?? "draft",
     candidate_digest: value.candidateDigest ?? null,
     test_suite_digest: value.testSuiteDigest ?? null,
-    status: value.status === "passed" ? "passed" : value.status === "failed" ? "failed" : "incomplete",
+    status: value.status === "passed" || value.status === "failed" || value.status === "cancelled" ? value.status : "incomplete",
     execution_status: value.status,
     progress: value.progress ?? null,
     failure_reason: value.failureReason,
@@ -685,14 +686,14 @@ function mapValidationResult(value: Record<string, unknown>): ValidationRun["res
 async function waitForValidation(initial: controllerApi.ValidationRun, observer?: ValidationObserver): Promise<ValidationRun> {
   let current = initial;
   if (!initial.id) throw new Error("Policy validation did not return a run ID.");
-  const deadline = Date.now() + 5 * 60_000;
+  // The server owns task deadlines. A long suite must not become a client-side
+  // report failure after five minutes; poll the same ID until a terminal state.
   observer?.onProgress?.(mapValidationRun(current));
-  while ((current.status === "queued" || current.status === "running") && Date.now() < deadline) {
+  while (current.status === "queued" || current.status === "running") {
     await new Promise((resolve) => setTimeout(resolve, 1_000));
     current = await controllerApi.requestController<controllerApi.ValidationRun>(`/api/v1/test-runs/${encodeURIComponent(initial.id)}?view=summary`);
     observer?.onProgress?.(mapValidationRun(current));
   }
-  if (current.status === "queued" || current.status === "running") throw new Error("Timed out waiting for the test report. The test may still be running.");
   return mapValidationRun(current);
 }
 

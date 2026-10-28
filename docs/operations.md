@@ -15,6 +15,14 @@ installation, dependency settings, and production Secrets.
 - Human login uses Better Auth's Username plugin. Email sign-in, public
   registration and email recovery endpoints are disabled; admins create users
   with a username and password. Database-backed sessions honor resets immediately.
+- Sign-in throttling is keyed by the client address, and every CLI command or
+  browser login consumes one attempt (`/sign-in/username`: 10 per 60 seconds per
+  client). Without `controller.trustedProxyCidrs`, the Controller ignores any
+  supplied `X-Forwarded-For` and uses the connection peer, so one client cannot
+  exhaust a bucket shared by every account. Behind an ingress or gateway, list
+  its pod CIDRs so the real client address is used; Better Auth then validates
+  the forwarding chain instead of trusting it. Automation should reuse a session
+  or a personal access token rather than signing in per command.
 - See [bootstrap account operations](#bootstrap-account-operations) for initial
   credentials, reinitialization, and Secret inspection.
 - Runner control uses a Runner token plus mutual TLS by default. The shared
@@ -68,6 +76,103 @@ invalid or duplicate local parts receive deterministic `account_<digest>` names.
 Look up these migrated names in Users. Better Auth's required internal email
 column remains implementation metadata and cannot be used to sign in. Sessions
 are checked against the database, so resets and bans take effect immediately.
+
+## Test task lifecycle and cancellation
+
+Guardrail tests are optional evidence, independent of Publish. Each submitted
+run has an immutable run ID. In each Controller deployment, tests execute only
+on the default pool's StatefulSet ordinal `-0` Runner. If that Runner is absent,
+busy, or has not acknowledged the current model configuration, queued work waits;
+it does not move to ordinal `-1` or another pool. This is a deployment-level
+boundary, not a new per-user/tenant Runner assignment mechanism.
+
+Use GuardCtl with the tenant's normal API credentials:
+
+```bash
+bin/guardctl tenant test --guardrail-id <guardrail-id> --url=https://guard.example.com
+bin/guardctl tenant test-status --run-id <run-id> --url=https://guard.example.com
+bin/guardctl tenant test-cancel --run-id <run-id> --url=https://guard.example.com
+```
+
+These commands are equivalent to the UI's test actions. Submit once and use the
+returned run ID to inspect/cancel; do not submit another test to poll status.
+The UI also offers **Stop test** in its progress view. The cancellation API is:
+
+```text
+POST /api/v1/test-runs/<run-id>/cancel
+```
+
+The operation is idempotent. It records a `cancelled` report and a durable stop
+request, preventing queued dispatch and late progress/results from changing that
+terminal state. For a running task, the Controller retries the stop command until
+the Runner has cancelled and joined its local execution/cleanup and acknowledged
+it. The report's cancelled state records intent, not proof that an offline Runner
+has already stopped. Inspect the same run with `test-status`: its
+`cancellation.requestedAt` records the request and `cancellation.acknowledgedAt`
+is null until Runner cleanup is acknowledged. Further tests wait for outstanding
+stop acknowledgements.
+Already passed/failed reports are returned unchanged. Publication, versions and
+traffic are unaffected. Controller and Runner must both be upgraded for this
+protocol; do not use Runner restarts as an operator cancellation mechanism.
+Remote model providers may continue work already submitted even after the local
+request is cancelled.
+
+The Runner applies a 30-minute deadline to each execution attempt. A deadline or
+an unhandled execution error produces `failed`, not `cancelled`; ordinary case
+assertion failures remain case results and do not automatically cancel the suite.
+Model-call timeouts still apply independently. Stream loss interrupts local work;
+the same run ID can be retried on ordinal 0, using bounded in-process result replay
+when available. A process restart can re-execute an unfinished run.
+
+Runner container logs emit content-free JSON lifecycle events at INFO level:
+`validation.received`, `started`, `progress`, `case_started`, `case_completed`,
+`action_error`, `case_error`, `case_cancelled`, `error`, `interrupted`,
+`cancel_requested`, `cancelled`, `completed`, `replayed`, and `delivery_failed`
+(all prefixed with `validation.`). Correlate by `run_id`, with `case_id` and
+`policy_id` for case events. Failures include classifications, evaluator/model
+identifiers and timing rather than request bodies, credentials or raw provider
+responses. For example, in the local deployment:
+
+```bash
+kubectl -n tali logs tali-guard-runner-0 --since=30m | grep '<run-id>'
+```
+
+### Large test reports and the finalizing phase
+
+`finalizing` means the cases have finished, not that a model is writing a report.
+The Runner packs the exact case results and candidate Artifact in a worker thread,
+then queues delivery before waiting for runtime teardown or cost-WAL writes.
+Teardown and cost-record failures are logged independently; they cannot discard
+an already completed report. A following test waits on the local execution lock
+while teardown finishes instead of failing merely because teardown is still busy.
+
+Upgraded Controller/Runner pairs negotiate gzip-compressed **protobuf** reports.
+No cases, findings or traces are truncated. The 32 MiB gRPC frame budget remains
+unchanged; the Controller validates the decoded size (at most 128 MiB), SHA-256
+and both run/Runner identities before saving. It acknowledges only after the
+report transaction commits. Old peers continue to use the original small-report
+format; upgrade both planes for large reports.
+
+The client no longer treats a five-minute total wait as report failure. It polls
+the same ID until the server reports a terminal state; model/task execution
+deadlines remain server-owned. Detailed report GETs negotiate HTTP compression
+and use a separate two-minute client read budget. `guardctl tenant test-status`
+reads a lightweight summary by default; add `--detail` to download all evidence:
+
+```bash
+bin/guardctl tenant test-status --run-id <run-id> --detail --url=https://guard.example.com > report.json
+```
+
+For delivery diagnostics, follow `validation.report_packing` →
+`validation.report_queued` → `validation.report_saved` by run ID. The queued event
+includes raw and wire byte counts; `report_saved` confirms Controller persistence.
+`validation.cleanup_started`, `cleanup_slow`, `cleanup_completed`, `cleanup_error`
+and `cost_record_error` (all prefixed with `validation.`) describe independent
+post-execution work and do not by themselves mean the report failed.
+
+Completed cancelled reports retain one entry per immutable-version bucket (and
+one in unversioned history), separately from the Passed/Failed retention budget.
+The pending stop request survives report pruning until it is acknowledged.
 
 ## Capacity and observability
 

@@ -183,8 +183,8 @@ export type ValidationRun = {
   subject: "draft" | "version";
   candidate_digest: string | null;
   test_suite_digest: string | null;
-  status: "passed" | "failed" | "incomplete";
-  execution_status?: "queued" | "running" | "passed" | "failed";
+  status: "passed" | "failed" | "cancelled" | "incomplete";
+  execution_status?: "queued" | "running" | "passed" | "failed" | "cancelled";
   progress?: import("../../shared/validation-progress").ValidationProgress | null;
   failure_reason?: string | null;
   metrics: ValidationMetrics;

@@ -103,10 +103,18 @@ class JevNoulEvaluator:
                             "state": self.state(request),
                             "questions": questions,
                         }
-                        response = await with_connection_retry(
-                            lambda: client.post(self._url, headers={"authorization": f"Bearer {self._api_key}"}, json=body),
-                            deadline=deadline, call=call)
-                        response.raise_for_status()
+                        def send() -> httpx.Response:
+                            # Raise inside the retried operation so an explicit
+                            # 429 is recovered instead of failing the case.
+                            attempt = client.post(self._url, headers={"authorization": f"Bearer {self._api_key}"}, json=body)
+                            return attempt
+
+                        async def guarded() -> httpx.Response:
+                            attempt = await send()
+                            attempt.raise_for_status()
+                            return attempt
+
+                        response = await with_connection_retry(guarded, deadline=deadline, call=call)
                         payload = response.json()
                         actual_model, probabilities = parse_answers(payload, set(questions))
                         call.complete(payload=payload)

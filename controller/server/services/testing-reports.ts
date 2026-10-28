@@ -14,7 +14,7 @@ export const validationDetailColumns = { ...summary, results: validationRuns.res
 export const testingReportsQuery = z.object({
   guardrailId: z.string().max(200).optional(),
   q: z.string().trim().max(300).default(""),
-  status: z.enum(["all", "passed", "failed", "incomplete"]).default("all"),
+  status: z.enum(["all", "passed", "failed", "cancelled", "incomplete"]).default("all"),
   limit: z.coerce.number().int().min(1).max(100).default(25),
   cursor: z.string().max(1000).optional(),
 });

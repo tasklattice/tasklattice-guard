@@ -32,6 +32,13 @@ def _positive_int(name: str, default: int) -> int:
     return value
 
 
+def _threshold(name: str, default: float) -> float:
+    value = float(os.environ.get(name, str(default)))
+    if not 0 <= value <= 1:
+        raise ValueError(f"{name} must be within [0, 1].")
+    return value
+
+
 def _ratio(name: str, default: float, fallback_name: str | None = None) -> float:
     raw = os.environ.get(name)
     if raw is None and fallback_name is not None:
@@ -71,9 +78,23 @@ class RunnerSettings:
     scan_max_body_bytes: int = 1_048_576
     scan_timeout_seconds: int = 25
     validation_max_concurrency: int = 8
+    # Explicit 429 recovery for model providers; 1 disables retrying.
+    model_rate_limit_attempts: int = 3
+    # Jev "uncertain" band: probabilities strictly between the two thresholds.
+    jev_lower_threshold: float = 0.1
+    jev_upper_threshold: float = 0.9
     call_context_compress_plans: bool = False
     call_context_capacity_fallback: bool = False
     call_context_ttl_seconds: int = 300
+
+    def __post_init__(self) -> None:
+        # Reject a Jev band that can never produce a decisive classification.
+        if not 0 <= self.jev_lower_threshold < self.jev_upper_threshold <= 1:
+            raise ValueError(
+                "GUARD_JEV_LOWER_THRESHOLD must be below GUARD_JEV_UPPER_THRESHOLD within [0, 1]."
+            )
+        if self.model_rate_limit_attempts < 1:
+            raise ValueError("GUARD_MODEL_RATE_LIMIT_ATTEMPTS must be positive.")
 
     @classmethod
     def from_env(cls) -> "RunnerSettings":
@@ -179,6 +200,9 @@ class RunnerSettings:
             compiler_capable=_boolean("GUARD_RUNNER_COMPILER_CAPABLE", pool_id == "default"),
             max_concurrency=_positive_int("GUARD_RUNNER_MAX_CONCURRENCY", 64),
             validation_max_concurrency=_positive_int("GUARD_VALIDATION_MAX_CONCURRENCY", 8),
+            model_rate_limit_attempts=_positive_int("GUARD_MODEL_RATE_LIMIT_ATTEMPTS", 3),
+            jev_lower_threshold=_threshold("GUARD_JEV_LOWER_THRESHOLD", 0.1),
+            jev_upper_threshold=_threshold("GUARD_JEV_UPPER_THRESHOLD", 0.9),
             controller_ca_path=Path(controller_ca) if controller_ca else None,
             client_certificate_path=(Path(client_certificate) if client_certificate else None),
             client_key_path=Path(client_key) if client_key else None,

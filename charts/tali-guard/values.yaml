@@ -57,6 +57,10 @@ controller:
   # Above 8 requires external Secrets for every enabled bootstrap account.
   # auth:
   #   minLoginLength: 8
+  # Login throttling keys on the client address, not one shared bucket. Empty
+  # uses the connection peer and ignores client-supplied X-Forwarded-For. Behind
+  # an ingress/gateway, list its CIDRs, e.g. ["10.244.0.0/16"].
+  # trustedProxyCidrs: []
   # Internal HTTP/gRPC ports are fixed at 8080/9090. For direct local exposure:
   # service:
   #   type: ClusterIP
@@ -111,6 +115,17 @@ runner:
   # Managed Redis URL; required for multi-replica pools unless redis.enabled=true.
   # Cannot be combined with redis.enabled=true.
   callContextRedisUrl: ""
+  # Test execution and provider recovery. Lower maxConcurrency for providers with
+  # small quotas; explicit HTTP 429 responses are retried with bounded backoff.
+  validation:
+    maxConcurrency: 8
+    providerRateLimitAttempts: 3
+  # Jev reports "uncertain" strictly between these probabilities, and a blocking
+  # Policy then fails closed. Narrow the band (for example 0.4/0.6) to reduce
+  # uncertainty; leaving the defaults keeps the widest reviewed safety margin.
+  jev:
+    lowerThreshold: 0.1
+    upperThreshold: 0.9
   callContext:
     ttlSeconds: 300
     # Upgrade all readers before enabling compression on an older installation.

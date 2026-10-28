@@ -12,7 +12,11 @@ import { internalAccountEmail, normalizeUsername, usernamePattern } from "../sha
 
 export const GUARD_AUTH_COOKIE_PREFIX = "tali-guard";
 
+// Login throttling is only useful when it can tell clients apart.
+export const SIGN_IN_RATE_LIMIT = { window: 60, max: 10 } as const;
+
 export function createAuth(config: ControllerConfig, db: ControllerDatabase) {
+  const trustedProxies = config.trustedProxyCidrs ?? [];
   return betterAuth({
     appName: "TaskLattice Guard",
     baseURL: config.publicUrl,
@@ -21,6 +25,21 @@ export function createAuth(config: ControllerConfig, db: ControllerDatabase) {
     trustedOrigins: config.trustedOrigins,
     advanced: {
       cookiePrefix: GUARD_AUTH_COOKIE_PREFIX,
+      // Only a configured proxy may supply the client address; otherwise the
+      // HTTP layer replaces the header with the socket peer (see http/app.ts).
+      ...(trustedProxies.length ? { ipAddress: { trustedProxies } } : {}),
+    },
+    rateLimit: {
+      enabled: true,
+      // Auth paths are keyed by resolved client address. Every CLI command or
+      // browser sign-in consumes one attempt, so the default 3-per-10s rule
+      // throttles legitimate setup work. Keep a bounded per-client budget that
+      // still resists online password guessing.
+      window: 60,
+      max: 100,
+      customRules: {
+        "/sign-in/username": { ...SIGN_IN_RATE_LIMIT },
+      },
     },
     database: drizzleAdapter(db, {
       provider: "pg",

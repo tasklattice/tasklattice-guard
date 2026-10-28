@@ -1,10 +1,26 @@
 import { describe, expect, it, vi } from 'vitest';
-import { bindModel, configurationApi, parseConfigurationArgs, provisionTenant, registerModel, type Api } from './configure.js';
+import { bindModel, configurationApi, manageTestRun, parseConfigurationArgs, provisionTenant, registerModel, type Api } from './configure.js';
 
 const journal = () => ({ data: {} as any, save: vi.fn(async () => {}) });
 const assignments = (model = 'nvidia') => ({ controlPlane: null, bindings: { 'content_safety.input': model, 'content_safety.output': 'nvidia', 'jailbreak.input': 'jev' } });
 
 describe('guardctl configuration', () => {
+  it('uses the same asynchronous test and cancellation routes as the UI without resubmitting', async () => {
+    const api = vi.fn().mockResolvedValue({ id: 'run/1', status: 'queued' });
+    await manageTestRun(api, 'test', { 'guardrail-id': 'guard/1' });
+    expect(api).toHaveBeenLastCalledWith('/api/v1/guardrails/guard%2F1/test-runs', 'POST', { testModelRules: true });
+    await manageTestRun(api, 'test', { 'guardrail-id': 'guard/1', version: 'v/1', 'local-only': 'true' });
+    expect(api).toHaveBeenLastCalledWith('/api/v1/guardrails/guard%2F1/versions/v%2F1/test-runs', 'POST', { testModelRules: false });
+    await manageTestRun(api, 'test-status', { 'run-id': 'run/1' });
+    expect(api).toHaveBeenLastCalledWith('/api/v1/test-runs/run%2F1?view=summary');
+    await manageTestRun(api, 'test-cancel', { 'run-id': 'run/1' });
+    expect(api).toHaveBeenLastCalledWith('/api/v1/test-runs/run%2F1/cancel', 'POST');
+    await manageTestRun(api, 'test-status', { 'run-id': 'run/1', detail: 'true' });
+    expect(api).toHaveBeenLastCalledWith('/api/v1/test-runs/run%2F1');
+    expect(api).toHaveBeenCalledTimes(5);
+    await expect(manageTestRun(api, 'test-cancel', {})).rejects.toThrow('--run-id is required');
+    expect(api).toHaveBeenCalledTimes(5);
+  });
   it('preserves spaces and equals in shell arguments and rejects typo flags', () => {
     expect(parseConfigurationArgs(['provision', '--name', 'Content Safety test', '--emergency-reason=case=42 approved'])).toEqual({ command: 'provision', flags: { name: 'Content Safety test', 'emergency-reason': 'case=42 approved' } });
     expect(() => parseConfigurationArgs(['bind', '--modeld', 'x'])).toThrow('Unknown option');

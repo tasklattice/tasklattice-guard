@@ -39,6 +39,7 @@ def test_both_controller_transports_use_finite_message_limits(monkeypatch, tmp_p
 
 
 class Store:
+    model_revision_id = ""
     generation = 0
     protection_generation = 0
     providers = None

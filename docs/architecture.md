@@ -149,8 +149,10 @@ Generated bindings live in `runner/generated/` and
 protocol boundary codecs. Enforcement-action helpers are also generated from
 Proto. Contract comments document field semantics, absence, units, and ranges.
 Run `make proto-generate` after changes and `make proto-check` to detect stale
-outputs. Management OpenAPI has separate `openapi:generate` and `openapi:check`
-scripts in `controller/`.
+outputs. Management OpenAPI is an ignored build artifact generated before
+development, tests, typechecking, and server builds. Its `openapi:check` script
+generates the document and validates the API contract; production serves the
+generated JSON packaged with the compiled Controller.
 
 ## Publication and model execution
 

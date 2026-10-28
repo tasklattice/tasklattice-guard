@@ -12,7 +12,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { defaultPolicyBinding } from "@/components/policy-binding-editor";
 import { PolicyCatalog } from "../../server/policy-catalog/catalog";
 
-const routing = vi.hoisted(() => ({ navigate: vi.fn(), tab: "testing", guardrailId: "guardrail-workflow", role: "user", pageSize: undefined as 25 | 50 | undefined, window: "24h", severity: undefined as string | undefined }));
+const routing = vi.hoisted(() => ({ navigate: vi.fn(), tab: "testing", report: undefined as string | undefined, version: undefined as string | undefined, compare: undefined as string | undefined, guardrailId: "guardrail-workflow", role: "user", pageSize: undefined as 25 | 50 | undefined, window: "24h", severity: undefined as string | undefined }));
 vi.mock("react-i18next", () => ({
   initReactI18next: { type: "3rdParty", init: () => undefined },
   useTranslation: () => ({ t: (key: string) => key, i18n: { language: "en", exists: () => false } }),
@@ -21,7 +21,7 @@ vi.mock("@tanstack/react-router", () => ({
   Link: ({ children, to }: { children: ReactNode; to?: string }) => <a href={to}>{children}</a>,
   useNavigate: () => routing.navigate,
   useParams: () => ({ guardrailId: routing.guardrailId }),
-  useSearch: () => ({ tab: routing.tab, pageSize: routing.pageSize, window: routing.window, severity: routing.severity }),
+  useSearch: () => ({ tab: routing.tab, report: routing.report, version: routing.version, compare: routing.compare, pageSize: routing.pageSize, window: routing.window, severity: routing.severity }),
 }));
 vi.mock("@/lib/auth", () => ({ useAuth: () => ({ user: { role: routing.role } }) }));
 vi.mock("@/components/dashboard/runtime-health-alert", () => ({ RuntimeHealthAlert: () => null }));
@@ -65,7 +65,7 @@ function setupPage(overrides: Partial<api.Guardrail> = {}) {
 }
 
 describe("Guardrail edit, test and publish workflow", () => {
-  beforeEach(() => { routing.guardrailId = draft.id; routing.tab = "testing"; routing.role = "user"; routing.pageSize = undefined; routing.window = "24h"; routing.severity = undefined; routing.navigate.mockReset(); });
+  beforeEach(() => { routing.guardrailId = draft.id; routing.tab = "testing"; routing.report = undefined; routing.version = undefined; routing.compare = undefined; routing.role = "user"; routing.pageSize = undefined; routing.window = "24h"; routing.severity = undefined; routing.navigate.mockReset(); });
   afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
   it("offers ordinary draft, testing and delete actions for the preconfigured Default", async () => {
@@ -206,6 +206,44 @@ describe("Guardrail edit, test and publish workflow", () => {
     expect(remove).not.toHaveBeenCalled();
   });
 
+  it("keeps the selected immutable version and comparison base in the URL", async () => {
+    routing.tab = "immutable";
+    setupPage({ origin: "imported", published_current: true, has_unpublished_changes: false, status: "enforce" });
+    const versions = ["20261009-090837.640Z", "20261009-090835.526Z"].map(version => ({
+      guardrail_id: draft.id, version, created_at: "2026-10-09T09:09:10Z", status: "ready", origin: "imported", test_suite_count: 12,
+    } as api.GuardrailVersion));
+    vi.mocked(api.getGuardrailVersions).mockResolvedValue({ items: versions, count: 2 });
+    vi.spyOn(api, "getGuardrailVersion").mockResolvedValue(undefined as never);
+    render(wrap(<GuardrailDetailPage />));
+    await screen.findByRole("heading", { name: draft.name });
+
+    // Selecting a version writes it to the URL and drops any stale comparison.
+    const rows = await screen.findAllByRole("button", { name: "immutableVersions.view" });
+    const older = rows.find(button => button.textContent === versions[1].version);
+    if (!older) throw new Error("Older version row is missing");
+    fireEvent.click(older);
+    const selection = routing.navigate.mock.calls.at(-1)![0] as { search: (previous: Record<string, unknown>) => Record<string, unknown> };
+    expect(selection.search({ tab: "immutable", compare: versions[0].version, pageSize: 50 }))
+      .toEqual({ tab: "immutable", pageSize: 50, version: versions[1].version, compare: undefined });
+  });
+
+  it("opens the version named by the URL instead of the newest one", async () => {
+    routing.tab = "immutable";
+    setupPage({ origin: "imported", published_current: true, has_unpublished_changes: false, status: "enforce" });
+    const versions = ["20261009-090837.640Z", "20261009-090835.526Z"].map(version => ({
+      guardrail_id: draft.id, version, created_at: "2026-10-09T09:09:10Z", status: "ready", origin: "imported", test_suite_count: 12,
+    } as api.GuardrailVersion));
+    vi.mocked(api.getGuardrailVersions).mockResolvedValue({ items: versions, count: 2 });
+    const detail = vi.spyOn(api, "getGuardrailVersion").mockResolvedValue(undefined as never);
+    routing.version = versions[1].version;
+    render(wrap(<GuardrailDetailPage />));
+    // The deep link selects and fetches the older version, not the newest one.
+    await waitFor(() => expect(detail).toHaveBeenCalledWith(draft.id, versions[1].version));
+    expect(detail).not.toHaveBeenCalledWith(draft.id, versions[0].version);
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getAllByText(versions[1].version).length).toBeGreaterThan(0);
+  });
+
   it("runs the selected imported version from a direct Testing Report link and reruns that same version", async () => {
     setupPage({ origin: "imported", source_id: "bank-uat", published_current: true, has_unpublished_changes: false, status: "enforce" });
     const versions = ["20261009-090837.640Z", "20261009-090835.526Z"].map(version => ({
@@ -228,9 +266,14 @@ describe("Guardrail edit, test and publish workflow", () => {
     expect(screen.queryByRole("combobox")).toBeNull();
     fireEvent.click(screen.getAllByRole("button", { name: "immutableVersions.runVersionTests" })[1]);
     await waitFor(() => expect(run).toHaveBeenCalledWith(draft.id, versions[1].version, true));
-    await screen.findByText("immutableVersions.localTestReportDescription");
-    await waitFor(() => expect(screen.getAllByRole("dialog")).toHaveLength(1));
-    const dialog = screen.getByRole("dialog");
+    // Opening a report writes its ID into the URL instead of hidden state.
+    await waitFor(() => expect(routing.navigate).toHaveBeenCalled());
+    const opened = routing.navigate.mock.calls.at(-1)![0] as { search: (previous: Record<string, unknown>) => Record<string, unknown> };
+    expect(opened.search({ tab: "testing", pageSize: 50 })).toEqual({ tab: "testing", pageSize: 50, report: localReport.id });
+    vi.spyOn(api, "getValidationRun").mockResolvedValue(localReport);
+    routing.report = localReport.id;
+    render(wrap(<GuardrailDetailPage />));
+    const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText("immutableVersions.localTestReportDescription")).toBeTruthy();
     await waitFor(() => expect(within(dialog).getByRole("button", { name: "validation.runAgain" }).hasAttribute("disabled")).toBe(false));
     fireEvent.click(within(dialog).getByRole("button", { name: "validation.runAgain" }));
@@ -250,6 +293,9 @@ describe("Guardrail edit, test and publish workflow", () => {
     expect(screen.queryByRole("combobox", { name: "immutableVersions.testVersion" })).toBeNull();
     expect(screen.queryByRole("button", { name: "immutableVersions.runTests" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "validation.openValidationRun" }));
+    await waitFor(() => expect(routing.navigate).toHaveBeenCalled());
+    routing.report = report.id;
+    render(wrap(<GuardrailDetailPage />));
     await screen.findByRole("dialog");
     expect(screen.queryByRole("button", { name: "validation.runAgain" })).toBeNull();
   });
