@@ -29,6 +29,9 @@ export const configurationHelp = `Non-interactive configuration (existing Contro
     [--timeout-seconds 30] [--max-tokens 512] [--refresh-credential]
   guardctl platform bind --binding content_safety.input --model-id ID --state FILE
     [--validation-id ID | --revalidate] [--wait-seconds 300]
+  guardctl tenant test --guardrail-id ID [--version VERSION] [--local-only]
+  guardctl tenant test-status --run-id ID [--detail]
+  guardctl tenant test-cancel --run-id ID
   guardctl tenant provision --name NAME --patch FILE --state FILE
     --emergency-reason TEXT [--profile local-baseline | --source GUARDRAIL_ID] [--adapter litellm-generic-guardrail]
     [--endpoint-id ID] [--router-id ID] [--replace-change-id ID] [--wait-seconds 300]
@@ -44,8 +47,8 @@ Use the same state and arguments to resume. Use a new state for a different conf
 export function parseConfigurationArgs(args: string[]): { command: string; flags: Flags } {
   const [command, ...rest] = args;
   const flags: Flags = {};
-  const booleanFlags = new Set(['help', 'refresh-credential', 'revalidate']);
-  const known = new Set(['url', 'env-file', 'provider-name', 'provider-kind', 'provider-url', 'model', 'profile', 'key-env', 'timeout-seconds', 'max-tokens', 'binding', 'model-id', 'validation-id', 'state', 'wait-seconds', 'name', 'patch', 'emergency-reason', 'source', 'adapter', 'endpoint-id', 'router-id', 'replace-change-id', ...booleanFlags]);
+  const booleanFlags = new Set(['help', 'refresh-credential', 'revalidate', 'local-only', 'detail']);
+  const known = new Set(['url', 'env-file', 'provider-name', 'provider-kind', 'provider-url', 'model', 'profile', 'key-env', 'timeout-seconds', 'max-tokens', 'binding', 'model-id', 'validation-id', 'state', 'wait-seconds', 'name', 'patch', 'emergency-reason', 'source', 'adapter', 'endpoint-id', 'router-id', 'replace-change-id', 'guardrail-id', 'version', 'run-id', ...booleanFlags]);
   for (let n = 0; n < rest.length; n++) {
     assert.ok(rest[n].startsWith('--'), `Unexpected argument: ${rest[n]}`);
     const [key, ...value] = rest[n].slice(2).split('=');
@@ -279,15 +282,30 @@ export async function provisionTenant(api: Api, flags: Flags, patch: any, journa
   return { guardrailId: s.guardId, sourceGuardrailId: sourceId ?? null, profileId: profileId ?? null, version: s.version, endpointId: s.endpoint.id, adapter, routerId: s.routerId, routerRevision: s.routerRevision, changeId: s.changeId, rollout: router.rolloutStatus, credentialSaved: Boolean(s.endpoint.credential) };
 }
 
+/** Same asynchronous test API as the UI; never implicitly resubmit while polling. */
+export async function manageTestRun(api: Api, command: 'test' | 'test-status' | 'test-cancel', flags: Flags): Promise<any> {
+  if (command === 'test') {
+    const guardrail = required(flags, 'guardrail-id');
+    const path = `/api/v1/guardrails/${id(guardrail)}${flags.version ? `/versions/${id(required(flags, 'version'))}` : ''}/test-runs`;
+    return api(path, 'POST', { testModelRules: flags['local-only'] !== 'true' });
+  }
+  const path = `/api/v1/test-runs/${id(required(flags, 'run-id'))}`;
+  return command === 'test-cancel' ? api(`${path}/cancel`, 'POST') : api(`${path}${flags.detail === 'true' ? '' : '?view=summary'}`);
+}
+
 export async function runConfiguration(plane: 'platform' | 'tenant', args: string[], defaultUrl: string): Promise<void> {
   const { command, flags } = parseConfigurationArgs(args);
   if (!command || command === 'help' || command === '--help' || flags.help) { console.log(configurationHelp); return; }
-  assert.ok((plane === 'platform' && ['register-model', 'bind'].includes(command)) || (plane === 'tenant' && command === 'provision'), 'Unknown configuration command; use platform help or tenant help');
+  assert.ok((plane === 'platform' && ['register-model', 'bind'].includes(command)) || (plane === 'tenant' && ['provision', 'test', 'test-status', 'test-cancel'].includes(command)), 'Unknown configuration command; use platform help or tenant help');
   const cwd = process.env.GUARDCTL_CWD ?? process.cwd();
   const env = { ...(flags['env-file'] ? parseEnv(await readFile(resolve(cwd, flags['env-file']), 'utf8')) : {}), ...process.env };
   const base = flags.url ?? env[`GUARD_${plane.toUpperCase()}_URL`] ?? defaultUrl;
   const api = await configurationApi(base, plane, env);
   if (command === 'register-model') { emit(await registerModel(api, flags, env)); return; }
+  if (command === 'test' || command === 'test-status' || command === 'test-cancel') {
+    emit(await manageTestRun(api, command, flags));
+    return;
+  }
   const state = resolve(cwd, required(flags, 'state'));
   await withJournal(state, async journal => {
     const connection = { base: new URL(base).origin, plane, identity: env[`GUARD_${plane.toUpperCase()}_USERNAME`] ?? 'token' };

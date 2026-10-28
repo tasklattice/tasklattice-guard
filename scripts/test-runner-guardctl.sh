@@ -4,6 +4,9 @@ set -euo pipefail
 repo_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 image=${1:?Usage: bash scripts/test-runner-guardctl.sh RUNNER_IMAGE}
 
+# The contract is a build artifact. Generate it on the host before mounting it.
+npm run openapi:generate --prefix "$repo_dir/controller"
+
 # Test the final image as shipped, without a source checkout or installed dev
 # dependencies in the container. Loopback HTTP fixtures need no external network.
 docker run --rm --network none --read-only --cap-drop ALL \

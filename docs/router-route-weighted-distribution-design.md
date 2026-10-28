@@ -406,7 +406,7 @@ Paths are relative to the Controller. Authentication is required; mutations and 
 | `GET /api/v1/routers/:id/routes/:routeId/traffic-distribution` | Same filters; only `rows` is restricted to the Route; report totals, trend, and other metadata remain Router-wide |
 | `POST /api/v1/guardrails/:id/duplicate` | `name`, `idempotencyKey`, and one of `sourceVersion` / `sourceDraftRevision`; omitting both source fields defaults to the Latest version; HTTP 201 |
 
-There is no Router `PATCH` operation. The earlier `/traffic-selector-fields`, `/selector-preview`, `/distribution`, and Router `/preview` paths are not aliases for these operations. The actual contracts are defined in [HTTP route registration](../controller/server/http/app.ts) and [the generated OpenAPI document](../controller/openapi/controller.openapi.json).
+There is no Router `PATCH` operation. The earlier `/traffic-selector-fields`, `/selector-preview`, `/distribution`, and Router `/preview` paths are not aliases for these operations. The actual contracts are defined in [HTTP route registration](../controller/server/http/app.ts) and the OpenAPI document generated from it; see [API contract conventions](api-contract.md).
 
 The whole-draft API prevents intermediate condition/target writes. Controller desired state includes complete Router snapshots, targets, assignment keys, and Endpoint bindings. Runner owns runtime matching, assignment, context pinning, and telemetry emission. The management UI is not in the routing execution path.
 

@@ -20,9 +20,9 @@ export const guardrailVersionStates = ["pending", "ready"] as const;
 export type GuardrailVersionState = (typeof guardrailVersionStates)[number];
 
 /** Persisted lifecycle shared by Guardrail and programmable-policy validation runs. */
-export const validationRunStates = ["queued", "running", "passed", "failed"] as const;
+export const validationRunStates = ["queued", "running", "passed", "failed", "cancelled"] as const;
 export type ValidationRunState = (typeof validationRunStates)[number];
-export type ValidationTerminalState = Extract<ValidationRunState, "passed" | "failed">;
+export type ValidationTerminalState = Extract<ValidationRunState, "passed" | "failed" | "cancelled">;
 
 /** UI projection used when no persisted validation run exists yet. */
 export type ValidationRunDisplayState = "not_run" | ValidationRunState;
@@ -77,10 +77,11 @@ export const guardrailVersionTransitions = {
  * `running` update; dispatch failures also complete a queued run as failed.
  */
 export const validationRunTransitions = {
-  queued: ["running", "passed", "failed"],
-  running: ["passed", "failed"],
+  queued: ["running", "passed", "failed", "cancelled"],
+  running: ["passed", "failed", "cancelled"],
   passed: [],
   failed: [],
+  cancelled: [],
 } as const satisfies Record<ValidationRunState, readonly ValidationRunState[]>;
 
 /** Disabling an Endpoint is reversible until the separate soft-delete overlay is set. */

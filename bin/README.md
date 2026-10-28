@@ -22,12 +22,50 @@ bin/guardctl platform register-model [OPTIONS]
 bin/guardctl platform bind [OPTIONS]
 bin/guardctl tenant help
 bin/guardctl tenant provision [OPTIONS]
+bin/guardctl tenant test --guardrail-id ID [--version VERSION] [--local-only]
+bin/guardctl tenant test-status --run-id ID [--detail]
+bin/guardctl tenant test-cancel --run-id ID
 ```
 
 Only `platform` and `tenant` are one-shot command families. Enter `show`,
 `export`, and `import` inside the interactive shell, or pipe them on stdin.
 For one-shot commands, put `--url` after the subcommand; both `--url URL`
 and `--url=URL` work. To launch the interactive shell, use `--url=URL`.
+
+## Asynchronous Guardrail tests
+
+These commands call the same Controller routes as the UI. Use the tenant
+credentials described below (`GUARD_TENANT_TOKEN` with `guardrails:write`, or
+`GUARD_TENANT_USERNAME` and `GUARD_TENANT_PASSWORD`):
+
+```sh
+# Submit once; the JSON response contains the immutable run ID.
+bin/guardctl tenant test --guardrail-id GUARDRAIL_ID --url=https://guard.example.com
+
+# Inspect that exact ID, or stop it without deleting the report.
+bin/guardctl tenant test-status --run-id RUN_ID --url=https://guard.example.com
+bin/guardctl tenant test-cancel --run-id RUN_ID --url=https://guard.example.com
+```
+
+`test` returns immediately after submission. `--version` tests a frozen version;
+omit it to test the current draft. `--local-only` explicitly skips model rules;
+it does not disable them in the published Guardrail. Do not repeat `test` to poll:
+each submission creates a new run. `test-status` is read-only and may use a
+read-only token. It reads a lightweight summary by default, without downloading
+all case traces while polling. Add `--detail` for the complete report (HTTP
+compression is negotiated automatically):
+
+```sh
+bin/guardctl tenant test-status --run-id RUN_ID --detail --url=https://guard.example.com > report.json
+```
+
+`test-cancel` is idempotent and changes only queued/running Guardrail tests.
+Passed/failed reports are returned unchanged. The cancelled state records the
+stop request; an offline Runner may not have acknowledged cleanup yet.
+`test-status` includes `cancellation.requestedAt` and `cancellation.acknowledgedAt`;
+the latter stays null until cleanup is acknowledged. The Controller retries delivery to the default pool ordinal-0 Runner, never another
+ordinal/pool. Publication and traffic are unaffected. Both Controller and Runner
+must support the cancellation protocol. See [task lifecycle and Runner logs](../docs/operations.md#test-task-lifecycle-and-cancellation).
 
 ## Description: how the pieces fit
 
@@ -429,4 +467,4 @@ a new reviewed operation rather than rotating credentials or deleting objects.
 | [`controller/scripts/build-guardctl.mjs`](../controller/scripts/build-guardctl.mjs) | Standalone bundle build. |
 | [`docs/guardctl-configuration.md`](../docs/guardctl-configuration.md) | Additional model and tenant configuration examples. |
 | [`docs/ops-cli-proposal.md`](../docs/ops-cli-proposal.md) | Shipped-image usage and the broader CLI design proposal. |
-| [`controller/openapi/controller.openapi.json`](../controller/openapi/controller.openapi.json) | Controller API contract. |
+| [`docs/api-contract.md`](../docs/api-contract.md) | Controller API contract and generation workflow; the running Controller serves `/api/openapi.json`. |

@@ -103,7 +103,7 @@ export function GuardrailDraftReviewSheet({ guardrail, policies, versions, polic
       {run.error || publish.error ? <ErrorNotice error={run.error ?? publish.error} /> : null}
       {reviewingPublish && publishRevision !== guardrail.draft_revision ? <p role="alert" className="text-sm text-destructive">{t("guardrails.draftChangedBeforePublish")}</p> : null}
       {!reviewingPublish ? <GuardrailValidationReadiness readiness={readiness} onRetry={() => { onRetryPolicies?.(); readiness.refresh(); }} /> : null}
-      {run.isPending || reconnect ? <ValidationRunProgress run={observedRun} startedAt={run.submittedAt} interrupted={reconnect} /> : currentResult ? <>
+      {run.isPending || reconnect ? <ValidationRunProgress run={observedRun} startedAt={run.submittedAt} interrupted={reconnect} canCancel={!readOnly} /> : currentResult ? <>
         <div className="flex items-center justify-between gap-4"><div><p className="text-sm font-medium">{t("guardrails.testReportsTab")}</p><p className="mt-1 font-mono text-xs text-muted-foreground">{currentResult.id}</p></div><StateBadge state={currentResult.status} /></div>
         <ValidationScopeNotice run={currentResult} />
         <p className="text-sm">{t("guardrails.testResultSummary", { passed: currentResult.metrics.passed, total: currentResult.metrics.executed ?? currentResult.metrics.total, rate: currentResult.metrics.compliance_rate })}</p>

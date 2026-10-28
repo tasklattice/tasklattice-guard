@@ -2,8 +2,10 @@ import { PROTECTION_MODE_CAPABILITY } from "../../shared/protection-mode.js";
 import { artifactExecutionContractIssue } from "../domain/artifact-execution-contract.js";
 import { OFFLINE_COMPILATION_CAPABILITY, type ArtifactCompilation } from "../domain/artifact-compilation.js";
 import { readFileSync } from "node:fs";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import { dirname } from "node:path";
+import { promisify } from "node:util";
+import { gunzip } from "node:zlib";
 
 import {
   Server,
@@ -12,7 +14,7 @@ import {
   status,
   loadPackageDefinition,
 } from "@grpc/grpc-js";
-import { loadSync } from "@grpc/proto-loader";
+import { loadSync, type MessageTypeDefinition } from "@grpc/proto-loader";
 
 import type { ControllerConfig } from "../config.js";
 import type { RunnerLoad } from "../db/schema.js";
@@ -45,6 +47,8 @@ import {
   validationTestToWire,
 } from "./protocol-codec.js";
 
+const decompressReport = promisify(gunzip);
+const MAX_REPORT_BYTES = 128 * 1024 * 1024;
 type RunnerStream = ServerDuplexStream<RunnerMessage__Output, ControllerMessage>;
 type ControllerBody = Omit<ControllerMessage, "messageId" | "sentAtUnixMs">;
 
@@ -65,6 +69,7 @@ type Connection = {
 
 export class RunnerControlServer {
   private readonly grpc = new Server(controlChannelOptions);
+  private readonly validationResultCodec: MessageTypeDefinition<object, ValidationResult__Output>;
   private readonly connections = new Map<string, Connection>();
   private timers: NodeJS.Timeout[] = [];
   private dispatchingValidation = false;
@@ -87,6 +92,7 @@ export class RunnerControlServer {
       defaults: true,
       oneofs: true,
     });
+    this.validationResultCodec = definition["tasklattice.guard.control.v1.ValidationResult"] as MessageTypeDefinition<object, ValidationResult__Output>;
     const descriptor = loadPackageDefinition(definition) as unknown as ProtoGrpcType;
     const handlers: RunnerControlHandlers = {
       Connect: (stream: RunnerStream) => this.connect(stream),
@@ -199,8 +205,14 @@ export class RunnerControlServer {
     await new Promise<void>((resolve) => this.grpc.tryShutdown(() => resolve()));
   }
 
+  private isTestingRunner(connection: Connection): boolean {
+    // Each deployment is its own control-plane boundary. Never fail over tests
+    // to another ordinal or pool when its stable StatefulSet ordinal 0 is absent.
+    return connection.poolId === "default" && connection.compilerCapable && connection.runnerId.endsWith("-0");
+  }
+
   hasDefaultCompiler(): boolean {
-    return [...this.connections.values()].some((item) => item.poolId === "default" && item.compilerCapable);
+    return [...this.connections.values()].some(item => this.isTestingRunner(item));
   }
 
   removeRunnerConnection(runnerId: string, bootId: string): void {
@@ -355,6 +367,7 @@ export class RunnerControlServer {
         registrationAccepted: {
           desiredGeneration: String(desiredGeneration),
           heartbeatIntervalSeconds: this.config.heartbeatIntervalSeconds,
+          validationReportGzip: true,
         },
       });
       await this.reconcile(connection);
@@ -400,7 +413,7 @@ export class RunnerControlServer {
       if (result.accepted) current.appliedProtectionGeneration = Math.max(current.appliedProtectionGeneration, generation);
     } else if (message.validationProgress) {
       const progress = message.validationProgress;
-      if (progress.runnerId !== current.runnerId || !current.compilerCapable || current.poolId !== "default") {
+      if (progress.runnerId !== current.runnerId || !this.isTestingRunner(current)) {
         throw new Error("Validation progress identity does not match a registered compiler stream.");
       }
       const phase = {
@@ -412,14 +425,23 @@ export class RunnerControlServer {
       await this.service.updateValidationProgress(progress.runId, {
         phase: phase[progress.phase], completedCases: progress.completedCases, passedCases: progress.passedCases,
       });
-    } else if (message.validationResult) {
-      const result = message.validationResult;
+    } else if (message.validationResult || message.validationReport) {
+      const started = performance.now();
+      const result = message.validationReport ? await this.decodeValidationReport(message.validationReport) : message.validationResult!;
       if (result.runnerId !== current.runnerId) throw new Error("Validation result identity does not match the registered stream.");
       this.metrics.observeJob("validation", result.accepted);
       const owner = this.activeValidations.get(result.runId);
       if (owner && owner !== current) throw new Error("Validation result belongs to another Runner stream.");
-      await this.handleValidationResult(result);
+      if (!this.isTestingRunner(current)) throw new Error("Validation result is not from the ordinal-0 testing Runner.");
+      if (result.status === "VALIDATION_STATUS_CANCELLED") {
+        await this.service.markOutboxProcessed(`cancel-${result.runId}`);
+      } else {
+        await this.handleValidationResult(result);
+      }
       this.activeValidations.delete(result.runId);
+      this.write(current.stream, { validationReportAck: { runId: result.runId } });
+      console.info(JSON.stringify({ event: "validation.report_saved", run_id: result.runId, runner_id: current.runnerId,
+        cases: result.results?.length ?? 0, duration_ms: Math.round(performance.now() - started) }));
     } else if (message.artifactCompilationResult) {
       const result = message.artifactCompilationResult;
       const pending = this.compilations.get(result.compileId);
@@ -485,6 +507,18 @@ export class RunnerControlServer {
       }
     }
     return null;
+  }
+
+  private async decodeValidationReport(report: NonNullable<RunnerMessage__Output["validationReport"]>): Promise<ValidationResult__Output> {
+    const size = Number(report.rawSizeBytes);
+    if (!Number.isSafeInteger(size) || size <= 0 || size > MAX_REPORT_BYTES) throw new Error("Validation report exceeds the decoded size budget.");
+    const bytes = await decompressReport(report.gzipResult, { maxOutputLength: MAX_REPORT_BYTES });
+    if (bytes.length !== size || createHash("sha256").update(bytes).digest("hex") !== report.sha256)
+      throw new Error("Validation report size or digest does not match.");
+    const result = this.validationResultCodec.deserialize(bytes);
+    if (result.runnerId !== report.runnerId || result.runId !== report.runId)
+      throw new Error("Validation report identity does not match its envelope.");
+    return result;
   }
 
   private async handleValidationResult(result: ValidationResult__Output): Promise<void> {
@@ -625,12 +659,21 @@ export class RunnerControlServer {
     if (this.dispatchingValidation) return;
     this.dispatchingValidation = true;
     try {
+      // Deliver stops before checking busy/model state. Intent survives Controller
+      // restart and is retried until the Runner acknowledges cleanup.
+      const primary = [...this.connections.values()].find(item => this.isTestingRunner(item));
+      if (!primary) return;
+      const cancellations = await this.service.pendingOutbox("guardrail.validation_cancel_requested", 100);
+      for (const event of cancellations) {
+        this.write(primary.stream, { validationCancelRequest: { runId: string(event.payload.runId) } });
+      }
+      if (cancellations.length) return;
       const expectedModelRevisionId = (await this.models.activeConfiguration(true))?.revisionId ?? "";
       const busy = new Set(this.activeValidations.values());
       // Capability probes use an explicit candidate configuration. Guardrail
       // tests use the Runner's live providers and must wait for their ACK.
-      const compiler = [...this.connections.values()].find(item => item.poolId === "default" && item.compilerCapable
-        && item.appliedModelRevisionId === expectedModelRevisionId && !busy.has(item));
+      const compiler = this.isTestingRunner(primary) && primary.appliedModelRevisionId === expectedModelRevisionId
+        && !busy.has(primary) ? primary : undefined;
       if (!compiler) return;
       const excludedRunIds = [...this.activeValidations.keys()];
       const events = [
@@ -643,7 +686,10 @@ export class RunnerControlServer {
       const runId = string(payload.runId);
       this.activeValidations.set(runId, compiler);
       try {
-        await this.service.markValidationRunning(event.id);
+        if (await this.service.markValidationRunning(event.id) === false) {
+          this.activeValidations.delete(runId);
+          return;
+        }
         await this.service.deferOutbox(event.id, 30);
         if (this.connections.get(compiler.runnerId) !== compiler) {
           this.activeValidations.delete(runId);
@@ -720,7 +766,7 @@ function normalizeLoad(load: RunnerHeartbeat__Output["load"]): RunnerLoad {
 
 function wireMessageType(message: ControllerBody): string {
   return [
-    "registrationAccepted", "desiredState", "protectionState", "validationRequest", "drainRequest",
+    "registrationAccepted", "desiredState", "protectionState", "validationRequest", "validationCancelRequest", "validationReportAck", "drainRequest",
   ].find((key) => key in message) ?? "unknown";
 }
 

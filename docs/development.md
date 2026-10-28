@@ -309,9 +309,19 @@ a browsable reference at `/api/docs`, and a compact agent index at `/api/llms.tx
 Use `?module=routers` or `?operationId=postRoutersByIdPublish` on the JSON endpoint
 to retrieve a complete subset with its referenced schemas and token permissions.
 
-Run `npm run openapi:generate --prefix controller` after API changes and commit
-[the generated contract](../controller/openapi/controller.openapi.json). CI and server
-builds run `npm run openapi:check --prefix controller` to reject stale documents.
+`controller/openapi/controller.openapi.json` is an ignored build artifact.
+Controller development startup and watch restarts, Vitest (including direct
+`npx vitest` runs), typechecking, and server builds generate it from the current
+source automatically. No database or running Controller is required to generate it.
+Use `npm run openapi:generate --prefix controller` to generate it on its own.
+
+CI runs `npm run openapi:check --prefix controller` to generate the contract and
+test schema validity, mounted-route coverage, permissions, and filtered references.
+It uploads the JSON as `controller-openapi-<commit SHA>` for inspection. Server
+builds package the generated JSON in `dist-server/openapi/`; production serves
+that artifact without running the generator. The Runner CLI image smoke script
+also generates its contract fixture on the host and requires installed Controller
+development dependencies (`npm ci --prefix controller`).
 See [the API contract conventions](api-contract.md)
 for product tags, resource paths, authentication, idempotency, and retry behavior.
 

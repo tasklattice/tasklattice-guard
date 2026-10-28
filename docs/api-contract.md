@@ -5,14 +5,14 @@ This API change does not preserve old paths. The frontend, token permission tabl
 ## Standard Documentation and Generation Sources
 
 - `/api/docs`: API reference grouped by product domain, explaining operation semantics and retry rules.
-- `/api/openapi.json`: standard OpenAPI 3.1 document, currently containing 97 operations.
+- `/api/openapi.json`: standard OpenAPI 3.1 document generated from the current API.
 - `/api/openapi.json?module=routers`: complete document filtered by product Tag.
 - `/api/openapi.json?operationId=postRoutersByIdPublish`: a single operation and its recursive Schemas.
 - `/api/llms.txt`: model invocation index, including permissions and idempotency categories.
 
 Methods, paths, input Schemas, return types, and status codes are generated from Hono/Zod/TypeScript code; token permissions come from the actual authorization table. Product Tags, business meaning, and idempotency/retry guidance are centralized in `controller/shared/api-contract.ts` and reviewed with code. Business semantics cannot be inferred automatically from TypeScript types alone.
 
-After changing an API, run `npm run openapi:generate --prefix controller`. Build and CI `openapi:check` checks block stale contracts. Tests verify coverage of actually mounted endpoints, permission consistency, Schema validity, and complete reference resolution in filtered documents.
+`controller/openapi/controller.openapi.json` is generated automatically before Controller development startup/restarts, tests, typechecking, and server builds. It is ignored by Git and must not be edited manually. `npm run openapi:generate --prefix controller` generates it independently. CI runs `npm run openapi:check --prefix controller` to generate and validate the contract, then uploads it as a commit-specific artifact. Tests verify coverage of actually mounted endpoints, permission consistency, Schema validity, and complete reference resolution in filtered documents. Production serves the JSON packaged with the compiled server.
 
 ## Product Groups and Permissions
 

@@ -37,3 +37,42 @@ describe("Guard Better Auth", () => {
     }));
   });
 });
+
+describe("Guard sign-in throttling", () => {
+  beforeEach(() => betterAuth.mockClear());
+
+  it("keys login throttling by client address with a CLI-workable but bounded budget", () => {
+    createAuth({
+      publicUrl: "http://localhost:38081",
+      betterAuthSecret: "guard-secret-that-is-at-least-32-characters",
+      trustedOrigins: ["http://localhost:38081"],
+      minPasswordLength: 8,
+      trustedProxyCidrs: [],
+    } as unknown as ControllerConfig, {} as ControllerDatabase);
+
+    expect(betterAuth).toHaveBeenCalledWith(expect.objectContaining({
+      rateLimit: {
+        enabled: true,
+        window: 60,
+        max: 100,
+        customRules: { "/sign-in/username": { window: 60, max: 10 } },
+      },
+      // No proxy is trusted, so the HTTP layer supplies the socket peer instead.
+      advanced: { cookiePrefix: GUARD_AUTH_COOKIE_PREFIX },
+    }));
+  });
+
+  it("lets Better Auth validate the forwarding chain only when proxies are configured", () => {
+    createAuth({
+      publicUrl: "http://localhost:38081",
+      betterAuthSecret: "guard-secret-that-is-at-least-32-characters",
+      trustedOrigins: ["http://localhost:38081"],
+      minPasswordLength: 8,
+      trustedProxyCidrs: ["10.0.0.0/8"],
+    } as unknown as ControllerConfig, {} as ControllerDatabase);
+
+    expect(betterAuth).toHaveBeenCalledWith(expect.objectContaining({
+      advanced: { cookiePrefix: GUARD_AUTH_COOKIE_PREFIX, ipAddress: { trustedProxies: ["10.0.0.0/8"] } },
+    }));
+  });
+});

@@ -30,3 +30,5 @@ output
 /.local-archives/
 
 controller/scripts/.openapi-inputs-*.ts
+/controller/openapi/controller.openapi.json
+/controller/openapi/.controller.openapi-*.tmp

@@ -42,8 +42,15 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras --frozen && npm ci --no-audit --no-fund && npm ci --prefix controller --no-audit --no-fund
 
-      - name: Verify generated OpenAPI contract
+      - name: Generate and validate OpenAPI contract
         run: npm run openapi:check --prefix controller
+
+      - name: Upload generated OpenAPI contract
+        uses: actions/upload-artifact@v7
+        with:
+          name: controller-openapi-${{ github.sha }}
+          path: controller/openapi/controller.openapi.json
+          if-no-files-found: error
 
       - name: Test developer commands
         run: npm run test:cli
@@ -78,6 +85,16 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
+
+      - name: Set up Node.js for contract generation
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: controller/package-lock.json
+
+      - name: Install contract generation dependencies
+        run: npm ci --prefix controller --no-audit --no-fund
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4.2.0

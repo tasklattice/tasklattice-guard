@@ -6,6 +6,11 @@ controller:
     - https://guard.example.com
   auth:
     minLoginLength: 8
+  # Sign-in throttling keys on the client address. Leave empty when browsers and
+  # CLI clients connect directly; the Controller then uses the socket peer and
+  # ignores any supplied X-Forwarded-For. Behind an ingress/gateway, list its
+  # pod CIDRs so the real client address is trusted instead of the proxy's.
+  trustedProxyCidrs: []
   service:
     type: ClusterIP
     public:

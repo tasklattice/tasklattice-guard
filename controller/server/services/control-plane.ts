@@ -1061,12 +1061,39 @@ export class ControlPlaneService {
 
   async getValidationRun(id: string, summaryOnly = false): Promise<
     Omit<typeof validationRuns.$inferSelect, "results" | "candidateArtifact" | "candidatePolicies" | "candidateInspection" | "testSuite">
-    & { results?: typeof validationRuns.$inferSelect.results }
+    & { results?: typeof validationRuns.$inferSelect.results;
+        cancellation?: { requestedAt: Date; acknowledgedAt: Date | null } }
   > {
     const [run] = await this.db.select(summaryOnly ? validationSummaryColumns : validationDetailColumns)
       .from(validationRuns).where(eq(validationRuns.id, id));
     if (!run) throw new NotFoundError("Validation Run", id);
+    if (run.status === "cancelled") {
+      const [delivery] = await this.db.select({ requestedAt: outboxEvents.createdAt, acknowledgedAt: outboxEvents.processedAt })
+        .from(outboxEvents).where(eq(outboxEvents.id, `cancel-${id}`));
+      return { ...run, ...(delivery ? { cancellation: delivery } : {}) };
+    }
     return run;
+  }
+
+  /** Cancellation intent and delivery are durable; late results cannot undo it. */
+  async cancelValidation(input: { runId: string; actorId: string }) {
+    return this.db.transaction(async tx => {
+      const [found] = await tx.select().from(validationRuns).where(eq(validationRuns.id, input.runId));
+      if (!found) throw new NotFoundError("Testing Report", input.runId);
+      await tx.select({ id: guardrails.id }).from(guardrails).where(eq(guardrails.id, found.guardrailId)).for("update");
+      const [run] = await tx.select().from(validationRuns).where(eq(validationRuns.id, input.runId)).for("update");
+      if (!run) throw new NotFoundError("Testing Report", input.runId);
+      if (run.status !== "queued" && run.status !== "running") return publicValidationRun(run);
+      const [cancelled] = await tx.update(validationRuns).set({ status: "cancelled", completedAt: new Date(),
+        failureReason: "Cancelled by user." }).where(eq(validationRuns.id, run.id)).returning();
+      await tx.update(outboxEvents).set({ processedAt: new Date() }).where(eq(outboxEvents.id, run.id));
+      await tx.insert(outboxEvents).values({ id: `cancel-${run.id}`, kind: "guardrail.validation_cancel_requested",
+        aggregateId: run.guardrailId, payload: { runId: run.id } });
+      await tx.insert(auditEvents).values({ id: randomUUID(), kind: "guardrail.validation_cancelled", actorId: input.actorId,
+        resourceType: "guardrail", resourceId: run.guardrailId, detail: { runId: run.id, previousStatus: run.status } });
+      await pruneTestingReports(tx, run.guardrailId);
+      return publicValidationRun(cancelled!);
+    });
   }
 
   async testingReportDeletionImpact(runId: string) {
@@ -1274,13 +1301,18 @@ export class ControlPlaneService {
       return publicValidationRun((await tx.select().from(validationRuns).where(eq(validationRuns.id, runId)))[0]!);
   }
 
-  async markValidationRunning(runId: string): Promise<void> {
-    if (runId.startsWith("policy-job-") && await this.policyResources.running(runId)) return;
+  async markValidationRunning(runId: string): Promise<boolean> {
+    if (runId.startsWith("policy-job-") && await this.policyResources.running(runId)) return true;
     const policyUpdate = await this.db.update(policyValidationRuns).set({ status: "running" })
       .where(and(eq(policyValidationRuns.id, runId), eq(policyValidationRuns.status, "queued"))).returning({ id: policyValidationRuns.id });
-    if (policyUpdate.length) return;
-    await this.db.update(validationRuns).set({ status: "running" })
-      .where(and(eq(validationRuns.id, runId), eq(validationRuns.status, "queued")));
+    if (policyUpdate.length) return true;
+    const [policyRun] = await this.db.select({ status: policyValidationRuns.status }).from(policyValidationRuns)
+      .where(eq(policyValidationRuns.id, runId));
+    if (policyRun) return policyRun.status === "running";
+    const updated = await this.db.update(validationRuns).set({ status: "running" })
+      .where(and(eq(validationRuns.id, runId), inArray(validationRuns.status, ["queued", "running"])))
+      .returning({ id: validationRuns.id });
+    return updated.length > 0;
   }
 
   async updateValidationProgress(runId: string, observation: Omit<ValidationProgress, "updatedAt">): Promise<void> {
@@ -1310,7 +1342,7 @@ export class ControlPlaneService {
       await this.db.transaction(async (tx) => {
         const [locked] = await tx.select().from(policyValidationRuns)
           .where(eq(policyValidationRuns.id, input.runId)).for("update");
-        if (!locked || locked.status === "passed" || locked.status === "failed") return;
+        if (!locked || (locked.status !== "queued" && locked.status !== "running")) return;
         const results = input.results.map(policyValidationResult);
         await tx.update(policyValidationRuns).set({
           status: input.status,
@@ -1336,7 +1368,7 @@ export class ControlPlaneService {
       const [run] = await tx.select().from(validationRuns).where(eq(validationRuns.id, input.runId)).for("update");
       // A deleted Guardrail may still have an in-flight Runner response. Acknowledge it without recreating data.
       if (!run) return;
-      if (run.status === "passed" || run.status === "failed") return;
+      if (run.status !== "queued" && run.status !== "running") return;
       // A version run tested an existing signed Artifact; there is no candidate to bind.
       const candidate = run.subject === "draft" && (input.status === "passed" || input.candidateArtifact)
         ? await this.verifiedCandidate(tx, run, input.candidateArtifact)

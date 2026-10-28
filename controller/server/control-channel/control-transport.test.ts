@@ -1,11 +1,14 @@
 import { dirname, resolve } from "node:path";
+import { createHash } from "node:crypto";
+import { gzipSync } from "node:zlib";
 
 import { credentials, loadPackageDefinition, Metadata, Server, ServerCredentials, status } from "@grpc/grpc-js";
-import { loadSync } from "@grpc/proto-loader";
+import { loadSync, type MessageTypeDefinition } from "@grpc/proto-loader";
 import { describe, expect, it, vi } from "vitest";
 
 import { loadConfig } from "../config.js";
 import type { ProtoGrpcType } from "../generated/control-protocol/runner_control.js";
+import type { ValidationResult } from "../generated/control-protocol/tasklattice/guard/control/v1/ValidationResult.js";
 import type { ControllerMetrics } from "../metrics.js";
 import type { ModelConfigurationService } from "../model-config/service.js";
 import type { ControlPlaneService } from "../services/control-plane.js";
@@ -57,7 +60,27 @@ describe("production Controller gRPC transport budget", () => {
     }
   });
 
-  it.each([false, true])("preserves large evidence and rejects oversized messages (oversized=%s)", async (oversized) => {
+  it("rejects compressed reports with invalid identity, size or digest", async () => {
+    const server = new RunnerControlServer(config, {} as ControlPlaneService, {} as ControllerMetrics, {} as ModelConfigurationService);
+    const definition = loadSync(config.protoPath, { includeDirs: [dirname(config.protoPath)], longs: String, enums: String, defaults: true, oneofs: true });
+    const codec = definition["tasklattice.guard.control.v1.ValidationResult"] as MessageTypeDefinition<ValidationResult, unknown>;
+    const bytes = codec.serialize({ runnerId: "runner-0", runId: "report", accepted: true, status: "VALIDATION_STATUS_PASSED" });
+    const valid = { runnerId: "runner-0", runId: "report", gzipResult: gzipSync(bytes), rawSizeBytes: String(bytes.length),
+      sha256: createHash("sha256").update(bytes).digest("hex") };
+    const decode = (value: object) => (server as unknown as { decodeValidationReport(value: object): Promise<unknown> }).decodeValidationReport(value);
+    try {
+      await expect(decode(valid)).resolves.toMatchObject({ runnerId: "runner-0", runId: "report" });
+      await expect(decode({ ...valid, sha256: "bad" })).rejects.toThrow("digest");
+      await expect(decode({ ...valid, runId: "other" })).rejects.toThrow("identity");
+      await expect(decode({ ...valid, rawSizeBytes: String(129 * 1024 * 1024) })).rejects.toThrow("size budget");
+    } finally { await server.stop(); }
+  });
+
+  it.each([
+    { oversized: false, compressed: false }, { oversized: true, compressed: false },
+    { oversized: true, compressed: true },
+  ])("preserves large evidence (oversized=$oversized, compressed=$compressed)", async ({ oversized, compressed }) => {
+    const caseCount = compressed ? 950 : 321;
     // Synthetic content tests transport integrity, not detector correctness.
     const evidence = "x".repeat(oversized ? CONTROL_MESSAGE_MAX_BYTES : 5 * 1024 * 1024) + "END";
     const desiredId = "disabled-" + "d".repeat(5 * 1024 * 1024);
@@ -85,9 +108,10 @@ describe("production Controller gRPC transport budget", () => {
         if (error) reject(error); else resolvePort(value);
       });
     });
-    const descriptor = loadPackageDefinition(loadSync(config.protoPath, {
+    const definition = loadSync(config.protoPath, {
       includeDirs: [dirname(config.protoPath)], longs: String, enums: String, defaults: true, oneofs: true,
-    })) as unknown as ProtoGrpcType;
+    });
+    const descriptor = loadPackageDefinition(definition) as unknown as ProtoGrpcType;
     const client = new descriptor.tasklattice.guard.control.v1.RunnerControl(
       `127.0.0.1:${port}`, credentials.createInsecure(), {
         ...controlChannelOptions,
@@ -101,34 +125,44 @@ describe("production Controller gRPC transport budget", () => {
     const stream = client.Connect(metadata, { deadline: Date.now() + 10_000 });
     let receivedDesired: string | undefined;
     let errorCode: number | undefined;
+    let savedRun: string | undefined;
     stream.on("error", (error: { code: number }) => { errorCode = error.code; });
     stream.on("data", (message) => {
       if (message.desiredState) receivedDesired = message.desiredState.disabledGuardrailIds[0];
+      if (message.validationReportAck) savedRun = message.validationReportAck.runId;
     });
     try {
       stream.write({ registration: {
-        runnerId: "transport-runner", bootId: "boot-1", poolId: "default", compilerCapable: true,
+        runnerId: "transport-runner-0", bootId: "boot-1", poolId: "default", compilerCapable: true,
       } });
       await expect.poll(() => receivedDesired, { timeout: 5_000 }).toBe(desiredId);
-      stream.write({ validationResult: {
-        runnerId: "transport-runner", runId: "large-validation", accepted: true,
-        status: "VALIDATION_STATUS_PASSED", metrics: { total: 321, passed: 321 },
+      const result: ValidationResult = {
+        runnerId: "transport-runner-0", runId: "large-validation", accepted: true,
+        status: "VALIDATION_STATUS_PASSED", metrics: { total: caseCount, passed: caseCount },
         reason: evidence,
-        results: Array.from({ length: 321 }, (_, i) => ({
+        results: Array.from({ length: caseCount }, (_, i) => ({
           caseId: `case-${i}`, passed: true,
           expectedDecision: "VALIDATION_DECISION_ALLOW", actualDecision: "VALIDATION_DECISION_ALLOW",
           action: "ENFORCEMENT_ACTION_ALLOW",
         })),
-      } });
-      if (oversized) {
+      };
+      if (compressed) {
+        const codec = definition["tasklattice.guard.control.v1.ValidationResult"] as MessageTypeDefinition<ValidationResult, unknown>;
+        const bytes = codec.serialize(result);
+        expect(bytes.length).toBeGreaterThan(CONTROL_MESSAGE_MAX_BYTES);
+        stream.write({ validationReport: { runnerId: "transport-runner-0", runId: "large-validation",
+          gzipResult: gzipSync(bytes), rawSizeBytes: String(bytes.length), sha256: createHash("sha256").update(bytes).digest("hex") } });
+      } else stream.write({ validationResult: result });
+      if (oversized && !compressed) {
         await expect.poll(() => errorCode, { timeout: 5_000 }).toBe(status.RESOURCE_EXHAUSTED);
         expect(service.completeValidation).not.toHaveBeenCalled();
       } else {
         await expect.poll(() => service.completeValidation.mock.calls.length, { timeout: 5_000 }).toBe(1);
         const delivered = service.completeValidation.mock.calls[0][0];
         expect(delivered.reason).toBe(evidence);
-        expect(delivered.results).toHaveLength(321);
-        expect(delivered.results.at(-1).caseId).toBe("case-320");
+        expect(delivered.results).toHaveLength(caseCount);
+        expect(delivered.results.at(-1).caseId).toBe(`case-${caseCount - 1}`);
+        await expect.poll(() => savedRun).toBe("large-validation");
         expect(errorCode).toBeUndefined();
       }
     } finally {

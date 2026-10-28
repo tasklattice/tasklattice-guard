@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { resolve } from "node:path";
+import { gunzipSync } from "node:zlib";
 import { describe, expect, it, vi } from "vitest";
 import type { ControllerAuth } from "../auth.js";
 import { loadConfig } from "../config.js";
@@ -12,6 +13,7 @@ function setup(role = "user") {
   const run = { id: "run-1", status: "queued" };
   const service = {
     requestValidation: vi.fn().mockResolvedValue(run),
+    cancelValidation: vi.fn().mockResolvedValue({ ...run, status: "cancelled" }),
     queryValidationRuns: vi.fn().mockResolvedValue({ items: [run], count: 1 }),
     getValidationRun: vi.fn().mockResolvedValue(run),
     testingReportDeletionImpact: vi.fn().mockResolvedValue({ runId: "run-1", pendingVersion: "version-1", deletable: true }),
@@ -47,6 +49,35 @@ describe("Testing HTTP paths", () => {
     expect(detail.status).toBe(200);
     expect(await detail.json()).toEqual(run);
     expect(service.getValidationRun).toHaveBeenCalledWith("run-1", false);
+  });
+
+  it("compresses detailed reports without losing cases or trace evidence", async () => {
+    const { app, service } = setup();
+    const report = { id: "large", status: "passed", results: Array.from({ length: 950 }, (_, index) => ({
+      caseId: `case-${index}`, trace: [{ detail: "full evidence ".repeat(100) }],
+    })) };
+    service.getValidationRun.mockResolvedValue(report);
+    const response = await app.request("/api/v1/test-runs/large", { headers: { "accept-encoding": "gzip" } });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-encoding")).toBe("gzip");
+    const bytes = Buffer.from(await response.arrayBuffer());
+    expect(bytes.length).toBeLessThan(JSON.stringify(report).length / 5);
+    expect(JSON.parse(gunzipSync(bytes).toString())).toEqual(report);
+  });
+
+  it("cancels an exact test ID without deleting its report", async () => {
+    const { app, service } = setup();
+    const response = await app.request("/api/v1/test-runs/run-1/cancel", { method: "POST" });
+    expect(response.status).toBe(202);
+    expect(await response.json()).toMatchObject({ id: "run-1", status: "cancelled" });
+    expect(service.cancelValidation).toHaveBeenCalledExactlyOnceWith({ runId: "run-1", actorId: "admin-1" });
+    expect(service.deleteTestingReport).not.toHaveBeenCalled();
+  });
+
+  it("does not let viewers cancel tests", async () => {
+    const { app, service } = setup("viewer");
+    expect((await app.request("/api/v1/test-runs/run-1/cancel", { method: "POST" })).status).toBe(403);
+    expect(service.cancelValidation).not.toHaveBeenCalled();
   });
 
   it("reviews report deletion and requires the confirmed impact", async () => {

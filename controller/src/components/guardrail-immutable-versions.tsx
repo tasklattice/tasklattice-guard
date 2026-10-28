@@ -106,8 +106,9 @@ export function ImmutableVersionView({ openRequested, onOpenRequestHandled, deta
   });
   const openVersion = (version: string, target: HTMLElement) => {
     opener.current = target;
+    // Selection already resets comparison; a second navigation in the same tick
+    // would spread the stale URL and drop the newly selected version.
     onSelectVersion(version);
-    onCloseCompare();
     setTab("overview");
     setPolicyPage(0);
     setDrawerOpen(true);
@@ -116,7 +117,6 @@ export function ImmutableVersionView({ openRequested, onOpenRequestHandled, deta
     const version = ordered[index];
     if (!version) return;
     onSelectVersion(version.version);
-    onCloseCompare();
     setPage(Math.floor(index / PAGE_SIZE));
     setPolicyPage(0);
   };

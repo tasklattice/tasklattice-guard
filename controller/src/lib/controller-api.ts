@@ -437,17 +437,21 @@ export class ControllerRequestError extends Error {
   }
 }
 
-export async function requestController<T>(path: string, init?: RequestInit): Promise<T> {
+export async function requestController<T>(path: string, options?: RequestInit & { timeoutMs?: number }): Promise<T> {
+  const { timeoutMs = 30_000, ...init } = options ?? {};
   const formData = typeof FormData !== "undefined" && init?.body instanceof FormData;
   const response = await fetch(path, {
     credentials: "same-origin",
     ...init,
-    ...(!init?.method || init.method === 'GET' ? { signal: init?.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000) } : {}),
+    ...(!init?.method || init.method === 'GET' ? { signal: init?.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs) } : {}),
     headers: init?.body && !formData ? { "content-type": "application/json", ...init.headers } : init?.headers,
   });
   if (response.status === 204) return undefined as T;
   const rawResponse = response.ok ? undefined : response.clone?.();
-  const payload = await response.json().catch(async () => ({ message: await rawResponse?.text().catch(() => "") })) as { error?: { code?: string; message?: string; detail?: unknown }; detail?: unknown; message?: string };
+  const payload = await response.json().catch(async error => {
+    if (response.ok) throw error; // Never treat an interrupted large report as an empty success.
+    return { message: await rawResponse?.text().catch(() => "") };
+  }) as { error?: { code?: string; message?: string; detail?: unknown }; detail?: unknown; message?: string };
   if (!response.ok) {
     // A forbidden write may mean the user's role changed. Recheck identity,
     // without treating every 403 as a logout or retrying the rejected write.

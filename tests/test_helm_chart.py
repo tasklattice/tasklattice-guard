@@ -1511,6 +1511,15 @@ def test_local_profile_never_pulls_any_workload_or_helper_image():
             assert all(container["imagePullPolicy"] == "Never" for container in pod.get(field, []))
 
 
+def test_trusted_proxy_cidrs_are_opt_in_and_reach_the_controller():
+    # Directly connected clients need no proxy contract: the socket peer is used.
+    assert "CONTROLLER_TRUSTED_PROXY_CIDRS" not in controller_config(render())["data"]
+    config = controller_config(render(
+        "--set-json", 'controller.trustedProxyCidrs=["10.244.0.0/16","fd00::/8"]',
+    ))["data"]
+    assert config["CONTROLLER_TRUSTED_PROXY_CIDRS"] == "10.244.0.0/16,fd00::/8"
+
+
 def test_runner_validation_and_jev_limits_are_system_configuration():
     runner = next(item for item in render() if item["kind"] == "StatefulSet" and item["metadata"]["name"].endswith("-runner"))
     env = {entry["name"]: entry.get("value") for entry in runner["spec"]["template"]["spec"]["containers"][0]["env"]}

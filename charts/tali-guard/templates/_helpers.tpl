@@ -324,4 +324,7 @@ data:
   CONTROLLER_RUNTIME_PUBLIC_URL: {{ include "tali-guard.runtimePublicUrl" . | quote }}
   BETTER_AUTH_TRUSTED_ORIGINS: {{ include "tali-guard.trustedOrigins" . | fromJsonArray | join "," | quote }}
   CONTROLLER_MIN_LOGIN_LENGTH: {{ .Values.controller.auth.minLoginLength | quote }}
+  {{- with .Values.controller.trustedProxyCidrs }}
+  CONTROLLER_TRUSTED_PROXY_CIDRS: {{ join "," . | quote }}
+  {{- end }}
 {{- end }}

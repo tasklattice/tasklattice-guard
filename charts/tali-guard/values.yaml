@@ -57,6 +57,10 @@ controller:
   # Above 8 requires external Secrets for every enabled bootstrap account.
   # auth:
   #   minLoginLength: 8
+  # Login throttling keys on the client address, not one shared bucket. Empty
+  # uses the connection peer and ignores client-supplied X-Forwarded-For. Behind
+  # an ingress/gateway, list its CIDRs, e.g. ["10.244.0.0/16"].
+  # trustedProxyCidrs: []
   # Internal HTTP/gRPC ports are fixed at 8080/9090. For direct local exposure:
   # service:
   #   type: ClusterIP

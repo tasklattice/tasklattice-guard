@@ -1,10 +1,11 @@
 import * as api from "@/lib/api";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import type { TestCaseResult, ValidationRun } from "@/lib/api";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { queryKeys } from "@/features/query-keys";
 
 import { DetailFact, filterValidationRuns, GuardrailValidationHistory, TestCaseResultRow, ValidationCaseResults, ValidationDetailSheet } from "./validation";
 
@@ -165,13 +166,88 @@ describe("Testing Report acceptance evidence", () => {
     expect(filterValidationRuns([validationRun, otherRun], names, "finance", "all", "passed")).toEqual([validationRun]);
   });
 
-  it("shows version test progress without draft wording or duplicate reruns", () => {
+  it("shows version test progress without draft wording or premature report actions", () => {
+    const getDetail = vi.spyOn(api, "getValidationRun").mockImplementation(() => new Promise(() => {}));
     const run = { ...validationRun, subject: "version", execution_status: "queued", status: "incomplete" } as ValidationRun;
-    render(<QueryClientProvider client={new QueryClient()}><TooltipProvider><ValidationDetailSheet run={run} canManage={false} running={false} onRunAgain={vi.fn()} onRunVersionAgain={vi.fn()} onClose={vi.fn()} /></TooltipProvider></QueryClientProvider>);
+    const client = new QueryClient();
+    const view = render(<QueryClientProvider client={client}><TooltipProvider><ValidationDetailSheet run={run} canManage={false} running={false} onRunAgain={vi.fn()} onRunVersionAgain={vi.fn()} onClose={vi.fn()} /></TooltipProvider></QueryClientProvider>);
     expect(screen.getByRole("region", { name: "guardrails.testProgress.title" })).toBeTruthy();
-    expect(screen.getByText("immutableVersions.testingInPlace")).toBeTruthy();
+    expect(screen.getByText("validation.processingHint")).toBeTruthy();
     expect(screen.queryByText("guardrails.testingInPlace")).toBeNull();
-    expect(screen.getByRole("button", { name: "validation.runAgain" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.queryByRole("button", { name: "validation.runAgain" })).toBeNull();
+    view.unmount();
+    client.clear();
+    getDetail.mockRestore();
+  });
+
+  it.each(["queued", "preparing", "executing", "finalizing"] as const)("keeps Reporter content hidden during %s, even if provisional results exist", phase => {
+    const getDetail = vi.spyOn(api, "getValidationRun").mockImplementation(() => new Promise(() => {}));
+    const run = { ...validationRun, subject: "version", execution_status: phase === "queued" ? "queued" : "running",
+      progress: phase === "queued" ? null : { phase, completedCases: 1, passedCases: 1, updatedAt: new Date().toISOString() },
+      results: [result] } as ValidationRun;
+    const client = new QueryClient();
+    const onClose = vi.fn();
+    const view = render(<QueryClientProvider client={client}><TooltipProvider><ValidationDetailSheet run={run} canManage running={false} onRunAgain={vi.fn()} onClose={onClose} /></TooltipProvider></QueryClientProvider>);
+    expect(screen.getByRole("region", { name: "guardrails.testProgress.title" })).toBeTruthy();
+    expect(screen.getByText("Target")).toBeTruthy();
+    expect(screen.queryByText("Pass rate")).toBeNull();
+    expect(screen.queryByText("validation.reportScopeHelp")).toBeNull();
+    expect(screen.queryByText("Case results")).toBeNull();
+    expect(screen.queryByText(result.name)).toBeNull();
+    expect(screen.queryByRole("button", { name: "validation.deleteReport" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "validation.runAgain" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "validation.closeWhileRunning" }));
+    expect(onClose).toHaveBeenCalledOnce();
+    view.unmount();
+    client.clear();
+    getDetail.mockRestore();
+  });
+
+  it.each(["passed", "failed"] as const)("switches the same run to the final report only after execution is %s", async status => {
+    const current = { ...validationRun, status: "incomplete", execution_status: "running", details_loaded: true,
+      progress: { phase: "finalizing", completedCases: 1, passedCases: 1, updatedAt: new Date().toISOString() } } as ValidationRun;
+    const getDetail = vi.spyOn(api, "getValidationRun").mockResolvedValue(current);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const view = render(<QueryClientProvider client={client}><TooltipProvider><ValidationDetailSheet run={current} canManage running={false} onRunAgain={vi.fn()} onClose={vi.fn()} /></TooltipProvider></QueryClientProvider>);
+    await waitFor(() => expect(client.getQueryData(queryKeys.validationRun(current.id))).toBeTruthy());
+    expect(screen.queryByText("validation.reportScopeHelp")).toBeNull();
+    act(() => client.setQueryData(queryKeys.validationRun(current.id), { ...current, execution_status: status, status, results: [result] }));
+    expect(await screen.findByText(result.name)).toBeTruthy();
+    expect(screen.getByText("Pass rate")).toBeTruthy();
+    expect(screen.getByText("validation.reportScopeHelp")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "validation.runAgain" })).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "guardrails.testProgress.title" })).toBeNull();
+    expect(screen.queryByText("validation.processingHint")).toBeNull();
+    view.unmount();
+    client.clear();
+    getDetail.mockRestore();
+  });
+
+  it("shows cancellation without presenting partial results as a final report", () => {
+    const client = new QueryClient();
+    const view = render(<QueryClientProvider client={client}><TooltipProvider><ValidationDetailSheet
+      run={{ ...validationRun, status: "cancelled", execution_status: "cancelled", results: [result] }} canManage running={false} onRunAgain={vi.fn()} onClose={vi.fn()}
+    /></TooltipProvider></QueryClientProvider>);
+    expect(screen.getByText("validation.cancelledWithoutReport")).toBeTruthy();
+    expect(screen.queryByText("Pass rate")).toBeNull();
+    expect(screen.queryByText(result.name)).toBeNull();
+    expect(screen.queryByText("validation.reportScopeHelp")).toBeNull();
+    expect(screen.getByRole("button", { name: "validation.runAgain" })).toBeTruthy();
+    view.unmount();
+    client.clear();
+  });
+
+  it("does not replace a missing failed report with zero metrics and empty result filters", () => {
+    const client = new QueryClient();
+    const view = render(<QueryClientProvider client={client}><TooltipProvider><ValidationDetailSheet
+      run={{ ...validationRun, status: "failed", execution_status: "failed", failure_reason: "Runner connection failed", results: [] }} canManage running={false} onRunAgain={vi.fn()} onClose={vi.fn()}
+    /></TooltipProvider></QueryClientProvider>);
+    expect(screen.getByText("Runner connection failed")).toBeTruthy();
+    expect(screen.getByText("validation.noReportResults")).toBeTruthy();
+    expect(screen.queryByText("Pass rate")).toBeNull();
+    expect(screen.queryByRole("group", { name: "Filter Case results" })).toBeNull();
+    view.unmount();
+    client.clear();
   });
 
   it("keeps Testing Reports inside one Guardrail and opens records from the compact table", () => {
@@ -242,7 +318,8 @@ describe("Testing Report acceptance evidence", () => {
     expect(screen.getByText("Acceptance provenance")).toBeTruthy();
     expect(screen.getByText("competitor-comparison-input-filter@1.95.0")).toBeTruthy();
     expect(screen.getByText("competitor-comparison-002")).toBeTruthy();
-    expect(screen.getAllByText("competitor-comparison-intent")).toHaveLength(2);
+    expect(screen.getByText("validation.expectedAndMatchedRules")).toBeTruthy();
+    expect(screen.getAllByText("competitor-comparison-intent")).toHaveLength(1);
   });
 
   it("only expands execution errors automatically", () => {
@@ -311,10 +388,17 @@ describe("Testing Report acceptance evidence", () => {
   it("marks a failed Case and explains decision and Rule-contract mismatches", () => {
     render(<TestCaseResultRow result={{ ...result, expected_decision: "block", actual_decision: "transform", covered_rule_ids: ["credentials/aws_access_key"], matched_rule_ids: ["contact/br_phone_landline"], rule_contract_satisfied: false }} />);
 
-    expect(screen.getByText("Competitor comparison").className).toContain("text-destructive");
+    expect(screen.getByText(/^failed$/i)).toBeTruthy();
     expect(screen.getByText("Why this Case failed")).toBeTruthy();
     expect(screen.getByText("Decision mismatch")).toBeTruthy();
     expect(screen.getByText("Rule contract mismatch")).toBeTruthy();
+    expect(screen.queryByText("Expected decision")).toBeNull();
+    expect(screen.queryByText("Actual decision")).toBeNull();
+    expect(screen.queryByText("Contract Rules")).toBeNull();
+    expect(screen.queryByText("Actually matched Rules")).toBeNull();
+    expect(screen.queryByText(result.reason)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /logs.executionTrace/ }));
+    expect(screen.getByText(result.reason)).toBeTruthy();
   });
 
   it("can exclude a failed inherited Case only from the current Guardrail", () => {
