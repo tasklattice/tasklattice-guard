@@ -78,6 +78,7 @@ export const policyResourceValidations = pgTable("policy_resource_validation", {
 export const user = pgTable("auth_user", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
+  username: text("username").unique(),
   email: text("email").notNull().unique(),
   emailVerified: boolean("email_verified").notNull().default(false),
   image: text("image"),

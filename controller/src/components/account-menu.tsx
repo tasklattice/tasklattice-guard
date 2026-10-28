@@ -81,7 +81,7 @@ export function AccountMenu({
         <DropdownMenuLabel className="font-normal">
           <span className="min-w-0">
             <strong className="block truncate text-sm font-semibold text-foreground">{displayName}</strong>
-            <span className="mt-0.5 block truncate text-xs text-muted-foreground">{user?.email}</span>
+            <span className="mt-0.5 block truncate text-xs text-muted-foreground">{user?.username}</span>
           </span>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />

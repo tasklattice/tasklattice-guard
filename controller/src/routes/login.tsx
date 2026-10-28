@@ -15,7 +15,7 @@ export function LoginPage() {
   const { t, i18n } = useTranslation();
   const { login, setLanguage, loginPending } = useAuth();
   const navigate = useNavigate();
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
@@ -23,7 +23,7 @@ export function LoginPage() {
     event.preventDefault();
     setError("");
     try {
-      await login({ email, password });
+      await login({ username, password });
       await navigate({ to: "/dashboard", replace: true });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t("common.unknownError"));
@@ -61,7 +61,7 @@ export function LoginPage() {
             <p className="mt-3 text-sm leading-6 text-muted-foreground">{t("auth.loginDescription")}</p>
 
             <form className="mt-8 grid gap-5" onSubmit={submit}>
-              <Field label={t("auth.loginIdentifier")}><Input className="field:min-h-[44px]" autoFocus type="text" autoComplete="username" placeholder="admin" value={email} onChange={(event) => setEmail(event.target.value)} required /></Field>
+              <Field label={t("auth.loginIdentifier")}><Input className="field:min-h-[44px]" autoFocus type="text" autoComplete="username" placeholder="admin" value={username} onChange={(event) => setUsername(event.target.value)} required /></Field>
               <Field label={t("common.password")}><Input className="field:min-h-[44px]" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></Field>
               {error ? <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert> : null}
               <Button type="submit" size="lg" className="mt-1 min-h-[44px] w-full" disabled={loginPending}>{loginPending ? t("auth.loginSubmitting") : t("auth.loginSubmit")}</Button>

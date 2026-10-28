@@ -379,6 +379,13 @@
       "when": 1793080200000,
       "tag": "0053_full_feature_baseline_v2",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1793156400000,
+      "tag": "0054_username_auth",
+      "breakpoints": true
     }
   ]
 }

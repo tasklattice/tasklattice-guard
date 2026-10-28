@@ -1,14 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { betterAuth, drizzleAdapter, admin } = vi.hoisted(() => ({
+const { betterAuth, drizzleAdapter, admin, username } = vi.hoisted(() => ({
   betterAuth: vi.fn((options: unknown) => options),
   drizzleAdapter: vi.fn(() => "database-adapter"),
   admin: vi.fn(() => "admin-plugin"),
+  username: vi.fn(() => "username-plugin"),
 }));
 
 vi.mock("better-auth", () => ({ betterAuth }));
 vi.mock("better-auth/adapters/drizzle", () => ({ drizzleAdapter }));
-vi.mock("better-auth/plugins", () => ({ admin }));
+vi.mock("better-auth/plugins", () => ({ admin, username }));
 
 import { createAuth, GUARD_AUTH_COOKIE_PREFIX } from "./auth.js";
 import type { ControllerConfig } from "./config.js";

@@ -1162,19 +1162,7 @@ export type RuntimeComponentMetric = {
   provider_p99_ms: number;
 };
 
-export type IdentityRole = "admin" | "member";
-export type IdentityUser = {
-  id: string;
-  display_name: string;
-  email: string;
-  role: IdentityRole;
-  enabled: boolean;
-  preferred_language: "en" | "zh-CN";
-  last_login_at: string | null;
-  created_at: string;
-  updated_at: string;
-};
-export type AuthStatus = { authenticated: boolean; user: IdentityUser | null };
+export type { IdentityRole, IdentityUser, AuthStatus } from "./identity-api";
 export type IntentAnalysisStatus = {
   available: boolean;
   provider: string | null;

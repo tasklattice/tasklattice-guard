@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { hashPassword } from "better-auth/crypto";
 
 import { loadConfig } from "./config.js";
 
@@ -12,9 +11,9 @@ const requiredEnvironment = {
 };
 
 describe("Controller config", () => {
-  it("keeps the production password minimum at 12 by default", () => {
+  it("keeps the password minimum at 8 by default", () => {
     expect(loadConfig(requiredEnvironment)).toMatchObject({
-      minPasswordLength: 12,
+      minPasswordLength: 8,
       metricsToken: null,
     });
   });
@@ -36,14 +35,14 @@ describe("Controller config", () => {
     );
   });
 
-  it.each(["admin@tasklattice.local", "another-admin@tasklattice.local"])("rejects short bootstrap passwords for %s on localhost", (email) => {
+  it.each(["admin", "another-admin"])("rejects short bootstrap passwords for %s", (username) => {
     expect(() => loadConfig({
       ...requiredEnvironment,
       NODE_ENV: "development",
       CONTROLLER_PUBLIC_URL: "http://localhost:38081",
-      CONTROLLER_BOOTSTRAP_ADMIN_EMAIL: email,
+      CONTROLLER_BOOTSTRAP_ADMIN_USERNAME: username,
       CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD: "admin",
-    })).toThrow(/at least 12 characters/);
+    })).toThrow(/at least 8 characters/);
   });
 
   it("exposes a configurable Policy catalog directory", () => {
@@ -175,51 +174,22 @@ describe("Controller config", () => {
 });
 
 
-describe("bootstrap passwordHash configuration", () => {
-  it("keeps the user bootstrap opt-in and accepts its separate credentials", async () => {
+describe("bootstrap username/password configuration", () => {
+  it("accepts separate username/password accounts", () => {
     expect(loadConfig(requiredEnvironment).bootstrapUser).toBeNull();
-    const passwordHash = await hashPassword("password");
-    expect(loadConfig({ ...requiredEnvironment, CONTROLLER_BOOTSTRAP_USER_EMAIL: "user@tasklattice.local", CONTROLLER_BOOTSTRAP_USER_PASSWORD_HASH: passwordHash }).bootstrapUser)
-      .toEqual({ email: "user@tasklattice.local", passwordHash, name: "User" });
+    expect(loadConfig({ ...requiredEnvironment, CONTROLLER_BOOTSTRAP_USER_USERNAME: " USER ", CONTROLLER_BOOTSTRAP_USER_PASSWORD: "password" }).bootstrapUser)
+      .toEqual({ username: "user", password: "password", name: "User" });
   });
   it.each([
-    { CONTROLLER_BOOTSTRAP_USER_EMAIL: "user@tasklattice.local" },
-    { CONTROLLER_BOOTSTRAP_USER_PASSWORD_HASH: "invalid" },
-    { CONTROLLER_BOOTSTRAP_USER_EMAIL: "user@tasklattice.local", CONTROLLER_BOOTSTRAP_USER_PASSWORD: "password" },
-    { CONTROLLER_BOOTSTRAP_USER_EMAIL: "user@tasklattice.local", CONTROLLER_BOOTSTRAP_USER_PASSWORD: "long-enough-password", CONTROLLER_BOOTSTRAP_USER_PASSWORD_HASH: "a".repeat(32) + ":" + "b".repeat(128) },
-    { CONTROLLER_BOOTSTRAP_USER_EMAIL: "ADMIN@tasklattice.local", CONTROLLER_BOOTSTRAP_USER_PASSWORD: "long-enough-password", CONTROLLER_BOOTSTRAP_ADMIN_EMAIL: "admin@tasklattice.local", CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD: "long-enough-password" },
-  ])("rejects invalid or conflicting bootstrap user configuration: %j", environment => {
+    { CONTROLLER_BOOTSTRAP_USER_USERNAME: "user" },
+    { CONTROLLER_BOOTSTRAP_USER_PASSWORD: "password" },
+    { CONTROLLER_BOOTSTRAP_USER_USERNAME: "user@example.com", CONTROLLER_BOOTSTRAP_USER_PASSWORD: "password" },
+    { CONTROLLER_BOOTSTRAP_USER_USERNAME: "user", CONTROLLER_BOOTSTRAP_USER_PASSWORD: "short" },
+    { CONTROLLER_BOOTSTRAP_USER_USERNAME: "ADMIN", CONTROLLER_BOOTSTRAP_USER_PASSWORD: "password", CONTROLLER_BOOTSTRAP_ADMIN_USERNAME: "admin", CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD: "password" },
+  ])("rejects invalid or conflicting accounts: %j", environment => {
     expect(() => loadConfig({ ...requiredEnvironment, ...environment })).toThrow();
   });
-  it("accepts a hash without a plaintext password", async () => {
-    const passwordHash = await hashPassword("Password");
-    const config = loadConfig({ ...requiredEnvironment,
-      CONTROLLER_BOOTSTRAP_ADMIN_EMAIL: "admin@example.test",
-      CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD_HASH: passwordHash,
-    });
-    expect(config.bootstrapAdmin).toMatchObject({ email: "admin@example.test", passwordHash });
-    expect(config.bootstrapAdmin).not.toHaveProperty("password");
-    expect(() => loadConfig({ ...requiredEnvironment,
-      CONTROLLER_BOOTSTRAP_ADMIN_EMAIL: "admin@example.test",
-      CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD_HASH: passwordHash,
-      CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD: "another-password",
-    })).toThrow(/mutually exclusive/);
-    expect(() => loadConfig({ ...requiredEnvironment,
-      CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD_HASH: passwordHash,
-    })).toThrow(/Bootstrap email/);
-  });
-
-  it("rejects malformed hashes and missing credentials", () => {
-    expect(() => loadConfig({ ...requiredEnvironment,
-      CONTROLLER_BOOTSTRAP_ADMIN_EMAIL: "admin@example.test",
-      CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD_HASH: "not-a-password-hash",
-    })).toThrow(/scrypt/);
-    expect(() => loadConfig({ ...requiredEnvironment,
-      CONTROLLER_BOOTSTRAP_ADMIN_EMAIL: "admin@example.test",
-    })).toThrow(/Bootstrap email/);
-  });
 });
-
 
 describe("explicit control-channel transport", () => {
   it("defaults production to mTLS and allows an explicit plaintext choice", () => {

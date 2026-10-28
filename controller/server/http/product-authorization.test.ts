@@ -149,25 +149,25 @@ describe("Role changes revoke business authority", () => {
 });
 
 describe("Session freshness and read-only access", () => {
-  it.each(["active", "demoted", "revoked", "expired"])("uses current authority for a %s session despite a still-valid signed cookie cache", async (state) => {
+  it.each(["active", "demoted", "revoked", "expired"])("uses current authority for a %s session with database-backed sessions", async (state) => {
     const data: Record<string, Array<Record<string, unknown>>> = { user: [], session: [], account: [], verification: [] };
     const options = createAuth({ ...config, publicUrl: "http://localhost:8093", trustedOrigins: ["http://localhost:8093"] }, {} as ControllerDatabase).options;
-    // Real Better Auth signing, cookie cache and session lookup. Only the DB
+    // Real Better Auth signing and session lookup. Only the DB
     // adapter changes; its login timestamp hook is unrelated to authorization.
     const auth = betterAuth({ ...options, database: memoryAdapter(data), databaseHooks: undefined });
-    await auth.api.signUpEmail({ body: { name: "Authorization fixture", email: "authorization@guard.test", password: "synthetic-auth-password-2026" } });
+    await auth.api.createUser({ body: { name: "Authorization fixture", email: "authorization@users.guard.invalid", password: "synthetic-auth-password-2026", data: { username: "authorization" } } });
     data.user![0]!.role = "admin";
-    const signedIn = await auth.api.signInEmail({ body: { email: "authorization@guard.test", password: "synthetic-auth-password-2026" }, asResponse: true });
+    const signedIn = await auth.api.signInUsername({ body: { username: "authorization", password: "synthetic-auth-password-2026" }, asResponse: true });
     expect(signedIn.status).toBe(200);
     const cookie = signedIn.headers.getSetCookie().map(value => value.split(";")[0]).join("; ");
-    expect(cookie).toContain("tali-guard.session_data=");
+    expect(cookie).toContain("tali-guard.session_token=");
+    expect(cookie).not.toContain("tali-guard.session_data=");
     const headers = new Headers({ cookie, "content-type": "application/json" });
     expect((await auth.api.getSession({ headers }))?.user.role).toBe("admin");
     if (state === "demoted") data.user![0]!.role = "user";
     else if (state === "revoked") data.session!.splice(0);
     else if (state === "expired") for (const session of data.session!) session.expiresAt = new Date(0);
-    // Establish the real stale-cache condition, rather than mocking a verdict.
-    expect((await auth.api.getSession({ headers }))?.user.role).toBe("admin");
+    expect((await auth.api.getSession({ headers }))?.user.role).toBe(state === "active" ? "admin" : state === "demoted" ? "user" : undefined);
     const unexpected = vi.fn().mockResolvedValue({ status: "queued" });
     const app = createHttpApp({ config, auth: auth as unknown as ControllerAuth,
       service: { pricing: { view: unexpected } } as unknown as ControlPlaneService,

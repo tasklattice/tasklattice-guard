@@ -1,49 +1,55 @@
 // @vitest-environment node
-import { readFile } from "node:fs/promises";
-import { hashPassword } from "better-auth/crypto";
 import { Pool } from "pg";
-import { drizzle } from "drizzle-orm/node-postgres";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createAuth } from "./auth.js";
 import { ensureBootstrapAdmin, ensureBootstrapUser } from "./bootstrap.js";
 import { loadConfig } from "./config.js";
+import { createTestDatabase } from "./db/postgres-test-database.js";
 import * as schema from "./db/schema.js";
 
-// All writes are to session-local temporary tables, including Better Auth writes.
-describe.skipIf(!process.env.GUARD_BOOTSTRAP_TEST_DATABASE_URL)("bootstrap hash login (PostgreSQL)", () => {
-  const pool = new Pool({ connectionString: process.env.GUARD_BOOTSTRAP_TEST_DATABASE_URL, max: 1 });
-  const db = drizzle(pool, { schema });
-  const config = loadConfig({
-    NODE_ENV: "test", CONTROLLER_DATABASE_URL: process.env.GUARD_BOOTSTRAP_TEST_DATABASE_URL ?? "postgresql://unused:unused@localhost/unused",
-    CONTROLLER_RUNNER_TOKEN: "test-runner-token-at-least-32-characters",
-    CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/unused-test-signing-key",
-    BETTER_AUTH_SECRET: "test-auth-secret-at-least-32-characters",
-    CONTROLLER_PUBLIC_URL: "http://localhost:38081",
-  });
-  const auth = createAuth(config, db);
+describe.skipIf(!process.env.GUARD_BOOTSTRAP_TEST_DATABASE_URL)("username bootstrap (PostgreSQL)", () => {
+  let database: Awaited<ReturnType<typeof createTestDatabase>>;
+  let auth: ReturnType<typeof createAuth>;
   beforeAll(async () => {
-    const migration = await readFile(new URL("./db/migrations/0000_baseline.sql", import.meta.url), "utf8");
-    for (const name of ["auth_user", "auth_account", "auth_session", "auth_verification"]) {
-      const statement = migration.match(new RegExp(`CREATE TABLE "${name}" \\([\\s\\S]*?\\n\\);`))?.[0];
-      if (!statement) throw new Error(`Missing auth table fixture: ${name}`);
-      await pool.query(statement.replace("CREATE TABLE", "CREATE TEMP TABLE"));
-    }
+    const url = process.env.GUARD_BOOTSTRAP_TEST_DATABASE_URL!;
+    database = await createTestDatabase(url, "username_bootstrap", async (tag, pool: Pool) => {
+      if (tag !== "0054_username_auth") return;
+      for (const [id, email] of [["legacy-admin", "admin@tasklattice.local"], ["duplicate", "admin@example.test"], ["invalid", "a+b@example.test"]]) {
+        await pool.query('INSERT INTO auth_user (id, name, email) VALUES ($1, $2, $3)', [id, id, email]);
+      }
+    });
+    const config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: url,
+      CONTROLLER_RUNNER_TOKEN: "test-runner-token-at-least-32-characters",
+      CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/unused-test-signing-key",
+      BETTER_AUTH_SECRET: "test-auth-secret-at-least-32-characters", CONTROLLER_PUBLIC_URL: "http://localhost:38081" });
+    auth = createAuth(config, database.db);
   });
-  afterAll(async () => { await pool.end(); });
+  afterAll(async () => { await database?.drop(); });
 
-  it.each([["admin", ensureBootstrapAdmin], ["user", ensureBootstrapUser]] as const)("logs in %s with password and never resets its credentials", async (role, ensure) => {
-    const hash = await hashPassword("password");
-    const input = { auth, db, email: `${role}@example.test`, name: role, passwordHash: hash };
-    expect(await ensure(input)).toBe("created");
-    const signedIn = await auth.api.signInEmail({ body: { email: input.email, password: "password" } });
-    expect(signedIn.user.email).toBe(input.email);
-    expect(signedIn.user.role).toBe(role);
-    const [stored] = await db.select().from(schema.account).where(eq(schema.account.userId, signedIn.user.id));
-    expect(stored?.password).toBe(hash);
-    await expect(auth.api.signInEmail({ body: { email: input.email, password: hash } })).rejects.toThrow();
-    await expect(auth.api.signInEmail({ body: { email: input.email, password: "incorrect" } })).rejects.toThrow();
-    expect(await ensure({ ...input, passwordHash: await hashPassword("replacement") })).toBe("existing");
-    expect((await auth.api.signInEmail({ body: { email: input.email, password: "password" } })).user.id).toBe(signedIn.user.id);
+  it("migrates existing identities and resolves duplicate/invalid usernames deterministically", async () => {
+    const rows = await database.db.select().from(schema.user);
+    expect(rows.find(row => row.id === "legacy-admin")).toMatchObject({ username: "admin", email: "admin@tasklattice.local" });
+    expect(rows.find(row => row.id === "duplicate")?.username).toMatch(/^account_[a-f0-9]{32}$/);
+    expect(rows.find(row => row.id === "invalid")?.username).toMatch(/^account_[a-f0-9]{32}$/);
+    expect(new Set(rows.map(row => row.username)).size).toBe(rows.length);
+  });
+
+  it.each([["admin", ensureBootstrapAdmin], ["user", ensureBootstrapUser]] as const)("overwrites %s credentials, preserves ID, and invalidates existing sessions", async (role, ensure) => {
+    const input = { auth, username: role, name: role, password: "first-password" };
+    await ensure(input);
+    const first = await auth.api.signInUsername({ body: { username: role, password: input.password }, asResponse: true });
+    expect(first.status).toBe(200);
+    const cookies = first.headers.getSetCookie().map(value => value.split(";")[0]).join("; ");
+    const headers = new Headers({ cookie: cookies });
+    const original = (await auth.api.getSession({ headers, query: { disableCookieCache: true } }))!;
+    expect(await ensure({ ...input, password: "password" })).toBe("updated");
+    expect(await auth.api.getSession({ headers, query: { disableCookieCache: true } })).toBeNull();
+    await expect(auth.api.signInUsername({ body: { username: role, password: input.password } })).rejects.toThrow();
+    const signedIn = await auth.api.signInUsername({ body: { username: role, password: "password" } });
+    expect(signedIn.user).toMatchObject({ id: original.user.id, username: role, role });
+    const [stored] = await database.db.select().from(schema.account).where(eq(schema.account.userId, signedIn.user.id));
+    expect(stored?.password).not.toBe("password");
+    await expect(auth.api.signInUsername({ body: { username: role, password: stored!.password! } })).rejects.toThrow();
   });
 });

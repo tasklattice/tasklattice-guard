@@ -15,7 +15,7 @@ vi.mock("@tanstack/react-router", () => ({ useNavigate: () => navigateMock }));
 const user: IdentityUser = {
   id: "user-admin",
   display_name: "Administrator",
-  email: "admin@tasklattice.local",
+  username: "admin",
   role: "admin",
   enabled: true,
   preferred_language: "en",
@@ -36,8 +36,8 @@ vi.mock("react-i18next", () => ({
       "account.profileDescription": "Choose how your name appears.",
       "account.displayName": "Display name",
       "account.displayNameHint": "This name identifies your activity.",
-      "account.email": "Work email",
-      "account.emailReadOnly": "Your sign-in email is managed by an administrator.",
+      "account.username": "Username",
+      "account.usernameReadOnly": "Your username is managed by an administrator.",
       "account.interfaceLanguage": "Interface language",
       "account.languageDescription": "Applies whenever you sign in.",
       "account.saveChanges": "Save changes",
@@ -115,7 +115,7 @@ describe("AccountPage", () => {
   it("saves a language change directly through the status-only API", async () => {
     authClientMock.updateUser.mockResolvedValue({ data: { status: true }, error: null });
     authClientMock.getSession.mockResolvedValue({ data: { user: {
-      id: user.id, name: user.display_name, email: user.email, role: user.role,
+      id: user.id, name: user.display_name, username: user.username, role: user.role,
       preferredLanguage: "zh-CN", createdAt: user.created_at, updatedAt: user.updated_at,
     } }, error: null });
     updateProfileMock.mockImplementation(updateMe);

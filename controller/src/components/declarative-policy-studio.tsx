@@ -29,7 +29,7 @@ export function DeclarativePolicyStudio({ policyId, imported, onClose, onSaved, 
   const [revision, setRevision] = useState(0);
   const [saved, setSaved] = useState(Boolean(policyId));
   const [dirty, setDirty] = useState(!policyId);
-  const [maintainer, setMaintainer] = useState(user?.email ?? "Platform administrators");
+  const [maintainer, setMaintainer] = useState(user?.username ?? "Platform administrators");
   const [selected, setSelected] = useState(0);
   const [step, setStep] = useState(0);
   const [busy, setBusy] = useState(Boolean(policyId));

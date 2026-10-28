@@ -11,7 +11,7 @@ import { OpenAICompatibleIntentAnalyzer } from "./control-plane-ai/intent-analyz
 import { RunnerControlServer } from "./control-channel/control-server.js";
 import { ControlPlaneService } from "./services/control-plane.js";
 import { ControllerMetrics } from "./metrics.js";
-import { ensureBootstrapAdmin, ensureBootstrapUser } from "./bootstrap.js";
+import { BootstrapAccountSynchronizer } from "./bootstrap.js";
 import { OpenAICompatiblePlaygroundModel, RunnerPlaygroundClient } from "./playground/service.js";
 import { ModelConfigurationService } from "./model-config/service.js";
 
@@ -29,14 +29,21 @@ const models = new ModelConfigurationService(db, config.betterAuthSecret, config
 await models.initialize();
 
 const auth = createAuth(config, db);
-if (config.bootstrapAdmin) {
-  const status = await ensureBootstrapAdmin({ auth, db, ...config.bootstrapAdmin });
-  if (status === "created") process.stdout.write(`Created Better Auth bootstrap administrator ${config.bootstrapAdmin.email}.\n`);
+const bootstrapAccounts = new BootstrapAccountSynchronizer(auth);
+async function synchronizeAccounts() {
+  for (const result of await bootstrapAccounts.synchronize(loadConfig())) {
+    process.stdout.write(`Better Auth bootstrap ${result.role} ${result.username}: ${result.status}.\n`);
+  }
 }
-if (config.bootstrapUser) {
-  const status = await ensureBootstrapUser({ auth, db, ...config.bootstrapUser });
-  if (status === "created") process.stdout.write(`Created Better Auth bootstrap user ${config.bootstrapUser.email}.\n`);
-}
+await synchronizeAccounts();
+let pendingAccountSync: Promise<void> | null = null;
+const accountSyncTimer = setInterval(() => {
+  if (pendingAccountSync) return;
+  pendingAccountSync = synchronizeAccounts().catch(() => {
+    process.stderr.write("Bootstrap account synchronization failed; retrying mounted credentials.\n");
+  }).finally(() => { pendingAccountSync = null; });
+}, 2_000);
+accountSyncTimer.unref();
 const metrics = new ControllerMetrics();
 const runnerControl = new RunnerControlServer(config, service, metrics, models);
 await runnerControl.start();
@@ -78,6 +85,8 @@ let shuttingDown = false;
 async function shutdown(signal: string) {
   if (shuttingDown) return;
   shuttingDown = true;
+  clearInterval(accountSyncTimer);
+  await pendingAccountSync;
   process.stdout.write(`Guard Controller received ${signal}; shutting down.\n`);
   await service.pricing.stop();
   await runnerControl.stop();

@@ -1,99 +1,85 @@
 // @vitest-environment node
-import { hashPassword, verifyPassword } from "better-auth/crypto";
-import { describe, expect, it, vi } from "vitest";
-import { ensureBootstrapAdmin, ensureBootstrapUser } from "./bootstrap.js";
-import type { ControllerAuth } from "./auth.js";
-import type { ControllerDatabase } from "./db/client.js";
 import { betterAuth } from "better-auth";
 import { memoryAdapter } from "better-auth/adapters/memory";
-import { createAuth } from "./auth.js";
+import { describe, expect, it } from "vitest";
+import { createAuth, type ControllerAuth } from "./auth.js";
+import type { ControllerDatabase } from "./db/client.js";
 import { loadConfig } from "./config.js";
+import { BootstrapAccountSynchronizer, ensureBootstrapAdmin, ensureBootstrapUser } from "./bootstrap.js";
 
-function fixture(existing = false) {
-  const linkAccount = vi.fn();
-  const createUser = vi.fn(async () => ({ user: { id: "bootstrap-user" } }));
-  const select = vi.fn()
-    .mockReturnValueOnce({ from: () => ({ where: () => ({ limit: async () => existing ? [{ id: "bootstrap-user" }] : [] }) }) })
-    .mockReturnValueOnce({ from: () => ({ where: async () => [{ providerId: "credential" }] }) });
-  const auth = { api: { createUser }, $context: Promise.resolve({ internalAdapter: { linkAccount } }) } as unknown as ControllerAuth;
-  const db = { select } as unknown as ControllerDatabase;
-  return { auth, db, createUser, linkAccount, select, email: "admin@example.test", name: "Administrator" };
+function fixture() {
+  const config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: "postgresql://unused:unused@localhost/unused",
+    CONTROLLER_RUNNER_TOKEN: "test-runner-token-at-least-32-characters", CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/unused-key",
+    BETTER_AUTH_SECRET: "test-auth-secret-at-least-32-characters", CONTROLLER_PUBLIC_URL: "http://localhost:8080" });
+  const data: Record<string, Array<Record<string, any>>> = { user: [], account: [], session: [], verification: [] };
+  const options = createAuth(config, {} as ControllerDatabase).options;
+  const auth = betterAuth({ ...options, database: memoryAdapter(data),
+    databaseHooks: { ...options.databaseHooks, session: undefined } });
+  return { auth: auth as unknown as ControllerAuth, data };
 }
 
-describe("bootstrap credential import", () => {
-  it.each([["admin", ensureBootstrapAdmin], ["user", ensureBootstrapUser]] as const)("signs in the real Better Auth %s account with password", async (role, ensure) => {
-    const config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: "postgresql://unused:unused@localhost/unused",
-      CONTROLLER_RUNNER_TOKEN: "test-runner-token-at-least-32-characters", CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/unused-key",
-      BETTER_AUTH_SECRET: "test-auth-secret-at-least-32-characters" });
-    const data = { user: [], account: [], session: [], verification: [] };
-    const options = createAuth(config, {} as ControllerDatabase).options;
-    const auth = betterAuth({ ...options, database: memoryAdapter(data), databaseHooks: undefined });
-    const passwordHash = await hashPassword("password");
-    const input = { ...fixture(), auth: auth as unknown as ControllerAuth, email: `${role}@tasklattice.local`, passwordHash };
+describe("username authentication and authoritative bootstrap", () => {
+  it.each([["admin", ensureBootstrapAdmin], ["user", ensureBootstrapUser]] as const)("signs in the %s role through Better Auth", async (role, ensure) => {
+    const { auth, data } = fixture();
+    expect(await ensure({ auth, username: role, password: "password", name: role })).toBe("created");
+    const login = await auth.api.signInUsername({ body: { username: role.toUpperCase(), password: "password" } });
+    expect(login.user).toMatchObject({ username: role, role });
+    expect(data.account[0]!.password).not.toBe("password");
+    expect(data.account[0]!.password).not.toBe(Buffer.from("password").toString("base64"));
+    await expect(auth.api.signInUsername({ body: { username: role, password: "Password" } })).rejects.toThrow();
+    await expect(auth.api.signInUsername({ body: { username: `${role}@tasklattice.local`, password: "password" } })).rejects.toThrow();
+  });
+  it.each([["admin", ensureBootstrapAdmin], ["user", ensureBootstrapUser]] as const)("overwrites existing %s credentials and role, retains ID and revokes sessions", async (role, ensure) => {
+    const { auth, data } = fixture();
+    const input = { auth, username: role, password: "previous-password", name: "Previous name" };
     await ensure(input);
-    const login = await auth.api.signInEmail({ body: { email: input.email, password: "password" } });
-    expect(login.user).toMatchObject({ email: input.email, role });
-    await expect(auth.api.signInEmail({ body: { email: input.email, password: "Password" } })).rejects.toThrow();
-    await expect(auth.api.signInEmail({ body: { email: input.email, password: passwordHash } })).rejects.toThrow();
+    const login = await auth.api.signInUsername({ body: { username: role, password: input.password } });
+    expect(data.session).toHaveLength(1);
+    data.user[0]!.role = role === "admin" ? "user" : "admin";
+    data.user[0]!.banned = true;
+    expect(await ensure({ ...input, password: "password", name: "Reset name" })).toBe("updated");
+    expect(data.user).toHaveLength(1);
+    expect(data.user[0]).toMatchObject({ id: login.user.id, name: "Reset name", role, banned: false });
+    expect(data.session).toHaveLength(0);
+    await expect(auth.api.signInUsername({ body: { username: role, password: input.password } })).rejects.toThrow();
+    expect((await auth.api.signInUsername({ body: { username: role, password: "password" } })).user.id).toBe(login.user.id);
   });
-  it("generates independent development account digests in the initialization Job", async () => {
-    const { secretData } = await import(new URL("../scripts/runtime/bootstrap-secrets.mjs", import.meta.url).href);
-    const hashes: string[] = [];
-    for (const role of ["admin", "user"]) {
-      const data = await secretData({ kind: "account", email: `${role}@tasklattice.local`, displayName: role, localDefault: true });
-      hashes.push(data["password-hash"]);
+  it("disables email login, sign-up and recovery over HTTP", async () => {
+    const { auth } = fixture();
+    await ensureBootstrapAdmin({ auth, username: "admin", password: "password", name: "Admin" });
+    for (const path of ["/sign-in/email", "/sign-up/email", "/request-password-reset", "/reset-password", "/change-email", "/send-verification-email", "/verify-email"]) {
+      const response = await auth.handler(new Request(`http://localhost:8080/api/auth${path}`, { method: "POST",
+        headers: { "content-type": "application/json", origin: "http://localhost:8080" },
+        body: JSON.stringify({ email: "admin@users.guard.invalid", password: "password" }) }));
+      expect(response.status, path).toBe(404);
     }
-    expect(new Set(hashes).size).toBe(2);
-    for (const hash of hashes) {
-      expect(await verifyPassword({ hash, password: "password" })).toBe(true);
-      expect(await verifyPassword({ hash, password: "Password" })).toBe(false);
+    const response = await auth.handler(new Request("http://localhost:8080/api/auth/sign-in/username", { method: "POST",
+      headers: { "content-type": "application/json", origin: "http://localhost:8080" }, body: JSON.stringify({ username: "admin", password: "password" }) }));
+    expect(response.status).toBe(200);
+    expect(response.headers.getSetCookie().join(";")).toContain("tali-guard.session_token");
+  });
+  it("reapplies the same password after a Job revision changes and skips ordinary polls", async () => {
+    const { auth, data } = fixture();
+    const synchronizer = new BootstrapAccountSynchronizer(auth);
+    const config = { bootstrapAdmin: { username: "admin", password: "password", name: "Admin", revision: "first" }, bootstrapUser: null };
+    await synchronizer.synchronize(config);
+    const login = await auth.api.signInUsername({ body: { username: "admin", password: "password" } });
+    expect(await synchronizer.synchronize(config)).toEqual([]);
+    expect(data.session).toHaveLength(1);
+    const context = await auth.$context;
+    await context.internalAdapter.updatePassword(login.user.id, await context.password.hash("changed-through-ui"));
+    expect(await synchronizer.synchronize({ ...config, bootstrapAdmin: { ...config.bootstrapAdmin, revision: "rerun" } })).toEqual([
+      { role: "admin", username: "admin", status: "updated" },
+    ]);
+    expect(data.session).toHaveLength(0);
+    expect((await auth.api.signInUsername({ body: { username: "admin", password: "password" } })).user.id).toBe(login.user.id);
+  });
+
+  it("validates before creating an account", async () => {
+    const { auth, data } = fixture();
+    for (const input of [{ username: "admin@example.com", password: "password" }, { username: "admin", password: "short" }]) {
+      await expect(ensureBootstrapAdmin({ auth, name: "Admin", ...input })).rejects.toThrow();
     }
-  });
-
-  it("imports a Better Auth hash without hashing it again", async () => {
-    const input = fixture();
-    const passwordHash = await hashPassword("password");
-    expect(await ensureBootstrapAdmin({ ...input, passwordHash })).toBe("created");
-    expect(input.createUser).toHaveBeenCalledWith({ body: { email: input.email, name: input.name, role: "admin" } });
-    const credential = input.linkAccount.mock.calls[0]![0];
-    expect(credential).toMatchObject({ providerId: "credential", accountId: "bootstrap-user", password: passwordHash });
-    expect(await verifyPassword({ hash: credential.password, password: "password" })).toBe(true);
-    expect(await verifyPassword({ hash: credential.password, password: passwordHash })).toBe(false);
-  });
-
-  it("does not replace existing credentials on restart", async () => {
-    const input = fixture(true);
-    expect(await ensureBootstrapAdmin({ ...input, passwordHash: await hashPassword("new-password") })).toBe("existing");
-    expect(input.createUser).not.toHaveBeenCalled();
-    expect(input.linkAccount).not.toHaveBeenCalled();
-  });
-
-  it("preserves the plaintext bootstrap API", async () => {
-    const input = fixture();
-    await ensureBootstrapAdmin({ ...input, password: "initial-password" });
-    expect(input.createUser).toHaveBeenCalledWith({ body: { email: input.email, name: input.name, role: "admin", password: "initial-password" } });
-    expect(input.linkAccount).not.toHaveBeenCalled();
-  });
-
-  it("creates the default user with user authority and an imported password hash", async () => {
-    const input = { ...fixture(), email: "user@tasklattice.local", name: "Local User" };
-    const passwordHash = await hashPassword("password");
-    expect(await ensureBootstrapUser({ ...input, passwordHash })).toBe("created");
-    expect(input.createUser).toHaveBeenCalledWith({ body: { email: input.email, name: input.name, role: "user" } });
-    expect(input.linkAccount).toHaveBeenCalledWith(expect.objectContaining({ password: passwordHash, providerId: "credential" }));
-  });
-
-  it("does not reset an existing user's credentials or role", async () => {
-    const input = { ...fixture(true), email: "user@tasklattice.local" };
-    expect(await ensureBootstrapUser({ ...input, passwordHash: await hashPassword("password") })).toBe("existing");
-    expect(input.createUser).not.toHaveBeenCalled();
-    expect(input.linkAccount).not.toHaveBeenCalled();
-  });
-
-  it.each([{}, { passwordHash: "invalid" }, { password: "password", passwordHash: "hash" }])("rejects invalid or ambiguous configuration before writing: %j", async (credentials) => {
-    const input = fixture();
-    await expect(ensureBootstrapAdmin({ ...input, ...credentials })).rejects.toThrow();
-    expect(input.select).not.toHaveBeenCalled();
-    expect(input.createUser).not.toHaveBeenCalled();
+    expect(data.user).toHaveLength(0);
   });
 });

@@ -12,7 +12,7 @@ import {
 } from "@/lib/identity-api";
 import { queryKeys } from "@/features/query-keys";
 
-type LoginInput = { email: string; password: string };
+type LoginInput = { username: string; password: string };
 type ProfileInput = {
   display_name?: string;
   preferred_language?: SupportedLanguage;

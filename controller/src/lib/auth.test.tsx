@@ -11,10 +11,10 @@ vi.mock("./identity-api", () => ({
 }));
 vi.mock("@/i18n", () => ({ default: { language: "en" }, setApplicationLanguage: vi.fn() }));
 
-const user: IdentityUser = { id: "first", display_name: "First", email: "first@guard.test", role: "admin",
+const user: IdentityUser = { id: "first", display_name: "First", username: "first", role: "admin",
   enabled: true, preferred_language: "en", last_login_at: null, created_at: "2026-09-06", updated_at: "2026-09-06" };
 function Probe() { const auth = useAuth(); return <><p>{auth.user ? `${auth.user.id}:${auth.user.role}` : "signed-out"}</p>
-  <button onClick={() => void auth.login({ email: "second@guard.test", password: "test-only" })}>Sign in</button></>; }
+  <button onClick={() => void auth.login({ username: "second", password: "test-only" })}>Sign in</button></>; }
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe("Authenticated cache boundaries", () => {

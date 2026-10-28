@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { signInWithEmail, getSession, updateUser } = vi.hoisted(() => ({
-  signInWithEmail: vi.fn(),
+const { signInWithUsername, getSession, updateUser } = vi.hoisted(() => ({
+  signInWithUsername: vi.fn(),
   getSession: vi.fn(),
   updateUser: vi.fn(),
 }));
 
 vi.mock("@/lib/better-auth", () => ({
   authClient: {
-    signIn: { email: signInWithEmail },
+    signIn: { username: signInWithUsername },
     getSession,
     updateUser,
   },
@@ -19,7 +19,7 @@ import { getAuthStatus, login, updateMe } from "@/lib/identity-api";
 const signedInUser = {
   id: "admin-id",
   name: "Administrator",
-  email: "admin@tasklattice.local",
+  username: "admin",
   role: "admin",
   banned: false,
   preferredLanguage: "zh-CN",
@@ -30,8 +30,8 @@ const signedInUser = {
 describe("identity login", () => {
   beforeEach(() => {
     getSession.mockReset();
-    signInWithEmail.mockReset();
-    signInWithEmail.mockResolvedValue({ data: { user: signedInUser }, error: null });
+    signInWithUsername.mockReset();
+    signInWithUsername.mockResolvedValue({ data: { user: signedInUser }, error: null });
   });
 
   it("checks current session state rather than a stale signed cookie", async () => {
@@ -48,22 +48,18 @@ describe("identity login", () => {
     getSession.mockResolvedValue({ data: { user: { ...signedInUser, role: "unknown" } }, error: null });
     await expect(getAuthStatus()).rejects.toThrow("unsupported role");
   });
-  it("maps the admin username alias to the internal Better Auth email", async () => {
-    await login({ email: " ADMIN ", password: "admin" });
+  it("signs in with the normalized username", async () => {
+    await login({ username: " ADMIN ", password: "admin" });
 
-    expect(signInWithEmail).toHaveBeenCalledWith({
-      email: "admin@tasklattice.local",
+    expect(signInWithUsername).toHaveBeenCalledWith({
+      username: "admin",
       password: "admin",
     });
   });
 
-  it("passes an explicit email to Better Auth after normalizing it", async () => {
-    await login({ email: " Admin@Example.COM ", password: "a-secure-password" });
-
-    expect(signInWithEmail).toHaveBeenCalledWith({
-      email: "admin@example.com",
-      password: "a-secure-password",
-    });
+  it("rejects email identifiers without sending a login request", async () => {
+    await expect(login({ username: "Admin@Example.COM", password: "password" })).rejects.toThrow();
+    expect(signInWithUsername).not.toHaveBeenCalled();
   });
 });
 

@@ -99,7 +99,7 @@ export function PolicyStudioSheet({ policy, imported = null, open, onOpenChange,
     setPolicyId(policy?.id ?? null);
     setName(policy?.name ?? imported?.name ?? "");
     setDescription(policy?.description ?? imported?.description ?? "");
-    setOwner(policy?.owner ?? imported?.owner ?? user?.email ?? "security-platform");
+    setOwner(policy?.owner ?? imported?.owner ?? user?.username ?? "security-platform");
     setDraft(policy ? cloneDraft(policy.draft) : imported ? cloneDraft(imported.draft) : emptyDraft());
     setCompileError(null);
     setValidatedRevision(null);
@@ -111,7 +111,7 @@ export function PolicyStudioSheet({ policy, imported = null, open, onOpenChange,
     publishMutation.reset();
     openPublishedMutation.reset();
     return () => { editorSession.current++; };
-  }, [policy, imported, open, user?.email]);
+  }, [policy, imported, open, user?.username]);
 
   function invalidateRelease() {
     editRevision.current++;
