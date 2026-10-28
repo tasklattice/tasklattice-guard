@@ -127,7 +127,7 @@ async def test_rate_limit_exhaustion_is_bounded_and_remains_an_error(kind, attem
     assert len(calls) == attempts and all(body == calls[0] for body in calls)
     usage = result.usage.model_calls[0]
     assert (usage.result, usage.error_type, usage.retries) == (
-        'rate_limited', 'HTTPStatusError', attempts - 1,
+        'rate_limited', 'http_429', attempts - 1,
     )
 
 
