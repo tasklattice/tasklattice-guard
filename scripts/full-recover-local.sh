@@ -228,18 +228,14 @@ normalize_local_env() {
   write_env_value "CONTROLLER_PUBLIC_URL" "http://localhost:${CONTROLLER_HTTP_PORT}"
   write_env_value "CONTROLLER_RUNTIME_SERVICE_URL" "http://localhost:${RUNNER_HTTP_PORT}"
   write_env_value "BETTER_AUTH_TRUSTED_ORIGINS" "http://localhost:${CONTROLLER_HTTP_PORT},http://localhost:${UI_HTTP_PORT}"
-  write_env_value "CONTROLLER_BOOTSTRAP_ADMIN_EMAIL" "admin@tasklattice.local"
-  # Reuse the reviewed local bootstrap hash; avoid maintaining a second password.
-  local bootstrap_hash
-  bootstrap_hash="$(node -e 'const fs = require("node:fs"); const match = fs.readFileSync(process.argv[1], "utf8").match(/passwordHash: "([a-f0-9:]+)"/); if (!match) process.exit(1); process.stdout.write(match[1]);' "${ROOT_DIR}/charts/tali-guard/values-dev-uat.yaml")"
-  remove_env_value "CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD"
-  write_env_value "CONTROLLER_BOOTSTRAP_ADMIN_PASSWORD_HASH" "${bootstrap_hash}"
+  write_env_value "BETTER_AUTH_MIN_PASSWORD_LENGTH" "8"
+  for role in ADMIN USER; do
+    remove_env_value "CONTROLLER_BOOTSTRAP_${role}_EMAIL"
+    remove_env_value "CONTROLLER_BOOTSTRAP_${role}_PASSWORD_HASH"
+    write_env_value "CONTROLLER_BOOTSTRAP_${role}_USERNAME" "$(printf '%s' "$role" | tr '[:upper:]' '[:lower:]')"
+    write_env_value "CONTROLLER_BOOTSTRAP_${role}_PASSWORD" "password"
+  done
   write_env_value "CONTROLLER_BOOTSTRAP_ADMIN_NAME" "Local Administrator"
-  local bootstrap_user_hash
-  bootstrap_user_hash="$(node -e 'const fs = require("node:fs"); const match = fs.readFileSync(process.argv[1], "utf8").match(/bootstrapUser:[\s\S]*?passwordHash: "([a-f0-9:]+)"/); if (!match) process.exit(1); process.stdout.write(match[1]);' "${ROOT_DIR}/charts/tali-guard/values-dev-uat.yaml")"
-  write_env_value "CONTROLLER_BOOTSTRAP_USER_EMAIL" "user@tasklattice.local"
-  remove_env_value "CONTROLLER_BOOTSTRAP_USER_PASSWORD"
-  write_env_value "CONTROLLER_BOOTSTRAP_USER_PASSWORD_HASH" "${bootstrap_user_hash}"
   write_env_value "CONTROLLER_BOOTSTRAP_USER_NAME" "Local User"
 
   write_env_value "GUARD_RUNNER_ID" "local-default-1"

@@ -305,7 +305,7 @@ It does not claim to cover final business-proxy bytes or live-model quality.
 Run against explicitly isolated servers with environment variables:
 `GUARD_REGRESSION_ALLOW_WRITES=1`, `GUARD_REGRESSION_CONTROLLER_URL`,
 `GUARD_REGRESSION_RUNNER_URL`, `GUARD_REGRESSION_ORIGIN`,
-`GUARD_REGRESSION_EMAIL`, `GUARD_REGRESSION_PASSWORD`,
+`GUARD_REGRESSION_USERNAME`, `GUARD_REGRESSION_PASSWORD`,
 `GUARD_REGRESSION_RUNNER_TOKEN`, and optional `GUARD_REGRESSION_RUN_ID`.
 Then run `node scripts/regress_protection_lifecycle.mjs`. Reusing the same run ID
 resumes its named drafts without modifying another draft or hiding failures.

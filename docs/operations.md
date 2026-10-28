@@ -12,16 +12,11 @@ installation, dependency settings, and production Secrets.
   expiry, and revocation. Effective permissions are limited by the owner's
   current role. These are separate from Runner tokens and Endpoint credentials;
   see [Access Tokens](account-access-tokens.md).
-- The OrbStack/local profiles initialize `admin` / `password` (admin role) and
-  `user` / `password` (user role). Controller maps these usernames to
-  `admin@tasklattice.local` and `user@tasklattice.local`. Their separate salted
-  hashes are imported only when each account is absent.
-- Production has no default credentials. Its bootstrap administrator is created
-  through Better Auth from a strong deployment Secret, with a default minimum
-  password length of 12.
-- Bootstrap is idempotent: it creates missing accounts but never resets
-  an existing account's password or role during Controller startup. Passwords
-  changed through Better Auth therefore survive restarts and upgrades.
+- Human login uses Better Auth's Username plugin. Email sign-in, public
+  registration and email recovery endpoints are disabled; admins create users
+  with a username and password. Database-backed sessions honor resets immediately.
+- See [bootstrap account operations](#bootstrap-account-operations) for initial
+  credentials, reinitialization, and Secret inspection.
 - Runner control uses a Runner token plus mutual TLS by default. The shared
   initialization Job creates and retains its CA/credentials in Namespace-owned
   Secrets; removing workloads or the release does not remove those credentials.
@@ -33,6 +28,46 @@ installation, dependency settings, and production Secrets.
   qualifies for content capture and an encryption key is configured, Runner
   encrypts the request/model content before writing its WAL or sending it to
   Controller; PostgreSQL stores the resulting ciphertext rather than plaintext.
+
+## Bootstrap account operations
+
+Both bootstrap accounts initialize in every environment: `admin` / `password`
+with the admin role, and `user` / `password` with the user role. Configure their
+`username` and `name`, or use `existingSecret` with `username`, `name`, and
+`password` fields. Set `security.bootstrapUser.enabled=false` to omit the second
+account. A minimum above eight characters requires external account Secrets.
+There is no `localDefault` or precomputed password-hash setting.
+
+The Job overwrites managed account Secrets on every run. Kubernetes stores their
+`data.password` in ordinary Base64; mounted values are already decoded. For debug:
+
+```bash
+kubectl -n tali get secret tali-guard-bootstrap-admin-init \
+  -o jsonpath='{.data.password}' | base64 --decode
+```
+
+Controller initializes or overwrites these configured accounts at startup,
+retaining their IDs and resource ownership. It also checks mounted account
+Secrets every two seconds. A Job rerun writes a new `revision`, so the same initial
+password is reapplied after Kubernetes refreshes the mounted Secret, even if the
+user changed their password in the UI. Resetting restores the configured role and
+name, clears a ban, and revokes previous sessions. Other user accounts are retained.
+External Secret updates use the same synchronization path; the Job never modifies
+external Secrets. Allow for Kubernetes' projected-volume refresh delay.
+
+The only mounted account fields are `username`, `name`, `password` and optional
+`revision`. Optional `usernameKey`, `nameKey`, and `credentialKey` customize names.
+The Controller passes the decoded password to Better Auth. Better Auth alone
+hashes and verifies database credentials; no hash generation or import is needed
+in Helm, the Job, or development setup. Base64 is an encoding for inspecting
+initial credentials, not the database's password-verification algorithm.
+
+Login and account management accept usernames, not email addresses. Existing
+accounts migrate to normalized email local parts, preserving IDs and credentials;
+invalid or duplicate local parts receive deterministic `account_<digest>` names.
+Look up these migrated names in Users. Better Auth's required internal email
+column remains implementation metadata and cannot be used to sign in. Sessions
+are checked against the database, so resets and bans take effect immediately.
 
 ## Capacity and observability
 

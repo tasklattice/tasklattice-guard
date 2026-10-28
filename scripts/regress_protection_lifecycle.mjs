@@ -19,7 +19,7 @@ for (const url of [controller, runner]) {
   assert(["127.0.0.1", "localhost", "[::1]"].includes(url.hostname), "Use isolated loopback endpoints, not a production server.");
 }
 const origin = required("GUARD_REGRESSION_ORIGIN");
-const email = required("GUARD_REGRESSION_EMAIL");
+const username = required("GUARD_REGRESSION_USERNAME");
 const password = required("GUARD_REGRESSION_PASSWORD");
 const runnerToken = required("GUARD_REGRESSION_RUNNER_TOKEN");
 const runId = process.env.GUARD_REGRESSION_RUN_ID ?? new Date().toISOString().replaceAll(/[:.]/g, "-");
@@ -48,7 +48,7 @@ async function until(label, read, isReady) {
   throw new Error(`Timed out waiting for ${label}; inspect the retained regression resources.`);
 }
 
-const auth = await call(controller, "/api/auth/sign-in/email", { body: { email, password } });
+const auth = await call(controller, "/api/auth/sign-in/username", { body: { username, password } });
 cookie = auth.response.headers.getSetCookie().map((value) => value.split(";")[0]).join("; ");
 assert(cookie, "Authentication must return a session cookie.");
 const presets = (await call(controller, "/api/v1/protection-presets")).result.items;

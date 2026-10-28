@@ -80,7 +80,7 @@ spec:
             - name: CONTROLLER_BOOTSTRAP_{{ upper $role }}_DIRECTORY
               value: /var/run/tasklattice/bootstrap-{{ lower $role }}
             - name: CONTROLLER_BOOTSTRAP_{{ upper $role }}_FIELDS
-              value: {{ dict "emailKey" $account.emailKey "nameKey" $account.nameKey "credentialKey" $account.credentialKey "digestKey" $account.digestKey | toJson | quote }}
+              value: {{ dict "usernameKey" $account.usernameKey "nameKey" $account.nameKey "credentialKey" $account.credentialKey | toJson | quote }}
             {{- end }}
             {{- end }}
             - { name: CONTROLLER_ARTIFACT_SIGNING_KEY_PATH, value: /var/run/tasklattice/artifact/private-key.pem }

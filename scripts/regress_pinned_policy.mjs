@@ -27,8 +27,8 @@ async function until(label, read, ready) {
   while (Date.now() < deadline) { const result = await read(); if (ready(result)) return result; await delay(1000); }
   throw new Error(`Timed out: ${label}; inspect retained regression resources.`);
 }
-const auth = await call(controller, "/api/auth/sign-in/email", { body: {
-  email: required("GUARD_REGRESSION_EMAIL"), password: required("GUARD_REGRESSION_PASSWORD") } });
+const auth = await call(controller, "/api/auth/sign-in/username", { body: {
+  username: required("GUARD_REGRESSION_USERNAME"), password: required("GUARD_REGRESSION_PASSWORD") } });
 cookie = auth.response.headers.getSetCookie().map(value => value.split(";")[0]).join("; ");
 assert(cookie);
 

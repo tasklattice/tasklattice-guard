@@ -704,7 +704,7 @@ async function handleCommand(line: string) {
       const user = ident.data.user ?? ident.data;
       const role = user?.role ?? user?.roleId ?? 'user';
       const permissions = ident.data.effectivePermissions ?? ident.data.permissions;
-      console.log(`Signed in: ${(user?.email ?? user?.name ?? ident.data.userId ?? 'unknown')} (${role})`);
+      console.log(`Signed in: ${(user?.username ?? user?.name ?? ident.data.userId ?? 'unknown')} (${role})`);
       if (permissions && typeof permissions === 'object') {
         console.log(`Permissions: ${Object.entries(permissions).map(([module, access]) => `${module}:${access}`).join(', ')}`);
       }
@@ -717,25 +717,25 @@ async function handleCommand(line: string) {
   }
 
   if (cmd === 'enable') {
-    let email: string;
+    let username: string;
     let password: string | null;
     if (args[0]?.startsWith('--password=')) {
       password = args[0].slice('--password='.length);
-      email = (await prompt('Admin email (blank → admin@tasklattice.local): '))?.trim() || 'admin@tasklattice.local';
+      username = (await prompt('Admin username (blank → admin): '))?.trim() || 'admin';
     } else {
-      email = (await prompt('Admin email (blank → admin@tasklattice.local): '))?.trim() || 'admin@tasklattice.local';
-      password = await promptHidden('Admin password (blank → simulates local-default "admin"): ');
+      username = (await prompt('Admin username (blank → admin): '))?.trim() || 'admin';
+      password = await promptHidden('Admin password (blank → password): ');
     }
     if (password === null || inputClosed) return;
-    const pwForApi = password === '' ? 'admin' : password;
-    const resp = await runApi('POST', '/api/auth/sign-in/email', {
-      email,
+    const pwForApi = password === '' ? 'password' : password;
+    const resp = await runApi('POST', '/api/auth/sign-in/username', {
+      username,
       password: pwForApi,
     }, { withCredentials: true, omitCredentials: true });
     if (resp.ok && resp.data && !resp.data.error) {
       session.privileged = true;
       const user = resp.data?.user ?? resp.data?.identity?.user ?? {};
-      console.log(`Privileged mode enabled (${String(user.email ?? email)}).`);
+      console.log(`Privileged mode enabled (${String(user.username ?? username)}).`);
     } else {
       const msg = resp.data?.message ?? resp.data?.error?.message ?? `HTTP ${resp.status}`;
       console.error(`Admin sign-in failed: ${msg}`);

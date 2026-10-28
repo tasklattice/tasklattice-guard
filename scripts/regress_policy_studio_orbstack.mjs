@@ -52,7 +52,7 @@ class Stack {
     assert([expected].flat().includes(response.status), `${this.name} ${path}: ${response.status} ${binary ? '' : JSON.stringify(value)}`);
     return value;
   }
-  async login() { await this.api('/api/auth/sign-in/email', { body: { email: 'admin@tasklattice.local', password: process.env.POLICY_STUDIO_ADMIN_PASSWORD ?? 'password' } }); }
+  async login() { await this.api('/api/auth/sign-in/username', { body: { username: 'admin', password: process.env.POLICY_STUDIO_ADMIN_PASSWORD ?? 'password' } }); }
   async ready() { return until(`${this.name} Runner`, async () => (await fetch(this.runtime + '/health/ready')).json(), value => value.ready && value.controller_connected && value.desired_state_synchronized); }
   async upload(bytes) {
     const form = new FormData(); form.append('package', new Blob([bytes], { type: 'application/zip' }), 'policy-studio.guardrail.zip');

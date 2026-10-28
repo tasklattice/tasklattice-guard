@@ -29,7 +29,7 @@ async function api(path,body,method){
 async function until(path,ready){for(let i=0;i<120;i++){const v=await api(path);if(ready(v))return v;await delay(1000);}throw Error('Timed out; inspect state rather than repeat writes.');}
 try{
  const auth=JSON.parse(execFileSync('kubectl',['--context','orbstack','-n','tali','get','secret','tali-guard-bootstrap-admin','-o','json'],{encoding:'utf8'}));
- await api('/api/auth/sign-in/email',Object.fromEntries(Object.entries(auth.data).map(([k,v])=>[k,Buffer.from(v,'base64').toString()])));
+ await api('/api/auth/sign-in/username',Object.fromEntries(Object.entries(auth.data).map(([k,v])=>[k,Buffer.from(v,'base64').toString()])));
  const before=await api('/api/v1/model-configuration');report.activeModelRevision=before.active.id;
  const policy=(await api('/api/v1/policies')).items.find(p=>p.id==='builtin-content-safety');
  assert.equal(policy.test_cases.length,2);assert(policy.test_cases.every(c=>['input','output'].includes(c.phase)));

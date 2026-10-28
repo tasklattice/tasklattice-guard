@@ -32,8 +32,8 @@ async function until(label, read, done) {
   while (Date.now() < deadline) { const value = await read(); if (done(value)) return value; await delay(1000); }
   throw new Error(`Timed out: ${label}; retained regression records must be inspected before retry.`);
 }
-const auth = await call(controller, "/api/auth/sign-in/email", {
-  email: required("GUARD_REGRESSION_EMAIL"), password: required("GUARD_REGRESSION_PASSWORD") });
+const auth = await call(controller, "/api/auth/sign-in/username", {
+  username: required("GUARD_REGRESSION_USERNAME"), password: required("GUARD_REGRESSION_PASSWORD") });
 cookie = auth.response.headers.getSetCookie().map(value => value.split(";")[0]).join("; ");
 assert(cookie);
 const safe = "REGRESSION_SAFE_OUTPUT", blocked = "REGRESSION_BLOCK_OUTPUT", failed = "REGRESSION_DETECTOR_FAILURE";

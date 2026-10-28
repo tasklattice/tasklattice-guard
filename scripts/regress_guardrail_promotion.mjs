@@ -37,9 +37,9 @@ class Stack {
     this.origin = this.base.origin;
     this.cookie = "";
   }
-  async signIn(email, password) {
-    const response = await fetch(new URL("/api/auth/sign-in/email", this.base), { method: "POST",
-      headers: { "content-type": "application/json", origin: this.origin }, body: JSON.stringify({ email, password }) });
+  async signIn(username, password) {
+    const response = await fetch(new URL("/api/auth/sign-in/username", this.base), { method: "POST",
+      headers: { "content-type": "application/json", origin: this.origin }, body: JSON.stringify({ username, password }) });
     assert.equal(response.status, 200, `${this.name} sign-in: ${await response.text()}`);
     this.cookie = response.headers.getSetCookie().map(value => value.split(";")[0]).join("; ");
     return this;
@@ -92,8 +92,8 @@ function reissue(parsed, { source = parsed.manifest.source, guardrail = parsed.m
     }) });
 }
 
-const uat = await new Stack("UAT", env("GUARD_PROMOTION_UAT_URL"), env("GUARD_PROMOTION_UAT_RUNNER_URL")).signIn(env("GUARD_PROMOTION_UAT_EMAIL"), env("GUARD_PROMOTION_PASSWORD"));
-const prod = await new Stack("PROD", env("GUARD_PROMOTION_PROD_URL"), env("GUARD_PROMOTION_PROD_RUNNER_URL")).signIn(env("GUARD_PROMOTION_PROD_EMAIL"), env("GUARD_PROMOTION_PASSWORD"));
+const uat = await new Stack("UAT", env("GUARD_PROMOTION_UAT_URL"), env("GUARD_PROMOTION_UAT_RUNNER_URL")).signIn(env("GUARD_PROMOTION_UAT_USERNAME"), env("GUARD_PROMOTION_PASSWORD"));
+const prod = await new Stack("PROD", env("GUARD_PROMOTION_PROD_URL"), env("GUARD_PROMOTION_PROD_RUNNER_URL")).signIn(env("GUARD_PROMOTION_PROD_USERNAME"), env("GUARD_PROMOTION_PASSWORD"));
 const uatDb = new Pool({ connectionString: env("GUARD_PROMOTION_UAT_DB") });
 const prodDb = new Pool({ connectionString: env("GUARD_PROMOTION_PROD_DB") });
 const count = async (db, sql, params = []) => Number((await db.query(sql, params)).rows[0].n);
@@ -241,8 +241,8 @@ const playground = await prod.call(`/api/v1/playground/guardrails/${guardrail.id
 report("prod-preloaded-for-playground", { versions: [v1, v2], playground: playground.error?.code ?? "ok" });
 
 // ---------------------------------------------------------------- PROD routing through an approved change
-await prod.call("/api/auth/admin/create-user", { body: { email: `approver-${runId}@prod.local`, password: env("GUARD_PROMOTION_PASSWORD"), name: "Approver", role: "admin" } });
-const approver = await new Stack("PROD approver", env("GUARD_PROMOTION_PROD_URL"), env("GUARD_PROMOTION_PROD_RUNNER_URL")).signIn(`approver-${runId}@prod.local`, env("GUARD_PROMOTION_PASSWORD"));
+await prod.call("/api/auth/admin/create-user", { body: { email: `approver-${runId}@users.guard.invalid`, data: { username: `approver-${runId}` }, password: env("GUARD_PROMOTION_PASSWORD"), name: "Approver", role: "admin" } });
+const approver = await new Stack("PROD approver", env("GUARD_PROMOTION_PROD_URL"), env("GUARD_PROMOTION_PROD_RUNNER_URL")).signIn(`approver-${runId}`, env("GUARD_PROMOTION_PASSWORD"));
 const endpoint = await prod.call("/api/v1/endpoints", { expected: 201, body: { name: `Bank gateway ${runId}`, adapter: "litellm-generic-guardrail" } });
 const router = await prod.call("/api/v1/routers", { expected: 201, body: { name: `Bank traffic ${runId}`, endpointIds: [endpoint.id], draft: { routes: [{
   id: "fallback", name: "Fallback", kind: "fallback", enabled: true, selector: { expression: { combinator: "and", conditions: [] } },

@@ -22,8 +22,8 @@ async function call(base, path, body) {
   assert(response.ok, `${path}: HTTP ${response.status}`);
   return { value: await response.json(), response };
 }
-const auth = await call(controller, "/api/auth/sign-in/email", {
-  email: required("GUARD_REGRESSION_EMAIL"), password: required("GUARD_REGRESSION_PASSWORD"),
+const auth = await call(controller, "/api/auth/sign-in/username", {
+  username: required("GUARD_REGRESSION_USERNAME"), password: required("GUARD_REGRESSION_PASSWORD"),
 });
 cookie = auth.response.headers.getSetCookie().map((item) => item.split(";")[0]).join("; ");
 assert(cookie);

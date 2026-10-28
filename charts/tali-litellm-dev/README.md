@@ -55,7 +55,7 @@ authoring account, then idempotently:
 `http://tali-guard-runtime.<namespace>.svc.cluster.local:8091/runtime/v1/endpoints/<id>`.
 
 Environment overrides: `GUARD_DEV_CONTROLLER_URL` (default `http://localhost:38081`),
-`GUARD_DEV_RUNTIME_URL` (default `http://localhost:38082`), `GUARD_DEV_USER_EMAIL`,
+`GUARD_DEV_RUNTIME_URL` (default `http://localhost:38082`), `GUARD_DEV_USER_USERNAME`,
 `HELM_NAMESPACE`, `HELM_CONTEXT`,
 `LITELLM_SKIP_SMOKE=1`.
 

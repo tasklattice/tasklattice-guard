@@ -5,7 +5,7 @@ controller:
   publicUrl:
     - https://guard.example.com
   auth:
-    minLoginLength: 12
+    minLoginLength: 8
   service:
     type: ClusterIP
     public:

@@ -19,6 +19,17 @@ describe('guardctl configuration', () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
+  it.each(['platform', 'tenant'] as const)('uses the %s username login contract', async plane => {
+    const fetcher = vi.fn(async (url: any, options: any) => {
+      expect(url).toBe('http://localhost:38081/api/auth/sign-in/username');
+      expect(JSON.parse(options.body)).toEqual({ username: plane, password: 'password' });
+      return new Response('{}', { headers: { 'set-cookie': 'test-session=fixture; HttpOnly; Path=/' } });
+    });
+    const prefix = `GUARD_${plane.toUpperCase()}`;
+    await configurationApi('http://localhost:38081', plane, { [`${prefix}_USERNAME`]: plane, [`${prefix}_PASSWORD`]: 'password' }, fetcher as typeof fetch);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
   it('does not echo provider error bodies or secrets', async () => {
     const api = await configurationApi('http://localhost:38081', 'platform', { GUARD_PLATFORM_TOKEN: 'secret' }, vi.fn(async () => new Response(JSON.stringify({ error: { code: 'bad_provider', message: 'echoed-secret', detail: 'api-key' } }), { status: 400 })) as typeof fetch);
     await expect(api('/api/v1/models')).rejects.toThrow('HTTP 400 (bad_provider)');

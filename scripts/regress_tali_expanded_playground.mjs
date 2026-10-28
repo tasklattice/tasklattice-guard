@@ -13,7 +13,7 @@ async function api(path,body){
  const v=await r.json();assert(r.ok,`${path}: HTTP ${r.status}`);return v;
 }
 const auth=JSON.parse(execFileSync('kubectl',['--context','orbstack','-n','tali','get','secret','tali-guard-bootstrap-admin','-o','json'],{encoding:'utf8'}));
-await api('/api/auth/sign-in/email',Object.fromEntries(Object.entries(auth.data).map(([k,v])=>[k,Buffer.from(v,'base64').toString()])));
+await api('/api/auth/sign-in/username',Object.fromEntries(Object.entries(auth.data).map(([k,v])=>[k,Buffer.from(v,'base64').toString()])));
 const guard=await api('/api/v1/guardrails/guardrail-default');
 // Playground explicitly selects a released version.
 const baseline=process.env.GUARD_VERSION ?? guard.versions.filter(v=>v.status==='ready').sort((a,b)=>b.version.localeCompare(a.version))[0]?.version;assert(baseline,'Publish a Guardrail version first.');

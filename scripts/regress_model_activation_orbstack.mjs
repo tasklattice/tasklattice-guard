@@ -87,7 +87,7 @@ async function replay(label, revision) {
 }
 
 try {
-  await api('/api/auth/sign-in/email',{body:secret(ns+'-bootstrap-admin')});
+  await api('/api/auth/sign-in/username',{body:secret(ns+'-bootstrap-admin')});
   const first=await view();assert(first.providers.every(p=>p.baseUrl.startsWith(gateway+'/')),'Not an isolated gateway-only configuration.');
   await stage('registered',async()=>{
     const cp=await register('Lifecycle DeepSeek','deepseek','deepseek-v4-flash','generic-chat');

@@ -87,7 +87,9 @@ npm run dev:setup
 
 `dev:setup` creates or completes the ignored root `.env`, generates local
 Ed25519 keys under `.local-secrets/`, and generates random internal tokens.
-Existing credentials and signing keys are preserved across repeated runs.
+Signing keys and internal tokens survive repeated runs. Bootstrap usernames and
+passwords reset to `admin` / `password` and `user` / `password`; Controller
+initialization overwrites these accounts and revokes their previous sessions.
 It does not start PostgreSQL or connect to Kubernetes. Configure a reachable
 PostgreSQL database in `CONTROLLER_DATABASE_URL` before starting Controller.
 The default is `postgresql://guard:guard@localhost:5432/guard`.
@@ -285,8 +287,8 @@ configured, isolated loopback test deployments. It does not deploy releases,
 read cluster Secrets or start database port-forwards. Supply these environment
 variables before running it:
 
-- `GUARD_PROMOTION_UAT_URL`, `GUARD_PROMOTION_UAT_RUNNER_URL`, `GUARD_PROMOTION_UAT_DB`, `GUARD_PROMOTION_UAT_EMAIL`
-- `GUARD_PROMOTION_PROD_URL`, `GUARD_PROMOTION_PROD_RUNNER_URL`, `GUARD_PROMOTION_PROD_DB`, `GUARD_PROMOTION_PROD_EMAIL`
+- `GUARD_PROMOTION_UAT_URL`, `GUARD_PROMOTION_UAT_RUNNER_URL`, `GUARD_PROMOTION_UAT_DB`, `GUARD_PROMOTION_UAT_USERNAME`
+- `GUARD_PROMOTION_PROD_URL`, `GUARD_PROMOTION_PROD_RUNNER_URL`, `GUARD_PROMOTION_PROD_DB`, `GUARD_PROMOTION_PROD_USERNAME`
 - `GUARD_PROMOTION_PASSWORD` and the target's `GUARD_PROMOTION_RUNNER_TOKEN`
 - Optional `GUARD_PROMOTION_WORKDIR` (default `.local-secrets/promotion`)
 

@@ -34,8 +34,8 @@ export const configurationHelp = `Non-interactive configuration (existing Contro
     [--endpoint-id ID] [--router-id ID] [--replace-change-id ID] [--wait-seconds 300]
 
 Common: --url URL, --env-file FILE. Credentials come from environment only:
-  GUARD_PLATFORM_TOKEN or GUARD_PLATFORM_EMAIL + GUARD_PLATFORM_PASSWORD
-  GUARD_TENANT_TOKEN   or GUARD_TENANT_EMAIL   + GUARD_TENANT_PASSWORD
+  GUARD_PLATFORM_TOKEN or GUARD_PLATFORM_USERNAME + GUARD_PLATFORM_PASSWORD
+  GUARD_TENANT_TOKEN   or GUARD_TENANT_USERNAME   + GUARD_TENANT_PASSWORD
 Optional GUARD_PLATFORM_URL / GUARD_TENANT_URL override the default Controller URL.
 No interactive confirmation. Emergency apply requires an explicit audit reason.
 State files contain the created Endpoint credential (mode 0600); keep them private.
@@ -67,10 +67,10 @@ export async function configurationApi(base: string, plane: 'platform' | 'tenant
   const headers: Record<string, string> = { 'content-type': 'application/json', origin };
   if (env[`${prefix}_TOKEN`]) headers.authorization = `Bearer ${env[`${prefix}_TOKEN`]}`;
   else {
-    assert.ok(env[`${prefix}_EMAIL`] && env[`${prefix}_PASSWORD`], `Set ${prefix}_TOKEN or ${prefix}_EMAIL and ${prefix}_PASSWORD`);
-    const response = await fetcher(`${origin}/api/auth/sign-in/email`, {
+    assert.ok(env[`${prefix}_USERNAME`] && env[`${prefix}_PASSWORD`], `Set ${prefix}_TOKEN or ${prefix}_USERNAME and ${prefix}_PASSWORD`);
+    const response = await fetcher(`${origin}/api/auth/sign-in/username`, {
       method: 'POST', headers, redirect: 'error', signal: AbortSignal.timeout(30_000),
-      body: JSON.stringify({ email: env[`${prefix}_EMAIL`], password: env[`${prefix}_PASSWORD`] }),
+      body: JSON.stringify({ username: env[`${prefix}_USERNAME`], password: env[`${prefix}_PASSWORD`] }),
     });
     assert.ok(response.ok, `${plane} sign-in failed: HTTP ${response.status}`);
     headers.cookie = response.headers.getSetCookie().map(value => value.split(';')[0]).join('; ');
@@ -290,7 +290,7 @@ export async function runConfiguration(plane: 'platform' | 'tenant', args: strin
   if (command === 'register-model') { emit(await registerModel(api, flags, env)); return; }
   const state = resolve(cwd, required(flags, 'state'));
   await withJournal(state, async journal => {
-    const connection = { base: new URL(base).origin, plane, identity: env[`GUARD_${plane.toUpperCase()}_EMAIL`] ?? 'token' };
+    const connection = { base: new URL(base).origin, plane, identity: env[`GUARD_${plane.toUpperCase()}_USERNAME`] ?? 'token' };
     if (journal.data.connection) assert.deepEqual(journal.data.connection, connection, 'State belongs to another API connection');
     else { journal.data.connection = connection; await journal.save(); }
     const result = command === 'bind' ? await bindModel(api, flags, journal)

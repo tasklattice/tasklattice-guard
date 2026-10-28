@@ -16,8 +16,8 @@ Veritas Target          → Endpoint runtime URL → published Guardrail
 ## Credentials
 
 Use a private environment file (mode `0600`, outside version control) with
-`GUARD_PLATFORM_EMAIL` and `GUARD_PLATFORM_PASSWORD` for the platform account,
-and `GUARD_TENANT_EMAIL` and `GUARD_TENANT_PASSWORD` for the tenant account.
+`GUARD_PLATFORM_USERNAME` and `GUARD_PLATFORM_PASSWORD` for the platform account,
+and `GUARD_TENANT_USERNAME` and `GUARD_TENANT_PASSWORD` for the tenant account.
 Alternatively supply `GUARD_PLATFORM_TOKEN` and `GUARD_TENANT_TOKEN` with the
 appropriate API permissions. Tenant operations never fall back to platform
 credentials. Provider secrets are read by environment-variable name and never

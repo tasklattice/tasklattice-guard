@@ -20,7 +20,7 @@ async function until(read,ready){
   while(Date.now()<end){const value=await read();if(ready(value))return value;await delay(1000);}
   throw Error('Timed out; retain and inspect the existing copy before resuming.');
 }
-const a=await call('/api/auth/sign-in/email',{email:required('GUARD_REGRESSION_EMAIL'),password:required('GUARD_REGRESSION_PASSWORD')});
+const a=await call('/api/auth/sign-in/username',{username:required('GUARD_REGRESSION_USERNAME'),password:required('GUARD_REGRESSION_PASSWORD')});
 cookie=a.response.headers.getSetCookie().map(x=>x.split(';')[0]).join('; ');
 const original=(await call('/api/v1/guardrails/guardrail-default')).value;
 const originalRelease=original.versions.find(v=>v.status==='ready' && v.sourceDraftRevision===original.draftRevision);

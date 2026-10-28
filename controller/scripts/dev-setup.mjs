@@ -3,7 +3,6 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from 'n
 import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseEnv } from 'node:util';
-import { hashPassword } from 'better-auth/crypto';
 
 const projectRoot = fileURLToPath(new URL('../../', import.meta.url));
 const placeholder = value => !value || value.startsWith('replace-');
@@ -44,15 +43,12 @@ export async function setupDevelopment(root = projectRoot) {
   values.CONTROLLER_ARTIFACT_SIGNING_KEY_PATH = privatePath;
   values.GUARD_ARTIFACT_PUBLIC_KEY_PATH = publicPath;
   values.GUARD_RUNNER_STATE_PATH = current.GUARD_RUNNER_STATE_PATH ?? join(root, 'data', 'runner');
+  values.BETTER_AUTH_MIN_PASSWORD_LENGTH = '8';
   for (const role of ['ADMIN', 'USER']) {
-    const passwordKey = `CONTROLLER_BOOTSTRAP_${role}_PASSWORD`;
-    const hashKey = `${passwordKey}_HASH`;
-    if (current[passwordKey] && !current[hashKey]) {
-      delete values[hashKey];
-    } else if (!current[hashKey]) {
-      delete values[passwordKey];
-      values[hashKey] = await hashPassword('password');
-    }
+    values[`CONTROLLER_BOOTSTRAP_${role}_USERNAME`] = role.toLowerCase();
+    values[`CONTROLLER_BOOTSTRAP_${role}_PASSWORD`] = 'password';
+    delete values[`CONTROLLER_BOOTSTRAP_${role}_PASSWORD_HASH`];
+    delete values[`CONTROLLER_BOOTSTRAP_${role}_EMAIL`];
   }
   // Leave existing values byte-for-byte intact, including quoted provider secrets.
   const pending = new Map(Object.entries(values));
@@ -64,6 +60,7 @@ export async function setupDevelopment(root = projectRoot) {
   }
   const lines = original.split(/\r?\n/).map(line => {
     const key = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/)?.[1];
+    if (key && /^CONTROLLER_BOOTSTRAP_(ADMIN|USER)_(EMAIL|PASSWORD_HASH)$/.test(key)) return '';
     if (!key || !pending.has(key)) return line;
     pending.delete(key);
     return current[key] === values[key] ? line : `${key}=${encode(values[key])}`;
@@ -76,9 +73,9 @@ export async function setupDevelopment(root = projectRoot) {
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
     await setupDevelopment();
-    console.log('Local .env and Ed25519 keys are ready; existing credentials were preserved.');
+    console.log('Local .env and Ed25519 keys are ready; infrastructure keys were preserved.');
     console.log('Ensure PostgreSQL is reachable at CONTROLLER_DATABASE_URL, then run npm run dev from the repository root.');
-    console.log('New local accounts: admin / password (admin), user / password (user); existing accounts are not reset.');
+    console.log('Bootstrap accounts: admin / password (admin), user / password (user); Controller initialization overwrites their credentials.');
   } catch (error) {
     console.error(`dev:setup: ${error.message}`);
     process.exitCode = 1;

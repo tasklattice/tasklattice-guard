@@ -97,7 +97,7 @@ try{
  report.proxyImage=verified.image;report.proxyFiles=verified.files;
  credentials=JSON.parse((await exec('.venv/bin/python',['-c','import json; from pathlib import Path; from scripts.model_response_gateway import load_credentials; print(json.dumps(load_credentials(Path(".env"))))'])).stdout);
  assert(credentials.deepseek);
- await api('/api/auth/sign-in/email',await secret('tali-guard-bootstrap-admin'));
+ await api('/api/auth/sign-in/username',await secret('tali-guard-bootstrap-admin'));
  const explicitResume=process.env.GUARD_TALI_EXPLICIT_RETEST==='1';
  assert(!report.finished||(explicitResume&&!report.explicitRetestUsed&&!report.restored&&!report.passed), 'Stopped runs require a separately authorized explicit retest; budgets are never reset.');
  report.before ??= JSON.parse(readFileSync('/tmp/guard-tali-acceptance-20260908-before.json','utf8')); save();

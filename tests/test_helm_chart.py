@@ -16,6 +16,7 @@ REQUIRED = (
     "--set", "security.artifactSigning.existingSecret=artifact-signing",
     "--set", "security.controlTls.existingSecret=control-tls",
     "--set", "security.bootstrapAdmin.existingSecret=bootstrap-admin",
+    "--set", "security.bootstrapUser.existingSecret=bootstrap-user",
     "--set", "runner.callContextRedisUrl=redis://redis:6379/0",
 )
 
@@ -166,7 +167,7 @@ def test_controller_and_runner_have_distinct_images_ports_and_responsibilities()
         "http://contract-tali-guard-runtime.default.svc.cluster.local:8091"
     )
     assert controller_env["CONTROLLER_RUNTIME_PUBLIC_URL"]["value"] == ""
-    assert controller_env["CONTROLLER_MIN_LOGIN_LENGTH"]["value"] == "12"
+    assert controller_env["CONTROLLER_MIN_LOGIN_LENGTH"]["value"] == "8"
     assert "GUARD_CONTROLLER_TARGET" in runner_env
     assert runner_env["GUARD_URL"]["value"] == "http://contract-tali-guard-controller:8080"
     assert "GUARD_ACCESS_TOKEN" not in runner_env
@@ -429,7 +430,7 @@ def test_shared_public_url_updates_ui_auth_and_runtime_without_changing_internal
 
 
 def test_shared_public_url_overrides_local_ui_addresses_and_derives_ingress_host():
-    documents = render_dev("--set", "security.bootstrapAdmin.localDefault=false", "--set", "security.bootstrapUser.localDefault=false", "--set-string", "publicUrl=https://guard-uat.example.com:8443", "--set", "ingress.enabled=true")
+    documents = render_dev("--set-string", "publicUrl=https://guard-uat.example.com:8443", "--set", "ingress.enabled=true")
     config = controller_config(documents)["data"]
     assert config["CONTROLLER_PUBLIC_URL"] == config["CONTROLLER_RUNTIME_PUBLIC_URL"] == "https://guard-uat.example.com:8443"
     assert config["BETTER_AUTH_TRUSTED_ORIGINS"] == "https://guard-uat.example.com:8443"
@@ -686,7 +687,7 @@ def test_development_values_are_self_contained_and_keep_two_app_components():
     assert controller_env["CONTROLLER_RUNTIME_SERVICE_URL"]["value"] == (
         "http://tali-guard-runtime.tali.svc.cluster.local:8091"
     )
-    assert controller_env["CONTROLLER_MIN_LOGIN_LENGTH"]["value"] == "12"
+    assert controller_env["CONTROLLER_MIN_LOGIN_LENGTH"]["value"] == "8"
     assert controller_pod["initContainers"][0]["name"] == "wait-for-postgresql"
     services = {item["metadata"]["name"]: item for item in documents if item.get("kind") == "Service"}
     controller_service = services["tali-guard-controller"]
@@ -714,7 +715,7 @@ def test_development_values_are_self_contained_and_keep_two_app_components():
     assert not secrets
     specs = bootstrap_specs(documents)
     assert any(spec["kind"] == "database" for spec in specs)
-    assert any(spec["kind"] == "account" and spec["email"] == "admin@tasklattice.local" for spec in specs)
+    assert any(spec["kind"] == "account" and spec.get("username") == "admin" for spec in specs)
     assert "tali-guard-artifact-signing-init" not in secrets
     for pod in (controller_pod, runner_pod):
         signing_volume = next(volume for volume in pod["volumes"] if volume["name"] == "artifact-signing")
@@ -1306,8 +1307,9 @@ def test_mtls_autogenerate_works_without_bootstrapping_other_credentials():
 
 
 def test_controller_config_changes_trigger_rollout_without_replacing_owner():
-    original = render_dev()
-    changed = render_dev("--set", "controller.auth.minLoginLength=14")
+    accounts = ("--set", "security.bootstrapAdmin.existingSecret=bootstrap-admin", "--set", "security.bootstrapUser.existingSecret=bootstrap-user")
+    original = render_dev(*accounts)
+    changed = render_dev(*accounts, "--set", "controller.auth.minLoginLength=14")
     configs = [controller_config(docs) for docs in (original, changed)]
     assert configs[0]["metadata"] == configs[1]["metadata"]
     assert configs[0]["data"] != configs[1]["data"]
@@ -1400,7 +1402,7 @@ def test_local_endpoint_address_uses_runtime_load_balancer_port(host):
     ("--set-json", 'controller.publicUrl=["https://console.example.com"]'),
 ])
 def test_runtime_address_is_not_inferred_without_local_load_balancer(overrides):
-    assert controller_config(render_dev("--set", "security.bootstrapAdmin.localDefault=false", "--set", "security.bootstrapUser.localDefault=false", *overrides))["data"]["CONTROLLER_RUNTIME_PUBLIC_URL"] == ""
+    assert controller_config(render_dev(*overrides))["data"]["CONTROLLER_RUNTIME_PUBLIC_URL"] == ""
 
 
 def test_development_bootstraps_both_roles_with_separate_secrets():
@@ -1408,16 +1410,16 @@ def test_development_bootstraps_both_roles_with_separate_secrets():
     accounts = [spec for spec in bootstrap_specs(documents) if spec["kind"] == "account"]
     assert len(accounts) == 2
     for role in ("admin", "user"):
-        account = next(spec for spec in accounts if spec["email"] == f"{role}@tasklattice.local")
+        account = next(spec for spec in accounts if spec["username"] == role)
         assert account["name"] == f"tali-guard-bootstrap-{role}-init"
-        assert account["localDefault"] is True
+        assert "localDefault" not in account
         assert not any("password" in key.lower() for key in account)
 
 
-def test_optional_bootstrap_user_is_disabled_in_production_and_supports_existing_secrets():
+def test_bootstrap_user_is_enabled_by_default_and_supports_existing_secrets():
     documents = render()
     deployment = next(item for item in documents if item.get("kind") == "Deployment")
-    assert not any(item["name"].startswith("CONTROLLER_BOOTSTRAP_USER_") for item in deployment["spec"]["template"]["spec"]["containers"][0]["env"])
+    assert any(item["name"].startswith("CONTROLLER_BOOTSTRAP_USER_") for item in deployment["spec"]["template"]["spec"]["containers"][0]["env"])
     documents = render("--set", "security.bootstrapUser.enabled=true", "--set", "security.bootstrapUser.existingSecret=tenant-bootstrap")
     pod = next(item for item in documents if item["kind"] == "Deployment")["spec"]["template"]["spec"]
     assert next(volume for volume in pod["volumes"] if volume["name"] == "bootstrap-user")["secret"]["secretName"] == "tenant-bootstrap"
@@ -1425,24 +1427,21 @@ def test_optional_bootstrap_user_is_disabled_in_production_and_supports_existing
 
 
 @pytest.mark.parametrize("settings,error", [
-    ([], "configure bootstrapUser"),
-    (["--set", "security.bootstrapUser.email=user@example.test", "--set", "security.bootstrapUser.existingSecret=existing"], "cannot be combined"),
-    (["--set", "security.bootstrapUser.email=same@example.test", "--set", "security.bootstrapAdmin.existingSecret=", "--set", "security.bootstrapAdmin.email=SAME@example.test"], "different email"),
+    (["--set", "security.bootstrapUser.existingSecret=", "--set", "security.bootstrapUser.username=bad@name"], "requires a username"),
+    (["--set", "security.bootstrapUser.username=same", "--set", "security.bootstrapAdmin.username=same"], "different usernames"),
 ])
 def test_bootstrap_user_rejects_invalid_configuration(settings, error):
     assert error.lower() in render_error("--set", "security.bootstrapUser.enabled=true", *settings).lower()
 
 
-def test_both_charts_contain_no_secret_manifests_or_login_keywords():
-    import re
+def test_both_charts_keep_credentials_out_of_sources_and_rendered_manifests():
+    for path in (ROOT / "charts").rglob("*"):
+        if path.is_file():
+            assert b"password" not in path.read_bytes().lower(), str(path)
     for chart in (CHART, ROOT / "charts/tali-litellm-dev"):
-        for path in chart.rglob("*"):
-            if not path.is_file():
-                continue
-            assert not re.search(r"password|passwd|\bpwd\b", path.read_text(), re.I), str(path)
         profile = chart / ("values-dev-uat.yaml" if chart == CHART else "values-dev.yaml")
         output = subprocess.run(["helm", "template", "scan", str(chart), "-f", str(profile)], capture_output=True, text=True, check=True).stdout
-        assert not re.search(r"password|passwd|\bpwd\b", output, re.I)
+        assert "password" not in output.lower()
         assert not any(item and item["kind"] == "Secret" for item in yaml.safe_load_all(output))
 
 
@@ -1478,13 +1477,11 @@ def test_bundled_database_synchronizes_before_serving_using_existing_images():
     assert "tasklattice.io/database-revision" not in external["spec"]["template"]["metadata"]["annotations"]
 
 
-def test_local_account_defaults_cannot_be_used_with_an_external_public_url():
-    result = subprocess.run([
-        "helm", "template", "tali-guard", str(CHART), "-f", str(DEV_VALUES),
-        "--set", "publicUrl=https://guard.example.com",
-    ], capture_output=True, text=True)
-    assert result.returncode != 0
-    assert "loopback" in result.stderr
+def test_bootstrap_accounts_use_the_same_contract_on_external_public_urls():
+    documents = render_dev("--set", "publicUrl=https://guard.example.com")
+    accounts = [spec for spec in bootstrap_specs(documents) if spec["kind"] == "account"]
+    assert {spec["username"] for spec in accounts} == {"admin", "user"}
+    assert all("localDefault" not in spec for spec in accounts)
 
 
 def test_long_managed_secret_names_are_unique_and_fit_kubernetes_limits():

@@ -102,6 +102,13 @@ function clusterFixture(initial: Record<string, any> = {}) {
   const request = vi.fn(async (method: string, path: string, body?: any) => {
     const name = decodeURIComponent(path.split("/").at(-1)!);
     if (method === "GET") return stored.has(name) ? { status: 200, body: stored.get(name) } : { status: 404 };
+    if (method === "PATCH") {
+      const secret = stored.get(name);
+      const data = { ...secret.data, ...body.data };
+      for (const [key, value] of Object.entries(data)) if (value === null) delete data[key];
+      stored.set(name, { ...secret, metadata: { ...secret.metadata, ...body.metadata }, data });
+      return { status: 200 };
+    }
     if (method !== "POST") throw new Error(`Unexpected mutation ${method}`);
     if (stored.has(body.metadata.name)) return { status: 409 };
     stored.set(body.metadata.name, { metadata: body.metadata, data: encode(body.stringData) });
@@ -147,17 +154,10 @@ describe("database, account and gateway bootstrap", () => {
       expect(request.mock.calls.every(([method]) => method === "GET")).toBe(true);
     }
   });
-  it("generates random production accounts and valid separately salted local digests", async () => {
-    const spec = { kind: "account", email: "admin@example.com", displayName: "Admin" };
-    const first = await secretData(spec), second = await secretData(spec);
-    expect(first.password).toHaveLength(64);
-    expect(first.password).not.toBe(second.password);
-    const local = await secretData({ ...spec, localDefault: true });
-    const another = await secretData({ ...spec, localDefault: true });
-    const { verifyPassword } = await import("better-auth/crypto");
-    expect(await verifyPassword({ hash: local["password-hash"], password: "password" })).toBe(true);
-    expect(local["password-hash"]).not.toBe(another["password-hash"]);
-    expect(local).not.toHaveProperty("password");
+  it("creates debuggable username/password account data without hash import", async () => {
+    const data = await secretData({ kind: "account", username: "admin", displayName: "Admin" });
+    expect(data).toMatchObject({ username: "admin", name: "Admin", password: "password" });
+    expect(data.revision).toMatch(/^[a-f0-9-]{36}$/);
   });
   it("migrates the LiteLLM database and gateway together and retains their keys", async () => {
     const database = { ...dbSpec, profile: "litellm" };
@@ -184,13 +184,25 @@ describe("database, account and gateway bootstrap", () => {
   });
 });
 
-it("migrates an account digest without regenerating it", async () => {
-  const spec = { name: "account-init", legacyName: "account", kind: "account", email: "admin@example.com", displayName: "Admin" };
-  const data = await secretData({ ...spec, localDefault: true });
-  const { stored, request } = clusterFixture({ account: { metadata: legacyMetadata, data: encode(data) } });
-  await ensureSecret(request, "namespace", "release", spec, owner);
-  expect(stored.get("account-init").data).toEqual(encode(data));
-  expect(await ensureSecret(request, "namespace", "release", spec, owner)).toBe("reused");
+it("overwrites old account Secrets on every initialization and removes hash fields", async () => {
+  const spec = { name: "account-init", legacyName: "account", kind: "account", username: "admin", displayName: "Admin" };
+  const legacy = { metadata: legacyMetadata, data: encode({ email: "old@example.com", "password-hash": "old-hash" }) };
+  const { stored, request } = clusterFixture({ account: legacy });
+  expect(await ensureSecret(request, "namespace", "release", spec, owner)).toBe("created");
+  expect(stored.get("account-init").data).toEqual({ ...encode({ username: "admin", name: "Admin", password: "password" }), revision: expect.any(String) });
+  const revision = stored.get("account-init").data.revision;
+  stored.get("account-init").data = encode({ email: "old@example.com", "password-hash": "old-hash", password: "different" });
+  expect(await ensureSecret(request, "namespace", "release", spec, owner)).toBe("updated");
+  expect(stored.get("account-init").data).toEqual({ ...encode({ username: "admin", name: "Admin", password: "password" }), revision: expect.any(String) });
+  expect(stored.get("account-init").data.revision).not.toBe(revision);
+  expect(stored.get("account")).toBe(legacy);
+});
+
+it("does not overwrite an account Secret belonging to another release", async () => {
+  const spec = { name: "account-init", kind: "account", username: "admin", displayName: "Admin" };
+  const { request } = clusterFixture({ "account-init": { metadata: {}, data: {} } });
+  await expect(ensureSecret(request, "namespace", "release", spec, owner)).rejects.toThrow("another owner");
+  expect(request.mock.calls.every(([method]) => method === "GET")).toBe(true);
 });
 
 it("refuses to reuse a gateway when its database credentials differ", async () => {

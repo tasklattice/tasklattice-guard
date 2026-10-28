@@ -9,7 +9,7 @@ async function api(path,method='GET',body){
  assert(r.ok,`${path}: ${r.status}`);return r.status===204?null:r.json();
 }
 const auth=JSON.parse(execFileSync('kubectl',['--context','orbstack','-n','tali','get','secret','tali-guard-bootstrap-admin','-o','json'],{encoding:'utf8'}));
-await api('/api/auth/sign-in/email','POST',Object.fromEntries(Object.entries(auth.data).map(([k,v])=>[k,Buffer.from(v,'base64').toString()])));
+await api('/api/auth/sign-in/username','POST',Object.fromEntries(Object.entries(auth.data).map(([k,v])=>[k,Buffer.from(v,'base64').toString()])));
 const result={softDeleted:[]};
 const n=JSON.parse(readFileSync('/tmp/guard-tali-expanded-lifecycle-20260908.json'));
 const c=JSON.parse(readFileSync('/tmp/guard-tali-expanded-control-20260908.json'));

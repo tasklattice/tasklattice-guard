@@ -95,7 +95,7 @@ try{
  report.proxyImage=verified.image;report.proxyFiles=verified.files;
  credentials=JSON.parse((await exec('.venv/bin/python',['-c','import json; from pathlib import Path; from scripts.model_response_gateway import load_credentials; print(json.dumps(load_credentials(Path(".env"))))'])).stdout);
  assert(credentials.deepseek);
- await api('/api/auth/sign-in/email',await secret(ns+'-bootstrap-admin'));
+ await api('/api/auth/sign-in/username',await secret(ns+'-bootstrap-admin'));
  const active=await stage('configuration',async()=>{
   let v=await api('/api/v1/model-configuration');assert(v.providers.every(p=>p.baseUrl.includes('.tali-model-e2e.svc.cluster.local:8097/')));
   let m=v.models.find(m=>m.name==='Live stream Safety'+suffix);

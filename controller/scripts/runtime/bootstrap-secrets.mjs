@@ -1,4 +1,4 @@
-import { createPrivateKey, createPublicKey, generateKeyPairSync, randomBytes } from "node:crypto";
+import { createPrivateKey, createPublicKey, generateKeyPairSync, randomBytes, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import https from "node:https";
 import { generateTls, tlsFields, validateTls } from "./bootstrap-tls.mjs";
@@ -32,13 +32,10 @@ const databaseKey = spec => spec.credentialKey || (spec.profile === "litellm" ? 
 const databaseUrl = (spec, value) => `postgresql://${encodeURIComponent(spec.username)}:${encodeURIComponent(value)}@${spec.host}:5432/${encodeURIComponent(spec.database)}`;
 const decodeData = secret => Object.fromEntries(Object.entries(secret.data ?? {}).map(([key, value]) => [key, Buffer.from(value, "base64").toString("utf8")]));
 
-async function accountData(spec) {
-  const data = { [spec.emailKey || "email"]: spec.email, [spec.nameKey || "name"]: spec.displayName };
-  if (spec.localDefault) {
-    const { hashPassword } = await import("better-auth/crypto");
-    data[spec.digestKey || "password-hash"] = await hashPassword("password");
-  } else data[spec.credentialKey || "password"] = randomBytes(Math.max(32, Math.ceil((spec.minLength ?? 12) / 2))).toString("hex");
-  return data;
+function accountData(spec) {
+  return { [spec.usernameKey || "username"]: spec.username,
+    [spec.nameKey || "name"]: spec.displayName,
+    [spec.credentialKey || "password"]: "password", revision: randomUUID() };
 }
 
 function validateExisting(spec, secret) {
@@ -57,10 +54,8 @@ function validateExisting(spec, secret) {
     return;
   }
   if (spec.kind === "account") {
-    const plain = data[spec.credentialKey || "password"], digest = data[spec.digestKey || "password-hash"];
-    if (!data[spec.emailKey || "email"] || !data[spec.nameKey || "name"] || (!plain && !digest) || (plain && digest) ||
-        (digest && !/^[0-9a-f]{32}:[0-9a-f]{128}$/.test(digest))) {
-      throw new Error(`Secret ${spec.name} has invalid account fields; refusing to replace it.`);
+    if (!data[spec.usernameKey || "username"] || !data[spec.nameKey || "name"] || !data[spec.credentialKey || "password"]) {
+      throw new Error(`Secret ${spec.name} has invalid account fields.`);
     }
     return;
   }
@@ -102,7 +97,7 @@ export async function namespaceOwner(request, namespace) {
 }
 
 async function reuseSecret(request, path, namespace, release, spec, secret, owner, previousOwnerName) {
-  validateExisting(spec, secret);
+  if (spec.kind !== "account") validateExisting(spec, secret);
   if (spec.kind === "litellm") {
     const database = await request("GET", `/api/v1/namespaces/${encodeURIComponent(namespace)}/secrets/${encodeURIComponent(spec.databaseSecret)}`);
     if (database.status !== 200 || database.body.data?.["database-url"] !== secret.data["database-url"]) {
@@ -114,6 +109,18 @@ async function reuseSecret(request, path, namespace, release, spec, secret, owne
   const legacy = references.length === 1 && references[0].apiVersion === "v1" && references[0].kind === "ConfigMap" && references[0].name === previousOwnerName;
   if (!belongsToRelease(secret.metadata, namespace, release) || (references.length && !owned && !legacy)) {
     throw new Error(`Secret ${spec.name} belongs to another owner; use existingSecret instead of adopting it.`);
+  }
+  if (spec.kind === "account") {
+    const data = accountData(spec);
+    const patched = await request("PATCH", path, {
+      metadata: { resourceVersion: secret.metadata.resourceVersion, ownerReferences: [owner],
+        annotations: { "helm.sh/resource-policy": "keep", "argocd.argoproj.io/compare-options": "IgnoreExtraneous", "argocd.argoproj.io/sync-options": "Prune=false,Delete=false" } },
+      // JSON merge patch removes former email/hash fields as well as custom keys.
+      data: Object.fromEntries([...Object.keys(secret.data ?? {}).map(key => [key, null]),
+        ...Object.entries(data).map(([key, value]) => [key, Buffer.from(value).toString("base64")])]),
+    });
+    if (patched.status !== 200) throw new Error(`Cannot reset account Secret ${spec.name}: HTTP ${patched.status}. Retry initialization.`);
+    return "updated";
   }
   if (owned && secret.metadata.annotations?.["helm.sh/resource-policy"] === "keep") return "reused";
   const patched = await request("PATCH", path, { metadata: { resourceVersion: secret.metadata.resourceVersion, ownerReferences: [owner], annotations: { "helm.sh/resource-policy": "keep", "argocd.argoproj.io/compare-options": "IgnoreExtraneous", "argocd.argoproj.io/sync-options": "Prune=false,Delete=false" } } });
@@ -131,7 +138,7 @@ export async function ensureSecret(request, namespace, release, spec, owner, pre
   }
   if (existing.status !== 404) throw new Error(`Cannot read Secret ${spec.name}: HTTP ${existing.status}.`);
   let data;
-  if (spec.legacyName) {
+  if (spec.legacyName && spec.kind !== "account") {
     const legacy = await request("GET", `${path}/${encodeURIComponent(spec.legacyName)}`);
     if (legacy.status === 200) {
       if (!belongsToRelease(legacy.body.metadata, namespace, release)) throw new Error(`Legacy Secret ${spec.legacyName} belongs to another owner.`);

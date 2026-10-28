@@ -115,7 +115,7 @@
 {{- end -}}
 {{- range $role, $account := dict "Admin" .Values.security.bootstrapAdmin "User" .Values.security.bootstrapUser -}}
 {{- if and (or (eq $role "Admin") $account.enabled) (not $account.existingSecret) -}}
-{{- $specs = append $specs (dict "name" (include (printf "tali-guard.bootstrap%sSecretName" $role) $) "legacyName" (printf "%s-bootstrap-%s" $base (lower $role)) "kind" "account" "email" $account.email "displayName" $account.name "minLength" $.Values.controller.auth.minLoginLength "localDefault" $account.localDefault "emailKey" $account.emailKey "nameKey" $account.nameKey "credentialKey" $account.credentialKey "digestKey" $account.digestKey) -}}
+{{- $specs = append $specs (dict "name" (include (printf "tali-guard.bootstrap%sSecretName" $role) $) "legacyName" (printf "%s-bootstrap-%s" $base (lower $role)) "kind" "account" "username" $account.username "displayName" $account.name "usernameKey" $account.usernameKey "nameKey" $account.nameKey "credentialKey" $account.credentialKey) -}}
 {{- end -}}
 {{- end -}}
 {{- if not .Values.security.artifactSigning.existingSecret -}}
@@ -268,23 +268,16 @@ app.kubernetes.io/part-of: tasklattice-guard
 {{- end -}}
 {{- range $role, $account := dict "Admin" .Values.security.bootstrapAdmin "User" .Values.security.bootstrapUser -}}
 {{- if or (eq $role "Admin") $account.enabled -}}
-{{- if and $account.existingSecret (or $account.email $account.localDefault) -}}
-{{- fail (printf "bootstrap%s existingSecret cannot be combined with account initialization" $role) -}}
+{{- if and (not $account.existingSecret) (gt (int $.Values.controller.auth.minLoginLength) 8) -}}
+{{- fail "managed account initialization uses an 8-character credential; provide external account Secrets for a larger minLoginLength" -}}
 {{- end -}}
-{{- if not (or $account.existingSecret $account.email) -}}
-{{- fail (printf "configure bootstrap%s existingSecret or email for in-cluster initialization" $role) -}}
-{{- end -}}
-{{- end -}}
-{{- end -}}
-{{- if and .Values.security.bootstrapUser.enabled .Values.security.bootstrapUser.email (eq (lower .Values.security.bootstrapUser.email) (lower .Values.security.bootstrapAdmin.email)) -}}
-{{- fail "bootstrapAdmin and bootstrapUser must have different email addresses" -}}
-{{- end -}}
-{{- if or .Values.security.bootstrapAdmin.localDefault (and .Values.security.bootstrapUser.enabled .Values.security.bootstrapUser.localDefault) -}}
-{{- range (include "tali-guard.publicUrls" . | fromJsonArray) -}}
-{{- if not (regexMatch "^http://(localhost|127\\.0\\.0\\.1|\\[::1\\])(:[0-9]+)?/?$" .) -}}
-{{- fail "bootstrap account localDefault requires loopback Controller publicUrl entries" -}}
+{{- if and (not $account.existingSecret) (not (regexMatch "^[a-z0-9_.-]{3,64}$" $account.username)) -}}
+{{- fail (printf "bootstrap%s requires a username of 3-64 lowercase letters, digits, dots, underscores or hyphens" $role) -}}
 {{- end -}}
 {{- end -}}
+{{- end -}}
+{{- if and .Values.security.bootstrapUser.enabled (eq .Values.security.bootstrapUser.username .Values.security.bootstrapAdmin.username) -}}
+{{- fail "bootstrapAdmin and bootstrapUser must have different usernames" -}}
 {{- end -}}
 {{- if and .Values.security.controlTls.enabled (not (or .Values.security.controlTls.existingSecret .Values.security.controlTls.autoGenerate)) }}
 {{- fail "configure controlTls existingSecret or set autoGenerate=true for in-cluster initialization" }}

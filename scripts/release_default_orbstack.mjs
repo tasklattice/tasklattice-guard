@@ -15,7 +15,7 @@ assert(process.env.GUARD_DEFAULT_BACKUP, 'Supply the exact pre-change Default sn
 const backup = JSON.parse(await readFile(process.env.GUARD_DEFAULT_BACKUP, 'utf8'));
 assert.equal(backup.id, 'guardrail-default');
 const base = 'http://localhost:38081';
-const email = process.env.GUARD_DEFAULT_EMAIL ?? 'user@tasklattice.local';
+const username = process.env.GUARD_DEFAULT_USERNAME ?? 'user';
 const password = process.env.GUARD_DEFAULT_PASSWORD;
 assert(password, 'Supply GUARD_DEFAULT_PASSWORD for an ordinary Guardrail author.');
 let cookie = '';
@@ -33,7 +33,7 @@ async function until(read, done) {
   while (Date.now() < deadline) { const data = await read(); if (done(data)) return data; await delay(1500); }
   throw Error('Timed out; inspect and resume the same revision instead of bypassing validation.');
 }
-const a = await call('/api/auth/sign-in/email', { email, password });
+const a = await call('/api/auth/sign-in/username', { username, password });
 cookie = a.response.headers.getSetCookie().map(x => x.split(';')[0]).join('; ');
 const path = '/api/v1/guardrails/guardrail-default';
 const before = (await call(path)).data;

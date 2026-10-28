@@ -1,4 +1,6 @@
-# Complete deployment reference and chart defaults; optional examples are commented.
+# Deployment defaults and common configuration reference; optional examples are commented.
+# For advanced Secret key-name overrides, see files/security-defaults.yaml and
+# ../../docs/operations.md#bootstrap-account-operations.
 # Copy only the settings you need into a private environment values file.
 # Before deploying: configure PostgreSQL, Redis (for multiple Runners), the initial
 # administrator and publicUrl. Empty credentials below are not usable defaults.
@@ -52,15 +54,16 @@ controller:
   # origins for compatibility. Remove stale entries when switching environments.
   # trustedOrigins: [http://localhost:8092]
   # Optional login policy; applies to account setup and future changes.
+  # Above 8 requires external Secrets for every enabled bootstrap account.
   # auth:
-  #   minLoginLength: 12
+  #   minLoginLength: 8
   # Internal HTTP/gRPC ports are fixed at 8080/9090. For direct local exposure:
   # service:
   #   type: ClusterIP
   #   public:
   #     enabled: true
   #     type: LoadBalancer # Or NodePort; exposes HTTP only, never gRPC.
-  #     port: 38081
+  #     port: 38081 # Service port; NodePort is allocated by Kubernetes.
   resources:
     requests:
       cpu: 100m
@@ -85,7 +88,7 @@ runner:
   #   public:
   #     enabled: true
   #     type: LoadBalancer
-  #     port: 38082
+  #     port: 38082 # Service port; NodePort is allocated by Kubernetes.
   default:
     # Two replicas provide rolling-update availability; shared Redis is required.
     replicaCount: 2
@@ -106,6 +109,7 @@ runner:
   #     requests: { cpu: 500m, memory: 1Gi }
   #     limits: { memory: 4Gi }
   # Managed Redis URL; required for multi-replica pools unless redis.enabled=true.
+  # Cannot be combined with redis.enabled=true.
   callContextRedisUrl: ""
   callContext:
     ttlSeconds: 300
@@ -120,7 +124,7 @@ runner:
     sizeLimit: 2Gi
 
 database:
-  # Choose an existing Secret or bundled PostgreSQL.
+  # Choose an existing Secret or bundled PostgreSQL; these are mutually exclusive.
   # Secret must already exist in the release namespace, containing secretKey.
   existingSecret: ""
   secretKey: database-url
@@ -175,11 +179,13 @@ security:
     # Required keys: ca.crt, tls.crt, tls.key, runner.crt, runner.key.
     # existingSecret: guard-control-tls
   bootstrapAdmin:
-    # Supply an existing Secret, or email to initialize a random login in-cluster.
+    # Without existingSecret, every initialization Job run resets this account
+    # to the image-provided login; Controller reapplies mounted credentials at
+    # startup and after Secret revisions. Existing sessions are revoked.
     # existingSecret: guard-bootstrap-admin
-    email: ""
+    username: admin
     name: Administrator
-  # Optional second bootstrap account with the user role (disabled by default).
+  # The user account initializes by default; set enabled=false to omit it.
   # bootstrapUser:
   #   enabled: true
   #   existingSecret: guard-bootstrap-user
@@ -221,7 +227,8 @@ ingress:
   enabled: false
   className: ""
   annotations: {}
-  # Optional host override; otherwise hosts come from controller.publicUrl.
+  # Optional host override; otherwise hosts derive from publicUrl, falling back
+  # to legacy controller.publicUrl when the shared URL is empty.
   # host: guard.example.com
   tls: []
   # Example TLS entry: { secretName: guard-ingress-tls, hosts: [guard.example.com] }

@@ -109,9 +109,11 @@ npm run helm:deploy:dev
 
 This builds the local images, installs or upgrades the development deployment,
 and waits for workload readiness. Open [the console](http://localhost:38081)
-and sign in with `admin` / `password`. These credentials belong to the local
-profile only; an existing account keeps its password if you have changed it.
-The local profile uses Token-authenticated gRPC without mTLS. A chart bootstrap
+and sign in with `admin` / `password` or `user` / `password`.
+All environments use username/password authentication through Better Auth.
+Initialization overwrites configured bootstrap accounts and revokes old sessions;
+account Secrets contain Base64-decodable initial passwords for debugging.
+The local profile uses Runner Token authentication with mTLS. A chart bootstrap
 Job creates internal Secrets, so no External Secrets operator or private key in
 Values is required.
 

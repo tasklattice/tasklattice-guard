@@ -40,7 +40,7 @@ async function until(path, ready) {
 }
 
 try {
-  await call('/api/auth/sign-in/email', { body: secret('tali-guard-bootstrap-admin') });
+  await call('/api/auth/sign-in/username', { body: secret('tali-guard-bootstrap-admin') });
   const status = await call('/api/v1/intent-analysis-status');
   assert.equal(status.model, 'deepseek-v4-flash');
   assert.equal(status.available, true);

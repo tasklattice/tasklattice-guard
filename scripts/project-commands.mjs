@@ -82,7 +82,7 @@ async function testPromotion(extra) {
   for (const key of ['GUARD_PROMOTION_UAT_URL', 'GUARD_PROMOTION_UAT_RUNNER_URL',
     'GUARD_PROMOTION_PROD_URL', 'GUARD_PROMOTION_PROD_RUNNER_URL',
     'GUARD_PROMOTION_UAT_DB', 'GUARD_PROMOTION_PROD_DB',
-    'GUARD_PROMOTION_UAT_EMAIL', 'GUARD_PROMOTION_PROD_EMAIL',
+    'GUARD_PROMOTION_UAT_USERNAME', 'GUARD_PROMOTION_PROD_USERNAME',
     'GUARD_PROMOTION_PASSWORD', 'GUARD_PROMOTION_RUNNER_TOKEN']) {
     if (!env[key]) throw new Error(`Set ${key} for two isolated test deployments; test:promotion does not deploy or port-forward clusters.`);
   }

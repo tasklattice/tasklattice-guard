@@ -65,14 +65,11 @@ redis:
 security:
   bootstrapAdmin:
     # Create the development account using the image-provided local login.
-    email: admin@tasklattice.local
-    # Initialize the local development login inside the cluster.
-    localDefault: true
+    username: admin
     name: Local Administrator
   bootstrapUser:
     enabled: true
-    email: user@tasklattice.local
-    localDefault: true
+    username: user
     name: Local User
 
 # Keep the self-contained development baseline independent from Prometheus

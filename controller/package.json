@@ -13,7 +13,6 @@
     "start": "node --env-file-if-exists=../.env dist-server/server/index.js",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx server/db/migrate.ts",
-    "auth:hash-password": "node scripts/hash-bootstrap-password.mjs",
     "auth:bootstrap": "tsx server/bootstrap-admin.ts",
     "typecheck": "tsc -b tsconfig.app.json --pretty false && tsc -p tsconfig.server.json --noEmit --pretty false && tsc -p tsconfig.cli.json --pretty false",
     "test": "vitest run --environment jsdom",

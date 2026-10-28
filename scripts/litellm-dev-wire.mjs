@@ -8,7 +8,7 @@ const exec = promisify(execFile);
 const env = process.env;
 const controller = new URL(env.GUARD_DEV_CONTROLLER_URL ?? "http://localhost:38081");
 const runtime = new URL(env.GUARD_DEV_RUNTIME_URL ?? "http://localhost:38082");
-const email = env.GUARD_DEV_USER_EMAIL ?? "user@tasklattice.local";
+const username = env.GUARD_DEV_USER_USERNAME ?? "user";
 const password = env.GUARD_DEV_USER_PASSWORD ?? "password";
 const namespace = env.HELM_NAMESPACE ?? "tali";
 const context = env.HELM_CONTEXT ?? "orbstack";
@@ -30,7 +30,7 @@ async function api(path, body, expected = 200, method = body === undefined ? "GE
 }
 
 async function signIn() {
-  const auth = await api("/api/auth/sign-in/email", { email, password });
+  const auth = await api("/api/auth/sign-in/username", { username, password });
   cookie = auth.response.headers.getSetCookie().map((value) => value.split(";")[0]).join("; ");
 }
 

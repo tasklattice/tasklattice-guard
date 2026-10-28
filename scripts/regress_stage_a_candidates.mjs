@@ -26,8 +26,8 @@ async function call(base, path, body) {
   assert(r.ok, `${path}: HTTP ${r.status}`);
   return {value:await r.json(), response:r};
 }
-const login = await call(controller, '/api/auth/sign-in/email', {
-  email:required('GUARD_REGRESSION_EMAIL'), password:required('GUARD_REGRESSION_PASSWORD')});
+const login = await call(controller, '/api/auth/sign-in/username', {
+  username:required('GUARD_REGRESSION_USERNAME'), password:required('GUARD_REGRESSION_PASSWORD')});
 cookie = login.response.headers.getSetCookie().map(x=>x.split(';')[0]).join('; ');
 assert(cookie);
 const ready = (await call(runner, '/health/ready')).value;

@@ -19,8 +19,8 @@ async function call(path, body, expected = 200, method = body === undefined ? "G
   assert.equal(response.status, expected, `${path}: ${JSON.stringify(result)}`);
   return { result, response };
 }
-const auth = await call("/api/auth/sign-in/email", {
-  email: required("GUARD_REGRESSION_EMAIL"), password: required("GUARD_REGRESSION_PASSWORD"),
+const auth = await call("/api/auth/sign-in/username", {
+  username: required("GUARD_REGRESSION_USERNAME"), password: required("GUARD_REGRESSION_PASSWORD"),
 });
 cookie = auth.response.headers.getSetCookie().map(value => value.split(";")[0]).join("; ");
 assert(cookie);
