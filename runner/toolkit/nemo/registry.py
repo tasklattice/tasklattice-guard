@@ -32,6 +32,7 @@ from .action_registry import (
     action_providers,
 )
 from .artifacts import config_checksum
+from .colang_logging import configure_user_action_logging
 from .actions.model_call import instrument_nemo_models
 from .actions.names import (
     ACTION_RECORD_OWNED_POLICY, ACTION_TOPIC_JUDGE, ACTION_GROUNDING,
@@ -467,6 +468,7 @@ class _RuntimeBuilder:
             yaml_content=materialized_yaml,
             colang_content=config.colang_content or None,
         )
+        configure_user_action_logging(rails_config)
         use_iorails = config.runtime_profile == "iorails_native"
         if use_iorails:
             from nemoguardrails.guardrails.iorails import IORails

@@ -6,6 +6,12 @@ on:
       - main
   pull_request:
   workflow_call:
+  workflow_dispatch:
+    inputs:
+      runner_image:
+        description: Export the tested arm64 Runner image for local regression
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -123,6 +129,20 @@ jobs:
         with:
           name: guardctl-smoke-${{ matrix.architecture }}
           path: guardctl-smoke.log
+          if-no-files-found: error
+
+      - name: Export tested Runner image
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.runner_image && matrix.architecture == 'arm64' }}
+        run: docker save tali-guard-runner:guardctl-ci -o runner-image.tar
+
+      - name: Upload tested Runner image
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.runner_image && matrix.architecture == 'arm64' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: runner-image-arm64-${{ github.sha }}
+          path: runner-image.tar
+          compression-level: 0
+          retention-days: 1
           if-no-files-found: error
 
   data-plane:

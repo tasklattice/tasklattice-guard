@@ -1,10 +1,12 @@
 """Fault an actual Action behind frozen signed bytes, never mock its verdict."""
 import asyncio
+import json
 from functools import wraps
 
 import pytest
 
 from runner.toolkit.nemo.runtime import NeMoActionBridge
+from runner.evaluation_evidence import evaluation_evidence
 from runner.toolkit.runtime.contracts import ProtectionRequest, RequestContext
 from runner.toolkit.runtime.service import GuardrailRuntimeService
 from tests.data_plane.test_artifact_execution import _runtime
@@ -46,6 +48,9 @@ async def test_real_action_failure_is_terminal_and_request_scoped(tmp_path, brok
         assert broken_action == ["policy-a"]  # No later Policy Action executes.
         assert "GuardRecordOwnedPolicyAction" in failure.reason
         assert any(step.timed_out for step in failure.trace) is (error_type is TimeoutError)
+        assert json.loads(evaluation_evidence(failure))["execution"]["errorTypes"] == [
+            "TypeError" if error_type == "invalid_result" else error_type.__name__
+        ]
         assert "sensitive-exception-detail" not in str(failure)
         bad, good = await asyncio.gather(evaluate("check"), evaluate("ordinary"))
         assert bad.usage.fail_closed and bad.decision == "block"

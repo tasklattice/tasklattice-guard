@@ -155,6 +155,7 @@ class _ActionExecutionFailure(LLMCallException):
 
     def __init__(self, action_name: str, error_type: str, *, timed_out: bool = False):
         self.action_name = action_name
+        self.error_type = error_type
         self.timed_out = timed_out
         super().__init__(f"{action_name} failed with {error_type}.", detail="Guardrail Action")
 
@@ -2719,6 +2720,7 @@ def _failed_decision(
     active_concurrency=0,
     native_model_calls: tuple[ModelCallUsage, ...] = (),
 ):
+    error_type = error.error_type if isinstance(error, _ActionExecutionFailure) else type(error).__name__
     reason = (
         f"NeMo Guardrails failed closed: {error}"
         if isinstance(error, _ActionExecutionFailure)
@@ -2736,6 +2738,7 @@ def _failed_decision(
             outcome="error",
             route="fail_closed",
             timed_out=error.timed_out,
+            error_type=error_type,
             detail=reason,
             guardrail_id=request.plan.guardrail_id,
             guardrail_version=request.plan.guardrail_version,
@@ -2760,6 +2763,7 @@ def _failed_decision(
             guardrail_version=request.plan.guardrail_version,
             rail_type=request.phase,
             outcome="error",
+            error_type=error_type,
             timed_out=isinstance(error, TimeoutError) or (
                 isinstance(error, (_ActionExecutionFailure, OutputStreamEvaluationError)) and error.timed_out
             ),
