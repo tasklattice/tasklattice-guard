@@ -93,7 +93,9 @@ async def test_observation_respects_action_without_relabeling_model_verdict(acti
                     scan_response(payload, decision, '00000000-0000-4000-8000-000000000001', now, now)
             else:
                 scan = scan_response(payload, decision, '00000000-0000-4000-8000-000000000001', now, now)
-                assert scan.result.outcome == ('blocked' if decision.decision == 'block' else 'cleared')
+                expected = ('blocked' if decision.decision == 'block' else
+                            'flagged' if any(a.status == 'intervene' for a in decision.assessments) else 'cleared')
+                assert scan.result.outcome == expected
     finally:
         await runtime.shutdown()
 
