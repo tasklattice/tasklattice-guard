@@ -146,4 +146,5 @@ class JevNoulEvaluator:
                                                native_verdict=evidence),),
         ),)
         return evaluation_result(request, verdict, request.content, reason=reason, findings=findings,
-                                 trace=(trace,), usage=action_usage(call, len(request.content)) if call is not None else EvaluationUsage())
+                                 trace=(trace,), unknown_reason="uncertain",
+                                 usage=action_usage(call, len(request.content)) if call is not None else EvaluationUsage())

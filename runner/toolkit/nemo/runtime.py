@@ -947,6 +947,7 @@ class NeMoActionBridge:
             "contract_ref": binding.contract_ref,
             "verdict": result.verdict,
             "content": content,
+            "unknown_reason": result.unknown_reason,
             "reason": result.reason,
             "decision": decision,
             "action": proposed_action if enforce else "allow",
@@ -1472,6 +1473,7 @@ def _colang1_runtime_result(
         result=ActionResult(
             verdict=verdict,  # type: ignore[arg-type]
             content=content,
+            unknown_reason=payload.get("unknown_reason", "needs_context"),
             findings=findings,
             trace=evaluator_trace,
             reason=(
@@ -2063,7 +2065,7 @@ def _trace(
         )
         status = (
             "error" if error else "blocked" if rail.stop else
-            "modified" if modified else "observed" if observed_unknown else "needs_context" if unknown else "passed"
+            "modified" if modified else "observed" if observed_unknown else _unknown_status(rail_results) if unknown else "passed"
         )
         verdict = (
             "error" if error else "unknown" if unknown else
@@ -2128,7 +2130,7 @@ def _trace(
                     "observed" if policy_verdict in {"matched", "unknown"} and handling == "allow" else
                     "blocked" if policy_verdict == "matched" and handling == "block" else
                     "modified" if policy_verdict == "matched" else
-                    "needs_context" if policy_verdict == "unknown" else "passed"
+                    _unknown_status((terminal,)) if policy_verdict == "unknown" else "passed"
                 )
                 policy_route = (
                     "fail_closed" if policy_verdict == "error" and _binding_fails_closed(request, selected_binding) else
@@ -2231,7 +2233,7 @@ def _trace(
             status = (
                 "error" if error else "observed" if matched and handling == "allow" else
                 "blocked" if matched and handling == "block" else "modified" if matched else
-                "observed" if unknown and handling == "allow" else "needs_context" if unknown else "passed"
+                "observed" if unknown and handling == "allow" else _unknown_status((terminal,)) if unknown else "passed"
             )
             rail_id = f"nemo:rail:{request.phase}:{capability}:{group_index}"
             for item in selected:
@@ -2549,6 +2551,14 @@ def _native_policy_rail(plan, risk, phase):
     return None
 
 
+def _unknown_status(results):
+    """Only explicitly completed abstentions can be scored as policy decisions."""
+    return "needs_context" if any(
+        item.result.verdict == "unknown" and item.result.unknown_reason != "uncertain"
+        for item in results
+    ) else "uncertain"
+
+
 def _assessments(request, results, trace, all_findings=(), *, force_error=False):
     assessments = []
     for module in request.plan.modules_for(request.phase):
@@ -2581,7 +2591,7 @@ def _assessments(request, results, trace, all_findings=(), *, force_error=False)
             if not observed
             else "intervene"
             if native_unsafe or any(item.result.verdict == "matched" for item in terminal)
-            else "needs_context"
+            else _unknown_status(terminal)
             if any(item.result.verdict == "unknown" for item in terminal)
             else "allow"
         )
@@ -2608,7 +2618,10 @@ def _assessments(request, results, trace, all_findings=(), *, force_error=False)
             module_id=module.id,
             module=module.module,
             status=status,
-            action=_ordered_action(tuple(f.recommended_action for f in findings)),
+            action=(
+                _ordered_action(tuple(_runtime_action(item) for item in terminal if item.result.verdict == "unknown"))
+                if status == "uncertain" else _ordered_action(tuple(f.recommended_action for f in findings))
+            ),
             findings=findings,
             coverage=module_coverage,
             reason=reason,

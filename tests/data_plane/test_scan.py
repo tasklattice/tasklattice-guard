@@ -66,6 +66,8 @@ def app_for(runtime=None, *, store=None, **kwargs):
     ("allow", "intervene", True, "flagged"), ("allow", "intervene", False, "flagged"),
     ("transform", "intervene", True, "flagged"), ("transform", "intervene", False, "redacted"),
     ("block", "intervene", True, "flagged"), ("block", "intervene", False, "blocked"),
+    ("block", "uncertain", True, "flagged"), ("block", "uncertain", False, "blocked"),
+    ("allow", "uncertain", True, "cleared"), ("allow", "uncertain", False, "cleared"),
 ])
 @pytest.mark.parametrize("direction", ["request", "response"])
 def test_result_matrix(action, status, flag_only, expected, direction):
@@ -98,6 +100,22 @@ def test_short_circuit_does_not_fabricate_passes():
     validate_scan_decision(d)
     with pytest.raises(ScanFailure):
         validate_scan_decision(replace(d, assessments=(*d.assessments, replace(d.assessments[0], status="error"))))
+
+
+@pytest.mark.parametrize("status", ["error", "needs_context", "uncovered"])
+def test_uncertain_block_does_not_hide_an_incomplete_sibling(status):
+    d = decision("block", "uncertain")
+    d = replace(d, assessments=(*d.assessments, replace(d.assessments[0], status=status)))
+    with pytest.raises(ScanFailure):
+        validate_scan_decision(d)
+
+
+def test_uncertain_block_requires_complete_coverage_and_no_execution_failure():
+    d = decision("block", "uncertain")
+    for invalid in [replace(d, coverage=replace(COVERAGE, status="partial")),
+                    replace(d, usage=RuntimeUsage(fail_closed=True))]:
+        with pytest.raises(ScanFailure):
+            validate_scan_decision(invalid)
 
 
 @pytest.mark.parametrize("value", [None, "anything", 123, True, [], {}, ["not-a-uuid"], {"threshold": 0}])

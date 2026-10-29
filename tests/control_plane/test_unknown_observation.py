@@ -1,12 +1,14 @@
 """An observation-only model Rule cannot enforce its unknown verdict."""
 import json
 from dataclasses import replace
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import httpx
 import pytest
 
 from runner.capability_validation import _CandidateStore
+from runner.scan import ScanFailure, ScanRequest, scan_response
 from runner.providers import dynamic_runtime_action_providers
 from runner.toolkit.compiler.nemo_compiler import NeMoConfigCompiler
 from runner.toolkit.nemo.action_registry import action_providers
@@ -59,8 +61,15 @@ async def test_observation_respects_action_without_relabeling_model_verdict(acti
         traces = [s for s in decision.trace if s.evaluator_id == 'typesafe-jev-jailbreak']
         if result != 'error':
             assert traces and traces[0].verdict == result
+        if result == 'unknown':
+            assert all(a.status == 'uncertain' for a in decision.assessments)
+            assert not any(s.status == 'needs_context' for s in decision.trace)
         if mode == 'monitor':
             assert decision.decision == 'allow' and not decision.interventions
+            if result == 'unknown':
+                expected = 'allow' if action == 'allow' or on_unknown == 'allow' else 'block'
+                assert decision.detection_decision == expected
+                assert decision.detection_error is None
         elif result == 'not_matched' or action == 'allow' and result != 'error' or result == 'unknown' and on_unknown == 'allow':
             assert decision.decision == 'allow' and not decision.interventions
             if result == 'matched':
@@ -76,6 +85,15 @@ async def test_observation_respects_action_without_relabeling_model_verdict(acti
             assert decision.decision == 'block' and decision.usage.fail_closed
         elif action == 'block':
             assert decision.decision == 'block' and decision.findings
+        if mode == 'enforce':
+            payload = ScanRequest(input='An ordinary test request.', flagOnly=False)
+            now = datetime.now(UTC)
+            if result == 'error':
+                with pytest.raises(ScanFailure):
+                    scan_response(payload, decision, '00000000-0000-4000-8000-000000000001', now, now)
+            else:
+                scan = scan_response(payload, decision, '00000000-0000-4000-8000-000000000001', now, now)
+                assert scan.result.outcome == ('blocked' if decision.decision == 'block' else 'cleared')
     finally:
         await runtime.shutdown()
 
