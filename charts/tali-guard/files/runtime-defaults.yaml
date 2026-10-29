@@ -24,6 +24,9 @@ runner:
   jev:
     lowerThreshold: 0.1
     upperThreshold: 0.9
+  laya:
+    lowerThreshold: 0.1
+    upperThreshold: 0.9
   service:
     type: ClusterIP
     public:

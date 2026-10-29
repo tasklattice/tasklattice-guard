@@ -1,0 +1,34 @@
+schema_version: 2
+kind: Policy
+metadata:
+  id: builtin-jailbreak-strict
+  name: Strict Jailbreak Protection
+  description: Blocks explicit Jailbreak matches. A versioned per-Guardrail parameter
+    decides whether valid unknown results are observed or blocked; model errors remain
+    fail-closed.
+  version: 1.0.0
+  tags:
+  - namespace: protection
+    value: attacks_and_abuse
+    label: Attacks & abuse
+    source: declared
+  - namespace: guardrail_category
+    value: jailbreak_protection
+    label: Jailbreak Protection
+    source: declared
+  safety_level: balanced
+  output_delivery: window_buffered
+  source: built_in
+parameters:
+- name: on_unknown
+  label: Uncertain result action
+  kind: text
+  required: false
+  default: block
+  placeholder: block or allow
+  description: block (default) conservatively blocks valid unknown results; allow
+    records them without enforcement. Explicit matches and execution errors are unaffected.
+rules:
+- rules/model-jailbreak.yaml
+tests:
+- tests/acceptance.yaml

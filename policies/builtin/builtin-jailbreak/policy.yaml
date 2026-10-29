@@ -7,7 +7,7 @@ metadata:
   description: Detects attempts to override trusted instructions using the validated Jailbreak Input Rail
     binding.
   source: built_in
-  version: 1.0.0
+  version: 1.2.0
   tags:
   - namespace: protection
     value: attacks_and_abuse
@@ -17,7 +17,23 @@ metadata:
     value: jailbreak_protection
     label: Jailbreak Protection
     source: declared
-parameters: []
+parameters:
+- name: on_unknown
+  label: Uncertain result action
+  kind: text
+  required: false
+  default: block
+  placeholder: block or allow
+  description: block (default) blocks valid uncertain results; allow continues this
+    Rule without skipping other Policies. Matches, errors and missing context keep
+    their own handling.
+- name: review_unknown
+  label: Review uncertain input results
+  kind: text
+  required: false
+  default: "false"
+  placeholder: true or false
+  description: When true, a valid JEV input gray-area result is reviewed by the separately validated classifier_review.input binding. Output, matches, errors and missing context keep their handling.
 rules:
 - rules/model-jailbreak.yaml
 tests:

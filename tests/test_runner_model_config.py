@@ -15,6 +15,22 @@ from runner.toolkit.evaluation.contracts import (
 )
 
 
+def test_laya_settings_are_independent_and_reject_invalid_operating_points(monkeypatch):
+    _required_runner_env(monkeypatch)
+    monkeypatch.setenv("GUARD_JEV_LOWER_THRESHOLD", "0.1")
+    monkeypatch.setenv("GUARD_JEV_UPPER_THRESHOLD", "0.85")
+    monkeypatch.setenv("GUARD_LAYA_LOWER_THRESHOLD", "0")
+    monkeypatch.setenv("GUARD_LAYA_UPPER_THRESHOLD", "0.6")
+    settings = RunnerSettings.from_env()
+    assert (settings.jev_lower_threshold, settings.jev_upper_threshold) == (.1, .85)
+    assert (settings.laya_lower_threshold, settings.laya_upper_threshold) == (0, .6)
+    for lower, upper in [(".6", ".6"), (".9", ".2"), ("nan", ".9"), ("-.1", ".9"), (".1", "1.1")]:
+        monkeypatch.setenv("GUARD_LAYA_LOWER_THRESHOLD", lower)
+        monkeypatch.setenv("GUARD_LAYA_UPPER_THRESHOLD", upper)
+        with pytest.raises(ValueError, match="GUARD_LAYA"):
+            RunnerSettings.from_env()
+
+
 def test_validation_concurrency_can_be_reduced_without_changing_serving(monkeypatch):
     _required_runner_env(monkeypatch)
     monkeypatch.setenv("GUARD_VALIDATION_MAX_CONCURRENCY", "1")

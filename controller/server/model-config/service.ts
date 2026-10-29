@@ -1048,12 +1048,13 @@ export class ModelConfigurationService {
       if (!candidate) return probe(false, "Provider credential could not be verified because no callable Model was found.", started);
       return this.probeProviderCredential(baseUrl, apiKey, skipTlsVerify, {
         model: candidate.id,
-        profile: kind === "typesafe" ? "tali.typesafe-jev-topic.v1" : isDedicatedJailbreakDetectEndpoint(baseUrl) ? jailbreakDetectProfile : "generic-chat",
+        profile: kind === "laya" ? "tali.laya-topic.v1" : kind === "typesafe" ? "tali.typesafe-jev-topic.v1" : isDedicatedJailbreakDetectEndpoint(baseUrl) ? jailbreakDetectProfile : "generic-chat",
         timeoutSeconds: 20,
         maxTokens: 64,
       });
     } catch (error) {
       if (kind === "typesafe") return probe(false, probeError("TypeSafe credential verification failed", error), started);
+      if (kind === "laya") return probe(false, probeError("Laya credential verification failed", error), started);
       // A proof endpoint is not an OpenAI model catalog. Its authenticated
       // readiness response proves connectivity only; Rail tests prove behavior.
       const formal = await this.probeFormalConnection(baseUrl, apiKey, skipTlsVerify);
@@ -1087,7 +1088,7 @@ export class ModelConfigurationService {
   }
 
   private async providerCatalog(baseUrl: string, apiKey: string, skipTlsVerify = false, kind?: ModelProviderKind) {
-    if (kind !== "typesafe" && isDedicatedJailbreakDetectEndpoint(baseUrl)) {
+    if (kind !== "typesafe" && kind !== "laya" && isDedicatedJailbreakDetectEndpoint(baseUrl)) {
       await this.callJailbreakDetect(baseUrl, apiKey, skipTlsVerify, 15_000, jailbreakDetectSafeInput);
       return [{ id: jailbreakDetectModel, name: "NVIDIA NemoGuard JailbreakDetect" }];
     }
@@ -1098,6 +1099,10 @@ export class ModelConfigurationService {
     if (!response.ok) throw new Error(`returned HTTP ${response.status}`);
     const body = await response.json();
     if (kind === "typesafe") {
+      const payload = z.object({ models: z.array(z.object({ name: z.string().trim().min(1) })) }).parse(body);
+      return [...new Set(payload.models.map((model) => model.name))].sort().map((id) => ({ id, name: id }));
+    }
+    if (kind === "laya") {
       const payload = z.object({ models: z.array(z.object({ name: z.string().trim().min(1) })) }).parse(body);
       return [...new Set(payload.models.map((model) => model.name))].sort().map((id) => ({ id, name: id }));
     }
@@ -1131,6 +1136,25 @@ export class ModelConfigurationService {
         return probe(true, `${model.model} returned a valid Noul response. Validate each selected input detector in Guardrail Catalog.`, started);
       } catch (error) {
         return probe(false, probeError("TypeSafe model call failed", error), started);
+      }
+    }
+    if (profileTransports[model.profile] === "laya_systemone") {
+      try {
+        const response = await fetcher(`${normalizeBaseUrl(provider.baseUrl)}/systemone`, {
+          method: "POST",
+          headers: { authorization: `Bearer ${credential}`, "content-type": "application/json" },
+          body: JSON.stringify({ model: model.model, state: "Hello", questions: {
+            greeting: { type: "noul", instructions: "Does the text contain a greeting?" },
+          } }),
+          signal: AbortSignal.timeout(model.timeoutSeconds * 1_000),
+        });
+        if (!response.ok) throw new Error(`returned HTTP ${response.status}`);
+        z.object({ model: z.string().trim().min(1), answers: z.object({
+          greeting: z.object({ type: z.literal("noul"), noul: z.number().min(0).max(1) }),
+        }).strict() }).parse(await response.json());
+        return probe(true, `${model.model} returned a valid Noul response. Validate each selected input detector in Guardrail Catalog.`, started);
+      } catch (error) {
+        return probe(false, probeError("Laya model call failed", error), started);
       }
     }
     if (profileTransports[model.profile] === "nemoguard_jailbreak_detect") {
@@ -1378,12 +1402,16 @@ export function probeRequest(model: Pick<ModelRow, "model" | "profile" | "maxTok
     max_tokens: model.profile === "tali.nemoguard-topic-control.v1" ? Math.min(model.maxTokens, 20) : Math.min(model.maxTokens, 512),
     messages: probeMessages(model.profile, jailbreakInput),
   };
+  if (model.profile === "tali.classifier-review.v1" && model.model === "nvidia/nemotron-3.5-lightning-30b-a3b") {
+    return { ...request, chat_template_kwargs: { enable_thinking: false } };
+  }
   if (model.profile !== "tali.nemoguard-topic-control.v1") return request;
   return { ...request, top_p: 1, n: 1, stream: false, frequency_penalty: 0 };
 }
 
 function probeMessages(profile: ModelProfile, jailbreakInput: string): Array<{ role: "system" | "user"; content: string }> {
   if (profile === "tali.typesafe-jev-topic.v1" || profile === "tali.typesafe-jev.v1") throw new Error("Jev uses the System One API.");
+  if (profile === "tali.laya-topic.v1" || profile === "tali.laya.v1") throw new Error("Laya uses the System One API.");
   if (profile === jailbreakDetectProfile) throw new Error("JailbreakDetect uses the classification API, not Chat Completions.");
   if (profile === "tali.nemotron-safety-guard-v3.v1") {
     return [{ role: "user", content: [
@@ -1428,6 +1456,7 @@ function probeMessages(profile: ModelProfile, jailbreakInput: string): Array<{ r
     ];
   }
   const prompt = {
+    "tali.classifier-review.v1": 'Return JSON only: {"answers":{"unsafe_content":"no"}}.',
     "tali.openai-compatible-pii.v1": '/no_think\nClassify personal information in the target. Names and personal identifiers are PII; general questions without personal values are safe. Return JSON only with one verdict field: "pii", "safe", or "unknown". Target: How do passports work?',
     "generic-chat": "Reply with exactly OK.",
     "tali.qwen3guard.v1": "Hello, how are you?",
@@ -1442,7 +1471,12 @@ function probeMessages(profile: ModelProfile, jailbreakInput: string): Array<{ r
 
 export function validateProbeContent(profile: ModelProfile, content: string): void {
   if (profile === "tali.typesafe-jev-topic.v1" || profile === "tali.typesafe-jev.v1") throw new Error("Jev requires typed Noul answers.");
+  if (profile === "tali.laya-topic.v1" || profile === "tali.laya.v1") throw new Error("Laya requires typed Noul answers.");
   if (!content) throw new Error("Model returned empty content.");
+  if (profile === "tali.classifier-review.v1") {
+    const answers = z.object({ unsafe_content: z.enum(["yes", "no", "unknown"]) }).strict();
+    z.union([answers, z.object({ answers }).strict()]).parse(JSON.parse(content));
+  }
   if (profile === "tali.qwen3guard.v1" && !/Safety\s*:\s*(Safe|Unsafe|Controversial)/i.test(content)) {
     throw new Error("Qwen3Guard response did not contain a Safety label.");
   }

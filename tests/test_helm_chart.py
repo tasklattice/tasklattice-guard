@@ -36,6 +36,18 @@ def test_context_capacity_defaults_are_persisted_in_all_runner_pools():
         assert env["GUARD_RUNNER_CALL_CONTEXT_CAPACITY_FALLBACK"] == "true"
 
 
+def test_laya_thresholds_are_independent_and_upgrade_defaults_preserve_zero():
+    for options, lower, upper in [([], "0.1", "0.9"),
+        (["--set-json", "runner.laya.lowerThreshold=0", "--set-json", "runner.laya.upperThreshold=0.6"], "0", "0.6"),
+        (["--set-json", "runner.laya=null"], "0.1", "0.9")]:
+        docs = render_dev(*options, "--set", "runner.jev.upperThreshold=0.85")
+        runner = next(d for d in docs if d["kind"] == "StatefulSet" and "runner" in d["metadata"]["name"])
+        env = {e["name"]: e.get("value") for e in runner["spec"]["template"]["spec"]["containers"][0]["env"]}
+        assert env["GUARD_LAYA_LOWER_THRESHOLD"] == lower
+        assert env["GUARD_LAYA_UPPER_THRESHOLD"] == upper
+        assert env["GUARD_JEV_UPPER_THRESHOLD"] == "0.85"
+
+
 def test_context_capacity_alerts_are_release_scoped():
     docs = render()
     rule = next(d for d in docs if d["kind"] == "PrometheusRule")

@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import replace
+import json
 import time
 
-from ...runtime.contracts import ProviderEvidence, RiskFinding
+from ...runtime.contracts import ProviderEvidence, RiskFinding, RuntimeTraceStep
 from ...safety.mappings import ProviderCategoryMapping, provider_mapping
 from ...safety.providers import NativeSafetyAssessment, SafetyModelProvider
 from ...safety.taxonomy import taxonomy, taxonomy_for_evaluator
@@ -92,6 +93,7 @@ class SafetyModelEvaluator:
                 request.content,
                 reason=reason,
                 usage=usage,
+                trace=(self._trace(request, assessment, "error", usage),),
             )
 
         if assessment.verdict == "safe":
@@ -104,6 +106,7 @@ class SafetyModelEvaluator:
                     f"capability {request.capability} as safe."
                 ),
                 usage=usage,
+                trace=(self._trace(request, assessment, "not_matched", usage),),
             )
 
         findings, unmapped, irrelevant = await self._canonical_findings(
@@ -125,6 +128,7 @@ class SafetyModelEvaluator:
                         f"category applicable to capability {request.capability}."
                     ),
                     usage=usage,
+                    trace=(self._trace(request, assessment, "not_matched", usage),),
                 )
             reason = (
                 f"Safety Provider {assessment.provider_id} returned "
@@ -139,6 +143,7 @@ class SafetyModelEvaluator:
                 request.content,
                 reason=reason,
                 usage=usage,
+                trace=(self._trace(request, assessment, "unknown", usage),),
             )
 
         verdict = "matched" if assessment.verdict == "unsafe" else "unknown"
@@ -173,6 +178,22 @@ class SafetyModelEvaluator:
             findings=findings,
             reason=reason,
             usage=usage,
+            trace=(self._trace(request, assessment, verdict, usage),),
+        )
+
+    def _trace(self, request, assessment, verdict, usage):
+        requested = assessment.model if assessment else next((call.model for call in usage.model_calls), None)
+        response = assessment.payload.get("model") if assessment and assessment.payload else None
+        if not isinstance(response, str):
+            response = None
+        return RuntimeTraceStep(
+            id=f"{request.binding.id}:native-safety", kind="evaluation", name="Native Safety classification",
+            status="error" if verdict == "error" else "completed", detail="Native Safety classifier returned a decision.",
+            verdict=verdict, evaluator_id=self.id, capability=request.capability,
+            model_name=response or requested, policy_id=request.policy_id, policy_version=request.policy_version,
+            rail_type=request.rail_type, content_block_id=request.active_block_id,
+            evidence=json.dumps({"requested_model": requested, "response_model": response,
+                                 "native_verdict": assessment.verdict if assessment else None}),
         )
 
     async def _first_success(

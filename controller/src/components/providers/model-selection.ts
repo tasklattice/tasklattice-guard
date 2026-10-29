@@ -9,6 +9,10 @@ export const profiles: ModelProfile[] = [
   "tali.nemoguard-topic-control.v1",
   "tali.typesafe-jev-topic.v1",
   "tali.typesafe-jev.v1",
+  "tali.laya-topic.v1",
+  "tali.laya.v1",
+  "tali.classifier-review.v1",
+  "tali.openai-compatible-pii.v1",
   "tali.openai-compatible-jailbreak.v1",
   "tali.nemoguard-jailbreak-detect.v1",
   "tali.taxonomy-judge.v1",
@@ -19,6 +23,7 @@ export const profiles: ModelProfile[] = [
 export function suggestedProfile(modelId: string): ModelProfile {
   const value = modelId.toLowerCase();
   if (/^(?:typesafe\/)?jev(?:-|$)/.test(value)) return "tali.typesafe-jev.v1";
+  if (/^(?:laya\/)?laya(?:[-/]|$)/.test(value)) return "tali.laya.v1";
   if (value === "nvidia/nemoguard-jailbreak-detect" || value === "nemoguard-jailbreak-detect") return "tali.nemoguard-jailbreak-detect.v1";
   if (value.includes("qwen3guard") || value.includes("qwen-guard")) return "tali.qwen3guard.v1";
   if (value.includes("nemotron-safety-guard-8b-v3")) return "tali.nemotron-safety-guard-v3.v1";

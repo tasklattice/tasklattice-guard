@@ -35,6 +35,33 @@ function setup(failCatalog = false) {
 }
 
 describe("Relay-style Provider registration", () => {
+  it.each(["tali.laya.v1", "tali.laya-topic.v1"] as const)("registers Laya through its own System One profile %s", async profile => {
+    const { service, fetcher } = setup();
+    fetcher.mockImplementation(async (_url, init) => {
+      const request = JSON.parse(String(init?.body));
+      return Response.json({ model: "laya", answers: Object.fromEntries(Object.keys(request.questions).map(id => [id, { type: "noul", noul: 0.99 }])) });
+    });
+    const result = await service.registerProviderModels({
+      connection: { ...connection, kind: "laya", baseUrl: "https://laya.test/v1" },
+      models: [{ ...model("laya"), profile }],
+    }, "admin");
+    expect(result.provider.kind).toBe("laya");
+    expect(result.models[0]).toMatchObject({ model: "laya", profile, connectionStatus: "validated", status: "pending" });
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(fetcher.mock.calls[0]?.[0]).toBe("https://laya.test/v1/systemone");
+    expect(JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body))).toEqual({ model: "laya", state: "Hello", questions: {
+      greeting: { type: "noul", instructions: "Does the text contain a greeting?" },
+    } });
+  });
+
+  it("discovers the independent Laya catalog without probing or persisting models", async () => {
+    const { service, fetcher, db } = setup();
+    fetcher.mockResolvedValueOnce(Response.json({ models: [{ name: "laya" }, { name: "laya-preview" }] }));
+    const result = await service.discoverProviderDraft({ ...connection, kind: "laya", baseUrl: "https://laya.test/v1" });
+    expect(result.models).toEqual([{ id: "laya", name: "laya" }, { id: "laya-preview", name: "laya-preview" }]);
+    expect(fetcher.mock.calls[0]?.[0]).toBe("https://laya.test/v1/models");
+    expect(db.transaction).not.toHaveBeenCalled();
+  });
   it("includes NVIDIA's dedicated security endpoint as a candidate without claiming a successful call", async () => {
     const { service, db, fetcher } = setup();
     const result = await service.discoverProviderDraft({ ...connection, baseUrl: "https://integrate.api.nvidia.com/v1" });

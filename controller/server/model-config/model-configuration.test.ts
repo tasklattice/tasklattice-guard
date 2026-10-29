@@ -45,6 +45,19 @@ function setup(state = "draft", assigned = false, failProbe = false) {
 }
 
 describe("Capability configuration after registration", () => {
+  it("validates a Laya assignment with its own profile and contract without changing active assignments", async () => {
+    const { service, rows, railValidator, fetcher } = setup();
+    rows.get(modelProviders)![0]!.kind = "laya";
+    rows.get(modelDefinitions)![0]!.profile = "tali.laya.v1";
+    rows.get(modelDefinitions)![0]!.model = "laya";
+    rows.get(modelConfigurationRevisions)![0]!.assignments = { ...emptyModelAssignments(), bindings: { ...emptyModelAssignments().bindings, "jailbreak.input": id } };
+    const result = await service.validateAssignment("jailbreak.input", "admin");
+    expect(result.validationReport?.checks.some(c => c.id === `probe:jailbreak.input:${id}` && c.status === "passed")).toBe(true);
+    expect(JSON.stringify(railValidator.mock.calls)).toContain("tali.laya.v1");
+    expect(JSON.stringify(railValidator.mock.calls)).toContain("tali.guard.jailbreak.v1");
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(rows.get(modelConfigurationRevisions)?.filter(r => r.state === "active")).toEqual([]);
+  });
   it("discovers TypeSafe's native model catalog and calls System One for connection evidence", async () => {
     const { service, rows, fetcher } = setup();
     rows.get(modelProviders)![0]!.kind = "typesafe";

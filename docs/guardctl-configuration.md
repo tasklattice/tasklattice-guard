@@ -78,6 +78,12 @@ includes `previousModelId`. After comparison, bind that ID with a **new** state
 file (for example `restore-nvidia.json`); this validates and restores only the
 selected binding. Do not run tests during activation.
 
+The optional input gray-area reviewer uses the same bind command with
+`--binding classifier_review.input`. Its model profile must be
+`tali.classifier-review.v1`; the three JEV Policy bindings must explicitly enable
+`review_unknown` in a supporting Policy version. See
+[JEV 灰区复核](classifier-gray-review.md) for versions, evidence and failure behavior.
+
 ## Tenant: create from a Profile and publish a test Endpoint
 
 ```sh
@@ -139,3 +145,11 @@ package commands continue to work.
 For a dedicated input Prompt Injection workload, see the
 [strict policy profile](prompt-injection-policy-profile.md), including
 uncertainty handling, independent validation, and metric interpretation.
+
+For the three-classifier unknown-observation configuration, isolated JEV
+thresholds and response-level acceptance evidence, see
+[classifier decision acceptance](classifier-decision-acceptance.md).
+
+## Laya Decision Model
+
+Use `--provider-kind laya --model laya --profile tali.laya.v1` to register the independent Laya adapter. Its initial protocol matches JEV System One/Noul, with separate prompts and `runner.laya` thresholds. See [Laya Decision Model](laya-decision-model.md) for registration, per-detector validation, response evidence and future protocol changes.

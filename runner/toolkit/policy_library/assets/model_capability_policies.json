@@ -4,7 +4,7 @@
     "name": "Model Jailbreak Protection",
     "description": "Detects attempts to override trusted instructions using the validated Jailbreak Input Rail binding.",
     "source": "built_in",
-    "version": "1.0.0",
+    "version": "1.2.0",
     "tags": [
       {
         "namespace": "protection",
@@ -19,7 +19,26 @@
         "source": "declared"
       }
     ],
-    "parameters": [],
+    "parameters": [
+      {
+        "name": "on_unknown",
+        "label": "Uncertain result action",
+        "kind": "text",
+        "required": false,
+        "placeholder": "block or allow",
+        "description": "block (default) blocks valid uncertain results; allow continues this Rule without skipping other Policies. Matches, errors and missing context keep their own handling.",
+        "default": "block"
+      },
+      {
+        "name": "review_unknown",
+        "label": "Review uncertain input results",
+        "kind": "text",
+        "required": false,
+        "placeholder": "true or false",
+        "description": "When true, a valid JEV input gray-area result is reviewed by the separately validated classifier_review.input binding. Output, matches, errors and missing context keep their handling.",
+        "default": "false"
+      }
+    ],
     "test_cases": [
       {
         "id": "jailbreak-input",
@@ -58,7 +77,9 @@
           "implementation_rule_id": "jailbreak"
         },
         "detector_options": {
-          "profile": "jailbreak-classification"
+          "profile": "jailbreak-classification",
+          "review_unknown": "{{review_unknown}}",
+          "on_unknown": "{{on_unknown}}"
         },
         "taxonomy_ids": [
           "TALI-MODEL-SECURITY-JAILBREAK"
@@ -71,7 +92,7 @@
     "name": "Strict Jailbreak Protection",
     "description": "Blocks explicit Jailbreak matches. A versioned per-Guardrail parameter decides whether valid unknown results are observed or blocked; model errors remain fail-closed.",
     "source": "built_in",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "tags": [
       {
         "namespace": "protection",
@@ -97,6 +118,15 @@
         "placeholder": "block or allow",
         "description": "block (default) conservatively blocks valid unknown results; allow records them without enforcement. Explicit matches and execution errors are unaffected.",
         "default": "block"
+      },
+      {
+        "name": "review_unknown",
+        "label": "Review uncertain input results",
+        "kind": "text",
+        "required": false,
+        "placeholder": "true or false",
+        "description": "When true, a valid JEV input gray-area result is reviewed by the separately validated classifier_review.input binding. Output, matches, errors and missing context keep their handling.",
+        "default": "false"
       }
     ],
     "test_cases": [
@@ -156,6 +186,7 @@
         },
         "detector_options": {
           "profile": "jailbreak-classification",
+          "review_unknown": "{{review_unknown}}",
           "on_unknown": "{{on_unknown}}"
         },
         "taxonomy_ids": [
@@ -169,7 +200,7 @@
     "name": "Model Content Safety",
     "description": "Classifies unsafe user input and model output with the validated Content Safety capability binding.",
     "source": "built_in",
-    "version": "1.0.0",
+    "version": "1.2.0",
     "tags": [
       {
         "namespace": "protection",
@@ -184,7 +215,26 @@
         "source": "declared"
       }
     ],
-    "parameters": [],
+    "parameters": [
+      {
+        "name": "on_unknown",
+        "label": "Uncertain result action",
+        "kind": "text",
+        "required": false,
+        "placeholder": "block or allow",
+        "description": "block (default) blocks valid uncertain results; allow continues this Rule without skipping other Policies. Matches, errors and missing context keep their own handling.",
+        "default": "block"
+      },
+      {
+        "name": "review_unknown",
+        "label": "Review uncertain input results",
+        "kind": "text",
+        "required": false,
+        "placeholder": "true or false",
+        "description": "When true, a valid JEV input gray-area result is reviewed by the separately validated classifier_review.input binding. Output, matches, errors and missing context keep their handling.",
+        "default": "false"
+      }
+    ],
     "test_cases": [
       {
         "id": "content-safety-input",
@@ -236,7 +286,9 @@
           "implementation_rule_id": "content_safety"
         },
         "detector_options": {
-          "profile": "safety-classification"
+          "profile": "safety-classification",
+          "review_unknown": "{{review_unknown}}",
+          "on_unknown": "{{on_unknown}}"
         },
         "taxonomy_ids": [
           "TALI-PHYSICAL-HARM"
@@ -561,7 +613,7 @@
     "name": "Model Topic Control",
     "description": "Configure independent allowlist and denylist Rules. Denied tasks take precedence; Intention analysis helps fill these Policy settings.",
     "source": "built_in",
-    "version": "2.0.0",
+    "version": "2.2.0",
     "tags": [
       {
         "namespace": "protection",
@@ -600,6 +652,24 @@
         "required": false,
         "description": "strict or permissive. Applies only when the Allowlist Rule is enabled.",
         "default": "permissive"
+      },
+      {
+        "name": "on_unknown",
+        "label": "Uncertain result action",
+        "kind": "text",
+        "required": false,
+        "placeholder": "block or allow",
+        "description": "block (default) blocks valid uncertain results; allow continues this Rule without skipping other Policies. Matches, errors and missing context keep their own handling.",
+        "default": "block"
+      },
+      {
+        "name": "review_unknown",
+        "label": "Review uncertain input results",
+        "kind": "text",
+        "required": false,
+        "placeholder": "true or false",
+        "description": "When true, a valid JEV input gray-area result is reviewed by the separately validated classifier_review.input binding. Output, matches, errors and missing context keep their handling.",
+        "default": "false"
       }
     ],
     "test_cases": [
@@ -652,7 +722,9 @@
           "implementation_rule_id": "topic_control"
         },
         "detector_options": {
-          "profile": "topic-classification"
+          "profile": "topic-classification",
+          "review_unknown": "{{review_unknown}}",
+          "on_unknown": "{{on_unknown}}"
         },
         "taxonomy_ids": [
           "TALI-BUSINESS-POLICY-OFF-TOPIC"
@@ -681,7 +753,9 @@
           "implementation_rule_id": "topic_control"
         },
         "detector_options": {
-          "profile": "topic-classification"
+          "profile": "topic-classification",
+          "review_unknown": "{{review_unknown}}",
+          "on_unknown": "{{on_unknown}}"
         },
         "taxonomy_ids": [
           "TALI-BUSINESS-POLICY-OFF-TOPIC"

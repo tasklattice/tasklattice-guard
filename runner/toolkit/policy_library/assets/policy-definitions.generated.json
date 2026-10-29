@@ -1188,7 +1188,7 @@
       "id": "builtin-jailbreak",
       "name": "Model Jailbreak Protection",
       "description": "Detects attempts to override trusted instructions using the validated Jailbreak Input Rail binding.",
-      "version": "1.0.0",
+      "version": "1.2.0",
       "tags": [
         {
           "namespace": "protection",
@@ -1206,7 +1206,26 @@
       "safety_level": "balanced",
       "output_delivery": "window_buffered"
     },
-    "parameters": [],
+    "parameters": [
+      {
+        "name": "on_unknown",
+        "label": "Uncertain result action",
+        "kind": "text",
+        "required": false,
+        "placeholder": "block or allow",
+        "description": "block (default) blocks valid uncertain results; allow continues this Rule without skipping other Policies. Matches, errors and missing context keep their own handling.",
+        "default": "block"
+      },
+      {
+        "name": "review_unknown",
+        "label": "Review uncertain input results",
+        "kind": "text",
+        "required": false,
+        "placeholder": "true or false",
+        "description": "When true, a valid JEV input gray-area result is reviewed by the separately validated classifier_review.input binding. Output, matches, errors and missing context keep their handling.",
+        "default": "false"
+      }
+    ],
     "rules": [
       {
         "id": "model/jailbreak",
@@ -1219,7 +1238,9 @@
           "ref": "model/classifier",
           "version": "1.0.0",
           "parameters": {
-            "profile": "jailbreak-classification"
+            "profile": "jailbreak-classification",
+            "on_unknown": "{{on_unknown}}",
+            "review_unknown": "{{review_unknown}}"
           }
         },
         "on_match": {
@@ -1268,7 +1289,7 @@
       "id": "builtin-jailbreak-strict",
       "name": "Strict Jailbreak Protection",
       "description": "Blocks explicit Jailbreak matches. A versioned per-Guardrail parameter decides whether valid unknown results are observed or blocked; model errors remain fail-closed.",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "tags": [
         {
           "namespace": "protection",
@@ -1295,6 +1316,15 @@
         "placeholder": "block or allow",
         "description": "block (default) conservatively blocks valid unknown results; allow records them without enforcement. Explicit matches and execution errors are unaffected.",
         "default": "block"
+      },
+      {
+        "name": "review_unknown",
+        "label": "Review uncertain input results",
+        "kind": "text",
+        "required": false,
+        "placeholder": "true or false",
+        "description": "When true, a valid JEV input gray-area result is reviewed by the separately validated classifier_review.input binding. Output, matches, errors and missing context keep their handling.",
+        "default": "false"
       }
     ],
     "rules": [
@@ -1310,7 +1340,8 @@
           "version": "1.0.0",
           "parameters": {
             "profile": "jailbreak-classification",
-            "on_unknown": "{{on_unknown}}"
+            "on_unknown": "{{on_unknown}}",
+            "review_unknown": "{{review_unknown}}"
           }
         },
         "on_match": {
@@ -1377,7 +1408,7 @@
       "id": "builtin-content-safety",
       "name": "Model Content Safety",
       "description": "Classifies unsafe user input and model output with the validated Content Safety capability binding.",
-      "version": "1.0.0",
+      "version": "1.2.0",
       "tags": [
         {
           "namespace": "protection",
@@ -1395,7 +1426,26 @@
       "safety_level": "balanced",
       "output_delivery": "window_buffered"
     },
-    "parameters": [],
+    "parameters": [
+      {
+        "name": "on_unknown",
+        "label": "Uncertain result action",
+        "kind": "text",
+        "required": false,
+        "placeholder": "block or allow",
+        "description": "block (default) blocks valid uncertain results; allow continues this Rule without skipping other Policies. Matches, errors and missing context keep their own handling.",
+        "default": "block"
+      },
+      {
+        "name": "review_unknown",
+        "label": "Review uncertain input results",
+        "kind": "text",
+        "required": false,
+        "placeholder": "true or false",
+        "description": "When true, a valid JEV input gray-area result is reviewed by the separately validated classifier_review.input binding. Output, matches, errors and missing context keep their handling.",
+        "default": "false"
+      }
+    ],
     "rules": [
       {
         "id": "model/content-safety",
@@ -1409,7 +1459,9 @@
           "ref": "model/classifier",
           "version": "1.0.0",
           "parameters": {
-            "profile": "safety-classification"
+            "profile": "safety-classification",
+            "on_unknown": "{{on_unknown}}",
+            "review_unknown": "{{review_unknown}}"
           }
         },
         "on_match": {
@@ -1889,7 +1941,7 @@
       "id": "builtin-topic-safety",
       "name": "Model Topic Control",
       "description": "Configure independent allowlist and denylist Rules. Denied tasks take precedence; Intention analysis helps fill these Policy settings.",
-      "version": "2.0.0",
+      "version": "2.2.0",
       "tags": [
         {
           "namespace": "protection",
@@ -1934,6 +1986,24 @@
         "placeholder": "",
         "description": "strict or permissive. Applies only when the Allowlist Rule is enabled.",
         "default": "permissive"
+      },
+      {
+        "name": "on_unknown",
+        "label": "Uncertain result action",
+        "kind": "text",
+        "required": false,
+        "placeholder": "block or allow",
+        "description": "block (default) blocks valid uncertain results; allow continues this Rule without skipping other Policies. Matches, errors and missing context keep their own handling.",
+        "default": "block"
+      },
+      {
+        "name": "review_unknown",
+        "label": "Review uncertain input results",
+        "kind": "text",
+        "required": false,
+        "placeholder": "true or false",
+        "description": "When true, a valid JEV input gray-area result is reviewed by the separately validated classifier_review.input binding. Output, matches, errors and missing context keep their handling.",
+        "default": "false"
       }
     ],
     "rules": [
@@ -1949,6 +2019,8 @@
           "version": "1.0.0",
           "parameters": {
             "profile": "topic-classification",
+            "on_unknown": "{{on_unknown}}",
+            "review_unknown": "{{review_unknown}}",
             "topic_mode": "permissive",
             "restricted_topics": "{{denied_topics}}",
             "allowed_topics": ""
@@ -1978,6 +2050,8 @@
           "version": "1.0.0",
           "parameters": {
             "profile": "topic-classification",
+            "on_unknown": "{{on_unknown}}",
+            "review_unknown": "{{review_unknown}}",
             "topic_mode": "{{topic_mode}}",
             "allowed_topics": "{{allowed_topics}}",
             "restricted_topics": ""

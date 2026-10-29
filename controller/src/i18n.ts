@@ -475,6 +475,7 @@ const resources = {
         detectors: {
           content_safety: { title: "Content safety classifier", description: "Classify unsafe content using the selected safety-model contract." },
           jailbreak_detection: { title: "Jailbreak detector", description: "Run a detector specialized for jailbreak and prompt-bypass attempts." },
+          classifier_review: { title: "Independent classifier review", description: "Review uncertain JEV or Laya input results using a separately validated model." },
           topic_control: { title: "Topic boundary judge", description: "Evaluate allowed and denied business topics against the configured taxonomy." },
           pii_detection: { title: "Semantic PII detector", description: "Find contextual PII beyond deterministic local patterns." },
           contextual_grounding: { title: "Contextual grounding", description: "Score whether a response is supported by the supplied source context." },
@@ -737,6 +738,7 @@ const resources = {
           automated_reasoning: { title: "Automated reasoning", description: "Evaluates outputs against formal Policy proofs." },
         },
         profiles: {
+          "tali.classifier-review.v1": "Independent classifier review",
           "generic-chat": "Generic chat",
           "tali.openai-compatible-pii.v1": "OpenAI-compatible PII judge",
           "tali.qwen3guard.v1": "Qwen3Guard",
@@ -746,6 +748,8 @@ const resources = {
           "tali.nemoguard-topic-control.v1": "NVIDIA NemoGuard Topic Control",
           "tali.typesafe-jev-topic.v1": "TypeSafe Jev · Input Topic Control (legacy)",
           "tali.typesafe-jev.v1": "TypeSafe Jev · Input safety classifiers",
+          "tali.laya.v1": "Laya · Input decision classifiers",
+          "tali.laya-topic.v1": "Laya · Input Topic Control",
           "tali.openai-compatible-jailbreak.v1": "OpenAI-compatible jailbreak judge",
           "tali.nemoguard-jailbreak-detect.v1": "NVIDIA NemoGuard JailbreakDetect",
           "tali.taxonomy-judge.v1": "TALI taxonomy judge",
@@ -3498,6 +3502,7 @@ const resources = {
         detectors: {
           content_safety: { title: "内容安全分类器", description: "使用所选安全模型契约识别不安全内容。" },
           jailbreak_detection: { title: "越狱检测器", description: "使用专门模型检测越狱与绕过指令的尝试。" },
+          classifier_review: { title: "分类灰区复核", description: "使用独立验证的输入模型复核 JEV 或 Laya 不确定结果。" },
           topic_control: { title: "主题边界判定", description: "根据配置的分类体系判断允许与禁止的业务主题。" },
           pii_detection: { title: "语义 PII 检测", description: "在本地确定性规则之外识别上下文中的 PII。" },
           contextual_grounding: { title: "上下文依据性", description: "评估回复是否得到给定来源上下文的支持。" },
@@ -3760,6 +3765,7 @@ const resources = {
           automated_reasoning: { title: "自动推理", description: "根据形式化策略证明评估模型输出。" },
         },
         profiles: {
+          "tali.classifier-review.v1": "分类灰区复核",
           "generic-chat": "通用对话",
           "tali.openai-compatible-pii.v1": "OpenAI 兼容 PII 判定",
           "tali.qwen3guard.v1": "Qwen3Guard",
@@ -3769,6 +3775,8 @@ const resources = {
           "tali.nemoguard-topic-control.v1": "NVIDIA NemoGuard 主题控制",
           "tali.typesafe-jev-topic.v1": "TypeSafe Jev · 输入主题控制（兼容）",
           "tali.typesafe-jev.v1": "TypeSafe Jev · 输入安全分类",
+          "tali.laya.v1": "Laya · 输入 Decision 分类",
+          "tali.laya-topic.v1": "Laya · 输入话题控制",
           "tali.openai-compatible-jailbreak.v1": "OpenAI 兼容越狱判定",
           "tali.nemoguard-jailbreak-detect.v1": "NVIDIA NemoGuard 专用越狱检测",
           "tali.taxonomy-judge.v1": "TALI 分类判定",

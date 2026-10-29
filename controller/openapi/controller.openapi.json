@@ -876,6 +876,16 @@
               }
             ]
           },
+          "classifier_review.input": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
           "content_safety.input": {
             "anyOf": [
               {
@@ -4319,6 +4329,7 @@
       "getModelConfigurationDraftAssignmentsByTargetCandidateValidationsByValidationIdParamTarget": {
         "enum": [
           "control_plane",
+          "classifier_review.input",
           "content_safety.input",
           "content_safety.output",
           "jailbreak.input",
@@ -4558,6 +4569,16 @@
               }
             ]
           },
+          "classifier_review.input": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
           "content_safety.input": {
             "anyOf": [
               {
@@ -4631,6 +4652,7 @@
         },
         "required": [
           "automated_reasoning.output",
+          "classifier_review.input",
           "content_safety.input",
           "content_safety.output",
           "contextual_grounding.output",
@@ -4771,6 +4793,10 @@
               },
               {
                 "const": "automated_reasoning.output",
+                "type": "string"
+              },
+              {
+                "const": "classifier_review.input",
                 "type": "string"
               },
               {
@@ -4947,7 +4973,10 @@
             "enum": [
               "generic-chat",
               "tali.automated-reasoning.v1",
+              "tali.classifier-review.v1",
               "tali.grounding-judge.v1",
+              "tali.laya-topic.v1",
+              "tali.laya.v1",
               "tali.llama-guard-3.v1",
               "tali.nemoguard-jailbreak-detect.v1",
               "tali.nemoguard-topic-control.v1",
@@ -4972,6 +5001,7 @@
             "enum": [
               "custom-openai-compatible",
               "deepseek",
+              "laya",
               "ollama",
               "openai",
               "qwen",
@@ -5080,6 +5110,7 @@
             "enum": [
               "custom-openai-compatible",
               "deepseek",
+              "laya",
               "ollama",
               "openai",
               "qwen",
@@ -10107,6 +10138,7 @@
           "capability": {
             "enum": [
               "automated_reasoning",
+              "classifier_review",
               "content_safety",
               "contextual_grounding",
               "jailbreak",
@@ -10118,6 +10150,7 @@
           "id": {
             "enum": [
               "automated_reasoning.output",
+              "classifier_review.input",
               "content_safety.input",
               "content_safety.output",
               "contextual_grounding.output",
@@ -12541,6 +12574,7 @@
               "openai",
               "qwen",
               "typesafe",
+              "laya",
               "deepseek",
               "vllm",
               "ollama",
@@ -16210,6 +16244,7 @@
           "bindingIds": {
             "items": {
               "enum": [
+                "classifier_review.input",
                 "content_safety.input",
                 "content_safety.output",
                 "jailbreak.input",
@@ -16338,6 +16373,7 @@
       "postModelConfigurationDraftAssignmentsByTargetCandidateValidationsParamTarget": {
         "enum": [
           "control_plane",
+          "classifier_review.input",
           "content_safety.input",
           "content_safety.output",
           "jailbreak.input",
@@ -16516,6 +16552,7 @@
       "postModelConfigurationDraftAssignmentsByTargetValidationsParamTarget": {
         "enum": [
           "control_plane",
+          "classifier_review.input",
           "content_safety.input",
           "content_safety.output",
           "jailbreak.input",
@@ -16543,6 +16580,7 @@
               "openai",
               "qwen",
               "typesafe",
+              "laya",
               "deepseek",
               "vllm",
               "ollama",
@@ -16618,6 +16656,7 @@
                   "openai",
                   "qwen",
                   "typesafe",
+                  "laya",
                   "deepseek",
                   "vllm",
                   "ollama",
@@ -16664,6 +16703,7 @@
                 "profile": {
                   "default": "generic-chat",
                   "enum": [
+                    "tali.classifier-review.v1",
                     "generic-chat",
                     "tali.qwen3guard.v1",
                     "tali.llama-guard-3.v1",
@@ -16672,6 +16712,8 @@
                     "tali.nemoguard-topic-control.v1",
                     "tali.typesafe-jev-topic.v1",
                     "tali.typesafe-jev.v1",
+                    "tali.laya-topic.v1",
+                    "tali.laya.v1",
                     "tali.openai-compatible-jailbreak.v1",
                     "tali.openai-compatible-pii.v1",
                     "tali.nemoguard-jailbreak-detect.v1",
@@ -16794,7 +16836,10 @@
             "enum": [
               "generic-chat",
               "tali.automated-reasoning.v1",
+              "tali.classifier-review.v1",
               "tali.grounding-judge.v1",
+              "tali.laya-topic.v1",
+              "tali.laya.v1",
               "tali.llama-guard-3.v1",
               "tali.nemoguard-jailbreak-detect.v1",
               "tali.nemoguard-topic-control.v1",
@@ -16816,6 +16861,7 @@
             "enum": [
               "custom-openai-compatible",
               "deepseek",
+              "laya",
               "ollama",
               "openai",
               "qwen",
@@ -16929,6 +16975,7 @@
               "openai",
               "qwen",
               "typesafe",
+              "laya",
               "deepseek",
               "vllm",
               "ollama",
@@ -16974,6 +17021,7 @@
           "profile": {
             "default": "generic-chat",
             "enum": [
+              "tali.classifier-review.v1",
               "generic-chat",
               "tali.qwen3guard.v1",
               "tali.llama-guard-3.v1",
@@ -16982,6 +17030,8 @@
               "tali.nemoguard-topic-control.v1",
               "tali.typesafe-jev-topic.v1",
               "tali.typesafe-jev.v1",
+              "tali.laya-topic.v1",
+              "tali.laya.v1",
               "tali.openai-compatible-jailbreak.v1",
               "tali.openai-compatible-pii.v1",
               "tali.nemoguard-jailbreak-detect.v1",
@@ -21671,6 +21721,7 @@
       "putModelConfigurationDraftAssignmentsByTargetParamTarget": {
         "enum": [
           "control_plane",
+          "classifier_review.input",
           "content_safety.input",
           "content_safety.output",
           "jailbreak.input",
@@ -21722,6 +21773,19 @@
                     "type": "null"
                   }
                 ]
+              },
+              "classifier_review.input": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
               },
               "content_safety.input": {
                 "anyOf": [
@@ -21973,6 +22037,7 @@
           "profile": {
             "default": "generic-chat",
             "enum": [
+              "tali.classifier-review.v1",
               "generic-chat",
               "tali.qwen3guard.v1",
               "tali.llama-guard-3.v1",
@@ -21981,6 +22046,8 @@
               "tali.nemoguard-topic-control.v1",
               "tali.typesafe-jev-topic.v1",
               "tali.typesafe-jev.v1",
+              "tali.laya-topic.v1",
+              "tali.laya.v1",
               "tali.openai-compatible-jailbreak.v1",
               "tali.openai-compatible-pii.v1",
               "tali.nemoguard-jailbreak-detect.v1",

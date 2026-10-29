@@ -386,9 +386,9 @@ async def test_model_tests_are_explicitly_not_run_without_a_model_environment():
 def test_bundled_strict_jailbreak_preserves_uncertainty_parameter():
     package = load_package(ROOT / "policies/builtin/builtin-jailbreak-strict")
     compiled = compile_policy(package.definition, sources.registry())
-    assert compiled["version"] == "1.0.0"
+    assert compiled["version"] == "1.1.0"
     assert compiled["rules"][0]["detector_options"] == {
-        "profile": "jailbreak-classification", "on_unknown": "{{on_unknown}}",
+        "profile": "jailbreak-classification", "on_unknown": "{{on_unknown}}", "review_unknown": "{{review_unknown}}",
     }
     assert compiled["parameters"][0]["default"] == "block"
     candidate = package.definition.model_dump()
@@ -413,6 +413,24 @@ def test_classifier_uncertainty_parameter_survives_package_compilation(profile):
     candidate["rules"][0]["detector"]["parameters"]["on_unknown"] = "ignore"
     with pytest.raises(ValueError, match="on_unknown must be"):
         compile_policy(definition(candidate), sources.registry())
+
+
+@pytest.mark.parametrize("policy,version,previous", [
+    ("builtin-content-safety", "1.2.0", "1.0.0"),
+    ("builtin-jailbreak", "1.2.0", "1.0.0"),
+    ("builtin-topic-safety", "2.2.0", "2.0.0"),
+])
+def test_shipped_classifier_versions_wire_unknown_without_rewriting_history(policy, version, previous):
+    current = load_package(ROOT / "policies/builtin" / policy)
+    compiled = compile_policy(current.definition, sources.registry())
+    assert compiled["version"] == version
+    assert next(p for p in compiled["parameters"] if p["name"] == "on_unknown")["default"] == "block"
+    assert all(r["detector_options"]["on_unknown"] == "{{on_unknown}}" for r in compiled["rules"])
+    assert next(p for p in compiled["parameters"] if p["name"] == "review_unknown")["default"] == "false"
+    assert all(r["detector_options"]["review_unknown"] == "{{review_unknown}}" for r in compiled["rules"])
+    historical = load_package(ROOT / "policies/history" / policy / previous)
+    assert historical.definition.metadata.version == previous
+    assert all("on_unknown" not in r.detector.parameters for r in historical.definition.rules)
 
 
 async def test_regression_uses_action_priority_in_rule_and_policy_scopes(tmp_path):

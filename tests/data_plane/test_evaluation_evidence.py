@@ -23,6 +23,44 @@ def decision(verdict="unknown", mode="enforce"):
          interventions=(AppliedIntervention(kind="block",module_id="jb",fragment_id="nemo:jb:block",content_block_id="input:0"),))
 
 
+@pytest.mark.parametrize("native_verdict,verdict,action", [("safe", "not_matched", "allow"), ("unsafe", "matched", "block"), (None, "error", "block")])
+def test_native_classification_keeps_its_label_action_and_model_without_fabricated_probabilities(native_verdict, verdict, action):
+    original = decision()
+    classifier = replace(original.trace[0], id="cs:native-safety", evaluator_id="model-safety", capability="content_safety",
+        verdict=verdict, policy_id="builtin-content-safety", model_name="native-model", evidence=json.dumps({
+            "native_verdict": native_verdict, "requested_model": "native-model", "response_model": "actual-model",
+            "raw_output": "private provider output"}))
+    action_step = replace(classifier, kind="action", id="nemo:action:cs", evidence=json.dumps({"policy_action": action}))
+    evidence = json.loads(evaluation_evidence(replace(original, trace=(classifier, action_step, *original.trace))))
+    row, = evidence["classifications"]
+    assert row["nativeVerdict"] == native_verdict and row["verdict"] == verdict and row["policyAction"] == action
+    assert row["responseModel"] == "actual-model"
+    assert "probabilities" not in row and "thresholds" not in row and "private" not in json.dumps(evidence)
+    assert len(evidence["evaluations"]) == 1
+
+
+def test_native_classifier_outer_timeout_retains_requested_model_and_error_without_a_fabricated_label():
+    original = decision()
+    step = replace(original.trace[0], id="nemo:action:cs", kind="action", evaluator_id=None, capability="content_safety",
+        profile_ref="tali.nemotron-content-safety.v1", model_name="native-model", verdict="error", timed_out=True,
+        evidence=None, status="error")
+    body = json.loads(evaluation_evidence(replace(original, trace=(step,))))
+    row, = body["classifications"]
+    assert body["execution"]["status"] == "error"
+    assert row["verdict"] == "error" and row["requestedModel"] == "native-model"
+    assert row["nativeVerdict"] is None and row["responseModel"] is None
+
+
+def test_native_classification_monitor_and_truncation_preserve_the_evidence_contract():
+    original = decision(mode="monitor")
+    classifier = replace(original.trace[0], id="cs:native-safety", evaluator_id="model-safety", capability="content_safety",
+        verdict="matched", model_name="native-model", evidence=json.dumps({"native_verdict":"unsafe"}))
+    raw = evaluation_evidence(replace(original, trace=(classifier,)))
+    assert json.loads(raw)["classifications"][0]["enforcedAction"] is None
+    body = json.loads(evaluation_evidence(replace(original, trace=(classifier,)*100)))
+    assert not body["complete"] and len(json.dumps(body,separators=(",",":")))<=MAX_HEADER_BYTES
+
+
 @pytest.mark.parametrize("verdict", ["matched", "unknown", "not_matched", "error"])
 def test_evidence_preserves_verdict_and_native_operating_point_without_source_text(verdict):
     raw=evaluation_evidence(decision(verdict)); body=json.loads(raw); row=body["evaluations"][0]
@@ -110,3 +148,14 @@ def test_execution_failure_is_separate_from_jailbreak_verdict_and_contains_no_re
     recovered = replace(safe, trace=(*safe.trace, RuntimeTraceStep(id='provider-attempt', kind='model',
         name='Recovered provider attempt', status='error', detail='Fallback succeeded', error_type='http_5xx')))
     assert json.loads(evaluation_evidence(recovered))['execution']['status'] == 'complete'
+
+
+def test_missing_context_is_incomplete_even_when_unknown_is_observed():
+    from runner.toolkit.runtime.contracts import ModuleAssessment, RuntimeCoverage
+    missing = replace(decision(), decision="allow", action="allow", interventions=(),
+        assessments=(ModuleAssessment(module_id="topic", module="business_assurance", status="needs_context",
+            fragments=(), coverage=RuntimeCoverage(status="partial")),))
+    evidence = json.loads(evaluation_evidence(missing))
+    assert evidence["execution"]["status"] == "error"
+    assert evidence["evaluations"][0]["verdict"] == "unknown"
+    assert evidence["evaluations"][0]["enforcedAction"] is None

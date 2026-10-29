@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import difflib
+import json
 import re
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -2341,6 +2342,17 @@ def _trace(
                 status=item.result.verdict,
                 outcome=item.result.verdict,
                 detail=item.result.reason or "NeMo Action completed.",
+                evidence=json.dumps({
+                    "policy_action": (
+                        "block" if item.result.verdict == "error" and _binding_fails_closed(request, binding)
+                        else "allow" if item.result.verdict in {"not_matched", "error"}
+                        else _runtime_action(item)
+                    ),
+                    "on_match": binding.on_unsafe,
+                    "on_unknown": binding.parameter("on_unknown") or "block",
+                    "review_unknown": binding.parameter("review_unknown") or "false",
+                    "decision_source": "review" if any(step.evaluator_id == "classifier-review" for step in item.result.trace) else "primary",
+                }) if binding.capability in {"content_safety", "jailbreak", "topic_control"} else None,
                 duration_ms=item.latency_ms,
                 parent_id=(
                     action_parents.get(binding.id)
@@ -2511,7 +2523,7 @@ def _binding_policy_rule_identity(
         if (dict(binding.parameters).get("declarative_rule") == "true"
                 and selected is not None and compiled_rule in selected.enabled_rule_ids):
             rule_id = compiled_rule
-        if (binding.policy_id == "builtin-topic-safety" and binding.policy_version == "2.0.0"
+        if (binding.policy_id == "builtin-topic-safety" and binding.policy_version in {"2.0.0", "2.1.0", "2.2.0"}
                 and selected is not None and compiled_rule in selected.enabled_rule_ids
                 and compiled_rule in {"topic/allowlist", "topic/denylist"}):
             rule_id = compiled_rule
@@ -3173,7 +3185,9 @@ def _runtime_action(item):
     if item.result.verdict == "unknown":
         if item.binding.on_unsafe == "allow":
             return "allow"
-        if item.binding.capability in {"jailbreak", "content_safety", "topic_control"} and item.binding.parameter("on_unknown") == "allow":
+        if (item.binding.capability in {"jailbreak", "content_safety", "topic_control"}
+                and item.result.unknown_reason == "uncertain"
+                and item.binding.parameter("on_unknown") == "allow"):
             return "allow"
         return "block"
     reasoning = tuple(

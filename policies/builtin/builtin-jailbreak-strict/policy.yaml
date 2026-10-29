@@ -6,7 +6,7 @@ metadata:
   description: Blocks explicit Jailbreak matches. A versioned per-Guardrail parameter
     decides whether valid unknown results are observed or blocked; model errors remain
     fail-closed.
-  version: 1.0.0
+  version: 1.1.0
   tags:
   - namespace: protection
     value: attacks_and_abuse
@@ -28,6 +28,13 @@ parameters:
   placeholder: block or allow
   description: block (default) conservatively blocks valid unknown results; allow
     records them without enforcement. Explicit matches and execution errors are unaffected.
+- name: review_unknown
+  label: Review uncertain input results
+  kind: text
+  required: false
+  default: "false"
+  placeholder: true or false
+  description: When true, a valid JEV input gray-area result is reviewed by the separately validated classifier_review.input binding. Output, matches, errors and missing context keep their handling.
 rules:
 - rules/model-jailbreak.yaml
 tests:

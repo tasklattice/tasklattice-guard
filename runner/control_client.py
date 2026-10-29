@@ -44,10 +44,11 @@ logger = logging.getLogger("tasklattice.guard.runner.control")
 def _prepare_model_dependencies(
     configuration: protocol.DataPlaneModelConfiguration, credentials: dict[str, str],
     jev_thresholds: tuple[float, float] | None = None,
+    laya_thresholds: tuple[float, float] | None = None,
 ) -> tuple[ActionProviders, tuple[NativeRailModel, ...]]:
     with diagnostic_phase("desired_state.models", model_revision_id=configuration.revision_id):
         providers = action_providers(*dynamic_runtime_action_providers(
-            configuration, credentials, jev_thresholds=jev_thresholds))
+            configuration, credentials, jev_thresholds=jev_thresholds, laya_thresholds=laya_thresholds))
         return providers, native_rail_models(configuration, credentials)
 
 
@@ -304,6 +305,10 @@ class RunnerControlClient:
                         jev_thresholds=(
                             float(getattr(self._settings, "jev_lower_threshold", 0.1)),
                             float(getattr(self._settings, "jev_upper_threshold", 0.9)),
+                        ),
+                        laya_thresholds=(
+                            float(getattr(self._settings, "laya_lower_threshold", 0.1)),
+                            float(getattr(self._settings, "laya_upper_threshold", 0.9)),
                         ),
                     )
             else:

@@ -167,6 +167,10 @@ class TopicJudgeActionProvider:
         return any(capability in item.capabilities and contract in item.contracts and phase in item.rails
                    for item in self.evaluators)
 
+    def supports_review(self, capability: str, contract: str, phase: str) -> bool:
+        return phase == "input" and any(capability in item.capabilities and contract in item.contracts
+            and phase in item.rails and getattr(item, "review_ready", False) for item in self.evaluators)
+
     async def execute(self, request: ActionRequest) -> ActionResult:
         for evaluator in self.evaluators:
             if (request.rail_type in evaluator.rails and request.capability in evaluator.capabilities

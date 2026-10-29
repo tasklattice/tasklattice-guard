@@ -69,6 +69,21 @@ describe("replaceable model probe protocols", () => {
     });
     expect(request.messages[0]?.content).toMatch(/You must respond with "on-topic" or "off-topic"\.$/);
   });
+
+  it("uses the review runtime's Lightning options and typed answers in its connection probe", () => {
+    const request = probeRequest({
+      model: "nvidia/nemotron-3.5-lightning-30b-a3b",
+      profile: "tali.classifier-review.v1",
+      maxTokens: 256,
+    });
+    expect(request).toHaveProperty("chat_template_kwargs.enable_thinking", false);
+    for (const content of ['{"answers":{"unsafe_content":"no"}}', '{"unsafe_content":"yes"}']) {
+      expect(() => validateProbeContent("tali.classifier-review.v1", content)).not.toThrow();
+    }
+    for (const content of ['{}', 'OK', '{"unsafe_content":true}', '{"unsafe_content":"no","extra":"yes"}']) {
+      expect(() => validateProbeContent("tali.classifier-review.v1", content)).toThrow();
+    }
+  });
 });
 
 it("requires a typed PII verdict instead of accepting arbitrary JSON", () => {

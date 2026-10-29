@@ -7,7 +7,7 @@ metadata:
   description: Configure independent allowlist and denylist Rules. Denied tasks take precedence; Intention
     analysis helps fill these Policy settings.
   source: built_in
-  version: 2.0.0
+  version: 2.2.0
   tags:
   - namespace: protection
     value: business_topics
@@ -36,6 +36,22 @@ parameters:
   required: false
   default: permissive
   description: strict or permissive. Applies only when the Allowlist Rule is enabled.
+- name: on_unknown
+  label: Uncertain result action
+  kind: text
+  required: false
+  default: block
+  placeholder: block or allow
+  description: block (default) blocks valid uncertain results; allow continues this
+    Rule without skipping other Policies. Matches, errors and missing context keep
+    their own handling.
+- name: review_unknown
+  label: Review uncertain input results
+  kind: text
+  required: false
+  default: "false"
+  placeholder: true or false
+  description: When true, a valid JEV input gray-area result is reviewed by the separately validated classifier_review.input binding. Output, matches, errors and missing context keep their handling.
 rules:
 - rules/topic-denylist.yaml
 - rules/topic-allowlist.yaml
