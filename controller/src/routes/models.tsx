@@ -524,6 +524,7 @@ function CapabilityBindingTable({ rows, savedAssignments, report, disabled, savi
 
 function capabilityTitle(t: ReturnType<typeof useTranslation>["t"], binding: CapabilityBindingDefinition): string {
   const detectorKey = {
+    classifier_review: "classifier_review",
     content_safety: "content_safety",
     jailbreak: "jailbreak_detection",
     topic_control: "topic_control",

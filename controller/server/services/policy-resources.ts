@@ -59,10 +59,7 @@ export class PolicyResourceService {
       // Bundled declarative model Policies have no legacy native ID contract.
       // Retain their definition so planning and dependency discovery use the
       // authored detector, including runtime parameters such as on_unknown.
-      const definition = policy.source === "built_in" && policy.protection.execution === "custom"
-        ? this.compiler.shipped(policy.id) : null;
-      const compiled = definition?.metadata.version === policy.version ? this.compiler.compile(definition) : null;
-      return [policy.id, compiled ? { ...policy, rules: compiled.rules, definition: compiled.definition!, protection: compiled.protection } : policy];
+      return [policy.id, this.compiler.catalogView(policy)];
     }));
     for (const row of rows) {
       const history = published.filter(v => v.policyId === row.id).map(v => v.view);

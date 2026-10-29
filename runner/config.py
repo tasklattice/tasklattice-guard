@@ -83,6 +83,9 @@ class RunnerSettings:
     # Jev "uncertain" band: probabilities strictly between the two thresholds.
     jev_lower_threshold: float = 0.1
     jev_upper_threshold: float = 0.9
+    # Laya starts at the same operating point but is configured independently.
+    laya_lower_threshold: float = 0.1
+    laya_upper_threshold: float = 0.9
     call_context_compress_plans: bool = False
     call_context_capacity_fallback: bool = False
     call_context_ttl_seconds: int = 300
@@ -95,6 +98,10 @@ class RunnerSettings:
             )
         if self.model_rate_limit_attempts < 1:
             raise ValueError("GUARD_MODEL_RATE_LIMIT_ATTEMPTS must be positive.")
+        if not 0 <= self.laya_lower_threshold < self.laya_upper_threshold <= 1:
+            raise ValueError(
+                "GUARD_LAYA_LOWER_THRESHOLD must be below GUARD_LAYA_UPPER_THRESHOLD within [0, 1]."
+            )
 
     @classmethod
     def from_env(cls) -> "RunnerSettings":
@@ -203,6 +210,8 @@ class RunnerSettings:
             model_rate_limit_attempts=_positive_int("GUARD_MODEL_RATE_LIMIT_ATTEMPTS", 3),
             jev_lower_threshold=_threshold("GUARD_JEV_LOWER_THRESHOLD", 0.1),
             jev_upper_threshold=_threshold("GUARD_JEV_UPPER_THRESHOLD", 0.9),
+            laya_lower_threshold=_threshold("GUARD_LAYA_LOWER_THRESHOLD", 0.1),
+            laya_upper_threshold=_threshold("GUARD_LAYA_UPPER_THRESHOLD", 0.9),
             controller_ca_path=Path(controller_ca) if controller_ca else None,
             client_certificate_path=(Path(client_certificate) if client_certificate else None),
             client_key_path=Path(client_key) if client_key else None,

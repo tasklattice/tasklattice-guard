@@ -734,6 +734,12 @@ class _RuntimeBuilder:
         evaluation = self._providers.get((ACTION_EVALUATE, "1.0.0"))
         route_keys = frozenset(getattr(evaluation, "route_keys", ()))
         route_rail_keys = frozenset(getattr(evaluation, "route_rail_keys", ()))
+        for binding in config.action_bindings:
+            if "input" in binding.phases and binding.parameter("review_unknown") == "true":
+                provider = self._providers.get((binding.action_name, binding.action_version))
+                supported = getattr(provider, "supports_review", lambda *args: False)
+                if ("classifier_review", "tali.guard.classifier-review.v1", "input") not in route_rail_keys or not supported(binding.capability,binding.contract_ref,"input"):
+                    raise PlanCompilationError("Gray-area review requires a JEV or Laya input classifier and a validated classifier_review.input binding.")
         declared_phases: dict[str, set[str]] = {}
         for policy in plan.policy_versions if plan is not None else ():
             phases = {phase for binding in config.action_bindings

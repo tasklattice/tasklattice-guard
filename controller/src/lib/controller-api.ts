@@ -20,8 +20,8 @@ export type Collection<T> = { items: T[]; count?: number; nextCursor?: string | 
 
 export type SystemStatus = PlatformStatusSnapshot;
 
-export type ModelProviderKind = "openai" | "qwen" | "typesafe" | "deepseek" | "vllm" | "ollama" | "custom-openai-compatible";
-export type ModelProfile = "generic-chat" | "tali.qwen3guard.v1" | "tali.llama-guard-3.v1" | "tali.nemotron-content-safety.v1" | "tali.nemotron-safety-guard-v3.v1" | "tali.nemoguard-topic-control.v1" | "tali.typesafe-jev-topic.v1" | "tali.typesafe-jev.v1" | "tali.openai-compatible-pii.v1" | "tali.openai-compatible-jailbreak.v1" | "tali.nemoguard-jailbreak-detect.v1" | "tali.taxonomy-judge.v1" | "tali.grounding-judge.v1" | "tali.automated-reasoning.v1";
+export type ModelProviderKind = "openai" | "qwen" | "typesafe" | "laya" | "deepseek" | "vllm" | "ollama" | "custom-openai-compatible";
+export type ModelProfile = "tali.classifier-review.v1" | "tali.laya.v1" | "tali.laya-topic.v1" | "generic-chat" | "tali.qwen3guard.v1" | "tali.llama-guard-3.v1" | "tali.nemotron-content-safety.v1" | "tali.nemotron-safety-guard-v3.v1" | "tali.nemoguard-topic-control.v1" | "tali.typesafe-jev-topic.v1" | "tali.typesafe-jev.v1" | "tali.openai-compatible-pii.v1" | "tali.openai-compatible-jailbreak.v1" | "tali.nemoguard-jailbreak-detect.v1" | "tali.taxonomy-judge.v1" | "tali.grounding-judge.v1" | "tali.automated-reasoning.v1";
 export type { CapabilityBindingId };
 export type ModelAssignments = {
   controlPlane: string | null;

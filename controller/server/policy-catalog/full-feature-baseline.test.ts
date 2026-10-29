@@ -12,10 +12,7 @@ import { selectedModelDependencies } from "../../src/lib/protection-dependencies
 import type { GuardrailPolicyBinding, Policy } from "../../src/lib/api-types.js";
 const directory = resolve("../runner/toolkit/policy_library/assets");
 const compiler = new DeclarativeCompiler(directory);
-const catalog = PolicyCatalog.load(directory).list().map(policy => {
-  const definition = policy.protection.execution === "custom" ? compiler.shipped(policy.id) : null;
-  return definition ? { ...compiler.compile(definition), published_versions: policy.published_versions } : policy;
-});
+const catalog = PolicyCatalog.load(directory).list().map(policy => compiler.catalogView(policy));
 const fresh = () => profileDraft(fullFeatureBaseline, catalog);
 const cases = (draft: ReturnType<typeof fresh>) => generatedTestCases("baseline", draft, catalog);
 const reconcile = (draft: ReturnType<typeof fresh>, reference = fresh()) => {

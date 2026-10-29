@@ -96,6 +96,8 @@ spec:
             - { name: GUARD_MODEL_RATE_LIMIT_ATTEMPTS, value: {{ $root.Values.runner.validation.providerRateLimitAttempts | quote }} }
             - { name: GUARD_JEV_LOWER_THRESHOLD, value: {{ $root.Values.runner.jev.lowerThreshold | quote }} }
             - { name: GUARD_JEV_UPPER_THRESHOLD, value: {{ $root.Values.runner.jev.upperThreshold | quote }} }
+            - { name: GUARD_LAYA_LOWER_THRESHOLD, value: {{ dig "lowerThreshold" 0.1 ($root.Values.runner.laya | default dict) | quote }} }
+            - { name: GUARD_LAYA_UPPER_THRESHOLD, value: {{ dig "upperThreshold" 0.9 ($root.Values.runner.laya | default dict) | quote }} }
           volumeMounts:
             - { name: artifact-signing, mountPath: /var/run/tasklattice/artifact, readOnly: true }
             {{- if $root.Values.security.controlTls.enabled }}

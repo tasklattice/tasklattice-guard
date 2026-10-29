@@ -116,10 +116,15 @@ runner:
   validation:
     maxConcurrency: 8
     providerRateLimitAttempts: 3
-  # Jev reports "uncertain" strictly between these probabilities, and a blocking
-  # Policy then fails closed. Narrow the band (for example 0.4/0.6) to reduce
-  # uncertainty; leaving the defaults keeps the widest reviewed safety margin.
+  # Jev reports "unknown" strictly between these probabilities. Each classifier
+  # Rule's on_unknown determines its action; errors retain failure handling.
+  # Thresholds affect all JEV checks on this Runner. Test changes on an isolated
+  # Runner before adjusting a shared deployment.
   jev:
+    lowerThreshold: 0.1
+    upperThreshold: 0.9
+  # Independent Laya operating point; JEV changes do not affect it.
+  laya:
     lowerThreshold: 0.1
     upperThreshold: 0.9
   callContext:

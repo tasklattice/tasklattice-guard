@@ -217,7 +217,7 @@ export function buildGuardrailPlan(input: {
           const authoredRule = catalogPolicy.definition.rules.find(r => r.id === rule.id)!;
           const params = resolveModelRuleParameters(catalogPolicy.definition, authoredRule, binding.parameterValues);
           const authoredParameters: Array<[string, string]> = [["declarative_rule", "true"], ["rule_id", rule.id]];
-          for (const key of ["topic_mode", "allowed_topics", "restricted_topics", "grounding_threshold", "relevance_threshold", "policy_snapshot_id", "on_unknown"]) {
+          for (const key of ["topic_mode", "allowed_topics", "restricted_topics", "grounding_threshold", "relevance_threshold", "policy_snapshot_id", "on_unknown", "review_unknown"]) {
             if (params[key] !== undefined) authoredParameters.push([key, String(params[key])]);
           }
           if (rule.detector.ref === "service/formal-verification" && params.policy_id && params.policy_version) {
@@ -299,6 +299,8 @@ export function buildGuardrailPlan(input: {
       ["policy_id", binding.policyId],
       ["policy_version", binding.policyVersion],
       ...(authoredParameters ?? parametersFor(definition.capability, binding, draft, declarative)),
+      ...(!authoredRule && catalogNative && catalogRule
+        ? nativeClassifierParameters(catalogNative, catalogRule, binding) : []),
     ];
     const suffix = authoredRule ? `:${authoredRule.id}` : actionGroup;
     const prefix = `${definition.capability}:${binding.policyId}${suffix}`;
@@ -311,7 +313,8 @@ export function buildGuardrailPlan(input: {
       parameters: [["policy_id", binding.policyId], ["policy_version", binding.policyVersion], ["rule_id", id],
         ["topic_mode", id === TOPIC_DENY_RULE ? "permissive" : values.mode],
         ["allowed_topics", id === TOPIC_ALLOW_RULE ? values.allowed : ""],
-        ["restricted_topics", id === TOPIC_DENY_RULE ? values.denied : ""]] as Array<[string, string]>,
+        ["restricted_topics", id === TOPIC_DENY_RULE ? values.denied : ""],
+        ...(catalogNative ? nativeClassifierParameters(catalogNative, catalogNative.rules.find(rule => rule.id === id)!, binding) : [])] as Array<[string, string]>,
     })) : nativePolicy ? phases.map((phase) => {
       const rail = nativePolicy.rail_bindings.find((item) => item.rail_type === phase && binding.enabledRuleIds.includes(flowRuleId(phase, item.flow_name)))!;
       return {
@@ -431,6 +434,28 @@ function validateNativeDetectorContract(policy: PolicyDto, capability: string): 
       : capability === "automated_reasoning" ? "service/formal-verification" : null;
     if (ref && rule.detector.ref !== ref) throw new Error(`Policy ${policy.id} requires detector ${ref}.`);
   }
+}
+
+function nativeClassifierParameters(policy: PolicyDto, rule: PolicyDto["rules"][number], binding: GuardrailPolicyBindingConfig): Array<[string, string]> {
+  // Catalog-native classifiers bypass the declarative adapter. Resolve only a
+  // parameter this exact pinned Rule declares, including its pinned default.
+  // A caller cannot enable new handling on an older immutable Policy version.
+  if (rule.detector.ref !== "model/classifier" || rule.detector_options.on_unknown === undefined) return [];
+  const configured = String(rule.detector_options.on_unknown);
+  const reference = /^\{\{([a-zA-Z_][a-zA-Z0-9_]*)\}\}$/.exec(configured);
+  const parameter = reference ? policy.parameters.find(item => item.name === reference[1]) : undefined;
+  const value = reference ? parameter && (binding.parameterValues[parameter.name] ?? parameter.default) : configured;
+  if (value !== "allow" && value !== "block") throw new Error(`Policy ${policy.id}: on_unknown must be allow or block.`);
+  const values: Array<[string, string]> = [["on_unknown", value]];
+  const review = rule.detector_options.review_unknown;
+  if (review !== undefined) {
+    const reference = /^\{\{([a-zA-Z_][a-zA-Z0-9_]*)\}\}$/.exec(String(review));
+    const parameter = reference ? policy.parameters.find(item => item.name === reference[1]) : undefined;
+    const resolved = reference ? parameter && (binding.parameterValues[parameter.name] ?? parameter.default) : String(review);
+    if (resolved !== "true" && resolved !== "false") throw new Error(`Policy ${policy.id}: review_unknown must be true or false.`);
+    values.push(["review_unknown", resolved]);
+  }
+  return values;
 }
 
 function parametersFor(

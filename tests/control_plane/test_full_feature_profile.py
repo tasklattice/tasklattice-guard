@@ -24,10 +24,7 @@ def profile_plans():
       import { buildGuardrailPlan } from './server/domain/guardrail-plan.ts';
       const directory = '../runner/toolkit/policy_library/assets';
       const compiler = new DeclarativeCompiler(directory);
-      const policies = PolicyCatalog.load(directory).list().map(policy => {
-        const definition = policy.protection.execution === 'custom' ? compiler.shipped(policy.id) : null;
-        return definition ? { ...compiler.compile(definition), published_versions: policy.published_versions } : policy;
-      });
+      const policies = PolicyCatalog.load(directory).list().map(policy => compiler.catalogView(policy));
       const plans = {};
       for (const selection of ['full', 'local', 'boundary']) {
         const draft = profileDraft(fullFeatureBaseline, policies);

@@ -28,6 +28,13 @@ collections:
   - history/local-contact-data/4.2.0
   - history/local-contact-data/4.2.1
   - history/local-data-use-boundaries/4.0.0
+  - history/builtin-content-safety/1.0.0
+  - history/builtin-topic-safety/2.0.0
+  - history/builtin-jailbreak/1.0.0
+  - history/builtin-content-safety/1.1.0
+  - history/builtin-jailbreak/1.1.0
+  - history/builtin-jailbreak-strict/1.0.0
+  - history/builtin-topic-safety/2.1.0
 - asset: model_capability_policies.json
   policies:
   - builtin/builtin-jailbreak

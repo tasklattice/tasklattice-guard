@@ -1,0 +1,17 @@
+id: model/jailbreak
+name: Jailbreak detector
+description: Reject jailbreak attempts before model execution.
+stages:
+- input
+detector:
+  ref: model/classifier
+  version: 1.0.0
+  parameters:
+    profile: jailbreak-classification
+    on_unknown: '{{on_unknown}}'
+on_match:
+  action: block
+risk_level: high
+metadata:
+  taxonomy_ids:
+  - TALI-MODEL-SECURITY-JAILBREAK

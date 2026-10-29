@@ -121,6 +121,34 @@
       "version": "4.0.1",
       "sha256": "1681ee0b014dbd07ab045d1f21e448f1fb68ff4c76790d17a1f0a6b7447d7918",
       "reason": "Access-process guidance alone is not PHI disclosure. Retain direct retrieval and explicit unauthorized-access intent; regression cases cover both sides."
+    },
+    "builtin-jailbreak/model/jailbreak": {
+      "previousVersion": "1.0.0",
+      "previousSha256": "203a5a8d201e04ba6e929841cd6284687b78feb01ac4dcc30543d0836c5dea20",
+      "version": "1.2.0",
+      "sha256": "b10bca0d6fddd069235abd28bc2edce5bfc6353e8313bc713399419d51f1741f",
+      "reason": "Declare per-Rule unknown handling and opt-in gray-area review in a new version; preserve the original detector contract in the frozen predecessor."
+    },
+    "builtin-content-safety/model/content-safety": {
+      "previousVersion": "1.0.0",
+      "previousSha256": "d8faf539f287aa027c48f9cb3c462f38f469cb0d1ca4fb0e9d2f4f0ac632996c",
+      "version": "1.2.0",
+      "sha256": "bac5ba3b3acfb00749b94da53c77a0ff7e4ec7ed8469ac8f56eceac6fcfffa6b",
+      "reason": "Declare per-Rule unknown handling and opt-in gray-area review in a new version; preserve the original detector contract in the frozen predecessor."
+    },
+    "builtin-topic-safety/topic/denylist": {
+      "previousVersion": "2.0.0",
+      "previousSha256": "719c8e175da66d562adc73ce44045e7765c592c86d2acfbe3ab844a6248b1554",
+      "version": "2.2.0",
+      "sha256": "5879236a62124127029c8ce5a15ad4af381823539e1329ff5ead3500103ecc56",
+      "reason": "Declare per-Rule unknown handling and opt-in gray-area review in a new version; preserve the original detector contract in the frozen predecessor."
+    },
+    "builtin-topic-safety/topic/allowlist": {
+      "previousVersion": "2.0.0",
+      "previousSha256": "719c8e175da66d562adc73ce44045e7765c592c86d2acfbe3ab844a6248b1554",
+      "version": "2.2.0",
+      "sha256": "5879236a62124127029c8ce5a15ad4af381823539e1329ff5ead3500103ecc56",
+      "reason": "Declare per-Rule unknown handling and opt-in gray-area review in a new version; preserve the original detector contract in the frozen predecessor."
     }
   },
   "samePolicyAliases": [

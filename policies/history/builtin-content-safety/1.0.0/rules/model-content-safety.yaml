@@ -1,0 +1,20 @@
+id: model/content-safety
+name: Content safety classifier
+description: Reject content classified as unsafe.
+stages:
+- input
+- output
+detector:
+  ref: model/classifier
+  version: 1.0.0
+  parameters:
+    profile: safety-classification
+on_match:
+  action: block
+runtime_adapter:
+  binding_id: content_safety
+  implementation_rule_id: content_safety
+metadata:
+  taxonomy_ids:
+  - TALI-PHYSICAL-HARM
+risk_level: high

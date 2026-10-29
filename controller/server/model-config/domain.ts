@@ -8,12 +8,14 @@ import {
   controlPlaneProfileRefs,
   isDataPlaneProviderKindAllowed,
   isTypeSafeProfile,
+  isLayaProfile,
 } from "../../shared/guardrail-catalog.js";
 
 export const modelProviderKinds = [
   "openai",
   "qwen",
   "typesafe",
+  "laya",
   "deepseek",
   "vllm",
   "ollama",
@@ -21,6 +23,7 @@ export const modelProviderKinds = [
 ] as const;
 
 export const modelProfiles = [
+  "tali.classifier-review.v1",
   "generic-chat",
   "tali.qwen3guard.v1",
   "tali.llama-guard-3.v1",
@@ -29,6 +32,8 @@ export const modelProfiles = [
   "tali.nemoguard-topic-control.v1",
   "tali.typesafe-jev-topic.v1",
   "tali.typesafe-jev.v1",
+  "tali.laya-topic.v1",
+  "tali.laya.v1",
   "tali.openai-compatible-jailbreak.v1",
   "tali.openai-compatible-pii.v1",
   "tali.nemoguard-jailbreak-detect.v1",
@@ -40,7 +45,7 @@ export const modelProfiles = [
 export type ModelProviderKind = (typeof modelProviderKinds)[number];
 export type ModelProfile = (typeof modelProfiles)[number];
 export type { CapabilityBindingId };
-export type ModelTransport = "openai_chat" | "nemoguard_jailbreak_detect" | "typesafe_systemone";
+export type ModelTransport = "openai_chat" | "nemoguard_jailbreak_detect" | "typesafe_systemone" | "laya_systemone";
 export type ModelResourceStatus = "pending" | "validated" | "failed";
 export type ModelRevisionState = "draft" | "validated" | "activating" | "active" | "superseded" | "failed";
 
@@ -110,13 +115,14 @@ export const providerRegistrationSchema = z.object({
 export const assignmentInputSchema = z.object({
   controlPlane: z.string().uuid().nullable(),
   bindings: z.object(
-    Object.fromEntries(capabilityBindingIds.map((id) => [id, z.string().uuid().nullable()])) as unknown as {
+    Object.fromEntries(capabilityBindingIds.map((id) => [id, id === "classifier_review.input" ? z.string().uuid().nullable().default(null) : z.string().uuid().nullable()])) as unknown as {
       [Id in CapabilityBindingId]: z.ZodType<string | null>;
     },
   ),
 });
 
 export const profileContracts: Record<ModelProfile, readonly string[]> = {
+  "tali.classifier-review.v1": ["tali.guard.classifier-review.v1"],
   "generic-chat": [],
   "tali.qwen3guard.v1": [
     "tali.guard.content-safety.v1",
@@ -131,6 +137,8 @@ export const profileContracts: Record<ModelProfile, readonly string[]> = {
   ],
   "tali.typesafe-jev-topic.v1": ["tali.guard.topic-control.semantic.v1"],
   "tali.typesafe-jev.v1": ["tali.guard.topic-control.semantic.v1", "tali.guard.jailbreak.v1", "tali.guard.content-safety.v1"],
+  "tali.laya-topic.v1": ["tali.guard.topic-control.semantic.v1"],
+  "tali.laya.v1": ["tali.guard.topic-control.semantic.v1", "tali.guard.jailbreak.v1", "tali.guard.content-safety.v1"],
   "tali.openai-compatible-pii.v1": ["tali.guard.pii.semantic.v1"],
   "tali.openai-compatible-jailbreak.v1": ["tali.guard.jailbreak.v1"],
   "tali.nemoguard-jailbreak-detect.v1": ["tali.guard.jailbreak.v1"],
@@ -143,6 +151,7 @@ export const profileContracts: Record<ModelProfile, readonly string[]> = {
 };
 
 export const profileTransports: Record<ModelProfile, ModelTransport> = {
+  "tali.classifier-review.v1": "openai_chat",
   "generic-chat": "openai_chat",
   "tali.qwen3guard.v1": "openai_chat",
   "tali.llama-guard-3.v1": "openai_chat",
@@ -151,6 +160,8 @@ export const profileTransports: Record<ModelProfile, ModelTransport> = {
   "tali.nemoguard-topic-control.v1": "openai_chat",
   "tali.typesafe-jev-topic.v1": "typesafe_systemone",
   "tali.typesafe-jev.v1": "typesafe_systemone",
+  "tali.laya-topic.v1": "laya_systemone",
+  "tali.laya.v1": "laya_systemone",
   "tali.openai-compatible-jailbreak.v1": "openai_chat",
   "tali.openai-compatible-pii.v1": "openai_chat",
   "tali.nemoguard-jailbreak-detect.v1": "nemoguard_jailbreak_detect",
@@ -213,6 +224,9 @@ export function assignmentTargetAcceptsModel(
 }
 
 export function providerAcceptsProfile(providerKind: ModelProviderKind, profile: ModelProfile): boolean {
+  if (providerKind === "laya" || isLayaProfile(profile)) {
+    return providerKind === "laya" && isLayaProfile(profile);
+  }
   if (providerKind === "typesafe" || isTypeSafeProfile(profile)) {
     return providerKind === "typesafe" && isTypeSafeProfile(profile);
   }

@@ -56,7 +56,7 @@ class JevNoulEvaluator:
                  lower_threshold: float = DEFAULT_LOWER_THRESHOLD,
                  upper_threshold: float = DEFAULT_UPPER_THRESHOLD,
                  transport: httpx.AsyncBaseTransport | None = None,
-                 skip_tls_verify: bool = False, profile_ref: str) -> None:
+                 skip_tls_verify: bool = False, profile_ref: str, reviewer=None) -> None:
         if not 0 <= lower_threshold < upper_threshold <= 1:
             raise ValueError("Expected 0 <= lower_threshold < upper_threshold <= 1.")
         self._url = base_url.rstrip("/") + "/systemone"
@@ -64,6 +64,11 @@ class JevNoulEvaluator:
         self._timeout, self._transport, self._skip_tls_verify = timeout_seconds, transport, skip_tls_verify
         self._lower, self._upper = lower_threshold, upper_threshold
         self._profile_ref = profile_ref
+        self._reviewer = reviewer
+
+    @property
+    def review_ready(self) -> bool:
+        return self._reviewer is not None
 
     def questions(self, request: EvaluationRequest) -> dict[str, dict[str, object]]:
         raise NotImplementedError
@@ -78,10 +83,35 @@ class JevNoulEvaluator:
     def revision(self, request: EvaluationRequest) -> str:
         return self.question_revision
 
+    def _trace(self, request: EvaluationRequest, verdict: str, reason: str,
+               probabilities: dict[str, float], actual_model: str | None = None,
+               error_type: str | None = None) -> RuntimeTraceStep:
+        judgments = {key: {"probability": p, "answer": "yes" if p >= self._upper else "no" if p <= self._lower else "uncertain"}
+                     for key, p in probabilities.items()}
+        evidence = json.dumps({"profile": self._profile_ref, "question_revision": self.revision(request),
+                               "requested_model": self._model, "response_model": actual_model,
+                               "thresholds": {"lower": self._lower, "upper": self._upper},
+                               "judgments": judgments}, sort_keys=True)
+        return RuntimeTraceStep(id=f"{request.binding.id}:jev", kind="evaluation", name=self.display_name,
+                                status="error" if verdict == "error" else "completed", detail=reason,
+                                evidence=evidence, verdict=verdict, error_type=error_type,
+                                timed_out=error_type in {"TimeoutError", "TimeoutException", "ReadTimeout", "ConnectTimeout", "PoolTimeout", "WriteTimeout"},
+                                contract_ref=request.binding.contract_ref, capability=request.capability,
+                                evaluator_id=self.id, profile_ref=self._profile_ref, model_name=actual_model or self._model,
+                                rail_type=request.rail_type, policy_id=request.policy_id,
+                                policy_version=request.policy_version, content_block_id=request.active_block_id)
+
+    def _error(self, request: EvaluationRequest, reason: str, *,
+               usage: EvaluationUsage = EvaluationUsage(), error_type: str | None = None) -> EvaluationResult:
+        # A failed call still proves the requested model and actual operating
+        # point. No probability or response model is invented for a failed parse.
+        return evaluation_result(request, "error", request.content, reason=reason, usage=usage,
+                                 trace=(self._trace(request, "error", reason, {}, error_type=error_type),))
+
     async def evaluate(self, request: EvaluationRequest) -> EvaluationResult:
         if (request.rail_type not in self.rails or request.capability not in self.capabilities
             or request.binding.contract_ref not in self.contracts):
-            return evaluation_result(request, "error", request.content, reason=f"Jev supports {self.scope_label} only.")
+            return self._error(request, f"Jev supports {self.scope_label} only.")
         call = None
         probabilities: dict[str, float] = {}
         actual_model: str | None = None
@@ -89,7 +119,7 @@ class JevNoulEvaluator:
             questions = self.questions(request)
             if questions:
                 if not self._api_key.strip():
-                    return evaluation_result(request, "error", request.content, reason="Jev credential is not configured.")
+                    return self._error(request, "Jev credential is not configured.")
                 deadline = min(request.deadline, time.monotonic() + self._timeout)
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
@@ -120,31 +150,26 @@ class JevNoulEvaluator:
                         call.complete(payload=payload)
         except (httpx.HTTPError, TimeoutError, ValueError, TypeError, KeyError) as error:
             record_validation_error(error)
-            return evaluation_result(request, "error", request.content,
-                                     reason=f"Jev {self.scope_label} evaluation failed: {type(error).__name__}.",
-                                     usage=action_usage(call, len(request.content)) if call is not None else EvaluationUsage())
-        judgments = {key: {"probability": p, "answer": "yes" if p >= self._upper else "no" if p <= self._lower else "uncertain"}
-                     for key, p in probabilities.items()}
+            return self._error(request, f"Jev {self.scope_label} evaluation failed: {type(error).__name__}.",
+                               error_type=type(error).__name__,
+                               usage=action_usage(call, len(request.content)) if call is not None else EvaluationUsage())
         verdict = ("matched" if any(p >= self._upper for p in probabilities.values()) else
                    "not_matched" if all(p <= self._lower for p in probabilities.values()) else "unknown")
         reason = self.reasons[verdict]
         # Machine-readable evidence for all outcomes; Noul is not a confidence or severity score.
-        evidence = json.dumps({"profile": self._profile_ref, "question_revision": self.revision(request),
-                               "requested_model": self._model, "response_model": actual_model,
-                               "thresholds": {"lower": self._lower, "upper": self._upper},
-                               "judgments": judgments}, sort_keys=True)
-        trace = RuntimeTraceStep(id=f"{request.binding.id}:jev", kind="evaluation", name=self.display_name,
-                                 status="completed", detail=reason, evidence=evidence, verdict=verdict,
-                                 contract_ref=request.binding.contract_ref, capability=request.capability,
-                                 evaluator_id=self.id, profile_ref=self._profile_ref, model_name=actual_model or self._model,
-                                 rail_type=request.rail_type, policy_id=request.policy_id,
-                                 policy_version=request.policy_version, content_block_id=request.active_block_id)
+        trace = self._trace(request, verdict, reason, probabilities, actual_model)
         findings = () if verdict != "matched" else (RiskFinding(
             risk=request.capability, taxonomy_id=taxonomy_for_evaluator(request.capability), verdict="matched",
             confidence=None, evidence=reason, recommended_action=request.proposed_action,
             provider_evidence=(ProviderEvidence(provider_id=self._provider_id, model=actual_model or self._model,
-                                               native_verdict=evidence),),
+                                               native_verdict=trace.evidence),),
         ),)
-        return evaluation_result(request, verdict, request.content, reason=reason, findings=findings,
+        result = evaluation_result(request, verdict, request.content, reason=reason, findings=findings,
                                  trace=(trace,), unknown_reason="uncertain",
                                  usage=action_usage(call, len(request.content)) if call is not None else EvaluationUsage())
+        from .classifier_review import review_enabled, unavailable_review
+        if verdict == "unknown" and review_enabled(request):
+            if self._reviewer is None:
+                return unavailable_review(request,result)
+            return await self._reviewer.review(request,questions,self.state(request),result)
+        return result

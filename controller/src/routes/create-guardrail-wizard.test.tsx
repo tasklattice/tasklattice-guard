@@ -332,10 +332,7 @@ describe("Create Guardrail wizard", () => {
   it("creates the actual full-feature v2 selection with all six model assignments missing", async () => {
     const directory = resolve("../runner/toolkit/policy_library/assets");
     const compiler = new DeclarativeCompiler(directory);
-    const catalog = PolicyCatalog.load(directory).list().map(policy => {
-      const definition = policy.protection.execution === "custom" ? compiler.shipped(policy.id) : null;
-      return definition ? { ...compiler.compile(definition), published_versions: policy.published_versions } : policy;
-    });
+    const catalog = PolicyCatalog.load(directory).list().map(policy => compiler.catalogView(policy));
     const draft = profileDraft(fullFeatureBaseline, catalog);
     const bindings = draft.policyBindings.map(binding => ({ policy_id: binding.policyId, policy_version: binding.policyVersion,
       action: binding.action, parameter_values: binding.parameterValues, enabled_rule_ids: binding.enabledRuleIds,

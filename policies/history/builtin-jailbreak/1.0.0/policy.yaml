@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=../../schemas/policy.schema.json
+schema_version: 2
+kind: Policy
+metadata:
+  id: builtin-jailbreak
+  name: Model Jailbreak Protection
+  description: Detects attempts to override trusted instructions using the validated Jailbreak Input Rail
+    binding.
+  source: built_in
+  version: 1.0.0
+  tags:
+  - namespace: protection
+    value: attacks_and_abuse
+    label: Attacks & abuse
+    source: declared
+  - namespace: guardrail_category
+    value: jailbreak_protection
+    label: Jailbreak Protection
+    source: declared
+parameters: []
+rules:
+- rules/model-jailbreak.yaml
+tests:
+- tests/acceptance.yaml

@@ -39,6 +39,7 @@ export const guardrailCategoryLabels: Record<GuardrailCategoryId, string> = {
 };
 
 export const modelCapabilityIds = [
+  "classifier_review",
   "content_safety",
   "jailbreak",
   "topic_control",
@@ -52,10 +53,14 @@ export type ModelCapabilityId = (typeof modelCapabilityIds)[number];
 export const controlPlaneProfileRefs = ["generic-chat"] as const;
 export const typeSafeProfileRefs = ["tali.typesafe-jev.v1", "tali.typesafe-jev-topic.v1"] as const;
 export const isTypeSafeProfile = (profile: string): profile is typeof typeSafeProfileRefs[number] => (typeSafeProfileRefs as readonly string[]).includes(profile);
+export const layaProfileRefs = ["tali.laya.v1", "tali.laya-topic.v1"] as const;
+export const isLayaProfile = (profile: string): profile is typeof layaProfileRefs[number] => (layaProfileRefs as readonly string[]).includes(profile);
 
 export const capabilityProfileRefs = {
+  classifier_review: ["tali.classifier-review.v1"],
   content_safety: [
     "tali.typesafe-jev.v1",
+    "tali.laya.v1",
     "tali.qwen3guard.v1",
     "tali.llama-guard-3.v1",
     "tali.nemotron-content-safety.v1",
@@ -63,11 +68,12 @@ export const capabilityProfileRefs = {
   ],
   jailbreak: [
     "tali.typesafe-jev.v1",
+    "tali.laya.v1",
     "tali.qwen3guard.v1",
     "tali.openai-compatible-jailbreak.v1",
     "tali.nemoguard-jailbreak-detect.v1",
   ],
-  topic_control: ["tali.taxonomy-judge.v1", "tali.nemoguard-topic-control.v1", ...typeSafeProfileRefs],
+  topic_control: ["tali.taxonomy-judge.v1", "tali.nemoguard-topic-control.v1", ...typeSafeProfileRefs, ...layaProfileRefs],
   pii_semantic: ["tali.openai-compatible-pii.v1", "tali.qwen3guard.v1"],
   contextual_grounding: ["tali.grounding-judge.v1"],
   automated_reasoning: ["tali.automated-reasoning.v1"],
@@ -77,26 +83,30 @@ export const capabilityProfileRefs = {
 // registered model can implement several bindings when its profile conforms to
 // every selected capability contract.
 export const capabilityProfilePreference = {
+  classifier_review: ["tali.classifier-review.v1"],
   content_safety: [
     "tali.nemotron-safety-guard-v3.v1",
     "tali.nemotron-content-safety.v1",
     "tali.llama-guard-3.v1",
     "tali.qwen3guard.v1",
     "tali.typesafe-jev.v1",
+    "tali.laya.v1",
   ],
   jailbreak: [
     "tali.typesafe-jev.v1",
+    "tali.laya.v1",
     "tali.nemoguard-jailbreak-detect.v1",
     "tali.openai-compatible-jailbreak.v1",
     "tali.qwen3guard.v1",
   ],
-  topic_control: ["tali.nemoguard-topic-control.v1", "tali.taxonomy-judge.v1", ...typeSafeProfileRefs],
+  topic_control: ["tali.nemoguard-topic-control.v1", "tali.taxonomy-judge.v1", ...typeSafeProfileRefs, ...layaProfileRefs],
   pii_semantic: ["tali.openai-compatible-pii.v1", "tali.qwen3guard.v1"],
   contextual_grounding: ["tali.grounding-judge.v1"],
   automated_reasoning: ["tali.automated-reasoning.v1"],
 } as const satisfies Record<ModelCapabilityId, readonly string[]>;
 
 export type CapabilityBindingId =
+  | "classifier_review.input"
   | "content_safety.input"
   | "content_safety.output"
   | "jailbreak.input"
@@ -126,6 +136,11 @@ const binding = (definition: CapabilityBindingDefinition): CapabilityBindingDefi
  */
 export const capabilityBindingDefinitions = [
   binding({
+    id: "classifier_review.input", categoryId: "content_safety", capabilityRef: "classifier_review", railType: "input",
+    implementationRef: "tali.runtime.classifier-review.v1", contractRefs: ["tali.guard.classifier-review.v1"],
+    profileRefs: capabilityProfileRefs.classifier_review, profilePreference: capabilityProfilePreference.classifier_review,
+  }),
+  binding({
     id: "content_safety.input", categoryId: "content_safety", capabilityRef: "content_safety", railType: "input",
     implementationRef: "tali.runtime.safety-model.v1", contractRefs: ["tali.guard.content-safety.v1"],
     profileRefs: capabilityProfileRefs.content_safety, profilePreference: capabilityProfilePreference.content_safety,
@@ -133,8 +148,8 @@ export const capabilityBindingDefinitions = [
   binding({
     id: "content_safety.output", categoryId: "content_safety", capabilityRef: "content_safety", railType: "output",
     implementationRef: "tali.runtime.safety-model.v1", contractRefs: ["tali.guard.content-safety.v1"],
-    profileRefs: capabilityProfileRefs.content_safety.filter(profile => profile !== "tali.typesafe-jev.v1"),
-    profilePreference: capabilityProfilePreference.content_safety.filter(profile => profile !== "tali.typesafe-jev.v1"),
+    profileRefs: capabilityProfileRefs.content_safety.filter(profile => profile !== "tali.typesafe-jev.v1" && profile !== "tali.laya.v1"),
+    profilePreference: capabilityProfilePreference.content_safety.filter(profile => profile !== "tali.typesafe-jev.v1" && profile !== "tali.laya.v1"),
   }),
   binding({
     id: "jailbreak.input", categoryId: "jailbreak_protection", capabilityRef: "jailbreak", railType: "input",

@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { configureModelDefinition, type ModelDefinition } from "@/lib/controller-api";
-import { isTypeSafeProfile } from "../../../shared/guardrail-catalog";
+import { isTypeSafeProfile, isLayaProfile } from "../../../shared/guardrail-catalog";
 import { profiles } from "./model-selection";
 
 // An optional, advanced capability configuration step for model aliases whose
@@ -61,11 +61,11 @@ export function ModelProtocolSettings({ models, disabled, onChanged }: {
               <Label htmlFor="model-protocol">{t("modelSettings.profile")}</Label>
               <Select value={model.profile} disabled={disabled || save.isPending || model.protocolEditable === false} onValueChange={(profile) => setModel({ ...model, profile: profile as ModelDefinition["profile"] })}>
                 <SelectTrigger id="model-protocol" className="field:h-11 w-full"><SelectValue /></SelectTrigger>
-                <SelectContent position="popper">{profiles.filter((profile) => model.providerKind === "typesafe" ? isTypeSafeProfile(profile) : !isTypeSafeProfile(profile)).map((profile) => <SelectItem key={profile} value={profile}>{t(`modelSettings.profiles.${profile}`)}</SelectItem>)}</SelectContent>
+                <SelectContent position="popper">{profiles.filter((profile) => model.providerKind === "typesafe" ? isTypeSafeProfile(profile) : model.providerKind === "laya" ? isLayaProfile(profile) : !isTypeSafeProfile(profile) && !isLayaProfile(profile)).map((profile) => <SelectItem key={profile} value={profile}>{t(`modelSettings.profiles.${profile}`)}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div className="space-y-2"><Label htmlFor="model-timeout">{t("modelSettings.timeout")}</Label><Input id="model-timeout" type="number" className="field:h-11" required min={1} max={120} value={model.timeoutSeconds} onChange={(event) => setModel({ ...model, timeoutSeconds: Number(event.target.value) })} /></div>
-            {!isTypeSafeProfile(model.profile) ? <div className="space-y-2"><Label htmlFor="model-token-limit">{t("modelSettings.maxTokens")}</Label><Input id="model-token-limit" type="number" className="field:h-11" required min={1} max={32768} value={model.maxTokens} onChange={(event) => setModel({ ...model, maxTokens: Number(event.target.value) })} /></div> : null}
+            {!isTypeSafeProfile(model.profile) && !isLayaProfile(model.profile) ? <div className="space-y-2"><Label htmlFor="model-token-limit">{t("modelSettings.maxTokens")}</Label><Input id="model-token-limit" type="number" className="field:h-11" required min={1} max={32768} value={model.maxTokens} onChange={(event) => setModel({ ...model, maxTokens: Number(event.target.value) })} /></div> : null}
           </fieldset> : null}
           {save.error ? <p role="alert" className="rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">{save.error.message}</p> : null}
         </form>

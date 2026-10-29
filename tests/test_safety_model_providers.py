@@ -278,6 +278,24 @@ async def test_nemotron_v3_rejects_ambiguous_or_invalid_safety_labels(label):
     assert result.usage.model_invocations == 1
 
 
+@pytest.mark.parametrize("label,verdict", [("safe", "not_matched"), ("unsafe", "matched")])
+async def test_native_classification_trace_preserves_labels_and_response_model_without_content(label, verdict):
+    provider = build_safety_model_provider(
+        _config("v3", "nemotron_safety_guard_v3", "requested-model"),
+        transport=httpx.MockTransport(lambda _: httpx.Response(200, json={
+            "model": "response-model", "choices": [{"message": {"content": json.dumps({
+                "User Safety": label, "Safety Categories": "Violence"})}}],
+        })),
+    )
+    result = await SafetyModelEvaluator((provider,)).evaluate(_request("private input"))
+    step, = result.trace
+    assert result.verdict == verdict
+    assert step.evaluator_id == "model-safety" and step.verdict == verdict
+    assert step.model_name == "response-model"
+    assert json.loads(step.evidence) == {"native_verdict": label, "requested_model": "requested-model", "response_model": "response-model"}
+    assert "private" not in step.evidence
+
+
 @pytest.mark.parametrize("label,verdict", [("unsafe", "matched"), ("safe", "not_matched")])
 async def test_nemotron_v3_manipulation_preserves_native_safety_verdict(label, verdict):
     provider = build_safety_model_provider(_config("v3", "nemotron_safety_guard_v3", "test-model"),

@@ -143,6 +143,7 @@ def register_scan(api, *, max_body_bytes: int, timeout_seconds: float) -> None:
         Custom flows and streaming plans retain their own short-circuit behavior.
         """
         scan_id = str(uuid4())
+        decision = None
         response_headers = {"X-Request-ID": scan_id, "X-TaskLattice-Scan-Compatibility": "v1"}
         try:
             authorization = request.headers.getlist("authorization")
@@ -237,5 +238,9 @@ def register_scan(api, *, max_body_bytes: int, timeout_seconds: float) -> None:
                 status, code, message = 503, "scan_unavailable", "The scan route or runtime is unavailable."
             else:
                 status, code, message = 500, "scan_internal_error", "The scan could not be processed."
+            if decision is not None:
+                if request.headers.get("x-guard-evidence") == "evaluations-v1":
+                    from .evaluation_evidence import RESPONSE_HEADER, evaluation_evidence
+                    response_headers[RESPONSE_HEADER] = evaluation_evidence(decision)
             return JSONResponse(status_code=status, headers=response_headers,
                 content={"detail": {"code": code, "message": message, "requestId": scan_id}})

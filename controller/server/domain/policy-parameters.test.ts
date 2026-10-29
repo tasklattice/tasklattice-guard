@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { emptyPolicyDefinition, definitionIssues, type PolicyDefinition } from "../../shared/policy-definition.js";
 import { activePolicyParameters, policyBindingParameterIssues } from "../../shared/policy-parameters.js";
 import { DeclarativeCompiler } from "../policy-studio/declarative.js";
+import { PolicyCatalog } from "../policy-catalog/catalog.js";
 import { buildGuardrailPlan, normalizeGuardrailDraft } from "./guardrail-plan.js";
 import { frozenBuiltInDefinition } from "./policy-node.js";
 
@@ -85,11 +86,22 @@ describe("model Policy parameter instantiation", () => {
 });
 
 describe("scoped classifier uncertainty handling", () => {
+  it.each(["builtin-jailbreak", "builtin-content-safety", "builtin-topic-safety"])("instantiates the shipped native %s parameter in the actual execution plan", id => {
+    const policies = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
+    const policy = policies.find(p => p.id === id)!;
+    const build = (version: string, on_unknown?: string) => buildGuardrailPlan({guardrailId: "native", guardrailVersion: "1", policies,
+      draft: normalizeGuardrailDraft({policyBindings: [{policyId: id, policyVersion: version,
+        enabledRuleIds: policy.rules.map(r => r.id), enabledRails: ["input"],
+        parameterValues: {denied_topics: "Fraud", topic_mode: "permissive", ...(on_unknown ? {on_unknown} : {})}}]})});
+    expect(stepValues(build(policy.version))).toEqual(expect.arrayContaining([expect.objectContaining({on_unknown: "block"})]));
+    expect(stepValues(build(policy.version, "allow")).every(p => p.on_unknown === "allow")).toBe(true);
+    expect(() => build(policy.version, "ignore")).toThrow("on_unknown must be allow or block");
+    const previous = id === "builtin-topic-safety" ? "2.0.0" : "1.0.0";
+    expect(stepValues(build(previous, "allow")).every(p => p.on_unknown === undefined)).toBe(true);
+  });
   function classifier(id = "builtin-jailbreak") {
     const definition = compiler.shipped(id)!;
     definition.metadata.id = "explicit-classifier-enforcement";
-    definition.parameters.push(parameter("on_unknown", "text", false, "block"));
-    for (const rule of definition.rules) rule.detector.parameters.on_unknown = "{{on_unknown}}";
     return definition;
   }
   it.each(["builtin-jailbreak", "builtin-content-safety", "builtin-topic-safety"])("pins %s uncertainty without changing matched actions", id => {
@@ -99,7 +111,7 @@ describe("scoped classifier uncertainty handling", () => {
     expect(stepValues(observe).every(p => p.on_unknown === "allow")).toBe(true);
     expect((observe.steps as Array<{on_unsafe:string}>).every(s => s.on_unsafe === "block")).toBe(true);
     expect(() => plan(definition, { on_unknown: "ignore" })).toThrow("on_unknown must be allow or block");
-    expect(stepValues(plan(compiler.shipped(id)!, {}))[0]!.on_unknown).toBeUndefined();
+    expect(stepValues(plan(compiler.shipped(id)!, {})).every(p => p.on_unknown === "block")).toBe(true);
   });
   it("rejects invalid literals and unsupported detector scopes", () => {
     const definition = classifier();definition.rules[0]!.detector.parameters.on_unknown = "ignore";
