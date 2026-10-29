@@ -52,6 +52,8 @@ export function ControlPlaneLayout() {
   const { t } = useTranslation();
   const auth = useAuth();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
+  // Documentation is public, including while the session is loading or unavailable.
+  if (pathname === "/document" || pathname.startsWith("/document/") || ["/help", "/help/"].includes(pathname)) return <HelpLayout />;
   const location = names[pathname]
     ?? (pathname.startsWith("/account/") ? names["/account"] : undefined)
     ?? (pathname.startsWith("/guardrails/") ? names["/guardrails"] : undefined)
@@ -61,7 +63,6 @@ export function ControlPlaneLayout() {
     return <div className="flex min-h-dvh items-center justify-center bg-background"><div className="flex items-center gap-3 text-sm text-muted-foreground"><ShieldCheck className="size-5 animate-pulse text-primary" />{t("auth.sessionLoading")}</div></div>;
   }
   if (!auth.status?.authenticated || !auth.user) return <LoginPage />;
-  if (pathname === "/document" || pathname.startsWith("/document/") || ["/help", "/help/"].includes(pathname)) return <HelpLayout />;
   const home = roleHome(auth.user.role);
   if (["/", "/dashboard"].includes(pathname)) return <Navigate to={home} replace />;
   const permission = pagePermission(pathname);

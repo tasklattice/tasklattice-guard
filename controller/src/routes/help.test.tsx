@@ -1,31 +1,38 @@
 import i18n from "@/i18n";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { routeTree } from "../app-router";
 import { getHelpContent } from "../features/help-content";
+import { AuthProvider } from "@/lib/auth";
 
-// Exercise the real document routes and links without session/backend requests.
-vi.mock("@/routes/layout", async () => {
-  const { Outlet } = await import("@tanstack/react-router");
-  return { ControlPlaneLayout: () => <Outlet /> };
-});
+// Keep the real authentication boundary and document layouts. Only the session
+// service is stubbed so these navigation tests run as an anonymous reader.
+const mocks = vi.hoisted(() => ({ getAuthStatus: vi.fn() }));
+vi.mock("@/lib/identity-api", () => ({
+  getAuthStatus: mocks.getAuthStatus, login: vi.fn(), logout: vi.fn(), updateMe: vi.fn(),
+}));
 
 const startPath = "/document/overview/quickstart-protection";
 const policyPath = "/document/overview/glossary-definition";
 const scrollIntoView = vi.fn();
 let documentScrollTop = 0;
+const queryClients: QueryClient[] = [];
 
 async function mount(path: string) {
   const history = createMemoryHistory({ initialEntries: [path] });
   const router = createRouter({ routeTree, history, defaultPendingMinMs: 0 });
   await router.load();
-  const view = render(<RouterProvider router={router} />);
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  queryClients.push(client);
+  const view = render(<QueryClientProvider client={client}><AuthProvider><RouterProvider router={router} /></AuthProvider></QueryClientProvider>);
   await act(async () => { await new Promise(requestAnimationFrame); });
   return { ...view, router, history };
 }
 
 beforeEach(async () => {
+  mocks.getAuthStatus.mockResolvedValue({ authenticated: false, user: null });
   await i18n.changeLanguage("en");
   documentScrollTop = 0;
   // jsdom gives every section top=0. The scroll observer would then select
@@ -46,9 +53,30 @@ beforeEach(async () => {
   vi.spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(scrollIntoView);
   vi.spyOn(window, "scrollTo").mockImplementation(() => {});
 });
-afterEach(() => { cleanup(); vi.restoreAllMocks(); scrollIntoView.mockClear(); });
+afterEach(() => {
+  cleanup();
+  queryClients.splice(0).forEach(client => client.clear());
+  vi.restoreAllMocks();
+  vi.clearAllMocks();
+});
 
 describe("document page navigation", () => {
+  it.each(getHelpContent("en").documents)("opens $categoryId/$id without a session", async article => {
+    const { router } = await mount(`/document/${article.categoryId}/${article.id}`);
+    await screen.findByRole("heading", { level: 1, name: article.title });
+    expect(router.state.location.pathname).toBe(`/document/${article.categoryId}/${article.id}`);
+    expect(mocks.getAuthStatus).toHaveBeenCalled();
+  });
+
+  it.each(["loading", "error"])("opens a section while the session service is %s", async state => {
+    if (state === "loading") mocks.getAuthStatus.mockImplementation(() => new Promise(() => {}));
+    else mocks.getAuthStatus.mockRejectedValue(new Error("Session unavailable"));
+    const { router } = await mount(`${policyPath}#term-rule-implementation`);
+    await screen.findByRole("heading", { level: 1, name: getHelpContent("en").documents.find(article => article.id === "glossary-definition")!.title });
+    await waitFor(() => expect(document.activeElement?.id).toBe("term-rule-implementation"));
+    expect(router.state.location.href).toBe(`${policyPath}#term-rule-implementation`);
+  });
+
   it("uses article paths, section fragments, and browser back/forward", async () => {
     const { container, router, history } = await mount(startPath);
     const content = getHelpContent("en");
@@ -99,6 +127,8 @@ describe("document page navigation", () => {
     ["/document#quickstart-protection", startPath],
     ["/document#concept-scenario", startPath],
     ["/document#term-rule-actions", `${policyPath}#term-rule-actions`],
+    ["/help", startPath],
+    ["/help/#term-rule-actions", `${policyPath}#term-rule-actions`],
   ])("redirects %s to its article address", async (from, to) => {
     const { router } = await mount(from);
     await waitFor(() => expect(router.state.location.href).toBe(to));

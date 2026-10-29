@@ -24,11 +24,11 @@ function validate(schema: object, value: unknown) {
   const check = ajv.compile({ ...schema, components: contract.components });
   return { valid: check(value), errors: check.errors };
 }
-function setup() {
+function setup(authenticated = true) {
   const config = loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: "postgresql://test:test@localhost/test",
     CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters", CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/test-key.pem",
     CONTROLLER_POLICY_CATALOG_DIR: resolve("../runner/toolkit/policy_library/assets"), BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters" });
-  return createHttpApp({ config, auth: { api: { getSession: vi.fn().mockResolvedValue({ user: { id: "reader", role: "user" } }) } } as unknown as ControllerAuth,
+  return createHttpApp({ config, auth: { api: { getSession: vi.fn().mockResolvedValue(authenticated ? { user: { id: "reader", role: "user" } } : null) } } as unknown as ControllerAuth,
     service: { trafficRouting: { list: async () => [] } } as unknown as ControlPlaneService,
     runnerControl: {} as RunnerControlServer, metrics: { registry: new Registry() } as ControllerMetrics });
 }
@@ -128,7 +128,7 @@ describe("Generated OpenAPI contract", () => {
     expect(Object.keys(filtered.components.schemas).length).toBeLessThan(Object.keys(contract.components.schemas).length);
   });
   it("serves docs and a single-operation contract without a session, rejects unknown filters", async () => {
-    const app = setup();
+    const app = setup(false);
     const response = await app.request("/api/openapi.json?operationId=postRoutersByIdChangeRequestsByChangeIdApprove");
     expect(response.status).toBe(200);
     const document = await response.json() as any;
