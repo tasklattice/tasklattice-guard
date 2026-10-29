@@ -35,6 +35,7 @@ from .metrics import RunnerMetrics
 from .providers import dynamic_runtime_action_providers
 from .protocol_codec import validation_case_result_to_proto, validation_metrics_to_proto
 from .validator import DefaultRunnerValidator
+from .toolkit.nemo.actions.model_retry import configure_provider_retry
 
 
 logger = logging.getLogger("tasklattice.guard.runner.control")
@@ -42,9 +43,11 @@ logger = logging.getLogger("tasklattice.guard.runner.control")
 
 def _prepare_model_dependencies(
     configuration: protocol.DataPlaneModelConfiguration, credentials: dict[str, str],
+    jev_thresholds: tuple[float, float] | None = None,
 ) -> tuple[ActionProviders, tuple[NativeRailModel, ...]]:
     with diagnostic_phase("desired_state.models", model_revision_id=configuration.revision_id):
-        providers = action_providers(*dynamic_runtime_action_providers(configuration, credentials))
+        providers = action_providers(*dynamic_runtime_action_providers(
+            configuration, credentials, jev_thresholds=jev_thresholds))
         return providers, native_rail_models(configuration, credentials)
 
 
@@ -74,6 +77,7 @@ class RunnerControlClient:
         self._heartbeat_interval = 10
         self._sequence = 0
         self._capability_tasks: set[asyncio.Task] = set()
+        configure_provider_retry(int(getattr(settings, "model_rate_limit_attempts", 3)))
         self._validation_lock = asyncio.Lock()
         # Reconnect retries replay results without executing the test suite again.
         # Bound both the number and serialized size of retained results.
@@ -297,6 +301,10 @@ class RunnerControlClient:
                 if materialization_key != self._materialization_key:
                     providers, native_models = await prepare(
                         _prepare_model_dependencies, desired_state.model_configuration, credentials,
+                        jev_thresholds=(
+                            float(getattr(self._settings, "jev_lower_threshold", 0.1)),
+                            float(getattr(self._settings, "jev_upper_threshold", 0.9)),
+                        ),
                     )
             else:
                 materialization_key = None

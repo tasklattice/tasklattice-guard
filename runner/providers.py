@@ -95,8 +95,14 @@ def dynamic_runtime_action_providers(
     credentials: dict[str, str],
     *,
     transport: httpx.AsyncBaseTransport | None = None,
+    jev_thresholds: tuple[float, float] | None = None,
 ) -> tuple[ActionProvider, ...]:
-    """Build a complete provider registry from one Controller-owned revision."""
+    """Build a complete provider registry from one Controller-owned revision.
+
+    ``jev_thresholds`` sets the Jev uncertainty band (lower, upper). Probabilities
+    strictly inside it are reported as ``unknown``, which a blocking Policy treats
+    as fail-closed. Deployments tune it through Runner configuration.
+    """
 
     source_profiles = {item.id: item.profile_ref for item in configuration.runtimes}
     for binding in configuration.bindings:
@@ -171,6 +177,8 @@ def dynamic_runtime_action_providers(
             base_url=runtime.base_url, model=runtime.model, api_key=runtime.api_key or "",
             provider_id=runtime.id, timeout_seconds=runtime.timeout_seconds,
             skip_tls_verify=runtime.skip_tls_verify, transport=transport,
+            **({"lower_threshold": jev_thresholds[0], "upper_threshold": jev_thresholds[1]}
+               if jev_thresholds else {}),
         )
         routes.append(EvaluationRoute(capability, next(iter(evaluator.contracts)), evaluator))
     providers: list[ActionProvider] = [

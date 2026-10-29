@@ -1497,3 +1497,24 @@ def test_local_profile_never_pulls_any_workload_or_helper_image():
         pod = item["spec"] if item["kind"] == "Pod" else item.get("spec", {}).get("template", {}).get("spec", {})
         for field in ("containers", "initContainers"):
             assert all(container["imagePullPolicy"] == "Never" for container in pod.get(field, []))
+
+
+def test_runner_validation_and_jev_limits_are_system_configuration():
+    runner = next(item for item in render() if item["kind"] == "StatefulSet" and item["metadata"]["name"].endswith("-runner"))
+    env = {entry["name"]: entry.get("value") for entry in runner["spec"]["template"]["spec"]["containers"][0]["env"]}
+    assert env["GUARD_VALIDATION_MAX_CONCURRENCY"] == "8"
+    assert env["GUARD_MODEL_RATE_LIMIT_ATTEMPTS"] == "3"
+    assert env["GUARD_JEV_LOWER_THRESHOLD"] == "0.1"
+    assert env["GUARD_JEV_UPPER_THRESHOLD"] == "0.9"
+
+    tuned = next(item for item in render(
+        "--set", "runner.validation.maxConcurrency=1",
+        "--set", "runner.validation.providerRateLimitAttempts=5",
+        "--set-json", "runner.jev.lowerThreshold=0.4",
+        "--set-json", "runner.jev.upperThreshold=0.6",
+    ) if item["kind"] == "StatefulSet" and item["metadata"]["name"].endswith("-runner"))
+    tuned_env = {entry["name"]: entry.get("value") for entry in tuned["spec"]["template"]["spec"]["containers"][0]["env"]}
+    assert tuned_env["GUARD_VALIDATION_MAX_CONCURRENCY"] == "1"
+    assert tuned_env["GUARD_MODEL_RATE_LIMIT_ATTEMPTS"] == "5"
+    assert tuned_env["GUARD_JEV_LOWER_THRESHOLD"] == "0.4"
+    assert tuned_env["GUARD_JEV_UPPER_THRESHOLD"] == "0.6"

@@ -1,0 +1,42 @@
+schema_version: 2
+kind: Policy
+metadata:
+  id: local-data-use-boundaries
+  name: Personal Data Use Boundaries
+  description: Local patterns for unauthorized disclosure, sensitive-data profiling, unsolicited contact and
+    data-transfer requests.
+  source: built_in
+  version: 4.0.0
+  tags:
+  - namespace: protection
+    value: business_rules
+    label: Business Rules
+    source: declared
+  - namespace: guardrail_category
+    value: agentic_security
+    label: Agentic Security
+    source: declared
+  - namespace: framework
+    value: pdpa
+    label: Singapore PDPA
+    source: declared
+  - namespace: jurisdiction
+    value: sg
+    label: Singapore
+    source: declared
+  safety_level: balanced
+  output_delivery: full_buffered
+parameters: []
+execution:
+  mode: sequential
+  input: previous_output
+  stop_on: block
+rules:
+- rules/claims-phi-disclosure-filter--claims_phi_disclosure.yaml
+- rules/sg-pdpa-personal-identifiers--sg_pdpa_personal_identifiers.yaml
+- rules/sg-pdpa-sensitive-data--sg_pdpa_sensitive_data.yaml
+- rules/sg-pdpa-do-not-call--sg_pdpa_do_not_call.yaml
+- rules/sg-pdpa-data-transfer--sg_pdpa_data_transfer.yaml
+- rules/sg-pdpa-profiling-automated-decisions--sg_pdpa_profiling_automated_decisions.yaml
+tests:
+- tests/acceptance.yaml

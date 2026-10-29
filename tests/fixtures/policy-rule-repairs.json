@@ -114,6 +114,13 @@
       "previousSha256": "8114e10bf4c15777dd71340ed063f727e1a2689cae69a79cac67858a0f5ebe56",
       "version": "4.3.0",
       "sha256": "066d2a49280b17f6b52cc1a2c21e8628e8ab1b30d7267b5425778b2de3e1982e"
+    },
+    "local-data-use-boundaries/claims-phi-disclosure-filter/claims_phi_disclosure": {
+      "previousVersion": "4.0.0",
+      "previousSha256": "a681d5e91819992fe7759695dd545bdb89193c5a9b1a19d1b1e74868a225129b",
+      "version": "4.0.1",
+      "sha256": "1681ee0b014dbd07ab045d1f21e448f1fb68ff4c76790d17a1f0a6b7447d7918",
+      "reason": "Access-process guidance alone is not PHI disclosure. Retain direct retrieval and explicit unauthorized-access intent; regression cases cover both sides."
     }
   },
   "samePolicyAliases": [

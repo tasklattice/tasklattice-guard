@@ -93,7 +93,7 @@ async def test_exhausted_connect_stays_execution_error_with_bounded_attempts(kin
 
 
 @pytest.mark.parametrize('kind', ['nvidia', 'jev'])
-@pytest.mark.parametrize('failure', ['401', '403', '429', '503', 'malformed', 'read', 'certificate', 'dns'])
+@pytest.mark.parametrize('failure', ['401', '403', '503', 'malformed', 'read', 'certificate', 'dns'])
 async def test_does_not_repeat_billable_or_permanent_failures(kind, failure):
     calls = []
     def handler(request):
@@ -110,6 +110,43 @@ async def test_does_not_repeat_billable_or_permanent_failures(kind, failure):
     result = await service(kind, handler).evaluate(jailbreak_request())
     assert result.verdict == 'error' and len(calls) == 1
     assert result.usage.model_calls[0].retries == 0
+
+
+@pytest.mark.parametrize('kind', ['nvidia', 'jev'])
+@pytest.mark.parametrize('attempts', [1, 3])
+async def test_rate_limit_exhaustion_is_bounded_and_remains_an_error(kind, attempts, monkeypatch):
+    monkeypatch.setattr('runner.toolkit.nemo.actions.model_retry._rate_limit_attempts', attempts)
+    calls = []
+
+    def handler(request):
+        calls.append(request.content)
+        return httpx.Response(429, headers={'Retry-After': '0'})
+
+    result = await service(kind, handler).evaluate(jailbreak_request())
+    assert result.verdict == 'error' and not result.findings
+    assert len(calls) == attempts and all(body == calls[0] for body in calls)
+    usage = result.usage.model_calls[0]
+    assert (usage.result, usage.error_type, usage.retries) == (
+        'rate_limited', 'http_429', attempts - 1,
+    )
+
+
+@pytest.mark.parametrize('kind', ['nvidia', 'jev'])
+async def test_rate_limit_recovery_preserves_request_and_model_verdict(kind, monkeypatch):
+    monkeypatch.setattr('runner.toolkit.nemo.actions.model_retry._rate_limit_attempts', 3)
+    calls = []
+
+    def handler(request):
+        calls.append(request.content)
+        if len(calls) == 1:
+            return httpx.Response(429, headers={'Retry-After': '0'})
+        return answer(request, matched=True)
+
+    result = await service(kind, handler).evaluate(jailbreak_request())
+    assert result.verdict == 'matched'
+    assert len(calls) == 2 and calls[0] == calls[1]
+    usage = result.usage.model_calls[0]
+    assert (usage.result, usage.error_type, usage.retries) == ('success', 'none', 1)
 
 
 @pytest.mark.parametrize('kind', ['nvidia', 'jev'])

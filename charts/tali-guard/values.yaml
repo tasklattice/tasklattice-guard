@@ -111,6 +111,17 @@ runner:
   # Managed Redis URL; required for multi-replica pools unless redis.enabled=true.
   # Cannot be combined with redis.enabled=true.
   callContextRedisUrl: ""
+  # Test execution and provider recovery. Lower maxConcurrency for providers with
+  # small quotas; explicit HTTP 429 responses are retried with bounded backoff.
+  validation:
+    maxConcurrency: 8
+    providerRateLimitAttempts: 3
+  # Jev reports "uncertain" strictly between these probabilities, and a blocking
+  # Policy then fails closed. Narrow the band (for example 0.4/0.6) to reduce
+  # uncertainty; leaving the defaults keeps the widest reviewed safety margin.
+  jev:
+    lowerThreshold: 0.1
+    upperThreshold: 0.9
   callContext:
     ttlSeconds: 300
     # Upgrade all readers before enabling compression on an older installation.

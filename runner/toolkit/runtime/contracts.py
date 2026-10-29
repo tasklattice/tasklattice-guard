@@ -60,7 +60,7 @@ AutomatedReasoningResult = Literal[
     "no_translations",
 ]
 FailureMode = Literal["fail_open", "fail_closed"]
-FragmentStatus = Literal["pass", "intervene", "needs_context", "uncovered", "error"]
+FragmentStatus = Literal["pass", "intervene", "uncertain", "needs_context", "uncovered", "error"]
 CoverageStatus = Literal["complete", "partial", "none"]
 EnforcementMode = Literal["enforce", "detect"]
 # Two questions in one field: how much to report, and whether a request may stop

@@ -29,7 +29,7 @@ def allowed_decision(request: ProtectionRequest, resolution: PlanResolution, mod
             or (detected.coverage and detected.coverage.required_modules_completed < detected.coverage.required_modules_total)
             else None)
         actions = {f.recommended_action for f in detected.findings if f.verdict == "matched"}
-        actions.update(f.action for a in detected.assessments if a.status == "intervene" for f in a.fragments)
+        actions.update(f.action for a in detected.assessments if a.status in {"intervene", "uncertain"} for f in a.fragments)
         observed = "block" if detected.decision == "block" or "block" in actions else "transform" if detected.decision == "transform" or actions & {"mask", "redact", "replace", "transform"} else "allow"
     return replace(base, decision="allow", action="allow", texts=(), interventions=(),
         reason=trace.detail, protection_mode=mode, mode="detect" if mode == "monitor" else request.mode,
