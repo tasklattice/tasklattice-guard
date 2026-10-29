@@ -80,7 +80,7 @@ describe("Topic Policy configuration", () => {
   it("upgrades v1 explicitly without mutating saved settings", () => {
     const original = defaultPolicyBinding(policy.published_versions![0]!);
     const upgraded = upgradeTopicBinding(original, "Orders", "Fraud", "strict");
-    expect(upgraded).toMatchObject({ policy_version: "2.0.0", enabled_rule_ids: [DENY, ALLOW], parameter_values: { allowed_topics: "Orders", denied_topics: "Fraud", topic_mode: "strict" } });
+    expect(upgraded).toMatchObject({ policy_version: policy.version, enabled_rule_ids: [DENY, ALLOW], parameter_values: { allowed_topics: "Orders", denied_topics: "Fraud", topic_mode: "strict" } });
     expect(original.policy_version).toBe("1.0.0");
     expect(original.enabled_rule_ids).toEqual(["model/topic-control"]);
   });

@@ -72,8 +72,12 @@ def test_topic_parameter_defaults_do_not_break_unrelated_local_rules() -> None:
     topic = loaded.policy("builtin-topic-safety")
     assert {item.name: item.default for item in topic.parameters} == {
         "allowed_topics": "", "denied_topics": "", "topic_mode": "permissive",
+        "on_unknown": "block", "review_unknown": "false",
     }
-    assert all(item.placeholder == "" for item in topic.parameters)
+    assert {item.name: item.placeholder for item in topic.parameters} == {
+        "allowed_topics": "", "denied_topics": "", "topic_mode": "",
+        "on_unknown": "block or allow", "review_unknown": "true or false",
+    }
     credentials = policy("local-credentials")
     case = next(item for item in credentials.test_cases
                 if "credentials-api-keys/aws_access_key" in item.covered_rule_ids and item.phase == "input")
