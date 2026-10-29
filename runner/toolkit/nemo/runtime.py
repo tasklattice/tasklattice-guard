@@ -3165,7 +3165,7 @@ def _result_group_key(item: _RuntimeResult) -> tuple[str, ...]:
 
 def _runtime_action(item):
     # Observation-only Rules must not start enforcing when a model abstains.
-    # Jailbreak Rules may explicitly observe abstentions while still blocking
+    # Classifier Rules may explicitly observe abstentions while still blocking
     # positive matches. The signed, versioned plan pins this local handling;
     # it never changes model questions, probability thresholds or the verdict.
     # Other capabilities and absent/invalid values retain conservative handling.
@@ -3173,7 +3173,7 @@ def _runtime_action(item):
     if item.result.verdict == "unknown":
         if item.binding.on_unsafe == "allow":
             return "allow"
-        if item.binding.capability == "jailbreak" and item.binding.parameter("on_unknown") == "allow":
+        if item.binding.capability in {"jailbreak", "content_safety", "topic_control"} and item.binding.parameter("on_unknown") == "allow":
             return "allow"
         return "block"
     reasoning = tuple(

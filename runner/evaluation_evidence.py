@@ -42,12 +42,15 @@ def evaluation_evidence(decision: ProtectionDecision) -> str:
         payload["context"] = {"status": "degraded", "reason": "redis_capacity",
                               "historyAvailable": json.loads(context_step.evidence or "{}").get("historyAvailable", False),
                               "currentContentChecked": execution_status(decision) == "complete"}
-    evaluator_capabilities = {"typesafe-jev-jailbreak": "jailbreak", "typesafe-jev-content-safety": "content_safety"}
+    evaluator_capabilities = {"typesafe-jev-jailbreak": "jailbreak", "typesafe-jev-content-safety": "content_safety",
+                              "typesafe-jev-topic": "topic_control"}
+    probability_keys = {"jailbreak": {"jailbreak_attempt", "unsafe_pretext"}, "content_safety": {"unsafe_content"},
+                        "topic_control": {"denied_task", "unlisted_task"}}
     traces = [s for s in decision.trace if s.kind == "evaluation"
               and evaluator_capabilities.get(s.evaluator_id) == s.capability and s.evaluator_id in evaluator_capabilities]
     # Failed calls may have only the enclosing model action, without a custom evaluation step.
     traces += [s for s in decision.trace if s.kind == "action" and s.capability in evaluator_capabilities.values()
-               and s.profile_ref == "tali.typesafe-jev.v1"
+               and s.profile_ref in {"tali.typesafe-jev.v1", "tali.typesafe-jev-topic.v1"}
                and not any(e.policy_id == s.policy_id and e.capability == s.capability and e.content_block_id == s.content_block_id for e in traces)]
     for step in traces:
         if step.verdict not in {"matched", "not_matched", "unknown", "error"}:
@@ -74,7 +77,7 @@ def evaluation_evidence(decision: ProtectionDecision) -> str:
             judgments = native.get("judgments", {})
             if isinstance(judgments, dict):
                 row["probabilities"] = {k: answer["probability"] for k, answer in judgments.items()
-                    if k in ({"unsafe_content"} if step.capability == "content_safety" else {"jailbreak_attempt", "unsafe_pretext"}) and isinstance(answer, dict)
+                    if k in probability_keys[step.capability] and isinstance(answer, dict)
                     and type(answer.get("probability")) in (int, float)
                     and math.isfinite(answer["probability"]) and 0 <= answer["probability"] <= 1}
         except (ValueError, TypeError):

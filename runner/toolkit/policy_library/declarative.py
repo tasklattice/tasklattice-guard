@@ -224,7 +224,9 @@ def compile_policy(definition: PolicyDefinition, registry: dict[str, Any]) -> di
         if detector is None or detector["version"] != rule.detector.version:
             raise ValueError(f"Rule {rule.id}: registered detector/version unavailable: {rule.detector.ref}@{rule.detector.version}")
         params = deepcopy(rule.detector.parameters)
-        runtime_parameters = {"on_unknown"} if rule.detector.ref == "model/classifier" and params.get("profile") == "jailbreak-classification" else set()
+        runtime_parameters = {"on_unknown"} if rule.detector.ref == "model/classifier" and params.get("profile") in {
+            "jailbreak-classification", "safety-classification", "topic-classification",
+        } else set()
         unknown = set(params) - set(detector["parameters"]) - runtime_parameters
         if unknown:
             raise ValueError(f"Rule {rule.id}: unknown detector parameters {sorted(unknown)}")

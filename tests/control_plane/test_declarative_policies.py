@@ -396,9 +396,22 @@ def test_bundled_strict_jailbreak_preserves_uncertainty_parameter():
     with pytest.raises(ValueError, match="on_unknown must be"):
         compile_policy(definition(candidate), sources.registry())
     candidate["rules"][0]["detector"]["parameters"] = {
-        "profile": "safety-classification", "on_unknown": "block",
+        "profile": "pii-classification", "on_unknown": "block",
     }
     with pytest.raises(ValueError, match="unknown detector parameters"):
+        compile_policy(definition(candidate), sources.registry())
+
+
+@pytest.mark.parametrize("profile", ["safety-classification", "topic-classification"])
+def test_classifier_uncertainty_parameter_survives_package_compilation(profile):
+    package = load_package(ROOT / "policies/builtin/builtin-jailbreak-strict")
+    candidate = package.definition.model_dump()
+    candidate["rules"][0]["detector"]["parameters"]["profile"] = profile
+    compiled = compile_policy(definition(candidate), sources.registry())
+    assert compiled["rules"][0]["detector_options"]["on_unknown"] == "{{on_unknown}}"
+    assert compiled["rules"][0]["effect"] == "block"
+    candidate["rules"][0]["detector"]["parameters"]["on_unknown"] = "ignore"
+    with pytest.raises(ValueError, match="on_unknown must be"):
         compile_policy(definition(candidate), sources.registry())
 
 
