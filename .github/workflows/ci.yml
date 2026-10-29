@@ -76,6 +76,17 @@ jobs:
         working-directory: controller
         run: npm run typecheck && npm run build
 
+      - name: Upload tested Controller build
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.runner_image }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: controller-build-${{ github.sha }}
+          path: |
+            controller/dist/
+            controller/dist-server/
+          retention-days: 1
+          if-no-files-found: error
+
   runner-cli:
     name: Runner guardctl (${{ matrix.architecture }})
     runs-on: ${{ matrix.runner }}
