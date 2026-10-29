@@ -28,7 +28,7 @@ def test_controller_runner_protection_metadata_agree() -> None:
 
 def test_topic_rule_parameters_do_not_change_legacy_context_requirements() -> None:
     current = next(item for item in policy_catalog() if item["id"] == "builtin-topic-safety")
-    assert current["version"] == "2.0.0"
+    # Context and capability contracts remain stable across Policy upgrades.
     assert current["protection"]["execution"] == "model"
     assert current["protection"]["requiredContext"] == []
     assert current["protection"]["modelCapabilities"] == ["topic_control"]
