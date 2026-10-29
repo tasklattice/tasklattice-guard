@@ -16,8 +16,9 @@ export function modelParameterFields(rule: DefinitionRule): ModelParameterField[
     { key: "topic_mode", name: "topic_mode", kind: "text", default: "permissive", required: true },
     { key: "allowed_topics", name: "allowed_topics", kind: "textarea", default: null, required: false },
     { key: "restricted_topics", name: "denied_topics", kind: "textarea", default: null, required: false },
+    { key: "on_unknown", name: "on_unknown", kind: "text", default: "block", required: false },
   ];
-  if (rule.detector.ref === "model/classifier" && rule.detector.parameters.profile === "jailbreak-classification") return [
+  if (rule.detector.ref === "model/classifier" && ["jailbreak-classification", "safety-classification"].includes(String(rule.detector.parameters.profile))) return [
     { key: "on_unknown", name: "on_unknown", kind: "text", default: "block", required: false },
   ];
   if (rule.detector.ref === "model/grounding") return ["grounding_threshold", "relevance_threshold"].map(key => ({ key, name: key, kind: "number", default: "0.7", required: true }));
@@ -39,7 +40,7 @@ export function modelParameterDeclarationIssues(definition: PolicyDefinition): s
     const fields = modelParameterFields(rule);
     if (rule.detector.parameters.on_unknown !== undefined) {
       const value = rule.detector.parameters.on_unknown;
-      if (!fields.some(field => field.key === "on_unknown")) issues.push(`Rule ${rule.name || rule.id}: on_unknown is supported only by the jailbreak classifier.`);
+      if (!fields.some(field => field.key === "on_unknown")) issues.push(`Rule ${rule.name || rule.id}: on_unknown is supported only by the jailbreak, content safety and topic classifiers.`);
       else if (!parameterReferences(value).length && !["allow", "block"].includes(String(value))) issues.push(`Rule ${rule.name || rule.id}: on_unknown must be allow or block.`);
     }
     for (const [key, value] of Object.entries(rule.detector.parameters)) {

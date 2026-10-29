@@ -92,6 +92,10 @@ spec:
             - { name: GUARD_RUNNER_CALL_CONTEXT_TTL_SECONDS, value: {{ $root.Values.runner.callContext.ttlSeconds | quote }} }
             - { name: GUARD_RUNNER_CALL_CONTEXT_COMPRESS_PLANS, value: {{ $root.Values.runner.callContext.compressPlans | quote }} }
             - { name: GUARD_RUNNER_CALL_CONTEXT_CAPACITY_FALLBACK, value: {{ $root.Values.runner.callContext.capacityFallback | quote }} }
+            - { name: GUARD_VALIDATION_MAX_CONCURRENCY, value: {{ $root.Values.runner.validation.maxConcurrency | quote }} }
+            - { name: GUARD_MODEL_RATE_LIMIT_ATTEMPTS, value: {{ $root.Values.runner.validation.providerRateLimitAttempts | quote }} }
+            - { name: GUARD_JEV_LOWER_THRESHOLD, value: {{ $root.Values.runner.jev.lowerThreshold | quote }} }
+            - { name: GUARD_JEV_UPPER_THRESHOLD, value: {{ $root.Values.runner.jev.upperThreshold | quote }} }
           volumeMounts:
             - { name: artifact-signing, mountPath: /var/run/tasklattice/artifact, readOnly: true }
             {{- if $root.Values.security.controlTls.enabled }}

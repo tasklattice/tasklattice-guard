@@ -46,6 +46,7 @@ async def test_jailbreak_has_independent_question_probability_evidence_and_nativ
 
     result = await evaluator(respond).evaluate(request)
     assert result.verdict == verdict and result.content == request.content
+    assert result.unknown_reason == "uncertain"
     assert result.confidence is None and bool(result.findings) is (verdict == "matched")
     assert all(f.confidence is None and f.risk_severity is None for f in result.findings)
     assert result.usage.model_invocations == 1

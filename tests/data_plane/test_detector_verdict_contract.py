@@ -48,6 +48,13 @@ def test_detector_result_and_wire_enum_share_the_four_values(verdict):
     assert action_bindings_from_proto([decoded])[0]["trigger"] == binding["trigger"]
 
 
+def test_unknown_reason_defaults_to_incomplete_and_rejects_invalid_values():
+    assert EvaluationResult("unknown", "text").unknown_reason == "needs_context"
+    assert EvaluationResult("unknown", "text", unknown_reason="uncertain").verdict == "unknown"
+    with pytest.raises(ValueError, match="unknown-result reason"):
+        EvaluationResult("unknown", "text", unknown_reason="safe")
+
+
 @pytest.mark.parametrize("verdict", ["safe", "unsafe", "uncertain", "allow", "block", "transform", ""])
 def test_detector_boundary_rejects_legacy_labels_and_enforcement_decisions(verdict):
     with pytest.raises(ValueError, match="Detector result"):

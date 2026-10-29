@@ -46,6 +46,33 @@ def test_content_safety_evidence_uses_its_own_capability_and_question():
     assert "private" not in raw
 
 
+@pytest.mark.parametrize("verdict,action", [("unknown", "block"), ("unknown", None), ("matched", "block"), ("error", None)])
+def test_topic_evidence_explains_its_own_action_without_leaking_topic_text(verdict, action):
+    original = decision()
+    topic = replace(original.trace[0], id="topic:jev", evaluator_id="typesafe-jev-topic", capability="topic_control",
+        policy_id="builtin-topic-safety", verdict=verdict, evidence=json.dumps({"question_revision": "topic-input.v1",
+            "thresholds": {"lower": .1, "upper": .9}, "judgments": {"denied_task": {"probability": .4},
+            "unlisted_task": {"probability": .5}, "unsafe_content": {"probability": .8}}, "denied_topics": "private"}))
+    safe_jailbreak = replace(original.trace[0], verdict="not_matched")
+    interventions = (replace(original.interventions[0], fragment_id="nemo:topic:block"),) if action else ()
+    raw = evaluation_evidence(replace(original, trace=(safe_jailbreak, topic), interventions=interventions))
+    rows = json.loads(raw)["evaluations"]
+    assert rows[0]["verdict"] == "not_matched" and rows[0]["enforcedAction"] is None
+    assert rows[1]["capability"] == "topic_control" and rows[1]["enforcedAction"] == action
+    assert rows[1]["verdict"] == verdict
+    assert rows[1]["probabilities"] == {"denied_task": .4, "unlisted_task": .5}
+    assert "private" not in raw
+
+
+@pytest.mark.parametrize("profile", ["tali.typesafe-jev.v1", "tali.typesafe-jev-topic.v1"])
+def test_topic_failure_without_evaluator_step_keeps_capability_attribution(profile):
+    original = decision()
+    trace = replace(original.trace[0], kind="action", evaluator_id=None, capability="topic_control",
+        profile_ref=profile, verdict="error", evidence=None)
+    row = json.loads(evaluation_evidence(replace(original, trace=(trace,))))["evaluations"][0]
+    assert row["evaluatorId"] == "typesafe-jev-topic" and row["verdict"] == "error"
+
+
 def test_monitor_nonterminal_unknown_other_content_and_truncation_do_not_claim_enforcement():
     original=decision()
     for modified in [decision(mode="monitor"),replace(original,interventions=()),

@@ -43,8 +43,8 @@ export class DeclarativeCompiler {
       const detector = this.detectors[rule.detector.ref];
       if (!detector || detector.version !== rule.detector.version) throw new ValidationError(`Detector ${rule.detector.ref}@${rule.detector.version} is unavailable.`);
       const params = rule.detector.parameters;
-      const runtimeParameters = rule.detector.ref === "model/classifier" && params.profile === "topic-classification" ? ["topic_mode", "allowed_topics", "restricted_topics"]
-        : rule.detector.ref === "model/classifier" && params.profile === "jailbreak-classification" ? ["on_unknown"]
+      const runtimeParameters = rule.detector.ref === "model/classifier" && params.profile === "topic-classification" ? ["topic_mode", "allowed_topics", "restricted_topics", "on_unknown"]
+        : rule.detector.ref === "model/classifier" && ["jailbreak-classification", "safety-classification"].includes(String(params.profile)) ? ["on_unknown"]
         : rule.detector.ref === "model/grounding" ? ["grounding_threshold", "relevance_threshold"] : rule.detector.ref === "service/formal-verification" ? ["policy_snapshot_id", "policy_id", "policy_version", "confidence_threshold"] : [];
       for (const key of Object.keys(params)) if (![...detector.parameters, ...runtimeParameters].includes(key)) throw new ValidationError(`Unsupported ${rule.detector.ref} parameter ${key}.`);
       for (const key of detector.required_parameters) if (params[key] == null) throw new ValidationError(`Detector ${rule.detector.ref} requires ${key}.`);

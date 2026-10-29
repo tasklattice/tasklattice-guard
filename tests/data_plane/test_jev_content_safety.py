@@ -74,3 +74,33 @@ async def test_jev_input_and_nvidia_output_are_routed_independently():
     assert (await action.execute(request)).verdict == "not_matched"
     assert (await action.execute(replace(request, rail_type="output"))).verdict == "not_matched"
     assert paths == ["/v1/systemone", "/v1/chat/completions"]
+
+
+async def test_uncertainty_band_is_configurable_so_blocking_policies_stop_failing_shut():
+    """0.5 is inside the wide default band and outside a narrowed one."""
+    from runner.providers import dynamic_runtime_action_providers
+    from runner.toolkit.nemo.actions.evaluate import EvaluationActionProvider
+    from tests.control_plane.test_capability_validation import candidate
+
+    def respond(wire):
+        return httpx.Response(200, json={"model": "jev-1.13.0", "answers": {"unsafe_content": {"type": "noul", "noul": .5}}})
+
+    config = candidate("input", "content_safety", "tali.typesafe-jev.v1").configuration
+    original = jailbreak_request()
+    request = replace(original, capability="content_safety", content="Synthetic content safety fixture.",
+                      binding=replace(original.binding, capability="content_safety", contract_ref="tali.guard.content-safety.v1"))
+
+    async def verdict(thresholds):
+        providers = dynamic_runtime_action_providers(config, {"provider-1": "synthetic"},
+            transport=httpx.MockTransport(respond), jev_thresholds=thresholds)
+        action = next(p for p in providers if isinstance(p, EvaluationActionProvider))
+        return (await action.execute(request)).verdict
+
+    # Wide default band reports the middle probability as uncertain.
+    assert await verdict(None) == "unknown"
+    # Tightening the band only decides probabilities outside it: 0.5 <= 0.55.
+    assert await verdict((0.55, 0.9)) == "not_matched"
+    # A band below the probability reports a positive classification.
+    assert await verdict((0.1, 0.45)) == "matched"
+    # A genuinely middle probability stays uncertain whatever the width.
+    assert await verdict((0.45, 0.55)) == "unknown"

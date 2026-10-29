@@ -109,10 +109,15 @@ class EvaluationResult:
     reason: str | None = None
     trace: tuple[RuntimeTraceStep, ...] = ()
     usage: EvaluationUsage = EvaluationUsage()
+    # Successful classifier abstention is distinct from an incomplete check.
+    # Legacy/unspecified unknown results remain conservative.
+    unknown_reason: Literal["uncertain", "needs_context"] = "needs_context"
 
     def __post_init__(self) -> None:
         if self.verdict not in EVALUATOR_VERDICTS:
             raise ValueError("Detector result must be matched, not_matched, unknown, or error.")
+        if self.unknown_reason not in {"uncertain", "needs_context"}:
+            raise ValueError("Invalid unknown-result reason.")
 
 
 class GuardEvaluator(Protocol):
@@ -146,6 +151,7 @@ def evaluation_result(
     reason: str | None = None,
     trace: tuple[RuntimeTraceStep, ...] = (),
     usage: EvaluationUsage = EvaluationUsage(),
+    unknown_reason: Literal["uncertain", "needs_context"] = "needs_context",
 ) -> EvaluationResult:
     """Build the normalized result returned by every Guard evaluator."""
 
@@ -161,4 +167,5 @@ def evaluation_result(
         reason=reason,
         trace=trace,
         usage=usage,
+        unknown_reason=unknown_reason,
     )
