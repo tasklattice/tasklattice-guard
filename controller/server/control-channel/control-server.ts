@@ -364,6 +364,7 @@ export class RunnerControlServer {
           operation: messageType,
           ...(connection ? { runnerId: connection.runnerId, bootId: connection.bootId } : {}),
           ...(message.validationResult ? { runId: message.validationResult.runId } : {}),
+          ...(message.validationReport ? { runId: message.validationReport.runId } : {}),
           ...(message.validationProgress ? { runId: message.validationProgress.runId } : {}),
         });
         // grpc status is also logged by the Runner. Never send a Drizzle

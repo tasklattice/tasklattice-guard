@@ -1,5 +1,7 @@
 import { resolve } from "node:path";
 import { EventEmitter } from "node:events";
+import { createHash } from "node:crypto";
+import { gzipSync } from "node:zlib";
 
 import { describe, expect, it, vi } from "vitest";
 
@@ -68,7 +70,7 @@ describe("Runner model-configuration convergence", () => {
     const cancel = { id: "cancel-stop", payload: { runId: "stop" }, createdAt: new Date() };
     const service = { ...serviceMock(),
       pendingOutbox: vi.fn(async (kind: string) => kind === "guardrail.validation_cancel_requested" ? [cancel] : []),
-      markOutboxProcessed: vi.fn(), completeValidation: vi.fn(), rejectValidation: vi.fn(), markValidationRunning: vi.fn(),
+      markOutboxProcessed: vi.fn(), completeValidation: vi.fn(), rejectValidation: vi.fn(), markValidationRunning: vi.fn().mockResolvedValue(true),
     };
     const server = new RunnerControlServer(config, service as unknown as ControlPlaneService,
       metricsMock() as unknown as ControllerMetrics, { activeConfiguration: vi.fn().mockResolvedValue(activeConfiguration("revision-9", 9)) } as unknown as ModelConfigurationService);
@@ -149,7 +151,7 @@ describe("Runner model-configuration convergence", () => {
     } finally { held.resolve(null); logged.mockRestore(); }
   });
 
-  it("drains a heartbeat and queued report before marking offline, waits for persistence and rejects new streams", async () => {
+  it.each([false, true])("drains a heartbeat and queued report before marking offline (compressed=%s)", async compressed => {
     const heartbeat = Promise.withResolvers<boolean>(), report = Promise.withResolvers<void>(), offline = Promise.withResolvers<void>();
     const order: string[] = [];
     const service = { ...serviceMock(), recordHeartbeat: vi.fn(async () => { const result = await heartbeat.promise; order.push("heartbeat"); return result; }),
@@ -158,13 +160,14 @@ describe("Runner model-configuration convergence", () => {
     const server = new RunnerControlServer(config, service as unknown as ControlPlaneService,
       metricsMock() as unknown as ControllerMetrics, { activeConfiguration: vi.fn().mockResolvedValue(null) } as unknown as ModelConfigurationService);
     const connect = (stream: ReturnType<typeof streamMock>) => (server as unknown as { connect(stream: unknown): void }).connect(stream);
-    const stream = streamMock(); connect(stream); stream.emit("data", registration("runner"));
+    const stream = streamMock(), hello = registration("runner-0"); hello.registration.compilerCapable = true;
+    connect(stream); stream.emit("data", hello);
     await vi.waitFor(() => expect(stream.write).toHaveBeenCalledTimes(2));
-    const message = { heartbeat: { runnerId: "runner", bootId: "boot-runner", sequence: "1", appliedGeneration: "9", load: {} } };
+    const message = { heartbeat: { runnerId: "runner-0", bootId: "boot-runner-0", sequence: "1", appliedGeneration: "9", load: {} } };
     stream.emit("data", message);
     await vi.waitFor(() => expect(service.recordHeartbeat).toHaveBeenCalledOnce());
-    const result = { validationResult: { runnerId: "runner", runId: "queued-report", accepted: true,
-      status: "VALIDATION_STATUS_PASSED", metrics: { total: 1, passed: 1 }, results: [] } };
+    const result = validationMessage(server, { runnerId: "runner-0", runId: "queued-report", accepted: true,
+      status: "VALIDATION_STATUS_PASSED", metrics: { total: 1, passed: 1 }, results: [] }, compressed);
     stream.emit("data", result);
     let stopped = false;
     const stop = server.stop().then(() => { stopped = true; });
@@ -210,7 +213,7 @@ describe("Runner model-configuration convergence", () => {
     const event = { id: "model-job", createdAt: new Date(), payload: { runId: "model-run", testCases: [],
       plan: { guardrail_version: "20261026-030000.000Z", safety_level: "strict", output_delivery: "full_buffered" } } };
     const service = { ...serviceMock(), pendingOutbox: vi.fn(async (type: string) => type === kind ? [event] : []),
-      markValidationRunning: vi.fn(), deferOutbox: vi.fn() };
+      markValidationRunning: vi.fn().mockResolvedValue(true), deferOutbox: vi.fn() };
     const models = { activeConfiguration: vi.fn().mockResolvedValue(activeConfiguration("revision-9", 9)), finalizeActivation: vi.fn() };
     const server = new RunnerControlServer(config, service as unknown as ControlPlaneService,
       metricsMock() as unknown as ControllerMetrics, models as unknown as ModelConfigurationService);
@@ -233,7 +236,7 @@ describe("Runner model-configuration convergence", () => {
   it("waits for ordinal 0 even while ordinal 1 has synchronized models", async () => {
     const event = { id: "job", createdAt: new Date(), payload: { runId: "run", testCases: [], plan: { guardrail_version: "20261026-030000.000Z", safety_level: "strict", output_delivery: "full_buffered" } } };
     const service = { ...serviceMock(), pendingOutbox: vi.fn(async (kind: string) => kind === "guardrail.validation_requested" ? [event] : []),
-      markValidationRunning: vi.fn(), deferOutbox: vi.fn() };
+      markValidationRunning: vi.fn().mockResolvedValue(true), deferOutbox: vi.fn() };
     const models = { activeConfiguration: vi.fn().mockResolvedValue(activeConfiguration("revision-9", 9)), finalizeActivation: vi.fn() };
     const server = new RunnerControlServer(config, service as unknown as ControlPlaneService,
       metricsMock() as unknown as ControllerMetrics, models as unknown as ModelConfigurationService);
@@ -273,7 +276,7 @@ describe("Runner model-configuration convergence", () => {
   it("keeps a long test assigned across retry ticks, serializes dispatch and retries after disconnect", async () => {
     const event = { id: "job-1", createdAt: new Date(), payload: { runId: "run-1", testCases: [], plan: { guardrail_version: "20261012-030000.000Z", safety_level: "strict", output_delivery: "full_buffered" } } };
     const service = { ...serviceMock(), pendingOutbox: vi.fn(async (kind: string) => kind === "guardrail.validation_requested" ? [event] : []),
-      markValidationRunning: vi.fn(), deferOutbox: vi.fn(), rejectValidation: vi.fn() };
+      markValidationRunning: vi.fn().mockResolvedValue(true), deferOutbox: vi.fn(), rejectValidation: vi.fn() };
     const server = new RunnerControlServer(config, service as unknown as ControlPlaneService,
       metricsMock() as unknown as ControllerMetrics, { activeConfiguration: vi.fn().mockResolvedValue(null) } as unknown as ModelConfigurationService);
     const dispatch = () => (server as unknown as { dispatchValidationRequests(): Promise<void> }).dispatchValidationRequests();
@@ -310,7 +313,7 @@ describe("Runner model-configuration convergence", () => {
       pendingOutbox: vi.fn(async (kind: string, limit: number, excludedRunIds: string[] = []) =>
         kind === "guardrail.validation_requested"
           ? events.filter(event => !excludedRunIds.includes(event.payload.runId)).slice(0, limit) : []),
-      markValidationRunning: vi.fn(), deferOutbox: vi.fn(),
+      markValidationRunning: vi.fn().mockResolvedValue(true), deferOutbox: vi.fn(),
     };
     const server = new RunnerControlServer(config, service as unknown as ControlPlaneService,
       metricsMock() as unknown as ControllerMetrics, { activeConfiguration: vi.fn().mockResolvedValue(null) } as unknown as ModelConfigurationService);
@@ -390,7 +393,7 @@ describe("Runner model-configuration convergence", () => {
     const metrics = metricsMock();
     const server = new RunnerControlServer(config, service as unknown as ControlPlaneService,
       metrics as unknown as ControllerMetrics, { activeConfiguration: vi.fn().mockResolvedValue(null) } as unknown as ModelConfigurationService);
-    const stream = streamMock(), hello = registration("compiler");
+    const stream = streamMock(), hello = registration("compiler-0");
     hello.registration.compilerCapable = true;
     const logged = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
@@ -399,7 +402,7 @@ describe("Runner model-configuration convergence", () => {
       await vi.waitFor(() => expect(stream.write).toHaveBeenCalledTimes(2));
       stream.emit(event, new Error("Runner transport closed"));
       await vi.waitFor(() => expect(logged).toHaveBeenCalledWith(expect.stringContaining('"event":"runner.disconnect_error"')));
-      expect(JSON.parse(logged.mock.calls[0]![0])).toMatchObject({ runnerId: "compiler", bootId: "boot-compiler",
+      expect(JSON.parse(logged.mock.calls[0]![0])).toMatchObject({ runnerId: "compiler-0", bootId: "boot-compiler-0",
         error: { category: "pool_acquire_timeout", code: null, sqlState: null } });
       expect(server.hasDefaultCompiler()).toBe(false);
       expect(metrics.controlConnection).toHaveBeenLastCalledWith("default", false);
@@ -409,7 +412,7 @@ describe("Runner model-configuration convergence", () => {
     } finally { logged.mockRestore(); }
   });
 
-  it("redispatches a report after its database write fails and the compiler reconnects", async () => {
+  it.each([false, true])("redispatches a report after its database write fails (compressed=%s)", async compressed => {
     const secret = "PRIVATE_REPORT_AND_CREDENTIAL";
     const failure = Object.assign(new Error(`Failed query: ${secret}`), { params: [secret],
       cause: Object.assign(new Error(secret), { code: "55P03", detail: secret }) });
@@ -418,16 +421,16 @@ describe("Runner model-configuration convergence", () => {
     let processed = false;
     const service = { ...serviceMock(),
       pendingOutbox: vi.fn(async (kind: string) => kind === "guardrail.validation_requested" && !processed ? [event] : []),
-      markValidationRunning: vi.fn(), deferOutbox: vi.fn(), updateValidationProgress: vi.fn(),
+      markValidationRunning: vi.fn().mockResolvedValue(true), deferOutbox: vi.fn(), updateValidationProgress: vi.fn(),
       completeValidation: vi.fn().mockRejectedValueOnce(failure).mockImplementation(async () => { processed = true; }),
       disconnectRunner: vi.fn().mockRejectedValueOnce(failure).mockResolvedValue(undefined),
     };
     const server = new RunnerControlServer(config, service as unknown as ControlPlaneService,
       metricsMock() as unknown as ControllerMetrics, { activeConfiguration: vi.fn().mockResolvedValue(null) } as unknown as ModelConfigurationService);
     const control = server as unknown as { connect(stream: unknown): void; dispatchValidationRequests(): Promise<void> };
-    const hello = registration("compiler"); hello.registration.compilerCapable = true;
-    const result = { validationResult: { runnerId: "compiler", runId: "run", accepted: true,
-      status: "VALIDATION_STATUS_PASSED", metrics: { total: 1, passed: 1 }, results: [] } };
+    const hello = registration("compiler-0"); hello.registration.compilerCapable = true;
+    const result = validationMessage(server, { runnerId: "compiler-0", runId: "run", accepted: true,
+      status: "VALIDATION_STATUS_PASSED", metrics: { total: 1, passed: 1 }, results: [] }, compressed);
     const logged = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
       const stream = streamMock();
@@ -437,11 +440,13 @@ describe("Runner model-configuration convergence", () => {
       stream.emit("data", hello);
       await vi.waitFor(() => expect(stream.write).toHaveBeenCalledTimes(2));
       await control.dispatchValidationRequests();
-      stream.emit("data", { validationProgress: { runnerId: "compiler", runId: "run",
+      stream.emit("data", { validationProgress: { runnerId: "compiler-0", runId: "run",
         phase: "VALIDATION_EXECUTION_PHASE_FINALIZING", completedCases: 1, passedCases: 1 } });
       stream.emit("data", result);
       await vi.waitFor(() => expect(logged).toHaveBeenCalledWith(expect.stringContaining('"event":"runner.disconnect_error"')));
       expect(JSON.stringify(logged.mock.calls)).not.toContain(secret);
+      expect(logged.mock.calls.map(([line]) => JSON.parse(line)).find(item => item.event === "runner.control_error"))
+        .toMatchObject({ runId: "run", error: { sqlState: "55P03" } });
       expect(wireError).toHaveBeenCalledWith(expect.objectContaining({ message: "Runner control request failed (55P03)." }));
       expect(processed).toBe(false);
       expect(server.hasDefaultCompiler()).toBe(false);
@@ -469,7 +474,7 @@ describe("Runner model-configuration convergence", () => {
     const server = new RunnerControlServer(config, serviceMock() as unknown as ControlPlaneService,
       metricsMock() as unknown as ControllerMetrics, models as unknown as ModelConfigurationService);
     const stream = streamMock();
-    const hello = registration("compiler");
+    const hello = registration("compiler-0");
     hello.registration.compilerCapable = true;
     const connection = await handle(server, stream, hello, null);
     const otherStream = streamMock();
@@ -723,7 +728,7 @@ it("dispatches compilation, tests, load checks and rollout without view capabili
   const service = { ...serviceMock(), desiredStateForPool: vi.fn().mockResolvedValue(desired),
     trafficRouting: { reportRolloutFailure: vi.fn() },
     pendingOutbox: vi.fn(async (kind: string) => kind === "guardrail.validation_requested" ? [event] : []),
-    markValidationRunning: vi.fn(), deferOutbox: vi.fn() };
+    markValidationRunning: vi.fn().mockResolvedValue(true), deferOutbox: vi.fn() };
   const server = new RunnerControlServer(config, service as unknown as ControlPlaneService,
     metricsMock() as unknown as ControllerMetrics, { activeConfiguration: vi.fn().mockResolvedValue(null) } as unknown as ModelConfigurationService);
   const stream = streamMock();
@@ -747,3 +752,11 @@ it("dispatches compilation, tests, load checks and rollout without view capabili
   expect(await checking).toEqual([expect.objectContaining({ admitted: true, runnerId: "runner-0" })]);
   await server.stop();
 });
+
+function validationMessage(server: RunnerControlServer, result: { runnerId: string; runId: string; [key: string]: unknown }, compressed: boolean) {
+  if (!compressed) return { body: "validationResult", validationResult: result };
+  const codec = (server as unknown as { validationResultCodec: { serialize(value: object): Buffer } }).validationResultCodec;
+  const bytes = codec.serialize(result);
+  return { body: "validationReport", validationReport: { runnerId: result.runnerId, runId: result.runId,
+    gzipResult: gzipSync(bytes), rawSizeBytes: String(bytes.length), sha256: createHash("sha256").update(bytes).digest("hex") } };
+}
