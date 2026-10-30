@@ -18,6 +18,7 @@ from pyroscope.otel import PyroscopeSpanProcessor
 
 from . import __version__
 from .config import RunnerSettings
+from .otel_exporter import BackoffSpanExporter
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
@@ -109,7 +110,7 @@ def configure_observability(settings: RunnerSettings) -> RunnerObservability:
     )
     if settings.pyroscope_server_address:
         provider.add_span_processor(PyroscopeSpanProcessor())
-    provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
+    provider.add_span_processor(BatchSpanProcessor(BackoffSpanExporter(OTLPSpanExporter())))
     trace.set_tracer_provider(provider)
     HTTPXClientInstrumentor().instrument(tracer_provider=provider)
     runtime.tracer_provider = provider

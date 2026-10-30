@@ -24,6 +24,23 @@ per page by default, or 50. Time/severity filters precede the SQL item limit. A
 cursor preserves the occurrence/ingestion boundary and the full filter scope;
 statistics load independently through `/api/v1/telemetry/metrics`.
 
+## OpenTelemetry Collector outages
+
+OTLP trace export runs on a background batch worker. The official exporter keeps
+its standard endpoint, headers, TLS, timeout and bounded per-batch retry behavior.
+After a failed batch, the Runner backs off across subsequent batches: initially
+30 seconds, then 60, 120 and 240 seconds, capped at 5 minutes. A 20% jitter
+spreads retry attempts across Runners; the maximum wait remains 5 minutes.
+The next batch after the cooldown probes the Collector. No requests or retry
+timers run during cooldown, and successful delivery resets the backoff.
+
+Each continuous outage produces one ERROR, with no repeated SDK retry logs.
+Recovery produces an INFO; a later outage can produce a new ERROR. Cooldown
+batches and failed batches are dropped, so traces from the outage are incomplete
+and are not replayed. Guard checks continue normally. This policy only applies
+to OpenTelemetry traces; durable Controller telemetry and its WAL delivery keep
+their existing retry and persistence behavior.
+
 ## Business metric semantics
 
 `guard_runner_guardrail_requests_total` counts completed GuardRail checks. Its
