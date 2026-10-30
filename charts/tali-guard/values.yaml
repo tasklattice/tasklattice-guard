@@ -41,6 +41,11 @@ imagePullSecrets: []
 publicUrl: ""
 
 controller:
+  databaseTimeouts:
+    statementMs: 30000
+    lockMs: 5000
+    idleTransactionMs: 30000
+  runnerSyncConcurrency: 4
   # Singleton UI/API service. Image tags default to Chart.appVersion.
   image:
     repository: ghcr.io/tasklattice/tali-guard-controller

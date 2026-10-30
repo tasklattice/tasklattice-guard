@@ -35,33 +35,38 @@ async function resolvedPrice(db: ReadDb, model: PricingModel, at: Date) {
 }
 
 /** Called within the telemetry transaction; immutable IDs make WAL replay idempotent. */
-export async function recordModelUsageCosts(db: ReadDb, event: RuntimeEventInput): Promise<void> {
-  if (!event.guardrailId) return;
-  const calls = meteredCalls(event.metadata);
-  if (!calls.length) return;
-  const models = await modelsQuery(db);
-  const resolved = new Map<string, Awaited<ReturnType<typeof resolvedPrice>>>();
-  for (const call of calls) {
-    const identified = models.find(model => model.id === call.runtimeRef) ?? models.find(model => model.id === call.provider);
-    const candidates = identified ? [identified] : models.filter(model => model.providerId === call.provider && model.model === call.model);
-    // Several profiles of one provider/model share a global price.
-    if (candidates.length > 1 && candidates.every(item => item.providerId === candidates[0]!.providerId && item.model === candidates[0]!.model)) candidates.splice(1);
-    const model = candidates.length === 1 ? candidates[0]! : null;
-    let price = null;
-    if (model) {
-      if (!resolved.has(model.id)) resolved.set(model.id, await resolvedPrice(db, model, event.occurredAt));
-      price = resolved.get(model.id)!.price;
+export function modelUsageCostRecorder(db: ReadDb) {
+  let catalog: Promise<PricingModel[]> | undefined;
+  return async (event: RuntimeEventInput): Promise<void> => {
+    if (!event.guardrailId) return;
+    const calls = meteredCalls(event.metadata);
+    if (!calls.length) return;
+    // Only the current chunk shares the model catalog; historical price lookup
+    // still uses each event's occurredAt, including across month boundaries.
+    const models = await (catalog ??= Promise.resolve(modelsQuery(db)));
+    const resolved = new Map<string, Awaited<ReturnType<typeof resolvedPrice>>>();
+    for (const call of calls) {
+      const identified = models.find(model => model.id === call.runtimeRef) ?? models.find(model => model.id === call.provider);
+      const candidates = identified ? [identified] : models.filter(model => model.providerId === call.provider && model.model === call.model);
+      // Several profiles of one provider/model share a global price.
+      if (candidates.length > 1 && candidates.every(item => item.providerId === candidates[0]!.providerId && item.model === candidates[0]!.model)) candidates.splice(1);
+      const model = candidates.length === 1 ? candidates[0]! : null;
+      let price = null;
+      if (model) {
+        if (!resolved.has(model.id)) resolved.set(model.id, await resolvedPrice(db, model, event.occurredAt));
+        price = resolved.get(model.id)!.price;
+      }
+      const calculated = priceCall(call, price?.rates ?? null);
+      const id = createHash("sha256").update(JSON.stringify([event.runnerId, event.id, call.id])).digest("hex");
+      await db.insert(costs).values({ id, eventId: event.id, guardrailId: event.guardrailId,
+        guardrailVersion: event.guardrailVersion ?? null, modelId: model?.id ?? null, model: call.model,
+        provider: model?.provider ?? call.provider, source: event.metadata.costSource === "testing" || event.metadata.protocol === "playground" ? "testing" : "runtime",
+        occurredAt: event.occurredAt, calls: call.calls, inputTokens: call.inputTokens, outputTokens: call.outputTokens,
+        cachedInputTokens: call.cachedInputTokens, priceId: price?.id ?? null, currency: price?.rates?.currency ?? null,
+        amount: calculated.amount === null ? null : calculated.amount.toFixed(12), reason: model ? calculated.reason : "unmatched_model",
+      }).onConflictDoNothing();
     }
-    const calculated = priceCall(call, price?.rates ?? null);
-    const id = createHash("sha256").update(JSON.stringify([event.runnerId, event.id, call.id])).digest("hex");
-    await db.insert(costs).values({ id, eventId: event.id, guardrailId: event.guardrailId,
-      guardrailVersion: event.guardrailVersion ?? null, modelId: model?.id ?? null, model: call.model,
-      provider: model?.provider ?? call.provider, source: event.metadata.costSource === "testing" || event.metadata.protocol === "playground" ? "testing" : "runtime",
-      occurredAt: event.occurredAt, calls: call.calls, inputTokens: call.inputTokens, outputTokens: call.outputTokens,
-      cachedInputTokens: call.cachedInputTokens, priceId: price?.id ?? null, currency: price?.rates?.currency ?? null,
-      amount: calculated.amount === null ? null : calculated.amount.toFixed(12), reason: model ? calculated.reason : "unmatched_model",
-    }).onConflictDoNothing();
-  }
+  };
 }
 
 export class ModelPricingService {

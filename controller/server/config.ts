@@ -115,6 +115,10 @@ const environmentSchema = z.object({
   CONTROLLER_GRPC_TLS_KEY_PATH: z.string().optional(),
   CONTROLLER_GRPC_TLS_CLIENT_CA_PATH: z.string().optional(),
   CONTROLLER_DATABASE_URL: z.string().url(),
+  CONTROLLER_DATABASE_STATEMENT_TIMEOUT_MS: z.coerce.number().int().min(1).max(2_147_483_647).default(30_000),
+  CONTROLLER_DATABASE_LOCK_TIMEOUT_MS: z.coerce.number().int().min(1).max(2_147_483_647).default(5_000),
+  CONTROLLER_DATABASE_IDLE_TRANSACTION_TIMEOUT_MS: z.coerce.number().int().min(1).max(2_147_483_647).default(30_000),
+  CONTROLLER_RUNNER_SYNC_CONCURRENCY: z.coerce.number().int().min(1).max(8).default(4),
   CONTROLLER_PUBLIC_URL: z.string().url().default("http://localhost:8080"),
   CONTROLLER_RUNTIME_SERVICE_URL: z.string().url().default("http://localhost:8091"),
   // Advertised Endpoint address only; Controller-to-Runner calls use the Service URL.
@@ -264,6 +268,12 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env) {
         }
       : null,
     databaseUrl: parsed.CONTROLLER_DATABASE_URL,
+    databaseTimeouts: {
+      statementMs: parsed.CONTROLLER_DATABASE_STATEMENT_TIMEOUT_MS,
+      lockMs: parsed.CONTROLLER_DATABASE_LOCK_TIMEOUT_MS,
+      idleTransactionMs: parsed.CONTROLLER_DATABASE_IDLE_TRANSACTION_TIMEOUT_MS,
+    },
+    runnerSyncConcurrency: parsed.CONTROLLER_RUNNER_SYNC_CONCURRENCY,
     publicUrl: parsed.CONTROLLER_PUBLIC_URL.replace(/\/$/, ""),
     runtimeServiceUrl: parsed.CONTROLLER_RUNTIME_SERVICE_URL.replace(/\/$/, ""),
     runtimePublicUrl: parsed.CONTROLLER_RUNTIME_PUBLIC_URL.replace(/\/+$/, "") || null,

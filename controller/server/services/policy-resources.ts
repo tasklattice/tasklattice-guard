@@ -14,6 +14,8 @@ import type { PolicyDto } from "../policy-catalog/catalog.js";
 import { DeclarativeCompiler } from "../policy-studio/declarative.js";
 import { definitionTestCases } from "../policy-studio/definition-tests.js";
 import { materializePolicyRules } from "../domain/policy-rules.js";
+import { limitValidationWrite } from "./validation-write-limits.js";
+import { reportSaveStage, withReportSaveDiagnostics } from "../db/diagnostics.js";
 
 /** Draft ownership, provenance and publication are independent of where a Policy was delivered. */
 export class PolicyResourceService {
@@ -122,23 +124,29 @@ export class PolicyResourceService {
     return Boolean(job);
   }
   async complete(input: { runId: string; status: string; results: ValidationCaseResult[]; reason?: string | undefined }): Promise<boolean> {
-    const [job] = await this.db.select().from(runs).where(eq(runs.id, input.runId));
+    return withReportSaveDiagnostics(this.db, input.runId, () => this.persistResult(input));
+  }
+  private async persistResult(input: Parameters<PolicyResourceService["complete"]>[0]): Promise<boolean> {
+    const [job] = await reportSaveStage("lookup_policy_run", () => this.db.select().from(runs).where(eq(runs.id, input.runId)));
     if (!job?.parentId) return false;
     await this.db.transaction(async tx => {
-      const [parent] = await tx.select().from(runs).where(eq(runs.id, job.parentId!)).for("update");
+      await reportSaveStage("set_timeouts", () => limitValidationWrite(tx));
+      const [parent] = await reportSaveStage("lock_parent_run", () => tx.select().from(runs).where(eq(runs.id, job.parentId!)).for("update"));
       if (!parent || ["passed", "failed"].includes(parent.status)) return;
-      const [current] = await tx.select().from(runs).where(eq(runs.id, job.id));
+      const [current] = await reportSaveStage("lookup_run", () => tx.select().from(runs).where(eq(runs.id, job.id)));
       if (!current || ["passed", "failed"].includes(current.status)) return;
       const results = current.tests.map(test => assertPolicyTest(test, input.results.find(r => r.caseId === test.id), input.status === "passed" || input.status === "failed" ? undefined : input.status));
       const status = input.status === "passed" && results.filter(r => current.tests.find(t => t.id === r.caseId)?.required).every(r => r.passed) ? "passed" : "failed";
-      await tx.update(runs).set({ status, results, failureReason: input.reason ?? null }).where(eq(runs.id, current.id));
-      await tx.update(outboxEvents).set({ processedAt: new Date() }).where(eq(outboxEvents.id, current.id));
-      const children = await tx.select().from(runs).where(eq(runs.parentId, parent.id));
-      if (children.every(r => ["passed", "failed"].includes(r.status))) {
-        const success = children.every(r => r.status === "passed");
-        await tx.update(runs).set({ status: success ? "passed" : "failed", results: children.flatMap(r => r.results), failureReason: children.find(r => r.failureReason)?.failureReason ?? null }).where(eq(runs.id, parent.id));
-        await tx.insert(auditEvents).values({ id: randomUUID(), kind: "policy.validation_completed", resourceType: "policy", resourceId: job.policyId, detail: { runId: parent.id, status: success ? "passed" : "failed" } });
-      }
+      await reportSaveStage("write_report", () => tx.update(runs).set({ status, results, failureReason: input.reason ?? null }).where(eq(runs.id, current.id)));
+      await reportSaveStage("complete_outbox", () => tx.update(outboxEvents).set({ processedAt: new Date() }).where(eq(outboxEvents.id, current.id)));
+      await reportSaveStage("aggregate_policy_results", async () => {
+        const children = await tx.select().from(runs).where(eq(runs.parentId, parent.id));
+        if (children.every(r => ["passed", "failed"].includes(r.status))) {
+          const success = children.every(r => r.status === "passed");
+          await tx.update(runs).set({ status: success ? "passed" : "failed", results: children.flatMap(r => r.results), failureReason: children.find(r => r.failureReason)?.failureReason ?? null }).where(eq(runs.id, parent.id));
+          await reportSaveStage("write_audit", () => tx.insert(auditEvents).values({ id: randomUUID(), kind: "policy.validation_completed", resourceType: "policy", resourceId: job.policyId, detail: { runId: parent.id, status: success ? "passed" : "failed" } }));
+        }
+      });
     });
     return true;
   }

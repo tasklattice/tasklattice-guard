@@ -207,7 +207,7 @@ describe("Controller metrics contract", () => {
     expect(service.desiredGeneration).toHaveBeenCalledOnce();
     release();
     const results = await Promise.all(scrapes);
-    expect(new Set(results).size).toBe(1);
+    expect(results.every(result => result.includes("guard_controller_desired_generation 3"))).toBe(true);
     metrics.observeHeartbeat("default", "accepted");
     expect(await metrics.render(service)).toContain('guard_controller_runner_heartbeats_total{pool="default",result="accepted"} 1');
     expect(service.observabilitySnapshot).toHaveBeenCalledOnce();
@@ -217,7 +217,7 @@ describe("Controller metrics contract", () => {
     expect(service.observabilitySnapshot).toHaveBeenCalledTimes(2);
   });
 
-  it("releases the shared scrape after failure and retries without caching the error", async () => {
+  it("serves process metrics on database failure and backs off before refreshing again", async () => {
     const service = {
       desiredGeneration: vi.fn().mockRejectedValueOnce(new Error("DB offline")).mockResolvedValue(3),
       listRunnerPoolsWithCapacity: vi.fn(async () => []),
@@ -225,10 +225,41 @@ describe("Controller metrics contract", () => {
     } as unknown as ControlPlaneService;
     const metrics = new ControllerMetrics();
     const results = await Promise.allSettled([metrics.render(service), metrics.render(service)]);
-    expect(results.map(result => result.status)).toEqual(["rejected", "rejected"]);
+    expect(results.map(result => result.status)).toEqual(["fulfilled", "fulfilled"]);
     expect(service.desiredGeneration).toHaveBeenCalledOnce();
+    expect(await metrics.render(service)).toContain("guard_controller_database_snapshot_fresh 0");
+    expect(service.desiredGeneration).toHaveBeenCalledOnce();
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() + 10_001);
     expect(await metrics.render(service)).toContain("guard_controller_desired_generation 3");
     expect(await metrics.registry.metrics()).toContain('guard_controller_metrics_collection_failures_total{stage="snapshot"} 1');
+  });
+
+  it("exposes live pool pressure while SQL hangs, retains single-flight through sibling failures, and drains the refresh", async () => {
+    const held = Promise.withResolvers<number>();
+    const snapshot = { watermarks: [], pendingOutbox: [], guardrails: [], endpoints: [], endpointBindings: [], routers: [] };
+    const service = {
+      desiredGeneration: vi.fn(() => held.promise),
+      listRunnerPoolsWithCapacity: vi.fn().mockRejectedValue(new Error("PRIVATE_CREDENTIAL")),
+      observabilitySnapshot: vi.fn(async () => snapshot),
+      databasePoolState: () => ({ max: 20, total: 20, idle: 0, busy: 20, waiting: 7 }),
+    } as unknown as ControlPlaneService;
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const metrics = new ControllerMetrics();
+    const rendered = await metrics.render(service);
+    expect(rendered).toContain('guard_controller_database_pool_connections{state="busy"} 20');
+    expect(rendered).toContain("guard_controller_database_pool_waiting 7");
+    expect(rendered).toContain("guard_controller_database_snapshot_in_flight 1");
+    expect(rendered).toContain("guard_controller_database_snapshot_fresh 0");
+    expect(rendered).toContain("guard_controller_process_");
+    await metrics.render(service);
+    expect(service.desiredGeneration).toHaveBeenCalledOnce();
+    let stopped = false;
+    const stop = metrics.stop().then(() => { stopped = true; });
+    await Promise.resolve(); expect(stopped).toBe(false);
+    held.resolve(3); await stop;
+    expect(JSON.stringify(logged.mock.calls)).not.toContain("PRIVATE_CREDENTIAL");
+    await metrics.render(service);
+    expect(service.desiredGeneration).toHaveBeenCalledOnce();
   });
 
   it("converts persisted Guardrail topology into bounded observability states", async () => {

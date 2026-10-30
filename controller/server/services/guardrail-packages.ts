@@ -377,7 +377,11 @@ export class GuardrailPackageService {
         .where(and(eq(guardrailVersions.status, "ready"), or(isNull(guardrailVersions.environmentCheck),
           sql`(${guardrailVersions.environmentCheck}->>'status' <> 'compatible' AND (${guardrailVersions.environmentCheck}->>'checkedAt')::timestamptz < now() - interval '30 seconds')`)))
         .orderBy(sql`${guardrailVersions.environmentCheck}->>'checkedAt' ASC NULLS FIRST`, asc(guardrailVersions.createdAt)).limit(2);
-      await Promise.all(rows.map(row => this.checkVersionEnvironment(row.id, row.version)));
+      // Do not declare the job idle (or drained during shutdown) while a sibling
+      // check can still make admission requests and write its database result.
+      const results = await Promise.allSettled(rows.map(row => this.checkVersionEnvironment(row.id, row.version)));
+      const failure = results.find(result => result.status === "rejected");
+      if (failure?.status === "rejected") throw failure.reason;
     } finally { this.checkingEnvironments = false; }
   }
 

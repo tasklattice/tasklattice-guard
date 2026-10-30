@@ -1,6 +1,7 @@
 import { collectDefaultMetrics, Counter, Gauge, Histogram, Registry } from "prom-client";
 
 import type { ControlPlaneService } from "./services/control-plane.js";
+import { logDatabaseFailure } from "./db/diagnostics.js";
 
 const durationBuckets = [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30];
 const poolStatuses = ["ready", "busy", "saturated", "degraded", "offline"] as const;
@@ -9,6 +10,13 @@ const servingRunnerStatuses = new Set(["ready", "busy", "saturated"]);
 
 export class ControllerMetrics {
   readonly registry = new Registry();
+  private readonly databaseConnections = this.gauge("guard_controller_database_pool_connections", "PostgreSQL pool connections, sampled without SQL.", ["state"]);
+  private readonly databasePoolMax = this.gauge("guard_controller_database_pool_max_connections", "Configured PostgreSQL pool limit.");
+  private readonly databaseWaiters = this.gauge("guard_controller_database_pool_waiting", "Requests waiting for a PostgreSQL connection.");
+  private readonly databasePoolAvailable = this.gauge("guard_controller_database_pool_state_available", "Whether in-memory pool counters are available.");
+  private readonly snapshotFresh = this.gauge("guard_controller_database_snapshot_fresh", "Whether database-derived gauges have a successful snapshot less than ten seconds old.");
+  private readonly snapshotLastSuccess = this.gauge("guard_controller_database_snapshot_last_success_timestamp_seconds", "Unix time of the last successful database metrics snapshot; zero before first success.");
+  private readonly snapshotInFlight = this.gauge("guard_controller_database_snapshot_in_flight", "Whether a database metrics refresh is still running.");
 
   private readonly desiredGeneration: Gauge<string>;
   private readonly runnerInstances: Gauge<string>;
@@ -197,28 +205,56 @@ export class ControllerMetrics {
   }
 
   private snapshotValidUntil = 0;
-  private renderJob: Promise<string> | undefined;
+  private refreshAfter = 0;
+  private snapshotJob: Promise<void> | undefined;
+  private stopping = false;
 
   async render(service: ControlPlaneService): Promise<string> {
-    if (this.renderJob) return this.renderJob;
-    const job = this.renderCurrent(service);
-    this.renderJob = job;
-    try { return await job; } finally { this.renderJob = undefined; }
-  }
-
-  private async renderCurrent(service: ControlPlaneService): Promise<string> {
-    if (Date.now() >= this.snapshotValidUntil) await this.refreshSnapshot(service);
-    // Database gauges are cached; counters and process measurements remain live.
+    if (!this.stopping && !this.snapshotJob && Date.now() >= Math.max(this.snapshotValidUntil, this.refreshAfter)) {
+      this.snapshotInFlight.set(1);
+      this.snapshotJob = this.refreshSnapshot(service).catch(error => {
+        this.snapshotValidUntil = 0;
+        this.refreshAfter = Date.now() + 10_000;
+        this.desiredGeneration.reset();
+        for (const gauge of this.snapshotGauges()) gauge.reset();
+        logDatabaseFailure("controller.metrics_error", error, service.databasePoolState?.() ?? null);
+      }).finally(() => { this.snapshotJob = undefined; this.snapshotInFlight.set(0); });
+    }
+    // A short response grace preserves fresh first scrapes when SQL is fast.
+    // This does NOT cancel SQL: the shared job remains tracked until all its
+    // statements settle, and uses the DB's execution/lock budgets.
+    let timer: NodeJS.Timeout | undefined;
+    if (this.snapshotJob) {
+      try { await Promise.race([this.snapshotJob, new Promise<void>(resolve => { timer = setTimeout(resolve, 50); })]); }
+      finally { clearTimeout(timer); }
+    }
+    const pool = service.databasePoolState?.();
+    this.databasePoolAvailable.set(pool ? 1 : 0);
+    this.databaseConnections.reset();
+    if (pool) {
+      for (const state of ["total", "idle", "busy"] as const) this.databaseConnections.labels(state).set(pool[state]);
+      this.databasePoolMax.set(pool.max);
+      this.databaseWaiters.set(pool.waiting);
+    } else { this.databasePoolMax.reset(); this.databaseWaiters.reset(); }
+    this.snapshotFresh.set(Date.now() < this.snapshotValidUntil ? 1 : 0);
     return this.registry.metrics();
   }
 
+  async stop(): Promise<void> { this.stopping = true; await this.snapshotJob; }
+
   private async refreshSnapshot(service: ControlPlaneService): Promise<void> {
     try {
-      const [generation, pools, snapshot] = await Promise.all([
+      const results = await Promise.allSettled([
         service.desiredGeneration(),
         service.listRunnerPoolsWithCapacity(),
         service.observabilitySnapshot(),
       ]);
+      // A rejected query must not release single-flight protection while its
+      // siblings still hold connections.
+      if (results[0].status === "rejected") throw results[0].reason;
+      if (results[1].status === "rejected") throw results[1].reason;
+      if (results[2].status === "rejected") throw results[2].reason;
+      const generation = results[0].value, pools = results[1].value, snapshot = results[2].value;
       const now = Date.now();
       const watermarkByRunner = new Map(snapshot.watermarks.map((item) => [item.runnerId, item]));
       const poolById = new Map(pools.map((pool) => [pool.id, pool]));
@@ -329,6 +365,7 @@ export class ControllerMetrics {
         ).set(Number(ready));
       }
       this.snapshotValidUntil = Date.now() + 10_000;
+      this.snapshotLastSuccess.set(Date.now() / 1_000);
     } catch (error) {
       this.collectionFailures.labels("snapshot").inc();
       throw error;

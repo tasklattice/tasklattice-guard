@@ -318,6 +318,10 @@ metadata:
     {{- include "tali-guard.commonLabels" . | nindent 4 }}
 data:
   NODE_ENV: production
+  CONTROLLER_DATABASE_STATEMENT_TIMEOUT_MS: {{ .Values.controller.databaseTimeouts.statementMs | quote }}
+  CONTROLLER_DATABASE_LOCK_TIMEOUT_MS: {{ .Values.controller.databaseTimeouts.lockMs | quote }}
+  CONTROLLER_DATABASE_IDLE_TRANSACTION_TIMEOUT_MS: {{ .Values.controller.databaseTimeouts.idleTransactionMs | quote }}
+  CONTROLLER_RUNNER_SYNC_CONCURRENCY: {{ .Values.controller.runnerSyncConcurrency | quote }}
   CONTROLLER_GRPC_TRANSPORT: {{ ternary "mtls" "plaintext" .Values.security.controlTls.enabled | quote }}
   CONTROLLER_PUBLIC_URL: {{ include "tali-guard.primaryPublicUrl" . | quote }}
   CONTROLLER_RUNTIME_SERVICE_URL: {{ include "tali-guard.defaultRuntimeServiceUrl" . | quote }}
