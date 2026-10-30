@@ -1,3 +1,4 @@
+import { completeReport, getReport } from "../db/report-test-utils.js";
 // @vitest-environment node
 import { generateKeyPairSync } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -43,7 +44,7 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", () => {
     await database.pool.query("INSERT INTO auth_user (id, name, email, role) VALUES ('admin', 'Admin', 'admin@example.test', 'admin')");
     await database.pool.query("INSERT INTO controller_state (id, desired_generation) VALUES ('singleton', 3)");
   });
-  afterAll(async () => { await database?.drop(); rmSync(keys, { recursive: true, force: true }); });
+  afterAll(async () => { await service?.stopReportWork(); await database?.drop(); rmSync(keys, { recursive: true, force: true }); });
 
   /** What a Runner returns: the compiled content of exactly the requested plan. */
   async function runnerCandidate(runId: string): Promise<ArtifactContent> {
@@ -59,13 +60,14 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", () => {
     const draft = defaultGuardrailDraft(PolicyCatalog.load(catalogDir).list());
     const guardrail = await service.createGuardrail({ name: "Promotion fixture", draftConfig: draft, runtimeProfile: "auto", actorId: "admin" });
     const run = await service.requestValidation({ guardrailId: guardrail.id, actorId: "admin", compilerAvailable: true });
-    expect(run.candidateInspection).toMatchObject({ name: "Promotion fixture", testSuite: { total: run.metrics.total } });
+    expect((await database.pool.query("SELECT payload FROM guardrail_validation_snapshot WHERE digest=$1", [run.snapshotDigest])).rows[0].payload.candidateInspection).toMatchObject({ name: "Promotion fixture", testSuite: { total: run.metrics.total } });
     const candidate = await runnerCandidate(run.id);
-    await service.completeValidation({
+    await completeReport(service, {
       runId: run.id, status: "passed", metrics: emptyValidationMetrics(run.metrics.total), results: [], candidateArtifact: candidate,
       runtime: { runnerId: "runner-0", runnerVersion: "1.0.0", nemoVersion: "0.24.0", modelRevisionId: "", compilerModelTypes: [] },
     });
 
+    expect((await database.pool.query("SELECT snapshot_digest FROM guardrail_validation_run WHERE id=$1", [run.id])).rows[0]).toMatchObject({ snapshot_digest: expect.any(String) });
     const published = await service.requestGuardrailPublish({ guardrailId: guardrail.id, actorId: "admin", expectedDraftRevision: 1 });
     expect(published).toMatchObject({ status: "ready", version: run.guardrailVersion, generation: 4 });
 
@@ -75,7 +77,7 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", () => {
     expect(artifact).toMatchObject({ checksum: digest, guardrail_version: run.guardrailVersion, content_digest_version: 2, generation: "4" });
     expect(verifyArtifactDigest(digest, artifact.signature, publicKey)).toBe(true);
     const { rows: [version] } = await database.pool.query("SELECT * FROM guardrail_version WHERE guardrail_id = $1", [guardrail.id]);
-    expect(version).toMatchObject({ status: "ready", artifact_id: artifact.id, validation_run_id: run.id, inspection: run.candidateInspection });
+    expect(version).toMatchObject({ status: "ready", artifact_id: artifact.id, validation_run_id: run.id, inspection: (await database.pool.query("SELECT payload FROM guardrail_validation_snapshot WHERE digest=$1", [run.snapshotDigest])).rows[0].payload.candidateInspection });
     const { rows: [stored] } = await database.pool.query("SELECT status FROM guardrail WHERE id = $1", [guardrail.id]);
     expect(stored).toEqual({ status: "active" });
     const { rows: outbox } = await database.pool.query("SELECT kind FROM controller_outbox WHERE aggregate_id = $1 AND kind <> 'guardrail.validation_requested'", [guardrail.id]);
@@ -86,11 +88,11 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", () => {
     expect(version.test_suite).toEqual(request.payload.testCases);
     expect(version.test_suite).toHaveLength(run.metrics.total);
     expect(version.test_suite[0]).not.toHaveProperty("updatedAt");
-    expect(testSuiteDigest(version.test_suite)).toBe(run.candidateInspection!.testSuite.digest);
+    expect(testSuiteDigest(version.test_suite)).toBe(version.inspection.testSuite.digest);
     // Editing the Guardrail's cases afterwards never changes the published suite.
     await database.pool.query("UPDATE guardrail_test_case SET content = 'edited later' WHERE guardrail_id = $1", [guardrail.id]);
     const frozen = await service.guardrailVersionTestSuite(guardrail.id, run.guardrailVersion);
-    expect(frozen).toMatchObject({ recorded: true, count: run.metrics.total, digest: run.candidateInspection!.testSuite.digest });
+    expect(frozen).toMatchObject({ recorded: true, count: run.metrics.total, digest: version.inspection.testSuite.digest });
     expect(frozen.items.some(item => item.content === "edited later")).toBe(false);
     expect((await service.getGuardrail(guardrail.id)).versions[0]).toMatchObject({ testSuiteCount: run.metrics.total });
     expect((await service.getGuardrail(guardrail.id)).versions[0]).not.toHaveProperty("testSuite");
@@ -103,8 +105,8 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", () => {
     const { rows: [versionRequest] } = await database.pool.query("SELECT payload FROM controller_outbox WHERE id = $1", [versionRun.id]);
     expect(versionRequest.payload).toMatchObject({ candidateVersion: run.guardrailVersion, testCases: version.test_suite, artifact: { checksum: digest, signature: artifact.signature } });
     expect(versionRequest.payload).not.toHaveProperty("plan");
-    await service.completeValidation({ runId: versionRun.id, status: "passed", metrics: emptyValidationMetrics(run.metrics.total), results: [] });
-    const { rows: [tested] } = await database.pool.query("SELECT status, subject, candidate_digest, candidate_artifact FROM guardrail_validation_run WHERE id = $1", [versionRun.id]);
+    await completeReport(service, { runId: versionRun.id, status: "passed", metrics: emptyValidationMetrics(run.metrics.total), results: [] });
+    const { rows: [tested] } = await database.pool.query("SELECT r.status,r.subject,r.candidate_digest,s.payload->'candidateArtifact' candidate_artifact FROM guardrail_validation_run r LEFT JOIN guardrail_validation_snapshot s ON s.digest=r.snapshot_digest WHERE r.id=$1", [versionRun.id]);
     expect(tested).toEqual({ status: "passed", subject: "version", candidate_digest: digest, candidate_artifact: null });
     // A version run says nothing about the draft.
     expect((await service.getGuardrail(guardrail.id)).latestValidationRun).toMatchObject({ id: run.id });
@@ -121,8 +123,8 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", () => {
     const run = await service.requestValidation({ guardrailId: guardrail.id, actorId: "admin", compilerAvailable: true });
     const candidate = await runnerCandidate(run.id);
     (candidate.plan.steps as Array<{ on_unsafe: string }>)[0]!.on_unsafe = "allow";
-    await service.completeValidation({ runId: run.id, status: "passed", metrics: emptyValidationMetrics(run.metrics.total), results: [], candidateArtifact: candidate });
-    const { rows: [stored] } = await database.pool.query("SELECT status, failure_reason, candidate_artifact FROM guardrail_validation_run WHERE id = $1", [run.id]);
+    await completeReport(service, { runId: run.id, status: "passed", metrics: emptyValidationMetrics(run.metrics.total), results: [], candidateArtifact: candidate });
+    const { rows: [stored] } = await database.pool.query("SELECT r.status,r.failure_reason,s.payload->'candidateArtifact' candidate_artifact FROM guardrail_validation_run r LEFT JOIN guardrail_validation_snapshot s ON s.digest=r.snapshot_digest WHERE r.id=$1", [run.id]);
     expect(stored).toMatchObject({ status: "failed", failure_reason: expect.stringContaining("does not match"), candidate_artifact: null });
     await expect(service.requestGuardrailPublish({ guardrailId: guardrail.id, actorId: "admin" })).rejects.toMatchObject({ code: "guardrail_compiler_unavailable" });
   });
@@ -133,7 +135,7 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", () => {
       SELECT $1, 'retained-' || n, -n, CASE WHEN n % 2 = 0 THEN 'ready' ELSE 'pending' END, 'auto', '{}'::jsonb, CASE WHEN n % 2 = 0 THEN now() ELSE NULL END FROM generate_series(1, 9) n`, [guardrail.id]);
     const pass = async () => {
       const run = await service.requestValidation({ guardrailId: guardrail.id, actorId: "admin", compilerAvailable: true });
-      await service.completeValidation({ runId: run.id, status: "passed", metrics: emptyValidationMetrics(run.metrics.total), results: [], candidateArtifact: await runnerCandidate(run.id) });
+      await completeReport(service, { runId: run.id, status: "passed", metrics: emptyValidationMetrics(run.metrics.total), results: [], candidateArtifact: await runnerCandidate(run.id) });
       return run;
     };
     const tenth = await pass();
@@ -161,22 +163,22 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", () => {
     draft.policyBindings = draft.policyBindings.filter(item => item.policyId === "local-network-addresses");
     const guardrail = await service.createGuardrail({ name: "Report lifecycle", draftConfig: draft, runtimeProfile: "auto", actorId: "admin" });
     const run = await service.requestValidation({ guardrailId: guardrail.id, actorId: "admin", compilerAvailable: true });
-    await service.completeValidation({ runId: run.id, status: "passed", metrics: emptyValidationMetrics(run.metrics.total), results: [], candidateArtifact: await runnerCandidate(run.id) });
+    await completeReport(service, { runId: run.id, status: "passed", metrics: emptyValidationMetrics(run.metrics.total), results: [], candidateArtifact: await runnerCandidate(run.id) });
     const version = await service.requestGuardrailPublish({ guardrailId: guardrail.id, actorId: "admin", expectedDraftRevision: 1 });
     return { guardrail, run, version };
   }
   async function versionReport(guardrailId: string, version: string, status: "passed" | "failed" = "passed") {
     const run = await service.requestVersionTestRun({ guardrailId, version, actorId: "admin" });
-    await service.completeValidation({ runId: run.id, status, metrics: emptyValidationMetrics(run.metrics.total), results: [] });
+    await completeReport(service, { runId: run.id, status, metrics: emptyValidationMetrics(run.metrics.total), results: [] });
+    await service.drainReportWork();
     return run;
   }
 
   async function seedHistory(guardrailId: string, prefix: string, status: "passed" | "failed" | "queued" | "running", count: number, version: string | null = null) {
     await database.pool.query(`INSERT INTO guardrail_validation_run
-      (id, guardrail_id, guardrail_version, source_draft_revision, status, subject, created_at, completed_at, results)
+      (id, guardrail_id, guardrail_version, source_draft_revision, status, subject, created_at, completed_at)
       SELECT $2 || '-' || n, $1, coalesce($5::text, 'unpublished-candidate-' || n), 1, $3, CASE WHEN $5::text IS NULL THEN 'draft' ELSE 'version' END,
-        now() + n * interval '1 second', CASE WHEN $3 IN ('passed', 'failed') THEN now() + n * interval '1 second' ELSE NULL END,
-        jsonb_build_array(jsonb_build_object('body', repeat('x', 4096))) FROM generate_series(1, $4::int) n`, [guardrailId, prefix, status, count, version]);
+        now() + n * interval '1 second', CASE WHEN $3 IN ('passed', 'failed') THEN now() + n * interval '1 second' ELSE NULL END FROM generate_series(1, $4::int) n`, [guardrailId, prefix, status, count, version]);
     await database.pool.query(`INSERT INTO controller_outbox (id, kind, aggregate_id, payload)
       SELECT id, 'guardrail.validation_requested', guardrail_id, jsonb_build_object('body', repeat('x', 4096))
       FROM guardrail_validation_run WHERE guardrail_id=$1 AND starts_with(id, $2)`, [guardrailId, prefix]);
@@ -188,7 +190,7 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", () => {
     for (let index = 1; index < 10; index++) {
       await database.pool.query("UPDATE guardrail SET draft_revision=draft_revision+1 WHERE id=$1", [guardrail.id]);
       const run = await service.requestValidation({ guardrailId: guardrail.id, actorId: "admin", compilerAvailable: true });
-      await service.completeValidation({ runId: run.id, status: "passed", metrics: emptyValidationMetrics(run.metrics.total), results: [], candidateArtifact: await runnerCandidate(run.id) });
+      await completeReport(service, { runId: run.id, status: "passed", metrics: emptyValidationMetrics(run.metrics.total), results: [], candidateArtifact: await runnerCandidate(run.id) });
       versions.push((await service.requestGuardrailPublish({ guardrailId: guardrail.id, actorId: "admin" })).version);
     }
     for (const [index, versionId] of versions.entries()) {
@@ -232,14 +234,14 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", () => {
     const pass1 = await versionReport(guardrail.id, version.version);
     await database.pool.query("UPDATE guardrail SET draft_revision=draft_revision+1 WHERE id=$1", [guardrail.id]);
     const candidate = await service.requestValidation({ guardrailId: guardrail.id, actorId: "admin", compilerAvailable: true });
-    await service.completeValidation({ runId: candidate.id, status: "passed", metrics: emptyValidationMetrics(candidate.metrics.total), results: [], candidateArtifact: await runnerCandidate(candidate.id) });
+    await completeReport(service, { runId: candidate.id, status: "passed", metrics: emptyValidationMetrics(candidate.metrics.total), results: [], candidateArtifact: await runnerCandidate(candidate.id) });
     const otherVersion = await service.requestGuardrailPublish({ guardrailId: guardrail.id, actorId: "admin" });
     const failure1 = await versionReport(guardrail.id, version.version, "failed");
     const failure2 = await versionReport(guardrail.id, version.version, "failed");
     const otherFailure = await versionReport(guardrail.id, otherVersion.version, "failed");
     const rows = () => service.listValidationRuns(guardrail.id);
     expect((await rows()).map(run => run.id).sort()).toEqual([publication.id, pass1.id, candidate.id, failure2.id, otherFailure.id].sort());
-    await expect(service.getValidationRun(failure1.id)).rejects.toMatchObject({ status: 404 });
+    await expect(getReport(service, failure1.id)).rejects.toMatchObject({ status: 404 });
     expect((await database.pool.query("SELECT id FROM controller_outbox WHERE id=$1", [failure1.id])).rows).toEqual([]);
     const pass2 = await versionReport(guardrail.id, version.version);
     expect((await rows()).map(run => run.id).sort()).toEqual([pass1.id, pass2.id, candidate.id, failure2.id, otherFailure.id].sort());
@@ -250,13 +252,13 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", () => {
     await pruneTestingReportHistory(database.db);
     expect((await rows()).filter(run => run.subject === "version" && run.status === "failed").map(run => run.id).sort()).toEqual([failure2.id, otherFailure.id].sort());
     // Late delivery of the replaced failure must not recreate its report or change the remaining failure.
-    await service.completeValidation({ runId: failure1.id, status: "passed", metrics: emptyValidationMetrics(0), results: [] });
-    await expect(service.getValidationRun(failure1.id)).rejects.toMatchObject({ status: 404 });
+    await completeReport(service, { runId: failure1.id, status: "passed", metrics: emptyValidationMetrics(0), results: [] });
+    await expect(getReport(service, failure1.id)).rejects.toMatchObject({ status: 404 });
     // Publication does not change a failed test outcome.
     await database.pool.query("UPDATE guardrail_version SET status='pending', validation_run_id=NULL, released_at=NULL WHERE guardrail_id=$1 AND version=$2", [guardrail.id, otherVersion.version]);
     await expect(service.releaseGuardrailVersion({ guardrailId: guardrail.id, version: otherVersion.version, actorId: "admin" }))
       .resolves.toMatchObject({ status: "ready", validationRunId: null });
-    expect(await service.getValidationRun(otherFailure.id)).toMatchObject({ status: "failed" });
+    expect(await getReport(service, otherFailure.id)).toMatchObject({ status: "failed" });
     const nextPass = await versionReport(guardrail.id, otherVersion.version);
     expect(await service.releaseGuardrailVersion({ guardrailId: guardrail.id, version: otherVersion.version, actorId: "admin" })).toMatchObject({ status: "ready", validationRunId: null });
     // Removed versions join the separate history bucket immediately, without evicting another version's reports.
@@ -273,8 +275,20 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", () => {
     await seedHistory(guardrail.id, "concurrent-retention", "queued", 12);
     await database.pool.query("UPDATE guardrail_validation_run SET subject='version', guardrail_version=$2 WHERE guardrail_id=$1 AND starts_with(id, 'concurrent-retention-')", [guardrail.id, version.version]);
     const input = (n: number) => ({ runId: `concurrent-retention-${n}`, status: "passed" as const, metrics: emptyValidationMetrics(0), results: [] });
-    await Promise.all(Array.from({ length: 12 }, (_, n) => service.completeValidation(input(n + 1))));
-    await Promise.all(Array.from({ length: 12 }, (_, n) => service.completeValidation(input(n + 1))));
+    await Promise.all(Array.from({ length: 12 }, async (_, n) => {
+      for (let attempt = 0; ; attempt++) {
+        try { await completeReport(service, input(n + 1)); break; }
+        catch (error) { if (attempt >= 4 || (error as { code?: string }).code !== "report_busy") throw error; await new Promise(resolve => setTimeout(resolve, 100)); }
+      }
+    }));
+    await service.drainReportWork();
+    await Promise.all(Array.from({ length: 12 }, async (_, n) => {
+      for (let attempt = 0; ; attempt++) {
+        try { await completeReport(service, input(n + 1)); break; }
+        catch (error) { if (attempt >= 4 || (error as { code?: string }).code !== "report_busy") throw error; await new Promise(resolve => setTimeout(resolve, 100)); }
+      }
+    }));
+    await service.drainReportWork();
     expect(await service.listValidationRuns(guardrail.id)).toHaveLength(2);
     expect(await service.getGuardrail(guardrail.id)).toMatchObject({ readiness: "ready" });
     const completed = (await database.pool.query("SELECT detail->>'runId' AS id, count(*)::int AS n FROM audit_event WHERE resource_id=$1 AND kind='guardrail.validation_completed' GROUP BY detail->>'runId'", [guardrail.id])).rows;
@@ -304,7 +318,7 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", () => {
     draft.policyBindings = draft.policyBindings.filter(item => item.policyId === "local-network-addresses");
     const guardrail = await service.createGuardrail({ name: "Readiness gates", draftConfig: draft, runtimeProfile: "auto", actorId: "admin" });
     const run = await service.requestValidation({ guardrailId: guardrail.id, actorId: "admin", compilerAvailable: true });
-    await service.completeValidation({ runId: run.id, status: "passed", metrics: emptyValidationMetrics(run.metrics.total), results: [], candidateArtifact: await runnerCandidate(run.id) });
+    await completeReport(service, { runId: run.id, status: "passed", metrics: emptyValidationMetrics(run.metrics.total), results: [], candidateArtifact: await runnerCandidate(run.id) });
     expect(await service.getGuardrail(guardrail.id)).toMatchObject({ readiness: "not_ready", versionSummary: { total: 0 } });
     const version = await service.requestGuardrailPublish({ guardrailId: guardrail.id, actorId: "admin", expectedDraftRevision: 1 });
     await database.pool.query("UPDATE guardrail_version SET status='pending', released_at=NULL, released_by=NULL WHERE guardrail_id=$1", [guardrail.id]);
@@ -320,7 +334,7 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", () => {
     expect(await service.getGuardrail(guardrail.id)).toMatchObject({ latestTestingReport: { id: second.id, subject: "version" }, latestValidationRun: { id: run.id, subject: "draft" } });
     expect(await service.testingReportDeletionImpact(run.id)).toMatchObject({ deletable: true, pendingVersion: null, replacementRunId: null });
     await service.deleteTestingReport({ runId: run.id, actorId: "admin", expectedPendingVersion: null });
-    await expect(service.getValidationRun(run.id)).rejects.toMatchObject({ status: 404 });
+    await expect(getReport(service, run.id)).rejects.toMatchObject({ status: 404 });
     expect((await database.pool.query("SELECT status, validation_run_id FROM guardrail_version WHERE guardrail_id=$1", [guardrail.id])).rows).toEqual([{ status: "ready", validation_run_id: null }]);
     expect((await database.pool.query("SELECT id FROM controller_outbox WHERE id=$1", [run.id])).rows).toEqual([]);
     expect(await service.getGuardrail(guardrail.id)).toMatchObject({ latestTestingReport: { id: second.id }, latestValidationRun: null, hasUnpublishedChanges: false });
@@ -340,7 +354,7 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", () => {
     const audit = (await database.pool.query("SELECT detail FROM audit_event WHERE resource_id=$1 AND kind='guardrail.testing_report_deleted'", [guardrail.id])).rows[0];
     expect(audit.detail).toMatchObject({ runId: run.id, pendingVersion: null });
     await expect(service.releaseGuardrailVersion({ guardrailId: guardrail.id, version: version.version, actorId: "admin" })).resolves.toMatchObject({ status: "ready" });
-    await service.completeValidation({ runId: run.id, status: "passed", metrics: emptyValidationMetrics(0), results: [] });
+    await completeReport(service, { runId: run.id, status: "passed", metrics: emptyValidationMetrics(0), results: [] });
     expect((await service.listValidationRuns(guardrail.id))).toEqual([]);
     const newReport = await versionReport(guardrail.id, version.version);
     expect(await service.releaseGuardrailVersion({ guardrailId: guardrail.id, version: version.version, actorId: "admin" })).toMatchObject({ status: "ready", validationRunId: null });
@@ -363,7 +377,7 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", () => {
     const running = await service.requestVersionTestRun({ guardrailId: guardrail.id, version: version.version, actorId: "admin" });
     expect(await service.testingReportDeletionImpact(running.id)).toMatchObject({ running: true, deletable: false });
     await expect(service.deleteTestingReport({ runId: running.id, actorId: "admin", expectedPendingVersion: null })).rejects.toMatchObject({ code: "test_report_in_use" });
-    await service.completeValidation({ runId: running.id, status: "passed", metrics: emptyValidationMetrics(running.metrics.total), results: [] });
+    await completeReport(service, { runId: running.id, status: "passed", metrics: emptyValidationMetrics(running.metrics.total), results: [] });
     // References do not block deleting redundant evidence.
     await service.deleteTestingReport({ runId: run.id, actorId: "admin", expectedPendingVersion: null });
   });
@@ -428,7 +442,7 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", () => {
     await database.pool.query("UPDATE guardrail SET draft_revision=draft_revision+1 WHERE id=$1", [guardrail.id]);
     const run = await service.requestValidation({ guardrailId: guardrail.id, actorId: "admin", compilerAvailable: true });
     await expect(service.requestGuardrailPublish({ guardrailId: guardrail.id, actorId: "admin" })).rejects.toMatchObject({ code: "guardrail_compiler_unavailable" });
-    await service.completeValidation({ runId: run.id, status: "passed", metrics: emptyValidationMetrics(run.metrics.total), results: [], candidateArtifact: await runnerCandidate(run.id) });
+    await completeReport(service, { runId: run.id, status: "passed", metrics: emptyValidationMetrics(run.metrics.total), results: [], candidateArtifact: await runnerCandidate(run.id) });
     await service.requestGuardrailPublish({ guardrailId: guardrail.id, actorId: "admin" });
     expect((await service.protectionModes.get(guardrail.id)).mode).toBe("monitor");
     await service.deleteGuardrailVersion({ guardrailId: guardrail.id, version: version.version, actorId: "admin" });
@@ -451,7 +465,7 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", () => {
     const compiler = vi.fn(async (input: ArtifactCompilation) => compile(input));
     service.setArtifactCompiler(compiler);
     const run = status === "untested" ? null : await service.requestValidation({ guardrailId: guardrail.id, actorId: "admin", compilerAvailable: true });
-    if (run && status === "failed") await service.completeValidation({ runId: run.id, status: "failed", metrics: emptyValidationMetrics(run.metrics.total),
+    if (run && status === "failed") await completeReport(service, { runId: run.id, status: "failed", metrics: emptyValidationMetrics(run.metrics.total),
       results: [{ caseId: "strict-evidence", name: "Target Rule did not execute", policyId: "target", phase: "input",
         expectedDecision: "block", actualDecision: "block", passed: false, action: "block", reason: "Another Rule cannot prove target acceptance.",
         evaluatorIds: [], findings: [], trace: [], latencyMs: 1, coveredRuleIds: ["target-rule"], matchedRuleIds: [],
@@ -463,9 +477,9 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", () => {
     expect(compiler).toHaveBeenCalledTimes(status === "failed" ? 0 : 1);
     expect(await service.getGuardrail(guardrail.id)).toMatchObject({ readiness: "ready" });
     if (run) {
-      expect(await service.getValidationRun(run.id)).toMatchObject({ status });
+      expect(await getReport(service, run.id)).toMatchObject({ status });
       if (status === "failed") {
-        expect((await service.getValidationRun(run.id)).results[0]).toMatchObject({ passed: false, evidenceStatus: "preempted_by", ruleContractSatisfied: false });
+        expect((await getReport(service, run.id)).results[0]).toMatchObject({ passed: false, evidenceStatus: "preempted_by", ruleContractSatisfied: false });
         await versionReport(guardrail.id, published.version, "failed");
         const archived = (await service.getGuardrail(guardrail.id)).versions[0]!;
         expect(archived).toMatchObject({ status: "ready", testingEvidence: { release: { id: run.id, status: "failed" } } });
@@ -537,7 +551,8 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", () => {
     const { guardrail, version, run } = await releasedFixture();
     // Simulate stored metadata from before upgrade, including a stale load result.
     await database.pool.query("UPDATE guardrail_artifact SET compiler_version='tasklattice-nemo-config-v27-staged-checks' WHERE id=$1", [version.artifactId]);
-    await database.pool.query("UPDATE guardrail_validation_run SET status='failed', candidate_artifact=jsonb_set(candidate_artifact, '{compilerVersion}', '\"tasklattice-nemo-config-v27-staged-checks\"') WHERE id=$1", [run.id]);
+    await database.pool.query("UPDATE guardrail_validation_run SET status='failed' WHERE id=$1",[run.id]);
+    await database.pool.query("UPDATE guardrail_validation_snapshot SET payload=jsonb_set(payload, '{candidateArtifact,compilerVersion}', '\"tasklattice-nemo-config-v27-staged-checks\"') WHERE digest=(SELECT snapshot_digest FROM guardrail_validation_run WHERE id=$1)", [run.id]);
     await database.pool.query("UPDATE guardrail_version SET environment_check='{\"status\":\"compatible\"}' WHERE artifact_id=$1", [version.artifactId]);
     const original = (await database.pool.query("SELECT * FROM guardrail_artifact WHERE id=$1", [version.artifactId])).rows[0];
     expect((await service.desiredStateForPool("default")).artifacts.some(a => a.id === version.artifactId)).toBe(false);
@@ -554,7 +569,7 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", () => {
     expect(published).toMatchObject({ status: "ready" });
     expect(published.artifactId).not.toBe(version.artifactId);
     expect((await database.pool.query("SELECT * FROM guardrail_artifact WHERE id=$1", [version.artifactId])).rows[0]).toEqual(original);
-    expect(await service.getValidationRun(run.id)).toMatchObject({ status: "failed" });
+    expect(await getReport(service, run.id)).toMatchObject({ status: "failed" });
     expect(await service.requestGuardrailPublish({ guardrailId: guardrail.id, actorId: "admin" })).toEqual(published);
     expect(compiler).toHaveBeenCalledOnce();
   });

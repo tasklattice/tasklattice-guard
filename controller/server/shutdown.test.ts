@@ -3,6 +3,17 @@ import { afterEach, expect, it, vi } from "vitest";
 import { drainController } from "./shutdown.js";
 afterEach(() => vi.useRealTimers());
 
+it("drains report maintenance started by accepted requests before closing the database", async () => {
+  const report = Promise.withResolvers<void>(), endDatabase = vi.fn(async () => {});
+  const stopReports = vi.fn(() => report.promise);
+  const stopped = drainController({ closeHttp: async () => {}, stopRunner: async () => {}, stopMetrics: async () => {}, stopAccounts: async () => {},
+    stopPricing: async () => {}, stopReports, endDatabase, forceClose: vi.fn() });
+  await vi.waitFor(() => expect(stopReports).toHaveBeenCalledOnce());
+  expect(endDatabase).not.toHaveBeenCalled();
+  report.resolve(); await stopped;
+  expect(endDatabase).toHaveBeenCalledOnce();
+});
+
 it("closes admission first and keeps the pool open until HTTP, metrics, Runner and account work drain", async () => {
   const gates = Array.from({ length: 4 }, () => Promise.withResolvers<void>());
   const order: string[] = [];

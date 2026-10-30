@@ -24,7 +24,7 @@ import type { RunnerMessage__Output } from "../generated/control-protocol/taskla
 
 const url = process.env.GUARD_TEST_POSTGRES_URL;
 describe.skipIf(!url)("950-case full-feature report delivery", () => {
-  it("executes real local checks, persists the complete compressed report, then reads it with GuardCtl", async () => {
+  it("executes real local checks and preserves all evidence through chunks", async () => {
     const database = await createTestDatabase(url!, "large_report");
     const directory = await mkdtemp(join(tmpdir(), "guard-large-report-"));
     await writeFile(join(directory, "private.pem"), generateKeyPairSync("ed25519").privateKey.export({ type: "pkcs8", format: "pem" }));
@@ -88,19 +88,31 @@ describe.skipIf(!url)("950-case full-feature report delivery", () => {
       const definition = loadSync(config.protoPath, { includeDirs: [dirname(config.protoPath)], longs: String, enums: String, defaults: true, oneofs: true });
       const codec = definition["tasklattice.guard.control.v1.RunnerMessage"] as MessageTypeDefinition<object, RunnerMessage__Output>;
       await service.markValidationRunning(run.id);
-      await handle(codec.deserialize(await readFile(wirePath)), connection);
+      const wire = await readFile(wirePath);
+      {
+        expect(delivery.parts).toBeGreaterThan(10);
+        for (let offset = 0; offset < wire.length;) {
+          const length = wire.readUInt32BE(offset); offset += 4;
+          const message = codec.deserialize(wire.subarray(offset, offset + length)); offset += length;
+          await handle(message, connection);
+          await handle(message, connection); // ACK loss must not duplicate cases.
+        }
+      }
       expect(stream.write).toHaveBeenLastCalledWith(expect.objectContaining({ validationReportAck: { runId: run.id } }));
       const summary = await cli("test-status", ["--run-id", run.id]);
       expect(summary).toMatchObject({ status: "passed", metrics: { total: 950, passed: 950 } });
       expect(summary).not.toHaveProperty("results");
-      const report = await cli("test-status", ["--run-id", run.id, "--detail"]);
-      expect(report.status).toBe("passed");
-      expect(report.results).toHaveLength(950);
-      expect(report.results.every((item: { passed: boolean }) => item.passed)).toBe(true);
-      expect(report.testScope.modelInvocations).toBe(0);
+      const page=await cli("test-cases",["--run-id",run.id]);
+      expect(page.counts).toMatchObject({all:950,passed:950});
+      expect(page.items).toHaveLength(50);
+      expect(page.items.every((item:{passed:boolean})=>item.passed)).toBe(true);
+      const detail=await cli("test-case",["--run-id",run.id,"--ordinal",String(page.items[0].ordinal)]);
+      expect(detail.passed).toBe(true);
+      expect(summary.testScope.modelInvocations).toBe(0);
     } finally {
       if (http) await new Promise<void>((resolve, reject) => http!.close(error => error ? reject(error) : resolve()));
       await control.stop();
+      await service.stopReportWork();
       await database.drop();
       await rm(directory, { recursive: true, force: true });
     }

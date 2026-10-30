@@ -7,8 +7,8 @@ import { useTranslation } from "react-i18next";
 import { EntitySheet } from "@/components/entity-sheet";
 import { ErrorNotice, StateBadge } from "@/components/product-shell";
 import { GuardrailValidationReadiness, useGuardrailValidationReadiness } from "@/components/guardrail-validation-readiness";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/notifications";
 import { queryKeys } from "@/features/query-keys";
 import { createValidationRun, getValidationRun, resumeValidationRun, publishGuardrail, type Guardrail, type GuardrailVersion, type Policy, type ValidationRun } from "@/lib/api";
@@ -73,7 +73,7 @@ export function GuardrailDraftReviewSheet({ guardrail, policies, versions, polic
   const currentSummary = result?.source_draft_version === guardrail.draft_revision ? result : null;
   const detailQuery = useQuery({ queryKey: queryKeys.validationRun(currentSummary?.id ?? ""),
     queryFn: () => getValidationRun(currentSummary!.id),
-    enabled: Boolean(currentSummary && currentSummary.details_loaded === false && !isValidationRunning(currentSummary) && !run.isPending && publishRevision === null),
+    enabled: Boolean(currentSummary && !isValidationRunning(currentSummary) && !run.isPending && publishRevision === null),
     staleTime: Infinity, gcTime: 0 });
   const currentResult = detailQuery.data ?? currentSummary;
   const canPublish = !readOnly && !guardrail.published_current;
@@ -108,9 +108,7 @@ export function GuardrailDraftReviewSheet({ guardrail, policies, versions, polic
         <ValidationScopeNotice run={currentResult} />
         <p className="text-sm">{t("guardrails.testResultSummary", { passed: currentResult.metrics.passed, total: currentResult.metrics.executed ?? currentResult.metrics.total, rate: currentResult.metrics.compliance_rate })}</p>
         {currentResult.failure_reason ? <p role="alert" className="whitespace-pre-wrap text-sm text-destructive">{currentResult.failure_reason}</p> : null}
-        {!reviewingPublish ? detailQuery.error ? <div className="space-y-3"><ErrorNotice error={detailQuery.error} /><Button variant="outline" onClick={() => void detailQuery.refetch()}>{t("common.retry")}</Button></div>
-          : currentResult.details_loaded === false ? <Skeleton className="h-72" />
-          : <ValidationCaseResults key={currentResult.id} results={currentResult.results} defaultFilter={currentResult.status === "passed" ? "all" : "failed"} /> : null}
+        {!reviewingPublish ? detailQuery.error ? <div className="space-y-3"><ErrorNotice error={detailQuery.error} /><Button variant="outline" onClick={() => void detailQuery.refetch()}>{t("common.retry")}</Button></div> : detailQuery.isFetching && !detailQuery.data ? <Skeleton className="h-48" /> : <ValidationCaseResults key={currentResult.id} runId={currentResult.id} defaultFilter={currentResult.status === "passed" ? "all" : "failed"} /> : null}
       </> : <p className="text-sm text-muted-foreground">{t(result ? "guardrails.validationEvidenceStale" : "guardrails.savedDraftUntested")}</p>}
     </div>
   </EntitySheet>;

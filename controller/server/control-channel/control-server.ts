@@ -1,3 +1,6 @@
+import type { ReportUploadIdentity } from "../services/report-results.js";
+import { ControllerError } from "../domain/errors.js";
+import { ReportBudget, REPORT_DECODE_BYTES } from "../services/report-budget.js";
 import { PROTECTION_MODE_CAPABILITY } from "../../shared/protection-mode.js";
 import { artifactExecutionContractIssue } from "../domain/artifact-execution-contract.js";
 import { OFFLINE_COMPILATION_CAPABILITY, type ArtifactCompilation } from "../domain/artifact-compilation.js";
@@ -50,7 +53,6 @@ import {
 } from "./protocol-codec.js";
 
 const decompressReport = promisify(gunzip);
-const MAX_REPORT_BYTES = 128 * 1024 * 1024;
 type RunnerStream = ServerDuplexStream<RunnerMessage__Output, ControllerMessage>;
 type ControllerBody = Omit<ControllerMessage, "messageId" | "sentAtUnixMs">;
 
@@ -81,6 +83,7 @@ export class RunnerControlServer {
   private readonly syncQueue: KeyedWorkQueue<object>;
   private readonly protectionKeys = new WeakMap<Connection, object>();
   private dispatchingValidation = false;
+  private readonly reportDecodes = new ReportBudget(2, 2 * REPORT_DECODE_BYTES, 4);
   private readonly activeValidations = new Map<string, Connection>();
   private readonly railValidations = new Map<string, { runnerId: string; bootId: string; finish: (result: RailValidationEvidence) => void }>();
   private readonly admissions = new Map<string, { runnerId: string; bootId: string; finish: (result: PoolAdmission) => void }>();
@@ -93,6 +96,7 @@ export class RunnerControlServer {
     private readonly models: ModelConfigurationService,
   ) {
     this.syncQueue = new KeyedWorkQueue(config.runnerSyncConcurrency ?? 4);
+    this.service.setReportDecoderState?.(() => ({ decode: this.reportDecodes.state() }));
     const definition = loadSync(config.protoPath, {
       includeDirs: [dirname(config.protoPath)],
       keepCase: false,
@@ -348,6 +352,7 @@ export class RunnerControlServer {
     let messageChain = Promise.resolve();
     stream.on("data", (message: RunnerMessage__Output) => {
       if (this.stopping || closed) return;
+      stream.pause?.();
       const messageType = message.body ?? "unknown";
       messageChain = this.pending.track(messageChain.then(async () => {
         const registered = await this.handleMessage(stream, message, connection, this.stopping && closed);
@@ -363,8 +368,8 @@ export class RunnerControlServer {
         logDatabaseFailure("runner.control_error", error, this.service.databasePoolState?.() ?? null, {
           operation: messageType,
           ...(connection ? { runnerId: connection.runnerId, bootId: connection.bootId } : {}),
-          ...(message.validationResult ? { runId: message.validationResult.runId } : {}),
-          ...(message.validationReport ? { runId: message.validationReport.runId } : {}),
+          ...(message.validationStatusNotice ? { runId: message.validationStatusNotice.runId } : {}),
+          ...(message.validationReportChunk ? { runId: message.validationReportChunk.runId } : {}),
           ...(message.validationProgress ? { runId: message.validationProgress.runId } : {}),
         });
         // grpc status is also logged by the Runner. Never send a Drizzle
@@ -372,7 +377,7 @@ export class RunnerControlServer {
         const { category, code } = databaseErrorFields(error);
         const detail = `Runner control request failed (${code ?? category}).`;
         stream.emit("error", Object.assign(new Error(detail), { code: status.INTERNAL }));
-      }));
+      }).finally(() => { if (!closed && !this.stopping) stream.resume?.(); }));
     });
     const disconnected = () => {
       closed = true;
@@ -441,7 +446,6 @@ export class RunnerControlServer {
         registrationAccepted: {
           desiredGeneration: String(desiredGeneration),
           heartbeatIntervalSeconds: this.config.heartbeatIntervalSeconds,
-          validationReportGzip: true,
         },
       });
       await this.reconcile(connection);
@@ -503,23 +507,50 @@ export class RunnerControlServer {
       await this.service.updateValidationProgress(progress.runId, {
         phase: phase[progress.phase], completedCases: progress.completedCases, passedCases: progress.passedCases,
       });
-    } else if (message.validationResult || message.validationReport) {
-      const started = performance.now();
-      const result = message.validationReport ? await this.decodeValidationReport(message.validationReport) : message.validationResult!;
-      if (result.runnerId !== current.runnerId) throw new Error("Validation result identity does not match the registered stream.");
-      this.metrics.observeJob("validation", result.accepted);
-      const owner = this.activeValidations.get(result.runId);
-      if (owner && owner !== current) throw new Error("Validation result belongs to another Runner stream.");
-      if (!this.isTestingRunner(current)) throw new Error("Validation result is not from the ordinal-0 testing Runner.");
-      if (result.status === "VALIDATION_STATUS_CANCELLED") {
-        await this.service.markOutboxProcessed(`cancel-${result.runId}`);
-      } else {
-        await this.handleValidationResult(result);
+    } else if (message.validationReportChunk) {
+      const part = message.validationReportChunk;
+      if (part.runnerId !== current.runnerId || !this.isTestingRunner(current)) throw new Error("Report chunk does not belong to this testing Runner.");
+      const owner = this.activeValidations.get(part.runId);
+      if (owner && owner !== current) throw new Error("Report chunk belongs to another Runner stream.");
+      if (!Number.isSafeInteger(part.rawSizeBytes) || part.rawSizeBytes <= 0 || part.rawSizeBytes > REPORT_DECODE_BYTES || part.gzipResult.length > REPORT_DECODE_BYTES) throw new Error("Report chunk exceeds the decoded size budget.");
+      try { await this.reportDecodes.run(part.rawSizeBytes, async () => {
+        const started = performance.now();
+        const bytes = await decompressReport(part.gzipResult, { maxOutputLength: REPORT_DECODE_BYTES });
+        if (bytes.length !== part.rawSizeBytes || createHash("sha256").update(bytes).digest("hex") !== part.sha256) throw new Error("Report chunk size or digest does not match.");
+        const result = this.validationResultCodec.deserialize(bytes);
+        if (result.runnerId !== current.runnerId || result.runId !== part.runId) throw new Error("Report chunk identity does not match.");
+        if (part.final && (!result.accepted || !result.metrics || result.metrics.total !== part.cases)) throw new Error("Final report metadata does not match the manifest.");
+        const complete = await this.service.reportResults.stage({ runId: part.runId, runnerBootId: current.bootId, uploadId: part.uploadId, manifestDigest: part.manifestDigest,
+          sequence: part.sequence, chunks: part.chunks, cases: part.cases, caseOffset: part.caseOffset,
+          rawBytes: part.rawSizeBytes, digest: part.sha256, final: part.final, results: result.results.map(validationCaseFromWire) });
+        if (complete) await this.handleValidationResult(result, {runnerBootId:current.bootId,uploadId:part.uploadId});
+        this.write(current.stream, { validationReportChunkAck: { runId: part.runId, uploadId: part.uploadId, sequence: part.sequence } });
+        if (part.final) {
+          this.activeValidations.delete(part.runId);
+          this.write(current.stream, { validationReportAck: { runId: part.runId } });
+        }
+        console.info(JSON.stringify({ event: "validation.report_chunk_processed", run_id: part.runId, sequence: part.sequence,
+          raw_bytes: bytes.length, wire_bytes: part.gzipResult.length, duration_ms: Math.round(performance.now() - started), ...this.reportDecodes.state() }));
+      }); } catch (error) {
+        if (!(error instanceof ControllerError) || ![413, 422].includes(error.status)) throw error;
+        // Retryable database/admission failures receive no ACK. Permanent size
+        // or manifest failures are persisted before telling the Runner to stop.
+        await this.service.rejectValidation({ runId: part.runId, reason: "Test report exceeded its size budget or contained an invalid manifest." });
+        this.activeValidations.delete(part.runId);
+        this.write(current.stream, { validationReportChunkAck: { runId: part.runId, uploadId: part.uploadId, sequence: part.sequence, rejectionCode: "report_rejected" } });
+        this.write(current.stream, { validationReportAck: { runId: part.runId } });
       }
-      this.activeValidations.delete(result.runId);
-      this.write(current.stream, { validationReportAck: { runId: result.runId } });
-      console.info(JSON.stringify({ event: "validation.report_saved", run_id: result.runId, runner_id: current.runnerId,
-        cases: result.results?.length ?? 0, duration_ms: Math.round(performance.now() - started) }));
+    } else if (message.validationStatusNotice) {
+      const notice = message.validationStatusNotice;
+      if (notice.runnerId !== current.runnerId || !this.isTestingRunner(current)) throw new Error("Validation notice identity mismatch.");
+      const owner = this.activeValidations.get(notice.runId);
+      if (owner && owner !== current) throw new Error("Validation notice belongs to another stream.");
+      if (Buffer.byteLength(notice.reason) > 4096) throw new Error("Validation notice exceeds the reason budget.");
+      if (notice.status === "VALIDATION_STATUS_CANCELLED") await this.service.markOutboxProcessed(`cancel-${notice.runId}`);
+      else if (notice.status === "VALIDATION_STATUS_FAILED") await this.service.rejectValidation({ runId: notice.runId, reason: notice.reason });
+      else throw new Error("Invalid terminal validation notice.");
+      this.activeValidations.delete(notice.runId);
+      this.write(current.stream, { validationReportAck: { runId: notice.runId } });
     } else if (message.artifactCompilationResult) {
       const result = message.artifactCompilationResult;
       const pending = this.compilations.get(result.compileId);
@@ -587,19 +618,7 @@ export class RunnerControlServer {
     return null;
   }
 
-  private async decodeValidationReport(report: NonNullable<RunnerMessage__Output["validationReport"]>): Promise<ValidationResult__Output> {
-    const size = Number(report.rawSizeBytes);
-    if (!Number.isSafeInteger(size) || size <= 0 || size > MAX_REPORT_BYTES) throw new Error("Validation report exceeds the decoded size budget.");
-    const bytes = await decompressReport(report.gzipResult, { maxOutputLength: MAX_REPORT_BYTES });
-    if (bytes.length !== size || createHash("sha256").update(bytes).digest("hex") !== report.sha256)
-      throw new Error("Validation report size or digest does not match.");
-    const result = this.validationResultCodec.deserialize(bytes);
-    if (result.runnerId !== report.runnerId || result.runId !== report.runId)
-      throw new Error("Validation report identity does not match its envelope.");
-    return result;
-  }
-
-  private async handleValidationResult(result: ValidationResult__Output): Promise<void> {
+  private async handleValidationResult(result: ValidationResult__Output, upload: ReportUploadIdentity): Promise<void> {
     if (!result.accepted) {
       await this.service.rejectValidation({
         runId: result.runId,
@@ -609,12 +628,11 @@ export class RunnerControlServer {
     }
     if (!result.metrics) throw new Error("Accepted Validation result is missing metrics.");
     const metrics = validationMetricsFromWire(result.metrics);
-    const results = result.results.map(validationCaseFromWire);
     await this.service.completeValidation({
       runId: result.runId,
+      upload,
       status: validationStatusFromWire(result.status),
       metrics,
-      results,
       ...(result.testScope ? { testScope: { ...result.testScope, skippedRules: result.testScope.skippedRules.map(r => ({ ...r })) } } : {}),
       ...(result.reason ? { reason: result.reason } : {}),
       ...(result.candidateArtifact ? { candidateArtifact: artifactFromWire(result.candidateArtifact) as unknown as ArtifactContent } : {}),
@@ -860,7 +878,7 @@ function normalizeLoad(load: RunnerHeartbeat__Output["load"]): RunnerLoad {
 
 function wireMessageType(message: ControllerBody): string {
   return [
-    "registrationAccepted", "desiredState", "protectionState", "validationRequest", "validationCancelRequest", "validationReportAck", "drainRequest",
+    "registrationAccepted", "desiredState", "protectionState", "validationRequest", "validationCancelRequest", "validationReportAck", "validationReportChunkAck", "drainRequest",
   ].find((key) => key in message) ?? "unknown";
 }
 

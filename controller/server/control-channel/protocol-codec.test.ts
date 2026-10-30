@@ -1,3 +1,6 @@
+import {gzipSync,gunzipSync} from "node:zlib";
+import type {MessageTypeDefinition} from "@grpc/proto-loader";
+import type {ValidationResult,ValidationResult__Output} from "../generated/control-protocol/tasklattice/guard/control/v1/ValidationResult.js";
 import { loadSync } from "@grpc/proto-loader";
 import { loadPackageDefinition } from "@grpc/grpc-js";
 import { describe, expect, it } from "vitest";
@@ -66,11 +69,13 @@ describe("Controller/Runner control protocol", () => {
     const definition = loadSync(protoPath, { includeDirs: [dirname(protoPath)], longs: String, enums: String, defaults: true, oneofs: true });
     const descriptor = loadPackageDefinition(definition) as unknown as ProtoGrpcType;
     const connect = descriptor.tasklattice.guard.control.v1.RunnerControl.service.Connect;
-    const encoded = connect.requestSerialize({ validationResult: { results: [{
+    const codec=definition["tasklattice.guard.control.v1.ValidationResult"] as MessageTypeDefinition<ValidationResult,ValidationResult__Output>;
+    const raw=codec.serialize({ results: [{
       caseId: "model-case", skipped: true, skipReason: "Model-dependent tests skipped.",
       expectedDecision: "VALIDATION_DECISION_BLOCK", phase: "GUARDRAIL_PHASE_INPUT",
-    }] } });
-    const value = connect.requestDeserialize(encoded).validationResult!.results[0]!;
+    }] });
+    const encoded=connect.requestSerialize({validationReportChunk:{gzipResult:gzipSync(raw)}});
+    const value=codec.deserialize(gunzipSync(connect.requestDeserialize(encoded).validationReportChunk!.gzipResult)).results[0]!;
     expect(validationCaseFromWire(value)).toMatchObject({
       skipped: true, passed: false, actualDecision: "", action: "", modelInvocations: 0,
     });
@@ -241,11 +246,14 @@ it("round-trips explicit successful and failed Rule evidence", () => {
   const base = { caseId: "target", expectedDecision: "VALIDATION_DECISION_TRANSFORM" as const,
     actualDecision: "VALIDATION_DECISION_TRANSFORM" as const, action: "ENFORCEMENT_ACTION_TRANSFORM" as const,
     phase: "GUARDRAIL_PHASE_INPUT" as const, passed: false };
-  const wire = connect.requestDeserialize(connect.requestSerialize({ validationResult: { results: [
+  const codec=definition["tasklattice.guard.control.v1.ValidationResult"] as MessageTypeDefinition<ValidationResult,ValidationResult__Output>;
+  const raw=codec.serialize({results: [
     { ...base, evidenceStatus: "VALIDATION_EVIDENCE_STATUS_SHADOWED_BY", evidenceDetail: "Target did not match its transformed view.",
       supersededBy: [{ policyId: "mask", ruleId: "first" }], verifiedRuleIds: [], ruleContractSatisfied: false },
     { ...base, evidenceStatus: "VALIDATION_EVIDENCE_STATUS_OBSERVED", ruleContractSatisfied: true },
-  ] } })).validationResult!.results;
+  ]});
+  const envelope=connect.requestDeserialize(connect.requestSerialize({validationReportChunk:{gzipResult:gzipSync(raw)}}));
+  const wire=codec.deserialize(gunzipSync(envelope.validationReportChunk!.gzipResult)).results;
   expect(validationCaseFromWire(wire[0]!)).toMatchObject({ evidenceStatus: "shadowed_by", verifiedRuleIds: [],
     supersededBy: [{ policyId: "mask", ruleId: "first" }], ruleContractSatisfied: false });
   expect(validationCaseFromWire(wire[1]!)).toMatchObject({ evidenceStatus: "observed", ruleContractSatisfied: true });

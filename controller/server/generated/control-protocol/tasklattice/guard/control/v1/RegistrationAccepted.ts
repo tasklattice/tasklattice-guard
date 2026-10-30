@@ -14,10 +14,6 @@ export interface RegistrationAccepted {
    * Maximum interval in seconds between Runner heartbeats.
    */
   'heartbeatIntervalSeconds'?: (number);
-  /**
-   * Allows large reports without increasing the global gRPC message budget.
-   */
-  'validationReportGzip'?: (boolean);
 }
 
 /**
@@ -32,8 +28,4 @@ export interface RegistrationAccepted__Output {
    * Maximum interval in seconds between Runner heartbeats.
    */
   'heartbeatIntervalSeconds': (number);
-  /**
-   * Allows large reports without increasing the global gRPC message budget.
-   */
-  'validationReportGzip': (boolean);
 }

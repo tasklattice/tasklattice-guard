@@ -64,7 +64,7 @@ type Stage = "save" | "lookup_policy_run" | "lookup_run" | "pool_acquire" | "poo
   | "begin" | "commit" | "rollback" | "savepoint" | "release_savepoint" | "rollback_savepoint"
   | "set_timeouts" | "lock_guardrail" | "lock_run" | "lock_parent_run" | "verify_candidate"
   | "load_candidate_request" | "normalize_candidate" | "digest_candidate" | "validate_scope"
-  | "write_report" | "complete_outbox" | "write_audit" | "prune_history" | "aggregate_policy_results";
+  | "write_report" | "write_case_batches" | "complete_outbox" | "write_audit" | "prune_history" | "aggregate_policy_results" | "assess_policy_cases";
 
 const reports = new AsyncLocalStorage<ReportSaveDiagnostics>();
 const milliseconds = (start: number) => Math.round((performance.now() - start) * 10) / 10;

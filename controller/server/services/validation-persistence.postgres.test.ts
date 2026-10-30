@@ -1,3 +1,4 @@
+import { completeReport } from "../db/report-test-utils.js";
 // @vitest-environment node
 import { resolve } from "node:path";
 import { Client } from "pg";
@@ -39,7 +40,7 @@ describe.skipIf(!url)("Test report persistence under connection pressure", () =>
       draftConfig: defaultGuardrailDraft(PolicyCatalog.load(catalogDir).list()) });
     guardrailId = guardrail.id;
   });
-  afterAll(async () => { await database?.drop(); });
+  afterAll(async () => { await service?.stopReportWork(); await database?.drop(); });
 
   async function prepareReport() {
     const run = await service.requestValidation({ guardrailId, actorId: "admin", compilerAvailable: true });
@@ -57,8 +58,9 @@ describe.skipIf(!url)("Test report persistence under connection pressure", () =>
   it("saves and prunes complete draft reports repeatedly with only one connection", async () => {
     for (let i = 0; i < 5; i++) {
       const result = await prepareReport();
-      await service.completeValidation(result);
-      await service.completeValidation(result); // Terminal delivery is idempotent.
+      await completeReport(service, result);
+      await completeReport(service, result); // Terminal delivery is idempotent.
+      await service.drainReportWork();
       expect(database.pool.idleCount).toBe(1);
       expect(database.pool.waitingCount).toBe(0);
       const { rows: [run] } = await database.pool.query("SELECT status, candidate_digest FROM guardrail_validation_run WHERE id = $1", [result.runId]);
@@ -69,7 +71,7 @@ describe.skipIf(!url)("Test report persistence under connection pressure", () =>
     expect((await database.pool.query("SELECT count(*)::int AS n FROM controller_outbox WHERE aggregate_id = $1 AND processed_at IS NULL", [guardrailId])).rows[0].n).toBe(0);
     const completed = lines.filter(line => line.status === "succeeded").map(line => line.stage);
     expect(completed).toEqual(expect.arrayContaining(["pool_acquire", "begin", "set_timeouts", "lock_guardrail", "lock_run",
-      "load_candidate_request", "normalize_candidate", "digest_candidate", "validate_scope", "write_report", "complete_outbox", "write_audit", "prune_history", "commit", "pool_release", "save"]));
+      "load_candidate_request", "normalize_candidate", "digest_candidate", "validate_scope", "write_report", "complete_outbox", "write_audit", "commit", "pool_release", "save"]));
     expect(lines.filter(line => line.stage === "save" && line.status === "started")).toHaveLength(10);
   });
 
@@ -82,7 +84,7 @@ describe.skipIf(!url)("Test report persistence under connection pressure", () =>
     try {
       await blocker.query("BEGIN");
       await blocker.query("SELECT id FROM guardrail WHERE id = $1 FOR UPDATE", [guardrailId]);
-      completed = service.completeValidation(report).catch(error => { failure = error; });
+      completed = completeReport(service, report).catch(error => { failure = error; });
       await vi.waitFor(async () => {
         const { rows } = await blocker.query("SELECT count(*)::int AS n FROM pg_stat_activity WHERE application_name = $1 AND wait_event_type = 'Lock'", [database.pool.options.application_name]);
         expect(rows[0].n).toBe(1);
@@ -106,7 +108,7 @@ describe.skipIf(!url)("Test report persistence under connection pressure", () =>
       await blocker.end();
       await completed;
     }
-    await service.completeValidation(report);
+    await completeReport(service, report);
     expect((await database.pool.query("SELECT status FROM guardrail_validation_run WHERE id = $1", [report.runId])).rows[0].status).toBe("passed");
     expect(database.pool.waitingCount).toBe(0);
   }, 10_000);
@@ -120,7 +122,7 @@ describe.skipIf(!url)("Test report persistence under connection pressure", () =>
     await database.pool.query(`CREATE TRIGGER reject_report_write BEFORE UPDATE OF status ON guardrail_validation_run
       FOR EACH ROW WHEN (NEW.status = 'passed') EXECUTE FUNCTION reject_report_write()`);
     try {
-      await expect(service.completeValidation({ ...report, reason: secret })).rejects.toMatchObject({ cause: { code: "23514" } });
+      await expect(completeReport(service, { ...report, reason: secret })).rejects.toMatchObject({ cause: { code: "23514" } });
       expect(lines).toContainEqual(expect.objectContaining({ stage: "write_report", status: "failed",
         error: { category: "database_error", code: "23514", sqlState: "23514" } }));
       expect(lines).toContainEqual(expect.objectContaining({ stage: "rollback", status: "succeeded" }));
@@ -130,7 +132,7 @@ describe.skipIf(!url)("Test report persistence under connection pressure", () =>
       await database.pool.query("DROP TRIGGER reject_report_write ON guardrail_validation_run");
       await database.pool.query("DROP FUNCTION reject_report_write()");
     }
-    await service.completeValidation(report);
+    await completeReport(service, report);
     const attempts = lines.filter(line => line.stage === "save" && line.status === "started");
     expect(attempts).toHaveLength(2);
     expect(attempts[0]!.attemptId).not.toBe(attempts[1]!.attemptId);

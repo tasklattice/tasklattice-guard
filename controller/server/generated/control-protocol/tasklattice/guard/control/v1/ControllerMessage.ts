@@ -10,6 +10,7 @@ import type { GuardrailProtectionState as _tasklattice_guard_control_v1_Guardrai
 import type { CompileRequest as _tasklattice_guard_control_v1_CompileRequest, CompileRequest__Output as _tasklattice_guard_control_v1_CompileRequest__Output } from '../../../../tasklattice/guard/control/v1/CompileRequest.js';
 import type { ValidationCancelRequest as _tasklattice_guard_control_v1_ValidationCancelRequest, ValidationCancelRequest__Output as _tasklattice_guard_control_v1_ValidationCancelRequest__Output } from '../../../../tasklattice/guard/control/v1/ValidationCancelRequest.js';
 import type { ValidationReportAck as _tasklattice_guard_control_v1_ValidationReportAck, ValidationReportAck__Output as _tasklattice_guard_control_v1_ValidationReportAck__Output } from '../../../../tasklattice/guard/control/v1/ValidationReportAck.js';
+import type { ValidationReportChunkAck as _tasklattice_guard_control_v1_ValidationReportChunkAck, ValidationReportChunkAck__Output as _tasklattice_guard_control_v1_ValidationReportChunkAck__Output } from '../../../../tasklattice/guard/control/v1/ValidationReportChunkAck.js';
 import type { Long } from '@grpc/proto-loader';
 
 /**
@@ -34,7 +35,8 @@ export interface ControllerMessage {
   'artifactCompilationRequest'?: (_tasklattice_guard_control_v1_CompileRequest | null);
   'validationCancelRequest'?: (_tasklattice_guard_control_v1_ValidationCancelRequest | null);
   'validationReportAck'?: (_tasklattice_guard_control_v1_ValidationReportAck | null);
-  'body'?: "registrationAccepted"|"desiredState"|"drainRequest"|"validationRequest"|"capabilityValidationRequest"|"artifactAdmissionRequest"|"protectionState"|"artifactCompilationRequest"|"validationCancelRequest"|"validationReportAck";
+  'validationReportChunkAck'?: (_tasklattice_guard_control_v1_ValidationReportChunkAck | null);
+  'body'?: "registrationAccepted"|"desiredState"|"drainRequest"|"validationRequest"|"capabilityValidationRequest"|"artifactAdmissionRequest"|"protectionState"|"artifactCompilationRequest"|"validationCancelRequest"|"validationReportAck"|"validationReportChunkAck";
 }
 
 /**
@@ -59,5 +61,6 @@ export interface ControllerMessage__Output {
   'artifactCompilationRequest'?: (_tasklattice_guard_control_v1_CompileRequest__Output | null);
   'validationCancelRequest'?: (_tasklattice_guard_control_v1_ValidationCancelRequest__Output | null);
   'validationReportAck'?: (_tasklattice_guard_control_v1_ValidationReportAck__Output | null);
-  'body'?: "registrationAccepted"|"desiredState"|"drainRequest"|"validationRequest"|"capabilityValidationRequest"|"artifactAdmissionRequest"|"protectionState"|"artifactCompilationRequest"|"validationCancelRequest"|"validationReportAck";
+  'validationReportChunkAck'?: (_tasklattice_guard_control_v1_ValidationReportChunkAck__Output | null);
+  'body'?: "registrationAccepted"|"desiredState"|"drainRequest"|"validationRequest"|"capabilityValidationRequest"|"artifactAdmissionRequest"|"protectionState"|"artifactCompilationRequest"|"validationCancelRequest"|"validationReportAck"|"validationReportChunkAck";
 }

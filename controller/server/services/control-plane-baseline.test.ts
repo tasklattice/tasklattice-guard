@@ -44,6 +44,8 @@ function candidate() {
 }
 
 function harness(reads: unknown[][], config: Partial<ControllerConfig> = {}, updateRows: Record<string, unknown[]> = {}, versionCount = 0) {
+  const report = reads.flat().find(item => item && typeof item === "object" && "subject" in item && "guardrailId" in item) as { id: string; guardrailId: string } | undefined;
+  const request = reads.flat().filter(item => item && typeof item === "object" && "runtimeProfile" in item && "plan" in item);
   const inserts: Array<{ table: string; value: Record<string, unknown> }> = [];
   const updates: Array<{ table: string; value: Record<string, unknown> }> = [];
   const builder = (rows: () => unknown[]) => {
@@ -58,6 +60,12 @@ function harness(reads: unknown[][], config: Partial<ControllerConfig> = {}, upd
       const query = builder(() => {
         if (["policy_imported_version", "policy_resource", "policy_resource_version"].includes(tableName)) return [];
         if (fields && Object.keys(fields).length === 1 && "count" in fields) return [{ count: versionCount }];
+        if (report) {
+          if (tableName === "policy_validation_run") return [];
+          if (tableName === "guardrail_validation_run") return [report];
+          if (tableName === "guardrail") return [{ id: report.guardrailId }];
+          if (tableName === "controller_outbox") return request;
+        }
         const next = reads.shift();
         if (!next) throw new Error("Unexpected database read in preconfigured Guardrail initialization.");
         return next;
@@ -77,11 +85,14 @@ function harness(reads: unknown[][], config: Partial<ControllerConfig> = {}, upd
       return query;
     }),
     delete: vi.fn(() => builder(() => [])),
-    execute: vi.fn(async () => []),
+    execute: vi.fn(async () => ({ rows: [{ digest: "snapshot-digest" }] })),
   };
   const db = { ...tx, transaction: vi.fn(async (callback) => callback(tx)) } as unknown as ControllerDatabase;
   const service = new ControlPlaneService(db, { policyCatalogDir, protoPath: resolve("../proto/tasklattice/guard/control/v1/runner_control.proto"), ...config } as ControllerConfig);
-  return { service, inserts, updates, reads };
+  const saveCases = vi.fn();
+  vi.spyOn(service.reportResults, "evidence").mockResolvedValue([]);
+  vi.spyOn(service as unknown as { queueReportPrune: () => void }, "queueReportPrune").mockImplementation(() => {});
+  return { service, inserts, updates, reads, saveCases };
 }
 
 describe("Preconfigured Guardrail initialization", () => {
@@ -121,7 +132,7 @@ describe("Validated candidate gate", () => {
     await complete(test, content);
     // Stored exactly as a Runner decodes it from the wire.
     const decoded = canonicalArtifactContent(content, resolve("../proto/tasklattice/guard/control/v1/runner_control.proto"));
-    expect(stored(test)).toMatchObject({ status: "passed", candidateArtifact: decoded, candidateDigest: artifactContentDigest(decoded),
+    expect(stored(test)).toMatchObject({ status: "passed", snapshotDigest: "snapshot-digest", candidateDigest: artifactContentDigest(decoded),
       runtimeFingerprint: expect.objectContaining({ nemoVersion: "0.24.0" }) });
   });
 
@@ -130,7 +141,8 @@ describe("Validated candidate gate", () => {
     const test = harness([[], [{ guardrailId: run.guardrailId }], [{ id: run.guardrailId }], [run], request(content.plan)]);
     const results = [{ caseId: "limited", passed: false, reason: "http_429" }];
     await test.service.completeValidation({ runId: run.id, status: "failed", metrics: emptyValidationMetrics(), results: results as never, candidateArtifact: content });
-    expect(stored(test)).toMatchObject({ status: "failed", results, candidateDigest: expect.any(String), candidateArtifact: expect.any(Object) });
+    expect(stored(test)).toMatchObject({ status: "failed", snapshotDigest: "snapshot-digest", candidateDigest: expect.any(String) });
+    expect(stored(test)).not.toHaveProperty("results");
     expect(test.updates.some(item => item.table === "controller_state")).toBe(false);
   });
 

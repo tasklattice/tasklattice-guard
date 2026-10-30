@@ -30,7 +30,9 @@ export const configurationHelp = `Non-interactive configuration (existing Contro
   guardctl platform bind --binding content_safety.input --model-id ID --state FILE
     [--validation-id ID | --revalidate] [--wait-seconds 300]
   guardctl tenant test --guardrail-id ID [--version VERSION] [--local-only]
-  guardctl tenant test-status --run-id ID [--detail]
+  guardctl tenant test-status --run-id ID
+  guardctl tenant test-cases --run-id ID [--cursor CURSOR] [--filter all|failed|passed|skipped]
+  guardctl tenant test-case --run-id ID --ordinal N [--trace-offset N]
   guardctl tenant test-cancel --run-id ID
   guardctl tenant provision --name NAME --patch FILE --state FILE
     --emergency-reason TEXT [--profile local-baseline | --source GUARDRAIL_ID] [--adapter litellm-generic-guardrail]
@@ -47,8 +49,8 @@ Use the same state and arguments to resume. Use a new state for a different conf
 export function parseConfigurationArgs(args: string[]): { command: string; flags: Flags } {
   const [command, ...rest] = args;
   const flags: Flags = {};
-  const booleanFlags = new Set(['help', 'refresh-credential', 'revalidate', 'local-only', 'detail']);
-  const known = new Set(['url', 'env-file', 'provider-name', 'provider-kind', 'provider-url', 'model', 'profile', 'key-env', 'timeout-seconds', 'max-tokens', 'binding', 'model-id', 'validation-id', 'state', 'wait-seconds', 'name', 'patch', 'emergency-reason', 'source', 'adapter', 'endpoint-id', 'router-id', 'replace-change-id', 'guardrail-id', 'version', 'run-id', ...booleanFlags]);
+  const booleanFlags = new Set(['help', 'refresh-credential', 'revalidate', 'local-only']);
+  const known = new Set(['url', 'env-file', 'provider-name', 'provider-kind', 'provider-url', 'model', 'profile', 'key-env', 'timeout-seconds', 'max-tokens', 'binding', 'model-id', 'validation-id', 'state', 'wait-seconds', 'name', 'patch', 'emergency-reason', 'source', 'adapter', 'endpoint-id', 'router-id', 'replace-change-id', 'guardrail-id', 'version', 'run-id', 'ordinal', 'trace-offset', 'filter', 'cursor', ...booleanFlags]);
   for (let n = 0; n < rest.length; n++) {
     assert.ok(rest[n].startsWith('--'), `Unexpected argument: ${rest[n]}`);
     const [key, ...value] = rest[n].slice(2).split('=');
@@ -283,26 +285,36 @@ export async function provisionTenant(api: Api, flags: Flags, patch: any, journa
 }
 
 /** Same asynchronous test API as the UI; never implicitly resubmit while polling. */
-export async function manageTestRun(api: Api, command: 'test' | 'test-status' | 'test-cancel', flags: Flags): Promise<any> {
+export async function manageTestRun(api: Api, command: 'test' | 'test-status' | 'test-cancel' | 'test-cases' | 'test-case', flags: Flags): Promise<any> {
   if (command === 'test') {
     const guardrail = required(flags, 'guardrail-id');
     const path = `/api/v1/guardrails/${id(guardrail)}${flags.version ? `/versions/${id(required(flags, 'version'))}` : ''}/test-runs`;
     return api(path, 'POST', { testModelRules: flags['local-only'] !== 'true' });
   }
   const path = `/api/v1/test-runs/${id(required(flags, 'run-id'))}`;
-  return command === 'test-cancel' ? api(`${path}/cancel`, 'POST') : api(`${path}${flags.detail === 'true' ? '' : '?view=summary'}`);
+  if (command === 'test-cases') {
+    const query=new URLSearchParams();
+    for(const key of ['cursor','filter']) if(flags[key]) query.set(key,flags[key]);
+    return api(`${path}/cases${query.size?'?'+query:''}`);
+  }
+  if (command === 'test-case') {
+    const ordinal=Number(required(flags,'ordinal')), offset=Number(flags['trace-offset']??0);
+    assert.ok(Number.isSafeInteger(ordinal)&&ordinal>=0&&Number.isSafeInteger(offset)&&offset>=0,'Case positions must be nonnegative integers');
+    return api(`${path}/cases/${ordinal}?traceOffset=${offset}`);
+  }
+  return command === 'test-cancel' ? api(`${path}/cancel`, 'POST') : api(path);
 }
 
 export async function runConfiguration(plane: 'platform' | 'tenant', args: string[], defaultUrl: string): Promise<void> {
   const { command, flags } = parseConfigurationArgs(args);
   if (!command || command === 'help' || command === '--help' || flags.help) { console.log(configurationHelp); return; }
-  assert.ok((plane === 'platform' && ['register-model', 'bind'].includes(command)) || (plane === 'tenant' && ['provision', 'test', 'test-status', 'test-cancel'].includes(command)), 'Unknown configuration command; use platform help or tenant help');
+  assert.ok((plane === 'platform' && ['register-model', 'bind'].includes(command)) || (plane === 'tenant' && ['provision', 'test', 'test-status', 'test-cancel', 'test-cases', 'test-case'].includes(command)), 'Unknown configuration command; use platform help or tenant help');
   const cwd = process.env.GUARDCTL_CWD ?? process.cwd();
   const env = { ...(flags['env-file'] ? parseEnv(await readFile(resolve(cwd, flags['env-file']), 'utf8')) : {}), ...process.env };
   const base = flags.url ?? env[`GUARD_${plane.toUpperCase()}_URL`] ?? defaultUrl;
   const api = await configurationApi(base, plane, env);
   if (command === 'register-model') { emit(await registerModel(api, flags, env)); return; }
-  if (command === 'test' || command === 'test-status' || command === 'test-cancel') {
+  if (command === 'test' || command === 'test-status' || command === 'test-cancel' || command === 'test-cases' || command === 'test-case') {
     emit(await manageTestRun(api, command, flags));
     return;
   }

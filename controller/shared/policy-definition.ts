@@ -50,7 +50,8 @@ export type PolicyDefinition = z.infer<typeof policyDefinitionSchema>;
 export type DefinitionRule = PolicyDefinition["rules"][number];
 export type DefinitionTest = PolicyDefinition["tests"][number];
 export type PolicyResource = { id: string; definition: PolicyDefinition; revision: number; maintainer: string; published_version: string | null; validation?: ResourceValidation | null };
-export type ResourceValidation = { id: string; policyId: string; revision: number; status: string; results: Array<{ caseId: string; name: string; passed: boolean; reason: string; actualDecision: string; outputContent: string; matchedRuleIds: string[]; modelInvocations?: number; actualReasoningResult?: string | null; findings?: Array<Record<string, unknown>> }>; failureReason: string | null };
+export type PolicyTestAssessment = { caseId: string; name: string; passed: boolean; reason: string; actualDecision: string; outputContent: string; matchedRuleIds: string[]; modelInvocations?: number; actualReasoningResult?: string | null; findings?: Array<Record<string, unknown>> };
+export type ResourceValidation = { id: string; policyId: string; revision: number; status: string; total: number; passed: number; failureReason: string | null };
 
 export function definitionIssues(definition: PolicyDefinition): string[] {
   const issues: string[] = modelParameterDeclarationIssues(definition);

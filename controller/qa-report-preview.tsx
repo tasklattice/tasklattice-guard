@@ -65,6 +65,31 @@ const providerFailureCase = {
   ],
 };
 const warning = {...result, case_id:"warning", name:"powershell", policy_id:"local-credentials", source_policy_id:"local-credentials", source_policy_version:"4.2.0", source_case_id:"formats-4.2/powershell/output", phase:"output" as const, passed:true, case_type:"rule_acceptance", actual_failure:"provider_failure", covered_rule_ids:["credential/command-password"], matched_rule_ids:["credential/command-password"], rule_contract_satisfied:true, latency_ms:8922, reason:"A built-in content-filter Policy blocked the interaction. Other checks reported provider_failure.", trace};
-const run = {id:"testing-report-dedupeqa", guardrail_id:"preview", guardrail_version:"20261028-084851.884Z", source_draft_version:1, subject:"version", candidate_digest:null, test_suite_digest:null, status:"failed", execution_status:"failed", details_loaded:true, metrics:{total:2,passed:1,compliance_rate:50,false_positive_rate:0,false_negative_rate:0,escalation_rate:0,p95_latency_ms:8922}, results:[previewParams.has("trace-error") ? providerFailureCase : failed,warning], excluded_case_ids:[], created_at:"2026-10-28T08:48:51Z"} satisfies ValidationRun;
+const run = {id:"testing-report-dedupeqa", guardrail_id:"preview", guardrail_version:"20261028-084851.884Z", source_draft_version:1, subject:"version", candidate_digest:null, test_suite_digest:null, status:"failed", execution_status:"failed",  metrics:{total:2,passed:1,compliance_rate:50,false_positive_rate:0,false_negative_rate:0,escalation_rate:0,p95_latency_ms:8922},  excluded_case_ids:[], created_at:"2026-10-28T08:48:51Z"} satisfies ValidationRun;
+// The preview exercises the same metadata/page/detail contracts as production.
+const previewCases = [previewParams.has("trace-error") ? providerFailureCase : failed, warning];
+function wireValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(wireValue);
+  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key,item]) =>
+    [key.replace(/_([a-z])/g,(_,letter:string)=>letter.toUpperCase()),wireValue(item)]));
+  return value;
+}
+const nativeFetch = window.fetch.bind(window);
+window.fetch = async (input, init) => {
+  const url = new URL(input instanceof Request ? input.url : String(input), window.location.origin);
+  const base = `/api/v1/test-runs/${run.id}`;
+  if (!url.pathname.startsWith(base)) return nativeFetch(input, init);
+  if (url.pathname === base) return Response.json({...wireValue(run) as object,sourceDraftRevision:run.source_draft_version});
+  const ordinal = url.pathname.slice(`${base}/cases/`.length);
+  if (url.pathname.startsWith(`${base}/cases/`)) {
+    const item = previewCases[Number(ordinal)];
+    if (!item) return Response.json({error:"Unknown preview case"},{status:404});
+    const trace = item.trace ?? [], offset = Number(url.searchParams.get("traceOffset") ?? 0);
+    return Response.json({...wireValue(item) as object,trace:wireValue(trace.slice(offset,offset+100)),traceCount:trace.length,nextTraceOffset:offset+100<trace.length?offset+100:null});
+  }
+  const filter = url.searchParams.get("filter") ?? "all";
+  const items = previewCases.map((item,index) => ({...wireValue(item) as Record<string,unknown>,ordinal:index})).filter(item => filter==="all" || (filter==="passed"?item.passed:filter==="failed"?!item.passed:false));
+  return Response.json({items:items.map(({trace,inputContent,outputContent,...summary})=>summary),count:items.length,counts:{all:2,passed:1,failed:1,skipped:0,warnings:1},nextCursor:null});
+};
 function Preview(){const [open,setOpen]=React.useState(true); return <><div className="p-8"><h1>Desktop preview · synthetic test cases</h1><button onClick={()=>setOpen(true)}>Open report</button></div>{open && <ValidationDetailSheet run={run} guardrail={{id:"preview",name:"Full-feature baseline · Report layout preview"} as Guardrail} canManage={false} running={false} onRunAgain={()=>{}} onClose={()=>setOpen(false)} />}</>}
 i18n.changeLanguage(previewParams.get("lang") === "zh" ? "zh-CN" : "en").then(()=>createRoot(document.getElementById("root")!).render(<QueryClientProvider client={new QueryClient()}><TooltipProvider><Preview /></TooltipProvider></QueryClientProvider>));

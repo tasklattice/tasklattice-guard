@@ -84,7 +84,7 @@ describe("API error responses", () => {
       expect(onProgress.mock.calls[1]?.[0].progress).toMatchObject({ completedCases: 3, passedCases: 2 });
       expect((await getValidationRuns("guard-1")).count).toBe(1);
       expect(fetchMock.mock.calls.map(([path]) => path)).toEqual([
-        "/api/v1/guardrails/guard-1/test-runs", "/api/v1/test-runs/run-1?view=summary", "/api/v1/test-runs/run-1?view=summary", "/api/v1/test-runs?guardrailId=guard-1",
+        "/api/v1/guardrails/guard-1/test-runs", "/api/v1/test-runs/run-1", "/api/v1/test-runs/run-1", "/api/v1/test-runs?guardrailId=guard-1",
       ]);
       expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ method: "POST" });
     } finally {

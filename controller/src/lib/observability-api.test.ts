@@ -118,7 +118,7 @@ describe("privacy-safe runtime observability", () => {
     const run = await getValidationRun("run");
     expect(run.failure_reason).toBe("No Evaluator Binding is available for content_safety.");
     expect(run.status).toBe("failed");
-    expect(run.results).toEqual([]);
+    expect(run).not.toHaveProperty("results");
   });
 
   it("maps Runner findings and execution steps without inventing protected content", async () => {

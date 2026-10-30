@@ -1,3 +1,4 @@
+import { completeReport } from "../db/report-test-utils.js";
 // @vitest-environment node
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { execFile } from "node:child_process";
@@ -44,7 +45,7 @@ describe.skipIf(!url)("durable test cancellation", () => {
     await service.cancelValidation({ runId: id, actorId: "actor" });
     expect(await service.markValidationRunning(id)).toBe(false);
     await service.updateValidationProgress(id, { phase: "executing", completedCases: 1, passedCases: 1 });
-    await service.completeValidation({ runId: id, status: "passed", metrics: emptyValidationMetrics(1), results: [] });
+    await completeReport(service, { runId: id, status: "passed", metrics: emptyValidationMetrics(1), results: [] });
     const { rows: [run] } = await database.pool.query("SELECT * FROM guardrail_validation_run WHERE id=$1", [id]);
     expect(run.status).toBe("cancelled");
     expect(run.progress).toBeNull();

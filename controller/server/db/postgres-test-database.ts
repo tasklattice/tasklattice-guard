@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { migrateReportStorage } from "./report-storage-migration.js";
 import { Pool } from "pg";
 import { createPooledDatabase, type ControllerDatabase } from "./client.js";
 
@@ -19,6 +20,7 @@ export async function createTestDatabase(url: string, prefix: string, beforeMigr
   const journal = JSON.parse(read("meta/_journal.json")) as { entries: { tag: string }[] };
   for (const { tag } of journal.entries) {
     await beforeMigration?.(tag, pool);
+    if (tag === "0057_report_storage_cutover") await migrateReportStorage(createPooledDatabase(pool));
     await pool.query(read(`${tag}.sql`).replaceAll('"public".', `"${namespace}".`));
   }
   return {

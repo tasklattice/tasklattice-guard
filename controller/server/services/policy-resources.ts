@@ -1,8 +1,9 @@
+import { ReportResults, type ReportUploadIdentity } from "./report-results.js";
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { canonicalJson } from "../../shared/canonical-json.js";
 import { guardrailVersionId } from "../../shared/guardrail-version.js";
-import { definitionIssues, policyDefinitionSchema, type PolicyDefinition, type PolicyResource, type ResourceValidation, type DefinitionTest } from "../../shared/policy-definition.js";
+import { definitionIssues, policyDefinitionSchema, type PolicyDefinition, type PolicyResource, type ResourceValidation, type DefinitionTest, type PolicyTestAssessment } from "../../shared/policy-definition.js";
 import type { ControllerDatabase } from "../db/client.js";
 import { advisoryTransactionLock } from "../db/postgres-locks.js";
 import { policyResources as resources, policyResourceVersions as versions, policyResourceValidations as runs, outboxEvents, auditEvents, policyRecords, policyImportedVersions } from "../db/schema.js";
@@ -20,7 +21,7 @@ import { reportSaveStage, withReportSaveDiagnostics } from "../db/diagnostics.js
 /** Draft ownership, provenance and publication are independent of where a Policy was delivered. */
 export class PolicyResourceService {
   readonly compiler: DeclarativeCompiler;
-  constructor(private db: ControllerDatabase, directory: string, private catalog: () => PolicyDto[]) { this.compiler = new DeclarativeCompiler(directory); }
+  constructor(private db: ControllerDatabase, directory: string, private catalog: () => PolicyDto[], private reports = new ReportResults(db)) { this.compiler = new DeclarativeCompiler(directory); }
 
   async get(id: string): Promise<PolicyResource> {
     const [row] = await this.db.select().from(resources).where(eq(resources.id, id));
@@ -115,35 +116,47 @@ export class PolicyResourceService {
   }
 
   async report(id: string, runId?: string): Promise<ResourceValidation | null> {
-    const [run] = await this.db.select().from(runs).where(and(eq(runs.policyId, id), isNull(runs.parentId), ...(runId ? [eq(runs.id, runId)] : []))).orderBy(desc(runs.createdAt)).limit(1);
+    const [run] = await this.db.select({ id: runs.id, policyId: runs.policyId, revision: runs.revision, status: runs.status, failureReason: runs.failureReason,
+      total: sql<number>`jsonb_array_length(${runs.tests})`, passed: sql<number>`(SELECT count(*)::int FROM validation_report_case WHERE run_id="policy_resource_validation"."id" AND status='passed')`,
+    }).from(runs).where(and(eq(runs.policyId, id), isNull(runs.parentId), ...(runId ? [eq(runs.id, runId)] : []))).orderBy(desc(runs.createdAt)).limit(1);
     return run ?? null;
   }
   async running(id: string): Promise<boolean> {
-    const [job] = await this.db.update(runs).set({ status: "running" }).where(and(eq(runs.id, id), eq(runs.status, "queued"))).returning();
+    const [job] = await this.db.update(runs).set({ status: "running" }).where(and(eq(runs.id, id), eq(runs.status, "queued"))).returning({parentId:runs.parentId});
     if (job?.parentId) await this.db.update(runs).set({ status: "running" }).where(and(eq(runs.id, job.parentId), eq(runs.status, "queued")));
     return Boolean(job);
   }
-  async complete(input: { runId: string; status: string; results: ValidationCaseResult[]; reason?: string | undefined }): Promise<boolean> {
+  async complete(input: { runId: string; upload?: ReportUploadIdentity; status: string; reason?: string | undefined; executionFailed?: boolean }): Promise<boolean> {
     return withReportSaveDiagnostics(this.db, input.runId, () => this.persistResult(input));
   }
   private async persistResult(input: Parameters<PolicyResourceService["complete"]>[0]): Promise<boolean> {
     const [job] = await reportSaveStage("lookup_policy_run", () => this.db.select().from(runs).where(eq(runs.id, input.runId)));
     if (!job?.parentId) return false;
+    if (!["queued", "running"].includes(job.status)) return true;
+    let requiredFailed = false;
+    if (!input.executionFailed) await reportSaveStage("assess_policy_cases", () => this.reports.assess(job.id, job.tests, (test, actual) => {
+      const result = assertPolicyTest(test, actual);
+      if (test.required && !result.passed) requiredFailed = true;
+      return { ...result, phase: test.phase, caseType: test.kind, required: test.required, expectedDecision: test.expected_decision,
+        coveredRuleIds: test.covered_rule_ids,
+        ruleContractSatisfied: test.kind !== "rule_acceptance" || test.covered_rule_ids.every(id => result.matchedRuleIds.includes(id)) };
+    }, input.upload));
     await this.db.transaction(async tx => {
       await reportSaveStage("set_timeouts", () => limitValidationWrite(tx));
-      const [parent] = await reportSaveStage("lock_parent_run", () => tx.select().from(runs).where(eq(runs.id, job.parentId!)).for("update"));
+      const [parent] = await reportSaveStage("lock_parent_run", () => tx.select({id:runs.id,status:runs.status}).from(runs).where(eq(runs.id, job.parentId!)).for("update"));
       if (!parent || ["passed", "failed"].includes(parent.status)) return;
-      const [current] = await reportSaveStage("lookup_run", () => tx.select().from(runs).where(eq(runs.id, job.id)));
+      const [current] = await reportSaveStage("lookup_run", () => tx.select({id:runs.id,status:runs.status}).from(runs).where(eq(runs.id, job.id)));
       if (!current || ["passed", "failed"].includes(current.status)) return;
-      const results = current.tests.map(test => assertPolicyTest(test, input.results.find(r => r.caseId === test.id), input.status === "passed" || input.status === "failed" ? undefined : input.status));
-      const status = input.status === "passed" && results.filter(r => current.tests.find(t => t.id === r.caseId)?.required).every(r => r.passed) ? "passed" : "failed";
-      await reportSaveStage("write_report", () => tx.update(runs).set({ status, results, failureReason: input.reason ?? null }).where(eq(runs.id, current.id)));
+      await this.reports.assertUpload(tx, job.id, input.upload);
+      const status = input.status === "passed" && !requiredFailed && !input.executionFailed ? "passed" : "failed";
+      await reportSaveStage("write_report", () => tx.update(runs).set({ status, failureReason: input.reason ?? null }).where(eq(runs.id, current.id)));
       await reportSaveStage("complete_outbox", () => tx.update(outboxEvents).set({ processedAt: new Date() }).where(eq(outboxEvents.id, current.id)));
       await reportSaveStage("aggregate_policy_results", async () => {
-        const children = await tx.select().from(runs).where(eq(runs.parentId, parent.id));
+        const children = await tx.select({ status: runs.status, failureReason: runs.failureReason }).from(runs).where(eq(runs.parentId, parent.id));
         if (children.every(r => ["passed", "failed"].includes(r.status))) {
+          await this.reports.linkPolicyParent(tx, parent.id);
           const success = children.every(r => r.status === "passed");
-          await tx.update(runs).set({ status: success ? "passed" : "failed", results: children.flatMap(r => r.results), failureReason: children.find(r => r.failureReason)?.failureReason ?? null }).where(eq(runs.id, parent.id));
+          await tx.update(runs).set({ status: success ? "passed" : "failed", failureReason: children.find(r => r.failureReason)?.failureReason ?? null }).where(eq(runs.id, parent.id));
           await reportSaveStage("write_audit", () => tx.insert(auditEvents).values({ id: randomUUID(), kind: "policy.validation_completed", resourceType: "policy", resourceId: job.policyId, detail: { runId: parent.id, status: success ? "passed" : "failed" } }));
         }
       });
@@ -173,7 +186,7 @@ export class PolicyResourceService {
   }
 }
 
-export function assertPolicyTest(test: DefinitionTest, actual?: ValidationCaseResult, failure?: string): ResourceValidation["results"][number] {
+export function assertPolicyTest(test: DefinitionTest, actual?: ValidationCaseResult, failure?: string): PolicyTestAssessment {
   const reasons: string[] = [];
   if (!actual) reasons.push("Runner did not return this test.");
   if (failure) reasons.push(failure);

@@ -12,11 +12,11 @@ describe('guardctl configuration', () => {
     await manageTestRun(api, 'test', { 'guardrail-id': 'guard/1', version: 'v/1', 'local-only': 'true' });
     expect(api).toHaveBeenLastCalledWith('/api/v1/guardrails/guard%2F1/versions/v%2F1/test-runs', 'POST', { testModelRules: false });
     await manageTestRun(api, 'test-status', { 'run-id': 'run/1' });
-    expect(api).toHaveBeenLastCalledWith('/api/v1/test-runs/run%2F1?view=summary');
+    expect(api).toHaveBeenLastCalledWith('/api/v1/test-runs/run%2F1');
     await manageTestRun(api, 'test-cancel', { 'run-id': 'run/1' });
     expect(api).toHaveBeenLastCalledWith('/api/v1/test-runs/run%2F1/cancel', 'POST');
-    await manageTestRun(api, 'test-status', { 'run-id': 'run/1', detail: 'true' });
-    expect(api).toHaveBeenLastCalledWith('/api/v1/test-runs/run%2F1');
+    await manageTestRun(api, 'test-cases', { 'run-id': 'run/1', filter: 'failed' });
+    expect(api).toHaveBeenLastCalledWith('/api/v1/test-runs/run%2F1/cases?filter=failed');
     expect(api).toHaveBeenCalledTimes(5);
     await expect(manageTestRun(api, 'test-cancel', {})).rejects.toThrow('--run-id is required');
     expect(api).toHaveBeenCalledTimes(5);

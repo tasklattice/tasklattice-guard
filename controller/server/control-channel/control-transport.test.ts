@@ -60,117 +60,73 @@ describe("production Controller gRPC transport budget", () => {
     }
   });
 
-  it("rejects compressed reports with invalid identity, size or digest", async () => {
-    const server = new RunnerControlServer(config, {} as ControlPlaneService, {} as ControllerMetrics, {} as ModelConfigurationService);
-    const definition = loadSync(config.protoPath, { includeDirs: [dirname(config.protoPath)], longs: String, enums: String, defaults: true, oneofs: true });
-    const codec = definition["tasklattice.guard.control.v1.ValidationResult"] as MessageTypeDefinition<ValidationResult, unknown>;
-    const bytes = codec.serialize({ runnerId: "runner-0", runId: "report", accepted: true, status: "VALIDATION_STATUS_PASSED" });
-    const valid = { runnerId: "runner-0", runId: "report", gzipResult: gzipSync(bytes), rawSizeBytes: String(bytes.length),
-      sha256: createHash("sha256").update(bytes).digest("hex") };
-    const decode = (value: object) => (server as unknown as { decodeValidationReport(value: object): Promise<unknown> }).decodeValidationReport(value);
+  it("rejects chunks with invalid identity, size or digest before persistence",async()=>{
+    const service={reportResults:{stage:vi.fn().mockResolvedValue(true)},completeValidation:vi.fn()};
+    const server=new RunnerControlServer(config,service as unknown as ControlPlaneService,{observeControlMessage:vi.fn()} as unknown as ControllerMetrics,{} as ModelConfigurationService);
+    const internal=server as unknown as {connections:Map<string,unknown>;handleMessage(stream:unknown,message:unknown,current:unknown):Promise<unknown>};
+    const stream={write:vi.fn()},current={runnerId:"runner-0",bootId:"boot",poolId:"default",compilerCapable:true,stream};
+    internal.connections.set(current.runnerId,current);
+    const definition=loadSync(config.protoPath,{longs:String,enums:String,defaults:true,oneofs:true});
+    const codec=definition["tasklattice.guard.control.v1.ValidationResult"] as MessageTypeDefinition<ValidationResult,unknown>;
+    const bytes=codec.serialize({runnerId:"runner-0",runId:"report",accepted:true,status:"VALIDATION_STATUS_PASSED",metrics:{total:0}});
+    const digest=createHash("sha256").update(bytes).digest("hex");
+    const valid={runnerId:"runner-0",runId:"report",uploadId:"fixture",sequence:0,chunks:1,cases:0,caseOffset:0,final:true,
+      manifestDigest:createHash("sha256").update(digest).digest("hex"),gzipResult:gzipSync(bytes),rawSizeBytes:bytes.length,sha256:digest};
+    const handle=(part:unknown)=>internal.handleMessage(stream,{validationReportChunk:part},current);
     try {
-      await expect(decode(valid)).resolves.toMatchObject({ runnerId: "runner-0", runId: "report" });
-      await expect(decode({ ...valid, sha256: "bad" })).rejects.toThrow("digest");
-      await expect(decode({ ...valid, runId: "other" })).rejects.toThrow("identity");
-      await expect(decode({ ...valid, rawSizeBytes: String(129 * 1024 * 1024) })).rejects.toThrow("size budget");
-    } finally { await server.stop(); }
+      await handle(valid);expect(service.completeValidation).toHaveBeenCalledOnce();
+      await expect(handle({...valid,sha256:"bad"})).rejects.toThrow("digest");
+      await expect(handle({...valid,runId:"other"})).rejects.toThrow("identity");
+      await expect(handle({...valid,rawSizeBytes:9*1024*1024})).rejects.toThrow("size budget");
+      expect(service.reportResults.stage).toHaveBeenCalledOnce();
+    } finally {internal.connections.clear();await server.stop();}
   });
 
-  it.each([
-    { oversized: false, compressed: false }, { oversized: true, compressed: false },
-    { oversized: true, compressed: true },
-  ])("preserves large evidence (oversized=$oversized, compressed=$compressed)", async ({ oversized, compressed }) => {
-    const caseCount = compressed ? 950 : 321;
-    // Synthetic content tests transport integrity, not detector correctness.
-    const evidence = "x".repeat(oversized ? CONTROL_MESSAGE_MAX_BYTES : 5 * 1024 * 1024) + "END";
-    const desiredId = "disabled-" + "d".repeat(5 * 1024 * 1024);
-    const service = {
-      registerRunner: vi.fn().mockResolvedValue(1),
-      desiredStateForPool: vi.fn().mockResolvedValue({
-        generation: 1, artifacts: [], routers: [], endpoints: [],
-        disabledGuardrailIds: [desiredId], disabledEndpointIds: [], guardrailLoggingLevels: {},
-      }),
-      disconnectRunner: vi.fn().mockResolvedValue(undefined),
-      completeValidation: vi.fn(),
-    };
-    const metrics = {
-      observeControlMessage: vi.fn(), controlConnection: vi.fn(),
-      observeReconcile: vi.fn(), observeJob: vi.fn(),
-    };
-    const server = new RunnerControlServer(config, service as unknown as ControlPlaneService,
-      metrics as unknown as ControllerMetrics,
-      { activeConfiguration: vi.fn().mockResolvedValue(null) } as unknown as ModelConfigurationService);
-    // Bind the actual production server to an ephemeral port without starting
-    // database/outbox timers unrelated to this socket-level regression.
-    const grpcServer = (server as unknown as { grpc: Server }).grpc;
-    const port = await new Promise<number>((resolvePort, reject) => {
-      grpcServer.bindAsync("127.0.0.1:0", (server as unknown as { credentials: () => ServerCredentials }).credentials(), (error, value) => {
-        if (error) reject(error); else resolvePort(value);
-      });
-    });
-    const definition = loadSync(config.protoPath, {
-      includeDirs: [dirname(config.protoPath)], longs: String, enums: String, defaults: true, oneofs: true,
-    });
-    const descriptor = loadPackageDefinition(definition) as unknown as ProtoGrpcType;
-    const client = new descriptor.tasklattice.guard.control.v1.RunnerControl(
-      `127.0.0.1:${port}`, credentials.createInsecure(), {
-        ...controlChannelOptions,
-        // Permit the oversized request at the test sender to exercise the
-        // production server's receive bound rather than a client-side refusal.
-        "grpc.max_send_message_length": CONTROL_MESSAGE_MAX_BYTES + 1024 * 1024,
-      },
-    );
-    const metadata = new Metadata();
-    metadata.set("authorization", `Bearer ${config.runnerToken}`);
-    const stream = client.Connect(metadata, { deadline: Date.now() + 10_000 });
-    let receivedDesired: string | undefined;
-    let errorCode: number | undefined;
-    let savedRun: string | undefined;
-    stream.on("error", (error: { code: number }) => { errorCode = error.code; });
-    stream.on("data", (message) => {
-      if (message.desiredState) receivedDesired = message.desiredState.disabledGuardrailIds[0];
-      if (message.validationReportAck) savedRun = message.validationReportAck.runId;
-    });
+  it.each([false,true])("preserves bounded chunks and enforces the wire ceiling (oversized=%s)",async oversized=>{
+    const evidence="synthetic evidence ".repeat(2200),count=950,received:Array<{caseId:string;outputContent:string}>=[];
+    const desiredId="disabled-"+"d".repeat(5*1024*1024);
+    const service={registerRunner:vi.fn().mockResolvedValue(1),disconnectRunner:vi.fn(),completeValidation:vi.fn(),
+      reportResults:{stage:vi.fn(async(chunk:{results:typeof received;final:boolean})=>{received.push(...chunk.results);return chunk.final;})},
+      desiredStateForPool:vi.fn().mockResolvedValue({generation:1,artifacts:[],routers:[],endpoints:[],disabledGuardrailIds:[desiredId],disabledEndpointIds:[],guardrailLoggingLevels:{}})};
+    const metrics={observeControlMessage:vi.fn(),controlConnection:vi.fn(),observeReconcile:vi.fn(),observeJob:vi.fn()};
+    const server=new RunnerControlServer(config,service as unknown as ControlPlaneService,metrics as unknown as ControllerMetrics,{activeConfiguration:vi.fn().mockResolvedValue(null)} as unknown as ModelConfigurationService);
+    const grpcServer=(server as unknown as {grpc:Server}).grpc;
+    const port=await new Promise<number>((resolvePort,reject)=>grpcServer.bindAsync("127.0.0.1:0",(server as unknown as {credentials:()=>ServerCredentials}).credentials(),(error,value)=>error?reject(error):resolvePort(value)));
+    const definition=loadSync(config.protoPath,{longs:String,enums:String,defaults:true,oneofs:true}),descriptor=loadPackageDefinition(definition) as unknown as ProtoGrpcType;
+    const client=new descriptor.tasklattice.guard.control.v1.RunnerControl(`127.0.0.1:${port}`,credentials.createInsecure(),{...controlChannelOptions,"grpc.max_send_message_length":CONTROL_MESSAGE_MAX_BYTES+1024*1024});
+    const metadata=new Metadata();metadata.set("authorization",`Bearer ${config.runnerToken}`);
+    const stream=client.Connect(metadata,{deadline:Date.now()+15000});
+    let desired:string|undefined,errorCode:number|undefined,savedRun:string|undefined;
+    const acks=new Map<number,()=>void>();
+    stream.on("error",(error:{code:number})=>{errorCode=error.code;});
+    stream.on("data",message=>{if(message.desiredState)desired=message.desiredState.disabledGuardrailIds[0];if(message.validationReportChunkAck)acks.get(message.validationReportChunkAck.sequence)?.();if(message.validationReportAck)savedRun=message.validationReportAck.runId;});
     try {
-      stream.write({ registration: {
-        runnerId: "transport-runner-0", bootId: "boot-1", poolId: "default", compilerCapable: true,
-      } });
-      await expect.poll(() => receivedDesired, { timeout: 5_000 }).toBe(desiredId);
-      const result: ValidationResult = {
-        runnerId: "transport-runner-0", runId: "large-validation", accepted: true,
-        status: "VALIDATION_STATUS_PASSED", metrics: { total: caseCount, passed: caseCount },
-        reason: evidence,
-        results: Array.from({ length: caseCount }, (_, i) => ({
-          caseId: `case-${i}`, passed: true,
-          expectedDecision: "VALIDATION_DECISION_ALLOW", actualDecision: "VALIDATION_DECISION_ALLOW",
-          action: "ENFORCEMENT_ACTION_ALLOW",
-        })),
-      };
-      if (compressed) {
-        const codec = definition["tasklattice.guard.control.v1.ValidationResult"] as MessageTypeDefinition<ValidationResult, unknown>;
-        const bytes = codec.serialize(result);
-        expect(bytes.length).toBeGreaterThan(CONTROL_MESSAGE_MAX_BYTES);
-        stream.write({ validationReport: { runnerId: "transport-runner-0", runId: "large-validation",
-          gzipResult: gzipSync(bytes), rawSizeBytes: String(bytes.length), sha256: createHash("sha256").update(bytes).digest("hex") } });
-      } else stream.write({ validationResult: result });
-      if (oversized && !compressed) {
-        await expect.poll(() => errorCode, { timeout: 5_000 }).toBe(status.RESOURCE_EXHAUSTED);
-        expect(service.completeValidation).not.toHaveBeenCalled();
+      stream.write({registration:{runnerId:"transport-runner-0",bootId:"boot-1",poolId:"default",compilerCapable:true}});
+      await expect.poll(()=>desired).toBe(desiredId);
+      if(oversized){
+        stream.write({validationReportChunk:{runnerId:"transport-runner-0",runId:"large-validation",gzipResult:Buffer.alloc(CONTROL_MESSAGE_MAX_BYTES),rawSizeBytes:1}});
+        await expect.poll(()=>errorCode).toBe(status.RESOURCE_EXHAUSTED);expect(service.completeValidation).not.toHaveBeenCalled();
       } else {
-        await expect.poll(() => service.completeValidation.mock.calls.length, { timeout: 5_000 }).toBe(1);
-        const delivered = service.completeValidation.mock.calls[0][0];
-        expect(delivered.reason).toBe(evidence);
-        expect(delivered.results).toHaveLength(caseCount);
-        expect(delivered.results.at(-1).caseId).toBe(`case-${caseCount - 1}`);
-        await expect.poll(() => savedRun).toBe("large-validation");
-        expect(errorCode).toBeUndefined();
+        const codec=definition["tasklattice.guard.control.v1.ValidationResult"] as MessageTypeDefinition<ValidationResult,unknown>;
+        const parts:Buffer[]=[];
+        for(let offset=0;offset<count;offset+=20)parts.push(codec.serialize({runnerId:"transport-runner-0",runId:"large-validation",results:Array.from({length:Math.min(20,count-offset)},(_,i)=>({caseId:`case-${offset+i}`,passed:true,outputContent:evidence,action:"ENFORCEMENT_ACTION_ALLOW",actualDecision:"VALIDATION_DECISION_ALLOW"}))}));
+        parts.push(codec.serialize({runnerId:"transport-runner-0",runId:"large-validation",accepted:true,status:"VALIDATION_STATUS_PASSED",metrics:{total:count,passed:count}}));
+        expect(parts.reduce((sum,b)=>sum+b.length,0)).toBeGreaterThan(CONTROL_MESSAGE_MAX_BYTES);
+        const hashes=parts.map(b=>createHash("sha256").update(b).digest("hex")),manifest=createHash("sha256").update(hashes.join("\n")).digest("hex");
+        for(const [sequence,bytes] of parts.entries()){
+          expect(bytes.length).toBeLessThan(1024*1024);
+          const ack=new Promise<void>(resolveAck=>acks.set(sequence,resolveAck));
+          stream.write({validationReportChunk:{runnerId:"transport-runner-0",runId:"large-validation",uploadId:"fixture",sequence,chunks:parts.length,cases:count,caseOffset:Math.min(sequence*20,count),final:sequence===parts.length-1,manifestDigest:manifest,gzipResult:gzipSync(bytes),rawSizeBytes:bytes.length,sha256:hashes[sequence]}});
+          await ack;
+        }
+        await expect.poll(()=>savedRun).toBe("large-validation");
+        expect(received).toHaveLength(count);expect(received.at(-1)?.outputContent).toBe(evidence);
+        expect(service.completeValidation.mock.calls[0][0]).toMatchObject({upload:{runnerBootId:"boot-1",uploadId:"fixture"}});
+        expect(service.completeValidation.mock.calls[0][0]).not.toHaveProperty("results");expect(errorCode).toBeUndefined();
       }
-    } finally {
-      stream.cancel();
-      client.close();
-      await server.stop();
-    }
-  }, 20_000);
+    } finally {stream.cancel();client.close();await server.stop();}
+  },20000);
+
 });
 
 describe("Controller background work", () => {

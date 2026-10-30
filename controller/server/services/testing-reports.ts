@@ -5,11 +5,27 @@ import type { ControllerDatabase } from "../db/client.js";
 import { guardrails, guardrailVersions, validationRuns } from "../db/schema.js";
 import { ValidationError } from "../domain/errors.js";
 
-// Keep large JSON columns out of PostgreSQL's result, not just out of the HTTP response.
-const { results: _results, candidateArtifact: _artifact, candidatePolicies: _policies,
-  candidateInspection: _inspection, testSuite: _suite, ...summary } = getTableColumns(validationRuns);
+import type { ArtifactContent } from "../domain/artifact-content.js";
+import type { FrozenTestCase } from "../domain/test-suite.js";
+import type { PolicyNode } from "../domain/policy-node.js";
+import type { GuardrailInspection } from "../domain/guardrail-inspection.js";
+export type ValidationSnapshot = { candidateArtifact: ArtifactContent | null; candidatePolicies: PolicyNode[] | null; candidateInspection: GuardrailInspection | null; testSuite: FrozenTestCase[] | null };
+const { snapshotDigest: _snapshot, ...summary } = getTableColumns(validationRuns);
 export const validationSummaryColumns = summary;
-export const validationDetailColumns = { ...summary, results: validationRuns.results };
+const snapshotValue = <T>(key: string) => sql<T>`(SELECT nullif(payload->${key}, 'null'::jsonb) FROM guardrail_validation_snapshot WHERE digest=${validationRuns.snapshotDigest})`;
+export const validationSnapshotColumns = {
+  candidateArtifact: snapshotValue<ValidationSnapshot["candidateArtifact"]>("candidateArtifact"),
+  candidatePolicies: snapshotValue<ValidationSnapshot["candidatePolicies"]>("candidatePolicies"),
+  candidateInspection: snapshotValue<ValidationSnapshot["candidateInspection"]>("candidateInspection"),
+  testSuite: snapshotValue<ValidationSnapshot["testSuite"]>("testSuite"),
+};
+export async function storeValidationSnapshot(tx: Pick<ControllerDatabase, "execute">, payload: ValidationSnapshot): Promise<string> {
+  const { rows: [snapshot] } = await tx.execute<{ digest: string }>(sql`WITH source AS (SELECT ${JSON.stringify(payload)}::jsonb AS payload),
+    hashed AS (SELECT payload,encode(sha256(convert_to(payload::text,'UTF8')),'hex') digest FROM source),
+    inserted AS (INSERT INTO guardrail_validation_snapshot(digest,payload) SELECT digest,payload FROM hashed ON CONFLICT DO NOTHING)
+    SELECT digest FROM hashed`);
+  return snapshot!.digest;
+}
 
 export const testingReportsQuery = z.object({
   guardrailId: z.string().max(200).optional(),

@@ -32,6 +32,8 @@ import {
   getTestCases,
   getValidationRuns,
   getValidationRun,
+  getValidationCases,
+  getValidationCase,
   restoreGuardrailTestCase,
   type TestCaseResult,
   type Guardrail,
@@ -161,7 +163,7 @@ export function ValidationDetailSheet({ run: selectedRun, guardrail, canManage, 
   const { t, i18n } = useTranslation();
   const queryClient = useQueryClient();
   const detailQuery = useQuery({ queryKey: queryKeys.validationRun(selectedRun?.id ?? ""),
-    queryFn: () => getValidationRun(selectedRun!.id), enabled: Boolean(selectedRun && (selectedRun.details_loaded === false || isValidationRunning(selectedRun))),
+    queryFn: () => getValidationRun(selectedRun!.id), enabled: Boolean(selectedRun),
     refetchInterval: query => isValidationRunning(query.state.data ?? selectedRun) ? 1_000 : false,
     staleTime: Infinity, gcTime: 0 });
   const run = detailQuery.data ?? selectedRun;
@@ -177,8 +179,7 @@ export function ValidationDetailSheet({ run: selectedRun, guardrail, canManage, 
   const reportReady = hasValidationReportResults(run);
   const cancelled = (run.execution_status ?? run.status) === "cancelled";
   const finished = reportReady || cancelled;
-  const results = [...run.results].sort((left, right) => resultPriority(left) - resultPriority(right));
-  const hasCaseResults = reportReady && run.details_loaded !== false && results.length > 0;
+  const hasCaseResults = reportReady && run.metrics.total > 0;
   const titleKey = processing ? run.progress?.phase === "finalizing" ? "validation.generatingReportNamed" : "validation.testInProgressNamed" : cancelled ? "validation.testCancelledNamed" : "validation.validationRunNamed";
   return <EntitySheet open allowPageUpdates density="compact" onOpenChange={(next) => { if (!next) onClose(); }}
     eyebrow={t(reportReady ? "validation.detailEyebrow" : "validation.progressEyebrow")}
@@ -204,8 +205,8 @@ export function ValidationDetailSheet({ run: selectedRun, guardrail, canManage, 
       {cancelled ? <InfoNotice title={t("validationControl.stopped")}>{t("validation.cancelledWithoutReport")}</InfoNotice> : null}
       {!processing && !finished ? <InfoNotice title={t("states.incomplete")}>{t("validation.reportUnavailable")}</InfoNotice> : null}
       {finished && blockedReason ? <Alert variant="destructive"><AlertTitle>{t("protection.validationReadiness.blockedTitle")}</AlertTitle><AlertDescription className="text-current">{blockedReason}</AlertDescription></Alert> : null}
-      {reportReady && (run.failure_reason || run.status === "failed" && !results.length && run.details_loaded !== false) ? <Alert variant={run.failure_reason ? "destructive" : "warning"}><AlertTitle>{t("protection.validationReadiness.failureTitle")}</AlertTitle><AlertDescription className="whitespace-pre-wrap break-words text-current">{run.failure_reason || t("protection.validationReadiness.noFailureDetail")}</AlertDescription></Alert> : null}
-      {detailQuery.error ? <div className="space-y-3"><ErrorNotice error={detailQuery.error} /><Button variant="outline" onClick={() => void detailQuery.refetch()}>{t("common.retry")}</Button></div> : reportReady ? run.details_loaded === false ? <Skeleton className="h-72" /> : hasCaseResults ? <ValidationCaseResults key={run.id} results={results} defaultFilter={run.status === "failed" ? "failed" : "all"} excludedCaseIds={guardrail?.excluded_test_case_ids ?? []} busyCaseId={validationScope.isPending ? validationScope.variables?.caseId : undefined} onValidationScopeChange={canManage && !versionRun && guardrail ? (caseId, action) => validationScope.mutate({ guardrailId: guardrail.id, caseId, action }) : undefined} /> : <p className="text-sm text-muted-foreground">{t("validation.noReportResults")}</p> : null}
+      {reportReady && (run.failure_reason || run.status === "failed" && !hasCaseResults) ? <Alert variant={run.failure_reason ? "destructive" : "warning"}><AlertTitle>{t("protection.validationReadiness.failureTitle")}</AlertTitle><AlertDescription className="whitespace-pre-wrap break-words text-current">{run.failure_reason || t("protection.validationReadiness.noFailureDetail")}</AlertDescription></Alert> : null}
+      {detailQuery.error ? <div className="space-y-3"><ErrorNotice error={detailQuery.error} /><Button variant="outline" onClick={() => void detailQuery.refetch()}>{t("common.retry")}</Button></div> : reportReady ? hasCaseResults ? <ValidationCaseResults key={run.id} runId={run.id} defaultFilter={run.status === "failed" ? "failed" : "all"} excludedCaseIds={guardrail?.excluded_test_case_ids ?? []} busyCaseId={validationScope.isPending ? validationScope.variables?.caseId : undefined} onValidationScopeChange={canManage && !versionRun && guardrail ? (caseId, action) => validationScope.mutate({ guardrailId: guardrail.id, caseId, action }) : undefined} /> : <p className="text-sm text-muted-foreground">{t("validation.noReportResults")}</p> : null}
       {reportReady ? <>
         <ValidationScopeNotice run={run} />
         {run.excluded_case_ids?.length ? <p className="text-xs text-muted-foreground">{t("validation.excludedScopeTitle", { count: run.excluded_case_ids.length })}</p> : null}
@@ -223,31 +224,36 @@ export function DetailFact({ label, value, definition }: { label: string; value:
 
 type CaseResultFilter = "all" | "failed" | "passed" | "skipped";
 
-export function ValidationCaseResults({ results, defaultFilter = "all", excludedCaseIds = [], busyCaseId, onValidationScopeChange }: { results: TestCaseResult[]; defaultFilter?: CaseResultFilter; excludedCaseIds?: string[]; busyCaseId?: string; onValidationScopeChange?: (caseId: string, action: "exclude" | "restore") => void }) {
+type CaseResultsProps = { runId: string; defaultFilter?: CaseResultFilter; excludedCaseIds?: string[]; busyCaseId?: string | undefined; onValidationScopeChange?: ((caseId: string, action: "exclude" | "restore") => void) | undefined };
+export function ValidationCaseResults({ runId, defaultFilter = "all", excludedCaseIds = [], busyCaseId, onValidationScopeChange }: CaseResultsProps) {
   const { t } = useTranslation();
   const [filter, setFilter] = useState<CaseResultFilter>(defaultFilter);
-  const skipped = results.filter(result => result.skipped).length;
-  const failed = results.filter((result) => !result.passed && !result.skipped).length;
-  const passed = results.length - failed - skipped;
-  const executionWarnings = results.filter(hasExecutionWarning).length;
-  const visible = results.filter((result) => filter === "all" || (filter === "skipped" ? result.skipped : !result.skipped && (filter === "failed" ? !result.passed : result.passed)));
-  const filters: Array<{ value: CaseResultFilter; label: string; count: number }> = [
-    { value: "all", label: t("validation.caseFilters.all"), count: results.length },
-    { value: "failed", label: t("validation.caseFilters.failed"), count: failed },
-    { value: "passed", label: t("validation.caseFilters.passed"), count: passed },
-    { value: "skipped", label: t("validationScope.skipped"), count: skipped },
-  ];
-  return <section className="overflow-hidden rounded-sm border"><header className="border-b bg-muted/25 px-3 py-2.5"><h3 className="text-sm font-semibold">{t("validation.caseResults")}</h3>{executionWarnings ? <p className="mt-1 text-xs text-muted-foreground">{t("validation.executionWarningCount", { count: executionWarnings })}</p> : null}<div className="mt-2 flex flex-wrap gap-1" role="group" aria-label={t("validation.filterCaseResults")}>{filters.map((item) => <Button key={item.value} type="button" size="sm" variant={filter === item.value ? "secondary" : "ghost"} className="min-h-11 px-3" aria-pressed={filter === item.value} onClick={() => setFilter(item.value)}>{item.label}<span className={cn("font-mono text-xs", filter === item.value ? "text-current" : item.value === "failed" && item.count > 0 ? "text-destructive" : "text-muted-foreground")}>{item.count}</span></Button>)}</div></header><div className="space-y-3 bg-background p-3">{!visible.length ? <p role="status" className="px-4 py-6 text-sm text-muted-foreground">{t(filter === "skipped" ? "validationScope.empty" : `validation.emptyCaseResults.${filter}`)}</p> : null}{visible.map((result) => <TestCaseResultRow key={result.case_id} result={result} excluded={excludedCaseIds.includes(result.case_id)} busy={busyCaseId === result.case_id} onValidationScopeChange={onValidationScopeChange} />)}</div></section>;
+  const pagination = useEventCursor(`${runId}:${filter}`);
+  const query = useQuery({ queryKey: ["validation-cases", runId, filter, pagination.cursor], queryFn: ({ signal }) => getValidationCases(runId, filter, pagination.cursor, signal), staleTime: Infinity, gcTime: 0, retry: false });
+  const counts = query.data?.counts;
+  return <section className="overflow-hidden rounded-sm border">
+    <header className="border-b bg-muted/25 px-3 py-2.5"><h3 className="text-sm font-semibold">{t("validation.caseResults")}</h3>
+      {counts?.warnings ? <p className="mt-1 text-xs text-muted-foreground">{t("validation.executionWarningCount", { count: counts.warnings })}</p> : null}
+      <div className="mt-2 flex gap-1" role="group" aria-label={t("validation.filterCaseResults")}>{(["all", "failed", "passed", "skipped"] as const).map(value => <Button key={value} type="button" size="sm" variant={filter === value ? "secondary" : "ghost"} className="min-h-11 px-3" aria-pressed={filter === value} onClick={() => setFilter(value)}>{t(value === "skipped" ? "validationScope.skipped" : `validation.caseFilters.${value}`)}<span className="font-mono text-xs">{counts?.[value] ?? "—"}</span></Button>)}</div>
+    </header>
+    <div className="space-y-3 bg-background p-3" aria-busy={query.isFetching}>
+      {query.isPending ? <Skeleton className="h-48" /> : query.error ? <><ErrorNotice error={query.error} /><Button variant="outline" onClick={() => void query.refetch()}>{t("common.retry")}</Button></> : !query.data?.items.length ? <p role="status" className="px-4 py-6 text-sm text-muted-foreground">{t(filter === "skipped" ? "validationScope.empty" : `validation.emptyCaseResults.${filter}`)}</p> : query.data.items.map(result => <TestCaseResultRow key={result.ordinal} result={result} runId={runId} ordinal={result.ordinal} excluded={excludedCaseIds.includes(result.case_id)} busy={busyCaseId === result.case_id} onValidationScopeChange={onValidationScopeChange} />)}
+    </div>
+    <EventPagination page={pagination.page} busy={query.isFetching} nextCursor={query.data?.nextCursor} onNext={pagination.next} onPrevious={pagination.previous} onLatest={pagination.latest} casePages itemCount={query.data?.items.length ?? 0} />
+  </section>;
 }
 
-export function TestCaseResultRow({ result, excluded = false, busy = false, onValidationScopeChange }: { result: TestCaseResult; excluded?: boolean; busy?: boolean; onValidationScopeChange?: (caseId: string, action: "exclude" | "restore") => void }) {
+export function TestCaseResultRow({ result: summary, runId, ordinal, excluded = false, busy = false, onValidationScopeChange }: { result: TestCaseResult; runId?: string; ordinal?: number; excluded?: boolean; busy?: boolean; onValidationScopeChange?: ((caseId: string, action: "exclude" | "restore") => void) | undefined }) {
+  const [open, setOpen] = useState(!runId && isExecutionError(summary));
+  const [traceOffset, setTraceOffset] = useState(0);
+  const detail = useQuery({ queryKey: ["validation-case", runId, ordinal, traceOffset], queryFn: ({ signal }) => getValidationCase(runId!, ordinal!, traceOffset, signal), enabled: Boolean(runId && open), staleTime: Infinity, gcTime: 0, retry: false });
+  const result = runId ? detail.data?.result ?? summary : summary;
   const { t } = useTranslation();
-  const hasExecutionError = isExecutionError(result);
   const executionWarning = hasExecutionWarning(result);
   const failed = !result.passed && !result.skipped;
   const sameRules = result.covered_rule_ids.length === result.matched_rule_ids.length
     && result.covered_rule_ids.every(id => result.matched_rule_ids.includes(id));
-  return <details open={hasExecutionError} className={cn("group/case validation-case overflow-hidden rounded-sm border bg-card", failed && "border-l-2 border-l-destructive")}>
+  return <details open={open} onToggle={event => setOpen(event.currentTarget.open)} className={cn("group/case validation-case overflow-hidden rounded-sm border bg-card", failed && "border-l-2 border-l-destructive")}>
     <summary className="grid min-h-18 cursor-pointer list-none grid-cols-[minmax(0,1fr)_100px_72px_20px] items-center gap-3 bg-muted/40 px-4 py-3 group-open/case:bg-muted/70 hover:bg-accent group-open/case:hover:bg-accent active:bg-muted group-open/case:active:bg-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring [&::-webkit-details-marker]:hidden">
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
@@ -262,7 +268,7 @@ export function TestCaseResultRow({ result, excluded = false, busy = false, onVa
       <span className="whitespace-nowrap text-right font-mono text-xs tabular-nums text-muted-foreground">{result.skipped ? "—" : `${result.latency_ms} ms`}</span>
       <ChevronDown aria-hidden className="size-4 text-muted-foreground transition-transform group-open/case:rotate-180 motion-reduce:transition-none" />
     </summary>
-    <div className="space-y-4 border-t bg-card p-4">
+    {runId && !open ? null : runId && !detail.data ? <div className="border-t p-4">{detail.error ? <><ErrorNotice error={detail.error} /><Button variant="outline" onClick={() => void detail.refetch()}>{t("common.retry")}</Button></> : <Skeleton className="h-32" />}</div> : <div className="space-y-4 border-t bg-card p-4">
       {failed ? <FailureDiagnosis result={result} /> : null}
       {executionWarning ? <Alert variant="warning">
         <AlertTitle>{t("validation.executionWarningTitle")}</AlertTitle>
@@ -286,11 +292,12 @@ export function TestCaseResultRow({ result, excluded = false, busy = false, onVa
         </dl>
       </details> : null}
       {result.trace.length || !result.skipped && result.reason ? <ExecutionTrace steps={playgroundTraceSteps(result.trace)} description={result.skipped ? undefined : result.reason} /> : null}
+      {runId && (traceOffset > 0 || detail.data?.nextTraceOffset != null) ? <nav className="flex items-center justify-end gap-2" aria-label={t("eventPagination.label")}><Button variant="outline" disabled={detail.isFetching || traceOffset === 0} onClick={() => setTraceOffset(Math.max(0, traceOffset - 100))}>{t("eventPagination.previous")}</Button><Button variant="outline" disabled={detail.isFetching || detail.data?.nextTraceOffset == null} onClick={() => { if (detail.data?.nextTraceOffset != null) setTraceOffset(detail.data.nextTraceOffset); }}>{t("eventPagination.next")}</Button></nav> : null}
       {!result.passed && !result.skipped && result.source_policy_id && onValidationScopeChange ? <section className="flex items-center justify-between gap-4 border-t pt-3">
         <div className="min-w-0"><h4 className="text-xs font-semibold">{excluded ? t("validation.caseExcludedTitle") : t("validation.excludeFailedCaseTitle")}</h4><p className="mt-1 text-xs leading-5 text-muted-foreground">{excluded ? t("validation.caseExcludedDescription") : t("validation.excludeFailedCaseDescription")}</p></div>
         <Button size="sm" variant="outline" className="min-h-11 shrink-0" disabled={busy} onClick={() => onValidationScopeChange(result.case_id, excluded ? "restore" : "exclude")}>{busy ? <LoaderCircle className="animate-spin" /> : excluded ? <RotateCcw /> : <Ban />}{t(excluded ? "guardrails.restoreTestCase" : "guardrails.excludeTestCase")}</Button>
       </section> : null}
-    </div>
+    </div>}
   </details>;
 }
 
@@ -311,7 +318,6 @@ export function targetLabel(run: ValidationRun, t: ReturnType<typeof useTranslat
 function isExecutionError(result: TestCaseResult) { return !result.skipped && (Boolean(result.actual_failure) || result.actual_decision.toLowerCase() === "error"); }
 function hasExecutionWarning(result: TestCaseResult) { return result.passed && !result.skipped && Boolean(result.actual_failure) && !result.expected_failure; }
 function decisionMatches(expected: string, actual: string) { return expected === "intervene" ? actual !== "allow" : expected === actual; }
-function resultPriority(result: TestCaseResult) { return result.skipped ? 3 : isExecutionError(result) ? 0 : result.passed ? 2 : 1; }
 function reportNumber(id: string) { return id.replace(/^(?:policy-)?(?:validation|testing-report)-/, ""); }
 function shortId(id: string) { return reportNumber(id).slice(0, 8).toUpperCase(); }
 function humanize(value: string) { return value ? value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()) : "—"; }

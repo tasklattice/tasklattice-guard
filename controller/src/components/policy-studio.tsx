@@ -1,3 +1,4 @@
+import { ValidationCaseResults } from "../routes/validation";
 import { riskSeverities } from "../../shared/security-severity";
 import { Children, cloneElement, isValidElement, useEffect, useId, useRef, useState, type ReactElement, type ReactNode, type RefObject } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -341,10 +342,9 @@ function TestEditor({ rails, testCases, run, error, onChange }: { rails: PolicyR
       {testCases.length && missingRules.length ? <Alert variant="info" className="mb-4"><CircleAlert /><AlertTitle>{t("policyStudio.rulesNeedTests")}</AlertTitle><AlertDescription>{t("policyStudio.rulesNeedTestsDescription", { rules: missingRules.map((rule) => rule.flow_name).join(", ") })}</AlertDescription></Alert> : null}
       <div className="space-y-3">
         {testCases.map((test, index) => {
-          const result = run?.results?.[index];
           const availableRules = rails.filter((rail) => rail.rail_type === test.rail_type);
           return (
-            <section key={index} className={cn("rounded-lg border bg-card", result && (result.passed ? "border-emerald-200" : "border-destructive/30"))}>
+            <section key={index} className="rounded-lg border bg-card">
               <header className="flex items-center justify-between border-b bg-muted/20 px-4 py-3">
                 <div className="flex flex-wrap items-center gap-2"><strong className="text-sm">{t("policyStudio.testCase", { number: index + 1 })}</strong><Badge variant="outline">{test.case_type}</Badge>{test.required ? null : <Badge variant="secondary">{t("policyStudio.optional")}</Badge>}</div>
                 <Button size="icon" variant="ghost" aria-label={t("common.remove")} onClick={() => onChange(testCases.filter((_, itemIndex) => itemIndex !== index))}><Trash2 /></Button>
@@ -367,12 +367,13 @@ function TestEditor({ rails, testCases, run, error, onChange }: { rails: PolicyR
                     {availableRules.map((rail) => { const ruleId = policyRuleId(rail); const checked = test.covered_rule_ids.includes(ruleId); return <label key={ruleId} className="flex min-h-11 cursor-pointer items-center gap-2 rounded-md px-2 hover:bg-muted/30"><Checkbox checked={checked} onCheckedChange={(value) => replaceAt(testCases, index, { ...test, covered_rule_ids: value ? [...test.covered_rule_ids, ruleId] : test.covered_rule_ids.filter((item) => item !== ruleId) }, onChange)} /><span className="min-w-0"><strong className="block truncate text-xs">{rail.flow_name}</strong><code className="block truncate text-[10px] text-muted-foreground">{ruleId}</code></span></label>; })}
                   </div>
                 </fieldset>
-                {result ? <div className="sm:col-span-2"><Alert variant={result.passed ? "default" : "destructive"}>{result.passed ? <Check /> : <X />}<AlertTitle>{result.passed ? t("policyStudio.casePassed") : t("policyStudio.caseFailed")}</AlertTitle><AlertDescription><span className="block">{result.actual_decision}{result.actual_failure ? ` · ${result.actual_failure}` : ""} · {result.latency_ms}ms{result.reason ? ` · ${result.reason}` : ""}</span><span className="mt-1 block font-mono text-xs">{t("policyStudio.ruleEvidence", { covered: result.covered_rule_ids.join(", "), matched: result.matched_rule_ids.join(", ") || t("policyStudio.noRuleMatched") })}</span></AlertDescription></Alert></div> : null}
+
               </div>
             </section>
           );
         })}
         {!testCases.length ? <EmptyInline icon={FlaskConical} text={t("policyStudio.noTests")} /> : null}
+        {run?.id && ["passed", "failed"].includes(run.status) ? <ValidationCaseResults key={run.id} runId={run.id} defaultFilter={run.status === "failed" ? "failed" : "all"} /> : null}
       </div>
     </StudioSection>
   );

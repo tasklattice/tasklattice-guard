@@ -76,9 +76,9 @@ controller:
   resources:
     requests:
       cpu: 100m
-      memory: 256Mi
+      memory: 512Mi
     limits:
-      memory: 1Gi
+      memory: 2Gi
 
 runner:
   # Optional different data-plane URL; normally inherits top-level publicUrl.
@@ -167,15 +167,15 @@ postgresql:
   persistence:
     # false uses ephemeral storage; true requests a PVC from this StorageClass.
     enabled: true
-    size: 2Gi
+    size: 20Gi
     storageClass: ""
   resources:
     requests:
-      cpu: 50m
-      memory: 128Mi
-    limits:
       cpu: 500m
-      memory: 512Mi
+      memory: 2Gi
+    limits:
+      cpu: "2"
+      memory: 4Gi
 
 # Development-only Redis; production uses runner.callContextRedisUrl.
 redis:

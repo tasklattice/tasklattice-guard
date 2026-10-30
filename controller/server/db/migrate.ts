@@ -1,4 +1,5 @@
-import { migrate } from "drizzle-orm/node-postgres/migrator";
+import { readMigrationFiles } from "drizzle-orm/migrator";
+import { migrateReportStorage } from "./report-storage-migration.js";
 import { sql } from "drizzle-orm";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -14,7 +15,20 @@ export async function runMigrations(config: ControllerConfig, db: ControllerData
     // the migration settings never enter the ordinary request pool.
     await scoped.execute(sql`SELECT set_config('statement_timeout', '300000', false),
       set_config('lock_timeout', '30000', false), set_config('idle_in_transaction_session_timeout', '30000', false)`);
-    await migrate(scoped, { migrationsFolder: config.migrationsPath });
+    // Session lock serializes upgrades across replicas, including the bounded
+    // data backfill between schema migrations. This checkout is discarded.
+    await scoped.execute(sql`SELECT pg_advisory_lock(hashtext(current_database()), 1735199)`);
+    await scoped.execute(sql`CREATE SCHEMA IF NOT EXISTS drizzle`);
+    await scoped.execute(sql`CREATE TABLE IF NOT EXISTS drizzle.__drizzle_migrations (id serial PRIMARY KEY, hash text NOT NULL, created_at bigint)`);
+    const { rows: [last] } = await scoped.execute<{ created_at: string }>(sql`SELECT created_at FROM drizzle.__drizzle_migrations ORDER BY created_at DESC LIMIT 1`);
+    for (const migration of readMigrationFiles({ migrationsFolder: config.migrationsPath })) {
+      if (Number(last?.created_at ?? 0) >= migration.folderMillis) continue;
+      if (migration.folderMillis === 1793354402000) await migrateReportStorage(scoped);
+      await scoped.transaction(async tx => {
+        for (const statement of migration.sql) await tx.execute(sql.raw(statement));
+        await tx.execute(sql`INSERT INTO drizzle.__drizzle_migrations(hash,created_at) VALUES(${migration.hash},${migration.folderMillis})`);
+      });
+    }
   }, true);
 }
 

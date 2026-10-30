@@ -188,8 +188,6 @@ export type ValidationRun = {
   progress?: import("../../shared/validation-progress").ValidationProgress | null;
   failure_reason?: string | null;
   metrics: ValidationMetrics;
-  results: TestCaseResult[];
-  details_loaded?: boolean;
   completed_at?: string | null;
   excluded_case_ids: string[];
   created_at: string;
@@ -771,23 +769,6 @@ export type PolicyDraftValidationRun = {
   policy_id?: string;
   draft_revision?: number;
   status: ValidationRunDisplayState;
-  results?: Array<{
-    name: string;
-    case_type: PolicyDraftTestCase["case_type"];
-    required: boolean;
-    rail_type: PolicyRailType;
-    concurrency_group: string | null;
-    expected_decision: string;
-    expected_failure: PolicyDraftTestCase["expected_failure"];
-    actual_decision: string;
-    actual_failure?: PolicyDraftTestCase["expected_failure"];
-    passed: boolean;
-    latency_ms: number;
-    reason: string;
-    covered_rule_ids: string[];
-    matched_rule_ids: string[];
-    trace: Array<Record<string, unknown>>;
-  }>;
   created_at?: string;
 };
 export type GuardrailCompilePreview = {

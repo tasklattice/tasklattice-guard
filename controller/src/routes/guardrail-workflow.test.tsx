@@ -429,6 +429,7 @@ describe("Guardrail edit, test and publish workflow", () => {
       case_type: "rule_acceptance", required: true, expected_failure: null, actual_failure: null,
       concurrency_group: null, source_policy_id: null, source_policy_version: null, source_case_id: null,
       evaluation_contracts: [], escalated: false, model_invocations: 1 };
+    vi.spyOn(api,"getValidationCases").mockResolvedValue({items:[{...failedCase,ordinal:0}],count:1,counts:{all:1,failed:1,passed:0,skipped:0,warnings:0},nextCursor:null});
     let complete!: (value: api.ValidationRun) => void;
     const detail = vi.spyOn(api, "getValidationRun").mockImplementation(() => new Promise(resolve => { complete = resolve; }));
     vi.spyOn(api, "createValidationRun").mockResolvedValue(summary);

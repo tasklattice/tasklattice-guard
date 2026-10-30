@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import json
 import hashlib
-import gzip
 import importlib.metadata
 import logging
 import time
@@ -22,6 +21,7 @@ import httpx
 from runner.toolkit.nemo.action_registry import ActionProviders, action_providers
 from runner.toolkit.nemo.native_models import NativeRailModel, native_rail_models
 
+from .report_chunks import ReportSpool
 from .software_version import SOFTWARE_VERSION
 from .artifact_store import ArtifactStore
 from .compiler import DefaultRunnerCompiler
@@ -29,7 +29,7 @@ from .capability_validation import validate_capability
 from .config import RunnerSettings
 from .diagnostics import diagnostic_phase
 from .preparation import prepare
-from .control_transport import CONTROL_CHANNEL_OPTIONS, CONTROL_MESSAGE_MAX_BYTES
+from .control_transport import CONTROL_CHANNEL_OPTIONS
 from . import generated as protocol
 from .generated import runner_control_pb2_grpc as services
 from .metrics import RunnerMetrics
@@ -40,7 +40,6 @@ from .validation_logging import validation_event
 from .toolkit.nemo.actions.model_retry import configure_provider_retry
 
 VALIDATION_TIMEOUT_SECONDS = 30 * 60
-MAX_REPORT_BYTES = 128 * 1024 * 1024
 
 
 logger = logging.getLogger("tasklattice.guard.runner.control")
@@ -86,12 +85,11 @@ class RunnerControlClient:
         configure_provider_retry(int(getattr(settings, "model_rate_limit_attempts", 3)))
         self._validation_lock = asyncio.Lock()
         self._validation_tasks: dict[str, asyncio.Task] = {}
-        self._compressed_validation_reports = False
-        # Reconnect retries replay results without executing the test suite again.
-        # Bound both the number and serialized size of retained results.
-        self._validation_results: OrderedDict[str, bytes] = OrderedDict()
-        self._validation_result_bytes = 0
-        self._validation_result_budget = 32 * 1024 * 1024
+        self._report_spools: OrderedDict[str, ReportSpool] = OrderedDict()
+        self._report_spool_bytes = 0
+        self._chunk_acks: dict[tuple[str, str, int], asyncio.Future] = {}
+        # Only small terminal notices live in memory; report bytes stay on disk.
+        self._validation_notices: OrderedDict[str, protocol.ValidationStatusNotice] = OrderedDict()
         self._compiler = None
         if settings.compiler_capable:
             self._compiler = compiler or DefaultRunnerCompiler()
@@ -116,25 +114,39 @@ class RunnerControlClient:
 
     async def run(self) -> None:
         delay = 1.0
-        while not self._stop.is_set():
-            try:
-                await self._connect_once()
-                delay = 1.0
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                self._connected.clear()
-                self._metrics.set_control_state(connected=False)
-                self._metrics.observe_control_reconnect("stream_error")
-                logger.exception("Runner control stream failed; reconnecting in %.1f seconds.", delay)
+        try:
+            while not self._stop.is_set():
                 try:
-                    await asyncio.wait_for(self._stop.wait(), timeout=delay)
-                except TimeoutError:
-                    pass
-                delay = min(30.0, delay * 2)
+                    await self._connect_once()
+                    delay = 1.0
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    self._connected.clear()
+                    self._metrics.set_control_state(connected=False)
+                    self._metrics.observe_control_reconnect("stream_error")
+                    logger.exception("Runner control stream failed; reconnecting in %.1f seconds.", delay)
+                    try:
+                        await asyncio.wait_for(self._stop.wait(), timeout=delay)
+                    except TimeoutError:
+                        pass
+                    delay = min(30.0, delay * 2)
+        finally:
+            self._close_report_spools()
+
+    def _close_report_spools(self) -> None:
+        for spool in self._report_spools.values():
+            spool.close()
+        self._report_spools.clear()
+        self._report_spool_bytes = 0
 
     async def stop(self) -> None:
         self._stop.set()
+        for future in self._chunk_acks.values():
+            if not future.done():
+                future.cancel()
+        if not self._chunk_acks and not self._validation_tasks:
+            self._close_report_spools()
 
     async def _connect_once(self) -> None:
         # Results from a failed stream are retried by Controller reconciliation.
@@ -176,6 +188,8 @@ class RunnerControlClient:
             self._validation_tasks.clear()
             await asyncio.gather(heartbeat, sender, return_exceptions=True)
             await channel.close()
+            if self._stop.is_set():
+                self._close_report_spools()
 
     async def _receive_messages(self, stream) -> None:
         # Keep ordinary commands ordered while emergency modes can overtake
@@ -200,7 +214,7 @@ class RunnerControlClient:
             async for message in stream:
                 self._connected.set()
                 self._metrics.set_control_state(connected=True)
-                if message.WhichOneof("body") in {"protection_state", "validation_cancel_request"}:
+                if message.WhichOneof("body") in {"protection_state", "validation_cancel_request", "validation_report_chunk_ack", "validation_report_ack"}:
                     await handle(message)
                 else:
                     # Reconnect on overflow instead of blocking mode delivery.
@@ -244,7 +258,6 @@ class RunnerControlClient:
     async def _handle(self, message: protocol.ControllerMessage) -> None:
         body = message.WhichOneof("body")
         if body == "registration_accepted":
-            self._compressed_validation_reports = message.registration_accepted.validation_report_gzip
             self._heartbeat_interval = max(2, message.registration_accepted.heartbeat_interval_seconds)
             self._metrics.set_desired_generation(message.registration_accepted.desired_generation)
         elif body == "protection_state":
@@ -257,6 +270,11 @@ class RunnerControlClient:
             await self._send(protocol.RunnerMessage(message_id=str(uuid.uuid4()), sent_at_unix_ms=_now_ms(),
                 protection_result=protocol.GuardrailProtectionResult(runner_id=self._settings.runner_id,
                     generation=state.generation, accepted=accepted, reason=reason)))
+        elif body == "validation_report_chunk_ack":
+            ack = message.validation_report_chunk_ack
+            future = self._chunk_acks.get((ack.run_id, ack.upload_id, ack.sequence))
+            if future is not None and not future.done():
+                future.set_result(ack.rejection_code)
         elif body == "validation_report_ack":
             validation_event("validation.report_saved", run_id=message.validation_report_ack.run_id,
                              runner_id=self._settings.runner_id)
@@ -270,9 +288,9 @@ class RunnerControlClient:
                 # A finished report may still be cleaning up its runtime. Keep
                 # one following job queued on the lock instead of failing it.
                 if len(self._validation_tasks) >= 2:
-                    await self._send(protocol.RunnerMessage(validation_result=protocol.ValidationResult(
-                        runner_id=self._settings.runner_id, run_id=request.run_id, accepted=False,
-                        status=protocol.VALIDATION_STATUS_FAILED, reason="Testing Runner is busy.")))
+                    await self._publish_validation_notice(protocol.ValidationResult(
+                        runner_id=self._settings.runner_id, run_id=request.run_id,
+                        status=protocol.VALIDATION_STATUS_FAILED, reason="Testing Runner is busy."))
                     return
                 task = asyncio.create_task(self._validate(request), name=f"validation:{request.run_id}")
                 self._validation_tasks[request.run_id] = task
@@ -503,26 +521,29 @@ class RunnerControlClient:
             if self._validation_tasks.get(run_id) is task:
                 self._validation_tasks.pop(run_id, None)
         # Remember stops received before a racing execution command, too.
-        await self._publish_validation_result(protocol.ValidationResult(
-            runner_id=self._settings.runner_id, run_id=run_id, accepted=True,
+        await self._publish_validation_notice(protocol.ValidationResult(
+            runner_id=self._settings.runner_id, run_id=run_id, accepted=False,
             status=protocol.VALIDATION_STATUS_CANCELLED, reason="Cancelled by user."))
         validation_event("validation.cancelled", run_id=run_id, runner_id=self._settings.runner_id)
 
     async def _validate(self, request: protocol.ValidationRequest) -> None:
         async with self._validation_lock:
-            cached = self._validation_results.get(request.run_id)
+            spool = self._report_spools.get(request.run_id)
+            if spool is not None:
+                self._report_spools.move_to_end(request.run_id)
+                await self._send_report_chunks(spool)
+                return
+            cached = self._validation_notices.get(request.run_id)
             if cached is not None:
                 validation_event("validation.replayed", run_id=request.run_id, runner_id=self._settings.runner_id)
-                self._validation_results.move_to_end(request.run_id)
-                encoded = await asyncio.to_thread(gzip.decompress, cached)
-                result = await asyncio.to_thread(protocol.ValidationResult.FromString, encoded)
-                await self._send_validation_report(result, encoded, cached)
+                self._validation_notices.move_to_end(request.run_id)
+                await self._send(protocol.RunnerMessage(validation_status_notice=cached))
                 return
             await self._execute_validation(request)
 
     async def _execute_validation(self, request: protocol.ValidationRequest) -> None:
         if self._validator is None:
-            await self._publish_validation_result(protocol.ValidationResult(runner_id=self._settings.runner_id,
+            await self._publish_validation_notice(protocol.ValidationResult(runner_id=self._settings.runner_id,
                 run_id=request.run_id, status=protocol.VALIDATION_STATUS_FAILED, reason="Runner cannot execute tests."))
             return
         started = time.perf_counter()
@@ -584,7 +605,18 @@ class RunnerControlClient:
                          total_cases=result.metrics.total, passed_cases=result.metrics.passed)
         try:
             # Neither teardown nor cost accounting may gate the report's delivery.
-            await self._publish_validation_result(result)
+            if result.accepted and outcome is not None:
+                try:
+                    spool = await asyncio.to_thread(ReportSpool, result, (validation_case_result_to_proto(item) for item in outcome.results))
+                except Exception as error:
+                    validation_event("validation.report_encoding_failed", level=logging.ERROR, run_id=result.run_id, error_type=type(error).__name__)
+                    await self._publish_validation_notice(protocol.ValidationResult(runner_id=result.runner_id, run_id=result.run_id,
+                        accepted=False, status=protocol.VALIDATION_STATUS_FAILED, reason="Report exceeds the bounded encoding budget."))
+                else:
+                    self._cache_report_spool(spool)
+                    await self._send_report_chunks(spool)
+            else:
+                await self._publish_validation_notice(result)
         finally:
             try:
                 await self._record_validation_cost(request, cost_calls, cost_event_id)
@@ -639,7 +671,6 @@ class RunnerControlClient:
             runner_id=self._settings.runner_id, run_id=request.run_id, accepted=True,
             status=protocol.VALIDATION_STATUS_PASSED if outcome.status == "passed" else protocol.VALIDATION_STATUS_FAILED,
             metrics=validation_metrics_to_proto(outcome.metrics),
-            results=[validation_case_result_to_proto(item) for item in outcome.results],
             runtime=protocol.ValidationRuntime(runner_id=self._settings.runner_id,
                 runner_version=SOFTWARE_VERSION["version"], nemo_version=importlib.metadata.version("nemoguardrails"),
                 model_revision_id=self._store.model_revision_id, compiler_model_types=list(self._validator.compiler_model_types)),
@@ -655,39 +686,64 @@ class RunnerControlClient:
                                for r in scope["skippedRules"]]))
         return result
 
-    async def _publish_validation_result(self, result: protocol.ValidationResult) -> None:
-        if result.ByteSize() > MAX_REPORT_BYTES:
-            result = protocol.ValidationResult(runner_id=self._settings.runner_id, run_id=result.run_id,
-                status=protocol.VALIDATION_STATUS_FAILED, reason="Test report exceeds the 128 MiB decoded report budget.")
-        encoded = await asyncio.to_thread(result.SerializeToString)
-        compressed = await asyncio.to_thread(gzip.compress, encoded, compresslevel=1, mtime=0)
-        previous = self._validation_results.pop(result.run_id, None)
-        if previous is not None:
-            self._validation_result_bytes -= len(previous)
-        while self._validation_results and (len(self._validation_results) >= 64
-                or self._validation_result_bytes + len(compressed) > self._validation_result_budget):
-            _, previous = self._validation_results.popitem(last=False)
-            self._validation_result_bytes -= len(previous)
-        if len(compressed) <= self._validation_result_budget:
-            self._validation_results[result.run_id] = compressed
-            self._validation_result_bytes += len(compressed)
-        await self._send_validation_report(result, encoded, compressed)
+    def _cache_report_spool(self, spool: ReportSpool) -> None:
+        previous = self._report_spools.pop(spool.run_id, None)
+        if previous:
+            self._report_spool_bytes -= previous.size
+            previous.close()
+        while self._report_spools and (len(self._report_spools) >= 64 or self._report_spool_bytes + spool.size > 512 * 1024 * 1024):
+            _, old = self._report_spools.popitem(last=False)
+            self._report_spool_bytes -= old.size
+            old.close()
+        self._report_spools[spool.run_id] = spool
+        self._report_spool_bytes += spool.size
 
-    async def _send_validation_report(self, result, encoded: bytes, compressed: bytes) -> None:
-        if self._compressed_validation_reports:
-            message = protocol.RunnerMessage(message_id=str(uuid.uuid4()), sent_at_unix_ms=_now_ms(),
-                validation_report=protocol.ValidationReport(runner_id=result.runner_id, run_id=result.run_id,
-                    gzip_result=compressed, raw_size_bytes=len(encoded), sha256=hashlib.sha256(encoded).hexdigest()))
-        else:
-            message = protocol.RunnerMessage(message_id=str(uuid.uuid4()), sent_at_unix_ms=_now_ms(), validation_result=result)
-        if message.ByteSize() > CONTROL_MESSAGE_MAX_BYTES:
-            message = protocol.RunnerMessage(message_id=str(uuid.uuid4()), sent_at_unix_ms=_now_ms(),
-                validation_result=protocol.ValidationResult(runner_id=result.runner_id, run_id=result.run_id,
-                    status=protocol.VALIDATION_STATUS_FAILED,
-                    reason="Test report exceeds the transport budget. Upgrade Controller and Runner for compressed reports."))
-        validation_event("validation.report_queued", run_id=result.run_id, raw_bytes=len(encoded),
-                         wire_bytes=message.ByteSize(), compressed=self._compressed_validation_reports)
-        await self._send(message)
+    async def _send_report_chunks(self, spool: ReportSpool) -> None:
+        for message in spool.messages():
+            part = message.validation_report_chunk
+            key = (part.run_id, part.upload_id, part.sequence)
+            future = asyncio.get_running_loop().create_future()
+            self._chunk_acks[key] = future
+            try:
+                while not self._stop.is_set():
+                    message.message_id, message.sent_at_unix_ms = str(uuid.uuid4()), _now_ms()
+                    await self._send(message)
+                    try:
+                        rejection = await asyncio.wait_for(asyncio.shield(future), timeout=30)
+                        if rejection:
+                            retained = self._report_spools.pop(spool.run_id, None)
+                            if retained is not None:
+                                self._report_spool_bytes -= retained.size
+                                retained.close()
+                            validation_event("validation.report_rejected", run_id=part.run_id)
+                            return
+                        break
+                    except TimeoutError:
+                        validation_event("validation.report_chunk_retry", run_id=part.run_id, sequence=part.sequence)
+                else:
+                    raise asyncio.CancelledError
+            finally:
+                self._chunk_acks.pop(key, None)
+                if not future.done():
+                    future.cancel()
+            validation_event("validation.report_chunk_acknowledged", run_id=part.run_id, sequence=part.sequence,
+                             raw_bytes=part.raw_size_bytes, wire_bytes=message.ByteSize())
+
+    async def _publish_validation_notice(self, result: protocol.ValidationResult) -> None:
+        if result.results or result.accepted or result.status not in (protocol.VALIDATION_STATUS_FAILED, protocol.VALIDATION_STATUS_CANCELLED):
+            raise ValueError("Executed reports must use the chunk channel.")
+        if result.status == protocol.VALIDATION_STATUS_CANCELLED:
+            old_spool = self._report_spools.pop(result.run_id, None)
+            if old_spool is not None:
+                self._report_spool_bytes -= old_spool.size
+                old_spool.close()
+        notice = protocol.ValidationStatusNotice(runner_id=result.runner_id, run_id=result.run_id,
+            status=result.status, reason=result.reason[:1024])
+        self._validation_notices[result.run_id] = notice
+        self._validation_notices.move_to_end(result.run_id)
+        while len(self._validation_notices) > 64:
+            self._validation_notices.popitem(last=False)
+        await self._send(protocol.RunnerMessage(message_id=str(uuid.uuid4()), sent_at_unix_ms=_now_ms(), validation_status_notice=notice))
 
     async def _artifact_result(self, artifact, generation: int, accepted: bool, reason: str) -> None:
         await self._send(protocol.RunnerMessage(

@@ -1,3 +1,4 @@
+import { ValidationCaseResults } from "../routes/validation";
 import { modelParameterFields, policyBindingParameterIssues } from "../../shared/policy-parameters";
 import { PolicyParameterEditor, PolicyTestParameters, ModelParameterInput, withModelParameters } from "./policy-parameter-editor";
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
@@ -139,7 +140,7 @@ export function DeclarativePolicyStudio({ policyId, imported, onClose, onSaved, 
   </div>;
   const requirements = issues.length ? <details className="rounded-lg border p-4 text-sm"><summary className="cursor-pointer">{l("publicationRequirements")} · {issues.length}</summary><ul className="mt-3 list-disc space-y-2 pl-5 text-xs">{issues.map((issue, i) => <li key={i}>{issue}</li>)}</ul></details> : null;
   const testSummary = report ? <div role="status" className="rounded-lg border bg-muted/20 p-4 text-sm">
-    <div className="flex items-center gap-2">{testing ? <LoaderCircle className="size-4 animate-spin" aria-hidden="true" /> : report.status === "passed" ? <CheckCircle2 className="size-4 shrink-0 text-emerald-700" aria-hidden="true" /> : null}<strong>{l("testRun")}: {l(report.status)}</strong><span>· {report.results.filter(r => r.passed).length}/{report.results.length || definition.tests.length}</span></div>
+    <div className="flex items-center gap-2">{testing ? <LoaderCircle className="size-4 animate-spin" aria-hidden="true" /> : report.status === "passed" ? <CheckCircle2 className="size-4 shrink-0 text-emerald-700" aria-hidden="true" /> : null}<strong>{l("testRun")}: {l(report.status)}</strong><span>· {report.passed}/{report.total}</span></div>
     {report.failureReason ? <p className="mt-2 text-destructive">{report.failureReason}</p> : null}
   </div> : null;
   return <EntitySheet open onOpenChange={open => { if (!open && !busy) onClose(); }} closeDisabled={busy} returnFocusRef={returnFocusRef} width="workflow" bodyClassName="overflow-hidden p-0 sm:p-0"
@@ -196,7 +197,7 @@ export function DeclarativePolicyStudio({ policyId, imported, onClose, onSaved, 
           {step === 3 ? <div className="space-y-5">
             <ReviewList items={[{ label: l("policyName"), value: definition.metadata.name || "—" }, { label: l("maintenanceMaintainer"), value: maintainer }, { label: "Rules / Test Cases", value: `${definition.rules.length} / ${definition.tests.length}` }, { label: "Detectors", value: [...new Set(definition.rules.map(r => r.detector.ref))].join(", ") || "—", mono: true }]} />
             {testSummary ?? <p className="text-sm text-muted-foreground">{l("passBeforePublish")}</p>}
-            {report?.results.length ? <section aria-label={l("testResults")} className="divide-y rounded-lg border">{report.results.map(result => <div key={result.caseId} className="space-y-2 p-4 text-sm"><div className="flex items-start justify-between gap-4"><strong>{result.name}</strong><Badge variant="outline">{l(result.passed ? "passed" : "failed")}</Badge></div><p className="text-xs text-muted-foreground">{result.reason}{result.modelInvocations != null ? ` · ${l("modelCalls")}: ${result.modelInvocations}` : ""}</p><details className="text-xs"><summary className="cursor-pointer">{l("actualResult")} · {result.actualDecision}</summary><p className="mt-2 whitespace-pre-wrap break-words rounded-md bg-muted/30 p-3">{result.outputContent || "—"}</p><p className="mt-2 break-all text-muted-foreground">{l("matchedRules")}: {result.matchedRuleIds.join(", ") || "—"}</p>{result.actualReasoningResult ? <p className="mt-2">{l("proofResult")}: {result.actualReasoningResult}</p> : null}{result.findings?.length ? <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted/30 p-3">{JSON.stringify(result.findings, null, 2)}</pre> : null}</details></div>)}</section> : null}
+            {report && ["passed", "failed"].includes(report.status) ? <ValidationCaseResults key={report.id} runId={report.id} defaultFilter={report.status === "failed" ? "failed" : "all"} /> : null}
             {requirements}
             <div className="flex gap-3"><Button variant="testing" onClick={() => navigate(2)}><Play />{l("editAndRunTests")}</Button><Button variant="outline" disabled={invalidEditor} onClick={exportDefinition}><Download />{l("exportDefinition")}</Button></div>
             <p className="text-xs leading-5 text-muted-foreground">{l("immutableVersionHint")}</p>

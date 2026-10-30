@@ -16,6 +16,7 @@ function setup(role = "user") {
     cancelValidation: vi.fn().mockResolvedValue({ ...run, status: "cancelled" }),
     queryValidationRuns: vi.fn().mockResolvedValue({ items: [run], count: 1 }),
     getValidationRun: vi.fn().mockResolvedValue(run),
+    reportResults: { page: vi.fn(), detail: vi.fn() },
     testingReportDeletionImpact: vi.fn().mockResolvedValue({ runId: "run-1", pendingVersion: "version-1", deletable: true }),
     deleteTestingReport: vi.fn().mockResolvedValue(undefined),
     setTestCaseExcluded: vi.fn().mockResolvedValue({ excludedTestCaseIds: ["policy/case-1"] }),
@@ -48,21 +49,18 @@ describe("Testing HTTP paths", () => {
     const detail = await app.request("/api/v1/test-runs/run-1");
     expect(detail.status).toBe(200);
     expect(await detail.json()).toEqual(run);
-    expect(service.getValidationRun).toHaveBeenCalledWith("run-1", false);
+    expect(service.getValidationRun).toHaveBeenCalledWith("run-1");
   });
 
-  it("compresses detailed reports without losing cases or trace evidence", async () => {
-    const { app, service } = setup();
-    const report = { id: "large", status: "passed", results: Array.from({ length: 950 }, (_, index) => ({
-      caseId: `case-${index}`, trace: [{ detail: "full evidence ".repeat(100) }],
-    })) };
-    service.getValidationRun.mockResolvedValue(report);
-    const response = await app.request("/api/v1/test-runs/large", { headers: { "accept-encoding": "gzip" } });
-    expect(response.status).toBe(200);
-    expect(response.headers.get("content-encoding")).toBe("gzip");
-    const bytes = Buffer.from(await response.arrayBuffer());
-    expect(bytes.length).toBeLessThan(JSON.stringify(report).length / 5);
-    expect(JSON.parse(gunzipSync(bytes).toString())).toEqual(report);
+  it("compresses one bounded case without losing its trace and keeps metadata separate",async()=>{
+    const {app,service}=setup();
+    const detail={caseId:"one",trace:[{detail:"full evidence ".repeat(10000)}],traceCount:1,nextTraceOffset:null};
+    service.reportResults.detail.mockResolvedValue(detail);
+    const response=await app.request("/api/v1/test-runs/run-1/cases/7",{headers:{"accept-encoding":"gzip"}});
+    expect(response.status).toBe(200);expect(response.headers.get("content-encoding")).toBe("gzip");
+    expect(JSON.parse(gunzipSync(Buffer.from(await response.arrayBuffer())).toString())).toEqual(detail);
+    expect(service.reportResults.detail).toHaveBeenCalledWith("run-1",7,0);
+    expect(await (await app.request("/api/v1/test-runs/run-1")).json()).not.toHaveProperty("results");
   });
 
   it("cancels an exact test ID without deleting its report", async () => {
@@ -126,6 +124,6 @@ describe("Testing HTTP paths", () => {
     const { app, service } = setup();
     const response = await app.request(path, { method });
     expect(response.status).toBe(404);
-    for (const call of Object.values(service)) expect(call).not.toHaveBeenCalled();
+    for (const call of Object.values(service).filter(vi.isMockFunction)) expect(call).not.toHaveBeenCalled();
   });
 });

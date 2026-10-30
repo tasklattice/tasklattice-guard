@@ -69,7 +69,6 @@ export const policyResourceValidations = pgTable("policy_resource_validation", {
   parentId: text("parent_id"), revision: integer("revision").notNull(),
   status: text("status").notNull(),
   tests: jsonb("tests").$type<import("../../shared/policy-definition.js").DefinitionTest[]>().notNull(),
-  results: jsonb("results").$type<import("../../shared/policy-definition.js").ResourceValidation["results"]>().notNull().default([]),
   failureReason: text("failure_reason"), createdAt,
 }, t => [index("policy_resource_validation_parent_idx").on(t.parentId), index("policy_resource_validation_policy_idx").on(t.policyId, t.createdAt)]);
 
@@ -283,7 +282,6 @@ export const policyValidationRuns = pgTable("policy_validation_run", {
   policyId: text("policy_id").notNull().references(() => policyRecords.id, { onDelete: "cascade" }),
   draftRevision: integer("draft_revision").notNull(),
   status: text("status").$type<ValidationRunState>().notNull().default("queued"),
-  results: jsonb("results").$type<PolicyValidationResult[]>().notNull().default([]),
   failureReason: text("failure_reason"),
   createdBy: text("created_by").notNull().references(() => user.id),
   createdAt,
@@ -426,6 +424,9 @@ export const testCases = pgTable("guardrail_test_case", {
   index("guardrail_test_case_guardrail_idx").on(table.guardrailId),
 ]);
 
+export const validationSnapshots = pgTable("guardrail_validation_snapshot", {
+  digest: text("digest").primaryKey(), payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+});
 export const validationRuns = pgTable("guardrail_validation_run", {
   testModelRules: boolean("test_model_rules").notNull().default(true),
   testScope: jsonb("test_scope").$type<import("../../shared/validation-scope.js").ValidationTestScope>(),
@@ -444,20 +445,16 @@ export const validationRuns = pgTable("guardrail_validation_run", {
     escalationRate: 0,
     p95LatencyMs: 0,
   }),
-  results: jsonb("results").$type<ValidationCaseResult[]>().notNull().default([]),
+  snapshotDigest: text("snapshot_digest").references(() => validationSnapshots.digest),
   excludedCaseIds: jsonb("excluded_case_ids").$type<string[]>().notNull().default([]),
   failureReason: text("failure_reason"),
   // The exact content the cases ran against; publication reuses it unchanged.
-  candidateArtifact: jsonb("candidate_artifact").$type<ArtifactContent>(),
   candidateDigest: text("candidate_digest"),
-  candidateInspection: jsonb("candidate_inspection").$type<GuardrailInspection>(),
   // The Policy versions the candidate was built from; publication copies them.
-  candidatePolicies: jsonb("candidate_policies").$type<PolicyNode[]>(),
   // "draft": a draft compiled into a candidate. "version": a published or
   // imported version's signed Artifact, tested as it is in this environment.
   subject: text("subject").$type<"draft" | "version">().notNull().default("draft"),
   // The exact cases this run executed, frozen; publication copies them to the version.
-  testSuite: jsonb("test_suite").$type<FrozenTestCase[]>(),
   testSuiteDigest: text("test_suite_digest"),
   runtimeFingerprint: jsonb("runtime_fingerprint").$type<ValidationRuntimeFingerprint>(),
   // Null preserves historical automated validation runs without a human actor.
@@ -468,6 +465,39 @@ export const validationRuns = pgTable("guardrail_validation_run", {
   index("guardrail_validation_retention_idx").on(table.guardrailId, table.status, sql`(coalesce(${table.completedAt}, ${table.createdAt})) DESC`, table.id.desc()),
   index("guardrail_validation_run_guardrail_idx").on(table.guardrailId, table.createdAt),
 ]);
+
+export const validationReports = pgTable("validation_report", {
+  id: text("id").primaryKey(),
+  guardrailRunId: text("guardrail_run_id").unique().references(() => validationRuns.id, { onDelete: "cascade" }),
+  policyRunId: text("policy_run_id").unique().references(() => policyValidationRuns.id, { onDelete: "cascade" }),
+  policyJobId: text("policy_job_id").unique().references(() => policyResourceValidations.id, { onDelete: "cascade" }),
+});
+export const validationReportDetails = pgTable("validation_report_detail", {
+  id: text("id").primaryKey(), ownerId: text("owner_id").notNull().references(() => validationReports.id, { onDelete: "cascade" }),
+  body: jsonb("body").$type<ValidationCaseResult>().notNull(), bytes: integer("bytes").notNull(),
+}, t => [index("validation_report_detail_owner_idx").on(t.ownerId)]);
+
+export const validationCaseResults = pgTable("validation_report_case", {
+  runId: text("run_id").notNull().references(() => validationReports.id, { onDelete: "cascade" }),
+  ordinal: integer("ordinal").notNull(), caseId: text("case_id").notNull(),
+  status: text("status").notNull(), priority: integer("priority").notNull(),
+  summary: jsonb("summary").$type<Record<string, unknown>>().notNull(),
+  assessment: jsonb("assessment").$type<Record<string, unknown>>().notNull().default({}), detailBytes: integer("detail_bytes").notNull(),
+  detailId: text("detail_id").notNull().references(() => validationReportDetails.id, { onDelete: "cascade" }),
+}, table => [primaryKey({ columns: [table.runId, table.ordinal] }), uniqueIndex("guardrail_validation_case_identity_idx").on(table.runId, table.caseId),
+  index("guardrail_validation_case_page_idx").on(table.runId, table.priority, table.ordinal), index("guardrail_validation_case_status_idx").on(table.runId, table.status, table.priority, table.ordinal)]);
+
+export const validationUploads = pgTable("validation_report_upload", {
+  runId: text("run_id").primaryKey().references(() => validationReports.id, { onDelete: "cascade" }),
+  runnerBootId: text("runner_boot_id").notNull(), retiredBootIds: text("retired_boot_ids").array().notNull().default([]),
+  uploadId: text("upload_id").notNull(), manifestDigest: text("manifest_digest").notNull(),
+  chunks: integer("chunks").notNull(), cases: integer("cases").notNull(), createdAt,
+});
+export const validationChunks = pgTable("validation_report_chunk", {
+  runId: text("run_id").notNull().references(() => validationUploads.runId, { onDelete: "cascade" }),
+  sequence: integer("sequence").notNull(), digest: text("digest").notNull(), rawBytes: integer("raw_bytes").notNull(),
+  caseOffset: integer("case_offset").notNull(), caseCount: integer("case_count").notNull(),
+}, table => [primaryKey({ columns: [table.runId, table.sequence] })]);
 
 export const artifacts = pgTable("guardrail_artifact", {
   id: text("id").primaryKey(),

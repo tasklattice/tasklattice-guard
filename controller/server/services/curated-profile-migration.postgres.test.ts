@@ -1,6 +1,8 @@
+import { migrateReportStorage } from "../db/report-storage-migration.js";
+import { completeReport } from "../db/report-test-utils.js";
 // @vitest-environment node
 import { generateKeyPairSync } from "node:crypto";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -38,7 +40,7 @@ describe.skipIf(!url).each([
   async function failTestsAndPublish(pool: Pool) {
     const run = await service.requestValidation({ guardrailId, actorId: "admin", compilerAvailable: true });
     const { rows: [request] } = await pool.query("SELECT payload FROM controller_outbox WHERE id=$1", [run.id]);
-    await service.completeValidation({ runId: run.id, status: "failed", metrics: emptyValidationMetrics(run.metrics.total), results: [],
+    await completeReport(service, { runId: run.id, status: "failed", metrics: emptyValidationMetrics(run.metrics.total), results: [],
       failureReason: "Profile migration test fixture", candidateArtifact: {
         guardrailId, guardrailVersion: request.payload.candidateVersion, plan: request.payload.plan,
         compilerVersion: "tasklattice-nemo-config-v29-single-contract", nemoVersion: "0.24.0", runtimeProfile: "llmrails_colang1_standard",
@@ -55,6 +57,12 @@ describe.skipIf(!url).each([
     writeFileSync(join(keys, "private.pem"), generateKeyPairSync("ed25519").privateKey.export({ type: "pkcs8", format: "pem" }));
     database = await createTestDatabase(url!, "profile_upgrade", async (tag, pool) => {
       if (tag !== migration) return;
+      // Build authentic old Profile content with the current service, then
+      // restore the historical report schema before replaying the migration.
+      await pool.query(readFileSync(new URL("../db/migrations/0055_bounded_testing_reports.sql", import.meta.url), "utf8"));
+      await pool.query(readFileSync(new URL("../db/migrations/0056_unified_report_storage.sql",import.meta.url),"utf8"));
+      await migrateReportStorage(drizzle(pool,{schema}));
+      await pool.query(readFileSync(new URL("../db/migrations/0057_report_storage_cutover.sql",import.meta.url),"utf8"));
       const db = drizzle(pool, { schema });
       service = new ControlPlaneService(db, loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: url!,
         CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: join(keys, "private.pem"),
@@ -70,10 +78,20 @@ describe.skipIf(!url).each([
         draftConfig: profileDraft(retired, await service.listPolicies()) });
       guardrailId = created.id;
       publishedVersion = await failTestsAndPublish(pool);
+      await service.drainReportWork();
+      await pool.query(`ALTER TABLE guardrail_validation_run ADD COLUMN results jsonb NOT NULL DEFAULT '[]', ADD COLUMN candidate_artifact jsonb, ADD COLUMN candidate_policies jsonb, ADD COLUMN candidate_inspection jsonb, ADD COLUMN test_suite jsonb;
+        UPDATE guardrail_validation_run r SET candidate_artifact=nullif(s.payload->'candidateArtifact','null'),candidate_policies=nullif(s.payload->'candidatePolicies','null'),candidate_inspection=nullif(s.payload->'candidateInspection','null'),test_suite=nullif(s.payload->'testSuite','null') FROM guardrail_validation_snapshot s WHERE s.digest=r.snapshot_digest;
+        DROP VIEW validation_report_state;
+        DROP TRIGGER register_report ON guardrail_validation_run; DROP TRIGGER register_report ON policy_validation_run; DROP TRIGGER register_report ON policy_resource_validation;
+        DROP FUNCTION register_validation_report();
+        DROP TABLE validation_report_chunk,validation_report_upload,validation_report_case,validation_report_detail,validation_report;
+        ALTER TABLE guardrail_validation_run DROP COLUMN snapshot_digest; DROP TABLE guardrail_validation_snapshot;
+        ALTER TABLE policy_validation_run ADD COLUMN results jsonb NOT NULL DEFAULT '[]'; ALTER TABLE policy_resource_validation ADD COLUMN results jsonb NOT NULL DEFAULT '[]';`);
       before = await snapshots(pool);
     });
   }, 30000);
   afterAll(async () => {
+    await service?.stopReportWork();
     await database?.drop();
     if (keys) rmSync(keys, { recursive: true, force: true });
   });
@@ -88,7 +106,7 @@ describe.skipIf(!url).each([
     expect(stored.draftConfig.profileOrigin).toEqual({ id: sourceId, version: "1.0.0" });
     const run = await service.requestVersionTestRun({ guardrailId, version: publishedVersion, actorId: "admin" });
     expect(run).toMatchObject({ subject: "version", status: "queued", guardrailVersion: publishedVersion });
-    await service.completeValidation({ runId: run.id, status: "failed", metrics: emptyValidationMetrics(run.metrics.total), results: [] });
+    await completeReport(service, { runId: run.id, status: "failed", metrics: emptyValidationMetrics(run.metrics.total), results: [] });
 
     const edited = structuredClone(stored.draftConfig);
     const removed = edited.policyBindings.shift()!;

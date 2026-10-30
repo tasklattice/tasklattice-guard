@@ -1,4 +1,3 @@
-import { pruneTestingReportHistory } from "./services/testing-report-retention.js";
 import { AccessTokenService } from "./services/access-tokens.js";
 import { serve, type ServerType } from "@hono/node-server";
 
@@ -25,8 +24,6 @@ const resealed = await service.resealArtifacts();
 if (resealed) process.stdout.write(`Re-sealed ${resealed} Artifact(s) under the current content digest contract.\n`);
 await service.initialize();
 await service.pricing.start();
-const prunedReports = await pruneTestingReportHistory(db);
-if (prunedReports) process.stdout.write(`Pruned ${prunedReports} expired Testing Reports (2 Passed + 1 Failed per immutable version; separate unversioned history).\n`);
 const models = new ModelConfigurationService(db, config.betterAuthSecret, config.policyCatalogDir);
 await models.initialize();
 
@@ -74,6 +71,7 @@ const app = createHttpApp({
   playgroundModel,
   playgroundRunner,
 });
+service.startReportMaintenance();
 const httpServer: ServerType = serve({
   fetch: app.fetch,
   hostname: config.http.host,
@@ -96,6 +94,7 @@ async function shutdown(signal: string) {
     stopMetrics: () => metrics.stop(),
     stopAccounts: () => Promise.resolve(pendingAccountSync),
     stopPricing: () => service.pricing.stop(),
+    stopReports: () => service.stopReportWork(),
     endDatabase: () => pool.end(),
     forceClose: () => {
       runnerControl.forceStop();

@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package tasklattice.guard.control.v1;
 
+import "common.proto";
 import "artifact.proto";
 import "endpoint.proto";
 import "model.proto";
@@ -18,6 +19,8 @@ service RunnerControl {
 // Runner-to-Controller stream envelope. Registration must be the first body;
 // every later body belongs to the registered runner and boot identity.
 message RunnerMessage {
+  reserved 14, 22;
+  reserved "validation_result", "validation_report";
   reserved 20;
   reserved "candidate_compile_result";
   // Retired compile result wire slot; never reuse its field number.
@@ -31,14 +34,14 @@ message RunnerMessage {
     RunnerRegistration registration = 10;
     RunnerHeartbeat heartbeat = 11;
     ArtifactResult artifact_result = 12;
-    ValidationResult validation_result = 14;
     DesiredStateResult desired_state_result = 15;
     CapabilityValidationResult capability_validation_result = 16;
     ValidationProgress validation_progress = 17;
     ArtifactAdmissionResult artifact_admission_result = 18;
     GuardrailProtectionResult protection_result = 19;
     ArtifactCompilationResult artifact_compilation_result = 21;
-    ValidationReport validation_report = 22;
+    ValidationReportChunk validation_report_chunk = 23;
+    ValidationStatusNotice validation_status_notice = 24;
   }
 }
 
@@ -64,25 +67,49 @@ message ControllerMessage {
     CompileRequest artifact_compilation_request = 19;
     ValidationCancelRequest validation_cancel_request = 20;
     ValidationReportAck validation_report_ack = 21;
+    ValidationReportChunkAck validation_report_chunk_ack = 22;
   }
 }
 
-// Large reports retain the typed ValidationResult contract: gzip-compressed
-// protobuf bytes, never JSON. Sizes and digest are checked before persistence.
-message ValidationReport {
+// Small terminal notification for cancellation or failure before a report can
+// be encoded. All executed case results travel through ValidationReportChunk.
+message ValidationStatusNotice {
   string runner_id = 1;
   string run_id = 2;
-  // A complete ValidationResult encoded as protobuf, then gzip-compressed.
-  bytes gzip_result = 3;
-  // Exact decoded protobuf length; Controller rejects values above 128 MiB.
-  uint64 raw_size_bytes = 4;
-  // Lowercase hexadecimal SHA-256 of the uncompressed protobuf bytes.
-  string sha256 = 5;
+  ValidationStatus status = 3;
+  string reason = 4;
 }
 
 // Sent only after the report transaction commits (or an idempotent replay).
 message ValidationReportAck {
   string run_id = 1;
+}
+
+// Stop-and-wait delivery. Each payload is a bounded gzip ValidationResult;
+// data chunks contain cases only, the last chunk contains report metadata only.
+// The manifest is SHA256 of the ordered raw chunk digests joined by a newline.
+message ValidationReportChunk {
+  string runner_id = 1;
+  string run_id = 2;
+  string upload_id = 3;
+  string manifest_digest = 4;
+  uint32 sequence = 5;
+  uint32 chunks = 6;
+  uint32 cases = 7;
+  uint32 case_offset = 8;
+  uint32 raw_size_bytes = 9;
+  string sha256 = 10;
+  bytes gzip_result = 11;
+  bool final = 12;
+}
+
+// ACK only after this chunk commits; a replay receives the same acknowledgement.
+message ValidationReportChunkAck {
+  string run_id = 1;
+  string upload_id = 2;
+  uint32 sequence = 3;
+  // Nonempty only after a permanent rejection has been durably recorded.
+  string rejection_code = 4;
 }
 
 // Idempotent stop by immutable test run ID; handled outside the ordinary command queue.
@@ -129,8 +156,8 @@ message RegistrationAccepted {
   int64 desired_generation = 1;
   // Maximum interval in seconds between Runner heartbeats.
   int32 heartbeat_interval_seconds = 2;
-  // Allows large reports without increasing the global gRPC message budget.
-  bool validation_report_gzip = 3;
+  reserved 3, 4;
+  reserved "validation_report_gzip", "validation_report_chunks";
 }
 
 // Monotonic liveness, convergence, and load observation for one Runner boot.

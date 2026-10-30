@@ -9,6 +9,7 @@ import { loadConfig } from "../config.js";
 import type { ControllerMetrics } from "../metrics.js";
 import type { ModelConfigurationService } from "../model-config/service.js";
 import type { ControlPlaneService } from "../services/control-plane.js";
+import { ControllerError } from "../domain/errors.js";
 import { RunnerControlServer } from "./control-server.js";
 import { PLAN_COMPILER_VERSION, NEMO_COMPILER_VERSION } from "../domain/artifact-execution-contract.js";
 
@@ -82,7 +83,7 @@ describe("Runner model-configuration convergence", () => {
     expect(stream.write).toHaveBeenCalledTimes(2);
     expect(stream.write).toHaveBeenLastCalledWith(expect.objectContaining({ validationCancelRequest: { runId: "stop" } }));
     expect(service.markValidationRunning).not.toHaveBeenCalled();
-    await handle(server, stream, { validationResult: { runnerId: "compiler-0", runId: "stop", accepted: true,
+    await handle(server, stream, { validationStatusNotice: { runnerId: "compiler-0", runId: "stop", reason: "cancelled",
       status: "VALIDATION_STATUS_CANCELLED" } }, connection);
     expect(service.markOutboxProcessed).toHaveBeenCalledWith("cancel-stop");
     expect(service.completeValidation).not.toHaveBeenCalled();
@@ -151,7 +152,7 @@ describe("Runner model-configuration convergence", () => {
     } finally { held.resolve(null); logged.mockRestore(); }
   });
 
-  it.each([false, true])("drains a heartbeat and queued report before marking offline (compressed=%s)", async compressed => {
+  it("drains a heartbeat and queued report before marking offline", async () => {
     const heartbeat = Promise.withResolvers<boolean>(), report = Promise.withResolvers<void>(), offline = Promise.withResolvers<void>();
     const order: string[] = [];
     const service = { ...serviceMock(), recordHeartbeat: vi.fn(async () => { const result = await heartbeat.promise; order.push("heartbeat"); return result; }),
@@ -167,7 +168,7 @@ describe("Runner model-configuration convergence", () => {
     stream.emit("data", message);
     await vi.waitFor(() => expect(service.recordHeartbeat).toHaveBeenCalledOnce());
     const result = validationMessage(server, { runnerId: "runner-0", runId: "queued-report", accepted: true,
-      status: "VALIDATION_STATUS_PASSED", metrics: { total: 1, passed: 1 }, results: [] }, compressed);
+      status: "VALIDATION_STATUS_PASSED", metrics: { total: 1, passed: 1 }, results: [] });
     stream.emit("data", result);
     let stopped = false;
     const stop = server.stop().then(() => { stopped = true; });
@@ -296,7 +297,7 @@ describe("Runner model-configuration convergence", () => {
     replacement.write.mockClear();
     await dispatch();
     expect(replacement.write).toHaveBeenCalledOnce();
-    await handle(server, replacement, { validationResult: { runnerId: "compiler-0", runId: "run-1", accepted: false, reason: "test failed" } }, connection);
+    await handle(server, replacement, { validationStatusNotice: { runnerId: "compiler-0", runId: "run-1", status: "VALIDATION_STATUS_FAILED", reason: "test failed" } }, connection);
     event.id = "job-2";
     event.payload.runId = "run-2";
     await dispatch();
@@ -412,7 +413,7 @@ describe("Runner model-configuration convergence", () => {
     } finally { logged.mockRestore(); }
   });
 
-  it.each([false, true])("redispatches a report after its database write fails (compressed=%s)", async compressed => {
+  it("redispatches a report after its database write fails", async () => {
     const secret = "PRIVATE_REPORT_AND_CREDENTIAL";
     const failure = Object.assign(new Error(`Failed query: ${secret}`), { params: [secret],
       cause: Object.assign(new Error(secret), { code: "55P03", detail: secret }) });
@@ -430,7 +431,7 @@ describe("Runner model-configuration convergence", () => {
     const control = server as unknown as { connect(stream: unknown): void; dispatchValidationRequests(): Promise<void> };
     const hello = registration("compiler-0"); hello.registration.compilerCapable = true;
     const result = validationMessage(server, { runnerId: "compiler-0", runId: "run", accepted: true,
-      status: "VALIDATION_STATUS_PASSED", metrics: { total: 1, passed: 1 }, results: [] }, compressed);
+      status: "VALIDATION_STATUS_PASSED", metrics: { total: 1, passed: 1 }, results: [] });
     const logged = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
       const stream = streamMock();
@@ -570,6 +571,7 @@ describe("Runner model-configuration convergence", () => {
 
 function serviceMock() {
   return {
+    reportResults: { stage: vi.fn().mockResolvedValue(true) },
     registerRunner: vi.fn().mockResolvedValue(9),
     desiredStateForPool: vi.fn().mockResolvedValue({
       generation: 9,
@@ -753,10 +755,37 @@ it("dispatches compilation, tests, load checks and rollout without view capabili
   await server.stop();
 });
 
-function validationMessage(server: RunnerControlServer, result: { runnerId: string; runId: string; [key: string]: unknown }, compressed: boolean) {
-  if (!compressed) return { body: "validationResult", validationResult: result };
+function validationMessage(server: RunnerControlServer, result: { runnerId: string; runId: string; [key: string]: unknown }) {
   const codec = (server as unknown as { validationResultCodec: { serialize(value: object): Buffer } }).validationResultCodec;
-  const bytes = codec.serialize(result);
-  return { body: "validationReport", validationReport: { runnerId: result.runnerId, runId: result.runId,
-    gzipResult: gzipSync(bytes), rawSizeBytes: String(bytes.length), sha256: createHash("sha256").update(bytes).digest("hex") } };
+  const bytes = codec.serialize({...result,metrics:{total:0,passed:0}}), digest=createHash("sha256").update(bytes).digest("hex");
+  return { body:"validationReportChunk", validationReportChunk:{runnerId:result.runnerId,runId:result.runId,uploadId:"fixture",
+    sequence:0,chunks:1,cases:0,caseOffset:0,final:true,manifestDigest:createHash("sha256").update(digest).digest("hex"),
+    gzipResult:gzipSync(bytes),rawSizeBytes:bytes.length,sha256:digest} };
 }
+
+
+it.each([413, 429])("only acknowledges permanent chunk rejection after its durable failure (%s)", async status => {
+  const persisted = Promise.withResolvers<void>();
+  const service = { ...serviceMock(), reportResults: { stage: vi.fn().mockRejectedValue(new ControllerError("budget", status, "report_busy")) },
+    rejectValidation: vi.fn(() => persisted.promise) };
+  const server = new RunnerControlServer(config, service as unknown as ControlPlaneService, metricsMock() as unknown as ControllerMetrics,
+    { activeConfiguration: vi.fn().mockResolvedValue(null) } as unknown as ModelConfigurationService);
+  const stream = streamMock(), hello = registration("runner-0"); hello.registration.compilerCapable = true;
+  const connection = await handle(server, stream, hello, null);
+  const codec = (server as unknown as { validationResultCodec: { serialize(value: unknown): Buffer } }).validationResultCodec;
+  const bytes = codec.serialize({ runnerId: "runner-0", runId: "run", accepted: true, results: [] });
+  stream.write.mockClear();
+  const pending = handle(server, stream, { validationReportChunk: { runnerId: "runner-0", runId: "run", uploadId: "upload", sequence: 0,
+    rawSizeBytes: bytes.length, gzipResult: gzipSync(bytes), sha256: createHash("sha256").update(bytes).digest("hex"), final: false } }, connection);
+  if (status === 429) {
+    await expect(pending).rejects.toMatchObject({ status: 429 });
+    expect(service.rejectValidation).not.toHaveBeenCalled();
+    expect(stream.write).not.toHaveBeenCalled();
+  } else {
+    await vi.waitFor(() => expect(service.rejectValidation).toHaveBeenCalledOnce());
+    expect(stream.write).not.toHaveBeenCalled();
+    persisted.resolve(); await pending;
+    expect(stream.write).toHaveBeenCalledWith(expect.objectContaining({ validationReportChunkAck: expect.objectContaining({ rejectionCode: "report_rejected" }) }));
+  }
+  await server.stop();
+});

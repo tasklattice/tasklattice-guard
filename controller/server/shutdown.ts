@@ -4,6 +4,7 @@ type ShutdownSteps = {
   stopMetrics: () => Promise<void>;
   stopAccounts: () => Promise<unknown>;
   stopPricing: () => Promise<void>;
+  stopReports?: () => Promise<void>;
   endDatabase: () => Promise<void>;
   forceClose: () => void;
 };
@@ -20,7 +21,7 @@ export async function drainController(steps: ShutdownSteps, deadlineMs = 25_000)
     ].map(step => Promise.resolve().then(step)));
     // An accepted HTTP request may have started a pricing job after shutdown
     // began. Only inspect that service after HTTP and Runner producers stop.
-    for (const step of [steps.stopPricing, steps.endDatabase]) {
+    for (const step of [steps.stopReports ?? (async () => {}), steps.stopPricing, steps.endDatabase]) {
       try { await step(); } catch (reason) { results.push({ status: "rejected", reason }); }
     }
     const failure = results.find(result => result.status === "rejected");

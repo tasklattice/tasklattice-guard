@@ -10,6 +10,7 @@ const servingRunnerStatuses = new Set(["ready", "busy", "saturated"]);
 
 export class ControllerMetrics {
   readonly registry = new Registry();
+  private readonly reportWork = this.gauge("guard_controller_report_work", "Bounded report tasks sampled without SQL.", ["stage", "state"]);
   private readonly databaseConnections = this.gauge("guard_controller_database_pool_connections", "PostgreSQL pool connections, sampled without SQL.", ["state"]);
   private readonly databasePoolMax = this.gauge("guard_controller_database_pool_max_connections", "Configured PostgreSQL pool limit.");
   private readonly databaseWaiters = this.gauge("guard_controller_database_pool_waiting", "Requests waiting for a PostgreSQL connection.");
@@ -210,6 +211,9 @@ export class ControllerMetrics {
   private stopping = false;
 
   async render(service: ControlPlaneService): Promise<string> {
+    for (const [stage, state] of Object.entries(service.reportWorkState?.() ?? {})) {
+      for (const [key, value] of Object.entries(state)) this.reportWork.set({ stage, state: key }, value);
+    }
     if (!this.stopping && !this.snapshotJob && Date.now() >= Math.max(this.snapshotValidUntil, this.refreshAfter)) {
       this.snapshotInFlight.set(1);
       this.snapshotJob = this.refreshSnapshot(service).catch(error => {

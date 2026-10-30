@@ -41,11 +41,11 @@ async def test_cancel_by_id_joins_cleanup_and_replays_without_executing_again(ca
     await client._handle(protocol.ControllerMessage(validation_cancel_request=protocol.ValidationCancelRequest(run_id="test-stop")))
     assert cleaned.is_set()
     assert not client._validation_tasks
-    result = (await client._outgoing.get()).validation_result
+    result = (await client._outgoing.get()).validation_status_notice
     assert result.status == protocol.VALIDATION_STATUS_CANCELLED
     await client._handle(request)
     await asyncio.sleep(0)
-    replay = (await client._outgoing.get()).validation_result
+    replay = (await client._outgoing.get()).validation_status_notice
     assert replay.status == protocol.VALIDATION_STATUS_CANCELLED
     assert validator.await_count == 1
     events = [json.loads(record.message) for record in caplog.records]
@@ -62,7 +62,8 @@ async def test_cancel_before_execution_is_an_idempotent_tombstone():
     await client._validate(protocol.ValidationRequest(run_id="not-started"))
     assert validator.await_count == 0
     assert client._outgoing.qsize() == 3
-    assert client._validation_result_bytes == sum(len(value) for value in client._validation_results.values())
+    assert list(client._validation_notices) == ["not-started"]
+    assert client._validation_notices["not-started"].ByteSize() < 4096
 
 
 @pytest.mark.asyncio
@@ -80,7 +81,7 @@ async def test_run_deadline_reports_failure_and_does_not_log_sensitive_exception
 
     client = client_with_validator(AsyncMock(side_effect=run))
     await client._validate(protocol.ValidationRequest(run_id="deadline"))
-    result = (await client._outgoing.get()).validation_result
+    result = (await client._outgoing.get()).validation_status_notice
     assert cleaned.is_set()
     assert result.status == protocol.VALIDATION_STATUS_FAILED
     assert "deadline" in result.reason

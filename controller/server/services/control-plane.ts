@@ -1,3 +1,6 @@
+import { ReportResults, type ReportUploadIdentity } from "./report-results.js";
+import { KeyedWorkQueue, PendingWork } from "../work-queue.js";
+import { logDatabaseFailure } from "../db/diagnostics.js";
 import type { ArtifactCompiler } from "../domain/artifact-compilation.js";
 import { artifactExecutionContractIssue } from "../domain/artifact-execution-contract.js";
 import { writeRuntimeEvent } from "./runtime-event-write.js";
@@ -10,7 +13,7 @@ import { telemetryBatches, telemetryWatermarkBatch } from "./telemetry-batches.j
 import { pruneTestingReports } from "./testing-report-retention.js";
 import { limitValidationWrite } from "./validation-write-limits.js";
 import { databasePoolState, reportSaveStage, withReportSaveDiagnostics } from "../db/diagnostics.js";
-import { queryTestingReports, validationSummaryColumns, validationDetailColumns, testingReportsQuery } from "./testing-reports.js";
+import { queryTestingReports, validationSummaryColumns, storeValidationSnapshot, type ValidationSnapshot, validationSnapshotColumns, testingReportsQuery } from "./testing-reports.js";
 import type { z } from "zod";
 import type { TestingReportDeletionImpact } from "../../shared/testing-report-deletion.js";
 import { assertGuardrailVersionCapacity, guardrailVersionCapacityIssue } from "./guardrail-version-limit.js";
@@ -97,7 +100,7 @@ import type { GuardrailVersionDeletionBlocker, GuardrailVersionDeletionImpact } 
 
 type Transaction = Parameters<Parameters<ControllerDatabase["transaction"]>[0]>[0];
 type PublicationCandidate = Pick<typeof validationRuns.$inferSelect,
-  "guardrailVersion" | "sourceDraftRevision" | "candidateArtifact" | "candidateDigest" | "candidateInspection" | "candidatePolicies" | "testSuite"> & { id: string | null };
+  "guardrailVersion" | "sourceDraftRevision" | "candidateDigest"> & ValidationSnapshot & { id: string | null };
 import {
   flowRule,
   flowRuleId,
@@ -129,9 +132,43 @@ type RunnerRegistration = {
 export class ControlPlaneService {
   databasePoolState() { return databasePoolState(this.db); }
   readonly pricing: ModelPricingService;
+  readonly reportResults: ReportResults;
+  private readonly reportMaintenance = new KeyedWorkQueue<string>(1);
+  private readonly reportJobs = new PendingWork();
+  private reportTimer: NodeJS.Timeout | undefined;
+  private reportStopping = false;
+  private readonly reportSaves = new Map<string, Promise<void>>();
+  private reportDecoderState: () => Record<string, { active: number; queued: number; in_flight_bytes: number }> = () => ({});
+  setReportDecoderState(read: typeof this.reportDecoderState) { this.reportDecoderState = read; }
+  reportWorkState() { return { ...this.reportResults.state(), ...this.reportDecoderState() }; }
+  private queueReportPrune(guardrailId: string) {
+    if (this.reportStopping) return;
+    this.reportJobs.track(this.reportMaintenance.run(guardrailId, async () => {
+      for (;;) {
+        const removed = await this.db.transaction(async tx => {
+          const [guardrail] = await tx.select({ id: guardrails.id }).from(guardrails).where(eq(guardrails.id, guardrailId)).for("update");
+          return guardrail ? reportSaveStage("prune_history", () => pruneTestingReports(tx, guardrailId, 1)) : 0;
+        });
+        if (!removed || this.reportStopping) return;
+      }
+    })).catch(error => logDatabaseFailure("validation.report_maintenance_failed", error, this.databasePoolState(), { operation: "prune_reports" }));
+  }
+  startReportMaintenance() {
+    const scan = async () => {
+      await this.db.execute(sql`DELETE FROM guardrail_validation_snapshot WHERE digest IN (SELECT s.digest FROM guardrail_validation_snapshot s WHERE NOT EXISTS (SELECT 1 FROM guardrail_validation_run r WHERE r.snapshot_digest=s.digest) LIMIT 100)`);
+      const rows = await this.db.select({ id: guardrails.id }).from(guardrails);
+      for (const row of rows) this.queueReportPrune(row.id);
+    };
+    const tick = () => { if (!this.reportStopping) void this.reportJobs.track(this.reportMaintenance.run("__scan__", scan)).catch(error => logDatabaseFailure("validation.report_maintenance_failed", error, this.databasePoolState(), { operation: "maintain_reports" })); };
+    tick();
+    this.reportTimer = setInterval(tick, 30_000);
+    this.reportTimer.unref();
+  }
+  async drainReportWork() { await this.reportJobs.drain(); }
+  async stopReportWork() { this.reportStopping = true; clearInterval(this.reportTimer); await this.drainReportWork(); }
   private resources: PolicyResourceService | null = null;
   get policyResources(): PolicyResourceService {
-    return this.resources ??= new PolicyResourceService(this.db, this.config.policyCatalogDir, () => this.policyCatalog().list());
+    return this.resources ??= new PolicyResourceService(this.db, this.config.policyCatalogDir, () => this.policyCatalog().list(), this.reportResults);
   }
   readonly trafficRouting: TrafficRoutingService;
   readonly protectionModes: ProtectionModeService;
@@ -147,6 +184,7 @@ export class ControlPlaneService {
     private readonly config: ControllerConfig,
   ) {
     this.pricing = new ModelPricingService(db);
+    this.reportResults = new ReportResults(db);
     this.trafficRouting = new TrafficRoutingService(db);
     this.protectionModes = new ProtectionModeService(db, config.offlineAfterSeconds);
     this.packages = new GuardrailPackageService(db, config, () => this.policyCatalog().list());
@@ -456,7 +494,6 @@ export class ControlPlaneService {
         policyId: record.id,
         draftRevision: record.draftRevision,
         status: "queued",
-        results: [],
         createdBy: input.actorId,
       });
       await tx.insert(outboxEvents).values({
@@ -832,10 +869,11 @@ export class ControlPlaneService {
       if (existing && !artifactExecutionContractIssue(existing.artifact)) return { existing: existing.version };
       await assertGuardrailVersionCapacity(tx, guardrail.id, 1);
       // Reuse frozen executable content when available, including failed tests.
-      const [candidate] = await tx.select().from(validationRuns).where(and(
+      const candidateColumns = getTableColumns(validationRuns);
+      const [candidate] = await tx.select({ ...candidateColumns, ...validationSnapshotColumns }).from(validationRuns).where(and(
         eq(validationRuns.guardrailId, guardrail.id), eq(validationRuns.subject, "draft"),
         eq(validationRuns.sourceDraftRevision, guardrail.draftRevision),
-        inArray(validationRuns.status, ["passed", "failed"]), isNotNull(validationRuns.candidateArtifact),
+        inArray(validationRuns.status, ["passed", "failed"]), isNotNull(validationSnapshotColumns.candidateArtifact),
       )).orderBy(desc(validationRuns.createdAt)).limit(1);
       if (candidate?.candidateArtifact && !artifactExecutionContractIssue(candidate.candidateArtifact)
         && candidate.candidateInspection && candidate.candidatePolicies && candidate.testSuite)
@@ -1063,12 +1101,8 @@ export class ControlPlaneService {
     return (await this.queryValidationRuns({ guardrailId })).items;
   }
 
-  async getValidationRun(id: string, summaryOnly = false): Promise<
-    Omit<typeof validationRuns.$inferSelect, "results" | "candidateArtifact" | "candidatePolicies" | "candidateInspection" | "testSuite">
-    & { results?: typeof validationRuns.$inferSelect.results;
-        cancellation?: { requestedAt: Date; acknowledgedAt: Date | null } }
-  > {
-    const [run] = await this.db.select(summaryOnly ? validationSummaryColumns : validationDetailColumns)
+  async getValidationRun(id: string): Promise<Omit<typeof validationRuns.$inferSelect, "snapshotDigest"> & { cancellation?: { requestedAt: Date; acknowledgedAt: Date | null } }> {
+    const [run] = await this.db.select(validationSummaryColumns)
       .from(validationRuns).where(eq(validationRuns.id, id));
     if (!run) throw new NotFoundError("Validation Run", id);
     if (run.status === "cancelled") {
@@ -1082,27 +1116,26 @@ export class ControlPlaneService {
   /** Cancellation intent and delivery are durable; late results cannot undo it. */
   async cancelValidation(input: { runId: string; actorId: string }) {
     return this.db.transaction(async tx => {
-      const [found] = await tx.select().from(validationRuns).where(eq(validationRuns.id, input.runId));
+      const [found] = await tx.select(validationSummaryColumns).from(validationRuns).where(eq(validationRuns.id, input.runId));
       if (!found) throw new NotFoundError("Testing Report", input.runId);
       await tx.select({ id: guardrails.id }).from(guardrails).where(eq(guardrails.id, found.guardrailId)).for("update");
-      const [run] = await tx.select().from(validationRuns).where(eq(validationRuns.id, input.runId)).for("update");
+      const [run] = await tx.select(validationSummaryColumns).from(validationRuns).where(eq(validationRuns.id, input.runId)).for("update");
       if (!run) throw new NotFoundError("Testing Report", input.runId);
       if (run.status !== "queued" && run.status !== "running") return publicValidationRun(run);
       const [cancelled] = await tx.update(validationRuns).set({ status: "cancelled", completedAt: new Date(),
-        failureReason: "Cancelled by user." }).where(eq(validationRuns.id, run.id)).returning();
+        failureReason: "Cancelled by user." }).where(eq(validationRuns.id, run.id)).returning(validationSummaryColumns);
       await tx.update(outboxEvents).set({ processedAt: new Date() }).where(eq(outboxEvents.id, run.id));
       await tx.insert(outboxEvents).values({ id: `cancel-${run.id}`, kind: "guardrail.validation_cancel_requested",
         aggregateId: run.guardrailId, payload: { runId: run.id } });
       await tx.insert(auditEvents).values({ id: randomUUID(), kind: "guardrail.validation_cancelled", actorId: input.actorId,
         resourceType: "guardrail", resourceId: run.guardrailId, detail: { runId: run.id, previousStatus: run.status } });
-      await pruneTestingReports(tx, run.guardrailId);
       return publicValidationRun(cancelled!);
     });
   }
 
   async testingReportDeletionImpact(runId: string) {
     return this.db.transaction(async tx => {
-      const [run] = await tx.select().from(validationRuns).where(eq(validationRuns.id, runId));
+      const [run] = await tx.select(validationSummaryColumns).from(validationRuns).where(eq(validationRuns.id, runId));
       if (!run) throw new NotFoundError("Testing Report", runId);
       return this.reportDeletionImpact(tx, run);
     }, { isolationLevel: "repeatable read", accessMode: "read only" });
@@ -1111,12 +1144,12 @@ export class ControlPlaneService {
   async deleteTestingReport(input: { runId: string; actorId: string; expectedPendingVersion: string | null }) {
     return this.db.transaction(async tx => {
       await advisoryTransactionLock(tx, "traffic-router-bindings");
-      const [found] = await tx.select().from(validationRuns).where(eq(validationRuns.id, input.runId));
+      const [found] = await tx.select(validationSummaryColumns).from(validationRuns).where(eq(validationRuns.id, input.runId));
       if (!found) throw new NotFoundError("Testing Report", input.runId);
       // Serialize with publication, release, other report deletions and Router references.
       const [guardrail] = await tx.select().from(guardrails).where(eq(guardrails.id, found.guardrailId)).for("update");
       if (!guardrail) throw new NotFoundError("Guardrail", found.guardrailId);
-      const [run] = await tx.select().from(validationRuns).where(eq(validationRuns.id, input.runId)).for("update");
+      const [run] = await tx.select(validationSummaryColumns).from(validationRuns).where(eq(validationRuns.id, input.runId)).for("update");
       if (!run) throw new NotFoundError("Testing Report", input.runId);
       const impact = await this.reportDeletionImpact(tx, run);
       if (!impact.deletable) throw new ConflictError("Wait for this test to finish before deleting its report.",
@@ -1137,7 +1170,7 @@ export class ControlPlaneService {
     });
   }
 
-  private async reportDeletionImpact(_tx: Transaction, run: typeof validationRuns.$inferSelect): Promise<TestingReportDeletionImpact> {
+  private async reportDeletionImpact(_tx: Transaction, run: Pick<typeof validationRuns.$inferSelect, "id" | "guardrailId" | "guardrailVersion" | "status">): Promise<TestingReportDeletionImpact> {
     const running = run.status === "queued" || run.status === "running";
     return { runId: run.id, guardrailId: run.guardrailId, version: run.guardrailVersion, running,
       deletable: !running, retainedByPlatformVersion: false, pendingVersion: null, replacementRunId: null,
@@ -1181,9 +1214,9 @@ export class ControlPlaneService {
       const runId = `testing-report-${randomUUID()}`;
       await tx.insert(validationRuns).values({
         id: runId, guardrailId: input.guardrailId, guardrailVersion: input.version, sourceDraftRevision: version.sourceDraftRevision,
-        testModelRules: input.testModelRules ?? true, subject: "version", status: "queued", metrics: emptyValidationMetrics(version.testSuite.length), results: [], excludedCaseIds: [],
+        testModelRules: input.testModelRules ?? true, subject: "version", status: "queued", metrics: emptyValidationMetrics(version.testSuite.length), excludedCaseIds: [],
         // Freeze the content and suite under test.
-        candidateDigest: artifact.checksum, candidateInspection: version.inspection, candidatePolicies: version.policies, testSuite: version.testSuite,
+        candidateDigest: artifact.checksum, snapshotDigest: await storeValidationSnapshot(tx, { candidateArtifact: null, candidateInspection: version.inspection, candidatePolicies: version.policies, testSuite: version.testSuite }),
         testSuiteDigest: testSuiteDigest(version.testSuite), createdBy: input.actorId,
       });
       await tx.insert(outboxEvents).values({
@@ -1273,11 +1306,8 @@ export class ControlPlaneService {
         status: "queued",
         testModelRules,
         metrics: emptyValidationMetrics(activeCases.length),
-        results: [],
         excludedCaseIds: [...excluded],
-        candidateInspection: inspection,
-        candidatePolicies: policies,
-        testSuite,
+        snapshotDigest: await storeValidationSnapshot(tx, { candidateArtifact: null, candidateInspection: inspection, candidatePolicies: policies, testSuite }),
         testSuiteDigest: inspection.testSuite.digest,
         createdBy: actorId,
         createdAt: requestedAt,
@@ -1334,15 +1364,24 @@ export class ControlPlaneService {
 
   async completeValidation(input: {
     runId: string;
+    upload?: ReportUploadIdentity;
     status: ValidationTerminalState;
     metrics: ValidationMetrics;
-    results: ValidationCaseResult[];
     reason?: string | undefined;
     candidateArtifact?: ArtifactContent | undefined;
     runtime?: ValidationRuntimeFingerprint | undefined;
     testScope?: import("../../shared/validation-scope.js").ValidationTestScope;
   }): Promise<void> {
-    return withReportSaveDiagnostics(this.db, input.runId, () => this.persistValidation(input));
+    const existing = this.reportSaves.get(input.runId);
+    if (existing) return existing;
+    const job = (async () => {
+      await withReportSaveDiagnostics(this.db, input.runId, () => this.persistValidation(input));
+      const [run] = await this.db.select({ guardrailId: validationRuns.guardrailId }).from(validationRuns).where(eq(validationRuns.id, input.runId));
+      if (run) this.queueReportPrune(run.guardrailId);
+    })();
+    this.reportSaves.set(input.runId, job);
+    try { await this.reportJobs.track(job); }
+    finally { if (this.reportSaves.get(input.runId) === job) this.reportSaves.delete(input.runId); }
   }
 
   private async persistValidation(input: Parameters<ControlPlaneService["completeValidation"]>[0]): Promise<void> {
@@ -1354,10 +1393,10 @@ export class ControlPlaneService {
         const [locked] = await reportSaveStage("lock_run", () => tx.select({ id: policyValidationRuns.id, status: policyValidationRuns.status, policyId: policyValidationRuns.policyId }).from(policyValidationRuns)
           .where(eq(policyValidationRuns.id, input.runId)).for("update"));
         if (!locked || (locked.status !== "queued" && locked.status !== "running")) return;
-        const results = input.results.map(policyValidationResult);
+        await this.reportResults.assertUpload(tx, input.runId, input.upload);
+        const results = await this.reportResults.evidence(tx,input.runId);
         await reportSaveStage("write_report", () => tx.update(policyValidationRuns).set({
           status: input.status,
-          results,
           failureReason: input.reason ?? null,
           completedAt: new Date(),
         }).where(eq(policyValidationRuns.id, input.runId)));
@@ -1370,6 +1409,11 @@ export class ControlPlaneService {
       });
       return;
     }
+    const [preparation] = await this.db.select({ id: validationRuns.id, guardrailId: validationRuns.guardrailId, guardrailVersion: validationRuns.guardrailVersion, subject: validationRuns.subject, status: validationRuns.status }).from(validationRuns).where(eq(validationRuns.id, input.runId));
+    if (!preparation || !["queued", "running"].includes(preparation.status)) return;
+    const prepared = preparation.subject === "draft" && (input.status === "passed" || input.candidateArtifact)
+      ? await reportSaveStage("verify_candidate", () => this.verifiedCandidate(this.db, preparation, input.candidateArtifact))
+      : { status: input.status, reason: input.reason ?? null };
     await this.db.transaction(async (tx) => {
       await reportSaveStage("set_timeouts", () => limitValidationWrite(tx));
       const [found] = await reportSaveStage("lookup_run", () => tx.select({ guardrailId: validationRuns.guardrailId }).from(validationRuns).where(eq(validationRuns.id, input.runId)));
@@ -1381,26 +1425,26 @@ export class ControlPlaneService {
       // while holding the Guardrail lock; only the frozen suite is needed.
       const [run] = await reportSaveStage("lock_run", () => tx.select({ id: validationRuns.id, guardrailId: validationRuns.guardrailId,
         guardrailVersion: validationRuns.guardrailVersion, status: validationRuns.status, subject: validationRuns.subject,
-        testModelRules: validationRuns.testModelRules, testSuite: validationRuns.testSuite,
+        testModelRules: validationRuns.testModelRules, testSuite: validationSnapshotColumns.testSuite,
+        candidateInspection: validationSnapshotColumns.candidateInspection, candidatePolicies: validationSnapshotColumns.candidatePolicies,
       }).from(validationRuns).where(eq(validationRuns.id, input.runId)).for("update"));
       // A deleted Guardrail may still have an in-flight Runner response. Acknowledge it without recreating data.
       if (!run) return;
       if (run.status !== "queued" && run.status !== "running") return;
+      await this.reportResults.assertUpload(tx, input.runId, input.upload);
       // A version run tested an existing signed Artifact; there is no candidate to bind.
-      const candidate = run.subject === "draft" && (input.status === "passed" || input.candidateArtifact)
-        ? await reportSaveStage("verify_candidate", () => this.verifiedCandidate(tx, run, input.candidateArtifact))
-        : { status: input.status, reason: input.reason ?? null };
-      const scopeError = await reportSaveStage("validate_scope", () => validateTestScope(run, input));
+      const candidate = prepared;
+      const evidence = await this.reportResults.evidence(tx, input.runId);
+      const scopeError = await reportSaveStage("validate_scope", () => validateTestScope(run, { ...input, results: evidence }));
       const finalStatus = input.status === "failed" || scopeError ? "failed" : candidate.status;
-      await reportSaveStage("write_report", () => tx.update(validationRuns).set({
+      await reportSaveStage("write_report", async () => tx.update(validationRuns).set({
         status: finalStatus,
         metrics: input.metrics,
-        results: input.results,
         failureReason: scopeError ?? candidate.reason ?? input.reason ?? null,
         testScope: input.testScope ?? null,
         completedAt: new Date(),
         runtimeFingerprint: input.runtime ?? null,
-        ...("artifact" in candidate ? { candidateArtifact: candidate.artifact, candidateDigest: candidate.digest } : {}),
+        ...("artifact" in candidate ? { snapshotDigest: await storeValidationSnapshot(tx, { candidateArtifact: candidate.artifact, candidateInspection: run.candidateInspection, candidatePolicies: run.candidatePolicies, testSuite: run.testSuite }), candidateDigest: candidate.digest } : {}),
       }).where(eq(validationRuns.id, input.runId)));
       await reportSaveStage("complete_outbox", () => tx.update(outboxEvents).set({ processedAt: new Date() }).where(eq(outboxEvents.id, input.runId)));
       await reportSaveStage("write_audit", () => tx.insert(auditEvents).values({
@@ -1408,7 +1452,7 @@ export class ControlPlaneService {
         resourceType: "guardrail", resourceId: run.guardrailId,
         detail: { runId: input.runId, status: finalStatus, testModelRules: run.testModelRules, testScope: input.testScope ?? null, complianceRate: input.metrics.complianceRate, ...("digest" in candidate ? { candidateDigest: candidate.digest } : {}) },
       }));
-      await reportSaveStage("prune_history", () => pruneTestingReports(tx, run.guardrailId));
+
     });
     // Reconcile after committing the result. Initialization is idempotent and
     // will re-check the current revision/customization before requesting a
@@ -1421,7 +1465,7 @@ export class ControlPlaneService {
    * plan and runtime profile); anything else turns the run into a failure.
    */
   private async verifiedCandidate(
-    tx: Transaction,
+    tx: Transaction | ControllerDatabase,
     run: Pick<typeof validationRuns.$inferSelect, "id" | "guardrailId" | "guardrailVersion">,
     returned: ArtifactContent | undefined,
   ): Promise<{ status: "passed"; reason: null; artifact: ArtifactContent; digest: string } | { status: "failed"; reason: string }> {
@@ -1524,26 +1568,24 @@ export class ControlPlaneService {
   }
 
   async rejectValidation(input: { runId: string; reason: string }): Promise<void> {
-    if (input.runId.startsWith("policy-job-") && await this.policyResources.complete({ ...input, status: "failed", results: [] })) return;
+    if (input.runId.startsWith("policy-job-") && await this.policyResources.complete({ ...input, status: "failed", executionFailed: true })) return;
     const [policyRun] = await this.db.select().from(policyValidationRuns).where(eq(policyValidationRuns.id, input.runId));
     if (policyRun) {
       await this.completeValidation({
         runId: input.runId,
         status: "failed",
         metrics: emptyValidationMetrics(0),
-        results: [],
         reason: input.reason,
       });
       return;
     }
-    const [run] = await this.db.select().from(validationRuns).where(eq(validationRuns.id, input.runId));
+    const [run] = await this.db.select(validationSummaryColumns).from(validationRuns).where(eq(validationRuns.id, input.runId));
     // A deleted Guardrail may still have an in-flight Runner response. Acknowledge it without recreating data.
       if (!run) return;
     await this.completeValidation({
       runId: input.runId,
       status: "failed",
       metrics: run.metrics,
-      results: run.results,
       reason: input.reason,
     });
   }
@@ -2948,33 +2990,12 @@ function policyTestCasePayload(
   };
 }
 
-function policyValidationResult(item: ValidationCaseResult): PolicyValidationResult {
-  return {
-    name: item.name,
-    case_type: item.caseType,
-    required: item.required,
-    rail_type: item.phase,
-    concurrency_group: item.concurrencyGroup,
-    expected_decision: item.expectedDecision,
-    expected_failure: item.expectedFailure,
-    actual_decision: item.actualDecision,
-    actual_failure: item.actualFailure,
-    passed: item.passed,
-    latency_ms: item.latencyMs,
-    reason: item.reason,
-    covered_rule_ids: item.coveredRuleIds,
-    matched_rule_ids: item.matchedRuleIds,
-    trace: item.trace,
-  };
-}
-
 function policyValidationPayload(item: typeof policyValidationRuns.$inferSelect) {
   return {
     id: item.id,
     policy_id: item.policyId,
     draft_revision: item.draftRevision,
     status: item.status,
-    results: item.results,
     created_at: item.createdAt.toISOString(),
     failure_reason: item.failureReason,
   };
@@ -3019,7 +3040,8 @@ function decryptRuntimeEventMetadata(value: Record<string, unknown>, key: Buffer
 
 /** Test reports carry the candidate's digest; its full content stays server-side. */
 // The frozen suite is read through the version; results already echo each case.
-function publicValidationRun({ candidateArtifact: _candidateArtifact, testSuite: _testSuite, ...run }: typeof validationRuns.$inferSelect) {
+function publicValidationRun<T extends object>(item: T) {
+  const { candidateArtifact: _candidateArtifact, testSuite: _testSuite, ...run } = item as T & { candidateArtifact?: unknown; testSuite?: unknown };
   return run;
 }
 

@@ -1,3 +1,4 @@
+import { completeReport, getReport } from "../db/report-test-utils.js";
 // @vitest-environment node
 import { generateKeyPairSync, sign } from "node:crypto";
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -79,7 +80,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
       runtimeProfile: "llmrails_colang1_standard", plan: request.payload.plan, configYaml: "models: []\n", colangContent: "",
       prompts: [], actionBindings: [], dependencyManifest: [["action", "GuardContentFilterAction", "1.0.0"]],
     };
-    await uat.completeValidation({ runId: run.id, status: "passed", metrics: emptyValidationMetrics(run.metrics.total), results: [], candidateArtifact: candidate,
+    await completeReport(uat, { runId: run.id, status: "passed", metrics: emptyValidationMetrics(run.metrics.total), results: [], candidateArtifact: candidate,
       runtime: { runnerId: "uat-runner-0", runnerVersion: "1.0.0", nemoVersion: "0.24.0", modelRevisionId: "", compilerModelTypes: [] } });
     const version = await uat.requestGuardrailPublish({ guardrailId: id, actorId: "admin", expectedDraftRevision: revision });
     if (record) published.push(version.version);
@@ -325,7 +326,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
   /** Run a version's own suite here and record the Runner's verdict, as the control channel would. */
   async function testHere(id: string, version: string, status: "passed" | "failed") {
     const run = await prod.requestVersionTestRun({ guardrailId: id, version, actorId: "admin" });
-    await prod.completeValidation({ runId: run.id, status, metrics: emptyValidationMetrics(run.metrics.total), results: [] });
+    await completeReport(prod, { runId: run.id, status, metrics: emptyValidationMetrics(run.metrics.total), results: [] });
     return run;
   }
 
@@ -513,7 +514,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
       expect(candidate.plan).toBeTruthy();
       await service.previewGuardrailPlan({ draftConfig: original.draftConfig, runtimeProfile: original.runtimeProfile });
       const run = await service.requestVersionTestRun({ guardrailId, version: chosen.version, actorId: "admin" });
-      await service.completeValidation({ runId: run.id, status: "passed", metrics: emptyValidationMetrics(run.metrics.total), results: [] });
+      await completeReport(service, { runId: run.id, status: "passed", metrics: emptyValidationMetrics(run.metrics.total), results: [] });
       await service.releaseGuardrailVersion({ guardrailId, version: chosen.version, actorId: "admin" });
       expect((await service.getGuardrail(guardrailId)).hasUnpublishedChanges).toBe(false);
       const copiedVersion = await service.duplicateGuardrail({ id: guardrailId, name: "Copy imported version", sourceVersion: chosen.version, idempotencyKey: "imported-version", actorId: "admin" });
@@ -538,7 +539,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
       expect(copiedDraft.testCaseCount).toBe(editedDraft.testCaseCount);
       const draftRun = await service.requestValidation({ guardrailId, actorId: "admin", compilerAvailable: true });
       const { rows: [request] } = await database.pool.query("SELECT payload FROM controller_outbox WHERE id=$1", [draftRun.id]);
-      await service.completeValidation({ runId: draftRun.id, status: "passed", metrics: emptyValidationMetrics(draftRun.metrics.total), results: [],
+      await completeReport(service, { runId: draftRun.id, status: "passed", metrics: emptyValidationMetrics(draftRun.metrics.total), results: [],
         candidateArtifact: { ...chosen.content, guardrailVersion: draftRun.guardrailVersion, plan: request.payload.plan },
         runtime: { runnerId: "prod-runner", runnerVersion: "1.0.0", nemoVersion: "0.24.0", modelRevisionId: "", compilerModelTypes: [] } });
       const publishedHere = await service.requestGuardrailPublish({ guardrailId, expectedDraftRevision: editedDraft.draftRevision, actorId: "admin" });
@@ -583,7 +584,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
       const preview = await next.service.packages.inspectUpload(bytes, "admin");
       await next.service.packages.importPackage(preview.packageId, { actorId: "admin" });
       const run = await next.service.requestVersionTestRun({ guardrailId, version: published[0]!, actorId: "admin" });
-      await next.service.completeValidation({ runId: run.id, status: "passed", metrics: emptyValidationMetrics(run.metrics.total), results: [] });
+      await completeReport(next.service, { runId: run.id, status: "passed", metrics: emptyValidationMetrics(run.metrics.total), results: [] });
       await next.service.releaseGuardrailVersion({ guardrailId, version: published[0]!, actorId: "admin" });
       expect(await next.service.getGuardrail(guardrailId)).toMatchObject({ latestTestingReport: { id: run.id }, latestValidationRun: null });
       await next.service.deleteTestingReport({ runId: run.id, actorId: "admin", expectedPendingVersion: null });
@@ -602,7 +603,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     await service.packages.importPackage(preview.packageId, { actorId: "admin" });
     if (released) {
       const run = await service.requestVersionTestRun({ guardrailId, version: published[0]!, actorId: "admin" });
-      await service.completeValidation({ runId: run.id, status: "passed", metrics: emptyValidationMetrics(run.metrics.total), results: [] });
+      await completeReport(service, { runId: run.id, status: "passed", metrics: emptyValidationMetrics(run.metrics.total), results: [] });
       await service.releaseGuardrailVersion({ guardrailId, version: published[0]!, actorId: "admin" });
     }
     await beforeDelete?.(database, service);
@@ -693,7 +694,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
       await service.trafficRouting.recordEvents([call("late-call", guardrailId, new Date())]);
       await expect(service.requestVersionTestRun({ guardrailId, version: published[0]!, actorId: "admin" })).rejects.toMatchObject({ status: 404 });
       await service.packages.importPackage(packageId, { actorId: "admin", restoreDeleted: true });
-      await service.completeValidation({ runId: runningId, status: "passed", metrics: emptyValidationMetrics(1), results: [] });
+      await completeReport(service, { runId: runningId, status: "passed", metrics: emptyValidationMetrics(1), results: [] });
       await service.updateValidationProgress(runningId, { phase: "executing", completedCases: 1, passedCases: 1 });
       await service.markValidationRunning(runningId);
       await service.recordRuntimeEvents([runtime("old-runtime")]);
@@ -704,10 +705,10 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
       await expect(service.releaseGuardrailVersion({ guardrailId, version: published[0]!, actorId: "admin" })).resolves.toMatchObject({ status: "ready", validationRunId: null });
       const fresh = await service.requestVersionTestRun({ guardrailId, version: published[0]!, actorId: "admin" });
       expect(fresh.id).not.toBe(runningId);
-      await service.completeValidation({ runId: fresh.id, status: "passed", metrics: emptyValidationMetrics(fresh.metrics.total), results: [] });
+      await completeReport(service, { runId: fresh.id, status: "passed", metrics: emptyValidationMetrics(fresh.metrics.total), results: [] });
       const released = await service.releaseGuardrailVersion({ guardrailId, version: published[0]!, actorId: "admin" });
       expect(released.validationRunId).toBeNull();
-      expect(await service.getValidationRun(fresh.id)).toMatchObject({ status: "passed" });
+      expect(await getReport(service, fresh.id)).toMatchObject({ status: "passed" });
       await service.recordRuntimeEvents([runtime("fresh-runtime", guardrailId, new Date())]);
       await service.trafficRouting.recordEvents([call("fresh-call", guardrailId, new Date())]);
       expect((await database.pool.query("SELECT id FROM runtime_event WHERE guardrail_id=$1", [guardrailId])).rows).toEqual([{ id: "fresh-runtime" }]);
@@ -816,7 +817,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
       // Existing content is idempotent even at capacity, and can still be tested/released.
       await expect(service.packages.importPackage(preview.packageId, { versions: [published[0]!], actorId: "admin" })).resolves.toBeTruthy();
       const run = await service.requestVersionTestRun({ guardrailId, version: published[0]!, actorId: "admin" });
-      await service.completeValidation({ runId: run.id, status: "passed", metrics: emptyValidationMetrics(run.metrics.total), results: [] });
+      await completeReport(service, { runId: run.id, status: "passed", metrics: emptyValidationMetrics(run.metrics.total), results: [] });
       await expect(service.releaseGuardrailVersion({ guardrailId, version: published[0]!, actorId: "admin" })).resolves.toBeTruthy();
       await service.deleteGuardrailVersion({ guardrailId, version: "retained-1", actorId: "admin" });
       expect((await service.packages.previewPackage(blockedId)).blockers).toEqual([]);
@@ -835,7 +836,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
     const jobs = (await uatDb.pool.query("SELECT id, tests FROM policy_resource_validation WHERE parent_id=$1", [report.id])).rows;
     for (const job of jobs) {
       const test = job.tests[0];
-      await uat.policyResources.complete({ runId: job.id, status: "passed", results: [{ caseId: test.id, name: test.name, actualDecision: "block", passed: true, sourcePolicyId: id, outputContent: "", findings: [{ policy_id: id, rule_id: test.id, verdict: "matched" }] } as ValidationCaseResult] });
+      await completeReport(uat, { metrics: emptyValidationMetrics(1), runId: job.id, status: "passed", results: [{ caseId: test.id, name: test.name, actualDecision: "block", passed: true, sourcePolicyId: id, outputContent: "", findings: [{ policy_id: id, rule_id: test.id, verdict: "matched" }] } as ValidationCaseResult] });
     }
     const policy = await uat.policyResources.publish(id, 1, "admin");
     const guardrail = await uat.createGuardrail({ name: "Portable Guardrail", actorId: "admin", runtimeProfile: "auto", draftConfig: { policyBindings: [{ policyId: id, policyVersion: policy.version, enabledRuleIds: ["second"], enabledRails: ["input"] }] } });

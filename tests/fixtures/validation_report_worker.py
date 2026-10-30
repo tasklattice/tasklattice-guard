@@ -10,6 +10,7 @@ import gzip
 import json
 from pathlib import Path
 import sys
+import struct
 from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -47,22 +48,33 @@ async def main():
         test_cases=[validation_test_to_proto(case) for case in payload["testCases"]],
     )
     client = RunnerControlClient(SimpleNamespace(runner_id="report-runner-0", pool_id="default", compiler_capable=True), Store(), Metrics())
-    client._compressed_validation_reports = True
-    await asyncio.wait_for(client._validate(request), timeout=90)
-    reports = []
-    while not client._outgoing.empty():
-        message = client._outgoing.get_nowait()
-        if message.HasField("validation_report"):
-            reports.append(message)
-    assert len(reports) == 1
-    wire = reports[0]
-    result = protocol.ValidationResult.FromString(gzip.decompress(wire.validation_report.gzip_result))
-    assert result.accepted, result.reason
-    assert len(result.results) == len(request.test_cases)
+    task = asyncio.create_task(client._validate(request))
+    count, raw_bytes, wire_bytes, parts = 0, 0, 0, 0
+    with Path(sys.argv[2]).open("wb") as output:
+        while True:
+            message = await asyncio.wait_for(client._outgoing.get(), 90)
+            if not message.HasField("validation_report_chunk"):
+                continue
+            chunk = message.validation_report_chunk
+            raw = gzip.decompress(chunk.gzip_result)
+            result = protocol.ValidationResult.FromString(raw)
+            count += len(result.results)
+            encoded = message.SerializeToString()
+            output.write(struct.pack(">I", len(encoded)))
+            output.write(encoded)
+            raw_bytes += len(raw)
+            wire_bytes += len(encoded)
+            parts += 1
+            await client._handle(protocol.ControllerMessage(validation_report_chunk_ack=protocol.ValidationReportChunkAck(
+                run_id=chunk.run_id, upload_id=chunk.upload_id, sequence=chunk.sequence)))
+            if chunk.final:
+                break
+    await asyncio.wait_for(task, 30)
+    assert result.accepted and count == len(request.test_cases)
     assert result.test_scope.model_invocations == 0
-    Path(sys.argv[2]).write_bytes(wire.SerializeToString())
-    print(json.dumps({"cases": len(result.results), "status": protocol.ValidationStatus.Name(result.status),
-                      "rawBytes": wire.validation_report.raw_size_bytes, "wireBytes": wire.ByteSize()}))
+    print(json.dumps({"cases": count, "status": protocol.ValidationStatus.Name(result.status), "rawBytes": raw_bytes, "wireBytes": wire_bytes, "parts": parts}))
+    for spool in client._report_spools.values():
+        spool.close()
 
 
 if __name__ == "__main__":

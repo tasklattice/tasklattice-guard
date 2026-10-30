@@ -87,6 +87,7 @@ const resources = {
         summary: "{{mode}} · {{allowed}} allowed · {{denied}} denied",
       },
 
+      casePagination: { first: 'First page', count_one: '{{count}} case on this page', count_other: '{{count}} cases on this page' },
       eventPagination: { label: 'Event pages', page: 'Page {{page}}', latest: 'Latest', previous: 'Newer', next: 'Older', checkpointScope: 'Each row is one runtime record. Open a record to inspect it and browse other checkpoints from the same request.' },
       common: {
         actions: "Actions",
@@ -3148,6 +3149,7 @@ const resources = {
         summary: "{{mode}} · {{allowed}} 项允许 · {{denied}} 项拒绝",
       },
 
+      casePagination: { first: '首页', count: '本页 {{count}} 条用例' },
       eventPagination: { label: '事件分页', page: '第 {{page}} 页', latest: '最新', previous: '较新', next: '更早', checkpointScope: '每行对应一条运行记录。打开记录查看详情，并浏览同一请求的其他检查点。' },
       common: {
         actions: "操作",

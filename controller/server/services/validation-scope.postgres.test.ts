@@ -1,3 +1,4 @@
+import { completeReport, getReport } from "../db/report-test-utils.js";
 // @vitest-environment node
 import { generateKeyPairSync } from "node:crypto";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
@@ -54,7 +55,7 @@ describe.skipIf(!url)("Historical model-enabled Default publication uses the ord
           caseType: c.caseType, required: true, expectedFailure: null, actualFailure: null, concurrencyGroup: null, sourcePolicyId: c.sourcePolicyId, sourcePolicyVersion: c.sourcePolicyVersion, sourceCaseId: c.sourceCaseId,
           evidenceStatus: skipped ? "not_reached" : "not_required", evidenceDetail: "", verifiedRuleIds: [], supersededBy: [], ruleContractSatisfied: !skipped,
           coveredRuleIds: c.coveredRuleIds, matchedRuleIds: [], evaluationContracts: [], escalated: false, modelInvocations: 0 });
-        await service.completeValidation({ runId: run.id, status: passes ? "passed" : "failed",
+        await completeReport(service, { runId: run.id, status: passes ? "passed" : "failed",
           metrics: { total: 2, executed: 1, skipped: 1, passed: Number(passes), complianceRate: passes ? 100 : 0, falsePositiveRate: 0, falseNegativeRate: 0, escalationRate: 0, p95LatencyMs: 1 },
           results: [result(local, false), result(model, true)],
           testScope: { testModelRules: false, skippedRules: model.coveredRuleIds.map(ruleId => ({ policyId: model.policyId, ruleId, reason: "model" })), modelInvocations: 0, executionDigest: "a".repeat(64), fullArtifactLoaded: true },
@@ -63,11 +64,11 @@ describe.skipIf(!url)("Historical model-enabled Default publication uses the ord
         {
           const published = await service.requestGuardrailPublish({ guardrailId: DEFAULT_GUARDRAIL_ID, actorId: "user" });
           expect(published.status).toBe("ready");
-          expect(await service.getValidationRun(run.id)).toMatchObject({ status: passes ? "passed" : "failed" });
+          expect(await getReport(service, run.id)).toMatchObject({ status: passes ? "passed" : "failed" });
           const detail = await service.getGuardrail(DEFAULT_GUARDRAIL_ID);
           expect(JSON.stringify(detail.versions[0]!.plan)).toContain("tali.guard.jailbreak.v1");
           expect(detail.versions[0]!.testWaiver).toBeNull();
-          expect((await service.getValidationRun(run.id)).testScope?.modelInvocations).toBe(0);
+          expect((await getReport(service, run.id)).testScope?.modelInvocations).toBe(0);
         }
       }
     } finally { await database.drop(); rmSync(directory, { recursive: true, force: true }); }

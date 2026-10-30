@@ -18,8 +18,9 @@ export function toTestEvidence(run: { testModelRules?: boolean; testScope?: Vers
 }
 
 /** Caller holds the Guardrail row lock, including during completion and startup cleanup. */
-export async function pruneTestingReports(tx: Transaction, guardrailId: string): Promise<number> {
+export async function pruneTestingReports(tx: Transaction, guardrailId: string, maxBatches = Infinity): Promise<number> {
   let removed = 0;
+  let batches = 0;
   for (const status of ["passed", "failed", "cancelled"] as const) {
     for (;;) {
       // The persisted immutable version defines the bucket, including its original draft publication report.
@@ -35,6 +36,7 @@ export async function pruneTestingReports(tx: Transaction, guardrailId: string):
         version: ranked.version, subject: ranked.subject,
       }).from(ranked).where(gt(ranked.rank, status === "cancelled" ? 1 : TESTING_REPORT_RETENTION[status])).orderBy(desc(ranked.rank), ranked.id).limit(200);
       if (!expired.length) break;
+      if (batches++ >= maxBatches) return removed;
       const versions = await tx.select({ version: guardrailVersions.version, status: guardrailVersions.status,
         runId: guardrailVersions.validationRunId, evidence: guardrailVersions.testingEvidence,
         suite: guardrailVersions.testSuite, checksum: artifacts.checksum })

@@ -242,12 +242,15 @@ describe("Controller metrics contract", () => {
       listRunnerPoolsWithCapacity: vi.fn().mockRejectedValue(new Error("PRIVATE_CREDENTIAL")),
       observabilitySnapshot: vi.fn(async () => snapshot),
       databasePoolState: () => ({ max: 20, total: 20, idle: 0, busy: 20, waiting: 7 }),
+      reportWorkState: () => ({ write: { active: 2, queued: 3, in_flight_bytes: 1048576 } }),
     } as unknown as ControlPlaneService;
     const logged = vi.spyOn(console, "error").mockImplementation(() => {});
     const metrics = new ControllerMetrics();
     const rendered = await metrics.render(service);
     expect(rendered).toContain('guard_controller_database_pool_connections{state="busy"} 20');
     expect(rendered).toContain("guard_controller_database_pool_waiting 7");
+    expect(rendered).toContain('guard_controller_report_work{stage="write",state="active"} 2');
+    expect(rendered).toContain('guard_controller_report_work{stage="write",state="in_flight_bytes"} 1048576');
     expect(rendered).toContain("guard_controller_database_snapshot_in_flight 1");
     expect(rendered).toContain("guard_controller_database_snapshot_fresh 0");
     expect(rendered).toContain("guard_controller_process_");

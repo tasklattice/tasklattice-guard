@@ -260,27 +260,26 @@ async def test_duplicate_validation_requests_share_execution_and_replay_terminal
     client._validator = SimpleNamespace(run=AsyncMock(side_effect=RuntimeError("synthetic test failure")))
     request = protocol.ValidationRequest(run_id="same-run")
     await asyncio.gather(client._validate(request), client._validate(request))
-    first = (await client._outgoing.get()).validation_result
-    second = (await client._outgoing.get()).validation_result
+    first = (await client._outgoing.get()).validation_status_notice
+    second = (await client._outgoing.get()).validation_status_notice
     client._validator.run.assert_awaited_once()
     assert first == second
-    assert not first.accepted
-    assert client._validation_result_bytes <= client._validation_result_budget
+    assert first.status == protocol.VALIDATION_STATUS_FAILED
+    assert len(client._validation_notices) <= 64
 
 
 @pytest.mark.asyncio
-async def test_validation_replay_cache_evicts_by_bytes():
+async def test_terminal_notice_replay_cache_is_bounded():
     from unittest.mock import Mock
     client = RunnerControlClient(_settings(), Store(), Metrics())
     client._metrics.job = Mock()
     client._validator = SimpleNamespace(run=AsyncMock(side_effect=RuntimeError("synthetic test failure")))
-    await client._validate(protocol.ValidationRequest(run_id="run-1"))
-    client._validation_result_budget = client._validation_result_bytes
-    await client._validate(protocol.ValidationRequest(run_id="run-2"))
-    assert list(client._validation_results) == ["run-2"]
-    assert client._validation_result_bytes <= client._validation_result_budget
-    await client._validate(protocol.ValidationRequest(run_id="run-2"))
-    assert client._validator.run.await_count == 2
+    for n in range(66):
+        await client._validate(protocol.ValidationRequest(run_id=f"run-{n}"))
+    assert len(client._validation_notices) == 64
+    assert "run-0" not in client._validation_notices
+    await client._validate(protocol.ValidationRequest(run_id="run-65"))
+    assert client._validator.run.await_count == 66
 
 
 @pytest.mark.asyncio
@@ -292,8 +291,11 @@ async def test_failed_test_returns_compiled_candidate_without_marking_passed():
     artifact = protocol.Artifact(guardrail_id="guardrail-default", guardrail_version="candidate")
     client._validator = SimpleNamespace(compiler_model_types=[], run=AsyncMock(return_value=SimpleNamespace(
         status="failed", metrics={}, results=[], artifact=artifact, test_scope=None)))
-    await client._execute_validation(protocol.ValidationRequest(run_id="failed"))
-    result = (await client._outgoing.get()).validation_result
+    import asyncio
+    from tests.control_plane.report_helpers import receive_report
+    task = asyncio.create_task(client._execute_validation(protocol.ValidationRequest(run_id="failed")))
+    result = await receive_report(client)
+    await task
     assert result.accepted and result.status == protocol.VALIDATION_STATUS_FAILED
     assert result.candidate_artifact == artifact
 

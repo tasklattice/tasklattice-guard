@@ -1,3 +1,6 @@
+import { createTestDatabase } from "../db/postgres-test-database.js";
+import { ReportResults } from "./report-results.js";
+import { stageCases } from "../db/report-test-utils.js";
 // @vitest-environment node
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -14,16 +17,15 @@ import { buildGuardrailPlan, normalizeGuardrailDraft } from "../domain/guardrail
 const url = process.env.GUARD_TEST_POSTGRES_URL;
 describe.skipIf(!url)("declarative Policy transactions", () => {
   const namespace = `policy_resources_${randomUUID().replaceAll("-", "")}`;
-  let admin: Pool; let pool: Pool; let service: PolicyResourceService;
+  let database:Awaited<ReturnType<typeof createTestDatabase>>; let pool: Pool; let service: PolicyResourceService; let reports:ReportResults;
+  async function complete(input:Parameters<PolicyResourceService["complete"]>[0] & {results:ValidationCaseResult[]}) { await stageCases(reports,input.runId,input.results); const {results:_results,...metadata}=input;return service.complete(metadata); }
   beforeAll(async () => {
     expect(["localhost", "127.0.0.1"]).toContain(new URL(url!).hostname);
-    admin = new Pool({ connectionString: url, max: 1 }); await admin.query(`CREATE SCHEMA "${namespace}"`);
-    pool = new Pool({ connectionString: url, max: 6, options: `-c search_path=${namespace}` });
-    await pool.query(readFileSync(new URL("../db/migrations/0037_policy_resources.sql", import.meta.url), "utf8"));
-    for (const table of ["audit_event", "controller_outbox", "policy_record", "policy_imported_version"]) await pool.query(`CREATE TABLE "${table}" (LIKE public."${table}" INCLUDING ALL)`);
-    service = new PolicyResourceService(drizzle(pool, { schema }), resolve("../runner/toolkit/policy_library/assets"), () => []);
+    database=await createTestDatabase(url!,"policy_reports");pool=database.pool;reports=new ReportResults(database.db);
+    await pool.query("INSERT INTO auth_user(id,name,email,role) VALUES('test','Test','test@example.test','admin')");
+    service = new PolicyResourceService(database.db,resolve("../runner/toolkit/policy_library/assets"),()=>[],reports);
   });
-  afterAll(async () => { await pool?.end(); await admin?.query(`DROP SCHEMA IF EXISTS "${namespace}" CASCADE`); await admin?.end(); });
+  afterAll(async()=>database?.drop());
   it("saves a card, isolates each Rule, publishes idempotently and invalidates edited drafts", async () => {
     const definition = emptyPolicyDefinition(); definition.metadata.name = "Two Rules";
     definition.rules = ["first", "second"].map(id => ({ id, name: id, description: "", stages: ["input"], detector: { ref: "text/keyword", version: "1.0.0", parameters: { detector_options: { terms: [id] } } }, on_match: { action: "block" }, risk_level: "medium", metadata: { taxonomy_ids: ["TALI-BUSINESS-POLICY"] } }));
@@ -39,10 +41,14 @@ describe.skipIf(!url)("declarative Policy transactions", () => {
     for (const job of jobs) {
       const test = job.tests[0];
       const actual = { caseId: test.id, name: test.name, actualDecision: "block", passed: true, modelInvocations: 1, sourcePolicyId: id, outputContent: "", findings: [{ policy_id: id, rule_id: test.id, verdict: "matched" }] } as ValidationCaseResult;
-      await service.running(job.id); await service.complete({ runId: job.id, status: "passed", results: [actual] });
+      await service.running(job.id); await complete({ runId: job.id, status: "passed", results: [actual] });
     }
     expect((await service.report(id))?.status).toBe("passed");
-    expect((await service.report(id))?.results.map(result => result.modelInvocations)).toEqual([1, 1]);
+    const completed=(await service.report(id))!;
+    const page=await reports.page(completed.id,{});
+    expect(page.items.map(result=>result.modelInvocations)).toEqual([1,1]);
+    expect(page.items.every(result=>result.caseType==="rule_acceptance" && result.ruleContractSatisfied===true)).toBe(true);
+    expect((await pool.query("SELECT count(*)::int n FROM validation_report_detail")).rows[0].n).toBe(2);
     const published = await Promise.all(Array.from({ length: 6 }, () => service.publish(id, 1, "test")));
     expect(new Set(published.map(p => p.version)).size).toBe(1);
     expect((await pool.query("SELECT count(*)::int AS count FROM policy_resource_version")).rows[0].count).toBe(1);
@@ -76,7 +82,7 @@ describe.skipIf(!url)("declarative Policy transactions", () => {
     expect(jobs).toHaveLength(2);
     expect(jobs.flatMap(j => j.payload.plan.steps).some(step => Object.fromEntries(step.parameters).restricted_topics === "Synthetic test topic")).toBe(true);
     for (const job of jobs) {
-      await service.complete({ runId: job.id, status: "passed", results: job.tests.map((test: { id: string; expected_decision: string; covered_rule_ids: string[] }) => ({
+      await complete({ runId: job.id, status: "passed", results: job.tests.map((test: { id: string; expected_decision: string; covered_rule_ids: string[] }) => ({
         caseId: test.id, actualDecision: test.expected_decision, passed: true, sourcePolicyId: definition.metadata.id, modelInvocations: 1,
         findings: test.covered_rule_ids.map(rule_id => ({ rule_id, policy_id: definition.metadata.id, verdict: "matched" })),
       } as ValidationCaseResult)) });

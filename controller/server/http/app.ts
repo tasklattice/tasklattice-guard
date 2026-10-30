@@ -37,6 +37,7 @@ import type { ControllerConfig } from "../config.js";
 import { IntentAnalysisError, OpenAICompatibleIntentAnalyzer, type IntentAnalyzer } from "../control-plane-ai/intent-analyzer.js";
 import { recommendationCatalog } from "../control-plane-ai/recommendation-catalog.js";
 import { ConflictError, ControllerError, NotFoundError, ValidationError } from "../domain/errors.js";
+import { casePageQuery } from "../services/report-results.js";
 import { logDatabaseFailure } from "../db/diagnostics.js";
 import { enforcementActions } from "../domain/guardrail-plan.js";
 import { deriveRunnerFleetStatus } from "../domain/platform-status.js";
@@ -837,8 +838,12 @@ export function createHttpApp(input: {
   app.get("/api/v1/test-runs", authenticated, async (context) => {
     return context.json(await input.service.queryValidationRuns(testingReportsQuery.parse(context.req.query())));
   });
-  app.get("/api/v1/test-runs/:runId", authenticated, compress(), async (context) => {
-    return context.json(await input.service.getValidationRun(context.req.param("runId"), context.req.query("view") === "summary"));
+  app.get("/api/v1/test-runs/:runId", authenticated, async context => context.json(await input.service.getValidationRun(context.req.param("runId"))));
+  app.get("/api/v1/test-runs/:runId/cases", authenticated, async context => {
+    return context.json(await input.service.reportResults.page(context.req.param("runId"), casePageQuery.parse(context.req.query())));
+  });
+  app.get("/api/v1/test-runs/:runId/cases/:ordinal", authenticated, compress(), async context => {
+    return context.json(await input.service.reportResults.detail(context.req.param("runId"), Number(context.req.param("ordinal")), Number(context.req.query("traceOffset") ?? 0)));
   });
   app.post("/api/v1/test-runs/:runId/cancel", authenticated, async context => {
     return context.json(await input.service.cancelValidation({ runId: context.req.param("runId"), actorId: context.get("actor").id }), 202);
@@ -1161,6 +1166,7 @@ export function createHttpApp(input: {
     if (error instanceof SyntaxError) return context.json({ error: { code: "invalid_json", message: "Request body must be valid JSON." } }, 400);
     if (error instanceof RoutingEvaluationError) return context.json({ error: { code: error.code, message: error.message } }, 422);
     if (error instanceof ControllerError) {
+      if (error.code === "report_busy") context.header("Retry-After", "2");
       if (error instanceof IntentAnalysisError) {
         const { diagnosticId, provider, model, stage, upstreamStatus, elapsedMs, timeoutMs } = error.detail;
         // Correlate failures without persisting user prompts, documents or provider response bodies.
