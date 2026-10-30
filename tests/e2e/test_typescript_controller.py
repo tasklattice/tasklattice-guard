@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parents[2]
 FIXTURE = ROOT / "tests/fixtures/artifacts/local-secrets-v1"
 
 
-@pytest.mark.parametrize("invalid_action", [None, "reject", "pass", "unspecified", "typo"])
+@pytest.mark.parametrize("invalid_action", [None, "reject", "pass", "unspecified", "typo", "PRIVATE_REPORT_CREDENTIAL_SENTINEL"])
 async def test_typescript_controller_distributes_signed_artifact_or_rejects_invalid_action(tmp_path, invalid_action):
     desired = protocol.DesiredState.FromString(base64.b64decode((FIXTURE / "desired-state.pb.b64").read_bytes()))
     artifact = desired.artifacts[0]
@@ -59,7 +59,15 @@ async def test_typescript_controller_distributes_signed_artifact_or_rejects_inva
                 with pytest.raises(grpc.aio.AioRpcError) as failure:
                     await asyncio.wait_for(client_task, 10)
                 assert failure.value.code() == grpc.StatusCode.INTERNAL
-                assert f"Invalid enforcement action {invalid_action}" in failure.value.details()
+                assert failure.value.details() == "Runner control request failed (unknown)."
+                assert invalid_action not in failure.value.details()
+                log.flush(); log.seek(0)
+                controller_log = log.read()
+                diagnostics = [json.loads(line) for line in controller_log.splitlines() if line.startswith("{")]
+                assert any(item.get("event") == "runner.control_error" and item["error"]["category"] == "unknown"
+                           for item in diagnostics)
+                assert "Invalid enforcement action" not in controller_log
+                assert "PRIVATE_REPORT_CREDENTIAL_SENTINEL" not in controller_log
                 assert store.generation == 0 and not client.synchronized
             else:
                 result = json.loads(await asyncio.wait_for(process.stdout.readline(), 15))
