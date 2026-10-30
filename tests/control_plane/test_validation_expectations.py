@@ -52,9 +52,9 @@ async def test_observation_only_override_preserves_detection_and_pass_action(cha
     assert result["passed"] is (change == "none"), result
 
 
-def test_legacy_numeric_guardrail_versions_are_rejected():
+def test_numeric_guardrail_versions_are_rejected():
     with pytest.raises(ValueError, match="canonical UTC timestamp"):
-        plan_from_dict({"guardrail_id": "legacy", "guardrail_version": 1})
+        plan_from_dict({"guardrail_id": "invalid-version", "guardrail_version": 1})
 
 
 async def test_unclassified_runtime_failure_is_not_a_successful_block_test():

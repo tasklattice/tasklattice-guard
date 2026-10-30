@@ -1,4 +1,4 @@
-schema_version: 2
+schema_version: 1
 kind: Policy
 metadata:
   id: local-payment-data
@@ -6,7 +6,7 @@ metadata:
   description: Redact reviewed payment-card, IBAN, Singapore and Canadian bank-account formats. Format matching
     does not validate account ownership or payment authorization.
   source: built_in
-  version: 4.0.0
+  version: 1.0.0
   tags:
   - namespace: protection
     value: privacy

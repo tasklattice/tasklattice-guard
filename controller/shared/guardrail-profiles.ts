@@ -10,7 +10,6 @@ function industryProfile(id: string, name: string, category: string, categoryNam
 }
 
 // The curated seed catalog. Runtime requests read enabled database rows.
-// Historical compositions remain available to artifact fixtures, not discovery.
 export const defaultGuardrailProfiles: readonly GuardrailProfile[] = [
   localBaseline,
   fullFeatureBaseline,

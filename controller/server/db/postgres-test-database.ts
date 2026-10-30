@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { migrateReportStorage } from "./report-storage-migration.js";
+import { seedProfiles } from "./seed-profiles.js";
 import { Pool } from "pg";
 import { createPooledDatabase, type ControllerDatabase } from "./client.js";
 
@@ -8,7 +8,7 @@ import { createPooledDatabase, type ControllerDatabase } from "./client.js";
  * An isolated schema with every migration replayed from nothing, for
  * `*.postgres.test.ts` suites. Only loopback databases are accepted.
  */
-export async function createTestDatabase(url: string, prefix: string, beforeMigration?: (tag: string, pool: Pool) => Promise<void>): Promise<{
+export async function createTestDatabase(url: string, prefix: string): Promise<{
   db: ControllerDatabase; pool: Pool; drop: () => Promise<void>;
 }> {
   if (!["127.0.0.1", "localhost", "[::1]"].includes(new URL(url).hostname)) throw new Error("Test databases must be on loopback.");
@@ -19,10 +19,9 @@ export async function createTestDatabase(url: string, prefix: string, beforeMigr
   const read = (name: string) => readFileSync(new URL(`./migrations/${name}`, import.meta.url), "utf8");
   const journal = JSON.parse(read("meta/_journal.json")) as { entries: { tag: string }[] };
   for (const { tag } of journal.entries) {
-    await beforeMigration?.(tag, pool);
-    if (tag === "0057_report_storage_cutover") await migrateReportStorage(createPooledDatabase(pool));
     await pool.query(read(`${tag}.sql`).replaceAll('"public".', `"${namespace}".`));
   }
+  await seedProfiles(createPooledDatabase(pool));
   return {
     db: createPooledDatabase(pool),
     pool,

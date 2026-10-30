@@ -4,7 +4,7 @@ import type { GuardrailProfile } from "./protection-map.js";
 // Policy versions, Rule selections and Topic defaults are explicit snapshots.
 export const fullFeatureBaseline: GuardrailProfile = {
   "id": "full-feature-baseline",
-  "version": "2.0.0",
+  "version": "1.0.0",
   "name": "Full-feature baseline",
   "description": "Start with credentials, personal data, semantic PII, input and output content safety, jailbreak, direct and indirect injection, memory poisoning, data-use boundaries and a harmful-task denylist. Remove protections you do not need.",
   "industry": "general",
@@ -12,7 +12,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
   "policies": [
     {
       "policyId": "local-credentials",
-      "policyVersion": "4.2.0",
+      "policyVersion": "1.0.0",
       "action": null,
       "parameterValues": {},
       "enabledRuleIds": [
@@ -65,7 +65,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
     },
     {
       "policyId": "local-payment-data",
-      "policyVersion": "4.0.0",
+      "policyVersion": "1.0.0",
       "action": null,
       "parameterValues": {},
       "enabledRuleIds": [
@@ -82,7 +82,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
       ],
       "testCaseOverrides": {
         "pattern-matching/accept/ca_bank_account": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Bank account [ca_bank_account_REDACTED].",
@@ -94,7 +94,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "pattern-matching/accept/ca_bank_account/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Bank account [ca_bank_account_REDACTED].",
@@ -106,7 +106,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "local-bank-account-formats/accept/ca_bank_account/input": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Bank account [ca_bank_account_REDACTED].",
@@ -118,7 +118,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "local-bank-account-formats/accept/ca_bank_account/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Bank account [ca_bank_account_REDACTED].",
@@ -139,7 +139,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
     },
     {
       "policyId": "local-government-identifiers",
-      "policyVersion": "4.0.0",
+      "policyVersion": "1.0.0",
       "action": null,
       "parameterValues": {},
       "enabledRuleIds": [
@@ -194,7 +194,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
       ],
       "testCaseOverrides": {
         "accept/au_abn/input": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [au_abn_REDACTED]",
@@ -206,7 +206,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "accept/au_tfn/input": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Tax file number [au_tfn_REDACTED].",
@@ -218,7 +218,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "accept/eu_vat/input": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: VAT [eu_vat_REDACTED]",
@@ -230,7 +230,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "accept/fr_nir/input": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [fr_nir_REDACTED]",
@@ -242,7 +242,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "accept/sg_uen/input": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: UEN [sg_uen_REDACTED]",
@@ -254,7 +254,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "accept/au_abn/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [au_abn_REDACTED]",
@@ -266,7 +266,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "accept/au_tfn/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Tax file number [au_tfn_REDACTED].",
@@ -278,7 +278,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "accept/eu_vat/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: VAT [eu_vat_REDACTED]",
@@ -290,7 +290,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "accept/fr_nir/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [fr_nir_REDACTED]",
@@ -302,7 +302,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "accept/sg_uen/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: UEN [sg_uen_REDACTED]",
@@ -314,7 +314,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "accept/uoft_tcard/input": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "TCard number [uoft_tcard_REDACTED].",
@@ -326,7 +326,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "accept/au_medicare/input": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [au_medicare_REDACTED]",
@@ -338,7 +338,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "accept/uoft_tcard/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "TCard number [uoft_tcard_REDACTED].",
@@ -350,7 +350,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "accept/au_medicare/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [au_medicare_REDACTED]",
@@ -362,7 +362,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "accept/uae_emirates_id/input": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [uae_emirates_id_REDACTED]",
@@ -374,7 +374,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "accept/uoft_student_id/input": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "University of Toronto student number [au_medicare_REDACTED].",
@@ -386,7 +386,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "accept/uae_emirates_id/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [uae_emirates_id_REDACTED]",
@@ -398,7 +398,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "accept/uoft_student_id/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "University of Toronto student number [au_medicare_REDACTED].",
@@ -410,7 +410,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "accept/nl_bsn_contextual/input": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: BSN [nl_bsn_contextual_REDACTED]",
@@ -422,7 +422,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "pattern-matching/accept/au_abn": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [au_abn_REDACTED]",
@@ -434,7 +434,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "pattern-matching/accept/au_tfn": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Tax file number [au_tfn_REDACTED].",
@@ -446,7 +446,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "pattern-matching/accept/eu_vat": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: VAT [eu_vat_REDACTED]",
@@ -458,7 +458,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "pattern-matching/accept/fr_nir": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [fr_nir_REDACTED]",
@@ -470,7 +470,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "pattern-matching/accept/sg_uen": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: UEN [sg_uen_REDACTED]",
@@ -482,7 +482,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "accept/br_cpf_unformatted/input": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [au_abn_REDACTED]",
@@ -494,7 +494,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "accept/ca_immigration_doc/input": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "UCI [ca_immigration_doc_REDACTED].",
@@ -506,7 +506,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "accept/nl_bsn_contextual/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: BSN [nl_bsn_contextual_REDACTED]",
@@ -518,7 +518,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "accept/br_cpf_unformatted/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [au_abn_REDACTED]",
@@ -530,7 +530,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "accept/ca_immigration_doc/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "UCI [ca_immigration_doc_REDACTED].",
@@ -542,7 +542,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "accept/ca_on_drivers_licence/input": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Driver's licence [ca_on_drivers_licence_REDACTED].",
@@ -554,7 +554,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "pattern-matching/accept/uoft_tcard": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "TCard number [uoft_tcard_REDACTED].",
@@ -566,7 +566,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "accept/ca_on_drivers_licence/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Driver's licence [ca_on_drivers_licence_REDACTED].",
@@ -578,7 +578,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "pattern-matching/accept/au_medicare": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [au_medicare_REDACTED]",
@@ -590,7 +590,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "pattern-matching/accept/au_abn/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [au_abn_REDACTED]",
@@ -602,7 +602,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "pattern-matching/accept/au_tfn/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Tax file number [au_tfn_REDACTED].",
@@ -614,7 +614,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "pattern-matching/accept/eu_vat/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: VAT [eu_vat_REDACTED]",
@@ -626,7 +626,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "pattern-matching/accept/fr_nir/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [fr_nir_REDACTED]",
@@ -638,7 +638,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "pattern-matching/accept/sg_uen/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: UEN [sg_uen_REDACTED]",
@@ -650,7 +650,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "pattern-matching/accept/uae_emirates_id": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [uae_emirates_id_REDACTED]",
@@ -662,7 +662,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "pattern-matching/accept/uoft_student_id": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "University of Toronto student number [au_medicare_REDACTED].",
@@ -674,7 +674,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "pattern-matching/accept/nl_bsn_contextual": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: BSN [nl_bsn_contextual_REDACTED]",
@@ -686,7 +686,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "pattern-matching/accept/uoft_tcard/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "TCard number [uoft_tcard_REDACTED].",
@@ -698,7 +698,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "pattern-matching/accept/au_medicare/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [au_medicare_REDACTED]",
@@ -710,7 +710,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "pattern-matching/accept/br_cpf_unformatted": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [au_abn_REDACTED]",
@@ -722,7 +722,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "pattern-matching/accept/ca_immigration_doc": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "UCI [ca_immigration_doc_REDACTED].",
@@ -734,7 +734,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "pattern-matching/accept/ca_on_drivers_licence": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Driver's licence [ca_on_drivers_licence_REDACTED].",
@@ -746,7 +746,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "pattern-matching/accept/uae_emirates_id/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [uae_emirates_id_REDACTED]",
@@ -758,7 +758,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "pattern-matching/accept/uoft_student_id/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "University of Toronto student number [au_medicare_REDACTED].",
@@ -770,7 +770,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "pattern-matching/accept/nl_bsn_contextual/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: BSN [nl_bsn_contextual_REDACTED]",
@@ -782,7 +782,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "pattern-matching/accept/br_cpf_unformatted/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [au_abn_REDACTED]",
@@ -794,7 +794,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "pattern-matching/accept/ca_immigration_doc/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "UCI [ca_immigration_doc_REDACTED].",
@@ -806,7 +806,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "pattern-matching/accept/ca_on_drivers_licence/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Driver's licence [ca_on_drivers_licence_REDACTED].",
@@ -818,7 +818,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "baseline-pii-protection/rule-au-pii-tax-identifiers/au_abn-acceptance": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [au_abn_REDACTED]",
@@ -830,7 +830,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "advanced-au-pii-protection/rule-au-pii-tax-identifiers/au_abn-acceptance": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [au_abn_REDACTED]",
@@ -842,7 +842,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "baseline-pii-protection/rule-au-pii-tax-identifiers/au_medicare-acceptance": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [au_medicare_REDACTED]",
@@ -854,7 +854,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "advanced-au-pii-protection/rule-au-pii-tax-identifiers/au_medicare-acceptance": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [au_medicare_REDACTED]",
@@ -866,7 +866,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "uae-regulatory-compliance/rule-uae-data-protection-pii/uae_emirates_id-acceptance": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [uae_emirates_id_REDACTED]",
@@ -878,7 +878,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "local-australian-tax-health-identifiers/rule-au-pii-tax-identifiers/au_abn-acceptance/input": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [au_abn_REDACTED]",
@@ -890,7 +890,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "local-australian-tax-health-identifiers/rule-au-pii-tax-identifiers/au_abn-acceptance/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [au_abn_REDACTED]",
@@ -902,7 +902,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "local-australian-tax-health-identifiers/rule-au-pii-tax-identifiers/au_medicare-acceptance/input": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [au_medicare_REDACTED]",
@@ -914,7 +914,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "local-australian-tax-health-identifiers/rule-au-pii-tax-identifiers/au_medicare-acceptance/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [au_medicare_REDACTED]",
@@ -935,7 +935,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
     },
     {
       "policyId": "local-passports",
-      "policyVersion": "4.0.0",
+      "policyVersion": "1.0.0",
       "action": null,
       "parameterValues": {},
       "enabledRuleIds": [
@@ -962,7 +962,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
       ],
       "testCaseOverrides": {
         "passport-en/input": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Passport: [passport_china_REDACTED]",
@@ -974,7 +974,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "passport-zh/input": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "护照号码：[passport_india_REDACTED]",
@@ -986,7 +986,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "passport-en/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Passport: [passport_china_REDACTED]",
@@ -998,7 +998,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "passport-zh/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "护照号码：[passport_india_REDACTED]",
@@ -1010,7 +1010,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "passport-mixed/input": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Passport number: [passport_france_REDACTED]",
@@ -1022,7 +1022,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "passport-mixed/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Passport number: [passport_france_REDACTED]",
@@ -1034,7 +1034,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "pattern-matching/accept/passport_china": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [passport_china_REDACTED]",
@@ -1046,7 +1046,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "pattern-matching/accept/passport_china/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [passport_china_REDACTED]",
@@ -1058,7 +1058,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "local-passport-formats/accept/passport_china/input": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [passport_china_REDACTED]",
@@ -1070,7 +1070,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "local-passport-formats/accept/passport_china/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [passport_china_REDACTED]",
@@ -1082,7 +1082,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "advanced-au-pii-protection/rule-international-pii-identifiers/passport_china-acceptance": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [passport_china_REDACTED]",
@@ -1103,7 +1103,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
     },
     {
       "policyId": "local-contact-data",
-      "policyVersion": "4.3.0",
+      "policyVersion": "1.0.0",
       "action": null,
       "parameterValues": {},
       "enabledRuleIds": [
@@ -1150,7 +1150,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
       ],
       "testCaseOverrides": {
         "pattern-matching/accept/fr_phone": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: +[au_abn_REDACTED]",
@@ -1162,7 +1162,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "pattern-matching/accept/sg_phone": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The explicitly enabled full international phone rule runs before regional suffix rules. Require unchanged Transform, complete value removal and exact first-rule evidence.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [international_phone_REDACTED]",
@@ -1174,7 +1174,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "pattern-matching/accept/uae_phone": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The explicitly enabled full international phone rule runs before regional suffix rules. Require unchanged Transform, complete value removal and exact first-rule evidence.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [international_phone_REDACTED]",
@@ -1186,7 +1186,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "pattern-matching/accept/br_phone_mobile": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [br_phone_mobile_REDACTED]",
@@ -1198,7 +1198,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "pattern-matching/accept/fr_phone/output": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: +[au_abn_REDACTED]",
@@ -1210,7 +1210,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "pattern-matching/accept/sg_phone/output": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The explicitly enabled full international phone rule runs before regional suffix rules. Require unchanged Transform, complete value removal and exact first-rule evidence.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [international_phone_REDACTED]",
@@ -1222,7 +1222,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "pattern-matching/accept/uae_phone/output": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The explicitly enabled full international phone rule runs before regional suffix rules. Require unchanged Transform, complete value removal and exact first-rule evidence.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [international_phone_REDACTED]",
@@ -1234,7 +1234,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "pattern-matching/accept/br_phone_landline": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The Brazilian mobile detector precedes the landline detector and covers this shared sample. Require complete redaction and the first matching Rule.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [br_phone_mobile_REDACTED]",
@@ -1246,7 +1246,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "pattern-matching/accept/br_phone_mobile/output": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [br_phone_mobile_REDACTED]",
@@ -1258,7 +1258,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "pattern-matching/accept/br_phone_landline/output": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The Brazilian mobile detector precedes the landline detector and covers this shared sample. Require complete redaction and the first matching Rule.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [br_phone_mobile_REDACTED]",
@@ -1270,7 +1270,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "local-regional-contact-formats/accept/fr_phone/input": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: +[au_abn_REDACTED]",
@@ -1282,7 +1282,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "local-regional-contact-formats/accept/sg_phone/input": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The explicitly enabled full international phone rule runs before regional suffix rules. Require unchanged Transform, complete value removal and exact first-rule evidence.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [international_phone_REDACTED]",
@@ -1294,7 +1294,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "local-regional-contact-formats/accept/fr_phone/output": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: +[au_abn_REDACTED]",
@@ -1306,7 +1306,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "local-regional-contact-formats/accept/sg_phone/output": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The explicitly enabled full international phone rule runs before regional suffix rules. Require unchanged Transform, complete value removal and exact first-rule evidence.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [international_phone_REDACTED]",
@@ -1318,7 +1318,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "local-regional-contact-formats/accept/uae_phone/input": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The explicitly enabled full international phone rule runs before regional suffix rules. Require unchanged Transform, complete value removal and exact first-rule evidence.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [international_phone_REDACTED]",
@@ -1330,7 +1330,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "local-regional-contact-formats/accept/uae_phone/output": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The explicitly enabled full international phone rule runs before regional suffix rules. Require unchanged Transform, complete value removal and exact first-rule evidence.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [international_phone_REDACTED]",
@@ -1342,7 +1342,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "local-regional-contact-formats/accept/br_phone_mobile/input": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [br_phone_mobile_REDACTED]",
@@ -1354,7 +1354,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "local-regional-contact-formats/accept/br_phone_mobile/output": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [br_phone_mobile_REDACTED]",
@@ -1366,7 +1366,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "pdpa-singapore/rule-sg-pdpa-contact-information/sg_phone-acceptance": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The explicitly enabled full international phone rule runs before regional suffix rules. Require unchanged Transform, complete value removal and exact first-rule evidence.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [international_phone_REDACTED]",
@@ -1378,7 +1378,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "gdpr-eu-pii-protection/rule-gdpr-eu-contact-information/fr_phone-acceptance": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: +[au_abn_REDACTED]",
@@ -1390,7 +1390,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "uae-regulatory-compliance/rule-uae-data-protection-pii/uae_phone-acceptance": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The explicitly enabled full international phone rule runs before regional suffix rules. Require unchanged Transform, complete value removal and exact first-rule evidence.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [international_phone_REDACTED]",
@@ -1402,7 +1402,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "advanced-au-pii-protection/rule-contact-information-pii/br_phone_mobile-acceptance": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [br_phone_mobile_REDACTED]",
@@ -1414,7 +1414,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "advanced-au-pii-protection/rule-contact-information-pii/br_phone_landline-acceptance": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The Brazilian mobile detector precedes the landline detector and covers this shared sample. Require complete redaction and the first matching Rule.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [br_phone_mobile_REDACTED]",
@@ -1426,7 +1426,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "singapore-customer-identifiers/rule-sg-pdpa-contact-information/sg_phone-acceptance/input": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The explicitly enabled full international phone rule runs before regional suffix rules. Require unchanged Transform, complete value removal and exact first-rule evidence.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [international_phone_REDACTED]",
@@ -1438,7 +1438,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "singapore-customer-identifiers/rule-sg-pdpa-contact-information/sg_phone-acceptance/output": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The explicitly enabled full international phone rule runs before regional suffix rules. Require unchanged Transform, complete value removal and exact first-rule evidence.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [international_phone_REDACTED]",
@@ -1450,7 +1450,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "pattern-matching/accept/us_phone": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The explicitly enabled full international phone rule runs before regional suffix rules. Require unchanged Transform, complete value removal and exact first-rule evidence.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [international_phone_REDACTED]",
@@ -1462,7 +1462,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "advanced-au-pii-protection/rule-contact-information-pii/us_phone-acceptance": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The explicitly enabled full international phone rule runs before regional suffix rules. Require unchanged Transform, complete value removal and exact first-rule evidence.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [international_phone_REDACTED]",
@@ -1474,7 +1474,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "accept/us_phone/output": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The explicitly enabled full international phone rule runs before regional suffix rules. Require unchanged Transform, complete value removal and exact first-rule evidence.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [international_phone_REDACTED]",
@@ -1486,7 +1486,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "pattern-matching/accept/us_phone/output": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The explicitly enabled full international phone rule runs before regional suffix rules. Require unchanged Transform, complete value removal and exact first-rule evidence.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [international_phone_REDACTED]",
@@ -1498,7 +1498,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
           ]
         },
         "accept/us_phone/input": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The explicitly enabled full international phone rule runs before regional suffix rules. Require unchanged Transform, complete value removal and exact first-rule evidence.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [international_phone_REDACTED]",
@@ -1519,7 +1519,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
     },
     {
       "policyId": "local-network-addresses",
-      "policyVersion": "4.0.0",
+      "policyVersion": "1.0.0",
       "action": null,
       "parameterValues": {},
       "enabledRuleIds": [
@@ -1579,7 +1579,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
     },
     {
       "policyId": "local-injection-protection",
-      "policyVersion": "4.0.0",
+      "policyVersion": "1.0.0",
       "action": null,
       "parameterValues": {},
       "enabledRuleIds": [
@@ -1676,7 +1676,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
     },
     {
       "policyId": "builtin-indirect-prompt-injection",
-      "policyVersion": "1.0.1",
+      "policyVersion": "1.0.0",
       "action": null,
       "parameterValues": {},
       "enabledRuleIds": [
@@ -1694,7 +1694,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
     },
     {
       "policyId": "builtin-memory-poisoning",
-      "policyVersion": "1.0.1",
+      "policyVersion": "1.0.0",
       "action": null,
       "parameterValues": {},
       "enabledRuleIds": [
@@ -1712,7 +1712,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
     },
     {
       "policyId": "builtin-pii",
-      "policyVersion": "1.1.0",
+      "policyVersion": "1.0.0",
       "action": null,
       "parameterValues": {},
       "enabledRuleIds": [
@@ -1731,7 +1731,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
     },
     {
       "policyId": "local-data-use-boundaries",
-      "policyVersion": "4.0.0",
+      "policyVersion": "1.0.0",
       "action": null,
       "parameterValues": {},
       "enabledRuleIds": [
@@ -1760,7 +1760,7 @@ export const fullFeatureBaseline: GuardrailProfile = {
     },
     {
       "policyId": "builtin-topic-safety",
-      "policyVersion": "2.0.0",
+      "policyVersion": "1.0.0",
       "action": null,
       "parameterValues": {
         "allowed_topics": "",

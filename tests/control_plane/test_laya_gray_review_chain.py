@@ -86,7 +86,7 @@ async def test_missing_review_binding_prevents_readiness_and_makes_no_model_call
     assert response.status_code>=400 and not calls
 
 
-async def test_disabling_review_preserves_legacy_unknown_handling_even_with_a_review_model():
+async def test_disabling_review_preserves_configured_unknown_handling_even_with_a_review_model():
     response,calls,evidence=await scan(build_controller_plan(),{'content_safety':.5},review={'content_safety':'yes'})
     assert response.status_code==200 and response.json()['result']['outcome']=='cleared'
     assert len(calls)==3 and not any('review' in r for r in evidence['layaEvaluations'])

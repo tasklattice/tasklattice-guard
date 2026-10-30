@@ -13,7 +13,7 @@ async def test_default_runner_validates_cases_through_the_real_nemo_runtime() ->
     plan = {
         "guardrail_id": "guardrail-1",
         "guardrail_version": "20260904-010000.001Z",
-        "compiler_version": "tasklattice-controller-plan-v3",
+        "compiler_version": "tasklattice-controller-plan-v1",
         "safety_level": "balanced",
         "output_delivery": "full_buffered",
         "steps": [{

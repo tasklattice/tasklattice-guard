@@ -31,7 +31,7 @@ describe("Guardrail Catalog capability binding profiles", () => {
     expect(assignmentTargetAcceptsModel("topic_control.input", "tali.laya-topic.v1", "laya")).toBe(true);
     expect(assignmentTargetAcceptsModel("jailbreak.input", "tali.laya-topic.v1", "laya")).toBe(false);
   });
-  it("supports independent JEV input detectors without extending output or the legacy topic-only contract", () => {
+  it("supports independent JEV input detectors without extending output or the topic-only contract", () => {
     const profile = "tali.typesafe-jev.v1";
     expect(profileTransports[profile]).toBe("typesafe_systemone");
     for (const [target, contract] of [["topic_control.input", "tali.guard.topic-control.semantic.v1"], ["jailbreak.input", "tali.guard.jailbreak.v1"], ["content_safety.input", "tali.guard.content-safety.v1"]] as const) {
@@ -108,7 +108,7 @@ describe("Guardrail Catalog capability binding profiles", () => {
 });
 
 describe("capability bindings", () => {
-  it("normalizes the explicit catalog shape without legacy role inference", () => {
+  it("normalizes the explicit catalog shape without inferring model roles", () => {
     expect(normalizeModelAssignments({ bindings: { "content_safety.input": "safety" } })).toEqual({
       ...emptyModelAssignments(),
       bindings: { ...emptyModelAssignments().bindings, "content_safety.input": "safety" },

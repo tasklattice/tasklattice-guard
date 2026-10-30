@@ -59,7 +59,7 @@ The current catalog has **26 Policies and 223 Rules**, consolidated from 64 Poli
 and 405 Rule declarations. Policies own detection capabilities: content safety,
 injection, credentials, payment data, government identifiers, passports, contact
 and network data, sensitive/risk terms, fraud, data use, advice, and high-risk
-practices. The 14 consolidated local packages use version `4.0.0`. Native model
+practices. The 14 consolidated local packages use version `1.0.0`. Native model
 Policies and configurable text/code filters keep their independent contracts.
 Child Safety is one Rule inside Local Content Safety, not a separate Policy.
 
@@ -129,10 +129,9 @@ from another required check.
 
 Trigger prerequisites remain ordered, and arbitrary authored Colang flows form
 a conservative barrier. Published artifacts retain their frozen execution order
-only while their execution contract is supported. **Pre-v16 Controller plans
-must be recompiled before use with the current Runner.** Admission requires
-`tasklattice-controller-plan-v16-explicit-views` together with
-`tasklattice-nemo-config-v29-single-contract`, and exactly one valid
+only while their execution contract is supported. Only the V1 execution contract is accepted. Admission requires
+`tasklattice-controller-plan-v1` together with
+`tasklattice-nemo-config-v1`, and exactly one valid
 `evaluation_view` on every Step and Action. A valid signature does not imply a
 supported execution contract.
 
@@ -165,17 +164,7 @@ Validation request/result; original expectations remain inspectable. No override
 is inferred from an observed runtime result. Editing the draft invalidates the
 previous Validation/release gate.
 
-The [Default tests](../tests/control_plane/test_default_guardrail.py) cover the
-local components and replay a frozen migration baseline of 140 cases from
-18 legacy Policies at version `1.95.0`. Those numbers describe the historical
-baseline, not the current Policy count or a current test-run result. Runner-only
-tests consume the signed `default-local-v1` artifact without compiling it; its
-generator explicitly selects local components. It is a historical fixture, not
-the current Default. [Model runtime tests](../tests/control_plane/test_default_model_runtime.py)
-exercise the actual Default through HTTP transport doubles to verify model ordering,
-Policy attribution, missing bindings and provider failures. These contract tests
-are not live model quality evidence. Full model acceptance and public-reference
-comparisons must run against real configured models before claiming improvements.
+The [Default tests](../tests/control_plane/test_default_guardrail.py) execute all 748 current composition cases through the Controller codec and Runner validator. Runner-only tests consume the signed `default-local-v1` artifact generated from current Policy sources. [Model runtime tests](../tests/control_plane/test_default_model_runtime.py) use HTTP transport doubles to verify model ordering, Policy attribution, missing bindings and provider failures. These contract tests are not live model quality evidence; acceptance against real configured models remains separate.
 
 ## Routing and output delivery
 
@@ -200,8 +189,7 @@ Policy binding. Policy test parameters are isolated examples, never binding defa
 Undeclared references are rejected during authoring/compilation. Binding validation
 checks required inputs, types, threshold ranges and strict-mode allowlists before
 generating a concrete immutable execution plan. Parameters used only by disabled
-model Rules do not block other Rules. The `0044_topic_binding_parameters` migration
-removes the retired general-topic Profile without rewriting Guardrails or Default.
+model Rules do not block other Rules. V1 seeds contain only the five current Profiles.
 
 ## Test scope and publication
 

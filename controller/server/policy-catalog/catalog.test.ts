@@ -26,28 +26,13 @@ describe("Policy catalog", () => {
     expect(catalog.list().flatMap(policy => policy.rules).some(rule => removedRules.has(rule.id))).toBe(false);
   });
 
-  it("keeps original PII versions executable without returning retired templates in new selections", () => {
+  it("ships only V1 builtin Policies with no bundled history", () => {
     const catalog = PolicyCatalog.load(assetDirectory);
-    const retired = catalog.retired();
-    expect(retired.map(policy => policy.id).sort()).toEqual([
-      "local-australian-tax-health-identifiers", "local-bank-account-formats",
-      "local-passport-formats", "local-regional-contact-formats", "pattern-matching",
-    ]);
-    expect(catalog.list().some(policy => policy.retired)).toBe(false);
-    const policies = [...catalog.list(), ...retired];
-    for (const policy of retired) {
-      const draft = defaultGuardrailDraft(catalog.list());
-      draft.policyBindings = [{ ...draft.policyBindings[0]!, policyId: policy.id, policyVersion: policy.version,
-        enabledRuleIds: policy.rules.map(rule => rule.id), ruleOrder: [], enabledRails: policy.rails }];
-      expect(buildGuardrailPlan({ guardrailId: "old-draft", guardrailVersion: "test", draft, policies }).policy_bindings)
-        .toMatchObject([{ policy_id: policy.id, policy_version: policy.version }]);
-    }
-    for (const id of ["local-payment-data", "local-contact-data", "local-passports", "local-government-identifiers"]) {
-      const policy = catalog.get(id)!;
-      expect(policy.version).toBe(id === "local-contact-data" ? "4.3.0" : "4.0.0");
-      expect(policy.published_versions?.map(version => version.version)).toContain("2.0.0");
-    }
+    expect(new Set(catalog.list().map(policy => policy.version))).toEqual(new Set(["1.0.0"]));
+    expect(catalog.list().every(policy => !policy.retired && !policy.published_versions?.length)).toBe(true);
+    expect(catalog.get("local-bank-account-formats")).toBeUndefined();
   });
+
   it("loads imported local Policies as unreviewed custom definitions and rejects platform impersonation", () => {
     const directory = mkdtempSync(join(tmpdir(), "guard-imported-"));
     try {

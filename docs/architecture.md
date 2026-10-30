@@ -211,16 +211,13 @@ Grounding claim support and formal proof results retain their domain-specific
 values; inconclusive claims or proofs produce `unknown` unless a violation is
 established. A malformed response produces `error` rather than `unknown`.
 
-This is a breaking detector contract. Upgrade Controller and Runners together
-and recompile/republish existing Guardrail artifacts with compiler v25 or later.
-Stored JSON traces and external consumers using the old detector labels need
-migration; runtime parsing does not accept the old labels as aliases.
+Controller and Runner must use the same V1 detector and artifact contracts. Unsupported artifact contracts fail admission before activation.
 
 ## Effective releases and streaming
 
 ### Native output engine
 
-Compiler v26 enables NeMo 0.24's public `stream_async(generator=...)` for
+The V1 compiler enables NeMo 0.24's public `stream_async(generator=...)` for
 unconditional, non-transforming Content Safety output rules using required,
 fail-closed modules and an incremental delivery mode. It emits direct Action
 rails in Policy order, `parallel: false`, and `stream_first: false`. Actions
@@ -442,12 +439,9 @@ control-plane AI returns editable `allowed_topics` and `restricted_topics` lists
 the user-selected mode is preserved, and applying the proposal is explicit.
 Document analysis extracts both lists from source evidence. Draft editing,
 candidate previews, immutable plans and both NeMo topic execution paths preserve
-the same configuration. New modes always request semantic judgment; merely
-mentioning an allowed phrase cannot skip denied-topic evaluation. Existing
-immutable artifacts marked `topic_mode=allowlist` retain their legacy behavior
-until a new version is published. Semantic classification is probabilistic;
-Policy validation includes mode-aware unmatched-topic and denied-topic cases.
-
+the same configuration. Strict and permissive modes require semantic judgment;
+mentioning an allowed phrase cannot skip denied-topic evaluation. Semantic
+classification is probabilistic, so validation covers unmatched and denied topics.
 
 Intent and document authoring use at least a 60-second model timeout, or the
 configured model timeout when longer, because structured proposals take longer
@@ -503,7 +497,7 @@ Seeds run once through the migration journal; runtime startup never replaces
 operator changes. Add new defaults through a migration, not a request-time seed.
 
 `GET /api/v1/guardrail-profiles` reads enabled records from PostgreSQL on each
-request and expands their pinned Policy references. The legacy
+request and expands their pinned Policy references. The
 `/api/v1/policy-catalog/protection-presets` route remains a database-backed alias.
 Both require authenticated Policies read access. Profile application copies
 bindings and draft settings into the draft; later Profile changes do not rewrite existing Guardrails.

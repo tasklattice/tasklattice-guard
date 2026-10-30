@@ -137,7 +137,7 @@ const router: TrafficRouter = {
 };
 const pendingChange: RouterChangeRequest = {
   id: "change", routerId: "router", kind: "publish", status: "pending", sourceDraftRevision: 2, baseRevision: 1,
-  snapshot: draft, endpointIds: [], context: null, ticket: "CHG-7", reason: "Enable partner v2",
+  snapshot: draft, endpointIds: [], context: null, ticket: "CHG-7", reason: "Enable partner revision",
   submittedBy: "submitter", submittedByName: "Submitter", submittedAt: "2026-10-07T10:00:00.000Z",
   decidedBy: null, decidedByName: null, decidedAt: null, decisionNote: null, emergencyReason: null, emergencyContact: null,
   appliedRevision: null, revertsChangeRequestId: null,
@@ -377,7 +377,7 @@ describe("Router detail workflow", () => {
     navigation.search = { tab: "revisions" };
     mount();
     expect(await screen.findByRole("button", { name: "20261001-080000.000Z" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Enable partner v2" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Enable partner revision" })).toBeNull();
     expect(screen.queryByRole("heading", { name: "Deployment history" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "20261001-080000.000Z" }));
     fireEvent.click(await screen.findByRole("button", { name: "View change request" }));
@@ -399,20 +399,20 @@ describe("Router detail workflow", () => {
     navigation.search = { tab: "change-requests" };
     mount({ ...router, pendingChangeRequest: pendingChange });
     expect(screen.getByRole("tab", { name: "Change Requests 1" })).toBeTruthy();
-    await screen.findByRole("button", { name: "Enable partner v2" });
-    expect(screen.getAllByRole("row")[1]?.textContent).toContain("Enable partner v2");
+    await screen.findByRole("button", { name: "Enable partner revision" });
+    expect(screen.getAllByRole("row")[1]?.textContent).toContain("Enable partner revision");
     fireEvent.click(screen.getByRole("button", { name: "Next page" }));
-    expect(screen.queryByRole("button", { name: "Enable partner v2" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Enable partner revision" })).toBeNull();
     fireEvent.click(screen.getByRole("combobox", { name: "Filter requests by status" }));
     fireEvent.click(await screen.findByRole("option", { name: "Awaiting approval" }));
-    expect(screen.getByRole("button", { name: "Enable partner v2" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Enable partner revision" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Next page" })).toBeNull();
   });
   it("keeps withdrawn requests read-only for their submitter", async () => {
     requestRows.items = [{ ...pendingChange, status: "withdrawn" }];
     navigation.search = { tab: "change-requests" };
     mount();
-    fireEvent.click(await screen.findByRole("button", { name: "Enable partner v2" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Enable partner revision" }));
     await screen.findByText("This request is closed. Its decision and submitted configuration are retained for reference.");
     const sheet = screen.getByRole("dialog", { name: "Change request", exact: true });
     expect(within(sheet).getByText("Withdrawn")).toBeTruthy();
@@ -427,7 +427,7 @@ describe("Router detail workflow", () => {
     expect(screen.queryByRole("button", { name: "Review & submit" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Review change" }));
     const sheet = await screen.findByRole("dialog", { name: "Review pending change" });
-    expect(within(sheet).getByText("Enable partner v2")).toBeTruthy();
+    expect(within(sheet).getByText("Enable partner revision")).toBeTruthy();
     expect(within(sheet).queryByRole("button", { name: "Withdraw request" })).toBeNull();
     fireEvent.change(within(sheet).getByLabelText("Approval note (optional)"), { target: { value: "CAB approved" } });
     fireEvent.click(within(sheet).getByRole("button", { name: "Approve and apply" }));

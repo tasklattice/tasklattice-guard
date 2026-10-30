@@ -702,8 +702,8 @@ it("compiles independently of tests, correlates the Runner boot, and recovers fr
 
 it("rejects old artifacts before load checks and desired-state dispatch without capability negotiation", async () => {
   const artifact = { id: "old-artifact", generation: 10, checksum: "digest", signature: "signature", guardrailId: "guard", guardrailVersion: "20261026-010000.000Z",
-    compilerVersion: "tasklattice-nemo-config-v27-staged-checks", nemoVersion: "test", runtimeProfile: "auto",
-    plan: { compiler_version: "tasklattice-controller-plan-v15" }, configYaml: "", colangContent: "", prompts: [], actionBindings: [], dependencyManifest: [] };
+    compilerVersion: "unsupported-compiler", nemoVersion: "test", runtimeProfile: "auto",
+    plan: { compiler_version: "unsupported-plan" }, configYaml: "", colangContent: "", prompts: [], actionBindings: [], dependencyManifest: [] };
   const service = { ...serviceMock(), desiredStateForPool: vi.fn().mockResolvedValue({ generation: 10, artifacts: [artifact],
     disabledGuardrailIds: [], disabledEndpointIds: [], endpoints: [], guardrailLoggingLevels: {} }),
     trafficRouting: { reportRolloutFailure: vi.fn() } };
@@ -721,7 +721,7 @@ it("rejects old artifacts before load checks and desired-state dispatch without 
 });
 
 it("dispatches compilation, tests, load checks and rollout without view capability negotiation", async () => {
-  const plan = { guardrail_version: "20261026-010000.000Z", compiler_version: "tasklattice-controller-plan-v16-explicit-views",
+  const plan = { guardrail_version: "20261026-010000.000Z", compiler_version: "tasklattice-controller-plan-v1",
     safety_level: "strict", output_delivery: "full_buffered" };
   const artifact = { id: "new-artifact", generation: 10, checksum: "digest", signature: "signature", guardrailId: "guard", guardrailVersion: plan.guardrail_version,
     compilerVersion: NEMO_COMPILER_VERSION, nemoVersion: "test", runtimeProfile: "auto", plan, configYaml: "", colangContent: "", prompts: [], actionBindings: [], dependencyManifest: [] };

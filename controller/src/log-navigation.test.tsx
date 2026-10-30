@@ -151,10 +151,10 @@ describe("URL-driven log inspection", () => {
   it("preserves each checkpoint's own version and protocol within one request", async () => {
     await setup("/logs", [
       { ...event("input"), guardrailVersion: "v1", metadata: { protocol: "litellm" } },
-      { ...event("output"), guardrailVersion: "v2", direction: "outgoing", metadata: { protocol: "litellm-stream" } },
+      { ...event("output"), guardrailVersion: "revision-b", direction: "outgoing", metadata: { protocol: "litellm-stream" } },
     ]);
     expect(await screen.findByRole("cell", { name: /guardrail-1\s*v1/ })).toBeTruthy();
-    expect(screen.getByRole("cell", { name: /guardrail-1\s*v2/ })).toBeTruthy();
+    expect(screen.getByRole("cell", { name: /guardrail-1\s*revision-b/ })).toBeTruthy();
     expect(screen.getByRole("cell", { name: /litellm · request:1/ })).toBeTruthy();
     expect(screen.getByRole("cell", { name: /litellm-stream · request:1/ })).toBeTruthy();
   });

@@ -41,8 +41,8 @@ describe("Published traffic decision graph", () => {
   it("keeps each split attached to its rule even when targets and versions are reused", () => {
     const split = route("split", { targets: [
       { id: "target", guardrailId: "guard", guardrailVersion: "v1", weightBps: 7500 },
-      { id: "canary", guardrailId: "guard", guardrailVersion: "v2", weightBps: 2500 },
-      { id: "zero", guardrailId: "guard", guardrailVersion: "v3", weightBps: 0 },
+      { id: "canary", guardrailId: "guard", guardrailVersion: "revision-b", weightBps: 2500 },
+      { id: "zero", guardrailId: "guard", guardrailVersion: "revision-c", weightBps: 0 },
     ] });
     const graph = buildTrafficFlow({ routes: [split, fallback] }, [endpoint()]);
     expect(graph.edges.filter(e => e.data?.kind === "match").map(e => e.data?.weightBps)).toEqual([7500, 2500]);

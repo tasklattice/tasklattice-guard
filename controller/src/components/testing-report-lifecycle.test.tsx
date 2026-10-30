@@ -15,7 +15,7 @@ vi.mock("@/lib/controller-api", () => ({ deleteTestingReport: vi.fn(), getTestin
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key, i18n: { language: "en", exists: () => false } }) }));
 const run = { id: "report-1", guardrail_id: "guard-1", guardrail_version: "20261010-001500.000Z", status: "passed", subject: "version", metrics: { compliance_rate: 100 } } as ValidationRun;
 const impact: TestingReportDeletionImpact = { runId: run.id, guardrailId: run.guardrail_id, version: run.guardrail_version,
-  deletable: true, running: false, pendingVersion: run.guardrail_version, replacementRunId: null, references: [], blockers: [] };
+  deletable: true, running: false };
 beforeEach(() => { vi.mocked(getTestingReportDeletionImpact).mockResolvedValue(impact); vi.mocked(deleteTestingReport).mockResolvedValue(undefined); });
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 function showDelete() {
@@ -43,30 +43,16 @@ describe("Testing Report display and deletion", () => {
     expect(screen.queryByText(run.guardrail_version)).toBeNull();
     expect(screen.queryByText("guardrails.notRun")).toBeNull();
   });
-  it("reviews the return to Pending before permanently deleting the last Passed report", async () => {
+  it("confirms permanent deletion of a completed report without changing publication", async () => {
     const deleted = showDelete();
-    await screen.findByText("validation.deleteReportPendingTitle");
+    await waitFor(() => expect(screen.getByRole("button", { name: "validation.deleteReport" }).hasAttribute("disabled")).toBe(false));
     expect(deleteTestingReport).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "validation.deleteReport" }));
-    await waitFor(() => expect(deleteTestingReport).toHaveBeenCalledWith(run.id, run.guardrail_version));
+    await waitFor(() => expect(deleteTestingReport).toHaveBeenCalledWith(run.id));
     await waitFor(() => expect(deleted).toHaveBeenCalledOnce());
   });
-  it("explains retained release evidence and sends no pending transition", async () => {
-    vi.mocked(getTestingReportDeletionImpact).mockResolvedValue({ ...impact, pendingVersion: null, replacementRunId: "report-2" });
-    showDelete();
-    await screen.findByText("validation.deleteReportRetainsRelease");
-    fireEvent.click(screen.getByRole("button", { name: "validation.deleteReport" }));
-    await waitFor(() => expect(deleteTestingReport).toHaveBeenCalledWith(run.id, null));
-  });
-  it("blocks removal of the last Passed report when the version is referenced", async () => {
-    vi.mocked(getTestingReportDeletionImpact).mockResolvedValue({ ...impact, deletable: false, references: [{ kind: "router_active", routerId: "router-1", routerName: "Bank traffic" }] });
-    showDelete();
-    await screen.findByText("Bank traffic");
-    expect(screen.getByRole("button", { name: "validation.deleteReport" }).hasAttribute("disabled")).toBe(true);
-    expect(deleteTestingReport).not.toHaveBeenCalled();
-  });
   it("keeps running reports until their test has finished", async () => {
-    vi.mocked(getTestingReportDeletionImpact).mockResolvedValue({ ...impact, running: true, deletable: false, pendingVersion: null });
+    vi.mocked(getTestingReportDeletionImpact).mockResolvedValue({ ...impact, running: true, deletable: false });
     showDelete();
     await screen.findByText("validation.deleteReportRunning");
     expect(screen.getByRole("button", { name: "validation.deleteReport" }).hasAttribute("disabled")).toBe(true);

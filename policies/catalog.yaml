@@ -1,4 +1,4 @@
-schema_version: 2
+schema_version: 1
 collections:
 - asset: builtin_policies.json
   policies: []
@@ -7,34 +7,6 @@ collections:
   - builtin/block-code-execution
   - builtin/competitor-mention-detection
   - builtin/keyword-blocking
-- asset: legacy_topic_policies.json
-  policies:
-  - builtin/builtin-topic-safety/history/1.0.0
-  - history/local-payment-data/2.0.0
-  - history/local-bank-account-formats/2.0.0
-  - history/local-australian-tax-health-identifiers/2.0.0
-  - history/local-government-identifiers/2.0.0
-  - history/local-passport-formats/2.0.0
-  - history/local-passports/2.0.0
-  - history/local-regional-contact-formats/2.0.0
-  - history/local-contact-data/2.0.0
-  - history/local-contact-data/4.0.0
-  - history/pattern-matching/1.95.0
-  - history/local-content-safety/4.0.0
-  - history/local-sensitive-attribute-terms/4.0.0
-  - history/local-credentials/4.0.0
-  - history/local-credentials/4.1.0
-  - history/local-contact-data/4.1.0
-  - history/local-contact-data/4.2.0
-  - history/local-contact-data/4.2.1
-  - history/local-data-use-boundaries/4.0.0
-  - history/builtin-content-safety/1.0.0
-  - history/builtin-topic-safety/2.0.0
-  - history/builtin-jailbreak/1.0.0
-  - history/builtin-content-safety/1.1.0
-  - history/builtin-jailbreak/1.1.0
-  - history/builtin-jailbreak-strict/1.0.0
-  - history/builtin-topic-safety/2.1.0
 - asset: model_capability_policies.json
   policies:
   - builtin/builtin-jailbreak

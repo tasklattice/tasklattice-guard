@@ -162,11 +162,6 @@ is_real_secret() {
   [[ -n "${value}" && "${value}" != replace-* && "${value}" != "<"* && "${#value}" -ge 32 ]]
 }
 
-is_real_api_key() {
-  local value="${1:-}"
-  [[ -n "${value}" && "${value}" != replace-* && "${value}" != replace-me* && "${value}" != "<"* ]]
-}
-
 ensure_signing_keys() {
   local private_key="${KEY_DIR}/guard-private.pem"
   local public_key="${KEY_DIR}/guard-public.pem"
@@ -184,11 +179,6 @@ normalize_local_env() {
   local runner_token
   local metrics_token
   local auth_secret
-  local control_plane_api_key
-  local deepseek_api_key
-  local nvidia_api_key
-  local automated_reasoning_endpoint
-  local automated_reasoning_api_key
 
   ensure_env_file
 
@@ -211,12 +201,6 @@ normalize_local_env() {
   if ! is_real_secret "${auth_secret}"; then
     auth_secret="$(random_secret)"
     write_env_value "BETTER_AUTH_SECRET" "${auth_secret}"
-  fi
-
-  control_plane_api_key="$(read_env_value MODEL_GUARDRAILS_CONTROL_PLANE_AI_API_KEY || true)"
-  deepseek_api_key="$(read_env_value DEEPSEEK_API_KEY || true)"
-  if ! is_real_api_key "${control_plane_api_key}" && is_real_api_key "${deepseek_api_key}"; then
-    write_env_value "MODEL_GUARDRAILS_CONTROL_PLANE_AI_API_KEY" "${deepseek_api_key}"
   fi
 
   write_env_value "NODE_ENV" "development"
@@ -246,27 +230,7 @@ normalize_local_env() {
   write_env_value "GUARD_CONTROLLER_TELEMETRY_ENDPOINT" "http://localhost:${CONTROLLER_HTTP_PORT}/api/internal/v1/runtime-events"
   write_env_value "GUARD_RUNNER_STATE_PATH" "${RUNNER_STATE_DIR}"
 
-  nvidia_api_key="$(read_env_value NVAPI_API_KEY || true)"
-  if ! is_real_api_key "${nvidia_api_key}"; then
-    nvidia_api_key="$(read_env_value MODEL_GUARDRAILS_NVIDIA_API_KEY || true)"
-  else
-    write_env_value "MODEL_GUARDRAILS_NVIDIA_API_KEY_ENV_VAR" "NVAPI_API_KEY"
-  fi
-  if ! is_real_api_key "${nvidia_api_key}"; then
-    log "No NVIDIA API key found; disabling optional runner evaluators so the runner can boot locally"
-    write_env_value "MODEL_GUARDRAILS_NVIDIA_BASE_URL" ""
-    write_env_value "MODEL_GUARDRAILS_CONTENT_SAFETY_MODEL" ""
-    write_env_value "MODEL_GUARDRAILS_TOPIC_CONTROL_MODEL" ""
-    write_env_value "MODEL_GUARDRAILS_JAILBREAK_MODEL" ""
-    write_env_value "MODEL_GUARDRAILS_GROUNDING_MODEL" ""
-  fi
 
-  automated_reasoning_endpoint="$(read_env_value MODEL_GUARDRAILS_AUTOMATED_REASONING_ENDPOINT_URL || true)"
-  automated_reasoning_api_key="$(read_env_value MODEL_GUARDRAILS_AUTOMATED_REASONING_API_KEY || true)"
-  if [[ -n "${automated_reasoning_endpoint}" ]] && ! is_real_api_key "${automated_reasoning_api_key}"; then
-    warn "Automated reasoning endpoint is configured without an API key; disabling it for local recovery"
-    write_env_value "MODEL_GUARDRAILS_AUTOMATED_REASONING_ENDPOINT_URL" ""
-  fi
 }
 
 port_pids() {

@@ -4,7 +4,7 @@ from __future__ import annotations
 from .contracts import EvaluationRequest
 from .jev import JEV_PROFILE, JevNoulEvaluator
 
-QUESTION_REVISION = "jailbreak-input.v3"
+QUESTION_REVISION = "jailbreak-input.v1"
 EXTERNAL_QUESTION_REVISION = "external-instruction-input.v1"
 EXTERNAL_SOURCES = frozenset({"retrieved_content", "tool_output"})
 

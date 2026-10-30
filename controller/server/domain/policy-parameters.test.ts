@@ -96,8 +96,6 @@ describe("scoped classifier uncertainty handling", () => {
     expect(stepValues(build(policy.version))).toEqual(expect.arrayContaining([expect.objectContaining({on_unknown: "block"})]));
     expect(stepValues(build(policy.version, "allow")).every(p => p.on_unknown === "allow")).toBe(true);
     expect(() => build(policy.version, "ignore")).toThrow("on_unknown must be allow or block");
-    const previous = id === "builtin-topic-safety" ? "2.0.0" : "1.0.0";
-    expect(stepValues(build(previous, "allow")).every(p => p.on_unknown === undefined)).toBe(true);
   });
   function classifier(id = "builtin-jailbreak") {
     const definition = compiler.shipped(id)!;

@@ -1,4 +1,4 @@
-schema_version: 2
+schema_version: 1
 kind: Policy
 metadata:
   id: local-content-safety
@@ -6,7 +6,7 @@ metadata:
   description: Local harmful-content, child-safety, bias and multilingual abuse checks. Individual Rules retain
     their own matching conditions and exceptions.
   source: built_in
-  version: 4.1.0
+  version: 1.0.0
   tags:
   - namespace: protection
     value: content_safety
@@ -50,6 +50,6 @@ rules:
 - rules/uae-anti-discrimination-filter--uae_anti_discrimination.yaml
 tests:
 - tests/acceptance.yaml
-- tests/regression-4.1.0.yaml
+- tests/word-boundaries.yaml
 documents:
-- docs/changes-4.1.0.md
+- docs/word-boundaries.md

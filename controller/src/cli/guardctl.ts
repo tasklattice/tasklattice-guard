@@ -659,7 +659,7 @@ async function handleCommand(line: string) {
     console.log('  show <resource> ...          Read a resource; run "show" for list');
     console.log('  d | detail                   Repeat the last show with all rows');
     console.log('  export <guardrail-id> --versions=a,b [--out=<file>]');
-    console.log('                               Download a signed .guardrail.zip of those versions');
+    console.log('                               Download a V1 .guardrail.zip of those versions');
     console.log('  import <file> [--versions=a,b] [--restore-deleted] [--confirm]');
     console.log('                               Verify and preview a package; --confirm imports it');
     console.log('  exit | quit                  Close the CLI');

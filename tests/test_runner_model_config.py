@@ -1,20 +1,9 @@
 from __future__ import annotations
 
-import json
 
 import pytest
 
 from runner.config import RunnerSettings
-from runner.providers import runtime_action_providers
-from runner.toolkit.nemo.actions.names import ACTION_EVALUATE
-from runner.toolkit.evaluation.contracts import (
-    CONTRACT_CONTENT_SAFETY,
-    CONTRACT_JAILBREAK,
-    CONTRACT_PII_EXACT,
-    CONTRACT_PII_SEMANTIC,
-)
-
-
 def test_laya_settings_are_independent_and_reject_invalid_operating_points(monkeypatch):
     _required_runner_env(monkeypatch)
     monkeypatch.setenv("GUARD_JEV_LOWER_THRESHOLD", "0.1")
@@ -63,85 +52,6 @@ def test_context_capacity_fallback_and_ttl_are_explicit(monkeypatch):
     assert RunnerSettings.from_env().call_context_capacity_fallback is True
     monkeypatch.setenv("GUARD_RUNNER_CALL_CONTEXT_TTL_SECONDS", "0")
     with pytest.raises(ValueError): RunnerSettings.from_env()
-
-
-def test_runner_loads_qwen_primary_and_llama_fallback(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _required_runner_env(monkeypatch)
-    monkeypatch.setenv("QWEN_GUARD_KEY", "test-key")
-    monkeypatch.setenv("MODEL_GUARDRAILS_MODEL_RUNTIMES_JSON", json.dumps([
-        {
-            "id": "llama-runtime",
-            "base_url": "http://llama-guard.internal/v1/",
-            "model": "meta-llama/Llama-Guard-3-8B",
-            "timeout_seconds": 10, "max_tokens": 64,
-        },
-        {
-            "id": "qwen-runtime",
-            "base_url": "http://qwen-guard.internal/v1/",
-            "model": "Qwen/Qwen3Guard-Gen-8B",
-            "api_key_env_var": "QWEN_GUARD_KEY",
-            "timeout_seconds": 15, "max_tokens": 128,
-        },
-    ]))
-    monkeypatch.setenv("MODEL_GUARDRAILS_EVALUATOR_BINDINGS_JSON", json.dumps([
-        {"id": "qwen-pii", "contract_ref": CONTRACT_PII_SEMANTIC, "profile_ref": "tali.qwen3guard.v1", "model_ref": "qwen-runtime", "priority": 10},
-        {"id": "qwen-content", "contract_ref": CONTRACT_CONTENT_SAFETY, "profile_ref": "tali.qwen3guard.v1", "model_ref": "qwen-runtime", "priority": 10},
-        {"id": "qwen-jailbreak", "contract_ref": CONTRACT_JAILBREAK, "profile_ref": "tali.qwen3guard.v1", "model_ref": "qwen-runtime", "priority": 10},
-        {"id": "llama-content", "contract_ref": CONTRACT_CONTENT_SAFETY, "profile_ref": "tali.llama-guard-3.v1", "model_ref": "llama-runtime", "priority": 20},
-    ]))
-
-    settings = RunnerSettings.from_env()
-    assert [item.id for item in settings.model_runtimes] == [
-        "llama-runtime", "qwen-runtime",
-    ]
-    llama, qwen = settings.model_runtimes
-    assert qwen.base_url == "http://qwen-guard.internal/v1"
-    assert qwen.timeout_seconds == 15
-    assert qwen.max_tokens == 128
-    assert llama.base_url == "http://llama-guard.internal/v1"
-    assert llama.timeout_seconds == 10
-    assert llama.max_tokens == 64
-    assert {item.model_ref for item in settings.evaluator_bindings} == {
-        "qwen-runtime", "llama-runtime",
-    }
-    providers = runtime_action_providers(settings)
-    provider_names = {provider.name for provider in providers}
-    assert ACTION_EVALUATE in provider_names
-    evaluation = next(provider for provider in providers if provider.name == ACTION_EVALUATE)
-    assert evaluation.route_keys == (
-        ("pii", CONTRACT_PII_EXACT),
-        ("pii", CONTRACT_PII_SEMANTIC),
-        ("content_safety", CONTRACT_CONTENT_SAFETY),
-        ("jailbreak", CONTRACT_JAILBREAK),
-    )
-    assert evaluation.route_evaluators == (
-        ("pii", CONTRACT_PII_EXACT, "local-pii"),
-        ("pii", CONTRACT_PII_SEMANTIC, "model-safety"),
-        ("content_safety", CONTRACT_CONTENT_SAFETY, "model-safety"),
-        ("jailbreak", CONTRACT_JAILBREAK, "model-safety"),
-    )
-
-
-
-def test_runner_ignores_invalid_legacy_provider_configuration(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _required_runner_env(monkeypatch)
-    monkeypatch.setenv("MODEL_GUARDRAILS_MODEL_RUNTIMES_JSON", "not-json")
-    settings = RunnerSettings.from_env()
-    assert settings.model_runtimes == ()
-    assert settings.evaluator_bindings == ()
-
-    monkeypatch.setenv("MODEL_GUARDRAILS_MODEL_RUNTIMES_JSON", json.dumps([{
-        "id": "guard-runtime",
-        "base_url": "http://guard.internal/v1", "model": "Qwen/Qwen3Guard-Gen-8B",
-        "api_key_env_var": "MISSING_GUARD_KEY",
-    }]))
-    settings = RunnerSettings.from_env()
-    assert settings.model_runtimes == ()
-    assert settings.evaluator_bindings == ()
 
 
 def test_runner_validates_the_optional_metrics_token(monkeypatch: pytest.MonkeyPatch) -> None:

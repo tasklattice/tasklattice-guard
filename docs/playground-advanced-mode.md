@@ -53,7 +53,7 @@ Endpoint tests use the entered API Key (also accepting X-Api-Key from HTTP), nev
 - `PathTestResult`: result summary, rule table, detection information, and raw response.
 - `PathTestHistory`: history browsing and restoration.
 
-This directly replaces the old Advanced mode without a legacy-interaction compatibility branch. It reuses existing Tabs, Input, Select, and Sheet components without adding a large API client or editor dependency.
+Advanced mode uses the current interaction flow. It reuses existing Tabs, Input, Select, and Sheet components without adding a large API client or editor dependency.
 
 ## Verification Record (2026-09-13)
 

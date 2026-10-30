@@ -37,7 +37,7 @@ headers. Route `/runtime/v1/endpoints` to Runtime on that same origin.
 Service calls without an HTTP request fall back to the origin of `CONTROLLER_PUBLIC_URL`.
 The endpoint contains no Runner Pod identity.
 The Controller's internal calls (including Playground) always use Service DNS,
-independently of the advertised URL. Legacy `controller.publicUrl` still configures
+independently of the advertised URL. `controller.publicUrl` configures
 UI/auth when the shared `publicUrl` is empty.
 
 LiteLLM stores that Endpoint base URL and appends its Basic Guardrail API
@@ -203,7 +203,7 @@ runner:
   publicUrl: https://runtime.company.com
 ```
 
-Legacy UI-only/multi-URL configurations remain supported when top-level
+UI-only/multi-URL configurations use the Controller URL settings when top-level
 `publicUrl` is empty. `controller.publicUrl` accepts a non-empty string array or
 a single string; the first entry is Better Auth's canonical base URL. All entries
 derive trusted origins (scheme, host, port) and distinct Ingress hosts. Without
@@ -626,7 +626,7 @@ validate/reuse infrastructure credentials.
 The CA signing routine can issue replacement certificates using the persisted CA
 without changing the trust root. The initialization Job retains valid infrastructure credentials. There is no background renewal controller: expired/incompatible
 bundles fail clearly and require coordinated certificate renewal and workload
-restart. A valid legacy bundle lacking a CA private key is preserved; its lost CA
+restart. A valid certificate bundle without a CA private key is preserved; its lost CA
 private key cannot be recovered, so renewal needs an explicit CA migration.
 
 All generated Secrets use the installation **Namespace** as their `ownerReference`,
@@ -635,9 +635,9 @@ Job, Deployment, Controller ConfigMap, or Helm release does not remove these
 credentials. Reinstalling with the same release name/namespace reuses infrastructure Secrets
 and resets managed accounts.
 Only explicit Secret deletion or deletion of the Namespace removes them.
-Secrets previously owned by this release's Controller ConfigMap are migrated to
-Namespace ownership without changing key data. External Secrets are not adopted.
-The Controller ConfigMap is once again an ordinary Helm-managed configuration
+Secrets owned by other resources are rejected without modifying key data.
+External Secrets are not adopted.
+The Controller ConfigMap is an ordinary Helm-managed configuration
 resource; changing it triggers a Controller rollout through its checksum.
 
 The initialization ServiceAccount can get/patch the named internal Secrets and
@@ -672,11 +672,10 @@ New installations do not need `bootstrap.enabled` or `controlTls.autoGenerate` o
 
 All chart-owned Secrets are created by the initialization Job; no Secret resource
 or generated data is rendered by Helm. Managed names use an `-init` suffix (with
-a hash for long names). On upgrade the Job copies a release-owned legacy Secret
-into its new name before Helm removes the old resource. Existing key data and
-database logins are preserved; account logins are reinitialized. Do not change the release name, namespace, database
-identity or field-name overrides during this migration. External Secrets are
-referenced as supplied and are not copied or modified.
+a hash for long names). The Job creates missing managed Secrets and validates
+existing ones. Infrastructure key data and database logins are retained; managed
+account logins are reset. External Secrets are referenced as supplied and are not
+copied or modified.
 
 The bundled PostgreSQL uses its managed Secret as the source of truth for the
 configured database account. Before serving, an init container synchronizes that
@@ -691,10 +690,10 @@ both automatically when the bundled database is enabled. Repeating initializatio
 alone reuses an existing Secret. External databases are never modified.
 
 Back up persistent data and all Secrets together. Other lost signing or encryption
-keys cannot be recovered by synchronizing the database account. Old GitOps
-installations must run the bootstrap hook before pruning their legacy Secrets.
+keys cannot be recovered by synchronizing the database account. GitOps
+installations must run the bootstrap hook before starting workloads.
 
-Remove legacy inline credential fields from environment files when upgrading.
+Supply credentials through the referenced Secrets.
 Use current complete Values with `--reset-values` rather than retaining removed
 fields through `--reuse-values`. Removed chart options are ignored and no longer
 configure the application. Rebuild and publish the Controller image before using

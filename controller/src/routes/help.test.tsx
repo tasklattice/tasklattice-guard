@@ -122,16 +122,9 @@ describe("document page navigation", () => {
     expect(router.state.location.href).toBe(`${policyPath}#term-rule-implementation`);
   });
 
-  it.each([
-    ["/document", startPath],
-    ["/document#quickstart-protection", startPath],
-    ["/document#concept-scenario", startPath],
-    ["/document#term-rule-actions", `${policyPath}#term-rule-actions`],
-    ["/help", startPath],
-    ["/help/#term-rule-actions", `${policyPath}#term-rule-actions`],
-  ])("redirects %s to its article address", async (from, to) => {
-    const { router } = await mount(from);
-    await waitFor(() => expect(router.state.location.href).toBe(to));
+  it("opens the documentation index at the current quickstart article", async () => {
+    const { router } = await mount("/document");
+    await waitFor(() => expect(router.state.location.href).toBe(startPath));
     await screen.findByRole("heading", { level: 1 });
   });
 
@@ -196,7 +189,7 @@ describe("document page navigation", () => {
     expect(document.querySelector("article")?.id).toBe("quickstart-protection");
   });
 
-  it.each(["/document/overview/missing", "/document/missing/quickstart-protection", "/document#missing"])("shows a missing document for %s", async path => {
+  it.each(["/document/overview/missing", "/document/missing/quickstart-protection"])("shows a missing document for %s", async path => {
     await mount(path);
     await screen.findByRole("heading", { name: "Document not found" });
     expect(document.querySelector("article")).toBeNull();

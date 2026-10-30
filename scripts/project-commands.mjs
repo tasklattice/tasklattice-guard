@@ -1,6 +1,6 @@
 import { gitBuildInfo } from "./git-build-info.mjs";
 import { spawn } from 'node:child_process';
-import { mkdirSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -77,19 +77,6 @@ async function deployGuard(debug, extra) {
     '--wait', '--timeout', env.HELM_TIMEOUT ?? '5m', ...extra]);
 }
 // Optional regression against two explicitly configured, isolated deployments.
-// Deployment lifecycle belongs to the single development profile above.
-async function testPromotion(extra) {
-  for (const key of ['GUARD_PROMOTION_UAT_URL', 'GUARD_PROMOTION_UAT_RUNNER_URL',
-    'GUARD_PROMOTION_PROD_URL', 'GUARD_PROMOTION_PROD_RUNNER_URL',
-    'GUARD_PROMOTION_UAT_DB', 'GUARD_PROMOTION_PROD_DB',
-    'GUARD_PROMOTION_UAT_USERNAME', 'GUARD_PROMOTION_PROD_USERNAME',
-    'GUARD_PROMOTION_PASSWORD', 'GUARD_PROMOTION_RUNNER_TOKEN']) {
-    if (!env[key]) throw new Error(`Set ${key} for two isolated test deployments; test:promotion does not deploy or port-forward clusters.`);
-  }
-  env.GUARD_PROMOTION_WORKDIR ??= `${root}.local-secrets/promotion`;
-  mkdirSync(`${env.GUARD_PROMOTION_WORKDIR}/packages`, { recursive: true });
-  await run(process.execPath, ['--import', 'tsx', '../scripts/regress_guardrail_promotion.mjs', ...extra], false, `${root}controller`);
-}
 async function deployLitellm(extra) {
   const image = litellmImage();
   // Development uses preloaded images; deploying never pulls from a registry.
@@ -141,7 +128,6 @@ try {
       await run('kubectl', ['--context', context, '--namespace', namespace, 'get', 'pods,deploy,statefulset,service', '--selector', 'app.kubernetes.io/part-of=tasklattice-guard']); break;
     case 'helm-test': await run('helm', ['test', release, '--kube-context', context, '--namespace', namespace, '--logs', ...args]); break;
     case 'helm-delete': await run('helm', ['uninstall', release, '--kube-context', context, '--namespace', namespace, ...args]); break;
-    case 'promotion-test': await testPromotion(args); break;
     case 'test-contracts':
       await run(process.execPath, ['--test', 'scripts/project-commands.test.mjs']);
       await run('.venv/bin/python', ['scripts/generate_control_protocol.py', '--check']);

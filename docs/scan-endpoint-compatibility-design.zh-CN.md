@@ -90,7 +90,7 @@ Scan 与 LiteLLM 共用 `/runtime/v1/endpoints/{endpoint_id}` 基础路径。`CA
   "scanDirection": "request",
   "flagOnly": false,
   "verbose": true,
-  "project": "legacy-f5-project",
+  "project": "example-f5-project",
   "externalMetadata": {
     "dataset": "pii-regression",
     "case_id": "case-001"

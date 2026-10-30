@@ -1,9 +1,0 @@
-{
-  "description": "Default after explicit local policy false-positive repairs. The pre-repair audit oracle remains default-local-contract.json; policy versions 4.0.0 are archived unchanged. New benign cases still honor separately configured vocabulary redaction.",
-  "previous": "default-local-contract.json",
-  "policies": 12,
-  "rules": 122,
-  "cases": 678,
-  "draftSha256": "626918d0c2765a25d345ccb2fec042cb9adbc4e0acd1f82e6e3f25fadb002c33",
-  "casesSha256": "7edcf232c6d8628ab68c383ed53d62b2085f82c2f54bbc4eeb524b71ba5328c5"
-}

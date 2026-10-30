@@ -1,0 +1,12 @@
+[
+  {
+    "policy": "local-credentials",
+    "version": "1.0.0",
+    "rules": [
+      "credentials-api-keys/generic_api_key",
+      "advanced-au-pii-protection/credentials-api-keys/generic_api_key"
+    ],
+    "sha256": "571d96c9aec6f1cc1075ab4aba0018c1c47710475f549f9f421ae245ed90defc",
+    "reason": "The repaired generic API-key expressions converge. Preserve both existing Rule IDs for pinned bindings; no second Policy owns the detector."
+  }
+]

@@ -4,7 +4,7 @@
     "name": "Indirect prompt injection",
     "description": "Checks complete untrusted retrieved documents and tool results for explicit instruction and task overrides, forged roles and prompt extraction. Encoded inspection is bounded and reports unknown on overflow. Local patterns, not a semantic classifier.",
     "source": "built_in",
-    "version": "1.0.1",
+    "version": "1.0.0",
     "tags": [
       {
         "namespace": "protection",
@@ -171,7 +171,7 @@
     "name": "Memory instruction poisoning",
     "description": "Checks retrieved memory and proposed writes for explicit future-assistant instructions. With memory source-query evidence, checks whether a forced answer reached the actual candidate. Does not verify factual truth or manage memory storage.",
     "source": "built_in",
-    "version": "1.0.1",
+    "version": "1.0.0",
     "tags": [
       {
         "namespace": "protection",
@@ -351,7 +351,7 @@
     "name": "Local Content Safety",
     "description": "Local harmful-content, child-safety, bias and multilingual abuse checks. Individual Rules retain their own matching conditions and exceptions.",
     "source": "built_in",
-    "version": "4.1.0",
+    "version": "1.0.0",
     "tags": [
       {
         "namespace": "protection",
@@ -6924,7 +6924,7 @@
     "name": "Local Injection Protection",
     "description": "Instruction manipulation, prompt extraction, SQL, code and rendered-content injection patterns in English and Chinese.",
     "source": "built_in",
-    "version": "4.0.0",
+    "version": "1.0.0",
     "tags": [
       {
         "namespace": "protection",
@@ -10899,7 +10899,7 @@
     "name": "Passwords & API credentials",
     "description": "Reject recognizable credential literals on input and output using local format and assignment rules. Includes private keys, passwords, API/auth tokens and connection credentials; no model is required.",
     "source": "built_in",
-    "version": "4.2.0",
+    "version": "1.0.0",
     "tags": [
       {
         "namespace": "protection",
@@ -19354,7 +19354,7 @@
       {
         "id": "credentials-api-keys/slack_token",
         "name": "Slack Token",
-        "description": "Detect legacy Slack tokens and rotating xoxe refresh-token formats.",
+        "description": "Detect xox-prefixed Slack tokens and rotating xoxe refresh-token formats.",
         "detector": {
           "ref": "text/regex",
           "version": "1.0.0"
@@ -19610,7 +19610,7 @@
       {
         "id": "pattern/slack_token",
         "name": "Slack Token",
-        "description": "Detect legacy Slack tokens and rotating xoxe refresh-token formats.",
+        "description": "Detect xox-prefixed Slack tokens and rotating xoxe refresh-token formats.",
         "detector": {
           "ref": "text/regex",
           "version": "1.0.0"
@@ -19953,7 +19953,7 @@
     "name": "Payment & bank identifiers",
     "description": "Redact reviewed payment-card, IBAN, Singapore and Canadian bank-account formats. Format matching does not validate account ownership or payment authorization.",
     "source": "built_in",
-    "version": "4.0.0",
+    "version": "1.0.0",
     "tags": [
       {
         "namespace": "protection",
@@ -21385,7 +21385,7 @@
     "name": "Government, tax & health identifiers",
     "description": "Redact reviewed government, tax, health and institutional identifier formats, including spaced Australian tax and Medicare numbers. Broad numeric formats can overlap; this is format screening, not identity verification.",
     "source": "built_in",
-    "version": "4.0.0",
+    "version": "1.0.0",
     "tags": [
       {
         "namespace": "protection",
@@ -24669,7 +24669,7 @@
     "name": "Passport identifiers",
     "description": "Redact reviewed international passport formats and context-labelled passport identifiers. Format matching does not establish document validity or issuing jurisdiction.",
     "source": "built_in",
-    "version": "4.0.0",
+    "version": "1.0.0",
     "tags": [
       {
         "namespace": "protection",
@@ -26460,7 +26460,7 @@
     "name": "Contact information",
     "description": "Redact reviewed contact formats and opt-in person contexts. Structured fields, honorifics, identifier-list context and truncated address records preserve source syntax. This is bounded local format screening, not worldwide entity recognition; generic dates and times remain outside this profile.",
     "source": "built_in",
-    "version": "4.3.0",
+    "version": "1.0.0",
     "tags": [
       {
         "namespace": "protection",
@@ -28885,7 +28885,7 @@
     "name": "Network addresses & URLs",
     "description": "Redact IPv4, IPv6 and URL formats, including public addresses. This is a disclosure filter, not an SSRF defense or a network access policy.",
     "source": "built_in",
-    "version": "4.0.0",
+    "version": "1.0.0",
     "tags": [
       {
         "namespace": "protection",
@@ -29340,7 +29340,7 @@
     "name": "Sensitive attribute terms",
     "description": "Redact configured demographic and protected-attribute words, including benign mentions. This optional vocabulary filter does not detect discrimination, infer a person's attributes or determine legality.",
     "source": "built_in",
-    "version": "4.1.0",
+    "version": "1.0.0",
     "tags": [
       {
         "namespace": "protection",
@@ -30636,7 +30636,7 @@
     "name": "Risk-related content terms",
     "description": "Redact configured weapon, violence, self-harm and abuse terms. Benign reporting can also match; this vocabulary filter is not a semantic safety classifier.",
     "source": "built_in",
-    "version": "4.0.0",
+    "version": "1.0.0",
     "tags": [
       {
         "namespace": "protection",
@@ -31464,7 +31464,7 @@
     "name": "Fraud & Account Abuse",
     "description": "Local identity-check evasion, credential solicitation, phishing, financial misrepresentation, market manipulation and claims-fraud patterns.",
     "source": "built_in",
-    "version": "4.0.0",
+    "version": "1.0.0",
     "tags": [
       {
         "namespace": "protection",
@@ -32862,7 +32862,7 @@
     "name": "Personal Data Use Boundaries",
     "description": "Local patterns for unauthorized disclosure, sensitive-data profiling, unsolicited contact and data-transfer requests.",
     "source": "built_in",
-    "version": "4.0.1",
+    "version": "1.0.0",
     "tags": [
       {
         "namespace": "protection",
@@ -34138,7 +34138,7 @@
     "name": "Professional Advice Restrictions",
     "description": "Local financial, medical and legal advice boundaries. Select the Rules appropriate to the application.",
     "source": "built_in",
-    "version": "4.0.0",
+    "version": "1.0.0",
     "tags": [
       {
         "namespace": "protection",
@@ -35032,7 +35032,7 @@
     "name": "High-risk Practice Restrictions",
     "description": "Local patterns for manipulation, exploitation, social scoring, biometric and other prohibited-practice requests. Profiles select the relevant scope.",
     "source": "built_in",
-    "version": "4.0.0",
+    "version": "1.0.0",
     "tags": [
       {
         "namespace": "protection",

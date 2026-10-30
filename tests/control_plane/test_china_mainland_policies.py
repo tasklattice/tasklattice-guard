@@ -25,7 +25,7 @@ def _decision(result) -> str:
 def test_china_rules_belong_to_shared_capabilities() -> None:
     assert {p.id for p in CHINA_POLICIES} == {"local-government-identifiers", "local-contact-data", "local-payment-data", "local-injection-protection", "local-fraud-prevention"}
     for policy in CHINA_POLICIES:
-        assert policy.version == ("4.3.0" if policy.id == "local-contact-data" else "4.0.0")
+        assert policy.version == "1.0.0"
         assert all(rule.implementation.execution == "local" for rule in policy.rules)
 
 

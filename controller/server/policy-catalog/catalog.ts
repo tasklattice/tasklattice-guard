@@ -145,7 +145,6 @@ export type PolicyDto = {
 export const POLICY_CATALOG_FILE_NAMES = [
   "builtin_policies.json",
   "local_content_filters.json",
-  "legacy_topic_policies.json",
   "model_capability_policies.json",
   "focused_policies.json",
   "china_policies.json",
@@ -179,12 +178,10 @@ const OWASP_LLM_2025_POLICY_IDS = new Set([
 export class PolicyCatalog {
   private constructor(
     private readonly policiesById: ReadonlyMap<string, PolicyDto>,
-    private readonly retiredById: ReadonlyMap<string, PolicyDto>,
   ) {}
 
   static load(directory: string): PolicyCatalog {
     const merged = new Map<string, PolicyDto>();
-    const historical = new Map<string, PolicyDto[]>();
     const contractPath = join(directory, "protection-contracts.json");
     let contracts: ProtectionContracts;
     try {
@@ -198,26 +195,11 @@ export class PolicyCatalog {
         if (fileName === "custom_policies.json" && (policy.source !== "custom" || merged.has(policy.id) || contracts.nativePolicies[policy.id] || policy.compliance != null || policy.rules.some(rule => rule.implementation.execution !== "local"))) {
           throw new Error(`Invalid imported Policy origin or identity: ${policy.id}`);
         }
-        // The focused local-filter collection intentionally replaces a legacy
-        // definition when it reuses a public Policy ID.
-        const normalized = normalizePolicy(policy, contracts, fileName);
-        if (fileName === "legacy_topic_policies.json") {
-          historical.set(policy.id, [...historical.get(policy.id) ?? [], normalized]);
-        } else {
-          merged.set(policy.id, normalized);
-        }
+        if (merged.has(policy.id)) throw new Error(`Duplicate bundled Policy ID: ${policy.id}`);
+        merged.set(policy.id, normalizePolicy(policy, contracts, fileName));
       }
     }
-    const retired = new Map<string, PolicyDto>();
-    for (const [id, versions] of historical) {
-      const current = merged.get(id);
-      if (current) current.published_versions = versions.filter(version => version.version !== current.version);
-      else {
-        const [head, ...rest] = [...versions].sort((left, right) => right.version.localeCompare(left.version, undefined, { numeric: true }));
-        retired.set(id, { ...head!, retired: true, published_versions: rest });
-      }
-    }
-    return new PolicyCatalog(merged, retired);
+    return new PolicyCatalog(merged);
   }
 
   list(): PolicyDto[] {
@@ -225,12 +207,9 @@ export class PolicyCatalog {
   }
 
   get(policyId: string): PolicyDto | undefined {
-    return this.policiesById.get(policyId) ?? this.retiredById.get(policyId);
+    return this.policiesById.get(policyId);
   }
 
-  retired(): PolicyDto[] {
-    return [...this.retiredById.values()];
-  }
 }
 
 function readPolicyAssets(path: string): PolicyAsset[] {

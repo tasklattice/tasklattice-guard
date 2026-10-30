@@ -49,8 +49,8 @@ STREAM_SAFETY_FIXTURES = {
 STREAM_SAFETY_FIXTURES['content-safety-inout-v1'] = 'window_buffered'
 PRESET_FIXTURES = {
     f"preset-{name}-v1": name for name in (
-        "common-baseline", "banking-assistant", "securities-assistant",
-        "internet-customer-support", "singapore-financial-assistant",
+        "banking-assistant", "securities-assistant",
+        "internet-customer-support",
     )
 }
 FIXTURE_NAMES = (FIXTURE_NAME, ORDERED_FIXTURE_NAME, DEFAULT_FIXTURE_NAME, JAILBREAK_FIXTURE_NAME, TOPIC_FIXTURE_NAME, PHRASE_FIXTURE_NAME, CUSTOM_SYMBOL_FIXTURE_NAME, CUSTOM_FLOW_EVENT_FIXTURE_NAME, CUSTOM_DYNAMIC_FLOW_FIXTURE_NAME, CUSTOM_PARAMETER_FIXTURE_NAME, *PRESET_FIXTURES, *STREAM_SAFETY_FIXTURES)
@@ -131,7 +131,7 @@ def _ordered_plan() -> dict[str, object]:
         "parameters": [
             ["evaluation_view", "previous_output"],
             ["precedence", "0"],
-            ["policy_id", "fixture-redactions"], ["policy_version", "1.95.0"],
+            ["policy_id", "fixture-redactions"], ["policy_version", "1.0.0"],
             ["policy_ids", "fixture-redactions"],
             ["policy_versions_json", json.dumps({definition.id: definition.version})],
             ["policy_definitions_json", json.dumps({definition.id: asdict(definition)}, ensure_ascii=False)],
@@ -169,22 +169,18 @@ def _topic_plan() -> dict[str, object]:
     plan = _jailbreak_plan()
     plan['steps'][0].update(id='topic:semantic:input', capability='topic_control',
         contract_ref='tali.guard.topic-control.semantic.v1',
-        parameters=[['evaluation_view', 'original'], ['precedence', '0'], ['topic_mode', 'allowlist'], ['allowed_topics', 'Product support']])
+        parameters=[['evaluation_view', 'original'], ['precedence', '0'], ['topic_mode', 'strict'], ['allowed_topics', 'Product support']])
     plan['modules'][0].update(step_ids=['topic:semantic:input'])
     return plan
 
 
 def _default_plan() -> dict[str, object]:
-    # Historical default-local-v1 fixture: deliberately keep only local components.
-    # The production Default is also local; this fixture retains its historical identity.
-    # Control-plane generation only. Runner-only tests never import the builder.
+    # Compile current local Policies once; Runner tests use only signed bytes.
     source = """
       import {defaultGuardrailDraft} from './server/domain/defaults.ts';
       import {buildGuardrailPlan} from './server/domain/guardrail-plan.ts';
       import {PolicyCatalog} from './server/policy-catalog/catalog.ts';
-      const policies = PolicyCatalog.load('../runner/toolkit/policy_library/assets').list().map(policy =>
-        ['local-content-safety', 'local-sensitive-attribute-terms', 'local-credentials'].includes(policy.id)
-          ? policy.published_versions.find(version => version.version === '4.0.0') : policy);
+      const policies = PolicyCatalog.load('../runner/toolkit/policy_library/assets').list();
       const fullDraft = defaultGuardrailDraft(policies);
       const draft = {...fullDraft, policyBindings: fullDraft.policyBindings.filter(binding =>
         policies.find(policy => policy.id === binding.policyId).protection.execution === 'local')};

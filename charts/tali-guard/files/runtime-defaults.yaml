@@ -1,7 +1,7 @@
 # Automatically loaded by templates. Advanced values override these defaults.
 rolloutRevision: ''
 controller:
-  # Fallback for legacy Controller-only deployments when publicUrl is empty.
+  # Controller UI/auth URL settings when publicUrl is empty.
   publicUrl:
     - https://guard.example.com
   auth:

@@ -8,20 +8,17 @@ import { databasePoolState, logDatabaseFailure } from "./db/diagnostics.js";
 import { drainController } from "./shutdown.js";
 import { runMigrations } from "./db/migrate.js";
 import { createHttpApp } from "./http/app.js";
-import { OpenAICompatibleIntentAnalyzer } from "./control-plane-ai/intent-analyzer.js";
 import { RunnerControlServer } from "./control-channel/control-server.js";
 import { ControlPlaneService } from "./services/control-plane.js";
 import { ControllerMetrics } from "./metrics.js";
 import { BootstrapAccountSynchronizer } from "./bootstrap.js";
-import { OpenAICompatiblePlaygroundModel, RunnerPlaygroundClient } from "./playground/service.js";
+import { RunnerPlaygroundClient } from "./playground/service.js";
 import { ModelConfigurationService } from "./model-config/service.js";
 
 const config = loadConfig();
 const { db, pool } = createDatabase(config);
 await runMigrations(config, db);
 const service = new ControlPlaneService(db, config);
-const resealed = await service.resealArtifacts();
-if (resealed) process.stdout.write(`Re-sealed ${resealed} Artifact(s) under the current content digest contract.\n`);
 await service.initialize();
 await service.pricing.start();
 const models = new ModelConfigurationService(db, config.betterAuthSecret, config.policyCatalogDir);
@@ -47,12 +44,6 @@ const metrics = new ControllerMetrics();
 const runnerControl = new RunnerControlServer(config, service, metrics, models);
 await runnerControl.start();
 
-const intentAnalyzer = config.controlPlaneAi
-  ? new OpenAICompatibleIntentAnalyzer(config.controlPlaneAi)
-  : null;
-const playgroundModel = config.playgroundChat
-  ? new OpenAICompatiblePlaygroundModel(config.playgroundChat)
-  : null;
 const playgroundRunner = new RunnerPlaygroundClient({
   baseUrl: config.runtimeServiceUrl,
   token: config.runnerToken,
@@ -67,8 +58,6 @@ const app = createHttpApp({
   runnerControl,
   metrics,
   models,
-  intentAnalyzer,
-  playgroundModel,
   playgroundRunner,
 });
 service.startReportMaintenance();

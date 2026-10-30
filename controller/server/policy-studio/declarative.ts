@@ -1,5 +1,5 @@
 import { modelParameterDeclarationIssues } from "../../shared/policy-parameters.js";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { policyDefinitionSchema, type PolicyDefinition } from "../../shared/policy-definition.js";
 import { policyAssetSchema, type PolicyDto } from "../policy-catalog/catalog.js";
@@ -19,9 +19,7 @@ export class DeclarativeCompiler {
   shipped(id: string, version?: string): PolicyDefinition | null {
     const definitions = JSON.parse(readFileSync(join(this.directory, "policy-definitions.generated.json"), "utf8"));
     if (!version || definitions[id]?.metadata.version === version) return definitions[id] ? policyDefinitionSchema.parse(definitions[id]) : null;
-    const history = join(this.directory,"policy-history-definitions.generated.json");
-    const definition = existsSync(history) ? JSON.parse(readFileSync(history,"utf8"))[`${id}@${version}`] : undefined;
-    return definition ? policyDefinitionSchema.parse(definition) : null;
+    return null;
   }
   catalogView(policy: PolicyDto): PolicyDto {
     // Frozen release nodes omit derived Library metadata, including protection.
@@ -69,7 +67,7 @@ export class DeclarativeCompiler {
         implementation: { ...adapter, binding_id: definition.metadata.id, implementation_rule_id: rule.id },
         ...values, ...(params.profile ? { detector_options: { profile: params.profile } } : {}), redaction: rule.on_match.replacement ?? null, rule_expansion: rule.expand ?? null, taxonomy_ids: rule.metadata.taxonomy_ids };
     });
-    // Legacy executable catalog fields are confined to this adapter. The authoring contract has no origin or engine identity.
+    // Previous executable catalog fields are confined to this adapter. The authoring contract has no origin or engine identity.
     const asset = policyAssetSchema.parse({ ...definition.metadata, source: "custom", rules, parameters: definition.parameters, test_cases: definition.tests });
     const rails = [...new Set(asset.rules.flatMap(r => r.rails))];
     const protection = policyProtection({ ...asset, id: "", rails }, this.contracts);

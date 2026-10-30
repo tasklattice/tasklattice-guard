@@ -4,7 +4,7 @@
     "name": "Model Jailbreak Protection",
     "description": "Detects attempts to override trusted instructions using the validated Jailbreak Input Rail binding.",
     "source": "built_in",
-    "version": "1.2.0",
+    "version": "1.0.0",
     "tags": [
       {
         "namespace": "protection",
@@ -78,8 +78,8 @@
         },
         "detector_options": {
           "profile": "jailbreak-classification",
-          "review_unknown": "{{review_unknown}}",
-          "on_unknown": "{{on_unknown}}"
+          "on_unknown": "{{on_unknown}}",
+          "review_unknown": "{{review_unknown}}"
         },
         "taxonomy_ids": [
           "TALI-MODEL-SECURITY-JAILBREAK"
@@ -92,7 +92,7 @@
     "name": "Strict Jailbreak Protection",
     "description": "Blocks explicit Jailbreak matches. A versioned per-Guardrail parameter decides whether valid unknown results are observed or blocked; model errors remain fail-closed.",
     "source": "built_in",
-    "version": "1.1.0",
+    "version": "1.0.0",
     "tags": [
       {
         "namespace": "protection",
@@ -186,8 +186,8 @@
         },
         "detector_options": {
           "profile": "jailbreak-classification",
-          "review_unknown": "{{review_unknown}}",
-          "on_unknown": "{{on_unknown}}"
+          "on_unknown": "{{on_unknown}}",
+          "review_unknown": "{{review_unknown}}"
         },
         "taxonomy_ids": [
           "TALI-MODEL-SECURITY-JAILBREAK"
@@ -200,7 +200,7 @@
     "name": "Model Content Safety",
     "description": "Classifies unsafe user input and model output with the validated Content Safety capability binding.",
     "source": "built_in",
-    "version": "1.2.0",
+    "version": "1.0.0",
     "tags": [
       {
         "namespace": "protection",
@@ -287,8 +287,8 @@
         },
         "detector_options": {
           "profile": "safety-classification",
-          "review_unknown": "{{review_unknown}}",
-          "on_unknown": "{{on_unknown}}"
+          "on_unknown": "{{on_unknown}}",
+          "review_unknown": "{{review_unknown}}"
         },
         "taxonomy_ids": [
           "TALI-PHYSICAL-HARM"
@@ -301,7 +301,7 @@
     "name": "Automated Reasoning",
     "description": "Validates model output against a pinned formal reasoning policy.",
     "source": "built_in",
-    "version": "1.1.0",
+    "version": "1.0.0",
     "tags": [
       {
         "namespace": "protection",
@@ -385,7 +385,7 @@
     "name": "Contextual Grounding",
     "description": "Checks model output against supplied context before it is released.",
     "source": "built_in",
-    "version": "1.1.0",
+    "version": "1.0.0",
     "tags": [
       {
         "namespace": "protection",
@@ -473,7 +473,7 @@
     "name": "PII Protection",
     "description": "Redacts exact personal identifiers locally, then reviews every request and response for remaining personal information with the independently assigned semantic PII model.",
     "source": "built_in",
-    "version": "1.1.0",
+    "version": "1.0.0",
     "tags": [
       {
         "namespace": "protection",
@@ -613,7 +613,7 @@
     "name": "Model Topic Control",
     "description": "Configure independent allowlist and denylist Rules. Denied tasks take precedence; Intention analysis helps fill these Policy settings.",
     "source": "built_in",
-    "version": "2.2.0",
+    "version": "1.0.0",
     "tags": [
       {
         "namespace": "protection",
@@ -723,8 +723,8 @@
         },
         "detector_options": {
           "profile": "topic-classification",
-          "review_unknown": "{{review_unknown}}",
-          "on_unknown": "{{on_unknown}}"
+          "on_unknown": "{{on_unknown}}",
+          "review_unknown": "{{review_unknown}}"
         },
         "taxonomy_ids": [
           "TALI-BUSINESS-POLICY-OFF-TOPIC"
@@ -754,8 +754,8 @@
         },
         "detector_options": {
           "profile": "topic-classification",
-          "review_unknown": "{{review_unknown}}",
-          "on_unknown": "{{on_unknown}}"
+          "on_unknown": "{{on_unknown}}",
+          "review_unknown": "{{review_unknown}}"
         },
         "taxonomy_ids": [
           "TALI-BUSINESS-POLICY-OFF-TOPIC"

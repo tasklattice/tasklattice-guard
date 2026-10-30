@@ -215,7 +215,7 @@ async def test_frozen_default_artifact_forwards_complete_redactions_and_blocks_w
             assert blocked["action"] == "BLOCKED"
             credential = await evaluate("xoxp-0000000000-0000000000-aaaaaaaaaaaaaaaaaaaaaaaa")
             # The ordinary focused credential Policy rejects both directions;
-            # unlike the legacy input-only binding, it cannot leak on Output.
+            # the binding covers Output as well as Input.
             assert credential["action"] == "BLOCKED"
         assert registry.readiness()["ready"] is True
         assert telemetry.events

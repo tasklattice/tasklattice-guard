@@ -12,7 +12,7 @@ from runner.toolkit.runtime.contracts import ProtectionRequest, RequestContext
 PLAN = {
     "guardrail_id": "guardrail-draft",
     "guardrail_version": "20260904-040000.004Z",
-    "compiler_version": "tasklattice-controller-plan-v3",
+    "compiler_version": "tasklattice-controller-plan-v1",
     "safety_level": "balanced",
     "output_delivery": "full_buffered",
     "steps": [{

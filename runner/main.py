@@ -24,7 +24,8 @@ from .diagnostics import EventLoopWatchdog, diagnostic_phase
 from .http_metrics import instrument_http_metrics
 from .metrics import RunnerMetrics
 from .observability import configure_observability
-from .providers import runtime_action_providers
+from .providers import dynamic_runtime_action_providers
+from .generated import DataPlaneModelConfiguration
 from .telemetry import RuntimeTelemetryExporter
 from .runtime_log_capture import RuntimeLogCapture
 
@@ -33,7 +34,7 @@ def create_app(settings: RunnerSettings | None = None) -> FastAPI:
     configured = settings or RunnerSettings.from_env()
     observability = configure_observability(configured)
     store = ArtifactStore(configured.artifact_public_key_path, configured.artifact_state_path)
-    providers = action_providers(*runtime_action_providers(configured))
+    providers = action_providers(*dynamic_runtime_action_providers(DataPlaneModelConfiguration(), {}))
     metrics = RunnerMetrics(configured.max_concurrency)
     registry = NeMoRuntimeRegistry(
         store,

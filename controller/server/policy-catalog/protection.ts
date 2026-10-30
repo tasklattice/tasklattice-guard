@@ -22,7 +22,7 @@ type PolicySurface = {
   tags: ReadonlyArray<{ namespace: string; value: string }>;
 };
 
-/** Read declared business ownership; legacy categories are not business folders. */
+/** Read declared business ownership; implementation categories are not business folders. */
 export function policyProtection(policy: PolicySurface, contracts: ProtectionContracts): PolicyProtection {
   const declared = policy.tags.filter((tag) => tag.namespace === "protection").map((tag) => tag.value);
   if (declared.length !== 1 || !protectionDirectoryIds.includes(declared[0] as ProtectionDirectoryId)) {
@@ -33,14 +33,13 @@ export function policyProtection(policy: PolicySurface, contracts: ProtectionCon
     throw new Error(`Policy ${policy.id} declares a Rail outside its runtime contract.`);
   }
   const unknownFlow = policy.rules.some((rule) => rule.implementation.execution !== "local") && !native;
-  const splitTopic = policy.id === "builtin-topic-safety" && policy.rules.some(rule => rule.id === "topic/allowlist");
-  const execution = splitTopic ? "model" : native?.execution ?? (unknownFlow ? "custom" : "local");
+  const execution = native?.execution ?? (unknownFlow ? "custom" : "local");
   const model = Boolean(native?.modelCapabilities.length);
   return {
     directory: declared[0] as ProtectionDirectoryId,
     execution,
     modelCapabilities: [...(native?.modelCapabilities ?? [])],
-    requiredContext: splitTopic ? [] : [...(native?.requiredContext ?? [])],
+    requiredContext: [...(native?.requiredContext ?? [])],
     outputStreaming: !policy.rails.includes("output") ? "not_applicable"
       : native?.outputStreaming ?? "complete_response",
     limitations: [

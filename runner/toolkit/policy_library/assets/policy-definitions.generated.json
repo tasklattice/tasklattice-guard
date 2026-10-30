@@ -6,7 +6,7 @@
       "id": "block-code-execution",
       "name": "Block Code Execution",
       "description": "Detects executable fenced code and explicit execution requests while allowing explanation and review intent.",
-      "version": "1.95.0",
+      "version": "1.0.0",
       "tags": [
         {
           "namespace": "protection",
@@ -299,7 +299,7 @@
       "id": "competitor-mention-detection",
       "name": "Competitor Name Blocking",
       "description": "Detects reviewed competitor entities, aliases, obfuscation, recommendations, comparisons, and category-ranking intent while allowing destination and service questions.",
-      "version": "1.95.0",
+      "version": "1.0.0",
       "tags": [
         {
           "namespace": "protection",
@@ -1041,7 +1041,7 @@
       "id": "keyword-blocking",
       "name": "Keyword Blocking",
       "description": "Blocks or masks a reviewed, line-separated list of words and phrases without an external model call.",
-      "version": "1.95.0",
+      "version": "1.0.0",
       "tags": [
         {
           "namespace": "protection",
@@ -1188,7 +1188,7 @@
       "id": "builtin-jailbreak",
       "name": "Model Jailbreak Protection",
       "description": "Detects attempts to override trusted instructions using the validated Jailbreak Input Rail binding.",
-      "version": "1.2.0",
+      "version": "1.0.0",
       "tags": [
         {
           "namespace": "protection",
@@ -1289,7 +1289,7 @@
       "id": "builtin-jailbreak-strict",
       "name": "Strict Jailbreak Protection",
       "description": "Blocks explicit Jailbreak matches. A versioned per-Guardrail parameter decides whether valid unknown results are observed or blocked; model errors remain fail-closed.",
-      "version": "1.1.0",
+      "version": "1.0.0",
       "tags": [
         {
           "namespace": "protection",
@@ -1408,7 +1408,7 @@
       "id": "builtin-content-safety",
       "name": "Model Content Safety",
       "description": "Classifies unsafe user input and model output with the validated Content Safety capability binding.",
-      "version": "1.2.0",
+      "version": "1.0.0",
       "tags": [
         {
           "namespace": "protection",
@@ -1528,7 +1528,7 @@
       "id": "builtin-automated-reasoning",
       "name": "Automated Reasoning",
       "description": "Validates model output against a pinned formal reasoning policy.",
-      "version": "1.1.0",
+      "version": "1.0.0",
       "tags": [
         {
           "namespace": "protection",
@@ -1638,7 +1638,7 @@
       "id": "builtin-contextual-grounding",
       "name": "Contextual Grounding",
       "description": "Checks model output against supplied context before it is released.",
-      "version": "1.1.0",
+      "version": "1.0.0",
       "tags": [
         {
           "namespace": "protection",
@@ -1752,7 +1752,7 @@
       "id": "builtin-pii",
       "name": "PII Protection",
       "description": "Redacts exact personal identifiers locally, then reviews every request and response for remaining personal information with the independently assigned semantic PII model.",
-      "version": "1.1.0",
+      "version": "1.0.0",
       "tags": [
         {
           "namespace": "protection",
@@ -1941,7 +1941,7 @@
       "id": "builtin-topic-safety",
       "name": "Model Topic Control",
       "description": "Configure independent allowlist and denylist Rules. Denied tasks take precedence; Intention analysis helps fill these Policy settings.",
-      "version": "2.2.0",
+      "version": "1.0.0",
       "tags": [
         {
           "namespace": "protection",
@@ -2127,7 +2127,7 @@
       "id": "builtin-indirect-prompt-injection",
       "name": "Indirect prompt injection",
       "description": "Checks complete untrusted retrieved documents and tool results for explicit instruction and task overrides, forged roles and prompt extraction. Encoded inspection is bounded and reports unknown on overflow. Local patterns, not a semantic classifier.",
-      "version": "1.0.1",
+      "version": "1.0.0",
       "tags": [
         {
           "namespace": "protection",
@@ -2362,7 +2362,7 @@
       "id": "builtin-memory-poisoning",
       "name": "Memory instruction poisoning",
       "description": "Checks retrieved memory and proposed writes for explicit future-assistant instructions. With memory source-query evidence, checks whether a forced answer reached the actual candidate. Does not verify factual truth or manage memory storage.",
-      "version": "1.0.1",
+      "version": "1.0.0",
       "tags": [
         {
           "namespace": "protection",
@@ -2622,7 +2622,7 @@
       "id": "local-content-safety",
       "name": "Local Content Safety",
       "description": "Local harmful-content, child-safety, bias and multilingual abuse checks. Individual Rules retain their own matching conditions and exceptions.",
-      "version": "4.1.0",
+      "version": "1.0.0",
       "tags": [
         {
           "namespace": "protection",
@@ -9604,7 +9604,7 @@
       "id": "local-injection-protection",
       "name": "Local Injection Protection",
       "description": "Instruction manipulation, prompt extraction, SQL, code and rendered-content injection patterns in English and Chinese.",
-      "version": "4.0.0",
+      "version": "1.0.0",
       "tags": [
         {
           "namespace": "protection",
@@ -13913,7 +13913,7 @@
       "id": "local-credentials",
       "name": "Passwords & API credentials",
       "description": "Reject recognizable credential literals on input and output using local format and assignment rules. Includes private keys, passwords, API/auth tokens and connection credentials; no model is required.",
-      "version": "4.2.0",
+      "version": "1.0.0",
       "tags": [
         {
           "namespace": "protection",
@@ -14023,7 +14023,7 @@
       {
         "id": "credentials-api-keys/slack_token",
         "name": "Slack Token",
-        "description": "Detect legacy Slack tokens and rotating xoxe refresh-token formats.",
+        "description": "Detect xox-prefixed Slack tokens and rotating xoxe refresh-token formats.",
         "stages": [
           "input",
           "output"
@@ -14265,7 +14265,7 @@
       {
         "id": "pattern/slack_token",
         "name": "Slack Token",
-        "description": "Detect legacy Slack tokens and rotating xoxe refresh-token formats.",
+        "description": "Detect xox-prefixed Slack tokens and rotating xoxe refresh-token formats.",
         "stages": [
           "input",
           "output"
@@ -24001,7 +24001,7 @@
       "id": "local-payment-data",
       "name": "Payment & bank identifiers",
       "description": "Redact reviewed payment-card, IBAN, Singapore and Canadian bank-account formats. Format matching does not validate account ownership or payment authorization.",
-      "version": "4.0.0",
+      "version": "1.0.0",
       "tags": [
         {
           "namespace": "protection",
@@ -25604,7 +25604,7 @@
       "id": "local-government-identifiers",
       "name": "Government, tax & health identifiers",
       "description": "Redact reviewed government, tax, health and institutional identifier formats, including spaced Australian tax and Medicare numbers. Broad numeric formats can overlap; this is format screening, not identity verification.",
-      "version": "4.0.0",
+      "version": "1.0.0",
       "tags": [
         {
           "namespace": "protection",
@@ -29237,7 +29237,7 @@
       "id": "local-passports",
       "name": "Passport identifiers",
       "description": "Redact reviewed international passport formats and context-labelled passport identifiers. Format matching does not establish document validity or issuing jurisdiction.",
-      "version": "4.0.0",
+      "version": "1.0.0",
       "tags": [
         {
           "namespace": "protection",
@@ -31238,7 +31238,7 @@
       "id": "local-contact-data",
       "name": "Contact information",
       "description": "Redact reviewed contact formats and opt-in person contexts. Structured fields, honorifics, identifier-list context and truncated address records preserve source syntax. This is bounded local format screening, not worldwide entity recognition; generic dates and times remain outside this profile.",
-      "version": "4.3.0",
+      "version": "1.0.0",
       "tags": [
         {
           "namespace": "protection",
@@ -33937,7 +33937,7 @@
       "id": "local-network-addresses",
       "name": "Network addresses & URLs",
       "description": "Redact IPv4, IPv6 and URL formats, including public addresses. This is a disclosure filter, not an SSRF defense or a network access policy.",
-      "version": "4.0.0",
+      "version": "1.0.0",
       "tags": [
         {
           "namespace": "protection",
@@ -34444,7 +34444,7 @@
       "id": "local-sensitive-attribute-terms",
       "name": "Sensitive attribute terms",
       "description": "Redact configured demographic and protected-attribute words, including benign mentions. This optional vocabulary filter does not detect discrimination, infer a person's attributes or determine legality.",
-      "version": "4.1.0",
+      "version": "1.0.0",
       "tags": [
         {
           "namespace": "protection",
@@ -35898,7 +35898,7 @@
       "id": "local-risk-content-terms",
       "name": "Risk-related content terms",
       "description": "Redact configured weapon, violence, self-harm and abuse terms. Benign reporting can also match; this vocabulary filter is not a semantic safety classifier.",
-      "version": "4.0.0",
+      "version": "1.0.0",
       "tags": [
         {
           "namespace": "protection",
@@ -36826,7 +36826,7 @@
       "id": "local-fraud-prevention",
       "name": "Fraud & Account Abuse",
       "description": "Local identity-check evasion, credential solicitation, phishing, financial misrepresentation, market manipulation and claims-fraud patterns.",
-      "version": "4.0.0",
+      "version": "1.0.0",
       "tags": [
         {
           "namespace": "protection",
@@ -38367,7 +38367,7 @@
       "id": "local-data-use-boundaries",
       "name": "Personal Data Use Boundaries",
       "description": "Local patterns for unauthorized disclosure, sensitive-data profiling, unsolicited contact and data-transfer requests.",
-      "version": "4.0.1",
+      "version": "1.0.0",
       "tags": [
         {
           "namespace": "protection",
@@ -39735,7 +39735,7 @@
       "id": "local-professional-advice",
       "name": "Professional Advice Restrictions",
       "description": "Local financial, medical and legal advice boundaries. Select the Rules appropriate to the application.",
-      "version": "4.0.0",
+      "version": "1.0.0",
       "tags": [
         {
           "namespace": "protection",
@@ -40654,7 +40654,7 @@
       "id": "local-prohibited-practices",
       "name": "High-risk Practice Restrictions",
       "description": "Local patterns for manipulation, exploitation, social scoring, biometric and other prohibited-practice requests. Profiles select the relevant scope.",
-      "version": "4.0.0",
+      "version": "1.0.0",
       "tags": [
         {
           "namespace": "protection",

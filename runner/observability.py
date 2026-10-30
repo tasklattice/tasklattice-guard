@@ -65,8 +65,7 @@ def configure_observability(settings: RunnerSettings) -> RunnerObservability:
     """Configure optional OpenTelemetry and Pyroscope endpoints.
 
     OTLP endpoint parsing and signal-path handling are delegated to the official
-    exporter. ``GUARD_OTEL_EXPORTER_OTLP_ENDPOINT`` remains a compatibility
-    input, while new deployments use the standard OpenTelemetry environment.
+    exporter using the standard OpenTelemetry environment.
     """
 
     runtime = RunnerObservability()

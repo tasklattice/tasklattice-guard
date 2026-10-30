@@ -34,8 +34,8 @@ def source_path(relative: str) -> Path:
 
 def collections() -> list[dict]:
     manifest = parse_yaml((SOURCE / "catalog.yaml").read_text())
-    if manifest.get("schema_version") != 2:
-        raise ValueError("Catalog requires directory packages (schema_version: 2)")
+    if manifest.get("schema_version") != 1:
+        raise ValueError("Catalog requires directory packages (schema_version: 1)")
     items = manifest["collections"]
     assets = [item["asset"] for item in items]
     if len(assets) != len(set(assets)) or assets[-1:] != ["custom_policies.json"]:
@@ -56,7 +56,7 @@ def package_paths() -> list[tuple[str, Path]]:
     declared = {path.resolve() for _, path in result}
     if len(declared) != len(result):
         raise ValueError("Duplicate Policy package path")
-    discovered = {path.parent.resolve() for directory in ("builtin", "history")
+    discovered = {path.parent.resolve() for directory in ("builtin",)
                   for path in (SOURCE / directory).rglob("policy.yaml")}
     listed_builtin = {path.resolve() for asset, path in result if asset != "custom_policies.json"}
     if discovered != listed_builtin:
@@ -70,7 +70,6 @@ def build() -> dict[Path, str]:
     identities = set()
     current_ids = set()
     definitions = {}
-    historical_definitions = {}
     for asset, path in package_paths():
         package = load_package(path)
         definition = package.definition
@@ -83,11 +82,9 @@ def build() -> dict[Path, str]:
         if identity in identities:
             raise ValueError(f"Duplicate Policy identity {identity}")
         identities.add(identity)
-        historical = asset == "legacy_topic_policies.json"
-        if not historical:
-            if path.name != definition.metadata.id or definition.metadata.id in current_ids:
-                raise ValueError("Each current Policy must have one directory named after its ID")
-            current_ids.add(definition.metadata.id)
+        if path.name != definition.metadata.id or definition.metadata.id in current_ids:
+            raise ValueError("Each Policy must have one directory named after its ID")
+        current_ids.add(definition.metadata.id)
         compiled[asset].append(compile_policy(definition, detectors))
         authoring = definition.model_dump()
         authoring["metadata"].pop("source", None)
@@ -99,22 +96,17 @@ def build() -> dict[Path, str]:
             authoring["testing"] = {"parameters": package.manifest.testing.parameters}
         for rule in authoring["rules"]:
             rule.pop("runtime_adapter", None)
-            # Migrate the former Topic Control ID convention into explicit
-            # detector parameters. Saved/exported definitions then stand alone.
+            # Export each Topic Rule with its explicit detector parameters.
             if definition.metadata.id == "builtin-topic-safety":
                 params = rule["detector"]["parameters"]
                 if rule["id"] == "topic/denylist":
                     params.update(topic_mode="permissive", restricted_topics="{{denied_topics}}", allowed_topics="")
                 elif rule["id"] == "topic/allowlist":
                     params.update(topic_mode="{{topic_mode}}", allowed_topics="{{allowed_topics}}", restricted_topics="")
-        if historical:
-            historical_definitions[f"{definition.metadata.id}@{definition.metadata.version}"] = authoring
-        else:
-            definitions[definition.metadata.id] = authoring
+        definitions[definition.metadata.id] = authoring
     output = {ASSETS / name: json.dumps(items, ensure_ascii=False, indent=2) + "\n" for name, items in compiled.items()}
     output[ASSETS / "detectors.generated.json"] = json.dumps(detectors, ensure_ascii=False, indent=2) + "\n"
     output[ASSETS / "policy-definitions.generated.json"] = json.dumps(definitions, ensure_ascii=False, indent=2) + "\n"
-    output[ASSETS / "policy-history-definitions.generated.json"] = json.dumps(historical_definitions, ensure_ascii=False, indent=2) + "\n"
     schemas = {"policy": PolicyManifest.model_json_schema(), "rule": RuleDefinition.model_json_schema(), "tests": TypeAdapter(list[TestDefinition]).json_schema()}
     # The package loader resolves declared resources before validating cases.
     for field in ("content", "expected_text"):
@@ -229,7 +221,7 @@ def main() -> None:
         return
     if args.command == "test" and args.all:
         from runner.toolkit.policy_library.regression import run_packages
-        packages = [load_package(path) for asset, path in package_paths() if asset != "legacy_topic_policies.json"]
+        packages = [load_package(path) for _, path in package_paths()]
         report = asyncio.run(run_packages(packages, registry(), ASSETS))
     else:
         if args.package is None:

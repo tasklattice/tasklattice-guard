@@ -208,7 +208,7 @@ def parse_yaml(raw: str) -> Any:
 
 def compile_policy(definition: PolicyDefinition, registry: dict[str, Any]) -> dict[str, Any]:
     """Resolve registered adapters into the existing executable Rule contract."""
-    if registry.get("schema_version") != 2:
+    if registry.get("schema_version") != 1:
         raise ValueError("Unknown detector registry schema")
     bundled = definition.metadata.source == "built_in"
     if not bundled:

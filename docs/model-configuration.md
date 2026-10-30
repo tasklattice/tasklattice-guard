@@ -156,7 +156,7 @@ substantive task falls outside the union of allowed topics. Split allowlist and
 denylist rules keep independent questions and their existing ordering. Context
 resolves follow-ups; labels and annotation metadata are never sent as model input.
 
-`JevJailbreakEvaluator` uses the versioned question set `jailbreak-input.v3`.
+`JevJailbreakEvaluator` uses the versioned question set `jailbreak-input.v1`.
 It checks explicit instruction overrides and indirect attempts to bypass safety
 boundaries through fiction, roleplay, research or authority pretexts, translation,
 and obfuscation. The judge considers the actual requested output and whether the
@@ -204,7 +204,7 @@ The optional `execution` object reports the final runtime status (`complete`,
 can produce an HTTP 200 block with `execution.status: error`; Testing clients
 must treat this as an execution failure rather than a safety detection. A failed
 provider attempt that recovered through fallback does not itself mark the whole
-execution failed. Legacy responses without this object do not establish status.
+execution failed. Previous responses without this object do not establish status.
 
 For online observation, use the Guardrail's existing **Monitor** mode: it records
 Jev findings and `detection_decision` while forwarding the original input, including

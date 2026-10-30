@@ -18,7 +18,6 @@ import { PolicyLibraryPage } from "@/routes/policy-library";
 import { AccountPage } from "@/routes/account";
 import { HelpPage, DocumentNotFound } from "@/routes/help";
 import { getHelpContent } from "@/features/help-content";
-import { documentPath, resolveLegacyDocument } from "@/features/help-navigation";
 import { AuditLogPage } from "@/routes/audit-log";
 import { VersionPage } from "@/routes/version";
 import { HealthPage } from "@/routes/status";
@@ -108,12 +107,7 @@ const documentRoute = createRoute({ getParentRoute: () => rootRoute, path: "/doc
 const documentIndexRoute = createRoute({
   getParentRoute: () => documentRoute,
   path: "/",
-  beforeLoad: ({ location }) => {
-    // Article and section IDs are shared by both translations.
-    const target = resolveLegacyDocument(getHelpContent("en"), location.hash);
-    if (!target) throw notFound();
-    throw redirect({ to: documentPath(target.document), hash: target.anchor, replace: true });
-  },
+  beforeLoad: () => { throw redirect({ to: "/document/$categoryId/$articleId", params: { categoryId: "overview", articleId: "quickstart-protection" }, replace: true }); },
 });
 const documentArticleRoute = createRoute({
   getParentRoute: () => documentRoute,
@@ -123,11 +117,6 @@ const documentArticleRoute = createRoute({
   },
   component: HelpPage,
 });
-function LegacyHelpRedirect() {
-  const hash = useRouterState({ select: state => state.location.hash });
-  return <Navigate to="/document" hash={hash} replace />;
-}
-const helpRoute = createRoute({ getParentRoute: () => rootRoute, path: "/help", component: LegacyHelpRedirect });
 export const routeTree = rootRoute.addChildren([
   indexRoute,
   dashboardRoute,
@@ -151,7 +140,6 @@ export const routeTree = rootRoute.addChildren([
   modelsRoute,
   guardrailCatalogRoute,
   documentRoute.addChildren([documentIndexRoute, documentArticleRoute]),
-  helpRoute,
 ]);
 export const router = createRouter({ routeTree, history: createBrowserHistory() });
 declare module "@tanstack/react-router" { interface Register { router: typeof router } }

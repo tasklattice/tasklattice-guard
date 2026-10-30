@@ -20,13 +20,13 @@ afterEach(cleanup);
 
 describe('Router target versions', () => {
   it('lists pending versions but only lets a released one be pinned', async () => {
-    guardrail.mockResolvedValue({ id: 'bank', versions: [version('v1', 'ready'), version('v2', 'pending')] });
+    guardrail.mockResolvedValue({ id: 'bank', versions: [version('v1', 'ready'), version('revision-b', 'pending')] });
     mount();
     await vi.waitFor(() => expect(guardrail).toHaveBeenCalled());
     await new Promise(resolve => setTimeout(resolve, 0));
     fireEvent.click(await screen.findByRole('combobox', { name: 'Guardrail 1 version' }));
     expect((await screen.findByRole('option', { name: 'v1' })).getAttribute('aria-disabled')).not.toBe('true');
-    expect(screen.getByRole('option', { name: 'v2 · pending: test and release it first' }).getAttribute('aria-disabled')).toBe('true');
+    expect(screen.getByRole('option', { name: 'revision-b · pending: test and release it first' }).getAttribute('aria-disabled')).toBe('true');
   });
 
   it('says how to get a version routable when every version is still pending', async () => {

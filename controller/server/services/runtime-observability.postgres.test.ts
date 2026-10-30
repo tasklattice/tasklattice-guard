@@ -79,7 +79,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('bounded runtime observability (
 
   it('keeps unclassified history and runtime errors separate from the five risk levels', async () => {
     const fixtures = [
-      ['legacy', { verdict:'matched', confidence:1, recommendedAction:'block' }],
+      ['missing-severity', { verdict:'matched', confidence:1, recommendedAction:'block' }],
       ['informational', { verdict:'unknown', riskSeverity:'informational', recommendedAction:'allow' }],
       ['error', { verdict:'error', riskSeverity:'critical', recommendedAction:'block' }],
       ['not_matched', { verdict:'not_matched', riskSeverity:'high', recommendedAction:'allow' }],
@@ -90,7 +90,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('bounded runtime observability (
     try {
       const result = await queryRuntimeMetrics(db as any, {window:'24h',guardrailId:'classification'});
       expect(result.findings_summary).toMatchObject({total:3,critical:0,high:0,medium:0,low:1,informational:1,unclassified:1});
-      for (const [severity,id] of [['unclassified','legacy'],['informational','informational'],['low','low']] as const) {
+      for (const [severity,id] of [['unclassified','missing-severity'],['informational','informational'],['low','low']] as const) {
         const page = await service.queryRuntimeEvents({ guardrailId:'classification', findingsOnly:true, severity });
         expect(page.items.map(row => row.id)).toEqual([id]);
       }

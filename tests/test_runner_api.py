@@ -264,7 +264,7 @@ async def test_controller_can_prepare_and_evaluate_draft_without_runtime_evidenc
     plan = {
         "guardrail_id": "guardrail-draft",
         "guardrail_version": "20260904-040000.004Z",
-        "compiler_version": "controller-plan-v2",
+        "compiler_version": "controller-plan-v1",
         "steps": [],
         "modules": [],
     }

@@ -99,7 +99,7 @@ message RiskFinding {
   repeated ProviderEvidence provider_evidence = 13;
   // Versioned Rule risk; absent evidence remains unclassified, not informational.
   optional string risk_severity = 14;
-  // Immutable Policy version used by the matched Rule; absent for legacy evidence.
+  // Immutable Policy version used by the matched Rule; absent when the finding has no Policy attribution.
   optional string policy_version = 15;
 }
 

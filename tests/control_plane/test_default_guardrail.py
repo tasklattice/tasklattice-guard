@@ -36,7 +36,6 @@ def default_local_baseline() -> dict:
         import { PolicyCatalog } from './server/policy-catalog/catalog.ts';
         import { generatedTestCases, applyValidationOverrides } from './server/domain/validation.ts';
         import { planToWire, validationTestToWire } from './server/control-channel/protocol-codec.ts';
-        import fs from 'node:fs';
         import { loadSync } from '@grpc/proto-loader';
         import { loadPackageDefinition } from '@grpc/grpc-js';
         const policies = PolicyCatalog.load('../runner/toolkit/policy_library/assets').list();
@@ -58,25 +57,7 @@ def default_local_baseline() -> dict:
             candidateVersion: "20260904-010000.001Z", sourceDraftRevision: 1, runtimeProfile: 'auto',
             plan: planToWire(plan), testCases: cases.map(validationTestToWire),
         }});
-        const previous = JSON.parse(fs.readFileSync('../tests/fixtures/default-capability-consolidation.json','utf8'));
-        const historicalPolicies = policies.map(p => ['local-content-safety', 'local-sensitive-attribute-terms', 'local-credentials', 'local-contact-data'].includes(p.id)
-          ? p.published_versions.find(v => v.version === '4.0.0') : p);
-        const historicalDraft = defaultGuardrailDraft(historicalPolicies);
-        const historicalPlan = buildGuardrailPlan({guardrailId: DEFAULT_GUARDRAIL_ID,
-          guardrailVersion: '20260904-010000.001Z', draft: historicalDraft, policies: historicalPolicies});
-        const contracts = JSON.parse(fs.readFileSync('../tests/fixtures/policy-capability-contracts.json','utf8')).rules;
-        const mapped = (pid,rid) => contracts.find(r=>r.source_policy===pid&&r.source_rule===rid);
-        const frozenCases = previous.cases.filter(c=>!['builtin-jailbreak','builtin-content-safety'].includes(c.sourcePolicyId)).map(c=>{
-          const first=contracts.find(r=>r.source_policy===c.sourcePolicyId);
-          const remap=m=>({policyId:mapped(m.policyId,m.ruleId).policy,ruleId:mapped(m.policyId,m.ruleId).rule});
-          const version=historicalPolicies.find(p=>p.id===first.policy).version;
-          return {...c,policyId:first.policy,sourcePolicyId:first.policy,sourcePolicyVersion:version,
-            coveredRuleIds:c.coveredRuleIds.map(r=>mapped(c.sourcePolicyId,r).rule),
-            ...(c.expectationOverride?{expectationOverride:{...c.expectationOverride,sourcePolicyVersion:version,expectedMatches:c.expectationOverride.expectedMatches.map(remap)}}:{})};
-        });
-        const frozenBinary=connect.responseSerialize({validationRequest:{runId:'before-consolidation',guardrailId:DEFAULT_GUARDRAIL_ID,
-          candidateVersion:"20260904-010000.001Z",sourceDraftRevision:1,runtimeProfile:'auto',plan:planToWire(historicalPlan),testCases:frozenCases.map(validationTestToWire)}});
-        console.log(JSON.stringify({plan, cases, wireRequest: binary.toString('base64'), frozenWireRequest:frozenBinary.toString('base64')}));
+        console.log(JSON.stringify({plan, cases, wireRequest: binary.toString('base64')}));
     """
     result = subprocess.run(
         ["node", "--import", "tsx", "--input-type=module", "-e", source],
@@ -306,14 +287,3 @@ async def test_default_local_components_pass_reviewed_composition_cases(default_
             assert item["expectedDecision"] == source["expectedDecision"]
         assert set(item["coveredRuleIds"]) == set(cases_by_id[item["caseId"]]["coveredRuleIds"])
     assert all(item["modelInvocations"] == 0 and item["actualFailure"] is None for item in results)
-
-
-@pytest.mark.asyncio
-async def test_default_replays_every_pre_consolidation_case(default_local_baseline: dict) -> None:
-    envelope = protocol.ControllerMessage.FromString(base64.b64decode(default_local_baseline['frozenWireRequest']))
-    status, metrics, results = await DefaultRunnerValidator(
-        DefaultRunnerCompiler(), action_providers(*local_action_providers()),
-    ).validate(envelope.validation_request)
-    assert metrics['total'] == 382
-    assert status == 'passed', [r for r in results if not r['passed']]
-    assert metrics['passed'] == metrics['total']

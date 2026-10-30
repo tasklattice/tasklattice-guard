@@ -55,7 +55,7 @@ async def test_external_scope_does_not_mutate_later_direct_input_evidence():
     await service.evaluate(external_request())
     direct = await service.evaluate(jailbreak_request())
     evidence = json.loads(direct.trace[0].evidence)
-    assert evidence["question_revision"] == "jailbreak-input.v3"
+    assert evidence["question_revision"] == "jailbreak-input.v1"
     assert set(evidence["judgments"]) == {"jailbreak_attempt", "unsafe_pretext"}
 
 

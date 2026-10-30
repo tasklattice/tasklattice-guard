@@ -224,7 +224,7 @@
   "additionalProperties": false,
   "properties": {
     "schema_version": {
-      "const": 2,
+      "const": 1,
       "title": "Schema Version",
       "type": "integer"
     },
@@ -278,13 +278,6 @@
     },
     "testing": {
       "$ref": "#/$defs/TestSettings"
-    },
-    "history": {
-      "items": {
-        "type": "string"
-      },
-      "title": "History",
-      "type": "array"
     }
   },
   "required": [

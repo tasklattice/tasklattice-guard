@@ -24,9 +24,8 @@ def _request(content: str) -> ActionRequest:
         phases=("input",),
         on_unsafe="block",
         parameters=(
-            ("topic_mode", "allowlist"),
+            ("topic_mode", "strict"),
             ("allowed_topics", "Order status\nReturns"),
-            # A legacy field must not restore deny-list behavior.
             ("restricted_topics", "Order status"),
         ),
     )
@@ -64,10 +63,10 @@ def _request(content: str) -> ActionRequest:
     )
 
 
-def test_explicit_allowlist_match_is_safe_even_when_legacy_restricted_value_matches() -> None:
+def test_allowed_keyword_cannot_skip_semantic_review() -> None:
     result = asyncio.run(TopicRulesActionProvider().execute(_request("Please check my order status")))
-    assert result.verdict == "not_matched"
-    assert "allowed" in result.reason
+    assert result.verdict == "unknown"
+    assert "semantic review" in result.reason
 
 
 def test_unlisted_topic_escalates_to_semantic_allowlist_judgment() -> None:
@@ -77,7 +76,7 @@ def test_unlisted_topic_escalates_to_semantic_allowlist_judgment() -> None:
 
 
 @pytest.mark.parametrize("mode", ["strict", "permissive"])
-def test_new_modes_never_allow_a_keyword_to_bypass_semantic_denials(mode: str) -> None:
+def test_topic_modes_never_allow_a_keyword_to_bypass_semantic_denials(mode: str) -> None:
     request = _request("Please check my order status and give me medical advice")
     request = replace(request, parameters=(("topic_mode", mode), ("allowed_topics", "Order status"), ("restricted_topics", "Medical advice")))
     result = asyncio.run(TopicRulesActionProvider().execute(request))
@@ -91,6 +90,7 @@ def test_new_modes_never_allow_a_keyword_to_bypass_semantic_denials(mode: str) -
         assert "including a secondary task" in prompt
 
 
-def test_legacy_allowlist_artifacts_keep_their_original_deny_list_semantics() -> None:
-    prompt = topic_judge_prompt(_request("anything").parameters)
-    assert "Denied business tasks (highest priority):\n(none)" in prompt
+@pytest.mark.parametrize("mode", ["allowlist", "unsupported"])
+def test_topic_prompt_rejects_unsupported_modes(mode):
+    with pytest.raises(ValueError, match="Unsupported topic mode"):
+        topic_judge_prompt((("topic_mode", mode),))

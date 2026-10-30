@@ -176,7 +176,7 @@ try {
     const hasBody = route.nodes.some(n=>ast.isCallExpression(n)&&['context.req.json','context.req.text'].includes(n.expression.getText()));
     assert(!hasBody||operation.requestBody,`Undocumented request body: ${id}`);
     if (route.nodes.some(n=>ast.isCallExpression(n)&&n.expression.getText()==='context.req.formData') && path==='/api/v1/guardrail-packages') {
-      operation.requestBody={required:true,content:{'multipart/form-data':{schema:{type:'object',required:['package'],properties:{package:{type:'string',format:'binary',description:'A signed .guardrail.zip release package; at most 32 MiB.'}}}}}};
+      operation.requestBody={required:true,content:{'multipart/form-data':{schema:{type:'object',required:['package'],properties:{package:{type:'string',format:'binary',description:'A V1 .guardrail.zip release package; at most 32 MiB.'}}}}}};
     } else if (route.nodes.some(n=>ast.isCallExpression(n)&&n.expression.getText()==='context.req.formData')) {
       assert(path==='/api/v1/authoring/document-analyses',`Undocumented multipart body: ${id}`);
       operation.requestBody={required:true,content:{'multipart/form-data':{schema:{type:'object',required:['files'],properties:{language:{type:'string',enum:['en','zh-CN'],default:'en'},files:{type:'array',minItems:1,maxItems:MAX_DOCUMENTS,items:{type:'string',format:'binary'},description:`DOC, DOCX or TXT; each file <= ${MAX_DOCUMENT_BYTES} bytes; combined <= ${MAX_TOTAL_BYTES} bytes.`}}}}}};

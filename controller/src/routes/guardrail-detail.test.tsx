@@ -139,13 +139,13 @@ describe("Guardrail detail information hierarchy", () => {
   it.each(["shortcut", "policy"])("hides Topic Control settings when removed via %s and saves only after explicit Save", async removal => {
     vi.spyOn(controllerApi, "getModelReadiness").mockResolvedValue({ models: [], active: null, draft: null, activating: null } as unknown as controllerApi.ModelConfigurationView);
     const catalog = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
-    const policies = ["local-credentials", "builtin-topic-safety"].map(id => { const latest = catalog.find(item => item.id === id)!; return id === "builtin-topic-safety" ? latest.published_versions![0]! : latest; });
+    const policies = ["local-credentials", "builtin-topic-safety"].map(id => { const latest = catalog.find(item => item.id === id)!; return latest; });
     const bindings = policies.map(defaultPolicyBinding);
     const guardrail = { ...deletableGuardrail, topic_control_mode: "permissive" as const, policy_bindings: bindings };
     const update = vi.spyOn(api, "updateGuardrail").mockResolvedValue(guardrail);
     render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })}><TooltipProvider><EditGuardrailSheet guardrail={guardrail} policies={policies} open onOpenChange={vi.fn()} onSaved={vi.fn()} /></TooltipProvider></QueryClientProvider>);
     const remove = await screen.findByRole("button", { name: "protection.validationReadiness.removeTopic" });
-    expect(screen.getByRole("heading", { name: "guardrails.topicAllowlist" })).toBeTruthy();
+    expect(screen.getAllByText(policies[1]!.name).length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "guardrails.saveDraft" }).hasAttribute("disabled")).toBe(false);
     fireEvent.click(removal === "shortcut" ? remove : screen.getByRole("button", { name: `protection.remove name:${policies[1]!.name}` }));
     expect(screen.queryByRole("heading", { name: "guardrails.topicAllowlist" })).toBeNull();
@@ -166,7 +166,7 @@ describe("Guardrail detail information hierarchy", () => {
       bindings[1]!.enabled_rule_ids = ["topic/denylist"];
       bindings[1]!.parameter_values = { denied_topics: "Credential theft", topic_mode: "permissive", allowed_topics: "" };
     }
-    const guardrail = { ...deletableGuardrail, topic_control_mode: "permissive" as const, profile_origin: { id: "full-feature-baseline", version: "2.0.0" }, policy_bindings: bindings };
+    const guardrail = { ...deletableGuardrail, topic_control_mode: "permissive" as const, profile_origin: { id: "full-feature-baseline", version: "1.0.0" }, policy_bindings: bindings };
     const update = vi.spyOn(api, "updateGuardrail").mockResolvedValue(guardrail);
     render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TooltipProvider><EditGuardrailSheet guardrail={guardrail} policies={policies} open onOpenChange={vi.fn()} onSaved={vi.fn()} /></TooltipProvider></QueryClientProvider>);
     await screen.findByText("protection.validationReadiness.blockedTitle");
@@ -218,7 +218,7 @@ describe("Guardrail detail information hierarchy", () => {
       guardrail_id: "guardrail-observed",
       version: VERSION_ID,
       source_draft_version: 3,
-      compiler_version: "tasklattice-nemo-config-v7",
+      compiler_version: "tasklattice-nemo-config-v1",
       plan_checksum: "plan-checksum",
       config_checksum: "config-checksum",
       created_at: "2026-08-13T08:00:00Z",
@@ -341,7 +341,7 @@ describe("Guardrail detail information hierarchy", () => {
       guardrail_id: "guardrail-observed",
       version: VERSION_ID,
       source_draft_version: 3,
-      compiler_version: "tasklattice-nemo-config-v6",
+      compiler_version: "tasklattice-nemo-config-v1",
       plan_checksum: "plan-checksum",
       created_at: "2026-08-13T08:00:00Z",
       status: "ready",
@@ -525,40 +525,6 @@ describe("Guardrail detail information hierarchy", () => {
     await waitFor(() => expect(changed).toHaveBeenCalledOnce());
     expect(remove).toHaveBeenCalledWith(deletableGuardrail.id, testCase.id);
     expect(screen.getAllByRole("dialog")).toHaveLength(1);
-  });
-
-
-  it("edits Topic Control without requiring a Guardrail business purpose", () => {
-    const topicGuardrail = {
-      ...deletableGuardrail,
-      allowed_topics: [],
-      restricted_topics: ["legacy restricted topic"],
-      policy_bindings: [{
-        policy_id: "builtin-topic-safety",
-        policy_version: "1.0.0",
-        action: "block",
-        parameter_values: {},
-        enabled_rule_ids: ["model/topic-control"],
-        rule_actions: {},
-        enabled_rails: ["input"],
-        reasoning_policy: null,
-      }],
-    } satisfies Guardrail;
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-
-    render(<QueryClientProvider client={client}><TooltipProvider><EditGuardrailSheet guardrail={topicGuardrail} policies={[]} open onOpenChange={vi.fn()} onSaved={vi.fn()} /></TooltipProvider></QueryClientProvider>);
-
-    expect(screen.queryByText("guardrails.businessPurpose")).toBeNull();
-    expect(screen.queryByDisplayValue("Support account operations.")).toBeNull();
-    expect(screen.queryByText("guardrails.businessPurposeLocked")).toBeNull();
-    expect(screen.getByText("guardrails.topicAllowlist")).toBeTruthy();
-    expect(screen.getByText("guardrails.topicAllowlistRequired")).toBeTruthy();
-    expect(screen.queryByText("guardrails.restrictedDomains")).toBeNull();
-    expect(screen.getByDisplayValue("legacy restricted topic")).toBeTruthy();
-    fireEvent.change(screen.getByRole("combobox", { name: "topicControl.mode" }), { target: { value: "permissive" } });
-    expect(screen.queryByText("guardrails.topicAllowlistRequired")).toBeNull();
-    fireEvent.change(screen.getByRole("combobox", { name: "topicControl.mode" }), { target: { value: "strict" } });
-    expect(screen.getByRole("button", { name: "guardrails.saveDraft" }).hasAttribute("disabled")).toBe(true);
   });
 
 

@@ -14,12 +14,12 @@ vi.mock("./ui/notifications", () => ({ toast: { success: vi.fn(), error: vi.fn()
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string, values?: Record<string, unknown>) => values && "selected" in values ? `${key}:${values.selected}/${values.total}` : key, i18n: { language: "en" } }) }));
 afterEach(() => { cleanup(); vi.clearAllMocks(); auth.user.role = "admin"; });
 
-const NEWEST = "20261007-010000.000Z", OLDER = "20261001-010000.000Z", LEGACY = "20260901-010000.000Z";
+const NEWEST = "20261007-010000.000Z", OLDER = "20261001-010000.000Z", PREVIOUS = "20260901-010000.000Z";
 const version = (id: string, extra: Record<string, unknown> = {}) => ({ version: id, status: "ready", artifactId: `artifact-${id}`, validationRunId: `run-${id}`, createdAt: "2026-10-07T01:00:00.000Z", ...extra });
 beforeEach(() => {
   vi.mocked(getDeploymentCapabilities).mockResolvedValue({ packageExport: { available: true, sourceId: "bank-uat" }, packageImport: { available: false } });
   vi.mocked(getControllerGuardrail).mockResolvedValue({ id: "guard-1",
-    versions: [version("20261008-010000.000Z", { status: "failed", artifactId: null }), version(NEWEST), version(OLDER), version(LEGACY, { validationRunId: null })] } as never);
+    versions: [version("20261008-010000.000Z", { status: "failed", artifactId: null }), version(NEWEST), version(OLDER), version(PREVIOUS, { validationRunId: null })] } as never);
 });
 
 function open(published = true) {
@@ -55,11 +55,11 @@ describe("Guardrail release package export", () => {
   });
 
   it("exports pending imported versions without local test evidence", async () => {
-    vi.mocked(getControllerGuardrail).mockResolvedValue({ id: "guard-1", versions: [version(NEWEST, { origin: "imported" }), version(LEGACY, { origin: "imported", status: "pending", validationRunId: null })] } as never);
+    vi.mocked(getControllerGuardrail).mockResolvedValue({ id: "guard-1", versions: [version(NEWEST, { origin: "imported" }), version(PREVIOUS, { origin: "imported", status: "pending", validationRunId: null })] } as never);
     vi.mocked(downloadGuardrailPackage).mockResolvedValue("guard-1.guardrail.zip");
     open();
     const dialog = await sheet();
-    expect((within(dialog).getByRole("checkbox", { name: LEGACY }) as HTMLInputElement).disabled).toBe(false);
+    expect((within(dialog).getByRole("checkbox", { name: PREVIOUS }) as HTMLInputElement).disabled).toBe(false);
     fireEvent.click(within(dialog).getByRole("checkbox", { name: NEWEST }));
     fireEvent.click(within(dialog).getByRole("button", { name: "guardrailPackage.exportDownload" }));
     await waitFor(() => expect(downloadGuardrailPackage).toHaveBeenCalledExactlyOnceWith("guard-1", [NEWEST]));
@@ -79,7 +79,7 @@ describe("Guardrail release package export", () => {
   it("does not require an old test report to export immutable content", async () => {
     open();
     const dialog = await sheet();
-    expect((within(dialog).getByRole("checkbox", { name: LEGACY }) as HTMLInputElement).disabled).toBe(false);
+    expect((within(dialog).getByRole("checkbox", { name: PREVIOUS }) as HTMLInputElement).disabled).toBe(false);
     expect(within(dialog).queryByText("guardrailPackage.exportNoTest")).toBeNull();
     expect((within(dialog).getByRole("button", { name: "guardrailPackage.exportDownload" }) as HTMLButtonElement).disabled).toBe(true);
   });

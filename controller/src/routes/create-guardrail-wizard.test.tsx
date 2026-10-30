@@ -329,7 +329,7 @@ describe("Create Guardrail wizard", () => {
     expect(apiMocks.createGuardrail).not.toHaveBeenCalled();
   });
 
-  it("creates the actual full-feature v2 selection with all six model assignments missing", async () => {
+  it("creates the actual full-feature V1 selection with all six model assignments missing", async () => {
     const directory = resolve("../runner/toolkit/policy_library/assets");
     const compiler = new DeclarativeCompiler(directory);
     const catalog = PolicyCatalog.load(directory).list().map(policy => compiler.catalogView(policy));
@@ -344,12 +344,12 @@ describe("Create Guardrail wizard", () => {
     renderWizard(fullFeatureBaseline.id);
     await screen.findByText("Profile applied · 14 Policies selected");
     expect(await screen.findAllByText(protectionEn.dependencies.states.missing)).toHaveLength(6);
-    fireEvent.change(screen.getByPlaceholderText("Customer data protection"), { target: { value: "Full v2" } });
+    fireEvent.change(screen.getByPlaceholderText("Customer data protection"), { target: { value: "Full V1" } });
     fireEvent.click(screen.getByRole("button", { name: "Review & create" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Create draft" }).hasAttribute("disabled")).toBe(false));
     fireEvent.click(screen.getByRole("button", { name: "Create draft" }));
     await waitFor(() => expect(apiMocks.createGuardrail).toHaveBeenCalledWith(expect.objectContaining({
-      policy_bindings: bindings, profile_origin: { id: fullFeatureBaseline.id, version: "2.0.0" },
+      policy_bindings: bindings, profile_origin: { id: fullFeatureBaseline.id, version: "1.0.0" },
       topic_control_mode: "permissive", output_delivery: "full_buffered",
     })));
   });

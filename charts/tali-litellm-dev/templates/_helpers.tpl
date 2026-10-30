@@ -44,8 +44,8 @@ app.kubernetes.io/component: {{ .component }}
 {{- end }}
 {{- define "tali-litellm-dev.bootstrapSecretSpecs" -}}
 {{- toJson (list
-  (dict "name" (include "tali-litellm-dev.databaseSecretName" .) "legacyName" (include "tali-litellm-dev.postgresqlName" .) "kind" "database" "profile" "litellm" "host" (printf "%s.%s.svc.cluster.local" (include "tali-litellm-dev.postgresqlName" .) .Release.Namespace) "username" .Values.postgresql.username "database" .Values.postgresql.database)
-  (dict "name" (include "tali-litellm-dev.runtimeSecretName" .) "legacyName" (include "tali-litellm-dev.fullname" .) "kind" "litellm" "databaseSecret" (include "tali-litellm-dev.databaseSecretName" .) "username" .Values.ui.username)) -}}
+  (dict "name" (include "tali-litellm-dev.databaseSecretName" .) "kind" "database" "profile" "litellm" "host" (printf "%s.%s.svc.cluster.local" (include "tali-litellm-dev.postgresqlName" .) .Release.Namespace) "username" .Values.postgresql.username "database" .Values.postgresql.database)
+  (dict "name" (include "tali-litellm-dev.runtimeSecretName" .) "kind" "litellm" "databaseSecret" (include "tali-litellm-dev.databaseSecretName" .) "username" .Values.ui.username)) -}}
 {{- end }}
 {{/* A real provider replaces the mock only when every upstream value is set. */}}
 {{- define "tali-litellm-dev.upstreamConfigured" -}}

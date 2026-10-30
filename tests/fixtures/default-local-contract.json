@@ -1,8 +1,0 @@
-{
-  "description": "Frozen local behavior before removing optional model Policies from Default (2026-10-21). Includes rule order/actions/parameters and every generated case expectation.",
-  "policies": 12,
-  "rules": 122,
-  "cases": 608,
-  "draftSha256": "6aa88e90b36c847e594940ba9d0401c1389aea969ddfad6a1e34952b752c8ea1",
-  "casesSha256": "c0a26e1185cfb9fdc8ae293b88bc6f755f38cfc57d976bd4a78c82afaaa57968"
-}

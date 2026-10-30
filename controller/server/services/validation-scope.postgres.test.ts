@@ -59,7 +59,7 @@ describe.skipIf(!url)("Historical model-enabled Default publication uses the ord
           metrics: { total: 2, executed: 1, skipped: 1, passed: Number(passes), complianceRate: passes ? 100 : 0, falsePositiveRate: 0, falseNegativeRate: 0, escalationRate: 0, p95LatencyMs: 1 },
           results: [result(local, false), result(model, true)],
           testScope: { testModelRules: false, skippedRules: model.coveredRuleIds.map(ruleId => ({ policyId: model.policyId, ruleId, reason: "model" })), modelInvocations: 0, executionDigest: "a".repeat(64), fullArtifactLoaded: true },
-          candidateArtifact: { guardrailId: DEFAULT_GUARDRAIL_ID, guardrailVersion: run.guardrailVersion, compilerVersion: "tasklattice-nemo-config-v29-single-contract", nemoVersion: "0.24.0", runtimeProfile: "llmrails_colang1_standard",
+          candidateArtifact: { guardrailId: DEFAULT_GUARDRAIL_ID, guardrailVersion: run.guardrailVersion, compilerVersion: "tasklattice-nemo-config-v1", nemoVersion: "0.24.0", runtimeProfile: "llmrails_colang1_standard",
             plan, configYaml: "", colangContent: "", prompts: [], actionBindings: [], dependencyManifest: [] } });
         {
           const published = await service.requestGuardrailPublish({ guardrailId: DEFAULT_GUARDRAIL_ID, actorId: "user" });

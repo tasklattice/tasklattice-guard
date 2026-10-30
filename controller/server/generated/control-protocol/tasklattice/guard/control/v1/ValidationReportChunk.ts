@@ -11,11 +11,17 @@ export interface ValidationReportChunk {
   'runId'?: (string);
   'uploadId'?: (string);
   'manifestDigest'?: (string);
+  /**
+   * Zero-based position within this upload; retries retain the same sequence.
+   */
   'sequence'?: (number);
   'chunks'?: (number);
   'cases'?: (number);
   'caseOffset'?: (number);
   'rawSizeBytes'?: (number);
+  /**
+   * Lowercase hexadecimal SHA256 of the uncompressed serialized ValidationResult.
+   */
   'sha256'?: (string);
   'gzipResult'?: (Buffer | Uint8Array | string);
   'final'?: (boolean);
@@ -31,11 +37,17 @@ export interface ValidationReportChunk__Output {
   'runId': (string);
   'uploadId': (string);
   'manifestDigest': (string);
+  /**
+   * Zero-based position within this upload; retries retain the same sequence.
+   */
   'sequence': (number);
   'chunks': (number);
   'cases': (number);
   'caseOffset': (number);
   'rawSizeBytes': (number);
+  /**
+   * Lowercase hexadecimal SHA256 of the uncompressed serialized ValidationResult.
+   */
   'sha256': (string);
   'gzipResult': (Buffer);
   'final': (boolean);

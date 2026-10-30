@@ -9,7 +9,13 @@ import type { ValidationStatus as _tasklattice_guard_control_v1_ValidationStatus
 export interface ValidationStatusNotice {
   'runnerId'?: (string);
   'runId'?: (string);
+  /**
+   * Only FAILED or CANCELLED; executed case results use the chunk channel.
+   */
   'status'?: (_tasklattice_guard_control_v1_ValidationStatus);
+  /**
+   * Human-readable terminal explanation, truncated by the Runner to 1024 characters.
+   */
   'reason'?: (string);
 }
 
@@ -20,6 +26,12 @@ export interface ValidationStatusNotice {
 export interface ValidationStatusNotice__Output {
   'runnerId': (string);
   'runId': (string);
+  /**
+   * Only FAILED or CANCELLED; executed case results use the chunk channel.
+   */
   'status': (_tasklattice_guard_control_v1_ValidationStatus__Output);
+  /**
+   * Human-readable terminal explanation, truncated by the Runner to 1024 characters.
+   */
   'reason': (string);
 }

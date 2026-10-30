@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { PolicyCatalog } from "../../server/policy-catalog/catalog";
 import { expandProtectionPreset } from "../../server/policy-catalog/presets";
 import { defaultGuardrailProfiles } from "../../shared/guardrail-profiles";
-import { protectionPresets } from "../../shared/protection-presets";
 import type { GuardrailProfile } from "../../shared/protection-map";
 import type { Policy } from "./api";
 import { collectionAsPolicy, policyCollections } from "./policy-collections";
@@ -18,10 +17,6 @@ const preview = (profile: GuardrailProfile) => ({ ...profile,
   })),
 });
 const profiles = defaultGuardrailProfiles.map(preview);
-// Retired compositions still describe historical or user-owned collections.
-const historicalProfiles = protectionPresets.map(profile => preview({ ...profile,
-  category: profile.industry, categoryName: profile.industry, isDefault: false,
-}));
 
 describe("Policy set discovery", () => {
   it("discovers only the five curated Profiles with their exact pinned Rules", () => {
@@ -35,7 +30,7 @@ describe("Policy set discovery", () => {
   });
 
   it("does not inherit other regions/frameworks from broadly shared capability Policies", () => {
-    const singapore = policyCollections(historicalProfiles, policies).find(set => set.id === "singapore-data-protection")!;
+    const singapore = policyCollections([{ ...profiles[2]!, id: "customer-set", jurisdictions: ["singapore"] }], policies)[0]!;
     expect(singapore.groups.some(group => group.policy?.tags.some(tag => tag.value === "eu"))).toBe(true);
     expect(singapore.tags.some(tag => ["eu", "gdpr"].includes(tag.value))).toBe(false);
     const unknown = policyCollections([{ ...profiles[0], id: "customer-set", jurisdictions: ["singapore"], bindings: singapore.profile.bindings }], policies)[0];
@@ -67,12 +62,7 @@ describe("Policy set discovery", () => {
       for (const entry of [...detail.compliance!.coverage, ...detail.compliance!.references]) expect(entry.rule_ids.every(id => ids.has(id))).toBe(true);
       expect(JSON.stringify(collection)).toBe(before);
     }
-    const singapore = collectionAsPolicy(policyCollections(historicalProfiles, policies).find(set => set.id === "singapore-financial-assistant")!);
-    expect(singapore.rules).toHaveLength(49);
-    expect(singapore.test_count).toBeGreaterThan(49);
-    expect(singapore.test_cases.some(test => test.covered_rule_ids.includes("pattern/sg_nric"))).toBe(true);
-    expect(singapore.test_cases.some(test => test.covered_rule_ids.includes("au-pii-tax-identifiers/au_tfn"))).toBe(false);
-    expect(singapore.compliance!.references.some(ref => ref.title === "Personal Data Protection Act")).toBe(true);
+
   });
 
   it("retains effective actions, rails and unambiguous Rule/test identities across source Policies", () => {

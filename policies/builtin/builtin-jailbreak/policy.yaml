@@ -1,5 +1,5 @@
 # yaml-language-server: $schema=../../schemas/policy.schema.json
-schema_version: 2
+schema_version: 1
 kind: Policy
 metadata:
   id: builtin-jailbreak
@@ -7,7 +7,7 @@ metadata:
   description: Detects attempts to override trusted instructions using the validated Jailbreak Input Rail
     binding.
   source: built_in
-  version: 1.2.0
+  version: 1.0.0
   tags:
   - namespace: protection
     value: attacks_and_abuse

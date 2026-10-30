@@ -50,7 +50,7 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", () => {
   async function runnerCandidate(runId: string): Promise<ArtifactContent> {
     const { rows: [request] } = await database.pool.query("SELECT payload FROM controller_outbox WHERE id = $1", [runId]);
     return {
-      guardrailId: request.payload.guardrailId, guardrailVersion: request.payload.candidateVersion, compilerVersion: "tasklattice-nemo-config-v29-single-contract",
+      guardrailId: request.payload.guardrailId, guardrailVersion: request.payload.candidateVersion, compilerVersion: "tasklattice-nemo-config-v1",
       nemoVersion: "0.24.0", runtimeProfile: "llmrails_colang1_standard", plan: request.payload.plan,
       configYaml: "models: []\n", colangContent: "", prompts: [], actionBindings: [], dependencyManifest: [["action", "local", "1"]],
     };
@@ -74,7 +74,7 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", () => {
     // The digest covers exactly what a Runner decodes from the wire.
     const digest = artifactContentDigest(canonicalArtifactContent(candidate, protoPath));
     const { rows: [artifact] } = await database.pool.query("SELECT * FROM guardrail_artifact WHERE guardrail_id = $1", [guardrail.id]);
-    expect(artifact).toMatchObject({ checksum: digest, guardrail_version: run.guardrailVersion, content_digest_version: 2, generation: "4" });
+    expect(artifact).toMatchObject({ checksum: digest, guardrail_version: run.guardrailVersion, content_digest_version: 1, generation: "4" });
     expect(verifyArtifactDigest(digest, artifact.signature, publicKey)).toBe(true);
     const { rows: [version] } = await database.pool.query("SELECT * FROM guardrail_version WHERE guardrail_id = $1", [guardrail.id]);
     expect(version).toMatchObject({ status: "ready", artifact_id: artifact.id, validation_run_id: run.id, inspection: (await database.pool.query("SELECT payload FROM guardrail_validation_snapshot WHERE digest=$1", [run.snapshotDigest])).rows[0].payload.candidateInspection });
@@ -332,27 +332,27 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", () => {
     const { guardrail, run, version } = await releasedFixture();
     const second = await versionReport(guardrail.id, version.version);
     expect(await service.getGuardrail(guardrail.id)).toMatchObject({ latestTestingReport: { id: second.id, subject: "version" }, latestValidationRun: { id: run.id, subject: "draft" } });
-    expect(await service.testingReportDeletionImpact(run.id)).toMatchObject({ deletable: true, pendingVersion: null, replacementRunId: null });
-    await service.deleteTestingReport({ runId: run.id, actorId: "admin", expectedPendingVersion: null });
+    expect(await service.testingReportDeletionImpact(run.id)).toMatchObject({ deletable: true });
+    await service.deleteTestingReport({ runId: run.id, actorId: "admin" });
     await expect(getReport(service, run.id)).rejects.toMatchObject({ status: 404 });
     expect((await database.pool.query("SELECT status, validation_run_id FROM guardrail_version WHERE guardrail_id=$1", [guardrail.id])).rows).toEqual([{ status: "ready", validation_run_id: null }]);
     expect((await database.pool.query("SELECT id FROM controller_outbox WHERE id=$1", [run.id])).rows).toEqual([]);
     expect(await service.getGuardrail(guardrail.id)).toMatchObject({ latestTestingReport: { id: second.id }, latestValidationRun: null, hasUnpublishedChanges: false });
     const failed = await versionReport(guardrail.id, version.version, "failed");
-    await service.deleteTestingReport({ runId: failed.id, actorId: "admin", expectedPendingVersion: null });
+    await service.deleteTestingReport({ runId: failed.id, actorId: "admin" });
     expect(await service.getGuardrail(guardrail.id)).toMatchObject({ latestTestingReport: { id: second.id } });
   });
 
   it("preserves publication and frozen content when its last report is deleted", async () => {
     const { guardrail, run, version } = await releasedFixture();
     const before = (await database.pool.query("SELECT artifact_id, plan, test_suite, inspection FROM guardrail_version WHERE guardrail_id=$1", [guardrail.id])).rows;
-    expect(await service.testingReportDeletionImpact(run.id)).toMatchObject({ deletable: true, pendingVersion: null });
-    await service.deleteTestingReport({ runId: run.id, actorId: "admin", expectedPendingVersion: null });
+    expect(await service.testingReportDeletionImpact(run.id)).toMatchObject({ deletable: true });
+    await service.deleteTestingReport({ runId: run.id, actorId: "admin" });
     expect((await database.pool.query("SELECT status, validation_run_id, released_at, released_by FROM guardrail_version WHERE guardrail_id=$1", [guardrail.id])).rows).toEqual([{ status: "ready", validation_run_id: null, released_at: expect.any(Date), released_by: "admin" }]);
     expect((await database.pool.query("SELECT artifact_id, plan, test_suite, inspection FROM guardrail_version WHERE guardrail_id=$1", [guardrail.id])).rows).toEqual(before);
     expect(await service.getGuardrail(guardrail.id)).toMatchObject({ status: "active", latestTestingReport: null });
     const audit = (await database.pool.query("SELECT detail FROM audit_event WHERE resource_id=$1 AND kind='guardrail.testing_report_deleted'", [guardrail.id])).rows[0];
-    expect(audit.detail).toMatchObject({ runId: run.id, pendingVersion: null });
+    expect(audit.detail).toMatchObject({ runId: run.id });
     await expect(service.releaseGuardrailVersion({ guardrailId: guardrail.id, version: version.version, actorId: "admin" })).resolves.toMatchObject({ status: "ready" });
     await completeReport(service, { runId: run.id, status: "passed", metrics: emptyValidationMetrics(0), results: [] });
     expect((await service.listValidationRuns(guardrail.id))).toEqual([]);
@@ -364,28 +364,49 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", () => {
     const { guardrail, run, version } = await releasedFixture();
     const wrong = await versionReport(guardrail.id, version.version);
     await database.pool.query("UPDATE guardrail_validation_run SET test_suite_digest='wrong-suite' WHERE id=$1", [wrong.id]);
-    expect(await service.testingReportDeletionImpact(run.id)).toMatchObject({ pendingVersion: null, replacementRunId: null });
+    expect(await service.testingReportDeletionImpact(run.id)).toMatchObject({ deletable: true });
     await database.pool.query("UPDATE guardrail_validation_run SET test_suite_digest=$2, candidate_digest='wrong-content' WHERE id=$1", [wrong.id, run.testSuiteDigest]);
-    expect(await service.testingReportDeletionImpact(run.id)).toMatchObject({ pendingVersion: null, replacementRunId: null });
+    expect(await service.testingReportDeletionImpact(run.id)).toMatchObject({ deletable: true });
+  });
+
+  it("deletes a completed report while an unrelated routing transaction holds its global lock", async () => {
+    const { run } = await releasedFixture();
+    const blocker = await database.pool.connect();
+    let deletion: Promise<void> | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await blocker.query("BEGIN");
+      await blocker.query("SELECT pg_advisory_xact_lock(hashtext('traffic-router-bindings'))");
+      deletion = service.deleteTestingReport({ runId: run.id, actorId: "admin" });
+      await Promise.race([deletion, new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("Report deletion waited for the unrelated routing lock")), 1500);
+      })]);
+      expect((await database.pool.query("SELECT id FROM guardrail_validation_run WHERE id=$1", [run.id])).rowCount).toBe(0);
+    } finally {
+      clearTimeout(timer);
+      await blocker.query("ROLLBACK");
+      blocker.release();
+      await deletion;
+    }
   });
 
   it("allows deleting routed versions' completed reports and rejects running report deletion", async () => {
     const { guardrail, run, version } = await releasedFixture();
     await service.trafficRouting.create("Evidence protection", "", { routes: [{ id: "fallback", name: "Fallback", kind: "fallback", enabled: true,
       selector: { expression: { combinator: "and", conditions: [] } }, targets: [{ id: "target", guardrailId: guardrail.id, guardrailVersion: version.version, weightBps: 10000 }] }] }, "admin");
-    expect(await service.testingReportDeletionImpact(run.id)).toMatchObject({ deletable: true, pendingVersion: null, references: [] });
+    expect(await service.testingReportDeletionImpact(run.id)).toMatchObject({ deletable: true });
     const running = await service.requestVersionTestRun({ guardrailId: guardrail.id, version: version.version, actorId: "admin" });
     expect(await service.testingReportDeletionImpact(running.id)).toMatchObject({ running: true, deletable: false });
-    await expect(service.deleteTestingReport({ runId: running.id, actorId: "admin", expectedPendingVersion: null })).rejects.toMatchObject({ code: "test_report_in_use" });
+    await expect(service.deleteTestingReport({ runId: running.id, actorId: "admin" })).rejects.toMatchObject({ code: "test_report_in_use" });
     await completeReport(service, { runId: running.id, status: "passed", metrics: emptyValidationMetrics(running.metrics.total), results: [] });
     // References do not block deleting redundant evidence.
-    await service.deleteTestingReport({ runId: run.id, actorId: "admin", expectedPendingVersion: null });
+    await service.deleteTestingReport({ runId: run.id, actorId: "admin" });
   });
 
   it("serializes concurrent report deletions without changing publication", async () => {
     const { guardrail, run, version } = await releasedFixture();
     const second = await versionReport(guardrail.id, version.version);
-    const result = await Promise.allSettled([run.id, second.id].map(runId => service.deleteTestingReport({ runId, actorId: "admin", expectedPendingVersion: null })));
+    const result = await Promise.allSettled([run.id, second.id].map(runId => service.deleteTestingReport({ runId, actorId: "admin" })));
     expect(result.filter(item => item.status === "fulfilled")).toHaveLength(2);
     expect(await service.listValidationRuns(guardrail.id)).toHaveLength(0);
     expect((await database.pool.query("SELECT status FROM guardrail_version WHERE guardrail_id=$1", [guardrail.id])).rows).toEqual([{ status: "ready" }]);
@@ -447,7 +468,7 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", () => {
     expect((await service.protectionModes.get(guardrail.id)).mode).toBe("monitor");
     await service.deleteGuardrailVersion({ guardrailId: guardrail.id, version: version.version, actorId: "admin" });
     expect((await service.protectionModes.get(guardrail.id)).mode).toBe("monitor");
-    await service.deleteTestingReport({ runId: run.id, actorId: "admin", expectedPendingVersion: null });
+    await service.deleteTestingReport({ runId: run.id, actorId: "admin" });
     expect(await service.protectionModes.get(guardrail.id)).toMatchObject({ ready: true, mode: "monitor" });
     await service.deleteGuardrailVersion({ guardrailId: guardrail.id, version: run.guardrailVersion, actorId: "admin" });
     expect(await service.protectionModes.get(guardrail.id)).toMatchObject({ ready: false, mode: "enforce" });
@@ -550,9 +571,9 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", () => {
   it("recompiles an unchanged draft after upgrade without reusing old artifacts or test candidates", async () => {
     const { guardrail, version, run } = await releasedFixture();
     // Simulate stored metadata from before upgrade, including a stale load result.
-    await database.pool.query("UPDATE guardrail_artifact SET compiler_version='tasklattice-nemo-config-v27-staged-checks' WHERE id=$1", [version.artifactId]);
+    await database.pool.query("UPDATE guardrail_artifact SET compiler_version='unsupported-compiler' WHERE id=$1", [version.artifactId]);
     await database.pool.query("UPDATE guardrail_validation_run SET status='failed' WHERE id=$1",[run.id]);
-    await database.pool.query("UPDATE guardrail_validation_snapshot SET payload=jsonb_set(payload, '{candidateArtifact,compilerVersion}', '\"tasklattice-nemo-config-v27-staged-checks\"') WHERE digest=(SELECT snapshot_digest FROM guardrail_validation_run WHERE id=$1)", [run.id]);
+    await database.pool.query("UPDATE guardrail_validation_snapshot SET payload=jsonb_set(payload, '{candidateArtifact,compilerVersion}', '\"unsupported-compiler\"') WHERE digest=(SELECT snapshot_digest FROM guardrail_validation_run WHERE id=$1)", [run.id]);
     await database.pool.query("UPDATE guardrail_version SET environment_check='{\"status\":\"compatible\"}' WHERE artifact_id=$1", [version.artifactId]);
     const original = (await database.pool.query("SELECT * FROM guardrail_artifact WHERE id=$1", [version.artifactId])).rows[0];
     expect((await service.desiredStateForPool("default")).artifacts.some(a => a.id === version.artifactId)).toBe(false);
@@ -576,7 +597,7 @@ describe.skipIf(!url)("Publishing the tested candidate in PostgreSQL", () => {
 
   it("rejects an unsupported compiler result before signing a new publication", async () => {
     const guardrail = await service.createGuardrail({ name: "Old compiler", draftConfig: defaultGuardrailDraft(PolicyCatalog.load(catalogDir).list()), runtimeProfile: "auto", actorId: "admin" });
-    service.setArtifactCompiler(async input => ({ ...compile(input), compilerVersion: "tasklattice-nemo-config-v27-staged-checks" }));
+    service.setArtifactCompiler(async input => ({ ...compile(input), compilerVersion: "unsupported-compiler" }));
     await expect(service.requestGuardrailPublish({ guardrailId: guardrail.id, actorId: "admin" })).rejects.toMatchObject({ code: "artifact_recompile_required" });
     expect((await service.getGuardrail(guardrail.id)).versions).toEqual([]);
   });

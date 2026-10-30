@@ -51,14 +51,14 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("Security Event item pagination 
 
   it("applies risk filters before the item limit and keeps unknown verdicts and historical severity", async () => {
     await db.execute(sql`INSERT INTO runtime_event(id,occurred_at,received_at,request_id,runner_id,guardrail_id,direction,decision,duration_ms,metadata)
-      VALUES ('legacy','2026-10-15T07:00:00Z','2026-10-15T07:00:00Z','legacy','runner','classification','incoming','allow',1,
+      VALUES ('missing-severity','2026-10-15T07:00:00Z','2026-10-15T07:00:00Z','missing-severity','runner','classification','incoming','allow',1,
         '{"findings":[{"verdict":"unknown"},{"verdict":"error","riskSeverity":"critical"},{"verdict":"not_matched","riskSeverity":"critical"}]}')`);
     const filtered = await query({ severity: "high" });
     expect(filtered.count).toBe(25);
     expect(filtered.items.every(item => item.finding.riskSeverity === "high")).toBe(true);
-    const legacy = await query({ guardrailId: "classification", severity: "unclassified" });
-    expect(legacy.items.map(item => item.finding.verdict)).toEqual(["unknown"]);
-    expect(legacy.nextCursor).toBeNull();
+    const unclassified = await query({ guardrailId: "classification", severity: "unclassified" });
+    expect(unclassified.items.map(item => item.finding.verdict)).toEqual(["unknown"]);
+    expect(unclassified.nextCursor).toBeNull();
   });
 
   it("rejects invalid or reused cursors and holds the original range without an explicit until", async () => {

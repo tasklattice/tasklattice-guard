@@ -60,7 +60,7 @@ if [[ "$ready" != true ]]; then
 fi
 
 # Read credentials inside psql rather than placing them in process arguments.
-# Identifier/literal quoting supports custom role names and legacy credentials.
+# Identifier/literal quoting supports custom role names and passwords containing special characters.
 # Neither SQL nor server diagnostics containing credentials enter Pod logs.
 if ! psql --no-psqlrc --no-password --quiet --set ON_ERROR_STOP=1 \
   --host "$sync_dir" --username "$POSTGRES_USER" --dbname postgres \

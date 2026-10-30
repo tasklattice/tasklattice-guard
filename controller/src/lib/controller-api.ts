@@ -88,7 +88,7 @@ export type ModelValidationReport = {
 export type ModelConfigurationRevision = {
   id: string;
   reviewToken?: string;
-  /** Legacy field; current API exposes configuration state, not version history. */
+  /** Previous field; current API exposes configuration state, not version history. */
   revision?: number;
   state: "draft" | "validated" | "activating" | "active" | "superseded" | "failed";
   generation: number | null;
@@ -521,7 +521,7 @@ export const getModelReadiness = () => requestController<import("../../shared/mo
 export const getModelConfiguration = async () => {
   const view = await requestController<ModelConfigurationView>("/api/v1/model-configuration");
   if (!view.draft?.assignments?.bindings) {
-    throw new Error("The Controller is serving an incompatible legacy Model configuration. Deploy the matching Controller backend before using Guardrail Catalog.");
+    throw new Error("The Controller is serving a Model configuration with an unsupported schema. Deploy the matching Controller backend before using Guardrail Catalog.");
   }
   return view;
 };
@@ -624,4 +624,4 @@ export type SystemVersion = {
 export const getSystemVersion = () => requestController<SystemVersion>("/api/v1/system/version");
 
 export const getTestingReportDeletionImpact = (runId: string) => requestController<import("../../shared/testing-report-deletion").TestingReportDeletionImpact>(`/api/v1/test-runs/${encodeURIComponent(runId)}/deletion-impact`);
-export const deleteTestingReport = (runId: string, expectedPendingVersion: string | null) => requestController<void>(`/api/v1/test-runs/${encodeURIComponent(runId)}`, json("DELETE", { expectedPendingVersion }));
+export const deleteTestingReport = (runId: string) => requestController<void>(`/api/v1/test-runs/${encodeURIComponent(runId)}`, { method: "DELETE" });

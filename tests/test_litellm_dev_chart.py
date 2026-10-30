@@ -131,8 +131,8 @@ def test_all_gateway_credentials_are_initialized_in_cluster():
     specs = json.loads(next(item["value"] for item in container["env"] if item["name"] == "BOOTSTRAP_SECRETS"))
     assert [item["kind"] for item in specs] == ["database", "litellm"]
     assert specs[1]["databaseSecret"] == specs[0]["name"]
-    for item in specs:
-        assert item["name"] != item["legacyName"]
+    role = find(docs, "Role")
+    assert set(role["rules"][0]["resourceNames"]) == {item["name"] for item in specs}
 
 
 @pytest.mark.parametrize("field", ["masterKey", "saltKey", "ui.password", "postgresql.password", "model.upstream.apiKey"])

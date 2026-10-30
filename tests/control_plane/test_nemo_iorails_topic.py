@@ -123,7 +123,7 @@ def _semantic_input(
         trigger=trigger,
         parameters=(
             ("evaluation_view", "original"),
-            ("topic_mode", "allowlist"),
+            ("topic_mode", "strict"),
             ("allowed_topics", "Product support"),
         ),
     )

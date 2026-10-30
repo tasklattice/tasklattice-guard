@@ -1,4 +1,4 @@
-schema_version: 2
+schema_version: 1
 detectors:
   agent/indirect-injection:
     version: 1.0.0

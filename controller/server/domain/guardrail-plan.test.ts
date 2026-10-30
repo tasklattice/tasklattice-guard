@@ -181,7 +181,7 @@ describe("Controller Guardrail plan", () => {
     expect(plan).toMatchObject({
       guardrail_id: "guardrail-1",
       guardrail_version: "20260904-030000.003Z",
-      compiler_version: "tasklattice-controller-plan-v16-explicit-views",
+      compiler_version: "tasklattice-controller-plan-v1",
       safety_level: "strict",
     });
     expect(plan.steps).toEqual(expect.arrayContaining([
@@ -229,7 +229,7 @@ describe("Controller Guardrail plan", () => {
         outputDelivery: "full_buffered",
         policyBindings: [{
           policyId: "keyword-blocking",
-          policyVersion: "1.95.0",
+          policyVersion: "1.0.0",
           action: "block",
           parameterValues: { blocked_words: "internal-only" },
           enabledRuleIds: ["keyword/blocked-words"],
@@ -242,7 +242,7 @@ describe("Controller Guardrail plan", () => {
 
     expect(plan.policy_bindings).toEqual([expect.objectContaining({
       policy_id: "keyword-blocking",
-      policy_version: "1.95.0",
+      policy_version: "1.0.0",
       action: "block",
       parameter_values: [["blocked_words", "internal-only"]],
       enabled_rule_ids: ["keyword/blocked-words"],
@@ -255,7 +255,7 @@ describe("Controller Guardrail plan", () => {
       phases: ["input"],
       on_unsafe: "transform",
       parameters: expect.arrayContaining([
-        ["policy_versions_json", JSON.stringify({ "keyword-blocking": "1.95.0" })],
+        ["policy_versions_json", JSON.stringify({ "keyword-blocking": "1.0.0" })],
         ["enabled_rules_json", JSON.stringify({ "keyword-blocking": ["keyword/blocked-words"] })],
         ["rule_actions_json", JSON.stringify({ "keyword-blocking": { "keyword/blocked-words": "transform" } })],
       ]),
@@ -434,33 +434,7 @@ describe("Controller Guardrail plan", () => {
     expect(build().steps).toEqual([expect.objectContaining({ phases: ["output"], on_unsafe: "transform" })]);
   });
 
-  it("compiles Topic Control as a strict allowlist and rejects an empty allowlist", () => {
-    const draft = {
-      allowedTopics: ["Order status", "Returns"],
-      restrictedTopics: ["legacy deny-list value"],
-      safetyLevel: "balanced" as const,
-      outputDelivery: "full_buffered" as const,
-      policyBindings: [nativeBinding("builtin-topic-safety")],
-    };
-    const plan = buildGuardrailPlan({
-      guardrailId: "topic-allowlist",
-      guardrailVersion: "20260905-010000.001Z",
-      draft,
-    });
-    const parameters = Object.fromEntries((plan.steps as Array<{ parameters: Array<[string, string]> }>)[0]!.parameters);
-    expect(plan).toMatchObject({ topic_control_mode: "strict" });
-    expect(parameters).toMatchObject({ topic_mode: "strict", allowed_topics: "Order status\nReturns" });
-    expect(parameters.restricted_topics).toBe("legacy deny-list value");
-    expect(Object.keys(parameters).some((key) => key.startsWith("purpose"))).toBe(false);
 
-    const permissive = buildGuardrailPlan({ guardrailId: "permissive", guardrailVersion: "20260905-010000.001Z", draft: { ...draft, topicControlMode: "permissive", allowedTopics: [] } });
-    expect(permissive.topic_control_mode).toBe("permissive");
-    expect(Object.fromEntries(permissive.steps[0]!.parameters)).toMatchObject({ topic_mode: "permissive", restricted_topics: "legacy deny-list value" });
-
-    draft.allowedTopics = [];
-    expect(() => buildGuardrailPlan({ guardrailId: "topic-allowlist", guardrailVersion: "20260905-010000.001Z", draft }))
-      .toThrow(/requires at least one allowed topic/i);
-  });
 });
 
 describe("Compiled evaluation views", () => {

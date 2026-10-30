@@ -25,7 +25,7 @@ const versionId = "20260904-073000.123Z";
 const plan = {
   guardrail_id: "guardrail-1",
   guardrail_version: versionId,
-  compiler_version: "tasklattice-controller-plan-v3",
+  compiler_version: "tasklattice-controller-plan-v1",
   safety_level: "strict",
   output_delivery: "full_buffered",
   steps: [{
@@ -109,7 +109,7 @@ describe("Controller/Runner control protocol", () => {
     },
   );
 
-  it("rejects legacy numeric Guardrail Versions instead of coercing them", () => {
+  it("rejects numeric Guardrail Versions instead of coercing them", () => {
     expect(() => planToWire({ ...plan, guardrail_version: 1 })).toThrow("canonical UTC timestamp");
   });
 
@@ -195,7 +195,7 @@ describe("Controller/Runner control protocol", () => {
   it("round-trips the canonical signed Artifact body", () => {
     const content = {
       guardrailId: "guardrail-1", guardrailVersion: versionId, generation: 11,
-      compilerVersion: "compiler-v2", nemoVersion: "0.24.0", runtimeProfile: "nemo-default",
+      compilerVersion: "compiler-v1", nemoVersion: "0.24.0", runtimeProfile: "nemo-default",
       plan, configYaml: "models: []", colangContent: "define flow passport",
       prompts: [{ task: "passport_check", content: "Check {{ user_input }}", output_parser: "json", max_tokens: 64 }],
       actionBindings: [{

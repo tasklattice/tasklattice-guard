@@ -20,7 +20,7 @@ from tests.data_plane.test_stream_safety_network import tcp_server
 async def test_compiled_scope_changes_same_input_decision_through_mock(scope,expected):
     async with tcp_server(create_app()) as url:
         model=replace(_native_model(),base_url=url+'/v1',model=MODEL,api_key='synthetic-local',timeout_seconds=2)
-        step=replace(_semantic_input(),parameters=(('evaluation_view','original'),('topic_mode','allowlist'),('allowed_topics',scope)))
+        step=replace(_semantic_input(),parameters=(('evaluation_view','original'),('topic_mode','strict'),('allowed_topics',scope)))
         plan=_plan(step)
         config=NeMoConfigCompiler(models=(model.compiler_config(),)).compile(plan)
         assert scope in config.config_yaml

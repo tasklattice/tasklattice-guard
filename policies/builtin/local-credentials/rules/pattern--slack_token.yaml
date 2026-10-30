@@ -1,6 +1,6 @@
 id: pattern/slack_token
 name: Slack Token
-description: Detect legacy Slack tokens and rotating xoxe refresh-token formats.
+description: Detect xox-prefixed Slack tokens and rotating xoxe refresh-token formats.
 stages:
 - input
 - output

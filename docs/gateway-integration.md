@@ -339,8 +339,7 @@ PII, text transformations, conditional/custom flows and other complete-response
 policies use `full_buffered`: collect all text, evaluate once through NeMo, then
 emit the approved original or replacement. No original prefix escapes beforehand.
 The compiled artifact determines eligibility and the `ready.mode` is authoritative.
-Recompile and republish existing Guardrail artifacts with compiler v26 to enable
-native windows; old artifacts without native output streaming stay full buffered.
+The V1 compiler emits native windows for eligible policies and full buffering otherwise.
 
 Limits are 100,000 delta frames, 100,000 characters per delta, 1,000,000 total
 characters and 300 seconds per connection. Disconnect cancels the engine and frees

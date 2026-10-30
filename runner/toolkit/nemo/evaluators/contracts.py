@@ -110,7 +110,7 @@ class EvaluationResult:
     trace: tuple[RuntimeTraceStep, ...] = ()
     usage: EvaluationUsage = EvaluationUsage()
     # Successful classifier abstention is distinct from an incomplete check.
-    # Legacy/unspecified unknown results remain conservative.
+    # Previous/unspecified unknown results remain conservative.
     unknown_reason: Literal["uncertain", "needs_context"] = "needs_context"
 
     def __post_init__(self) -> None:

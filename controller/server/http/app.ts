@@ -216,17 +216,17 @@ export function createHttpApp(input: {
   const controllerVersion = readSoftwareVersion();
   // Fail fast on a broken Library.
   PolicyCatalog.load(input.config.policyCatalogDir);
-  const legacyIntentAnalyzer = input.intentAnalyzer ?? null;
-  const legacyPlaygroundModel = input.playgroundModel ?? null;
+  const injectedIntentAnalyzer = input.intentAnalyzer ?? null;
+  const injectedPlaygroundModel = input.playgroundModel ?? null;
   const playgroundRunner = input.playgroundRunner ?? null;
   const currentIntentAnalyzer = async () => {
     const configured = await input.models?.controlPlaneModel("policy_authoring");
     // Authoring produces full structured proposals, unlike short model probes.
-    return configured ? new OpenAICompatibleIntentAnalyzer({ ...configured, timeoutMs: Math.max(configured.timeoutMs, 60_000) }) : legacyIntentAnalyzer;
+    return configured ? new OpenAICompatibleIntentAnalyzer({ ...configured, timeoutMs: Math.max(configured.timeoutMs, 60_000) }) : injectedIntentAnalyzer;
   };
   const currentPlaygroundModel = async () => {
     const configured = await input.models?.controlPlaneModel("playground_chat");
-    return configured ? new OpenAICompatiblePlaygroundModel(configured) : legacyPlaygroundModel;
+    return configured ? new OpenAICompatiblePlaygroundModel(configured) : injectedPlaygroundModel;
   };
   const playgroundDraftPreviews = new PlaygroundDraftPreviewStore();
   const withEndpointSetup = <T extends { id: string; adapter: string }>(resource: T, context: Context) => ({
@@ -283,15 +283,8 @@ export function createHttpApp(input: {
       observedAt, offlineAfterSeconds: input.config.offlineAfterSeconds, desiredGeneration,
     });
     const configuredModels = input.models ? await input.models.statusSummary() : {
-      controlPlane: {
-        status: input.config.modelConnections.controlPlane.model === "not-configured" ? "unconfigured" as const : "configured" as const,
-        provider: input.config.modelConnections.controlPlane.model === "not-configured" ? null : input.config.modelConnections.controlPlane.provider,
-        model: input.config.modelConnections.controlPlane.model === "not-configured" ? null : input.config.modelConnections.controlPlane.model,
-      },
-      dataPlane: {
-        status: input.config.modelConnections.dataPlane.models.length > 0 ? "configured" as const : "unconfigured" as const,
-        ...input.config.modelConnections.dataPlane,
-      },
+      controlPlane: { status: "unconfigured" as const, provider: null, model: null },
+      dataPlane: { status: "unconfigured" as const, provider: "Runner", models: [] },
     };
     const modelHealth = input.models ? await input.models.modelHealth(await input.service.requiredPlatformModelBindings()) : null;
     const status = modelHealth && modelHealth.status !== "healthy" ? "unavailable" as const : runnerFleet.status;
@@ -852,9 +845,7 @@ export function createHttpApp(input: {
     return context.json(await input.service.testingReportDeletionImpact(context.req.param("runId")));
   });
   app.delete("/api/v1/test-runs/:runId", authenticated, async context => {
-    const body = z.object({ expectedPendingVersion: z.string().nullable() }).parse(await context.req.json());
-    await input.service.deleteTestingReport({ runId: context.req.param("runId"), actorId: context.get("actor").id, ...body });
-    await input.runnerControl.distributeDesiredState();
+    await input.service.deleteTestingReport({ runId: context.req.param("runId"), actorId: context.get("actor").id });
     return context.body(null, 204);
   });
   app.post("/api/v1/guardrails/:guardrailId/test-runs", authenticated, async (context) => {

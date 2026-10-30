@@ -5,8 +5,8 @@ import re
 from ..runtime.contracts import GuardrailPlanSnapshot, NeMoConfigSnapshot
 
 
-PLAN_COMPILER_VERSION = "tasklattice-controller-plan-v16-explicit-views"
-NEMO_COMPILER_VERSION = "tasklattice-nemo-config-v29-single-contract"
+PLAN_COMPILER_VERSION = "tasklattice-controller-plan-v1"
+NEMO_COMPILER_VERSION = "tasklattice-nemo-config-v1"
 
 
 def validate_artifact_execution_contract(plan: GuardrailPlanSnapshot, config: NeMoConfigSnapshot) -> None:

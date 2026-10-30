@@ -41,9 +41,9 @@ export class PolicyResourceService {
     await this.db.transaction(async tx => {
       await advisoryTransactionLock(tx, `policy-resource:${id}`);
       const [current] = await tx.select().from(resources).where(eq(resources.id, id)).for("update");
-      const [legacy] = await tx.select({ id: policyRecords.id }).from(policyRecords).where(eq(policyRecords.id, id));
+      const [programmable] = await tx.select({ id: policyRecords.id }).from(policyRecords).where(eq(policyRecords.id, id));
       const [imported] = await tx.select({ id: policyImportedVersions.policyId }).from(policyImportedVersions).where(eq(policyImportedVersions.policyId, id)).limit(1);
-      if (legacy) throw new ConflictError("This ID belongs to a legacy programmable Policy.", "policy_identity_conflict");
+      if (programmable) throw new ConflictError("This ID belongs to a programmable Policy.", "policy_identity_conflict");
       if (input.create && (current || imported || this.catalog().some(p => p.id === id))) throw new ConflictError("Policy ID already exists.", "policy_identity_conflict");
       if ((current?.revision ?? 0) !== input.expectedRevision) throw new ConflictError("Policy changed. Reopen its current draft before saving.", "policy_draft_conflict");
       if (current && canonicalJson(current.definition) === canonicalJson(definition) && current.maintainer === input.maintainer) return;
@@ -59,7 +59,7 @@ export class PolicyResourceService {
     const rows = await db.select().from(resources).where(id ? eq(resources.id, id) : undefined);
     const published = await db.select().from(versions).where(id ? eq(versions.policyId, id) : undefined).orderBy(desc(versions.createdAt));
     const result = new Map(base.map(policy => {
-      // Bundled declarative model Policies have no legacy native ID contract.
+      // Plan bundled declarative model Policies from their authored definitions.
       // Retain their definition so planning and dependency discovery use the
       // authored detector, including runtime parameters such as on_unknown.
       return [policy.id, this.compiler.catalogView(policy)];

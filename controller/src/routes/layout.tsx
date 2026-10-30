@@ -53,7 +53,7 @@ export function ControlPlaneLayout() {
   const auth = useAuth();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   // Documentation is public, including while the session is loading or unavailable.
-  if (pathname === "/document" || pathname.startsWith("/document/") || ["/help", "/help/"].includes(pathname)) return <HelpLayout />;
+  if (pathname === "/document" || pathname.startsWith("/document/")) return <HelpLayout />;
   const location = names[pathname]
     ?? (pathname.startsWith("/account/") ? names["/account"] : undefined)
     ?? (pathname.startsWith("/guardrails/") ? names["/guardrails"] : undefined)

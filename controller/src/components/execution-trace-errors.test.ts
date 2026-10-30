@@ -2,13 +2,13 @@ import { describe, expect, it } from "vitest";
 import { describeTraceFailure, traceDiagnostics } from "./execution-trace-errors";
 import type { ExecutionTraceStep } from "./execution-trace";
 
-const legacyError = "All eligible Safety Providers failed: pii_semantic.input:9ec3a7b2-9532-4739-8c2d-db7c887697d5:0: HTTPStatusError";
-const step = { id: "provider", kind: "action", name: "PII check", outcome: "error", latency_ms: 401, detail: legacyError } satisfies ExecutionTraceStep;
+const statuslessError = "All eligible Safety Providers failed: pii_semantic.input:9ec3a7b2-9532-4739-8c2d-db7c887697d5:0: HTTPStatusError";
+const step = { id: "provider", kind: "action", name: "PII check", outcome: "error", latency_ms: 401, detail: statuslessError } satisfies ExecutionTraceStep;
 
-it("explains legacy provider errors without guessing an HTTP status from IDs or durations", () => {
-  expect(describeTraceFailure(legacyError)).toEqual({ kind: "http", subject: "model" });
-  const diagnostics = traceDiagnostics([step, { ...step, id: "parent" }], legacyError);
-  expect(diagnostics).toEqual([{ kind: "http", subject: "model", sources: ["pii_semantic.input"], details: [legacyError] }]);
+it("explains provider errors without a status code without guessing an HTTP status from IDs or durations", () => {
+  expect(describeTraceFailure(statuslessError)).toEqual({ kind: "http", subject: "model" });
+  const diagnostics = traceDiagnostics([step, { ...step, id: "parent" }], statuslessError);
+  expect(diagnostics).toEqual([{ kind: "http", subject: "model", sources: ["pii_semantic.input"], details: [statuslessError] }]);
 });
 
 describe("uses only recorded error evidence", () => {
@@ -37,7 +37,7 @@ it("does not turn a normal Block, a cancelled step or a recovered error into exe
 });
 
 it("keeps different provider failures distinct in an aggregate error", () => {
-  const detail = `${legacyError}; pii_semantic.output:backup:0: ReadTimeout; Expected allow; received block.`;
+  const detail = `${statuslessError}; pii_semantic.output:backup:0: ReadTimeout; Expected allow; received block.`;
   const diagnostics = traceDiagnostics([{ ...step, detail }], detail);
   expect(diagnostics).toHaveLength(2);
   expect(diagnostics[0]).toMatchObject({ kind: "http", sources: ["pii_semantic.input"], details: [detail] });
@@ -51,6 +51,6 @@ it("keeps unknown failures inspectable without attributing them to a model", () 
 });
 
 it("shows the full case explanation once when it repeats a span's error", () => {
-  const description = `${legacyError}; Expected allow; received block.`;
+  const description = `${statuslessError}; Expected allow; received block.`;
   expect(traceDiagnostics([step], description)[0].details).toEqual([description]);
 });

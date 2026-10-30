@@ -127,7 +127,7 @@ def test_model_capability_compiles_to_a_provider_agnostic_action_binding() -> No
     plan = {
         "guardrail_id": "model-contract",
         "guardrail_version": "20260904-010000.001Z",
-        "compiler_version": "tasklattice-controller-plan-v3",
+        "compiler_version": "tasklattice-controller-plan-v1",
         "safety_level": "balanced",
         "output_delivery": "full_buffered",
         "steps": [{
@@ -180,7 +180,7 @@ def _compile(
     plan = {
         "guardrail_id": "flag-contract",
         "guardrail_version": "20260904-010000.001Z",
-        "compiler_version": "tasklattice-controller-plan-v3",
+        "compiler_version": "tasklattice-controller-plan-v1",
         "safety_level": safety_level,
         "output_delivery": output_delivery,
         "steps": [{

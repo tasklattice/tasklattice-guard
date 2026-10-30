@@ -6,10 +6,10 @@ import type { RouterDraft } from '@/lib/traffic-routing-api';
 afterEach(cleanup);
 const before: RouterDraft = { routes: [{ id: 'r', name: 'HTTP route', kind: 'normal', enabled: true, selector: { expression: { combinator: 'and', conditions: [{ field: 'http.host', operator: 'equals', value: 'old.example' }] } }, targets: [{ id: 'a', guardrailId: 'g', guardrailVersion: 'v1', weightBps: 10000 }] }] };
 it('renders both removed and added values using the real diff viewer', async () => {
- const after = structuredClone(before); after.routes[0]!.targets[0]!.guardrailVersion = 'v2';
+ const after = structuredClone(before); after.routes[0]!.targets[0]!.guardrailVersion = 'revision-b';
  render(<Changes before={before} after={after} names={[]} />);
  await waitFor(() => expect(screen.getByRole('table').textContent).toContain('v1'));
- expect(screen.getByRole('table').textContent).toContain('v2');
+ expect(screen.getByRole('table').textContent).toContain('revision-b');
  expect(screen.getByText('+ Added · green')).toBeTruthy();
  expect(screen.getByText('− Removed · red')).toBeTruthy();
 });

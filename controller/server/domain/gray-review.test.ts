@@ -28,12 +28,6 @@ it.each(["builtin-content-safety", "builtin-jailbreak", "builtin-jailbreak-stric
   expect(() => plan(id,"ignore")).toThrow("review_unknown must be true or false");
 });
 
-it.each([["builtin-content-safety","1.1.0"],["builtin-jailbreak","1.1.0"],["builtin-jailbreak-strict","1.0.0"],["builtin-topic-safety","2.1.0"]])("does not enable review on frozen %s %s",(id,version) => {
-  const compiled=plan(id,"true",["input"],version);
-  expect(compiled.steps.length).toBeGreaterThan(0);
-  expect(compiled.steps.every(s => Object.fromEntries(s.parameters).review_unknown === undefined)).toBe(true);
-  expect(publishedProtectionCoverage(compiled)!.requiredModelBindings).not.toContain("classifier_review.input");
-});
 
 it("keeps output protection and never borrows an output model binding for review",() => {
   expect(publishedProtectionCoverage(plan("builtin-content-safety","true",["output"]))!.requiredModelBindings).toEqual(["content_safety.output"]);
@@ -48,6 +42,6 @@ it("keeps output protection and never borrows an output model binding for review
 
 it("accepts old assignment payloads without silently changing existing assignments",() => {
   const assignments=emptyModelAssignments();
-  const legacy=structuredClone(assignments);delete (legacy.bindings as Record<string,unknown>)["classifier_review.input"];
-  expect(assignmentInputSchema.parse(legacy)).toEqual(assignments);
+  const unassigned=structuredClone(assignments);delete (unassigned.bindings as Record<string,unknown>)["classifier_review.input"];
+  expect(assignmentInputSchema.parse(unassigned)).toEqual(assignments);
 });

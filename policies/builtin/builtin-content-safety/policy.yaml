@@ -1,5 +1,5 @@
 # yaml-language-server: $schema=../../schemas/policy.schema.json
-schema_version: 2
+schema_version: 1
 kind: Policy
 metadata:
   id: builtin-content-safety
@@ -7,7 +7,7 @@ metadata:
   description: Classifies unsafe user input and model output with the validated Content Safety capability
     binding.
   source: built_in
-  version: 1.2.0
+  version: 1.0.0
   tags:
   - namespace: protection
     value: content_safety

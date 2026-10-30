@@ -1,4 +1,4 @@
-schema_version: 2
+schema_version: 1
 kind: Policy
 metadata:
   id: local-passports
@@ -6,7 +6,7 @@ metadata:
   description: Redact reviewed international passport formats and context-labelled passport identifiers. Format
     matching does not establish document validity or issuing jurisdiction.
   source: built_in
-  version: 4.0.0
+  version: 1.0.0
   tags:
   - namespace: protection
     value: privacy

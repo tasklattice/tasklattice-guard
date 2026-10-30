@@ -19,26 +19,30 @@ from runner.protocol_codec import (
 
 
 FIXTURE = Path(__file__).parent / "fixtures" / "artifacts" / "local-secrets-v1"
-LEGACY_FIXTURE = Path(__file__).parent / "fixtures" / "unsupported-artifacts" / "pre-v16-local-secrets"
 
 
-def legacy_state():
+def unsupported_state():
     state = protocol.DesiredState()
-    state.ParseFromString(base64.b64decode((LEGACY_FIXTURE / "desired-state.pb.b64").read_text()))
+    state.ParseFromString(base64.b64decode((FIXTURE / "desired-state.pb.b64").read_text()))
+    artifact = state.artifacts[0]
+    artifact.compiler_version = "unsupported-compiler"
+    from runner.protocol_codec import artifact_digest
+    artifact.checksum = artifact_digest(artifact)
+    artifact.signature = _signature(Ed25519PrivateKey.from_private_bytes(bytes(range(1, 33))), artifact.checksum)
     return state
 
 
 @pytest.mark.parametrize("operation", ["verify", "admit", "apply"])
-def test_real_old_signed_artifact_is_rejected_before_runtime_preparation(tmp_path, operation):
+def test_signed_unsupported_contract_is_rejected_before_runtime_preparation(tmp_path, operation):
     from runner.protocol_codec import artifact_digest
-    state = legacy_state()
+    state = unsupported_state()
     artifact = state.artifacts[0]
-    assert artifact_digest(artifact) == artifact.checksum == "0e3ba069d8507b667523dae40c42a4dd272232cea98389e10fe813cc4fe6c2b2"
-    key = serialization.load_pem_public_key((LEGACY_FIXTURE / "public-key.pem").read_bytes())
+    assert artifact_digest(artifact) == artifact.checksum
+    key = serialization.load_pem_public_key((FIXTURE / "public-key.pem").read_bytes())
     key.verify(base64.b64decode(artifact.signature), artifact.checksum.encode())
-    assert not artifact.action_bindings[0].parameters
+    assert artifact.action_bindings[0].parameters
     before = state.SerializeToString()
-    store = ArtifactStore(LEGACY_FIXTURE / "public-key.pem", tmp_path)
+    store = ArtifactStore(FIXTURE / "public-key.pem", tmp_path)
     registry = Registry()
     store.attach_registry(registry)
     with pytest.raises(ValueError, match="artifact_recompile_required.*Recompile"):
@@ -52,13 +56,12 @@ def test_old_generation_cannot_replace_current_last_known_good_or_restore_after_
     import json
     current = protocol.DesiredState()
     current.ParseFromString(base64.b64decode((FIXTURE / "desired-state.pb.b64").read_text()))
-    assert (FIXTURE / "public-key.pem").read_bytes() == (LEGACY_FIXTURE / "public-key.pem").read_bytes()
     store = ArtifactStore(FIXTURE / "public-key.pem", tmp_path)
     registry = Registry()
     store.attach_registry(registry)
     store.apply(current)
     saved = (tmp_path / "last-known-good.json").read_bytes()
-    old = legacy_state()
+    old = unsupported_state()
     old.generation = current.generation + 1
     with pytest.raises(ValueError, match="artifact_recompile_required"):
         store.apply(old)
@@ -72,7 +75,7 @@ def test_old_generation_cannot_replace_current_last_known_good_or_restore_after_
         "desired_state_b64": base64.b64encode(old.SerializeToString()).decode(),
     }))
     rejected_cache = (tmp_path / "last-known-good.json").read_bytes()
-    restarted = ArtifactStore(LEGACY_FIXTURE / "public-key.pem", tmp_path)
+    restarted = ArtifactStore(FIXTURE / "public-key.pem", tmp_path)
     cold_registry = Registry()
     restarted.attach_registry(cold_registry)
     assert restarted.generation == cold_registry.preparations == 0

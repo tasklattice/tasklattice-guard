@@ -30,11 +30,11 @@ imagePullSecrets: []
 # Set once, e.g. https://guard-uat.example.com:8443 (scheme + hostname + port).
 # No path, credentials, query or fragment; an optional trailing slash is accepted.
 # Host casing and default ports (HTTP 80 / HTTPS 443) normalize to browser Origin.
-# Takes precedence over legacy controller.publicUrl, including local dev URLs.
+# Takes precedence over controller.publicUrl, including local dev URLs.
 # Ingress hosts are derived from it; VirtualService still needs matching routes.
 # Maps to CONTROLLER_PUBLIC_URL and, unless runner.publicUrl overrides it,
 # CONTROLLER_RUNTIME_PUBLIC_URL in the Controller ConfigMap.
-# Empty preserves legacy Controller URLs; without runner.publicUrl, Endpoint
+# Empty uses the Controller URL settings; without runner.publicUrl, Endpoint
 # addresses derive from the incoming Controller request origin. Local HTTP
 # loopback + Runtime LoadBalancer derives its separate public port instead.
 # Internal requests always use Service DNS, independently of this setting.
@@ -51,7 +51,7 @@ controller:
     repository: ghcr.io/tasklattice/tali-guard-controller
     pullPolicy: IfNotPresent
     # tag: "0.2.0" # Omit to use Chart.appVersion; dev UAT uses locally built :dev.
-  # Optional legacy UI-only URLs, used only when top-level publicUrl is empty.
+  # Optional UI-only URLs, used only when top-level publicUrl is empty.
   # First is the auth base URL; all derive trusted origins and Ingress hosts.
   # publicUrl: [https://guard.example.com] # A single string is also supported.
   # Extra browser origins, e.g. a separate UI development server. Normally omit.
@@ -253,7 +253,7 @@ ingress:
   className: ""
   annotations: {}
   # Optional host override; otherwise hosts derive from publicUrl, falling back
-  # to legacy controller.publicUrl when the shared URL is empty.
+  # to controller.publicUrl when the shared URL is empty.
   # host: guard.example.com
   tls: []
   # Example TLS entry: { secretName: guard-ingress-tls, hosts: [guard.example.com] }

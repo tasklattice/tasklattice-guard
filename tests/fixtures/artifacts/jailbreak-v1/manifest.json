@@ -1,8 +1,8 @@
 {
   "adapter": "litellm-generic-guardrail",
   "artifact_id": "fixture-artifact-jailbreak-v1",
-  "checksum": "d0a15d19fc354293a8461d80d4c6d6a170d6293c0127ab42b054542261735e3e",
-  "compiler_version": "tasklattice-nemo-config-v29-single-contract",
+  "checksum": "a181615b4b1ff89b98507f474744fc7f055a741a11a1e323465d4b861225309a",
+  "compiler_version": "tasklattice-nemo-config-v1",
   "endpoint_id": "fixture-endpoint",
   "expected": {
     "safe_input": "NONE",

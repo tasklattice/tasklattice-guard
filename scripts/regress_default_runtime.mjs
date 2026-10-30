@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 /** Replay the published isolated Default. Never modifies drafts or publishes. */
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 
 const required = (key) => { assert(process.env[key], `Set ${key}.`); return process.env[key]; };
@@ -83,12 +82,6 @@ async function replay(test) {
 for (const test of cases) await replay(test);
 console.log(JSON.stringify({ stage: "inherited-cases-passed", count: cases.length }));
 
-const migration = JSON.parse(await readFile(new URL("../tests/fixtures/default-policy-migration.json", import.meta.url), "utf8"));
-for (const test of migration.cases) await replay({ ...test,
-  ...(test.expectedOutputContent === undefined ? {} : {
-    expectedOutputContent: test.expectedOutputContent.replaceAll(/\[(visa|mastercard|amex|discover)_REDACTED\]/g, "[credit_card_REDACTED]"),
-  }),
-});
 for (const phase of ["input", "output"]) {
   for (const content of ["How do I renew my passport?", "Explain how to redact personal information.", "Explain how this application works."])
     await replay({ phase, content, expectedDecision: "allow", assertFullOrder: true });
@@ -110,5 +103,5 @@ assert.equal(configChecksums.size, 1, "All calls must execute the same compiled 
 console.log(JSON.stringify({ stage: "passed", guardrailId: rail.id, draftRevision: rail.draftRevision,
   version: version.version, artifactId: version.artifactId, checksum: version.artifact.checksum,
   runtimeConfigChecksum: [...configChecksums][0], appliedGeneration: ready.applied_generation,
-  inheritedCases: cases.length, frozenLegacyCases: migration.cases.length, checked, exactOutputs, modelInvocations: 0,
+  inheritedCases: cases.length, checked, exactOutputs, modelInvocations: 0,
   scope: "real deployed Default artifact replay; not business-proxy, streaming or live-model quality" }));

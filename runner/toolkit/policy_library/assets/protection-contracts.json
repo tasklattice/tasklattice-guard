@@ -1,17 +1,145 @@
 {
   "version": "1.0.0",
-  "directories": ["content_safety", "privacy", "business_topics", "content_filters", "attacks_and_abuse", "application_injection", "business_rules", "answer_reliability"],
+  "directories": [
+    "content_safety",
+    "privacy",
+    "business_topics",
+    "content_filters",
+    "attacks_and_abuse",
+    "application_injection",
+    "business_rules",
+    "answer_reliability"
+  ],
   "nativePolicies": {
-    "builtin-secrets": {"capability": "secrets", "rails": ["input", "output"], "modelCapabilities": [], "requiredContext": [], "execution": "local", "outputStreaming": "complete_response"},
-    "builtin-prompt-injection": {"capability": "prompt_injection", "rails": ["input"], "modelCapabilities": [], "requiredContext": [], "execution": "local", "outputStreaming": "not_applicable"},
-    "builtin-indirect-prompt-injection": {"capability": "indirect_prompt_injection", "rails": ["input"], "modelCapabilities": [], "requiredContext": [], "execution": "local", "outputStreaming": "not_applicable"},
-    "builtin-memory-poisoning": {"capability": "memory_poisoning", "rails": ["input"], "modelCapabilities": [], "requiredContext": [], "execution": "local", "outputStreaming": "not_applicable"},
-    "builtin-system-prompt-leakage": {"capability": "system_prompt_leakage", "rails": ["output"], "modelCapabilities": [], "requiredContext": [], "execution": "local", "outputStreaming": "complete_response"},
-    "builtin-content-safety": {"capability": "content_safety", "rails": ["input", "output"], "modelCapabilities": ["content_safety"], "requiredContext": [], "execution": "model", "outputStreaming": "incremental_check"},
-    "builtin-jailbreak": {"capability": "jailbreak", "rails": ["input"], "modelCapabilities": ["jailbreak"], "requiredContext": [], "execution": "model", "outputStreaming": "not_applicable"},
-    "builtin-topic-safety": {"capability": "topic_control", "rails": ["input"], "modelCapabilities": ["topic_control"], "requiredContext": ["allowed_topics"], "execution": "local_then_model", "outputStreaming": "not_applicable"},
-    "builtin-pii": {"capability": "pii", "rails": ["input", "output"], "modelCapabilities": ["pii_semantic"], "requiredContext": [], "execution": "local_then_model", "outputStreaming": "complete_response"},
-    "builtin-contextual-grounding": {"capability": "contextual_grounding", "rails": ["output"], "modelCapabilities": ["contextual_grounding"], "requiredContext": ["query", "grounding_source"], "execution": "model", "outputStreaming": "complete_response"},
-    "builtin-automated-reasoning": {"capability": "automated_reasoning", "rails": ["output"], "modelCapabilities": ["automated_reasoning"], "requiredContext": ["reasoning_policy"], "execution": "model", "outputStreaming": "complete_response"}
+    "builtin-secrets": {
+      "capability": "secrets",
+      "rails": [
+        "input",
+        "output"
+      ],
+      "modelCapabilities": [],
+      "requiredContext": [],
+      "execution": "local",
+      "outputStreaming": "complete_response"
+    },
+    "builtin-prompt-injection": {
+      "capability": "prompt_injection",
+      "rails": [
+        "input"
+      ],
+      "modelCapabilities": [],
+      "requiredContext": [],
+      "execution": "local",
+      "outputStreaming": "not_applicable"
+    },
+    "builtin-indirect-prompt-injection": {
+      "capability": "indirect_prompt_injection",
+      "rails": [
+        "input"
+      ],
+      "modelCapabilities": [],
+      "requiredContext": [],
+      "execution": "local",
+      "outputStreaming": "not_applicable"
+    },
+    "builtin-memory-poisoning": {
+      "capability": "memory_poisoning",
+      "rails": [
+        "input"
+      ],
+      "modelCapabilities": [],
+      "requiredContext": [],
+      "execution": "local",
+      "outputStreaming": "not_applicable"
+    },
+    "builtin-system-prompt-leakage": {
+      "capability": "system_prompt_leakage",
+      "rails": [
+        "output"
+      ],
+      "modelCapabilities": [],
+      "requiredContext": [],
+      "execution": "local",
+      "outputStreaming": "complete_response"
+    },
+    "builtin-content-safety": {
+      "capability": "content_safety",
+      "rails": [
+        "input",
+        "output"
+      ],
+      "modelCapabilities": [
+        "content_safety"
+      ],
+      "requiredContext": [],
+      "execution": "model",
+      "outputStreaming": "incremental_check"
+    },
+    "builtin-jailbreak": {
+      "capability": "jailbreak",
+      "rails": [
+        "input"
+      ],
+      "modelCapabilities": [
+        "jailbreak"
+      ],
+      "requiredContext": [],
+      "execution": "model",
+      "outputStreaming": "not_applicable"
+    },
+    "builtin-topic-safety": {
+      "capability": "topic_control",
+      "rails": [
+        "input"
+      ],
+      "modelCapabilities": [
+        "topic_control"
+      ],
+      "requiredContext": [],
+      "execution": "model",
+      "outputStreaming": "not_applicable"
+    },
+    "builtin-pii": {
+      "capability": "pii",
+      "rails": [
+        "input",
+        "output"
+      ],
+      "modelCapabilities": [
+        "pii_semantic"
+      ],
+      "requiredContext": [],
+      "execution": "local_then_model",
+      "outputStreaming": "complete_response"
+    },
+    "builtin-contextual-grounding": {
+      "capability": "contextual_grounding",
+      "rails": [
+        "output"
+      ],
+      "modelCapabilities": [
+        "contextual_grounding"
+      ],
+      "requiredContext": [
+        "query",
+        "grounding_source"
+      ],
+      "execution": "model",
+      "outputStreaming": "complete_response"
+    },
+    "builtin-automated-reasoning": {
+      "capability": "automated_reasoning",
+      "rails": [
+        "output"
+      ],
+      "modelCapabilities": [
+        "automated_reasoning"
+      ],
+      "requiredContext": [
+        "reasoning_policy"
+      ],
+      "execution": "model",
+      "outputStreaming": "complete_response"
+    }
   }
 }

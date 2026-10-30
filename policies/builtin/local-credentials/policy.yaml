@@ -1,4 +1,4 @@
-schema_version: 2
+schema_version: 1
 kind: Policy
 metadata:
   id: local-credentials
@@ -6,7 +6,7 @@ metadata:
   description: Reject recognizable credential literals on input and output using local format and assignment rules.
     Includes private keys, passwords, API/auth tokens and connection credentials; no model is required.
   source: built_in
-  version: 4.2.0
+  version: 1.0.0
   tags:
   - namespace: protection
     value: privacy
@@ -54,8 +54,8 @@ rules:
 - rules/credential--base64-private-key.yaml
 tests:
 - tests/acceptance.yaml
-- tests/regression-4.1.0.yaml
-- tests/regression-4.2.0.yaml
+- tests/credential-contexts.yaml
+- tests/token-boundaries.yaml
 documents:
-- docs/4.1.0.md
-- docs/4.2.0.md
+- docs/credential-contexts.md
+- docs/token-boundaries.md

@@ -101,7 +101,7 @@ export function RuntimeContentPanel({ title, description, blocks, available, tra
         <LogBody body={block.text} truncated={block.truncated} />
       </div>)}</div> : <div className="px-4 py-5 text-sm text-muted-foreground">{t(content.available ? "logs.contentUnavailable" : "logs.contentNotCaptured")}</div>}
       {content.blocks && visibleBlocks.length < content.blocks.length ? <p className="px-4 py-2 text-xs text-muted-foreground">{t("logs.bodyPreviewLimited")}</p> : null}
-      {downloadId && !content.httpRequest && content.blocks?.length ? <p className="border-t px-4 py-2 text-xs text-muted-foreground">{t("logs.legacyBodyOnly")}</p> : null}
+      {downloadId && !content.httpRequest && content.blocks?.length ? <p className="border-t px-4 py-2 text-xs text-muted-foreground">{t("logs.textOnlyRecord")}</p> : null}
       {content.httpRequest?.redactedHeaders.length ? <p className="border-t px-4 py-2 text-xs text-muted-foreground">{t("logs.httpHeadersRedacted")}</p> : null}
       {transformed && visibleBlocks.length > 0 ? <p className="border-t px-4 py-2 text-xs text-muted-foreground">{t("logs.transformation")}</p> : null}
     </> : null}</div>

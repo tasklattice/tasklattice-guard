@@ -1,5 +1,5 @@
 export const protectionEn = {
-  topicRules: { commonRestrictions: "Common topic restrictions", commonRestrictionsHint: "Optional semantic restrictions for this Guardrail. Review and edit the topics before applying. Existing entries are retained.", addCommonRestrictions: "Add to denylist", allow: "Allowlist Rule", deny: "Denylist Rule", independent: "Enable each Rule independently. Denylist matches always take priority. Keep at least one Rule enabled, or remove this Policy.", denyHint: "Reject requests matching any denied topic, even if they also match the Allowlist.", allowHint: "Define allowed topics and choose how to handle unmatched requests.", disabled: "Disabled. This Rule is not executed; its configuration is retained for reuse.", helper: "Generate Rule configuration from intent or documents", helperHint: "Describe what is allowed and what is denied. AI suggestions only fill this Policy’s lists when applied; Rule switches and other Policies stay unchanged.", upgrade: "Use independent Allowlist and Denylist Rules", upgradeHint: "Upgrade this draft to Topic Control v2. Existing lists are copied into Rule parameters; save to apply the change." },
+  topicRules: { commonRestrictions: "Common topic restrictions", commonRestrictionsHint: "Optional semantic restrictions for this Guardrail. Review and edit the topics before applying. Existing entries are retained.", addCommonRestrictions: "Add to denylist", allow: "Allowlist Rule", deny: "Denylist Rule", independent: "Enable each Rule independently. Denylist matches always take priority. Keep at least one Rule enabled, or remove this Policy.", denyHint: "Reject requests matching any denied topic, even if they also match the Allowlist.", allowHint: "Define allowed topics and choose how to handle unmatched requests.", disabled: "Disabled. This Rule is not executed; its configuration is retained for reuse.", helper: "Generate Rule configuration from intent or documents", helperHint: "Describe what is allowed and what is denied. AI suggestions only fill this Policy’s lists when applied; Rule switches and other Policies stay unchanged." },
   validationReadiness: {
     blockedTitle: "Draft cannot run tests: model dependencies are not ready",
     warningTitle: "Draft dependency check needs attention",
@@ -94,8 +94,7 @@ export const protectionEn = {
   local: "Runs locally", model: "Requires a model assignment", custom: "Custom implementation · review dependencies",
   requiredContext: "Required request context: {{context}}", modelHint: "Selecting a Policy does not configure or validate its model. Assignments are managed in Settings; validation checks the complete draft before release.",
   limits: "Coverage & limitations", overview: "Protection map", order: "Policy execution order",
-  allDirectories: "All protections", includeLegacy: "Include legacy collections",
-  legacyHint: "Legacy collections mix several protection concerns and may overlap. They remain available for existing Guardrails and explicit review, but are not added by the new Profiles. Focused Policies are not a promise of identical coverage; validate any migration as a new revision.",
+  allDirectories: "All protections", includePrevious: "Include previous collections",
   orderHint: "Policies execute top to bottom, then their Rules in local order. A block ends processing; a transform continues with modified text. This order is independent of the map's categories.",
   moveUp: "Move {{name}} earlier", moveDown: "Move {{name}} later", remove: "Remove {{name}}",
   unsavedOrder: "Unsaved changes",
@@ -124,7 +123,7 @@ export const protectionEn = {
 };
 
 export const protectionZh = {
-  topicRules: { commonRestrictions: "常用话题限制", commonRestrictionsHint: "当前 Guardrail 可选用的语义话题限制。应用前请检查并按业务调整，已有条目会保留。", addCommonRestrictions: "添加到黑名单", allow: "白名单 Rule", deny: "黑名单 Rule", independent: "两条 Rule 可独立启用，黑名单命中始终优先。至少启用一条 Rule，或移除这条 Policy。", denyHint: "命中任一拒绝话题时直接阻止，即使同时命中白名单。", allowHint: "定义允许的话题，并选择如何处理未匹配的请求。", disabled: "已关闭。不会执行此 Rule，保留配置供下次启用。", helper: "从意图或文档生成 Rule 配置", helperHint: "描述允许什么、拒绝什么。应用 AI 建议只填充当前 Policy 的名单，不会改变 Rule 开关或其他 Policy。", upgrade: "改用独立的白名单与黑名单 Rule", upgradeHint: "将当前草稿升级为 Topic Control v2，已有名单复制到 Rule 参数中，保存后生效。" },
+  topicRules: { commonRestrictions: "常用话题限制", commonRestrictionsHint: "当前 Guardrail 可选用的语义话题限制。应用前请检查并按业务调整，已有条目会保留。", addCommonRestrictions: "添加到黑名单", allow: "白名单 Rule", deny: "黑名单 Rule", independent: "两条 Rule 可独立启用，黑名单命中始终优先。至少启用一条 Rule，或移除这条 Policy。", denyHint: "命中任一拒绝话题时直接阻止，即使同时命中白名单。", allowHint: "定义允许的话题，并选择如何处理未匹配的请求。", disabled: "已关闭。不会执行此 Rule，保留配置供下次启用。", helper: "从意图或文档生成 Rule 配置", helperHint: "描述允许什么、拒绝什么。应用 AI 建议只填充当前 Policy 的名单，不会改变 Rule 开关或其他 Policy。" },
   validationReadiness: {
     blockedTitle: "当前草稿无法运行测试：模型依赖未就绪",
     warningTitle: "当前草稿的依赖检查需要注意",
@@ -216,8 +215,7 @@ export const protectionZh = {
   local: "本地执行", model: "需要模型分配", custom: "自定义实现 · 请检查依赖", requiredContext: "请求需要提供的上下文：{{context}}",
   modelHint: "选择 Policy 不代表已配置或验证模型。模型分配在 Settings 中管理，发布前还需要验证整个草稿。",
   limits: "保护范围与限制", overview: "保护地图", order: "Policy 执行顺序",
-  allDirectories: "全部保护", includeLegacy: "包含旧版组合模板",
-  legacyHint: "旧版组合模板包含多个保护职责，可能相互重叠。保留它们以供已有 Guardrail 和人工检查使用，新Profile不会自动加入。拆分后的 Policy 不保证覆盖完全相同；迁移必须作为新版本重新验证。",
+  allDirectories: "全部保护", includePrevious: "包含旧版组合模板",
   orderHint: "Policy 从上到下执行，每个 Policy 内按 Rule 顺序执行。拒绝会终止流程，脱敏后继续传递修改后的内容。此顺序与地图分类无关。",
   moveUp: "将 {{name}} 提前", moveDown: "将 {{name}} 后移", remove: "移除 {{name}}",
   unsavedOrder: "有未保存更改",

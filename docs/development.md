@@ -8,8 +8,7 @@ contracts. For a complete local Kubernetes installation, use the
 
 The Controller console targets **desktop browsers only**. Future features and
 fixes do not require phone/mobile layout compatibility, touch-specific interaction
-support, mobile screenshots or mobile regression acceptance. See the
-[design contract](protection-productization.md#platform-scope-desktop-only).
+support, mobile screenshots or mobile regression acceptance.
 
 Continue verifying desktop primary/error/recovery paths, keyboard accessibility,
 focus, browser zoom and layout at desktop window sizes. Existing mobile styles
@@ -142,7 +141,7 @@ with UI/runtime ports 38081/38082. The debug command uses this same file plus
 telemetry flags; its backend defaults can be changed with `HELM_OTLP_ENDPOINT`,
 `HELM_PYROSCOPE_ADDRESS` and `HELM_MONITORING_RELEASE`. Additional flags after
 `--` reach Helm as separate arguments. Make targets remain compatibility aliases
-only; new workflows should use npm. Legacy `HELM_VALUES_ARGS` is replaced by
+only; new workflows should use npm. Previous `HELM_VALUES_ARGS` is replaced by
 explicit arguments after `--`.
 
 ## LiteLLM integration stack
@@ -247,18 +246,16 @@ local detectors, Rule expansion and snapshot decoding live in
 ### Promote a Guardrail between environments
 
 UAT authors and tests; production receives released versions, runs their own
-test suites unchanged and releases them. The design
-is `docs/guardrail-self-contained-promotion-design.zh-CN.md`.
+test suites unchanged and releases them.
 
 **Export.** **Guardrails → Actions → Export…** (or a version's **Export…**)
 selects immutable versions and downloads one `.guardrail.zip`. No source ID,
 package signing key, trust file or Runner check is required. Pending imported
 versions can be exported immediately, without local reports or release.
 
-Format v4 contains a SHA-256 manifest, frozen Policy definitions, Guardrail
+Format V1 contains a SHA-256 manifest, frozen Policy definitions, Guardrail
 configuration, Artifacts, runtime requirements and Test Cases. Test reports,
-credentials and model settings are not included. Legacy v3 packages remain
-readable; their source signatures are metadata, not authenticated identities.
+credentials and model settings are not included. Only the V1 package schema is accepted.
 Archive limits, file digests and semantic consistency are still validated.
 
 **Import.** **Guardrails → Create Guardrail ▾ → Import Guardrail package**:
@@ -281,19 +278,6 @@ and `import <file> [--versions=a,b] [--confirm]` (preview only without `--confir
 `values-dev-uat.yaml`. There is no separate migration target profile or automatic
 pair-deployment command; ordinary installations have identical import/export
 features without package keys or trust configuration.
-
-`npm run test:promotion` remains an opt-in regression for two explicitly
-configured, isolated loopback test deployments. It does not deploy releases,
-read cluster Secrets or start database port-forwards. Supply these environment
-variables before running it:
-
-- `GUARD_PROMOTION_UAT_URL`, `GUARD_PROMOTION_UAT_RUNNER_URL`, `GUARD_PROMOTION_UAT_DB`, `GUARD_PROMOTION_UAT_USERNAME`
-- `GUARD_PROMOTION_PROD_URL`, `GUARD_PROMOTION_PROD_RUNNER_URL`, `GUARD_PROMOTION_PROD_DB`, `GUARD_PROMOTION_PROD_USERNAME`
-- `GUARD_PROMOTION_PASSWORD` and the target's `GUARD_PROMOTION_RUNNER_TOKEN`
-- Optional `GUARD_PROMOTION_WORKDIR` (default `.local-secrets/promotion`)
-
-Use separate databases and loopback hosts for the two test deployments. This
-regression writes test data and must not target production services.
 
 Unit and PostgreSQL coverage:
 `GUARD_TEST_POSTGRES_URL=... npx vitest run server/services/guardrail-packages.postgres.test.ts`.
@@ -351,3 +335,38 @@ Pages opened before this mechanism was installed must load it once; subsequent
 deployments are detected automatically. When adding a full-page editor without
 a form, use `usePageUpdateBlocker` for its unsaved state. `SheetContent` protects
 drawers by default; use `allowPageUpdates` only for read-only content.
+
+## Current schema and source cleanup
+
+V1 is the only development schema and wire/content contract. Fresh databases
+create the current tables directly and seed the five pinned V1 Profiles. A V1
+restart preserves data and does not replay seeds or reseal Artifacts. Earlier
+development databases are rejected before application DDL and need a fresh
+V1 database; there is no historical upgrade or implicit immutable-data rewrite.
+Builtin Policies and Profiles, package schemas, compiler contracts and Artifact
+content all start at V1. Third-party API versions, dependency versions, model
+identifiers and user-created immutable revision identities keep their own semantics.
+
+Model configuration comes from Controller Settings and its active Runner
+revision. The old `MODEL_GUARDRAILS_*` model/bootstrap credentials are no longer
+read; the runtime-log encryption setting remains supported. OpenTelemetry uses
+its standard `OTEL_*` settings. Release package import/export supports format V1.
+Completed report deletion takes no body and neither acquires the global routing
+lock nor redistributes Runner desired state. Running reports remain protected.
+
+Use `.venv/bin/python scripts/source_loc.py --output /tmp/guard-source-loc.json`
+to compare with `3cde35babd61b43f1d047b04d77a27e28c5c3643`. The fixed rules include
+handwritten source, tests, SQL migrations, Helm templates, workflow code and
+entry-point scripts. They exclude generated code, dependencies, data, lockfiles
+and documentation on both sides. The locked Pygments lexer counts lines with
+code tokens, excluding blank/comment-only lines and Python docstrings; physical
+and nonblank totals and the complete per-file inventory are also emitted.
+New source files count against the reduction. Do not lower LOC by reformatting,
+minifying, moving source into data, or removing current behavioral coverage.
+
+Completed September acceptance scripts, their proxy fixtures, the unused older
+CLI smoke harness and retired Profile fixtures have been removed. Current
+coverage lives in the Controller PostgreSQL/UI/HTTP suites, Python contract and
+runtime suites, and `scripts/guardctl-smoke.py` (executed in CI on both Runner
+architectures). The report-memory benchmarks and current live model/stream and
+stream harnesses remain available.

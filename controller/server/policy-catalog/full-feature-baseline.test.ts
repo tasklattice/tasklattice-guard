@@ -22,7 +22,7 @@ const reconcile = (draft: ReturnType<typeof fresh>, reference = fresh()) => {
 
 it("pins the expanded benchmark-family configuration without instance resources", () => {
   const draft = fresh();
-  expect(draft.profileOrigin).toEqual({ id: "full-feature-baseline", version: "2.0.0" });
+  expect(draft.profileOrigin).toEqual({ id: "full-feature-baseline", version: "1.0.0" });
   expect(normalizeGuardrailDraft(draft)).toEqual(draft);
   expect(draft.outputDelivery).toBe("full_buffered");
   expect(draft.topicControlMode).toBe("permissive");
@@ -160,7 +160,7 @@ it("supports subsequent deletions using the previous draft without its source Pr
 it("isolates unavailable Profiles and never substitutes a different pin", () => {
   const missing = catalog.filter(policy => policy.id !== "builtin-jailbreak-strict");
   expect(previewProtectionProfile(fullFeatureBaseline, missing)).toMatchObject({ policyBindings: [], availability: { available: false } });
-  const newer = catalog.map(policy => policy.id === "builtin-jailbreak-strict" ? { ...policy, version: "2.0.0", published_versions: [] } : policy);
+  const newer = catalog.map(policy => policy.id === "builtin-jailbreak-strict" ? { ...policy, version: "1.0.1", published_versions: [] } : policy);
   expect(() => profileDraft(fullFeatureBaseline, newer)).toThrow(/requires version 1.0.0/);
   expect(previewProtectionProfile(fullFeatureBaseline, catalog).availability.available).toBe(true);
 });

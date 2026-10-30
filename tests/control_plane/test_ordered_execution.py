@@ -339,8 +339,8 @@ async def test_split_topic_rules_short_circuit_and_trace_their_own_identity(enab
     plan = chain_plan([(rule, "", "", "block") for rule in enabled], "input")
     for index, step in enumerate(plan["steps"]):
         step.update(capability="topic_control", contract_ref="tali.guard.topic-control.semantic.v1",
-            parameters=[["evaluation_view", "original"], ["precedence", str(index)], ["policy_id", "builtin-topic-safety"], ["policy_version", "2.0.0"], ["rule_id", step["id"]]])
-    plan["policy_bindings"] = [{"policy_id": "builtin-topic-safety", "policy_version": "2.0.0",
+            parameters=[["evaluation_view", "original"], ["precedence", str(index)], ["policy_id", "builtin-topic-safety"], ["policy_version", "1.0.0"], ["rule_id", step["id"]]])
+    plan["policy_bindings"] = [{"policy_id": "builtin-topic-safety", "policy_version": "1.0.0",
         "enabled_rule_ids": enabled, "enabled_rails": ["input"], "parameter_values": [], "rule_actions": []}]
     provider = RecordingTopic()
     previews = DraftPreviewRuntime(DefaultRunnerCompiler(), action_providers(provider))

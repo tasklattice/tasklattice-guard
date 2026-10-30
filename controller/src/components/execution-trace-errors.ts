@@ -11,7 +11,7 @@ export function isFailedTraceStep(step: ExecutionTraceStep): boolean {
   return /^(error|failed|failure|timeout|timed_out|rate_limited|server_error|client_error|transport_error|invalid_response|unknown_error)$/i.test(step.outcome);
 }
 
-// Legacy reports contain exception names rather than structured diagnostics.
+// Previous reports contain exception names rather than structured diagnostics.
 // Only explicit HTTP markers are status codes; IDs and durations are not evidence.
 export function describeTraceFailure(detail: string, context = ""): TraceFailure | null {
   const httpStatus = detail.match(/\bhttp(?:statuserror| status(?: code)?| error)?[\s:_-]+([45]\d{2}|[45]xx)\b/i)?.[1]?.toLowerCase()

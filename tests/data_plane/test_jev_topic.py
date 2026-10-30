@@ -137,8 +137,6 @@ async def test_split_rule_questions_are_isolated_and_empty_permissive_rules_skip
     deny = (("topic_mode", "permissive"), ("allowed_topics", ""), ("restricted_topics", "Refund fraud"))
     assert set(topic_questions(allow)) == {"unlisted_task"}
     assert set(topic_questions(deny)) == {"denied_task"}
-    legacy = (("topic_mode", "allowlist"), ("allowed_topics", "Order support"), ("restricted_topics", "Ignored legacy deny"))
-    assert "Ignored legacy deny" not in json.dumps(topic_questions(legacy))
     result = await evaluator(lambda _: pytest.fail("No model call required")).evaluate(
         replace(_topic_request(), parameters=(("topic_mode", "permissive"),)))
     assert result.verdict == "not_matched" and result.usage.model_invocations == 0
@@ -159,3 +157,9 @@ async def test_offline_replay_excludes_labels_and_keeps_unknown_errors_separate(
     report = await replay(samples[:2], evaluator(respond), 5)
     assert report["outcomes"] == {"unknown": 1, "correct": 1}
     assert report["label_agreement"] == 0.5
+
+
+@pytest.mark.parametrize("mode", ["allowlist", "unsupported"])
+def test_topic_questions_reject_unsupported_modes(mode):
+    with pytest.raises(ValueError, match="Unsupported topic mode"):
+        topic_questions((("topic_mode", mode),))

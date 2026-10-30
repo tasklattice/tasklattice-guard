@@ -27,7 +27,7 @@ def _encode_plan(plan: dict[str, Any], compress: bool) -> dict[str, Any]:
     if not compress:
         return {"plan": plan}
     raw = json.dumps(plan, separators=(",", ":")).encode()
-    # Keep small/non-compressible plans and oversized legacy plans readable as-is.
+    # Keep small/non-compressible plans and plans above the compression limit readable as-is.
     if len(raw) < 4096 or len(raw) > _MAX_COMPRESSED_PLAN_BYTES:
         return {"plan": plan}
     encoded = base64.b64encode(zlib.compress(raw, level=1)).decode("ascii")

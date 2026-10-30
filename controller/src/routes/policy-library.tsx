@@ -92,7 +92,7 @@ export function PolicyLibraryPage() {
   const [createFromProfile, setCreateFromProfile] = useState<string | null>(null);
   const catalogItems: CatalogItem[] = useMemo(() => [...collections, ...policies].sort((a, b) => a.name.localeCompare(b.name)), [policies, collections]);
   const editable = (policy: Policy | null) => Boolean(policy);
-  const legacyEditable = (policy: Policy | null) => Boolean(policy?.implementation === "nemo_native");
+  const canExportNativePolicy = (policy: Policy | null) => Boolean(policy?.implementation === "nemo_native");
   const [declarativeId, setDeclarativeId] = useState<string | null | undefined>(undefined);
   const [importedDefinition, setImportedDefinition] = useState<PolicyDefinition | undefined>();
   const [search, setSearch] = useState("");
@@ -273,7 +273,7 @@ export function PolicyLibraryPage() {
                     key={`policy:${item.id}`}
                     policy={item}
                     onOpen={trigger => { catalogOpenerRef.current = trigger; openPolicy(item); }}
-                    onExport={legacyEditable(item) ? () => exportPolicy(item) : undefined}
+                    onExport={canExportNativePolicy(item) ? () => exportPolicy(item) : undefined}
                     onDelete={canManage && item.deletable ? () => requestPolicyDelete(item) : undefined}
                   />
                 ))}
@@ -299,7 +299,7 @@ export function PolicyLibraryPage() {
       <PolicyDetail
         policy={selected}
         onClose={closePolicy}
-        onExport={!searchParams.version && legacyEditable(selected) ? exportPolicy : undefined}
+        onExport={!searchParams.version && canExportNativePolicy(selected) ? exportPolicy : undefined}
         onDelete={!searchParams.version && canManage && selected?.deletable ? requestPolicyDelete : undefined}
         onEdit={!searchParams.version && canManage && editable(selected) ? (policy, trigger) => { studioOpenerRef.current = policy.implementation === "rules" ? catalogOpenerRef.current : trigger; setPolicyImport(null); if (policy.implementation === "rules") { setImportedDefinition(undefined); setDeclarativeId(policy.id); closePolicy(); } else setStudioPolicy(policy.implementation_detail ?? null); } : undefined}
       />

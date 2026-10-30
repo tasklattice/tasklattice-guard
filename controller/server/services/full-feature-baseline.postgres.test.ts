@@ -34,7 +34,7 @@ describe.skipIf(!url)("Full-feature Profile creation and deletion", () => {
     const created = await service.createGuardrail({ name: "Full feature", draftConfig: config, runtimeProfile: "auto", actorId: "admin" });
     const stored = await service.getGuardrail(created.id);
     expect(stored.draftConfig).toEqual(config);
-    expect(stored.draftConfig.profileOrigin?.version).toBe("2.0.0");
+    expect(stored.draftConfig.profileOrigin?.version).toBe("1.0.0");
     expect(stored.draftConfig.policyBindings).toHaveLength(14);
     expect((await service.listTestCases(created.id)).length).toBeGreaterThan(500);
     const reduced = structuredClone(stored.draftConfig);

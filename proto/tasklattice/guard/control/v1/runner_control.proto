@@ -76,7 +76,9 @@ message ControllerMessage {
 message ValidationStatusNotice {
   string runner_id = 1;
   string run_id = 2;
+  // Only FAILED or CANCELLED; executed case results use the chunk channel.
   ValidationStatus status = 3;
+  // Human-readable terminal explanation, truncated by the Runner to 1024 characters.
   string reason = 4;
 }
 
@@ -93,11 +95,13 @@ message ValidationReportChunk {
   string run_id = 2;
   string upload_id = 3;
   string manifest_digest = 4;
+  // Zero-based position within this upload; retries retain the same sequence.
   uint32 sequence = 5;
   uint32 chunks = 6;
   uint32 cases = 7;
   uint32 case_offset = 8;
   uint32 raw_size_bytes = 9;
+  // Lowercase hexadecimal SHA256 of the uncompressed serialized ValidationResult.
   string sha256 = 10;
   bytes gzip_result = 11;
   bool final = 12;
@@ -107,6 +111,7 @@ message ValidationReportChunk {
 message ValidationReportChunkAck {
   string run_id = 1;
   string upload_id = 2;
+  // Zero-based sequence of the durably committed or permanently rejected chunk.
   uint32 sequence = 3;
   // Nonempty only after a permanent rejection has been durably recorded.
   string rejection_code = 4;

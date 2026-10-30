@@ -125,8 +125,8 @@ Controller 与 Runner 按同一套契约部署，不支持混合旧版本。编�
 
 | 对象 | 当前标识 |
 | --- | --- |
-| Controller plan | `tasklattice-controller-plan-v16-explicit-views` |
-| NeMo 编译器 | `tasklattice-nemo-config-v29-single-contract` |
+| Controller plan | `tasklattice-controller-plan-v1` |
+| NeMo 编译器 | `tasklattice-nemo-config-v1` |
 
 只有上表两个当前标识组合可以加载；每个 Step 和 Action 还必须声明且仅声明一个合法 `evaluation_view`。即便标识改成当前值，缺失、重复或无效的视图仍会被拒绝。版本不用于切换旧行为。Policy 的固定版本仍用于核对真实目标；checksum、签名、依赖、模型配置同步和执行环境检查继续有效。签名正确只能证明产物完整、来源可信，不能证明升级后的 Runner 支持其执行契约。
 

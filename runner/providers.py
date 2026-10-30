@@ -34,67 +34,6 @@ from runner.toolkit.safety.providers import (
     resolve_evaluator_model_providers,
 )
 
-from .config import RunnerSettings
-
-
-def runtime_action_providers(settings: RunnerSettings) -> tuple[ActionProvider, ...]:
-    local_providers = local_action_providers(PromptSecurityActionProvider())
-    pii_evaluator = PiiEvaluator()
-    provider_configs = resolve_evaluator_model_providers(
-        settings.model_runtimes,
-        settings.evaluator_bindings,
-    )
-    safety_evaluator = SafetyModelEvaluator(
-        tuple(
-            build_safety_model_provider(item)
-            for item in provider_configs
-        )
-    )
-    routes = [EvaluationRoute("pii", CONTRACT_PII_EXACT, pii_evaluator)]
-    routes.extend(
-        EvaluationRoute(
-            capability,
-            MODEL_SAFETY_CONTRACT_BY_CAPABILITY[capability],
-            safety_evaluator,
-        )
-        for capability in ("pii", "content_safety", "jailbreak")
-        if capability in safety_evaluator.capabilities
-    )
-    evaluation = EvaluationActionProvider(tuple(routes))
-    providers: list[ActionProvider] = [
-        *local_providers,
-        evaluation,
-    ]
-    taxonomy_judge = next(
-        (
-            item
-            for item in provider_configs
-            if item.role == "taxonomy_judge"
-            and item.contract_ref in {
-                "tali.guard.topic-control.semantic.v1",
-            }
-        ),
-        None,
-    )
-    if taxonomy_judge is not None:
-        providers.append(
-            TopicJudgeActionProvider(
-                base_url=taxonomy_judge.base_url,
-                model=taxonomy_judge.model,
-                api_key_env_var=taxonomy_judge.api_key_env_var,
-                provider_id=taxonomy_judge.id,
-                timeout_seconds=taxonomy_judge.timeout_seconds,
-                skip_tls_verify=taxonomy_judge.skip_tls_verify,
-            )
-        )
-    if settings.automated_reasoning_endpoint_url:
-        providers.append(ReasoningActionProvider(HTTPAutomatedReasoningProvider(
-            endpoint_url=settings.automated_reasoning_endpoint_url,
-            api_key_env_var=settings.automated_reasoning_api_key_env_var,
-        )))
-    return tuple(providers)
-
-
 def dynamic_runtime_action_providers(
     configuration: object,
     credentials: dict[str, str],

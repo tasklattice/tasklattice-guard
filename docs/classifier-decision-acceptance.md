@@ -56,7 +56,7 @@ runner:
 
 The corresponding environment variables are `GUARD_JEV_LOWER_THRESHOLD` and
 `GUARD_JEV_UPPER_THRESHOLD`. They affect **all JEV checks on that Runner**,
-including the legacy topic-only profile. A separate Endpoint by itself does not
+including the topic-only profile. A separate Endpoint by itself does not
 isolate these settings. Keep model versions, model questions, topic lists and
 benchmark expectations fixed when comparing policy behavior.
 

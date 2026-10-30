@@ -113,7 +113,7 @@ describe("ControlPlaneLayout", () => {
   });
 
   describe.each<SessionState>(["authenticated", "anonymous", "loading", "error"])("documentation with an %s session", state => {
-    it.each(["/document", "/document/", "/document/overview/quickstart-protection", "/document/operator/operator-create-policy", "/help", "/help/"])("renders %s without waiting for authentication", path => {
+    it.each(["/document", "/document/", "/document/overview/quickstart-protection", "/document/operator/operator-create-policy"])("renders %s without waiting for authentication", path => {
       pathname = path;
       sessionState = state;
       render(<ControlPlaneLayout />);
@@ -126,7 +126,7 @@ describe("ControlPlaneLayout", () => {
     });
   });
 
-  it.each(["/guardrails", "/account", "/settings/providers", "/document-private", "/help-private"])("requires login outside documentation at %s", path => {
+  it.each(["/guardrails", "/account", "/settings/providers", "/document-private", "/help", "/help/", "/help-private"])("requires login outside documentation at %s", path => {
     pathname = path;
     sessionState = "anonymous";
     render(<ControlPlaneLayout />);

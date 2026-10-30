@@ -1,4 +1,4 @@
-schema_version: 2
+schema_version: 1
 kind: Policy
 metadata:
   id: block-code-execution
@@ -6,7 +6,7 @@ metadata:
   description: Detects executable fenced code and explicit execution requests while allowing explanation
     and review intent.
   source: built_in
-  version: 1.95.0
+  version: 1.0.0
   tags:
   - namespace: protection
     value: application_injection

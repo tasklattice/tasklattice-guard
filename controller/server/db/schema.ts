@@ -344,7 +344,7 @@ export const guardrailVersions = pgTable("guardrail_version", {
   validationRunId: text("validation_run_id"),
   platformRelease: jsonb("platform_release").$type<import("../../shared/platform-release.js").PlatformRelease>(),
   testingEvidence: jsonb("testing_evidence").$type<VersionTestingEvidence>(),
-  // Legacy audit provenance, never publication eligibility.
+  // Previous audit provenance, never publication eligibility.
   sourceValidationRunId: text("source_validation_run_id"),
   testWaiver: jsonb("test_waiver").$type<import("../../shared/default-release.js").DefaultTestWaiver>(),
   releasedAt: timestamp("released_at", { withTimezone: true }),
@@ -515,7 +515,7 @@ export const artifacts = pgTable("guardrail_artifact", {
   dependencyManifest: jsonb("dependency_manifest").$type<unknown[]>().notNull().default([]),
   checksum: text("checksum").notNull(),
   signature: text("signature").notNull(),
-  contentDigestVersion: smallint("content_digest_version").notNull().default(2),
+  contentDigestVersion: smallint("content_digest_version").notNull().default(1),
   createdAt,
 }, (table) => [
   uniqueIndex("guardrail_artifact_checksum_idx").on(table.checksum),

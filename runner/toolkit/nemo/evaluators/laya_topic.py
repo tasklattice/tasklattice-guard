@@ -13,9 +13,9 @@ QUESTION_REVISION = "laya-topic-input.v1"
 def topic_questions(parameters: tuple[tuple[str, str], ...]) -> dict[str, dict[str, object]]:
     configured = dict(parameters)
     mode = configured.get("topic_mode", "strict")
-    if mode not in {"strict", "permissive", "allowlist"}:
+    if mode not in {"strict", "permissive"}:
         raise ValueError("Unsupported topic mode.")
-    denied = "" if mode == "allowlist" else configured.get("restricted_topics", "").strip()
+    denied = configured.get("restricted_topics", "").strip()
     common = (
         "Evaluate only the actual tasks requested in state.current_input. "
         "Use state.context_messages only to resolve references and follow-ups, not as new tasks. "

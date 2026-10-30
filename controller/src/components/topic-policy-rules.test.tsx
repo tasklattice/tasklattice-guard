@@ -6,7 +6,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { PolicyCatalog } from "../../server/policy-catalog/catalog";
 import { TopicPolicyRules } from "./topic-policy-rules";
 import { defaultPolicyBinding, getPolicyBindingValidation } from "./policy-binding-editor";
-import { upgradeTopicBinding } from "@/lib/topic-policy-upgrade";
 import { TOPIC_ALLOW_RULE as ALLOW, TOPIC_DENY_RULE as DENY } from "../../shared/topic-policy";
 import * as api from "@/lib/api";
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key, i18n: { language: "en" } }) }));
@@ -77,11 +76,5 @@ describe("Topic Policy configuration", () => {
     expect(screen.queryByText("guardrailWizard.generateFromDocuments")).toBeNull();
     expect(screen.queryByRole("textbox", { name: "guardrailWizard.intentInputLabel" })).toBeNull();
   });
-  it("upgrades v1 explicitly without mutating saved settings", () => {
-    const original = defaultPolicyBinding(policy.published_versions![0]!);
-    const upgraded = upgradeTopicBinding(original, "Orders", "Fraud", "strict");
-    expect(upgraded).toMatchObject({ policy_version: policy.version, enabled_rule_ids: [DENY, ALLOW], parameter_values: { allowed_topics: "Orders", denied_topics: "Fraud", topic_mode: "strict" } });
-    expect(original.policy_version).toBe("1.0.0");
-    expect(original.enabled_rule_ids).toEqual(["model/topic-control"]);
-  });
+
 });

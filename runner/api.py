@@ -210,7 +210,7 @@ class RunnerAPI:
         register_scan(self, max_body_bytes=scan_max_body_bytes, timeout_seconds=scan_timeout_seconds)
 
     def _trace_request_id(self, fallback: str) -> str:
-        """Prefer the active trace id without requiring legacy metric fakes to expose one."""
+        """Prefer the active trace id when the metrics implementation exposes one."""
 
         trace_id = getattr(self._metrics, "current_trace_id", None)
         return (trace_id() if callable(trace_id) else None) or fallback

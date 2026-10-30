@@ -225,57 +225,6 @@ export class ControlPlaneService {
     return row ?? null;
   }
 
-  /**
-   * Re-seal Artifacts signed under an earlier digest contract. Content is
-   * normalized through the transport schema, so stored JSON, checksum and the
-   * Runner's recomputed digest agree byte for byte afterwards.
-   */
-  async resealArtifacts(): Promise<number> {
-    return this.db.transaction(async (tx) => {
-      await advisoryTransactionLock(tx, 'tasklattice-guard-product-defaults');
-      return this.resealStaleArtifacts(tx);
-    });
-  }
-
-  private async resealStaleArtifacts(tx: Transaction): Promise<number> {
-    const stale = await tx.select().from(artifacts)
-      .where(ne(artifacts.contentDigestVersion, ARTIFACT_CONTENT_DIGEST_VERSION)).for("update");
-    if (!stale.length) return 0;
-    const referenced = new Set((await tx.select({ artifactId: guardrailVersions.artifactId }).from(guardrailVersions)
-      .where(inArray(guardrailVersions.artifactId, stale.map(row => row.id)))).map(row => row.artifactId));
-    const sealed = stale.map(row => {
-      const content = canonicalArtifactContent(row as ArtifactContent, this.config.protoPath);
-      return { row, content, checksum: artifactContentDigest(content) };
-    });
-    const byChecksum = new Map<string, typeof sealed>();
-    for (const item of sealed) byChecksum.set(item.checksum, [...byChecksum.get(item.checksum) ?? [], item]);
-    for (const [checksum, group] of byChecksum) {
-      // Rows that differed only by their delivery generation now share content.
-      const kept = group.filter(item => referenced.has(item.row.id));
-      if (kept.length > 1) throw new Error(`Artifacts ${kept.map(item => item.row.id).join(", ")} share content ${checksum}; remove the duplicate version before upgrading.`);
-      const [keep = group[0]!, ...rest] = [...kept, ...group.filter(item => !referenced.has(item.row.id))];
-      if (rest.length) await tx.delete(artifacts).where(inArray(artifacts.id, rest.map(item => item.row.id)));
-      await tx.update(artifacts).set({
-        ...keep.content,
-        checksum,
-        signature: signArtifactDigest(checksum, this.config.artifactSigningKeyPath),
-        contentDigestVersion: ARTIFACT_CONTENT_DIGEST_VERSION,
-      }).where(eq(artifacts.id, keep.row.id));
-    }
-    const [state] = await tx.update(controllerState).set({
-      desiredGeneration: increment(controllerState.desiredGeneration), updatedAt: new Date(),
-    }).where(eq(controllerState.id, "singleton")).returning();
-    await tx.insert(outboxEvents).values({
-      id: randomUUID(), kind: "runner.desired_state_changed", aggregateId: "artifact-reseal",
-      payload: { generation: state?.desiredGeneration ?? 0, resealed: sealed.length },
-    });
-    await tx.insert(auditEvents).values({
-      id: randomUUID(), kind: "artifact.resealed", actorId: null, resourceType: "artifact", resourceId: "all",
-      detail: { count: sealed.length, digestVersion: ARTIFACT_CONTENT_DIGEST_VERSION },
-    });
-    return sealed.length;
-  }
-
   async desiredGeneration(): Promise<number> {
     const [state] = await this.db.select().from(controllerState).where(eq(controllerState.id, "singleton"));
     return state?.desiredGeneration ?? 0;
@@ -320,7 +269,7 @@ export class ControlPlaneService {
     }
     const newestFirst = (items: PolicyDto[]) => [...items].sort((left, right) => right.version.localeCompare(left.version, undefined, { numeric: true }));
     const catalog = id ? [this.policyCatalog().get(id)].filter((item): item is PolicyDto => Boolean(item))
-      : [...this.policyCatalog().list(), ...this.policyCatalog().retired()];
+      : this.policyCatalog().list();
     const shipped = new Set(catalog.map((policy) => policy.id));
     const views = await this.policyResources.views([
       ...catalog.map((policy) => imported.has(policy.id)
@@ -638,7 +587,7 @@ export class ControlPlaneService {
       draftRevision: guardrail.draftRevision,
       candidateVersion,
       runtimeProfile: guardrail.runtimeProfile,
-      compilerVersion: String(plan.compiler_version ?? "tasklattice-controller-plan-v3"),
+      compilerVersion: String(plan.compiler_version ?? "tasklattice-controller-plan-v1"),
       plan,
     };
   }
@@ -667,7 +616,7 @@ export class ControlPlaneService {
       const module = modules.find((candidate) => Array.isArray(candidate.step_ids) && candidate.step_ids.includes(stepId));
       return {
         name: String(step.capability ?? stepId),
-        version: "controller-plan-v3",
+        version: "controller-plan-v1",
         flow: stepId,
         timeout_ms: typeof module?.timeout_ms === "number" ? module.timeout_ms : 0,
         failure_mode: typeof module?.failure_mode === "string" ? module.failure_mode : "fail_closed",
@@ -678,7 +627,7 @@ export class ControlPlaneService {
       candidate_version: String(plan.guardrail_version),
       engine: "GuardRails 0 · NeMo",
       colang_version: input.runtimeProfile === "llmrails_colang1_standard" ? "1.0" : input.runtimeProfile === "llmrails_colang2_programmable" ? "2.x" : "auto",
-      compiler_version: String(plan.compiler_version ?? "tasklattice-controller-plan-v3"),
+      compiler_version: String(plan.compiler_version ?? "tasklattice-controller-plan-v1"),
       checksum: createHash("sha256").update(canonicalJson({ draftConfig, runtimeProfile: input.runtimeProfile })).digest("hex"),
       rails,
       parallel_groups: modules.map((module) => String(module.id ?? "")).filter(Boolean),
@@ -1134,29 +1083,25 @@ export class ControlPlaneService {
   }
 
   async testingReportDeletionImpact(runId: string) {
-    return this.db.transaction(async tx => {
-      const [run] = await tx.select(validationSummaryColumns).from(validationRuns).where(eq(validationRuns.id, runId));
-      if (!run) throw new NotFoundError("Testing Report", runId);
-      return this.reportDeletionImpact(tx, run);
-    }, { isolationLevel: "repeatable read", accessMode: "read only" });
+    const [run] = await this.db.select({ id: validationRuns.id, guardrailId: validationRuns.guardrailId,
+      guardrailVersion: validationRuns.guardrailVersion, status: validationRuns.status })
+      .from(validationRuns).where(eq(validationRuns.id, runId));
+    if (!run) throw new NotFoundError("Testing Report", runId);
+    return this.reportDeletionImpact(run);
   }
 
-  async deleteTestingReport(input: { runId: string; actorId: string; expectedPendingVersion: string | null }) {
+  async deleteTestingReport(input: { runId: string; actorId: string }) {
     return this.db.transaction(async tx => {
-      await advisoryTransactionLock(tx, "traffic-router-bindings");
       const [found] = await tx.select(validationSummaryColumns).from(validationRuns).where(eq(validationRuns.id, input.runId));
       if (!found) throw new NotFoundError("Testing Report", input.runId);
-      // Serialize with publication, release, other report deletions and Router references.
+      // Keep publication and deletions on this Guardrail serialized.
       const [guardrail] = await tx.select().from(guardrails).where(eq(guardrails.id, found.guardrailId)).for("update");
       if (!guardrail) throw new NotFoundError("Guardrail", found.guardrailId);
       const [run] = await tx.select(validationSummaryColumns).from(validationRuns).where(eq(validationRuns.id, input.runId)).for("update");
       if (!run) throw new NotFoundError("Testing Report", input.runId);
-      const impact = await this.reportDeletionImpact(tx, run);
+      const impact = this.reportDeletionImpact(run);
       if (!impact.deletable) throw new ConflictError("Wait for this test to finish before deleting its report.",
         "test_report_in_use", { impact });
-      if (impact.pendingVersion !== input.expectedPendingVersion) {
-        throw new ConflictError("The remaining test evidence changed. Review the deletion impact again.", "test_report_deletion_changed", { impact });
-      }
       await tx.update(guardrailVersions).set({ validationRunId: null })
         .where(and(eq(guardrailVersions.guardrailId, run.guardrailId), eq(guardrailVersions.validationRunId, run.id)));
       await tx.delete(outboxEvents).where(and(eq(outboxEvents.id, run.id), eq(outboxEvents.kind, "guardrail.validation_requested")));
@@ -1164,17 +1109,15 @@ export class ControlPlaneService {
       await tx.insert(auditEvents).values({ id: randomUUID(), kind: "guardrail.testing_report_deleted", actorId: input.actorId,
         resourceType: "guardrail", resourceId: run.guardrailId,
         detail: { runId: run.id, version: run.guardrailVersion, status: run.status, subject: run.subject,
-          contentDigest: run.candidateDigest, testSuiteDigest: run.testSuiteDigest,
-          pendingVersion: impact.pendingVersion, replacementRunId: impact.replacementRunId } });
+          contentDigest: run.candidateDigest, testSuiteDigest: run.testSuiteDigest } });
       return impact;
     });
   }
 
-  private async reportDeletionImpact(_tx: Transaction, run: Pick<typeof validationRuns.$inferSelect, "id" | "guardrailId" | "guardrailVersion" | "status">): Promise<TestingReportDeletionImpact> {
+  private reportDeletionImpact(run: Pick<typeof validationRuns.$inferSelect, "id" | "guardrailId" | "guardrailVersion" | "status">): TestingReportDeletionImpact {
     const running = run.status === "queued" || run.status === "running";
     return { runId: run.id, guardrailId: run.guardrailId, version: run.guardrailVersion, running,
-      deletable: !running, retainedByPlatformVersion: false, pendingVersion: null, replacementRunId: null,
-      references: [], blockers: [] };
+      deletable: !running };
   }
 
   async requestValidation(input: { guardrailId: string; actorId: string; compilerAvailable: boolean; testModelRules?: boolean }) {
@@ -2926,7 +2869,7 @@ function programmablePolicyPlan(
   return {
     guardrail_id: `policy-preview-${policyId}`,
     guardrail_version: version,
-    compiler_version: "tasklattice-controller-plan-v3",
+    compiler_version: "tasklattice-controller-plan-v1",
     safety_level: "balanced",
     output_delivery: contract.output_delivery ?? "window_buffered",
     steps,

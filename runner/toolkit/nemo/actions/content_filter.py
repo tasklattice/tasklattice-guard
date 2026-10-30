@@ -312,7 +312,7 @@ def evaluate_parameters(
     contract that the deployed step does not actually implement.
     """
     resolved = dict(parameters)
-    legacy_parameters = {
+    shared_parameters = {
         key.removeprefix("parameter."): value
         for key, value in resolved.items()
         if key.startswith("parameter.")
@@ -332,7 +332,7 @@ def evaluate_parameters(
             for item in resolved.get("policy_ids", "").splitlines()
             if item.strip()
         ),
-        parameters=legacy_parameters,
+        parameters=shared_parameters,
         policy_parameters=_json_nested_mapping(
             resolved.get("policy_parameters_json", "{}")
         ),

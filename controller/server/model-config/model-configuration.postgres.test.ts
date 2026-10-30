@@ -1,7 +1,6 @@
 // @vitest-environment node
 // Opt-in real PostgreSQL semantics; never calls a Provider or changes public rows.
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
@@ -275,12 +274,5 @@ describe.skipIf(!url)("Current model configuration PostgreSQL semantics", () => 
     await rejected;
     expect((await service.view()).draft?.assignments.bindings['content_safety.input']).toBeNull();
   });
-  it('migrates away historical configurations while retaining latest editable/current state', async () => {
-    const { draftId, activeId } = await seedPartial();
-    await pool.query("INSERT INTO model_configuration_revision (id,revision,state,assignments) VALUES ($1,0,'superseded',$2),($3,3,'validated',$2)", [randomUUID(), emptyModelAssignments(), 'latest-draft']);
-    await pool.query(readFileSync(resolve('server/db/migrations/0014_current_model_configuration.sql'), 'utf8'));
-    const ids = (await pool.query('SELECT id FROM model_configuration_revision')).rows.map(row => row.id);
-    expect(ids.sort()).toEqual([activeId, 'latest-draft'].sort());
-    expect(ids).not.toContain(draftId);
-  });
+
 });

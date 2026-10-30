@@ -1,7 +1,7 @@
 import type { ArtifactContent } from "./artifact-content.js";
 
-export const PLAN_COMPILER_VERSION = "tasklattice-controller-plan-v16-explicit-views";
-export const NEMO_COMPILER_VERSION = "tasklattice-nemo-config-v29-single-contract";
+export const PLAN_COMPILER_VERSION = "tasklattice-controller-plan-v1";
+export const NEMO_COMPILER_VERSION = "tasklattice-nemo-config-v1";
 const recovery = "Recompile and publish a new Guardrail version with the current Controller and Runner before activating it.";
 
 /** A load gate for one supported contract, not version negotiation or fallback. */

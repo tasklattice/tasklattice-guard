@@ -1,4 +1,4 @@
-schema_version: 2
+schema_version: 1
 kind: Policy
 metadata:
   id: builtin-jailbreak-strict
@@ -6,7 +6,7 @@ metadata:
   description: Blocks explicit Jailbreak matches. A versioned per-Guardrail parameter
     decides whether valid unknown results are observed or blocked; model errors remain
     fail-closed.
-  version: 1.1.0
+  version: 1.0.0
   tags:
   - namespace: protection
     value: attacks_and_abuse

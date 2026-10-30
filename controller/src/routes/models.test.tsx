@@ -344,9 +344,9 @@ describe("Models and Guardrail Catalog", () => {
   });
 
   it("warns about missing Rail evidence while allowing activation", async () => {
-    const legacy = structuredClone(view);
-    for (const check of legacy.draft.validationReport!.checks) delete check.evidenceKind;
-    vi.mocked(getModelConfiguration).mockResolvedValue(legacy);
+    const missingEvidence = structuredClone(view);
+    for (const check of missingEvidence.draft.validationReport!.checks) delete check.evidenceKind;
+    vi.mocked(getModelConfiguration).mockResolvedValue(missingEvidence);
     renderPage(<GuardrailCatalogPage />);
     const activate = await screen.findByRole("button", { name: "modelSettings.reviewActivation" });
     expect(activate.hasAttribute("disabled")).toBe(false);

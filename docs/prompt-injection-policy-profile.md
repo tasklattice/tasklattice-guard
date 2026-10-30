@@ -1,7 +1,7 @@
 # Strict input Prompt Injection testing
 
 An Endpoint's final decision combines model evidence with policy actions.
-JEV's `jailbreak-input.v3` evaluator can return `matched`, `not_matched`, or
+JEV's `jailbreak-input.v1` evaluator can return `matched`, `not_matched`, or
 `unknown`. An unknown result is a valid model response, not a connection error
 and not an explicit model match.
 

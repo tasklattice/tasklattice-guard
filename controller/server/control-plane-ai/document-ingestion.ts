@@ -108,7 +108,7 @@ async function docxSections(id: string, name: string, bytes: Buffer): Promise<Do
 
 async function docSections(id: string, name: string, bytes: Buffer): Promise<DocumentSection[]> {
   if (!bytes.subarray(0, 8).equals(Buffer.from("d0cf11e0a1b11ae1", "hex"))) {
-    throw new ValidationError(`${name} is not a valid legacy Word document.`);
+    throw new ValidationError(`${name} is not a valid Word .doc file.`);
   }
   const directory = await mkdtemp(join(tmpdir(), "tasklattice-doc-"));
   const source = join(directory, "source.doc");
@@ -117,7 +117,7 @@ async function docSections(id: string, name: string, bytes: Buffer): Promise<Doc
     const result = await execute("antiword", [source], { timeout: 10_000, maxBuffer: MAX_EXTRACTED_CHARACTERS * 4 });
     return textSections(id, name, result.stdout);
   } catch {
-    throw new ValidationError("Legacy .doc conversion is unavailable. Save the file as .docx and retry.");
+    throw new ValidationError("Word .doc conversion is unavailable. Save the file as .docx and retry.");
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

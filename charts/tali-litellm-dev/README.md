@@ -106,15 +106,11 @@ console under the `litellm-dev` Endpoint and Router.
 Helm renders no Secret resources. A pre-install/pre-upgrade/pre-rollback Job
 uses the Guard Controller image to create random database, master, UI and salt
 keys. Repeated runs retain them. Its ServiceAccount may read only the configured
-managed and legacy names, create Secrets, and read this namespace UID.
+managed names, create Secrets, and read this namespace UID.
 
-Managed names end in `-init`; upgrades copy release-owned legacy data before Helm
-removes the old resources. The database login and connection URL are kept in sync.
-The proxy configuration is a ConfigMap and contains environment references only.
-Inline master, UI, salt and database keys in Values are no longer supported.
-The development profile requires a newly built Guard Controller `:dev` image for
-initialization, in addition to the LiteLLM proxy and Guard Runner images. The mock
-model reuses the Runner image.
+Managed names end in `-init`. The bootstrap Job creates missing managed Secrets
+and reuses validated infrastructure credentials. Managed account credentials
+are reset on each deployment.
 
 For a real upstream, set `model.upstream.apiBase`, `model.upstream.model` and
 `model.upstream.existingSecret`. The external Secret must contain `api-key`, or

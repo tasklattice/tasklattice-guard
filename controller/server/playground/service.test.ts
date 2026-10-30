@@ -10,7 +10,7 @@ const candidate = {
   candidateVersion: "20260904-040000.004Z",
   plan: { guardrail_id: "guardrail-1", guardrail_version: "20260904-040000.004Z" },
   runtimeProfile: "auto",
-  compilerVersion: "controller-plan-v2",
+  compilerVersion: "controller-plan-v1",
 };
 
 describe("PlaygroundDraftPreviewStore", () => {

@@ -64,14 +64,14 @@ async def test_released_artifact_needs_a_verifier():
             runtime_profile="auto", artifact=artifact, test_cases=[_case("allow")]))
 
 
-async def test_real_old_released_artifact_is_rejected_before_cases_or_recompilation(tmp_path, monkeypatch):
+async def test_signed_unsupported_released_artifact_is_rejected_before_cases_or_recompilation(tmp_path, monkeypatch):
     from runner.artifact_store import ArtifactStore
-    from tests.test_runner_artifact_store import LEGACY_FIXTURE, legacy_state
-    artifact = legacy_state().artifacts[0]
-    store = ArtifactStore(LEGACY_FIXTURE / "public-key.pem", tmp_path)
+    from tests.test_runner_artifact_store import FIXTURE, unsupported_state
+    artifact = unsupported_state().artifacts[0]
+    store = ArtifactStore(FIXTURE / "public-key.pem", tmp_path)
     validator = DefaultRunnerValidator(DefaultRunnerCompiler(), verify_artifact=store.verify)
     def never_compile(*_args, **_kwargs):
-        raise AssertionError("A signed old version must not be silently recompiled.")
+        raise AssertionError("A signed unsupported version must not be silently recompiled.")
     monkeypatch.setattr(validator._compiler, "compile", never_compile)
     with pytest.raises(ValueError, match="artifact_recompile_required"):
         await validator.run(protocol.ValidationRequest(run_id="upgrade", guardrail_id=artifact.guardrail_id,

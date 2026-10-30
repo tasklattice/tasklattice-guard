@@ -260,7 +260,7 @@ async def test_nemotron_v3_accepts_only_unambiguous_rating_aliases(scope, label,
     other = "Response Safety" if scope == "input" else "User Safety"
     response = json.dumps({selected: label, other: "unsafe" if expected == "safe" else "safe",
                            "Safety Categories": "Sexual, Profanity"})
-    provider = build_safety_model_provider(_config("v3", "nemotron_safety_guard_v3", "test-model"),
+    provider = build_safety_model_provider(_config("revision-c", "nemotron_safety_guard_v3", "test-model"),
         transport=httpx.MockTransport(lambda _: _response(response)))
     native = await provider.assess(({"role": "user", "content": "Synthetic fixture"},), scope=scope)
     assert native.verdict == expected
@@ -271,7 +271,7 @@ async def test_nemotron_v3_accepts_only_unambiguous_rating_aliases(scope, label,
 
 @pytest.mark.parametrize("label", ["not safe", "not unsafe", "safe or unsafe rating", "unsafe rating but safe", "safe rating.", "", None, True, ["safe"], {"verdict": "safe"}])
 async def test_nemotron_v3_rejects_ambiguous_or_invalid_safety_labels(label):
-    provider = build_safety_model_provider(_config("v3", "nemotron_safety_guard_v3", "test-model"),
+    provider = build_safety_model_provider(_config("revision-c", "nemotron_safety_guard_v3", "test-model"),
         transport=httpx.MockTransport(lambda _: _response(json.dumps({"User Safety": label}))))
     result = await SafetyModelEvaluator((provider,)).evaluate(_request("Synthetic fixture"))
     assert result.verdict == "error"
@@ -281,7 +281,7 @@ async def test_nemotron_v3_rejects_ambiguous_or_invalid_safety_labels(label):
 @pytest.mark.parametrize("label,verdict", [("safe", "not_matched"), ("unsafe", "matched")])
 async def test_native_classification_trace_preserves_labels_and_response_model_without_content(label, verdict):
     provider = build_safety_model_provider(
-        _config("v3", "nemotron_safety_guard_v3", "requested-model"),
+        _config("revision-c", "nemotron_safety_guard_v3", "requested-model"),
         transport=httpx.MockTransport(lambda _: httpx.Response(200, json={
             "model": "response-model", "choices": [{"message": {"content": json.dumps({
                 "User Safety": label, "Safety Categories": "Violence"})}}],
@@ -298,7 +298,7 @@ async def test_native_classification_trace_preserves_labels_and_response_model_w
 
 @pytest.mark.parametrize("label,verdict", [("unsafe", "matched"), ("safe", "not_matched")])
 async def test_nemotron_v3_manipulation_preserves_native_safety_verdict(label, verdict):
-    provider = build_safety_model_provider(_config("v3", "nemotron_safety_guard_v3", "test-model"),
+    provider = build_safety_model_provider(_config("revision-c", "nemotron_safety_guard_v3", "test-model"),
         transport=httpx.MockTransport(lambda _: _response(json.dumps({"User Safety": label, "Safety Categories": "Manipulation"}))))
     result = await SafetyModelEvaluator((provider,)).evaluate(_request("Synthetic fixture"))
     assert result.verdict == verdict

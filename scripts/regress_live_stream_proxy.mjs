@@ -42,8 +42,8 @@ const transport=createServer(async(req,res)=>{
   const payload=body.length?JSON.parse(body):{};
   if(activeCase&&payload.input_type==='response'){
    // The live scenarios are all streaming. Never spend a model call on the
-   // legacy per-token response path, even if an image preflight is bypassed.
-   activeCase.legacyResponseRejected=true;
+   // per-token response path, even if an image preflight is bypassed.
+   activeCase.perTokenResponseRejected=true;
    res.writeHead(426,{'content-type':'application/json'}).end('{"error":"Protected SSE requires the output-stream API"}');return;
   }
   const r=await fetch('http://localhost:38382'+req.url,{method:req.method,headers:{'x-api-key':req.headers['x-api-key']??'','content-type':'application/json'},...(body.length?{body}:{}),signal:AbortSignal.timeout(60000)});

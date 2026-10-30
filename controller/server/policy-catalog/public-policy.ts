@@ -1,4 +1,4 @@
-/** Origin was an old authoring-mode switch. Preserve it only in legacy signed snapshots. */
+/** Hide authoring-mode metadata from the public DTO without modifying signed snapshots. */
 export type PublicPolicy<T> = T extends Array<infer Item> ? PublicPolicy<Item>[] : T extends object ? {
   [Key in keyof T as Key extends "source" ? never : Key]: Key extends "published_versions" | "implementation_detail" ? PublicPolicy<T[Key]> : T[Key]
 } : T;

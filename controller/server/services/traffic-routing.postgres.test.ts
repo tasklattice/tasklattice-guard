@@ -1,10 +1,10 @@
 // @vitest-environment node
 import { createHash, randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { eq } from "drizzle-orm";
-import { Pool } from "pg";
+import type { Pool } from "pg";
+import { createTestDatabase } from "../db/postgres-test-database.js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { loadConfig } from "../config.js";
 import * as schema from "../db/schema.js";
@@ -27,23 +27,16 @@ const withHeader = (): RouterDraft => ({ routes: [{ ...draft().routes[0]!, id: "
 }, ...draft().routes] });
 
 describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
-  const namespace = `guard_traffic_${randomUUID().replaceAll("-", "")}`;
-  let admin: Pool; let pool: Pool; let service: ControlPlaneService;
-  const read = (name: string) => readFileSync(new URL(`../db/migrations/${name}`, import.meta.url), "utf8");
+  let database: Awaited<ReturnType<typeof createTestDatabase>>;
+  let pool: Pool; let service: ControlPlaneService;
   beforeAll(async () => {
-    expect(["127.0.0.1", "localhost", "[::1]"]).toContain(new URL(url!).hostname);
-    admin = new Pool({ connectionString: url, max: 1, connectionTimeoutMillis: 5000 });
-    await admin.query(`CREATE SCHEMA "${namespace}"`);
-    pool = new Pool({ connectionString: url, max: 8, connectionTimeoutMillis: 5000, options: `-c search_path=${namespace}`, application_name: namespace });
-    const journal = JSON.parse(read("meta/_journal.json")) as { entries: { tag: string }[] };
-    expect(journal.entries.some(e => e.tag === "0009_traffic_router_composition")).toBe(true);
-    // Start from nothing: preserve real constraints and never depend on public's migration state.
-    for (const { tag } of journal.entries) await pool.query(read(`${tag}.sql`).replaceAll('"public".', `"${namespace}".`));
+    database = await createTestDatabase(url!, "traffic");
+    pool = database.pool;
     service = new ControlPlaneService(drizzle(pool, { schema }), loadConfig({ NODE_ENV: "test", CONTROLLER_DATABASE_URL: url!,
       CONTROLLER_RUNNER_TOKEN: "runner-token-that-is-at-least-32-characters", CONTROLLER_ARTIFACT_SIGNING_KEY_PATH: "/tmp/unused-signing-key.pem",
       CONTROLLER_POLICY_CATALOG_DIR: resolve("../runner/toolkit/policy_library/assets"), BETTER_AUTH_SECRET: "better-auth-secret-that-is-at-least-32-characters" }));
   });
-  afterAll(async () => { await pool?.end(); await admin?.query(`DROP SCHEMA IF EXISTS "${namespace}" CASCADE`); await admin?.end(); });
+  afterAll(async () => { await database?.drop(); });
   beforeEach(async () => {
     await pool.query('TRUNCATE auth_user, guardrail, runner_pool, controller_state, traffic_router, route_assignment, telemetry_watermark CASCADE');
     await pool.query(`INSERT INTO auth_user (id,name,email,role) VALUES ('admin','Admin','admin@example.test','admin'),('approver','Approver','approver@example.test','admin');
@@ -341,26 +334,6 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
     expect((await service.trafficRouting.revisions(router.id))[1]?.context).toEqual(original);
   });
 
-  it("migrates existing revisions as explicitly unknown without reconstructing live context", async () => {
-    const router = await publish();
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
-      await client.query('ALTER TABLE traffic_router_revision DROP COLUMN context');
-      await client.query(read("0010_router_revision_context.sql"));
-      expect((await client.query('SELECT context FROM traffic_router_revision')).rows).toEqual([{ context: null }]);
-      await client.query("COMMIT");
-    } catch (error) { await client.query("ROLLBACK"); throw error; }
-    finally { client.release(); }
-    await service.trafficRouting.bind(router.id, ["http"], actor);
-    expect((await service.trafficRouting.revisions(router.id))[0]?.context).toBeNull();
-    expect((await service.trafficRouting.distribution(router.id, 1)).revisions[0]?.context).toBeNull();
-    await apply(router.id);
-    const revisions = await service.trafficRouting.revisions(router.id);
-    expect(revisions[1]?.context).toBeNull();
-    expect(revisions[0]?.context?.endpoints).toEqual([{ id: "http", name: "LiteLLM", adapter: "LITELLM" }]);
-  });
-
   async function addVersion(version: string, generation: number, status = "ready", artifact: string | null = "artifact-new") {
     await pool.query("INSERT INTO guardrail_version (guardrail_id,version,generation,status,runtime_profile,plan,artifact_id,released_at) VALUES ('guard-a',$1,$2,$3,'auto','{}',$4,CASE WHEN $3 = 'ready' THEN now() END)", [version, generation, status, artifact]);
   }
@@ -629,7 +602,7 @@ describe.skipIf(!url)("Traffic composition transactions in PostgreSQL", () => {
     expect((await service.duplicateGuardrail(request)).id).toBe(copy.id);
     await expect(service.duplicateGuardrail({ ...request, idempotencyKey: "stale" })).rejects.toMatchObject({ code: "guardrail_draft_conflict" });
     await pool.query("UPDATE guardrail_version SET source_snapshot=NULL WHERE guardrail_id='guard-a'");
-    await expect(service.duplicateGuardrail({ id: "guard-a", name: "Legacy", sourceVersion: "1", idempotencyKey: "legacy", actorId: actor })).rejects.toMatchObject({ code: "source_snapshot_unavailable" });
+    await expect(service.duplicateGuardrail({ id: "guard-a", name: "Previous", sourceVersion: "1", idempotencyKey: "previous", actorId: actor })).rejects.toMatchObject({ code: "source_snapshot_unavailable" });
     expect(await count("guardrail", "duplicate_key IS NOT NULL")).toBe(1);
     expect(await count("audit_event", "kind='guardrail.duplicated'")).toBe(1);
   });

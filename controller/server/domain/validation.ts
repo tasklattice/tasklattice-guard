@@ -65,17 +65,11 @@ export function generatedTestCases(
       // A scenario covering several Rules is only valid when its complete
       // selection is enabled. Partial Profiles cannot promise disabled checks.
       if (!item.covered_rule_ids.every((id) => enabledRules.has(id))) return [];
-      const topicCase = policy.id === "builtin-topic-safety" && item.id === "topic-input";
-      const topicAction = binding.ruleActions["model/topic-control"] ?? binding.action ?? "block";
-      const topicBlockedDecision = topicAction;
       const topicValues = topicPolicyValues(binding.parameterValues);
       const expanded = isSplitTopicPolicy(binding.policyId, binding.policyVersion) ? item.covered_rule_ids.includes(TOPIC_DENY_RULE)
         ? topicLines(topicValues.denied).map((topic, index) => ({ ...item, id: `${item.id}/${index + 1}`, name: `Denied topic: ${topic}`, content: `Please help me with this task: ${topic}`, expected_decision: "block" as const }))
         : [{ ...item, expected_decision: topicValues.mode === "permissive" ? "allow" as const : (binding.ruleActions[TOPIC_ALLOW_RULE] ?? binding.action ?? "block") }]
-        : topicCase ? [
-        { ...item, expected_decision: draft.topicControlMode === "permissive" ? "allow" as const : topicBlockedDecision },
-        ...draft.restrictedTopics.map((topic, index) => ({ ...item, id: `${item.id}/deny-${index + 1}`, name: `Denied topic: ${topic}`, content: `Please help me with this task: ${topic}`, expected_decision: topicBlockedDecision })),
-      ] : policy.id === PHRASE_POLICY_ID
+        : policy.id === PHRASE_POLICY_ID
         ? parsePhraseEntries(binding.parameterValues[PHRASE_PARAMETER] ?? "").map((entry) => ({
             ...item, id: `${item.id}/${entry.id}`, name: `${item.name}: ${entry.phrase}`,
             content: entry.phrase,

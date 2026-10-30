@@ -195,7 +195,7 @@ async def test_unknown_allow_keeps_execution_errors_and_their_operating_point(co
     assert row["responseModel"] is None
 
 
-async def test_legacy_topic_only_profile_receives_custom_thresholds(controller_plan):
+async def test_topic_only_profile_receives_custom_thresholds(controller_plan):
     response, _, evidence = await scan(controller_plan, {"topic_control": .85}, topic_profile=LAYA_TOPIC_PROFILE)
     assert response.status_code == 200 and response.json()["result"]["outcome"] == "blocked"
     topic = next(r for r in evidence["layaEvaluations"] if r["capability"] == "topic_control")

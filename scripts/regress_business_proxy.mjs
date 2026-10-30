@@ -120,7 +120,7 @@ const upstream = createServer(async (request, response) => {
 });
 
 try {
-  // A stale dev tag may use legacy per-token checks and violate full buffering.
+  // A stale dev tag may use per-token checks and violate full buffering.
   // Verify baked code before creating any Controller resources or credentials.
   const verifiedImage = JSON.parse((await exec(".venv/bin/python", ["scripts/verify_relay_stream_image.py", image])).stdout).image;
   // Port collisions fail without touching another user's process/container.

@@ -37,7 +37,7 @@ const suite = freezeTestSuite(generatedTestCases("guardrail-default", baseline()
 /** A compiled candidate exactly as a Runner returns it with a passed run. */
 function candidate() {
   const guardrailVersion = "20260906-010000.001Z";
-  return { guardrailId: "guardrail-default", guardrailVersion, compilerVersion: "tasklattice-nemo-config-v29-single-contract", nemoVersion: "0.24.0",
+  return { guardrailId: "guardrail-default", guardrailVersion, compilerVersion: "tasklattice-nemo-config-v1", nemoVersion: "0.24.0",
     runtimeProfile: "llmrails_colang1_standard",
     plan: buildGuardrailPlan({ guardrailId: "guardrail-default", guardrailVersion, draft: baseline().draftConfig, policies }),
     configYaml: "", colangContent: "", prompts: [] as unknown[], actionBindings: [] as unknown[], dependencyManifest: [] as unknown[] };

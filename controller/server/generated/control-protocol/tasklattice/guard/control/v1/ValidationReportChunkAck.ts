@@ -7,6 +7,9 @@
 export interface ValidationReportChunkAck {
   'runId'?: (string);
   'uploadId'?: (string);
+  /**
+   * Zero-based sequence of the durably committed or permanently rejected chunk.
+   */
   'sequence'?: (number);
   /**
    * Nonempty only after a permanent rejection has been durably recorded.
@@ -20,6 +23,9 @@ export interface ValidationReportChunkAck {
 export interface ValidationReportChunkAck__Output {
   'runId': (string);
   'uploadId': (string);
+  /**
+   * Zero-based sequence of the durably committed or permanently rejected chunk.
+   */
   'sequence': (number);
   /**
    * Nonempty only after a permanent rejection has been durably recorded.

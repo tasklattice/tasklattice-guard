@@ -35,7 +35,7 @@ export function defaultGuardrailDraft(policies: readonly PolicyDto[]): Guardrail
       ))),
       enabledRuleIds: [...ruleIds],
       ruleOrder: [...ruleIds],
-      testCaseOverrides: defaultTestCaseOverrides(policy.id, policy.version),
+      testCaseOverrides: defaultTestCaseOverrides(policy.id),
       ruleActions: policy.id === "local-content-safety"
         ? { "category/denied_insults": "allow" as const }
         : {},

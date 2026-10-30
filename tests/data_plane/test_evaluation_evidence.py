@@ -12,7 +12,7 @@ from tests.test_runner_api import Store, Metrics, Runtime, Telemetry
 
 
 def decision(verdict="unknown", mode="enforce"):
-    native = {"question_revision": "jailbreak-input.v3", "thresholds": {"lower": 0.1, "upper": 0.9},
+    native = {"question_revision": "jailbreak-input.v1", "thresholds": {"lower": 0.1, "upper": 0.9},
               "judgments": {"jailbreak_attempt": {"probability": 0.4}, "unsafe_pretext": {"probability": 0.5}},
               "raw_input": "private content must not leave the runtime"}
     trace = RuntimeTraceStep(id="jb:jev", kind="evaluation", name="Jev", status="completed", detail="private reason",
@@ -65,7 +65,7 @@ def test_native_classification_monitor_and_truncation_preserve_the_evidence_cont
 def test_evidence_preserves_verdict_and_native_operating_point_without_source_text(verdict):
     raw=evaluation_evidence(decision(verdict)); body=json.loads(raw); row=body["evaluations"][0]
     assert row["verdict"] == verdict and row["enforcedAction"] == "block"
-    assert row["questionRevision"] == "jailbreak-input.v3"
+    assert row["questionRevision"] == "jailbreak-input.v1"
     assert row["probabilities"] == {"jailbreak_attempt":0.4,"unsafe_pretext":0.5}
     assert "private" not in raw and body["complete"]
 

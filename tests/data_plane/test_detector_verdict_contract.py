@@ -56,7 +56,7 @@ def test_unknown_reason_defaults_to_incomplete_and_rejects_invalid_values():
 
 
 @pytest.mark.parametrize("verdict", ["safe", "unsafe", "uncertain", "allow", "block", "transform", ""])
-def test_detector_boundary_rejects_legacy_labels_and_enforcement_decisions(verdict):
+def test_detector_boundary_rejects_provider_labels_and_enforcement_decisions(verdict):
     with pytest.raises(ValueError, match="Detector result"):
         EvaluationResult(verdict, "text")
     with pytest.raises(ValueError, match="invalid detector result"):

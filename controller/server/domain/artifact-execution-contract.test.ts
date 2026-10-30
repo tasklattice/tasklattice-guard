@@ -1,3 +1,4 @@
+import { generateKeyPairSync, sign } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { loadSync, type MessageTypeDefinition } from "@grpc/proto-loader";
@@ -8,8 +9,8 @@ import { artifactContentDigest, verifyArtifactDigest, type ArtifactContent } fro
 import { artifactExecutionContractIssue, PLAN_COMPILER_VERSION, NEMO_COMPILER_VERSION } from "./artifact-execution-contract.js";
 
 describe("Artifact execution admission", () => {
-  it("rejects the actual pre-v16 signed bytes despite valid integrity", () => {
-    const directory = resolve("../tests/fixtures/unsupported-artifacts/pre-v16-local-secrets");
+  it("rejects a signed unsupported contract despite valid integrity", () => {
+    const directory = resolve("../tests/fixtures/artifacts/local-secrets-v1");
     const protoPath = resolve("../proto/tasklattice/guard/control/v1/runner_control.proto");
     const type = loadSync(protoPath, { includeDirs: [dirname(protoPath)], longs: String, enums: String, defaults: true, oneofs: true })
       ["tasklattice.guard.control.v1.DesiredState"] as MessageTypeDefinition;
@@ -18,6 +19,11 @@ describe("Artifact execution admission", () => {
     const artifact = artifactFromWire(wire) as unknown as ArtifactContent;
     expect(artifactContentDigest(artifact)).toBe(wire.checksum);
     expect(verifyArtifactDigest(wire.checksum, wire.signature, readFileSync(`${directory}/public-key.pem`, "utf8"))).toBe(true);
+    artifact.compilerVersion = "unsupported-compiler";
+    const keys = generateKeyPairSync("ed25519");
+    const checksum = artifactContentDigest(artifact);
+    const signature = sign(null, Buffer.from(checksum), keys.privateKey).toString("base64");
+    expect(verifyArtifactDigest(checksum, signature, keys.publicKey.export({type: "spki", format: "pem"}).toString())).toBe(true);
     expect(artifactExecutionContractIssue(artifact)).toContain("artifact_recompile_required");
   });
 
@@ -32,7 +38,7 @@ describe("Artifact execution admission", () => {
     const check = { id: "check", parameters: [["evaluation_view", "original"]] };
     const artifact = { plan: { compiler_version: PLAN_COMPILER_VERSION, steps: [check] }, compilerVersion: NEMO_COMPILER_VERSION, actionBindings: [check] };
     expect(artifactExecutionContractIssue(artifact)).toBeNull();
-    expect(artifactExecutionContractIssue({ ...artifact, compilerVersion: "tasklattice-nemo-config-v28-explicit-views" })).toContain("Recompile");
-    expect(artifactExecutionContractIssue({ ...artifact, plan: { ...artifact.plan, compiler_version: "tasklattice-controller-plan-v17" } })).toContain("Recompile");
+    expect(artifactExecutionContractIssue({ ...artifact, compilerVersion: "unsupported-compiler" })).toContain("Recompile");
+    expect(artifactExecutionContractIssue({ ...artifact, plan: { ...artifact.plan, compiler_version: "unsupported-plan" } })).toContain("Recompile");
   });
 });

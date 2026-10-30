@@ -6,10 +6,10 @@ import { generatedTestCases } from "./validation.js";
 import { TOPIC_ALLOW_RULE as ALLOW, TOPIC_DENY_RULE as DENY } from "../../shared/topic-policy.js";
 const policies = PolicyCatalog.load(resolve("../runner/toolkit/policy_library/assets")).list();
 function binding(rules: string[], mode = "strict"): GuardrailPolicyBindingConfig {
-  return { policyId: "builtin-topic-safety", policyVersion: "2.0.0", action: null, enabledRuleIds: rules,
+  return { policyId: "builtin-topic-safety", policyVersion: "1.0.0", action: null, enabledRuleIds: rules,
     enabledRails: ["input"], ruleActions: {}, parameterValues: { allowed_topics: "Order support", denied_topics: "Refund fraud", topic_mode: mode }, reasoningPolicy: null };
 }
-const draft = (item: GuardrailPolicyBindingConfig) => ({ allowedTopics: ["Legacy must not leak"], restrictedTopics: ["Old deny"], safetyLevel: "balanced" as const, outputDelivery: "full_buffered" as const, policyBindings: [item] });
+const draft = (item: GuardrailPolicyBindingConfig) => ({ allowedTopics: ["Root values must not leak"], restrictedTopics: ["Old deny"], safetyLevel: "balanced" as const, outputDelivery: "full_buffered" as const, policyBindings: [item] });
 function steps(item: GuardrailPolicyBindingConfig) {
   return buildGuardrailPlan({ guardrailId: "split", guardrailVersion: "test", policies, draft: draft(item) }).steps as Array<{ parameters: Array<[string, string]>; on_unsafe: string }>;
 }
@@ -58,12 +58,5 @@ describe("Topic Control Policy Rule isolation", () => {
     item.enabledRuleIds = [ALLOW]; item.parameterValues.topic_mode = "permissive";
     expect(generatedTestCases("split", draft(item), policies)).toEqual([expect.objectContaining({ coveredRuleIds: [ALLOW], expectedDecision: "allow" })]);
   });
-  it("retains v1 pinned configuration and its original Rule", () => {
-    const item = binding(["model/topic-control"]); item.policyVersion = "1.0.0"; item.parameterValues = {};
-    const original = structuredClone(item);
-    const compiled = steps(item);
-    expect(compiled).toHaveLength(2);
-    expect(Object.fromEntries(compiled[0]!.parameters).allowed_topics).toBe("Legacy must not leak");
-    expect(item).toEqual(original);
-  });
+
 });

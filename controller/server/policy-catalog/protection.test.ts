@@ -23,12 +23,8 @@ describe("Protection contract", () => {
   it("does not invent an Output jailbreak or topic binding and keeps grounded output contextual", () => {
     expect(catalog.get("builtin-jailbreak")?.protection.outputStreaming).toBe("not_applicable");
     const topic = catalog.get("builtin-topic-safety")!;
-    expect(topic.version).toBe("2.2.0");
-    expect(topic.published_versions?.some(version => version.version === "2.1.0")).toBe(true);
-    expect(topic.published_versions?.some(version => version.version === "2.0.0")).toBe(true);
+    expect(topic.version).toBe("1.0.0");
     expect(topic.protection).toMatchObject({ execution: "model", requiredContext: [], modelCapabilities: ["topic_control"] });
-    expect(topic.published_versions?.find((version) => version.version === "1.0.0")?.protection)
-      .toMatchObject({ execution: "local_then_model", requiredContext: ["allowed_topics"] });
     expect(catalog.get("builtin-contextual-grounding")?.protection).toMatchObject({
       requiredContext: ["query", "grounding_source"], outputStreaming: "complete_response",
     });

@@ -658,7 +658,7 @@ class NeMoActionBridge:
             and request.phase in item.phases
         )
         # New artifacts carry compiler-owned identity even when flow_name is
-        # computed dynamically. Legacy names resolve only when unambiguous.
+        # computed dynamically. Previous names resolve only when unambiguous.
         binding = candidates[0] if len(candidates) == 1 else None
         if binding is None:
             binding = NeMoActionBinding(
@@ -2523,7 +2523,7 @@ def _binding_policy_rule_identity(
         if (dict(binding.parameters).get("declarative_rule") == "true"
                 and selected is not None and compiled_rule in selected.enabled_rule_ids):
             rule_id = compiled_rule
-        if (binding.policy_id == "builtin-topic-safety" and binding.policy_version in {"2.0.0", "2.1.0", "2.2.0"}
+        if (binding.policy_id == "builtin-topic-safety" and binding.policy_version == "1.0.0"
                 and selected is not None and compiled_rule in selected.enabled_rule_ids
                 and compiled_rule in {"topic/allowlist", "topic/denylist"}):
             rule_id = compiled_rule

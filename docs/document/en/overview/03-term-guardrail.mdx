@@ -37,7 +37,7 @@ A Binding Parameter is a reviewed configuration value. Set required values in th
 
 A version freezes Policy Bindings, Rules, parameters, tests, compiled Artifact, dependencies and checksum. Editing a draft does not change an existing version.
 
-Routers and exports reference exact versions. Publishing v2 does not move a Router pinned to v1. Use a reviewed Router change to switch traffic.
+Routers and exports reference exact versions. Publishing a new revision does not move a Router pinned to an existing revision. Use a reviewed Router change to switch traffic.
 
 <a id="term-checksum" />
 ### Checksum
@@ -284,7 +284,7 @@ Each call retains its effective price and amount. Price changes affect subsequen
 
 1. Open **Actions → Export** on the Guardrails list or an immutable version.
 2. Select the qualifying Released versions. The dialog selects none automatically.
-3. Download the signed `.zip` package.
+3. Download the self-contained `.guardrail.zip` package.
 
 The package contains selected signed Artifacts, frozen tests and implementation dependencies. It excludes unpublished draft changes, local reports, routing, credentials, logs and costs.
 

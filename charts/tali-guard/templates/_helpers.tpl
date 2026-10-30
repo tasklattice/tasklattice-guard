@@ -19,7 +19,7 @@
 {{- end -}}
 {{- end }}
 
-{{/* Shared URL takes precedence over legacy Controller-only URLs. */}}
+{{/* Shared URL takes precedence over Controller UI/auth URLs. */}}
 {{- define "tali-guard.publicUrls" -}}
 {{- if .Values.publicUrl -}}
 {{- toJson (list (include "tali-guard.sharedPublicUrl" .)) -}}
@@ -34,7 +34,7 @@
 {{- first (include "tali-guard.publicUrls" . | fromJsonArray) -}}
 {{- end }}
 
-{{/* Always trust the shared UI origin; preserve legacy override semantics
+{{/* Always trust the shared UI origin; apply the Controller trusted-origin overrides
      when publicUrl is empty. Compute without caching derived values in .Values. */}}
 {{- define "tali-guard.trustedOrigins" -}}
 {{- $origins := list -}}
@@ -111,30 +111,30 @@
 {{- $base := include "tali-guard.fullname" . -}}
 {{- if .Values.security.bootstrap.enabled -}}
 {{- if .Values.postgresql.enabled -}}
-{{- $specs = append $specs (dict "name" (include "tali-guard.databaseSecretName" .) "legacyName" (include "tali-guard.postgresqlName" .) "kind" "database" "host" (include "tali-guard.postgresqlName" .) "username" .Values.postgresql.auth.username "database" .Values.postgresql.auth.database "urlKey" .Values.database.secretKey "credentialKey" (default "" .Values.postgresql.auth.credentialKey)) -}}
+{{- $specs = append $specs (dict "name" (include "tali-guard.databaseSecretName" .) "kind" "database" "host" (include "tali-guard.postgresqlName" .) "username" .Values.postgresql.auth.username "database" .Values.postgresql.auth.database "urlKey" .Values.database.secretKey "credentialKey" (default "" .Values.postgresql.auth.credentialKey)) -}}
 {{- end -}}
 {{- range $role, $account := dict "Admin" .Values.security.bootstrapAdmin "User" .Values.security.bootstrapUser -}}
 {{- if and (or (eq $role "Admin") $account.enabled) (not $account.existingSecret) -}}
-{{- $specs = append $specs (dict "name" (include (printf "tali-guard.bootstrap%sSecretName" $role) $) "legacyName" (printf "%s-bootstrap-%s" $base (lower $role)) "kind" "account" "username" $account.username "displayName" $account.name "usernameKey" $account.usernameKey "nameKey" $account.nameKey "credentialKey" $account.credentialKey) -}}
+{{- $specs = append $specs (dict "name" (include (printf "tali-guard.bootstrap%sSecretName" $role) $) "kind" "account" "username" $account.username "displayName" $account.name "usernameKey" $account.usernameKey "nameKey" $account.nameKey "credentialKey" $account.credentialKey) -}}
 {{- end -}}
 {{- end -}}
 {{- if not .Values.security.artifactSigning.existingSecret -}}
-{{- $specs = append $specs (dict "name" (include "tali-guard.artifactSigningSecretName" .) "legacyName" (printf "%s-artifact-signing" $base | trunc 63 | trimSuffix "-") "kind" "ed25519" "privateKey" .Values.security.artifactSigning.privateKeyKey "publicKey" .Values.security.artifactSigning.publicKeyKey) -}}
+{{- $specs = append $specs (dict "name" (include "tali-guard.artifactSigningSecretName" .) "kind" "ed25519" "privateKey" .Values.security.artifactSigning.privateKeyKey "publicKey" .Values.security.artifactSigning.publicKeyKey) -}}
 {{- end -}}
 {{- if not .Values.security.controlSecret.existingSecret -}}
-{{- $specs = append $specs (dict "name" (include "tali-guard.controlSecretName" .) "legacyName" (printf "%s-control" $base | trunc 63 | trimSuffix "-") "kind" "tokens" "keys" (list .Values.security.controlSecret.runnerTokenKey .Values.security.controlSecret.betterAuthSecretKey)) -}}
+{{- $specs = append $specs (dict "name" (include "tali-guard.controlSecretName" .) "kind" "tokens" "keys" (list .Values.security.controlSecret.runnerTokenKey .Values.security.controlSecret.betterAuthSecretKey)) -}}
 {{- end -}}
 {{- if not .Values.security.metrics.existingSecret -}}
-{{- $specs = append $specs (dict "name" (include "tali-guard.metricsSecretName" .) "legacyName" (printf "%s-metrics" $base | trunc 63 | trimSuffix "-") "kind" "tokens" "keys" (list .Values.security.metrics.tokenKey)) -}}
+{{- $specs = append $specs (dict "name" (include "tali-guard.metricsSecretName" .) "kind" "tokens" "keys" (list .Values.security.metrics.tokenKey)) -}}
 {{- end -}}
 {{- if not .Values.security.runtimeLogs.existingSecret -}}
-{{- $specs = append $specs (dict "name" (include "tali-guard.runtimeLogSecretName" .) "legacyName" (printf "%s-runtime-logs" $base | trunc 63 | trimSuffix "-") "kind" "encryption" "keys" (list .Values.security.runtimeLogs.encryptionKeyKey)) -}}
+{{- $specs = append $specs (dict "name" (include "tali-guard.runtimeLogSecretName" .) "kind" "encryption" "keys" (list .Values.security.runtimeLogs.encryptionKeyKey)) -}}
 {{- end -}}
 {{- end -}}
 {{- if and .Values.security.controlTls.enabled .Values.security.controlTls.autoGenerate (not .Values.security.controlTls.existingSecret) -}}
 {{- $controller := include "tali-guard.controllerName" . -}}
 {{- $dns := list $controller (printf "%s.%s" $controller .Release.Namespace) (printf "%s.%s.svc" $controller .Release.Namespace) (printf "%s.%s.svc.cluster.local" $controller .Release.Namespace) -}}
-{{- $specs = append $specs (dict "name" (include "tali-guard.controlTlsSecretName" .) "legacyName" (printf "%s-control-tls" $base | trunc 63 | trimSuffix "-") "kind" "mtls" "serverDnsNames" $dns "runnerName" (include "tali-guard.defaultRunnerName" .) "caKey" .Values.security.controlTls.caKey "caPrivateKeyKey" .Values.security.controlTls.caPrivateKeyKey "serverCertificateKey" .Values.security.controlTls.controllerCertificateKey "serverPrivateKeyKey" .Values.security.controlTls.controllerPrivateKeyKey "clientCertificateKey" .Values.security.controlTls.runnerCertificateKey "clientPrivateKeyKey" .Values.security.controlTls.runnerPrivateKeyKey) -}}
+{{- $specs = append $specs (dict "name" (include "tali-guard.controlTlsSecretName" .) "kind" "mtls" "serverDnsNames" $dns "runnerName" (include "tali-guard.defaultRunnerName" .) "caKey" .Values.security.controlTls.caKey "caPrivateKeyKey" .Values.security.controlTls.caPrivateKeyKey "serverCertificateKey" .Values.security.controlTls.controllerCertificateKey "serverPrivateKeyKey" .Values.security.controlTls.controllerPrivateKeyKey "clientCertificateKey" .Values.security.controlTls.runnerCertificateKey "clientPrivateKeyKey" .Values.security.controlTls.runnerPrivateKeyKey) -}}
 {{- end -}}
 {{- toJson $specs -}}
 {{- end -}}

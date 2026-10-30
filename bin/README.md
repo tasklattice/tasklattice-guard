@@ -399,7 +399,7 @@ Package import and traffic publication are separate operations. Importing a
 package does not activate an Endpoint route. See the package documentation for
 restoring a deleted Guardrail; this CLI can require `--restore-deleted` there.
 
-The repository launcher changes directory to `controller` for the legacy
+The repository launcher changes directory to `controller` for the
 interactive shell. Use absolute paths for interactive import/export and JSON
 output. Configuration commands resolve `--env-file`, `--patch`, and `--state`
 relative to the directory from which you invoked `bin/guardctl`.
@@ -423,7 +423,8 @@ Telemetry filters include `--cursor` and `--limit` for pagination.
 One-shot commands return one JSON result on stdout after success. Failures
 print an error on stderr and exit with status `1`; success exits with `0`.
 The interactive shell also prints banners and tables. Piped inspection HTTP
-failures set a nonzero status; not every legacy usage message is an error code.
+failures set a nonzero status. Other interactive diagnostics may only print a
+message; use command mode and check its exit status for automation.
 
 State files retain operation identities, source configuration, validation and
 publication references, original model assignments, and any newly created
@@ -466,5 +467,4 @@ a new reviewed operation rather than rotating credentials or deleting objects.
 | [`controller/src/cli/configure.test.ts`](../controller/src/cli/configure.test.ts) | Workflow, authentication, validation, and resume tests. |
 | [`controller/scripts/build-guardctl.mjs`](../controller/scripts/build-guardctl.mjs) | Standalone bundle build. |
 | [`docs/guardctl-configuration.md`](../docs/guardctl-configuration.md) | Additional model and tenant configuration examples. |
-| [`docs/ops-cli-proposal.md`](../docs/ops-cli-proposal.md) | Shipped-image usage and the broader CLI design proposal. |
 | [`docs/api-contract.md`](../docs/api-contract.md) | Controller API contract and generation workflow; the running Controller serves `/api/openapi.json`. |

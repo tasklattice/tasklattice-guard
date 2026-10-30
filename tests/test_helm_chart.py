@@ -1245,16 +1245,13 @@ def bootstrap_specs(documents):
     return json.loads(env["BOOTSTRAP_SECRETS"])
 
 
-def test_upgrade_uses_distinct_managed_names_and_grants_read_access_to_legacy_names():
+def test_bootstrap_reads_only_current_managed_secret_names():
     documents = render_dev()
     specs = bootstrap_specs(documents)
     role = next(item for item in documents if item["kind"] == "Role")
     names = role["rules"][0]["resourceNames"]
     assert not any(item["kind"] == "Secret" for item in documents)
-    for spec in specs:
-        assert spec["name"] != spec["legacyName"]
-        assert spec["name"] in names and spec["legacyName"] in names
-    assert next(spec for spec in specs if spec["kind"] == "database")["legacyName"] == "tali-guard-postgresql"
+    assert set(names) == {spec["name"] for spec in specs}
 
 
 def test_bootstrap_accounts_are_mounted_without_protocol_environment_names():
@@ -1310,7 +1307,6 @@ def test_mtls_is_initialized_by_the_same_job_without_rendering_private_keys():
     tls = next(spec for spec in specs if spec["kind"] == "mtls")
     assert tls["serverDnsNames"] == ["tali-guard-controller", "tali-guard-controller.tali", "tali-guard-controller.tali.svc", "tali-guard-controller.tali.svc.cluster.local"]
     config = controller_config(documents)
-    assert env["BOOTSTRAP_PREVIOUS_OWNER"] == config["metadata"]["name"]
     namespace_role = next(item for item in documents if item["kind"] == "ClusterRole")
     assert namespace_role["rules"] == [{"apiGroups": [""], "resources": ["namespaces"], "verbs": ["get"], "resourceNames": ["tali"]}]
     assert "helm.sh/hook" not in config["metadata"]["annotations"]
@@ -1514,7 +1510,6 @@ def test_long_managed_secret_names_are_unique_and_fit_kubernetes_limits():
     names = [spec["name"] for spec in specs]
     assert len(names) == len(set(names))
     assert all(len(name) <= 63 for name in names)
-    assert all(spec["name"] != spec["legacyName"] for spec in specs)
 
 
 def test_local_profile_never_pulls_any_workload_or_helper_image():

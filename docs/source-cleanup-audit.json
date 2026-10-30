@@ -1,0 +1,170 @@
+{
+  "baseline_commit": "4dc8133852df864d26394edfed402e90b481b697",
+  "branch": "main",
+  "measurement": {
+    "tool": "scripts/source_loc.py",
+    "pygments_version": "2.20.0",
+    "includes": "Git-tracked handwritten source and tests, SQL, Helm templates and CI code; new nonignored source also counts",
+    "excludes": "Generated code, dependencies, data, documents and lockfiles; blank/comment-only lines and Python docstrings excluded from code LOC",
+    "before": {
+      "code": 163532,
+      "physical": 179493,
+      "nonblank": 167449
+    },
+    "after": {
+      "code": 148576,
+      "physical": 164092,
+      "nonblank": 152099
+    },
+    "net_code_lines_removed": 14956,
+    "reduction_percent": {
+      "code": 9.146,
+      "physical": 8.58,
+      "nonblank": 9.167
+    },
+    "full_file_inventory": "output/source-cleanup-loc.json",
+    "note": "The agreed target uses effective code LOC. Physical and nonblank line counts are independently reported and also exceed an 8% reduction."
+  },
+  "changes": [
+    {
+      "area": "Database",
+      "evidence": "58 historical migrations replaced by one V1 schema baseline. Removed one-time report conversion, Artifact resealing and upgrade-only tests. Profile seeding is transactional and runs once; report deletion retains row locking and running-report protection without taking the unrelated routing lock."
+    },
+    {
+      "area": "Configuration",
+      "evidence": "Controller Settings and delivered Runner revisions are the sole model configuration path. Removed environment bootstrap fallbacks and GUARD_OTEL aliases; standard OTEL settings remain."
+    },
+    {
+      "area": "Current V1 contracts",
+      "evidence": "Project-owned package schema, artifact digest, compiler IDs and Policy schema use V1. Built-in Policy and Profile pins use 1.0.0. Third-party format/model identifiers and user-created immutable revisions keep their actual semantics."
+    },
+    {
+      "area": "Policy history and Profiles",
+      "evidence": "Removed bundled historical definitions and loaders, duplicate-ID replacement, retired Topic rules and the Topic upgrade UI. Retained all five current Profiles, the 748-case Default composition suite and full-feature baseline. Topic finding attribution now recognizes the current V1 Rule IDs."
+    },
+    {
+      "area": "Unused UI and harnesses",
+      "evidence": "Removed unreachable provider/endpoint UI, obsolete help URL aliases, old acceptance scripts and the one-time upstream importer. Removed the promotion harness that called deleted report APIs; current package import/export PostgreSQL tests remain. Current CLI smoke, live model/stream and report-memory harnesses remain."
+    },
+    {
+      "area": "Tests and data",
+      "evidence": "Removed frozen migration-only baselines, historical Policy replay tests and old signed artifacts. Signed unsupported-contract tests now derive valid signatures from current fixtures and verify refusal before activation. Retained current regression cases under descriptive filenames and explicit Rule ownership assertions. ZIP invariants compare paths and native byte equality rather than recursively walking Buffer properties."
+    },
+    {
+      "area": "Documentation",
+      "evidence": "Removed superseded design and experiment diaries; updated retained links and V1 contracts. Upstream license/provenance notices remain. Data/document deletion is excluded from the LOC reduction."
+    },
+    {
+      "area": "Compatibility review correction",
+      "evidence": "Replaced the mechanical legacy-to-previous renames with domain-specific names and current behavior descriptions; restored the upstream character-entities-legacy package identity. Removed unused localization keys, old Secret-name copying and ConfigMap ownership adoption, Topic allowlist bypasses, and the archived P0 verifier. Current strict/permissive Topic modes require semantic review; unsupported modes are rejected."
+    }
+  ],
+  "verification": {
+    "controller_source_tests": {
+      "passed": 2506,
+      "failed": 0,
+      "skipped": 0,
+      "log": "/tmp/guard-v1-controller-complete.json",
+      "note": "All PostgreSQL test switches enabled against isolated PostgreSQL 17. Compiled dist directories excluded. Migration teardown owns its pool references and has an explicit cleanup budget."
+    },
+    "python_non_e2e": {
+      "full_run_passed": 5138,
+      "full_run_failed": 2,
+      "skipped": 12,
+      "deselected_e2e": 14,
+      "log": "/tmp/guard-v1-python-final.log",
+      "resolution": "The two failures were synthetic ordered-execution fixtures still pinning a removed Topic Policy version. Updated those fixture pins to current V1; the production code is unchanged after the full run. Entire ordered-execution module rerun recorded separately.",
+      "final_unresolved_failures": 0,
+      "ordered_execution_rerun": {
+        "passed": 59,
+        "failed": 0,
+        "log": "/tmp/guard-v1-ordered-final.log"
+      }
+    },
+    "focused_python_v1": {
+      "passed": 61,
+      "failed": 0,
+      "log": "/tmp/guard-v1-python-targeted.log"
+    },
+    "protocol_and_e2e": {
+      "passed": 19,
+      "skipped": 3,
+      "failed": 0,
+      "log": "/tmp/guard-v1-e2e.log",
+      "skip_reason": "Actual Relay proxy tests require an explicitly configured isolated Relay image or Python installation."
+    },
+    "cli": {
+      "passed": 23,
+      "failed": 0,
+      "log": "/tmp/guard-v1-cli-final.log"
+    },
+    "policies": {
+      "passed": 1195,
+      "failed": 0,
+      "not_run": 18,
+      "log": "output/policy-regression.json",
+      "not_run_reason": "Model-backed acceptance cases require configured live models; synthetic transport integration tests run separately."
+    },
+    "typecheck": "passed",
+    "ui_server_cli_build": "passed",
+    "proto_freshness": "passed",
+    "policy_source_freshness": "passed",
+    "openapi_freshness": "passed in the complete Controller run and CLI generation checks",
+    "fixture_and_default_baseline_freshness": "passed in the complete Python run",
+    "schema": "Final V1 schema uses artifact digest version 1. Earlier schema dump parity verified the consolidated application structure; current installation, restart, rollback and concurrency are verified directly on PostgreSQL.",
+    "database_regressions": [
+      "Concurrent fresh V1 installation and one-time Profile seeding",
+      "Current data and edited/disabled Profiles preserved on restart",
+      "Old development schema rejected before application DDL",
+      "Failed initialization rollback and clean retry",
+      "Report deletion while an unrelated routing advisory lock is held",
+      "Current report chunks, pool bounds, transaction rollback, Policy publication and package import/export"
+    ],
+    "desktop": "Isolated Controller with synthetic data: five current Profiles, Full-feature baseline at 1.0.0, Topic denylist edit/save/reopen with exact retained value, no upgrade UI, and documentation index opens the canonical article. No real inference was attempted. Earlier desktop check covered report deletion versus running-report protection.",
+    "desktop_screenshot": "output/source-cleanup-v1-ui.png",
+    "report_desktop_screenshot": "output/source-cleanup-report-ui.png",
+    "contact_boundary_rerun": {
+      "passed": 26,
+      "failed": 0,
+      "log": "/tmp/guard-v1-contact-final.log"
+    },
+    "post_review_correction": {
+      "scope": "Checks after the wording review; earlier full-suite entries above describe validation before this follow-up.",
+      "controller_targeted": {
+        "passed": 164,
+        "failed": 0,
+        "log": "/tmp/guard-wording-controller.log"
+      },
+      "python_targeted": {
+        "passed": 519,
+        "failed": 0,
+        "note": "229 Helm/Topic/evaluation-contract tests and 290 V1 execution/classifier/telemetry tests."
+      },
+      "policies": {
+        "passed": 1195,
+        "failed": 0,
+        "not_run": 18,
+        "note": "Live-model cases are not configured."
+      },
+      "clean_dependency_install": "npm ci --offline --ignore-scripts --no-audit --no-fund succeeded in an independent temporary directory (720 packages); original dependency directories were untouched.",
+      "typecheck": "passed",
+      "build": "passed",
+      "generated_assets": "Policy sources, protocol bindings, signed fixtures and default baseline freshness checks passed."
+    }
+  },
+  "intentional_boundaries": [
+    "Existing development databases do not match this V1 baseline and must be initialized fresh; no existing database was changed. Unsupported signed artifacts require recompilation and package imports accept only V1.",
+    "Old environment model configuration, GUARD_OTEL aliases, bundled Policy history and old help URL aliases are not supported.",
+    "Runtime-log encryption, artifact/protocol signature and digest checks, immutable user Policy/Guardrail revisions, import provenance and bootstrap credential recovery remain current requirements.",
+    "Chart bootstrap handles current managed Secret names and Namespace ownership only. It does not copy obsolete Secret names or adopt ConfigMap-owned Secrets."
+  ],
+  "limits": [
+    "Optional external Redis/Relay, database recovery and real Kubernetes lifecycle tests are not enabled by the general Python run. No existing deployment or Kubernetes resource was changed.",
+    "These results verify cleanup and behavior; they are not a new memory/concurrency benchmark or evidence of live-model detection quality."
+  ],
+  "working_tree": "Changes integrated into local main; no push or deployment performed.",
+  "cleanup": "Temporary browser tabs, Controller process, isolated PostgreSQL regression container and synthetic signing key removed. User browser tab and existing deployment left unchanged.",
+  "completed_at": "2026-10-31T00:10:19+08:00",
+  "original_baseline_commit": "3cde35babd61b43f1d047b04d77a27e28c5c3643",
+  "baseline_note": "The preceding commit message was reworded at user request; the baseline Git tree is unchanged (185f397413e4533dfb9aec404da8312b747eb0a9)."
+}

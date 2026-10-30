@@ -65,7 +65,7 @@ describe("Policy Studio business directory", () => {
     })));
   });
 
-  it("requires classification of imported legacy Rules before continuing to testing", async () => {
+  it("requires classification of imported Rules with missing classification before continuing to testing", async () => {
     show(vi.fn(), { ...imported, draft: { ...imported.draft, rail_bindings: imported.draft.rail_bindings.map(rail => ({ ...rail, risk_severity: null })) } });
     fireEvent.click(screen.getByRole("button", { name: "common.next" }));
     expect(screen.getByText("securityEvents.classificationPending")).toBeTruthy();

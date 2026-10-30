@@ -6,7 +6,7 @@ Guardrail、可编程 Policy 和声明式 Policy 测试统一使用分块上传�
 
 - 删除整包 `ValidationReport` 和 `RunnerMessage.validation_result`、旧 gzip 能力协商、128MiB 整包解码准入及内存重传缓存。旧字段号保留为 Protobuf reserved，避免以后误用。
 - 所有测试共用分块通道，只有取消或执行失败使用小型终态通知。Runner 重连保留磁盘 spool 并逐块重放；新 boot 可以重新开始尚未完成的上传，旧 boot 和终态报告不能覆盖已有证据。最终保存与 Policy 断言写入核对 boot／upload 身份，旧进程不能提交新上传的结果。
-- 删除查询时迁移、后台 legacy 扫描、`results_storage` 分支和双写。三个报告所属表均不再保存 `results` JSONB。
+- 删除查询时迁移、后台整表扫描、`results_storage` 分支和双写。三个报告所属表均不再保存 `results` JSONB。
 - 普通报告 GET 固定返回元数据，删除全量结果数组和兼容流式导出。UI、CLI 共用分页用例和单用例详情接口，不再包含 inline 渲染回退。
 - Guardrail 冻结编译内容、Policy、检查结果和测试集只保存在去重快照中，删除原表大字段及 `COALESCE` 回退；发布使用冻结快照。
 - Policy 原始证据只写一次，断言补充字段单独保存。父报告用例索引引用子报告的原始证据，不复制整份结果。
@@ -17,7 +17,7 @@ Guardrail、可编程 Policy 和声明式 Policy 测试统一使用分块上传�
 
 Runner 每块最多 50 个用例／约 1MiB Protobuf，逐块等待持久化 ACK。Controller 校验身份、大小、SHA256、顺序、manifest 和总数，在短事务内保存一块；最后提交终态与 outbox。Policy 断言逐用例执行，位于最终父报告锁事务之外；父报告完成时只连接索引。
 
-`0056` 扩展统一 schema；启动迁移器在 PostgreSQL 内逐报告转换旧数据，每份报告独立事务、独立检查点，Node 不读取旧报告正文。先迁移 Policy 子报告，再让父报告复用相同证据；旧字段名一次性规范化，原始字段保留。旧 Guardrail 快照同时去重。`0057` 仅在所有检查点完成后收缩 schema，删除旧列。中断后重启继续未完成的报告。
+当前使用唯一的 V1 建库基线，直接创建分块表、索引、触发器和视图。V1 库重启保持数据不变；更早的开发数据库会被拒绝，需要初始化新的 V1 数据库。历史升级脚本与报告转换器已移除。
 
 迁移在服务开放前完成，Controller Deployment 使用 `Recreate` 避免旧程序继续写旧 schema。升级有停机窗口，需为迁移预留时间和磁盘。该 schema 不支持直接回退旧镜像；如需回滚，应同时恢复升级前数据库备份。异常大的历史用例完整保留，但超过详情读取预算时明确拒绝，避免读取导致 OOM。
 

@@ -182,8 +182,9 @@ class TopicJudgeActionProvider:
 def topic_judge_prompt(parameters: tuple[tuple[str, str], ...]) -> str:
     configured = dict(parameters)
     mode = configured.get("topic_mode", "strict")
-    # Existing immutable allowlist artifacts predate denied-topic enforcement.
-    denied = "" if mode == "allowlist" else configured.get("restricted_topics", "")
+    if mode not in {"strict", "permissive"}:
+        raise ValueError("Unsupported topic mode.")
+    denied = configured.get("restricted_topics", "")
     return "\n".join(
         (
             "You enforce the configured Topic Control Policy.",

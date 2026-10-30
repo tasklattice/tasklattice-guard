@@ -6,7 +6,7 @@ import hashlib
 import json
 from pathlib import Path
 
-SCORING_VERSION = "guard-action-coverage-v2"
+SCORING_VERSION = "guard-action-coverage-v1"
 DECISIONS = {"allow", "block", "transform"}
 
 

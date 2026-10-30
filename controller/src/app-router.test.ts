@@ -35,7 +35,7 @@ describe("Integration navigation", () => {
     expect(router.state.matches.at(-1)?.search.tab).toBeUndefined();
   });
 
-  it.each([["event", "event"], ["findings", undefined], ["testing", "testing"], ["validation", undefined]])("handles Guardrail tab %s without a legacy alias", async (tab, expected) => {
+  it.each([["event", "event"], ["findings", undefined], ["testing", "testing"], ["validation", undefined]])("handles Guardrail tab %s without accepting unsupported aliases", async (tab, expected) => {
     const router = createRouter({ routeTree, history: createMemoryHistory({ initialEntries: [`/guardrails/guardrail-default?tab=${tab}`] }) });
     await router.load();
     expect(router.state.matches.at(-1)?.routeId).toBe("/guardrails/$guardrailId");

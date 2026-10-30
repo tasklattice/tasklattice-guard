@@ -11,8 +11,6 @@ import { ResourceList } from "@/components/resource-list";
 import { EventFilterToolbar } from "@/components/event-filter-toolbar";
 import { selectedSeverities, type EventSeverity } from "../../shared/security-severity";
 import { SecuritySeverityBadge } from "@/components/security-severity";
-import { isSplitTopicPolicy, TOPIC_POLICY_ID } from "../../shared/topic-policy";
-import { upgradeTopicBinding } from "@/lib/topic-policy-upgrade";
 import { GuardrailValidationReadiness, useGuardrailValidationReadiness } from "@/components/guardrail-validation-readiness";
 import { useCorrectnessAvailability } from "@/components/correctness-availability";
 import { TopicControlFields, type TopicControlMode } from "@/components/topic-control-fields";
@@ -819,7 +817,6 @@ export function EditGuardrailSheet({ guardrail, policies, open, onOpenChange, on
       {topicControlEnabled ? <section className="rounded-xl border bg-card p-4">
         <h3 className="text-sm font-semibold">{t("guardrails.topicAllowlist")}</h3>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">{t("guardrails.topicAllowlistDescription")}</p>
-        {policies.some(policy => isSplitTopicPolicy(policy.id, policy.version)) && bindings.some(binding => binding.policy_id === TOPIC_POLICY_ID && binding.policy_version === "1.0.0") ? <div className="mt-3 space-y-2"><p className="text-xs text-muted-foreground">{t("protection.topicRules.upgradeHint")}</p><Button variant="outline" onClick={() => setBindings(items => items.map(binding => upgradeTopicBinding(binding, allowed, denied, topicMode)))}>{t("protection.topicRules.upgrade")}</Button></div> : null}
         <div className="mt-4"><TopicControlFields allowed={allowed} denied={denied} mode={topicMode} onAllowedChange={setAllowed} onDeniedChange={setDenied} onModeChange={setTopicMode} allowedLabel={t("guardrails.allowedDomains")} /></div>
         {allowedTopicsMissing ? <p role="alert" className="mt-2 flex items-start gap-2 text-xs leading-5 text-destructive"><CircleAlert className="mt-0.5 size-4 shrink-0" />{t("guardrails.topicAllowlistRequired")}</p> : null}
       </section> : null}

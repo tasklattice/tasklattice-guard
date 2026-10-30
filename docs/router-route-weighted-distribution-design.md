@@ -16,7 +16,7 @@ Guardrail **Duplicate** creates an independent configuration object. A useful op
 
 “Same traffic” means the same matching population: each logical call is assigned to one target. Sending every request to multiple Guardrails would require broadcasting or shadow execution, result selection, and side-effect isolation; those capabilities are outside this design. Duplicating a Guardrail copies configuration, not requests or Runner instances.
 
-The target model remains Router → Route → Target. Legacy storage and protocol fields that still exist are identified explicitly; their presence does not create a supported compatibility or migration contract. Router naming is currently supported at creation; there is no Router rename API or editing control at this baseline.
+The target model remains Router → Route → Target. Previous storage and protocol fields that still exist are identified explicitly; their presence does not create a supported compatibility or migration contract. Router naming is currently supported at creation; there is no Router rename API or editing control at this baseline.
 
 ## 2. Historical Context and Current Model
 
@@ -32,7 +32,7 @@ The original design addressed a model in which an Endpoint grouped condition bin
 
 The current implementation is centered on [the shared routing model](../controller/shared/traffic-routing.ts), [TrafficRoutingService](../controller/server/services/traffic-routing.ts), [the Router list](../controller/src/routes/routers.tsx), and [Runner routing](../runner/routing.py). The earlier `docs/router-endpoint.md` reference has been removed because that document is no longer present.
 
-Legacy Runner routing and protobuf fields still exist for internal/test paths. An authenticated Endpoint without an executable bound Router does not inherit a global default Router.
+Previous Runner routing and protobuf fields still exist for internal/test paths. An authenticated Endpoint without an executable bound Router does not inherit a global default Router.
 
 ## 3. Users and Scope
 
@@ -294,7 +294,7 @@ The edit workflow uses one Review / Publish sequence. Saving or preview failure 
 
 Revision `context` records Endpoint ID/name/adapter and Guardrail ID/name/version at publication. Missing historical context remains unavailable; current entity names or bindings must not be substituted as historical evidence. The configuration describes possible paths, while runtime logs identify the Route, target, and version actually selected for a call.
 
-The current detail layout supersedes early descriptions of Route Duplicate and an Enabled switch. See [Router detail redesign](router-detail-redesign.md) for layout history; API names in this document and the generated management contract take precedence over older paths in that history.
+API names in this document and the generated management contract define the current Router behavior.
 
 ### 8.3 Monitoring Drill-Down
 
@@ -430,10 +430,10 @@ If the Router records 10,000 calls and Route 01 receives 2,000, the Route's Rout
 
 ### 11.2 A Copy as an Optional Target
 
-1. A support Route initially sends 100% to Guardrail A v3.
-2. Duplicate A v3 into an independent B draft. A and its traffic remain unchanged.
-3. Edit B, validate and publish it, and wait until B v1 is ready.
-4. Edit the original Route to A v3 90% and B v1 10%.
+1. A support Route initially sends 100% to Guardrail A revision.
+2. Duplicate A revision into an independent B draft. A and its traffic remain unchanged.
+3. Edit B, validate and publish it, and wait until B revision is ready.
+4. Edit the original Route to A revision 90% and B revision 10%.
 5. Review the resolved targets, changes, and source Endpoints, then publish Router r13.
 6. New calls use the complete revision installed on the receiving Runner. Existing valid associated calls retain their assigned target.
 7. Inspect Route share first, then target shares, protection outcomes, and execution errors.
@@ -483,7 +483,7 @@ Delivery remains organized around four complete areas: routing/assignment, Guard
 | Router name | Set at creation; rename API/UI is absent |
 | API paths | Use `publication-preview`, `simulations`, `/routing/selector-fields`, and `traffic-distribution` |
 | Route shape | Array order replaces a public `position`; nested objects do not expose the proposed `routerId`/`routeId` fields |
-| Endpoint scope | No public Route `endpointScope`; `endpoint.id` remains selectable, and legacy protobuf scope fields remain |
+| Endpoint scope | No public Route `endpointScope`; `endpoint.id` remains selectable, and Route endpoint-scope protobuf fields remain |
 | Unbound Router | API creation/publication is allowed; the creation sheet requires a source |
 | Draft validation | Save allows incomplete publish-time configuration; preview/publish apply stronger checks |
 | UI operations | Current detail supports add/edit/delete/order; it has neither Route Duplicate nor an Enabled switch |
@@ -530,7 +530,7 @@ The focused tests are [shared routing](../controller/shared/traffic-routing.test
 
 - Decide whether Router renaming, Route duplication, a Route enable/disable control, and saved selector samples should be exposed in the current UI. They are not supplied by documenting the earlier design.
 - Align creation/detail behavior for unbound Routers, latest-version selection, and fallback target editing where a uniform experience is required.
-- Complete any desired physical cleanup of `description` and legacy protobuf Route scope fields. Decide separately whether `endpoint.id` remains a supported selection characteristic.
+- Complete any desired physical cleanup of `description` and protobuf Route endpoint-scope fields. Decide separately whether `endpoint.id` remains a supported selection characteristic.
 - Verify capability declarations and input parity for every deployed adapter, including normalization and non-BMP length boundaries; preview alone does not certify extraction.
 - Verify Redis-backed concurrent assignment, context expiration, dependency retention, and recovery across real Runners and failures.
 - Verify publication rejection/recovery and the stronger Runner artifact checks, including positive-weight targets on disabled Routes.
@@ -556,7 +556,7 @@ back to an older binary, first disable compressed writes everywhere and wait at
 least one full context TTL. Do not delete active pins to accelerate rollback.
 Invalid, unsupported or oversized compressed payloads fail closed; they do not
 fall back to a newer route. Compressed plans have a 64 MiB decode limit; larger
-plans remain in the legacy representation at write time.
+plans remain in uncompressed JSON at write time.
 
 ### Capacity fallback exception
 

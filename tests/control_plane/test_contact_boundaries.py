@@ -1,13 +1,9 @@
 """Contact disclosure rules must not reinterpret parts of source identifiers."""
-from pathlib import Path
 
 import pytest
 
 from runner.toolkit.nemo.actions.content_filter import BuiltinContentFilter
 from runner.toolkit.policy_library import policy
-from runner.toolkit.policy_library.declarative import compile_policy, parse_yaml
-from runner.toolkit.policy_library.package import load_package
-from runner.toolkit.policy_runtime.codec import policy_from_payload
 
 
 CONTACT = "local-contact-data"
@@ -49,16 +45,6 @@ def test_contact_rules_still_redact_complete_contacts(text, expected, phase):
     result = evaluate(text, phase)
     assert result.verdict == "matched"
     assert result.content == expected
-
-
-def test_previously_published_contact_policy_keeps_its_original_behavior():
-    root = Path(__file__).resolve().parents[2]
-    old = load_package(root / "policies/history/local-contact-data/4.0.0")
-    detectors = parse_yaml((root / "policies/detectors.yaml").read_text())
-    definition = policy_from_payload(compile_policy(old.definition, detectors))
-    text = "commit dd144c377bc888388099e029a0e1505a66392bb1"
-    assert evaluate(text, definitions={CONTACT: definition}).verdict == "matched"
-    assert evaluate(text).verdict == "not_matched"
 
 
 @pytest.mark.parametrize("phase", ["input", "output"])

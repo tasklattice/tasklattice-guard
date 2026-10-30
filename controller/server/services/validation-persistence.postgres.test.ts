@@ -50,7 +50,7 @@ describe.skipIf(!url)("Test report persistence under connection pressure", () =>
     return {
       runId: run.id, status: "passed" as const, metrics: emptyValidationMetrics(run.metrics.total), results: [],
       candidateArtifact: { guardrailId, guardrailVersion: request.payload.candidateVersion,
-        compilerVersion: "tasklattice-nemo-config-v29-single-contract", nemoVersion: "0.24.0", runtimeProfile: "llmrails_colang1_standard",
+        compilerVersion: "tasklattice-nemo-config-v1", nemoVersion: "0.24.0", runtimeProfile: "llmrails_colang1_standard",
         plan: request.payload.plan, configYaml: "models: []\n", colangContent: "", prompts: [], actionBindings: [], dependencyManifest: [] },
     };
   }

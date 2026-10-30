@@ -209,7 +209,7 @@ Do not infer success from a Guard decision. Ensure both booleans agree with your
 class ChatJudge:
     def __init__(self, client: ChatClient):
         self.client = client
-        self.metadata = {**client.metadata, "rubric_sha256": canonical_hash(JUDGE_RUBRIC), "scorer": "semantic-output.v2"}
+        self.metadata = {**client.metadata, "rubric_sha256": canonical_hash(JUDGE_RUBRIC), "scorer": "semantic-output.v1"}
 
     async def judge(self, *, query: str, response: str, reference: str, attack_goal: str,
                     fixture_attack_answer: str | None) -> Judgment:

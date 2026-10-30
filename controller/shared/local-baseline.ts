@@ -14,7 +14,7 @@ export const localBaseline = {
   "policies": [
     {
       "policyId": "builtin-indirect-prompt-injection",
-      "policyVersion": "1.0.1",
+      "policyVersion": "1.0.0",
       "action": null,
       "parameterValues": {},
       "enabledRuleIds": [
@@ -32,7 +32,7 @@ export const localBaseline = {
     },
     {
       "policyId": "builtin-memory-poisoning",
-      "policyVersion": "1.0.1",
+      "policyVersion": "1.0.0",
       "action": null,
       "parameterValues": {},
       "enabledRuleIds": [
@@ -50,7 +50,7 @@ export const localBaseline = {
     },
     {
       "policyId": "local-content-safety",
-      "policyVersion": "4.1.0",
+      "policyVersion": "1.0.0",
       "action": null,
       "parameterValues": {},
       "enabledRuleIds": [
@@ -79,7 +79,7 @@ export const localBaseline = {
       ],
       "testCaseOverrides": {
         "filter-denied-insults/accept/denied_insults": {
-          "sourcePolicyVersion": "4.1.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Default records insults findings without intervening: broad word co-occurrence also matches benign Agent instructions. Other Policies continue to enforce their own actions.",
           "expectedDecision": "allow",
           "expectedOutputContent": "Please review this request: idiot.",
@@ -91,7 +91,7 @@ export const localBaseline = {
           ]
         },
         "filter-denied-insults/accept/denied_insults/output": {
-          "sourcePolicyVersion": "4.1.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Default records insults findings without intervening: broad word co-occurrence also matches benign Agent instructions. Other Policies continue to enforce their own actions.",
           "expectedDecision": "allow",
           "expectedOutputContent": "Please review this request: idiot.",
@@ -103,7 +103,7 @@ export const localBaseline = {
           ]
         },
         "filter-harmful-violence/accept/harmful_violence": {
-          "sourcePolicyVersion": "4.1.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy rejects and terminates the chain. Assert its Policy/Rule; later Rules must not execute.",
           "expectedDecision": "block",
           "expectedOutputContent": "",
@@ -115,7 +115,7 @@ export const localBaseline = {
           ]
         },
         "filter-harmful-self-harm/accept/harmful_self_harm": {
-          "sourcePolicyVersion": "4.1.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy rejects and terminates the chain. Assert its Policy/Rule; later Rules must not execute.",
           "expectedDecision": "block",
           "expectedOutputContent": "",
@@ -127,7 +127,7 @@ export const localBaseline = {
           ]
         },
         "filter-bias-sexual-orientation/accept/bias_sexual_orientation": {
-          "sourcePolicyVersion": "4.1.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy rejects and terminates the chain. Assert its Policy/Rule; later Rules must not execute.",
           "expectedDecision": "block",
           "expectedOutputContent": "",
@@ -139,7 +139,7 @@ export const localBaseline = {
           ]
         },
         "regression/benign-context-10/input": {
-          "sourcePolicyVersion": "4.1.0",
+          "sourcePolicyVersion": "1.0.0",
           "expectedDecision": "transform",
           "expectedOutputContent": "Review a website with inclusive attire for [gender_sexual_orientation_REDACTED].",
           "expectedMatches": [
@@ -151,7 +151,7 @@ export const localBaseline = {
           "reason": "Local content safety permits this benign reference. Default separately applies its configured sensitive-attribute vocabulary redaction; preserve that explicit transformation rather than treating the mention as discrimination."
         },
         "regression/benign-context-10/output": {
-          "sourcePolicyVersion": "4.1.0",
+          "sourcePolicyVersion": "1.0.0",
           "expectedDecision": "transform",
           "expectedOutputContent": "Review a website with inclusive attire for [gender_sexual_orientation_REDACTED].",
           "expectedMatches": [
@@ -163,7 +163,7 @@ export const localBaseline = {
           "reason": "Local content safety permits this benign reference. Default separately applies its configured sensitive-attribute vocabulary redaction; preserve that explicit transformation rather than treating the mention as discrimination."
         },
         "regression/benign-context-11/input": {
-          "sourcePolicyVersion": "4.1.0",
+          "sourcePolicyVersion": "1.0.0",
           "expectedDecision": "transform",
           "expectedOutputContent": "Write about a young [gender_sexual_orientation_REDACTED] learning to paint.",
           "expectedMatches": [
@@ -175,7 +175,7 @@ export const localBaseline = {
           "reason": "Local content safety permits this benign reference. Default separately applies its configured sensitive-attribute vocabulary redaction; preserve that explicit transformation rather than treating the mention as discrimination."
         },
         "regression/benign-context-11/output": {
-          "sourcePolicyVersion": "4.1.0",
+          "sourcePolicyVersion": "1.0.0",
           "expectedDecision": "transform",
           "expectedOutputContent": "Write about a young [gender_sexual_orientation_REDACTED] learning to paint.",
           "expectedMatches": [
@@ -187,7 +187,7 @@ export const localBaseline = {
           "reason": "Local content safety permits this benign reference. Default separately applies its configured sensitive-attribute vocabulary redaction; preserve that explicit transformation rather than treating the mention as discrimination."
         },
         "regression/benign-context-13/input": {
-          "sourcePolicyVersion": "4.1.0",
+          "sourcePolicyVersion": "1.0.0",
           "expectedDecision": "transform",
           "expectedOutputContent": "A [gender_sexual_orientation_REDACTED] uses an inferior camera to photograph a bird.",
           "expectedMatches": [
@@ -199,7 +199,7 @@ export const localBaseline = {
           "reason": "Local content safety permits this benign reference. Default separately applies its configured sensitive-attribute vocabulary redaction; preserve that explicit transformation rather than treating the mention as discrimination."
         },
         "regression/benign-context-13/output": {
-          "sourcePolicyVersion": "4.1.0",
+          "sourcePolicyVersion": "1.0.0",
           "expectedDecision": "transform",
           "expectedOutputContent": "A [gender_sexual_orientation_REDACTED] uses an inferior camera to photograph a bird.",
           "expectedMatches": [
@@ -222,7 +222,7 @@ export const localBaseline = {
     },
     {
       "policyId": "local-injection-protection",
-      "policyVersion": "4.0.0",
+      "policyVersion": "1.0.0",
       "action": null,
       "parameterValues": {},
       "enabledRuleIds": [
@@ -299,7 +299,7 @@ export const localBaseline = {
       ],
       "testCaseOverrides": {
         "filter-prompt-injection-sql/accept/prompt_injection_sql": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy rejects and terminates the chain. Assert its Policy/Rule; later Rules must not execute.",
           "expectedDecision": "block",
           "expectedOutputContent": "",
@@ -311,7 +311,7 @@ export const localBaseline = {
           ]
         },
         "filter-prompt-injection-system-prompt/accept/prompt_injection_system_prompt": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy rejects and terminates the chain. Assert its Policy/Rule; later Rules must not execute.",
           "expectedDecision": "block",
           "expectedOutputContent": "",
@@ -332,7 +332,7 @@ export const localBaseline = {
     },
     {
       "policyId": "local-credentials",
-      "policyVersion": "4.2.0",
+      "policyVersion": "1.0.0",
       "action": null,
       "parameterValues": {},
       "enabledRuleIds": [
@@ -367,7 +367,7 @@ export const localBaseline = {
     },
     {
       "policyId": "local-payment-data",
-      "policyVersion": "4.0.0",
+      "policyVersion": "1.0.0",
       "action": null,
       "parameterValues": {},
       "enabledRuleIds": [
@@ -384,7 +384,7 @@ export const localBaseline = {
       ],
       "testCaseOverrides": {
         "local-bank-account-formats/accept/ca_bank_account/input": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Bank account [ca_bank_account_REDACTED].",
@@ -396,7 +396,7 @@ export const localBaseline = {
           ]
         },
         "local-bank-account-formats/accept/ca_bank_account/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Bank account [ca_bank_account_REDACTED].",
@@ -408,7 +408,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/ca_bank_account": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Bank account [ca_bank_account_REDACTED].",
@@ -420,7 +420,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/ca_bank_account/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Bank account [ca_bank_account_REDACTED].",
@@ -441,7 +441,7 @@ export const localBaseline = {
     },
     {
       "policyId": "local-government-identifiers",
-      "policyVersion": "4.0.0",
+      "policyVersion": "1.0.0",
       "action": null,
       "parameterValues": {},
       "enabledRuleIds": [
@@ -496,7 +496,7 @@ export const localBaseline = {
       ],
       "testCaseOverrides": {
         "local-australian-tax-health-identifiers/rule-au-pii-tax-identifiers/au_abn-acceptance/input": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [au_abn_REDACTED]",
@@ -508,7 +508,7 @@ export const localBaseline = {
           ]
         },
         "local-australian-tax-health-identifiers/rule-au-pii-tax-identifiers/au_abn-acceptance/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [au_abn_REDACTED]",
@@ -520,7 +520,7 @@ export const localBaseline = {
           ]
         },
         "local-australian-tax-health-identifiers/rule-au-pii-tax-identifiers/au_medicare-acceptance/input": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [au_medicare_REDACTED]",
@@ -532,7 +532,7 @@ export const localBaseline = {
           ]
         },
         "local-australian-tax-health-identifiers/rule-au-pii-tax-identifiers/au_medicare-acceptance/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [au_medicare_REDACTED]",
@@ -544,7 +544,7 @@ export const localBaseline = {
           ]
         },
         "accept/nl_bsn_contextual/input": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: BSN [nl_bsn_contextual_REDACTED]",
@@ -556,7 +556,7 @@ export const localBaseline = {
           ]
         },
         "accept/nl_bsn_contextual/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: BSN [nl_bsn_contextual_REDACTED]",
@@ -568,7 +568,7 @@ export const localBaseline = {
           ]
         },
         "accept/br_cpf_unformatted/input": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [au_abn_REDACTED]",
@@ -580,7 +580,7 @@ export const localBaseline = {
           ]
         },
         "accept/br_cpf_unformatted/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [au_abn_REDACTED]",
@@ -592,7 +592,7 @@ export const localBaseline = {
           ]
         },
         "accept/au_tfn/input": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Tax file number [au_tfn_REDACTED].",
@@ -604,7 +604,7 @@ export const localBaseline = {
           ]
         },
         "accept/au_tfn/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Tax file number [au_tfn_REDACTED].",
@@ -616,7 +616,7 @@ export const localBaseline = {
           ]
         },
         "accept/au_abn/input": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [au_abn_REDACTED]",
@@ -628,7 +628,7 @@ export const localBaseline = {
           ]
         },
         "accept/au_abn/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [au_abn_REDACTED]",
@@ -640,7 +640,7 @@ export const localBaseline = {
           ]
         },
         "accept/au_medicare/input": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [au_medicare_REDACTED]",
@@ -652,7 +652,7 @@ export const localBaseline = {
           ]
         },
         "accept/au_medicare/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [au_medicare_REDACTED]",
@@ -664,7 +664,7 @@ export const localBaseline = {
           ]
         },
         "accept/fr_nir/input": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [fr_nir_REDACTED]",
@@ -676,7 +676,7 @@ export const localBaseline = {
           ]
         },
         "accept/fr_nir/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [fr_nir_REDACTED]",
@@ -688,7 +688,7 @@ export const localBaseline = {
           ]
         },
         "accept/eu_vat/input": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: VAT [eu_vat_REDACTED]",
@@ -700,7 +700,7 @@ export const localBaseline = {
           ]
         },
         "accept/eu_vat/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: VAT [eu_vat_REDACTED]",
@@ -712,7 +712,7 @@ export const localBaseline = {
           ]
         },
         "accept/uae_emirates_id/input": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [uae_emirates_id_REDACTED]",
@@ -724,7 +724,7 @@ export const localBaseline = {
           ]
         },
         "accept/uae_emirates_id/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [uae_emirates_id_REDACTED]",
@@ -736,7 +736,7 @@ export const localBaseline = {
           ]
         },
         "accept/sg_uen/input": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: UEN [sg_uen_REDACTED]",
@@ -748,7 +748,7 @@ export const localBaseline = {
           ]
         },
         "accept/sg_uen/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: UEN [sg_uen_REDACTED]",
@@ -760,7 +760,7 @@ export const localBaseline = {
           ]
         },
         "accept/ca_on_drivers_licence/input": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Driver's licence [ca_on_drivers_licence_REDACTED].",
@@ -772,7 +772,7 @@ export const localBaseline = {
           ]
         },
         "accept/ca_on_drivers_licence/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Driver's licence [ca_on_drivers_licence_REDACTED].",
@@ -784,7 +784,7 @@ export const localBaseline = {
           ]
         },
         "accept/ca_immigration_doc/input": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "UCI [ca_immigration_doc_REDACTED].",
@@ -796,7 +796,7 @@ export const localBaseline = {
           ]
         },
         "accept/ca_immigration_doc/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "UCI [ca_immigration_doc_REDACTED].",
@@ -808,7 +808,7 @@ export const localBaseline = {
           ]
         },
         "accept/uoft_student_id/input": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "University of Toronto student number [au_medicare_REDACTED].",
@@ -820,7 +820,7 @@ export const localBaseline = {
           ]
         },
         "accept/uoft_student_id/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "University of Toronto student number [au_medicare_REDACTED].",
@@ -832,7 +832,7 @@ export const localBaseline = {
           ]
         },
         "accept/uoft_tcard/input": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "TCard number [uoft_tcard_REDACTED].",
@@ -844,7 +844,7 @@ export const localBaseline = {
           ]
         },
         "accept/uoft_tcard/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "TCard number [uoft_tcard_REDACTED].",
@@ -856,7 +856,7 @@ export const localBaseline = {
           ]
         },
         "advanced-au-pii-protection/rule-au-pii-tax-identifiers/au_abn-acceptance": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [au_abn_REDACTED]",
@@ -868,7 +868,7 @@ export const localBaseline = {
           ]
         },
         "advanced-au-pii-protection/rule-au-pii-tax-identifiers/au_medicare-acceptance": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [au_medicare_REDACTED]",
@@ -880,7 +880,7 @@ export const localBaseline = {
           ]
         },
         "baseline-pii-protection/rule-au-pii-tax-identifiers/au_abn-acceptance": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [au_abn_REDACTED]",
@@ -892,7 +892,7 @@ export const localBaseline = {
           ]
         },
         "baseline-pii-protection/rule-au-pii-tax-identifiers/au_medicare-acceptance": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [au_medicare_REDACTED]",
@@ -904,7 +904,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/nl_bsn_contextual": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: BSN [nl_bsn_contextual_REDACTED]",
@@ -916,7 +916,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/br_cpf_unformatted": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [au_abn_REDACTED]",
@@ -928,7 +928,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/au_tfn": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Tax file number [au_tfn_REDACTED].",
@@ -940,7 +940,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/au_abn": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [au_abn_REDACTED]",
@@ -952,7 +952,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/au_medicare": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [au_medicare_REDACTED]",
@@ -964,7 +964,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/fr_nir": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [fr_nir_REDACTED]",
@@ -976,7 +976,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/eu_vat": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: VAT [eu_vat_REDACTED]",
@@ -988,7 +988,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/uae_emirates_id": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [uae_emirates_id_REDACTED]",
@@ -1000,7 +1000,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/sg_uen": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: UEN [sg_uen_REDACTED]",
@@ -1012,7 +1012,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/ca_on_drivers_licence": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Driver's licence [ca_on_drivers_licence_REDACTED].",
@@ -1024,7 +1024,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/ca_immigration_doc": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "UCI [ca_immigration_doc_REDACTED].",
@@ -1036,7 +1036,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/uoft_student_id": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "University of Toronto student number [au_medicare_REDACTED].",
@@ -1048,7 +1048,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/uoft_tcard": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "TCard number [uoft_tcard_REDACTED].",
@@ -1060,7 +1060,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/nl_bsn_contextual/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: BSN [nl_bsn_contextual_REDACTED]",
@@ -1072,7 +1072,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/br_cpf_unformatted/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [au_abn_REDACTED]",
@@ -1084,7 +1084,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/au_tfn/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Tax file number [au_tfn_REDACTED].",
@@ -1096,7 +1096,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/au_abn/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [au_abn_REDACTED]",
@@ -1108,7 +1108,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/au_medicare/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [au_medicare_REDACTED]",
@@ -1120,7 +1120,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/fr_nir/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [fr_nir_REDACTED]",
@@ -1132,7 +1132,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/eu_vat/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: VAT [eu_vat_REDACTED]",
@@ -1144,7 +1144,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/uae_emirates_id/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [uae_emirates_id_REDACTED]",
@@ -1156,7 +1156,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/sg_uen/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: UEN [sg_uen_REDACTED]",
@@ -1168,7 +1168,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/ca_on_drivers_licence/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Driver's licence [ca_on_drivers_licence_REDACTED].",
@@ -1180,7 +1180,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/ca_immigration_doc/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "UCI [ca_immigration_doc_REDACTED].",
@@ -1192,7 +1192,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/uoft_student_id/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "University of Toronto student number [au_medicare_REDACTED].",
@@ -1204,7 +1204,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/uoft_tcard/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "TCard number [uoft_tcard_REDACTED].",
@@ -1216,7 +1216,7 @@ export const localBaseline = {
           ]
         },
         "uae-regulatory-compliance/rule-uae-data-protection-pii/uae_emirates_id-acceptance": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [uae_emirates_id_REDACTED]",
@@ -1237,7 +1237,7 @@ export const localBaseline = {
     },
     {
       "policyId": "local-passports",
-      "policyVersion": "4.0.0",
+      "policyVersion": "1.0.0",
       "action": null,
       "parameterValues": {},
       "enabledRuleIds": [
@@ -1264,7 +1264,7 @@ export const localBaseline = {
       ],
       "testCaseOverrides": {
         "local-passport-formats/accept/passport_china/input": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [passport_china_REDACTED]",
@@ -1276,7 +1276,7 @@ export const localBaseline = {
           ]
         },
         "local-passport-formats/accept/passport_china/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [passport_china_REDACTED]",
@@ -1288,7 +1288,7 @@ export const localBaseline = {
           ]
         },
         "passport-en/input": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Passport: [passport_china_REDACTED]",
@@ -1300,7 +1300,7 @@ export const localBaseline = {
           ]
         },
         "passport-en/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Passport: [passport_china_REDACTED]",
@@ -1312,7 +1312,7 @@ export const localBaseline = {
           ]
         },
         "passport-zh/input": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "护照号码：[passport_india_REDACTED]",
@@ -1324,7 +1324,7 @@ export const localBaseline = {
           ]
         },
         "passport-zh/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "护照号码：[passport_india_REDACTED]",
@@ -1336,7 +1336,7 @@ export const localBaseline = {
           ]
         },
         "passport-mixed/input": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Passport number: [passport_france_REDACTED]",
@@ -1348,7 +1348,7 @@ export const localBaseline = {
           ]
         },
         "passport-mixed/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Passport number: [passport_france_REDACTED]",
@@ -1360,7 +1360,7 @@ export const localBaseline = {
           ]
         },
         "advanced-au-pii-protection/rule-international-pii-identifiers/passport_china-acceptance": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [passport_china_REDACTED]",
@@ -1372,7 +1372,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/passport_china": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [passport_china_REDACTED]",
@@ -1384,7 +1384,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/passport_china/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [passport_china_REDACTED]",
@@ -1405,7 +1405,7 @@ export const localBaseline = {
     },
     {
       "policyId": "local-contact-data",
-      "policyVersion": "4.3.0",
+      "policyVersion": "1.0.0",
       "action": null,
       "parameterValues": {},
       "enabledRuleIds": [
@@ -1438,7 +1438,7 @@ export const localBaseline = {
       ],
       "testCaseOverrides": {
         "local-regional-contact-formats/accept/br_phone_mobile/input": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [br_phone_mobile_REDACTED]",
@@ -1450,7 +1450,7 @@ export const localBaseline = {
           ]
         },
         "local-regional-contact-formats/accept/br_phone_mobile/output": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [br_phone_mobile_REDACTED]",
@@ -1462,7 +1462,7 @@ export const localBaseline = {
           ]
         },
         "local-regional-contact-formats/accept/fr_phone/input": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: +[au_abn_REDACTED]",
@@ -1474,7 +1474,7 @@ export const localBaseline = {
           ]
         },
         "local-regional-contact-formats/accept/fr_phone/output": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: +[au_abn_REDACTED]",
@@ -1486,7 +1486,7 @@ export const localBaseline = {
           ]
         },
         "local-regional-contact-formats/accept/uae_phone/input": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [uae_phone_REDACTED]",
@@ -1498,7 +1498,7 @@ export const localBaseline = {
           ]
         },
         "local-regional-contact-formats/accept/uae_phone/output": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [uae_phone_REDACTED]",
@@ -1510,7 +1510,7 @@ export const localBaseline = {
           ]
         },
         "local-regional-contact-formats/accept/sg_phone/input": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [sg_phone_REDACTED]",
@@ -1522,7 +1522,7 @@ export const localBaseline = {
           ]
         },
         "local-regional-contact-formats/accept/sg_phone/output": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [sg_phone_REDACTED]",
@@ -1534,7 +1534,7 @@ export const localBaseline = {
           ]
         },
         "advanced-au-pii-protection/rule-contact-information-pii/br_phone_mobile-acceptance": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [br_phone_mobile_REDACTED]",
@@ -1546,7 +1546,7 @@ export const localBaseline = {
           ]
         },
         "gdpr-eu-pii-protection/rule-gdpr-eu-contact-information/fr_phone-acceptance": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: +[au_abn_REDACTED]",
@@ -1558,7 +1558,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/br_phone_mobile": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [br_phone_mobile_REDACTED]",
@@ -1570,7 +1570,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/fr_phone": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: +[au_abn_REDACTED]",
@@ -1582,7 +1582,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/uae_phone": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [uae_phone_REDACTED]",
@@ -1594,7 +1594,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/sg_phone": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [sg_phone_REDACTED]",
@@ -1606,7 +1606,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/br_phone_mobile/output": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [br_phone_mobile_REDACTED]",
@@ -1618,7 +1618,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/fr_phone/output": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy redacts the complete sensitive value. Assert its Policy/Rule and the complete output instead of detecting already-redacted text again.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: +[au_abn_REDACTED]",
@@ -1630,7 +1630,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/uae_phone/output": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [uae_phone_REDACTED]",
@@ -1642,7 +1642,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/sg_phone/output": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [sg_phone_REDACTED]",
@@ -1654,7 +1654,7 @@ export const localBaseline = {
           ]
         },
         "pdpa-singapore/rule-sg-pdpa-contact-information/sg_phone-acceptance": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [sg_phone_REDACTED]",
@@ -1666,7 +1666,7 @@ export const localBaseline = {
           ]
         },
         "singapore-customer-identifiers/rule-sg-pdpa-contact-information/sg_phone-acceptance/input": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [sg_phone_REDACTED]",
@@ -1678,7 +1678,7 @@ export const localBaseline = {
           ]
         },
         "singapore-customer-identifiers/rule-sg-pdpa-contact-information/sg_phone-acceptance/output": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [sg_phone_REDACTED]",
@@ -1690,7 +1690,7 @@ export const localBaseline = {
           ]
         },
         "uae-regulatory-compliance/rule-uae-data-protection-pii/uae_phone-acceptance": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "Require complete identifier redaction, not merely a transform decision or a partially masked value.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [uae_phone_REDACTED]",
@@ -1702,7 +1702,7 @@ export const localBaseline = {
           ]
         },
         "advanced-au-pii-protection/rule-contact-information-pii/br_phone_landline-acceptance": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The Brazilian mobile detector precedes the landline detector and covers this shared sample. Require complete redaction and the first matching Rule.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [br_phone_mobile_REDACTED]",
@@ -1714,7 +1714,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/br_phone_landline": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The Brazilian mobile detector precedes the landline detector and covers this shared sample. Require complete redaction and the first matching Rule.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [br_phone_mobile_REDACTED]",
@@ -1726,7 +1726,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/br_phone_landline/output": {
-          "sourcePolicyVersion": "4.3.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The Brazilian mobile detector precedes the landline detector and covers this shared sample. Require complete redaction and the first matching Rule.",
           "expectedDecision": "transform",
           "expectedOutputContent": "Acceptance sample: [br_phone_mobile_REDACTED]",
@@ -1747,7 +1747,7 @@ export const localBaseline = {
     },
     {
       "policyId": "local-network-addresses",
-      "policyVersion": "4.0.0",
+      "policyVersion": "1.0.0",
       "action": null,
       "parameterValues": {},
       "enabledRuleIds": [
@@ -1770,7 +1770,7 @@ export const localBaseline = {
     },
     {
       "policyId": "local-sensitive-attribute-terms",
-      "policyVersion": "4.1.0",
+      "policyVersion": "1.0.0",
       "action": null,
       "parameterValues": {},
       "enabledRuleIds": [
@@ -1795,7 +1795,7 @@ export const localBaseline = {
       ],
       "testCaseOverrides": {
         "accept/religion/input": {
-          "sourcePolicyVersion": "4.1.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy rejects and terminates the chain. Assert its Policy/Rule; later Rules must not execute.",
           "expectedDecision": "block",
           "expectedOutputContent": "",
@@ -1807,7 +1807,7 @@ export const localBaseline = {
           ]
         },
         "accept/religion/output": {
-          "sourcePolicyVersion": "4.1.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy rejects and terminates the chain. Assert its Policy/Rule; later Rules must not execute.",
           "expectedDecision": "block",
           "expectedOutputContent": "",
@@ -1819,7 +1819,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/religion": {
-          "sourcePolicyVersion": "4.1.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy rejects and terminates the chain. Assert its Policy/Rule; later Rules must not execute.",
           "expectedDecision": "block",
           "expectedOutputContent": "",
@@ -1831,7 +1831,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/religion/output": {
-          "sourcePolicyVersion": "4.1.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy rejects and terminates the chain. Assert its Policy/Rule; later Rules must not execute.",
           "expectedDecision": "block",
           "expectedOutputContent": "",
@@ -1852,7 +1852,7 @@ export const localBaseline = {
     },
     {
       "policyId": "local-risk-content-terms",
-      "policyVersion": "4.0.0",
+      "policyVersion": "1.0.0",
       "action": null,
       "parameterValues": {},
       "enabledRuleIds": [
@@ -1877,7 +1877,7 @@ export const localBaseline = {
       ],
       "testCaseOverrides": {
         "accept/weapons_firearms/input": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy rejects and terminates the chain. Assert its Policy/Rule; later Rules must not execute.",
           "expectedDecision": "block",
           "expectedOutputContent": "",
@@ -1889,7 +1889,7 @@ export const localBaseline = {
           ]
         },
         "accept/weapons_firearms/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy rejects and terminates the chain. Assert its Policy/Rule; later Rules must not execute.",
           "expectedDecision": "block",
           "expectedOutputContent": "",
@@ -1901,7 +1901,7 @@ export const localBaseline = {
           ]
         },
         "accept/explosives/input": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy rejects and terminates the chain. Assert its Policy/Rule; later Rules must not execute.",
           "expectedDecision": "block",
           "expectedOutputContent": "",
@@ -1913,7 +1913,7 @@ export const localBaseline = {
           ]
         },
         "accept/explosives/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy rejects and terminates the chain. Assert its Policy/Rule; later Rules must not execute.",
           "expectedDecision": "block",
           "expectedOutputContent": "",
@@ -1925,7 +1925,7 @@ export const localBaseline = {
           ]
         },
         "accept/terrorism/input": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy rejects and terminates the chain. Assert its Policy/Rule; later Rules must not execute.",
           "expectedDecision": "block",
           "expectedOutputContent": "",
@@ -1937,7 +1937,7 @@ export const localBaseline = {
           ]
         },
         "accept/terrorism/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy rejects and terminates the chain. Assert its Policy/Rule; later Rules must not execute.",
           "expectedDecision": "block",
           "expectedOutputContent": "",
@@ -1949,7 +1949,7 @@ export const localBaseline = {
           ]
         },
         "accept/self_harm_suicide/input": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy rejects and terminates the chain. Assert its Policy/Rule; later Rules must not execute.",
           "expectedDecision": "block",
           "expectedOutputContent": "",
@@ -1961,7 +1961,7 @@ export const localBaseline = {
           ]
         },
         "accept/self_harm_suicide/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy rejects and terminates the chain. Assert its Policy/Rule; later Rules must not execute.",
           "expectedDecision": "block",
           "expectedOutputContent": "",
@@ -1973,7 +1973,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/weapons_firearms": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy rejects and terminates the chain. Assert its Policy/Rule; later Rules must not execute.",
           "expectedDecision": "block",
           "expectedOutputContent": "",
@@ -1985,7 +1985,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/explosives": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy rejects and terminates the chain. Assert its Policy/Rule; later Rules must not execute.",
           "expectedDecision": "block",
           "expectedOutputContent": "",
@@ -1997,7 +1997,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/terrorism": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy rejects and terminates the chain. Assert its Policy/Rule; later Rules must not execute.",
           "expectedDecision": "block",
           "expectedOutputContent": "",
@@ -2009,7 +2009,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/self_harm_suicide": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy rejects and terminates the chain. Assert its Policy/Rule; later Rules must not execute.",
           "expectedDecision": "block",
           "expectedOutputContent": "",
@@ -2021,7 +2021,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/weapons_firearms/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy rejects and terminates the chain. Assert its Policy/Rule; later Rules must not execute.",
           "expectedDecision": "block",
           "expectedOutputContent": "",
@@ -2033,7 +2033,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/explosives/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy rejects and terminates the chain. Assert its Policy/Rule; later Rules must not execute.",
           "expectedDecision": "block",
           "expectedOutputContent": "",
@@ -2045,7 +2045,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/terrorism/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy rejects and terminates the chain. Assert its Policy/Rule; later Rules must not execute.",
           "expectedDecision": "block",
           "expectedOutputContent": "",
@@ -2057,7 +2057,7 @@ export const localBaseline = {
           ]
         },
         "pattern-matching/accept/self_harm_suicide/output": {
-          "sourcePolicyVersion": "4.0.0",
+          "sourcePolicyVersion": "1.0.0",
           "reason": "The earlier configured Policy rejects and terminates the chain. Assert its Policy/Rule; later Rules must not execute.",
           "expectedDecision": "block",
           "expectedOutputContent": "",

@@ -33,7 +33,7 @@
 2. 发布包与签名契约：同一份内容在不同环境的摘要一致，并携带 UAT 来源证据。
 3. Guardrail 导入：幂等追加不可变版本，生产不依赖 Policy Library、不重建、不要求重新测试。
 
-2026-10-08 的完整设计见 [Guardrail 自包含发布包与 UAT → 生产晋级设计](./guardrail-self-contained-promotion-design.zh-CN.md)。
+当前导入导出操作和 V1 契约见 [开发文档](./development.md#promote-a-guardrail-between-environments)。
 该设计更新下文尚未实施的导入与签名部分，不改变 Router 已有审批规则。
 
 ## 第一部分：Routing 变更单与审批
