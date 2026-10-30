@@ -24,9 +24,12 @@ export class DeclarativeCompiler {
     return definition ? policyDefinitionSchema.parse(definition) : null;
   }
   catalogView(policy: PolicyDto): PolicyDto {
-    const definition = policy.source === "built_in" && policy.protection.execution === "custom" ? this.shipped(policy.id,policy.version) : null;
+    // Frozen release nodes omit derived Library metadata, including protection.
+    // Restore it from that version's own rules before projecting imported history.
+    const protection = policy.protection ?? policyProtection(policy, this.contracts);
+    const definition = policy.source === "built_in" && protection.execution === "custom" ? this.shipped(policy.id,policy.version) : null;
     const compiled = definition ? this.compile(definition) : null;
-    return { ...policy, ...(compiled ? {rules:compiled.rules,definition:compiled.definition!,protection:compiled.protection} : {}),
+    return { ...policy, protection, ...(compiled ? {rules:compiled.rules,definition:compiled.definition!,protection:compiled.protection} : {}),
       ...(policy.published_versions ? {published_versions:policy.published_versions.map(version=>this.catalogView(version))} : {}) };
   }
   fromSnapshot(snapshot: Record<string, unknown>): PolicyDefinition {

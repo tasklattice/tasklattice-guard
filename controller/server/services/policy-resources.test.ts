@@ -11,6 +11,7 @@ import { assertPolicyTest } from "./policy-resources.js";
 import { publicPolicy } from "../policy-catalog/public-policy.js";
 import { definitionTestCases } from "../policy-studio/definition-tests.js";
 import { generatedTestCases } from "../domain/validation.js";
+import { PolicyCatalog, type PolicyDto } from "../policy-catalog/catalog.js";
 
 const directory = resolve("../runner/toolkit/policy_library/assets");
 const compiler = new DeclarativeCompiler(directory);
@@ -25,6 +26,16 @@ function planFor(definition = fixture(), selected?: string[]) {
   return buildGuardrailPlan({ guardrailId: "test", guardrailVersion: "20261012-010000.001Z", policies: [policy], draft: normalizeGuardrailDraft({ policyBindings: [{ policyId: policy.id, policyVersion: policy.version, enabledRuleIds: selected ?? policy.rules.map(r => r.id), enabledRails: policy.rails, parameterValues: {} }] }) });
 }
 describe("portable Policy authoring", () => {
+  it("restores protection metadata for imported frozen catalog versions without changing their identity", () => {
+    const current = PolicyCatalog.load(directory).get("local-network-addresses")!;
+    const node = frozenBuiltInDefinition({ ...current, version: "0.9.0" });
+    const imported = { ...builtInPolicyView(node), origin: "imported", source_id: "another-installation" } as unknown as PolicyDto;
+    const view = compiler.catalogView({ ...current, published_versions: [imported] });
+    const historical = view.published_versions![0]!;
+    expect(historical.protection).toEqual(current.protection);
+    expect(historical).toMatchObject({ version: "0.9.0", origin: "imported", source_id: "another-installation" });
+    expect(policyNodeDigest(frozenBuiltInDefinition(historical))).toBe(policyNodeDigest(node));
+  });
   it("removes origin from public current and historical views without stripping provenance tags", () => {
     const policy = compiler.compile(fixture());
     const view = publicPolicy({ ...policy, published_versions: [policy] });
