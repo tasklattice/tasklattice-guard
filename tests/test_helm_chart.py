@@ -92,6 +92,19 @@ def controller_config(documents):
     return next(doc for doc in documents if doc["kind"] == "ConfigMap" and doc["metadata"]["name"].endswith("controller-config"))
 
 
+def test_controller_database_budgets_and_runner_concurrency_reach_the_deployment():
+    for args, expected in [([], ["30000", "5000", "30000", "4"]),
+        (["--set", "controller.databaseTimeouts.statementMs=12000", "--set", "controller.databaseTimeouts.lockMs=1500",
+          "--set", "controller.databaseTimeouts.idleTransactionMs=9000", "--set", "controller.runnerSyncConcurrency=2"],
+         ["12000", "1500", "9000", "2"])]:
+        docs = render(*args)
+        deployment = next(d for d in docs if d["kind"] == "Deployment" and d["metadata"]["name"].endswith("-controller"))
+        env = resolved_environment(docs, deployment["spec"]["template"]["spec"]["containers"][0])
+        names = ["CONTROLLER_DATABASE_STATEMENT_TIMEOUT_MS", "CONTROLLER_DATABASE_LOCK_TIMEOUT_MS",
+                 "CONTROLLER_DATABASE_IDLE_TRANSACTION_TIMEOUT_MS", "CONTROLLER_RUNNER_SYNC_CONCURRENCY"]
+        assert [env[name]["value"] for name in names] == expected
+
+
 def resolved_environment(documents, container):
     environment = {entry["name"]: dict(entry) for entry in container["env"]}
     config = controller_config(documents)

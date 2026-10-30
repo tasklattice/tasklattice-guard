@@ -11,6 +11,13 @@ const requiredEnvironment = {
 };
 
 describe("Controller config", () => {
+  it("supplies finite database budgets and validates the Runner synchronization limit", () => {
+    expect(loadConfig(requiredEnvironment)).toMatchObject({ databaseTimeouts: { statementMs: 30000, lockMs: 5000, idleTransactionMs: 30000 }, runnerSyncConcurrency: 4 });
+    for (const key of ["CONTROLLER_DATABASE_STATEMENT_TIMEOUT_MS", "CONTROLLER_DATABASE_LOCK_TIMEOUT_MS", "CONTROLLER_DATABASE_IDLE_TRANSACTION_TIMEOUT_MS", "CONTROLLER_RUNNER_SYNC_CONCURRENCY"]) {
+      expect(() => loadConfig({ ...requiredEnvironment, [key]: "0" })).toThrow();
+    }
+    expect(() => loadConfig({ ...requiredEnvironment, CONTROLLER_RUNNER_SYNC_CONCURRENCY: "9" })).toThrow();
+  });
   it("keeps the password minimum at 8 by default", () => {
     expect(loadConfig(requiredEnvironment)).toMatchObject({
       minPasswordLength: 8,

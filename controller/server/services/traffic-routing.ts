@@ -9,6 +9,7 @@ import { auditEvents, controllerState, endpoints, guardrails, guardrailVersions,
 import { ConflictError, ControllerError, NotFoundError, ValidationError } from "../domain/errors.js";
 import { capabilityIssues, routingIssues, type RouterChangeRequest, type RouterDraft } from "../../shared/traffic-routing.js";
 import { advisoryTransactionLock } from "../db/postgres-locks.js";
+import { telemetryBatches, telemetryWatermarkBatch } from "./telemetry-batches.js";
 
 /** How long a Runner load check of an imported version counts as current. */
 export const IMPORTED_VERSION_CHECK_TTL_MS = 10 * 60_000;
@@ -419,11 +420,12 @@ export class TrafficRoutingService {
       await this.db.delete(routeAssignments).where(lt(routeAssignments.occurredAt, new Date(Date.now() - 30 * 86400000)));
       this.lastRetentionAt = Date.now();
     }
-    await this.db.transaction(async tx => {
-      const accepts = await guardrailTelemetryFilter(tx, events.map(event => event.guardrailId));
-      for (const event of events) {
-        if (!accepts(event.guardrailId, event.decisionAt)) continue;
-        if (event.decisionAt.getTime() < Date.now() - 30 * 86400000) continue;
+    await telemetryBatches(this.db, events, async (tx, batch) => {
+      const accepts = await guardrailTelemetryFilter(tx, batch.map(event => event.guardrailId));
+      const watermarks = telemetryWatermarkBatch(tx);
+      return { write: async event => {
+        if (!accepts(event.guardrailId, event.decisionAt)) return;
+        if (event.decisionAt.getTime() < Date.now() - 30 * 86400000) return;
         const complete = event.eventType === "completion";
         await tx.insert(routeAssignments).values({ decisionId: event.decisionId, callId: event.callId, routerId: event.routerId, routerRevision: event.routerRevision,
           routeId: event.routeId, targetId: event.targetId, guardrailId: event.guardrailId, guardrailVersion: event.guardrailVersion, endpointId: event.endpointId,
@@ -441,9 +443,8 @@ export class TrafficRoutingService {
             ELSE coalesce(${routeAssignments.outcome}, excluded.outcome) END`,
           durationMs: sql`CASE WHEN ${routeAssignments.completionInferred} AND excluded.completed_at IS NOT NULL THEN excluded.duration_ms ELSE greatest(${routeAssignments.durationMs}, excluded.duration_ms) END`,
         }});
-        await tx.insert(telemetryWatermarks).values({ runnerId: event.runnerId, lastEventOccurredAt: event.occurredAt, lastReceivedAt: new Date(), updatedAt: new Date() })
-          .onConflictDoUpdate({ target: telemetryWatermarks.runnerId, set: { lastEventOccurredAt: event.occurredAt, lastReceivedAt: new Date(), updatedAt: new Date() } });
-      }
+        watermarks.add(event.runnerId, event.occurredAt);
+      }, finish: () => watermarks.flush() };
     });
   }
 

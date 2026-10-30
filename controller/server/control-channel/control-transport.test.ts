@@ -67,7 +67,7 @@ describe("production Controller gRPC transport budget", () => {
         generation: 1, artifacts: [], routers: [], endpoints: [],
         disabledGuardrailIds: [desiredId], disabledEndpointIds: [], guardrailLoggingLevels: {},
       }),
-      disconnectRunner: vi.fn(),
+      disconnectRunner: vi.fn().mockResolvedValue(undefined),
       completeValidation: vi.fn(),
     };
     const metrics = {
@@ -140,6 +140,35 @@ describe("production Controller gRPC transport budget", () => {
 });
 
 describe("Controller background work", () => {
+  it("does not pile up periodic database work while a previous tick is pending, and retries after failure", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    const pending = Promise.withResolvers<[]>();
+    const failure = new Error("timeout exceeded when trying to connect");
+    const service = {
+      pendingOutbox: vi.fn().mockReturnValueOnce(pending.promise).mockResolvedValue([]),
+      markStaleRunnersOffline: vi.fn().mockResolvedValue(undefined),
+    };
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const server = new RunnerControlServer({ ...config, grpc: { host: "127.0.0.1", port: 0 } }, service as unknown as ControlPlaneService,
+      { observeControlMessage: vi.fn() } as unknown as ControllerMetrics, {} as ModelConfigurationService);
+    try {
+      await server.start();
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(service.pendingOutbox).toHaveBeenCalledTimes(1);
+      pending.reject(failure);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(logged).toHaveBeenCalledWith(expect.stringContaining('"operation":"Desired state dispatch"'));
+      expect(service.pendingOutbox).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(service.pendingOutbox).toHaveBeenCalledTimes(3);
+    } finally {
+      pending.resolve([]);
+      await server.stop();
+      logged.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
   it("logs a failed periodic tick and keeps running instead of crashing the process", async () => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     const failure = new Error("Connection terminated due to connection timeout");
@@ -150,7 +179,7 @@ describe("Controller background work", () => {
     try {
       await server.start();
       await vi.advanceTimersByTimeAsync(2_000);
-      expect(logged).toHaveBeenCalledWith("Desired state dispatch failed", failure);
+      expect(logged).toHaveBeenCalledWith(expect.stringContaining('"operation":"Desired state dispatch"'));
       // The next tick runs again.
       expect(service.pendingOutbox.mock.calls.length).toBeGreaterThanOrEqual(2);
     } finally {

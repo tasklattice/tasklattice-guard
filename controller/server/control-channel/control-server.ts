@@ -15,6 +15,8 @@ import {
 import { loadSync } from "@grpc/proto-loader";
 
 import type { ControllerConfig } from "../config.js";
+import { databaseErrorFields, logDatabaseFailure } from "../db/diagnostics.js";
+import { KeyedWorkQueue, PendingWork } from "../work-queue.js";
 import type { RunnerLoad } from "../db/schema.js";
 import type { ControllerMessage } from "../generated/control-protocol/tasklattice/guard/control/v1/ControllerMessage.js";
 import type { CapabilityValidationRequest } from "../generated/control-protocol/tasklattice/guard/control/v1/CapabilityValidationRequest.js";
@@ -67,6 +69,12 @@ export class RunnerControlServer {
   private readonly grpc = new Server(controlChannelOptions);
   private readonly connections = new Map<string, Connection>();
   private timers: NodeJS.Timeout[] = [];
+  private stopping = false;
+  private stopJob: Promise<void> | undefined;
+  private readonly pending = new PendingWork();
+  private readonly streams = new Map<RunnerStream, () => void>();
+  private readonly syncQueue: KeyedWorkQueue<object>;
+  private readonly protectionKeys = new WeakMap<Connection, object>();
   private dispatchingValidation = false;
   private readonly activeValidations = new Map<string, Connection>();
   private readonly railValidations = new Map<string, { runnerId: string; bootId: string; finish: (result: RailValidationEvidence) => void }>();
@@ -79,6 +87,7 @@ export class RunnerControlServer {
     private readonly metrics: ControllerMetrics,
     private readonly models: ModelConfigurationService,
   ) {
+    this.syncQueue = new KeyedWorkQueue(config.runnerSyncConcurrency ?? 4);
     const definition = loadSync(config.protoPath, {
       includeDirs: [dirname(config.protoPath)],
       keepCase: false,
@@ -98,6 +107,7 @@ export class RunnerControlServer {
   }
 
   async compileArtifact(input: ArtifactCompilation): Promise<ArtifactContent> {
+    if (this.stopping) throw new Error("Controller is stopping");
     const runner = [...this.connections.values()].find(item => item.poolId === "default" && item.compilerCapable && item.offlineCompilation);
     if (!runner) throw new ConflictError("Connect an upgraded compiler Runner to publish this draft. Tests are optional.", "guardrail_compiler_unavailable");
     return new Promise((resolve, reject) => {
@@ -122,8 +132,10 @@ export class RunnerControlServer {
    * be able to serve it. Check only Runners that applied the current models.
    */
   async checkArtifactAdmission(artifact: SignedArtifact): Promise<PoolAdmission[]> {
+    if (this.stopping) throw new Error("Controller is stopping");
     const contractIssue = artifactExecutionContractIssue(artifact);
     const expectedModelRevisionId = (await this.models.activeConfiguration(true))?.revisionId ?? "";
+    if (this.stopping) throw new Error("Controller is stopping");
     const byPool = new Map<string, Connection>();
     for (const connection of this.connections.values()) {
       const current = byPool.get(connection.poolId);
@@ -153,6 +165,7 @@ export class RunnerControlServer {
   }
 
   async validateRail(request: CapabilityValidationRequest): Promise<RailValidationEvidence> {
+    if (this.stopping) throw new Error("Controller is stopping");
     const runner = [...this.connections.values()].find((item) => item.poolId === "default" && item.compilerCapable);
     if (!runner || !request.requestId) return { passed: false, message: "No connected Default Runner can validate this Rail.", latencyMs: 0 };
     const requestId = request.requestId;
@@ -175,9 +188,19 @@ export class RunnerControlServer {
       });
     });
     // A failed tick (for example a database connection timeout) is logged and
-    // retried on the next one; it must never take the Controller down.
-    const every = (label: string, ms: number, task: () => Promise<unknown> | undefined) =>
-      setInterval(() => void Promise.resolve().then(task).catch(error => console.error(`${label} failed`, error)), ms);
+    // retried on the next one; it must never take the Controller down. Skip
+    // ticks while the previous task is pending so a slow database does not
+    // accumulate overlapping queries and exhaust the shared connection pool.
+    const every = (label: string, ms: number, task: () => Promise<unknown> | undefined) => {
+      let running = false;
+      return setInterval(() => {
+        if (running || this.stopping) return;
+        running = true;
+        void this.pending.track(Promise.resolve().then(task)
+          .catch(error => logDatabaseFailure("controller.background_error", error, this.service.databasePoolState?.() ?? null, { operation: label }))
+          .finally(() => { running = false; }));
+      }, ms);
+    };
     this.timers = [
       every("Validation dispatch", 1_000, () => this.dispatchValidationRequests()),
       every("Desired state dispatch", 1_000, () => this.dispatchDesiredStateChanges()),
@@ -190,17 +213,25 @@ export class RunnerControlServer {
   }
 
   async stop(): Promise<void> {
+    if (this.stopJob) return this.stopJob;
+    this.stopping = true;
     for (const compilation of this.compilations.values()) compilation.finish(undefined, "Controller stopped during compilation. Retry publication.");
     for (const validation of this.railValidations.values()) validation.finish({ passed: false, message: "Controller stopped during Rail validation.", latencyMs: 0 });
     for (const [requestId, admission] of this.admissions) admission.finish({ poolId: "", runnerId: admission.runnerId, admitted: false, unavailable: true, reason: `Controller stopped during load check ${requestId}.`, nemoVersion: "", modelRevisionId: "" });
     for (const timer of this.timers) clearInterval(timer);
     this.timers = [];
-    for (const connection of this.connections.values()) connection.stream.end();
-    await new Promise<void>((resolve) => this.grpc.tryShutdown(() => resolve()));
+    for (const [stream, disconnect] of this.streams) { stream.end(); disconnect(); }
+    this.stopJob = (async () => {
+      await new Promise<void>((resolve) => this.grpc.tryShutdown(() => resolve()));
+      await this.pending.drain();
+    })();
+    return this.stopJob;
   }
 
+  forceStop(): void { this.grpc.forceShutdown(); }
+
   hasDefaultCompiler(): boolean {
-    return [...this.connections.values()].some((item) => item.poolId === "default" && item.compilerCapable);
+    return !this.stopping && [...this.connections.values()].some((item) => item.poolId === "default" && item.compilerCapable);
   }
 
   removeRunnerConnection(runnerId: string, bootId: string): void {
@@ -227,7 +258,13 @@ export class RunnerControlServer {
   }
 
   async distributeProtectionModes(): Promise<void> {
-    await Promise.allSettled([...this.connections.values()].map(connection => this.reconcileProtectionModes(connection)));
+    await Promise.allSettled([...this.connections.values()].map(connection => {
+      let key = this.protectionKeys.get(connection);
+      if (!key) { key = {}; this.protectionKeys.set(connection, key); }
+      return this.pending.track(this.syncQueue.run(key, async () => {
+        if (this.connections.get(connection.runnerId) === connection) await this.reconcileProtectionModes(connection);
+      }));
+    }));
   }
 
   private async reconcileProtectionModes(connection: Connection): Promise<void> {
@@ -280,6 +317,10 @@ export class RunnerControlServer {
   }
 
   private connect(stream: RunnerStream): void {
+    if (this.stopping) {
+      stream.emit("error", Object.assign(new Error("Controller is stopping"), { code: status.UNAVAILABLE }));
+      return;
+    }
     const authorization = stream.metadata.get("authorization")[0];
     if (authorization !== `Bearer ${this.config.runnerToken}`) {
       this.metrics.observeControlMessage("received", "authentication", "rejected");
@@ -290,25 +331,56 @@ export class RunnerControlServer {
       return;
     }
     let connection: Connection | null = null;
+    let closed = false;
+    let cleanup: Promise<void> | undefined;
     let messageChain = Promise.resolve();
     stream.on("data", (message: RunnerMessage__Output) => {
+      if (this.stopping || closed) return;
       const messageType = message.body ?? "unknown";
-      messageChain = messageChain.then(async () => {
-        const registered = await this.handleMessage(stream, message, connection);
+      messageChain = this.pending.track(messageChain.then(async () => {
+        const registered = await this.handleMessage(stream, message, connection, this.stopping && closed);
         if (registered) connection = registered;
+        // The stream can close while registration is awaiting the database.
+        if (closed) disconnected();
         this.metrics.observeControlMessage("received", messageType);
       }).catch((error: unknown) => {
+        // Registration can install the connection before its first database
+        // reconciliation fails; retain that identity for cleanup as well.
+        connection ??= [...this.connections.values()].find(item => item.stream === stream) ?? null;
         this.metrics.observeControlMessage("received", messageType, "error");
-        const detail = error instanceof Error ? error.message : "Unknown Runner control error.";
+        logDatabaseFailure("runner.control_error", error, this.service.databasePoolState?.() ?? null, {
+          operation: messageType,
+          ...(connection ? { runnerId: connection.runnerId, bootId: connection.bootId } : {}),
+          ...(message.validationResult ? { runId: message.validationResult.runId } : {}),
+          ...(message.validationProgress ? { runId: message.validationProgress.runId } : {}),
+        });
+        // grpc status is also logged by the Runner. Never send a Drizzle
+        // message there: it includes query parameters and report contents.
+        const { category, code } = databaseErrorFields(error);
+        const detail = `Runner control request failed (${code ?? category}).`;
         stream.emit("error", Object.assign(new Error(detail), { code: status.INTERNAL }));
-      });
+      }));
     });
     const disconnected = () => {
-      // A removed/replaced stream may close after the same process reconnects.
-      if (!connection || this.connections.get(connection.runnerId) !== connection) return;
-      this.releaseConnection(connection);
-      void this.service.disconnectRunner(connection.runnerId, connection.bootId);
+      closed = true;
+      this.streams.delete(stream);
+      if (cleanup) return;
+      if (connection && this.connections.get(connection.runnerId) === connection) this.releaseConnection(connection);
+      // Apply offline only after accepted heartbeats/results finish; otherwise
+      // a queued heartbeat can overwrite the offline transition. Registration
+      // itself may still be pending when the transport closes.
+      cleanup = this.pending.track(messageChain.then(async () => {
+        if (!connection) return;
+        const current = this.connections.get(connection.runnerId);
+        if (current && current !== connection) return;
+        if (current === connection) this.releaseConnection(connection);
+        await this.service.disconnectRunner(connection.runnerId, connection.bootId);
+      }).catch(error => {
+        logDatabaseFailure("runner.disconnect_error", error, this.service.databasePoolState?.() ?? null,
+          connection ? { runnerId: connection.runnerId, bootId: connection.bootId } : {});
+      }));
     };
+    this.streams.set(stream, disconnected);
     stream.once("end", disconnected);
     stream.once("close", disconnected);
     stream.once("error", disconnected);
@@ -318,6 +390,7 @@ export class RunnerControlServer {
     stream: RunnerStream,
     message: RunnerMessage__Output,
     current: Connection | null,
+    draining = false,
   ): Promise<Connection | null> {
     if (message.registration) {
       if (current) throw new Error("Runner registered more than once on one stream.");
@@ -361,7 +434,11 @@ export class RunnerControlServer {
       return connection;
     }
     if (!current) throw new Error("Runner must register before sending control messages.");
-    if (this.connections.get(current.runnerId) !== current) return null;
+    const registered = this.connections.get(current.runnerId);
+    // stop() removes live routing immediately, but messages accepted before
+    // admission closed (especially queued reports) must still persist. Never
+    // let an old stream act on a replacement connection's registration.
+    if (registered !== current && (!draining || registered)) return null;
     if (message.heartbeat) {
       const heartbeat = message.heartbeat;
       if (heartbeat.runnerId !== current.runnerId || heartbeat.bootId !== current.bootId) {
@@ -513,20 +590,31 @@ export class RunnerControlServer {
     });
   }
 
-  private async reconcileAll(): Promise<void> {
-    await Promise.allSettled([...this.connections.values()].map((connection) => this.reconcile(connection)));
+  private async reconcileAll(): Promise<boolean> {
+    const results = await Promise.allSettled([...this.connections.values()].map((connection) => this.reconcile(connection)));
+    return results.every(result => result.status === "fulfilled");
   }
 
   private async reconcile(connection: Connection): Promise<void> {
+    return this.pending.track(this.syncQueue.run(connection, async () => {
+      if (this.connections.get(connection.runnerId) === connection) await this.reconcileOnce(connection);
+    }));
+  }
+
+  private async reconcileOnce(connection: Connection): Promise<void> {
     const started = performance.now();
     try {
       // Send the operating overlay before materializing any model/Artifact state.
       // Old Runners cannot ACK this message and remain visibly unsupported.
       await this.reconcileProtectionModes(connection);
-      const [desiredUnknown, modelConfiguration] = await Promise.all([
+      const results = await Promise.allSettled([
         this.service.desiredStateForPool(connection.poolId),
         this.models.activeConfiguration(true),
       ]);
+      // Keep the queue slot until both reads settle, including during an outage.
+      if (results[0].status === "rejected") throw results[0].reason;
+      if (results[1].status === "rejected") throw results[1].reason;
+      const desiredUnknown = results[0].value, modelConfiguration = results[1].value;
       if (this.connections.get(connection.runnerId) !== connection) return;
       // The transaction wrapper intentionally exposes an opaque result type in
       // the database adapter. Keep the wire projection typed at this boundary.
@@ -615,6 +703,8 @@ export class RunnerControlServer {
       this.metrics.observeReconcile(connection.poolId, "dispatched", (performance.now() - started) / 1_000);
     } catch (error) {
       this.metrics.observeReconcile(connection.poolId, "error", (performance.now() - started) / 1_000);
+      logDatabaseFailure("runner.reconcile_error", error, this.service.databasePoolState?.() ?? null,
+        { runnerId: connection.runnerId, bootId: connection.bootId });
       throw error;
     }
   }
@@ -674,11 +764,14 @@ export class RunnerControlServer {
     const events = await this.service.pendingOutbox("runner.desired_state_changed", 50);
     if (events.length === 0) return;
     for (const connection of this.connections.values()) connection.lastReconcileGeneration = -1;
-    await this.reconcileAll();
-    await Promise.all(events.map((event) => this.service.markOutboxProcessed(event.id)));
+    // allSettled lets healthy Runners progress, but failed DB reads are not a
+    // successful dispatch. Preserve the durable event for the next tick.
+    if (!await this.reconcileAll()) return;
+    for (const event of events) await this.service.markOutboxProcessed(event.id);
   }
 
   private write(stream: RunnerStream, body: ControllerBody): void {
+    if (stream.writableEnded || stream.destroyed) return;
     stream.write({ messageId: randomUUID(), sentAtUnixMs: String(Date.now()), ...body });
     this.metrics.observeControlMessage("sent", wireMessageType(body));
   }

@@ -98,7 +98,7 @@ describe("Preconfigured Guardrail initialization", () => {
   it.each([null, "user"])("does not auto-publish a completed test (actor %s)", async createdBy => {
     const content = candidate();
     const run = { id: "validation-1", guardrailId: "guardrail-default", guardrailVersion: content.guardrailVersion, createdBy, status: "running", subject: "draft" };
-    const test = harness([[], [{ guardrailId: run.guardrailId }], [{ id: run.guardrailId }], [run], [{ payload: { plan: content.plan, runtimeProfile: "auto" } }]]);
+    const test = harness([[], [{ guardrailId: run.guardrailId }], [{ id: run.guardrailId }], [run], [{ plan: content.plan, runtimeProfile: "auto" }]]);
     const initialize = vi.spyOn(test.service, "initialize");
     await test.service.completeValidation({ runId: run.id, status: "passed", metrics: emptyValidationMetrics(), results: [], candidateArtifact: content });
     expect(initialize).not.toHaveBeenCalled();
@@ -108,7 +108,7 @@ describe("Preconfigured Guardrail initialization", () => {
 
 describe("Validated candidate gate", () => {
   const run = { id: "validation-1", guardrailId: "guardrail-default", guardrailVersion: "20260906-010000.001Z", createdBy: "admin", status: "running", subject: "draft" };
-  const request = (plan: Record<string, unknown>, runtimeProfile = "auto") => [{ payload: { plan, runtimeProfile } }];
+  const request = (plan: Record<string, unknown>, runtimeProfile = "auto") => [{ plan, runtimeProfile }];
   const complete = (test: ReturnType<typeof harness>, candidateArtifact?: ReturnType<typeof candidate>) => test.service.completeValidation({
     runId: run.id, status: "passed", metrics: emptyValidationMetrics(), results: [], candidateArtifact,
     runtime: { runnerId: "runner-0", runnerVersion: "1.0.0", nemoVersion: "0.24.0", modelRevisionId: "", compilerModelTypes: [] },

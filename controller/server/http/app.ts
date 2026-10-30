@@ -35,6 +35,7 @@ import type { ControllerConfig } from "../config.js";
 import { IntentAnalysisError, OpenAICompatibleIntentAnalyzer, type IntentAnalyzer } from "../control-plane-ai/intent-analyzer.js";
 import { recommendationCatalog } from "../control-plane-ai/recommendation-catalog.js";
 import { ConflictError, ControllerError, NotFoundError, ValidationError } from "../domain/errors.js";
+import { logDatabaseFailure } from "../db/diagnostics.js";
 import { enforcementActions } from "../domain/guardrail-plan.js";
 import { deriveRunnerFleetStatus } from "../domain/platform-status.js";
 import { deriveComponentHealth, withModelHealth } from "../domain/component-health.js";
@@ -201,6 +202,7 @@ export function createHttpApp(input: {
   intentAnalyzer?: IntentAnalyzer | null;
   playgroundModel?: OpenAICompatiblePlaygroundModel | null;
   playgroundRunner?: RunnerPlaygroundClient | null;
+  isStopping?: () => boolean;
 }) {
   const app = new Hono<{ Variables: Variables }>();
   const { registerMetrics } = prometheus({
@@ -234,6 +236,12 @@ export function createHttpApp(input: {
   });
   app.use("*", logger());
   app.use("*", secureHeaders());
+  app.use("*", async (context, next) => {
+    if (input.isStopping?.() && context.req.path !== "/health/live" && context.req.path !== "/metrics") {
+      return context.json({ error: { code: "controller_stopping", message: "Controller is stopping. Retry on another instance." } }, 503);
+    }
+    return next();
+  });
   app.use("*", (context, next) => {
     if (context.req.path === "/metrics" || context.req.path.startsWith("/health/")) {
       return next();
@@ -1158,7 +1166,9 @@ export function createHttpApp(input: {
     if (error instanceof z.ZodError) {
       return context.json({ error: { code: "invalid_request", message: "Request validation failed.", detail: error.flatten() } }, 400);
     }
-    console.error(error);
+    logDatabaseFailure("controller.http_error", error, input.service.databasePoolState?.() ?? null, {
+      method: context.req.method, route: context.req.routePath,
+    });
     return context.json({ error: { code: "internal_error", message: "Internal Controller error." } }, 500);
   });
 

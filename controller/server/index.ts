@@ -5,6 +5,8 @@ import { serve, type ServerType } from "@hono/node-server";
 import { createAuth } from "./auth.js";
 import { loadConfig } from "./config.js";
 import { createDatabase } from "./db/client.js";
+import { databasePoolState, logDatabaseFailure } from "./db/diagnostics.js";
+import { drainController } from "./shutdown.js";
 import { runMigrations } from "./db/migrate.js";
 import { createHttpApp } from "./http/app.js";
 import { OpenAICompatibleIntentAnalyzer } from "./control-plane-ai/intent-analyzer.js";
@@ -58,7 +60,9 @@ const playgroundRunner = new RunnerPlaygroundClient({
   baseUrl: config.runtimeServiceUrl,
   token: config.runnerToken,
 });
+let shuttingDown = false;
 const app = createHttpApp({
+  isStopping: () => shuttingDown,
   config,
   auth,
   accessTokens: new AccessTokenService(db),
@@ -81,22 +85,28 @@ process.stdout.write(
   + `Runner control on ${config.grpc.host}:${config.grpc.port}.\n`,
 );
 
-let shuttingDown = false;
 async function shutdown(signal: string) {
   if (shuttingDown) return;
   shuttingDown = true;
   clearInterval(accountSyncTimer);
-  await pendingAccountSync;
   process.stdout.write(`Guard Controller received ${signal}; shutting down.\n`);
-  await service.pricing.stop();
-  await runnerControl.stop();
-  await new Promise<void>((resolve, reject) => httpServer.close((error) => error ? reject(error) : resolve()));
-  await pool.end();
+  await drainController({
+    closeHttp: () => new Promise<void>((resolve, reject) => httpServer.close(error => error ? reject(error) : resolve())),
+    stopRunner: () => runnerControl.stop(),
+    stopMetrics: () => metrics.stop(),
+    stopAccounts: () => Promise.resolve(pendingAccountSync),
+    stopPricing: () => service.pricing.stop(),
+    endDatabase: () => pool.end(),
+    forceClose: () => {
+      runnerControl.forceStop();
+      if ("closeAllConnections" in httpServer && typeof httpServer.closeAllConnections === "function") httpServer.closeAllConnections();
+    },
+  });
 }
 
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
   process.once(signal, () => void shutdown(signal).then(() => process.exit(0)).catch((error: unknown) => {
-    console.error(error);
+    logDatabaseFailure("controller.shutdown_error", error, databasePoolState(pool));
     process.exit(1);
   }));
 }

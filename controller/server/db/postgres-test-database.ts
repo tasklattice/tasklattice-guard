@@ -1,9 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
-import * as schema from "./schema.js";
-import type { ControllerDatabase } from "./client.js";
+import { createPooledDatabase, type ControllerDatabase } from "./client.js";
 
 /**
  * An isolated schema with every migration replayed from nothing, for
@@ -24,7 +22,7 @@ export async function createTestDatabase(url: string, prefix: string, beforeMigr
     await pool.query(read(`${tag}.sql`).replaceAll('"public".', `"${namespace}".`));
   }
   return {
-    db: drizzle(pool, { schema }),
+    db: createPooledDatabase(pool),
     pool,
     drop: async () => {
       await pool.end();
