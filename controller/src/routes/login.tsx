@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { Building2, LockKeyhole } from "lucide-react";
+import { Building2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { BrandLogo } from "@/components/brand-logo";
@@ -55,8 +55,7 @@ export function LoginPage() {
         <div className="flex flex-1 items-center justify-center py-10">
           <div className="w-full max-w-md">
             <div className="mb-8 lg:hidden"><BrandLogo /></div>
-            <span className="inline-flex size-11 items-center justify-center rounded-xl bg-primary/10 text-primary"><LockKeyhole className="size-5" /></span>
-            <p className="mt-6 text-sm font-medium text-primary">{t("auth.loginEyebrow")}</p>
+            <p className="text-sm font-medium text-primary">{t("auth.loginEyebrow")}</p>
             <h1 className="mt-2 font-sans text-3xl font-normal tracking-normal">{t("auth.loginTitle")}</h1>
             <p className="mt-3 text-sm leading-6 text-muted-foreground">{t("auth.loginDescription")}</p>
 
