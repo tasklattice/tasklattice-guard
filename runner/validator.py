@@ -253,7 +253,7 @@ class DefaultRunnerValidator:
                 target_source=(view.active_block.source if view else _string(case.get("targetSource")) or ("model_output" if phase == "output" else "user_input")),
                 content_view=view,
                 active_block_id=view.active_block_id if view else None,
-                evidence_scope="full",
+                evidence_scope="full", execution_purpose="validation",
                 request_context=RequestContext(protocol="validation"),
             )
         )

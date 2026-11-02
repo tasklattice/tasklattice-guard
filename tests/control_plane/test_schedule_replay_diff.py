@@ -54,7 +54,7 @@ async def evaluate(plan: dict, text: str, scope: str) -> object:
     runtime = DraftPreviewRuntime(DefaultRunnerCompiler(), action_providers(*local_action_providers()))
     try:
         return await runtime.evaluate(
-            ProtectionRequest(phase="input", texts=(text,), evidence_scope=scope,
+            ProtectionRequest(phase="input", texts=(text,), evidence_scope=scope, execution_purpose="validation" if scope == "full" else "online",
                               context=RequestContext(protocol="replay")),
             preview_id=f"replay-{scope}-{len(plan['steps'])}", guardrail_id=plan["guardrail_id"],
             draft_revision=1, candidate_version=plan["guardrail_version"], plan=plan, runtime_profile="auto")

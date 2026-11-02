@@ -58,7 +58,7 @@ async def test_terminal_block_and_rule_acceptance_survive_an_independent_failure
         plan = reschedule(plan, list(reversed([step["id"] for step in plan["steps"]])))
     previews = DraftPreviewRuntime(DefaultRunnerCompiler(), action_providers(Fault(failure=failure)))
     try:
-        result = await previews.evaluate(ProtectionRequest(phase=phase, texts=("alpha beta",), evidence_scope="full",
+        result = await previews.evaluate(ProtectionRequest(phase=phase, texts=("alpha beta",), evidence_scope="full", execution_purpose="validation",
             context=RequestContext(protocol="validation")), preview_id="independent", guardrail_id=plan["guardrail_id"],
             draft_revision=1, candidate_version=plan["guardrail_version"], plan=plan, runtime_profile="auto")
         assert result.decision == "block" and not result.usage.fail_closed

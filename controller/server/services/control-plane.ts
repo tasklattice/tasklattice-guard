@@ -1,3 +1,4 @@
+import { executionError as runtimeExecutionError } from "./runtime-execution.js";
 import { ReportResults, type ReportUploadIdentity } from "./report-results.js";
 import { KeyedWorkQueue, PendingWork } from "../work-queue.js";
 import { logDatabaseFailure } from "../db/diagnostics.js";
@@ -40,7 +41,7 @@ import { canonicalArtifactContent } from "../control-channel/artifact-codec.js";
 import { programmablePolicyProtection } from "../policy-studio/protection.js";
 import { queryRuntimeMetrics, type MetricScope } from "./runtime-metrics.js";
 import { boundedRead } from '../db/read-budget.js';
-import { asText, findingSeverity, securityFinding, increment, jsonAggregate, jsonArrayLength, jsonElements, jsonObject, jsonText, jsonValue, literal, lowerText, rowValue, scalar, timestampValue } from '../db/postgres-expressions.js';
+import { asText, findingSeverity, securityFinding, increment, jsonAggregate, jsonArrayLength, jsonElements, jsonObject, jsonText, jsonValue, literal, rowValue, scalar, timestampValue } from '../db/postgres-expressions.js';
 import { advisoryTransactionLock } from '../db/postgres-locks.js';
 
 import { and, asc, count, countDistinct, desc, eq, exists, getTableColumns, gt, gte, inArray, isNotNull, isNull, lt, lte, max, min, ne, notInArray, or, sql, type SQL } from "drizzle-orm";
@@ -1641,7 +1642,7 @@ export class ControlPlaneService {
     const job = boundedRead(this.db, async tx => {
       // Lifetime timestamps are index probes; only recent counters scan a time window.
       const scope = eq(runtimeEvents.endpointId, endpoints.id);
-      const errors = inArray(lowerText(runtimeEvents.decision), ['error','failed','failure','timeout','timed_out']);
+      const errors = runtimeExecutionError(runtimeEvents.metadata);
       const timestamp = (name: string, filter?: SQL, oldest = false) => tx
         .select({ at: runtimeEvents.occurredAt }).from(runtimeEvents)
         .where(and(scope, filter))
@@ -1712,26 +1713,14 @@ export class ControlPlaneService {
       } catch { throw new ValidationError("Invalid event cursor"); }
     }
     const findings = jsonElements(jsonValue(runtimeEvents.metadata, 'findings'), 'finding');
-    const trace = jsonElements(jsonValue(runtimeEvents.metadata, 'trace'), 'error_span');
-    const executionError = or(
-      inArray(lowerText(runtimeEvents.decision), ['error','failed','failure','timeout','timed_out']),
-      eq(jsonText(runtimeEvents.metadata, 'executionStatus'), 'error'),
-      eq(jsonText(runtimeEvents.metadata, 'timedOut'), 'true'),
-      eq(jsonText(runtimeEvents.metadata, 'timed_out'), 'true'),
-      exists(this.db.select({ item: findings.item }).from(findings.source).where(eq(jsonText(findings.item, 'verdict'), 'error'))),
-      exists(this.db.select({ item: trace.item }).from(trace.source).where(or(
-        eq(jsonText(trace.item, 'verdict'), 'error'), eq(jsonText(trace.item, 'timedOut'), 'true'),
-        inArray(jsonText(trace.item, 'status'), ['error','failed','timeout']),
-        inArray(jsonText(trace.item, 'outcome'), ['error','failed','timeout']),
-      ))),
-    );
+    const executionError = runtimeExecutionError(runtimeEvents.metadata);
     const severities = input.severity ? (Array.isArray(input.severity) ? input.severity : [input.severity]) : [];
     const conditions = [
       severities.length ? exists(this.db.select({ severity: findingSeverity(findings.item) }).from(findings.source).where(and(securityFinding(findings.item), inArray(findingSeverity(findings.item), severities)))) : undefined,
       cursor ? lt(rowValue(runtimeEvents.occurredAt, runtimeEvents.id), rowValue(timestampValue(cursor.at), literal(cursor.id))) : undefined,
       input.requestId ? eq(runtimeEvents.requestId, input.requestId) : undefined,
       input.direction ? eq(runtimeEvents.direction, input.direction) : undefined,
-      input.outcome === 'error' ? executionError : input.outcome ? inArray(lowerText(runtimeEvents.decision), input.outcome === 'allow' ? ['allow','allowed','pass','passed'] : input.outcome === 'block' ? ['block','blocked','block','rejected','deny','denied'] : input.outcome === 'transform' ? ['transform','transformed','transform','redacted','transform','rewritten','intervene','intervened'] : ['error','failed','failure','timeout','timed_out']) : undefined,
+      input.outcome === 'error' ? executionError : input.outcome ? eq(runtimeEvents.decision, input.outcome) : undefined,
       input.captured ? eq(jsonText(runtimeEvents.metadata, 'runtimeLogCaptured'), 'true') : undefined,
       input.findingsOnly ? exists(this.db.select({ item: findings.item }).from(findings.source).where(securityFinding(findings.item))) : undefined,
       input.guardrailId ? eq(runtimeEvents.guardrailId, input.guardrailId) : undefined,
@@ -1749,8 +1738,7 @@ export class ControlPlaneService {
     return boundedRead(this.db, async tx => {
     const findingSummary = jsonObject(Object.fromEntries(['id','risk','verdict','confidence','taxonomyId','recommendedAction','policyId','ruleId','riskSeverity','policyVersion'].map(key => [key, jsonValue(findings.item, key)])));
     const metadata = jsonObject({
-      ...Object.fromEntries(['protectionMode','detectionDecision','detectionError','executionStatus','captureLevel','runtimeLogCaptured','protocol','action','timedOut','timed_out','streamFinalCheck','routeId','targetId','routerRevision','decisionId','logKind','completionInferred','failureReason','completedAt'].map(key => [key,jsonValue(runtimeEvents.metadata, key)])),
-      executionStatus: sql`CASE WHEN ${executionError} THEN 'error' ELSE ${jsonText(runtimeEvents.metadata, 'executionStatus')} END`,
+      ...Object.fromEntries(['protectionMode','detectionDecision','detectionError','executionStatus','terminationReason','captureLevel','runtimeLogCaptured','protocol','action','timedOut','timed_out','streamFinalCheck','routeId','targetId','routerRevision','decisionId','logKind','completionInferred','failureReason','completedAt'].map(key => [key,jsonValue(runtimeEvents.metadata, key)])),
       findings: scalar(tx.select({ value: jsonAggregate(findingSummary) }).from(findings.source)),
     });
     let itemsQuery = tx.select({

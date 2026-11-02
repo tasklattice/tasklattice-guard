@@ -8,6 +8,7 @@ import pytest
 from runner.toolkit.nemo.runtime import NeMoActionBridge
 from runner.evaluation_evidence import evaluation_evidence
 from runner.toolkit.runtime.contracts import ProtectionRequest, RequestContext
+from runner.toolkit.runtime.outcome import GuardrailExecutionError
 from runner.toolkit.runtime.service import GuardrailRuntimeService
 from tests.data_plane.test_artifact_execution import _runtime
 from tests.data_plane.test_custom_symbol_artifact import FIXTURE
@@ -40,8 +41,14 @@ async def test_real_action_failure_is_terminal_and_request_scoped(tmp_path, brok
     store, _registry, engine = _runtime(tmp_path, FIXTURE)
     runtime = GuardrailRuntimeService(engine, store)
     async def evaluate(text):
-        return await runtime.evaluate(ProtectionRequest(phase=phase, texts=(text,),
-            context=RequestContext(protocol="litellm", endpoint_id="fixture-endpoint")))
+        request = ProtectionRequest(phase=phase, texts=(text,),
+            context=RequestContext(protocol="litellm", endpoint_id="fixture-endpoint"))
+        if text == "check":
+            with pytest.raises(GuardrailExecutionError) as failed:
+                await runtime.evaluate(request)
+            assert failed.value.decision.execution_status in {"error", "timeout"}
+            return failed.value.decision
+        return await runtime.evaluate(request)
     try:
         failure = await evaluate("check")
         assert failure.decision == "block" and failure.usage.fail_closed

@@ -121,6 +121,7 @@ async def measure(plan: dict, text: str, scope: str, iterations: int) -> dict:
             started = __import__("time").perf_counter()
             decision = await runtime.evaluate(
                 ProtectionRequest(phase="input", texts=(text,), evidence_scope=scope,
+                    execution_purpose="validation" if scope == "full" else "online",
                                   context=RequestContext(protocol="benchmark")),
                 preview_id=f"bench-{scope}-{iteration_key(index)}", guardrail_id="benchmark",
                 draft_revision=1, candidate_version=plan["guardrail_version"],

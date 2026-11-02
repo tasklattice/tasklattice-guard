@@ -110,7 +110,8 @@ def test_invalid_parallel_contract_is_rejected_before_runtime(invalid):
 @pytest.mark.parametrize("phase", ["input", "output"])
 @pytest.mark.parametrize("programmable", [False, True])
 @pytest.mark.parametrize("scope", ["full", "interventions"])
-async def test_evidence_scope_controls_continuation_after_block(phase, programmable, scope):
+@pytest.mark.parametrize("purpose", ["online", "validation"])
+async def test_execution_purpose_controls_continuation_independently_of_reporting(phase, programmable, scope, purpose):
     plan = chain_plan([("block", "alpha", "unused", "block"),
                        ("mask", "alpha", "[A]", "transform"),
                        ("observe", "alpha", "unused", "allow")], phase, programmable)
@@ -125,13 +126,13 @@ async def test_evidence_scope_controls_continuation_after_block(phase, programma
     provider = RecordingSecrets()
     runtime = DraftPreviewRuntime(DefaultRunnerCompiler(), action_providers(provider))
     try:
-        result = await runtime.evaluate(ProtectionRequest(phase=phase, texts=("alpha beta",), evidence_scope=scope,
+        result = await runtime.evaluate(ProtectionRequest(phase=phase, texts=("alpha beta",), evidence_scope=scope, execution_purpose=purpose,
             context=RequestContext(protocol="validation")), preview_id="scope", guardrail_id="ordered", draft_revision=1,
             candidate_version=plan["guardrail_version"], plan=plan, runtime_profile="auto")
         assert result.decision == "block"
         assert result.texts == ()
         assert not result.usage.fail_closed, result.reason
-        expected = ["block", "mask", "observe"] if scope == "full" else ["block"]
+        expected = ["block", "mask", "observe"] if purpose == "validation" else ["block"]
         assert [identity for identity, text in provider.calls] == expected
         if len(expected) == 3:
             # An `always` chain reaches the observer with the phase input; a chain
@@ -171,7 +172,7 @@ async def test_full_evidence_retains_real_model_results_and_failures_across_para
         runtime, identity = runtime_and_identity(candidate, respond)
         try:
             result = await runtime.evaluate(ProtectionRequest(phase="input", texts=("Synthetic model contract test.",),
-                evidence_scope="full", context=RequestContext(protocol="validation")), **identity)
+                evidence_scope="full", execution_purpose="validation", context=RequestContext(protocol="validation")), **identity)
             assert result.decision == "block"
             assert set(calls) == set(finished) == {"jailbreak.test", "safety.test"}
             assert result.usage.model_invocations == 2
@@ -186,3 +187,38 @@ async def test_full_evidence_retains_real_model_results_and_failures_across_para
         finally:
             await runtime.shutdown()
     assert results[0] == results[1]
+
+
+@pytest.mark.parametrize("phase", ["input", "output"])
+@pytest.mark.parametrize("fault_first", [False, True])
+async def test_simultaneous_policy_block_and_independent_failure_preserve_block(phase, fault_first):
+    entered = set()
+    both = asyncio.Event()
+    class Checks(RecordingSecrets):
+        async def execute(self, request):
+            identity = request.binding.id
+            entered.add(identity)
+            if len(entered) == 2:
+                both.set()
+            await asyncio.wait_for(both.wait(), 1)
+            if identity == "fault":
+                raise RuntimeError("synthetic independent detector failure")
+            return await super().execute(request)
+    steps = [("block", "alpha", "unused", "block"), ("fault", "missing", "unused", "block")]
+    if fault_first:
+        steps.reverse()
+    plan = chain_plan(steps, phase)
+    for index, step in enumerate(plan["steps"]):
+        step["parameters"] += [[f"parallel_group_{phase}", "race"], [f"parallel_leader_{phase}", str(index == 0).lower()]]
+    plan["modules"][1]["depends_on"] = []
+    preview = DraftPreviewRuntime(DefaultRunnerCompiler(), action_providers(Checks()))
+    try:
+        result = await preview.evaluate(ProtectionRequest(phase=phase, texts=("alpha",), evidence_scope="full",
+            context=RequestContext(protocol="test")), preview_id="race", guardrail_id="ordered", draft_revision=1,
+            candidate_version=plan["guardrail_version"], plan=plan, runtime_profile="auto")
+        assert result.decision == "block" and result.execution_status == "complete"
+        assert result.termination_reason == "policy_block" and not result.usage.fail_closed
+        assert any(s.kind == "action" and s.verdict == "error" for s in result.trace)
+        assert result.diagnostics and not any(d.affects_result for d in result.diagnostics)
+    finally:
+        await preview.shutdown()

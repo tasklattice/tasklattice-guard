@@ -285,7 +285,7 @@ class ContentFilterActionProvider:
             text=request.content,
             phase=request.rail_type,
             parameters=request.parameters,
-            stop_on_block=not collects_complete_evidence(request.evidence_scope, request.plan),
+            stop_on_block=not collects_complete_evidence(request.execution_purpose, request.plan),
         )
         return action_result(
             request,

@@ -104,7 +104,7 @@ def evaluation_request(sample: Sample, timeout_seconds: float) -> EvaluationRequ
         capability="topic_control", proposed_action="block", plan=plan,
         binding=NeMoActionBinding(id=sample.id, capability="topic_control", contract_ref="tali.guard.topic-control.semantic.v1",
                                  phases=("input",), on_unsafe="block"),
-        context_messages=tuple(message.model_dump() for message in sample.context_messages), mode="detect", evidence_scope="full",
+        context_messages=tuple(message.model_dump() for message in sample.context_messages), mode="detect", evidence_scope="full", execution_purpose="validation",
     )
 
 

@@ -2,6 +2,7 @@
 from dataclasses import replace
 
 from .content_views import text_blocks
+from .outcome import finalize_decision
 from .contracts import ContentBlockResult, PlanResolution, ProtectionRequest, ProtectionDecision, RuntimeCoverage, RuntimeTraceStep, RuntimeUsage
 
 
@@ -23,19 +24,15 @@ def allowed_decision(request: ProtectionRequest, resolution: PlanResolution, mod
         trace=resolution.trace, coverage=RuntimeCoverage(status="none"), usage=RuntimeUsage())
     observed = None
     if detected is not None:
-        error = error or ("detection_failed" if (detected.usage and detected.usage.fail_closed)
-            or any(a.status in {"error", "needs_context", "uncovered"} for a in detected.assessments)
-            or any(f.verdict == "error" for f in detected.findings)
-            or (detected.coverage and detected.coverage.required_modules_completed < detected.coverage.required_modules_total)
-            else None)
+        error = error or ("detection_failed" if detected.execution_status in {"error", "timeout", "degraded"} else None)
         actions = {f.recommended_action for f in detected.findings if f.verdict == "matched"}
         actions.update(f.action for a in detected.assessments if a.status in {"intervene", "uncertain"} for f in a.fragments)
         observed = "block" if detected.decision == "block" or "block" in actions else "transform" if detected.decision == "transform" or actions & {"mask", "redact", "replace", "transform"} else "allow"
-    return replace(base, decision="allow", action="allow", texts=(), interventions=(),
+    return finalize_decision(replace(base, decision="allow", action="allow", texts=(), interventions=(),
         reason=trace.detail, protection_mode=mode, mode="detect" if mode == "monitor" else request.mode,
         detection_decision="error" if error else observed, detection_error=error,
         trace=(*base.trace, replace(trace, status="error" if error else status)),
         usage=replace(base.usage, fail_closed=False) if base.usage else None,
         content_results=tuple(ContentBlockResult(id=b.id, role=b.role, source=b.source,
             decision="allow", action="allow", text=b.text,
-            evaluated=mode == "monitor" and detected is not None and not error and b.guard_content and b.trust != "trusted") for b in blocks))
+            evaluated=mode == "monitor" and detected is not None and not error and b.guard_content and b.trust != "trusted") for b in blocks)))

@@ -11,6 +11,7 @@ import pytest
 from fastapi import FastAPI
 
 from runner.api import RunnerAPI
+from runner.toolkit.runtime.outcome import require_online_result
 from runner.compiler import DefaultRunnerCompiler
 from runner.draft_preview import DraftPreviewRuntime
 from runner.providers import dynamic_runtime_action_providers
@@ -118,9 +119,9 @@ async def scan(plan, probabilities, *, content="An ordinary synthetic request.",
         jev_thresholds=(.1, .85), transport=httpx.MockTransport(respond)))
     previews = DraftPreviewRuntime(DefaultRunnerCompiler(), providers)
     failures = []
-    # LiteLLM normally requests intervention evidence and F5 requests full evidence.
+    # Reporting verbosity does not change online execution.
     class ScopedService:
-        async def evaluate_standalone(self, request, *, on_resolved, validate_decision, timeout_seconds):
+        async def evaluate_standalone(self, request, *, on_resolved, timeout_seconds):
             try:
                 result = await previews.evaluate(replace(request, evidence_scope=scope), preview_id="classifier-chain",
                     guardrail_id=plan["guardrail_id"], draft_revision=1,
@@ -128,7 +129,7 @@ async def scan(plan, probabilities, *, content="An ordinary synthetic request.",
             except Exception as error:
                 failures.append(repr(error))
                 raise
-            validate_decision(result)
+            require_online_result(result)
             return result
     app = FastAPI()
     app.include_router(RunnerAPI(ScopedService(), Store(), Metrics(), Telemetry(), "dedicated-test", "token").router)
@@ -187,8 +188,9 @@ async def test_allow_unknown_never_skips_another_block(controller_plan, blocking
 @pytest.mark.parametrize("failure", ["timeout", "http", "parse"])
 async def test_unknown_allow_keeps_execution_errors_and_their_operating_point(controller_plan, capability, failure):
     response, _, evidence = await scan(controller_plan, dict.fromkeys(CONTRACTS, .5), fault=(capability, failure))
-    assert response.status_code == 503 and response.json()["detail"]["code"] == "scan_execution_failed"
-    assert evidence["execution"]["status"] == "error"
+    assert response.status_code == (504 if failure == "timeout" else 503)
+    assert response.json()["detail"]["code"] == ("guardrail_timeout" if failure == "timeout" else "guardrail_execution_failed")
+    assert evidence["execution"]["status"] == ("timeout" if failure == "timeout" else "error")
     row = next(r for r in evidence["evaluations"] if r["capability"] == capability)
     assert row["verdict"] == "error" and row["policyAction"] == "block"
     assert row["thresholds"]["upper"] == .85 and row["probabilities"] == {}

@@ -10,6 +10,7 @@ from runner.evaluation_evidence import evaluation_evidence
 from runner.toolkit.nemo.colang_logging import configure_user_action_logging
 from runner.toolkit.nemo.runtime import NeMoActionBridge
 from runner.toolkit.runtime.contracts import ProtectionRequest, RequestContext
+from runner.toolkit.runtime.outcome import GuardrailExecutionError
 from runner.toolkit.runtime.service import GuardrailRuntimeService
 from tests.data_plane.test_artifact_execution import _runtime
 from tests.data_plane.test_custom_symbol_artifact import FIXTURE
@@ -90,10 +91,12 @@ async def test_runtime_exception_reports_only_safe_error_type(tmp_path, monkeypa
 
     monkeypatch.setattr(Guardrails, 'generate_async', broken_runtime)
     try:
-        result = await runtime.evaluate(ProtectionRequest(
-            phase='input', texts=('ordinary',),
-            context=RequestContext(protocol='litellm', endpoint_id='fixture-endpoint'),
-        ))
+        with pytest.raises(GuardrailExecutionError) as failed:
+            result = await runtime.evaluate(ProtectionRequest(
+                phase='input', texts=('ordinary',),
+                context=RequestContext(protocol='litellm', endpoint_id='fixture-endpoint'),
+            ))
+        result = failed.value.decision
         assert result.decision == 'block' and result.usage.fail_closed
         assert result.coverage.required_modules_completed == 0
         assert json.loads(evaluation_evidence(result))['execution'] == {

@@ -126,7 +126,7 @@ async def validate_capability(
                                              validation_id=request.request_id, binding_id=binding.binding_id, case_id=case_id,
                                              model=model.model, profile=model.profile_ref, provider_id=model.provider_id, expected_decision=expected) as diagnostics:
                     decision = await runtime.evaluate(EngineRequest(phase=phase, text=text, plan=plan,
-                                                  content_view=view, evidence_scope="full" if formal else "interventions",
+                                                  content_view=view, execution_purpose="validation", evidence_scope="full" if formal else "interventions",
                                                   target_source="assistant_output" if phase == "output" else "user_input",
                                                   context_messages=({"role": "user", "content": "Please answer my question."},) if phase == "output" else ()))
                 passed = decision.decision == expected

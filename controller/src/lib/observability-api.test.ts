@@ -53,25 +53,25 @@ describe("privacy-safe runtime observability", () => {
   it("retains an execution failure separately from the three enforcement outcomes", () => {
     const [interaction] = runtimeLogInteractions([
       { ...event, decision: "block", metadata: { executionStatus: "error", runtimeLogCaptured: true } },
-      { ...event, id: "no-decision", decision: "error", metadata: { runtimeLogCaptured: true } },
+      { ...event, id: "no-decision", decision: "error", metadata: { executionStatus: "error", runtimeLogCaptured: true } },
     ]);
     expect(interaction.outcome).toBe("block");
     expect(interaction.entries.map(entry => [entry.outcome, entry.execution_status])).toEqual([["block", "error"], [null, "error"]]);
   });
 
-  it("finds fail-closed trace errors with diagnostics while preserving the enforcement outcome", () => {
-    const [interaction] = runtimeLogInteractions([{ ...event, metadata: { trace: [{ id: "failed-span", name: "Judge", outcome: "error", errorType: "AuthenticationError", providerName: "openai", modelName: "judge-model", policyId: "safety" }] } }], { outcome: "error", includeUncaptured: true });
+  it("displays core diagnostics and enriches them with trace details", () => {
+    const [interaction] = runtimeLogInteractions([{ ...event, metadata: { executionStatus: "error", diagnostics: [{ code: "AuthenticationError", stepId: "failed-span", policyId: "safety", affectsResult: true }], trace: [{ id: "failed-span", name: "Judge", outcome: "error", errorType: "AuthenticationError", providerName: "openai", modelName: "judge-model", policyId: "safety" }] } }], { outcome: "error", includeUncaptured: true });
     expect(interaction.entries[0]).toMatchObject({ outcome: "block", execution_status: "error", error_details: [{ span_id: "failed-span", error_type: "AuthenticationError", provider: "openai", model: "judge-model", policy: "safety" }] });
     expect(runtimeLogInteractions([event], { outcome: "error", includeUncaptured: true })).toEqual([]);
   });
 
   it("maps inferred call completion independently of input/output checks", () => {
-    const [interaction] = runtimeLogInteractions([{ ...event, direction: "completion", decision: "timeout", durationMs: 300000, metadata: { logKind: "call_completion", completionInferred: true, decisionId: "decision-1", completedAt: "2026-08-20T10:05:00.000Z", routerRevision: 2 } }], { outcome: "error", includeUncaptured: true });
+    const [interaction] = runtimeLogInteractions([{ ...event, direction: "completion", decision: "timeout", durationMs: 300000, metadata: { executionStatus: "timeout", logKind: "call_completion", completionInferred: true, decisionId: "decision-1", completedAt: "2026-08-20T10:05:00.000Z", routerRevision: 2 } }], { outcome: "error", includeUncaptured: true });
     expect(interaction.entries[0]).toMatchObject({ phase: "completion", outcome: null, execution_status: "error", call_completion: { inferred: true, decision_id: "decision-1", completed_at: "2026-08-20T10:05:00.000Z", router_revision: 2, reason: null } });
   });
 
   it("does not invent an allow outcome when no enforcement decision was reported", () => {
-    const [interaction] = runtimeLogInteractions([{ ...event, guardrailId: null, decision: "timeout", metadata: {} }], { includeUncaptured: true });
+    const [interaction] = runtimeLogInteractions([{ ...event, guardrailId: null, decision: "timeout", metadata: { executionStatus: "timeout" } }], { includeUncaptured: true });
     expect(interaction.guardrail_id).toBeNull();
     expect(interaction.outcome).toBeNull();
     expect(interaction.entries[0]).toMatchObject({ outcome: null, execution_status: "error", timed_out: true });
@@ -178,4 +178,21 @@ it("preserves the mode and real detector result separately from allowed traffic"
   expect(monitor).toMatchObject({ outcome: "allow", protection_mode: "monitor", detection_decision: "block", detection_error: null });
   const bypass = runtimeLogInteractions([{ ...event, decision: "allow", metadata: { protectionMode: "bypass", executionStatus: "bypassed" } }], { includeUncaptured: true })[0].entries[0];
   expect(bypass).toMatchObject({ outcome: "allow", protection_mode: "bypass", findings: [], detection_decision: null });
+});
+
+it("keeps conclusive blocks out of the error filter while retaining detector diagnostics", () => {
+  const value = { ...event, metadata: { executionStatus: "complete",
+    terminationReason: "policy_block", timedOut: true, trace: [{ id: "independent", status: "error", timedOut: true }] } };
+  expect(runtimeLogInteractions([value], { outcome: "error", includeUncaptured: true })).toEqual([]);
+  expect(runtimeLogInteractions([value], { includeUncaptured: true })[0].entries[0]).toMatchObject({
+    outcome: "block", execution_status: "complete", timed_out: false,
+  });
+});
+
+it("shows missing context diagnostics even when no detector threw an exception", () => {
+  const value = { ...event, metadata: { executionStatus: "error",
+    diagnostics: [{ code: "needs_context", message: "A required check is missing context.", stepId: "grounding", affectsResult: true }] } };
+  expect(runtimeLogInteractions([value], { outcome: "error", includeUncaptured: true })[0].entries[0]).toMatchObject({
+    execution_status: "error", error_details: [{ span_id: "grounding", error_type: "needs_context" }],
+  });
 });

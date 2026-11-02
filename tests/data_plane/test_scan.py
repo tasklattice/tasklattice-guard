@@ -8,7 +8,8 @@ from fastapi import FastAPI
 
 from runner.artifact_store import EndpointAccess
 from runner.api import RunnerAPI
-from runner.scan import SCAN_PATH, IGNORED_FIELDS, ScanRequest, ScanFailure, scan_response, validate_scan_decision
+from runner.scan import SCAN_PATH, IGNORED_FIELDS, ScanRequest, ScanFailure, scan_response
+from runner.toolkit.runtime.outcome import finalize_decision, require_online_result, GuardrailExecutionError
 from runner.toolkit.runtime.context import CallContextStore
 from runner.toolkit.runtime.contracts import ModuleAssessment, ProtectionDecision, RuntimeCoverage, RuntimeUsage
 from runner.toolkit.runtime.service import GuardrailRuntimeService
@@ -25,9 +26,10 @@ COVERAGE = RuntimeCoverage(required_modules_total=1, required_modules_completed=
 
 
 def decision(action="allow", status="allow", **kwargs):
-    return ProtectionDecision(decision=action, action=action, coverage=COVERAGE,
+    return finalize_decision(ProtectionDecision(decision=action, action=action, coverage=COVERAGE,
+        termination_reason="policy_block" if action == "block" and status == "intervene" else None,
         assessments=(ModuleAssessment(module_id="m", module="interaction_safety", status=status,
-            fragments=(), coverage=COVERAGE),), **kwargs)
+            fragments=(), coverage=COVERAGE),), **kwargs))
 
 
 class Store:
@@ -55,11 +57,11 @@ class Store:
 class Runtime:
     def __init__(self, result=None, error=None):
         self.result, self.error, self.calls = result or decision(), error, []
-    async def evaluate_standalone(self, request, *, on_resolved, validate_decision, timeout_seconds):
+    async def evaluate_standalone(self, request, *, on_resolved, timeout_seconds):
         self.calls.append(request)
         if self.error:
             raise self.error
-        validate_decision(self.result)
+        require_online_result(self.result)
         return self.result
 
 
@@ -89,43 +91,6 @@ def test_result_matrix(action, status, flag_only, expected, direction):
     assert result.result.response == (result.redactedInput if direction == "response" and action != "block" else None)
     assert result.result.scannerResults[0].outcome == ("passed" if expected == "cleared" else "failed")
     assert result.result.scannerResults[0].scannerId is None
-
-
-@pytest.mark.parametrize("d", [
-    replace(decision(), coverage=None), replace(decision(), coverage=RuntimeCoverage()),
-    decision(status="needs_context"), decision(status="error"), decision(status="uncovered"),
-    decision("block", "error", usage=RuntimeUsage(fail_closed=True)),
-    replace(decision(), coverage=replace(COVERAGE, status="partial", required_modules_completed=0)),
-])
-def test_unknown_error_and_missing_coverage_are_not_safe(d):
-    with pytest.raises(ScanFailure) as caught:
-        validate_scan_decision(d)
-    assert caught.value.status == 503
-
-
-def test_short_circuit_does_not_fabricate_passes():
-    d = decision("block", "intervene")
-    d = replace(d, assessments=(*d.assessments, replace(d.assessments[0], status="uncovered")),
-        coverage=replace(COVERAGE, status="partial", required_modules_total=2))
-    validate_scan_decision(d)
-    with pytest.raises(ScanFailure):
-        validate_scan_decision(replace(d, assessments=(*d.assessments, replace(d.assessments[0], status="error"))))
-
-
-@pytest.mark.parametrize("status", ["error", "needs_context", "uncovered"])
-def test_uncertain_block_does_not_hide_an_incomplete_sibling(status):
-    d = decision("block", "uncertain")
-    d = replace(d, assessments=(*d.assessments, replace(d.assessments[0], status=status)))
-    with pytest.raises(ScanFailure):
-        validate_scan_decision(d)
-
-
-def test_uncertain_block_requires_complete_coverage_and_no_execution_failure():
-    d = decision("block", "uncertain")
-    for invalid in [replace(d, coverage=replace(COVERAGE, status="partial")),
-                    replace(d, usage=RuntimeUsage(fail_closed=True))]:
-        with pytest.raises(ScanFailure):
-            validate_scan_decision(invalid)
 
 
 @pytest.mark.parametrize("value", [None, "anything", 123, True, [], {}, ["not-a-uuid"], {"threshold": 0}])
@@ -210,7 +175,8 @@ async def test_execution_error_stays_error_in_telemetry():
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://runner") as c:
         r = await c.post(SCAN_URL, headers={"Authorization":"Bearer key"}, json={"input":"x"})
     assert r.status_code == 503
-    assert telemetry.events[-1]["decision"] == "error"
+    assert telemetry.events[-1]["decision"] == "block"
+    assert telemetry.events[-1]["metadata"]["executionStatus"] == "error"
     assert telemetry.events[-1]["metadata"]["scanOutcome"] is None
 
 
@@ -218,8 +184,8 @@ def test_openapi_documents_ignored_fields_and_bearer():
     app, _, _ = app_for()
     spec = app.openapi()
     op = spec["paths"][SCAN_PATH]["post"]
-    assert "full evidence" in op["description"]
-    assert "model calls and latency" in op["description"]
+    assert "Guardrail owns short-circuiting" in op["description"]
+    assert "response shape only" in op["description"]
     assert spec["components"]["securitySchemes"]["ScanBearer"]["scheme"] == "bearer"
     assert op["security"] == [{"ScanBearer": []}]
     assert "/backend/v1/scans" not in spec["paths"]
@@ -346,6 +312,7 @@ async def test_scan_deadline_returns_504_and_completes_once():
     assert len(completions) == 1
     assert completions[0]["outcome"] == "timeout"
     assert telemetry.events[-1]["decision"] == "error"
+    assert telemetry.events[-1]["metadata"]["executionStatus"] == "timeout"
 
 
 @pytest.mark.parametrize("error,expected", [(LookupError("private"), 503), (ValueError("private"), 500)])

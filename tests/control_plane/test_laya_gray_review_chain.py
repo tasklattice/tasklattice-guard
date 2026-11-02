@@ -50,7 +50,7 @@ async def test_clear_negative_and_exact_positive_boundary_never_call_review(plan
 async def test_review_failure_keeps_primary_unknown_and_is_an_execution_error(plan,capability,fault):
     response,calls,evidence=await scan(plan,{capability:.5},review={},review_fault=(capability,fault))
     assert response.status_code>=400,response.text
-    assert evidence['execution']['status']=='error'
+    assert evidence['execution']['status']==('timeout' if fault=='timeout' else 'error')
     row=next(e for e in evidence['layaEvaluations'] if e['capability']==capability)
     assert row['verdict']=='unknown' and row['thresholds']['upper']==.85
     assert row['review']['verdict']=='error' and row['review']['answers']=={}
@@ -70,6 +70,10 @@ async def test_review_allow_cannot_suppress_another_policy_block(plan,blocker):
     if blocker!='local':scores[blocker]=.9
     response,calls,evidence=await scan(plan,scores,review={},content='CHAIN_BLOCK' if blocker=='local' else 'An ordinary request.')
     assert response.status_code==200 and response.json()['result']['outcome']=='blocked'
+    if blocker == 'local':
+        assert calls == []  # The Guardrail short-circuits before any model or review.
+        assert not evidence.get('layaEvaluations')
+        return
     row=next(e for e in evidence['layaEvaluations'] if e['capability']==gray)
     assert row['review']['verdict']=='not_matched' and row['review']['policyAction']=='allow'
 

@@ -35,8 +35,7 @@ export function normalizeOutcome(decision: string): "allow" | "transform" | "blo
 }
 
 export function isTimedOut(event: controllerApi.RuntimeEvent): boolean {
-  const decision = event.decision.toLowerCase();
-  return decision === "timeout" || decision === "timed_out" || event.metadata.timedOut === true || event.metadata.timed_out === true;
+  return event.metadata.executionStatus === "timeout";
 }
 
 export function runtimeFindings(event: Pick<controllerApi.RuntimeEvent, "id" | "requestId" | "occurredAt" | "guardrailId" | "guardrailVersion" | "routerId" | "endpointId" | "direction" | "decision" | "metadata">): RouterTraceFinding[] {

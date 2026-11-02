@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .evaluation_evidence import execution_status
+from .toolkit.runtime.outcome import GuardrailExecutionError
 
 import hmac
 import base64
@@ -287,31 +288,32 @@ class RunnerAPI:
             ) as observation:
                 request_id = self._trace_request_id(request_id)
                 try:
-                    route_matched = True
-                    try:
-                        decision = await self._runtime.evaluate(
-                            protection_request, on_resolved=observation.resolve,
-                        )
-                    except LookupError:
-                        route_matched = False
-                        observation.set_identity(
-                            guardrail_id=UNMATCHED_METRIC_ID,
-                            guardrail_version=UNMATCHED_METRIC_ID,
-                            router_id=UNMATCHED_METRIC_ID,
-                        )
-                        decision = ProtectionDecision(
-                            decision="block",
-                            action="block",
-                            reason="No Router matches this request.",
-                            mode=protection_request.mode,
-                        )
-                    self._metrics.observe_route("litellm", phase, route_matched)
+                    decision = await self._runtime.evaluate(
+                        protection_request, on_resolved=observation.resolve,
+                    )
+                    self._metrics.observe_route("litellm", phase, True)
                     observation.complete(decision)
                     self._path_response_headers(response, decision)
                     if request.headers.get("x-guard-evidence") == "evaluations-v1":
                         from .evaluation_evidence import RESPONSE_HEADER, evaluation_evidence
                         response.headers[RESPONSE_HEADER] = evaluation_evidence(decision)
                     return _litellm_response(decision)
+                except GuardrailExecutionError as error:
+                    decision = error.decision
+                    observation.complete(decision)
+                    observation.fail("runtime", "timeout" if error.timed_out else "runtime_exception")
+                    headers = {}
+                    if request.headers.get("x-guard-evidence") == "evaluations-v1":
+                        from .evaluation_evidence import RESPONSE_HEADER, evaluation_evidence
+                        headers[RESPONSE_HEADER] = evaluation_evidence(decision)
+                    raise HTTPException(status_code=504 if error.timed_out else 503,
+                        detail={"code": error.code, "message": str(error)}, headers=headers) from error
+                except LookupError as error:
+                    self._metrics.observe_route("litellm", phase, False)
+                    observation.set_identity(guardrail_id=UNMATCHED_METRIC_ID,
+                        guardrail_version=UNMATCHED_METRIC_ID, router_id=UNMATCHED_METRIC_ID)
+                    observation.fail("runtime", "dependency_missing")
+                    raise HTTPException(status_code=503, detail="The Guardrail route or runtime is unavailable.") from error
                 except RoutingError as error:
                     observation.fail("runtime", error.reason)
                     raise HTTPException(status_code=503, detail=str(error)) from error
@@ -556,13 +558,13 @@ class RunnerAPI:
                 "runtimeLogCaptured": runtime_log_captured,
                 "contentAvailable": False,
                 "originalContentOnly": True,
+                **({"executionStatus": "timeout" if getattr(observation, "failure_reason_class", None) == "timeout" else "error"}
+                   if decision is None else {}),
                 **(stream_metadata or {}),
             },
         }
         if endpoint_id is not None:
             event["endpointId"] = endpoint_id
-        if protocol == "scan" and (stream_metadata or {}).get("scanExecutionStatus") == "error":
-            event["decision"] = "error"
         if decision is not None:
             event["metadata"].update(_telemetry_metadata(decision))
             if decision.guardrail_id:
@@ -579,10 +581,14 @@ class RunnerAPI:
         # DEBUG holds encrypted candidates briefly, so an output finding can
         # select the original input even when it ran on another replica.
         if capture_level in {"debug", "trace"} and self._runtime_log_encryption_key:
-            ciphertext = _encrypt_runtime_log_content(
-                self._runtime_log_encryption_key, phase, content_before,
-                await _runtime_http_request(http_request) if http_request is not None else None,
-            )
+            try:
+                ciphertext = _encrypt_runtime_log_content(
+                    self._runtime_log_encryption_key, phase, content_before,
+                    await _runtime_http_request(http_request) if http_request is not None else None,
+                )
+            except Exception:
+                capture_failed = True
+                logging.getLogger(__name__).warning("Runtime body capture unavailable; preserving audit metadata.")
         pending = []
         incomplete = capture_failed
         if capture_key and capture_level == "debug" and not capture_failed:
@@ -727,6 +733,9 @@ def _telemetry_metadata(decision: ProtectionDecision) -> dict[str, Any]:
         "risks": risks,
         "findings": findings,
         "executionStatus": execution_status(decision),
+        "terminationReason": decision.termination_reason,
+        "diagnostics": [{"code": d.code, "message": d.message, "stepId": d.step_id,
+                         "policyId": d.policy_id, "affectsResult": d.affects_result} for d in decision.diagnostics],
         "trace": trace,
         "usage": usage,
         "coverage": coverage,

@@ -1,9 +1,8 @@
 """Which plans can collect complete Rule evidence, and what each scope may claim.
 
-`evidence_scope` answers two questions at once: how much to report, and whether
-execution may stop at the first Block. This suite pins the mapping between the
-declared scope and the execution type, and proves that an unsupported plan never
-pretends its unreached checks did not match.
+Reporting scope is independent of execution purpose. Internal validation can
+collect all reachable checks only for supported plans; online requests always
+retain the plan's short-circuit behavior.
 """
 from __future__ import annotations
 
@@ -67,8 +66,8 @@ def test_every_delivery_mode_has_a_decided_evidence_capability(grouped_plan) -> 
     for delivery, supported in decided.items():
         plan = plan_from_dict(variant(grouped_plan, delivery=delivery))
         assert complete_evidence_supported(plan) is supported, delivery
-        assert collects_complete_evidence("full", plan) is supported, delivery
-        assert collects_complete_evidence("interventions", plan) is False, delivery
+        assert collects_complete_evidence("validation", plan) is supported, delivery
+        assert collects_complete_evidence("online", plan) is False, delivery
 
 
 @pytest.mark.parametrize(("delivery", "custom", "scope", "suppresses", "matched"), CASES)
@@ -76,11 +75,11 @@ async def test_only_supported_execution_types_suppress_short_circuiting(
     grouped_plan, delivery, custom, scope, suppresses, matched,
 ) -> None:
     plan = variant(grouped_plan, delivery=delivery, custom=custom)
-    assert collects_complete_evidence(scope, plan_from_dict(plan)) is suppresses
+    assert collects_complete_evidence("validation" if scope == "full" else "online", plan_from_dict(plan)) is suppresses
     runtime = DraftPreviewRuntime(DefaultRunnerCompiler(), action_providers(ContentFilterActionProvider()))
     try:
         decision = await runtime.evaluate(
-            ProtectionRequest(phase="input", texts=("alpha beta",), evidence_scope=scope,
+            ProtectionRequest(phase="input", texts=("alpha beta",), evidence_scope=scope, execution_purpose="validation" if scope == "full" else "online",
                               context=RequestContext(protocol="validation")),
             preview_id=f"capability-{delivery}-{custom}-{scope}", guardrail_id=plan["guardrail_id"],
             draft_revision=1, candidate_version=plan["guardrail_version"], plan=plan, runtime_profile="auto")

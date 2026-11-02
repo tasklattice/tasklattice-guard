@@ -894,7 +894,7 @@ export type RuntimeLogEntry = {
   protection_mode?: "enforce" | "monitor" | "bypass";
   detection_decision?: string | null;
   detection_error?: string | null;
-  execution_status?: "error" | "complete" | "unknown";
+  execution_status?: "error" | "complete" | "degraded" | "bypassed" | "unknown";
   call_completion?: { inferred: boolean; reason: string | null; completed_at: string | null; decision_id: string | null; route_id: string | null; target_id: string | null; router_revision: number | null };
   error_details?: Array<{ span_id: string; name: string; error_type: string | null; provider: string | null; model: string | null; policy: string | null; timed_out: boolean; timeout_ms: number | null }>;
   http_request?: RuntimeHttpRequest | null;

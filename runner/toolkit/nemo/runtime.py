@@ -28,7 +28,8 @@ from opentelemetry import context as otel_context, trace
 from opentelemetry.trace import Status, StatusCode
 
 from ..runtime.content_views import current_context_messages, request_view, with_active_text
-from ..compiler.semantics import collects_complete_evidence, complete_evidence_supported
+from ..compiler.semantics import collects_complete_evidence
+from ..runtime.outcome import finalize_decision
 from ..runtime.streaming import OutputStreamContract, OutputStreamEvaluationError, OutputStreamResult
 from ..runtime.contracts import (
     AppliedIntervention,
@@ -765,7 +766,7 @@ class NeMoActionBridge:
             trusted_instruction=request.trusted_instruction,
             target_source=request.target_source,
             mode=request.mode,
-            evidence_scope=request.evidence_scope,
+            evidence_scope=request.evidence_scope, execution_purpose=request.execution_purpose,
             content_view=view,
             active_block_id=request.active_block_id,
             request_context=request.request_context,
@@ -782,7 +783,7 @@ class NeMoActionBridge:
 
     def _full_evidence(self) -> bool:
         request = self._request()
-        return collects_complete_evidence(request.evidence_scope, self._plan)
+        return collects_complete_evidence(request.execution_purpose, self._plan)
 
     def _evaluation_text(self, text: str, binding: NeMoActionBinding | None) -> str:
         """Materialize the view this step declares; the schedule never selects it.
@@ -826,7 +827,7 @@ class NeMoActionBridge:
             context_messages=prepared.context_messages,
             target_source=prepared.target_source,
             mode=prepared.mode,
-            evidence_scope=prepared.evidence_scope,
+            evidence_scope=prepared.evidence_scope, execution_purpose=prepared.execution_purpose,
             content_view=view,
             active_block_id=prepared.active_block_id,
             request_context=prepared.request_context,
@@ -1019,7 +1020,7 @@ class NeMoRuntime:
                 raise RuntimeError("Complete output must produce exactly one check.")
             return decisions[0]
         except Exception as error:
-            if decisions and decisions[-1].usage and decisions[-1].usage.fail_closed:
+            if decisions and decisions[-1].execution_status in {"error", "timeout"}:
                 return decisions[-1]
             instance, cache_hit, queue_wait = await self._registry.acquire_async(request.plan,
                 **({"release_id": request.effective_release_id} if request.effective_release_id else {}))
@@ -1827,6 +1828,11 @@ def _decision(
         if stopping_binding is not None
         else _native_risk(stopping.name if stopping else None)
     )
+    # Streaming synthesizes ActivatedRail without executed_actions. Its stop
+    # flag also represents fail-closed errors, so the rail's name alone cannot
+    # certify a native match when an Action already supplies the real verdict.
+    if native_risk and any(item.binding.capability == native_risk for item in runtime_results):
+        native_risk = None
     native_action = _action_for_risk(request.plan, native_risk, request.phase)
     result_content = _response_content(response, request.text)
 
@@ -1907,12 +1913,16 @@ def _decision(
         required_modules_completed=completed_modules,
         required_modules_total=len(modules),
     )
-    block_match = (_terminal_block_match(runtime_results)
-                   if decision == "block" and request.evidence_scope == "full"
-                   and complete_evidence_supported(request.plan) else None)
+    block_match = _terminal_block_match(runtime_results) if decision == "block" else None
+    policy_unknown = decision == "block" and any(
+        item.result.verdict == "unknown" and item.result.unknown_reason == "uncertain"
+        and _runtime_action(item) == "block" for item in _terminal_runtime_results(runtime_results)
+    )
+    terminal_reason = ("policy_block" if block_match is not None or decision == "block" and native_risk
+                       else "policy_unknown" if policy_unknown else None)
     if block_match is not None:
         reason = block_match.result.reason or "A terminal Policy match blocked the interaction."
-    return ProtectionDecision(
+    return finalize_decision(ProtectionDecision(
         decision=decision,  # type: ignore[arg-type]
         action=action,  # type: ignore[arg-type]
         reason=reason,
@@ -1950,8 +1960,8 @@ def _decision(
             config_checksum=config_checksum(config),
             # A conclusive Policy Block already determines delivery. Errors in
             # other full-evidence checks remain in trace/assessments, but are not
-            # the cause of that decision. Unknown verdicts never qualify here.
-            fail_closed=block_match is None and any(
+            # the cause of that decision. Explicit on-unknown Block is policy too.
+            fail_closed=terminal_reason is None and any(
                 item.result.verdict == "error"
                 and _binding_fails_closed(request, item.binding)
                 for item in _terminal_runtime_results(runtime_results)
@@ -1968,7 +1978,8 @@ def _decision(
             ),
         ),
         mode=request.mode,
-    )
+        termination_reason=terminal_reason,
+    ), purpose=request.execution_purpose, require_coverage=bool(request.plan.modules_for(request.phase)))
 
 
 def _trace(
@@ -2801,7 +2812,7 @@ def _failed_decision(
             request, native_model_calls, "nemo:runtime:error",
         ),
     )
-    return ProtectionDecision(
+    return finalize_decision(ProtectionDecision(
         decision="block" if request.mode == "enforce" else "allow",
         action="block" if request.mode == "enforce" else "allow",
         reason=reason,
@@ -2837,7 +2848,7 @@ def _failed_decision(
             model_wait_latency_ms=_model_calls_wall_ms(native_model_calls),
         ),
         mode=request.mode,
-    )
+    ), purpose=request.execution_purpose, require_coverage=bool(request.plan.modules_for(request.phase)))
 
 
 def _response_content(response: GenerationResponse, fallback: str) -> str:

@@ -346,7 +346,7 @@ async def test_split_topic_rules_short_circuit_and_trace_their_own_identity(enab
     previews = DraftPreviewRuntime(DefaultRunnerCompiler(), action_providers(provider))
     try:
         result = await previews.evaluate(
-            ProtectionRequest(phase="input", texts=("Order support and fraud",), evidence_scope=scope, context=RequestContext(protocol="playground")),
+            ProtectionRequest(phase="input", texts=("Order support and fraud",), evidence_scope=scope, execution_purpose="validation" if scope == "full" else "online", context=RequestContext(protocol="playground")),
             preview_id="split", guardrail_id="ordered", draft_revision=1, candidate_version="20260904-010000.001Z",
             plan=plan, runtime_profile="auto")
         assert not result.usage.fail_closed, result.reason

@@ -19,7 +19,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('bounded runtime observability (
     await db.execute(sql`INSERT INTO runtime_event(id,occurred_at,request_id,runner_id,guardrail_id,router_id,direction,decision,duration_ms,metadata)
       SELECT 'event-'||lpad(n::text,6,'0'),now()-interval '1 hour','request-'||n,'runner','guard','router','incoming',
         CASE WHEN n%2=0 THEN 'block' ELSE 'allow' END,n,
-        jsonb_build_object('captureLevel','trace','contentBefore',repeat('private content',2500),'contentCiphertext','private ciphertext','httpRequest',jsonb_build_object('bodyBase64',repeat('aaaa',1000)),
+        jsonb_build_object('executionStatus','complete','captureLevel','trace','contentBefore',repeat('private content',2500),'contentCiphertext','private ciphertext','httpRequest',jsonb_build_object('bodyBase64',repeat('aaaa',1000)),
           'trace',jsonb_build_array(jsonb_build_object('kind','action','name','same-action','policyId','same-policy','durationMs',n,'outcome','not_matched')),
           'findings', CASE WHEN n%2=0 THEN jsonb_build_array(jsonb_build_object('risk','test','verdict','matched','confidence',.95,'riskSeverity','high','evidence',repeat('private evidence',100))) ELSE '[]'::jsonb END,
           'usage',jsonb_build_object('model_invocations',1))
@@ -107,12 +107,12 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('bounded runtime observability (
     } finally { await db.execute(sql`DELETE FROM runtime_event WHERE guardrail_id='classification'`); }
   });
 
-  it('queries historical call failures alongside fail-closed checkpoints with exact scope and pagination', async () => {
+  it('queries call failures alongside fail-closed checkpoints with exact scope and pagination', async () => {
     await db.execute(sql`INSERT INTO route_assignment(decision_id,call_id,occurred_at,endpoint_id,router_id,router_revision,route_id,target_id,guardrail_id,guardrail_version,assignment_status,completed_at,completion_inferred,outcome,duration_ms)
       VALUES ('inferred','error-call','2026-09-19T10:00:00Z','error-endpoint','error-router',2,'fallback','target','error-guard','v1','assigned','2026-09-19T10:05:00Z',true,'timeout',300000),
              ('out-of-window','later-call','2026-09-19T11:00:00Z','error-endpoint','error-router',2,'fallback','target','error-guard','v1','assigned','2026-09-19T11:05:00Z',false,'error',100)`);
     await db.execute(sql`INSERT INTO runtime_event(id,occurred_at,request_id,runner_id,endpoint_id,router_id,guardrail_id,direction,decision,duration_ms,metadata)
-      VALUES ('failed-check','2026-09-19T10:00:00Z','error-call','runner','error-endpoint','error-router','error-guard','incoming','block',50,'{"trace":[{"id":"span","outcome":"error","errorType":"AuthenticationError"}],"routerRevision":2,"routeId":"fallback","targetId":"target"}'),
+      VALUES ('failed-check','2026-09-19T10:00:00Z','error-call','runner','error-endpoint','error-router','error-guard','incoming','block',50,'{"executionStatus":"error","trace":[{"id":"span","outcome":"error","errorType":"AuthenticationError"}],"routerRevision":2,"routeId":"fallback","targetId":"target"}'),
              ('allowed-check','2026-09-19T09:59:59Z','error-call','runner','error-endpoint','error-router','error-guard','incoming','allow',2,'{}')`);
     const scope = { outcome:'error', routerId:'error-router', endpointId:'error-endpoint', routerRevision:2, routeId:'fallback', targetId:'target', since:new Date('2026-09-19T09:00:00Z'), until:new Date('2026-09-19T10:30:00Z'), limit:1 };
     const first = await service.queryRuntimeEvents(scope);
@@ -122,7 +122,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('bounded runtime observability (
     expect(first.items[0]!.metadata.executionStatus).toBe('error');
     expect(JSON.stringify(first)).not.toContain('AuthenticationError');
     const detail = await service.getRuntimeEvent('call:inferred');
-    expect(detail).toMatchObject({requestId:'error-call',direction:'completion',durationMs:300000,metadata:{completionInferred:true,decisionId:'inferred',routerRevision:2}});
+    expect(detail).toMatchObject({requestId:'error-call',direction:'completion',durationMs:300000,metadata:{executionStatus:"timeout",completionInferred:true,decisionId:'inferred',routerRevision:2}});
     const related = await service.queryRuntimeEvents({requestId:detail.requestId});
     expect(related.items.map(row=>row.id).sort()).toEqual(['allowed-check','call:inferred','failed-check']);
     await expect(service.getRuntimeEvent('call:missing')).rejects.toThrow();
@@ -144,7 +144,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('bounded runtime observability (
   it('preserves old endpoint activity while counting only recent requests', async () => {
     await db.execute(sql`INSERT INTO endpoint(id,name,adapter) VALUES ('activity','Activity','test')`);
     await db.execute(sql`INSERT INTO runtime_event(id,occurred_at,request_id,runner_id,endpoint_id,direction,decision,duration_ms,metadata) VALUES
-      ('old-activity',now()-interval '40 days','old','runner','activity','outgoing','error',1,'{"streamFinalCheck":true}'),
+      ('old-activity',now()-interval '40 days','old','runner','activity','outgoing','error',1,'{"executionStatus":"error","streamFinalCheck":true}'),
       ('recent-activity',now()-interval '1 hour','recent','runner','activity','incoming','allow',1,'{}')`);
     const result = await service.runtimeEndpointActivity();
     expect(result.items[0]).toMatchObject({id:'activity',request_count:1,error_count:0});
@@ -158,11 +158,11 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('bounded runtime observability (
   it('deduplicates failed requests, includes blocks as success, and computes detection P95', async () => {
     await db.execute(sql`INSERT INTO endpoint(id,name,adapter) VALUES ('quality','Quality','test'), ('idle','Idle','test')`);
     await db.execute(sql`INSERT INTO runtime_event(id,occurred_at,request_id,runner_id,endpoint_id,direction,decision,duration_ms,metadata) VALUES
-      ('quality-1',now(),'failed-request','runner','quality','incoming','error',10,'{}'),
-      ('quality-2',now(),'failed-request','runner','quality','outgoing','timeout',90,'{}'),
+      ('quality-1',now(),'failed-request','runner','quality','incoming','error',10,'{"executionStatus":"error"}'),
+      ('quality-2',now(),'failed-request','runner','quality','outgoing','timeout',90,'{"executionStatus":"timeout"}'),
       ('quality-3',now(),'blocked-request','runner','quality','incoming','block',20,'{}'),
       ('quality-4',now(),'allowed-request','runner','quality','incoming','allow',30,'{}'),
-      ('quality-old',now()-interval '2 days','old-failure','runner','quality','incoming','error',9999,'{}'),
+      ('quality-old',now()-interval '2 days','old-failure','runner','quality','incoming','error',9999,'{"executionStatus":"error"}'),
       ('idle-old',now()-interval '8 days','idle-old','runner','idle','incoming','allow',99,'{}')`);
     const freshService = Object.assign(Object.create(ControlPlaneService.prototype), { db }) as ControlPlaneService;
     const result = await freshService.runtimeEndpointActivity();
@@ -179,5 +179,46 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('bounded runtime observability (
     expect(result.policy_distribution[0]).toMatchObject({policy_id:'policy-a',invocations:2,hit_share:100});
     expect(result.action_metrics).toHaveLength(1);
     expect(result.rail_metrics).toHaveLength(0);
+  });
+});
+
+// The shared predicate is also tested without a database by runtime-outcome.test.
+// Cases below exercise actual SQL filtering, projection and metric aggregation.
+describe.skipIf(!process.env.TEST_DATABASE_URL)('authoritative Guardrail status (PostgreSQL)', () => {
+  const pool = new Pool({ connectionString: process.env.TEST_DATABASE_URL, max: 1 });
+  const db = drizzle(pool);
+  const service = Object.assign(Object.create(ControlPlaneService.prototype), { db, runtimeLogEncryptionKey: null }) as ControlPlaneService;
+  beforeAll(async () => {
+    for (const name of ['runtime_event','guardrail','traffic_router','endpoint','guardrail_validation_run','route_assignment']) {
+      await db.execute(sql.raw(`CREATE TEMP TABLE ${name} (LIKE public.${name} INCLUDING DEFAULTS)`));
+    }
+    const values = [
+      ['blocked', 'block', 'complete', [{ status:'error', timedOut:true }]],
+      ['failed', 'block', 'error', []],
+      ['timeout', 'block', 'timeout', []],
+      ['fail-open', 'allow', 'degraded', [{ status:'error', timedOut:true }]],
+    ] as const;
+    for (const [id, decision, status, trace] of values) {
+      const metadata = { executionStatus:status, trace,
+        diagnostics: [{ code:'needs_context', message:'A required check is missing context.', affectsResult: status === 'error' }] };
+      await db.execute(sql`INSERT INTO runtime_event(id,occurred_at,request_id,runner_id,router_id,direction,decision,duration_ms,metadata)
+        VALUES (${id},now(),${id},'runner','contract','incoming',${decision},10,${JSON.stringify(metadata)}::jsonb)`);
+    }
+  });
+  afterAll(async () => { await pool.end(); });
+  it('does not turn an independent diagnostic into a request error', async () => {
+    const rows = await service.queryRuntimeEvents({ routerId:'contract', outcome:'error' });
+    expect(rows.items.map(r => r.id).sort()).toEqual(['failed','timeout']);
+    const all = await service.queryRuntimeEvents({ routerId:'contract' });
+    expect(all.items.find(r => r.id === 'blocked')?.metadata).toMatchObject({ executionStatus:'complete' });
+    expect(all.items.find(r => r.id === 'timeout')?.metadata.executionStatus).toBe('timeout');
+    const detail = await service.getRuntimeEvent('failed');
+    expect(detail.metadata.diagnostics).toEqual([{ code:'needs_context', message:'A required check is missing context.', affectsResult:true }]);
+  });
+  it('uses final execution status for request error and timeout counts', async () => {
+    const result = await queryRuntimeMetrics(db as any, { window:'24h', routerId:'contract' });
+    expect(result.total_decisions).toBe(4);
+    expect(result.error_rate).toBe(50);
+    expect(result.block_rate).toBe(25);
   });
 });

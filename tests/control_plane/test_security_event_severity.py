@@ -22,7 +22,7 @@ def test_frozen_rule_risk_survives_wire_and_telemetry(level):
         stamped = _snapshot_finding_risks(plan, [finding])[0]
         assert stamped.risk_severity == level
         assert stamped.policy_version == "7"
-        decision = ProtectionDecision(decision="allow", action=action, findings=(stamped,))
+        decision = ProtectionDecision(decision="allow", action=action, findings=(stamped,), execution_status="complete")
         metadata = _telemetry_metadata(decision)
         assert metadata["findings"][0]["riskSeverity"] == level
         assert metadata["findings"][0]["policyVersion"] == "7"
@@ -30,7 +30,8 @@ def test_frozen_rule_risk_survives_wire_and_telemetry(level):
         assert (wire.findings[0].risk_severity or None) == level
         failed = _snapshot_finding_risks(plan, [replace(finding, verdict="error")])[0]
         assert failed.risk_severity is None
-        assert _telemetry_metadata(replace(decision, findings=(failed,)))["executionStatus"] == "error"
+        assert _telemetry_metadata(replace(decision, findings=(failed,)))["executionStatus"] == "complete"
+        assert _telemetry_metadata(replace(decision, execution_status="error"))["executionStatus"] == "error"
 
 
 def test_invalid_rule_risk_cannot_enter_a_plan():

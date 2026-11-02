@@ -115,7 +115,7 @@ def test_laya_outer_action_failure_keeps_laya_attribution():
     original = decision()
     failed = replace(original.trace[0], id="nemo:action:ljb", kind="action", evaluator_id=None,
         profile_ref=LAYA_PROFILE, model_name="laya", verdict="error", evidence=None)
-    body = json.loads(evaluation_evidence(replace(original, trace=(failed,))))
+    body = json.loads(evaluation_evidence(replace(original, trace=(failed,), execution_status="error")))
     assert body["evaluations"] == [] and body["execution"]["status"] == "error"
     row, = body["layaEvaluations"]
     assert row["decisionModel"] == "laya" and row["verdict"] == "error"

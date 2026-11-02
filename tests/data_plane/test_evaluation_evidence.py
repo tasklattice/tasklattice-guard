@@ -20,6 +20,7 @@ def decision(verdict="unknown", mode="enforce"):
                              model_name="jev-1.13.0", policy_id="builtin-jailbreak", evidence=json.dumps(native),
                              content_block_id="input:0")
     return ProtectionDecision(decision="block", action="block", guardrail_id="guard", trace=(trace,), protection_mode=mode,
+         execution_status="bypassed" if mode == "bypass" else "complete",
          interventions=(AppliedIntervention(kind="block",module_id="jb",fragment_id="nemo:jb:block",content_block_id="input:0"),))
 
 
@@ -44,9 +45,9 @@ def test_native_classifier_outer_timeout_retains_requested_model_and_error_witho
     step = replace(original.trace[0], id="nemo:action:cs", kind="action", evaluator_id=None, capability="content_safety",
         profile_ref="tali.nemotron-content-safety.v1", model_name="native-model", verdict="error", timed_out=True,
         evidence=None, status="error")
-    body = json.loads(evaluation_evidence(replace(original, trace=(step,))))
+    body = json.loads(evaluation_evidence(replace(original, trace=(step,), execution_status="timeout")))
     row, = body["classifications"]
-    assert body["execution"]["status"] == "error"
+    assert body["execution"]["status"] == "timeout"
     assert row["verdict"] == "error" and row["requestedModel"] == "native-model"
     assert row["nativeVerdict"] is None and row["responseModel"] is None
 
@@ -136,7 +137,7 @@ async def test_litellm_opt_in_evidence_keeps_standard_body_and_default_contract(
 
 def test_execution_failure_is_separate_from_jailbreak_verdict_and_contains_no_reason():
     safe = decision('not_matched')
-    failed = replace(safe, usage=RuntimeUsage(fail_closed=True), trace=(*safe.trace,
+    failed = replace(safe, execution_status="error", usage=RuntimeUsage(fail_closed=True), trace=(*safe.trace,
         RuntimeTraceStep(id='cs', kind='action', name='Content safety', status='error',
                          verdict='error', error_type='http_5xx', detail='private upstream response')))
     body = json.loads(evaluation_evidence(failed))
@@ -152,7 +153,7 @@ def test_execution_failure_is_separate_from_jailbreak_verdict_and_contains_no_re
 
 def test_missing_context_is_incomplete_even_when_unknown_is_observed():
     from runner.toolkit.runtime.contracts import ModuleAssessment, RuntimeCoverage
-    missing = replace(decision(), decision="allow", action="allow", interventions=(),
+    missing = replace(decision(), execution_status="error", decision="allow", action="allow", interventions=(),
         assessments=(ModuleAssessment(module_id="topic", module="business_assurance", status="needs_context",
             fragments=(), coverage=RuntimeCoverage(status="partial")),))
     evidence = json.loads(evaluation_evidence(missing))

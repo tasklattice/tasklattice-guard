@@ -485,7 +485,7 @@ class RunnerMetrics:
                 span.set_status(Status(StatusCode.ERROR, result))
                 raise
             except Exception as error:
-                result = "error"
+                result = "timeout" if observation.decision and observation.decision.execution_status == "timeout" else "error"
                 span.record_exception(error)
                 span.set_status(Status(StatusCode.ERROR, result))
                 raise
@@ -938,12 +938,7 @@ def _disposition(decision: ProtectionDecision | None) -> str:
 def _failure_mode(decision: ProtectionDecision | None) -> str:
     if decision is None:
         return "normal"
-    routes = {step.route for step in decision.trace}
-    if (decision.usage is not None and decision.usage.fail_closed) or "fail_closed" in routes:
-        return "fail_closed"
-    if "fail_open" in routes:
-        return "fail_open"
-    return "normal"
+    return decision.termination_reason if decision.termination_reason in {"fail_open", "fail_closed"} else "normal"
 
 
 def _failure_labels(step) -> dict[str, str]:

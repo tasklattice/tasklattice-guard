@@ -46,11 +46,12 @@ def test_guardrail_business_metrics_cover_allow_deny_transform_and_failure_modes
         decision="block", action="block", guardrail_id="guardrail-1",
         guardrail_version="20260904-020000.002Z", router_id="router-1",
         coverage=coverage, usage=RuntimeUsage(fail_closed=True, queue_latency_ms=5),
+        execution_status="error", termination_reason="fail_closed",
     )
     transform = ProtectionDecision(
         decision="transform", action="transform", guardrail_id="guardrail-1",
         guardrail_version="20260904-020000.002Z", router_id="router-1",
-        mode="detect",
+        mode="detect", execution_status="degraded", termination_reason="fail_open",
         interventions=(AppliedIntervention(
             kind="transform", module_id="secrets", fragment_id="fragment-1",
         ),),

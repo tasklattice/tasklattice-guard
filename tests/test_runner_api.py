@@ -14,7 +14,7 @@ from prometheus_client import generate_latest
 from runner.toolkit.runtime.contracts import ProtectionDecision, RiskFinding, RuntimeTraceStep, RuntimeUsage
 from runner.artifact_store import EndpointAccess
 from runner.api import RunnerAPI
-from runner.metrics import INTERNAL_METRIC_ID, RunnerMetrics
+from runner.metrics import GuardrailRequestObservation, INTERNAL_METRIC_ID, RunnerMetrics
 
 
 class Runtime:
@@ -118,7 +118,7 @@ class Metrics:
 
     @contextmanager
     def request(self, *_args, **_kwargs):
-        yield MetricObservation()
+        yield GuardrailRequestObservation()
 
     def observe_authentication(self, *_args, **_kwargs):
         return None
@@ -130,20 +130,6 @@ class Metrics:
         return None
 
     def observe_failure(self, *_args, **_kwargs):
-        return None
-
-
-class MetricObservation:
-    def resolve(self, *_args, **_kwargs):
-        return None
-
-    def set_identity(self, *_args, **_kwargs):
-        return None
-
-    def complete(self, *_args, **_kwargs):
-        return None
-
-    def fail(self, *_args, **_kwargs):
         return None
 
 
@@ -465,14 +451,14 @@ async def test_litellm_basic_guardrail_api_fails_closed_when_no_router_matches()
             json={"input_type": "request", "texts": ["hello"], "request_data": {}},
         )
 
-    assert response.status_code == 200
-    assert response.json() == {
-        "action": "BLOCKED",
-        "blocked_reason": "No Router matches this request.",
-    }
-    assert telemetry.events[0]["decision"] == "block"
+    assert response.status_code == 503
+    assert telemetry.events[0]["decision"] == "error"
+    assert telemetry.events[0]["metadata"]["executionStatus"] == "error"
     rendered = generate_latest(metrics.registry).decode()
-    assert 'coverage="unknown",disposition="deny",endpoint_id="endpoint-1",enforcement_mode="enforce",failure_mode="normal",guardrail_id="__unmatched__",phase="input",protocol="litellm",result="success",traffic_class="runtime"} 1.0' in rendered
+    assert 'guardrail_id="__unmatched__"' in rendered
+    assert 'result="error"' in rendered
+    assert response.json()["detail"] == "The Guardrail route or runtime is unavailable."
+
 
 
 @pytest.mark.asyncio

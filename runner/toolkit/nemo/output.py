@@ -28,9 +28,9 @@ async def protect_output(runtime, request, source, *, emit, observe, ready, time
         checks += 1
         if observe is not None:
             await observe(decision)
-        if decision.usage and decision.usage.fail_closed:
+        if decision.execution_status in {"error", "timeout"}:
             raise OutputStreamEvaluationError("Output protection failed.",
-                timed_out=any(step.timed_out for step in decision.trace))
+                timed_out=decision.execution_status == "timeout")
 
     async def bounded_source():
         size = frames = 0

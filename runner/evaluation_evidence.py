@@ -19,18 +19,7 @@ def _identity(value):
 
 
 def execution_status(decision: ProtectionDecision) -> str:
-    if decision.protection_mode == "bypass":
-        return "bypassed"
-    short_circuit = decision.decision == "block" and any(a.status == "intervene" for a in decision.assessments)
-    incomplete = (any(a.status in {"error", "needs_context"} for a in decision.assessments)
-                  or not short_circuit and (any(a.status == "uncovered" for a in decision.assessments)
-                      or decision.coverage is not None and decision.coverage.status != "complete"))
-    failed = (incomplete or decision.detection_error or decision.usage and decision.usage.fail_closed
-              or any(item.verdict == "error" for item in decision.findings)
-              or any(item.kind in {"action", "rail", "runtime", "evaluator", "evaluation"}
-                     and (item.timed_out or item.verdict == "error"
-                          or item.status in {"error", "failed", "timeout"}) for item in decision.trace))
-    return "error" if failed else "complete"
+    return decision.execution_status or "unknown"
 
 
 def evaluation_evidence(decision: ProtectionDecision) -> str:

@@ -10,6 +10,7 @@ from ...runtime.contracts import (
     EnforcementAction,
     EnforcementMode,
     EvidenceScope,
+    ExecutionPurpose,
     EVALUATOR_VERDICTS,
     EvaluatorVerdict,
     GuardContentBlock,
@@ -44,6 +45,7 @@ class EvaluationRequest:
     target_source: str = "user_input"
     mode: EnforcementMode = "enforce"
     evidence_scope: EvidenceScope = "interventions"
+    execution_purpose: ExecutionPurpose = "online"
     content_view: ContentViewSnapshot | None = None
     active_block_id: str | None = None
     request_context: RequestContext | None = None

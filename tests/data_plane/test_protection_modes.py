@@ -9,7 +9,6 @@ from fastapi import FastAPI
 from runner import generated as protocol
 from runner.api import RunnerAPI
 from runner.metrics import RunnerMetrics
-from runner.scan import validate_scan_decision
 from runner.toolkit.runtime.contracts import ProtectionRequest, RequestContext
 from runner.toolkit.runtime.service import GuardrailRuntimeService
 from tests.data_plane.test_artifact_execution import _runtime, _desired_state, RUNTIME_CREDENTIAL, Telemetry
@@ -126,7 +125,7 @@ async def test_monitor_timeout_is_recorded_without_failing_scan(tmp_path):
     engine.evaluate = stalled
     service = GuardrailRuntimeService(engine, store)
     try:
-        result = await service.evaluate_standalone(ProtectionRequest(phase="input", texts=(SECRET,), context=CONTEXT), timeout_seconds=.1, validate_decision=validate_scan_decision)
+        result = await service.evaluate_standalone(ProtectionRequest(phase="input", texts=(SECRET,), context=CONTEXT), timeout_seconds=.1)
         assert result.decision == "allow" and result.detection_error == "TimeoutError"
     finally:
         await engine.shutdown()

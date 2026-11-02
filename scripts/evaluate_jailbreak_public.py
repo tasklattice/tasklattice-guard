@@ -363,7 +363,7 @@ async def evaluate(samples: list[dict], plans: dict, output: Path) -> list[dict]
                         decision = await previews.evaluate(ProtectionRequest(
                             phase="input", texts=(sample["text"],),
                             context=RequestContext(protocol="playground"),
-                            evidence_scope="full"), **identity)
+                            evidence_scope="full", execution_purpose="validation"), **identity)
                         record.update(decision=decision.decision, action=decision.action,
                                       transformed_texts=list(decision.texts), reason=decision.reason,
                                       findings=[asdict(f) for f in decision.findings],

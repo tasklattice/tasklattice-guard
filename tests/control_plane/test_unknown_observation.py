@@ -8,7 +8,7 @@ import httpx
 import pytest
 
 from runner.capability_validation import _CandidateStore
-from runner.scan import ScanFailure, ScanRequest, scan_response
+from runner.scan import ScanRequest, scan_response
 from runner.providers import dynamic_runtime_action_providers
 from runner.toolkit.compiler.nemo_compiler import NeMoConfigCompiler
 from runner.toolkit.nemo.action_registry import action_providers
@@ -16,6 +16,7 @@ from runner.toolkit.nemo.evaluators.jev import JEV_PROFILE
 from runner.toolkit.nemo.registry import NeMoRuntimeRegistry
 from runner.toolkit.nemo.runtime import NeMoRuntime
 from runner.toolkit.runtime.contracts import EvaluationTrigger, PlanResolution, ProtectionRequest, RequestContext
+from runner.toolkit.runtime.outcome import GuardrailExecutionError
 from runner.toolkit.runtime.service import GuardrailRuntimeService
 from tests.control_plane.test_capability_validation import candidate
 from tests.control_plane.test_nemo_iorails_topic import _plan, _semantic_input
@@ -63,8 +64,15 @@ async def test_observation_respects_action_without_relabeling_model_verdict(acti
                                protection_mode=lambda _: mode)
     service = GuardrailRuntimeService(runtime, resolver)
     try:
-        decision = await service.evaluate(ProtectionRequest(phase='input', texts=('An ordinary test request.',),
-            context=RequestContext(protocol='test', endpoint_id='test'), evidence_scope='full'))
+        request = ProtectionRequest(phase='input', texts=('An ordinary test request.',),
+            context=RequestContext(protocol='test', endpoint_id='test'), evidence_scope='full')
+        if mode == 'enforce' and result == 'error':
+            with pytest.raises(GuardrailExecutionError) as failed:
+                await service.evaluate(request)
+            decision = failed.value.decision
+            assert decision.execution_status == 'error'
+        else:
+            decision = await service.evaluate(request)
         assert len(calls) == (2 if profile == 'programmable' and result != 'error' else 1)
         traces = [s for s in decision.trace if s.evaluator_id == evaluator]
         if result != 'error':
@@ -96,10 +104,7 @@ async def test_observation_respects_action_without_relabeling_model_verdict(acti
         if mode == 'enforce':
             payload = ScanRequest(input='An ordinary test request.', flagOnly=False)
             now = datetime.now(UTC)
-            if result == 'error':
-                with pytest.raises(ScanFailure):
-                    scan_response(payload, decision, '00000000-0000-4000-8000-000000000001', now, now)
-            else:
+            if result != 'error':
                 scan = scan_response(payload, decision, '00000000-0000-4000-8000-000000000001', now, now)
                 expected = ('blocked' if decision.decision == 'block' else
                             'flagged' if any(a.status == 'intervene' for a in decision.assessments) else 'cleared')

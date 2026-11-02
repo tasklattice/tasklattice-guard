@@ -121,7 +121,6 @@ async def run_native_output_stream(
                 payloads = evidence.completed.popleft()
                 results = tuple(_colang1_runtime_result(binding, payload)
                                 for binding, payload in zip(bindings, payloads))
-                last = payloads[-1]
                 candidate = payloads[0]["input_text"]
                 if not candidate.endswith(pending):
                     raise NativeStreamError("NeMo did not check all pending source text.")
@@ -143,8 +142,9 @@ async def run_native_output_stream(
                 checks += 1
                 if observe is not None:
                     await observe(decision)
-                if last["verdict"] == "error" or decision.usage.fail_closed:
-                    raise NativeStreamError("Output protection failed; unchecked text was withheld.")
+                if decision.execution_status in {"error", "timeout"}:
+                    raise NativeStreamError("Output protection failed; unchecked text was withheld.",
+                        timed_out=decision.execution_status == "timeout")
 
         inputs_iterator = inputs()
         async with _admission(instance, request) as admission_wait:

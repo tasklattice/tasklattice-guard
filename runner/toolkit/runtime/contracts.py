@@ -63,11 +63,10 @@ FailureMode = Literal["fail_open", "fail_closed"]
 FragmentStatus = Literal["pass", "intervene", "uncertain", "needs_context", "uncovered", "error"]
 CoverageStatus = Literal["complete", "partial", "none"]
 EnforcementMode = Literal["enforce", "detect"]
-# Two questions in one field: how much to report, and whether a request may stop
-# at the first Block. Only supported plans can honour the second
-# (`compiler.semantics.collects_complete_evidence`). Splitting the field is a
-# follow-up so existing callers keep their meaning.
+# Reporting never changes execution. Only internal validation may request
+# execution beyond a terminal decision; online services pin the purpose.
 EvidenceScope = Literal["interventions", "full"]
+ExecutionPurpose = Literal["online", "validation"]
 SafetyLevel = Literal["balanced", "strict"]
 OutputDeliveryMode = Literal["interruptible", "window_buffered", "full_buffered"]
 EvaluationTriggerType = Literal["always", "on_result"]
@@ -240,6 +239,7 @@ class ProtectionRequest:
     messages: tuple[dict[str, Any], ...] = ()
     mode: EnforcementMode = "enforce"
     evidence_scope: EvidenceScope = "interventions"
+    execution_purpose: ExecutionPurpose = "online"
 
 
 @dataclass(frozen=True, slots=True)
@@ -656,6 +656,15 @@ class ContentBlockResult:
 
 
 @dataclass(frozen=True, slots=True)
+class ExecutionDiagnostic:
+    code: str
+    message: str
+    step_id: str | None = None
+    policy_id: str | None = None
+    affects_result: bool = True
+
+
+@dataclass(frozen=True, slots=True)
 class ProtectionDecision:
     decision: PolicyDecision
     action: EnforcementAction
@@ -680,6 +689,10 @@ class ProtectionDecision:
     protection_mode: Literal["enforce", "monitor", "bypass"] = "enforce"
     detection_decision: str | None = None
     detection_error: str | None = None
+    execution_status: Literal["complete", "degraded", "error", "timeout", "bypassed"] | None = None
+    termination_reason: str | None = None
+    diagnostics: tuple[ExecutionDiagnostic, ...] = ()
+    flagged: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -703,6 +716,7 @@ class EngineRequest:
     target_source: str = "user_input"
     mode: EnforcementMode = "enforce"
     evidence_scope: EvidenceScope = "interventions"
+    execution_purpose: ExecutionPurpose = "online"
     content_view: ContentViewSnapshot | None = None
     active_block_id: str | None = None
     request_context: RequestContext | None = None

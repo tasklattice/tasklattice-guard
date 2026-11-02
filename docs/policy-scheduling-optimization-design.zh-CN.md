@@ -14,7 +14,7 @@
 
 ### 1.1 收益与成本现状
 
-调度只节省"决策前的检查数"，不承诺本地墙钟时间：`scripts/benchmark_scheduling.py` 用真实 Controller 编译、真实 Runner 离线执行，报告每种场景在 `block-first` 与作者序下的检查执行数与 p50/p95。当前本地实测：命中 Block 的最坏场景由 2 个检查降到 1 个；纯只读计划不变（1 = 1）；`full` 模式把阻塞请求从 1 个检查升到 3 个。**模型级延迟、token 成本与并行收益仍未测量**，需要 provider 实测后才能对外声明。详见 [`policy-scheduling-benchmark.md`](./policy-scheduling-benchmark.md)。
+调度只节省"决策前的检查数"，不承诺本地墙钟时间：`scripts/benchmark_scheduling.py` 用真实 Controller 编译、真实 Runner 离线执行，报告每种场景在 `block-first` 与作者序下的检查执行数与 p50/p95。当前本地实测：命中 Block 的最坏场景由 2 个检查降到 1 个；纯只读计划不变（1 = 1）；内部 `validation` 模式把阻塞请求从 1 个检查升到 3 个。**模型级延迟、token 成本与并行收益仍未测量**，需要 provider 实测后才能对外声明。详见 [`policy-scheduling-benchmark.md`](./policy-scheduling-benchmark.md)。
 
 ## 2. 原实现的缺口与修复
 
@@ -22,12 +22,12 @@
 | --- | --- |
 | 任意其他 Block 或 Transform 命中，就把目标 Rule 验收算通过 | 目标必须在计划中存在、启用、版本和阶段正确，并有自己的实际证据；取代关系只解释失败 |
 | 在原文上重跑目标 Rule，混同于它在实际变换视图上执行 | 本地复算仅用于诊断 `shadowed_by`，不进入 verified Rule，也不能使测试通过 |
-| Validator 请求 `full`，Runtime 仍因 Block 短路或取消并行成员 | 支持的计划在 full 模式收集所有可达步骤；多 Rule content-filter Action 内部也不因 Block 丢弃后续 Rule，最后统一返回 Block；快速模式继续短路 |
+| Validator 请求完整验证，Runtime 仍因 Block 短路或取消并行成员 | 支持的计划在 validation 模式收集所有可达步骤；多 Rule content-filter Action 内部也不因 Block 丢弃后续 Rule，最后统一返回 Block；快速模式继续短路 |
 | 同一审阅约定要求 mask + block，作者序通过而 Block 前置失败 | 完整证据模式下两条 Rule 都真实运行，三种合法调度比对实际 findings 和断言 |
 | 精确/语义步骤共享参数数组，追加元数据相互污染 | 每个 step 分配独立参数数组，precedence 唯一且不重复 |
 | 缺少 evaluation_view 时静默使用线程化文本 | 编译和执行要求明确且唯一的视图；Controller 与 Runner 采用统一契约，不做新旧能力协商 |
 | 不变性测试只跑两个顺序，且有 `or True` 无效断言 | 三种不同合法顺序，严格比较决策、输出、证据和测试结论；无恒真断言 |
-| full 中无关检查失败，否定已经明确命中的目标 Block | 分开 Rule 验收与组合可用性；保留执行错误，在通过的 Rule 用例上显示告警 |
+| validation 中无关检查失败，否定已经明确命中的目标 Block | 分开 Rule 验收与组合可用性；保留执行错误，在通过的 Rule 用例上显示告警 |
 
 ## 3. 计划、调度与视图
 
@@ -50,24 +50,18 @@ Controller 在调度前为每个 step 写入：
 
 只读检查看原文是一项明确的行为约定。若某个检查必须先看到归一化或脱敏文本，需要明确表达依赖；不能靠偶然的作者位置推断。外部模型是否能收到原文，也不能靠 action 优先级充当数据出站约定。
 
-## 4. 两种证据范围
+## 4. 执行目的与证据范围
 
-| 请求范围 | 执行行为 | 可承诺内容 |
+| 执行目的 | 执行行为 | 可承诺内容 |
 | --- | --- | --- |
-| `interventions`（LiteLLM 线上默认） | Block 后允许早退；并行组可取消未完成成员 | 安全决策；不保证完整 findings、调用次数或执行集 |
-| `full`（Validator 和 Scan 使用） | 支持的计划不因 Block 早退或取消兄弟检查；仍遵循 trigger | 对可达步骤收集结果，最后决策；未达到或不确定的目标不能当作未命中 |
+| `online`（Scan、LiteLLM 等全部线上入口） | 策略 Block 后短路，取消未完成的并行检查，跳过后续内容块 | 保留实际执行的证据；未执行不冒充未命中 |
+| `validation`（内部 Validator） | 支持的计划继续收集可达步骤；仍遵循 trigger | 完整证据用于规则验收，独立执行错误继续影响组合可用性判定 |
 
-流程把单步实际的 `blocked` 和控制流的 `stop` 分开。full 模式中 `stop=false` 不代表放行：Runtime 保留 Block，所有可达检查完成后，最终 resolver 返回 Block，不交付被拦截文本。
+`evidence_scope` 只决定报告范围，不再参与是否短路的判断。线上核心统一保留已执行检查的完整证据。Adapter 只转换请求和响应形状，`flagOnly`、`verbose`、流量快照级别均不改变 Guardrails 的执行过程。外部请求不能指定内部 validation 目的。
 
-`complete_evidence_supported()` 只判断执行结构是否支持尝试收集全部可达证据，不证明 provider 可用、稳定或确定，也不保证本次收集完整。错误、超时、未知结果和目标证据由实际执行另行判定（见 §5.2）。调度不变性测试依赖固定 provider 响应；不能把这个结构判断当作真实模型在任意故障时序下等价的保证。
+`complete_evidence_supported()` 判断计划是否支持验证时收集全部可达证据：`full_buffered` 且无自定义 Colang 的计划支持；窗口输出和自定义 Flow 保留各自的控制流。支持收集不代表 provider 一定可用，错误、超时和未知仍由实际结果判定。
 
-同一 Policy 内拆分的 content-filter 和 Topic Rules 分别保留终态结果。后续 Allow、Transform 或错误不能覆盖之前独立 Block 的 `interventions.fragment_id`；telemetry / 审计保留具体 Action 归因。原生 exact/semantic 检测链按 Rule 身份保留终态归并，不能把中间 unknown 当作最终干预。
-
-条件为假的步骤不会被强行执行。错误、超时也不能伪造为 matched。任意自定义流和流式计划仍保留自己的短路行为，即使请求 full，也不会强行收集不可达步骤。这是执行类型的限制，不是按版本保留旧行为。它们的报告可能因此出现 `not_reached` / `preempted_by`，而不是虚构验收成功。
-
-`evidence_scope` 不再只是报告详细度：对支持的计划，它同时决定 Block 后是否继续执行。Scan API 明确使用 `full`，保留命中但配置为 Allow 的观察以及完整可达证据；`flagOnly` 只改变结果标签，`verbose` 只改变响应详情，两者都不降低执行范围。当前 Scan 请求和 Endpoint 配置不提供证据范围开关，不能通过未知字段改变它。
-
-完整证据模式可能增加 **Validation 和 Scan** 的模型调用、延迟和成本。被拦截的 Scan 仍可能调用后续模型，或因后续错误/超时返回执行错误；最终 Block 不会因继续收集证据而变成放行。串行检查的延迟会累积，独立检查可并行，因此总延迟不一定与检查数严格线性。这是 Scan 的显式执行约定，不能把它的成本变化排除在线上 API 评估之外；LiteLLM 的 `interventions` 快速路径仍允许早退。
+核心区分正常策略 Block 与基础设施故障引发的 fail-closed。前者完成线上请求，独立失败只保留诊断；后者仍是执行错误。配置的 fail-open 为 degraded，Monitor/Bypass 遵守资源保护模式。日志和指标读取核心执行状态，不从原始 trace 再裁决。Validation 在支持的计划中仍可能增加模型调用、延迟和成本，这与线上短路无关。
 
 ## 5. Rule 证据判定
 
@@ -163,19 +157,19 @@ Default、full-feature-baseline 和普通用户创建的 Guardrail 使用同一�
 - 目标从计划中省略，或冻结检测条件变得不匹配，不能被其他 Transform 掩盖。
 - 原文复算匹配不等于实际变换视图匹配。
 - 正常文本的 Allow 断言必须有明确执行证据。
-- 同一个多 Rule Action 内部，full 收集全部命中；快速模式仍在第一个 Block 停止。
-- Scan 的混合动作回归同时比对快速模式和 full 模式的具体 Block intervention；后续 Transform、Allow 或失败不会把 Rule 归因降级为通用 `nemo:reject`。
+- 同一个多 Rule Action 内部，validation 收集全部命中；快速模式仍在第一个 Block 停止。
+- Scan/LiteLLM 的混合动作回归对照同一计划的线上短路与内部 validation；快照级别和协议开关不会改变具体 Block 归因。
 - 编译器拒绝缺失、重复键、非法或全计划重复的 precedence；反向但唯一、非连续的作者顺序保持原值，不根据实际调度重写。
 
 ### 8.2 其他边界
 
 - 证据单测：缺失 Policy、过期版本、错误阶段、禁用/部分覆盖、未执行、实际未命中、未知/error verdict、失效 override 和完整输出断言；原生 Rule 的 exact/semantic 升级链使用已完成的终端结果，不能把中间 unknown 当作完成。
-- 并行回归：C1/C2、input/output、full/快速范围；快速模式仍取消，full 模式保留兄弟结果；模型 HTTP 成功、超时和 503 的确定性响应下，串行与并行的执行结果一致。
+- 并行回归：C1/C2、input/output、validation/online 目的与 full/interventions 报告范围正交；online 仍取消，validation 保留兄弟结果；模型 HTTP 成功、超时和 503 的确定性响应下，串行与并行的执行结果一致。
 - 协议和控制面：结构化字段真实 wire 往返、明确的 true/false Rule 判定、无需视图能力标签即可编译/测试/加载/分发，以及视图缺失或歧义时拒绝执行。
 - 发布：实际 PostgreSQL 写入失败证据后发布，测试与版本状态独立。
 - 升级加载：冻结提交 `1df5c899` 中真实的旧签名 Artifact（`tests/fixtures/unsupported-artifacts/pre-v16-local-secrets`），验证签名和 checksum 有效且缺少视图，再验证环境检查、apply/admit/verify、NACK、旧缓存重启和已发布版本复测均拒绝。夹具不经过当前编译器重建。另测当前标识下的视图缺失、重复、无效值，以及原有效 release 不被失败更新替换。
 - 升级恢复：PostgreSQL 覆盖过期 `compatible` 缓存、被 Router 引用的旧产物保留至分发 gate、未修改草稿重新发布生成新版本、原 Artifact/失败报告不被改写，以及新版本重复发布的幂等性。
-- Scan 执行范围：`test_scan_evidence_scope.py` 用真实 Controller 混合动作计划和 NeMo 执行，比较 `interventions` 命中 Block 后只执行一个 Action、HTTP Scan 继续执行 Block/Transform/Allow 三个 Action。覆盖 request/response、`flagOnly`/`verbose` 组合、未知范围字段不能覆盖契约、完整命中证据保留、Block 不交付回答，以及后续 Action 失败返回 `503`。这是确定性执行回归，不是实际模型延迟或费用测量。
+- Adapter 一致性：`test_scan_evidence_scope.py` 用真实 Controller 混合动作计划和 NeMo 执行，比较 Scan/LiteLLM 在策略 Block 后都只执行一个 Action。覆盖 request/response、`flagOnly`/`verbose`、快照级别和故障、缺少上下文、fail-open、Monitor/Bypass、多内容块短路。`tests/e2e/test_adapter_guardrail_contract.py` 进一步通过真实 TCP 验证两个公开 HTTP 契约。这不代替真实 F5/LiteLLM 产品部署验收。
 - 独立故障：`test_full_evidence_failures.py` 用真实 Controller / NeMo，在同一 Policy 和跨 Policy、input/output、目标前后分别注入异常、超时和 error verdict。明确 Block 不变成 fail-closed；目标 Rule 通过并保留执行告警，自身故障、缺失、依赖失败、未命中、组合场景和审阅约定仍失败；`expectedFailure` 必须匹配实际故障。
 - 前端：真实桌面页面展开报告，部分命中显示 Rule 不匹配；满足组合约定的决策失败不会再误报 Rule 不匹配。
 
@@ -249,7 +243,7 @@ npm run proto:check
 
 ### 10.1 A 类（调度/仲裁回归）不需要留存原文
 
-显式视图契约的直接推论：每个 step 的输入视图与调度无关，因此**每个 step 的观测本身就是调度不变量**。`full` 证据模式又会执行所有可达步骤，于是"调度回归"可以从证据离线重算，不需要入站明文。
+显式视图契约的直接推论：每个 step 的输入视图与调度无关，因此**每个 step 的观测本身就是调度不变量**。内部 `validation` 执行所有可达步骤，于是"调度回归"可以从证据离线重算，不需要入站明文。
 
 `tests/control_plane/test_schedule_replay_diff.py` 固定了这个记录格式（也是将来 `captureMode=evidence` 的落库形状）：
 
