@@ -30,7 +30,6 @@ from .diagnostics import diagnostic_phase
 from .protocol_codec import (
     artifact_content,
     canonical_json,
-    endpoint_verification_from_proto,
     traffic_scope_from_proto,
 )
 from .serialization import plan_from_dict
@@ -272,20 +271,10 @@ class ArtifactStore:
     def _credential_matches(endpoint: dict[str, Any] | None, credential: str | None) -> bool:
         if not endpoint or not credential:
             return False
-        expected_digests: list[str] = []
-        credentials = endpoint.get("credentials")
-        if isinstance(credentials, list):
-            for item in credentials:
-                if not isinstance(item, dict):
-                    continue
-                if item.get("revokedAt") is not None:
-                    continue
-                digest = item.get("sha256")
-                if isinstance(digest, str):
-                    expected_digests.append(digest)
         actual = hashlib.sha256(credential.encode()).hexdigest()
         authenticated = False
-        for expected in expected_digests:
+        # Compare every active digest, including those after a match.
+        for expected in endpoint["_credential_digests"]:
             authenticated = hmac.compare_digest(actual, expected) or authenticated
         return authenticated
 
@@ -359,8 +348,11 @@ class ArtifactStore:
             router_revisions[item.router_id] = snapshot
         endpoints: dict[str, dict[str, Any]] = {}
         for item in desired_state.endpoints:
-            verification = endpoint_verification_from_proto(item.verification)
-            endpoints[item.endpoint_id] = {**verification, "_adapter": item.adapter, "_router_id": item.router_id,
+            # Prepare an immutable verifier set before publishing the snapshot.
+            # Revoked credential history is not needed on the request path.
+            endpoints[item.endpoint_id] = {"_adapter": item.adapter, "_router_id": item.router_id,
+                "_credential_digests": tuple(credential.sha256 for credential in item.verification.credentials
+                    if not credential.HasField("revoked_at")),
                 "_credential_required": item.credential_required,
                 "_scan_flag_only_default": item.scan_flag_only_default if item.HasField("scan_flag_only_default") else True}
         registry = self._registry

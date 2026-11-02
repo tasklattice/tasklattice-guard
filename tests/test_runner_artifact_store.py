@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import hmac
 from pathlib import Path
 
 import pytest
@@ -268,6 +269,86 @@ def test_runner_accepts_active_multi_credentials_and_rejects_revoked_credentials
 def test_protocol_rejects_malformed_endpoint_credentials() -> None:
     with pytest.raises(TypeError):
         protocol.EndpointCredential(id="bad", sha256=42)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("credential", ["first", "last", "unknown", "", None])
+def test_endpoint_authentication_compares_every_active_digest(tmp_path, monkeypatch, credential):
+    store = ArtifactStore(FIXTURE / "public-key.pem", tmp_path / "state")
+    store.attach_registry(Registry())
+    digests = {value: hashlib.sha256(value.encode()).hexdigest() for value in ("first", "last", "revoked")}
+    store.apply(protocol.DesiredState(generation=1, endpoints=[protocol.EndpointRuntime(
+        endpoint_id="endpoint", credential_required=True, adapter="f5-scan",
+        verification=protocol.EndpointVerification(credentials=[
+            protocol.EndpointCredential(sha256=digests["first"]),
+            protocol.EndpointCredential(sha256=digests["revoked"], revoked_at="2026-11-02T00:00:00Z"),
+            # Presence, even an empty revocation timestamp, means revoked.
+            protocol.EndpointCredential(sha256=digests["revoked"], revoked_at=""),
+            protocol.EndpointCredential(sha256=digests["last"]),
+        ]),
+    )]))
+    compared = []
+    compare_digest = hmac.compare_digest
+
+    def observe_compare(actual, expected):
+        compared.append(expected)
+        return compare_digest(actual, expected)
+
+    monkeypatch.setattr("runner.artifact_store.hmac.compare_digest", observe_compare)
+    access = store.authorize_endpoint("endpoint", credential)
+    assert access.allowed is (credential in {"first", "last"})
+    assert access.authenticated is access.allowed
+    assert compared == ([digests["first"], digests["last"]] if credential else [])
+
+
+def test_endpoint_credential_snapshots_rotate_revoke_and_restore_atomically(tmp_path, monkeypatch):
+    state_path = tmp_path / "state"
+    store = ArtifactStore(FIXTURE / "public-key.pem", state_path)
+    registry = Registry()
+    store.attach_registry(registry)
+    desired = protocol.DesiredState(generation=1, endpoints=[protocol.EndpointRuntime(
+        endpoint_id="endpoint", credential_required=True, adapter="f5-scan",
+        verification=protocol.EndpointVerification(credentials=[
+            protocol.EndpointCredential(sha256=hashlib.sha256(b"old").hexdigest()),
+        ]),
+    )])
+    store.apply(desired)
+    credentials = desired.endpoints[0].verification.credentials
+    credentials.add(sha256=hashlib.sha256(b"new").hexdigest())
+    assert store.authenticate_endpoint("endpoint", "old")
+    assert not store.authenticate_endpoint("endpoint", "new")
+    desired.generation += 1
+    store.apply(desired)
+    assert store.authenticate_endpoint("endpoint", "old")
+    assert store.authenticate_endpoint("endpoint", "new")
+
+    desired.generation += 1
+    credentials[0].revoked_at = "2026-11-02T00:00:00Z"
+    saved = (state_path / "last-known-good.json").read_bytes()
+
+    def reject_preparation(*args, **kwargs):
+        raise RuntimeError("Cannot prepare runtime")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(registry, "prepare_release", reject_preparation)
+        with pytest.raises(RuntimeError, match="Cannot prepare runtime"):
+            store.apply(desired)
+    assert store.generation == 2
+    assert store.authenticate_endpoint("endpoint", "old")
+    assert store.authenticate_endpoint("endpoint", "new")
+    assert (state_path / "last-known-good.json").read_bytes() == saved
+
+    store.apply(desired)
+    restored = ArtifactStore(FIXTURE / "public-key.pem", state_path)
+    restored.attach_registry(Registry())
+    for snapshot in (store, restored):
+        assert not snapshot.authenticate_endpoint("endpoint", "old")
+        assert snapshot.authenticate_endpoint("endpoint", "new")
+        assert not snapshot.authorize_endpoint("missing", "new").allowed
+
+    desired.generation += 1
+    credentials[1].revoked_at = "2026-11-02T00:00:00Z"
+    store.apply(desired)
+    assert not store.authorize_endpoint("endpoint", "new").allowed
 
 
 def test_runner_rejects_an_artifact_compiled_for_a_different_nemo_version(
