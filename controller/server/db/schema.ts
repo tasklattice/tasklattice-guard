@@ -576,6 +576,7 @@ export const endpoints = pgTable("endpoint", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   adapter: text("adapter").notNull(),
+  credentialRequired: boolean("credential_required").notNull().default(true),
   scanFlagOnlyDefault: boolean("scan_flag_only_default").notNull().default(true),
   status: text("status").$type<EndpointLifecycleState>().notNull().default("active"),
   verification: jsonb("verification").$type<Record<string, unknown>>().notNull().default({}),

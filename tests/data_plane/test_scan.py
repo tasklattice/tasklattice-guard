@@ -6,6 +6,7 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
+from runner.artifact_store import EndpointAccess
 from runner.api import RunnerAPI
 from runner.scan import SCAN_PATH, IGNORED_FIELDS, ScanRequest, ScanFailure, scan_response, validate_scan_decision
 from runner.toolkit.runtime.context import CallContextStore
@@ -32,10 +33,19 @@ def decision(action="allow", status="allow", **kwargs):
 class Store:
     def __init__(self, flag_only_default=True):
         self.flag_only_default = flag_only_default
+    def authorize_endpoint(self, endpoint_id, credential):
+        adapter = self.endpoint_adapter(endpoint_id)
+        if not adapter:
+            return EndpointAccess(None, False, False)
+        if not getattr(self, "credential_required", True):
+            return EndpointAccess(adapter, True, None)
+        authenticated = self.authenticate_endpoint(endpoint_id, credential)
+        return EndpointAccess(adapter, authenticated, authenticated)
+
     def authenticate_endpoint(self, identity, value):
         return value is not None and {ENDPOINT_ID: "key", OTHER_ENDPOINT_ID: "other-key", LITELLM_ENDPOINT_ID: "lite-key"}.get(identity) == value
     def endpoint_adapter(self, identity):
-        return "f5-scan" if identity in {ENDPOINT_ID, OTHER_ENDPOINT_ID} else "litellm-generic-guardrail"
+        return "f5-scan" if identity in {ENDPOINT_ID, OTHER_ENDPOINT_ID} else "litellm-generic-guardrail" if identity == LITELLM_ENDPOINT_ID else None
     def endpoint_scan_flag_only_default(self, identity):
         return self.flag_only_default
     def logging_level(self, _):
@@ -346,3 +356,17 @@ async def test_unavailable_route_and_internal_error_are_not_safe(error, expected
     assert response.status_code == expected
     assert "private" not in response.text and "cleared" not in response.text
     assert telemetry.events[-1]["decision"] == "error"
+
+
+async def test_anonymous_scan_has_no_authenticated_principal():
+    store = Store()
+    store.credential_required = False
+    app, runtime, telemetry = app_for(store=store)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://runner") as client:
+        response = await client.post(SCAN_URL, json={"input": "hello"}, headers={"Authorization": "Bearer ignored"})
+    assert response.status_code == 200
+    fields = dict(runtime.calls[0].context.fields)
+    assert "auth.principal" not in fields
+    assert fields["auth.mode"] == "anonymous"
+    assert runtime.calls[0].context.endpoint_id == ENDPOINT_ID
+    assert telemetry.events[-1]["metadata"]["authentication"] == "anonymous"

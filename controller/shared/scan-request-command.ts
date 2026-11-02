@@ -1,10 +1,10 @@
 /** A complete, copyable shell command that never includes an Endpoint secret. */
-export function scanRequestCommand(endpointUrl: string): string {
+export function scanRequestCommand(endpointUrl: string, credentialRequired = true): string {
   const quotedUrl = `'${endpointUrl.replaceAll("'", "'\\''")}'`;
   return [
     "curl --request POST \\",
     `  ${quotedUrl} \\`,
-    "  --header 'Authorization: Bearer <CALYPSOAI_TOKEN>' \\",
+    ...(credentialRequired ? ["  --header 'Authorization: Bearer <CALYPSOAI_TOKEN>' \\"] : []),
     "  --header 'Content-Type: application/json' \\",
     "  --data '{",
     '    "input": "Hello, can you help me?",',

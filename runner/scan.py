@@ -149,12 +149,12 @@ def register_scan(api, *, max_body_bytes: int, timeout_seconds: float) -> None:
             authorization = request.headers.getlist("authorization")
             parts = authorization[0].split() if len(authorization) == 1 else []
             token = parts[1] if len(parts) == 2 and parts[0].lower() == "bearer" else None
-            authenticated = api._store.authenticate_endpoint(endpoint_id, token)
-            api._metrics.observe_authentication("scan", authenticated)
-            if not authenticated:
+            access = api._store.authorize_endpoint(endpoint_id, token)
+            api._metrics.observe_authentication("scan", access.authenticated)
+            if not access.allowed:
                 response_headers["WWW-Authenticate"] = "Bearer"
                 raise ScanFailure(401, "invalid_credential", "Endpoint credential is invalid.")
-            if api._store.endpoint_adapter(endpoint_id) != SCAN_ADAPTER:
+            if access.adapter != SCAN_ADAPTER:
                 raise ScanFailure(403, "adapter_mismatch", "Endpoint does not support Scan.")
             if request.headers.get("content-type", "").split(";", 1)[0].strip().lower() != "application/json":
                 raise ScanFailure(415, "unsupported_media_type", "Use application/json.")
@@ -189,7 +189,9 @@ def register_scan(api, *, max_body_bytes: int, timeout_seconds: float) -> None:
                 content_blocks=(GuardContentBlock(id=f"{phase}:0", text=payload.input, role=source, source=source, trust="untrusted"),),
                 context=RequestContext(protocol="scan", endpoint_id=endpoint_id, call_id=scan_id,
                     headers=tuple((k, v) for k, v in request.headers.items() if k.lower() not in SENSITIVE_HEADERS),
-                    fields=(("protocol", "scan"), ("endpoint.id", endpoint_id), ("auth.principal", endpoint_id),
+                    fields=(("protocol", "scan"), ("endpoint.id", endpoint_id),
+                            *((("auth.principal", endpoint_id),) if access.authenticated else ()),
+                            ("auth.mode", "credential" if access.authenticated else "anonymous"),
                             ("scan.direction", payload.scanDirection), ("http.method", request.method),
                             ("http.path", request.url.path), ("http.host", request.url.hostname or "")),
                     endpoint_request=_endpoint_source(request)),
@@ -220,7 +222,7 @@ def register_scan(api, *, max_body_bytes: int, timeout_seconds: float) -> None:
                     await api._emit_telemetry(request_id=scan_id, call_id=scan_id, endpoint_id=endpoint_id,
                         phase=phase, protocol="scan", mode="enforce", started=started, decision=decision,
                         content_before=(payload.input,), http_request=request, observation=observation,
-                        stream_metadata={"scanDirection": payload.scanDirection, "flagOnly": payload.flagOnly,
+                        stream_metadata={"authentication": "credential" if access.authenticated else "anonymous", "scanDirection": payload.scanDirection, "flagOnly": payload.flagOnly,
                             "verbose": payload.verbose, "scanExecutionStatus": "completed" if result is not None else "error",
                             "scanOutcome": result.result.outcome if result is not None else None})
                 response = JSONResponse(result.model_dump(mode="json"), headers=response_headers)

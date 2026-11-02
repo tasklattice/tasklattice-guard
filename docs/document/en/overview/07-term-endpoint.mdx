@@ -4,14 +4,14 @@ title: "Endpoints: application identity and integration"
 summary: "Understand the LiteLLM and Scan Endpoint types, plus credentials, Router binding, and integration health."
 order: 6
 ---
-An Endpoint authenticates an application, agent or gateway and selects its inspection protocol. Separate trust boundaries need separate credentials. Caller-supplied headers do not replace authentication.
+An Endpoint requires application, agent or gateway authentication by default and selects its inspection protocol. Separate trust boundaries need separate credentials. Caller-supplied headers do not replace authentication.
 
 For example, a support application and an internal test gateway use separate Endpoints. Runtime records can then distinguish their calls.
 
 <a id="endpoint-integration-types" />
 ## Choose an integration type
 
-Both types use Endpoint credentials and a bound Router to select the Guardrail Version.
+Both types support the **Require Credential** switch (on by default) and use a bound Router to select the Guardrail Version. When the switch is off, requests are anonymous; credentials are retained for later use.
 
 | Type | Intended client | Inspection contract |
 | --- | --- | --- |

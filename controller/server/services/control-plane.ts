@@ -1780,7 +1780,7 @@ export class ControlPlaneService {
     return queryAuditEvents(this.db, query);
   }
 
-  async createEndpoint(input: { name: string; adapter: string; scanFlagOnlyDefault?: boolean | undefined; actorId: string }) {
+  async createEndpoint(input: { name: string; adapter: string; credentialRequired?: boolean | undefined; scanFlagOnlyDefault?: boolean | undefined; actorId: string }) {
     if (!["litellm-generic-guardrail", "f5-scan"].includes(input.adapter)) throw new ValidationError("Unsupported Endpoint adapter.");
     if (input.scanFlagOnlyDefault !== undefined && input.adapter !== "f5-scan") throw new ValidationError("scanFlagOnlyDefault is only supported by F5 Scan Endpoints.");
     const id = randomUUID();
@@ -1788,13 +1788,13 @@ export class ControlPlaneService {
     const verification = { credentials: [issued.stored] };
     const [created] = await this.db.transaction(async (tx) => {
       const rows = await tx.insert(endpoints).values({
-        id, name: input.name, adapter: input.adapter, verification, scanFlagOnlyDefault: input.scanFlagOnlyDefault ?? true,
+        id, name: input.name, adapter: input.adapter, verification, credentialRequired: input.credentialRequired ?? true, scanFlagOnlyDefault: input.scanFlagOnlyDefault ?? true,
       }).returning();
       await this.advanceEndpointDesiredState(tx, {
         endpointId: id,
         actorId: input.actorId,
         auditKind: "endpoint.created",
-        auditDetail: { name: input.name, adapter: input.adapter, credentialId: issued.stored.id,
+        auditDetail: { name: input.name, adapter: input.adapter, credentialId: issued.stored.id, credentialRequired: input.credentialRequired ?? true,
           ...(input.adapter === "f5-scan" ? { scanFlagOnlyDefault: input.scanFlagOnlyDefault ?? true } : {}) },
       });
       if (!rows[0]) throw new Error("Endpoint creation did not return the stored resource.");
@@ -1810,7 +1810,7 @@ export class ControlPlaneService {
     };
   }
 
-  async updateEndpoint(input: { id: string; enabled?: boolean | undefined; scanFlagOnlyDefault?: boolean | undefined; actorId: string }) {
+  async updateEndpoint(input: { id: string; enabled?: boolean | undefined; credentialRequired?: boolean | undefined; scanFlagOnlyDefault?: boolean | undefined; actorId: string }) {
     return this.db.transaction(async (tx) => {
       const [endpoint] = await tx.select().from(endpoints)
         .where(and(eq(endpoints.id, input.id), isNull(endpoints.deletedAt))).for("update");
@@ -1819,17 +1819,20 @@ export class ControlPlaneService {
       const status = input.enabled === undefined ? endpoint.status : input.enabled ? "active" : "disabled";
       const scanFlagOnlyDefault = input.scanFlagOnlyDefault ?? endpoint.scanFlagOnlyDefault;
       const scanChanged = scanFlagOnlyDefault !== endpoint.scanFlagOnlyDefault;
-      if (endpoint.status === status && !scanChanged) return this.publicEndpoint(endpoint);
+      const credentialRequired = input.credentialRequired ?? endpoint.credentialRequired;
+      const credentialChanged = credentialRequired !== endpoint.credentialRequired;
+      if (endpoint.status === status && !scanChanged && !credentialChanged) return this.publicEndpoint(endpoint);
 
       const now = new Date();
-      const [updated] = await tx.update(endpoints).set({ status, scanFlagOnlyDefault, updatedAt: now })
+      const [updated] = await tx.update(endpoints).set({ status, scanFlagOnlyDefault, credentialRequired, updatedAt: now })
         .where(and(eq(endpoints.id, input.id), isNull(endpoints.deletedAt))).returning();
       if (!updated) throw new NotFoundError("Endpoint", input.id);
       await this.advanceEndpointDesiredState(tx, {
         endpointId: input.id,
         actorId: input.actorId,
-        auditKind: scanChanged ? "endpoint.updated" : input.enabled ? "endpoint.enabled" : "endpoint.disabled",
+        auditKind: scanChanged || credentialChanged ? "endpoint.updated" : input.enabled ? "endpoint.enabled" : "endpoint.disabled",
         auditDetail: { previousStatus: endpoint.status, status,
+          ...(credentialChanged ? { previousCredentialRequired: endpoint.credentialRequired, credentialRequired } : {}),
           ...(scanChanged ? { previousScanFlagOnlyDefault: endpoint.scanFlagOnlyDefault, scanFlagOnlyDefault } : {}) },
       });
       return this.publicEndpoint(updated);
@@ -2109,6 +2112,7 @@ export class ControlPlaneService {
         adapter: endpoint.adapter,
         verification: endpoint.verification,
         scanFlagOnlyDefault: endpoint.scanFlagOnlyDefault,
+        credentialRequired: endpoint.credentialRequired,
       })),
       guardrailLoggingLevels: Object.fromEntries(loggingLevels.map((item) => [item.id, item.level])),
     };
@@ -2563,11 +2567,12 @@ export class ControlPlaneService {
       name: endpoint.name,
       adapter: endpoint.adapter,
       status: endpoint.status,
+      credentialRequired: endpoint.credentialRequired,
       ...(endpoint.adapter === "f5-scan" ? { scanFlagOnlyDefault: endpoint.scanFlagOnlyDefault } : {}),
       createdAt: endpoint.createdAt,
       updatedAt: endpoint.updatedAt,
       credentials: publicEndpointCredentials(endpoint.verification),
-      setup: endpointSetup(this.config.runtimePublicUrl ?? new URL(this.config.publicUrl).origin, endpoint.id, endpoint.adapter),
+      setup: endpointSetup(this.config.runtimePublicUrl ?? new URL(this.config.publicUrl).origin, endpoint.id, endpoint.adapter, endpoint.credentialRequired),
     };
   }
 
@@ -2992,16 +2997,16 @@ function ratio(numerator: number, denominator: number): number {
   return denominator > 0 ? numerator / denominator : 0;
 }
 
-export function endpointSetup(runtimeBaseUrl: string, endpointId: string, adapter: string) {
+export function endpointSetup(runtimeBaseUrl: string, endpointId: string, adapter: string, credentialRequired = true) {
   const apiBaseUrl = `${runtimeBaseUrl.replace(/\/+$/, "")}/runtime/v1/endpoints/${encodeURIComponent(endpointId)}`;
   if (adapter === "f5-scan") {
     const callbackUrl = `${apiBaseUrl}/backend/v1/scans`;
     return {
       api_base_url: apiBaseUrl, callback_url: callbackUrl, stream_callback_url: null,
-      auth_header: "Authorization: Bearer", credential_env_var: "CALYPSOAI_TOKEN", api_base_env_var: "CALYPSOAI_URL",
+      auth_header: credentialRequired ? "Authorization: Bearer" : "", credential_env_var: credentialRequired ? "CALYPSOAI_TOKEN" : "", api_base_env_var: "CALYPSOAI_URL",
       recommended_modes: ["request", "response"], default_on: true, fail_on_error: true,
       unreachable_fallback: "fail_closed" as const,
-      yaml_template: scanRequestCommand(callbackUrl),
+      yaml_template: scanRequestCommand(callbackUrl, credentialRequired),
     };
   }
   if (adapter !== "litellm-generic-guardrail") throw new ValidationError("Unsupported Endpoint adapter.");
@@ -3009,19 +3014,19 @@ export function endpointSetup(runtimeBaseUrl: string, endpointId: string, adapte
   const recommendedModes = ["pre_call", "post_call"];
   const yamlTemplate = [
         "# Requires the TaskLattice Guard endpoint supplied by Relay.",
-        "credential_list:",
+        ...(credentialRequired ? ["credential_list:",
         "  - credential_name: tasklattice-guard",
         "    credential_info:",
         "      custom_llm_provider: tasklattice_guard",
         "    credential_values:",
-        "      api_key: os.environ/TASKLATTICE_GUARD_API_KEY",
+        "      api_key: os.environ/TASKLATTICE_GUARD_API_KEY"] : []),
         "guardrails:",
         "  - guardrail_name: tasklattice-guard",
         "    litellm_params:",
         "      guardrail: tasklattice_guard",
         "      mode: [pre_call, post_call]",
         "      api_base: os.environ/TASKLATTICE_GUARD_API_BASE",
-        "      credential_name: tasklattice-guard",
+        ...(credentialRequired ? ["      credential_name: tasklattice-guard"] : []),
         "      default_on: true",
         "      fail_on_error: true",
         "      unreachable_fallback: fail_closed",
@@ -3031,8 +3036,8 @@ export function endpointSetup(runtimeBaseUrl: string, endpointId: string, adapte
     api_base_url: apiBaseUrl,
     callback_url: callbackUrl,
     stream_callback_url: null,
-    auth_header: "x-api-key",
-    credential_env_var: "TASKLATTICE_GUARD_API_KEY",
+    auth_header: credentialRequired ? "x-api-key" : "",
+    credential_env_var: credentialRequired ? "TASKLATTICE_GUARD_API_KEY" : "",
     api_base_env_var: "TASKLATTICE_GUARD_API_BASE",
     recommended_modes: recommendedModes,
     default_on: true,

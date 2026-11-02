@@ -169,7 +169,7 @@ class RunnerMetrics:
             ["protocol", "phase", "result"], registry=self.registry,
         )
         self.authentication = Counter(
-            "guard_runner_authentication_total", "Runtime Endpoint authentication attempts.",
+            "guard_runner_authentication_total", "Runtime Endpoint access decisions, including anonymous access.",
             ["protocol", "result"], registry=self.registry,
         )
         self.failures = Counter(
@@ -797,9 +797,9 @@ class RunnerMetrics:
     def reject_request(self, protocol_name: str, phase: str, result: str) -> None:
         self.request_rejections.labels(protocol=protocol_name, phase=phase, reason=result).inc()
 
-    def observe_authentication(self, protocol_name: str, accepted: bool) -> None:
+    def observe_authentication(self, protocol_name: str, accepted: bool | None) -> None:
         self.authentication.labels(
-            protocol=protocol_name, result="accepted" if accepted else "rejected",
+            protocol=protocol_name, result="anonymous" if accepted is None else "accepted" if accepted else "rejected",
         ).inc()
 
     def observe_route(self, protocol_name: str, phase: str, matched: bool) -> None:

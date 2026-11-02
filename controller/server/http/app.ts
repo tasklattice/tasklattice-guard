@@ -153,12 +153,14 @@ const playgroundDraftInteractionInput = playgroundInteractionInput.omit({ guardr
 const endpointInput = z.object({
   name: z.string().trim().min(1).max(160),
   adapter: z.enum(["litellm-generic-guardrail", "f5-scan"]),
+  credentialRequired: z.boolean().optional().describe("Require an Endpoint credential. Defaults to true. False permits anonymous runtime requests."),
   scanFlagOnlyDefault: z.boolean().optional().describe("F5 Scan only. Default for requests that omit flagOnly; new Endpoints default to true. Explicit request values take precedence."),
 });
 const endpointUpdateInput = z.object({
   enabled: z.boolean().optional(),
+  credentialRequired: z.boolean().optional(),
   scanFlagOnlyDefault: z.boolean().optional().describe("F5 Scan only. Default for requests that omit flagOnly. Explicit request values take precedence."),
-}).strict().refine(value => value.enabled !== undefined || value.scanFlagOnlyDefault !== undefined, "Provide enabled or scanFlagOnlyDefault.");
+}).strict().refine(value => value.enabled !== undefined || value.scanFlagOnlyDefault !== undefined || value.credentialRequired !== undefined, "Provide enabled, scanFlagOnlyDefault or credentialRequired.");
 const deletionInput = z.object({
   reason: z.string().trim().min(1).max(1_000),
   confirmRecentTraffic: z.boolean().default(false),
@@ -229,11 +231,11 @@ export function createHttpApp(input: {
     return configured ? new OpenAICompatiblePlaygroundModel(configured) : injectedPlaygroundModel;
   };
   const playgroundDraftPreviews = new PlaygroundDraftPreviewStore();
-  const withEndpointSetup = <T extends { id: string; adapter: string }>(resource: T, context: Context) => ({
+  const withEndpointSetup = <T extends { id: string; adapter: string; credentialRequired: boolean }>(resource: T, context: Context) => ({
     ...resource,
-    setup: endpointSetup(input.config.runtimePublicUrl ?? endpointRequestOrigin(context.req.raw), resource.id, resource.adapter),
+    setup: endpointSetup(input.config.runtimePublicUrl ?? endpointRequestOrigin(context.req.raw), resource.id, resource.adapter, resource.credentialRequired),
   });
-  const withDistribution = async <T extends { id: string; adapter: string }>(resource: T, context: Context, wait = false) => ({
+  const withDistribution = async <T extends { id: string; adapter: string; credentialRequired: boolean }>(resource: T, context: Context, wait = false) => ({
     ...withEndpointSetup(resource, context),
     ...(wait ? await input.runnerControl.distributeDesiredState() : await input.runnerControl.distributionStatus()),
   });

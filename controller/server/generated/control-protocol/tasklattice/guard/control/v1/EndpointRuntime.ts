@@ -20,6 +20,10 @@ export interface EndpointRuntime {
    * F5 Scan default when the request omits flagOnly. Absence preserves true.
    */
   'scanFlagOnlyDefault'?: (boolean);
+  /**
+   * Whether requests must authenticate with an Endpoint credential.
+   */
+  'credentialRequired'?: (boolean);
   '_scanFlagOnlyDefault'?: "scanFlagOnlyDefault";
 }
 
@@ -41,5 +45,9 @@ export interface EndpointRuntime__Output {
    * F5 Scan default when the request omits flagOnly. Absence preserves true.
    */
   'scanFlagOnlyDefault'?: (boolean);
+  /**
+   * Whether requests must authenticate with an Endpoint credential.
+   */
+  'credentialRequired': (boolean);
   '_scanFlagOnlyDefault'?: "scanFlagOnlyDefault";
 }

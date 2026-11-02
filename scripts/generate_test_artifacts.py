@@ -375,6 +375,7 @@ def generate(fixture_name: str = FIXTURE_NAME) -> FixtureFiles:
             )],
         )],
         endpoints=[protocol.EndpointRuntime(
+            credential_required=True,
             endpoint_id="fixture-endpoint",
             router_id="fixture-router",
             adapter="litellm-generic-guardrail",

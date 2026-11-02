@@ -240,11 +240,11 @@ class RunnerAPI:
             endpoint_id: str,
             x_api_key: str | None = Header(default=None),
         ):
-            authenticated = self._store.authenticate_endpoint(endpoint_id, x_api_key)
-            self._metrics.observe_authentication("litellm", authenticated)
-            if not authenticated:
+            access = self._store.authorize_endpoint(endpoint_id, x_api_key)
+            self._metrics.observe_authentication("litellm", access.authenticated)
+            if not access.allowed:
                 raise HTTPException(status_code=401, detail="Endpoint credential is invalid.")
-            adapter = self._store.endpoint_adapter(endpoint_id)
+            adapter = access.adapter
             if adapter != LITELLM_ADAPTER_ID:
                 raise HTTPException(status_code=409, detail="Endpoint adapter is not compatible with LiteLLM.")
             return {
@@ -266,10 +266,10 @@ class RunnerAPI:
             x_api_key: str | None = Header(default=None),
         ) -> LiteLLMGuardrailResponse:
             phase = "input" if payload.input_type == "request" else "output"
-            authenticated = self._store.authenticate_endpoint(endpoint_id, x_api_key)
-            self._metrics.observe_authentication("litellm", authenticated)
-            adapter_matches = self._store.endpoint_adapter(endpoint_id) == LITELLM_ADAPTER_ID
-            if not authenticated:
+            access = self._store.authorize_endpoint(endpoint_id, x_api_key)
+            self._metrics.observe_authentication("litellm", access.authenticated)
+            adapter_matches = access.adapter == LITELLM_ADAPTER_ID
+            if not access.allowed:
                 self._metrics.reject_request("litellm", phase=phase, result="authentication_rejected")
                 raise HTTPException(status_code=401, detail="Endpoint credential is invalid.")
             if not adapter_matches:
@@ -278,7 +278,7 @@ class RunnerAPI:
             request_id = str(uuid.uuid4())
             started = time.perf_counter()
             try:
-                protection_request = _litellm_protection_request(payload, endpoint_id, request)
+                protection_request = _litellm_protection_request(payload, endpoint_id, request, authenticated=access.authenticated is True)
             except RoutingError as error:
                 raise HTTPException(status_code=503, detail=error.reason) from error
             decision = None
@@ -328,6 +328,7 @@ class RunnerAPI:
                         phase=phase,
                         protocol="litellm",
                         mode=protection_request.mode,
+                        stream_metadata={"authentication": "credential" if access.authenticated else "anonymous"},
                         started=started,
                         decision=decision,
                         content_before=protection_request.texts,
@@ -814,6 +815,7 @@ def _litellm_protection_request(
     payload: LiteLLMGuardrailRequest,
     endpoint_id: str,
     request: Request | None = None,
+    *, authenticated: bool = True,
 ) -> ProtectionRequest:
     headers = {
         str(key).lower(): str(value)
@@ -856,7 +858,8 @@ def _litellm_protection_request(
     fields.update({
         "protocol": "litellm",
         "endpoint.id": endpoint_id,
-        "auth.principal": principal,
+        **({"auth.principal": principal} if authenticated else {}),
+        "auth.mode": "credential" if authenticated else "anonymous",
         "model": str(payload.model or payload.request_data.get("model") or ""),
         "litellm.operation": payload.input_type,
         "http.method": headers.get("x-original-method", "POST").upper(),
@@ -876,7 +879,7 @@ def _litellm_protection_request(
             fields=tuple(sorted(fields.items())),
         ),
         call_id=(
-            _scoped_call_id(endpoint_id, payload.litellm_call_id)
+            ("" if authenticated else "anonymous:") + _scoped_call_id(endpoint_id, payload.litellm_call_id)
             if payload.litellm_call_id
             else None
         ),

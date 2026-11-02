@@ -5,7 +5,7 @@ import { ControlPlaneService } from "./control-plane.js";
 import type { ControllerConfig } from "../config.js";
 
 const url = process.env.GUARD_TEST_POSTGRES_URL;
-describe.skipIf(!url)("Endpoint Scan defaults in PostgreSQL", () => {
+describe.skipIf(!url)("Endpoint settings in PostgreSQL", () => {
   let database: Awaited<ReturnType<typeof createTestDatabase>>;
   let service: ControlPlaneService;
   beforeAll(async () => {
@@ -44,4 +44,39 @@ describe.skipIf(!url)("Endpoint Scan defaults in PostgreSQL", () => {
     await expect(service.updateEndpoint({ id: lite.id, scanFlagOnlyDefault: false, actorId: "admin" })).rejects.toThrow("only supported by F5");
     expect((await service.getEndpoint(lite.id)).status).toBe("active");
   });
+  it.each(["litellm-generic-guardrail", "f5-scan"])("persists authentication changes without rotating %s credentials", async adapter => {
+    const created = await service.createEndpoint({ name: "Credential setting", adapter, actorId: "admin" });
+    expect(created.credentialRequired).toBe(true);
+    expect(created.credential).toMatch(/^tg_/);
+    const before = (await database.pool.query("SELECT desired_generation::int AS n FROM controller_state")).rows[0].n;
+    const disabled = await service.updateEndpoint({ id: created.id, credentialRequired: false, actorId: "admin" });
+    expect(disabled).toMatchObject({ credentialRequired: false, status: "active", credentials: created.credentials });
+    expect((await service.getEndpoint(created.id)).credentialRequired).toBe(false);
+    expect((await service.listEndpoints()).find(item => item.id === created.id)?.credentialRequired).toBe(false);
+    expect(disabled.setup.auth_header).toBe("");
+    expect(disabled.setup.yaml_template).not.toMatch(/Authorization|api_key|credential_name/);
+    expect((await database.pool.query("SELECT detail FROM audit_event WHERE resource_id=$1 AND kind='endpoint.updated'", [created.id])).rows[0].detail)
+      .toMatchObject({ previousCredentialRequired: true, credentialRequired: false, generation: before + 1 });
+    await service.updateEndpoint({ id: created.id, credentialRequired: false, actorId: "admin" });
+    expect((await database.pool.query("SELECT desired_generation::int AS n FROM controller_state")).rows[0].n).toBe(before + 1);
+    await expect(service.revokeEndpointCredential({ id: created.id, credentialId: created.credentials[0]!.id, actorId: "admin" }))
+      .rejects.toThrow("at least one active credential");
+    await service.updateEndpoint({ id: created.id, enabled: false, actorId: "admin" });
+    expect(await service.updateEndpoint({ id: created.id, credentialRequired: true, actorId: "admin" }))
+      .toMatchObject({ credentialRequired: true, status: "disabled", credentials: created.credentials });
+    expect((await service.getEndpoint(created.id)).setup.auth_header).not.toBe("");
+  });
+
+  it("issues a credential even when created for anonymous access", async () => {
+    const created = await service.createEndpoint({ name: "Anonymous", adapter: "f5-scan", credentialRequired: false, actorId: "admin" });
+    expect(created.credentialRequired).toBe(false);
+    expect(created.credential).toMatch(/^tg_/);
+    expect(created.credentials).toHaveLength(1);
+    const rotated = await service.rotateEndpointCredential({ id: created.id, actorId: "admin" });
+    expect(rotated.credentialRequired).toBe(false);
+    expect(rotated.credentials).toHaveLength(2);
+    await service.revokeEndpointCredential({ id: created.id, credentialId: created.credentials[0]!.id, actorId: "admin" });
+    expect((await service.getEndpoint(created.id)).credentials).toEqual(rotated.credentials.filter(item => item.id !== created.credentials[0]!.id));
+  });
+
 });

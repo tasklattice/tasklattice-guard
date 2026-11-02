@@ -731,6 +731,7 @@ export class RunnerControlServer {
           routerId: endpoint.trafficRouterId ?? "",
           verification: endpointVerificationToWire(endpoint.verification),
           scanFlagOnlyDefault: endpoint.scanFlagOnlyDefault,
+          credentialRequired: endpoint.credentialRequired,
         })),
         guardrailLoggingLevels: desired.guardrailLoggingLevels,
         modelConfiguration: modelConfiguration ? {

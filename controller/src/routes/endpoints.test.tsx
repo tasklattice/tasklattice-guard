@@ -14,6 +14,7 @@ const getEndpointsMock = vi.fn();
 const getEndpointDeletionImpactMock = vi.fn();
 const deleteEndpointMock = vi.fn();
 const scanDefaultMock = vi.fn();
+const credentialRequiredMock = vi.fn();
 
 vi.mock("react-i18next", () => ({
   initReactI18next: { type: "3rdParty", init: () => undefined },
@@ -41,6 +42,8 @@ vi.mock("react-i18next", () => ({
         "endpoints.adapters.litellm-generic-guardrail": "TaskLattice Guard for LiteLLM",
         "endpoints.adapterDescriptions.litellm-generic-guardrail": "Connect with an Endpoint and Secret.",
         "endpoints.credential": "Credential",
+        "endpoints.credentialRequired": "Require Credential",
+        "endpoints.credentialNotRequired": "No credential required",
         "endpoints.setupChecklist": "Gateway setup checklist",
         "endpoints.stepsComplete": "{{count}} / 3 complete",
         "endpoints.setupStatuses.awaiting_callback": "Awaiting callback",
@@ -118,6 +121,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
     getEndpoints: (...args: unknown[]) => getEndpointsMock(...args),
     getEndpointDeletionImpact: (...args: unknown[]) => getEndpointDeletionImpactMock(...args),
     deleteEndpoint: (...args: unknown[]) => deleteEndpointMock(...args),
+    setEndpointCredentialRequired: (...args: unknown[]) => credentialRequiredMock(...args),
     setEndpointScanFlagOnlyDefault: (...args: unknown[]) => scanDefaultMock(...args),
   };
 });
@@ -130,6 +134,7 @@ function endpoint(overrides: Partial<Endpoint> = {}): Endpoint {
     name: "Beijing primary",
     description: "",
     enabled: true,
+    credential_required: true,
     key_hint: "tali_••••8NzQ",
     credentials: [{ id: "credential-1", key_hint: "tali_••••8NzQ", created_at: "2026-08-12T08:00:00Z" }],
     setup_status: "awaiting_callback",
@@ -185,11 +190,59 @@ describe("Endpoint onboarding", () => {
     getEndpointDeletionImpactMock.mockReset();
     deleteEndpointMock.mockReset();
     scanDefaultMock.mockReset();
+    credentialRequiredMock.mockReset();
   });
 
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
+  });
+
+
+  it("defaults to requiring credentials and lets anonymous onboarding close without saving a key", async () => {
+    const result = registration({ credential_required: false });
+    createEndpointMock.mockResolvedValue(result);
+    getEndpointMock.mockResolvedValue(result.endpoint);
+    const onCreated = vi.fn().mockResolvedValue(undefined);
+    renderWithProviders(<CreateEndpointSheet open onOpenChange={vi.fn()} onCreated={onCreated} />);
+    const toggle = screen.getByRole("switch", { name: "Require Credential" });
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(toggle);
+    fireEvent.change(screen.getByPlaceholderText("Corporate AI Gateway"), { target: { value: "Anonymous" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add endpoint" }));
+    expect(await screen.findByText("No credential required")).toBeTruthy();
+    expect(screen.queryByText("tali_endpoint_one_time_value")).toBeNull();
+    expect(createEndpointMock).toHaveBeenCalledWith({ name: "Anonymous", adapter_id: "litellm-generic-guardrail", credential_required: false });
+    fireEvent.click(screen.getByRole("button", { name: "Finish later" }));
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith(result.endpoint, false));
+    expect(screen.queryByText("This credential has not been marked as saved")).toBeNull();
+  });
+
+  it("preserves the credential requirement after a failed save and supports retry", async () => {
+    const item = endpoint();
+    getEndpointsMock.mockResolvedValue({ items: [item], count: 1 });
+    getEndpointMock.mockImplementation(async () => item);
+    credentialRequiredMock.mockRejectedValueOnce(new Error("Authentication setting failed")).mockImplementationOnce(async () => {
+      item.credential_required = false;
+      return { ...item };
+    });
+    renderWithProviders(<EndpointsPage />);
+    fireEvent.click(await screen.findByText(item.name));
+    fireEvent.click(await screen.findByRole("switch", { name: "Require Credential" }));
+    expect(await screen.findByText("Authentication setting failed")).toBeTruthy();
+    expect(screen.getByRole("switch", { name: "Require Credential" }).getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(screen.getByRole("switch", { name: "Require Credential" }));
+    await waitFor(() => expect(screen.getByRole("switch", { name: "Require Credential" }).getAttribute("aria-checked")).toBe("false"));
+    expect(credentialRequiredMock).toHaveBeenLastCalledWith(item.id, false);
+  });
+
+  it("omits the Bearer header from anonymous Scan examples", () => {
+    const item = endpoint({ protocol: "scan", adapter_id: "f5-scan", credential_required: false });
+    const { container } = renderWithProviders(<SetupChecklist endpoint={item} credential={registration().credential}
+      credentialSaved={false} configurationCopied={false} onCredentialSavedChange={vi.fn()} onConfigurationCopied={vi.fn()} />);
+    expect(container.textContent).toContain("curl --request POST");
+    expect(container.textContent).not.toContain("Authorization: Bearer");
+    expect(container.textContent).not.toContain("<CALYPSOAI_TOKEN>");
   });
 
   it("offers only LiteLLM and Scan in the creation selector", async () => {
@@ -219,7 +272,7 @@ describe("Endpoint onboarding", () => {
     fireEvent.click(await screen.findByRole("option", { name: /false ·/ }));
     fireEvent.change(screen.getByPlaceholderText("Corporate AI Gateway"), { target: { value: "Scan" } });
     fireEvent.click(screen.getByRole("button", { name: "Add endpoint" }));
-    await waitFor(() => expect(createEndpointMock).toHaveBeenCalledWith({ name: "Scan", adapter_id: "f5-scan", scan_flag_only_default: false }));
+    await waitFor(() => expect(createEndpointMock).toHaveBeenCalledWith({ name: "Scan", adapter_id: "f5-scan", credential_required: true, scan_flag_only_default: false }));
   });
 
   it("keeps the stored Scan default after a failed save and supports retry", async () => {

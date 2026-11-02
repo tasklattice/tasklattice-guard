@@ -11,7 +11,7 @@ For resource editing and publication automation, use [control-plane integration]
 <a id="endpoint-protocols" />
 ## Choose the inspection protocol
 
-Both Endpoint types authenticate the caller and use a published Router to select a Guardrail Version.
+Both Endpoint types require credentials by default and use a published Router to select a Guardrail Version.
 
 | Type | Authentication | Input and complete Output | Streaming Output | Call correlation |
 | --- | --- | --- | --- | --- |
@@ -26,10 +26,21 @@ A custom gateway or Agent can implement the LiteLLM contract without deploying L
 1. Confirm the target Guardrail Version's Released status. Check its dependencies.
 2. Prepare a published Router that targets this exact version.
 3. Create an Endpoint under [Endpoints](/integration/endpoints). Select its type and Router.
-4. Save the complete credential when it appears. Copy the Endpoint runtime address, including `/runtime/v1/endpoints/<endpoint_id>`.
+4. When **Require Credential** is enabled, save the complete credential when it appears. Copy the Endpoint runtime address, including `/runtime/v1/endpoints/<endpoint_id>`.
 5. Confirm that the runtime applied the configuration before testing traffic.
 
 Use the Endpoint credential for inspection. Personal management tokens cannot replace it. Caller-provided headers or JSON claims do not automatically establish trusted identity.
+
+<a id="endpoint-credential-requirement" />
+### Require Credential
+
+The **Require Credential** switch in creation and details is on by default. The management API field is `credentialRequired`: omitted on creation means `true`; omitted in PATCH preserves the current value.
+
+When off, LiteLLM HTTP, `/verify`, WebSocket and Scan accept anonymous requests and ignore any supplied credential. Connection examples omit authentication headers; Scan needs no `CALYPSOAI_TOKEN`. Router selection and Guardrail inspection still run. Anonymous requests have no `auth.principal`; use `endpoint.id` for Endpoint attribution and routing.
+
+Every Endpoint still receives and retains at least one active credential. Disabling authentication does not revoke it; re-enabling accepts the same credential. If its complete value was not saved, generate a new credential in details before enabling authentication.
+
+After Runners apply the setting, it affects new requests and new WebSocket connections. Existing requests and streams finish normally. Anonymous and authenticated calls use separate Call ID contexts.
 
 <a id="endpoint-address-configuration" />
 ### Deployment address settings
@@ -51,7 +62,7 @@ The TaskLattice LiteLLM image includes the TaskLattice Guard Provider. Its confi
 4. Select **Verify & connect**. The Provider applies the configuration without a restart.
 5. Send real Input and Output checks. Inspect Endpoint runtime activity and actual client delivery.
 
-`/verify` checks credentials and adapter compatibility only. It does not execute a Policy inspection.
+`/verify` checks Endpoint access and adapter compatibility, validating credentials when required. It does not execute a Policy inspection.
 
 | Provider setting | Default | Behavior |
 | --- | --- | --- |
@@ -99,7 +110,7 @@ Compare known examples, [runtime logs](/logs) and delivered content. A published
 | Delivery | Check replacements and server-released stream text. | Wait for complete JSON before applying the outcome. |
 | Failures | Test credentials, field types, expired context, disconnects and invalid replacements. | Test credentials, types, body limits, media types, inspection failures and timeouts. |
 
-An Endpoint's Verified setup state requires authenticated inspection traffic. One direction does not prove the other ran. Keep execution failures separate from content judgments in evaluation reports.
+An Endpoint's Verified setup state requires actual inspection traffic. One direction does not prove the other ran. Keep execution failures separate from content judgments in evaluation reports.
 
 <a id="endpoint-credentials" />
 ## Rotate credentials or disable the Endpoint
@@ -109,4 +120,4 @@ An Endpoint's Verified setup state requires authenticated inspection traffic. On
 3. Send a real request with the new credential.
 4. Revoke the old credential after successful verification. Retain at least one active credential.
 
-Credential hints cannot recover the secret. Turning off **Accept callbacks** rejects inspection requests that use this Endpoint's credentials.
+Credential hints cannot recover the secret. Turning off **Accept callbacks** rejects all inspection requests, including anonymous ones.

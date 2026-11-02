@@ -23,6 +23,7 @@ const endpoint = {
   id: "endpoint-1",
   name: "Primary gateway",
   adapter: "litellm-generic-guardrail",
+  credentialRequired: true,
   status: "active",
   createdAt: new Date("2026-08-20T00:00:00Z"),
   updatedAt: new Date("2026-08-20T00:00:00Z"),
@@ -34,6 +35,40 @@ const endpoint = {
 };
 
 describe("Endpoint management HTTP routes", () => {
+  it.each(["litellm-generic-guardrail", "f5-scan"])("passes an explicit false credential requirement through %s routes and examples", async adapter => {
+    const resource = { ...endpoint, adapter, credentialRequired: false };
+    const createEndpoint = vi.fn().mockResolvedValue(resource);
+    const updateEndpoint = vi.fn().mockResolvedValue(resource);
+    const app = appWith({ user: { id: "member-1", role: "user" } }, { createEndpoint, updateEndpoint });
+    for (const method of ["POST", "PATCH"]) {
+      const body = method === "POST" ? { name: "Anonymous", adapter, credentialRequired: false } : { credentialRequired: false };
+      const response = await app.request(`/api/v1/endpoints${method === "POST" ? "" : "/endpoint-1"}`, {
+        method, headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+      });
+      expect(response.status).toBe(method === "POST" ? 201 : 200);
+      const result = await response.json();
+      expect(result.credentialRequired).toBe(false);
+      expect(result.setup.auth_header).toBe("");
+      expect(result.setup.yaml_template).not.toMatch(/Authorization|credential_name|api_key/);
+    }
+    expect(createEndpoint).toHaveBeenCalledWith({ name: "Anonymous", adapter, credentialRequired: false, actorId: "member-1" });
+    expect(updateEndpoint).toHaveBeenCalledWith({ id: "endpoint-1", credentialRequired: false, actorId: "member-1" });
+  });
+
+  it.each([null, "false", 0, {}, []])("rejects invalid credentialRequired %j before mutation", async credentialRequired => {
+    const createEndpoint = vi.fn(), updateEndpoint = vi.fn();
+    const app = appWith({ user: { id: "member-1", role: "user" } }, { createEndpoint, updateEndpoint });
+    for (const method of ["POST", "PATCH"]) {
+      const response = await app.request(`/api/v1/endpoints${method === "POST" ? "" : "/endpoint-1"}`, {
+        method, headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...(method === "POST" ? { name: "Invalid", adapter: "f5-scan" } : {}), credentialRequired }),
+      });
+      expect(response.status).toBe(400);
+    }
+    expect(createEndpoint).not.toHaveBeenCalled();
+    expect(updateEndpoint).not.toHaveBeenCalled();
+  });
+
   it.each(["f5-scan", "litellm-generic-guardrail"])("uses the incoming origin across all %s setup responses", async (adapter) => {
     const resource = { ...endpoint, adapter, credential: "tg_one_time" };
     const app = appWith({ user: { id: "admin-1", role: "user" } }, {

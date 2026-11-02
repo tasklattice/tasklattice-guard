@@ -69,6 +69,7 @@ function mapEndpoint(value: CurrentEndpoint, events: controllerApi.RuntimeEvent[
     name: value.name,
     description: "",
     enabled: value.status === "active",
+    credential_required: value.credentialRequired,
     key_hint: credentials[0]?.key_hint ?? "",
     credentials,
     setup_status: value.status === "disabled"
@@ -131,8 +132,9 @@ function oneTimeRegistration(value: CurrentEndpoint): EndpointRegistration {
   };
 }
 
-export async function createEndpoint(input: { name: string; adapter_id: EndpointAdapterId; scan_flag_only_default?: boolean }): Promise<EndpointRegistration> {
+export async function createEndpoint(input: { name: string; adapter_id: EndpointAdapterId; credential_required?: boolean; scan_flag_only_default?: boolean }): Promise<EndpointRegistration> {
   const created = await controllerApi.createControllerEndpoint({ name: input.name, adapter: input.adapter_id,
+    credentialRequired: input.credential_required ?? true,
     ...(input.scan_flag_only_default !== undefined ? { scanFlagOnlyDefault: input.scan_flag_only_default } : {}) }) as CurrentEndpoint;
   return oneTimeRegistration(created);
 }
@@ -145,7 +147,11 @@ export async function setEndpointScanFlagOnlyDefault(id: string, flagOnly: boole
   return updateEndpoint(id, { scanFlagOnlyDefault: flagOnly });
 }
 
-async function updateEndpoint(id: string, settings: { enabled?: boolean; scanFlagOnlyDefault?: boolean }): Promise<Endpoint> {
+export async function setEndpointCredentialRequired(id: string, credentialRequired: boolean): Promise<Endpoint> {
+  return updateEndpoint(id, { credentialRequired });
+}
+
+async function updateEndpoint(id: string, settings: { enabled?: boolean; credentialRequired?: boolean; scanFlagOnlyDefault?: boolean }): Promise<Endpoint> {
   const updated = await controllerApi.requestController<CurrentEndpoint>(`/api/v1/endpoints/${encodeURIComponent(id)}`, {
     method: "PATCH",
     body: JSON.stringify(settings),

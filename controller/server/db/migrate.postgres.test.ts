@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync, cpSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Pool } from "pg";
@@ -10,6 +10,7 @@ import { createPooledDatabase } from "./client.js";
 import { runMigrations, SCHEMA_BASELINE } from "./migrate.js";
 
 const url = process.env.GUARD_TEST_POSTGRES_URL;
+const migrationCount = JSON.parse(readFileSync(new URL("./migrations/meta/_journal.json", import.meta.url), "utf8")).entries.length;
 describe.skipIf(!url)("Current database schema baseline", () => {
   let admin: Pool; let pool: Pool; let name: string;
   let config: ReturnType<typeof loadConfig>;
@@ -39,7 +40,7 @@ describe.skipIf(!url)("Current database schema baseline", () => {
   it("serializes concurrent fresh installs and seeds only once", async () => {
     await Promise.all([migrate(), migrate()]);
     expect((await pool.query("SELECT count(*)::int AS n FROM guardrail_profile")).rows[0].n).toBe(5);
-    expect((await pool.query("SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations")).rows[0].n).toBe(1);
+    expect((await pool.query("SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations")).rows[0].n).toBe(migrationCount);
     expect((await pool.query("SELECT to_regclass('validation_report_state') AS report")).rows[0].report).toBe("validation_report_state");
     await expect(pool.query("INSERT INTO guardrail_profile(id,category,category_name,is_default,enabled,definition) SELECT 'duplicate',category,category_name,true,true,definition FROM guardrail_profile WHERE id='banking-assistant'"))
       .rejects.toMatchObject({ code: "23505" });
@@ -52,7 +53,7 @@ describe.skipIf(!url)("Current database schema baseline", () => {
     const before = (await pool.query("SELECT * FROM guardrail_profile ORDER BY id")).rows;
     await migrate();
     expect((await pool.query("SELECT * FROM guardrail_profile ORDER BY id")).rows).toEqual(before);
-    expect((await pool.query("SELECT hash FROM drizzle.__drizzle_migrations")).rows).toEqual([{ hash: "current-v1-baseline" }]);
+    expect((await pool.query("SELECT hash FROM drizzle.__drizzle_migrations")).rows).toEqual(Array.from({ length: migrationCount }, () => ({ hash: "current-v1-baseline" })));
   });
   it("refuses an incomplete historical upgrade without applying schema changes", async () => {
     await pool.query("CREATE SCHEMA drizzle; CREATE TABLE drizzle.__drizzle_migrations(id serial PRIMARY KEY, hash text NOT NULL,created_at bigint)");
@@ -65,8 +66,7 @@ describe.skipIf(!url)("Current database schema baseline", () => {
     const directory = mkdtempSync(join(tmpdir(), "guard-migration-"));
     const originalPath = config.migrationsPath;
     try {
-      mkdirSync(join(directory, "meta"));
-      writeFileSync(join(directory, "meta/_journal.json"), readFileSync(join(originalPath, "meta/_journal.json")));
+      cpSync(originalPath, directory, { recursive: true });
       writeFileSync(join(directory, "0000_current_schema.sql"), readFileSync(join(originalPath, "0000_current_schema.sql"), "utf8") + "\nSELECT missing_relation FROM missing_relation;");
       await expect(runMigrations({ ...config, migrationsPath: directory }, createPooledDatabase(pool))).rejects.toThrow();
       expect((await pool.query("SELECT to_regclass('guardrail_profile') AS profile")).rows[0].profile).toBeNull();

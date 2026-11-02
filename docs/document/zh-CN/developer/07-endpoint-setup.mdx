@@ -11,7 +11,7 @@ order: 0
 <a id="endpoint-protocols" />
 ## 选择检测协议
 
-两类 Endpoint 都认证调用方，并通过已发布 Router 选择 Guardrail Version。
+两类 Endpoint 默认要求凭据认证，并通过已发布 Router 选择 Guardrail Version。
 
 | 类型 | 认证 | Input 与完整的 Output | 流式 Output | 调用关联 |
 | --- | --- | --- | --- | --- |
@@ -26,10 +26,21 @@ order: 0
 1. 确认目标 Guardrail Version 已 Released，依赖可用。
 2. 准备指向该确切版本的已发布 Router。
 3. 在 [Endpoints](/integration/endpoints) 创建 Endpoint，选择类型和 Router。
-4. 安全保存显示的完整凭据。复制运行时地址，保留 `/runtime/v1/endpoints/<endpoint_id>`。
+4. 开启“要求 Credential”时，安全保存显示的完整凭据。复制运行时地址，保留 `/runtime/v1/endpoints/<endpoint_id>`。
 5. 测试流量前，确认运行环境已应用配置。
 
 检测请求使用 Endpoint 凭据，不能用个人管理 Token 代替。调用方提供的 Header 或 JSON 声明不会自动建立可信身份。
+
+<a id="endpoint-credential-requirement" />
+### 是否要求 Credential
+
+创建和详情页的“要求 Credential”默认开启。管理 API 使用 `credentialRequired`，创建时省略默认为 `true`，PATCH 省略保持原值。
+
+关闭后，LiteLLM HTTP、`/verify`、WebSocket 和 Scan 允许匿名调用，已携带的凭据也会被忽略。接入示例省略认证 Header；Scan 无需配置 `CALYPSOAI_TOKEN`。Router 与 Guardrail 检测继续执行。匿名请求不设置 `auth.principal`，可使用 `endpoint.id` 区分接入，依赖认证身份的路由条件不会因此获得身份。
+
+Endpoint 始终生成并至少保留一个有效凭据。关闭认证不会撤销凭据，重新开启后原凭据仍然可用。若未保存完整值，可先在详情中生成新凭据，再开启认证。
+
+设置在 Runner 应用后影响新请求和新 WebSocket 连接；已有请求和流按原流程结束。匿名与认证调用的 Call ID 上下文分别关联。
 
 <a id="endpoint-address-configuration" />
 ### 部署地址设置
@@ -51,7 +62,7 @@ TaskLattice LiteLLM 镜像包含 TaskLattice Guard Provider。连接设置属于
 4. 选择 **Verify & connect**。Provider 应用配置，无需重启。
 5. 发送真实 Input 和 Output 检测，核对 Endpoint 运行活动与客户端实际交付。
 
-`/verify` 只检查凭据和适配器兼容性，不执行 Policy 检测。
+`/verify` 检查 Endpoint 访问权限和适配器兼容性；开启凭据要求时校验凭据，不执行 Policy 检测。
 
 | Provider 设置 | 默认值 | 行为 |
 | --- | --- | --- |
@@ -99,7 +110,7 @@ Guardrail 的 Monitor 和 Bypass 有独立语义，可能返回原文而不执�
 | 交付 | 核对替换文本与服务端释放的流式文本。 | 等完整 JSON 返回后执行 outcome。 |
 | 故障 | 测试凭据、字段类型、上下文过期、断线和无效替换。 | 测试凭据、类型、正文上限、媒体类型、检测失败和超时。 |
 
-Endpoint 的 Verified 接入状态需要经过认证的检测流量。一个方向成功不证明另一个方向已执行。评测报告需分开记录执行故障和内容判定。
+Endpoint 的 Verified 接入状态需要实际检测流量。一个方向成功不证明另一个方向已执行。评测报告需分开记录执行故障和内容判定。
 
 <a id="endpoint-credentials" />
 ## 轮换凭据或停用 Endpoint
@@ -109,4 +120,4 @@ Endpoint 的 Verified 接入状态需要经过认证的检测流量。一个方�
 3. 使用新凭据发送真实请求。
 4. 验证成功后撤销旧凭据，至少保留一个有效凭据。
 
-凭据提示不能还原密钥。关闭“接收回调”后，使用该 Endpoint 凭据的检测请求会被拒绝。
+凭据提示不能还原密钥。关闭“接收回调”后，所有检测请求（包括匿名请求）都会被拒绝。

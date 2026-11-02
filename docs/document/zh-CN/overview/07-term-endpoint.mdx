@@ -4,14 +4,14 @@ title: "Endpoints：应用身份与接入"
 summary: "认识 LiteLLM、Scan 两种 Endpoint 接入类型，以及凭据、Router 绑定和接入健康。"
 order: 6
 ---
-Endpoint 认证应用、Agent 或网关身份，并选择检测协议。不同信任边界需要独立凭据，调用方提供的 Header 不能代替认证。
+Endpoint 默认要求应用、Agent 或网关进行凭据认证，并选择检测协议。不同信任边界需要独立凭据，调用方提供的 Header 不能代替认证。
 
 例如，客服应用与内部测试网关分别使用自己的 Endpoint，运行记录才能区分它们的调用。
 
 <a id="endpoint-integration-types" />
 ## 选择接入类型
 
-两种类型都使用 Endpoint 凭据，并由绑定的 Router 选择 Guardrail Version。
+两种类型都支持默认开启的“要求 Credential”开关，并由绑定的 Router 选择 Guardrail Version。关闭后请求以匿名身份进入检测流程，已有凭据仍保留。
 
 | 类型 | 适用调用方 | 检测契约 |
 | --- | --- | --- |

@@ -6,6 +6,7 @@ Node dependencies are mandatory in this CI suite; missing setup must fail.
 """
 import asyncio
 import base64
+import hashlib
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -27,12 +28,20 @@ ROOT = Path(__file__).resolve().parents[2]
 FIXTURE = ROOT / "tests/fixtures/artifacts/local-secrets-v1"
 
 
-@pytest.mark.parametrize("invalid_action", [None, "reject", "pass", "unspecified", "typo", "PRIVATE_REPORT_CREDENTIAL_SENTINEL"])
-async def test_typescript_controller_distributes_signed_artifact_or_rejects_invalid_action(tmp_path, invalid_action):
+@pytest.mark.parametrize("invalid_action,credential_required", [
+    (None, True), (None, False),
+    *[(action, True) for action in ["reject", "pass", "unspecified", "typo", "PRIVATE_REPORT_CREDENTIAL_SENTINEL"]],
+])
+async def test_typescript_controller_distributes_signed_artifact_or_rejects_invalid_action(tmp_path, invalid_action, credential_required):
     desired = protocol.DesiredState.FromString(base64.b64decode((FIXTURE / "desired-state.pb.b64").read_bytes()))
     artifact = desired.artifacts[0]
     payload = {"artifact": {"id": artifact.artifact_id, **artifact_content(artifact),
         "generation": int(artifact.generation), "checksum": artifact.checksum, "signature": artifact.signature}}
+    credential = "cross-language-test-credential"
+    payload["endpoints"] = [{"endpointId": "cross-language-endpoint", "adapter": "litellm-generic-guardrail",
+        "credentialRequired": credential_required, "scanFlagOnlyDefault": True,
+        "verification": {"credentials": [{"id": "credential-1", "keyHint": "fixture",
+            "sha256": hashlib.sha256(credential.encode()).hexdigest(), "createdAt": "2026-11-02T00:00:00Z"}]}}]
     if invalid_action is not None:
         payload["invalidAction"] = invalid_action
     with (tmp_path / "controller.log").open("w+") as log:
@@ -75,7 +84,13 @@ async def test_typescript_controller_distributes_signed_artifact_or_rejects_inva
                 assert store.generation == 1 and client.synchronized
                 assert store.protection_generation == 1
                 assert store.protection_mode(artifact.guardrail_id) == "bypass"
-                assert store.observability_counts() == (1, 0, 0)
+                assert store.observability_counts() == (1, 0, 1)
+                access = store.authorize_endpoint("cross-language-endpoint", None)
+                assert access.allowed is (not credential_required)
+                assert access.authenticated is (False if credential_required else None)
+                with_key = store.authorize_endpoint("cross-language-endpoint", credential)
+                assert with_key.allowed
+                assert with_key.authenticated is (True if credential_required else None)
                 assert store.plan(artifact.guardrail_id, artifact.guardrail_version).guardrail_id == artifact.guardrail_id
                 assert registry.readiness()["ready"]
         finally:

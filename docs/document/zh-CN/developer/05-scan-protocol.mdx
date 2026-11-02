@@ -19,8 +19,10 @@ Scan Endpoint（`f5-scan`）提供 F5 Backend V1 Scans 兼容接口。接入方�
 
 | Header | 必填／可选 | 值 |
 | --- | --- | --- |
-| `Authorization` | 必填 | `Bearer <Scan Endpoint 凭据>`。凭据必须属于路径指定的 Endpoint。 |
+| `Authorization` | 开启凭据校验时必填 | `Bearer <Scan Endpoint 凭据>`。凭据必须属于路径指定的 Endpoint。 |
 | `Content-Type` | 必填 | `application/json`。允许附带 `charset=utf-8` 等参数。 |
+
+以下示例使用默认开启的“要求 Credential”。关闭时省略 `Authorization` 和 `CALYPSOAI_TOKEN`，已携带的凭据也会被忽略，请求以匿名身份继续执行检测。
 
 最小请求示例：
 
@@ -35,7 +37,7 @@ Content-Type: application/json
 
 本文的 HTTP 示例包含接入所需的 Header 和 JSON Body。空行分隔 Header 与 Body。域名、ID 和凭据均为示例值。示例省略 `Content-Length`、`Date` 等自动生成的 Header，以及额外的诊断 Header。
 
-路径指定 Endpoint，Endpoint 已发布的 Router 再选择 Guardrail Version。凭据与路径不匹配时，Guard 返回 `401`。根路径 `/backend/v1/scans` 不提供接入。
+路径指定 Endpoint，Endpoint 已发布的 Router 再选择 Guardrail Version。开启“要求 Credential”时，凭据与路径不匹配会返回 `401`。根路径 `/backend/v1/scans` 不提供接入。
 
 使用 URL 拼接库时，请保留 Endpoint 路径。以 `/` 开头的路径可能将基础地址重置到域名根路径。
 

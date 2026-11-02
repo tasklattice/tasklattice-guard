@@ -122,7 +122,7 @@ class Registry:
 def test_scan_default_is_backward_compatible_atomic_and_restored(tmp_path):
     store = ArtifactStore(FIXTURE / "public-key.pem", tmp_path / "state")
     store.attach_registry(Registry())
-    desired = protocol.DesiredState(generation=1, endpoints=[protocol.EndpointRuntime(endpoint_id="scan", adapter="f5-scan")])
+    desired = protocol.DesiredState(generation=1, endpoints=[protocol.EndpointRuntime(credential_required=True, endpoint_id="scan", adapter="f5-scan")])
     store.apply(desired)
     assert store.endpoint_scan_flag_only_default("scan") is True
     desired.generation = 2
@@ -166,6 +166,7 @@ def test_runner_verifies_and_restores_complete_last_known_good(tmp_path):
         generation=7,
         artifacts=[artifact],
         endpoints=[protocol.EndpointRuntime(
+            credential_required=True,
             endpoint_id="endpoint-1",
             adapter="litellm-generic-guardrail",
             verification=endpoint_verification_to_proto({"credentials": [{
@@ -228,6 +229,7 @@ def test_runner_accepts_active_multi_credentials_and_rejects_revoked_credentials
     store.apply(protocol.DesiredState(
         generation=1,
         endpoints=[protocol.EndpointRuntime(
+            credential_required=True,
             endpoint_id="endpoint-1",
             adapter="litellm-generic-guardrail",
             verification=endpoint_verification_to_proto({

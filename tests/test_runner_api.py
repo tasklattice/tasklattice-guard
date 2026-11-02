@@ -12,6 +12,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from prometheus_client import generate_latest
 
 from runner.toolkit.runtime.contracts import ProtectionDecision, RiskFinding, RuntimeTraceStep, RuntimeUsage
+from runner.artifact_store import EndpointAccess
 from runner.api import RunnerAPI
 from runner.metrics import INTERNAL_METRIC_ID, RunnerMetrics
 
@@ -87,6 +88,15 @@ class ResolvedFailureRuntime:
 class Store:
     def __init__(self, level="info"):
         self.level = level
+
+    def authorize_endpoint(self, endpoint_id, credential):
+        adapter = self.endpoint_adapter(endpoint_id)
+        if not adapter:
+            return EndpointAccess(None, False, False)
+        if not getattr(self, "credential_required", True):
+            return EndpointAccess(adapter, True, None)
+        authenticated = self.authenticate_endpoint(endpoint_id, credential)
+        return EndpointAccess(adapter, authenticated, authenticated)
 
     def authenticate_endpoint(self, endpoint_id, credential):
         return endpoint_id in {"endpoint-1", "endpoint-secondary", "endpoint-scan"} and credential == "valid-secret"

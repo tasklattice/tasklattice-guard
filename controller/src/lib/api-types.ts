@@ -822,6 +822,7 @@ export type Endpoint = {
   name: string;
   description: string;
   enabled: boolean;
+  credential_required: boolean;
   key_hint: string;
   credentials: EndpointCredential[];
   setup_status: EndpointSetupStatus;

@@ -50,6 +50,14 @@ class RuntimeArtifact:
     config: NeMoConfigSnapshot
 
 
+@dataclass(frozen=True, slots=True)
+class EndpointAccess:
+    adapter: str | None
+    allowed: bool
+    # None means authentication was deliberately skipped for anonymous access.
+    authenticated: bool | None
+
+
 class ArtifactStore:
     """Atomic, last-known-good desired-state store owned only by the Runner."""
 
@@ -245,11 +253,24 @@ class ArtifactStore:
             )
 
     def authenticate_endpoint(self, endpoint_id: str, credential: str | None) -> bool:
-        if not credential:
-            return False
         with self._lock:
             endpoint = self._endpoints.get(endpoint_id)
-        if not endpoint:
+        return self._credential_matches(endpoint, credential)
+
+    def authorize_endpoint(self, endpoint_id: str, credential: str | None) -> EndpointAccess:
+        # Read the mode, adapter and verifier set from one immutable snapshot.
+        with self._lock:
+            endpoint = self._endpoints.get(endpoint_id)
+        if endpoint is None:
+            return EndpointAccess(None, False, False)
+        if not endpoint["_credential_required"]:
+            return EndpointAccess(endpoint["_adapter"], True, None)
+        authenticated = self._credential_matches(endpoint, credential)
+        return EndpointAccess(endpoint["_adapter"], authenticated, authenticated)
+
+    @staticmethod
+    def _credential_matches(endpoint: dict[str, Any] | None, credential: str | None) -> bool:
+        if not endpoint or not credential:
             return False
         expected_digests: list[str] = []
         credentials = endpoint.get("credentials")
@@ -340,6 +361,7 @@ class ArtifactStore:
         for item in desired_state.endpoints:
             verification = endpoint_verification_from_proto(item.verification)
             endpoints[item.endpoint_id] = {**verification, "_adapter": item.adapter, "_router_id": item.router_id,
+                "_credential_required": item.credential_required,
                 "_scan_flag_only_default": item.scan_flag_only_default if item.HasField("scan_flag_only_default") else True}
         registry = self._registry
         if registry is None:

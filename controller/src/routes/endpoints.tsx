@@ -50,6 +50,7 @@ import {
   revokeEndpointCredential,
   rotateEndpointCredential,
   setEndpointEnabled,
+  setEndpointCredentialRequired,
   setEndpointScanFlagOnlyDefault,
   type Endpoint,
   type EndpointAdapterId,
@@ -295,6 +296,16 @@ function EndpointDetailContent({
     onError: showMutationError(t("endpoints.updateFailed")),
   });
 
+  const credentialRequiredMutation = useMutation({
+    mutationFn: (required: boolean) => setEndpointCredentialRequired(endpoint.id, required),
+    onSuccess: async (next) => {
+      if (!next.credential_required) setCloseWarning(false);
+      await cacheEndpoint(next);
+      toast.success(t("endpoints.credentialRequiredUpdated"));
+    },
+    onError: showMutationError(t("endpoints.updateFailed")),
+  });
+
   const scanDefaultMutation = useMutation({
     mutationFn: (flagOnly: boolean) => setEndpointScanFlagOnlyDefault(endpoint.id, flagOnly),
     onSuccess: async (next) => {
@@ -328,7 +339,7 @@ function EndpointDetailContent({
   });
 
   function requestClose() {
-    if (oneTimeCredential && !credentialSaved) {
+    if (endpoint.credential_required && oneTimeCredential && !credentialSaved) {
       setCloseWarning(true);
       return;
     }
@@ -396,6 +407,13 @@ function EndpointDetailContent({
               onCheckedChange={(enabled) => enabledMutation.mutate(enabled)}
               aria-label={t("endpoints.acceptCallbacks")}
             />
+          </div>
+          <div className="border-t p-4">
+            <CredentialRequiredField id={`endpoint-credential-required-${endpoint.id}`} value={endpoint.credential_required}
+              disabled={!canManage || credentialRequiredMutation.isPending}
+              onChange={value => credentialRequiredMutation.mutate(value)} />
+            {credentialRequiredMutation.isPending ? <p role="status" className="mt-2 text-xs text-muted-foreground">{t("common.saving")}</p> : null}
+            {credentialRequiredMutation.error ? <div className="mt-3"><ErrorNotice error={credentialRequiredMutation.error} /></div> : null}
           </div>
           {endpoint.protocol === "scan" ? <div className="border-t p-4">
             <ScanFlagOnlyField id={`endpoint-scan-default-${endpoint.id}`} value={endpoint.scan_flag_only_default ?? true}
@@ -552,6 +570,7 @@ export function CreateEndpointSheet({
   const [name, setName] = useState("");
   const [adapterId, setAdapterId] = useState<EndpointAdapterId>("litellm-generic-guardrail");
   const [scanFlagOnlyDefault, setScanFlagOnlyDefault] = useState(true);
+  const [credentialRequired, setCredentialRequired] = useState(true);
   const [registration, setRegistration] = useState<EndpointRegistration | null>(null);
   const [credentialSaved, setCredentialSaved] = useState(false);
   const [configurationCopied, setConfigurationCopied] = useState(false);
@@ -571,6 +590,7 @@ export function CreateEndpointSheet({
     setName("");
     setAdapterId("litellm-generic-guardrail");
     setScanFlagOnlyDefault(true);
+    setCredentialRequired(true);
     setRegistration(null);
     setCredentialSaved(false);
     setConfigurationCopied(false);
@@ -578,7 +598,7 @@ export function CreateEndpointSheet({
   }, [open]);
 
   const mutation = useMutation({
-    mutationFn: () => createEndpoint({ name: name.trim(), adapter_id: adapterId,
+    mutationFn: () => createEndpoint({ name: name.trim(), adapter_id: adapterId, credential_required: credentialRequired,
       ...(adapterId === "f5-scan" ? { scan_flag_only_default: scanFlagOnlyDefault } : {}) }),
     onSuccess: (result) => {
       setRegistration(result);
@@ -590,7 +610,7 @@ export function CreateEndpointSheet({
 
   function finish(openDetails: boolean, force = false) {
     if (!registration || !endpoint) return;
-    if (!force && !credentialSaved) {
+    if (!force && endpoint.credential_required && !credentialSaved) {
       setCloseWarning(true);
       return;
     }
@@ -610,7 +630,7 @@ export function CreateEndpointSheet({
   const providerConnected = endpoint?.protocol === "litellm"
     ? Boolean(endpoint.input_seen_at || endpoint.output_seen_at)
     : configurationCopied;
-  const setupComplete = [credentialSaved, providerConnected, endpoint?.setup_status === "verified"].filter(Boolean).length;
+  const setupComplete = [!endpoint?.credential_required || credentialSaved, providerConnected, endpoint?.setup_status === "verified"].filter(Boolean).length;
   const footer = registration ? closeWarning ? (
     <>
       <Button variant="outline" onClick={() => setCloseWarning(false)}>{t("endpoints.keepSettingUp")}</Button>
@@ -636,7 +656,7 @@ export function CreateEndpointSheet({
       onOpenChange={requestOpenChange}
       eyebrow={`Endpoint / ${adapter.protocol.toUpperCase()}`}
       title={t(registration ? adapter.protocol === "scan" ? "endpoints.scanSetupTitle" : "endpoints.setupTitle" : "endpoints.register")}
-      description={t(adapter.protocol === "scan"
+      description={registration && endpoint && !endpoint.credential_required ? t("endpoints.anonymousSetupDescription") : t(adapter.protocol === "scan"
         ? registration ? "endpoints.scanSetupDescription" : "endpoints.scanRegisterDescription"
         : registration ? "endpoints.setupDescription" : "endpoints.registerDescription", { name: registration?.endpoint.name })}
       width={registration ? "lg" : "md"}
@@ -681,12 +701,30 @@ export function CreateEndpointSheet({
               </SelectContent>
             </Select>
           </Field>
+          <CredentialRequiredField id="new-endpoint-credential-required" value={credentialRequired}
+            disabled={mutation.isPending} onChange={setCredentialRequired} />
           {adapterId === "f5-scan" ? <ScanFlagOnlyField id="new-endpoint-scan-default" value={scanFlagOnlyDefault}
             disabled={mutation.isPending} onChange={setScanFlagOnlyDefault} /> : null}
         </div>
       )}
     </EntitySheet>
   );
+}
+
+function CredentialRequiredField({ id, value, onChange, disabled }: {
+  id: string; value: boolean; onChange: (value: boolean) => void; disabled: boolean;
+}) {
+  const { t } = useTranslation();
+  return <div className="flex items-center justify-between gap-4">
+    <div>
+      <Label htmlFor={id}>{t("endpoints.credentialRequired")}</Label>
+      <p id={`${id}-hint`} className="mt-1 text-xs leading-5 text-muted-foreground">
+        {t(value ? "endpoints.credentialRequiredHint" : "endpoints.credentialNotRequiredHint")}
+      </p>
+    </div>
+    <Switch id={id} checked={value} disabled={disabled} onCheckedChange={onChange}
+      aria-label={t("endpoints.credentialRequired")} aria-describedby={`${id}-hint`} />
+  </div>;
 }
 
 function ScanFlagOnlyField({ id, value, onChange, disabled }: {
@@ -727,26 +765,26 @@ export function SetupChecklist({
     <ol className="space-y-4" aria-label={t("endpoints.setupChecklist")}>
       <SetupStep
         number={1}
-        title={t("endpoints.saveCredential")}
-        description={endpoint.protocol === "litellm"
+        title={t(endpoint.credential_required ? "endpoints.saveCredential" : "endpoints.credentialNotRequired")}
+        description={!endpoint.credential_required ? t("endpoints.credentialNotRequiredHint") : endpoint.protocol === "litellm"
           ? t("endpoints.saveEndpointSecretDescription")
           : t("endpoints.saveCredentialDescription", { env: endpoint.setup.credential_env_var })}
-        complete={credentialSaved}
+        complete={!endpoint.credential_required || credentialSaved}
       >
-        <OneTimeCredentialCard
+        {endpoint.credential_required ? <OneTimeCredentialCard
           credential={credential}
           saved={credentialSaved}
           onSavedChange={onCredentialSavedChange}
           onCopy={() => copy(credential.value, t("endpoints.credential"))}
           compact
-        />
+        /> : <p className="text-xs leading-5 text-muted-foreground">{t("endpoints.anonymousCredentialHint")}</p>}
       </SetupStep>
       <SetupStep
         number={2}
         title={endpoint.protocol === "litellm"
           ? t("endpoints.configureTaskLatticeProvider")
           : t("endpoints.configureAdapter", { adapter: t(`endpoints.protocolShort.${endpoint.protocol}`) })}
-        description={endpoint.protocol === "litellm"
+        description={!endpoint.credential_required ? t("endpoints.anonymousSetupDescription") : endpoint.protocol === "litellm"
           ? t("endpoints.configureTaskLatticeProviderDescription")
           : t("endpoints.scanDescription")}
         complete={endpoint.setup_status !== "applying" && (endpoint.protocol === "litellm"
@@ -757,7 +795,7 @@ export function SetupChecklist({
           {endpoint.setup_status === "applying" ? (
             <InfoNotice title={t("endpoints.runnerSyncTitle")}>{t("endpoints.runnerSyncDescription", { generation: endpoint.desired_generation ?? "—" })}</InfoNotice>
           ) : endpoint.protocol === "litellm" ? (
-            <LiteLLMProviderSetup endpoint={endpoint.setup.api_base_url} />
+            <LiteLLMProviderSetup endpoint={endpoint.setup.api_base_url} credentialRequired={endpoint.credential_required} />
           ) : (
             <ScanConnection endpoint={endpoint} onCopied={onConfigurationCopied} showDescription={false} />
           )}
@@ -853,8 +891,8 @@ function ScanConnection({ endpoint, onCopied, showDescription = true }: { endpoi
   const { t } = useTranslation();
   return (
     <div className="grid min-w-0 gap-4">
-      <CodeBlock label={t("endpoints.scanCommand")} value={scanRequestCommand(endpoint.setup.callback_url)} {...(onCopied ? { onCopied } : {})} />
-      <p className="text-xs leading-5 text-muted-foreground">{t("endpoints.scanCommandHint")}</p>
+      <CodeBlock label={t("endpoints.scanCommand")} value={scanRequestCommand(endpoint.setup.callback_url, endpoint.credential_required)} {...(onCopied ? { onCopied } : {})} />
+      <p className="text-xs leading-5 text-muted-foreground">{t(endpoint.credential_required ? "endpoints.scanCommandHint" : "endpoints.anonymousScanCommandHint")}</p>
       {showDescription ? <p className="text-xs leading-5 text-muted-foreground">{t("endpoints.scanDescription")}</p> : null}
       <details className="border-t pt-3">
         <summary className="cursor-pointer text-sm font-medium focus-visible:outline-primary">{t("endpoints.scanCompatibility")}</summary>
@@ -864,12 +902,12 @@ function ScanConnection({ endpoint, onCopied, showDescription = true }: { endpoi
   );
 }
 
-function LiteLLMProviderSetup({ endpoint }: { endpoint: string }) {
+function LiteLLMProviderSetup({ endpoint, credentialRequired }: { endpoint: string; credentialRequired: boolean }) {
   const { t } = useTranslation();
   return (
     <div className="grid min-w-0 gap-3">
       <CopyField label={t("endpoints.endpointUrl")} value={endpoint} />
-      <p className="text-xs leading-5 text-muted-foreground">{t("endpoints.endpointSecretDescription")}</p>
+      <p className="text-xs leading-5 text-muted-foreground">{t(credentialRequired ? "endpoints.endpointSecretDescription" : "endpoints.credentialNotRequiredHint")}</p>
       <div><EndpointSetupGuide protocol="litellm" /></div>
     </div>
   );
