@@ -52,11 +52,18 @@ def architectural_suite(path: Path) -> str | None:
     )
 
 
+def pytest_addoption(parser: pytest.Parser) -> None:
+    parser.addoption(
+        "--control-plane-shard",
+        metavar="INDEX/COUNT",
+        help="Run one deterministic shard of control-plane tests, for example 1/2.",
+    )
+
+
 def pytest_collection_modifyitems(
     config: pytest.Config,
     items: list[pytest.Item],
 ) -> None:
-    del config
     unclassified: list[str] = []
     for item in items:
         path = Path(str(item.path))
@@ -71,3 +78,21 @@ def pytest_collection_modifyitems(
             "live under tests/control_plane, tests/data_plane, tests/e2e, or "
             f"tests/contract: {', '.join(sorted(set(unclassified)))}"
         )
+
+    shard = config.getoption("control_plane_shard")
+    if shard is None:
+        return
+    try:
+        index, count = map(int, shard.split("/"))
+        if not 1 <= index <= count:
+            raise ValueError
+    except ValueError:
+        raise pytest.UsageError("--control-plane-shard must use INDEX/COUNT with 1 <= INDEX <= COUNT.") from None
+
+    # Interleave sorted cases so parametrized, similarly expensive tests are
+    # spread across runners while retaining the original execution order.
+    control_plane = sorted((item for item in items if item.get_closest_marker("control_plane")), key=lambda item: item.nodeid)
+    selected = {item.nodeid for item in control_plane[index - 1::count]}
+    deselected = [item for item in control_plane if item.nodeid not in selected]
+    items[:] = [item for item in items if not item.get_closest_marker("control_plane") or item.nodeid in selected]
+    config.hook.pytest_deselected(items=deselected)

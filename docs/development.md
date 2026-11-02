@@ -178,6 +178,13 @@ and builds Controller:
 npm test
 ```
 
+CI runs Control plane as two parallel jobs. Each executes half the Python cases
+and half the Controller test files. Policy/artifact and CLI checks run in the
+first job; typechecking and the Controller build run in the second. To reproduce
+one shard locally, use `npm run test:control-plane:python -- --control-plane-shard=1/2`
+and `npm run test:control-plane --prefix controller -- --shard=1/2` (or `2/2`).
+The ordinary `npm run test:control-plane` still runs the complete suite.
+
 In addition to development dependencies, the contract checks require Helm and
 jq. CI supplies disposable PostgreSQL 17 and Redis services and enables their
 integration tests. Local runs opt in by setting the following variables to

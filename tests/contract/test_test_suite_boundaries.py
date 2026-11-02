@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+import subprocess
+import sys
 
 from conftest import architectural_suite
 
@@ -32,3 +34,19 @@ def test_checked_in_artifact_fixture_contains_no_private_key() -> None:
     }
     for path in fixture.iterdir():
         assert "PRIVATE KEY" not in path.read_text(encoding="utf-8")
+
+
+def test_control_plane_shards_cover_every_case_exactly_once() -> None:
+    def collected(shard: str | None = None) -> set[str]:
+        args = [sys.executable, "-m", "pytest", "--collect-only", "-q", "-m", "control_plane"]
+        if shard is not None:
+            args.append(f"--control-plane-shard={shard}")
+        result = subprocess.run(args, cwd=ROOT, check=True, capture_output=True, text=True, timeout=60)
+        return {line for line in result.stdout.splitlines() if line.startswith("tests/") and "::" in line}
+
+    complete = collected()
+    first, second = collected("1/2"), collected("2/2")
+    assert complete
+    assert first.isdisjoint(second)
+    assert first | second == complete
+    assert abs(len(first) - len(second)) <= 1
