@@ -11,7 +11,7 @@ from runner.toolkit.nemo.evaluators.jev import JEV_PROFILE
 from runner.toolkit.nemo.evaluators.laya import LAYA_PROFILE
 from runner.toolkit.nemo.evaluators import jev_jailbreak, laya_jailbreak
 from tests.control_plane.test_capability_validation import candidate
-from tests.data_plane.test_laya_jailbreak import jailbreak_request
+from tests.classifier_cases import jailbreak_request
 
 
 async def test_mixed_models_use_distinct_credentials_models_thresholds_and_verdicts():

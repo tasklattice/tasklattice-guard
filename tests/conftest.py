@@ -4,6 +4,13 @@ from pathlib import Path
 
 import pytest
 
+from tests.classifier_cases import CLASSIFIER_BACKENDS
+
+
+@pytest.fixture(scope="module", params=CLASSIFIER_BACKENDS, ids=lambda backend: backend.name)
+def classifier_backend(request):
+    return request.param
+
 
 # Test ownership is explicit and exhaustive. New top-level test modules must be
 # assigned to one architectural plane before they can enter CI.

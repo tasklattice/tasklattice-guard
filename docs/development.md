@@ -185,6 +185,16 @@ one shard locally, use `npm run test:control-plane:python -- --control-plane-sha
 and `npm run test:control-plane --prefix controller -- --shard=1/2` (or `2/2`).
 The ordinary `npm run test:control-plane` still runs the complete suite.
 
+Jev and Laya share parameterized contract suites for topic control, jailbreak,
+content safety, external context, decision composition, and gray-area review.
+Each vendor still runs against its own evaluator, profile, thresholds, prompt
+revision, and evidence collection. Vendor isolation tests remain separate.
+Provider-independent checks run once rather than once per vendor.
+
+Generated Runner fixture freshness belongs to the Python control-plane suite;
+generated protobuf freshness belongs to the Python contract suite. CLI helper
+tests belong to `test:cli`. Aggregate commands and CI invoke each check once.
+
 In addition to development dependencies, the contract checks require Helm and
 jq. CI supplies disposable PostgreSQL 17 and Redis services and enables their
 integration tests. Local runs opt in by setting the following variables to
@@ -310,8 +320,9 @@ Controller development startup and watch restarts, Vitest (including direct
 source automatically. No database or running Controller is required to generate it.
 Use `npm run openapi:generate --prefix controller` to generate it on its own.
 
-CI runs `npm run openapi:check --prefix controller` to generate the contract and
-test schema validity, mounted-route coverage, permissions, and filtered references.
+The Controller suite includes the OpenAPI contract tests for schema validity,
+mounted-route coverage, permissions, and filtered references. CI runs these in
+one of the two shards; `npm run openapi:check --prefix controller` runs them alone.
 It uploads the JSON as `controller-openapi-<commit SHA>` for inspection. Server
 builds package the generated JSON in `dist-server/openapi/`; production serves
 that artifact without running the generator. The Runner CLI image smoke script

@@ -66,23 +66,11 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras --frozen && npm ci --no-audit --no-fund && npm ci --prefix controller --no-audit --no-fund
 
-      - name: Generate and validate OpenAPI contract
-        if: matrix.shard == 1
-        run: npm run openapi:check --prefix controller
-
-      - name: Upload generated OpenAPI contract
-        if: matrix.shard == 1
-        uses: actions/upload-artifact@v7
-        with:
-          name: controller-openapi-${{ github.sha }}
-          path: controller/openapi/controller.openapi.json
-          if-no-files-found: error
-
       - name: Test developer commands
         if: matrix.shard == 1
         run: npm run test:cli
 
-      - name: Verify Policy regression and generated artifacts
+      - name: Verify Policy regression and baseline
         if: matrix.shard == 1
         run: npm run test:control-plane:artifacts
 
@@ -93,6 +81,14 @@ jobs:
         env:
           GUARD_TEST_POSTGRES_URL: postgresql://guard_test:guard_test@127.0.0.1:${{ job.services.postgres.ports[5432] }}/guard_test
         run: npm run test:control-plane --prefix controller -- --shard=${{ matrix.shard }}/2
+
+      - name: Upload generated OpenAPI contract
+        if: matrix.shard == 1
+        uses: actions/upload-artifact@v7
+        with:
+          name: controller-openapi-${{ github.sha }}
+          path: controller/openapi/controller.openapi.json
+          if-no-files-found: error
 
       - name: Upload Policy regression report
         if: ${{ always() && matrix.shard == 1 && hashFiles('output/policy-regression.json') != '' }}

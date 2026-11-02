@@ -16,7 +16,7 @@ from runner.toolkit.nemo.actions.model_call import (model_failure, observe_model
 from runner.toolkit.runtime.contracts import EngineRequest
 from runner.toolkit.runtime.failures import ModelResponseError, model_response
 from tests.data_plane.test_artifact_execution import _runtime
-from tests.data_plane.test_jev_jailbreak import jailbreak_request
+from tests.classifier_cases import jailbreak_request
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures/artifacts/stream-safety-window_buffered-v1"
 
