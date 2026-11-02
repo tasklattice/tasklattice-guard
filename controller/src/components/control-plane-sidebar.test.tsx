@@ -60,7 +60,7 @@ describe("ControlPlaneSidebar", () => {
     render(<SidebarProvider><TooltipProvider><ControlPlaneSidebar /></TooltipProvider></SidebarProvider>);
     for (const name of ["Guardrails", "Playground", "Policy Library", "Routers", "Endpoints", "Runtime logs", "Billing", "Settings", "Documentation"]) expect(screen.getByRole("link", { name })).toBeTruthy();
     for (const name of ["Health", "Runner", "Providers", "Models", "Guardrail Catalog", "Version", "Users & access", "Audit log"]) expect(screen.queryByRole("link", { name })).toBeNull();
-    expect(screen.getByRole("link", { name: "TaskLattice Guard" }).getAttribute("href")).toBe("/guardrails");
+    expect(screen.getByRole("link", { name: "TaskLattice Guard" }).getAttribute("href")).toBe("/dashboard");
     expect(screen.getByRole("link", { name: "Runtime logs" }).getAttribute("href")).toBe("/logs");
     const observability = screen.getByText("Runtime observability").closest('[data-sidebar="group"]') as HTMLElement;
     expect(within(observability).getAllByRole("link").map(link => link.textContent)).toEqual(["Runtime logs", "Billing"]);
@@ -68,6 +68,13 @@ describe("ControlPlaneSidebar", () => {
     expect(screen.getByRole("link", { name: "Settings" }).getAttribute("href")).toBe("/settings/health");
     expect(screen.getByRole("link", { name: "Settings" }).closest('[data-sidebar="footer"]')).toBeTruthy();
     expect(document.body.textContent).not.toContain("Platform");
+  });
+
+  it("keeps the dashboard reachable from the collapsed tenant sidebar", () => {
+    identity.role = "user";
+    render(<SidebarProvider defaultOpen={false}><TooltipProvider><ControlPlaneSidebar /></TooltipProvider></SidebarProvider>);
+    expect(screen.getByRole("link", { name: "TaskLattice Guard" }).getAttribute("href")).toBe("/dashboard");
+    expect(screen.getByRole("link", { name: "Guardrails" }).getAttribute("href")).toBe("/guardrails");
   });
 
   it("updates Chinese labels and collapsed accessible names when switching languages", async () => {

@@ -64,6 +64,7 @@ describe("Integration navigation", () => {
   });
 
   it.each([
+    ["/dashboard", "/dashboard", {}],
     ["/billing", "/billing", {}],
     ["/settings/health", "/settings/health", {}],
     ["/settings/runner", "/settings/runner", {}],

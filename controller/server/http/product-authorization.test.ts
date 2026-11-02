@@ -136,6 +136,42 @@ describe("Administrator business boundary", () => {
   });
 });
 
+describe("Dashboard runtime authority", () => {
+  const paths = ["/telemetry/metrics?window=7d", "/telemetry/events?limit=50"];
+
+  it.each([null, "unknown-role", "admin"])("rejects role %s before reading dashboard data, despite spoofed headers", async role => {
+    const { app, unexpected } = setup(role);
+    for (const path of paths) {
+      const response = await app.request(`/api/v1${path}`, { headers: { "x-role": "user", "x-user-id": "tenant-user" } });
+      expect(response.status).toBe(role === null ? 401 : 403);
+      expect(unexpected).not.toHaveBeenCalled();
+    }
+  });
+
+  it("serves scoped metrics and events to the user and revokes both on a role change", async () => {
+    const getSession = vi.fn().mockResolvedValue({ user: { id: "tenant-user", role: "user" } });
+    const metrics = { total_decisions: 7 };
+    const events = { items: [{ id: "tenant-event", guardrailId: "tenant-guardrail" }] };
+    const runtimeMetrics = vi.fn().mockResolvedValue(metrics);
+    const queryRuntimeEvents = vi.fn().mockResolvedValue(events);
+    const app = createHttpApp({ config,
+      auth: { api: { getSession } } as unknown as ControllerAuth,
+      service: { runtimeMetrics, queryRuntimeEvents } as unknown as ControlPlaneService,
+      runnerControl: {} as RunnerControlServer, metrics: {} as ControllerMetrics });
+    for (const [index, path] of paths.entries()) {
+      const response = await app.request(`/api/v1${path}&guardrailId=tenant-guardrail`);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual(index === 0 ? metrics : events);
+    }
+    expect(runtimeMetrics).toHaveBeenCalledExactlyOnceWith({ window: "7d", guardrailId: "tenant-guardrail" });
+    expect(queryRuntimeEvents).toHaveBeenCalledExactlyOnceWith({ limit: 50, guardrailId: "tenant-guardrail" });
+    getSession.mockResolvedValue({ user: { id: "tenant-user", role: "admin" } });
+    for (const path of paths) expect((await app.request(`/api/v1${path}`)).status).toBe(403);
+    expect(runtimeMetrics).toHaveBeenCalledOnce();
+    expect(queryRuntimeEvents).toHaveBeenCalledOnce();
+  });
+});
+
 describe("Role changes revoke business authority", () => {
   it("blocks a former user on the next request after becoming an administrator", async () => {
     const { app, getSession, unexpected } = setup("user");

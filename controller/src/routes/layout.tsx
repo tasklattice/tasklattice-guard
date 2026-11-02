@@ -64,7 +64,7 @@ export function ControlPlaneLayout() {
   }
   if (!auth.status?.authenticated || !auth.user) return <LoginPage />;
   const home = roleHome(auth.user.role);
-  if (["/", "/dashboard"].includes(pathname)) return <Navigate to={home} replace />;
+  if (pathname === "/" || (pathname === "/dashboard" && !hasPermission(auth.user.role, "runtime"))) return <Navigate to={home} replace />;
   const permission = pagePermission(pathname);
   const forbidden = permission !== null && !hasPermission(auth.user.role, permission.resource, permission.action);
   const group = location.group === "nav.settings" && isPlatformAdministrator(auth.user.role)

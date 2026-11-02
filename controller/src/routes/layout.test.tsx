@@ -66,7 +66,7 @@ describe("ControlPlaneLayout", () => {
     expect(screen.queryByText("Page content")).toBeNull();
   });
 
-  it.each(["/guardrails", "/guardrails/id", "/playground", "/policy-library", "/integration/routers", "/integration/endpoints", "/logs", "/billing"])("prevents administrators from mounting %s", path => {
+  it.each(["/dashboard/", "/guardrails", "/guardrails/id", "/playground", "/policy-library", "/integration/routers", "/integration/endpoints", "/logs", "/billing"])("prevents administrators from mounting %s", path => {
     pathname = path; render(<ControlPlaneLayout />);
     expect(screen.queryByText("Page content")).toBeNull();
     expect(screen.getByRole("link", { name: "Platform" }).getAttribute("href")).toBe("/settings/providers");
@@ -97,10 +97,34 @@ describe("ControlPlaneLayout", () => {
     role = "user"; pathname = path; render(<ControlPlaneLayout />);
     expect(screen.getByText("Page content")).toBeTruthy();
   });
-  it("lands users on Guardrails instead of the platform dashboard", () => {
+  it.each(["/dashboard", "/dashboard/"])("mounts the tenant dashboard at %s without redirecting to Guardrails", path => {
+    pathname = path;
     role = "user"; render(<ControlPlaneLayout />);
+    expect(screen.getByText("Page content")).toBeTruthy();
+    expect(screen.getByText("Dashboard")).toBeTruthy();
+    expect(screen.queryByText("Redirect /guardrails")).toBeNull();
+  });
+
+  it("keeps the root landing route separate from the dashboard", () => {
+    pathname = "/"; role = "user"; render(<ControlPlaneLayout />);
     expect(screen.getByText("Redirect /guardrails")).toBeTruthy();
     expect(screen.queryByText("Page content")).toBeNull();
+  });
+
+  it.each<SessionState>(["anonymous", "loading", "error"])("does not mount dashboard data with an %s session", state => {
+    role = "user"; sessionState = state; render(<ControlPlaneLayout />);
+    expect(screen.queryByText("Page content")).toBeNull();
+    expect(screen.getByText(state === "loading" ? "Checking your session…" : "Sign in")).toBeTruthy();
+  });
+
+  it("unmounts the dashboard when runtime permission is revoked", () => {
+    role = "user";
+    const view = render(<ControlPlaneLayout />);
+    expect(screen.getByText("Page content")).toBeTruthy();
+    role = "admin";
+    view.rerender(<ControlPlaneLayout />);
+    expect(screen.queryByText("Page content")).toBeNull();
+    expect(screen.getByText("Redirect /settings/providers")).toBeTruthy();
   });
 
   it.each([["admin", "Platform operations"], ["user", "Settings"]])("labels the Runner page under the %s navigation group", (accountRole, group) => {
