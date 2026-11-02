@@ -42,6 +42,26 @@ function endpointSetup(): Endpoint["setup"] {
   };
 }
 
+function browserEndpointSetup(setup: Endpoint["setup"]): Endpoint["setup"] {
+  // TLS may terminate before the Controller; the browser knows the public scheme.
+  const protocol = window.location.protocol;
+  if (protocol !== "http:" && protocol !== "https:") return setup;
+  const connectionUrl = (url: string) => url
+    .replace(/^https?:\/\//, `${protocol}//`)
+    .replace(/^wss?:\/\//, protocol === "https:" ? "wss://" : "ws://");
+  let template = setup.yaml_template;
+  for (const url of [setup.api_base_url, setup.callback_url, setup.stream_callback_url]) {
+    if (url) template = template.replaceAll(url, connectionUrl(url));
+  }
+  return {
+    ...setup,
+    api_base_url: connectionUrl(setup.api_base_url),
+    callback_url: connectionUrl(setup.callback_url),
+    ...(setup.stream_callback_url ? { stream_callback_url: connectionUrl(setup.stream_callback_url) } : {}),
+    yaml_template: template,
+  };
+}
+
 function mapCredential(value: CurrentCredential) {
   return { id: value.id, key_hint: value.keyHint, created_at: value.createdAt };
 }
@@ -90,7 +110,7 @@ function mapEndpoint(value: CurrentEndpoint, events: controllerApi.RuntimeEvent[
     last_error_at: errors.map((event) => event.occurredAt).sort().at(-1) ?? null,
     request_count: new Set(matching.map((event) => event.requestId)).size,
     error_count: errors.length,
-    setup: value.setup ?? endpointSetup(),
+    setup: browserEndpointSetup(value.setup ?? endpointSetup()),
     created_at: value.createdAt,
     updated_at: value.updatedAt,
     ...(activity ? { ...activity, runtime_status: activity.error_count ? 'degraded' as const : activity.request_count > 0 ? 'healthy' as const : 'unknown' as const } : {}),
