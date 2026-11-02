@@ -53,7 +53,9 @@ function keyPair(directory: string, name: string) {
   return { path, publicKeyPem: pair.publicKey.export({ type: "spki", format: "pem" }).toString() };
 }
 
-describe.skipIf(!url)("Guardrail release packages between isolated environments", () => {
+// These cases exercise complete import/restore/release lifecycles against two
+// migrated installations. Give them a bounded integration budget on CI workers.
+describe.skipIf(!url)("Guardrail release packages between isolated environments", { timeout: 30_000 }, () => {
   let keys: string;
   let uatArtifactKey: ReturnType<typeof keyPair>;
   let prodArtifactKey: ReturnType<typeof keyPair>;
@@ -558,7 +560,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
       expect(exported.versions).toHaveLength(2);
       expect(exported.versions.find(item => item.version === chosen.version)!.testSuite).toEqual(chosen.testSuite);
     } finally { await next.cleanup(); }
-  }, 30_000);
+  });
 
   it("applies the same independent report deletion lifecycle to an imported version", async () => {
     const next = await installationWith("report_delete", () => {});
@@ -807,7 +809,7 @@ describe.skipIf(!url)("Guardrail release packages between isolated environments"
       await expect(service.packages.importPackage(blockedId, { actorId: "admin" })).resolves.toBeTruthy();
       expect((await database.pool.query("SELECT count(*)::int AS n FROM guardrail_version WHERE guardrail_id=$1", [guardrailId])).rows[0].n).toBe(10);
     } finally { await database.drop(); }
-  }, 30_000);
+  });
 
   it("round-trips a complete declarative Policy leaf and allows maintenance after import", async () => {
     const definition = emptyPolicyDefinition(); definition.metadata.name = "Portable Policy";
